@@ -1,7 +1,0 @@
-{
-  "revision": "9065f79520a72288ebbe5ff3aa2e409c792bf6b9",
-
-  "notes": [
-    {"path":"docs/reference/session-api.md","note":"Edited: added the delegated_tool_blocked 403 paragraph before the delegation dispatch-response paragraph, matching request-delegation.ts and the five routes in orchestration.ts. Other delegation, first-turn seed and conversation-usage-tree claims (nesting depth 8, stationDelegationProvenance) concern different code and stay accurate.","inputs":["docs/reference/session-api.md","docs/guides/self-configuring-agent.md","src-server/providers/adapters/claude-adapter.ts","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

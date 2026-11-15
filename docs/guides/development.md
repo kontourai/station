@@ -909,6 +909,24 @@ prose that drifts:
 gh api repos/kontourai/station/rules/branches/main
 ```
 
+- **Iterate as a draft; mark it ready once, to land.** While a PR is a draft,
+  and for the automation app's `changeset-release/main` PR, the heavy platform
+  jobs (`build-ios-verification`, `Windows PR portable floor`, and the Gallery
+  capture) skip on PR events and report `skipped`. Marking the PR ready for
+  review runs them on its head, and every later push to the ready PR runs them
+  again, so open the PR as a draft (`gh pr create --draft`) and run
+  `gh pr ready <n> --repo kontourai/station` when you intend to land it. Let
+  the ready run's checks appear on the PR before arming auto-merge: until they
+  do, the newest check on that head is the draft's `skipped`, which GitHub
+  counts as passing, so arming at once can enqueue without the PR-level run.
+  The merge queue is the gate either way; the post-ready run is early
+  feedback. The
+  merge queue runs the Windows floor, and the iOS build when native inputs
+  changed, for every candidate either way; the Gallery capture runs on ready
+  PRs only. Pre-landing iOS builds
+  cover native inputs only; a change confined to the rest of `src-ui/` or
+  the bundled packages gets its iOS build from the main push, and a red one
+  opens a `Main pipeline red: PR: iOS build` tracker.
 - **Arm auto-merge; do not merge by hand.**
   `gh pr merge <n> --repo kontourai/station --auto`. Auto-merge is opt-in per
   PR: a green PR that nobody armed sits forever, which is the usual reason a
@@ -995,13 +1013,14 @@ locally merely because `main` moved.
 The reusable hosted workflow `.github/workflows/full-regression.yml` qualifies
 one exact source SHA through every canonical phase and the Android viewport suite.
 `Main: Qualification` runs after main pushes (one admitted push and one
-replaceable pending push), every six hours or manually. Scheduled/manual
+replaceable pending push; a push that changes only the deploy ledger starts no
+run), every six hours or manually. Scheduled/manual
 requests retain distinct admission groups and cannot be displaced by a push. Push runs qualify
 source only; scheduled/manual success then runs all five packaging/platform
 validation families. Replaced pending revisions have no qualification claim. Optional
 PR delivery families run in sequence after core fast checks, selected by a
 trusted base-owned diff planner; required integration contexts stay unchanged.
-Scheduled main qualification and tagged Preview/Stable require full qualification with bounded exact-source reuse.
+Scheduled main qualification and tagged Preview/Stable require full qualification with bounded exact-source reuse; a scheduled run does not repeat a corpus that already failed tests on the same source within 24 hours (see [releasing](releasing.md)).
 
 Nightly runs independently: an hourly eligibility decision enforces a six-hour
 default publication minimum before source tests or builds. Eligible sources

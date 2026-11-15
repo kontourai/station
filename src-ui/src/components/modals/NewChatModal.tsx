@@ -1421,6 +1421,10 @@ export function NewChatModal({
           status: 'ready',
           agent: draftAgent,
           modelLabel: draftModelLabel,
+          executionAgent:
+            agents.find(
+              (entry) => entry.slug === draftModel?.executionAgentId,
+            ) ?? draftAgent,
           executionAgentId: draftAgent
             ? start.modelChoiceFor(draftAgent)?.executionAgentId
             : undefined,
@@ -1474,6 +1478,17 @@ export function NewChatModal({
           accent: isGlobal ? undefined : accents.get(selectedContext),
           icon: isGlobal ? undefined : projectIconBySlug.get(selectedContext),
           folder: workspaceHintText(workspaceHint),
+          folderTitle:
+            'path' in workspaceHint
+              ? [
+                  workspaceHint.kind === 'project'
+                    ? workspaceHint.repositoryRemote
+                    : undefined,
+                  workspaceHint.path,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')
+              : undefined,
         };
   const contextSelected = Boolean(
     draftContext?.items.some((item) =>

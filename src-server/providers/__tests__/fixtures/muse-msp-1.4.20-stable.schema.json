@@ -1,0 +1,5133 @@
+{
+  "$defs": {
+    "ApprovalAmendment": {
+      "properties": {
+        "durability": { "$ref": "#/$defs/ApprovalAmendmentDurability" },
+        "rulePreview": { "type": "string" }
+      },
+      "required": ["durability", "rulePreview"],
+      "type": "object"
+    },
+    "ApprovalAmendmentDurability": {
+      "enum": ["session", "localPersistent"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "ApprovalChange": {
+      "properties": {
+        "choiceId": { "type": "string" },
+        "decision": { "$ref": "#/$defs/ApprovalDecision" },
+        "executable": { "type": "boolean" },
+        "kind": { "type": "string" },
+        "reason": { "type": "string" },
+        "reparsed": { "type": "boolean" },
+        "requirementId": { "$ref": "#/$defs/ApprovalRequirementRef" },
+        "status": { "$ref": "#/$defs/ApprovalPersistenceStatus" }
+      },
+      "required": ["kind"],
+      "type": "object"
+    },
+    "ApprovalChoice": {
+      "properties": {
+        "acceptsFeedback": { "type": "boolean" },
+        "choiceId": { "type": "string" },
+        "decision": { "$ref": "#/$defs/ApprovalDecision" },
+        "label": { "type": "string" },
+        "rulePreview": { "type": "string" },
+        "scope": { "$ref": "#/$defs/ApprovalChoiceScope" }
+      },
+      "required": ["choiceId", "decision", "label", "scope"],
+      "type": "object"
+    },
+    "ApprovalChoiceScope": {
+      "enum": ["once", "session", "localPersistent"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "ApprovalCuaCardFacts": {
+      "properties": {
+        "data": {
+          "items": { "$ref": "#/$defs/ApprovalCuaDataFact" },
+          "type": "array"
+        },
+        "page": { "$ref": "#/$defs/ApprovalCuaPage" },
+        "steps": {
+          "items": { "$ref": "#/$defs/ApprovalCuaStep" },
+          "type": "array"
+        },
+        "windowTitle": { "type": "string" }
+      },
+      "type": "object"
+    },
+    "ApprovalCuaDataFact": {
+      "properties": {
+        "kind": { "type": "string" },
+        "mask": { "$ref": "#/$defs/ApprovalCuaMask" },
+        "secretKind": { "type": "string" }
+      },
+      "required": ["kind"],
+      "type": "object"
+    },
+    "ApprovalCuaMask": {
+      "properties": {
+        "chars": { "type": "integer" },
+        "last4": { "type": "string" },
+        "prefix": { "type": "string" }
+      },
+      "type": "object"
+    },
+    "ApprovalCuaPage": {
+      "properties": {
+        "host": { "type": "string" },
+        "hostAscii": { "type": "string" }
+      },
+      "required": ["host", "hostAscii"],
+      "type": "object"
+    },
+    "ApprovalCuaPoint": {
+      "properties": { "x": { "type": "integer" }, "y": { "type": "integer" } },
+      "required": ["x", "y"],
+      "type": "object"
+    },
+    "ApprovalCuaStep": {
+      "properties": {
+        "action": { "type": "string" },
+        "chord": { "type": "string" },
+        "effect": { "type": "string" },
+        "kind": { "type": "string" },
+        "label": { "type": "string" },
+        "point": { "$ref": "#/$defs/ApprovalCuaPoint" },
+        "roleWord": { "type": "string" },
+        "step": { "type": "integer" }
+      },
+      "required": ["action", "effect", "kind", "step"],
+      "type": "object"
+    },
+    "ApprovalDecideParams": {
+      "properties": {
+        "approvalId": { "type": "string" },
+        "choiceId": { "type": "string" },
+        "commandId": { "type": "string" },
+        "feedback": { "type": ["string", "null"] },
+        "requirementId": { "$ref": "#/$defs/ApprovalRequirementRef" },
+        "sessionId": { "type": "string" }
+      },
+      "required": [
+        "approvalId",
+        "choiceId",
+        "commandId",
+        "requirementId",
+        "sessionId"
+      ],
+      "type": "object"
+    },
+    "ApprovalDecideResult": {
+      "properties": {
+        "approvalId": { "type": "string" },
+        "commandId": { "type": "string" },
+        "status": { "$ref": "#/$defs/CommandStatus" },
+        "terminal": { "type": "boolean" }
+      },
+      "required": ["approvalId", "commandId", "status", "terminal"],
+      "type": "object"
+    },
+    "ApprovalDecision": {
+      "enum": [
+        "approved",
+        "approvedForSession",
+        "approvedPolicyAmendment",
+        "denied",
+        "deniedPolicyAmendment",
+        "timedOut",
+        "abort"
+      ],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "ApprovalListPendingParams": {
+      "properties": { "sessionId": { "type": "string" } },
+      "required": ["sessionId"],
+      "type": "object"
+    },
+    "ApprovalListPendingResult": {
+      "properties": {
+        "approvals": {
+          "items": { "$ref": "#/$defs/ApprovalRequestParams" },
+          "type": "array"
+        },
+        "userInputs": {
+          "items": { "$ref": "#/$defs/UserInputRequestParams" },
+          "type": "array"
+        }
+      },
+      "required": ["approvals", "userInputs"],
+      "type": "object"
+    },
+    "ApprovalMode": {
+      "enum": ["allowAll", "promptUnmatched", "onRequest", "denyUnmatched"],
+      "type": "string",
+      "x-msp-openness": "closed"
+    },
+    "ApprovalModeApplyOutcome": {
+      "enum": ["completed", "noop"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "ApprovalModeSource": {
+      "enum": ["startup", "replay", "approvalReconfigure"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "ApprovalOrigin": {
+      "properties": {
+        "command": { "type": "string" },
+        "kind": { "type": "string" },
+        "url": { "type": "string" }
+      },
+      "required": ["kind"],
+      "type": "object"
+    },
+    "ApprovalPersistenceStatus": {
+      "enum": ["succeeded", "failed"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "ApprovalPolicyResult": {
+      "enum": ["allow", "deny"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "ApprovalRequestParams": {
+      "properties": {
+        "approvalId": { "type": "string" },
+        "availableChoices": {
+          "items": { "$ref": "#/$defs/ApprovalChoice" },
+          "type": "array"
+        },
+        "cuaCardFacts": { "$ref": "#/$defs/ApprovalCuaCardFacts" },
+        "currentRequirementId": { "$ref": "#/$defs/ApprovalRequirementRef" },
+        "itemId": { "type": "string" },
+        "judgeEscalated": { "type": "boolean" },
+        "protectedWrite": { "type": "boolean" },
+        "rawArgs": { "type": "string" },
+        "reviewerReason": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "sourceRange": { "$ref": "#/$defs/SourceRange" },
+        "subagentOrigin": { "$ref": "#/$defs/ApprovalSubagentOrigin" },
+        "subject": { "$ref": "#/$defs/ApprovalSubject" },
+        "taskId": { "type": "string" },
+        "toolCallId": { "type": "string" },
+        "toolName": { "type": "string" },
+        "turnId": { "type": "string" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": [
+        "approvalId",
+        "availableChoices",
+        "currentRequirementId",
+        "itemId",
+        "judgeEscalated",
+        "protectedWrite",
+        "rawArgs",
+        "sessionId",
+        "sourceRange",
+        "subject",
+        "taskId",
+        "toolCallId",
+        "toolName",
+        "turnId",
+        "viewCursor"
+      ],
+      "type": "object"
+    },
+    "ApprovalRequirementRef": {
+      "properties": {
+        "approvalId": { "type": "string" },
+        "sourceIndex": { "type": "integer" }
+      },
+      "required": ["approvalId", "sourceIndex"],
+      "type": "object"
+    },
+    "ApprovalResolutionSummary": {
+      "properties": {
+        "decision": { "type": "string" },
+        "resolvedBy": { "type": "string" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": ["decision", "resolvedBy", "viewCursor"],
+      "type": "object"
+    },
+    "ApprovalResolvedBy": {
+      "enum": ["user", "policy", "llmJudge"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "ApprovalResolvedParams": {
+      "properties": {
+        "abortReason": { "type": "string" },
+        "amendment": { "$ref": "#/$defs/ApprovalAmendment" },
+        "approvalId": { "type": "string" },
+        "decidedAt": { "type": "string" },
+        "decidedByCommandId": { "type": "string" },
+        "decision": { "$ref": "#/$defs/ApprovalDecision" },
+        "itemId": { "type": "string" },
+        "policyResult": { "$ref": "#/$defs/ApprovalPolicyResult" },
+        "resolvedBy": { "$ref": "#/$defs/ApprovalResolvedBy" },
+        "sessionId": { "type": "string" },
+        "sourceRange": { "$ref": "#/$defs/SourceRange" },
+        "stageEvidence": {
+          "items": { "$ref": "#/$defs/ApprovalStageEvidence" },
+          "type": "array"
+        },
+        "subagentOrigin": { "$ref": "#/$defs/ApprovalSubagentOrigin" },
+        "turnId": { "type": "string" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": [
+        "approvalId",
+        "decision",
+        "itemId",
+        "policyResult",
+        "resolvedBy",
+        "sessionId",
+        "sourceRange",
+        "stageEvidence",
+        "turnId",
+        "viewCursor"
+      ],
+      "type": "object"
+    },
+    "ApprovalStage": {
+      "properties": {
+        "argv": { "items": { "type": "string" }, "type": "array" },
+        "argvComplete": { "type": "boolean" },
+        "position": { "type": "integer" },
+        "requirementId": { "$ref": "#/$defs/ApprovalRequirementRef" },
+        "resolution": { "$ref": "#/$defs/ApprovalStageResolution" },
+        "suggestedPrefix": { "$ref": "#/$defs/ApprovalSuggestedPrefix" },
+        "totalStages": { "type": "integer" }
+      },
+      "required": [
+        "argv",
+        "argvComplete",
+        "position",
+        "requirementId",
+        "resolution",
+        "totalStages"
+      ],
+      "type": "object"
+    },
+    "ApprovalStageEvidence": {
+      "properties": {
+        "argv": { "items": { "type": "string" }, "type": "array" },
+        "position": { "type": "integer" },
+        "requirementId": { "$ref": "#/$defs/ApprovalRequirementRef" },
+        "resolution": { "$ref": "#/$defs/ApprovalStageResolution" },
+        "totalStages": { "type": "integer" }
+      },
+      "required": [
+        "argv",
+        "position",
+        "requirementId",
+        "resolution",
+        "totalStages"
+      ],
+      "type": "object"
+    },
+    "ApprovalStageResolution": {
+      "properties": {
+        "argvPrefix": { "items": { "type": "string" }, "type": "array" },
+        "diagnostic": { "type": "string" },
+        "kind": { "type": "string" }
+      },
+      "required": ["kind"],
+      "type": "object"
+    },
+    "ApprovalSubagentOrigin": {
+      "properties": {
+        "childRunId": { "type": "string" },
+        "childSessionId": { "type": "string" },
+        "subagentId": { "type": "string" }
+      },
+      "required": ["childRunId", "childSessionId", "subagentId"],
+      "type": "object"
+    },
+    "ApprovalSubject": {
+      "properties": {
+        "access": { "type": "string" },
+        "command": { "type": "string" },
+        "holder": { "$ref": "#/$defs/ComputerUseLockHolder" },
+        "host": { "type": "string" },
+        "kind": { "type": "string" },
+        "origin": { "$ref": "#/$defs/ApprovalOrigin" },
+        "path": { "type": "string" },
+        "port": { "type": "integer" },
+        "protocol": { "type": "string" },
+        "stages": {
+          "items": { "$ref": "#/$defs/ApprovalStage" },
+          "type": "array"
+        },
+        "target": { "type": "string" },
+        "toolName": { "type": "string" },
+        "workspaceRoot": { "type": "string" }
+      },
+      "required": ["kind"],
+      "type": "object"
+    },
+    "ApprovalSuggestedPrefix": {
+      "properties": {
+        "argvPrefix": { "items": { "type": "string" }, "type": "array" },
+        "label": { "type": "string" }
+      },
+      "required": ["argvPrefix", "label"],
+      "type": "object"
+    },
+    "ApprovalUpdatedParams": {
+      "properties": {
+        "approvalId": { "type": "string" },
+        "availableChoices": {
+          "items": { "$ref": "#/$defs/ApprovalChoice" },
+          "type": "array"
+        },
+        "change": { "$ref": "#/$defs/ApprovalChange" },
+        "currentRequirementId": { "$ref": "#/$defs/ApprovalRequirementRef" },
+        "sessionId": { "type": "string" },
+        "sourceRange": { "$ref": "#/$defs/SourceRange" },
+        "subagentOrigin": { "$ref": "#/$defs/ApprovalSubagentOrigin" },
+        "subject": { "$ref": "#/$defs/ApprovalSubject" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": [
+        "approvalId",
+        "availableChoices",
+        "change",
+        "currentRequirementId",
+        "sessionId",
+        "sourceRange",
+        "subject",
+        "viewCursor"
+      ],
+      "type": "object"
+    },
+    "AttentionFlag": {
+      "enum": ["approvalPending", "inputPending"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "BackgroundInitiator": {
+      "enum": ["user", "timeout"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "BackgroundTarget": {
+      "properties": {
+        "backgroundRequested": { "type": "boolean" },
+        "foregroundWaitActive": { "type": "boolean" },
+        "manualReleaseAdmissible": { "type": "boolean" },
+        "toolCallId": { "type": "string" }
+      },
+      "required": [
+        "backgroundRequested",
+        "foregroundWaitActive",
+        "manualReleaseAdmissible",
+        "toolCallId"
+      ],
+      "type": "object"
+    },
+    "BackgroundTerminalCompletion": {
+      "properties": {
+        "command": { "type": "string" },
+        "exitCode": { "type": "integer" },
+        "output": { "type": "string" },
+        "outputTruncated": { "type": "boolean" },
+        "reason": { "type": "string" },
+        "terminalStatus": { "type": "string" },
+        "toolCallId": { "type": "string" }
+      },
+      "required": [
+        "command",
+        "output",
+        "outputTruncated",
+        "terminalStatus",
+        "toolCallId"
+      ],
+      "type": "object"
+    },
+    "BlockedPrompt": {
+      "properties": { "text": { "type": "string" } },
+      "required": ["text"],
+      "type": "object"
+    },
+    "BodyCompletionCorrelation": {
+      "enum": ["resolved", "unresolved"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "BodyCompletionMembers": {
+      "properties": {
+        "correlation": { "$ref": "#/$defs/BodyCompletionCorrelation" },
+        "originCallId": { "type": "string" },
+        "receipt": { "type": "boolean" },
+        "resultSummary": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["correlation", "receipt", "resultSummary", "status"],
+      "type": "object"
+    },
+    "BranchState": {
+      "properties": {
+        "branch": { "type": ["string", "null"] },
+        "vcs": { "$ref": "#/$defs/Vcs" },
+        "workspaceRoot": { "type": "string" }
+      },
+      "required": ["branch", "workspaceRoot"],
+      "type": "object"
+    },
+    "CapabilityName": {
+      "enum": [
+        "userShell",
+        "sessionMcp",
+        "sessionListStream",
+        "feedback",
+        "computerUseSetup",
+        "computerUseHostSetup",
+        "sessionRename"
+      ],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "CheckpointBoundary": {
+      "properties": { "throughItemId": { "type": "string" } },
+      "required": ["throughItemId"],
+      "type": "object"
+    },
+    "ClientCapabilities": {
+      "properties": {
+        "experimentalApi": { "type": "boolean" },
+        "optOutNotificationMethods": {
+          "items": { "type": "string" },
+          "type": "array"
+        },
+        "requestedCapabilities": {
+          "items": { "type": "string" },
+          "type": "array"
+        },
+        "userInputDialogs": { "type": "boolean" }
+      },
+      "type": "object"
+    },
+    "ClientInfo": {
+      "properties": {
+        "name": { "pattern": "^[a-z0-9_]+$", "type": "string" },
+        "title": { "type": "string" },
+        "version": { "type": "string" }
+      },
+      "required": ["name", "version"],
+      "type": "object"
+    },
+    "CodeModeLanguage": {
+      "enum": ["javascript"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "CodeModeOutputSpan": {
+      "properties": {
+        "lengthBytes": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "offsetBytes": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "stream": { "$ref": "#/$defs/CodeModeOutputStream" }
+      },
+      "required": ["lengthBytes", "offsetBytes", "stream"],
+      "type": "object"
+    },
+    "CodeModeOutputStream": {
+      "enum": ["transcript"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "CodeModeReceipt": {
+      "properties": {
+        "cellItemId": { "type": "string" },
+        "language": { "$ref": "#/$defs/CodeModeLanguage" },
+        "outputSpans": {
+          "items": { "$ref": "#/$defs/CodeModeOutputSpan" },
+          "type": "array"
+        },
+        "sourceArg": { "type": "string" }
+      },
+      "type": "object"
+    },
+    "CommandAcceptedResult": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "status": { "$ref": "#/$defs/CommandAckStatus" }
+      },
+      "required": ["commandId", "status"],
+      "type": "object"
+    },
+    "CommandAckStatus": {
+      "enum": ["accepted", "noop"],
+      "type": "string",
+      "x-msp-openness": "closed"
+    },
+    "CommandStatus": {
+      "enum": ["accepted"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "CompactStatus": {
+      "enum": ["accepted", "noop"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "CompactionOutcome": {
+      "enum": ["compacted", "noop", "failed", "cancelled"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "CompactionTrigger": {
+      "enum": ["manual", "auto"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "ComputerUseApp": {
+      "properties": {
+        "bundleId": { "type": "string" },
+        "choice": { "$ref": "#/$defs/ComputerUseAppChoice" },
+        "lastAskedAt": { "type": "string" },
+        "locked": { "type": "boolean" },
+        "lockedBy": { "$ref": "#/$defs/ComputerUseAppLock" },
+        "name": { "type": "string" }
+      },
+      "required": ["bundleId", "choice"],
+      "type": "object"
+    },
+    "ComputerUseAppChoice": {
+      "enum": ["ask", "alwaysAllow", "blocked"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "ComputerUseAppLock": {
+      "enum": ["builtIn", "file"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "ComputerUseAppPatch": {
+      "properties": {
+        "bundleId": { "type": "string" },
+        "choice": { "$ref": "#/$defs/ComputerUseAppChoice" }
+      },
+      "required": ["bundleId", "choice"],
+      "type": "object"
+    },
+    "ComputerUseBlockedApp": {
+      "properties": {
+        "bundleId": { "type": "string" },
+        "locked": { "type": "boolean" },
+        "prefix": { "type": "boolean" }
+      },
+      "required": ["bundleId", "locked"],
+      "type": "object"
+    },
+    "ComputerUseChoice": {
+      "enum": ["ask", "alwaysAllow"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "ComputerUseInstalledApp": {
+      "properties": {
+        "bundleId": { "type": "string" },
+        "name": { "type": "string" }
+      },
+      "required": ["bundleId", "name"],
+      "type": "object"
+    },
+    "ComputerUseLockHolder": {
+      "properties": {
+        "acquiredAt": { "type": "string" },
+        "lastActivityAt": { "type": "string" },
+        "sessionLabel": { "type": "string" }
+      },
+      "required": ["acquiredAt", "lastActivityAt", "sessionLabel"],
+      "type": "object"
+    },
+    "ComputerUsePermission": {
+      "enum": ["granted", "missing", "unknown"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "ComputerUseSettings": {
+      "properties": {
+        "apps": {
+          "items": { "$ref": "#/$defs/ComputerUseApp" },
+          "type": "array"
+        },
+        "blockedApps": {
+          "items": { "$ref": "#/$defs/ComputerUseBlockedApp" },
+          "type": "array"
+        },
+        "computerControl": { "$ref": "#/$defs/ComputerUseChoice" },
+        "installedApps": {
+          "items": { "$ref": "#/$defs/ComputerUseInstalledApp" },
+          "type": "array"
+        },
+        "screenshots": { "$ref": "#/$defs/ComputerUseChoice" }
+      },
+      "required": ["blockedApps", "computerControl", "screenshots"],
+      "type": "object"
+    },
+    "ComputerUseSettingsReadParams": {
+      "properties": {
+        "installed": { "type": "boolean" },
+        "showBuiltIns": { "type": "boolean" }
+      },
+      "type": "object"
+    },
+    "ComputerUseSettingsUpdateParams": {
+      "properties": {
+        "apps": {
+          "items": { "$ref": "#/$defs/ComputerUseAppPatch" },
+          "type": "array"
+        },
+        "blockApps": { "items": { "type": "string" }, "type": "array" },
+        "computerControl": { "$ref": "#/$defs/ComputerUseChoice" },
+        "screenshots": { "$ref": "#/$defs/ComputerUseChoice" },
+        "unblockApps": { "items": { "type": "string" }, "type": "array" }
+      },
+      "type": "object"
+    },
+    "ComputerUseSetupChanged": {
+      "properties": {
+        "sessionId": { "type": "string" },
+        "state": { "$ref": "#/$defs/ComputerUseSetupState" }
+      },
+      "required": ["state"],
+      "type": "object"
+    },
+    "ComputerUseSetupPhase": {
+      "enum": [
+        "dormant",
+        "inProgress",
+        "restartRequired",
+        "readyForTarget",
+        "stopped"
+      ],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "ComputerUseSetupReadParams": {
+      "properties": { "sessionId": { "type": "string" } },
+      "type": "object"
+    },
+    "ComputerUseSetupStartParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["commandId"],
+      "type": "object"
+    },
+    "ComputerUseSetupState": {
+      "properties": {
+        "accessibility": { "$ref": "#/$defs/ComputerUsePermission" },
+        "inputMonitoring": { "$ref": "#/$defs/ComputerUsePermission" },
+        "message": { "type": "string" },
+        "refused": { "type": "string" },
+        "screenRecording": { "$ref": "#/$defs/ComputerUsePermission" },
+        "setup": { "$ref": "#/$defs/ComputerUseSetupPhase" }
+      },
+      "required": [
+        "accessibility",
+        "inputMonitoring",
+        "screenRecording",
+        "setup"
+      ],
+      "type": "object"
+    },
+    "ContextPressureLevel": {
+      "enum": ["normal", "warning", "blocked"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "ContextUsage": {
+      "properties": {
+        "pressure": { "$ref": "#/$defs/ContextPressureLevel" },
+        "usedTokens": { "type": "integer" },
+        "windowTokens": { "type": "integer" }
+      },
+      "required": ["pressure", "usedTokens"],
+      "type": "object"
+    },
+    "CronReceipt": {
+      "properties": {
+        "jobId": { "type": "string" },
+        "jobs": {
+          "items": { "$ref": "#/$defs/CronReceiptJob" },
+          "type": "array"
+        },
+        "nextFireAtMs": { "type": "integer" }
+      },
+      "type": "object"
+    },
+    "CronReceiptJob": {
+      "properties": {
+        "jobId": { "type": "string" },
+        "nextFireAtMs": { "type": "integer" }
+      },
+      "required": ["jobId", "nextFireAtMs"],
+      "type": "object"
+    },
+    "CumulativeCost": {
+      "properties": {
+        "partial": { "type": "boolean" },
+        "usd": { "type": "number" }
+      },
+      "required": ["partial", "usd"],
+      "type": "object"
+    },
+    "CumulativeTokenUsage": {
+      "properties": {
+        "cacheReadTokens": { "type": "integer" },
+        "cacheWriteTokens": { "type": "integer" },
+        "cost": { "$ref": "#/$defs/CumulativeCost" },
+        "outputTokens": { "type": "integer" },
+        "promptTokens": { "type": "integer" },
+        "totalTokens": { "type": "integer" }
+      },
+      "required": ["outputTokens", "promptTokens", "totalTokens"],
+      "type": "object"
+    },
+    "DamagedRange": {
+      "properties": {
+        "lastGoodTurnId": { "type": "string" },
+        "missingRecords": { "type": "integer" },
+        "readableAfterAt": { "type": "string" },
+        "readableBeforeAt": { "type": "string" },
+        "unreadableLines": { "type": "integer" }
+      },
+      "required": ["missingRecords", "readableAfterAt", "unreadableLines"],
+      "type": "object"
+    },
+    "DeliveredInput": {
+      "properties": {
+        "deliveredSequence": { "type": "integer" },
+        "sequence": { "type": "integer" },
+        "sourceCommandId": { "type": "string" },
+        "sourceRunRecordId": { "type": "string" },
+        "subagentId": { "type": "string" },
+        "summary": { "type": "string" }
+      },
+      "required": ["deliveredSequence", "sequence", "subagentId", "summary"],
+      "type": "object"
+    },
+    "EarlierHistory": {
+      "properties": {
+        "messages": {
+          "items": { "$ref": "#/$defs/EarlierHistoryMessage" },
+          "type": "array"
+        }
+      },
+      "required": ["messages"],
+      "type": "object"
+    },
+    "EarlierHistoryMessage": {
+      "properties": {
+        "role": { "type": "string" },
+        "text": { "type": "string" }
+      },
+      "required": ["role", "text"],
+      "type": "object"
+    },
+    "EffectiveApprovalModeState": {
+      "properties": {
+        "lastCommandId": { "type": ["string", "null"] },
+        "mode": { "$ref": "#/$defs/ApprovalMode" },
+        "source": { "$ref": "#/$defs/ApprovalModeSource" }
+      },
+      "required": ["lastCommandId", "mode", "source"],
+      "type": "object"
+    },
+    "EffectiveModel": {
+      "properties": {
+        "modelId": { "type": "string" },
+        "providerId": { "type": ["string", "null"] },
+        "source": { "$ref": "#/$defs/ModelChangeSource" }
+      },
+      "required": ["modelId", "providerId", "source"],
+      "type": "object"
+    },
+    "ErrorData": {
+      "properties": {
+        "alignedNextOffset": { "type": "integer" },
+        "anchor": { "type": ["string", "null"] },
+        "approvalId": { "type": "string" },
+        "availability": { "type": "string" },
+        "capability": { "$ref": "#/$defs/CapabilityName" },
+        "capacity": { "type": "integer" },
+        "choiceId": { "type": "string" },
+        "commandId": { "type": "string" },
+        "currentRequirementId": { "$ref": "#/$defs/ApprovalRequirementRef" },
+        "descriptor": { "type": "string" },
+        "details": { "properties": {}, "type": "object" },
+        "earliestCursor": { "type": ["string", "null"] },
+        "itemId": { "type": "string" },
+        "kind": { "$ref": "#/$defs/ErrorKind" },
+        "lastTurnId": { "type": "string" },
+        "latestBoundaryCursor": { "type": ["string", "null"] },
+        "limitBytes": { "type": "integer" },
+        "marketplace": { "type": "string" },
+        "name": { "type": "string" },
+        "outputRef": { "type": "string" },
+        "paths": { "items": { "type": "string" }, "type": "array" },
+        "reason": { "type": "string" },
+        "recoveryObservation": { "$ref": "#/$defs/RecoveryObservation" },
+        "resolution": { "$ref": "#/$defs/ApprovalResolutionSummary" },
+        "retryable": { "type": "boolean" },
+        "seedFallbackReason": { "type": "string" },
+        "seedPath": { "type": "string" },
+        "selector": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "settlement": { "$ref": "#/$defs/UserInputSettlementSummary" },
+        "stopRefusal": { "type": "string" },
+        "uploadId": { "type": "string" },
+        "userInputId": { "type": "string" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": ["kind"],
+      "type": "object"
+    },
+    "ErrorKind": {
+      "enum": [
+        "parseError",
+        "invalidRequest",
+        "notInitialized",
+        "alreadyInitialized",
+        "methodNotFound",
+        "invalidParams",
+        "experimentalRequired",
+        "internal",
+        "pageEventTooLarge",
+        "outputResultTooLarge",
+        "overloaded",
+        "inputTooLarge",
+        "capabilityRequired",
+        "notFound",
+        "interrupted",
+        "cancelled",
+        "sessionNotFound",
+        "sessionInUse",
+        "sessionAmbiguous",
+        "forkBoundaryInvalid",
+        "sessionNotLoaded",
+        "sessionStreamMismatch",
+        "commandRejected",
+        "backpressured",
+        "skillNotFound",
+        "computerUseUnavailable",
+        "marketplaceNotFound",
+        "pluginNotFound",
+        "marketplaceAlreadyExists",
+        "pluginMutationsDisabled",
+        "uploadNotFound",
+        "viewTruncated",
+        "outputUnavailable",
+        "boundaryPruned",
+        "boundaryUnusable",
+        "noBoundary",
+        "approvalNotFound",
+        "approvalAlreadyResolved",
+        "approvalChoiceInvalid",
+        "approvalRequirementStale",
+        "approvalReviewerUnavailable",
+        "userInputNotFound",
+        "userInputAlreadySettled",
+        "userInputAnswerInvalid",
+        "approvalBrokerUnavailable",
+        "approvalResolving"
+      ],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "ErrorObject": {
+      "properties": {
+        "code": { "type": "integer" },
+        "data": { "$ref": "#/$defs/ErrorData" },
+        "message": { "type": "string" }
+      },
+      "required": ["code", "message"],
+      "type": "object"
+    },
+    "ErrorResponse": {
+      "properties": {
+        "error": { "$ref": "#/$defs/ErrorObject" },
+        "id": {
+          "anyOf": [{ "$ref": "#/$defs/RequestId" }, { "type": "null" }]
+        },
+        "jsonrpc": { "$ref": "#/$defs/JsonRpcVersion" }
+      },
+      "required": ["error", "id", "jsonrpc"],
+      "type": "object"
+    },
+    "ExternalWaitView": {
+      "properties": { "reason": { "type": "string" } },
+      "type": "object"
+    },
+    "FeedbackClassification": {
+      "enum": ["bug", "badResult", "goodResult", "other"],
+      "type": "string",
+      "x-msp-openness": "closed"
+    },
+    "FeedbackSubmitOutcome": {
+      "enum": [
+        "uploaded",
+        "recorded",
+        "acceptedWithoutReceipt",
+        "trackingFailed",
+        "trackingUncertain",
+        "dark",
+        "disabled",
+        "noCredential",
+        "authRejected",
+        "rateLimited",
+        "failed"
+      ],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "FeedbackSubmitParams": {
+      "properties": {
+        "attachSessionRecord": { "type": "boolean" },
+        "classification": { "$ref": "#/$defs/FeedbackClassification" },
+        "clientArtifactsPath": { "type": "string" },
+        "note": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "withFiles": { "type": "boolean" }
+      },
+      "required": ["classification", "note", "withFiles"],
+      "type": "object"
+    },
+    "FeedbackSubmitResult": {
+      "properties": {
+        "bundlePath": { "type": "string" },
+        "cause": { "type": "string" },
+        "localTracingNote": { "type": "string" },
+        "outcome": { "$ref": "#/$defs/FeedbackSubmitOutcome" },
+        "retryAfterMs": { "type": "integer" },
+        "sessionNote": { "type": "string" },
+        "sessionRecordAttached": { "type": "boolean" },
+        "sessionRecordTruncated": { "type": "boolean" },
+        "taskId": { "type": "string" },
+        "uploadId": { "type": "string" }
+      },
+      "required": [
+        "bundlePath",
+        "outcome",
+        "sessionRecordAttached",
+        "sessionRecordTruncated"
+      ],
+      "type": "object"
+    },
+    "ForkCutPoint": {
+      "properties": { "lastTurnId": { "type": "string" } },
+      "required": ["lastTurnId"],
+      "type": "object"
+    },
+    "ForkProvenance": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "cutCursor": { "type": "string" },
+        "cutExplicit": { "type": "boolean" },
+        "isRewind": { "type": "boolean" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["commandId", "cutCursor", "cutExplicit", "sessionId"],
+      "type": "object"
+    },
+    "Goal": {
+      "properties": {
+        "createdAtMs": { "type": "integer" },
+        "currentWork": { "type": "string" },
+        "nextWork": { "type": "string" },
+        "objective": { "type": "string" },
+        "percentComplete": { "type": "integer" },
+        "status": { "type": "string" },
+        "updatedAtMs": { "type": "integer" }
+      },
+      "required": ["objective", "percentComplete", "status"],
+      "type": "object"
+    },
+    "GoalClearParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["commandId", "sessionId"],
+      "type": "object"
+    },
+    "GoalCommandResult": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "status": { "$ref": "#/$defs/CommandStatus" },
+        "turnId": { "type": "string" }
+      },
+      "required": ["commandId", "status"],
+      "type": "object"
+    },
+    "GoalEditParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "objective": { "type": "string" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["commandId", "objective", "sessionId"],
+      "type": "object"
+    },
+    "GoalPauseParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["commandId", "sessionId"],
+      "type": "object"
+    },
+    "GoalResumeParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["commandId", "sessionId"],
+      "type": "object"
+    },
+    "GoalSetParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "objective": { "type": "string" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["commandId", "objective", "sessionId"],
+      "type": "object"
+    },
+    "HeldFor": {
+      "enum": ["approval", "hook"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "HistoryMode": {
+      "enum": ["anchoredSnapshot", "inline", "snapshot", "none"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "HistoryNoneReason": {
+      "enum": [
+        "excluded",
+        "cursorSuffix",
+        "historyBudget",
+        "projectionUnavailable",
+        "projectionReadLimit",
+        "projectionRebuildFailed"
+      ],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "HistoryPreference": {
+      "enum": ["auto", "inline", "snapshot", "anchored"],
+      "type": "string",
+      "x-msp-openness": "closed"
+    },
+    "HookCatalogEntry": {
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "event": { "$ref": "#/$defs/HookEventName" },
+        "handlerKind": { "$ref": "#/$defs/HookHandlerKind" },
+        "key": { "type": "string" }
+      },
+      "required": ["enabled", "event", "handlerKind", "key"],
+      "type": "object"
+    },
+    "HookEventName": {
+      "enum": [
+        "sessionStart",
+        "userPromptSubmit",
+        "preToolUse",
+        "permissionRequest",
+        "postToolUse",
+        "preLLMCall",
+        "postLLMCall",
+        "preCompact",
+        "postCompact",
+        "subagentStart",
+        "subagentStop",
+        "stop",
+        "sessionEnd",
+        "notification",
+        "postToolUseFailure",
+        "stopFailure",
+        "postToolBatch",
+        "interrupt",
+        "sessionFork",
+        "toolUseStart"
+      ],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "HookHandlerKind": {
+      "enum": ["managed", "user", "project", "plugin"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "HookListParams": {
+      "properties": { "sessionId": { "type": "string" } },
+      "required": ["sessionId"],
+      "type": "object"
+    },
+    "HookListResult": {
+      "properties": {
+        "hooks": {
+          "items": { "$ref": "#/$defs/HookCatalogEntry" },
+          "type": "array"
+        }
+      },
+      "required": ["hooks"],
+      "type": "object"
+    },
+    "HookRunStatus": {
+      "enum": ["completed", "blocked", "failed", "timedOut", "cancelled"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "IfBusy": {
+      "enum": ["queue", "steer", "replace"],
+      "type": "string",
+      "x-msp-openness": "closed"
+    },
+    "InitializeParams": {
+      "properties": {
+        "capabilities": { "$ref": "#/$defs/ClientCapabilities" },
+        "clientInfo": { "$ref": "#/$defs/ClientInfo" }
+      },
+      "required": ["clientInfo"],
+      "type": "object"
+    },
+    "InitializeResult": {
+      "properties": {
+        "experimentalApi": { "type": "boolean" },
+        "grantedCapabilities": {
+          "items": { "$ref": "#/$defs/CapabilityName" },
+          "type": "array"
+        },
+        "museHome": { "type": "string" },
+        "platformFamily": { "$ref": "#/$defs/PlatformFamily" },
+        "platformOs": { "$ref": "#/$defs/PlatformOs" },
+        "sandboxAvailability": { "$ref": "#/$defs/SandboxAvailability" },
+        "sandboxUnavailableReason": {
+          "$ref": "#/$defs/SandboxUnavailableReason"
+        },
+        "schema": { "$ref": "#/$defs/SchemaInfo" },
+        "serverInfo": { "$ref": "#/$defs/ServerInfo" },
+        "sessionDurability": { "$ref": "#/$defs/SessionDurability" },
+        "userAgent": { "type": "string" }
+      },
+      "required": [
+        "experimentalApi",
+        "grantedCapabilities",
+        "museHome",
+        "platformFamily",
+        "platformOs",
+        "schema",
+        "serverInfo",
+        "userAgent"
+      ],
+      "type": "object"
+    },
+    "Item": {
+      "properties": {
+        "agentPath": { "type": "string" },
+        "approvalId": { "type": "string" },
+        "args": { "type": "string" },
+        "attachments": {
+          "items": { "$ref": "#/$defs/MessageAttachment" },
+          "type": "array"
+        },
+        "background": { "type": "boolean" },
+        "backgroundInitiator": { "$ref": "#/$defs/BackgroundInitiator" },
+        "backgroundTarget": { "$ref": "#/$defs/BackgroundTarget" },
+        "backgroundTerminalCompletion": {
+          "$ref": "#/$defs/BackgroundTerminalCompletion"
+        },
+        "bashTitle": { "type": "string" },
+        "blocking": { "type": "boolean" },
+        "bodyCompletion": { "$ref": "#/$defs/BodyCompletionMembers" },
+        "callId": { "type": "string" },
+        "childPromptRefs": {
+          "items": { "$ref": "#/$defs/OutputRef" },
+          "type": "array"
+        },
+        "childSessionId": { "type": "string" },
+        "childSessionLogPath": { "type": "string" },
+        "children": {
+          "items": { "$ref": "#/$defs/WorkflowChild" },
+          "type": "array"
+        },
+        "commandId": { "type": "string" },
+        "commandText": { "type": "string" },
+        "controlStatus": { "$ref": "#/$defs/SubagentControlStatus" },
+        "cutOff": { "type": "boolean" },
+        "damagedRange": { "$ref": "#/$defs/DamagedRange" },
+        "declaredPhase": { "type": "string" },
+        "deliveredBeforeTurnEnd": { "type": "boolean" },
+        "deliveryNumber": { "type": "integer" },
+        "depth": { "type": "integer" },
+        "displayLabel": { "$ref": "#/$defs/ToolDisplayLabel" },
+        "displayText": { "type": "string" },
+        "durationMs": { "type": "integer" },
+        "earlierHistory": { "$ref": "#/$defs/EarlierHistory" },
+        "entryId": { "type": "string" },
+        "event": { "$ref": "#/$defs/HookEventName" },
+        "exitCode": { "type": "integer" },
+        "exitSignal": { "type": "integer" },
+        "failureKind": { "type": "string" },
+        "failureReason": { "type": "string" },
+        "fallbackText": { "type": "string" },
+        "finalSummary": { "type": "string" },
+        "generationId": { "type": "integer" },
+        "held": { "type": "boolean" },
+        "heldFor": { "$ref": "#/$defs/HeldFor" },
+        "hookKey": { "type": "string" },
+        "inputPhase": { "$ref": "#/$defs/SubagentInputPhase" },
+        "itemId": { "type": "string" },
+        "jobId": { "type": "string" },
+        "kind": { "$ref": "#/$defs/ItemKind" },
+        "label": { "type": "string" },
+        "message": { "type": "string" },
+        "messagePhase": { "$ref": "#/$defs/MessagePhase" },
+        "modelVisibleContent": {
+          "items": { "$ref": "#/$defs/ModelVisibleContent" },
+          "type": "array"
+        },
+        "monitorDescription": { "type": "string" },
+        "monitorId": { "type": "string" },
+        "nextFireAtMs": { "type": "integer" },
+        "noticeKind": { "type": "string" },
+        "noticeOrigin": { "$ref": "#/$defs/NoticeOrigin" },
+        "noticeSeverity": { "$ref": "#/$defs/NoticeSeverity" },
+        "noticeSubject": { "$ref": "#/$defs/NoticeSubject" },
+        "objective": { "type": "string" },
+        "outcome": { "$ref": "#/$defs/CompactionOutcome" },
+        "outputRef": { "$ref": "#/$defs/OutputRef" },
+        "parentSubagentId": { "type": "string" },
+        "patchRef": { "$ref": "#/$defs/OutputRef" },
+        "patchSummary": { "$ref": "#/$defs/PatchSummary" },
+        "paused": { "type": "boolean" },
+        "peerMessage": { "$ref": "#/$defs/PeerMessage" },
+        "providerItemId": { "type": "string" },
+        "reason": { "type": "string" },
+        "recordedAt": { "type": "string" },
+        "reminderAgentId": { "type": "string" },
+        "replayHint": { "$ref": "#/$defs/ReplayHint" },
+        "result": { "$ref": "#/$defs/SubagentResult" },
+        "resultStatus": { "$ref": "#/$defs/SubagentResultStatus" },
+        "resumeFromRunId": { "type": "string" },
+        "retracted": { "type": "boolean" },
+        "revision": { "type": "integer" },
+        "role": { "type": "string" },
+        "runStatus": { "$ref": "#/$defs/HookRunStatus" },
+        "scheduledFireAtMs": { "type": "integer" },
+        "scriptId": { "type": "string" },
+        "sideSessionId": { "type": "string" },
+        "status": { "$ref": "#/$defs/ItemStatus" },
+        "statusAttempt": { "$ref": "#/$defs/StatusAttempt" },
+        "statusChildren": { "$ref": "#/$defs/StatusChildren" },
+        "statusHealth": { "$ref": "#/$defs/StatusHealth" },
+        "statusLine": { "type": "string" },
+        "statusPhase": { "type": "string" },
+        "statusProgress": { "$ref": "#/$defs/StatusProgress" },
+        "statusStep": { "$ref": "#/$defs/StatusStep" },
+        "steered": { "type": "boolean" },
+        "stopAvailable": { "type": "boolean" },
+        "strategyId": { "type": "string" },
+        "subagentId": { "type": "string" },
+        "summarizedThrough": { "type": "string" },
+        "summary": { "items": { "type": "string" }, "type": "array" },
+        "taskId": { "type": "string" },
+        "terminalRowAfterItemId": { "type": "string" },
+        "text": { "type": "string" },
+        "tokenBudget": { "$ref": "#/$defs/WorkflowTokenBudget" },
+        "tokensAfter": { "type": "integer" },
+        "tokensBefore": { "type": "integer" },
+        "tool": { "type": "string" },
+        "toolReceipt": { "$ref": "#/$defs/ToolReceipt" },
+        "trigger": { "$ref": "#/$defs/CompactionTrigger" },
+        "triggerSource": { "type": "string" },
+        "truncated": { "type": "boolean" },
+        "turnId": { "type": ["string", "null"] },
+        "usage": { "$ref": "#/$defs/TokenUsage" },
+        "visibleOutput": { "type": "string" },
+        "wakeSourceDescriptions": {
+          "items": { "type": "string" },
+          "type": "array"
+        },
+        "workId": { "type": "string" },
+        "workflowRunId": { "type": "string" }
+      },
+      "required": ["itemId", "kind", "revision", "status"],
+      "type": "object"
+    },
+    "ItemCompletedParams": {
+      "properties": {
+        "item": { "$ref": "#/$defs/Item" },
+        "sessionId": { "type": "string" },
+        "sourceRange": { "$ref": "#/$defs/SourceRange" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": ["item", "sessionId", "sourceRange", "viewCursor"],
+      "type": "object"
+    },
+    "ItemDeltaParams": {
+      "properties": {
+        "delta": { "type": "string" },
+        "field": { "type": "string" },
+        "itemId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": ["delta", "itemId", "sessionId", "viewCursor"],
+      "type": "object"
+    },
+    "ItemKind": {
+      "enum": [
+        "userMessage",
+        "agentMessage",
+        "reasoning",
+        "toolCall",
+        "userShell",
+        "subagent",
+        "workflow",
+        "reminderChild",
+        "compaction",
+        "hookRun",
+        "sideChat",
+        "webSearch",
+        "monitorFeed",
+        "damagedRange",
+        "scheduledFire",
+        "backgroundTerminalCompletion",
+        "overdueNotice",
+        "earlierHistory",
+        "peerMessage",
+        "subagentInput",
+        "subagentResult",
+        "systemNotice",
+        "bodyCompletion"
+      ],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "ItemReadOutputEncoding": {
+      "enum": ["utf8", "base64"],
+      "type": "string",
+      "x-msp-openness": "closed"
+    },
+    "ItemReadOutputParams": {
+      "properties": {
+        "itemId": { "type": "string" },
+        "lengthBytes": { "type": "integer" },
+        "offsetBytes": { "type": "integer" },
+        "outputRef": { "type": "string" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["itemId", "outputRef", "sessionId"],
+      "type": "object"
+    },
+    "ItemReadOutputResult": {
+      "properties": {
+        "byteLen": { "type": "integer" },
+        "content": { "type": "string" },
+        "encoding": { "$ref": "#/$defs/ItemReadOutputEncoding" },
+        "eof": { "type": "boolean" },
+        "mediaType": { "type": "string" },
+        "offsetBytes": { "type": "integer" }
+      },
+      "required": [
+        "byteLen",
+        "content",
+        "encoding",
+        "eof",
+        "mediaType",
+        "offsetBytes"
+      ],
+      "type": "object"
+    },
+    "ItemStartedParams": {
+      "properties": {
+        "item": { "$ref": "#/$defs/Item" },
+        "sessionId": { "type": "string" },
+        "sourceRange": { "$ref": "#/$defs/SourceRange" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": ["item", "sessionId", "viewCursor"],
+      "type": "object"
+    },
+    "ItemStatus": {
+      "enum": [
+        "inProgress",
+        "completed",
+        "failed",
+        "cancelled",
+        "rejected",
+        "timedOut"
+      ],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "ItemUpdatedParams": {
+      "properties": {
+        "item": { "$ref": "#/$defs/Item" },
+        "sessionId": { "type": "string" },
+        "sourceRange": { "$ref": "#/$defs/SourceRange" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": ["item", "sessionId", "sourceRange", "viewCursor"],
+      "type": "object"
+    },
+    "JsonRpcVersion": {
+      "enum": ["2.0"],
+      "type": "string",
+      "x-msp-openness": "closed"
+    },
+    "LastTurn": {
+      "properties": {
+        "error": { "$ref": "#/$defs/TurnError" },
+        "reason": { "type": "string" },
+        "terminal": { "$ref": "#/$defs/TurnTerminal" },
+        "turnId": { "type": "string" }
+      },
+      "required": ["terminal", "turnId"],
+      "type": "object"
+    },
+    "LimitKind": {
+      "enum": ["tierLimit"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "MediaUploadParams": {
+      "properties": {
+        "chunkBase64": { "type": "string" },
+        "chunkCount": { "type": "integer" },
+        "chunkIndex": { "type": "integer" },
+        "commandId": { "type": "string" },
+        "mediaType": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "totalBytes": { "type": "integer" },
+        "uploadId": { "type": "string" }
+      },
+      "required": [
+        "chunkBase64",
+        "chunkCount",
+        "chunkIndex",
+        "commandId",
+        "mediaType",
+        "sessionId",
+        "totalBytes",
+        "uploadId"
+      ],
+      "type": "object"
+    },
+    "MediaUploadResult": {
+      "properties": { "uploadId": { "type": "string" } },
+      "required": ["uploadId"],
+      "type": "object"
+    },
+    "MessageAttachment": {
+      "properties": {
+        "attachmentId": { "type": "string" },
+        "height": { "type": "integer" },
+        "mediaType": { "type": "string" },
+        "type": { "type": "string" },
+        "width": { "type": "integer" }
+      },
+      "required": ["mediaType", "type"],
+      "type": "object"
+    },
+    "MessagePhase": {
+      "enum": ["commentary", "finalAnswer"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "ModelCancelParams": {
+      "properties": { "commandId": { "type": "string" } },
+      "required": ["commandId"],
+      "type": "object"
+    },
+    "ModelCancelResult": { "properties": {}, "type": "object" },
+    "ModelCatalogEntry": {
+      "properties": {
+        "contextLimit": { "type": ["integer", "null"] },
+        "cost": {
+          "anyOf": [{ "$ref": "#/$defs/ModelCost" }, { "type": "null" }]
+        },
+        "defaultReasoningEffort": { "$ref": "#/$defs/ReasoningEffort" },
+        "description": { "type": ["string", "null"] },
+        "displayLabel": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "isDefault": { "type": "boolean" },
+        "modelId": { "type": "string" },
+        "outputLimit": { "type": ["integer", "null"] },
+        "profileId": { "type": ["string", "null"] },
+        "providerId": { "type": "string" },
+        "reasoningEffortVariants": {
+          "items": { "$ref": "#/$defs/ModelDescribedReasoningEffort" },
+          "type": "array"
+        },
+        "releaseDate": { "type": ["string", "null"] },
+        "variants": { "$ref": "#/$defs/ModelReasoningEffortVariants" }
+      },
+      "required": [
+        "contextLimit",
+        "cost",
+        "description",
+        "displayLabel",
+        "isActive",
+        "isDefault",
+        "modelId",
+        "outputLimit",
+        "profileId",
+        "providerId",
+        "releaseDate"
+      ],
+      "type": "object"
+    },
+    "ModelCatalogSource": {
+      "enum": [
+        "providerCatalog",
+        "fakeCatalog",
+        "unresolvedCatalog",
+        "bundledCatalog",
+        "configCatalog"
+      ],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "ModelChangeSource": {
+      "enum": ["user", "default", "policy"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "ModelCompleteMessage": {
+      "properties": {
+        "role": { "$ref": "#/$defs/ModelCompleteRole" },
+        "text": { "type": "string" }
+      },
+      "required": ["role", "text"],
+      "type": "object"
+    },
+    "ModelCompleteOutcome": {
+      "enum": ["completed", "failed", "cancelled", "timedOut"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "ModelCompleteParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "maxTokens": { "maximum": 1024, "minimum": 1, "type": "integer" },
+        "messages": {
+          "items": { "$ref": "#/$defs/ModelCompleteMessage" },
+          "maxItems": 32,
+          "type": "array"
+        },
+        "system": { "type": "string" }
+      },
+      "required": ["commandId", "maxTokens", "messages"],
+      "type": "object"
+    },
+    "ModelCompleteResult": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "status": { "$ref": "#/$defs/CommandStatus" }
+      },
+      "required": ["commandId", "status"],
+      "type": "object"
+    },
+    "ModelCompleteRole": {
+      "enum": ["user", "assistant"],
+      "type": "string",
+      "x-msp-openness": "closed"
+    },
+    "ModelCompleteStopReason": {
+      "enum": ["end", "maxTokens"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "ModelCompleteUsage": {
+      "properties": {
+        "inputTokens": { "type": "integer" },
+        "outputTokens": { "type": "integer" }
+      },
+      "required": ["inputTokens", "outputTokens"],
+      "type": "object"
+    },
+    "ModelCompletedParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "message": { "type": "string" },
+        "modelId": { "type": "string" },
+        "outcome": { "$ref": "#/$defs/ModelCompleteOutcome" },
+        "stopReason": { "$ref": "#/$defs/ModelCompleteStopReason" },
+        "text": { "type": "string" },
+        "usage": { "$ref": "#/$defs/ModelCompleteUsage" }
+      },
+      "required": ["commandId", "outcome"],
+      "type": "object"
+    },
+    "ModelCost": {
+      "properties": {
+        "cached": { "type": "string" },
+        "currency": { "type": ["string", "null"] },
+        "input": { "type": "string" },
+        "output": { "type": "string" }
+      },
+      "required": ["cached", "currency", "input", "output"],
+      "type": "object"
+    },
+    "ModelDescribedReasoningEffort": {
+      "properties": {
+        "description": { "type": "string" },
+        "tier": { "$ref": "#/$defs/ReasoningEffort" }
+      },
+      "required": ["tier"],
+      "type": "object"
+    },
+    "ModelListParams": {
+      "properties": { "sessionId": { "type": "string" } },
+      "type": "object"
+    },
+    "ModelListResult": {
+      "properties": {
+        "models": {
+          "items": { "$ref": "#/$defs/ModelCatalogEntry" },
+          "type": "array"
+        },
+        "profileId": { "type": ["string", "null"] },
+        "providerId": { "type": "string" },
+        "source": { "$ref": "#/$defs/ModelCatalogSource" }
+      },
+      "required": ["models", "profileId", "providerId", "source"],
+      "type": "object"
+    },
+    "ModelReasoningEffortVariants": {
+      "anyOf": [
+        { "items": { "$ref": "#/$defs/ReasoningEffort" }, "type": "array" },
+        { "$ref": "#/$defs/UnknownModelReasoningEffortVariants" }
+      ]
+    },
+    "ModelSelection": {
+      "properties": {
+        "displayLabel": { "type": "string" },
+        "modelId": { "type": "string" },
+        "profileId": { "type": ["string", "null"] },
+        "providerId": { "type": "string" }
+      },
+      "required": ["modelId"],
+      "type": "object"
+    },
+    "ModelVisibleContent": {
+      "properties": {
+        "height": { "type": "integer" },
+        "mediaType": { "type": "string" },
+        "path": { "type": "string" },
+        "sourceToolName": { "type": "string" },
+        "type": { "type": "string" },
+        "width": { "type": "integer" }
+      },
+      "required": ["mediaType", "path", "sourceToolName", "type"],
+      "type": "object"
+    },
+    "MonitorInboxItemAdmittedParams": {
+      "properties": {
+        "body": { "type": "string" },
+        "displayBody": { "type": "string" },
+        "eventIndex": { "type": "integer" },
+        "eventKind": { "type": "string" },
+        "itemId": { "type": "string" },
+        "lineIndex": { "type": "integer" },
+        "queuedAt": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "showLines": { "type": "boolean" },
+        "sourceRange": { "$ref": "#/$defs/SourceRange" },
+        "summary": { "type": "string" },
+        "taskId": { "type": "string" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": [
+        "body",
+        "eventIndex",
+        "eventKind",
+        "itemId",
+        "queuedAt",
+        "sessionId",
+        "showLines",
+        "sourceRange",
+        "summary",
+        "taskId",
+        "viewCursor"
+      ],
+      "type": "object"
+    },
+    "MonitorInboxItemDrainedParams": {
+      "properties": {
+        "deliveryVisible": { "type": "boolean" },
+        "drainTargetRunStream": { "$ref": "#/$defs/StreamRef" },
+        "drainedAt": { "type": "string" },
+        "itemId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "sourceRange": { "$ref": "#/$defs/SourceRange" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": [
+        "deliveryVisible",
+        "drainedAt",
+        "itemId",
+        "sessionId",
+        "sourceRange",
+        "viewCursor"
+      ],
+      "type": "object"
+    },
+    "MonitorInboxItemVoidedParams": {
+      "properties": {
+        "itemId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "sourceRange": { "$ref": "#/$defs/SourceRange" },
+        "viewCursor": { "type": "string" },
+        "voidedAt": { "type": "string" }
+      },
+      "required": [
+        "itemId",
+        "sessionId",
+        "sourceRange",
+        "viewCursor",
+        "voidedAt"
+      ],
+      "type": "object"
+    },
+    "MonitorInboxSnapshotEntry": {
+      "properties": {
+        "body": { "type": "string" },
+        "displayBody": { "type": "string" },
+        "drainedAt": { "type": "string" },
+        "eventIndex": { "type": "integer" },
+        "eventKind": { "type": "string" },
+        "itemId": { "type": "string" },
+        "lineIndex": { "type": "integer" },
+        "queuedAt": { "type": "string" },
+        "showLines": { "type": "boolean" },
+        "summary": { "type": "string" },
+        "taskId": { "type": "string" },
+        "voidedAt": { "type": "string" }
+      },
+      "required": [
+        "body",
+        "eventIndex",
+        "eventKind",
+        "itemId",
+        "queuedAt",
+        "showLines",
+        "summary",
+        "taskId"
+      ],
+      "type": "object"
+    },
+    "NoticeOrigin": {
+      "enum": [
+        "monitor",
+        "skillsStartup",
+        "scheduledFire",
+        "incompleteGeneration",
+        "hook",
+        "workflowCheckpoint",
+        "continuedChildTools"
+      ],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "NoticeSeverity": {
+      "enum": ["info", "warning", "error"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "NoticeSubject": {
+      "properties": {
+        "id": { "type": "string" },
+        "label": { "type": "string" }
+      },
+      "required": ["id"],
+      "type": "object"
+    },
+    "Notification": {
+      "properties": {
+        "emittedAtMs": { "type": "integer" },
+        "jsonrpc": { "$ref": "#/$defs/JsonRpcVersion" },
+        "method": { "type": "string" },
+        "params": { "properties": {}, "type": "object" }
+      },
+      "required": ["jsonrpc", "method"],
+      "type": "object"
+    },
+    "OutputRef": {
+      "properties": {
+        "availability": { "$ref": "#/$defs/OutputRefAvailability" },
+        "byteLen": { "type": "integer" },
+        "digest": { "type": "string" },
+        "id": { "type": "string" },
+        "kind": { "type": "string" },
+        "mediaType": { "type": "string" },
+        "path": { "type": "string" },
+        "uri": { "type": "string" }
+      },
+      "required": ["availability", "byteLen", "id", "kind", "uri"],
+      "type": "object"
+    },
+    "OutputRefAvailability": {
+      "enum": ["available", "missing", "unsupported", "accessFailed"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "PatchSummary": {
+      "properties": {
+        "added": { "type": "integer" },
+        "files": { "type": "integer" },
+        "removed": { "type": "integer" }
+      },
+      "required": ["added", "files", "removed"],
+      "type": "object"
+    },
+    "PeerMessage": {
+      "properties": {
+        "body": { "type": "string" },
+        "remote": { "type": "boolean" },
+        "senderLabel": { "type": "string" },
+        "senderSessionId": { "type": "string" }
+      },
+      "required": ["body", "remote", "senderLabel"],
+      "type": "object"
+    },
+    "PendingApprovalPointer": {
+      "properties": {
+        "approvalId": { "type": "string" },
+        "itemId": { "type": "string" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": ["approvalId", "viewCursor"],
+      "type": "object"
+    },
+    "PendingRequestKind": {
+      "enum": ["approval", "userInput"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "PendingRequestPointer": {
+      "properties": {
+        "approvalId": { "type": "string" },
+        "kind": { "$ref": "#/$defs/PendingRequestKind" },
+        "userInputId": { "type": "string" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": ["kind", "viewCursor"],
+      "type": "object"
+    },
+    "PendingUserInputPointer": {
+      "properties": {
+        "itemId": { "type": "string" },
+        "userInputId": { "type": "string" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": ["userInputId", "viewCursor"],
+      "type": "object"
+    },
+    "PlatformFamily": {
+      "enum": ["unix", "windows"],
+      "type": "string",
+      "x-msp-openness": "closed"
+    },
+    "PlatformOs": {
+      "enum": ["macos", "linux", "windows"],
+      "type": "string",
+      "x-msp-openness": "closed"
+    },
+    "PluginCatalogEntry": {
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "id": { "type": "string" },
+        "source": { "$ref": "#/$defs/PluginSource" },
+        "version": { "type": "string" }
+      },
+      "required": ["enabled", "id", "source", "version"],
+      "type": "object"
+    },
+    "PluginChangedParams": {
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "id": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "source": { "$ref": "#/$defs/PluginSource" },
+        "version": { "type": "string" }
+      },
+      "required": ["enabled", "id", "sessionId", "source", "version"],
+      "type": "object"
+    },
+    "PluginInstallLocalPathTarget": {
+      "properties": {
+        "path": { "type": "string" },
+        "scope": { "$ref": "#/$defs/PluginInstallScope" }
+      },
+      "required": ["path"],
+      "type": "object"
+    },
+    "PluginInstallMarketplaceTarget": {
+      "properties": {
+        "marketplace": { "type": "string" },
+        "name": { "type": "string" }
+      },
+      "required": ["marketplace", "name"],
+      "type": "object"
+    },
+    "PluginInstallParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "target": { "$ref": "#/$defs/PluginInstallTarget" }
+      },
+      "required": ["commandId", "sessionId", "target"],
+      "type": "object"
+    },
+    "PluginInstallResult": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "enabled": { "type": "boolean" },
+        "id": { "type": "string" },
+        "source": { "$ref": "#/$defs/PluginSource" },
+        "status": { "$ref": "#/$defs/CommandStatus" },
+        "version": { "type": "string" },
+        "warning": { "type": "string" }
+      },
+      "required": ["commandId", "enabled", "id", "source", "status", "version"],
+      "type": "object"
+    },
+    "PluginInstallScope": {
+      "enum": ["default", "user", "project"],
+      "type": "string",
+      "x-msp-openness": "closed"
+    },
+    "PluginInstallTarget": {
+      "properties": {
+        "localPath": { "$ref": "#/$defs/PluginInstallLocalPathTarget" },
+        "marketplace": { "$ref": "#/$defs/PluginInstallMarketplaceTarget" }
+      },
+      "type": "object"
+    },
+    "PluginListParams": {
+      "properties": { "sessionId": { "type": "string" } },
+      "required": ["sessionId"],
+      "type": "object"
+    },
+    "PluginListResult": {
+      "properties": {
+        "plugins": {
+          "items": { "$ref": "#/$defs/PluginCatalogEntry" },
+          "type": "array"
+        }
+      },
+      "required": ["plugins"],
+      "type": "object"
+    },
+    "PluginMarketplaceAddParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "name": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "source": { "type": "string" }
+      },
+      "required": ["commandId", "name", "sessionId", "source"],
+      "type": "object"
+    },
+    "PluginMarketplaceChange": {
+      "enum": ["added", "updated", "removed"],
+      "type": "string",
+      "x-msp-openness": "closed"
+    },
+    "PluginMarketplaceChangedParams": {
+      "properties": {
+        "change": { "$ref": "#/$defs/PluginMarketplaceChange" },
+        "name": { "type": "string" },
+        "pluginCount": { "type": "integer" },
+        "sessionId": { "type": "string" },
+        "skippedCount": { "type": "integer" }
+      },
+      "required": ["change", "name", "sessionId"],
+      "type": "object"
+    },
+    "PluginMarketplaceRecordResult": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "name": { "type": "string" },
+        "pluginCount": { "type": "integer" },
+        "skipped": {
+          "items": { "$ref": "#/$defs/PluginMarketplaceSkippedEntry" },
+          "type": "array"
+        },
+        "source": { "$ref": "#/$defs/PluginMarketplaceSourceShape" },
+        "status": { "$ref": "#/$defs/CommandStatus" }
+      },
+      "required": [
+        "commandId",
+        "name",
+        "pluginCount",
+        "skipped",
+        "source",
+        "status"
+      ],
+      "type": "object"
+    },
+    "PluginMarketplaceRemoveParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "name": { "type": "string" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["commandId", "name", "sessionId"],
+      "type": "object"
+    },
+    "PluginMarketplaceRemoveResult": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "name": { "type": "string" },
+        "status": { "$ref": "#/$defs/CommandStatus" }
+      },
+      "required": ["commandId", "name", "status"],
+      "type": "object"
+    },
+    "PluginMarketplaceSkippedEntry": {
+      "properties": {
+        "plugin": { "type": "string" },
+        "reason": { "type": "string" }
+      },
+      "required": ["plugin", "reason"],
+      "type": "object"
+    },
+    "PluginMarketplaceSourceShape": {
+      "properties": {
+        "kind": { "type": "string" },
+        "path": { "type": "string" }
+      },
+      "required": ["kind", "path"],
+      "type": "object"
+    },
+    "PluginMarketplaceUpdateParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "name": { "type": "string" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["commandId", "name", "sessionId"],
+      "type": "object"
+    },
+    "PluginSource": {
+      "enum": [
+        "curated",
+        "marketplaceUserAdded",
+        "foreignImport",
+        "nativeLocal"
+      ],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "ProbeDegradedReason": {
+      "enum": ["skippedUntrusted", "skippedSandboxUnavailable", "probeFailed"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "PrunedSubagent": {
+      "properties": {
+        "label": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["sessionId"],
+      "type": "object"
+    },
+    "QueuedInput": {
+      "properties": {
+        "sequence": { "type": "integer" },
+        "sourceCommandId": { "type": "string" },
+        "sourceRunRecordId": { "type": "string" },
+        "text": { "type": "string" }
+      },
+      "required": ["sequence", "text"],
+      "type": "object"
+    },
+    "QuotaDetail": {
+      "properties": {
+        "limitKind": { "$ref": "#/$defs/LimitKind" },
+        "resetsAtMs": { "type": "integer" }
+      },
+      "required": ["limitKind", "resetsAtMs"],
+      "type": "object"
+    },
+    "ReasoningEffort": {
+      "enum": [
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra"
+      ],
+      "type": "string",
+      "x-msp-openness": "closed"
+    },
+    "ReasoningEffortChangeSource": {
+      "enum": ["user", "default", "policy"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "ReasoningEffortState": {
+      "properties": {
+        "reasoningEffort": { "$ref": "#/$defs/ReasoningEffort" },
+        "source": { "$ref": "#/$defs/ReasoningEffortChangeSource" }
+      },
+      "required": ["reasoningEffort", "source"],
+      "type": "object"
+    },
+    "RecapCancelParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["commandId", "sessionId"],
+      "type": "object"
+    },
+    "RecapCancelResult": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "status": { "$ref": "#/$defs/CommandStatus" }
+      },
+      "required": ["commandId", "status"],
+      "type": "object"
+    },
+    "RecapCompletedParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "outcome": { "$ref": "#/$defs/RecapOutcome" },
+        "reason": { "$ref": "#/$defs/RecapFailureReason" },
+        "sessionId": { "type": "string" },
+        "text": { "type": "string" },
+        "title": { "type": "string" }
+      },
+      "required": ["commandId", "outcome", "sessionId"],
+      "type": "object"
+    },
+    "RecapFailureReason": {
+      "enum": ["providerFailed"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "RecapOutcome": {
+      "enum": ["completed", "failed", "cancelled", "timedOut"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "RecapRequestParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["commandId", "sessionId"],
+      "type": "object"
+    },
+    "RecapRequestResult": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "status": { "$ref": "#/$defs/CommandStatus" }
+      },
+      "required": ["commandId", "status"],
+      "type": "object"
+    },
+    "RecordPosition": {
+      "properties": {
+        "id": { "type": "string" },
+        "sequence": { "type": "integer" }
+      },
+      "required": ["id", "sequence"],
+      "type": "object"
+    },
+    "RecoveryEffectiveSource": {
+      "enum": [
+        "request",
+        "retained",
+        "legacyOmission",
+        "hostPolicy",
+        "unknown"
+      ],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "RecoveryMode": {
+      "enum": ["on", "off"],
+      "type": "string",
+      "x-msp-openness": "closed"
+    },
+    "RecoveryObservation": {
+      "properties": {
+        "constructionId": { "type": "string" },
+        "effectiveMode": { "$ref": "#/$defs/RecoveryObservedMode" },
+        "effectiveSource": { "$ref": "#/$defs/RecoveryEffectiveSource" },
+        "qualification": { "$ref": "#/$defs/RecoveryQualification" },
+        "requestedMode": { "$ref": "#/$defs/RecoveryObservedMode" },
+        "sessionId": { "type": "string" }
+      },
+      "required": [
+        "constructionId",
+        "effectiveMode",
+        "effectiveSource",
+        "qualification",
+        "requestedMode",
+        "sessionId"
+      ],
+      "type": "object"
+    },
+    "RecoveryObservedMode": {
+      "enum": ["on", "off", "unknown"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "RecoveryQualification": {
+      "enum": ["qualified", "unavailable", "notRequired", "unknown"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "ReplayHint": {
+      "properties": {
+        "afterItemId": { "type": "string" },
+        "rowKinds": { "items": { "type": "string" }, "type": "array" }
+      },
+      "required": ["afterItemId", "rowKinds"],
+      "type": "object"
+    },
+    "Request": {
+      "properties": {
+        "id": { "$ref": "#/$defs/RequestId" },
+        "jsonrpc": { "$ref": "#/$defs/JsonRpcVersion" },
+        "method": { "type": "string" },
+        "params": { "properties": {}, "type": "object" },
+        "trace": { "$ref": "#/$defs/TraceContext" }
+      },
+      "required": ["id", "jsonrpc", "method"],
+      "type": "object"
+    },
+    "RequestId": { "type": ["integer", "string"] },
+    "RequestReceipt": { "properties": {}, "type": "object" },
+    "RetractOutcome": {
+      "enum": ["accepted", "declined"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "RuntimeWorktree": {
+      "properties": {
+        "baseCommit": { "type": "string" },
+        "cleanupDiagnostic": { "type": "string" },
+        "cleanupPolicy": { "$ref": "#/$defs/RuntimeWorktreeCleanupPolicy" },
+        "cleanupReason": { "$ref": "#/$defs/RuntimeWorktreeCleanupReason" },
+        "cleanupState": { "$ref": "#/$defs/RuntimeWorktreeCleanupState" },
+        "headCommit": { "type": "string" },
+        "ownership": { "$ref": "#/$defs/RuntimeWorktreeOwnership" },
+        "parentDirtyExcluded": { "type": "boolean" },
+        "worktreeRoot": { "type": "string" }
+      },
+      "required": [
+        "baseCommit",
+        "cleanupPolicy",
+        "cleanupState",
+        "headCommit",
+        "ownership",
+        "parentDirtyExcluded",
+        "worktreeRoot"
+      ],
+      "type": "object"
+    },
+    "RuntimeWorktreeCleanupPolicy": {
+      "enum": ["removeIfClean"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "RuntimeWorktreeCleanupReason": {
+      "enum": [
+        "dirtyWorktree",
+        "headChanged",
+        "pathEscape",
+        "cleanupFailed",
+        "uncertainLeaseState"
+      ],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "RuntimeWorktreeCleanupState": {
+      "enum": ["active", "cleaned", "retained", "cleanupFailed"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "RuntimeWorktreeOwnership": {
+      "enum": ["runtimeOwned"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "SandboxAvailability": {
+      "enum": ["available", "unavailable"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "SandboxUnavailableReason": {
+      "enum": ["userNamespacesDenied", "bubblewrapUnavailable"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "SchemaInfo": {
+      "properties": {
+        "experimentalFingerprint": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "fingerprint": { "pattern": "^sha256:[0-9a-f]{64}$", "type": "string" },
+        "version": { "type": "integer" }
+      },
+      "required": ["fingerprint", "version"],
+      "type": "object"
+    },
+    "ServerInfo": {
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": "string" }
+      },
+      "required": ["name", "version"],
+      "type": "object"
+    },
+    "Session": {
+      "properties": {
+        "activeTurnId": { "type": ["string", "null"] },
+        "approvalMode": { "$ref": "#/$defs/EffectiveApprovalModeState" },
+        "attention": {
+          "items": { "$ref": "#/$defs/AttentionFlag" },
+          "type": "array"
+        },
+        "branch": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "createdByClient": { "$ref": "#/$defs/ClientInfo" },
+        "driveHolder": { "$ref": "#/$defs/ClientInfo" },
+        "externalWait": { "$ref": "#/$defs/ExternalWaitView" },
+        "firstUserPrompt": { "type": "string" },
+        "forkedFrom": {
+          "anyOf": [{ "$ref": "#/$defs/ForkProvenance" }, { "type": "null" }]
+        },
+        "generatedName": { "type": "string" },
+        "itemCount": { "type": "integer" },
+        "kind": { "$ref": "#/$defs/SessionKind" },
+        "lastActivityAt": { "type": "string" },
+        "logBytes": { "type": "integer" },
+        "modelId": { "type": ["string", "null"] },
+        "name": { "type": "string" },
+        "nameOrigin": { "$ref": "#/$defs/SessionNameOrigin" },
+        "parentSessionId": { "type": "string" },
+        "path": { "type": "string" },
+        "probeDegradedReason": { "$ref": "#/$defs/ProbeDegradedReason" },
+        "providerId": { "type": ["string", "null"] },
+        "resumedByClient": { "$ref": "#/$defs/ClientInfo" },
+        "sessionId": { "type": "string" },
+        "sideFrom": {
+          "anyOf": [{ "$ref": "#/$defs/SideProvenance" }, { "type": "null" }]
+        },
+        "spawnedBy": { "$ref": "#/$defs/SessionSpawnedBy" },
+        "status": { "$ref": "#/$defs/SessionStatus" },
+        "title": { "type": "string" },
+        "turnCount": { "type": "integer" },
+        "updatedAt": { "type": "string" },
+        "workspaceRoot": { "type": ["string", "null"] }
+      },
+      "required": [
+        "activeTurnId",
+        "createdAt",
+        "forkedFrom",
+        "modelId",
+        "path",
+        "providerId",
+        "sessionId",
+        "status",
+        "turnCount",
+        "updatedAt",
+        "workspaceRoot"
+      ],
+      "type": "object"
+    },
+    "SessionApprovalModeChangedParams": {
+      "properties": {
+        "clientName": { "type": "string" },
+        "commandId": { "type": "string" },
+        "mode": { "$ref": "#/$defs/ApprovalMode" },
+        "sessionId": { "type": "string" },
+        "source": { "$ref": "#/$defs/ApprovalModeSource" },
+        "sourceRange": { "$ref": "#/$defs/SourceRange" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": [
+        "clientName",
+        "commandId",
+        "mode",
+        "sessionId",
+        "source",
+        "sourceRange",
+        "viewCursor"
+      ],
+      "type": "object"
+    },
+    "SessionBranchChangedParams": {
+      "properties": {
+        "branch": { "type": ["string", "null"] },
+        "sessionId": { "type": "string" },
+        "sourceRange": { "$ref": "#/$defs/SourceRange" },
+        "vcs": { "$ref": "#/$defs/Vcs" },
+        "viewCursor": { "type": "string" },
+        "workspaceRoot": { "type": "string" }
+      },
+      "required": [
+        "branch",
+        "sessionId",
+        "sourceRange",
+        "viewCursor",
+        "workspaceRoot"
+      ],
+      "type": "object"
+    },
+    "SessionClearExternalWaitParams": {
+      "properties": { "sessionId": { "type": "string" } },
+      "required": ["sessionId"],
+      "type": "object"
+    },
+    "SessionClearExternalWaitResult": {
+      "properties": { "declared": { "type": "boolean" } },
+      "required": ["declared"],
+      "type": "object"
+    },
+    "SessionClosedParams": {
+      "properties": {
+        "reason": { "$ref": "#/$defs/SessionClosedReason" },
+        "sessionId": { "type": "string" },
+        "viewCursor": { "type": ["string", "null"] }
+      },
+      "required": ["reason", "sessionId", "viewCursor"],
+      "type": "object"
+    },
+    "SessionClosedReason": {
+      "enum": ["idle", "hostShutdown", "leave"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "SessionCompactParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "turnId": { "type": "string" }
+      },
+      "required": ["commandId", "sessionId"],
+      "type": "object"
+    },
+    "SessionCompactResult": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "reason": { "type": "string" },
+        "status": { "$ref": "#/$defs/CompactStatus" }
+      },
+      "required": ["commandId", "status"],
+      "type": "object"
+    },
+    "SessionConfig": {
+      "properties": {
+        "developerPrompt": { "type": ["string", "null"] },
+        "mcpServers": {
+          "additionalProperties": { "$ref": "#/$defs/SessionMcpServerConfig" },
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "SessionContextUsageParams": {
+      "properties": {
+        "pressure": { "$ref": "#/$defs/ContextPressureLevel" },
+        "sessionId": { "type": "string" },
+        "sourceRange": { "$ref": "#/$defs/SourceRange" },
+        "usedTokens": { "type": "integer" },
+        "viewCursor": { "type": "string" },
+        "windowTokens": { "type": "integer" }
+      },
+      "required": [
+        "pressure",
+        "sessionId",
+        "sourceRange",
+        "usedTokens",
+        "viewCursor"
+      ],
+      "type": "object"
+    },
+    "SessionDeclareExternalWaitParams": {
+      "properties": {
+        "reason": { "type": "string" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["sessionId"],
+      "type": "object"
+    },
+    "SessionDeclareExternalWaitResult": {
+      "properties": {
+        "declared": { "type": "boolean" },
+        "reason": { "type": "string" }
+      },
+      "required": ["declared"],
+      "type": "object"
+    },
+    "SessionDurability": {
+      "enum": ["durable", "ephemeral"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "SessionForkParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "cutPoint": { "$ref": "#/$defs/ForkCutPoint" },
+        "excludeItems": { "type": "boolean" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["commandId", "sessionId"],
+      "type": "object"
+    },
+    "SessionForkResult": {
+      "properties": {
+        "history": { "$ref": "#/$defs/SessionHistory" },
+        "pendingRequests": {
+          "items": { "$ref": "#/$defs/PendingRequestPointer" },
+          "type": "array"
+        },
+        "session": { "$ref": "#/$defs/Session" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": ["history", "pendingRequests", "session", "viewCursor"],
+      "type": "object"
+    },
+    "SessionGoalChangedParams": {
+      "properties": {
+        "goal": { "anyOf": [{ "$ref": "#/$defs/Goal" }, { "type": "null" }] },
+        "sessionId": { "type": "string" },
+        "sourceRange": { "$ref": "#/$defs/SourceRange" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": ["goal", "sessionId", "sourceRange", "viewCursor"],
+      "type": "object"
+    },
+    "SessionHistory": {
+      "properties": {
+        "checkpointBoundary": { "$ref": "#/$defs/CheckpointBoundary" },
+        "items": {
+          "anyOf": [
+            { "items": { "$ref": "#/$defs/Item" }, "type": "array" },
+            { "type": "null" }
+          ]
+        },
+        "mode": { "$ref": "#/$defs/HistoryMode" },
+        "noneReason": { "$ref": "#/$defs/HistoryNoneReason" },
+        "snapshot": {
+          "anyOf": [{ "$ref": "#/$defs/ViewSnapshot" }, { "type": "null" }]
+        }
+      },
+      "required": ["items", "mode", "snapshot"],
+      "type": "object"
+    },
+    "SessionKind": {
+      "enum": ["root", "subagent"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "SessionLeaveCompletedParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "outcome": { "$ref": "#/$defs/SessionLeaveOutcome" },
+        "reason": { "$ref": "#/$defs/SessionLeaveFailureReason" },
+        "sessionId": { "type": "string" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": ["commandId", "outcome", "sessionId"],
+      "type": "object"
+    },
+    "SessionLeaveFailureReason": {
+      "enum": [
+        "timeout",
+        "responseUndelivered",
+        "persistenceFailed",
+        "runtimeFailed",
+        "abandoned"
+      ],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "SessionLeaveOutcome": {
+      "enum": ["released", "failed"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "SessionLeaveParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "stop": { "type": "boolean" }
+      },
+      "required": ["commandId", "sessionId"],
+      "type": "object"
+    },
+    "SessionLeaveResult": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "status": { "$ref": "#/$defs/CommandAckStatus" }
+      },
+      "required": ["commandId", "status"],
+      "type": "object"
+    },
+    "SessionListBranchFilter": {
+      "properties": {
+        "anyOf": { "items": { "type": ["string", "null"] }, "type": "array" }
+      },
+      "required": ["anyOf"],
+      "type": "object"
+    },
+    "SessionListChangedParams": {
+      "properties": { "session": { "$ref": "#/$defs/Session" } },
+      "required": ["session"],
+      "type": "object"
+    },
+    "SessionListFilter": {
+      "properties": {
+        "branch": { "$ref": "#/$defs/SessionListBranchFilter" },
+        "sessionId": { "$ref": "#/$defs/SessionListSessionIdFilter" },
+        "text": { "$ref": "#/$defs/SessionListTextFilter" }
+      },
+      "type": "object"
+    },
+    "SessionListParams": {
+      "properties": {
+        "cursor": { "type": ["string", "null"] },
+        "filter": { "$ref": "#/$defs/SessionListFilter" },
+        "limit": { "maximum": 200, "type": "integer" },
+        "updatedAfter": { "type": "string" },
+        "workspaceRoot": { "type": "string" }
+      },
+      "type": "object"
+    },
+    "SessionListResult": {
+      "properties": {
+        "appliedFilter": { "$ref": "#/$defs/SessionListFilter" },
+        "nextCursor": { "type": ["string", "null"] },
+        "sessions": { "items": { "$ref": "#/$defs/Session" }, "type": "array" }
+      },
+      "required": ["nextCursor", "sessions"],
+      "type": "object"
+    },
+    "SessionListSessionIdFilter": {
+      "properties": {
+        "anyOf": { "items": { "type": "string" }, "type": "array" }
+      },
+      "required": ["anyOf"],
+      "type": "object"
+    },
+    "SessionListTextField": {
+      "enum": ["name", "title"],
+      "type": "string",
+      "x-msp-openness": "closed"
+    },
+    "SessionListTextFilter": {
+      "properties": {
+        "allOf": { "items": { "type": "string" }, "type": "array" },
+        "anyOf": { "items": { "type": "string" }, "type": "array" },
+        "fields": {
+          "items": { "$ref": "#/$defs/SessionListTextField" },
+          "type": "array"
+        }
+      },
+      "required": ["fields"],
+      "type": "object"
+    },
+    "SessionMcpServerConfig": {
+      "oneOf": [
+        {
+          "properties": {
+            "args": { "items": { "type": "string" }, "type": "array" },
+            "command": { "type": "string" },
+            "env": {
+              "additionalProperties": { "type": "string" },
+              "type": "object"
+            },
+            "framing": { "$ref": "#/$defs/SessionMcpStdioFraming" },
+            "mode": { "$ref": "#/$defs/SessionMcpServerMode" },
+            "transport": { "const": "stdio", "type": "string" }
+          },
+          "required": ["command", "transport"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "headers": {
+              "additionalProperties": { "type": "string" },
+              "type": "object"
+            },
+            "mode": { "$ref": "#/$defs/SessionMcpServerMode" },
+            "transport": { "const": "streamableHttp", "type": "string" },
+            "url": { "type": "string" }
+          },
+          "required": ["transport", "url"],
+          "type": "object"
+        }
+      ],
+      "x-msp-openness": "closed"
+    },
+    "SessionMcpServerMode": {
+      "enum": ["required", "optional"],
+      "type": "string",
+      "x-msp-openness": "closed"
+    },
+    "SessionMcpStdioFraming": {
+      "enum": ["auto", "contentLength", "lineDelimitedJson"],
+      "type": "string",
+      "x-msp-openness": "closed"
+    },
+    "SessionModelChangedParams": {
+      "properties": {
+        "modelId": { "type": "string" },
+        "providerId": { "type": ["string", "null"] },
+        "sessionId": { "type": "string" },
+        "source": { "$ref": "#/$defs/ModelChangeSource" },
+        "sourceRange": { "$ref": "#/$defs/SourceRange" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": [
+        "modelId",
+        "providerId",
+        "sessionId",
+        "source",
+        "sourceRange",
+        "viewCursor"
+      ],
+      "type": "object"
+    },
+    "SessionModelRouteUnservedParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "installedProviderId": { "type": "string" },
+        "modelId": { "type": "string" },
+        "providerId": { "type": ["string", "null"] },
+        "sessionId": { "type": "string" },
+        "sourceRange": { "$ref": "#/$defs/SourceRange" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": [
+        "commandId",
+        "installedProviderId",
+        "modelId",
+        "providerId",
+        "sessionId",
+        "sourceRange",
+        "viewCursor"
+      ],
+      "type": "object"
+    },
+    "SessionNameChangedParams": {
+      "properties": {
+        "generatedName": { "type": "string" },
+        "name": { "type": "string" },
+        "nameOrigin": { "$ref": "#/$defs/SessionNameOrigin" },
+        "sessionId": { "type": "string" },
+        "sourceRange": { "$ref": "#/$defs/SourceRange" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": ["name", "sessionId", "sourceRange", "viewCursor"],
+      "type": "object"
+    },
+    "SessionNameOrigin": {
+      "enum": ["automatic", "custom"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "SessionReadParams": {
+      "properties": {
+        "excludeItems": { "type": "boolean" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["sessionId"],
+      "type": "object"
+    },
+    "SessionReadResult": {
+      "properties": {
+        "blockedPrompt": { "$ref": "#/$defs/BlockedPrompt" },
+        "deliveredInputs": {
+          "items": { "$ref": "#/$defs/DeliveredInput" },
+          "type": "array"
+        },
+        "history": { "$ref": "#/$defs/SessionHistory" },
+        "lastTurn": { "$ref": "#/$defs/LastTurn" },
+        "modelTurnRunning": { "type": "boolean" },
+        "pendingRequests": {
+          "items": { "$ref": "#/$defs/PendingRequestPointer" },
+          "type": "array"
+        },
+        "prunedSubagents": {
+          "items": { "$ref": "#/$defs/PrunedSubagent" },
+          "type": "array"
+        },
+        "queuedInputs": {
+          "items": { "$ref": "#/$defs/QueuedInput" },
+          "type": "array"
+        },
+        "recoveryObservation": { "$ref": "#/$defs/RecoveryObservation" },
+        "session": { "$ref": "#/$defs/Session" },
+        "viewCursor": { "type": "string" },
+        "worktree": { "$ref": "#/$defs/RuntimeWorktree" }
+      },
+      "required": ["history", "pendingRequests", "session", "viewCursor"],
+      "type": "object"
+    },
+    "SessionReasoningEffortChangedParams": {
+      "properties": {
+        "reasoningEffort": { "$ref": "#/$defs/ReasoningEffort" },
+        "sessionId": { "type": "string" },
+        "source": { "$ref": "#/$defs/ReasoningEffortChangeSource" },
+        "sourceRange": { "$ref": "#/$defs/SourceRange" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": [
+        "reasoningEffort",
+        "sessionId",
+        "source",
+        "sourceRange",
+        "viewCursor"
+      ],
+      "type": "object"
+    },
+    "SessionRenameParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "name": { "type": "string" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["commandId", "name", "sessionId"],
+      "type": "object"
+    },
+    "SessionRenameResult": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "name": { "type": "string" },
+        "status": { "$ref": "#/$defs/CommandStatus" }
+      },
+      "required": ["commandId", "status"],
+      "type": "object"
+    },
+    "SessionResumeParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "config": { "$ref": "#/$defs/SessionConfig" },
+        "cursor": { "type": ["string", "null"] },
+        "excludeItems": { "type": "boolean" },
+        "history": { "$ref": "#/$defs/HistoryPreference" },
+        "modelId": { "type": "string" },
+        "permissionProfile": { "type": "string" },
+        "recoveryMode": { "$ref": "#/$defs/RecoveryMode" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["commandId", "sessionId"],
+      "type": "object"
+    },
+    "SessionResumeResult": {
+      "properties": {
+        "blockedPrompt": { "$ref": "#/$defs/BlockedPrompt" },
+        "history": { "$ref": "#/$defs/SessionHistory" },
+        "lastTurn": { "$ref": "#/$defs/LastTurn" },
+        "pendingRequests": {
+          "items": { "$ref": "#/$defs/PendingRequestPointer" },
+          "type": "array"
+        },
+        "prunedSubagents": {
+          "items": { "$ref": "#/$defs/PrunedSubagent" },
+          "type": "array"
+        },
+        "session": { "$ref": "#/$defs/Session" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": ["history", "pendingRequests", "session", "viewCursor"],
+      "type": "object"
+    },
+    "SessionSetApprovalModeParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "mode": { "$ref": "#/$defs/ApprovalMode" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["commandId", "mode", "sessionId"],
+      "type": "object"
+    },
+    "SessionSetApprovalModeResult": {
+      "properties": {
+        "applyOutcome": { "$ref": "#/$defs/ApprovalModeApplyOutcome" },
+        "commandId": { "type": "string" },
+        "effectiveMode": { "$ref": "#/$defs/EffectiveApprovalModeState" },
+        "status": { "$ref": "#/$defs/CommandStatus" }
+      },
+      "required": ["applyOutcome", "commandId", "effectiveMode", "status"],
+      "type": "object"
+    },
+    "SessionSetModelParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "model": { "$ref": "#/$defs/ModelSelection" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["commandId", "model", "sessionId"],
+      "type": "object"
+    },
+    "SessionSetModelResult": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "status": { "$ref": "#/$defs/CommandStatus" }
+      },
+      "required": ["commandId", "status"],
+      "type": "object"
+    },
+    "SessionSetReasoningEffortParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "reasoningEffort": { "$ref": "#/$defs/ReasoningEffort" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["commandId", "reasoningEffort", "sessionId"],
+      "type": "object"
+    },
+    "SessionSetReasoningEffortResult": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "status": { "$ref": "#/$defs/CommandStatus" }
+      },
+      "required": ["commandId", "status"],
+      "type": "object"
+    },
+    "SessionSideChatParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["commandId", "sessionId"],
+      "type": "object"
+    },
+    "SessionSideChatResult": {
+      "properties": {
+        "history": { "$ref": "#/$defs/SessionHistory" },
+        "pendingRequests": {
+          "items": { "$ref": "#/$defs/PendingRequestPointer" },
+          "type": "array"
+        },
+        "session": { "$ref": "#/$defs/Session" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": ["history", "pendingRequests", "session", "viewCursor"],
+      "type": "object"
+    },
+    "SessionSpawnedBy": {
+      "properties": {
+        "parentSessionId": { "type": "string" },
+        "project": { "type": "string" },
+        "thread": { "type": "string" }
+      },
+      "required": ["parentSessionId"],
+      "type": "object"
+    },
+    "SessionStartParams": {
+      "properties": {
+        "approvalMode": {
+          "anyOf": [{ "$ref": "#/$defs/ApprovalMode" }, { "type": "null" }]
+        },
+        "clear": { "type": "boolean" },
+        "commandId": { "type": "string" },
+        "config": { "$ref": "#/$defs/SessionConfig" },
+        "modelId": { "type": "string" },
+        "permissionProfile": { "type": "string" },
+        "previousSessionId": { "type": "string" },
+        "providerId": { "type": ["string", "null"] },
+        "recoveryMode": { "$ref": "#/$defs/RecoveryMode" },
+        "sessionId": { "type": "string" },
+        "spawnedBy": { "$ref": "#/$defs/SessionSpawnedBy" },
+        "workspaceRoot": { "type": "string" },
+        "workspaceRoots": { "items": { "type": "string" }, "type": "array" }
+      },
+      "required": ["commandId"],
+      "type": "object"
+    },
+    "SessionStartResult": {
+      "properties": {
+        "session": { "$ref": "#/$defs/Session" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": ["session", "viewCursor"],
+      "type": "object"
+    },
+    "SessionStartedParams": {
+      "properties": { "session": { "$ref": "#/$defs/Session" } },
+      "required": ["session"],
+      "type": "object"
+    },
+    "SessionStatus": {
+      "enum": ["notLoaded", "idle", "running"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "SessionStatusChangedParams": {
+      "properties": {
+        "attention": {
+          "items": { "$ref": "#/$defs/AttentionFlag" },
+          "type": "array"
+        },
+        "sessionId": { "type": "string" },
+        "status": { "$ref": "#/$defs/SessionStatus" },
+        "viewCursor": { "type": ["string", "null"] }
+      },
+      "required": ["sessionId", "status", "viewCursor"],
+      "type": "object"
+    },
+    "SessionTodoListChangedParams": {
+      "properties": {
+        "items": { "items": { "$ref": "#/$defs/TodoItem" }, "type": "array" },
+        "revision": { "type": "integer" },
+        "sessionId": { "type": "string" },
+        "sourceRange": { "$ref": "#/$defs/SourceRange" },
+        "sourceTool": { "type": "string" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": [
+        "items",
+        "revision",
+        "sessionId",
+        "sourceRange",
+        "sourceTool",
+        "viewCursor"
+      ],
+      "type": "object"
+    },
+    "SessionTokenUsageParams": {
+      "properties": {
+        "cumulative": { "$ref": "#/$defs/CumulativeTokenUsage" },
+        "durationMs": { "type": "integer" },
+        "finishReason": { "type": "string" },
+        "modelId": { "type": ["string", "null"] },
+        "promptTokens": { "type": "integer" },
+        "sessionId": { "type": "string" },
+        "sourceRange": { "$ref": "#/$defs/SourceRange" },
+        "totalTokens": { "type": "integer" },
+        "turnId": { "type": "string" },
+        "usage": { "$ref": "#/$defs/TokenUsage" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": [
+        "cumulative",
+        "modelId",
+        "promptTokens",
+        "sessionId",
+        "sourceRange",
+        "totalTokens",
+        "turnId",
+        "usage",
+        "viewCursor"
+      ],
+      "type": "object"
+    },
+    "SessionUserShellParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "commandText": { "type": "string" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["commandId", "commandText", "sessionId"],
+      "type": "object"
+    },
+    "SessionUserShellResult": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "status": { "$ref": "#/$defs/CommandStatus" }
+      },
+      "required": ["commandId", "status"],
+      "type": "object"
+    },
+    "SessionViewHealth": {
+      "enum": ["unavailable", "healthy"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "SessionViewHealthChangedParams": {
+      "properties": {
+        "health": { "$ref": "#/$defs/SessionViewHealth" },
+        "noneReason": { "$ref": "#/$defs/HistoryNoneReason" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["health", "sessionId"],
+      "type": "object"
+    },
+    "SideProvenance": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "cutCursor": { "type": "string" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["commandId", "cutCursor", "sessionId"],
+      "type": "object"
+    },
+    "SkillActivationScope": {
+      "enum": ["user", "project", "bundled", "plugin"],
+      "type": "string",
+      "x-msp-openness": "closed"
+    },
+    "SkillActivationState": {
+      "enum": ["on", "userInvocableOnly", "off"],
+      "type": "string",
+      "x-msp-openness": "closed"
+    },
+    "SkillCatalogEntry": {
+      "properties": {
+        "argumentHint": { "type": "string" },
+        "description": { "type": "string" },
+        "displayName": { "type": "string" },
+        "pluginId": { "type": "string" },
+        "selector": { "type": "string" },
+        "source": { "$ref": "#/$defs/SkillSource" },
+        "title": { "type": "string" }
+      },
+      "required": ["description", "displayName", "selector", "source"],
+      "type": "object"
+    },
+    "SkillChangedParams": {
+      "properties": { "sessionId": { "type": "string" } },
+      "required": ["sessionId"],
+      "type": "object"
+    },
+    "SkillImportCounts": {
+      "properties": {
+        "failed": { "type": "integer" },
+        "installed": { "type": "integer" },
+        "quarantined": { "type": "integer" },
+        "skipped": { "type": "integer" }
+      },
+      "required": ["failed", "installed", "quarantined", "skipped"],
+      "type": "object"
+    },
+    "SkillImportFailure": {
+      "properties": {
+        "id": { "type": ["string", "null"] },
+        "reason": { "type": "string" }
+      },
+      "required": ["id", "reason"],
+      "type": "object"
+    },
+    "SkillImportParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "dryRun": { "type": "boolean" },
+        "force": { "type": "boolean" },
+        "sessionId": { "type": "string" },
+        "source": { "$ref": "#/$defs/SkillImportSource" }
+      },
+      "required": ["commandId", "sessionId", "source"],
+      "type": "object"
+    },
+    "SkillImportQuarantine": {
+      "properties": {
+        "id": { "type": "string" },
+        "reasons": { "items": { "type": "string" }, "type": "array" }
+      },
+      "required": ["id", "reasons"],
+      "type": "object"
+    },
+    "SkillImportResult": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "counts": { "$ref": "#/$defs/SkillImportCounts" },
+        "dryRun": { "type": "boolean" },
+        "failed": {
+          "items": { "$ref": "#/$defs/SkillImportFailure" },
+          "type": "array"
+        },
+        "installed": { "items": { "type": "string" }, "type": "array" },
+        "quarantined": {
+          "items": { "$ref": "#/$defs/SkillImportQuarantine" },
+          "type": "array"
+        },
+        "skipped": { "items": { "type": "string" }, "type": "array" },
+        "source": { "$ref": "#/$defs/SkillImportSource" },
+        "status": { "$ref": "#/$defs/CommandStatus" }
+      },
+      "required": [
+        "commandId",
+        "counts",
+        "dryRun",
+        "failed",
+        "installed",
+        "quarantined",
+        "skipped",
+        "source",
+        "status"
+      ],
+      "type": "object"
+    },
+    "SkillImportSource": {
+      "enum": ["claude", "codex"],
+      "type": "string",
+      "x-msp-openness": "closed"
+    },
+    "SkillInvocationSource": {
+      "enum": ["bundled", "user", "project", "plugin"],
+      "type": "string",
+      "x-msp-openness": "closed"
+    },
+    "SkillListParams": {
+      "properties": { "sessionId": { "type": "string" } },
+      "required": ["sessionId"],
+      "type": "object"
+    },
+    "SkillListResult": {
+      "properties": {
+        "skills": {
+          "items": { "$ref": "#/$defs/SkillCatalogEntry" },
+          "type": "array"
+        }
+      },
+      "required": ["skills"],
+      "type": "object"
+    },
+    "SkillSetActivationParams": {
+      "properties": {
+        "activation": { "$ref": "#/$defs/SkillActivationState" },
+        "commandId": { "type": "string" },
+        "scope": { "$ref": "#/$defs/SkillActivationScope" },
+        "selector": { "type": "string" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["activation", "commandId", "scope", "selector", "sessionId"],
+      "type": "object"
+    },
+    "SkillSetActivationResult": {
+      "properties": {
+        "activation": { "$ref": "#/$defs/SkillActivationState" },
+        "commandId": { "type": "string" },
+        "previous": { "$ref": "#/$defs/SkillActivationState" },
+        "scope": { "$ref": "#/$defs/SkillActivationScope" },
+        "selector": { "type": "string" },
+        "status": { "$ref": "#/$defs/CommandStatus" }
+      },
+      "required": [
+        "activation",
+        "commandId",
+        "previous",
+        "scope",
+        "selector",
+        "status"
+      ],
+      "type": "object"
+    },
+    "SkillSource": {
+      "enum": ["bundled", "user", "project", "plugin"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "SnapshotAnchor": {
+      "properties": {
+        "boundaryCursor": { "type": "string" },
+        "summarizedThrough": { "type": "string" }
+      },
+      "required": ["boundaryCursor", "summarizedThrough"],
+      "type": "object"
+    },
+    "SnapshotState": {
+      "properties": {
+        "activeTurn": {
+          "anyOf": [{ "$ref": "#/$defs/TurnRef" }, { "type": "null" }]
+        },
+        "approvalMode": { "$ref": "#/$defs/EffectiveApprovalModeState" },
+        "branch": {
+          "anyOf": [{ "$ref": "#/$defs/BranchState" }, { "type": "null" }]
+        },
+        "contextUsage": { "$ref": "#/$defs/ContextUsage" },
+        "effectiveModel": {
+          "anyOf": [{ "$ref": "#/$defs/EffectiveModel" }, { "type": "null" }]
+        },
+        "goal": { "anyOf": [{ "$ref": "#/$defs/Goal" }, { "type": "null" }] },
+        "items": { "items": { "$ref": "#/$defs/Item" }, "type": "array" },
+        "monitorInbox": {
+          "items": { "$ref": "#/$defs/MonitorInboxSnapshotEntry" },
+          "type": "array"
+        },
+        "name": { "type": ["string", "null"] },
+        "pendingApprovals": {
+          "items": { "$ref": "#/$defs/PendingApprovalPointer" },
+          "type": "array"
+        },
+        "pendingUserInputs": {
+          "items": { "$ref": "#/$defs/PendingUserInputPointer" },
+          "type": "array"
+        },
+        "queuedTurns": {
+          "items": { "$ref": "#/$defs/TurnRef" },
+          "type": "array"
+        },
+        "reasoningEffort": { "$ref": "#/$defs/ReasoningEffortState" },
+        "todoList": {
+          "anyOf": [{ "$ref": "#/$defs/TodoListState" }, { "type": "null" }]
+        },
+        "tokenUsage": { "$ref": "#/$defs/CumulativeTokenUsage" },
+        "turnCount": { "type": "integer" }
+      },
+      "required": [
+        "activeTurn",
+        "approvalMode",
+        "branch",
+        "effectiveModel",
+        "goal",
+        "items",
+        "pendingApprovals",
+        "pendingUserInputs",
+        "queuedTurns",
+        "todoList",
+        "tokenUsage",
+        "turnCount"
+      ],
+      "type": "object"
+    },
+    "SourceRange": {
+      "properties": {
+        "first": { "$ref": "#/$defs/RecordPosition" },
+        "last": { "$ref": "#/$defs/RecordPosition" },
+        "stream": { "$ref": "#/$defs/StreamRef" }
+      },
+      "required": ["first", "last", "stream"],
+      "type": "object"
+    },
+    "StatusAttempt": {
+      "properties": {
+        "attempt": { "type": "integer" },
+        "errorKind": { "type": "string" },
+        "httpStatus": { "type": "integer" },
+        "maxAttempts": { "type": "integer" },
+        "nextAttempt": { "type": "integer" },
+        "operation": { "type": "string" },
+        "retryDelayMs": { "type": "integer" },
+        "system": { "type": "string" }
+      },
+      "required": ["attempt", "operation", "system"],
+      "type": "object"
+    },
+    "StatusChildren": {
+      "properties": {
+        "active": { "type": "integer" },
+        "cancelled": { "type": "integer" },
+        "completed": { "type": "integer" },
+        "failed": { "type": "integer" },
+        "total": { "type": "integer" }
+      },
+      "required": ["active", "cancelled", "completed", "failed"],
+      "type": "object"
+    },
+    "StatusHealth": {
+      "properties": {
+        "level": { "$ref": "#/$defs/StatusHealthLevel" },
+        "reason": { "type": "string" }
+      },
+      "required": ["level"],
+      "type": "object"
+    },
+    "StatusHealthLevel": {
+      "enum": ["ok", "waiting", "degraded", "retrying", "blocked", "failed"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "StatusProgress": {
+      "properties": {
+        "current": { "type": "integer" },
+        "total": { "type": "integer" },
+        "unit": { "type": "string" }
+      },
+      "required": ["current"],
+      "type": "object"
+    },
+    "StatusStep": {
+      "properties": {
+        "index": { "type": "integer" },
+        "label": { "type": "string" },
+        "total": { "type": "integer" }
+      },
+      "required": ["label"],
+      "type": "object"
+    },
+    "StreamRef": {
+      "properties": {
+        "id": { "type": "string" },
+        "kind": { "type": "string" }
+      },
+      "required": ["id", "kind"],
+      "type": "object"
+    },
+    "SubagentControlStatus": {
+      "enum": [
+        "accepted",
+        "starting",
+        "running",
+        "resultReady",
+        "closing",
+        "closed",
+        "recoveryPending",
+        "manualReconciliation"
+      ],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "SubagentInputParams": {
+      "properties": {
+        "body": { "type": "string" },
+        "commandId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "subagentId": { "type": "string" }
+      },
+      "required": ["body", "commandId", "sessionId", "subagentId"],
+      "type": "object"
+    },
+    "SubagentInputPhase": {
+      "enum": ["queued", "delivered"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "SubagentListParams": {
+      "properties": { "sessionId": { "type": "string" } },
+      "required": ["sessionId"],
+      "type": "object"
+    },
+    "SubagentListResult": {
+      "properties": {
+        "subagents": {
+          "items": { "$ref": "#/$defs/SubagentRosterEntry" },
+          "type": "array"
+        }
+      },
+      "required": ["subagents"],
+      "type": "object"
+    },
+    "SubagentOwnerReasonParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "reason": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "subagentId": { "type": "string" }
+      },
+      "required": ["commandId", "sessionId", "subagentId"],
+      "type": "object"
+    },
+    "SubagentResult": {
+      "properties": {
+        "artifactRefs": { "items": { "type": "string" }, "type": "array" },
+        "drained": { "type": "boolean" },
+        "errorKind": { "type": "string" },
+        "evidenceRefs": { "items": { "type": "string" }, "type": "array" },
+        "structuredData": { "properties": {}, "type": "object" },
+        "summary": { "type": "string" },
+        "superseded": { "type": "boolean" },
+        "text": { "type": "string" }
+      },
+      "required": ["artifactRefs", "evidenceRefs", "summary"],
+      "type": "object"
+    },
+    "SubagentResultStatus": {
+      "enum": ["completed", "failed", "cancelled"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "SubagentRosterEntry": {
+      "properties": {
+        "agentPath": { "type": "string" },
+        "childSessionId": { "type": "string" },
+        "controlStatus": { "$ref": "#/$defs/SubagentControlStatus" },
+        "definitionName": { "type": "string" },
+        "depth": { "type": "integer" },
+        "durationMs": { "type": "integer" },
+        "name": { "type": "string" },
+        "objective": { "type": "string" },
+        "parentPath": { "type": "string" },
+        "parentSubagentId": { "type": "string" },
+        "resultReady": { "type": "boolean" },
+        "role": { "type": "string" },
+        "subagentId": { "type": "string" },
+        "terminalReason": { "type": "string" },
+        "workflowRunId": { "type": "string" }
+      },
+      "required": [
+        "agentPath",
+        "controlStatus",
+        "depth",
+        "resultReady",
+        "subagentId"
+      ],
+      "type": "object"
+    },
+    "SubagentTargetParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "subagentId": { "type": "string" }
+      },
+      "required": ["commandId", "sessionId", "subagentId"],
+      "type": "object"
+    },
+    "SubscriptionUsage": {
+      "properties": {
+        "observedAtMs": { "type": "integer" },
+        "tier": { "type": "string" },
+        "weekly": { "$ref": "#/$defs/SubscriptionUsageWeekly" },
+        "window": { "$ref": "#/$defs/SubscriptionUsageWindow" }
+      },
+      "required": ["observedAtMs", "tier", "weekly", "window"],
+      "type": "object"
+    },
+    "SubscriptionUsageWeekly": {
+      "properties": {
+        "resetsAtMs": { "type": "integer" },
+        "usedPercent": { "type": "integer" }
+      },
+      "required": ["resetsAtMs", "usedPercent"],
+      "type": "object"
+    },
+    "SubscriptionUsageWindow": {
+      "properties": {
+        "resetsAtMs": { "type": "integer" },
+        "usedPercent": { "type": "integer" },
+        "windowDurationMins": { "type": "integer" }
+      },
+      "required": ["resetsAtMs", "usedPercent", "windowDurationMins"],
+      "type": "object"
+    },
+    "SuccessResponse": {
+      "properties": {
+        "id": { "$ref": "#/$defs/RequestId" },
+        "jsonrpc": { "$ref": "#/$defs/JsonRpcVersion" },
+        "result": { "properties": {}, "type": "object" }
+      },
+      "required": ["id", "jsonrpc", "result"],
+      "type": "object"
+    },
+    "TaskBackgroundParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "taskId": { "type": "string" }
+      },
+      "required": ["commandId", "sessionId", "taskId"],
+      "type": "object"
+    },
+    "TaskCommandResult": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "status": { "$ref": "#/$defs/CommandStatus" },
+        "taskId": { "type": "string" }
+      },
+      "required": ["commandId", "status", "taskId"],
+      "type": "object"
+    },
+    "TaskExecutionMode": {
+      "enum": ["foreground", "background"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "TaskListEntry": {
+      "properties": {
+        "backgroundInitiator": { "$ref": "#/$defs/BackgroundInitiator" },
+        "command": { "type": "string" },
+        "executionMode": { "$ref": "#/$defs/TaskExecutionMode" },
+        "kind": { "type": "string" },
+        "startedAt": { "type": "string" },
+        "status": { "$ref": "#/$defs/TaskListStatus" },
+        "taskId": { "type": "string" },
+        "tool": { "type": "string" }
+      },
+      "required": ["kind", "status", "taskId"],
+      "type": "object"
+    },
+    "TaskListParams": {
+      "properties": { "sessionId": { "type": "string" } },
+      "required": ["sessionId"],
+      "type": "object"
+    },
+    "TaskListResult": {
+      "properties": {
+        "tasks": {
+          "items": { "$ref": "#/$defs/TaskListEntry" },
+          "type": "array"
+        }
+      },
+      "required": ["tasks"],
+      "type": "object"
+    },
+    "TaskListStatus": {
+      "enum": ["inProgress"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "TaskStopAllParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["commandId", "sessionId"],
+      "type": "object"
+    },
+    "TaskStopAllResult": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "status": { "$ref": "#/$defs/CommandStatus" }
+      },
+      "required": ["commandId", "status"],
+      "type": "object"
+    },
+    "TaskStopParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "taskId": { "type": "string" }
+      },
+      "required": ["commandId", "sessionId", "taskId"],
+      "type": "object"
+    },
+    "TodoItem": {
+      "properties": {
+        "activeForm": { "type": "string" },
+        "status": { "$ref": "#/$defs/TodoStatus" },
+        "text": { "type": "string" }
+      },
+      "required": ["status", "text"],
+      "type": "object"
+    },
+    "TodoListState": {
+      "properties": {
+        "items": { "items": { "$ref": "#/$defs/TodoItem" }, "type": "array" },
+        "revision": { "type": "integer" },
+        "sourceTool": { "type": "string" }
+      },
+      "required": ["items", "revision", "sourceTool"],
+      "type": "object"
+    },
+    "TodoStatus": {
+      "enum": ["pending", "inProgress", "completed", "cancelled"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "TokenUsage": {
+      "properties": {
+        "cacheReadTokens": { "type": "integer" },
+        "cacheWriteTokens": { "type": "integer" },
+        "cachedTokens": { "type": "integer" },
+        "inputTokens": { "type": "integer" },
+        "outputTokens": { "type": "integer" },
+        "reasoningTokens": { "type": "integer" }
+      },
+      "required": [
+        "cachedTokens",
+        "inputTokens",
+        "outputTokens",
+        "reasoningTokens"
+      ],
+      "type": "object"
+    },
+    "ToolDisplayLabel": {
+      "properties": {
+        "active": { "type": "string" },
+        "done": { "type": "string" },
+        "neutral": { "type": "string" }
+      },
+      "required": ["active", "done", "neutral"],
+      "type": "object"
+    },
+    "ToolReceipt": {
+      "oneOf": [
+        {
+          "properties": {
+            "details": { "$ref": "#/$defs/CronReceipt" },
+            "family": { "const": "cron", "type": "string" },
+            "operation": { "$ref": "#/$defs/ToolReceiptOperation" },
+            "outcome": { "$ref": "#/$defs/ToolReceiptOutcome" }
+          },
+          "required": ["family", "operation", "outcome"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "details": { "$ref": "#/$defs/CodeModeReceipt" },
+            "family": { "const": "codeMode", "type": "string" },
+            "operation": { "$ref": "#/$defs/ToolReceiptOperation" },
+            "outcome": { "$ref": "#/$defs/ToolReceiptOutcome" }
+          },
+          "required": ["family", "operation", "outcome"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "details": { "properties": {}, "type": "object" },
+            "family": {
+              "not": { "enum": ["cron", "codeMode"] },
+              "type": "string"
+            },
+            "operation": { "type": "string" },
+            "outcome": { "type": "string" }
+          },
+          "required": ["family", "operation", "outcome"],
+          "type": "object"
+        }
+      ],
+      "x-msp-openness": "open"
+    },
+    "ToolReceiptOperation": {
+      "enum": ["create", "delete", "list", "execute", "wait"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "ToolReceiptOutcome": {
+      "enum": [
+        "created",
+        "duplicate",
+        "deleted",
+        "missing",
+        "listed",
+        "rejected",
+        "completed",
+        "pending",
+        "failed",
+        "timedOut",
+        "cancelled"
+      ],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "TraceContext": {
+      "properties": {
+        "traceparent": { "type": "string" },
+        "tracestate": { "type": "string" }
+      },
+      "type": "object"
+    },
+    "TurnCancelParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "turnId": { "type": "string" }
+      },
+      "required": ["commandId", "sessionId"],
+      "type": "object"
+    },
+    "TurnCancelResult": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "status": { "$ref": "#/$defs/CommandStatus" },
+        "turnId": { "type": "string" }
+      },
+      "required": ["commandId", "status", "turnId"],
+      "type": "object"
+    },
+    "TurnCompletedParams": {
+      "properties": {
+        "durationMs": { "type": "integer" },
+        "error": { "$ref": "#/$defs/TurnError" },
+        "reason": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "sourceRange": { "$ref": "#/$defs/SourceRange" },
+        "terminal": { "$ref": "#/$defs/TurnTerminal" },
+        "timeToFirstTokenMs": { "type": "integer" },
+        "turnId": { "type": "string" },
+        "usage": { "$ref": "#/$defs/TokenUsage" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": [
+        "sessionId",
+        "sourceRange",
+        "terminal",
+        "turnId",
+        "viewCursor"
+      ],
+      "type": "object"
+    },
+    "TurnError": {
+      "properties": {
+        "kind": { "$ref": "#/$defs/TurnErrorKind" },
+        "message": { "type": "string" },
+        "quota": { "$ref": "#/$defs/QuotaDetail" },
+        "requestDenied": { "type": "boolean" },
+        "retryable": { "type": "boolean" }
+      },
+      "required": ["kind", "message", "retryable"],
+      "type": "object"
+    },
+    "TurnErrorKind": {
+      "enum": [
+        "stepLimit",
+        "configError",
+        "projectionError",
+        "logError",
+        "workflowLaunchError",
+        "environmentError",
+        "modelError",
+        "launchError",
+        "authRequired",
+        "mcpLinkError",
+        "reasoningReplayRefused",
+        "contextOverflow"
+      ],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "TurnForegroundCompletedParams": {
+      "properties": {
+        "blockingAgents": { "items": { "type": "string" }, "type": "array" },
+        "sessionId": { "type": "string" },
+        "sourceRange": { "$ref": "#/$defs/SourceRange" },
+        "turnId": { "type": "string" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": [
+        "blockingAgents",
+        "sessionId",
+        "sourceRange",
+        "turnId",
+        "viewCursor"
+      ],
+      "type": "object"
+    },
+    "TurnInputPart": {
+      "dependentRequired": { "height": ["width"], "width": ["height"] },
+      "properties": {
+        "arguments": { "type": "string" },
+        "base64Data": { "type": "string" },
+        "height": { "type": "integer" },
+        "mediaType": { "type": "string" },
+        "selector": { "type": "string" },
+        "source": { "$ref": "#/$defs/SkillInvocationSource" },
+        "text": { "type": "string" },
+        "type": { "$ref": "#/$defs/TurnInputPartType" },
+        "uploadId": { "type": "string" },
+        "width": { "type": "integer" }
+      },
+      "required": ["type"],
+      "type": "object"
+    },
+    "TurnInputPartType": {
+      "enum": ["text", "image", "skill", "video"],
+      "type": "string",
+      "x-msp-openness": "closed"
+    },
+    "TurnInterruptParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "retract": { "type": "boolean" },
+        "sessionId": { "type": "string" },
+        "turnId": { "type": "string" }
+      },
+      "required": ["commandId", "sessionId"],
+      "type": "object"
+    },
+    "TurnInterruptResult": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "status": { "$ref": "#/$defs/CommandStatus" },
+        "turnId": { "type": "string" }
+      },
+      "required": ["commandId", "status", "turnId"],
+      "type": "object"
+    },
+    "TurnModelAttemptStartedParams": {
+      "properties": {
+        "sessionId": { "type": "string" },
+        "sourceRange": { "$ref": "#/$defs/SourceRange" },
+        "turnId": { "type": "string" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": ["sessionId", "sourceRange", "turnId", "viewCursor"],
+      "type": "object"
+    },
+    "TurnModelRetryScheduledParams": {
+      "properties": {
+        "attempt": { "type": "integer" },
+        "errorKind": { "type": "string" },
+        "httpStatus": { "type": "integer" },
+        "maxAttempts": { "type": "integer" },
+        "nextAttempt": { "type": "integer" },
+        "retryDelayMs": { "type": "integer" },
+        "sessionId": { "type": "string" },
+        "sourceRange": { "$ref": "#/$defs/SourceRange" },
+        "system": { "type": "string" },
+        "turnId": { "type": "string" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": [
+        "attempt",
+        "maxAttempts",
+        "nextAttempt",
+        "retryDelayMs",
+        "sessionId",
+        "sourceRange",
+        "turnId",
+        "viewCursor"
+      ],
+      "type": "object"
+    },
+    "TurnRef": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "displayText": { "type": "string" },
+        "truncated": { "type": "boolean" },
+        "turnId": { "type": "string" }
+      },
+      "required": ["commandId", "turnId"],
+      "type": "object"
+    },
+    "TurnRetractedParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "outcome": { "$ref": "#/$defs/RetractOutcome" },
+        "sessionId": { "type": "string" },
+        "sourceRange": { "$ref": "#/$defs/SourceRange" },
+        "turnId": { "type": "string" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": [
+        "commandId",
+        "sessionId",
+        "sourceRange",
+        "turnId",
+        "viewCursor"
+      ],
+      "type": "object"
+    },
+    "TurnRetryScheduledParams": {
+      "properties": {
+        "attempt": { "type": "integer" },
+        "errorKind": { "type": "string" },
+        "httpStatus": { "type": "integer" },
+        "maxAttempts": { "type": "integer" },
+        "nextAttempt": { "type": "integer" },
+        "reason": { "type": "string" },
+        "retryDelayMs": { "type": "integer" },
+        "sessionId": { "type": "string" },
+        "sourceRange": { "$ref": "#/$defs/SourceRange" },
+        "system": { "type": "string" },
+        "turnId": { "type": "string" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": [
+        "attempt",
+        "maxAttempts",
+        "nextAttempt",
+        "reason",
+        "retryDelayMs",
+        "sessionId",
+        "sourceRange",
+        "turnId",
+        "viewCursor"
+      ],
+      "type": "object"
+    },
+    "TurnStartDisposition": {
+      "enum": ["started", "queued", "steered"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "TurnStartParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "displayText": { "type": "string" },
+        "ifBusy": { "$ref": "#/$defs/IfBusy" },
+        "input": {
+          "items": { "$ref": "#/$defs/TurnInputPart" },
+          "type": "array"
+        },
+        "reasoningEffort": { "$ref": "#/$defs/ReasoningEffort" },
+        "sessionId": { "type": "string" },
+        "userShell": { "$ref": "#/$defs/TurnUserShell" },
+        "workspaceRoots": { "items": { "type": "string" }, "type": "array" }
+      },
+      "required": ["commandId", "input", "sessionId"],
+      "type": "object"
+    },
+    "TurnStartResult": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "disposition": { "$ref": "#/$defs/TurnStartDisposition" },
+        "startedNewTurn": { "type": "boolean" },
+        "status": { "$ref": "#/$defs/CommandStatus" },
+        "turnId": { "type": "string" }
+      },
+      "required": [
+        "commandId",
+        "disposition",
+        "startedNewTurn",
+        "status",
+        "turnId"
+      ],
+      "type": "object"
+    },
+    "TurnStartedParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "sourceRange": { "$ref": "#/$defs/SourceRange" },
+        "turnId": { "type": "string" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": [
+        "commandId",
+        "sessionId",
+        "sourceRange",
+        "turnId",
+        "viewCursor"
+      ],
+      "type": "object"
+    },
+    "TurnSteerParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "expectedTurnId": { "type": "string" },
+        "input": {
+          "items": { "$ref": "#/$defs/TurnInputPart" },
+          "type": "array"
+        },
+        "reasoningEffort": { "$ref": "#/$defs/ReasoningEffort" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["commandId", "expectedTurnId", "input", "sessionId"],
+      "type": "object"
+    },
+    "TurnSteerResult": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "status": { "$ref": "#/$defs/CommandStatus" },
+        "turnId": { "type": "string" }
+      },
+      "required": ["commandId", "status", "turnId"],
+      "type": "object"
+    },
+    "TurnTerminal": {
+      "enum": ["completed", "failed", "cancelled"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "TurnUnqueueParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "turnId": { "type": "string" }
+      },
+      "required": ["commandId", "sessionId", "turnId"],
+      "type": "object"
+    },
+    "TurnUnqueueResult": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "status": { "$ref": "#/$defs/CommandStatus" },
+        "turnId": { "type": "string" }
+      },
+      "required": ["commandId", "status", "turnId"],
+      "type": "object"
+    },
+    "TurnUnqueuedParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "sourceRange": { "$ref": "#/$defs/SourceRange" },
+        "turnId": { "type": "string" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": [
+        "commandId",
+        "sessionId",
+        "sourceRange",
+        "turnId",
+        "viewCursor"
+      ],
+      "type": "object"
+    },
+    "TurnUserShell": {
+      "properties": { "commandText": { "type": "string" } },
+      "required": ["commandText"],
+      "type": "object"
+    },
+    "UnframedViewNotification": {
+      "properties": {
+        "method": { "type": "string" },
+        "params": { "$ref": "#/$defs/UnframedViewNotificationParams" }
+      },
+      "required": ["method", "params"],
+      "type": "object"
+    },
+    "UnframedViewNotificationParams": {
+      "properties": {
+        "sessionId": { "type": "string" },
+        "sourceRange": { "$ref": "#/$defs/SourceRange" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": ["sessionId", "sourceRange", "viewCursor"],
+      "type": "object"
+    },
+    "UnknownModelReasoningEffortVariants": {
+      "enum": ["unknown"],
+      "type": "string",
+      "x-msp-openness": "closed"
+    },
+    "UsageReadResult": {
+      "properties": { "usage": { "$ref": "#/$defs/SubscriptionUsage" } },
+      "type": "object"
+    },
+    "UserInputAnswer": {
+      "properties": {
+        "freeText": { "type": "string" },
+        "note": { "type": "string" },
+        "questionId": { "type": "string" },
+        "selectedLabel": { "type": "string" },
+        "selectedLabels": { "items": { "type": "string" }, "type": "array" }
+      },
+      "required": ["questionId"],
+      "type": "object"
+    },
+    "UserInputAnswerParams": {
+      "properties": {
+        "answers": {
+          "items": { "$ref": "#/$defs/UserInputAnswer" },
+          "type": "array"
+        },
+        "commandId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "userInputId": { "type": "string" }
+      },
+      "required": ["answers", "commandId", "sessionId", "userInputId"],
+      "type": "object"
+    },
+    "UserInputAnswerResult": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "status": { "$ref": "#/$defs/CommandStatus" },
+        "userInputId": { "type": "string" }
+      },
+      "required": ["commandId", "status", "userInputId"],
+      "type": "object"
+    },
+    "UserInputCancelParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "reason": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "userInputId": { "type": "string" }
+      },
+      "required": ["commandId", "sessionId", "userInputId"],
+      "type": "object"
+    },
+    "UserInputCancelResult": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "status": { "$ref": "#/$defs/CommandStatus" },
+        "userInputId": { "type": "string" }
+      },
+      "required": ["commandId", "status", "userInputId"],
+      "type": "object"
+    },
+    "UserInputClarification": {
+      "properties": {
+        "content": { "type": "string" },
+        "format": { "type": "string" }
+      },
+      "required": ["content", "format"],
+      "type": "object"
+    },
+    "UserInputClarifyParams": {
+      "properties": {
+        "clarification": { "$ref": "#/$defs/UserInputClarification" },
+        "commandId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "userInputId": { "type": "string" }
+      },
+      "required": ["clarification", "commandId", "sessionId", "userInputId"],
+      "type": "object"
+    },
+    "UserInputClarifyResult": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "status": { "$ref": "#/$defs/CommandStatus" },
+        "userInputId": { "type": "string" }
+      },
+      "required": ["commandId", "status", "userInputId"],
+      "type": "object"
+    },
+    "UserInputEngagedParams": {
+      "properties": {
+        "sessionId": { "type": "string" },
+        "userInputId": { "type": "string" }
+      },
+      "required": ["sessionId", "userInputId"],
+      "type": "object"
+    },
+    "UserInputInterruptParams": {
+      "properties": {
+        "answers": {
+          "items": { "$ref": "#/$defs/UserInputAnswer" },
+          "type": "array"
+        },
+        "commandId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "userInputId": { "type": "string" }
+      },
+      "required": ["commandId", "sessionId", "userInputId"],
+      "type": "object"
+    },
+    "UserInputInterruptResult": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "status": { "$ref": "#/$defs/CommandStatus" },
+        "userInputId": { "type": "string" }
+      },
+      "required": ["commandId", "status", "userInputId"],
+      "type": "object"
+    },
+    "UserInputOption": {
+      "properties": {
+        "description": { "type": "string" },
+        "label": { "type": "string" },
+        "preview": { "$ref": "#/$defs/UserInputOptionPreview" }
+      },
+      "required": ["label"],
+      "type": "object"
+    },
+    "UserInputOptionPreview": {
+      "properties": {
+        "content": { "type": "string" },
+        "format": { "type": "string" }
+      },
+      "required": ["content", "format"],
+      "type": "object"
+    },
+    "UserInputOutcome": {
+      "enum": [
+        "answered",
+        "cancelled",
+        "interrupted",
+        "clarified",
+        "timedOut",
+        "aborted"
+      ],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "UserInputQuestion": {
+      "properties": {
+        "header": { "type": "string" },
+        "id": { "type": "string" },
+        "options": {
+          "items": { "$ref": "#/$defs/UserInputOption" },
+          "type": "array"
+        },
+        "question": { "type": "string" },
+        "selection": { "$ref": "#/$defs/UserInputSelection" }
+      },
+      "required": ["header", "id", "options", "question", "selection"],
+      "type": "object"
+    },
+    "UserInputRequestParams": {
+      "properties": {
+        "autoResolutionMs": { "type": "integer" },
+        "itemId": { "type": "string" },
+        "questions": {
+          "items": { "$ref": "#/$defs/UserInputQuestion" },
+          "type": "array"
+        },
+        "sessionId": { "type": "string" },
+        "sourceRange": { "$ref": "#/$defs/SourceRange" },
+        "toolCallId": { "type": "string" },
+        "toolName": { "type": "string" },
+        "turnId": { "type": "string" },
+        "userInputId": { "type": "string" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": [
+        "itemId",
+        "questions",
+        "sessionId",
+        "toolCallId",
+        "toolName",
+        "turnId",
+        "userInputId",
+        "viewCursor"
+      ],
+      "type": "object"
+    },
+    "UserInputSelection": {
+      "properties": {
+        "maxSelections": { "type": "integer" },
+        "minSelections": { "type": "integer" },
+        "mode": { "$ref": "#/$defs/UserInputSelectionMode" }
+      },
+      "required": ["mode"],
+      "type": "object"
+    },
+    "UserInputSelectionMode": {
+      "enum": ["single", "multiple"],
+      "type": "string",
+      "x-msp-openness": "closed"
+    },
+    "UserInputSettledParams": {
+      "properties": {
+        "answers": {
+          "items": { "$ref": "#/$defs/UserInputAnswer" },
+          "type": "array"
+        },
+        "clarification": {
+          "anyOf": [
+            { "$ref": "#/$defs/UserInputClarification" },
+            { "type": "null" }
+          ]
+        },
+        "decidedAt": { "type": ["string", "null"] },
+        "decidedByCommandId": { "type": ["string", "null"] },
+        "outcome": { "$ref": "#/$defs/UserInputOutcome" },
+        "reason": { "type": ["string", "null"] },
+        "sessionId": { "type": "string" },
+        "sourceRange": { "$ref": "#/$defs/SourceRange" },
+        "userInputId": { "type": "string" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": [
+        "answers",
+        "clarification",
+        "decidedAt",
+        "decidedByCommandId",
+        "outcome",
+        "reason",
+        "sessionId",
+        "sourceRange",
+        "userInputId",
+        "viewCursor"
+      ],
+      "type": "object"
+    },
+    "UserInputSettlementSummary": {
+      "properties": {
+        "outcome": { "type": "string" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": ["outcome", "viewCursor"],
+      "type": "object"
+    },
+    "Vcs": {
+      "enum": ["git", "sapling"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "ViewGapParams": {
+      "properties": {
+        "after": { "type": "string" },
+        "next": { "type": "string" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["after", "next", "sessionId"],
+      "type": "object"
+    },
+    "ViewPageAnchor": {
+      "enum": ["latestCompaction"],
+      "type": "string",
+      "x-msp-openness": "open"
+    },
+    "ViewPageDirection": {
+      "enum": ["forward", "backward"],
+      "type": "string",
+      "x-msp-openness": "closed"
+    },
+    "ViewPageParams": {
+      "properties": {
+        "anchor": { "$ref": "#/$defs/ViewPageAnchor" },
+        "cursor": { "type": "string" },
+        "direction": { "$ref": "#/$defs/ViewPageDirection" },
+        "limit": { "maximum": 1000, "minimum": 1, "type": "integer" },
+        "maxBytes": { "type": "integer" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["limit", "sessionId"],
+      "type": "object"
+    },
+    "ViewPageResolvedAnchor": {
+      "properties": { "boundaryCursor": { "type": "string" } },
+      "required": ["boundaryCursor"],
+      "type": "object"
+    },
+    "ViewPageResult": {
+      "properties": {
+        "events": {
+          "items": { "$ref": "#/$defs/UnframedViewNotification" },
+          "type": "array"
+        },
+        "nextCursor": { "type": ["string", "null"] },
+        "resolvedAnchor": { "$ref": "#/$defs/ViewPageResolvedAnchor" }
+      },
+      "required": ["events", "nextCursor"],
+      "type": "object"
+    },
+    "ViewSnapshot": {
+      "properties": {
+        "anchor": { "$ref": "#/$defs/SnapshotAnchor" },
+        "schemaVersion": { "type": "integer" },
+        "state": { "$ref": "#/$defs/SnapshotState" },
+        "viewCursor": { "type": "string" }
+      },
+      "required": ["schemaVersion", "state", "viewCursor"],
+      "type": "object"
+    },
+    "ViewSubscribeParams": {
+      "properties": {
+        "after": { "type": "string" },
+        "sessionId": { "type": "string" }
+      },
+      "required": ["sessionId"],
+      "type": "object"
+    },
+    "ViewSubscribeResult": {
+      "properties": { "viewCursor": { "type": "string" } },
+      "required": ["viewCursor"],
+      "type": "object"
+    },
+    "ViewUnsubscribeParams": {
+      "properties": { "sessionId": { "type": "string" } },
+      "required": ["sessionId"],
+      "type": "object"
+    },
+    "ViewUnsubscribeResult": { "properties": {}, "type": "object" },
+    "WorkflowCancelParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "workflowRunId": { "type": "string" }
+      },
+      "required": ["commandId", "sessionId", "workflowRunId"],
+      "type": "object"
+    },
+    "WorkflowChild": {
+      "properties": {
+        "attempt": { "type": "integer" },
+        "childId": { "type": "string" },
+        "durationMs": { "type": "integer" },
+        "failureKind": { "type": "string" },
+        "failureReason": { "type": "string" },
+        "label": { "type": "string" },
+        "phase": { "type": "string" },
+        "resultRef": { "type": "string" },
+        "status": { "type": "string" },
+        "terminal": { "$ref": "#/$defs/TurnTerminal" },
+        "usage": { "$ref": "#/$defs/TokenUsage" }
+      },
+      "required": ["attempt", "childId", "status"],
+      "type": "object"
+    },
+    "WorkflowChildAction": {
+      "enum": ["skip", "retry"],
+      "type": "string",
+      "x-msp-openness": "closed"
+    },
+    "WorkflowChildControlParams": {
+      "properties": {
+        "action": { "$ref": "#/$defs/WorkflowChildAction" },
+        "attempt": { "minimum": 1, "type": "integer" },
+        "childId": { "type": "string" },
+        "commandId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "workflowRunId": { "type": "string" }
+      },
+      "required": [
+        "action",
+        "attempt",
+        "childId",
+        "commandId",
+        "sessionId",
+        "workflowRunId"
+      ],
+      "type": "object"
+    },
+    "WorkflowControlResult": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "status": { "$ref": "#/$defs/CommandStatus" }
+      },
+      "required": ["commandId", "status"],
+      "type": "object"
+    },
+    "WorkflowPauseParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "workflowRunId": { "type": "string" }
+      },
+      "required": ["commandId", "sessionId", "workflowRunId"],
+      "type": "object"
+    },
+    "WorkflowResumeParams": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "workflowRunId": { "type": "string" }
+      },
+      "required": ["commandId", "sessionId", "workflowRunId"],
+      "type": "object"
+    },
+    "WorkflowResumeResult": {
+      "properties": {
+        "commandId": { "type": "string" },
+        "status": { "$ref": "#/$defs/CommandStatus" },
+        "turnId": { "type": "string" }
+      },
+      "required": ["commandId", "status", "turnId"],
+      "type": "object"
+    },
+    "WorkflowTokenBudget": {
+      "properties": { "total": { "type": "integer" } },
+      "required": ["total"],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "capabilities": {
+    "grantable": [
+      "userShell",
+      "sessionMcp",
+      "sessionListStream",
+      "feedback",
+      "computerUseSetup",
+      "computerUseHostSetup",
+      "sessionRename"
+    ],
+    "reserved": [
+      { "name": "rawLog", "reference": "#13929" },
+      { "name": "mxp", "reference": "#38644" }
+    ]
+  },
+  "errors": [
+    { "code": -32700, "kind": "parseError", "retryable": false },
+    {
+      "code": -32600,
+      "kind": "invalidRequest",
+      "overrideKinds": ["notInitialized", "alreadyInitialized"],
+      "retryable": false
+    },
+    {
+      "code": -32601,
+      "kind": "methodNotFound",
+      "overrideKinds": ["experimentalRequired"],
+      "retryable": false
+    },
+    {
+      "code": -32602,
+      "kind": "invalidParams",
+      "overrideKinds": ["experimentalRequired"],
+      "retryable": false
+    },
+    {
+      "code": -32603,
+      "kind": "internal",
+      "overrideKinds": ["pageEventTooLarge", "outputResultTooLarge"],
+      "retryable": false
+    },
+    { "code": -32001, "kind": "overloaded", "retryable": true },
+    { "code": -32002, "kind": "inputTooLarge", "retryable": false },
+    { "code": -32010, "kind": "capabilityRequired", "retryable": false },
+    { "code": -32011, "kind": "notFound", "retryable": false },
+    { "code": -32013, "kind": "interrupted" },
+    { "code": -32014, "kind": "cancelled" },
+    { "code": -32020, "kind": "sessionNotFound", "retryable": false },
+    { "code": -32021, "kind": "sessionInUse", "retryable": false },
+    { "code": -32022, "kind": "sessionAmbiguous", "retryable": false },
+    { "code": -32023, "kind": "forkBoundaryInvalid", "retryable": false },
+    { "code": -32024, "kind": "sessionNotLoaded", "retryable": false },
+    { "code": -32025, "kind": "sessionStreamMismatch", "retryable": false },
+    { "code": -32030, "kind": "commandRejected", "retryable": false },
+    { "code": -32031, "kind": "backpressured", "retryable": true },
+    { "code": -32032, "kind": "skillNotFound", "retryable": false },
+    { "code": -32033, "kind": "computerUseUnavailable", "retryable": false },
+    { "code": -32034, "kind": "marketplaceNotFound", "retryable": false },
+    { "code": -32035, "kind": "pluginNotFound", "retryable": false },
+    { "code": -32036, "kind": "marketplaceAlreadyExists", "retryable": false },
+    { "code": -32037, "kind": "pluginMutationsDisabled", "retryable": false },
+    { "code": -32038, "kind": "uploadNotFound", "retryable": false },
+    { "code": -32040, "kind": "viewTruncated", "retryable": false },
+    { "code": -32041, "kind": "outputUnavailable", "retryable": false },
+    {
+      "code": -32042,
+      "kind": "boundaryPruned",
+      "overrideKinds": ["boundaryUnusable", "noBoundary"],
+      "retryable": false
+    },
+    { "code": -32050, "kind": "approvalNotFound", "retryable": false },
+    { "code": -32051, "kind": "approvalAlreadyResolved", "retryable": false },
+    { "code": -32052, "kind": "approvalChoiceInvalid", "retryable": false },
+    { "code": -32053, "kind": "approvalRequirementStale", "retryable": false },
+    {
+      "code": -32054,
+      "kind": "approvalReviewerUnavailable",
+      "retryable": false
+    },
+    { "code": -32055, "kind": "userInputNotFound", "retryable": false },
+    { "code": -32056, "kind": "userInputAlreadySettled", "retryable": false },
+    { "code": -32057, "kind": "userInputAnswerInvalid", "retryable": false },
+    { "code": -32058, "kind": "approvalBrokerUnavailable", "retryable": true },
+    { "code": -32059, "kind": "approvalResolving", "retryable": false }
+  ],
+  "methods": {
+    "approval/decide": {
+      "params": { "$ref": "#/$defs/ApprovalDecideParams" },
+      "result": { "$ref": "#/$defs/ApprovalDecideResult" }
+    },
+    "approval/listPending": {
+      "params": { "$ref": "#/$defs/ApprovalListPendingParams" },
+      "result": { "$ref": "#/$defs/ApprovalListPendingResult" }
+    },
+    "computerUseSettings/read": {
+      "params": { "$ref": "#/$defs/ComputerUseSettingsReadParams" },
+      "result": { "$ref": "#/$defs/ComputerUseSettings" }
+    },
+    "computerUseSettings/update": {
+      "params": { "$ref": "#/$defs/ComputerUseSettingsUpdateParams" },
+      "result": { "$ref": "#/$defs/ComputerUseSettings" }
+    },
+    "computerUseSetup/check": {
+      "result": { "$ref": "#/$defs/ComputerUseSetupState" }
+    },
+    "computerUseSetup/read": {
+      "params": { "$ref": "#/$defs/ComputerUseSetupReadParams" },
+      "result": { "$ref": "#/$defs/ComputerUseSetupState" }
+    },
+    "computerUseSetup/start": {
+      "params": { "$ref": "#/$defs/ComputerUseSetupStartParams" },
+      "result": { "$ref": "#/$defs/ComputerUseSetupState" }
+    },
+    "feedback/submit": {
+      "params": { "$ref": "#/$defs/FeedbackSubmitParams" },
+      "result": { "$ref": "#/$defs/FeedbackSubmitResult" }
+    },
+    "goal/clear": {
+      "params": { "$ref": "#/$defs/GoalClearParams" },
+      "result": { "$ref": "#/$defs/GoalCommandResult" }
+    },
+    "goal/edit": {
+      "params": { "$ref": "#/$defs/GoalEditParams" },
+      "result": { "$ref": "#/$defs/GoalCommandResult" }
+    },
+    "goal/pause": {
+      "params": { "$ref": "#/$defs/GoalPauseParams" },
+      "result": { "$ref": "#/$defs/GoalCommandResult" }
+    },
+    "goal/resume": {
+      "params": { "$ref": "#/$defs/GoalResumeParams" },
+      "result": { "$ref": "#/$defs/GoalCommandResult" }
+    },
+    "goal/set": {
+      "params": { "$ref": "#/$defs/GoalSetParams" },
+      "result": { "$ref": "#/$defs/GoalCommandResult" }
+    },
+    "hook/list": {
+      "params": { "$ref": "#/$defs/HookListParams" },
+      "result": { "$ref": "#/$defs/HookListResult" }
+    },
+    "initialize": {
+      "params": { "$ref": "#/$defs/InitializeParams" },
+      "result": { "$ref": "#/$defs/InitializeResult" }
+    },
+    "item/readOutput": {
+      "params": { "$ref": "#/$defs/ItemReadOutputParams" },
+      "result": { "$ref": "#/$defs/ItemReadOutputResult" }
+    },
+    "media/upload": {
+      "params": { "$ref": "#/$defs/MediaUploadParams" },
+      "result": { "$ref": "#/$defs/MediaUploadResult" }
+    },
+    "model/cancel": {
+      "params": { "$ref": "#/$defs/ModelCancelParams" },
+      "result": { "$ref": "#/$defs/ModelCancelResult" }
+    },
+    "model/complete": {
+      "params": { "$ref": "#/$defs/ModelCompleteParams" },
+      "result": { "$ref": "#/$defs/ModelCompleteResult" }
+    },
+    "model/list": {
+      "params": { "$ref": "#/$defs/ModelListParams" },
+      "result": { "$ref": "#/$defs/ModelListResult" }
+    },
+    "plugin/install": {
+      "params": { "$ref": "#/$defs/PluginInstallParams" },
+      "result": { "$ref": "#/$defs/PluginInstallResult" }
+    },
+    "plugin/list": {
+      "params": { "$ref": "#/$defs/PluginListParams" },
+      "result": { "$ref": "#/$defs/PluginListResult" }
+    },
+    "plugin/marketplaceAdd": {
+      "params": { "$ref": "#/$defs/PluginMarketplaceAddParams" },
+      "result": { "$ref": "#/$defs/PluginMarketplaceRecordResult" }
+    },
+    "plugin/marketplaceRemove": {
+      "params": { "$ref": "#/$defs/PluginMarketplaceRemoveParams" },
+      "result": { "$ref": "#/$defs/PluginMarketplaceRemoveResult" }
+    },
+    "plugin/marketplaceUpdate": {
+      "params": { "$ref": "#/$defs/PluginMarketplaceUpdateParams" },
+      "result": { "$ref": "#/$defs/PluginMarketplaceRecordResult" }
+    },
+    "recap/cancel": {
+      "params": { "$ref": "#/$defs/RecapCancelParams" },
+      "result": { "$ref": "#/$defs/RecapCancelResult" }
+    },
+    "recap/request": {
+      "params": { "$ref": "#/$defs/RecapRequestParams" },
+      "result": { "$ref": "#/$defs/RecapRequestResult" }
+    },
+    "session/clearExternalWait": {
+      "params": { "$ref": "#/$defs/SessionClearExternalWaitParams" },
+      "result": { "$ref": "#/$defs/SessionClearExternalWaitResult" }
+    },
+    "session/compact": {
+      "params": { "$ref": "#/$defs/SessionCompactParams" },
+      "result": { "$ref": "#/$defs/SessionCompactResult" }
+    },
+    "session/declareExternalWait": {
+      "params": { "$ref": "#/$defs/SessionDeclareExternalWaitParams" },
+      "result": { "$ref": "#/$defs/SessionDeclareExternalWaitResult" }
+    },
+    "session/fork": {
+      "params": { "$ref": "#/$defs/SessionForkParams" },
+      "result": { "$ref": "#/$defs/SessionForkResult" }
+    },
+    "session/leave": {
+      "params": { "$ref": "#/$defs/SessionLeaveParams" },
+      "result": { "$ref": "#/$defs/SessionLeaveResult" }
+    },
+    "session/list": {
+      "params": { "$ref": "#/$defs/SessionListParams" },
+      "result": { "$ref": "#/$defs/SessionListResult" }
+    },
+    "session/read": {
+      "params": { "$ref": "#/$defs/SessionReadParams" },
+      "result": { "$ref": "#/$defs/SessionReadResult" }
+    },
+    "session/rename": {
+      "params": { "$ref": "#/$defs/SessionRenameParams" },
+      "result": { "$ref": "#/$defs/SessionRenameResult" }
+    },
+    "session/resume": {
+      "params": { "$ref": "#/$defs/SessionResumeParams" },
+      "result": { "$ref": "#/$defs/SessionResumeResult" }
+    },
+    "session/setApprovalMode": {
+      "params": { "$ref": "#/$defs/SessionSetApprovalModeParams" },
+      "result": { "$ref": "#/$defs/SessionSetApprovalModeResult" }
+    },
+    "session/setModel": {
+      "params": { "$ref": "#/$defs/SessionSetModelParams" },
+      "result": { "$ref": "#/$defs/SessionSetModelResult" }
+    },
+    "session/setReasoningEffort": {
+      "params": { "$ref": "#/$defs/SessionSetReasoningEffortParams" },
+      "result": { "$ref": "#/$defs/SessionSetReasoningEffortResult" }
+    },
+    "session/sideChat": {
+      "params": { "$ref": "#/$defs/SessionSideChatParams" },
+      "result": { "$ref": "#/$defs/SessionSideChatResult" }
+    },
+    "session/start": {
+      "params": { "$ref": "#/$defs/SessionStartParams" },
+      "result": { "$ref": "#/$defs/SessionStartResult" }
+    },
+    "session/userShell": {
+      "params": { "$ref": "#/$defs/SessionUserShellParams" },
+      "result": { "$ref": "#/$defs/SessionUserShellResult" }
+    },
+    "skill/import": {
+      "params": { "$ref": "#/$defs/SkillImportParams" },
+      "result": { "$ref": "#/$defs/SkillImportResult" }
+    },
+    "skill/list": {
+      "params": { "$ref": "#/$defs/SkillListParams" },
+      "result": { "$ref": "#/$defs/SkillListResult" }
+    },
+    "skill/setActivation": {
+      "params": { "$ref": "#/$defs/SkillSetActivationParams" },
+      "result": { "$ref": "#/$defs/SkillSetActivationResult" }
+    },
+    "subagent/close": {
+      "params": { "$ref": "#/$defs/SubagentOwnerReasonParams" },
+      "result": { "$ref": "#/$defs/CommandAcceptedResult" }
+    },
+    "subagent/followupTask": {
+      "params": { "$ref": "#/$defs/SubagentInputParams" },
+      "result": { "$ref": "#/$defs/CommandAcceptedResult" }
+    },
+    "subagent/interrupt": {
+      "params": { "$ref": "#/$defs/SubagentOwnerReasonParams" },
+      "result": { "$ref": "#/$defs/CommandAcceptedResult" }
+    },
+    "subagent/list": {
+      "params": { "$ref": "#/$defs/SubagentListParams" },
+      "result": { "$ref": "#/$defs/SubagentListResult" }
+    },
+    "subagent/readResult": {
+      "params": { "$ref": "#/$defs/SubagentTargetParams" },
+      "result": { "$ref": "#/$defs/CommandAcceptedResult" }
+    },
+    "subagent/reopen": {
+      "params": { "$ref": "#/$defs/SubagentTargetParams" },
+      "result": { "$ref": "#/$defs/CommandAcceptedResult" }
+    },
+    "subagent/resume": {
+      "params": { "$ref": "#/$defs/SubagentTargetParams" },
+      "result": { "$ref": "#/$defs/CommandAcceptedResult" }
+    },
+    "subagent/sendMessage": {
+      "params": { "$ref": "#/$defs/SubagentInputParams" },
+      "result": { "$ref": "#/$defs/CommandAcceptedResult" }
+    },
+    "subagent/stop": {
+      "params": { "$ref": "#/$defs/SubagentOwnerReasonParams" },
+      "result": { "$ref": "#/$defs/CommandAcceptedResult" }
+    },
+    "task/background": {
+      "params": { "$ref": "#/$defs/TaskBackgroundParams" },
+      "result": { "$ref": "#/$defs/TaskCommandResult" }
+    },
+    "task/list": {
+      "params": { "$ref": "#/$defs/TaskListParams" },
+      "result": { "$ref": "#/$defs/TaskListResult" }
+    },
+    "task/stop": {
+      "params": { "$ref": "#/$defs/TaskStopParams" },
+      "result": { "$ref": "#/$defs/TaskCommandResult" }
+    },
+    "task/stopAll": {
+      "params": { "$ref": "#/$defs/TaskStopAllParams" },
+      "result": { "$ref": "#/$defs/TaskStopAllResult" }
+    },
+    "turn/cancel": {
+      "params": { "$ref": "#/$defs/TurnCancelParams" },
+      "result": { "$ref": "#/$defs/TurnCancelResult" }
+    },
+    "turn/interrupt": {
+      "params": { "$ref": "#/$defs/TurnInterruptParams" },
+      "result": { "$ref": "#/$defs/TurnInterruptResult" }
+    },
+    "turn/start": {
+      "params": { "$ref": "#/$defs/TurnStartParams" },
+      "result": { "$ref": "#/$defs/TurnStartResult" }
+    },
+    "turn/steer": {
+      "params": { "$ref": "#/$defs/TurnSteerParams" },
+      "result": { "$ref": "#/$defs/TurnSteerResult" }
+    },
+    "turn/unqueue": {
+      "params": { "$ref": "#/$defs/TurnUnqueueParams" },
+      "result": { "$ref": "#/$defs/TurnUnqueueResult" }
+    },
+    "usage/read": { "result": { "$ref": "#/$defs/UsageReadResult" } },
+    "userInput/answer": {
+      "params": { "$ref": "#/$defs/UserInputAnswerParams" },
+      "result": { "$ref": "#/$defs/UserInputAnswerResult" }
+    },
+    "userInput/cancel": {
+      "params": { "$ref": "#/$defs/UserInputCancelParams" },
+      "result": { "$ref": "#/$defs/UserInputCancelResult" }
+    },
+    "userInput/clarify": {
+      "params": { "$ref": "#/$defs/UserInputClarifyParams" },
+      "result": { "$ref": "#/$defs/UserInputClarifyResult" }
+    },
+    "userInput/interrupt": {
+      "params": { "$ref": "#/$defs/UserInputInterruptParams" },
+      "result": { "$ref": "#/$defs/UserInputInterruptResult" }
+    },
+    "view/page": {
+      "params": { "$ref": "#/$defs/ViewPageParams" },
+      "result": { "$ref": "#/$defs/ViewPageResult" }
+    },
+    "view/subscribe": {
+      "params": { "$ref": "#/$defs/ViewSubscribeParams" },
+      "result": { "$ref": "#/$defs/ViewSubscribeResult" }
+    },
+    "view/unsubscribe": {
+      "params": { "$ref": "#/$defs/ViewUnsubscribeParams" },
+      "result": { "$ref": "#/$defs/ViewUnsubscribeResult" }
+    },
+    "workflow/cancel": {
+      "params": { "$ref": "#/$defs/WorkflowCancelParams" },
+      "result": { "$ref": "#/$defs/WorkflowControlResult" }
+    },
+    "workflow/childControl": {
+      "params": { "$ref": "#/$defs/WorkflowChildControlParams" },
+      "result": { "$ref": "#/$defs/WorkflowControlResult" }
+    },
+    "workflow/pause": {
+      "params": { "$ref": "#/$defs/WorkflowPauseParams" },
+      "result": { "$ref": "#/$defs/WorkflowControlResult" }
+    },
+    "workflow/resume": {
+      "params": { "$ref": "#/$defs/WorkflowResumeParams" },
+      "result": { "$ref": "#/$defs/WorkflowResumeResult" }
+    }
+  },
+  "notifications": {
+    "approval/requested": {
+      "params": { "$ref": "#/$defs/ApprovalRequestParams" }
+    },
+    "approval/resolved": {
+      "params": { "$ref": "#/$defs/ApprovalResolvedParams" }
+    },
+    "approval/reviewing": {
+      "params": { "$ref": "#/$defs/ApprovalRequestParams" }
+    },
+    "approval/updated": {
+      "params": { "$ref": "#/$defs/ApprovalUpdatedParams" }
+    },
+    "computerUseSetup/changed": {
+      "params": { "$ref": "#/$defs/ComputerUseSetupChanged" }
+    },
+    "initialized": {},
+    "item/completed": { "params": { "$ref": "#/$defs/ItemCompletedParams" } },
+    "item/delta": { "params": { "$ref": "#/$defs/ItemDeltaParams" } },
+    "item/started": { "params": { "$ref": "#/$defs/ItemStartedParams" } },
+    "item/updated": { "params": { "$ref": "#/$defs/ItemUpdatedParams" } },
+    "model/completed": { "params": { "$ref": "#/$defs/ModelCompletedParams" } },
+    "monitor/inboxItemAdmitted": {
+      "params": { "$ref": "#/$defs/MonitorInboxItemAdmittedParams" }
+    },
+    "monitor/inboxItemDrained": {
+      "params": { "$ref": "#/$defs/MonitorInboxItemDrainedParams" }
+    },
+    "monitor/inboxItemVoided": {
+      "params": { "$ref": "#/$defs/MonitorInboxItemVoidedParams" }
+    },
+    "plugin/changed": { "params": { "$ref": "#/$defs/PluginChangedParams" } },
+    "plugin/marketplaceChanged": {
+      "params": { "$ref": "#/$defs/PluginMarketplaceChangedParams" }
+    },
+    "recap/completed": { "params": { "$ref": "#/$defs/RecapCompletedParams" } },
+    "session/approvalModeChanged": {
+      "params": { "$ref": "#/$defs/SessionApprovalModeChangedParams" }
+    },
+    "session/branchChanged": {
+      "params": { "$ref": "#/$defs/SessionBranchChangedParams" }
+    },
+    "session/closed": { "params": { "$ref": "#/$defs/SessionClosedParams" } },
+    "session/contextUsage": {
+      "params": { "$ref": "#/$defs/SessionContextUsageParams" }
+    },
+    "session/goalChanged": {
+      "params": { "$ref": "#/$defs/SessionGoalChangedParams" }
+    },
+    "session/leaveCompleted": {
+      "params": { "$ref": "#/$defs/SessionLeaveCompletedParams" }
+    },
+    "session/listChanged": {
+      "params": { "$ref": "#/$defs/SessionListChangedParams" }
+    },
+    "session/modelChanged": {
+      "params": { "$ref": "#/$defs/SessionModelChangedParams" }
+    },
+    "session/modelRouteUnserved": {
+      "params": { "$ref": "#/$defs/SessionModelRouteUnservedParams" }
+    },
+    "session/nameChanged": {
+      "params": { "$ref": "#/$defs/SessionNameChangedParams" }
+    },
+    "session/reasoningEffortChanged": {
+      "params": { "$ref": "#/$defs/SessionReasoningEffortChangedParams" }
+    },
+    "session/started": { "params": { "$ref": "#/$defs/SessionStartedParams" } },
+    "session/statusChanged": {
+      "params": { "$ref": "#/$defs/SessionStatusChangedParams" }
+    },
+    "session/todoListChanged": {
+      "params": { "$ref": "#/$defs/SessionTodoListChangedParams" }
+    },
+    "session/tokenUsage": {
+      "params": { "$ref": "#/$defs/SessionTokenUsageParams" }
+    },
+    "session/viewHealthChanged": {
+      "params": { "$ref": "#/$defs/SessionViewHealthChangedParams" }
+    },
+    "skill/changed": { "params": { "$ref": "#/$defs/SkillChangedParams" } },
+    "turn/completed": { "params": { "$ref": "#/$defs/TurnCompletedParams" } },
+    "turn/foregroundCompleted": {
+      "params": { "$ref": "#/$defs/TurnForegroundCompletedParams" }
+    },
+    "turn/modelAttemptStarted": {
+      "params": { "$ref": "#/$defs/TurnModelAttemptStartedParams" }
+    },
+    "turn/modelRetryScheduled": {
+      "params": { "$ref": "#/$defs/TurnModelRetryScheduledParams" }
+    },
+    "turn/retracted": { "params": { "$ref": "#/$defs/TurnRetractedParams" } },
+    "turn/retryScheduled": {
+      "params": { "$ref": "#/$defs/TurnRetryScheduledParams" }
+    },
+    "turn/started": { "params": { "$ref": "#/$defs/TurnStartedParams" } },
+    "turn/unqueued": { "params": { "$ref": "#/$defs/TurnUnqueuedParams" } },
+    "usage/changed": { "params": { "$ref": "#/$defs/SubscriptionUsage" } },
+    "userInput/engaged": {
+      "params": { "$ref": "#/$defs/UserInputEngagedParams" }
+    },
+    "userInput/requested": {
+      "params": { "$ref": "#/$defs/UserInputRequestParams" }
+    },
+    "userInput/settled": {
+      "params": { "$ref": "#/$defs/UserInputSettledParams" }
+    },
+    "view/gap": { "params": { "$ref": "#/$defs/ViewGapParams" } }
+  },
+  "requests": {
+    "approval/request": {
+      "params": { "$ref": "#/$defs/ApprovalRequestParams" },
+      "result": { "$ref": "#/$defs/RequestReceipt" }
+    },
+    "userInput/request": {
+      "params": { "$ref": "#/$defs/UserInputRequestParams" },
+      "result": { "$ref": "#/$defs/RequestReceipt" }
+    }
+  },
+  "reserved": [
+    {
+      "identifier": "-32060..-32069",
+      "reference": "#13929 \u2014 SS6 raw log & projections error block, deferred whole; a v1 host never emits it"
+    },
+    {
+      "identifier": "-32070..-32079",
+      "reference": "#13929 \u2014 peer messaging & admission (#45445) error block, deferred whole; a v1 host never emits it"
+    },
+    {
+      "identifier": "-32012",
+      "reference": "SS1.6: deliberately never assigned; command_id_conflict is commandRejected"
+    },
+    {
+      "identifier": "deprecationNotice",
+      "reference": "#13929 \u2014 reserved notification, no producer before 1.0"
+    }
+  ]
+}

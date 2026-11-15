@@ -1,7 +1,0 @@
-{
-  "revision": "eb814d95da6f3e3b43647d9c589c330ac60369d0",
-
-  "notes": [
-    {"path":"docs/user/settings.md","note":"Changed only the Houston link in the coordinator-session row to its absolute GitHub URL, since houston.md is not admitted to Pages (docs:public:hygiene). Row content re-read against the bind in station-runtime.ts.","inputs":["docs/user/settings.md"]}
-  ]
-}

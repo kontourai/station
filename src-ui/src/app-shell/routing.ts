@@ -1,5 +1,4 @@
 import { projectReviewLayoutHref } from '@kontourai/station-contracts/layout';
-import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import type { RegistryCatalogTab } from '@kontourai/station-sdk';
 import {
   parseResourceDetailPath,
@@ -162,44 +161,38 @@ export function getLegacyPathRedirect(path: string): string | null {
     if (redirect) return redirect;
   }
 
-  // #928: Activity has no standalone placement any more — it is a region
-  // surface, revealed by the shell rather than rendered by a route. The URL
-  // still has to work (`docs/design/pane-or-shell.md`: converting a surface
-  // must not break a URL), so both retired spellings land on the surface's
-  // canonical deep link instead of 404ing. `/sessions` was already a
-  // permanent redirect boundary for persisted notifications and old Discord
-  // messages (archive#3280); it now points one hop further rather than at a
-  // route that no longer resolves.
-  //
-  // The target is MINTED by the contracts builder that every producer uses
-  // (`activityDeepLink`, also the source of a notification's `openHref`, the
-  // web-push click target and Discord's completion line), so the redirect
-  // cannot drift from the shape those links already carry — including its
-  // rule that `focus` without a session means nothing and is dropped.
-  //
-  // Only `session` and `focus` survive: those are the whole payload the
-  // retired route ever read, and the canonical deep link has no place to put
-  // anything else. This narrows what a stored link can carry through, and
-  // the narrowing is unobserved rather than free: no producer has ever put
-  // another param on these two paths (`dock`/`chat` are minted only on
-  // `/projects/<slug>` and `/`, and the service worker appends nothing), so
-  // there is no live link this drops anything from. `dock` in particular
-  // WOULD survive a plain navigation — it is shell-scoped
-  // (`SHELL_SCOPED_QUERY_PARAMS`) and deliberately outlives a route change —
-  // so if a producer ever starts minting it here, this is the line to widen.
-  //
-  // Trailing slash for the same reason `/tasks/` and `/review/` carry one:
-  // an exact-lookup table 404s the copy-mangled spelling otherwise.
-  if (RETIRED_ACTIVITY_PATHS.has(pathname)) {
-    const params = new URLSearchParams(search);
-    const sessionId = params.get('session')?.trim();
-    if (!sessionId) return activityDeepLink();
-    return activityDeepLink({
-      sessionId,
-      ...(params.get('focus') === 'evidence'
-        ? { focus: 'evidence' as const }
-        : {}),
-    });
+  // Preserve notification/read and dock state when translating old links.
+  const legacyParams = new URLSearchParams(search);
+  if (
+    legacyParams.get('surface') === 'activity' ||
+    RETIRED_ACTIVITY_PATHS.has(pathname)
+  ) {
+    const session = legacyParams.get('session')?.trim() || null;
+    const translated: [string, string][] = session
+      ? [
+          ['surface', 'chat'],
+          ['session', session],
+        ]
+      : [];
+    if (session && legacyParams.get('focus') === 'evidence')
+      translated.push(['focus', 'evidence']);
+    // Message anchors keep a copied link's exact-message jump.
+    const kept = session
+      ? ['messageSession', 'messageDirection', 'messageRequest']
+      : [];
+    for (const key of [...kept, 'openedNotification', 'dock', 'chat']) {
+      const value = legacyParams.get(key);
+      if (value !== null) translated.push([key, value]);
+    }
+    const targetPath = !session
+      ? '/notifications'
+      : RETIRED_ACTIVITY_PATHS.has(pathname)
+        ? '/'
+        : pathname;
+    const query = translated
+      .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+      .join('&');
+    return `${targetPath}${query ? `?${query}` : ''}`;
   }
 
   // #2065: the global `/review-queue` is retired — Review is a layout kind a

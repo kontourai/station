@@ -1,7 +1,0 @@
-{
-  "revision": "6794a9b9b04d182bf7d2b96e67ceee564a56984a",
-
-  "notes": [
-    {"path":"docs/reference/env-vars.md","note":"#4517 managed settings. Changed: index.ts: startup checks managed setting values against the settings schema inside the existing fail-closed policy load; station-runtime.ts: StationRuntime installs the loaded managed policy settings before config loads. Alias resolution is unchanged and the STATION_MANAGED_POLICY_TEST_FILE row stays accurate; a managed default ranks below the environment, as the managed policy guide states.","inputs":["docs/reference/env-vars.md","src-server/index.ts","src-server/runtime/bootstrap/station-runtime.ts"]}
-  ]
-}

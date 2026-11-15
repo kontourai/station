@@ -2,6 +2,8 @@ export type EngineAccountAuthState =
   | 'authenticated'
   | 'unauthenticated'
   | 'unknown';
+/** The engines with credential-profile accounts (an app-home channel). */
+export type EngineAccountEngine = 'claude' | 'codex' | 'muse';
 export interface EngineAccount {
   ref: string | null;
   label: string;
@@ -9,7 +11,7 @@ export interface EngineAccount {
   login: 'device-code' | 'browser-code' | 'unavailable';
 }
 export interface EngineAccounts {
-  engine: 'claude' | 'codex';
+  engine: EngineAccountEngine;
   accounts: EngineAccount[];
   activeProfileRef: string | null;
 }
@@ -133,7 +135,7 @@ export type EngineAccountUsage =
       history?: EngineAccountUsageHistory;
     };
 export interface EngineAccountLogin {
-  engine: 'claude' | 'codex';
+  engine: EngineAccountEngine;
   mechanism: 'browser-code' | 'device-code';
   phase:
     | 'starting'

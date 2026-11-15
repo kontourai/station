@@ -1,0 +1,7 @@
+{
+  "revision": "b1e62cc105903cf03db81840488cce164052d8c5",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Rechecked: the contracts reference change adds a Muse unsupported row about engine-issued credentials; no glossary term changes.","inputs":["docs/glossary.md","docs/reference/contracts.md","src-ui/src/app-shell/destination-registry.ts","src-ui/src/components/conversation/ConversationReader.tsx"]}
+  ]
+}

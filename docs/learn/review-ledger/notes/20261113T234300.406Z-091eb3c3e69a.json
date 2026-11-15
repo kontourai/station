@@ -1,0 +1,7 @@
+{
+  "revision": "6e9ca58a096abda02d4e9891800428a01bc4992d",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"The muse-serve-schema.ts entry says it decides which hosts are used (verified fingerprint, or an unknown one whose own export declares the required surface); the build-line comparison and manifest comment edit keep that true; no edit needed.","inputs":["docs/architecture/module-map.md","src-server/providers/adapters/muse-serve-schema.ts"]}
+  ]
+}

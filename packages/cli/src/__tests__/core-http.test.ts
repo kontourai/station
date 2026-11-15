@@ -2335,6 +2335,113 @@ describe('CLI core commands over HTTP', () => {
     );
   });
 
+  /**
+   * An OpenCode ACP connection as the host projects it: with the OpenCode
+   * native engine preview on its `config.provider` is `opencode`, with it
+   * off there is none. Its chats run on `opencode` (started with the
+   * preview on; a chat keeps its provider) or `acp`.
+   */
+  function openCodeConnection(previewOn: boolean) {
+    state.connections = [
+      ...state.connections,
+      {
+        id: 'opencode',
+        kind: 'agent',
+        type: 'acp',
+        name: 'OpenCode',
+        enabled: true,
+        capabilities: ['agent-runtime', 'acp', 'resume'],
+        config: {
+          engineId: 'opencode',
+          ...(previewOn ? { provider: 'opencode' } : {}),
+        },
+        status: 'ready',
+        prerequisites: [],
+      },
+    ];
+    state.agents = [
+      ...state.agents,
+      {
+        slug: 'oc-notes',
+        name: 'OpenCode Notes',
+        execution: { agentConnectionId: 'opencode' },
+        engineId: 'opencode',
+      },
+    ];
+    for (const [threadId, provider] of [
+      ['oc-native-thread', 'opencode'],
+      ['oc-acp-thread', 'acp'],
+    ] as const) {
+      state.runtimeSessions = [
+        ...state.runtimeSessions,
+        {
+          provider,
+          threadId,
+          status: 'running',
+          isLoaded: true,
+          isPersisted: true,
+          eventCount: 1,
+          createdAt: '2026-04-18T00:00:00.000Z',
+          updatedAt: '2026-04-18T00:00:00.000Z',
+          lastEventMethod: 'request.opened',
+        },
+      ];
+      state.runtimeSessionEvents[threadId] = [
+        {
+          provider,
+          threadId,
+          eventId: `evt-${threadId}`,
+          createdAt: '2026-04-18T00:00:00.000Z',
+          method: 'request.opened',
+          requestId: `req-${threadId}`,
+          requestType: 'approval',
+          title: 'Approve OpenCode work',
+        },
+      ];
+    }
+  }
+
+  test.each([true, false])(
+    'an Agent on an OpenCode connection resolves to the provider the host projects (preview on: %s)',
+    async (previewOn) => {
+      const { resolveManagedAgentExternalEngineTarget } = await import(
+        '../commands/session-client.js'
+      );
+      openCodeConnection(previewOn);
+      expect(
+        await resolveManagedAgentExternalEngineTarget(
+          apiBase,
+          'oc-notes' as never,
+          { strict: true },
+        ),
+      ).toMatchObject({
+        kind: 'runtime',
+        connectionId: 'opencode',
+        provider: previewOn ? 'opencode' : 'acp',
+      });
+    },
+  );
+
+  test.each([true, false])(
+    "approvals list for an Agent on an OpenCode connection lists both its `opencode` and its `acp` chats' requests (preview on: %s)",
+    async (previewOn) => {
+      const { runCli } = await import('../cli.js');
+      openCodeConnection(previewOn);
+      await runCli([
+        'approvals',
+        'list',
+        '--agent=oc-notes',
+        `--api-base=${apiBase}`,
+      ]);
+      expect(_consoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('"requestId": "req-oc-native-thread"'),
+      );
+      expect(_consoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('"requestId": "req-oc-acp-thread"'),
+      );
+    },
+  );
+
   test('approvals resolve real Agent bindings and provider configuration without fallback maps', async () => {
     const { runCli } = await import('../cli.js');
 

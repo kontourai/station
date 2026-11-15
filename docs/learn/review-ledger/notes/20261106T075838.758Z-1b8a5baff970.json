@@ -1,7 +1,0 @@
-{
-  "revision": "07cc3b191c2ccf878b20dbd6081de39b033977d8",
-
-  "notes": [
-    {"path":"docs/design/README.md","note":"Regenerated the docs-index block with npm run docs:index; the only change is the new ended-task-resume.md proposal line. Navigation and authority-order prose unchanged and still accurate.","inputs":["docs/design/README.md"]}
-  ]
-}

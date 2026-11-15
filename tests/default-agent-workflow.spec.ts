@@ -7,6 +7,7 @@ import {
   installMockOrchestrationSse,
   waitForMockOrchestrationSse,
 } from './helpers/orchestration';
+import { closeRunSetup, runSetupControl } from './helpers/run-setup';
 
 const DEFAULT_PROJECT = {
   id: 'p-default',
@@ -481,13 +482,13 @@ async function openDefaultAgentSession(
   await dismissSetupLauncher(page);
   await expect(
     page
-      .locator('.chat-dock__tab-actions')
+      .locator('#chat-dock')
       .getByRole('button', { name: 'New chat', exact: true }),
   ).toBeVisible({ timeout: 15_000 });
   if (options?.firstMessage === undefined) return;
 
   await page
-    .locator('.chat-dock__tab-actions')
+    .locator('#chat-dock')
     .getByRole('button', { name: 'New chat', exact: true })
     .click();
   const draft = page
@@ -496,12 +497,15 @@ async function openDefaultAgentSession(
   // The right agent and model are preselected: the start composer's Agent
   // chip names both, and its project chip the context they resolve in.
   await expect(
-    draft.getByRole('button', {
-      name: 'Agent: Station · llama3.2',
-      exact: true,
-    }),
+    await runSetupControl(draft, (panel) =>
+      panel.getByRole('button', {
+        name: 'Agent: Station · llama3.2',
+        exact: true,
+      }),
+    ),
   ).toBeVisible({ timeout: 10_000 });
   await expect(draft.getByRole('button', { name: /^Project: / })).toBeVisible();
+  await closeRunSetup(page);
   await draft
     .getByRole('textbox', { name: 'What would you like done?', exact: true })
     .fill(options.firstMessage);
@@ -509,7 +513,11 @@ async function openDefaultAgentSession(
   await expect(page.getByRole('region', { name: 'New chat' })).toHaveCount(0);
   // The dock now holds the chat the draft started, bound to the same identity.
   await expect(
-    page.getByRole('button', { name: /^Model: \S+ — llama3\.2/ }),
+    await runSetupControl(page, (panel) =>
+      panel.getByRole('button', {
+        name: /^(?:Model:|Engine & model:) \S+ — llama3\.2/,
+      }),
+    ),
   ).toBeVisible({ timeout: 10_000 });
   await waitForMockOrchestrationSse(page);
   if (options.answerWith) {
@@ -597,6 +605,7 @@ test.describe('Default agent workflow', () => {
       // commands and no command skills seeded it says so.
       ['/commands', /No commands defined/],
     ] as const) {
+      await closeRunSetup(page);
       await textarea.fill(command);
       await sendButton.click();
       await expect(page.locator('body')).toContainText(matcher);
@@ -607,6 +616,7 @@ test.describe('Default agent workflow', () => {
       'open the chat',
     ]);
 
+    await closeRunSetup(page);
     await textarea.fill('say hi in 3 words');
     await sendButton.click();
     await expect
@@ -623,6 +633,7 @@ test.describe('Default agent workflow', () => {
     await emitDefaultReply(page, threadId!);
     await expect(page.locator('body')).toContainText('Hi from Station!');
 
+    await closeRunSetup(page);
     await textarea.fill('/stats');
     await sendButton.click();
     await expect(page.locator('body')).toContainText('Conversation Statistics');
@@ -633,10 +644,12 @@ test.describe('Default agent workflow', () => {
     const clearedNotices = page
       .getByRole('log', { name: 'Conversation transcript' })
       .getByText('Conversation cleared', { exact: true });
+    await closeRunSetup(page);
     await textarea.fill('/clear');
     await sendButton.click();
     await expect(clearedNotices).toHaveCount(1);
 
+    await closeRunSetup(page);
     await textarea.fill('/new');
     await sendButton.click();
     await expect(clearedNotices).toHaveCount(2);
@@ -843,6 +856,7 @@ test.describe('Default agent workflow', () => {
     });
 
     const textarea = page.locator('textarea[placeholder*="Type a message"]');
+    await closeRunSetup(page);
     await textarea.fill('trigger failure');
     await page.getByRole('button', { name: 'Send', exact: true }).click();
     // archive#191 R1: the SDK client now parses the server's JSON error body
@@ -998,7 +1012,9 @@ test.describe('Default agent workflow', () => {
       .locator('.session-item')
       .filter({ hasText: 'Alpha Chat' });
     await alphaItem.getByTitle('Rename').click();
+    await closeRunSetup(page);
     await page.locator('.session-item__rename-input').fill('Renamed Chat');
+    await closeRunSetup(page);
     await page.locator('.session-item__rename-input').press('Enter');
     await expect(history).toContainText('Renamed Chat');
 

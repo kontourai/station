@@ -60,7 +60,7 @@ describe('the tour opens only when it is asked for', () => {
     await waitFor(() =>
       expect(screen.getByTestId('first-run-coachmark')).toBeTruthy(),
     );
-    expect(showSurface).toHaveBeenLastCalledWith('activity');
+    expect(navigate).toHaveBeenLastCalledWith('/automations');
   });
 
   test('a finished run stays finished until someone asks again', async () => {

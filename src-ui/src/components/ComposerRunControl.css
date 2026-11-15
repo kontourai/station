@@ -1,0 +1,115 @@
+.composer-choices
+  > .choice-trigger.composer-run-control:has(.composer-choice__icon) {
+  min-width: 44px;
+  max-width: 100%;
+  flex: 0 1 auto;
+}
+.composer-run-control .composer-choice__icon {
+  gap: var(--k-space-1);
+}
+.composer-run-panel {
+  background: var(--k-panel);
+  color: var(--k-text);
+}
+.composer-run-panel__choices {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--k-space-3);
+  padding: var(--k-space-3);
+}
+.composer-run-panel__choices .composer-choice {
+  width: 100%;
+  max-width: 100%;
+  min-height: 44px;
+}
+
+.composer-run-control__marks {
+  position: relative;
+  display: inline-flex;
+  align-items: flex-end;
+  flex: none;
+  padding-block: var(--k-space-1);
+}
+.composer-run-control__agent-mark {
+  display: flex;
+  position: relative;
+  z-index: 1;
+}
+.composer-run-control__engine-mark {
+  display: flex;
+  margin-left: -6px;
+  transform: translateY(3px);
+}
+.composer-run-control__safety {
+  position: absolute;
+  z-index: 2;
+  right: -3px;
+  top: -3px;
+  font-size: var(--k-text-sm);
+  line-height: 1;
+  color: var(--k-caution);
+  background: var(--k-panel);
+  border-radius: calc(var(--k-radius-md) * 2);
+}
+.composer-run-control .composer-choice__value {
+  width: 100%;
+}
+.composer-run-control__label {
+  display: flex;
+  min-width: 0;
+}
+/* The agent name gives way first; a long model id still ellipsizes instead of
+   being clipped mid-word once the agent part is gone. The separator clips
+   with the Agent name so the model never starts with a dangling dot. */
+.composer-run-control__agent {
+  flex: 0 1000 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+.composer-run-control__model {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+/* A toolbar pill: the painted surface is quiet; the hit area remains 44px. */
+.composer-choices > .choice-trigger.composer-run-control {
+  min-width: 44px;
+  min-height: 44px;
+  border-color: transparent;
+  border-radius: calc(var(--k-radius-md) * 2);
+  background: transparent;
+  box-shadow: none;
+  color: var(--k-text-muted);
+  font-weight: 400;
+}
+.composer-choices > .choice-trigger.composer-run-control:hover,
+.composer-choices > .choice-trigger.composer-run-control[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--k-text) 7%, transparent);
+}
+.composer-run-control .composer-choice__value {
+  font-weight: 400;
+}
+/* Intrinsic sizing uses the existing composer container. Once the available
+   width falls below the surface's label budget, only marks and caret remain. */
+.composer-run-control .chat-input__chip-stack {
+  max-width: clamp(
+    0px,
+    calc((100cqw - var(--composer-label-collapse, 380px)) * 1000),
+    32rem
+  );
+  overflow: hidden;
+}
+.composer-choices > .choice-trigger.composer-run-control {
+  gap: var(--k-space-2);
+  padding-inline: clamp(
+    var(--k-space-1),
+    calc((100cqw - 450px) * 1000),
+    var(--k-space-2)
+  );
+}

@@ -1,7 +1,0 @@
-{
-  "revision": "48fcca265ee6ec04eea76419f518c3f08c211ea5",
-
-  "notes": [
-    {"path":"docs/guides/machine-relationships.md","note":"Re-read after 48fcca265ee6 connections.md edits; this guide only routes to Connections and states no switcher or switching behavior. No change.","inputs":["docs/guides/machine-relationships.md"]}
-  ]
-}

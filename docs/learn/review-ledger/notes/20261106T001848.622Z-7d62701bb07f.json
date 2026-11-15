@@ -1,7 +1,0 @@
-{
-  "revision": "2c87ba3b1e0cd7d1ed71fa028cd9b30607e6bc5f",
-
-  "notes": [
-    {"path":"docs/guides/connections.md","note":"Re-read the Station-chip paragraph: the HeaderActions edit only adds a class to the Station-notice mark; the chip still shows its dot and name in every state.","inputs":["docs/guides/connections.md","src-ui/src/components/header/HeaderActions.tsx"]}
-  ]
-}

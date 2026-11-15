@@ -1,7 +1,0 @@
-{
-  "revision": "388abec3aff47cf911eadb554b4abe3cc624e0d1",
-
-  "notes": [
-    {"path":"docs/user/personal-boards.md","note":"Reviewed the mounted Apps owner test's seven role-query option corrections: DOM Testing Library does not accept Playwright's exact option, and literal name matching is already exact. The names, lifecycle assertions, deletion/guard/focus coverage and production implementation are unchanged. Current UI typecheck reproduced all seven TS2769 diagnostics before repair and passes afterward; all nine mounted Apps tests pass in10.22s. Existing user instructions remain accurate; no visual, API, authority, native or release qualification is added.","inputs":["docs/user/personal-boards.md","src-ui/src/views/apps/__tests__/AppsLibrary.test.tsx"]}
-  ]
-}

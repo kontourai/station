@@ -1,0 +1,7 @@
+{
+  "revision": "146c1838d5c4226a12251d66f5cd567583025d50",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Checked the Muse rows (serve usage/cost/context, stdio, workflow subagent usage) against the sandbox-ordering change in muse-serve-session.ts: that change moves only the sandboxAvailability record and touches no usage, cost, context or child-work claim here; no edit needed.","inputs":["docs/guides/monitoring.md","src-server/providers/__tests__/muse-serve-adapter.test.ts","src-server/providers/adapters/muse-serve-session.ts"]}
+  ]
+}

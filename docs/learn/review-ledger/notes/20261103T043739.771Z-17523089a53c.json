@@ -1,7 +1,0 @@
-{
-  "revision": "9114aab1704331be7011a1136fe35477b747906e",
-
-  "notes": [
-    {"path":"docs/reference/usage-telemetry.md","note":"Re-checked against config-telemetry-paired.routes.test.ts after it pinned ungranted cases to a shell-less device and added the owner Standard device row: the test now asserts the documented rule (an owner device with standing may acknowledge, record notices, lower and raise; an ungranted paired device may only lower). No prose change needed.","inputs":["docs/reference/usage-telemetry.md","src-server/routes/system/__tests__/config-telemetry-paired.routes.test.ts"]}
-  ]
-}

@@ -1,0 +1,7 @@
+{
+  "revision": "66362736ac68897a4f59e75af8765e95a8335aaf",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the unified trigger policy against ComposerRunControl, ComposerChoice, StartComposer, StartApprovalSummary and ApprovalModeChip. Warning glyphs indicate full access or refused/pending approval; conversation changes use a neutral dot and changed-for-this-conversation accessible text. Known ACP command-derived approval engine identities supply the reply mark; unknown identities omit it. This is bounded source review; screenshot, provider and physical-device evidence are separate.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatInputArea.test.tsx","src-ui/src/__tests__/StartComposerParity.test.tsx","src-ui/src/components/ComposerChoice.tsx","src-ui/src/components/ComposerChoiceSummary.ts","src-ui/src/components/ComposerRunControl.tsx","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/chat/ChatInputArea.tsx"]}
+  ]
+}

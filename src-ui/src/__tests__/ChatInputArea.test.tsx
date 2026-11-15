@@ -128,6 +128,8 @@ function renderChatInputArea(overrides: Record<string, unknown> = {}) {
   };
 
   render(<ChatInputArea {...props} />);
+  if (props.modelQuery === null)
+    fireEvent.click(screen.getByTestId('run-setup-trigger'));
   return props;
 }
 
@@ -881,7 +883,7 @@ describe('ChatInputArea', () => {
     });
 
     const model = screen.getByRole('button', {
-      name: /Unavailable: This Agent reports no selectable models\./,
+      name: /^Engine & model:.*Unavailable: This Agent reports no selectable models\./,
     });
     expect(model.getAttribute('aria-disabled')).toBe('true');
     model.focus();
@@ -1134,6 +1136,7 @@ describe('ChatInputArea', () => {
     }
 
     render(<OfflineComposer />);
+    fireEvent.click(screen.getByTestId('run-setup-trigger'));
     fireEvent.click(screen.getByRole('button', { name: /^Engine & model/ }));
 
     expect(await screen.findByRole('dialog', { name: 'Model' })).toBeTruthy();
@@ -1221,7 +1224,7 @@ describe('ChatInputArea', () => {
     // (docs/design/chat-composer.md §3.3) — the visible identity spans are
     // aria-hidden, so the name has to carry the selection itself.
     const modelButton = screen.getByRole('button', {
-      name: /OpenCode.*Big Pickle/,
+      name: /^Engine & model:.*OpenCode.*Big Pickle/,
     });
     expect(modelButton.getAttribute('aria-label')).toContain('OpenCode');
     expect(modelButton.getAttribute('aria-label')).toContain('Big Pickle');
@@ -1597,6 +1600,8 @@ describe('ChatInputArea', () => {
 
     // Start an escalation on session A — opens the mode sheet and picks full
     // access, which must land on the confirm step rather than applying.
+    if (!screen.queryByRole('dialog', { name: 'Run setup' }))
+      fireEvent.click(screen.getByTestId('run-setup-trigger'));
     fireEvent.click(screen.getByRole('button', { name: /^Approval mode:/ }));
     // The mode sheet is lazy-loaded; wait for it rather than the Suspense null.
     await screen.findByRole('radiogroup', { name: 'Approval mode' });
@@ -2371,5 +2376,75 @@ describe('ChatInputArea queued-retry Discard', () => {
       expect(discard.getAttribute('aria-expanded')).toBe('false');
       expect(onDiscard).not.toHaveBeenCalled();
     },
+  );
+});
+
+test.each([undefined, 'claude'])(
+  'reply setup uses provider identity %s without connection initials',
+  async (executionEngineId) => {
+    renderChatInputArea({
+      agentConnectionId: 'my-saved-connection',
+      executionEngineId,
+      executionEngineLabel: 'Engine',
+      agentLabel: 'Writer',
+      agentIcon: <span>Agent mark</span>,
+    });
+    const trigger = screen.getByTestId('run-setup-trigger');
+    await waitFor(() =>
+      expect(trigger.querySelector('[data-brand-key="claude"]') !== null).toBe(
+        executionEngineId === 'claude',
+      ),
+    );
+    expect(trigger.textContent).not.toContain('EN');
+    expect(trigger.textContent).toContain('Writer');
+    expect(trigger.getAttribute('aria-label')).toMatch(/^Writer ·/);
+  },
+);
+
+test.each([
+  { currentExecutionAgentId: 'other-engine' },
+  { currentModelSource: 'session override', currentModel: 'claude-sonnet' },
+])(
+  'reply setup exposes a conversation override independently of approval state: %j',
+  (override) => {
+    renderChatInputArea(override);
+    const trigger = screen.getByTestId('run-setup-trigger');
+    expect(trigger.textContent).not.toContain('⚠');
+    expect(trigger.textContent).toContain('·');
+    expect(trigger.getAttribute('aria-label')).toContain(
+      'changed for this conversation',
+    );
+  },
+);
+
+test('reply setup omits an unresolved model instead of naming Model', () => {
+  renderChatInputArea({
+    agentLabel: 'Writer',
+    currentModel: undefined,
+    agentDefaultModel: undefined,
+    availableModels: [],
+  });
+  expect(
+    screen
+      .getByTestId('run-setup-trigger')
+      .querySelector('.composer-choice__value')?.textContent,
+  ).toBe('Writer');
+});
+
+test('ACP reply setup uses the connection engine mark', async () => {
+  renderChatInputArea({
+    executionEngineId: 'acp',
+    acpApproval: {
+      engineId: 'opencode',
+      engineName: 'OpenCode',
+      control: 'station',
+    },
+  });
+  await waitFor(() =>
+    expect(
+      screen
+        .getByTestId('run-setup-trigger')
+        .querySelector('[data-brand-key="opencode"]'),
+    ).not.toBeNull(),
   );
 });

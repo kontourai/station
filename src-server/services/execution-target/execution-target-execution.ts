@@ -33,6 +33,7 @@ import type {
   ProviderSessionStartInput,
 } from '@kontourai/station-contracts/provider';
 import {
+  isAcpFamilyEngine,
   readProviderDurabilityProfile,
   SESSION_VISIBILITY_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
@@ -386,6 +387,38 @@ export interface ExecutionSessionBinding {
   admittedCwd?: string;
   workspaceIsolation?: WorkspaceIsolationConfig;
   worktree?: WorktreeSessionMetadata;
+  /** The provider the conversation's current session runs on. */
+  provider?: EngineId;
+}
+
+/**
+ * Ruling R2: a conversation keeps the provider it started with. A saved ACP
+ * connection can be run by more than one ACP-family engine (`acp`, and
+ * `opencode` behind its Feature Preview), and which one a new chat gets
+ * follows the preview. A follow-up, and any successor session it starts,
+ * stays on the provider the conversation's current session runs on, so
+ * turning the preview on or off never moves an existing chat (and no stored
+ * record is rewritten). Another connection, or a provider outside the ACP
+ * family, is a real change of engine and resolves as before.
+ */
+function keepConversationProvider<
+  T extends {
+    provider: EngineId;
+    engine: ResolvedExecutionEngine;
+  },
+>(resolved: T, binding: ExecutionSessionBinding | null | undefined): T {
+  const stored = binding?.provider;
+  if (
+    !stored ||
+    stored === resolved.provider ||
+    resolved.engine.kind !== 'connection' ||
+    !binding?.connectionId ||
+    binding.connectionId !== String(resolved.engine.connectionId) ||
+    !isAcpFamilyEngine(stored) ||
+    !isAcpFamilyEngine(resolved.provider)
+  )
+    return resolved;
+  return { ...resolved, provider: stored };
 }
 
 export class ContinuationWorkspaceError extends Error {
@@ -718,7 +751,7 @@ export async function executeForegroundMessage(
     throw new Error('Execution message must not be empty');
   }
 
-  const resolved = await resolveExecutionTarget(input.target, deps);
+  let resolved = await resolveExecutionTarget(input.target, deps);
   if (input.mcpPromptOrigin && resolved.access.kind !== 'current')
     throw new Error(
       'MCP prompt origin cannot be safely carried to another Station.',
@@ -742,6 +775,7 @@ export async function executeForegroundMessage(
     resolved.access,
     conversationId,
   );
+  resolved = keepConversationProvider(resolved, binding);
   const initialContext = binding
     ? undefined
     : await deps.readInitialConversationContext(resolved.access, {

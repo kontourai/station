@@ -1,9 +1,0 @@
-{
-  "revision": "3b336a0d890d15087c7b2de1ba7b92482b154be2",
-
-  "notes": [
-    {"path":"docs/design/terminal.md","note":"Dependent of docs/reference/api.md and docs/guides/plugins.md, whose round-2 edits add managedByPolicy to the plugin update check, say removal is never refused by limits.registries, and say a plugin from a refused registry is not update-checked. Searched this page for plugin update checks, registry removal and registry limits; it makes no claim about them, so it remains accurate.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
-
-    {"path":"docs/guides/integrating-station.md","note":"Dependent of docs/reference/api.md and docs/guides/plugins.md, whose round-2 edits add managedByPolicy to the plugin update check, say removal is never refused by limits.registries, and say a plugin from a refused registry is not update-checked. Searched this page for plugin update checks, registry removal and registry limits; it makes no claim about them, so it remains accurate.","inputs":["docs/guides/integrating-station.md","docs/guides/plugins.md","docs/reference/api.md"]}
-  ]
-}

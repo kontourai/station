@@ -1,7 +1,0 @@
-{
-  "revision": "443525c6391299e53e8c8c63d12af330b36d51b9",
-
-  "notes": [
-    {"path":"docs/design/notification-delivery.md","note":"#4688 ToastContext gains an onDismiss callback (closed/scope reasons, run once on dismiss, Dismiss all and Station clear) and ToastActionError for a named action failure; added that claim. Pausing on hover/focus/hidden and retryable failed actions re-checked against runAction/schedule and toast-lifecycle tests.","inputs":["docs/design/notification-delivery.md","src-ui/src/contexts/ToastContext.tsx"]}
-  ]
-}

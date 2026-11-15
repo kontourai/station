@@ -15,7 +15,11 @@ import type {
   Prerequisite,
   RuntimeCatalogStatus,
 } from '@kontourai/station-contracts/tool';
-import { engineIdForAdapter } from '../../providers/adapter-identity.js';
+import {
+  acpConnectionRuntimeAdapter,
+  engineIdForAdapter,
+  isAcpConnectionBacked,
+} from '../../providers/adapter-identity.js';
 import type {
   ProviderAdapterModelCatalog,
   ProviderAdapterShape,
@@ -33,6 +37,7 @@ import {
   raceWithSignal,
   throwIfAborted,
 } from '../../utils/bounded-async.js';
+import { stationOwnsEngineSignIn } from '../acp/acp-engine-descriptors.js';
 import {
   type ACPConnectionStatus,
   acpProviderRoutingStatus,
@@ -200,7 +205,12 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
     const appConfig = this.dependencies.appConfig();
     const adapters = this.dependencies.adapters();
     const inspected = await mapWithConcurrency(
-      adapters.filter((adapter) => adapter.provider !== 'acp'),
+      // An ACP-backed adapter (OpenCode) has no connection of its own: its
+      // connections are the ACP records projected below.
+      adapters.filter(
+        (adapter) =>
+          adapter.provider !== 'acp' && !isAcpConnectionBacked(adapter),
+      ),
       request.concurrency ?? 4,
       async (adapter) => this.inspectAdapter(adapter, appConfig, request),
       request.signal,
@@ -214,7 +224,40 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
       connection ? [connection] : [],
     );
     const acpSettings = runtimeSettingsFor(appConfig, 'acp');
-    for (const config of this.dependencies.acpConnections()) {
+    const acpAdapter = adapters.find((adapter) => adapter.provider === 'acp');
+    const acpConnections = this.dependencies.acpConnections();
+    // An engine Station signs in answers its handshake signed out, so the
+    // handshake cannot say it is ready: its required rows (installed
+    // runtime, Station's sign-in) come from the same readiness a chat is
+    // gated on. Each read runs the installed runtime's `--version`, so the
+    // reads share the inventory's concurrency bound; there are as many as
+    // such engines (one today), and nothing is cached across inventories.
+    const gated =
+      acpAdapter && request.includePrerequisites !== false
+        ? acpConnections.filter(
+            (config) =>
+              (acpSettings.enabled ?? true) &&
+              config.enabled !== false &&
+              stationOwnsEngineSignIn(config),
+          )
+        : [];
+    const gatePartial = new Set<string>();
+    const gateRows = new Map<string, Prerequisite[]>(
+      await mapWithConcurrency(
+        gated,
+        request.concurrency ?? 4,
+        async (config) =>
+          [
+            config.id,
+            await this.signInGateRows(acpAdapter!, config, request.signal, () =>
+              gatePartial.add(config.id),
+            ),
+          ] as const,
+        request.signal,
+      ),
+    );
+    throwIfAborted(request.signal);
+    for (const config of acpConnections) {
       const engineIdValue = engineId(config.id);
       const identity = this.dependencies.publicConnection(engineIdValue);
       if (!identity) continue;
@@ -222,11 +265,15 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
         .acpStatus()
         .connections?.find((connection) => connection.id === config.id);
       const enabled = (acpSettings.enabled ?? true) && config.enabled !== false;
+      // One missing required row reads as setup required (see `gated`).
+      const requiredMissing = enabled ? (gateRows.get(config.id) ?? []) : [];
       const status = !enabled
         ? 'disabled'
-        : liveStatus?.status === 'available'
-          ? 'ready'
-          : 'degraded';
+        : requiredMissing.length > 0
+          ? 'missing_prerequisites'
+          : liveStatus?.status === 'available'
+            ? 'ready'
+            : 'degraded';
       const prerequisites: Prerequisite[] = [
         {
           id: 'acp-connection',
@@ -235,12 +282,17 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
           status: liveStatus?.status === 'available' ? 'installed' : 'missing',
           category: 'optional',
         },
+        ...requiredMissing,
       ];
       // archive#3054: the handshake's model config option IS this engine's
       // catalog — project it so the composer's wire-channel gate sees the
       // observed evidence it requires instead of an absent field. Hoisted so
       // the not-ready state reason below can quote the same observation.
       const runtimeCatalog = acpRuntimeCatalogStatus(liveStatus, config);
+      // The engine a new chat on this connection starts with: an ACP-backed
+      // adapter that claims it now (OpenCode, behind its Feature Preview),
+      // otherwise ACP. A chat keeps the provider it started with.
+      const runtimeAdapter = acpConnectionRuntimeAdapter(adapters, config);
       connections.push({
         id: identity.id,
         kind: 'agent',
@@ -267,7 +319,15 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
           rewind: 'none',
         },
         config: {
-          engineId: 'acp',
+          engineId: runtimeAdapter ? engineIdForAdapter(runtimeAdapter) : 'acp',
+          ...(runtimeAdapter ? { provider: runtimeAdapter.provider } : {}),
+          // The connection's saved icon (a built-in's `brand:kiro`), so the
+          // engines list draws the same mark for it connected as it does
+          // while it is not connected yet.
+          ...(typeof config.icon === 'string' && config.icon
+            ? { icon: config.icon }
+            : {}),
+          ...(gatePartial.has(config.id) ? { inspectionPartial: true } : {}),
           // `readinessReason` mirrors what `inspectAdapter` projects for
           // runtime adapters: WHY this connection is not ready, from the
           // engine's own observation. For ACP that is the probe's actual
@@ -280,6 +340,7 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
             ? {}
             : {
                 readinessReason:
+                  requiredMissing[0]?.installGuide?.steps.at(-1) ??
                   liveStatus?.lastError?.message ??
                   runtimeCatalog.reason ??
                   undefined,
@@ -422,6 +483,9 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
       description: adapter.metadata.description,
       capabilities: [...adapter.metadata.capabilities],
       continuity: adapter.metadata.continuity,
+      ...(adapter.metadata.modelLaunch
+        ? { modelLaunch: adapter.metadata.modelLaunch }
+        : {}),
       config: {
         ...mergeRuntimeConfig(engineIdValue, appConfig, settings),
         provider: adapter.provider,
@@ -480,6 +544,45 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
           name: `${adapter.metadata.displayName} inspection`,
           description:
             'Station could not verify this connection’s prerequisites. Retry inspection before using it.',
+          status: 'missing',
+          category: 'required',
+        },
+      ];
+    }
+  }
+
+  /**
+   * The required rows still missing for an engine Station signs in, read from
+   * the ACP adapter's readiness for that one connection. A read that fails
+   * or never settles costs only this row: it reads "could not verify", and
+   * an abort still ends the inventory.
+   */
+  private async signInGateRows(
+    acpAdapter: ProviderAdapterShape,
+    config: ACPConnectionConfig,
+    signal: AbortSignal | undefined,
+    partial: () => void,
+  ): Promise<Prerequisite[]> {
+    try {
+      const rows = await raceWithSignal(
+        acpAdapter.getPrerequisites?.({
+          ...(signal ? { signal } : {}),
+          connectionId: config.id,
+        }) ?? Promise.resolve([]),
+        signal,
+      );
+      return rows.filter(
+        (row) => row.category === 'required' && row.status !== 'installed',
+      );
+    } catch {
+      throwIfAborted(signal);
+      partial();
+      return [
+        {
+          id: `${config.id}-inspection`,
+          name: `${config.name || config.id} inspection`,
+          description:
+            'Station could not verify this engine’s prerequisites. Retry inspection before using it.',
           status: 'missing',
           category: 'required',
         },

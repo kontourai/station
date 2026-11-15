@@ -1,7 +1,0 @@
-{
-  "revision": "3de23cd1ed4607411cecb311135664de0fed9fc4",
-
-  "notes": [
-    {"path":"docs/guides/acp.md","note":"#4515 fix round 1: added that under a managed policy that does not allow ACP engines, or stops public-registry agents, ACPProcess.start() refuses before spawning, so probes, sessions and sign-in start nothing; checked against acp-process.ts and acp-probe.ts (both probe sites pass the connection).","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts","src-server/services/acp/acp-probe.ts","src-server/services/acp/acp-process.ts"]}
-  ]
-}

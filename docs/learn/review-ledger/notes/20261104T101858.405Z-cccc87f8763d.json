@@ -1,7 +1,0 @@
-{
-  "revision": "a547a292ee315ee0a97f130a913cc26f4cc63d87",
-
-  "notes": [
-    {"path":"packages/sdk/AGENTS.md","note":"Reviewed the complete SDK routing and cancellation instructions against the useUsageQuery-only typed HTTP error documentation and producer change. Public SDK reference remains canonical; no app-internal import, global query option or SDK export added. Existing actual SDK query/cache owner and component waiting-caller receipt remain distinct; cancelled reverted cache cannot authorize focus without successful canonical dataUpdateCount advance. No policy prose change or real-principal/native claim.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
-  ]
-}

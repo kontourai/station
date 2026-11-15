@@ -6642,6 +6642,10 @@ mod tests {
                     Ok((socket, _)) => {
                         connections += 1;
                         let connection = connections;
+                        // macOS and Windows hand back accepted sockets non-blocking when
+                        // the listener is; a WouldBlock read would end this keep-alive
+                        // connection early and force the client onto a new one.
+                        socket.set_nonblocking(false).unwrap();
                         socket
                             .set_read_timeout(Some(Duration::from_secs(3)))
                             .unwrap();

@@ -1,7 +1,0 @@
-{
-  "revision": "7da0828c8b1f325954cbfc1b24cd22ec5eb391ad",
-
-  "notes": [
-    {"path":"docs/design/native-capabilities.md","note":"Native broker allowlist now admits If-Match and Idempotency-Key (write preconditions, no authority). Checked this doc for native header, allowlist, If-Match and idempotency claims: none changed; authority, cookie and credential headers stay refused.","inputs":["docs/design/native-capabilities.md","src-desktop/src/lib.rs"]}
-  ]
-}

@@ -94,7 +94,7 @@ and [connection form](../../src-ui/src/views/provider-settings/ProviderConnectio
 
 ## Sign an engine profile in from a device
 
-Open **Connections → Engines → Codex** or **Claude**. The account picker shows
+Open **Connections → Engines → Codex**, **Claude** or **Muse**. The account picker shows
 saved accounts and marks the account currently in use. Picking an account changes
 what you view; it does not change the account used by runs. Existing account
 application controls remain under **Advanced**.
@@ -106,6 +106,28 @@ and select **Finish sign-in**. Station reports completion only after the engine
 confirms authentication. **Cancel** stops a pending login. Returning to the
 account resumes status checks. Login capabilities come from the installed CLI;
 unsupported or unreadable installations remain unavailable.
+
+Muse Code (#1942) signs in with a device code too: Station runs the bare
+`muse login`, offered only while `muse login --help` still says "approve a code
+in your browser", and relays its link and code. Sign-in state comes from
+`muse usage --json`: its JSON answer is signed in, "not logged in" is signed
+out, and anything else is unknown. API-key sign-in is not offered for a
+profile, and a profile never inherits `META_API_KEY` from Station's
+environment: Muse honours that key under any config home, so Station keeps it
+for the default account only. A Muse profile is an XDG config root: sessions, `muse serve` hosts
+and exec turns run with `XDG_CONFIG_HOME` set to the profile, where Muse reads
+its `muse/` folder, and a named profile that cannot be prepared refuses the
+start. Import copies `settings.json` and `skills/`, `auth.json` only when you
+tick the credential box, and never `trust.json` (folder trust is your decision,
+not the profile's). `XDG_DATA_HOME` is not moved, so sessions resume under any
+profile. Because `XDG_CONFIG_HOME` is not private to Muse, tools a profile
+session runs inherit it: a tool that reads its configuration from
+`XDG_CONFIG_HOME` when that is set (for example the GitHub CLI's
+`gh/hosts.yml`) looks in the profile instead and does not find it there. Per-profile
+allowance for Muse reads unavailable: the account it was observed on reported
+no allowance, so Station has no real shape to map. The device-code relay was
+checked live against Muse Code 1.4.18 up to the code, then cancelled before
+approval.
 
 Relayed login applies to saved credential profiles. The default account follows
 the connection's configured home and environment and is managed by the host CLI;
@@ -190,7 +212,8 @@ and extra-usage shapes are live-observed as well as fixture-validated. Other pla
 older activity remains visible. **Activity for** switches
 between the selected credential profile and all accounts of this engine. New
 Claude and Codex sessions record an opaque account key from the profile actually
-resolved for the process. Raw profile references are not published in runtime
+resolved for the process; Muse sessions record none yet, so their receipts stay
+unattributed. Raw profile references are not published in runtime
 events. Source-home continuations and older events without this observation
 remain unattributed. A process restart does not inherit a previous process's
 account observation. Account filtering excludes unattributed receipts; it never
@@ -837,7 +860,7 @@ on this computer's `PATH`; detection does not mean it is signed in or ready.
 | GitHub Copilot | `copilot --acp` | Agent Client Protocol |
 | Grok Build | `grok agent stdio` | Agent Client Protocol |
 | Mistral Vibe | `vibe-acp` | Agent Client Protocol |
-| Google Antigravity | `agy_acp_server.par` | Agent Client Protocol, macOS only; Google ships the server as a download, so put it on `PATH` yourself |
+| Google Antigravity | `agy acp --process-per-session` | Agent Client Protocol; needs Antigravity CLI 1.5.0 or later, and Station names an older install and says to run `agy update` |
 | Factory Droid | `droid exec --output-format acp-daemon` | Agent Client Protocol |
 | Hermes Agent | `hermes acp` | Agent Client Protocol |
 | pi | `pi-acp` | Agent Client Protocol through the community `pi-acp` bridge, which does not pass Station tool servers and has no model switching |
@@ -859,6 +882,15 @@ each engine can receive from Station (system prompt, tools, skills, images) is
 recorded per engine in the
 [engine capability matrix](../../packages/contracts/src/engine-capability-matrix.ts);
 the [ACP guide](acp.md) covers protocol details.
+
+OpenCode is still added and saved as an Agent Client Protocol engine. With the
+**OpenCode native engine** Feature Preview on (Settings → Advanced → Feature
+previews), new chats on it run on Station's `opencode` engine instead. That
+engine drives OpenCode 2 through its own local server (`opencode serve`) when
+Station has verified that version's API, and over the Agent Client Protocol
+otherwise. A chat keeps the engine it started with. The connection's engine
+reads `opencode` only while the preview is on. See
+[the decision](../decisions/opencode-native-transport.md).
 
 An engine Station did not find reads **Not installed**. Its card shows the
 vendor's install command for the operating system Station runs on, with a copy
@@ -1091,6 +1123,110 @@ an engine's own credentials (see
 
 Live sign-in against real vendor accounts has not been verified; the flows are
 tested against a stand-in engine that speaks the same protocol.
+
+### Sign in to Kiro without kiro-cli
+
+Station lists three Kiro engines:
+
+| Engine | Runs | Who keeps the sign-in |
+|---|---|---|
+| **Kiro CLI** | `kiro-cli acp --agent-engine v2` | kiro-cli (`kiro-cli login`) |
+| **Kiro (KAS)** | `kiro-cli acp --agent-engine v3 --auth-method cli` | kiro-cli (`kiro-cli login`) |
+| **Kiro (KAS, no CLI)** | Kiro's agent service, installed by Station | Station |
+
+Both kiro-cli engines read their status from `kiro-cli whoami`, since it is
+the one login they share, and run with `KIRO_CLI_CLIENT_APPLICATION=station`.
+A saved `kiro` connection keeps its own arguments.
+
+**Kiro (KAS, no CLI)** needs neither kiro-cli nor a login on the computer:
+
+1. **Install.** Its Sign-in panel has **Install**, which says what is
+   downloaded. Station fetches the pinned manifest for Kiro's agent service
+   (`@kiro/agent` 0.66.104) and refuses it unless its sha256 matches the pin
+   recorded in Station, before fetching anything else. It then downloads the
+   engine and the Node runtime the manifest names for this computer, checks
+   each one's size and sha256, refuses any archive entry with an absolute
+   path, a `..` segment, a link out of the archive, or a path or link target
+   that passes through another link in the archive (a link target may still
+   use `..` inside the archive, as the Node runtime's `bin/npm` does), checks
+   the unpacked files again, and installs them read-only under
+   `<Station home>/engines/kiro-kas/0.66.104/`. A download that cannot be
+   written (a full disk, an unwritable directory) fails the install and
+   leaves nothing staged. Nothing updates on its own: a new version arrives
+   with a Station release. `station home backup` and update rollback skip
+   `engines/`, because each pinned version can be downloaded again. Until it
+   is installed, a chat and the engine's
+   **Not connected yet** card say "Kiro (KAS, no CLI) isn't installed yet".
+   Installing needs permission to operate Station on a paired device.
+   Until you sign in, a chat on this engine is held with **Sign in to Kiro
+   (KAS, no CLI) from its sign-in panel in Connections**, and the engines
+   list shows it as **Sign in required** even though the engine answers its
+   handshake. If Station cannot read that readiness, the row says it could
+   not verify the engine; other engines still list. Station's readiness reads the installed
+   runtime, not `PATH`. Removing the connection during a sign-in cancels it,
+   and nothing it was finishing is kept.
+2. **Sign in.** Choose **AWS Builder ID**, **IAM Identity Center** with
+   your company's start URL (`https://your-company.awsapps.com/start`) and
+   region, or **Google or GitHub**.
+   - Builder ID and Identity Center show a code and a link; open the link on
+     any device, enter the code and approve. Station registers its own AWS
+     sign-in client. For Identity Center, Station looks up the Kiro profile
+     the account may use.
+   - **Google or GitHub** opens Kiro's sign-in page, where you pick the
+     provider. The page sends the browser back to `http://localhost:<port>`
+     on the computer Station runs on, so it is offered only when your browser
+     is on that computer. Station decides from the request, as it does for
+     the operator's own browser: a loopback request that addressed loopback,
+     directly or through Station's UI proxy, counts; a forwarded, tailnet or
+     off-machine request does not, and the panel then says so and offers the
+     other two. A tunnel that re-dials loopback without forwarding headers
+     (an SSH forward) looks local, and its sign-in times out. Station listens on
+     `127.0.0.1` and `::1` for one answer, on the first of the ten ports Kiro
+     accepts (3128, 4649, 6588, 8008, 9091, 49153, 50153, 51153, 52153,
+     53153) that no other program holds on either address, so the browser's
+     `localhost` cannot reach another program. Only a request carrying this
+     attempt's state can end it, and it must come to Kiro's callback path;
+     any other request gets a 404 and the wait goes on. Station stops
+     listening once it has an answer, after five minutes, when you cancel, or
+     if the listening socket fails. It then exchanges the code (PKCE) at
+     Kiro's sign-in service and refreshes there. Station sends its own
+     User-Agent and no client id; the `redirect_from=kirocli` it puts on the
+     sign-in link is the portal's own parameter for this loopback flow. When
+     every port is in use, nothing comes back in time, or Kiro turns the
+     sign-in down, the panel says which.
+3. **Use it.** When the engine asks for a token, Station gives it the access
+   token and its expiry, never the refresh token, refreshing the token first
+   when fewer than three minutes are left. Requests for one connection share
+   one refresh, even across Station processes, and each request to AWS gives
+   up after 15 seconds. At most 30 issues an hour per connection may refresh
+   or hand out a new token; handing the engine the token it already has again
+   (every availability check and restart asks once) is not counted.
+   The sign-in is kept per connection, not per credential profile: a chat
+   started with another credential profile on this engine is refused.
+
+Station keeps this sign-in in `security/engine-host-auth.json` under the
+Station home (readable only by its owner), separate from engine keys, and
+records each sign-in, sign-out, issue and refusal without any value in
+`security/engine-host-auth-audit.jsonl`. The panel reads **Signed in**
+from that store without starting the engine, and does not repeat that the
+engine keeps its own sign-in on the computer. If Kiro stops accepting the
+saved sign-in, the panel says to sign in again. **Sign out** removes it.
+Removing the connection removes its sign-in and the MCP sign-ins the engine
+asked Station to keep (`_kiro/secret/*`). A [managed policy](managed-policy.md#engines)
+can turn this off with `limits.engines.engineHostAuth: "off"`.
+
+Starting, reading or cancelling the sign-in and signing out need
+`engine:login`, like any engine sign-in. Station only answers an engine's
+token request for a built-in engine launched with the arguments that make it
+ask; a custom command running the same program gets no token (see
+[the decision](../decisions/engine-credential-provider.md)).
+
+A real install was run on 2026-11-13 (macOS, Apple silicon): about 55 MB
+downloaded (the engine and the Node runtime), both matching the pinned
+manifest, installed read-only, and the engine answered `initialize`. Not
+verified: a real Kiro sign-in with any identity, including whether Kiro's
+sign-in service accepts Station's User-Agent for Google or GitHub. Sign-in is
+tested against local stand-ins for AWS sign-in and Kiro's portal and service.
 
 ---
 
@@ -1383,8 +1519,9 @@ server's environment, the connection `env`, the profile overlay, the profile's
 own config-home key, then Station's engine temp directory
 ([resolver](../../src-server/providers/app-home/credential-profile-env.ts)). The profile is the
 one an Agent pins, the one credential recovery is trying, or else the
-connection's active profile. The overlay reaches Claude Code and Codex session
-starts and Codex quota reads for that profile. It is not applied to model
+connection's active profile. The overlay reaches Claude Code, Codex and Muse
+session starts and Codex quota reads for that profile. Muse has no connection
+`env` layer, and its profile's config-home key is `XDG_CONFIG_HOME`. It is not applied to model
 discovery, adopted sessions and source-home resumes, login readiness checks,
 login/enrolment into the profile, or the per-profile usage read
 (`GET /api/connections/agent/<engine>/credential-usage`), which reads the

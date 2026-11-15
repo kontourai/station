@@ -315,6 +315,34 @@ export async function fulfillStationShellRead(
     await route.abort();
     return true;
   }
+  // #4794: the sidebar lists the expanded Project's channels and Task rooms.
+  // These shells never open a Project's room, so it has no channels yet (the
+  // store answers an empty list until the room opens), and they create no
+  // Tasks; with nothing to ask about, no read-marker summary follows. A
+  // journey with channels or Tasks routes these reads itself.
+  if (
+    request.method() === 'GET' &&
+    /^\/api\/projects\/[^/]+\/channels$/.test(path)
+  ) {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, data: { channels: [] } }),
+    });
+    return true;
+  }
+  if (
+    request.method() === 'GET' &&
+    path === '/api/tasks' &&
+    new URL(request.url()).searchParams.has('projectId')
+  ) {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true, data: [] }),
+    });
+    return true;
+  }
   if (
     request.method() === 'GET' &&
     path.startsWith(CONVERSATION_PULL_REQUESTS)

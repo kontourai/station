@@ -49,9 +49,7 @@ export function ProjectSidebarNav({
     // `main` holds one surface. #1582 D4 made this row a pressed toggle
     // because it placed the surface in a DOCK beside whatever page was
     // current and never navigated; it now navigates, so it takes the
-    // current-page state and no longer reports `aria-pressed`. A docked
-    // Activity is a pane beside the page — its dock region's toolbar toggle
-    // and ⌘⇧A carry that state, not this row.
+    // current-page state and no longer reports `aria-pressed`.
     const isCurrent = destination.regionSurface
       ? (activePath ?? window.location.pathname) === '/' &&
         regionModel?.regions.main.occupant === destination.regionSurface

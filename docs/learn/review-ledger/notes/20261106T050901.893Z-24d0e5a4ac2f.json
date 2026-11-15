@@ -1,7 +1,0 @@
-{
-  "revision": "84420fcf649dff777688d5f4625b37a85d73ac87",
-
-  "notes": [
-    {"path":"docs/guides/desktop-build.md","note":"Merged current main without dropping either runtime policy: retained ConPTY beta.17 asset inventory and native-versus-installed-shell evidence limits alongside upstream Flow Agents and koffi pruning rules. Inspected scripts/lib/desktop-server-runtime.mjs rules and executed all seven desktop-runtime-pruning owner tests. No native shell launch or package build in this merge refresh.","inputs":["docs/guides/desktop-build.md"]}
-  ]
-}

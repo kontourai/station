@@ -1,7 +1,0 @@
-{
-  "revision": "0ca2bb04b92d9953b562b8ca1e9ae932b34d1f6e",
-
-  "notes": [
-    {"path":"docs/reference/session-api.md","note":"Reviewed announced-start acceptance through SessionCommandModule and OrchestrationService: built-in queues synchronously notify enqueue, while only an appended session.started confirms creation. Consumer-lag regressions cover EchoingAdapter and real StationAgentAdapter; pre-fix and consume-only mutation each fail all four cases, repaired tests pass. Deferred adapters and the five-second indeterminate publication boundary remain unchanged; no provider/release qualification claimed.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/orchestration-service.ts"]}
-  ]
-}

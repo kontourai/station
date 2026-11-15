@@ -1,0 +1,13 @@
+{
+  "revision": "625aa38bee7d804e47aaa38fa819f4914ef6917d",
+
+  "notes": [
+    {"path":"docs/guides/documentation-review-ledger.md","note":"documentation-impact.mjs delta reviewed: to map changed files to shipped MCP topic ids it now reads only the four topic sources (STATION_DOCS_TOPIC_INPUT_PATHS), not corpus.json, which feeds only the bundle's identity and synonyms. A corpus.json change still counts as a docs MCP input and still asks to regenerate (documentation-impact.test.ts). No report field, action or limit changes. Its description (the report follows recorded source dependencies and names related shipped MCP topics; docs:impact usage; corpus-content.json relationships) still holds; nothing it states changes.","inputs":["docs/guides/documentation-review-ledger.md","scripts/documentation-impact.mjs"]},
+
+    {"path":"docs/guides/documentation.md","note":"documentation-impact.mjs delta reviewed: to map changed files to shipped MCP topic ids it now reads only the four topic sources (STATION_DOCS_TOPIC_INPUT_PATHS), not corpus.json, which feeds only the bundle's identity and synonyms. A corpus.json change still counts as a docs MCP input and still asks to regenerate (documentation-impact.test.ts). No report field, action or limit changes. Its docs:impact and regeneration guidance (lines 76, 95, 198, 232) still holds, as does the Station Docs paragraph naming corpus.json as the bundle's identity, builtOn and synonyms source.","inputs":["docs/guides/documentation.md","scripts/documentation-impact.mjs"]},
+
+    {"path":"docs/learn/README.md","note":"documentation-impact.mjs delta reviewed: to map changed files to shipped MCP topic ids it now reads only the four topic sources (STATION_DOCS_TOPIC_INPUT_PATHS), not corpus.json, which feeds only the bundle's identity and synonyms. A corpus.json change still counts as a docs MCP input and still asks to regenerate (documentation-impact.test.ts). No report field, action or limit changes. Its docs:impact commands still behave as described; nothing it states changes.","inputs":["docs/learn/README.md","scripts/documentation-impact.mjs"]},
+
+    {"path":"docs/reference/station-docs.md","note":"generate-station-docs.mjs delta reviewed: it now names its two input sets, the four topic sources and those plus corpus.json, and reads corpus.json unconditionally (a missing file still fails the build). The generated bundle is byte-identical (docs:mcp:check passes). The manual's description of the docs tools still holds.","inputs":["docs/reference/station-docs.md","scripts/generate-station-docs.mjs"]}
+  ]
+}

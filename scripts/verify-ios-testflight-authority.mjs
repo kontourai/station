@@ -10,7 +10,7 @@ export function verifyIosTestFlightAuthority({
   resolveRef,
 }) {
   const isReleaseAuthority =
-    /^refs\/tags\/(v\d+\.\d+\.\d+(?:-preview\.\d+)?|nightly-version-code\/\d+)$/.test(
+    /^refs\/tags\/(v\d+\.\d+\.\d+(?:-rc\.[1-9]\d*)?|nightly-version-code\/\d+)$/.test(
       sourceRef,
     );
   if (!isReleaseAuthority) parseInternalTestFlightAuthorityRef(sourceRef);

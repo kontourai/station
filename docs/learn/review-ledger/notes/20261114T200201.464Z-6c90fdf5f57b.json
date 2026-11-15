@@ -1,0 +1,7 @@
+{
+  "revision": "6e49fa9310a882aede8be25ba219cf9491852110",
+
+  "notes": [
+    {"path":"docs/design/acp-chat-architecture.md","note":"Re-read after the ACP guide's resume step gained the reapply-refusal sentence: this design describes session/load resume and defers per-engine detail to the guide; nothing here states how a reapplied model or effort is handled, so no claim changed.","inputs":["docs/design/acp-chat-architecture.md","docs/guides/acp.md"]}
+  ]
+}

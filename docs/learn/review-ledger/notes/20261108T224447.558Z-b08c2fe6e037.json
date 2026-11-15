@@ -1,7 +1,0 @@
-{
-  "revision": "6d28ac92dd04c66ec3f91bdfc6c63adf59f5426f",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"Scoped review of the committed Composer-only change c1991837 and documentation checkpoint 6d28ac92dd04. Traced ordinary human messages through TaskRoomComposer and the scoped SDK mutation to the existing captured transport authority and expected Task incarnation; conditional focus restoration adds no new transport, history body, worker or review surface. The module-map ownership and authority/incarnation statements remain accurate, so no prose edit is needed. AUTHOR84 retained 53 green, three intended focus failures with 50 passes on the original product, then exact restoration to 53 green. The jsdom body-focus precondition proves controlled recovery mechanics only. Chrome focus at 100/500ms, real persistence, devices and release remain unverified; unrelated module and provider claims are not renewed.","inputs":["docs/architecture/module-map.md","src-ui/src/workspace-panes/TaskRoomComposer.tsx"]}
-  ]
-}

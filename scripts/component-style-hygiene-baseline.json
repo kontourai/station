@@ -484,14 +484,6 @@
       "bespoke-action:\"chat-dock-inbox__row-action inbox-row__action\"": 4,
       "bespoke-action:\"menu-row action-overflow__row--danger\"": 1
     },
-    "src-ui/src/components/chat-dock/ChatDockProjectContext.css": {
-      "legacy-token:--border-primary": 1,
-      "legacy-token:--radius-md": 2,
-      "legacy-token:--text-secondary": 1,
-      "legacy-token:--text-sm": 1,
-      "legacy-token:--bg-tertiary": 1,
-      "legacy-token:--text-primary": 1
-    },
     "src-ui/src/components/chat-dock/ChatInboxHoverCard.css": {
       "legacy-token:--bg-secondary": 1,
       "legacy-token:--border-primary": 4,
