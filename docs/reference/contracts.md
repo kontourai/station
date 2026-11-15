@@ -1130,6 +1130,7 @@ non-retryable.
 | `muse-terminal-not-completed` | `provider_error` | `false` |
 | `muse-turn-idle-timeout` | `timeout` | `true` |
 | `muse-turn-timeout` | `timeout` | `true` |
+| `opencode_serve_denied_path` | `permission_denied` | `false` |
 | `principal_unresolved` | `auth` | `false` |
 | `project_identity_not_prepared` | `input_unsupported` | `false` |
 | `managed-policy-approval-ceiling` | `permission_denied` | `false` |
