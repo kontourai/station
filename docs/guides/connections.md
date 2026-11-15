@@ -424,8 +424,11 @@ manual retry, a credential change or the network returning. It also checks
 whenever the app returns to the foreground. The app's own supervised local
 Station is not probed, so its row has no check time.
 
-After you choose a Station, the app names it, its address and the step it is
-on while it verifies access. If that takes longer than six seconds, it says it
+After you choose a Station, the app shows the launch screen's mark and
+animation with "Connecting to" the Station's name, its address, and the step it
+is on: checking access, then (in the desktop and phone apps) loading its data,
+then any later preparation such as loading your preferences, each named as it
+starts. If checking access takes longer than six seconds, it says it
 has had no answer and offers **Try again**, **Back to** the Station most
 recently used before it, and **Manage Stations**, instead of waiting out the
 request deadline. In the desktop and phone apps, a Station that answered but is
