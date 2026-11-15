@@ -3580,3 +3580,34 @@ for (const [label, raw] of [
     expect(fs.readFileSync(join(dirname(path), claimed!), 'utf8')).toBe(raw);
     await unavailable(response);
   });
+
+test('members (#4799): only a current room reader may list, and the list is active people with id, name and kind only', async () => {
+  const h = await harness('viewer');
+  // A viewer may list: it already reads this Project's rooms.
+  const listed = (await data(await h.request('bob', '/members'))) as {
+    members: Record<string, unknown>[];
+  };
+  expect(listed.members).toHaveLength(2);
+  for (const entry of listed.members)
+    expect(Object.keys(entry).sort()).toEqual(['displayName', 'id', 'kind']);
+  // Someone with no membership is refused, never shown the roster.
+  const stranger = await h.app.request('/api/projects/example/room/members', {
+    headers: { authorization: 'Bearer mallory-session' },
+  });
+  expect(stranger.status).toBe(403);
+  expect(await stranger.text()).not.toContain('Alice');
+  // A revoked member is refused too, and no longer listed for anyone.
+  h.revokeMember();
+  const revoked = await h.request('bob', '/members');
+  expect(revoked.status).toBe(403);
+  expect(await revoked.text()).not.toContain('Alice');
+  const after = (await data(await h.request('alice', '/members'))) as {
+    members: { id: string }[];
+  };
+  expect(after.members.map((m) => m.id)).toEqual([owner.id]);
+  // The same holds on a named channel's address.
+  const general = await h.discover('alice');
+  expect(
+    (await api(h, 'bob', `/channels/${general.roomId}/members`)).status,
+  ).toBe(403);
+});
