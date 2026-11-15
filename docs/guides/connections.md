@@ -867,6 +867,7 @@ on this computer's `PATH`; detection does not mean it is signed in or ready.
 | Grok Build | `grok agent stdio` | Agent Client Protocol |
 | Mistral Vibe | `vibe-acp` | Agent Client Protocol |
 | Google Antigravity | `agy acp --process-per-session` | Agent Client Protocol; needs Antigravity CLI 1.5.0 or later, and Station names an older install and says to run `agy update` |
+| Gemini CLI | `gemini --acp` | Agent Client Protocol. Since June 18, 2026 Google serves Gemini CLI only to paid Gemini API keys and Gemini Code Assist Standard or Enterprise. Sign in with Google (Station shows Gemini CLI's terms beside it) or save a `GEMINI_API_KEY`. Gemini CLI uses its saved sign-in first and the key only when none is saved |
 | Factory Droid | `droid exec --output-format acp-daemon` | Agent Client Protocol |
 | Hermes Agent | `hermes acp` | Agent Client Protocol |
 | pi | `pi-acp` | Agent Client Protocol through the community `pi-acp` bridge, which does not pass Station tool servers and has no model switching |
