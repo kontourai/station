@@ -375,7 +375,7 @@ jobs:
           repair=()
           if [ '${{ inputs.allow_published_pointer_repair }}' = true ] || [ '${{ inputs.repair_app_store_feed_only }}' = true ]; then repair=(--repair-receipt "$RUNNER_TEMP/release-promotion-repair/station-release-promotion.json"); fi
           result=$(node release-policy/scripts/release-promotion.mjs apply --plan "$RUNNER_TEMP/release-promotion-plan.json" --assets-dir release-assets --journal "$RUNNER_TEMP/release-promotion-journal.json" --receipt-output "$RUNNER_TEMP/station-release-promotion.json" "${repair[@]}")
-          RESULT="$result" node -e 'const r=JSON.parse(process.env.RESULT); require("node:fs").appendFileSync(process.env.GITHUB_OUTPUT,`repair_only=${r.repairOnly}\n`);'
+          RESULT="$result" node -e 'const r=JSON.parse(process.env.RESULT); require("node:fs").appendFileSync(process.env.GITHUB_OUTPUT,"repair_only="+r.repairOnly+"\n");'
       - name: Attest the producer-to-publication transfer receipt
         if: needs.resolve.outputs.mode == 'promote' && steps.promotion.outputs.repair_only != 'true'
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
