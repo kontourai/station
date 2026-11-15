@@ -1,0 +1,29 @@
+{
+  "revision": "3c4f94e7a070701355676b8f67649785106680b9",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"#4800: responsive-action-surfaces.txt gains one row, src-ui/src/components/room/RoomAgentActivity.tsx (covered: one shared Button; 44px floor in the compact list). This guide's rules and owners are unchanged; prose unchanged.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt","packages/sdk/src/index.ts","packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"#4800: responsive-action-surfaces.txt gains one row, src-ui/src/components/room/RoomAgentActivity.tsx (covered: one shared Button; 44px floor in the compact list). No theming claim involves it; prose unchanged.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt","packages/sdk/src/index.ts","packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"#4800: responsive-action-surfaces.txt gains one row, src-ui/src/components/room/RoomAgentActivity.tsx (covered: one shared Button; 44px floor in the compact list). No backend pattern involves it; prose unchanged.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"#4800: responsive-action-surfaces.txt gains one row, src-ui/src/components/room/RoomAgentActivity.tsx (covered: one shared Button; 44px floor in the compact list). The inventory rule this document states is followed; prose unchanged.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt","packages/sdk/src/index.ts","packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"#4798: projectRooms.ts only had its exports organized (a blank line) and useProjectRoomLiveCapability made private; sdk.md does not name that hook. The live hub paragraph stays accurate; prose unchanged.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-domains/projectRooms.ts"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"#4800: ProjectTaskRoomConversation.tsx shows a working live participant in an execution's thread summary. Opened the PNG: it shows the Task's Plan tab, not the conversation, so nothing in it changes.","inputs":["docs/learn/media/shared-task-document.png","src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"#4799: NotificationsPage.tsx mounts For you, which renders nothing without person mentions. Opened the PNG: an approval request on a page with no mentions, so nothing in it changes.","inputs":["docs/learn/media/inspect-request.png","src-ui/src/pages/NotificationsPage.tsx"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"#4799: NotificationsPage.tsx mounts For you, which renders nothing without person mentions; the same flow as inspect-request.png, which was opened and is unaffected.","inputs":["docs/learn/media/inspect-request.webm","src-ui/src/pages/NotificationsPage.tsx"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"#4799: runtime-routes.ts gains only the Project room mention notifier wiring; nothing on the sign-in or step-up path this capture shows.","inputs":["docs/learn/media/operator-s4-before-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"#4799: runtime-routes.ts gains only the Project room mention notifier wiring; nothing on the sign-in or step-up path this capture shows.","inputs":["docs/learn/media/operator-s4-after-sign-in.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"#4799: runtime-routes.ts gains only the Project room mention notifier wiring; nothing on the sign-in or step-up path this capture shows.","inputs":["docs/learn/media/operator-s4-step-up-review.png","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"#4799: runtime-routes.ts gains only the Project room mention notifier wiring; nothing on the sign-in or step-up path this capture shows.","inputs":["docs/learn/media/operator-s4-after-step-up.png","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}
