@@ -36,7 +36,9 @@ vi.mock('node:fs/promises', async (importOriginal) => {
       const descriptor = await actual.open(...args);
       if (
         typeof args[0] === 'string' &&
-        /\/receipts\/[0-9a-f]{64}\.json\..+\.tmp$/.test(args[0])
+        /\/receipts\/[0-9a-f]{64}\.json\..+\.tmp$/.test(
+          args[0].replaceAll('\\', '/'),
+        )
       ) {
         const sync = descriptor.sync.bind(descriptor);
         descriptor.sync = async () => {
