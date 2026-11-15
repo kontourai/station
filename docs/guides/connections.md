@@ -2509,7 +2509,11 @@ corrects two source-confirmed lifecycle errors in that exact upstream release:
 rejected goodbye could skip socket shutdown. The patch propagates probe and
 announcement failure (including empty or partially failed send sets) to the caller,
 closes sockets in shutdown's `finally`, and prevents pending binds from escaping
-shutdown. An owner withdraws its own service before releasing a shared responder.
+shutdown. It also removes the package's import-time `source-map-support/register`,
+which replaced the server's stack-trace formatter: the first stack read then
+parsed and cached the whole server bundle's source map, about 690 MB of heap
+held for the life of the process
+([test](../../src-server/services/connections/__tests__/ciao-stack-trace.test.ts)). An owner withdraws its own service before releasing a shared responder.
 The [installed-package UDP tests](../../src-server/services/connections/__tests__/ciao-lifecycle.test.ts)
 exercise those contracts through the real dependency. No runtime private fields
 or DNS record overrides are used. Interface changes are checked every five
