@@ -52,6 +52,7 @@ import {
 
 export type { ApiRequestScope } from '../client/http';
 export * from '../client/project-rooms';
+
 /**
  * Whether this Station serves one live stream for a Project's rooms, typing
  * and person mentions (#4798, #4799). Read once per Station.
