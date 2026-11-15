@@ -1122,7 +1122,9 @@ describe('orchestration-session-state', () => {
     expect(adapter.startSession).not.toHaveBeenCalled();
 
     governable = true;
-    await expect(startRecovered({ session, adapter, options })).resolves.toEqual(
+    await expect(
+      startRecovered({ session, adapter, options }),
+    ).resolves.toEqual(
       expect.objectContaining({ threadId: 'thread-governance' }),
     );
     expect(adapter.startSession).toHaveBeenCalledTimes(1);
