@@ -105,6 +105,10 @@
       "count": 2,
       "reason": "The toast stack's small-screen box (safe-area gutters, a viewport-bounded height) and its dismiss touch target."
     },
+    "src-ui/src/components/notifications/NotificationStationOpener.css": {
+      "count": 1,
+      "reason": "The notification-open notice is a fixed overlay like the toast stack; on a phone it stands just above the collapsed dock instead of over the route's top controls (Home's start composer)."
+    },
     "src-ui/src/components/notifications/NotificationHistory.css": {
       "count": 1,
       "reason": "prefers-reduced-motion. Keeps `animation: none` because the dismiss-collapse animation is `forwards`: under the motion primitive alone the row would snap to `opacity: 0.35` instead of staying legible."
