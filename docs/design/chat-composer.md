@@ -985,11 +985,12 @@ During a turn the mode picker is the trailing segment of Send, one split
 control that takes Send's accent while Send is ready. With no turn, Send alone
 sits at the row's trailing edge. On mobile, Send is an arrow and its mode
 picker a chevron. They appear once the
-composer holds text, an attachment or quoted context; their geometry stays
-reserved while hidden, so editing does not move Stop or the other toolbar
-controls. On mobile, Stop therefore follows them, at the row's trailing edge;
-before them it sat beside an empty reserved gap. At 390px a running turn's full
-row (Clear, Send, mode picker and Stop) still wraps to a second line. Names and the selected mode remain accessible, and the opened picker
+composer holds text, an attachment or quoted context. Until then they take no
+room, so Run setup keeps the width an empty draft has no use for. On mobile,
+Stop follows them at the row's trailing edge, so it does not move when they
+appear; Run setup narrows instead. At 390px a running turn's full row (Clear,
+Send, mode picker and Stop) still wraps to a second line once the draft holds
+text. Names and the selected mode remain accessible, and the opened picker
 uses explicit Queue and Steer labels. Stop stays visible throughout the turn. Its mode
 picker defaults to **Steer** where the selected engine can prove native mid-turn
 input, and to **Queue** (a new turn after the entire current turn finishes)

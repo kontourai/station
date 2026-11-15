@@ -1,0 +1,17 @@
+{
+  "revision": "41f80d78659ea51b1aad1bb3a5a6e572fffa8509",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Only the concealed phone submit group changed from visibility:hidden to display:none. Checked citing pages: none claim the empty-draft Send slot is reserved; chat-composer.md was updated.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Only the concealed phone submit group changed from visibility:hidden to display:none. Checked citing pages: none claim the empty-draft Send slot is reserved; chat-composer.md was updated.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/placement.md","note":"Only the concealed phone submit group changed from visibility:hidden to display:none. Checked citing pages: none claim the empty-draft Send slot is reserved; chat-composer.md was updated.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/station-connection.md","note":"Only the concealed phone submit group changed from visibility:hidden to display:none. Checked citing pages: none claim the empty-draft Send slot is reserved; chat-composer.md was updated.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Only the concealed phone submit group changed from visibility:hidden to display:none. Checked citing pages: none claim the empty-draft Send slot is reserved; chat-composer.md was updated.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"Only the concealed phone submit group changed from visibility:hidden to display:none. Checked citing pages: none claim the empty-draft Send slot is reserved; chat-composer.md was updated.","inputs":["src-ui/src/components/chat/chat.css"]}
+  ]
+}

@@ -26,7 +26,7 @@ function words(tokens: readonly WalkthroughToken[]) {
   };
   for (const token of tokens) {
     for (const character of token.text) {
-      if (/[\p{L}\p{N}'’]/u.test(character)) {
+      if (/[\p{L}\p{N}'\u2019]/u.test(character)) {
         if (!word) tMs = token.tMs;
         word += character;
       } else flush();
