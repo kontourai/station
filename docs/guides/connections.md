@@ -1477,7 +1477,10 @@ receive the connection's `env`; they use the selected profile's config home
 over the process environment. Changing `configHome` does not migrate existing
 history. Ordinary resumes resolve the current connection/profile environment,
 so changing it can make an older transcript unavailable. Adopted sessions with
-a recorded source-home binding follow that binding instead. Saving silently
+a recorded source-home binding follow that binding instead. Station also lists
+Codex conversations found in the connection's config home and in each
+profile's home, not only in `CODEX_HOME`, and continues one in the home it was
+found in ([conversations started outside Station](../user/getting-started.md#see-conversations-started-outside-station)). Saving silently
 drops invalid `env` entries, including values containing
 NUL or longer than 32,768 JavaScript string code units. It retains at most the
 first 64 valid entries. These rules are also applied when spawning from

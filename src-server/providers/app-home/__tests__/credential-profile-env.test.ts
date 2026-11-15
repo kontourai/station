@@ -1,8 +1,10 @@
 import { existsSync } from 'node:fs';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { appHomeProfileDir } from '../app-home-profiles.js';
 import {
   CredentialProfileEnvUnavailableError,
+  configuredEngineHomes,
   createCredentialProfileAppHomeEnvResolver,
   credentialProfileRoutingFingerprint,
   credentialProfilesRouteAlike,
@@ -185,5 +187,47 @@ describe('credential profile env resolver (#2966)', () => {
     expect(credentialProfileRoutingFingerprint({ env: { A: '1' } })).not.toBe(
       credentialProfileRoutingFingerprint({ env: { A: '2' } }),
     );
+  });
+});
+
+describe('configuredEngineHomes', () => {
+  test('lists the connection home, the legacy app home and every profile home without creating them', async () => {
+    const homeDir = await tempHome();
+    const homes = await configuredEngineHomes({
+      engine: 'codex',
+      homeDir,
+      loadConnectionSettings: async () => ({
+        config: { configHome: '/srv/codex-home', useAppHome: true },
+        credentialRecovery: {
+          profiles: [{ ref: 'work' }, { ref: 'personal' }],
+        },
+      }),
+    });
+
+    // An explicit configHome outranks useAppHome, so no legacy app home.
+    expect(homes).toEqual([
+      '/srv/codex-home',
+      credentialProfileAppHomeDir('codex', 'work', homeDir),
+      credentialProfileAppHomeDir('codex', 'personal', homeDir),
+    ]);
+    expect(
+      existsSync(credentialProfileAppHomeDir('codex', 'work', homeDir)),
+    ).toBe(false);
+
+    const legacy = await configuredEngineHomes({
+      engine: 'codex',
+      homeDir,
+      loadConnectionSettings: async () => ({ config: { useAppHome: true } }),
+    });
+    expect(legacy).toEqual([appHomeProfileDir('codex', homeDir)]);
+    expect(existsSync(appHomeProfileDir('codex', homeDir))).toBe(false);
+
+    expect(
+      await configuredEngineHomes({
+        engine: 'codex',
+        homeDir,
+        loadConnectionSettings: async () => undefined,
+      }),
+    ).toEqual([]);
   });
 });

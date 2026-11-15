@@ -1200,7 +1200,11 @@ Station looks in four places:
 - Claude Code transcripts under `projects` in `CLAUDE_CONFIG_DIR`, or
   `~/.claude` when that is not set.
 - Codex sessions under `sessions` in `CODEX_HOME`, or `~/.codex` when that is
-  not set.
+  not set, and in every other Codex home Station itself runs Codex in: the
+  Codex connection's config home, its Station app home, and each credential
+  profile's home. A conversation found in more than one of them is listed
+  once, under the first in that order. Continuing one runs Codex in the home
+  it was found in, with that home's account.
 - Grok Build sessions under `sessions` in `GROK_HOME`, or `~/.grok` when that
   is not set. A Grok session appears once it has a prompt. A subagent's own
   session is not listed separately, and neither is a Grok chat you started in
@@ -1220,9 +1224,11 @@ Station looks in four places:
 `STATION_EXTERNAL_CLAUDE_SOURCE_ROOT`, `STATION_EXTERNAL_CODEX_SOURCE_ROOT`,
 `STATION_EXTERNAL_GROK_SOURCE_ROOT` and `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT`
 point Station at a different folder (for OpenCode, the folder holding the
-database). Station checks every two seconds and reads the 128 most recently
-changed conversations from each place. Older ones stay in history once Station
-has read them, but new messages in them are not picked up until they are among
+database). With `STATION_EXTERNAL_CODEX_SOURCE_ROOT` set, that folder is the
+only Codex home Station reads. Station checks every two seconds and reads the
+128 most recently changed conversations from each place (all Codex homes
+together count as one place). Older ones stay in history once Station has read
+them, but new messages in them are not picked up until they are among
 the 128 again. Conversations Station has not listed before appear only after it
 finishes restoring its own sessions at startup; if that restore fails, already
 listed conversations keep updating but new ones wait until Station restarts.

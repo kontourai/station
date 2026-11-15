@@ -1647,7 +1647,15 @@ That home therefore also supplies the continued process's account/configuration.
 Claude continuation requires the source home to match the SDK's globally
 configured home; an independently overridden observation root is not enough.
 Without an override, observation uses `CODEX_HOME` or `CLAUDE_CONFIG_DIR`, then
-the engine's default home directory. `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT`
+the engine's default home directory. Codex observation also reads the homes
+Station runs Codex in ([`configuredEngineHomes`](../../src-server/providers/app-home/credential-profile-env.ts):
+the connection's config home, the legacy app home and every credential-profile
+home), unless `STATION_EXTERNAL_CODEX_SOURCE_ROOT` is set. Each home has its
+own source affinity, so continuation resumes in the home the rollout was found
+in; a native session id found in several homes gets one descriptor, from the
+first home in that order. The affinity resolves only for a home the latest
+discovery listed, so continuing a profile-home session waits for the first
+discovery after a restart. `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT`
 selects the folder holding OpenCode's session database for observation only;
 OpenCode sessions have no continuation. See the
 [Codex adapter](../../src-server/providers/adapters/codex-adapter.ts) and

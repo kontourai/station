@@ -177,6 +177,7 @@ import { runMuseSchemaCommand } from '../../providers/adapters/muse-serve-schema
 import { OllamaAdapter } from '../../providers/adapters/ollama-adapter.js';
 import {
   type CredentialProfileAppHomeEnvOptions,
+  configuredEngineHomes,
   createCredentialProfileAppHomeEnvPeek,
   createCredentialProfileAppHomeEnvResolver,
 } from '../../providers/app-home/credential-profile-env.js';
@@ -899,7 +900,17 @@ export class StationRuntime {
   private host?: string;
   private approvalRegistry: ApprovalRegistry;
   private readonly claudeTranscriptSource = new ClaudeTranscriptSessionSource();
-  private readonly codexRolloutSource = new CodexRolloutSessionSource();
+  // Discovery also reads the Codex homes Station points its own sessions at
+  // (connection config home, app home, credential profiles), so a session
+  // run under one of them is found and continues in that same home.
+  private readonly codexRolloutSource = new CodexRolloutSessionSource({
+    listConfiguredHomes: () =>
+      configuredEngineHomes({
+        engine: 'codex',
+        loadConnectionSettings: async () =>
+          (await this.configLoader.loadAppConfig()).agentConnections?.codex,
+      }),
+  });
   private readonly openCodeSessionSource = new OpenCodeSessionSource();
   private bedrockAdapter = new BedrockAdapter();
   // The Claude adapter's app-home settings and connection-launch resolver,

@@ -151,6 +151,16 @@ describe('CodexRolloutSessionSource', () => {
         ).sessions,
       ).toHaveLength(1);
       expect(process.env.CODEX_HOME).toBe(authenticatedHome);
+      // Nor any home Station configures.
+      const listConfiguredHomes = vi.fn(async () => [authenticatedHome]);
+      expect(
+        (
+          await new CodexRolloutSessionSource({
+            listConfiguredHomes,
+          }).discover()
+        ).sessions,
+      ).toHaveLength(0);
+      expect(listConfiguredHomes).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllEnvs();
     }
@@ -783,6 +793,105 @@ describe('CodexRolloutSessionSource', () => {
     const discovery = await firstSource.discover();
     expect(discovery.outcome).toBe('rejected_candidate');
     expect(discovery.sessions).toHaveLength(1);
+  });
+
+  test('discovers every configured Codex home, one descriptor per native id, and resolves each affinity to its own home', async () => {
+    const defaultHome = fixtureRoot();
+    const profileHome = fixtureRoot();
+    const turn = (prompt: string) =>
+      [
+        envelope('event_msg', { type: 'task_started', turn_id: 't1' }),
+        envelope('event_msg', { type: 'user_message', message: prompt }),
+      ]
+        .map(line)
+        .join('');
+    writeFileSync(
+      rolloutPath(defaultHome),
+      line(meta('default-only')) + turn('in default'),
+    );
+    writeFileSync(
+      rolloutPath(profileHome),
+      line(meta('profile-only')) + turn('in profile'),
+    );
+    // The same conversation copied into both homes is one session.
+    writeFileSync(
+      rolloutPath(defaultHome, 'shared.jsonl'),
+      line(meta('shared')) + turn('shared'),
+    );
+    writeFileSync(
+      rolloutPath(profileHome, 'shared.jsonl'),
+      line(meta('shared')) + turn('shared'),
+    );
+    let configured: string[] = [profileHome, profileHome];
+    const source = new CodexRolloutSessionSource({
+      homeDir: defaultHome,
+      listConfiguredHomes: async () => configured,
+    });
+    const discovery = await source.discover();
+    expect(discovery.outcome).toBe('ok');
+    const byId = new Map(discovery.sessions.map((s) => [s.sessionId, s]));
+    expect([...byId.keys()].sort()).toEqual([
+      'default-only',
+      'profile-only',
+      'shared',
+    ]);
+    expect(discovery.sessions).toHaveLength(3);
+
+    const defaultOnly = byId.get('default-only')!;
+    const profileOnly = byId.get('profile-only')!;
+    expect(profileOnly.affinity).not.toEqual(defaultOnly.affinity);
+    expect(source.resolveSourceHome(profileOnly.affinity)).toBe(
+      realpathSync(profileHome),
+    );
+    expect(source.resolveSourceHome(defaultOnly.affinity)).toBe(
+      realpathSync(defaultHome),
+    );
+    // The earliest home owns a shared id: the default home, with the thread id
+    // a single-home source gives it.
+    const shared = byId.get('shared')!;
+    expect(shared.affinity).toEqual(defaultOnly.affinity);
+    const defaultAlone = await new CodexRolloutSessionSource({
+      homeDir: defaultHome,
+    }).discover();
+    expect(
+      defaultAlone.sessions.find((s) => s.sessionId === 'shared')?.threadId,
+    ).toBe(shared.threadId);
+
+    const read = await drain(source, profileOnly);
+    expect(JSON.stringify(read.events)).toContain('in profile');
+
+    // A home Station no longer configures stops resolving after rediscovery.
+    configured = [];
+    const narrowed = await source.discover();
+    expect(narrowed.sessions.map((s) => s.sessionId).sort()).toEqual([
+      'default-only',
+      'shared',
+    ]);
+    expect(source.resolveSourceHome(profileOnly.affinity)).toBeNull();
+  });
+
+  test('a failing or oversized home list keeps the default home and reports the limit', async () => {
+    const defaultHome = fixtureRoot();
+    writeFileSync(rolloutPath(defaultHome), line(meta('default')));
+    const failing = new CodexRolloutSessionSource({
+      homeDir: defaultHome,
+      listConfiguredHomes: async () => {
+        throw new Error('config unreadable');
+      },
+    });
+    expect((await failing.discover()).sessions.map((s) => s.sessionId)).toEqual(
+      ['default'],
+    );
+
+    const extra = fixtureRoot();
+    writeFileSync(rolloutPath(extra), line(meta('extra')));
+    const capped = await new CodexRolloutSessionSource({
+      homeDir: defaultHome,
+      maxHomes: 1,
+      listConfiguredHomes: async () => [extra, 'relative/home'],
+    }).discover();
+    expect(capped.outcome).toBe('candidate_limit');
+    expect(capped.sessions.map((s) => s.sessionId)).toEqual(['default']);
   });
 
   test('bounds traversal, yields while parsing, and rejects unsafe option expansion', async () => {

@@ -20,6 +20,7 @@
 import {
   appHomeActive,
   type ConnectionEnvEngine,
+  connectionSpawnEnv,
   validateCredentialProfileEnv,
 } from '../../services/connections/connection-env.js';
 import { errorMessage } from '../../utils/error-message.js';
@@ -164,6 +165,55 @@ export function createCredentialProfileAppHomeEnvPeek(
       locateCredentialProfileAppHome(options.engine, profileRef, homeOptions),
     legacyHome: () => locateAppHomeProfile(options.engine, homeOptions),
   });
+}
+
+const CONFIG_HOME_ENV_KEY: Record<ConnectionEnvEngine, string> = {
+  claude: 'CLAUDE_CONFIG_DIR',
+  codex: 'CODEX_HOME',
+};
+
+/**
+ * Every engine home Station itself points this engine's sessions at, beyond
+ * the default (`CODEX_HOME`/`~/.codex`): the connection's own config home,
+ * the legacy app home when `useAppHome` is on, and each saved credential
+ * profile's home. Paths only, located without creating anything; a home
+ * that cannot be located is left out. Read by transcript discovery, which
+ * must find sessions wherever Station started them.
+ */
+export async function configuredEngineHomes(
+  options: Pick<
+    CredentialProfileAppHomeEnvOptions,
+    'loadConnectionSettings' | 'homeDir'
+  > & { engine: ConnectionEnvEngine },
+): Promise<string[]> {
+  const settings = await options.loadConnectionSettings();
+  const homeOptions = options.homeDir ? { homeDir: options.homeDir } : {};
+  const homes: string[] = [];
+  const connectionHome = connectionSpawnEnv(settings?.config, options.engine)?.[
+    CONFIG_HOME_ENV_KEY[options.engine]
+  ];
+  if (connectionHome) homes.push(connectionHome);
+  if (appHomeActive(settings?.config)) {
+    try {
+      homes.push((await locateAppHomeProfile(options.engine, homeOptions)).dir);
+    } catch {}
+  }
+  for (const profile of normalizeCredentialProfileRegistry(
+    settings?.credentialRecovery,
+  ).profiles) {
+    try {
+      homes.push(
+        (
+          await locateCredentialProfileAppHome(
+            options.engine,
+            profile.ref,
+            homeOptions,
+          )
+        ).dir,
+      );
+    } catch {}
+  }
+  return homes;
 }
 
 export interface CredentialProfileAppHomeEnvOptions {
