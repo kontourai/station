@@ -13,6 +13,7 @@ mod desktop_companion;
 mod desktop_installation;
 #[cfg(not(mobile))]
 mod desktop_update;
+mod html_reply_protocol;
 mod ios_background_task;
 mod ios_network_path;
 #[cfg(target_os = "linux")]
@@ -15080,6 +15081,11 @@ If a stable instance is running, this launch will focus its window and exit.",
     #[cfg(not(mobile))]
     let plugin_capability_script =
         plugin_requests.initialization_script(context.config().build.dev_url.as_ref());
+    // The staged visual-reply delivery registers on every platform: its whole
+    // purpose is clients that cannot reach the desktop-only loopback listener.
+    let html_reply_pages = html_reply_protocol::RequestGate::new();
+    let html_reply_capability_script =
+        html_reply_pages.initialization_script(context.config().build.dev_url.as_ref());
     #[cfg(not(mobile))]
     let builder = builder.register_asynchronous_uri_scheme_protocol(
         "station-plugin",
@@ -15097,6 +15103,22 @@ If a stable instance is running, this launch will focus its window and exit.",
             });
         },
     );
+    let builder = builder.register_asynchronous_uri_scheme_protocol("station-html-reply", {
+        // Fully qualified: lib.rs imports `Arc` only on desktop.
+        let staged_pages = std::sync::Arc::clone(&html_reply_pages);
+        move |context, request, responder| {
+            let permit = match staged_pages.enter(context.webview_label(), &request) {
+                Ok(permit) => permit,
+                Err(response) => {
+                    responder.respond(response);
+                    return;
+                }
+            };
+            // Staged bytes only: no network, no credentials, so the lookup
+            // stays synchronous and short.
+            responder.respond(html_reply_protocol::handle(request, permit));
+        }
+    });
     #[cfg(target_os = "ios")]
     let builder = builder.on_web_content_process_terminate(|webview| {
         mobile_recovery_ios::terminated(webview);
@@ -15139,6 +15161,11 @@ If a stable instance is running, this launch will focus its window and exit.",
     let builder = builder.plugin(
         tauri::plugin::Builder::<tauri::Wry>::new("station-plugin-capability")
             .js_init_script(plugin_capability_script)
+            .build(),
+    );
+    let builder = builder.plugin(
+        tauri::plugin::Builder::<tauri::Wry>::new("station-html-reply-capability")
+            .js_init_script(html_reply_capability_script)
             .build(),
     );
 
@@ -15229,7 +15256,8 @@ If a stable instance is running, this launch will focus its window and exit.",
         .manage(native_application_peer::NativeApplicationPeers::default())
         .manage(native_enrollment_peer::NativeEnrollmentPeers::default())
         .manage(native_enrollment_host::NativeEnrollmentHost::default())
-        .manage(native_account_operations::NativeAccountOperations::default());
+        .manage(native_account_operations::NativeAccountOperations::default())
+        .manage(html_reply_pages);
     #[cfg(not(mobile))]
     let builder = builder
         .manage(NativeStartupBootstrap::default())
@@ -15353,7 +15381,8 @@ If a stable instance is running, this launch will focus its window and exit.",
         desktop_update::desktop_update_check,
         desktop_update::desktop_update_download,
         desktop_update::desktop_update_install,
-        desktop_update::desktop_update_set_policy
+        desktop_update::desktop_update_set_policy,
+        html_reply_protocol::station_html_reply_stage
     ]);
     #[cfg(mobile)]
     let builder = builder.invoke_handler(tauri::generate_handler![
@@ -15428,7 +15457,8 @@ If a stable instance is running, this launch will focus its window and exit.",
         station_native_pairing_exchange,
         station_native_pairing_exchange_cancel,
         station_profile_store_read,
-        station_profile_store_write
+        station_profile_store_write,
+        html_reply_protocol::station_html_reply_stage
     ]);
 
     let app = builder
