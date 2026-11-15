@@ -3163,9 +3163,12 @@
   align-items: center;
   flex: 0 0 auto;
 }
+/* A phone's empty draft has nothing to send or steer, so Send and its
+   Steer/Queue segment take no room until there is text: the toolbar's Run
+   setup label gets the width. Stop trails them, so it does not move when
+   they appear. */
 .chat-input__submit-controls[data-concealed] {
-  visibility: hidden;
-  pointer-events: none;
+  display: none;
 }
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
   .app-toolbar__action--secondary.app-toolbar__action--secondary {
