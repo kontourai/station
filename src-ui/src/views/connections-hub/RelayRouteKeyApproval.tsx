@@ -121,7 +121,7 @@ export function RelayRouteKeyApproval({
       setConfirmationCode('');
       setApprovalKeyId('');
       setSeparateChannelConfirmed(false);
-      setMessage('Enter both values from the Station owner, then confirm.');
+      setMessage('Enter both values from the Station operator, then confirm.');
       await refresh();
     },
     onError: (_error, attemptId) => {
@@ -383,7 +383,7 @@ export function RelayRouteKeyApproval({
               ? null
               : statusQuery.isError
                 ? 'Try again when this device’s secure storage is available.'
-                : 'Ask the Station owner to help you confirm its identity.'}
+                : 'Ask the Station operator to help you confirm its identity.'}
           </span>
         )}
       </div>

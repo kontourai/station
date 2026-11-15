@@ -667,7 +667,7 @@ describe('ProviderConnectionForm — readiness is derived, not labelled (RT-06/R
       />,
     );
 
-    const button = screen.getByRole('button', { name: 'Test Connection' });
+    const button = screen.getByRole('button', { name: 'Test connection' });
     const disclosure = document.getElementById(
       button.getAttribute('aria-describedby') ?? '',
     );

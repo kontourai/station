@@ -212,7 +212,9 @@ describe('AgentEditorCredentialProfile (station#3551)', () => {
         locked={false}
       />,
     );
-    expect(screen.getByText('deleted-account — not enrolled')).toBeTruthy();
+    expect(
+      screen.getByText('deleted-account (not on this engine)'),
+    ).toBeTruthy();
     expect(
       screen.getByText(/will fail rather than run on a different/i),
     ).toBeTruthy();
@@ -227,10 +229,17 @@ describe('AgentEditorCredentialProfile (station#3551)', () => {
         locked={false}
       />,
     );
-    expect(screen.queryByText(/No separate accounts are enrolled/i)).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'More about Account' }));
-    expect(screen.getByRole('tooltip').textContent).toMatch(
-      /No separate accounts are enrolled/i,
+    // The next action is visible and describes the field, not hidden in a tooltip.
+    const hint = screen.getByText(
+      "No separate accounts yet. Add them on the engine's Connections page.",
     );
+    expect(
+      screen
+        .getByRole('combobox', { name: 'Account' })
+        .getAttribute('aria-describedby'),
+    ).toBe(hint.id);
+    expect(
+      screen.queryByRole('button', { name: 'More about Account' }),
+    ).toBeNull();
   });
 });
