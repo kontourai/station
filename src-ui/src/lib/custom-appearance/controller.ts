@@ -216,6 +216,22 @@ export function subscribeCustomAppearance(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
+/**
+ * Run `read` with the custom CSS sheet out of the cascade, so a measurement
+ * sees the palette over the theme and nothing the CSS made conditional on
+ * page content. Synchronous: no frame is painted in between.
+ */
+export function withoutCustomCss<T>(read: () => T): T {
+  const sheet = state.css;
+  if (!sheet || sheet.disabled) return read();
+  sheet.disabled = true;
+  try {
+    return read();
+  } finally {
+    sheet.disabled = decisionSurfaceMounted();
+  }
+}
+
 /** Leave safe mode in this tab. */
 export function leaveCustomAppearanceSafeMode(): void {
   try {

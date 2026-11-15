@@ -69,6 +69,11 @@ const PINNED: readonly [string, string][] = [
     'ProposedChangeDetail (rendered), ReviewLayout (rendered in its suite), AttentionCard',
   ],
   ['gate-exception', 'AttentionCard AcceptExceptionDialog'],
+  ['approval-mode', 'ComposerModeSheet (rendered in ApprovalModeChip suite)'],
+  ['device-agent-control', 'DeviceSetupWizard'],
+  ['people-roles', 'PeopleSection'],
+  ['integration-trust-settings', 'IntegrationTrustSection'],
+  ['integration-editor', 'IntegrationEditorPanel'],
 ];
 
 afterEach(() => {

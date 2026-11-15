@@ -19,7 +19,9 @@ import {
 import { contrastRatio } from '@kontourai/ui/contrast';
 import {
   endCustomAppearancePreview,
+  getCustomAppearanceSnapshot,
   startCustomAppearancePreview,
+  withoutCustomCss,
 } from './controller';
 import { KEEP_BAR_TAG, type KeepBar, mountKeepBar } from './keep-bar';
 
@@ -32,15 +34,35 @@ function computedHex(style: CSSStyleDeclaration, property: string) {
 
 type RoleValues = Record<string, string | undefined>;
 
-/** The computed roles on the root now, keyed as the contrast rules name them. */
+/**
+ * The computed roles on the root, keyed as the contrast rules name them, with
+ * the custom CSS out of the cascade: the palette over the theme. Rating what
+ * the CSS computes would let CSS that sets a role only when the page holds
+ * some text (`:root:has([href^="…"])`) read that text back through the
+ * report.
+ */
 function computedRoles(): RoleValues {
-  const style = getComputedStyle(document.documentElement);
-  const values: RoleValues = {};
-  for (const role of APPEARANCE_ROLE_PROPERTIES)
-    values[role] = computedHex(style, role);
-  values.accent = computedHex(style, '--k-action');
-  values['accent-contrast'] = computedHex(style, '--k-action-contrast');
-  return values;
+  return withoutCustomCss(() => {
+    const style = getComputedStyle(document.documentElement);
+    const values: RoleValues = {};
+    for (const role of APPEARANCE_ROLE_PROPERTIES)
+      values[role] = computedHex(style, role);
+    values.accent = computedHex(style, '--k-action');
+    values['accent-contrast'] = computedHex(style, '--k-action-contrast');
+    return values;
+  });
+}
+
+/** The changed pairs that fail, rated on the palette over the theme. */
+function failingChanges(before: RoleValues) {
+  const root = document.documentElement;
+  const mode: AppearanceMode =
+    root.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  const values = computedRoles();
+  const changed = (key: string) => values[key] !== before[key];
+  return rateAppearancePalette(mode, values, contrastRatio).filter(
+    (r) => !r.pass && (changed(r.foreground) || changed(r.surface)),
+  );
 }
 
 /**
@@ -97,8 +119,19 @@ export function previewCustomAppearance(
     current = null;
     endCustomAppearancePreview();
   };
+  let contrastFails = 0;
   const bar = mountKeepBar({
     name: appearance.name,
+    blockedBy: () => {
+      const snapshot = getCustomAppearanceSnapshot();
+      if (snapshot.safe)
+        return 'Custom appearance is off in this tab, so Keep is off.';
+      if (snapshot.suspendedForDecision)
+        return 'An approval is open, so this preview’s CSS is paused and Keep is off.';
+      if (contrastFails > 0)
+        return 'Some text in this preview is hard to read, so Keep is off.';
+      return null;
+    },
     seconds: options.seconds ?? CUSTOM_APPEARANCE_PREVIEW_SECONDS,
     fromAgent: options.fromAgent,
     onKeep: () => {
@@ -117,6 +150,7 @@ export function previewCustomAppearance(
     },
   });
   current = { bar, end };
+  contrastFails = failingChanges(before).length;
   const proposalId = options.proposalId;
   if (proposalId && options.onReport) {
     const report = options.onReport;

@@ -31,6 +31,11 @@ export interface KeepBarOptions {
   onDiscard(): void;
   /** Escape or the countdown: revert without deciding. */
   onRevert(): void;
+  /**
+   * A reason Keep is off that the bar cannot see itself (the preview's CSS is
+   * paused for an approval, or its colours fail contrast), or `null`.
+   */
+  blockedBy?(): string | null;
 }
 
 export interface KeepBar {
@@ -81,6 +86,11 @@ const HOST_STYLE = [
 
 /** The bar's own styles, inside the shadow root; literal values only. */
 const BAR_CSS = [
+  // The host's own pseudo-elements paint inside the bar's top layer and are
+  // outside the shadow tree, so document CSS could draw a fake label over
+  // Keep. A shadow root's !important rule for its host beats the document's.
+  ':host::before, :host::after { content: none !important; display: none !important; }',
+  ':host::backdrop { display: none !important; }',
   '.bar { box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: center; }',
   '.bar { gap: 8px 16px; padding: 12px 16px; background: #10151c; color: #f4f6f8; }',
   '.bar { border-top: 2px solid #f0b429; }',
@@ -121,6 +131,11 @@ function pageIntegrityProblem(host: HTMLElement): string | null {
     !NUMERIC_ONE(root.getPropertyValue('zoom'));
   if (changed)
     return 'This preview changes the whole page, so Keep is off. Discard it, or let it revert.';
+  for (const pseudo of ['::before', '::after']) {
+    const content = getComputedStyle(host, pseudo).content;
+    if (content !== 'none' && content !== 'normal' && content !== '')
+      return 'This preview draws over this bar, so Keep is off. Discard it, or let it revert.';
+  }
   const own = getComputedStyle(host);
   const rect = host.getBoundingClientRect();
   if (
@@ -192,7 +207,7 @@ export function mountKeepBar(options: KeepBarOptions): KeepBar {
     note.textContent = `Reverts in ${remaining} s unless you keep it. Esc reverts now.`;
   };
   const check = () => {
-    reason = pageIntegrityProblem(host);
+    reason = pageIntegrityProblem(host) ?? options.blockedBy?.() ?? null;
     if (!reason) {
       const r = keep.getBoundingClientRect();
       if (

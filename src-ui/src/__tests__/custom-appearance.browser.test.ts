@@ -71,6 +71,12 @@ window.harness = {
       resolve(report);
     },
   })),
+  previewPalette: (palette) => previewCustomAppearance(appearance('', palette), {
+    fromAgent: true,
+    onKeep: () => events.push('keep'),
+    onDiscard: () => events.push('discard'),
+    onRevert: () => events.push('revert'),
+  }),
   preview: (css, seconds = 20) => previewCustomAppearance(appearance(css), {
     fromAgent: true,
     seconds,
@@ -334,6 +340,65 @@ describe('custom appearance in Chromium', () => {
     ).toBe(true);
     expect(report.stripped.map((s) => s.what)).toContain('@namespace');
     expect(await host().count()).toBe(0);
+  });
+
+  test('the host pseudo-elements cannot draw a fake label over Keep', async () => {
+    await harness(
+      'preview',
+      'station-appearance-preview::after, *::before { content: "Discard (safe)" !important; display: block !important; position: fixed; right: 0; bottom: 0; width: 260px; height: 70px; background: #b00; pointer-events: none; }',
+    );
+    const pseudo = await page.evaluate(() => {
+      const host = document.querySelector('station-appearance-preview')!;
+      return [
+        getComputedStyle(host, '::after').content,
+        getComputedStyle(host, '::before').content,
+      ];
+    });
+    expect(pseudo).toEqual(['none', 'none']);
+    await expect.poll(async () => (await bar())?.reason).toBeNull();
+    await page.keyboard.press('Escape');
+    expect(await lastEvent()).toBe('revert');
+  });
+
+  test("Keep is off while an approval holds the preview's CSS back", async () => {
+    await harness('showApproval', true);
+    await harness('preview', '#probe { color: rgb(5, 5, 5) !important; }');
+    expect(await probe('color')).not.toBe('rgb(5, 5, 5)');
+    await expect
+      .poll(async () => (await bar())?.reason)
+      .toContain('approval is open');
+    await page.keyboard.press('Escape');
+    await harness('showApproval', false);
+  });
+
+  test('a preview whose palette makes text unreadable cannot be kept', async () => {
+    await page.evaluate(() =>
+      document.documentElement.setAttribute('data-theme', 'dark'),
+    );
+    await harness('previewPalette', {
+      dark: { roles: { '--k-bg': '#101418', '--k-text': '#1a1a1a' } },
+    });
+    await expect
+      .poll(async () => (await bar())?.reason)
+      .toContain('hard to read');
+    await page.keyboard.press('Escape');
+  });
+
+  test('the report rates the palette over the theme, not what the CSS computes from page content', async () => {
+    await page.evaluate(() =>
+      document.documentElement.setAttribute('data-theme', 'dark'),
+    );
+    const report = await harness<{
+      contrast: { foreground: string; surface: string; pass: boolean }[];
+    }>(
+      'report',
+      // A content-conditional role: readable only if the CSS were rated.
+      ':root:has(#probe) { --k-text: #111111 !important; }',
+      { dark: { roles: { '--k-bg': '#0a0a0a', '--k-text': '#f0f0f0' } } },
+    );
+    expect(
+      report.contrast.filter((r) => r.foreground === '--k-text' && !r.pass),
+    ).toEqual([]);
   });
 
   test('the countdown reverts a preview nobody answers', async () => {

@@ -21,6 +21,7 @@ import {
 import { Field } from '@kontourai/ui/react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useId, useState, useSyncExternalStore } from 'react';
+import { ActionRow } from '../components/ActionRow';
 import { Button } from '../components/Button';
 import { PageCallout } from '../components/PageCallout';
 import { PageRow } from '../components/PageRow';
@@ -162,6 +163,7 @@ function Editor({
   const [mode, setMode] = useState<AppearanceMode>('dark');
   const nameId = useId();
   const cssId = useId();
+  const { safe } = useCustomAppearanceSnapshot();
   const textProblems = customCssTextViolations(draft.css);
   const appearance = appearanceFrom(draft);
   const setColor = (key: string, value: string) =>
@@ -169,7 +171,7 @@ function Editor({
       ...d,
       palette: { ...d.palette, [mode]: { ...d.palette[mode], [key]: value } },
     }));
-  const save = () =>
+  const save = (onError?: () => void) =>
     mutation.mutate(
       { kind: 'save', revision: document.revision, appearance },
       {
@@ -177,14 +179,18 @@ function Editor({
           setActiveCustomAppearance(data.active, data.owner);
           onSaved();
         },
+        onError,
       },
     );
   const preview = () =>
     previewCustomAppearance(appearance, {
       fromAgent: false,
       onKeep: () => {
-        setActiveCustomAppearance(appearance, customAppearanceOwner());
-        save();
+        // Shown at once so nothing flashes; a refused save puts back what the
+        // server still holds.
+        const owner = customAppearanceOwner() ?? document.owner;
+        setActiveCustomAppearance(appearance, owner);
+        save(() => setActiveCustomAppearance(document.active, owner));
       },
       onDiscard: () => undefined,
     });
@@ -268,19 +274,24 @@ function Editor({
           description={errorText(mutation.error)}
         />
       )}
-      <div className="appearance-custom__actions">
-        <Button onClick={preview} disabled={textProblems.length > 0}>
-          Preview
-        </Button>
-        <Button
-          variant="primary"
-          onClick={save}
-          disabled={textProblems.length > 0}
-          pending={mutation.isPending}
-        >
-          Save
-        </Button>
-      </div>
+      <ActionRow
+        overflowLabel="More appearance actions"
+        secondary={
+          <Button onClick={preview} disabled={textProblems.length > 0 || safe}>
+            Preview
+          </Button>
+        }
+        primary={
+          <Button
+            variant="primary"
+            onClick={() => save()}
+            disabled={textProblems.length > 0}
+            pending={mutation.isPending}
+          >
+            Save
+          </Button>
+        }
+      />
     </div>
   );
 }
@@ -408,26 +419,31 @@ export function CustomAppearanceSection() {
               title="Proposed"
               description={`“${document.proposal.appearance.name}” from an agent. Preview it before keeping it.`}
               control={
-                <div className="appearance-custom__actions">
-                  <Button
-                    variant="primary"
-                    onClick={() => previewProposal(document)}
-                    disabled={!!snapshot.previewing || snapshot.safe}
-                  >
-                    Preview
-                  </Button>
-                  <Button
-                    disabled={mutation.isPending}
-                    onClick={() =>
-                      mutation.mutate({
-                        kind: 'dismiss',
-                        revision: document.revision,
-                      })
-                    }
-                  >
-                    Dismiss
-                  </Button>
-                </div>
+                <ActionRow
+                  overflowLabel="More proposal actions"
+                  primary={
+                    <Button
+                      variant="primary"
+                      onClick={() => previewProposal(document)}
+                      disabled={!!snapshot.previewing || snapshot.safe}
+                    >
+                      Preview
+                    </Button>
+                  }
+                  secondary={
+                    <Button
+                      disabled={mutation.isPending}
+                      onClick={() =>
+                        mutation.mutate({
+                          kind: 'dismiss',
+                          revision: document.revision,
+                        })
+                      }
+                    >
+                      Dismiss
+                    </Button>
+                  }
+                />
               }
             >
               {document.renderReport && (
@@ -456,11 +472,14 @@ export function CustomAppearanceSection() {
           {editing ? (
             <Editor document={document} onSaved={() => setEditing(false)} />
           ) : (
-            <div className="appearance-custom__actions">
-              <Button onClick={() => setEditing(true)}>
-                {document.active ? 'Edit' : 'Create'}
-              </Button>
-            </div>
+            <ActionRow
+              overflowLabel="More custom appearance actions"
+              secondary={
+                <Button onClick={() => setEditing(true)}>
+                  {document.active ? 'Edit' : 'Create'}
+                </Button>
+              }
+            />
           )}
         </>
       ) : null}

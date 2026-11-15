@@ -3,6 +3,7 @@ import { DetailHeader } from '../../components/DetailHeader';
 import { LockGlyph } from '../../components/icons/Glyph';
 import { IntegrationGlyph } from '../../components/icons/IntegrationGlyph';
 import { LazyBoundary } from '../../components/LazyBoundary';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { IntegrationAccountSection } from './IntegrationAccountSection';
 import { IntegrationTrustReview } from './IntegrationTrustReview';
 import { IntegrationTrustSection } from './IntegrationTrustSection';
@@ -100,6 +101,7 @@ export function IntegrationEditorPanel({
   onUnlock: () => void;
   trustControlsEnabled?: boolean;
 }) {
+  useDecisionSurface('integration-editor');
   const isBuiltin = editForm.kind === 'builtin';
   /**
    * CI-R7: server-derived (`GET /integrations`), not inferred from `kind` —

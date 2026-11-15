@@ -204,7 +204,9 @@ export function customCssTextViolations(
       kind: 'too-long',
       message: `CSS is ${css.length} characters; the limit is ${CUSTOM_APPEARANCE_CSS_MAX_LENGTH}.`,
     });
-  const text = stripComments(css).toLowerCase();
+  // Both the text with comments removed (so `ur/**/l(` cannot hide a url)
+  // and the raw text (so a `/*` inside a string cannot hide what follows).
+  const text = `${stripComments(css)}\n${css}`.toLowerCase();
   if (text.includes('\\'))
     violations.push({
       kind: 'escape',

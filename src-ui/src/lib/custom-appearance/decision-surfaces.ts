@@ -51,6 +51,12 @@ export const DECISION_SURFACES = [
   'check-back-approval', // AgentScheduleNotes: CheckBackApprovalCard
   'proposed-change', // ProposedChangeDetail, AttentionCard ProposedChangeActions, ReviewLayout
   'gate-exception', // AttentionCard: AcceptExceptionDialog
+  // Standing grants a person sets
+  'approval-mode', // ComposerModeSheet: approval mode and the full-access confirm
+  'device-agent-control', // DeviceSetupWizard: allow agents to control devices
+  'people-roles', // PeopleSection: roles and admin changes
+  'integration-trust-settings', // IntegrationTrustSection
+  'integration-editor', // IntegrationEditorPanel: allow render UI and trust controls
 ] as const;
 
 export type DecisionSurfaceId = (typeof DECISION_SURFACES)[number];
