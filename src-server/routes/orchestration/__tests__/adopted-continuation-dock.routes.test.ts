@@ -1396,6 +1396,92 @@ describe('#3429: a continued attached conversation opens in the dock', () => {
     expect(f.engines.claude.adoptions).toHaveLength(1);
   });
 
+  // The source's harness is still writing a turn: continuing forks a
+  // conversation that is still moving, so the read says so and adoption is
+  // refused until the request asks to continue anyway.
+  test('a source still running reads active, is refused without the override, and continues with it', async () => {
+    const f = await fixture({ engineAgent: true });
+    const source = f.attached('claude');
+    f.store.appendEvent({
+      eventId: `${source}:turn-2`,
+      provider: 'claude',
+      threadId: source,
+      turnId: 'source-turn-2',
+      createdAt: new Date(Date.now() - 30_000).toISOString(),
+      method: 'turn.started',
+      prompt: 'keep going',
+    } as never);
+
+    const read = await f.request(
+      `/api/orchestration/sessions/${encodeURIComponent(source)}`,
+    );
+    expect(read.status, read.text).toBe(200);
+    expect(read.body.data.session.attachedSourceActivity).toMatchObject({
+      state: 'active',
+    });
+
+    const refused = await f.request('/api/orchestration/commands', {
+      type: 'adoptSession',
+      sourceThreadId: source,
+    });
+    expect(refused.status, refused.text).toBe(409);
+    expect(refused.body).toMatchObject({
+      success: false,
+      code: 'continuation_source_active',
+      retryable: true,
+    });
+    expect(f.engines.claude.adoptions).toEqual([]);
+
+    // Starter Work's launch reads it as a certain, retry-safe failure that
+    // carries the code, so the reader can offer the override.
+    const owner = createStarterSessionOwner(f.service as never);
+    await expect(
+      owner.continue({
+        sourceSessionId: source,
+        operationId: '7b0e2c4a-1d3f-4e5a-8b6c-9d0e1f2a3b4c',
+        fullAccessGrant: null,
+        owner: { ownerUserId: 'operator' },
+      }),
+    ).resolves.toMatchObject({
+      state: 'failed',
+      retrySafe: true,
+      code: 'continuation_source_active',
+    });
+    expect(f.engines.claude.adoptions).toEqual([]);
+
+    const continued = await f.request('/api/orchestration/commands', {
+      type: 'adoptSession',
+      sourceThreadId: source,
+      continueWhileSourceActive: true,
+    });
+    expect(continued.status, continued.text).toBe(200);
+    expect(f.engines.claude.adoptions).toHaveLength(1);
+  });
+
+  // An open turn the transcript stopped writing long ago (interrupted,
+  // crashed, or an engine that records no completions) is not "running".
+  test('an open turn silent past the window reads quiet and continues in one step', async () => {
+    const f = await fixture({ engineAgent: true });
+    const source = f.attached('claude');
+    f.store.appendEvent({
+      eventId: `${source}:turn-2`,
+      provider: 'claude',
+      threadId: source,
+      turnId: 'source-turn-2',
+      createdAt: new Date(Date.now() - 60 * 60_000).toISOString(),
+      method: 'turn.started',
+      prompt: 'abandoned',
+    } as never);
+    const read = await f.request(
+      `/api/orchestration/sessions/${encodeURIComponent(source)}`,
+    );
+    expect(read.body.data.session.attachedSourceActivity).toMatchObject({
+      state: 'quiet',
+    });
+    await f.adopt(source);
+    expect(f.engines.claude.adoptions).toHaveLength(1);
+  });
+
   test('a follow-up as a different Agent is refused by the binding', async () => {
     const f = await fixture({ engineAgent: true });
     const child = await f.adopt(f.attached('claude'));

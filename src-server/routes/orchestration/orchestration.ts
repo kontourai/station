@@ -192,6 +192,7 @@ import type { OrchestrationService } from '../../services/orchestration/orchestr
 import {
   AdoptionContinuationInProgressError,
   AdoptionEngineNotReadyError,
+  AdoptionSourceActiveError,
   OrchestrationCommandDispatchError,
 } from '../../services/orchestration/orchestration-service.js';
 import {
@@ -455,6 +456,7 @@ const adoptSessionCommandSchema = z.object({
   sourceThreadId: z.string().min(1).max(512),
   idempotencyKey: z.string().uuid().max(64).optional(),
   target: adoptSessionTargetSchema.optional(),
+  continueWhileSourceActive: z.literal(true).optional(),
 });
 
 const interruptTurnCommandSchema = z.object({
@@ -7411,6 +7413,16 @@ export function createOrchestrationRoutes(
             ...(error instanceof ContinuationPlaceRefusedError
               ? { code: error.code, retryable: false }
               : {}),
+            // The source is still running and nothing was created; the
+            // same request with `continueWhileSourceActive` proceeds.
+            ...(error instanceof AdoptionSourceActiveError
+              ? {
+                  code: error.code,
+                  kind: error.kind,
+                  retryable: error.retryable,
+                  failurePhase: error.failurePhase,
+                }
+              : {}),
             // #3429: the engine was not ready and nothing was created; the
             // reason is shown and the same request may be retried.
             ...(error instanceof AdoptionEngineNotReadyError
@@ -7448,6 +7460,7 @@ export function createOrchestrationRoutes(
             error.code === MANAGED_POLICY_ENGINE_REFUSED_CODE
             ? 403
             : error instanceof AdoptionContinuationInProgressError ||
+                error instanceof AdoptionSourceActiveError ||
                 indeterminate ||
                 (error instanceof OrchestrationCommandDispatchError &&
                   (error.code === 'client_turn_input_conflict' ||

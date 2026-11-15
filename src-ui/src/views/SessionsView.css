@@ -369,6 +369,15 @@
   margin: 0;
 }
 
+/* The source is still running: a caution line with its two choices, in the
+   row the Continue button occupies, not a dialog. */
+.sessions-detail__source-active-text {
+  flex: 1 1 16rem;
+  color: var(--k-caution);
+  font-size: var(--k-text-sm);
+  overflow-wrap: anywhere;
+}
+
 @media (pointer: coarse) {
   .sessions-detail__continue-row .button {
     min-height: 44px;

@@ -20,10 +20,12 @@ import {
 import {
   ADOPTION_CONTINUATION_IN_PROGRESS_CODE,
   ADOPTION_ENGINE_NOT_READY_CODE,
+  ADOPTION_SOURCE_ACTIVE_CODE,
   PROVIDER_FAILURE_KINDS,
 } from '@kontourai/station-contracts/provider-failure';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import { tenantExecutionContextFromSession } from '@kontourai/station-contracts/tenancy';
+import { withoutCompletedTurnRecovery } from '@kontourai/station-shared/runtime-event-projection';
 import type {
   ProviderAdapterShape,
   ProviderSessionAdoptInput,
@@ -53,6 +55,7 @@ import {
   resolveContinuationPlace,
 } from './attached-session-continuation-place.js';
 import type { AttachedProjectRoot } from './attached-session-follow-service.js';
+import { deriveAttachedSourceActivity } from './attached-source-activity.js';
 import { DISPATCH_CANONICAL_CWD_METADATA_KEY } from './dispatch-cwd-admission.js';
 import type { EventStore } from './event-store.js';
 import { readCompletedSourceBoundary } from './external-session-continuation-context.js';
@@ -113,6 +116,27 @@ export class AdoptionEngineNotReadyError extends ProviderRefusalError {
       PROVIDER_FAILURE_KINDS[ADOPTION_ENGINE_NOT_READY_CODE],
     );
     this.name = 'AdoptionEngineNotReadyError';
+  }
+}
+
+/**
+ * The harness that wrote the attached transcript is still working on it
+ * (`AttachedSourceActivity` reads `active`), and the request did not say
+ * `continueWhileSourceActive`. Refused before anything is reserved, so the
+ * outcome is certain and the same request with the override can proceed.
+ * Continuing would fork a conversation that is still moving: Station's child
+ * is an independent native session, so it would miss everything the original
+ * writes from here on. Station cannot stop the original, which it does not own.
+ */
+export class AdoptionSourceActiveError extends ProviderRefusalError {
+  readonly code = ADOPTION_SOURCE_ACTIVE_CODE;
+
+  constructor(engine: string) {
+    super(
+      `Still running in ${engine}, so no continuation was created. Continuing now forks it.`,
+      PROVIDER_FAILURE_KINDS[ADOPTION_SOURCE_ACTIVE_CODE],
+    );
+    this.name = 'AdoptionSourceActiveError';
   }
 }
 
@@ -232,6 +256,8 @@ export interface AttachedSessionAdoptionDeps {
     input: ProviderSessionAdoptInput,
   ) => ProviderSessionAdoptInput | Promise<ProviderSessionAdoptInput>;
   forgetAbandonedAdoptionMemory: (reservation: AdoptionReservation) => void;
+  /** Clock for the source-activity re-check; defaults to the wall clock. */
+  now?: () => number;
   logCleanupFailure: (
     resource: string,
     reservation: AdoptionReservation,
@@ -280,6 +306,7 @@ export class AttachedSessionAdoption {
     ownerAttribution?: SessionOwnerAttribution,
     confinementStamp?: AdoptionConfinement,
     target?: AdoptSessionTarget,
+    continueWhileSourceActive = false,
   ): Promise<OrchestrationCommandDispatchResult<AdoptedSessionResult>> {
     if (idempotencyKey) {
       // Coalescing must retain the same authority boundary as durable lookup:
@@ -292,6 +319,8 @@ export class AttachedSessionAdoption {
         idempotencyKey,
         // #3386: a different choice of where to continue is a different intent.
         target ?? null,
+        // An override must not join an in-flight request refused without it.
+        continueWhileSourceActive,
       ]);
       const inFlight = this.adoptionIntents.get(intentScope);
       if (inFlight) {
@@ -311,6 +340,7 @@ export class AttachedSessionAdoption {
         ownerAttribution,
         confinementStamp,
         target,
+        continueWhileSourceActive,
       );
       this.adoptionIntents.set(intentScope, intent);
       try {
@@ -328,6 +358,7 @@ export class AttachedSessionAdoption {
       ownerAttribution,
       confinementStamp,
       target,
+      continueWhileSourceActive,
     );
   }
 
@@ -340,6 +371,7 @@ export class AttachedSessionAdoption {
     ownerAttribution?: SessionOwnerAttribution,
     confinementStamp?: AdoptionConfinement,
     target?: AdoptSessionTarget,
+    continueWhileSourceActive = false,
   ): Promise<OrchestrationCommandDispatchResult<AdoptedSessionResult>> {
     await this.reconciliation;
     // Resolve and authorize the source before treating an existing child as
@@ -413,6 +445,18 @@ export class AttachedSessionAdoption {
         },
       };
     }
+    // Re-checked here, from the same events the read model folds, so a
+    // client that read the source as idle (or skipped the read) cannot fork
+    // a source that is still running without saying so. After the
+    // existing-child join, so a retry of a continuation already made returns
+    // it rather than being refused.
+    if (
+      !continueWhileSourceActive &&
+      this.readSourceActivity(context.source).state === 'active'
+    )
+      throw new AdoptionSourceActiveError(
+        engineDisplayLabel(context.source.provider) ?? context.source.provider,
+      );
     const contendingReservation = this.deps.adoptionLedger
       ?.reservations()
       .find((item) => item.sourceThreadId === sourceThreadId);
@@ -486,6 +530,17 @@ export class AttachedSessionAdoption {
     } finally {
       this.adoptingSourceThreads.delete(sourceThreadId);
     }
+  }
+
+  private readSourceActivity(source: ProviderSession) {
+    const events = (
+      this.deps.eventStore?.listSessionProjectionEvents(source.threadId) ?? []
+    ).map((event) => event.payload);
+    // The same projection and recovery filter the summary builder folds.
+    return deriveAttachedSourceActivity(
+      withoutCompletedTurnRecovery(events),
+      this.deps.now?.() ?? Date.now(),
+    );
   }
 
   private findExistingAdoptedChild(

@@ -69,6 +69,7 @@ import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/u
 import { errorMessage } from '../../utils/error-message.js';
 import { receiptBus } from '../infra/receipt-bus.js';
 import type { RuntimeEngineStartLease } from '../infra/resource-posture.js';
+import { deriveAttachedSourceActivity } from './attached-source-activity.js';
 import { assertDispatchCwdUnmoved } from './dispatch-cwd-admission.js';
 import type { EventStore } from './event-store.js';
 import { isStationChatFolder } from './no-project-chat-folder.js';
@@ -597,6 +598,8 @@ export function buildOrchestrationSessionSummary(options: {
    * same prompt two different ways.
    */
   conversationFirstPromptedTurn?: CanonicalRuntimeEvent;
+  /** Read time for `attachedSourceActivity`; defaults to the wall clock. */
+  now?: number;
   /**
    * #2310: what the store knows about this thread's whole conversation
    * (`EventStore.conversationDraftFactsForThreads`). Omitted means the lineage
@@ -830,6 +833,14 @@ export function buildOrchestrationSessionSummary(options: {
     ...(modelLaunchPlan ? { modelLaunchPlan } : {}),
     ...(reportedModel ? { reportedModel } : {}),
     hasActiveTurn: hasOpenTurn(events),
+    ...(controlMode === 'read-only-attached'
+      ? {
+          attachedSourceActivity: deriveAttachedSourceActivity(
+            events,
+            options.now ?? Date.now(),
+          ),
+        }
+      : {}),
     ...(draft !== undefined ? { draft } : {}),
   };
   const ownedWork = options.readOwnedWork?.(base.threadId);

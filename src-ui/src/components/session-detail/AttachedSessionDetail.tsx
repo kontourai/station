@@ -1,4 +1,5 @@
 import { externalSessionContinuationAvailability } from '@kontourai/station-contracts/engine-capability-matrix';
+import { ADOPTION_SOURCE_ACTIVE_CODE } from '@kontourai/station-contracts/provider-failure';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type {
   AdoptedSessionResult,
@@ -245,9 +246,18 @@ export function AttachedSessionDetail({
     };
   }, [handoff]);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  // The server's read of whether the harness that wrote this transcript is
+  // still working on it. Continuing then forks it, so the person confirms
+  // first; the server re-checks and refuses without the override, which
+  // opens this same warning when the read here was stale.
+  const sourceActive = session.attachedSourceActivity?.state === 'active';
+  const [sourceActiveWarning, setSourceActiveWarning] = useState(false);
   const adoption = useMutation({
-    mutationFn: async (_intent: number) => {
+    mutationFn: async ({ override }: { intent: number; override: boolean }) => {
       setServerFailureReason(null);
+      const overrideField = override
+        ? { continueWhileSourceActive: true as const }
+        : {};
       try {
         const persisted = continuationStore.current!.read(session.threadId);
         let operationId: string;
@@ -283,6 +293,7 @@ export function AttachedSessionDetail({
               apiBase,
               intent: adoptionIntent.current,
               ...(adoptionTarget ? { target: adoptionTarget } : {}),
+              ...overrideField,
             });
           const reservation = await continuationStore.current!.reserve(
             session.threadId,
@@ -298,6 +309,7 @@ export function AttachedSessionDetail({
           operationId,
           apiBase,
           ...(adoptionTarget ? { target: adoptionTarget } : {}),
+          ...overrideField,
         });
         if (outcome.state === 'continued') {
           const clearance = await continuationStore.current!.clear(
@@ -319,6 +331,13 @@ export function AttachedSessionDetail({
             );
           return outcome.session;
         }
+        if (outcome.code === ADOPTION_SOURCE_ACTIVE_CODE)
+          throw new AdoptSessionError({
+            failureClass: 'certain-response',
+            message: outcome.reason,
+            retryable: true,
+            code: outcome.code,
+          });
         if (outcome.retrySafe === false) {
           serverRejectedRetryRef.current = true;
           setServerRejectedRetry(true);
@@ -353,9 +372,16 @@ export function AttachedSessionDetail({
         });
       }
     },
-    onSuccess: (child, intent) =>
+    onSuccess: (child, { intent }) =>
       onAdopted(child, intent, confirmedDraft.current),
     onError: (error) => {
+      if (
+        error instanceof AdoptSessionError &&
+        error.code === ADOPTION_SOURCE_ACTIVE_CODE
+      ) {
+        setSourceActiveWarning(true);
+        return;
+      }
       // Keep the diagnostic available to native/browser developer consoles;
       // the screen deliberately presents a plain-language recovery state.
       console.error('Attached-session continuation failed', error);
@@ -403,6 +429,10 @@ export function AttachedSessionDetail({
       : null;
   const adoptionDidNotReachStation =
     adoptionError?.failureClass === 'certain-not-sent';
+  // Refused only because the source is still running: the warning below says
+  // so and offers the override, so it is not shown as a failure.
+  const adoptionSourceActive =
+    adoptionError?.code === ADOPTION_SOURCE_ACTIVE_CODE;
   const adoptionNonRetryable = adoptionError?.retryable === false;
   const adoptionOutcomeUncertain =
     adoptionError?.failureClass === 'uncertain-no-response';
@@ -432,7 +462,7 @@ export function AttachedSessionDetail({
 
   // Continuing needs no message: the continuation opens with this history,
   // and a typed draft (none is fine) is sent there afterwards by the host.
-  const startContinuation = () => {
+  const startContinuation = ({ override = false } = {}) => {
     if (
       !continuationSupported ||
       adoption.isPending ||
@@ -440,11 +470,16 @@ export function AttachedSessionDetail({
     )
       return;
     confirmedDraft.current = currentDraft.current;
-    adoption.mutate(getSelectionIntent());
+    if (sourceActive && !override) {
+      setSourceActiveWarning(true);
+      return;
+    }
+    setSourceActiveWarning(false);
+    adoption.mutate({ intent: getSelectionIntent(), override });
   };
   const continuationFeedback = (
     <>
-      {adoption.error && (
+      {adoption.error && !adoptionSourceActive && (
         <p
           className="sessions-detail__adoption-reason sessions-detail__adoption-folder"
           role="alert"
@@ -610,38 +645,65 @@ export function AttachedSessionDetail({
           className="sessions-detail__continue-bar"
           data-testid="attached-continue-bar"
         >
-          <div className="sessions-detail__continue-row">
-            <Button
-              variant="primary"
-              size="sm"
-              disabled={adoptionDisabled || composerDisabled}
-              onClick={() => void requestSend({ allowEmpty: true })}
+          {sourceActiveWarning && !adoption.isPending ? (
+            <div
+              className="sessions-detail__continue-row sessions-detail__source-active"
+              data-testid="attached-source-active"
             >
-              {adoption.isPending || openingContinuation || handoffPending
-                ? 'Continuing…'
-                : 'Continue in Station'}
-            </Button>
-            {outsideProjects && (
-              <span
-                className="sessions-detail__continue-note"
-                data-testid="attached-continuation-no-project"
+              <p className="sessions-detail__source-active-text">
+                Still running in {displayProvider(session)} — continuing now
+                forks it
+              </p>
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={adoptionDisabled || composerDisabled}
+                onClick={() => startContinuation({ override: true })}
               >
-                {noProjectExplanation}
-                {addProjectForFolder && (
-                  <>
-                    {' '}
-                    <Button
-                      variant="link"
-                      disabled={adoption.isPending}
-                      onClick={addProjectForFolder}
-                    >
-                      Add a project instead
-                    </Button>
-                  </>
-                )}
-              </span>
-            )}
-          </div>
+                Continue anyway
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setSourceActiveWarning(false)}
+              >
+                Wait
+              </Button>
+            </div>
+          ) : (
+            <div className="sessions-detail__continue-row">
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={adoptionDisabled || composerDisabled}
+                onClick={() => void requestSend({ allowEmpty: true })}
+              >
+                {adoption.isPending || openingContinuation || handoffPending
+                  ? 'Continuing…'
+                  : 'Continue in Station'}
+              </Button>
+              {outsideProjects && (
+                <span
+                  className="sessions-detail__continue-note"
+                  data-testid="attached-continuation-no-project"
+                >
+                  {noProjectExplanation}
+                  {addProjectForFolder && (
+                    <>
+                      {' '}
+                      <Button
+                        variant="link"
+                        disabled={adoption.isPending}
+                        onClick={addProjectForFolder}
+                      >
+                        Add a project instead
+                      </Button>
+                    </>
+                  )}
+                </span>
+              )}
+            </div>
+          )}
           {continuationFeedback}
         </div>
       )}

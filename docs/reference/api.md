@@ -1346,7 +1346,9 @@ HTTP status alone does not prove useful-work completion.
 - **Continue a Session:** the body names the Starter ID, operation ID, and
   exact source Session ID, plus an optional `target` for a Session no Project
   claims (`adoptSession`'s `target`, [Session API](session-api.md)); it never
-  names a folder. The [session owner](../../src-server/services/starter-work/starter-session-owner.ts)
+  names a folder. A source still running is refused as `state: "failed"`,
+  `retrySafe: true`, `code: "continuation_source_active"`; the same launch
+  with `continueWhileSourceActive: true` proceeds. The [session owner](../../src-server/services/starter-work/starter-session-owner.ts)
   validates and adopts the source through the existing idempotency ledger.
   Its child Session/command receipt proves admission, not useful completion.
 - **Inspect approval/receipt:** candidate reads return exact typed references.

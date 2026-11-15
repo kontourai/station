@@ -86,6 +86,11 @@ export const RESOURCE_ENGINE_START_CAPACITY_CODE =
 export const ADOPTION_ENGINE_NOT_READY_CODE = 'continuation_engine_not_ready';
 export const ADOPTION_CONTINUATION_IN_PROGRESS_CODE =
   'adoption_continuation_in_progress';
+/**
+ * The attached source reads `active` (`AttachedSourceActivity`) and the
+ * request did not say `continueWhileSourceActive`. Nothing was created.
+ */
+export const ADOPTION_SOURCE_ACTIVE_CODE = 'continuation_source_active';
 
 export const ENGINE_STARTUP_FAILURE_GUIDANCE = {
   sandbox_unavailable:
@@ -178,6 +183,7 @@ export const PROVIDER_FAILURE_KINDS = {
   [RESOURCE_ENGINE_START_CAPACITY_CODE]: 'busy',
   [ADOPTION_CONTINUATION_IN_PROGRESS_CODE]: 'busy',
   [ADOPTION_ENGINE_NOT_READY_CODE]: 'unavailable',
+  [ADOPTION_SOURCE_ACTIVE_CODE]: 'busy',
   // A second consumer violates Station's internal queue-ownership invariant.
   async_event_queue_consumer_conflict: 'conflict',
   foreground_invocation_unavailable: 'conflict',

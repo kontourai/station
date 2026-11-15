@@ -1265,7 +1265,15 @@ Open an attached terminal Session from the **inbox**. It reads like any chat. To
 continue it in Station, press **Continue in Station** above the conversation;
 no message is needed. If you typed one, it is sent there once the
 continuation opens, and pressing Send continues the same way. Claude and Codex create independent child
-Sessions; the original terminal Session can keep running. OpenCode and Grok
+Sessions; the original terminal Session can keep running.
+
+If the conversation is still mid-turn in its terminal (its transcript changed in
+the last five minutes and the turn has not finished), Station says **Still
+running in Claude Code — continuing now forks it** instead of continuing.
+Choose **Wait** and continue once it finishes, or **Continue anyway** to fork it
+now. A fork does not see anything the terminal Session writes afterwards.
+Station cannot stop the terminal Session for you. To hand the conversation over
+completely, finish or quit it in the terminal first. OpenCode and Grok
 conversations are read only: the message box shows why it is unavailable.
 Codex continues from the latest completed turn Station has observed, so wait
 for one if the message box is unavailable.
