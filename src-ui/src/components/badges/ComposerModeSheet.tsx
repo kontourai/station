@@ -41,6 +41,8 @@ interface ComposerModeSheetProps {
   onClose: () => void;
   onSelect: (mode: ApprovalMode) => void;
   sourceNote?: string;
+  /** Whether Station's own approvals reach this engine's tool calls. */
+  policyNote?: string;
   pendingNote?: string;
   activeMode?: string;
   isNewSession?: boolean;
@@ -83,6 +85,7 @@ function ComposerModeSheetContent({
   onClose,
   onSelect,
   sourceNote,
+  policyNote,
   pendingNote,
   activeMode,
   isNewSession,
@@ -147,6 +150,9 @@ function ComposerModeSheetContent({
       <div className="composer-mode-sheet__notes">
         <ManagedApprovalCeilingNote className="composer-mode-sheet__confirm-body" />
         <p className="composer-mode-sheet__confirm-body">{sourceNote}</p>
+        {policyNote && (
+          <p className="composer-mode-sheet__confirm-body">{policyNote}</p>
+        )}
         <p className="composer-mode-sheet__confirm-body">
           {pendingNote?.includes('restart')
             ? 'Restart required'

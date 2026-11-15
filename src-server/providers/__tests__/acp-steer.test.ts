@@ -28,7 +28,53 @@ const GROK = {
   _meta: { grokShell: true, agentVersion: '1.0.50' },
 };
 
+/** OpenCode 2.3.0's own `initialize` answer, from its scrubbed capture. */
+function openCodeInitialize() {
+  const line = readFileSync(
+    new URL('./fixtures/opencode-serve-2.3.0-crossload.jsonl', import.meta.url),
+    'utf8',
+  )
+    .split('\n')
+    .filter(Boolean)
+    .map((entry) => JSON.parse(entry))
+    .find(
+      (entry) =>
+        entry.kind === 'acp' &&
+        entry.dir === '<-' &&
+        entry.msg.result?.protocolVersion !== undefined,
+    );
+  return line.msg.result;
+}
+
 describe('resolveAcpSteerChannel', () => {
+  test("OpenCode 2.x's live handshake selects _session/steering, undeclared", () => {
+    const handshake = openCodeInitialize();
+    expect(handshake.agentInfo).toEqual({ name: 'OpenCode', version: '2.3.0' });
+    expect(resolveAcpSteerChannel(handshake)).toEqual({
+      channel: 'session-steering',
+      methods: ['_session/steering'],
+      basis: 'undeclared-engine',
+    });
+  });
+
+  test('OpenCode 1.x, named the same but declaring no steering, is not matched', () => {
+    const handshake = openCodeInitialize();
+    const { _meta: _dropped, ...withoutMeta } = handshake;
+    expect(
+      resolveAcpSteerChannel({
+        ...withoutMeta,
+        agentInfo: { name: 'OpenCode', version: '1.18.18' },
+      }),
+    ).toEqual({ channel: 'cancel-reprompt', methods: [], basis: 'none' });
+    // A flag that is not `{supported: true}` is not a declaration.
+    expect(
+      resolveAcpSteerChannel({
+        ...withoutMeta,
+        _meta: { steering: { supported: false } },
+      }).channel,
+    ).toBe('cancel-reprompt');
+  });
+
   test('a declared native method is used whoever declares it', () => {
     expect(
       resolveAcpSteerChannel({
@@ -78,6 +124,24 @@ describe('resolveAcpSteerChannel', () => {
       channel: 'interject',
       methods: ['_x.ai/interject', 'x.ai/interject'],
       basis: 'undeclared-engine',
+    });
+  });
+
+  test('Goose, which declares feature flags but not its methods, steers a named run', () => {
+    // aaif-goose/goose v1.59.0 crates/goose/src/acp/server.rs on_initialize.
+    const goose = {
+      protocolVersion: 1,
+      agentInfo: { name: 'goose', version: '1.59.0' },
+      agentCapabilities: {
+        loadSession: true,
+        _meta: { goose: { recipeParameterScopes: {} } },
+      },
+    };
+    expect(resolveAcpSteerChannel(goose)).toEqual({
+      channel: 'run-steer',
+      methods: ['_goose/unstable/session/steer'],
+      basis: 'undeclared-engine',
+      activeRun: { namespace: 'goose', key: 'activeRunId' },
     });
   });
 

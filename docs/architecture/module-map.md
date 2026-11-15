@@ -2811,9 +2811,18 @@ the resulting projection rather than classify inspection facts themselves.
 Engine attribution does not depend on that publication: the inspection is total, so one
 failing Adapter or a timed-out read would erase every connection's engine.
 `listEngineConnectionIdentities` derives each registered connection's `engineId` from the
-Adapter (`engineIdForAdapter`, `'acp'` for ACP connections) through the same public-identity
+Adapter (`engineIdForAdapter`; for an ACP connection, `'acp'`, or the engine of an
+ACP-backed Adapter that claims it now) through the same public-identity
 resolver, per Adapter, with no probe; the Agent catalog and `/:slug/binding` read it, while
-readiness keeps the live read (#3355).
+readiness keeps the live read (#3355). An Adapter whose `metadata.connectionBacking` is
+`acp-registry` (`OpenCodeAdapter`) has no connection of its own: it is not inspected,
+listed or readiness-checked as one, and reserves no connection id. Its
+`claimsAcpConnection(config)`, asked at each projection
+(`acpConnectionRuntimeAdapter`, `adapter-identity.ts`), decides whether a saved ACP
+connection projects its `engineId` and `provider`, and so which provider a new chat on
+that connection starts with; the execution-target resolver reads that `provider`, and
+`keepConversationProvider` keeps an existing conversation on the provider it started with.
+See [the OpenCode native transport decision](../decisions/opencode-native-transport.md).
 The projected `AgentConnectionView` carries the Adapter's declared `modelLaunch`
 (#2266), so a consumer reads model selection from the declaration rather than
 from whether the catalog listed anything.
@@ -2842,9 +2851,11 @@ decides which hosts are used: a verified schema fingerprint, or an unknown one
 whose own `muse schema` export still declares the required surface Station
 uses.
 [`engine-command-dispatch.ts`](../../src-server/providers/adapters/engine-command-dispatch.ts)
-is the engine-neutral slash-command half shared with the ACP Adapter: parsing
-the invocation, finding an `adapter-action` route in the Adapter's own listing,
-and the outcome line; how a route reaches the engine stays with each Adapter.
+is the engine-neutral slash-command half shared with the ACP and OpenCode
+Adapters: parsing the invocation, finding an `adapter-action` route in the
+Adapter's own listing, and the outcome line; how a route reaches the engine
+stays with each Adapter. Its `dispatchEngineCommand` decides what each route
+kind does for an Adapter that hands it a port (ACP, OpenCode).
 [`muse-mcp-status.ts`](../../src-server/providers/adapters/muse-mcp-status.ts)
 reads `muse mcp list --json` once per Session into `engine-mcp.status`.
 [`muse-auth.ts`](../../src-server/providers/auth/muse-auth.ts) owns Muse's XDG
@@ -3018,8 +3029,18 @@ navigable `engineConnectionId`, and enabled state directly. The enriched-Agent A
 query, and UI share `EnrichedAgentProjection`, which likewise carries capability
 `engineId` separately from `execution.agentConnectionId`. Built-in Adapters use the
 contract factories, while the plugin loader validates untyped metadata at admission and
-ACP connection identities are validated before persistence and again on load. **Do not
-reintroduce:** a generated runtime suffix, a second Adapter engine selector,
+ACP connection identities are validated before persistence and again on load.
+Two engines run saved ACP connection records, `acp` and `opencode`
+(`isAcpFamilyEngine`, `@kontourai/station-contracts/provider`); shared code asks it
+where a behaviour belongs to the ACP connection a session runs on (its folder, its
+Agent scoping, its usage family), never to tell the engines apart. The Adapter shape's
+optional members `claimsAcpConnection` and `listedInProviderInventory` (an Adapter behind
+an off Feature Preview leaves the provider inventory) are documented on
+[`ProviderAdapterShape`](../../src-server/providers/adapter-shape.ts). `OpenCodeAdapter`
+answers the generic session actions (`rewindSession`, `sessionContinuity`,
+`reconnectMcpServer`) natively on OpenCode's own server and through its inner ACP
+adapter otherwise.
+**Do not reintroduce:** a generated runtime suffix, a second Adapter engine selector,
 provider-name reconciliation, or read-time identity aliases.
 
 ### Finish-reason clear authority
@@ -3073,8 +3094,10 @@ every other engine-to-client Kiro extension (requests and
 `ENGINE_EXTENSION_BINDINGS`: each names its exact wire shape, its basis
 (`declared`, `client-announced` or `undeclared-engine`), what it was observed
 against (the scrubbed kiro-cli 2.35.0 capture in
-`src-server/services/acp/__tests__/fixtures/`, or a kirodotdev/kirocrew
-fixture path) and its consumer. A row's notification tuple binds only once
+`src-server/services/acp/__tests__/fixtures/`, a kirodotdev/kirocrew
+fixture path, or, for another engine's row, the vendor's own source at a
+named commit) and its consumer. Qwen Code's subagent marker is such a row:
+a `tool-call-meta-field` wire (top-level `_meta.provenance: 'subagent'`). A row's notification tuple binds only once
 `ENGINE_EXTENSION_CONSUMERS` marks its consumer implemented, and never over a
 tuple the table above already binds. Today eleven bind: Kiro v2's
 `mcp/server_initialized` and `mcp/server_init_failure` (`engine-mcp.status`)
@@ -3085,9 +3108,10 @@ should replace it. The `child-work` consumer is implemented in
 [`acp-child-work.ts`](../../src-server/providers/adapters/acp-child-work.ts):
 kiro-cli's `subagent/list_update` keeps its host-chrome notification row while
 its engine row reads the roster into `child-work.updated`, and a `tool_call`
-whose `_meta.kiro.kind` is `agent-subtask` is read the same way. An ACP
-engine whose handshake names neither reporter publishes `not-reported` at
-session start. History replay (`child-work-history.ts`) restores the
+whose `_meta.kiro.kind` is `agent-subtask` is read the same way. Qwen Code's
+nested subagent tool calls list the subagent under the Agent tool call that
+runs it, until that call ends. An ACP engine whose handshake names no reporter
+publishes `not-reported` at session start. History replay (`child-work-history.ts`) restores the
 statement of a session that never exited (an unclean shutdown), so it does
 not read "nothing running"; a later `session.started` on the thread clears it,
 live or replayed, because the new start states its reporting afresh. The matrix cell's `perConnection` reason is what
@@ -3792,7 +3816,36 @@ is created; otherwise tables are created and every channel-less room is adopted 
 `#general` under the writer lock, after re-reading the version there, so a racing
 newer Station's upgrade is never overwritten. A room whose stored record does not
 match its row is not adopted, and it refuses its channels as it refuses its reads. Channel limits, unique names and
-archived read-only state are enforced in the store transaction. Persisted records are validated
+archived read-only state are enforced in the store transaction. Schema version 2
+adds message activity in separate tables: reactions (one per person and emoji),
+superseding edit and delete revisions, the files each message links, and a
+per-room activity counter. History projects the latest revision and the
+reactions onto each stored message, which is never rewritten. The live
+checkpoint counts activity so reactions and edits wake readers, while
+`lastSeq`, the read-state version, moves only with new messages. Only a
+message's person author may edit or delete it, and Agent messages are never
+edited. Message files are stored by `ProjectRoomAttachments` (over the
+`RoomAttachments` store Task rooms use) under a binding of Station, Project
+incarnation, room and uploader. Deleting a message releases its files, and an
+upload first releases its uploader's day-old unsent files. Uploads, releases
+and messages naming files hold one store-wide cross-process file lock (the
+yielding form, taken before the request's authority check so access revoked
+while waiting refuses). Records are written whole (staging, then rename), and
+a failed write removes only the staging file it created. A
+release reads every record first, never deletes
+bytes another record names, and keeps a record, its quota charge and its
+retry until its bytes' deletion is confirmed (an unlink, or `ENOENT`). A
+damaged record counts only with one whole `blobRef` hash; any record whose
+reference cannot be known fails the release closed. Every upload re-derives
+the store's health under the lock with the same scan (no cached state), and
+any unknown record or unreadable or linked `bindings/` level refuses it with
+`project_room_files_unavailable`, as does a failed write (typed as
+`RoomStorageFailure`); the marker is a diagnostic only. Repair is offline
+only: with every Station process stopped, fix or remove the damaged record
+under `bindings/`. A non-empty, linked or unreadable `repair/` (an earlier
+build's inbox) blocks uploads and releases and is never applied or deleted. The store never
+evicts by age or size. Task rooms keep age and size retention (#4947) and
+share only the whole-record write. Persisted records are validated
 against their row identities before use. History reads use a deferred transaction;
 discovery is lookup-only. Explicit opening requires current discussion authority.
 
@@ -4933,7 +4986,9 @@ normally killed). Orchestration's first-turn composition adds the
 budget statement for adapters declaring `workloadScope: 'engine-process'`
 (omitted, with the chat-images line, when the Session's `session.started`
 records that its engine resumed an existing native transcript, which already
-holds them) and
+holds them; delivered again, with the prompt, Station instructions and Task
+brief, on the first turn after an `acp.session-started-fresh` warning, whose
+new engine session holds none of them) and
 the [memory-exhaustion recovery note](../../src-server/services/orchestration/memory-exhaustion-recovery.ts)
 for a successor of a memory-killed Session. Otherwise, the first turn after any
 engine ended with work still running gets the

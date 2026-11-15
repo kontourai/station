@@ -176,3 +176,20 @@ test('safety is a corner badge and the model has its own untruncated label segme
     trigger.querySelector('.composer-run-control__model')?.textContent,
   ).toBe('Mini');
 });
+
+test('spends visible text on the Model when the Agent mark names the Agent', () => {
+  render(
+    <ComposerRunControl
+      label="Claude Code · Opus"
+      icon={<AgentIcon agent={{ id: 'claude', name: 'Claude Code' }} />}
+    >
+      <span />
+    </ComposerRunControl>,
+  );
+  const trigger = screen.getByTestId('run-setup-trigger');
+  expect(trigger.querySelector('.composer-run-control__agent')).toBeNull();
+  expect(
+    trigger.querySelector('.composer-run-control__label')?.textContent,
+  ).toBe('Opus');
+  expect(trigger.getAttribute('aria-label')).toBe('Claude Code · Opus');
+});

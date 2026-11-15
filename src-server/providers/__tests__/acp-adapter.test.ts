@@ -15,8 +15,10 @@ import {
   engineControlPlaneCapability,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import {
+  ACP_SESSION_STARTED_FRESH_CODE,
   ENGINE_SIGN_IN_REQUIRED_CODE,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
+  SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
 import type { SessionLifecycleState } from '@kontourai/station-contracts/session-lifecycle';
 import { turnProvenanceEngineLabel } from '@kontourai/station-contracts/turn-provenance';
@@ -56,6 +58,7 @@ import { ACPProcess } from '../../services/acp/acp-process.js';
 import { normalizeCanonicalRuntimeEventLifecycle } from '../../services/orchestration/session-lifecycle-service.js';
 import type { CanonicalRuntimeEvent } from '../adapter-shape.js';
 import {
+  ProviderTurnEndedError,
   SendTurnRefusedError,
   SessionStartRefusedError,
 } from '../adapter-shape.js';
@@ -73,8 +76,34 @@ const managedWorkspaceHome = mkdtempSync(
 );
 afterAll(() => rmSync(managedWorkspaceHome, { recursive: true, force: true }));
 
+import {
+  EngineCredentials,
+  registerEngineCredentials,
+} from '../../services/acp/engine-credentials.js';
 import { NO_PERSON_INTENT } from '../../services/approvals/guardian-conversation.js';
+import { acpResumeSessions } from '../../telemetry/metrics.js';
+import { BUILTIN_ACP_ENGINES } from '../llm/builtin-acp-engines.js';
+import {
+  clearAll as clearProviderRegistries,
+  registerACPConnectionRegistryProvider,
+} from '../registries/registry.js';
 import { FakeAcpProcess } from './fake-acp-process.js';
+import {
+  QWEN_SUBAGENT_FRAMES,
+  QWEN_SUBAGENT_PARENT_CALL_ID,
+} from './fixtures/qwen-code-subagent-frames.js';
+
+/**
+ * A recorded frame re-addressed to the fake engine's own session: the adapter
+ * drops a frame that names another session than its process's.
+ */
+const inOwnSession = (
+  proc: FakeAcpProcess,
+  params: Record<string, unknown>,
+): any => ({ ...params, sessionId: proc.sessionId });
+
+/** Station homes for engine credential stores (cleaned after each test). */
+const makeCredentialHome = trackTempDirs();
 
 function createConnections(
   overrides: Partial<ACPConnectionConfig>[] = [],
@@ -409,6 +438,241 @@ describe('AcpAdapter', () => {
       'session.configured',
       'child-work.updated',
     ]);
+  });
+
+  test('a Qwen Code session reports the subagent its nested tool calls name, and ends it with the parent call', async () => {
+    const { adapter, processes } = createAdapter({
+      onProcess: (proc) => {
+        // Qwen Code's initialize (packages/cli/src/acp-integration/acpAgent.ts).
+        proc.initResult!.agentInfo = { name: 'qwen-code', version: '0.27.3' };
+      },
+    });
+    const events: CanonicalRuntimeEvent[] = [];
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-qwen-subagent',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const turn = await adapter.sendTurn({
+      threadId: 'thread-qwen-subagent',
+      input: 'Find where authentication is handled.',
+    });
+    await nextEvent(iterator, 'turn.started');
+    for (const frame of QWEN_SUBAGENT_FRAMES)
+      await processes[0]!.client.sessionUpdate(
+        inOwnSession(processes[0]!, frame.params),
+      );
+    processes[0]!.resolvePrompt('end_turn');
+    for (;;) {
+      const event = (await iterator.next()).value as CanonicalRuntimeEvent;
+      events.push(event);
+      if (event.method === 'turn.completed') break;
+    }
+    const childWork = events
+      .filter((event) => event.method === 'child-work.updated')
+      .map((event) => (event as { delta: Record<string, unknown> }).delta);
+    // No `not-reported`: the handshake names a reporter.
+    expect(childWork.map((delta) => delta.kind)).toEqual([
+      'snapshot',
+      'settle',
+      'snapshot',
+    ]);
+    expect(childWork[0]).toMatchObject({
+      running: [
+        {
+          childId: QWEN_SUBAGENT_PARENT_CALL_ID,
+          kindLabel: 'Explore',
+          parent: {
+            threadId: 'thread-qwen-subagent',
+            turnId: turn.turnId,
+            toolCallId: QWEN_SUBAGENT_PARENT_CALL_ID,
+          },
+        },
+      ],
+    });
+    expect(childWork[1]).toMatchObject({
+      childId: QWEN_SUBAGENT_PARENT_CALL_ID,
+      status: 'completed',
+    });
+    expect(childWork[2]).toMatchObject({ running: [] });
+    await adapter.stopAll();
+  });
+
+  test('the same nested frames from an engine not identified as Qwen Code report nothing', async () => {
+    const { adapter, processes } = createAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-not-qwen',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    await adapter.sendTurn({ threadId: 'thread-not-qwen', input: 'go' });
+    const seen: CanonicalRuntimeEvent[] = [];
+    for (;;) {
+      const event = (await iterator.next()).value as CanonicalRuntimeEvent;
+      seen.push(event);
+      if (event.method === 'turn.started') break;
+    }
+    for (const frame of QWEN_SUBAGENT_FRAMES)
+      await processes[0]!.client.sessionUpdate(
+        inOwnSession(processes[0]!, frame.params),
+      );
+    processes[0]!.resolvePrompt('end_turn');
+    for (;;) {
+      const event = (await iterator.next()).value as CanonicalRuntimeEvent;
+      seen.push(event);
+      if (event.method === 'turn.completed') break;
+    }
+    const childWork = seen
+      .filter((event) => event.method === 'child-work.updated')
+      .map((event) => (event as { delta: { kind: string } }).delta.kind);
+    // Only the session's start statement; the frames still map as tool calls.
+    expect(childWork).toEqual(['not-reported']);
+    expect(seen.some((event) => event.method === 'tool.started')).toBe(true);
+    await adapter.stopAll();
+  });
+
+  describe('a Qwen Code subagent whose prompt ends first', () => {
+    const [parentCall, nestedCall, progressNote, nestedResult, parentResult] =
+      QWEN_SUBAGENT_FRAMES;
+
+    async function qwenTurn(threadId: string) {
+      const { adapter, processes } = createAdapter({
+        onProcess: (proc) => {
+          proc.initResult!.agentInfo = { name: 'qwen-code', version: '0.27.3' };
+        },
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      await adapter.startSession({
+        provider: 'acp',
+        threadId,
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+      });
+      await nextEvent(iterator, 'session.started');
+      await nextEvent(iterator, 'session.configured');
+      const turn = await adapter.sendTurn({ threadId, input: 'Explore.' });
+      await nextEvent(iterator, 'turn.started');
+      return { adapter, proc: processes[0]!, iterator, turn };
+    }
+
+    async function childWorkUntil(
+      iterator: AsyncIterator<CanonicalRuntimeEvent>,
+      method: string,
+    ) {
+      const deltas: Array<Record<string, unknown>> = [];
+      for (;;) {
+        const event = await nextEvent(iterator, method);
+        if (event.method === 'child-work.updated')
+          deltas.push((event as { delta: Record<string, unknown> }).delta);
+        if (event.method === method) return deltas;
+      }
+    }
+
+    test('an interrupt ends a running subagent as cancelled', async () => {
+      const { adapter, proc, iterator, turn } = await qwenTurn(
+        'thread-qwen-interrupt',
+      );
+      await proc.client.sessionUpdate(inOwnSession(proc, parentCall!.params));
+      await proc.client.sessionUpdate(inOwnSession(proc, nestedCall!.params));
+      await adapter.interruptTurn('thread-qwen-interrupt', turn.turnId);
+      const deltas = await childWorkUntil(iterator, 'turn.aborted');
+      expect(deltas.map((delta) => delta.kind)).toEqual([
+        'snapshot',
+        'settle',
+        'snapshot',
+      ]);
+      expect(deltas[1]).toMatchObject({
+        childId: QWEN_SUBAGENT_PARENT_CALL_ID,
+        status: 'cancelled',
+      });
+      expect(deltas[2]).toMatchObject({ running: [] });
+      await adapter.stopAll();
+    });
+
+    test("Qwen's late answers to the cancel neither revive nor re-settle an interrupted subagent", async () => {
+      // The reviewer's probe: session updates are not quarantined after an
+      // interrupt, and Qwen answers the cancel by ending the subagent's own
+      // call and then the Agent call, both after Station settled the child.
+      const { adapter, proc, iterator, turn } = await qwenTurn(
+        'thread-qwen-late-frames',
+      );
+      await proc.client.sessionUpdate(inOwnSession(proc, parentCall!.params));
+      await proc.client.sessionUpdate(inOwnSession(proc, nestedCall!.params));
+      await adapter.interruptTurn('thread-qwen-late-frames', turn.turnId);
+      const atInterrupt = await childWorkUntil(iterator, 'turn.aborted');
+      expect(atInterrupt.map((delta) => delta.kind)).toEqual([
+        'snapshot',
+        'settle',
+        'snapshot',
+      ]);
+      const lateSubagentCallEnd = structuredClone(nestedResult!.params);
+      (lateSubagentCallEnd.update as { status: string }).status = 'failed';
+      const lateAgentCallEnd = structuredClone(parentResult!.params);
+      (lateAgentCallEnd.update as { status: string }).status = 'failed';
+      await proc.client.sessionUpdate(inOwnSession(proc, lateSubagentCallEnd));
+      await proc.client.sessionUpdate(inOwnSession(proc, lateAgentCallEnd));
+      const after: CanonicalRuntimeEvent[] = [];
+      for (;;) {
+        const event = await nextEventOrTimeout(iterator, 200);
+        if (event === 'TIMED_OUT') break;
+        after.push(event);
+      }
+      // No running snapshot of the settled child, and no second settle.
+      expect(
+        after.filter((event) => event.method === 'child-work.updated'),
+      ).toEqual([]);
+      await adapter.stopAll();
+    });
+
+    test('a prompt that ends without closing the Agent call ends it unresolved', async () => {
+      const { adapter, proc, iterator } = await qwenTurn(
+        'thread-qwen-unclosed',
+      );
+      await proc.client.sessionUpdate(inOwnSession(proc, parentCall!.params));
+      await proc.client.sessionUpdate(inOwnSession(proc, nestedCall!.params));
+      proc.resolvePrompt('end_turn');
+      const deltas = await childWorkUntil(iterator, 'turn.completed');
+      expect(deltas.map((delta) => delta.kind)).toEqual([
+        'snapshot',
+        'settle',
+        'snapshot',
+      ]);
+      expect(deltas[1]).toMatchObject({ status: 'unresolved' });
+      await adapter.stopAll();
+    });
+
+    test('a progress note on the Agent call alone lists the subagent', async () => {
+      // tool-call-emitter.ts emitProgressUpdate: the note lands on the
+      // parent call with `subagentProgress: true` and no parentToolCallId.
+      const { adapter, proc, iterator } = await qwenTurn(
+        'thread-qwen-progress-first',
+      );
+      await proc.client.sessionUpdate(inOwnSession(proc, parentCall!.params));
+      await proc.client.sessionUpdate(inOwnSession(proc, progressNote!.params));
+      await proc.client.sessionUpdate(inOwnSession(proc, parentResult!.params));
+      proc.resolvePrompt('end_turn');
+      const deltas = await childWorkUntil(iterator, 'turn.completed');
+      expect(deltas.map((delta) => delta.kind)).toEqual([
+        'snapshot',
+        'settle',
+        'snapshot',
+      ]);
+      expect(deltas[0]).toMatchObject({
+        running: [
+          { childId: QWEN_SUBAGENT_PARENT_CALL_ID, kindLabel: 'Explore' },
+        ],
+      });
+      expect(deltas[1]).toMatchObject({ status: 'completed' });
+      await adapter.stopAll();
+    });
   });
 
   test('#2316: an interrupt settles the open permission request; a late answer is refused and grants nothing', async () => {
@@ -3035,6 +3299,419 @@ describe('AcpAdapter', () => {
       ).rejects.toThrow('Resource not found: session native-kiro-cli');
       expect(processes[0].resumeSessionCalls).toBe(1);
       expect(processes[0].loadSessionCalls).toBe(0);
+    });
+
+    /**
+     * `_meta` exactly as Hermes builds it for a new/load/resume answer
+     * (NousResearch/hermes-agent acp_adapter/provenance.py
+     * build_session_provenance; v0.22.0 e06df9c2eae6, unchanged at v0.23.1).
+     * `acpSessionId` is the session the answer is about.
+     */
+    const hermesAnswer = (acpSessionId: string) => ({
+      _meta: {
+        hermes: {
+          sessionProvenance: {
+            acpSessionId,
+            currentHermesSessionId: '20261113_101500_ab12cd',
+            rootHermesSessionId: '20261113_101500_ab12cd',
+            parentHermesSessionId: null,
+            sessionKind: 'root',
+            compressionDepth: 0,
+          },
+        },
+      },
+    });
+    /** What Hermes's `initialize` says about itself (gateway_server.py, server.py). */
+    const asHermes = (proc: FakeAcpProcess) => {
+      proc.initResult!.agentInfo = { name: 'hermes-agent', version: '0.22.0' };
+    };
+    const resumeKiroCursor = (threadId: string) => ({
+      provider: 'acp' as const,
+      threadId,
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+      resumeCursor: {
+        acpSessionId: 'native-kiro-cli',
+        connectionId: 'kiro',
+        connectionFingerprint: kiroFingerprint(),
+      },
+    });
+
+    test('a resume the engine answers by naming a new session fails the start', async () => {
+      // Hermes's in-process agent (`hermes acp` up to v0.22.0) answers a
+      // resume of an unknown id by creating a session and returning success
+      // (acp_adapter/server.py resume_session: "not found, creating new").
+      const { adapter, processes } = createAdapter({
+        loadSessionCapability: true,
+        resumeSessionCapability: true,
+        onProcess: (proc) => {
+          asHermes(proc);
+          proc.resumeSessionResult = hermesAnswer(
+            '6f1c2a9e-0d4b-4c55-9a51-2f3e4d5c6b7a',
+          );
+        },
+      });
+      await expect(
+        adapter.startSession(resumeKiroCursor('thread-resume-replaced')),
+      ).rejects.toThrow('did not restore this conversation');
+      expect(processes[0].resumeSessionCalls).toBe(1);
+      // A failed resume is not retried as a load.
+      expect(processes[0].loadSessionCalls).toBe(0);
+    });
+
+    test('a load the engine answers by naming a new session fails the start too', async () => {
+      const { adapter, processes } = createAdapter({
+        loadSessionCapability: true,
+        onProcess: (proc) => {
+          asHermes(proc);
+          proc.loadSessionResult = hermesAnswer(
+            '6f1c2a9e-0d4b-4c55-9a51-2f3e4d5c6b7a',
+          );
+        },
+      });
+      await expect(
+        adapter.startSession(resumeKiroCursor('thread-load-replaced')),
+      ).rejects.toThrow('did not restore this conversation');
+      expect(processes[0].loadSessionCalls).toBe(1);
+    });
+
+    test('a resume the engine answers naming the requested session stands', async () => {
+      // The gateway viewer (`hermes acp` from v0.22.1) names the id the
+      // editor asked for (gateway_server.py _resume, editor_id).
+      const { adapter, processes } = createAdapter({
+        loadSessionCapability: true,
+        resumeSessionCapability: true,
+        onProcess: (proc) => {
+          asHermes(proc);
+          proc.resumeSessionResult = hermesAnswer('native-kiro-cli');
+        },
+      });
+      await expect(
+        adapter.startSession(resumeKiroCursor('thread-resume-same')),
+      ).resolves.toMatchObject({ threadId: 'thread-resume-same' });
+      expect(processes[0].resumeSessionCalls).toBe(1);
+    });
+
+    test('the provenance field is read only from an engine whose handshake names it', async () => {
+      // The same `_meta` from an engine that does not identify as Hermes is
+      // not a fact Station has reviewed, so it decides nothing.
+      const { adapter } = createAdapter({
+        loadSessionCapability: true,
+        resumeSessionCapability: true,
+        onProcess: (proc) => {
+          proc.resumeSessionResult = hermesAnswer(
+            '6f1c2a9e-0d4b-4c55-9a51-2f3e4d5c6b7a',
+          );
+        },
+      });
+      await expect(
+        adapter.startSession(resumeKiroCursor('thread-resume-unreviewed')),
+      ).resolves.toMatchObject({ threadId: 'thread-resume-unreviewed' });
+    });
+
+    test('the approval-floor relaunch keeps the old process when the new one attaches another session', async () => {
+      const add = vi.spyOn(acpResumeSessions, 'add');
+      try {
+        const { adapter, processes } = createAdapter({
+          resumeSessionCapability: true,
+          onProcess: (proc, index) => {
+            asHermes(proc);
+            // The replacement answers the resume with a session it created.
+            if (index === 1)
+              proc.resumeSessionResult = hermesAnswer(
+                '6f1c2a9e-0d4b-4c55-9a51-2f3e4d5c6b7a',
+              );
+          },
+        });
+        await adapter.startSession({
+          provider: 'acp',
+          threadId: 'thread-relaunch-other-session',
+          cwd: '/tmp/project',
+          metadata: { connectionId: 'kiro' },
+        });
+        const record = (
+          adapter as unknown as {
+            sessions: Map<string, { process: unknown }>;
+          }
+        ).sessions.get('thread-relaunch-other-session')!;
+        const outcome = await (
+          adapter as unknown as {
+            relaunchOnApprovalFloor: (
+              record: unknown,
+              floor: undefined,
+            ) => Promise<{ ok: boolean }>;
+          }
+        ).relaunchOnApprovalFloor(record, undefined);
+        expect(outcome.ok).toBe(false);
+        expect(processes[1]?.resumeSessionCalls).toBe(1);
+        // The session keeps its first process; the replacement is discarded.
+        expect(record.process).toBe(processes[0]);
+        expect(processes[1]?.destroyed).toBe(true);
+        expect(add).toHaveBeenCalledWith(1, {
+          connectionId: 'kiro',
+          outcome: 'other-session',
+        });
+        await adapter.stopAll();
+      } finally {
+        add.mockRestore();
+      }
+    });
+
+    /** What Gemini CLI's `initialize` says about itself (acpRpcDispatcher.ts). */
+    const asGemini = (proc: FakeAcpProcess) => {
+      proc.initResult!.agentInfo = { name: 'gemini-cli', version: '0.68.0' };
+    };
+    /**
+     * Gemini CLI's `loadSession` with no saved sign-in method:
+     * `prepareSessionConfig` throws `acp.RequestError.authRequired()`
+     * (google-gemini/gemini-cli 4ed06ed0dd acpSessionManager.ts).
+     */
+    const geminiNoSavedSignIn = () => RequestError.authRequired();
+    const drain = async (iterator: AsyncIterator<CanonicalRuntimeEvent>) => {
+      const seen: CanonicalRuntimeEvent[] = [];
+      for (;;) {
+        const event = await nextEventOrTimeout(iterator, 150);
+        if (event === 'TIMED_OUT') return seen;
+        seen.push(event);
+      }
+    };
+
+    /** A key-only Gemini connection: the key the engine inherits. */
+    const withGeminiKey = () => vi.stubEnv('GEMINI_API_KEY', 'test-gemini-key');
+    afterEach(() => vi.unstubAllEnvs());
+
+    test('Gemini CLI that cannot reload a key-only session starts a new one and says so', async () => {
+      withGeminiKey();
+      const { adapter, processes } = createAdapter({
+        loadSessionCapability: true,
+        onProcess: (proc) => {
+          asGemini(proc);
+          proc.loadSessionError = geminiNoSavedSignIn();
+        },
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      await expect(
+        adapter.startSession(resumeKiroCursor('thread-gemini-key-only')),
+      ).resolves.toMatchObject({ threadId: 'thread-gemini-key-only' });
+      expect(processes[0].loadSessionCalls).toBe(1);
+      // No authenticate: the session is started on whatever Gemini uses.
+      expect(processes[0].newSessionCalls).toBe(1);
+      expect(processes[0].extMethodCalls.map(({ method }) => method)).toEqual(
+        [],
+      );
+      const warning = (await drain(iterator)).find(
+        (event) => event.method === 'runtime.warning',
+      );
+      expect(warning).toMatchObject({
+        code: ACP_SESSION_STARTED_FRESH_CODE,
+        severity: 'warning',
+      });
+      const message = (warning as { message: string }).message;
+      // The reason is neutral (a passing Google sign-in failure reads the
+      // same), said once, and the fix is named.
+      expect(message).toContain(
+        'refused to reload this conversation without a saved sign-in method, so Station started a new',
+      );
+      expect(message.match(/reload this conversation/g)).toHaveLength(1);
+      expect(message).toContain('does not have them');
+      expect(message).toContain('choose its Gemini API key sign-in once');
+      expect(message).not.toContain('signs in with an API key');
+      // This start carries no first-turn instructions, so none are promised.
+      expect(message).not.toContain('instructions again');
+      await adapter.stopAll();
+    });
+
+    test('the fresh-start notice promises the instructions again only when the start has some', async () => {
+      withGeminiKey();
+      const { adapter } = createAdapter({
+        loadSessionCapability: true,
+        onProcess: (proc) => {
+          asGemini(proc);
+          proc.loadSessionError = geminiNoSavedSignIn();
+        },
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      await adapter.startSession({
+        ...resumeKiroCursor('thread-gemini-with-instructions'),
+        metadata: {
+          connectionId: 'kiro',
+          // The receipt session-agent-resolution.ts stamps for an Agent
+          // whose prompt rides the first turn.
+          [SESSION_CAPABILITY_DELIVERY_METADATA_KEY]: {
+            systemPrompt: {
+              channel: 'first-turn',
+              firstTurnInstructions: 'Be terse.',
+            },
+          },
+        },
+      });
+      const warning = (await drain(iterator)).find(
+        (event) => event.method === 'runtime.warning',
+      ) as { message: string } | undefined;
+      expect(warning?.message).toContain(
+        "Station sends this chat's instructions again with your next message.",
+      );
+      await adapter.stopAll();
+    });
+
+    test('a GEMINI_API_KEY stored in Station is the key that lets Gemini start fresh', async () => {
+      // The usual way a key arrives: saved on the connection, not in the
+      // host environment. The real descriptor lookup and credential store
+      // supply it to the engine's environment.
+      vi.stubEnv('GEMINI_API_KEY', '');
+      registerACPConnectionRegistryProvider(
+        {
+          listAvailable: () =>
+            BUILTIN_ACP_ENGINES.map((entry) => ({ ...entry })),
+        },
+        'builtin-acp-connections',
+        true,
+      );
+      const credentials = new EngineCredentials(
+        makeCredentialHome('station-gemini-credentials-'),
+      );
+      await credentials.set('kiro', 'GEMINI_API_KEY', 'stored-gemini-key', [
+        'GEMINI_API_KEY',
+      ]);
+      registerEngineCredentials(credentials);
+      try {
+        const { adapter, processes } = createAdapter({
+          loadSessionCapability: true,
+          connectionOverrides: [
+            { id: 'kiro', command: 'gemini', args: ['--acp'] },
+          ],
+          onProcess: (proc) => {
+            asGemini(proc);
+            proc.loadSessionError = geminiNoSavedSignIn();
+          },
+        });
+        await expect(
+          adapter.startSession({
+            ...resumeKiroCursor('thread-gemini-stored-key'),
+            resumeCursor: {
+              acpSessionId: 'native-gemini',
+              connectionId: 'kiro',
+              connectionFingerprint: acpConnectionFingerprint(
+                acpExecutionIdentity({
+                  command: 'gemini',
+                  args: ['--acp'],
+                  effectiveCwd: '/tmp/project',
+                }),
+              ),
+            },
+          }),
+        ).resolves.toMatchObject({ threadId: 'thread-gemini-stored-key' });
+        expect(processes[0].newSessionCalls).toBe(1);
+        await adapter.stopAll();
+      } finally {
+        registerEngineCredentials(null);
+        clearProviderRegistries();
+      }
+    });
+
+    test("a key in Station's environment that the engine did not receive does not start fresh", async () => {
+      // A locked managed pin can empty GEMINI_API_KEY in the launched
+      // engine's environment while Station's own process.env still has it.
+      // What decides is what the engine received (ACPProcess.spawnedEnvHas).
+      withGeminiKey();
+      const { adapter, processes } = createAdapter({
+        loadSessionCapability: true,
+        onProcess: (proc) => {
+          asGemini(proc);
+          proc.loadSessionError = geminiNoSavedSignIn();
+          proc.spawnedEnvHas = () => false;
+        },
+      });
+      await expect(
+        adapter.startSession(resumeKiroCursor('thread-gemini-pinned-empty')),
+      ).rejects.toThrow('Authentication required');
+      expect(processes[0].newSessionCalls).toBe(0);
+    });
+
+    test('Gemini CLI with no API key fails the resume instead of starting fresh', async () => {
+      // Without GEMINI_API_KEY the connection can only be on a saved Google
+      // sign-in, so the refusal is that sign-in failing, perhaps only for
+      // now: the conversation's pointer is kept and the resume fails.
+      vi.stubEnv('GEMINI_API_KEY', '');
+      const { adapter, processes } = createAdapter({
+        loadSessionCapability: true,
+        onProcess: (proc) => {
+          asGemini(proc);
+          proc.loadSessionError = geminiNoSavedSignIn();
+        },
+      });
+      await expect(
+        adapter.startSession(resumeKiroCursor('thread-gemini-google')),
+      ).rejects.toThrow('Authentication required');
+      expect(processes[0].newSessionCalls).toBe(0);
+    });
+
+    test('Gemini CLI answering -32000 with another message fails the resume', async () => {
+      // Only the exact "Authentication required" refusal is reviewed.
+      withGeminiKey();
+      const { adapter, processes } = createAdapter({
+        loadSessionCapability: true,
+        onProcess: (proc) => {
+          asGemini(proc);
+          proc.loadSessionError = new RequestError(
+            -32000,
+            'Session could not be restored',
+          );
+        },
+      });
+      await expect(
+        adapter.startSession(resumeKiroCursor('thread-gemini-other-32000')),
+      ).rejects.toThrow('Session could not be restored');
+      expect(processes[0].newSessionCalls).toBe(0);
+    });
+
+    test('a saved Gemini sign-in that is broken still fails the start', async () => {
+      withGeminiKey();
+      // The same refusal follows a saved method that failed to refresh; the
+      // new session uses that saved method and fails too.
+      const { adapter, processes } = createAdapter({
+        loadSessionCapability: true,
+        onProcess: (proc) => {
+          asGemini(proc);
+          proc.loadSessionError = geminiNoSavedSignIn();
+          proc.newSessionError = new RequestError(
+            -32000,
+            'Gemini API key is missing or not configured.',
+          );
+        },
+      });
+      await expect(
+        adapter.startSession(resumeKiroCursor('thread-gemini-broken')),
+      ).rejects.toThrow('Gemini API key is missing');
+      expect(processes[0].newSessionCalls).toBe(1);
+    });
+
+    test('the same refusal from an engine not identified as Gemini CLI fails the resume', async () => {
+      withGeminiKey();
+      const { adapter, processes } = createAdapter({
+        loadSessionCapability: true,
+        onProcess: (proc) => {
+          proc.loadSessionError = geminiNoSavedSignIn();
+        },
+      });
+      await expect(
+        adapter.startSession(resumeKiroCursor('thread-not-gemini')),
+      ).rejects.toThrow('Authentication required');
+      expect(processes[0].newSessionCalls).toBe(0);
+    });
+
+    test('Gemini CLI refusing a reattach any other way fails the resume', async () => {
+      const { adapter, processes } = createAdapter({
+        loadSessionCapability: true,
+        onProcess: (proc) => {
+          asGemini(proc);
+          proc.loadSessionError = RequestError.resourceNotFound('session');
+        },
+      });
+      await expect(
+        adapter.startSession(resumeKiroCursor('thread-gemini-not-found')),
+      ).rejects.toThrow();
+      expect(processes[0].newSessionCalls).toBe(0);
     });
 
     /** Start a resume whose `session/load` stays open until released. */
@@ -6991,6 +7668,109 @@ describe('AcpAdapter.steerTurn', () => {
     await adapter.stopAll();
   });
 
+  test('OpenCode 2.x steers through _session/steering and keeps the in-flight prompt', async () => {
+    // The identity OpenCode 2.3.0 answered `initialize` with
+    // (fixtures/opencode-serve-2.3.0-crossload.jsonl).
+    const { adapter, processes, turn } = await startSteerableTurn(
+      'thread-opencode-steer',
+      {
+        connectionOverrides: [{ id: 'kiro', command: 'other-cli' }],
+        onProcess: (proc) => {
+          proc.initResult!.agentInfo = { name: 'OpenCode', version: '2.3.0' };
+          proc.initResult!._meta = { steering: { supported: true } };
+          proc.extMethod = async (method, params) => {
+            proc.extMethodCalls.push({ method, params });
+            return { outcome: 'injected' };
+          };
+        },
+      },
+    );
+
+    await adapter.steerTurn('thread-opencode-steer', 'go left', turn.turnId);
+
+    expect(processes[0]?.extMethodCalls).toEqual([
+      {
+        method: '_session/steering',
+        params: {
+          sessionId: processes[0]?.sessionId,
+          prompt: [{ type: 'text', text: 'go left' }],
+        },
+      },
+    ]);
+    expect(processes[0]?.cancelCalls).toBe(0);
+    expect(processes[0]?.promptContents).toHaveLength(1);
+    await adapter.stopAll();
+  });
+
+  test('an OpenCode steer answered promptRequired reports the turn ended, not a delivered steer', async () => {
+    const { adapter, processes, turn } = await startSteerableTurn(
+      'thread-opencode-late-steer',
+      {
+        connectionOverrides: [{ id: 'kiro', command: 'other-cli' }],
+        onProcess: (proc) => {
+          proc.initResult!.agentInfo = { name: 'OpenCode', version: '2.3.0' };
+          proc.initResult!._meta = { steering: { supported: true } };
+          proc.extMethod = async (method, params) => {
+            proc.extMethodCalls.push({ method, params });
+            return { outcome: 'promptRequired', reason: 'noRunningTurn' };
+          };
+        },
+      },
+    );
+
+    await expect(
+      adapter.steerTurn('thread-opencode-late-steer', 'too late', turn.turnId),
+    ).rejects.toBeInstanceOf(ProviderTurnEndedError);
+    expect(processes[0]?.cancelCalls).toBe(0);
+    expect(processes[0]?.promptContents).toHaveLength(1);
+    await adapter.stopAll();
+  });
+
+  test('OpenCode 1.x, which declares no steering, keeps cancel + re-prompt', async () => {
+    const { adapter, processes, turn } = await startSteerableTurn(
+      'thread-opencode-1x-steer',
+      {
+        connectionOverrides: [{ id: 'kiro', command: 'other-cli' }],
+        onProcess: (proc) => {
+          proc.initResult!.agentInfo = { name: 'OpenCode', version: '1.18.18' };
+          proc.extMethod = async (method, params) => {
+            proc.extMethodCalls.push({ method, params });
+            return { outcome: 'injected' };
+          };
+        },
+      },
+    );
+
+    await adapter.steerTurn('thread-opencode-1x-steer', 'go left', turn.turnId);
+    expect(processes[0]?.extMethodCalls).toEqual([]);
+    expect(processes[0]?.cancelCalls).toBe(1);
+    await adapter.stopAll();
+  });
+
+  test("another engine's steer answer is never read as OpenCode's decline", async () => {
+    const { adapter, processes, turn } = await startSteerableTurn(
+      'thread-kiro-promptrequired',
+      {
+        connectionOverrides: [{ id: 'kiro', command: 'other-cli' }],
+        onProcess: (proc) => {
+          proc.initResult!.agentInfo = { name: 'Kiro CLI Agent' };
+          proc.extMethod = async (method, params) => {
+            proc.extMethodCalls.push({ method, params });
+            return { outcome: 'promptRequired' };
+          };
+        },
+      },
+    );
+
+    await expect(
+      adapter.steerTurn('thread-kiro-promptrequired', 'go', turn.turnId),
+    ).resolves.toBeUndefined();
+    expect(processes[0]?.extMethodCalls.map((call) => call.method)).toEqual([
+      '_session/steer',
+    ]);
+    await adapter.stopAll();
+  });
+
   test('Antigravity steers by a second session/prompt that takes over the running turn', async () => {
     // Recorded on Antigravity CLI 1.5.8: the first prompt answers `end_turn`
     // as soon as the mid-turn prompt arrives; the work and the reply carry on
@@ -7204,6 +7984,155 @@ describe('AcpAdapter.steerTurn', () => {
     ]);
     expect(processes[0]?.cancelCalls).toBe(0);
     expect(processes[0]?.promptContents).toHaveLength(1);
+    await adapter.stopAll();
+  });
+
+  /**
+   * Goose (aaif-goose/goose v1.59.0, 5d03ef6ed07b): `initialize` names it
+   * `goose` and declares `_meta.goose` feature flags, not methods
+   * (crates/goose/src/acp/server.rs on_initialize). Each prompt announces its
+   * run as a `session_info_update` with `_meta.goose.activeRunId`
+   * (`run_<uuid>`) and clears it with `null` (send_active_run_update).
+   */
+  const asGoose = (proc: FakeAcpProcess) => {
+    proc.initResult!.agentInfo = { name: 'goose', version: '1.59.0' };
+    proc.initResult!.agentCapabilities._meta = {
+      goose: { recipeParameterScopes: {} },
+    };
+  };
+  const GOOSE_RUN = 'run_3b0c6a52-9d1e-4f7a-8c2b-5e6f7a8b9c0d';
+  const announceGooseRun = (proc: FakeAcpProcess, runId: string | null) =>
+    proc.client.sessionUpdate({
+      sessionId: 'native-goose',
+      update: {
+        sessionUpdate: 'session_info_update',
+        _meta: { goose: { activeRunId: runId } },
+      },
+    } as any);
+  const gooseConnection = [{ id: 'kiro', command: 'goose', args: ['acp'] }];
+
+  test('Goose steers the run it announced, without cancelling the turn', async () => {
+    const { adapter, processes, turn } = await startSteerableTurn(
+      'thread-goose-steer',
+      { connectionOverrides: gooseConnection, onProcess: asGoose },
+    );
+    await announceGooseRun(processes[0]!, GOOSE_RUN);
+
+    await adapter.steerTurn('thread-goose-steer', 'go left', turn.turnId);
+
+    // SteerSessionRequest (crates/goose-sdk-types/src/custom_requests.rs),
+    // camelCase on the wire.
+    expect(processes[0]?.extMethodCalls).toEqual([
+      {
+        method: '_goose/unstable/session/steer',
+        params: {
+          sessionId: 'native-goose',
+          prompt: [{ type: 'text', text: 'go left' }],
+          expectedRunId: GOOSE_RUN,
+        },
+      },
+    ]);
+    expect(processes[0]?.cancelCalls).toBe(0);
+    expect(processes[0]?.promptContents).toHaveLength(1);
+    await adapter.stopAll();
+  });
+
+  test('Goose with no run announced, or one cleared, is steered by cancel + re-prompt', async () => {
+    // Goose refuses a steer whose expectedRunId is not the running prompt's
+    // (require_active_run), so Station never sends one it cannot name.
+    const { adapter, processes, turn } = await startSteerableTurn(
+      'thread-goose-no-run',
+      { connectionOverrides: gooseConnection, onProcess: asGoose },
+    );
+    await announceGooseRun(processes[0]!, GOOSE_RUN);
+    await announceGooseRun(processes[0]!, null);
+
+    await adapter.steerTurn('thread-goose-no-run', 'now', turn.turnId);
+
+    expect(processes[0]?.extMethodCalls).toEqual([]);
+    expect(processes[0]?.cancelCalls).toBe(1);
+    expect(processes[0]?.promptContents).toHaveLength(2);
+    await adapter.stopAll();
+  });
+
+  test('a run steer Goose refuses because the run ended falls back to cancel + re-prompt', async () => {
+    // acp/server.rs require_active_run: `invalid_params().data("no active
+    // run to steer")` once the run is cleared, or an expected/actual run
+    // mismatch once another run started.
+    const { adapter, processes, turn } = await startSteerableTurn(
+      'thread-goose-run-ended',
+      { connectionOverrides: gooseConnection, onProcess: asGoose },
+    );
+    await announceGooseRun(processes[0]!, GOOSE_RUN);
+    processes[0]!.extMethodError = RequestError.invalidParams(
+      'no active run to steer',
+    );
+
+    await adapter.steerTurn('thread-goose-run-ended', 'now', turn.turnId);
+
+    expect(processes[0]?.extMethodCalls.map(({ method }) => method)).toEqual([
+      '_goose/unstable/session/steer',
+    ]);
+    expect(processes[0]?.cancelCalls).toBe(1);
+    expect(processes[0]?.promptContents).toHaveLength(2);
+    await adapter.stopAll();
+  });
+
+  test("a Goose run is forgotten when its prompt ends, so the next turn's steer does not name it", async () => {
+    const { adapter, processes } = createAdapter({
+      connectionOverrides: gooseConnection,
+      onProcess: asGoose,
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-goose-next-turn',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    await adapter.sendTurn({ threadId: 'thread-goose-next-turn', input: 'a' });
+    await nextEvent(iterator, 'turn.started');
+    await announceGooseRun(processes[0]!, GOOSE_RUN);
+    processes[0]!.resolvePrompt('end_turn');
+    for (;;) {
+      if (
+        (await nextEvent(iterator, 'turn.completed')).method ===
+        'turn.completed'
+      )
+        break;
+    }
+    const next = await adapter.sendTurn({
+      threadId: 'thread-goose-next-turn',
+      input: 'b',
+    });
+    await nextEvent(iterator, 'turn.started');
+
+    // Goose has not announced the new prompt's run yet.
+    await adapter.steerTurn('thread-goose-next-turn', 'now', next.turnId);
+
+    expect(processes[0]?.extMethodCalls).toEqual([]);
+    expect(processes[0]?.cancelCalls).toBe(1);
+    await adapter.stopAll();
+  });
+
+  test('a run id under _meta.goose from an engine that is not Goose selects nothing', async () => {
+    const { adapter, processes, turn } = await startSteerableTurn(
+      'thread-not-goose',
+      {
+        connectionOverrides: gooseConnection,
+        onProcess: (proc) => {
+          proc.initResult!.agentInfo = { name: 'goose-fork', version: '1' };
+        },
+      },
+    );
+    await announceGooseRun(processes[0]!, GOOSE_RUN);
+
+    await adapter.steerTurn('thread-not-goose', 'now', turn.turnId);
+
+    expect(processes[0]?.extMethodCalls).toEqual([]);
+    expect(processes[0]?.cancelCalls).toBe(1);
     await adapter.stopAll();
   });
 
@@ -8000,5 +8929,75 @@ describe('after an untrusted read, ACP changes to instructions are declined (#48
           new Promise((resolve) => setTimeout(() => resolve('PENDING'), 1_000)),
         ]),
       ).toEqual({ outcome: { outcome: 'selected', optionId: 'reject-once' } });
+  });
+});
+
+describe('AcpAdapter provider and connection filter', () => {
+  function filteredAdapter() {
+    const processes: FakeAcpProcess[] = [];
+    const adapter = new AcpAdapter({
+      provider: 'opencode',
+      connectionFilter: (config) => config.id === 'other',
+      getConnections: async () => createConnections(),
+      logger: { debug: () => {}, warn: () => {}, error: () => {} },
+      managedWorkspaceHomeDir: managedWorkspaceHome,
+      processFactory: (opts) => {
+        const proc = new FakeAcpProcess(opts);
+        processes.push(proc);
+        return proc as unknown as ACPProcess;
+      },
+    });
+    return { adapter, processes };
+  }
+
+  test('sessions and events carry the provider the adapter was built for', async () => {
+    const { adapter, processes } = filteredAdapter();
+    expect(adapter.provider).toBe('opencode');
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    const session = await adapter.startSession({
+      provider: 'opencode',
+      threadId: 'thread-provider-option',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'other' },
+    });
+    expect(session.provider).toBe('opencode');
+    const started = await nextEvent(iterator, 'session.started');
+    expect(started.provider).toBe('opencode');
+    await nextEvent(iterator, 'session.configured');
+    await adapter.sendTurn({ threadId: 'thread-provider-option', input: 'hi' });
+    await nextEvent(iterator, 'turn.started');
+    // A mapper-built event, which the mappers build as the ACP adapter's.
+    await processes[0]!.client.sessionUpdate({
+      sessionId: processes[0]!.sessionId!,
+      update: {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'hello' },
+      },
+    } as any);
+    const delta = await nextEvent(iterator, 'content.text-delta');
+    expect(delta).toMatchObject({
+      method: 'content.text-delta',
+      provider: 'opencode',
+    });
+    await adapter.stopAll();
+  });
+
+  test('a connection the filter leaves out is never started or listed', async () => {
+    const { adapter, processes } = filteredAdapter();
+    await expect(
+      adapter.startSession({
+        provider: 'opencode',
+        threadId: 'thread-filtered-out',
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+      }),
+    ).rejects.toThrow('Unknown ACP connection: kiro');
+    expect(processes).toHaveLength(0);
+    await adapter.stopAll();
+  });
+
+  test('the registered ACP adapter keeps its id and every connection', () => {
+    const { adapter } = createAdapter();
+    expect(adapter.provider).toBe('acp');
   });
 });

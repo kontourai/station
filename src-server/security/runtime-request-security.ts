@@ -1295,9 +1295,14 @@ export class RuntimeMutationBudget {
     mutationClass: RuntimeMutationClass,
     route?: { method: string; path: string },
   ): number {
+    // Room file uploads (Task rooms, and Project rooms and channels, #4812)
+    // carry base64 data URLs up to the chat attachment allowance.
     if (
       route?.method === 'POST' &&
-      /^\/api\/tasks\/[^/]+\/room\/attachments$/.test(route.path)
+      (/^\/api\/tasks\/[^/]+\/room\/attachments$/.test(route.path) ||
+        /^\/api\/projects\/[^/]+\/(?:room|channels\/[^/]+)\/attachments$/.test(
+          route.path,
+        ))
     )
       return CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES;
     const upload =

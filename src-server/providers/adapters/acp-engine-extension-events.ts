@@ -16,6 +16,7 @@
  * nothing rather than to a guessed fact.
  */
 import crypto from 'node:crypto';
+import type { EngineId } from '@kontourai/station-contracts/agent-identity';
 import {
   CHILD_WORK_SUMMARY_MAX_CHARS,
   type ChildWorkTerminalStatus,
@@ -52,6 +53,7 @@ import {
   type AcpChildWorkState,
   acpChild,
   publishAcpAgentSubtask,
+  publishAcpNestedSubagentFrame,
   publishAcpSubagentRoster,
   settleAcpChild,
   startAcpChild,
@@ -72,7 +74,7 @@ export interface EngineTurnBoundary {
 
 /** What a reader needs from the mapper context; a subset of `AcpMapperContext`. */
 export interface EngineExtensionContext {
-  provider: 'acp';
+  provider: EngineId;
   session: ProviderSession;
   activeTurnId?: string;
   publish: (event: CanonicalRuntimeEvent) => void;
@@ -760,6 +762,9 @@ export const ENGINE_EXTENSION_READERS: Readonly<Record<string, Reader>> = {
     const meta = isRecord(update._meta) ? update._meta.kiro : undefined;
     if (isRecord(meta)) publishAcpAgentSubtask(update, meta, ctx);
   },
+  // The payload is the whole `tool_call` / `tool_call_update`.
+  'qwen-code.tool.subagent': (update, ctx) =>
+    publishAcpNestedSubagentFrame(update, ctx),
   // --- engine-mcp.status
   'kiro-v3.mcp-status': (params, ctx) => {
     if (!Array.isArray(params.servers)) return;
@@ -934,16 +939,29 @@ const TOOL_CALL_META_NAMESPACES: readonly string[] = [
   ),
 ];
 
+/** The table's rows that bind a top-level `_meta` field on a tool call. */
+const TOOL_CALL_META_FIELD_ROWS = ENGINE_EXTENSION_BINDINGS.filter(
+  (
+    row,
+  ): row is EngineExtensionBinding & {
+    wire: Extract<EngineExtensionWire, { kind: 'tool-call-meta-field' }>;
+  } => row.wire.kind === 'tool-call-meta-field',
+);
+
 /**
  * A core `tool_call` / `tool_call_update` whose vendor `_meta.<namespace>.kind`
- * a table row binds: that row's reader gets the whole update. Ordinary tool
- * calls carry no bound kind and are untouched; the tool call itself is still
- * mapped as one by the caller.
+ * (or a bound top-level `_meta` field) a table row binds: that row's reader
+ * gets the whole update. Ordinary tool calls carry no bound kind and are
+ * untouched; the tool call itself is still mapped as one by the caller.
  */
 export function mapEngineToolCallMeta(
   update: { _meta?: Record<string, unknown> | null },
   ctx: EngineExtensionContext,
 ): void {
+  for (const row of TOOL_CALL_META_FIELD_ROWS) {
+    if (update._meta?.[row.wire.field] === row.wire.value)
+      runReader(row, update as Record<string, unknown>, ctx);
+  }
   for (const namespace of TOOL_CALL_META_NAMESPACES) {
     const meta = update._meta?.[namespace];
     if (!isRecord(meta) || typeof meta.kind !== 'string') continue;

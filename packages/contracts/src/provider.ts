@@ -665,6 +665,31 @@ export function readApprovalMode(
 export const PROVIDER_ACP = 'acp';
 export const PROVIDER_OLLAMA = 'ollama';
 export const PROVIDER_MUSE = 'muse';
+/**
+ * OpenCode as its own engine: it runs saved ACP connection records, over
+ * OpenCode 2's own server where verified and over ACP otherwise
+ * (`opencode-adapter.ts`). New chats get it only while the
+ * `opencode-native-engine` Feature Preview is on; a chat keeps the provider
+ * it started with.
+ */
+export const PROVIDER_OPENCODE = 'opencode';
+
+/**
+ * Engines that run saved ACP connection records: `acp` itself, and an
+ * engine that drives some of those records its own way (`opencode`). Read it
+ * where a behaviour belongs to the ACP connection a session runs on (its
+ * folder, its approval control, its agent scoping), never to tell the
+ * engines apart.
+ */
+export const ACP_FAMILY_ENGINE_IDS: readonly string[] = [
+  PROVIDER_ACP,
+  PROVIDER_OPENCODE,
+];
+
+/** Whether `engine` runs saved ACP connection records ({@link ACP_FAMILY_ENGINE_IDS}). */
+export function isAcpFamilyEngine(engine: string | undefined | null): boolean {
+  return typeof engine === 'string' && ACP_FAMILY_ENGINE_IDS.includes(engine);
+}
 
 /**
  * archive#978 — the per-provider `modelOptions` keys each adapter actually
@@ -728,6 +753,12 @@ export const PROVIDER_MODEL_OPTION_SUPPORT: Record<string, readonly string[]> =
       'serviceTier',
     ],
     [PROVIDER_ACP]: ['mode', 'effort'],
+    // `opencode-adapter.ts` reads `approvalMode` (OpenCode's approval rules
+    // are always Station's to set) and `mode` (the OpenCode agent), and over
+    // ACP hands `effort` to the inner ACP adapter, which applies it as above.
+    // A session with `effort` runs over ACP rather than natively, where it
+    // could not be honoured (`OPENCODE_NATIVE_UNSUPPORTED_SETTING`).
+    [PROVIDER_OPENCODE]: ['approvalMode', 'mode', 'effort'],
     [PROVIDER_OLLAMA]: [],
     [PROVIDER_BEDROCK]: [],
     // #2452: `muse-adapter.ts` reads `approvalMode` (`readApprovalMode`) at
@@ -916,6 +947,15 @@ export interface SessionLiveContinuity {
  */
 export const ACP_AGENT_PROJECTION_UNAPPLIED_CODE =
   'acp.agent-projection-unapplied';
+
+/**
+ * `RuntimeWarningEvent.code` an ACP session publishes when the engine could
+ * not reload the stored conversation and Station started a new engine
+ * session in its place, deliberately and only where a reviewed engine row
+ * says the engine cannot reload it otherwise. The conversation's history
+ * stays in Station; the engine no longer has it.
+ */
+export const ACP_SESSION_STARTED_FRESH_CODE = 'acp.session-started-fresh';
 
 /** A provider explicitly disproved the exact native binding being resumed. */
 export const ENGINE_SESSION_BINDING_DEAD_CODE = 'engine-session-binding-dead';
@@ -1639,6 +1679,14 @@ export interface ProviderSession {
   cwd?: string;
   workspaceIsolation?: WorkspaceIsolationMetadata;
   resumeCursor?: unknown;
+  /**
+   * Set on the session a start returns when the engine could not reload the
+   * conversation it was asked to resume and Station started a new engine
+   * session in its place (`ACP_SESSION_STARTED_FRESH_CODE`). The new engine
+   * holds none of what the conversation's first turn delivered, so
+   * orchestration delivers that first-turn context again on the next turn.
+   */
+  engineContextStartedFresh?: true;
   controlMode?: SessionControlMode;
   attachedSource?: AttachedSessionSourceMetadata;
   /** Opaque Station lineage for an adopted continuation. */

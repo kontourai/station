@@ -4,6 +4,7 @@ import {
 } from '@kontourai/station-contracts/runtime-events';
 import {
   assertEngineAllowedByManagedPolicy,
+  managedEngineLaunch,
   managedEnginePrerequisites,
 } from '../../security/managed-engine-limits.js';
 import type { ACPClientCallbacks } from '../../services/acp/acp-bridge-types.js';
@@ -41,7 +42,10 @@ import {
   type StopReason,
 } from '@agentclientprotocol/sdk/unstable';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
-import { engineId } from '@kontourai/station-contracts/agent-identity';
+import {
+  type EngineId,
+  engineId,
+} from '@kontourai/station-contracts/agent-identity';
 import {
   ACP_ENGINE_DURABILITY,
   ACP_MODEL_OVERRIDE_PER_TURN,
@@ -68,6 +72,7 @@ import {
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
   ACP_SESSION_REWOUND_CODE,
   ACP_SESSION_REWOUND_LATE_CODE,
+  ACP_SESSION_STARTED_FRESH_CODE,
   ENGINE_CREDENTIAL_PROFILE_UNSUPPORTED_CODE,
   ENGINE_SIGN_IN_REQUIRED_CODE,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
@@ -244,13 +249,12 @@ import {
   type AcpSubagentWire,
   acpChildWorkNotReportedEvent,
   acpSubagentWires,
+  settleAcpNestedSubagentsAtPromptEnd,
 } from './acp-child-work.js';
 import {
   acpCommandAnswer,
   acpCommandFailure,
-  acpCommandUnsupported,
   acpDeclaredCommands,
-  readAcpSlashCommand,
   resolveAcpCommandRoute,
 } from './acp-command-routes.js';
 import {
@@ -281,6 +285,10 @@ import {
   resolveAcpPassthroughMcpServers,
 } from './acp-mcp-passthrough.js';
 import {
+  acpReattachRefusalStartsNewSession,
+  assertAcpReattachedRequestedSession,
+} from './acp-reattach-identity.js';
+import {
   acpRewindPointMatches,
   acpSessionContinuity,
   readAcpRewindAnswer,
@@ -303,7 +311,10 @@ import {
   requestedAcpSessionMode,
 } from './acp-session-mode.js';
 import {
+  type AcpSteerActiveRunSource,
+  acpSteerDeclined,
   acpSteerParams,
+  isAcpInvalidParams,
   isAcpMethodNotFound,
   resolveAcpSteerChannel,
 } from './acp-steer.js';
@@ -318,13 +329,23 @@ import {
   assertExecutionOverrideDelivery,
   mergeCapabilityDeliveryMetadata,
 } from './capability-delivery-metadata.js';
-import { engineCommandOutcomeText } from './engine-command-dispatch.js';
+import {
+  dispatchEngineCommand,
+  type EngineCommandPort,
+  readSlashCommandInvocation,
+} from './engine-command-dispatch.js';
 import { externalPreToolPolicyIdentity } from './external-pre-tool-policy-identity.js';
 import {
   grokInputRequest,
   grokQuestionCancelled,
   grokQuestionResponse,
 } from './harness-questions.js';
+import {
+  type OpenCodeVersion,
+  openCodeAcpApprovalUnsupportedReason,
+  openCodeServesNatively,
+  openCodeVersionProbe,
+} from './opencode-version-probe.js';
 
 /** Matches the `any`-typed logger threaded through the existing ACP substrate (acp-manager.ts, acp-connection.ts, ACPProcessOptions.logger). */
 type AcpLogger = any;
@@ -583,6 +604,18 @@ export function acpEngineExitEndsLaunch(input: {
 }
 
 export interface AcpAdapterOptions {
+  /**
+   * The engine id this adapter's sessions and events carry. `acp` (the
+   * default) for the registered ACP adapter; an engine that runs one of its
+   * transports over ACP (OpenCode's fallback) holds an unregistered one
+   * under its own id.
+   */
+  provider?: EngineId;
+  /**
+   * Which saved connections this adapter runs. Absent: every one
+   * `getConnections` lists.
+   */
+  connectionFilter?: (config: ACPConnectionConfig) => boolean;
   /** #4828: where untrusted reads are looked up; the shared ledger by default. */
   untrustedContentLedger?: UntrustedContentLedger;
   getConnections: () => Promise<ACPConnectionConfig[]>;
@@ -610,6 +643,13 @@ export interface AcpAdapterOptions {
     cwd: string;
     env: NodeJS.ProcessEnv;
   }) => OpenCodeAgentReader;
+  /**
+   * Reads which OpenCode a binary is (`opencode-version-probe.ts`); tests
+   * replace it. Defaults to the shared cached `--version` probe.
+   */
+  probeOpenCodeVersion?: (
+    binary: string,
+  ) => Promise<OpenCodeVersion | undefined>;
   /** Overrides {@link DEFAULT_SEND_TURN_START_WAIT_MS} (tests). */
   sendTurnStartWaitMs?: number;
   /** Bound on a rewind's engine answer (default 30 s); a test seam. */
@@ -945,6 +985,10 @@ export interface AcpSessionRecord {
   configOptionWaiters?: Set<() => void>;
   /** The subagent wires the handshake identified (`acp-child-work.ts`). */
   acpSubagentWires?: ReadonlySet<AcpSubagentWire>;
+  /** Where the engine names its running prompt, for a run steer (`acp-steer.ts`). */
+  acpSteerActiveRunSource?: AcpSteerActiveRunSource;
+  /** The running prompt the engine last named, if it names one. */
+  acpActiveRunId?: string;
   /** An in-place rewind is waiting on the engine; no turn may start. */
   rewinding?: boolean;
   /** A rewind past its deadline is still with the engine; no rewind may start. */
@@ -1395,8 +1439,50 @@ function acpProcessEndsSoon(
 const ACP_REWIND_LATE_ANSWER_TIMEOUT_MS = 5 * 60_000;
 const ACP_REWIND_TIMED_OUT = Symbol('acp-rewind-timed-out');
 
+/**
+ * Whether this start carries instructions that ride the first turn (the
+ * Agent's prompt or Station's instructions on the first-turn channel), which
+ * orchestration sends again after a fresh start.
+ */
+function startHasFirstTurnInstructions(
+  metadata: Record<string, unknown> | undefined,
+): boolean {
+  const report = metadata?.[SESSION_CAPABILITY_DELIVERY_METADATA_KEY] as
+    | {
+        systemPrompt?: { channel?: unknown; firstTurnInstructions?: unknown };
+        stationInstructions?: { channel?: unknown; firstTurnText?: unknown };
+      }
+    | undefined;
+  const text = (value: unknown) =>
+    typeof value === 'string' && value.trim().length > 0;
+  return (
+    (report?.systemPrompt?.channel === 'first-turn' &&
+      text(report.systemPrompt.firstTurnInstructions)) ||
+    (report?.stationInstructions?.channel === 'first-turn' &&
+      text(report.stationInstructions.firstTurnText))
+  );
+}
+
+/**
+ * Fails a reattach the engine answered with another session
+ * (`acp-reattach-identity.ts`), counted on every reattach path.
+ */
+function assertReattachedSession(
+  connectionId: string,
+  handshake: Parameters<typeof assertAcpReattachedRequestedSession>[0],
+  requestedSessionId: string,
+  answer: unknown,
+): void {
+  try {
+    assertAcpReattachedRequestedSession(handshake, requestedSessionId, answer);
+  } catch (error) {
+    acpResumeSessions.add(1, { connectionId, outcome: 'other-session' });
+    throw error;
+  }
+}
+
 export class AcpAdapter implements ProviderAdapterShape {
-  readonly provider = 'acp' as const;
+  readonly provider: EngineId;
   readonly metadata = {
     // #2880: the protocol has no acknowledgement of a decision; delivery is
     // not reported.
@@ -1447,9 +1533,16 @@ export class AcpAdapter implements ProviderAdapterShape {
   >();
 
   constructor(private readonly options: AcpAdapterOptions) {
+    this.provider = options.provider ?? 'acp';
     this.now = options.now ?? Date.now;
     this.approvalRelaunchTimeoutMs =
       options.approvalRelaunchTimeoutMs ?? COLD_START_OPERATION_TIMEOUT_MS;
+  }
+
+  private async connections(): Promise<ACPConnectionConfig[]> {
+    const all = await this.options.getConnections();
+    const filter = this.options.connectionFilter;
+    return filter ? all.filter(filter) : all;
   }
 
   private async resolvePreToolPolicy(
@@ -1532,7 +1625,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         : isAcpResumeCursor(input.resumeCursor)
           ? input.resumeCursor.connectionId
           : undefined;
-    const config = (await this.options.getConnections()).find(
+    const config = (await this.connections()).find(
       (candidate) => candidate.id === connectionId,
     );
     // #4520: before the start boundary is claimed, so the refusal is
@@ -1595,7 +1688,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         : isAcpResumeCursor(input.resumeCursor)
           ? input.resumeCursor.connectionId
           : undefined;
-    const connections = await this.options.getConnections();
+    const connections = await this.connections();
     const config = connections.find(
       (candidate) => candidate.id === connectionId,
     );
@@ -1970,6 +2063,9 @@ export class AcpAdapter implements ProviderAdapterShape {
       // Known from `initialize` on, so a subagent frame during session start
       // is read under the same identity.
       record.acpSubagentWires = acpSubagentWires(acpProcess.initResult);
+      record.acpSteerActiveRunSource = resolveAcpSteerChannel(
+        acpProcess.initResult,
+      ).activeRun;
       this.requireCurrentGeneration(input.threadId, record.generation);
       record.startedPublished = true;
       this.publish({
@@ -2403,6 +2499,9 @@ export class AcpAdapter implements ProviderAdapterShape {
         agentProjection && 'meta' in agentProjection
           ? agentProjection.meta
           : undefined;
+      // Set when a reviewed engine refused the reattach in the one way that
+      // makes a new engine session the only route (acp-reattach-identity.ts).
+      let startedFresh: { reason: string; remedy: string } | undefined;
       if (isAcpResumeCursor(input.resumeCursor)) {
         const reattach = acpReattachMethod(acpProcess.initResult);
         if (!reattach) {
@@ -2424,29 +2523,41 @@ export class AcpAdapter implements ProviderAdapterShape {
         // earlier answer.
         record.reattaching = true;
         try {
-          let outcome: 'resumed' | 'loaded';
+          let outcome: 'resumed' | 'loaded' = 'loaded';
           // The answer carries the same `modes`, `configOptions` and
           // `models` a `session/new` answer does.
-          let reattached: AdvertisedSessionState;
-          if (reattach === 'resume') {
-            try {
-              reattached = await acpProcess.resumeSession(
-                acpSessionId,
-                cwd,
-                passthroughMcpServers,
-              );
-              outcome = 'resumed';
-            } catch (error) {
-              // An engine that advertises `sessionCapabilities.resume` but
-              // answers "method not found" is loaded instead. Any other
-              // failure is real and propagates (fail closed: loading after
-              // an unexplained resume failure could mask it).
-              if (
-                !isAcpMethodNotFound(error) ||
-                acpProcess.initResult?.agentCapabilities?.loadSession !== true
-              ) {
-                throw error;
+          let reattached: AdvertisedSessionState | undefined;
+          try {
+            if (reattach === 'resume') {
+              try {
+                reattached = await acpProcess.resumeSession(
+                  acpSessionId,
+                  cwd,
+                  passthroughMcpServers,
+                );
+                outcome = 'resumed';
+              } catch (error) {
+                // An engine that advertises `sessionCapabilities.resume` but
+                // answers "method not found" is loaded instead. Any other
+                // failure is real and propagates (fail closed: loading after
+                // an unexplained resume failure could mask it).
+                if (
+                  !isAcpMethodNotFound(error) ||
+                  acpProcess.initResult?.agentCapabilities?.loadSession !== true
+                ) {
+                  throw error;
+                }
+                reattached = await acpProcess.loadSession(
+                  acpSessionId,
+                  cwd,
+                  passthroughMcpServers,
+                  sessionMeta,
+                );
+                outcome = 'loaded';
               }
+            } else {
+              // Sent again on load: the engine registers client agents per
+              // session process and has none after a restart.
               reattached = await acpProcess.loadSession(
                 acpSessionId,
                 cwd,
@@ -2455,66 +2566,82 @@ export class AcpAdapter implements ProviderAdapterShape {
               );
               outcome = 'loaded';
             }
-          } else {
-            // Sent again on load: the engine registers client agents per
-            // session process and has none after a restart.
-            reattached = await acpProcess.loadSession(
-              acpSessionId,
-              cwd,
-              passthroughMcpServers,
-              sessionMeta,
+          } catch (error) {
+            startedFresh = acpReattachRefusalStartsNewSession(
+              acpProcess.initResult,
+              error,
+              // What the engine process actually received, after the
+              // connection's stored credential, the host environment and
+              // any locked managed pin (acp-process.ts spawnedEnvHas).
+              (name) => acpProcess.spawnedEnvHas(name),
             );
-            outcome = 'loaded';
+            if (!startedFresh) throw error;
+            acpResumeSessions.add(1, {
+              connectionId: config.id,
+              outcome: 'started-fresh',
+            });
           }
-          // The SDK dispatches each notification without awaiting it before
-          // reading the next message, so the last replayed updates can still
-          // be in flight (as microtasks) when the response resolves. Yield a
-          // macrotask so they land while the replay is still suppressed.
-          await new Promise<void>((resolve) => setImmediate(resolve));
-          // A reopened session can change mode and effort only through what
-          // this answer advertised. A field it leaves out keeps what the
-          // session already holds (a `config_option_update` sent meanwhile).
-          if (Array.isArray(reattached.configOptions))
-            record.configOptions = reattached.configOptions;
-          const reattachedState = adoptAdvertisedSessionState(record, {
-            ...reattached,
-            configOptions: record.configOptions,
-          });
-          reportedModel = reattachedState.currentModelId;
-          // An engine need not keep a conversation's model or options across
-          // processes: Antigravity 1.5.8 resumes on its account default.
-          // So what this start explicitly asks for is applied again where
-          // the resumed session differs. Only explicit requests: no governed
-          // default mode (that is a fresh session's), and a value the
-          // session no longer advertises leaves the reattach as it is, with
-          // the engine's own reported model, rather than refusing to reopen.
-          const reapplied = await reapplyRequestedSessionState({
-            process: acpProcess,
-            record,
-            sessionModels:
-              reattachedState.sessionModels.kind === 'listed'
-                ? reattachedState.sessionModels.state
-                : undefined,
-            reportedModel,
-            requestedModel: input.modelId?.trim(),
-            // A governed start has already refused a mode outside build and
-            // plan (`assertStartGovernable`), for a reopen as for a new chat.
-            requestedMode: permittedAcpSessionMode(
-              reattachedState.modeCatalog,
-              requestedAcpSessionMode(input.modelOptions),
-              input.confinement,
-            ),
-            requestedEffort: requestedAcpEffort(input.modelOptions),
-            connectionId: config.id,
-            logger,
-          });
-          reportedModel = reapplied.reportedModel;
-          verifiedModelSelection = reapplied.modelSelection;
-          acpResumeSessions.add(1, { connectionId: config.id, outcome });
+          if (!startedFresh && reattached) {
+            // An engine that answered with a new session in place of this one
+            // fails the resume: continuing would run the conversation against
+            // an engine that holds none of it.
+            assertReattachedSession(
+              config.id,
+              acpProcess.initResult,
+              acpSessionId,
+              reattached,
+            );
+            // The SDK dispatches each notification without awaiting it before
+            // reading the next message, so the last replayed updates can still
+            // be in flight (as microtasks) when the response resolves. Yield a
+            // macrotask so they land while the replay is still suppressed.
+            await new Promise<void>((resolve) => setImmediate(resolve));
+            // A reopened session can change mode and effort only through what
+            // this answer advertised. A field it leaves out keeps what the
+            // session already holds (a `config_option_update` sent meanwhile).
+            if (Array.isArray(reattached.configOptions))
+              record.configOptions = reattached.configOptions;
+            const reattachedState = adoptAdvertisedSessionState(record, {
+              ...reattached,
+              configOptions: record.configOptions,
+            });
+            reportedModel = reattachedState.currentModelId;
+            // An engine need not keep a conversation's model or options across
+            // processes: Antigravity 1.5.8 resumes on its account default.
+            // So what this start explicitly asks for is applied again where
+            // the resumed session differs. Only explicit requests: no governed
+            // default mode (that is a fresh session's), and a value the
+            // session no longer advertises leaves the reattach as it is, with
+            // the engine's own reported model, rather than refusing to reopen.
+            const reapplied = await reapplyRequestedSessionState({
+              process: acpProcess,
+              record,
+              sessionModels:
+                reattachedState.sessionModels.kind === 'listed'
+                  ? reattachedState.sessionModels.state
+                  : undefined,
+              reportedModel,
+              requestedModel: input.modelId?.trim(),
+              // A governed start has already refused a mode outside build and
+              // plan (`assertStartGovernable`), for a reopen as for a new chat.
+              requestedMode: permittedAcpSessionMode(
+                reattachedState.modeCatalog,
+                requestedAcpSessionMode(input.modelOptions),
+                input.confinement,
+              ),
+              requestedEffort: requestedAcpEffort(input.modelOptions),
+              connectionId: config.id,
+              logger,
+            });
+            reportedModel = reapplied.reportedModel;
+            verifiedModelSelection = reapplied.modelSelection;
+            acpResumeSessions.add(1, { connectionId: config.id, outcome });
+          }
         } finally {
           record.reattaching = false;
         }
-      } else {
+      }
+      if (!isAcpResumeCursor(input.resumeCursor) || startedFresh) {
         const sessionResult = await acpProcess.newSession(
           cwd,
           passthroughMcpServers,
@@ -2551,6 +2678,32 @@ export class AcpAdapter implements ProviderAdapterShape {
             }),
           ),
         } satisfies AcpResumeCursor;
+        if (startedFresh) {
+          // Orchestration delivers the first-turn context again on the next
+          // turn; this tells it before the warning below is stored.
+          session.engineContextStartedFresh = true;
+          // Said in the conversation, never silent: the history Station
+          // shows is no longer the engine's context.
+          this.publish({
+            eventId: crypto.randomUUID(),
+            provider: this.provider,
+            threadId: input.threadId,
+            createdAt: new Date().toISOString(),
+            method: 'runtime.warning',
+            severity: 'warning',
+            code: ACP_SESSION_STARTED_FRESH_CODE,
+            message: [
+              `${record.engineName} ${startedFresh.reason}, so Station started a new ${record.engineName} session. Earlier messages are still shown here, but ${record.engineName} does not have them.`,
+              ...(startHasFirstTurnInstructions(input.metadata)
+                ? [
+                    "Station sends this chat's instructions again with your next message.",
+                  ]
+                : []),
+              startedFresh.remedy,
+            ].join(' '),
+            details: { connectionId: config.id },
+          });
+        }
         // A `config_option_update` that arrived before this answer may hold
         // a model option the answer itself left out.
         const updatedBeforeAnswer = record.configOptions;
@@ -3284,8 +3437,9 @@ export class AcpAdapter implements ProviderAdapterShape {
     // to have, is prompt text (acp-command-routes.ts).
     const invocation =
       decodedAttachments.length === 0
-        ? readAcpSlashCommand(input.input)
+        ? readSlashCommandInvocation(input.input)
         : undefined;
+    const asPromptText = () => record.process.prompt(content);
     const routed = invocation
       ? resolveAcpCommandRoute(record.process.initResult, invocation)
       : undefined;
@@ -3293,23 +3447,26 @@ export class AcpAdapter implements ProviderAdapterShape {
     record.activeTurnRunsEngineCommand = Boolean(
       invocation && (routed?.refusal || (routed?.params && sessionId)),
     );
+    const settlement: Promise<PromptResponse> =
+      invocation && routed
+        ? dispatchEngineCommand(
+            this.engineCommandPort(record, turnId, asPromptText),
+            invocation,
+            {
+              route: routed.route,
+              ...(routed.params && sessionId
+                ? { params: routed.params(sessionId) }
+                : {}),
+              ...(routed.refusal ? { refusal: routed.refusal } : {}),
+            },
+          )
+        : asPromptText();
     this.bindPromptSettlement(
       record,
       input.threadId,
       turnId,
       record.promptEpoch,
-      invocation && routed?.refusal
-        ? this.refuseEngineCommand(record, turnId, routed.refusal)
-        : invocation && routed?.params && sessionId
-          ? this.runEngineCommand(
-              record,
-              turnId,
-              invocation.name,
-              routed.route,
-              routed.params(sessionId),
-              () => record.process.prompt(content),
-            )
-          : record.process.prompt(content),
+      settlement,
     );
 
     return {
@@ -3320,62 +3477,42 @@ export class AcpAdapter implements ProviderAdapterShape {
   }
 
   /**
-   * A slash command whose subcommand Station does not run: nothing reaches
-   * the engine, and the turn shows why (acp-command-routes.ts `refusal`).
+   * How a slash command reaches this session's engine
+   * (`engine-command-dispatch.ts`): a routed request is an ACP extension
+   * method, and what it answers, or why nothing was sent, is shown as the
+   * engine's output on this turn. ACP performs no adapter action itself.
    */
-  private async refuseEngineCommand(
+  private engineCommandPort(
     record: AcpSessionRecord,
     turnId: string,
-    text: string,
-  ): Promise<PromptResponse> {
-    this.publishForTurn(record, {
-      eventId: crypto.randomUUID(),
-      provider: this.provider,
-      threadId: record.session.threadId,
-      createdAt: new Date().toISOString(),
-      turnId,
-      itemId: `${turnId}:command`,
-      method: 'content.text-delta',
-      delta: text,
-    });
-    return { stopReason: 'end_turn' };
-  }
-
-  /**
-   * Run a routed slash command as its request and show what came back as the
-   * engine's output on this turn. A refusal that means "no such command"
-   * runs the command as prompt text instead.
-   */
-  private async runEngineCommand(
-    record: AcpSessionRecord,
-    turnId: string,
-    name: string,
-    route: EngineCommandRoute,
-    params: Record<string, unknown>,
     asPromptText: () => Promise<PromptResponse>,
-  ): Promise<PromptResponse> {
-    if (route.kind !== 'engine-request') return asPromptText();
-    let outcome: EngineCommandOutcome;
-    try {
-      outcome = acpCommandAnswer(
-        await record.process.extMethod(route.method, params),
-      );
-    } catch (error) {
-      if (acpCommandUnsupported(error)) return asPromptText();
-      outcome = acpCommandFailure(error);
-    }
-    const text = engineCommandOutcomeText(record.engineName, name, outcome);
-    this.publishForTurn(record, {
-      eventId: crypto.randomUUID(),
-      provider: this.provider,
-      threadId: record.session.threadId,
-      createdAt: new Date().toISOString(),
-      turnId,
-      itemId: `${turnId}:command`,
-      method: 'content.text-delta',
-      delta: text,
-    });
-    return { stopReason: 'end_turn' };
+  ): EngineCommandPort<PromptResponse> {
+    return {
+      engineName: record.engineName,
+      asPromptText,
+      request: async (route, params) => {
+        try {
+          return acpCommandAnswer(
+            await record.process.extMethod(route.method, params),
+          );
+        } catch (error) {
+          return acpCommandFailure(error);
+        }
+      },
+      answerTurn: (text) => {
+        this.publishForTurn(record, {
+          eventId: crypto.randomUUID(),
+          provider: this.provider,
+          threadId: record.session.threadId,
+          createdAt: new Date().toISOString(),
+          turnId,
+          itemId: `${turnId}:command`,
+          method: 'content.text-delta',
+          delta: text,
+        });
+        return { stopReason: 'end_turn' };
+      },
+    };
   }
 
   async interruptTurn(threadId: string, turnId?: string) {
@@ -3401,6 +3538,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     // this makes an interrupt truthful even when the process never settles.
     record.toolUpdateSupervisor.cancelAll();
     this.settleRequestsAtPromptEnd(record, threadId, targetTurnId);
+    this.settlePromptEndState(record, threadId, targetTurnId, 'cancelled');
     // A provider turn has no prompt whose settlement lifts its quarantine,
     // so it is lifted here once the cancel is sent, on every path: kept, it
     // would suppress every later turn. Accepted trade-off: a cause the
@@ -3721,7 +3859,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     signal?: AbortSignal;
     connectionId?: string;
   }): Promise<Prerequisite[]> {
-    const connections = await this.options.getConnections();
+    const connections = await this.connections();
     if (connections.length === 0) {
       return [];
     }
@@ -4489,6 +4627,29 @@ export class AcpAdapter implements ProviderAdapterShape {
     }
   }
 
+  /**
+   * Ends what only the ended prompt had: the engine's announced run
+   * (`acp-steer.ts`; a later steer must not name it) and the Qwen subagents
+   * it still listed (`acp-child-work.ts`).
+   */
+  private settlePromptEndState(
+    record: AcpSessionRecord,
+    threadId: string,
+    turnId: string,
+    status: 'cancelled' | 'unresolved',
+  ): void {
+    record.acpActiveRunId = undefined;
+    settleAcpNestedSubagentsAtPromptEnd(
+      {
+        session: { threadId },
+        activeTurnId: turnId,
+        publish: (event) => this.publish(event),
+        state: record,
+      },
+      status,
+    );
+  }
+
   private publishAgentProjectionWarning(
     record: AcpSessionRecord,
     reason: string,
@@ -4895,15 +5056,27 @@ export class AcpAdapter implements ProviderAdapterShape {
             cwd,
             record.mcpServers ?? [],
           );
+          assertReattachedSession(
+            record.connectionId,
+            next.initResult,
+            cursor.acpSessionId,
+            resumed,
+          );
           configOptions = resumed.configOptions ?? undefined;
           return;
         }
         record.suppressSessionUpdates = true;
         try {
-          await next.loadSession(
+          const loaded = await next.loadSession(
             cursor.acpSessionId,
             cwd,
             record.mcpServers ?? [],
+          );
+          assertReattachedSession(
+            record.connectionId,
+            next.initResult,
+            cursor.acpSessionId,
+            loaded,
           );
         } finally {
           record.suppressSessionUpdates = false;
@@ -5050,9 +5223,30 @@ export class AcpAdapter implements ProviderAdapterShape {
     } catch (error) {
       return { ok: false, reason: errorMessage(error) };
     }
-    const resolved = await findCliBinaryAsync(command);
+    // The binary a launch would run: a managed policy's `acp` pin replaces
+    // the connection's command (`acp-process.ts`), so the version and the
+    // rules are read from that one.
+    const launched = managedEngineLaunch(
+      'acp',
+      { command, args: [], env: {} },
+      'user',
+    ).command;
+    const resolved = await findCliBinaryAsync(launched);
     if (!resolved) {
-      return { ok: false, reason: `${command} could not be found` };
+      return { ok: false, reason: `${launched} could not be found` };
+    }
+    // Ruling R1: Station's check reads 1.x's `debug agent <name>`, which
+    // 2.x does not have, and 2.x keeps saved approvals the check cannot
+    // see. Over ACP Station does not govern a 2.x OpenCode; its own
+    // approvals still apply when Station's mode is not asked for.
+    const version = await (
+      this.options.probeOpenCodeVersion ?? openCodeVersionProbe.probe
+    )(resolved);
+    if (version && openCodeServesNatively(version)) {
+      return {
+        ok: false,
+        reason: openCodeAcpApprovalUnsupportedReason(version.text),
+      };
     }
     const reader = (this.options.readOpenCodeAgents ?? openCodeAgentReader)({
       command: resolved,
@@ -5350,6 +5544,7 @@ export class AcpAdapter implements ProviderAdapterShape {
             : 'stopped',
           ...providerTurnMetadata(record, turnId),
         });
+        this.settlePromptEndState(record, threadId, turnId, 'cancelled');
         forgetProviderTurn(record, turnId);
         record.activeTurnId = undefined;
       }
@@ -5979,7 +6174,13 @@ export class AcpAdapter implements ProviderAdapterShape {
     };
   }
 
-  private publish(event: CanonicalRuntimeEvent): void {
+  private publish(incoming: CanonicalRuntimeEvent): void {
+    // The mappers build events as the ACP adapter's; one built for another
+    // engine (`AcpAdapterOptions.provider`) carries that engine's id.
+    const event =
+      incoming.provider === this.provider
+        ? incoming
+        : { ...incoming, provider: this.provider };
     // chat-host-images: which launch this exit ends, taken now (see
     // `stampLaunchExit`).
     stampLaunchExit(event);
@@ -6129,6 +6330,12 @@ export class AcpAdapter implements ProviderAdapterShape {
         if (!this.ownsActiveTurn(threadId, record, turnId)) return;
         record.turnErrorNotifications = undefined;
         this.settleRequestsAtPromptEnd(record, threadId, turnId);
+        this.settlePromptEndState(
+          record,
+          threadId,
+          turnId,
+          response.stopReason === 'cancelled' ? 'cancelled' : 'unresolved',
+        );
         this.publish({
           eventId: crypto.randomUUID(),
           provider: this.provider,
@@ -6155,6 +6362,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         const coReportedCause = record.turnErrorNotifications?.at(-1)?.message;
         record.turnErrorNotifications = undefined;
         this.settleRequestsAtPromptEnd(record, threadId, turnId);
+        this.settlePromptEndState(record, threadId, turnId, 'unresolved');
         if (quota) {
           this.publish({
             eventId: crypto.randomUUID(),
@@ -6236,16 +6444,33 @@ export class AcpAdapter implements ProviderAdapterShape {
       this.steerByPromptHandoff(record, threadId, turnId, text);
       return true;
     }
+    // A run steer joins the prompt the engine announced; with none known it
+    // would be refused, so the turn is steered by cancel + re-prompt.
+    const params = acpSteerParams(
+      selection.channel,
+      sessionId,
+      text,
+      record.acpActiveRunId,
+    );
+    if (!params) return false;
     for (const method of selection.methods) {
+      let result: unknown;
       try {
-        await record.process.extMethod(
-          method,
-          acpSteerParams(selection.channel, sessionId, text),
-        );
-        return true;
+        result = await record.process.extMethod(method, params);
       } catch (error) {
+        // The named run ended or was replaced before the steer arrived:
+        // steer the turn by cancel + re-prompt instead, which reports a turn
+        // that has itself ended as such.
+        if (selection.channel === 'run-steer' && isAcpInvalidParams(error)) {
+          record.acpActiveRunId = undefined;
+          return false;
+        }
         if (!isAcpMethodNotFound(error)) throw error;
+        continue;
       }
+      if (acpSteerDeclined(selection.channel, result))
+        throw new ProviderTurnEndedError();
+      return true;
     }
     return false;
   }
@@ -6282,6 +6507,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     const promptEpoch = record.promptEpoch;
     record.toolUpdateSupervisor.cancelAll();
     this.settleRequestsAtPromptEnd(record, threadId, turnId);
+    this.settlePromptEndState(record, threadId, turnId, 'cancelled');
     await record.process.cancel();
     if (record.activeTurnId !== turnId) {
       throw new ProviderTurnEndedError();

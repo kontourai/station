@@ -119,6 +119,57 @@ When Station resolves a new execution for an ACP-bound Agent, the adapter:
    requested). No governed default mode is applied; a
    governed start refuses a mode outside build and plan before launch, for
    a reopen as for a new chat.
+   ACP's load and resume answers carry no session id, so the protocol cannot
+   say when an engine answered by starting a new, empty session instead.
+   Where an engine names the session it attached in its own `_meta`, a small
+   table in
+   [acp-reattach-identity.ts](../../src-server/providers/adapters/acp-reattach-identity.ts)
+   reads that name, keyed on the engine's
+   handshake: Hermes (`agentInfo.name` `hermes-agent`) names it in
+   `_meta.hermes.sessionProvenance.acpSessionId`. `hermes acp` up to
+   v0.22.0, and in v0.22.2, answers a resume of an unknown id by creating a
+   session and returning success (seen live on 0.17.0). From v0.22.1 its
+   gateway viewer errors instead. When the named session is not the one Station asked for, the
+   start fails like any other resume failure (counted as `other-session` on
+   `station.acp.resume_sessions`) rather than running the conversation
+   against an engine that holds none of it. The same check applies when the
+   approval-floor relaunch reattaches. An answer without the field, or from
+   another engine, decides nothing. That leaves one Hermes case it cannot
+   catch: a `session/load` of an unknown id answers `{}` with no `_meta`
+   (seen live on 0.17.0). Station loads Hermes only after `session/resume`
+   answers method-not-found, and Hermes advertises and answers resume, so
+   that path is not reached today.
+   The same module names the one refusal after which Station starts a new
+   engine session instead of failing. Gemini CLI (`agentInfo.name`
+   `gemini-cli`) creates sessions with its saved sign-in method, or with the
+   API key when none is saved, but reloads them only with a saved method: a
+   key-only connection gets `Authentication required` (-32000) on
+   `session/load`. When the engine process actually received a non-empty
+   `GEMINI_API_KEY` (stored in Station or inherited from the host
+   environment, and not emptied by a locked managed pin) and Gemini refuses
+   exactly that way, Station starts a new Gemini session and says so in the
+   conversation (`acp.session-started-fresh`, counted `started-fresh`). The
+   notice names the fix: choose Gemini's API key sign-in once, after which
+   Gemini can reload conversations. A connection without the key can only be
+   on a saved Google sign-in, so the same refusal there (for example a
+   passing Google token-refresh failure) fails the resume and keeps the
+   conversation's pointer. With both a key and a Google sign-in Station
+   cannot tell the two causes apart, and the notice says a passing Google
+   sign-in failure is possible. Station never calls `authenticate` to switch
+   Gemini to the key: authenticating would clear a saved Google login and
+   change the person's own Gemini CLI settings. A new session uses the saved
+   method when there is one, so a broken sign-in still fails the start.
+   The new engine session holds none of the conversation, including what its
+   first turn delivered. Orchestration therefore treats the notice as a new
+   start of the engine's context: the next turn carries the Agent's authored
+   prompt, Station's instructions, any Task brief, the workload budget and
+   the chat-host-images line again, once
+   (`turnStartedSinceEngineContextBegan`). The notice says the instructions
+   follow only when the start carries any. The note about work a previous
+   engine left running keeps its own rule, since it describes a predecessor
+   Session, not this engine's context. The approval-floor relaunch has no
+   such fallback: a key-only Gemini session refused there keeps its old
+   engine process and the switch fails visibly.
    On `session/load`, ACP has the agent replay the whole conversation as
    `session/update` notifications before it answers. Station already stored
    that history, so while the session reattaches the adapter does not publish
@@ -168,9 +219,11 @@ Advertised session modes are honored on that one agent (station#1945). `Provider
 
 The current Agent catalog reports `engineId`, `engineDisplayName` and
 `engineConnectionType` for engine grouping and connection-method display. For an
-ACP-bound Agent `engineId` is always `acp` and `engineConnectionType` is `acp`,
-read from the connection record even when the live inspection fails, so its
-icon keeps its initials.
+ACP-bound Agent `engineConnectionType` is always `acp`, and `engineId` is `acp`
+unless an engine that runs saved ACP connections claims the connection (an
+OpenCode connection reads `opencode` while the OpenCode native engine Feature
+Preview is on). Both are read from the connection record even when the live
+inspection fails, so its icon keeps its initials.
 `execution.agentConnectionId` is the persisted binding. The Agent ID remains
 independent of how the connection is implemented; do not use a legacy
 `source: 'acp'` discriminator. Model choices and image support depend on the
@@ -200,7 +253,7 @@ provide no confirmed safe execution boundary, so the composer waits for the turn
 to finish. Attachments remain in the draft until then. See the
 [composer contract](../design/chat-composer.md#turn-activity-and-follow-up-delivery).
 
-An explicit adapter `steerTurn` command can still steer the open turn. The channel follows the live session's own `initialize` answer, never the launch command: a declared `_session/steer` or `_x.ai/interject` extension method is used by whichever engine declares it. Kiro and Grok answer these methods without declaring them, so a small table in `acp-steer.ts` matches them on exact facts their handshake states (Kiro's `agentInfo.name` `Kiro CLI Agent`, or Kiro `--v3`'s `_meta.kiro` capability namespace; Grok's `_meta.grokShell` flag). Antigravity (`agentInfo.name` `Antigravity ACP Server`) takes a second core `session/prompt` sent mid-turn as a steer: it answers the running prompt at once and carries the work on under the new one, so Station sends the steer as a prompt on the same turn and moves the turn's settlement to it (`prompt-handoff`), cancelling nothing. Every other ACP engine, and a native method that returns JSON-RPC -32601, is steered by cancelling the in-flight prompt, including any tool call it was running, and re-prompting on the same turn. That fallback's steer `turn.started` carries `steerInterruptedRun: true`, and the transcript notes under the steer that it was sent by stopping the step that was running. See [queue vs steer](../design/session-tape-replay.md#queue-vs-steer) for every engine's mechanism.
+An explicit adapter `steerTurn` command can still steer the open turn. The channel follows the live session's own `initialize` answer, never the launch command: a declared `_session/steer` or `_x.ai/interject` extension method is used by whichever engine declares it. Kiro, Grok and OpenCode 2.x answer methods they do not declare as extension methods, so a small table in `acp-steer.ts` matches them on exact facts their handshake states (Kiro's `agentInfo.name` `Kiro CLI Agent`, or Kiro `--v3`'s `_meta.kiro` capability namespace; Grok's `_meta.grokShell` flag; OpenCode 2.x's `_meta.steering.supported`, steered through `_session/steering`, where an answer of `promptRequired` means no turn was running and the steer fails as ended). Antigravity (`agentInfo.name` `Antigravity ACP Server`) takes a second core `session/prompt` sent mid-turn as a steer: it answers the running prompt at once and carries the work on under the new one, so Station sends the steer as a prompt on the same turn and moves the turn's settlement to it (`prompt-handoff`), cancelling nothing. Goose (`agentInfo.name` `goose`) is steered with its undeclared `_goose/unstable/session/steer`, which joins a named run: each Goose prompt announces its run as `_meta.goose.activeRunId` on a `session_info_update`, and Station sends that id as `expectedRunId`. With no run announced, Goose would refuse the steer, so Station uses the fallback below. A run is forgotten when its prompt ends, and a steer Goose refuses with -32602 (its run ended or was replaced) also falls back. Known gap: Goose drops steers it accepted but had not yet read when the run ends (`discard_pending_steers`), without reporting the drop. A steer it did read reappears as a user message chunk whose `messageId` matches the steer's and whose `_meta.goose.steer` is `true`. Station has no consumer for steer delivery status yet (the `session.steer-status` binding consumer is a placeholder), so such a dropped steer is not reported. That row is read from Goose's source (v1.59.0), not a live run. Every other ACP engine, including OpenCode 1.x, and a native method that returns JSON-RPC -32601, is steered by cancelling the in-flight prompt, including any tool call it was running, and re-prompting on the same turn. That fallback's steer `turn.started` carries `steerInterruptedRun: true`, and the transcript notes under the steer that it was sent by stopping the step that was running. See [queue vs steer](../design/session-tape-replay.md#queue-vs-steer) for every engine's mechanism.
 
 ### Canonical Event Vocabulary
 
@@ -632,6 +685,31 @@ How the events behave:
   child-work registry: a re-sent start changes nothing, and every end settles
   a child a running set listed. The cell's signals are the union: Kiro's
   wires carry `lifecycle` only, Grok's also `progress`, `usage` and `result`.
+  The fourth reporter, Qwen Code (`agentInfo.name` `qwen-code`), carries
+  `lifecycle` only and runs each subagent inside one Agent
+  tool call. The subagent's own tool calls carry `_meta.provenance:
+  'subagent'` and name that call as `_meta.parentToolCallId`. Its progress
+  notes on the call itself carry the marker with `subagentProgress: true`.
+  Station lists the subagent running from its first such frame, named by the
+  Agent call and labelled by `_meta.subagentType`, and ends it with that call's
+  own outcome. A subagent inside a subagent is its own child. One still
+  listed when its prompt ends is settled with it: `cancelled` when Station
+  cancelled the prompt (an interrupt, a steer by cancel and re-prompt, an
+  engine restart), `unresolved` when the prompt ended without closing the
+  Agent call. Nothing else would end it, since the child-work projection
+  does not read turn ends. These frames
+  stay tool calls too. The shape is read from Qwen Code's source, not a live
+  capture. Bound past 64 running like `agent-subtask`.
+  Not bound, with the reason:
+  - **Cursor's `cursor/task`.** Its documentation describes a completion
+    notification only, with no start, no session id, and no handshake
+    identity, and it also gives the notification a response type. A child
+    cannot be listed running from it.
+  - **Copilot CLI.** Its changelog says ACP clients receive subagent IDs, but
+    the wire shape is not public.
+  - **Goose `subagent_id`.** It appears only inside an MCP log entry relayed
+    as `_meta.toolNotification` on the parent call, with no start or end.
+    The emitter in Goose's current source could not be pinned.
 
 Observed on kiro-cli 2.35.0 `--agent-engine v3`:
 
@@ -1093,6 +1171,44 @@ OpenCode runs some code without any permission request, so no approval mode reac
 
 The `build`/`plan` agents are overridden in place rather than given approval copies selected through `session/set_config_option`: OpenCode attaches plan behaviour to the agent named `plan` (its plan-mode reminder, and `plan_exit` switching to the agent named `build`), so a renamed copy would lose plan mode.
 
+#### OpenCode 2 and OpenCode 1
+
+Everything above about how OpenCode is governed over ACP was checked against
+OpenCode 1.18.18 (npm `opencode-ai`). OpenCode 2.x behaves differently, and
+Station reads the binary's `--version` to tell the two apart
+([version probe](../../src-server/providers/adapters/opencode-version-probe.ts)).
+
+- **Approval rules.** Station's check reads 1.x's `opencode debug agent <name>`.
+  2.x has no such subcommand: it exits 1 with "Unknown subcommand", which is the
+  failure reported in #4435. 2.x's `debug agents` (plural) lists each agent's
+  configured rules but not the approvals the person saved. Over ACP, Station
+  therefore does not govern 2.x (ruling R1). A start or takeover that asks for a
+  Station approval mode on 2.x is refused with `acp_approval_governance_refused`,
+  and the reason names the version. Without a Station mode, OpenCode's own
+  approvals apply as before. No launch overlay is built for 2.x.
+- **Steering.** 2.x's `initialize` declares `_meta.steering.supported`, and
+  Station steers it through `_session/steering`
+  ([steer channels](../../src-server/providers/adapters/acp-steer.ts)). 1.x
+  declares nothing and keeps cancel and re-prompt.
+- **Native engine.** With the `opencode-native-engine` Feature Preview on, new
+  chats on an OpenCode connection run on the `opencode` engine. It drives 2.x
+  over its own `opencode serve`, where Station verified the served API, and
+  governs it through the session's permission rules. An edit of OpenCode's
+  own configuration asks you there under Ask and Auto, even after an
+  "allow for this session". Under Ask and Auto, OpenCode's own tool for moving
+  the chat to another folder is turned off, because OpenCode loads the new
+  folder's plugins as it moves; a chat moved there anyway, into a folder whose
+  OpenCode configuration runs code, is stopped with a warning. A chat started
+  as an Agent runs there too: Station's tool policy for the Agent is checked
+  on each permission OpenCode asks for, as over ACP. That path does not
+  need `debug agent`, so it is where #4435 is resolved. 1.x, an unverified 2.x,
+  and every chat while the preview is off still run over ACP. A 2.x chat that
+  falls back to ACP gets the refusal above (ruling R1) for any Station approval
+  mode, Ask and Auto included; without one, OpenCode's own approvals apply. The design,
+  fallback rules and limits are in
+  [the OpenCode native transport decision](../decisions/opencode-native-transport.md).
+  #4435 stays open until this ships.
+
 **Every other ACP engine (`engine`).** Station has no channel into its permission rules. It answers the requests the engine chooses to send, but it cannot make the engine ask for others. Such a connection gets no approval mode: the server sends none, a `setApprovalMode` is refused with "This engine has no approval control.", a carried `approvalMode` is refused as an unsupported option, and the composer's approval control reads "Set by engine" and explains that the engine decides. An engine whose own modes are approval levels (claude-code-acp advertises `default`, `acceptEdits`, `plan`, `auto` and, when allowed, `bypassPermissions`) is changed through its Mode picker; Station does not map those modes onto its own, and a full-access mode is withheld outside a `host` session (#2569).
 
 A permission request belongs to the prompt that raised it. When `session/prompt` settles while one is still open — the turn completed or failed without waiting for the answer — the adapter settles it as `cancelled` (`request.resolved`) before the turn's terminal, the same way an interrupt does, so no approval surface keeps offering a decision nothing will read.
@@ -1131,6 +1247,20 @@ HTTP. The rules, in full:
   connects to it with an MCP HTTP client, exactly as it would any other HTTP
   MCP server. Nothing ACP-specific is required beyond supporting the
   transport.
+- **The same list on reattach, except the token.** `session/load` and
+  `session/resume` carry `mcpServers` resolved exactly as for `session/new`,
+  in the same order. A relaunch inside one Station process (the approval-floor
+  switch) resends the session's own list unchanged. A fresh engine start
+  (after a Station restart, or a credential recovery) resolves the list again
+  from the current configuration and mints a new token, which revokes the
+  previous one. A Station restart loses every token anyway, since they are
+  held only in memory. So the list matches the first one except for the
+  `Authorization` header, plus any configuration change made since. Station
+  does not persist tokens to make the lists identical: that would keep a
+  bearer valid across restarts. Hermes's gateway (from v0.22.1) fingerprints
+  the whole list, headers included. On a changed list its ACP viewer re-binds
+  the session's servers while the session is idle, and fails the load while a
+  turn is running, which Station reports as a failed resume.
 - **`Authorization: Bearer <token>`.** The credential is in the header list,
   never in the URL — the URL carries no token at all. Present the header on
   every request to that endpoint.

@@ -8,6 +8,12 @@ import {
 import { StationUiError } from './StationUiError';
 import { isStationTransportFailure } from './stationTransportFailure';
 
+/** Shared with `describeReadFailure` so a read and a request say the same thing. */
+export const STATION_FAILURE_UNREADABLE =
+  'Station sent a response this app could not read.';
+export const STATION_FAILURE_UNREACHABLE =
+  'Could not reach Station. Check the connection, then try again.';
+
 const TERMINAL_RECOVERY_COPY = new Map([
   [
     'raw-egress-unavailable',
@@ -152,7 +158,7 @@ export function describeStationFailure(
   )
     return {
       title: 'Response unavailable',
-      body: 'Station sent a response this app could not read.',
+      body: STATION_FAILURE_UNREADABLE,
       authority,
       delivery: 'uncertain',
       recovery: 'check',
@@ -160,7 +166,7 @@ export function describeStationFailure(
   if (value && isStationTransportFailure(value))
     return {
       title: 'Connection unavailable',
-      body: 'Could not reach Station. Check the connection, then try again.',
+      body: STATION_FAILURE_UNREACHABLE,
       authority,
       delivery: 'uncertain',
       recovery: 'check',

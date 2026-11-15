@@ -36,14 +36,17 @@ import ts from 'typescript-api';
 import { describe, expect, test } from 'vitest';
 import { GROK_LIVE_CAPTURE } from '../../../src-shared/extension-notification-bindings.js';
 import { STATION_UNMAPPED_SUBAGENT_ENGINES } from '../../services/orchestration/child-work-projection.js';
+import type { ProviderAdapterShape } from '../adapter-shape.js';
 import {
   type AcpMapperContext,
   mapAcpExtensionNotification,
   mapAcpSessionUpdate,
 } from '../adapters/acp-adapter-events.js';
+import type { AcpSubagentWire } from '../adapters/acp-child-work.js';
 import { AcpToolUpdateSupervisor } from '../adapters/acp-tool-update-supervisor.js';
 import { MuseAdapter } from '../adapters/muse-adapter.js';
 import type { MuseProcessLike } from '../adapters/muse-adapter-types.js';
+import { OpenCodeAdapter } from '../adapters/opencode-adapter.js';
 import {
   CLAUDE_TASK_CAPTURES,
   replayClaudeTaskCapture,
@@ -53,6 +56,7 @@ import {
   CODEX_COLLAB_V2_SPAWN_WAIT_COMPLETED,
   replayCodexCapture,
 } from './codex-collab-fixtures.js';
+import { QWEN_SUBAGENT_FRAMES } from './fixtures/qwen-code-subagent-frames.js';
 import {
   MUSE_13_BACKGROUND_WORKFLOW_TURN_LINES,
   MUSE_13_BASH_TOOL_TURN_LINES,
@@ -63,6 +67,11 @@ import {
   type MuseServeCaptureName,
   replayMuseServeCapture,
 } from './muse-serve-replay.js';
+import {
+  OpenCodeServeReplay,
+  recordedPromptIds,
+  replayLeaser,
+} from './opencode-serve-replay.js';
 
 type Driver = {
   /** Replays the engine's captured output; returns everything published. */
@@ -313,7 +322,8 @@ async function replayAcpGrokCaptures(): Promise<CanonicalRuntimeEvent[]> {
  * ACP sessions report different signals by engine, so the cell's signals are
  * the union. The per-format test (each format alone delivers every declared
  * signal) runs on Grok's captures, the one reporter that delivers them all;
- * Kiro's formats are held to the lifecycle they carry by their own test.
+ * Kiro's and Qwen Code's formats are held to the lifecycle they carry by
+ * their own test.
  */
 const ACP_FORMATS = {
   'grok 1.0.77 background tasks and subagents': replayAcpGrokCaptures,
@@ -341,6 +351,8 @@ function acpGoldenFrames(): Array<{ method: string; params: any }> {
 
 function replayAcpFrames(
   frames: Array<{ method: string; params: any }>,
+  // A Kiro session: its handshake names both Kiro subagent wires.
+  wires: AcpSubagentWire[] = ['roster', 'agent-subtask'],
 ): CanonicalRuntimeEvent[] {
   const events: CanonicalRuntimeEvent[] = [];
   const session = {
@@ -355,8 +367,7 @@ function replayAcpFrames(
     session,
     activeTurnId: 'turn-acp',
     publish: (event) => events.push(event),
-    // A Kiro session: its handshake names both subagent wires.
-    state: { acpSubagentWires: new Set(['roster', 'agent-subtask']) },
+    state: { acpSubagentWires: new Set(wires) },
     toolUpdateSupervisor: new AcpToolUpdateSupervisor(session, (event) =>
       events.push(event),
     ),
@@ -369,7 +380,7 @@ function replayAcpFrames(
   return events;
 }
 
-const ACP_KIRO_FORMATS = {
+const ACP_LIFECYCLE_FORMATS = {
   'kiro-cli subagent/list_update': async () => {
     const [roster] = acpGoldenFrames().filter(
       (frame) => frame.method === '_kiro.dev/subagent/list_update',
@@ -385,12 +396,16 @@ const ACP_KIRO_FORMATS = {
         (frame) => frame.params?.update?._meta?.kiro?.kind === 'agent-subtask',
       ),
     ),
+  // A Qwen Code session: its handshake (`qwen-code`) names the nested wire.
+  'Qwen Code nested tool call': async () =>
+    replayAcpFrames(QWEN_SUBAGENT_FRAMES, ['nested-tool-call']),
 };
 
-async function replayAcpKiroSubagents(): Promise<CanonicalRuntimeEvent[]> {
+async function replayAcpLifecycleSubagents(): Promise<CanonicalRuntimeEvent[]> {
   return [
-    ...(await ACP_KIRO_FORMATS['kiro-cli subagent/list_update']()),
-    ...(await ACP_KIRO_FORMATS['Kiro agent service agent-subtask']()),
+    ...(await ACP_LIFECYCLE_FORMATS['kiro-cli subagent/list_update']()),
+    ...(await ACP_LIFECYCLE_FORMATS['Kiro agent service agent-subtask']()),
+    ...(await ACP_LIFECYCLE_FORMATS['Qwen Code nested tool call']()),
   ];
 }
 
@@ -431,6 +446,84 @@ async function stationAdapterStructural(): Promise<CanonicalRuntimeEvent[]> {
   return [];
 }
 
+/**
+ * The `opencode` cell is declared for OpenCode 2's own server: the 2.3.0
+ * `subagent` capture replayed through `OpenCodeAdapter`'s native session (a
+ * session on the ACP fallback reports `not-reported`, like `acp`).
+ */
+async function replayOpenCodeServeSubagent(): Promise<CanonicalRuntimeEvent[]> {
+  const replay = await OpenCodeServeReplay.start({ scenario: 'subagent' });
+  const promptIds = recordedPromptIds('subagent');
+  const adapter = new OpenCodeAdapter({
+    getConnections: async () => [
+      {
+        id: 'opencode',
+        name: 'OpenCode',
+        command: '/opt/opencode/bin/opencode',
+        args: ['acp'],
+        enabled: true,
+      },
+    ],
+    // Never started: the replay's server verifies, so the session is native.
+    createAcpAdapter: () =>
+      ({
+        provider: 'opencode',
+        metadata: { displayName: 'inner', description: '', capabilities: [] },
+        streamEvents: () => ({
+          [Symbol.asyncIterator]: () => ({
+            next: async () => ({ done: true, value: undefined }),
+          }),
+        }),
+        stopAll: async () => undefined,
+      }) as unknown as ProviderAdapterShape,
+    nativeEnabled: () => true,
+    pool: replayLeaser(replay),
+    versionProbe: {
+      probe: async () => ({ major: 2, minor: 3, patch: 0, text: '2.3.0' }),
+    },
+    findBinary: async () => '/opt/opencode/bin/opencode',
+    binaryIdentity: async () => 'binary-identity',
+    findProjectCode: async () => [],
+    launchEnv: async () => ({ TMPDIR: '/replay/tmp' }),
+    newMessageId: () => {
+      const id = promptIds.shift();
+      if (!id) throw new Error('the replay has no more recorded prompt ids');
+      return id;
+    },
+  });
+  const events: CanonicalRuntimeEvent[] = [];
+  const draining = (async () => {
+    for await (const event of adapter.streamEvents()) events.push(event);
+  })();
+  try {
+    await adapter.startSession({
+      threadId: 'thread-opencode',
+      provider: 'opencode',
+      cwd: '/replay/proj',
+      metadata: { connectionId: 'opencode' },
+    });
+    const { turnId } = await adapter.sendTurn({
+      threadId: 'thread-opencode',
+      input: 'DO_TASK now',
+    });
+    const deadline = Date.now() + 5_000;
+    while (
+      !events.some(
+        (event) => event.method === 'turn.completed' && event.turnId === turnId,
+      )
+    ) {
+      if (Date.now() > deadline)
+        throw new Error('the OpenCode subagent replay did not complete');
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  } finally {
+    await adapter.stopAll();
+    await draining;
+    await replay.close();
+  }
+  return events;
+}
+
 const DRIVERS: Record<string, Driver> = {
   station: { run: stationAdapterStructural },
   claude: {
@@ -448,11 +541,12 @@ const DRIVERS: Record<string, Driver> = {
   },
   acp: {
     run: async () => [
-      ...(await replayAcpKiroSubagents()),
+      ...(await replayAcpLifecycleSubagents()),
       ...(await replayAcpGrokCaptures()),
     ],
     formats: ACP_FORMATS,
   },
+  opencode: { run: replayOpenCodeServeSubagent },
 };
 
 /**
@@ -738,8 +832,8 @@ describe('#2456 child-work conformance tripwire', () => {
     }
   }
 
-  for (const [format, run] of Object.entries(ACP_KIRO_FORMATS)) {
-    test(`acp (${format}): this Kiro format alone delivers lifecycle`, async () => {
+  for (const [format, run] of Object.entries(ACP_LIFECYCLE_FORMATS)) {
+    test(`acp (${format}): this lifecycle-only format alone delivers lifecycle`, async () => {
       const observed = observedSignals(childWorkDeltas(await run()));
       expect([...observed]).toEqual(['lifecycle']);
     });

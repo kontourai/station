@@ -343,10 +343,10 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/engine-sign-in` | Sign-in for engines run as commands: status with its source (`station-vault` when Station's engine host-auth vault answers), offered methods (id, name, kind, terms note), key names (never values), the running attempt and what the caller may do, and `hostAuth` for an engine Station signs in or installs itself (vault status, the identities offered to this caller, with `social` only when the caller's browser is on the Station's computer and `socialSignIn: 'needs-browser-on-host'` otherwise, managed-policy state, the install state as `ManagedInstallStateView`, with no host paths) |
 | `@kontourai/station-contracts/engine-credential-provider` | Reviewed engine-credential binding shapes (credential kind, wire method, delegation arguments), the scope an issue draws on, the issue (access token and expiry, never a refresh token) and its refusal reasons, host sign-in status, login phases and the request (`{ identity: 'social' }` takes no provider: the vendor's page picks it), a failed login's `failure` (`refused`, `expired`, `unavailable`), the hourly cap and refresh margin, and pure helpers (`engineCredentialBucketKey`, `argvDelegatesTo`). The reviewed bindings themselves are the server's; see [the decision](../decisions/engine-credential-provider.md) |
 | `@kontourai/station-contracts/engine-secret-storage` | Reviewed engine secret-store binding shape (methods, announced flag, key pattern, persisted kinds, value cap) and its pure request reader (`readEngineSecretRequest`), which refuses without echoing a value |
-| `@kontourai/station-contracts/engine-commands` | How an engine slash command runs (`prompt-text`, a declared or identity-matched `engine-request`, or an `adapter-action`), its outcome, and `engineCommandRequestParams` |
+| `@kontourai/station-contracts/engine-commands` | How an engine slash command runs (`prompt-text`, a declared or identity-matched `engine-request`, or an `adapter-action`), its outcome, and `engineCommandRequestParams`. The server's shared half is [`engine-command-dispatch.ts`](../../src-server/providers/adapters/engine-command-dispatch.ts): the ACP and OpenCode adapters run every route kind through its `dispatchEngineCommand`, and Muse uses its reader and outcome line |
 | `@kontourai/station-contracts/managed-engine-install` | Pinned managed engine installs: the pin (manifest digest as the trust root), manifest, install state and failure reasons, the `{script}` argv token a descriptor's `managedRuntime` uses, the `station-managed:<installId>` command a managed entry carries (`managedRuntimeCommand`, `managedRuntimeInstallIdOf`), install progress (`receivedBytes`, `totalBytes`), and `validateManagedInstallPin` |
 | `@kontourai/station-contracts/acp` | ACP connection config, ACP connection status values, and engine catalogue entries with their install/launch/sign-in/managed-runtime descriptor and its validator (`validateACPEngineDescriptor`), and the public agent registry's listing facts and source status, and the known full-access session mode ids (`KNOWN_FULL_ACCESS_ACP_MODE_IDS`, `isKnownFullAccessAcpModeId`) the server and the approval pickers share |
-| `@kontourai/station-contracts/engine-capability-matrix` | Per-engine capability and delivery declarations, and for ACP who decides which actions ask (`acpApprovalControl`: `station` for an engine whose approval rules Station sets at launch, today OpenCode, `engine` otherwise) |
+| `@kontourai/station-contracts/engine-capability-matrix` | Per-engine capability and delivery declarations, and for ACP who decides which actions ask (`acpApprovalControl`: `station` for an engine whose approval rules Station sets at launch, today OpenCode, `engine` otherwise). The `opencode` row states what both of that engine's transports deliver; `resolveEngineCapabilityMatrix` picks it for a connection projected with `engineId: 'opencode'`. `isOpenCodeAcpConnection` says which saved ACP connections run OpenCode |
 | `@kontourai/station-contracts/agent` | Agent specs, metadata, tools, slash commands, the versioned Agent audience and the member Agent view |
 | `@kontourai/station-contracts/agent-plugin` | Agent Plugins 1.0 schema identities, name grammar, and Station extension declarations |
 | `@kontourai/station-contracts/skill-experience` | Inert v1 Skill definitions and explicit stage/rich-pane declarations, host-observed inventory identity, canonical start inputs and retained Session invocation views; see [experience contract](skill-experiences.md) |
@@ -404,7 +404,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/project-checkout-freshness` | How far a Project's checkout is behind its upstream, from local git refs: the `GET /api/projects/:slug/checkout-freshness` view (`stale`, `not-stale` or `unknown` with a reason), the default thresholds, `resolveProjectCheckoutStaleThresholds` and `projectCheckoutStaleReasons` |
 | `@kontourai/station-contracts/project-chat-defaults` | How a Project's new chat picks its model and approval mode (`fixed` or `last-used`), the `GET /api/projects/:slug/chat-defaults` view, and `resolveProjectChatApprovalDefault`, the one resolution the session start and that view share |
 | `@kontourai/station-contracts/project-membership` | Exact Station/local/portable Project scope, member roles/actions, invitations, administration projections, sharing enablement and refusal details |
-| `@kontourai/station-contracts/provider` | Provider kinds and provider-facing contract enums/types |
+| `@kontourai/station-contracts/provider` | Provider kinds and provider-facing contract enums/types, including `PROVIDER_OPENCODE` and `isAcpFamilyEngine` (`ACP_FAMILY_ENGINE_IDS`: `acp` and `opencode`, the engines that run saved ACP connection records). Read it where a behaviour belongs to the ACP connection a session runs on, never to tell the engines apart. See [the OpenCode native transport decision](../decisions/opencode-native-transport.md) |
 | `@kontourai/station-contracts/runtime` | Session metadata, workflow metadata, runtime responses. `ConversationStatsResponse.engineMcp` is the folded engine MCP status (`foldEngineMcpStatus`, also the live chat's reducer); the stats parser drops a server entry that does not parse and keeps the first 64 of the rest, and refuses an `engineMcp` of the wrong shape |
 | `@kontourai/station-contracts/runtime-events` | Runtime event stream payloads; `engine-mcp.status` bounds (`ENGINE_MCP_STATUS_MAX_SERVERS` 64, `ENGINE_MCP_SERVER_NAME_MAX_CHARS` 128, `ENGINE_MCP_ERROR_MAX_CHARS` 512) |
 | `@kontourai/station-contracts/session-inventory` | Closed Session inventory rows, gaps, and current-answer Basis projection |
@@ -1130,6 +1130,7 @@ non-retryable.
 | `muse-terminal-not-completed` | `provider_error` | `false` |
 | `muse-turn-idle-timeout` | `timeout` | `true` |
 | `muse-turn-timeout` | `timeout` | `true` |
+| `opencode_serve_denied_path` | `permission_denied` | `false` |
 | `principal_unresolved` | `auth` | `false` |
 | `project_identity_not_prepared` | `input_unsupported` | `false` |
 | `managed-policy-approval-ceiling` | `permission_denied` | `false` |
@@ -1156,8 +1157,9 @@ including private constants and newly added files. Known out-of-scope constants
 are explicitly allowed by file, name and value: directory/command grants and
 Station Control containment are caller authority, Flow unreachable-gate claims
 are evidence governance, the ACP `acp.session-rewound`,
-`acp.session-rewound-late` and `acp.agent-projection-unapplied` runtime
-warnings mark a session that kept running, and person/native-title control codes do not represent
+`acp.session-rewound-late`, `acp.agent-projection-unapplied` and
+`acp.session-started-fresh` runtime warnings mark a session that kept
+running, and person/native-title control codes do not represent
 turn execution or session startup. Class-field exclusions separately name application
 configuration, storage, policy, and non-provider lifecycle failures. The guard refuses
 a new unclassified constant or class-field code. Object-literal API/validation codes
@@ -2544,6 +2546,29 @@ truncates. `projectRoomChannelNameProblem` and `projectRoomChannelTopicProblem`
 name the reason (`empty`, `too_long`, `format`) so a client can explain it
 inline. `parseProjectRoomChannelCreateInput`, `parseProjectRoomChannelUpdateInput`
 (`topic: null` clears) and `parseProjectRoomChannelList` are the wire parsers.
+
+Messages can carry files, react and be edited or deleted (#4796, #4797,
+#4812). `ProjectRoomAttachment` is the Task room's `TaskRoomAttachment`, with its
+count and size limits, and no file named twice (`parseProjectRoomAttachments`);
+a message with files may
+have empty text. `ProjectRoomMessage` adds three projected fields that are never
+stored on the message itself: `editedAt` (the text is the latest edit's),
+`deletedAt` (a tombstone: empty text, no files or reactions) and `reactions`
+(`ProjectRoomReaction`: an emoji and its actors, in first-reacted order).
+`parseProjectRoomMessage` refuses a tombstone that still carries content. The
+inputs are `ProjectRoomReactionInput` (`{ emoji, reacted }`, a set state, so a
+repeat changes nothing), `ProjectRoomEditInput` and `ProjectRoomDeleteInput`, with
+their `parse…` functions. `PROJECT_ROOM_FORBIDDEN_CODE`
+(`project_room_forbidden`, a `permission_denied` failure) is the refusal of an
+edit or delete by anyone but the message's person author.
+`PROJECT_ROOM_FILES_UNAVAILABLE_CODE` (`project_room_files_unavailable`, an
+`unavailable` failure a later retry can clear) is the 503 refusal of a new
+attachment while the room's file store cannot read every file record.
+`PROJECT_ROOM_LIMITS` bounds reactions
+(`reactionEmojiPerMessage` 20, `reactionsPerMessage` 100, `reactionEmojiBytes`
+32) and revisions (`revisionsPerMessage` 50). `projectRoomReactionEmojiProblem`
+accepts exactly one emoji: a pictograph with optional skin tone or tag
+sequence, joined by ZWJ to more, a flag pair or a keycap.
 
 See [Room HTTP operations](api.md#shared-project-room) and the
 [SDK](sdk.md#shared-project-room).
