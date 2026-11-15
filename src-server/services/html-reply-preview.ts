@@ -66,6 +66,15 @@ function previewDiagnostics() {
   let countersSaturated = false;
   let finished = false;
   const transitions = new Set<string>();
+  const proxyCloses: Partial<
+    Record<
+      Extract<
+        PreviewDiagnostic,
+        { type: 'step'; step: 'proxyClose' }
+      >['origin'],
+      PhaseState
+    >
+  > = {};
   const stderrStates: Partial<
     Record<Extract<PreviewDiagnostic, { type: 'stderr' }>['state'], number>
   > = {};
@@ -151,7 +160,9 @@ function previewDiagnostics() {
       }
       const transition =
         d.type === 'step'
-          ? `${d.step}:${d.state}`
+          ? d.step === 'proxyClose'
+            ? `${d.step}:${d.origin}:${d.state}`
+            : `${d.step}:${d.state}`
           : d.type === 'stderr'
             ? `stderr:${d.state}`
             : d.type;
@@ -195,7 +206,18 @@ function previewDiagnostics() {
           };
           break;
         case 'step':
-          phase(d.step, d.state);
+          if (d.step === 'proxyClose') {
+            proxyCloses[d.origin] = d.state;
+            const states = Object.values(proxyCloses);
+            phase(
+              'proxyClose',
+              states.includes('STARTED')
+                ? 'STARTED'
+                : states.includes('REJECTED')
+                  ? 'REJECTED'
+                  : 'RESOLVED',
+            );
+          } else phase(d.step, d.state);
           break;
       }
       advance();

@@ -359,7 +359,17 @@ export type PreviewDiagnostic =
     }
   | { type: 'spawn-error'; category: 'ENOENT' | 'EACCES' | 'EPERM' | 'other' }
   | ({ type: 'pipe' } & CdpPipeTerminal)
-  | { type: 'step'; step: DiagnosticStep; state: DiagnosticState }
+  | {
+      type: 'step';
+      step: Exclude<DiagnosticStep, 'proxyClose'>;
+      state: DiagnosticState;
+    }
+  | {
+      type: 'step';
+      step: 'proxyClose';
+      origin: 'exit' | 'shutdown' | 'launch-failure';
+      state: DiagnosticState;
+    }
   | {
       type: 'close';
       origin: CloseOrigin;
@@ -1106,6 +1116,7 @@ export class ChromiumServerHost implements BrowserHost {
     this.reportDiagnostic({
       type: 'step',
       step: 'proxyClose',
+      origin: 'shutdown',
       state: 'STARTED',
     });
     try {
@@ -1113,12 +1124,14 @@ export class ChromiumServerHost implements BrowserHost {
       this.reportDiagnostic({
         type: 'step',
         step: 'proxyClose',
+        origin: 'shutdown',
         state: 'RESOLVED',
       });
     } catch (error) {
       this.reportDiagnostic({
         type: 'step',
         step: 'proxyClose',
+        origin: 'shutdown',
         state: 'REJECTED',
       });
       throw error;
@@ -1200,6 +1213,7 @@ export class ChromiumServerHost implements BrowserHost {
       this.reportDiagnostic({
         type: 'step',
         step: 'proxyClose',
+        origin: 'exit',
         state: 'STARTED',
       });
       void proxy.close().then(
@@ -1207,12 +1221,14 @@ export class ChromiumServerHost implements BrowserHost {
           this.reportDiagnostic({
             type: 'step',
             step: 'proxyClose',
+            origin: 'exit',
             state: 'RESOLVED',
           }),
         (error) => {
           this.reportDiagnostic({
             type: 'step',
             step: 'proxyClose',
+            origin: 'exit',
             state: 'REJECTED',
           });
           throw error;
@@ -1278,6 +1294,7 @@ export class ChromiumServerHost implements BrowserHost {
       this.reportDiagnostic({
         type: 'step',
         step: 'proxyClose',
+        origin: 'launch-failure',
         state: 'STARTED',
       });
       try {
@@ -1285,12 +1302,14 @@ export class ChromiumServerHost implements BrowserHost {
         this.reportDiagnostic({
           type: 'step',
           step: 'proxyClose',
+          origin: 'launch-failure',
           state: 'RESOLVED',
         });
       } catch (error) {
         this.reportDiagnostic({
           type: 'step',
           step: 'proxyClose',
+          origin: 'launch-failure',
           state: 'REJECTED',
         });
         throw error;

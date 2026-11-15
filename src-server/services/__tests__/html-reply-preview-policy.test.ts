@@ -1,4 +1,5 @@
 import { rm } from 'node:fs/promises';
+import { Server } from 'node:http';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { installLoggerLineSink } from '../../utils/logger.js';
@@ -254,71 +255,85 @@ test('render keeps primary rejection separate from cleanup failure, late exit an
 import { HtmlReplyPreview } from '../html-reply-preview.js';
 
 const makeTempDir = trackTempDirs();
-test('render records exit-triggered proxy close settlement without waiting for it', async () => {
-  const lines: string[] = [];
-  installLoggerLineSink({ writeLine: (line) => lines.push(line) });
-  const originalClose = BrowserEgressProxy.prototype.close;
-  let releaseClose!: () => void;
-  const gate = new Promise<void>((resolve) => {
-    releaseClose = resolve;
-  });
-  let closing: Promise<void> | undefined;
-  const close = vi
-    .spyOn(BrowserEgressProxy.prototype, 'close')
-    .mockImplementation(function (this: BrowserEgressProxy) {
-      closing = (async () => {
-        await gate;
-        await originalClose.call(this);
-      })();
-      return closing;
+test.each([true, false])(
+  'render records exit-triggered proxy close settlement without waiting for it (exitDuringRender=%s)',
+  async (exitDuringRender) => {
+    const lines: string[] = [];
+    installLoggerLineSink({ writeLine: (line) => lines.push(line) });
+    const originalClose = BrowserEgressProxy.prototype.close;
+    const originalServerClose = Server.prototype.close;
+    let releaseClose!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseClose = resolve;
     });
-  probe.restrictive = true;
-  probe.exitDuringRender = true;
-  const receipts = () =>
-    lines
-      .map((line) => JSON.parse(line))
-      .filter((line) => line.previewTerminalReceipt)
-      .map((line) => line.previewTerminalReceipt);
-  try {
-    const service = new HtmlReplyPreview(
-      makeTempDir('html-preview-exit-close-'),
-    );
-    await expect(
-      service.render(
-        { html: 'secret-authored-canary', height: 400 },
-        800,
-        'dark',
-      ),
-    ).rejects.toThrow('Authored content reached an unverified browser');
-    expect(probe.authored).toBe(true);
-    expect(close).toHaveBeenCalledTimes(1);
-    const initial = receipts()[0];
-    expect(initial.terminal.phases).toMatchObject({
-      proxyClose: 'STARTED',
-      browserClose: 'NOT_REACHED',
-      terminate: 'NOT_REACHED',
-      shutdown: 'RESOLVED',
-    });
-    releaseClose();
-    await closing;
-    const settled = receipts().at(-1);
-    expect(settled.attempt).toBe(initial.attempt);
-    expect(settled.late).toBe(true);
-    expect(settled.terminal.phases.proxyClose).toBe('RESOLVED');
-    expect(initial.terminal.phases.proxyClose).toBe('STARTED');
-  } finally {
-    releaseClose();
+    let closing: Promise<void> | undefined;
+    const close = vi
+      .spyOn(BrowserEgressProxy.prototype, 'close')
+      .mockImplementation(function (this: BrowserEgressProxy) {
+        const pending = originalClose.call(this);
+        closing ??= pending;
+        return pending;
+      });
+    const serverClose = vi
+      .spyOn(Server.prototype, 'close')
+      .mockImplementation(function (
+        this: Server,
+        callback?: (error?: Error) => void,
+      ) {
+        return originalServerClose.call(this, (error) => {
+          void gate.then(() => callback?.(error));
+        });
+      });
+    probe.restrictive = true;
+    probe.exitDuringRender = exitDuringRender;
+    const receipts = () =>
+      lines
+        .map((line) => JSON.parse(line))
+        .filter((line) => line.previewTerminalReceipt)
+        .map((line) => line.previewTerminalReceipt);
     try {
+      const service = new HtmlReplyPreview(
+        makeTempDir('html-preview-exit-close-'),
+      );
+      await expect(
+        service.render(
+          { html: 'secret-authored-canary', height: 400 },
+          800,
+          'dark',
+        ),
+      ).rejects.toThrow('Authored content reached an unverified browser');
+      expect(probe.authored).toBe(true);
+      expect(close).toHaveBeenCalledTimes(exitDuringRender ? 1 : 2);
+      expect(serverClose).toHaveBeenCalledTimes(1);
+      const initial = receipts()[0];
+      expect(initial.terminal.phases).toMatchObject({
+        proxyClose: 'STARTED',
+        browserClose: exitDuringRender ? 'NOT_REACHED' : 'RESOLVED',
+        terminate: exitDuringRender ? 'NOT_REACHED' : 'RESOLVED',
+        shutdown: 'RESOLVED',
+      });
+      releaseClose();
       await closing;
+      const settled = receipts().at(-1);
+      expect(settled.attempt).toBe(initial.attempt);
+      expect(settled.late).toBe(true);
+      expect(settled.terminal.phases.proxyClose).toBe('RESOLVED');
+      expect(initial.terminal.phases.proxyClose).toBe('STARTED');
     } finally {
-      close.mockRestore();
-      probe.exitDuringRender = false;
-      await probe.cleanup?.();
-      await probe.removeProfile?.();
-      installLoggerLineSink(undefined);
+      releaseClose();
+      try {
+        await closing;
+      } finally {
+        serverClose.mockRestore();
+        close.mockRestore();
+        probe.exitDuringRender = false;
+        await probe.cleanup?.();
+        await probe.removeProfile?.();
+        installLoggerLineSink(undefined);
+      }
     }
-  }
-});
+  },
+);
 
 test('preview refuses a managed effective-policy override before author code and reports the fixed refusal', async () => {
   const lines: string[] = [];
