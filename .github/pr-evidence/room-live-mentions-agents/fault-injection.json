@@ -335,6 +335,23 @@
         ],
         "note": "survived: the test did not reach the behavior; tightened in the next commit"
       }
+    },
+    {
+      "id": "members-active-only",
+      "behavior": "the member directory lists active members only",
+      "file": "src-server/services/projects/project-membership-store.ts",
+      "test": "src-server/routes/projects/project-room-routes.test.ts",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× members (#4799): only a current room reader may list, and the list is active people with id, name and kind only 160ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 85 passed (86)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  86 passed (86)"
+      ]
     }
   ]
 }
