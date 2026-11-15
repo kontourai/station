@@ -64,6 +64,7 @@ import {
 } from '../../../__test-utils__/session-runtime-barriers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
+
 import { MonitoringEmitter } from '../../../monitoring/emitter.js';
 import type {
   ProviderAdapterMetadata,
@@ -184,6 +185,9 @@ import {
   wireTurnCompletionNotifications,
 } from '../turn-completion-notifications.js';
 import { resolveWorkspaceIdentity } from '../workspace-identity.js';
+
+/** Directories for #4992's read-model test; removed after each test. */
+const makeReadModelCacheDir = trackTempDirs();
 
 vi.mock('../../../telemetry/metrics.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../telemetry/metrics.js')>()),
@@ -16178,8 +16182,8 @@ describe('OrchestrationService', () => {
   // streams, and each list folded every readable thread again. A repeated
   // list now folds and counts only the threads whose events moved.
   test('#4992: a repeated listSessionReadModel folds and counts only the threads whose events moved', async () => {
-    const cacheTmp = mkdtempSync(
-      join(tmpdir(), 'orchestration-service-read-model-cache-'),
+    const cacheTmp = makeReadModelCacheDir(
+      'orchestration-service-read-model-cache-',
     );
     const cacheEventStore = new EventStore(
       join(cacheTmp, 'orchestration.sqlite'),
@@ -16305,7 +16309,6 @@ describe('OrchestrationService', () => {
       rawDb.prepare = originalPrepare;
     } finally {
       cacheEventStore.close();
-      rmSync(cacheTmp, { recursive: true, force: true });
     }
   }, 60_000);
 

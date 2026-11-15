@@ -1,8 +1,7 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventStore, type PersistedRuntimeEvent } from '../event-store.js';
 
 /**
@@ -20,14 +19,18 @@ const dataUrl = `data:image/png;base64,${pixels.toString('base64')}`;
 const createdAt = '2026-11-15T00:00:00.000Z';
 
 describe('EventStore session projection cache (#4992)', () => {
-  let dir: string;
+  // Created before the hook that closes the stores, so it removes the
+  // directory after they are closed.
+  const makeTempDir = trackTempDirs();
   let path: string;
   let store: EventStore;
   let reference: EventStore;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'session-projection-cache-'));
-    path = join(dir, 'orchestration.sqlite');
+    path = join(
+      makeTempDir('session-projection-cache-'),
+      'orchestration.sqlite',
+    );
     store = new EventStore(path);
     vi.stubEnv('STATION_DISABLE_EVENT_STORE_CACHES', '1');
     reference = new EventStore(path);
@@ -37,7 +40,6 @@ describe('EventStore session projection cache (#4992)', () => {
   afterEach(() => {
     reference.close();
     store.close();
-    rmSync(dir, { recursive: true, force: true });
   });
 
   function append(event: Record<string, unknown>): void {
