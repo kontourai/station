@@ -186,7 +186,7 @@ export function StationSwitcherMenu({
       return;
     }
     const previous = menuRef.current?.querySelector<HTMLElement>(
-      '[data-station-row]:not([aria-checked="true"]):not(:disabled)',
+      '[data-station-row]:not([aria-checked="true"]):not(:disabled):not([aria-disabled="true"])',
     );
     if (previous) previous.focus();
     else if (coarse) menuRef.current?.focus();
@@ -440,7 +440,19 @@ export function StationSwitcherMenu({
                     aria-keyshortcuts={
                       canForget(connection) ? 'Delete' : undefined
                     }
-                    disabled={switchingId !== null || unavailable}
+                    // A row that can be forgotten is `aria-disabled`, not
+                    // `disabled`: a disabled button cannot take focus, and
+                    // Delete on the focused row is how the keyboard forgets a
+                    // Station that stopped answering. `select` refuses a row
+                    // that is not ready. A row with nothing to offer stays
+                    // disabled, so arrow keys pass over it.
+                    aria-disabled={
+                      (unavailable && canForget(connection)) || undefined
+                    }
+                    disabled={
+                      switchingId !== null ||
+                      (unavailable && !canForget(connection))
+                    }
                     className="menu-row station-switcher__row"
                     onClick={() => select(connection)}
                     onKeyDown={(event) => onRowKeyDown(event, connection)}

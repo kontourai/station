@@ -1,0 +1,7 @@
+{
+  "revision": "43660d5ef7556001fd6758ba126de07a241d3f43",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"A greyed-out Station row that can be forgotten is now aria-disabled instead of a disabled button; one with nothing to forget stays disabled. The guide's claims hold and one is true again: Recovering and Unreachable rows are greyed out and cannot be chosen, and Delete on a focused row forgets a Station, which a disabled row could not receive.","inputs":["docs/guides/connections.md","src-ui/src/components/header/StationSwitcherMenu.tsx"]}
+  ]
+}
