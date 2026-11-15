@@ -3200,7 +3200,7 @@ station environment show
 station environment credential show
 station environment credential rotate [--force]
 station environment reset [--force]
-station environment offer [--scope=<scope,…>] [--require-approval] [--browser-url=<web-origin>] [--tailscale] [--tailscale-serve-port=<port>]
+station environment offer [--scope=<scope,…>] [--require-approval] [--browser-url=<web-origin>] [--tailscale] [--tailscale-serve-port=<port>] [--client-channel=<stable|nightly>] [--payload-only]
 station environment operator passkeys [list] [--json] [--api-base=<loopback-url>|--station=<name>]
 station environment operator passkeys approve <code> [--device=<id-prefix>] [--api-base=<loopback-url>|--station=<name>]
 station environment operator passkeys deny <code> [--api-base=<loopback-url>|--station=<name>]
@@ -3244,7 +3244,11 @@ station environment peers remove <environment-id>
   owner-validated local service record, verifies the loopback listener's identity and
   proof before sending the operator credential, then creates the existing
   device-pairing offer and prints its expiry, short manual pairing code, plaintext
-  `station-pairing:v1:` payload, and terminal QR. A loopback offer is explicitly
+  `station-pairing:v1:` payload, and terminal QR. `--client-channel` selects the
+  Stable (default) or Nightly app link independently of the host channel. Beta
+  and other unsupported client channels are refused before local identity or
+  network work, including with `--payload-only`, which prints only the raw offer.
+  A loopback offer is explicitly
   not reachable from a phone; it does not guess or advertise a LAN address.
   Under a [managed policy](../guides/managed-policy.md#network-exposure)
   without `remote` clients, `--tailscale` is refused before any `tailscale`
