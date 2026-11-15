@@ -34,11 +34,10 @@ import {
 } from '../../services/identity/deployment-authentication-loader.js';
 import { isDeploymentAccountPrincipalId } from '../../services/identity/deployment-authentication-service.js';
 import {
-  type LoadedLocalAccounts,
   type LocalAccountConfiguration,
-  loadLocalAccounts,
   readLocalAccountConfiguration,
-} from '../../services/identity/local-account-runtime.js';
+} from '../../services/identity/local-account-configuration.js';
+import type { LoadedLocalAccounts } from '../../services/identity/local-account-runtime.js';
 import { NativeRelayEnrollmentService } from '../../services/identity/native-relay-enrollment-service.js';
 import { OperatorSessionService } from '../../services/identity/operator-sessions.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
@@ -4201,6 +4200,10 @@ export class StationRuntime {
       return;
     if (!this.projectMembership)
       throw new Error('Local account enrollment requires Project membership.');
+    // Only a Station with local accounts on loads their authentication stack.
+    const { loadLocalAccounts } = await import(
+      '../../services/identity/local-account-runtime.js'
+    );
     this.localAccounts = await loadLocalAccounts(
       this.localAccountConfiguration,
       {

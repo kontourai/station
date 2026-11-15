@@ -1140,7 +1140,7 @@ export const MUTATIONS = [
       'records during identity I/O and exports only with persisted identity',
     files: [
       {
-        path: 'src-server/telemetry.ts',
+        path: 'src-server/telemetry-sdk.ts',
         change: (source) =>
           exactReplace(source, '    logRecordProcessors: [],', ''),
       },
@@ -1157,8 +1157,8 @@ export const MUTATIONS = [
         change: (source) =>
           exactReplace(
             source,
-            '  const sdk = (options.createSdk ?? createSdk)(resourceAttributes, endpoint);',
-            '  await identity;\n  const sdk = (options.createSdk ?? createSdk)(resourceAttributes, endpoint);',
+            '  let sdk: TelemetrySdk;\n  try {\n',
+            '  let sdk: TelemetrySdk;\n  await identity;\n  try {\n',
           ),
       },
     ],
@@ -1170,7 +1170,7 @@ export const MUTATIONS = [
       'records during identity I/O and exports only with failed identity',
     files: [
       {
-        path: 'src-server/telemetry.ts',
+        path: 'src-server/telemetry-sdk.ts',
         change: (source) =>
           exactReplace(
             source,

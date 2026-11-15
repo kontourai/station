@@ -61,6 +61,7 @@ const SOURCE_FILES = [
   'station-docs-content.ts',
   'station-docs-mcp-server.ts',
   'station-docs-server.ts',
+  'station-docs-tool-catalog.ts',
 ] as const;
 
 function readSource(file: string): string {
@@ -735,6 +736,7 @@ describe('station-docs structural properties (AC2)', () => {
       '../../package.json',
       './station-docs-content.js',
       './station-docs-mcp-server.js',
+      './station-docs-tool-catalog.js',
     ]);
     for (const file of SOURCE_FILES) {
       const source = readSource(file);

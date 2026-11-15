@@ -2,19 +2,12 @@ import { createHash } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
-import {
-  GetObjectCommand,
-  ListObjectsV2Command,
-  S3Client,
-} from '@aws-sdk/client-s3';
-import { fromIni } from '@aws-sdk/credential-providers';
 import type {
   ProjectS3ObjectPage,
   ProjectS3ObjectRead,
   ProjectS3Source,
 } from '@kontourai/station-contracts/project';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
-import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { z } from 'zod/v3';
 import { JsonFileStore } from '../infra/json-store.js';
 
@@ -275,29 +268,20 @@ export class ProjectS3Sources {
       await release();
     }
   }
-  private client(
+  private async client(
     expected: ProjectS3Source,
     authority: ProjectS3Authority,
-  ): S3Client {
+  ) {
     const entry = this.current(expected, authority);
-    const current = () => this.current(expected, authority);
-    class SourceHttpHandler extends NodeHttpHandler {
-      override handle(...args: Parameters<NodeHttpHandler['handle']>) {
-        current();
-        return super.handle(...args);
-      }
-    }
-    return new S3Client({
-      region: entry.region,
-      credentials: fromIni({ profile: entry.profile }),
-      maxAttempts: 1,
-      followRegionRedirects: false,
-      ignoreConfiguredEndpointUrls: true,
-      requestHandler: new SourceHttpHandler({
-        connectionTimeout: 20000,
-        requestTimeout: 20000,
-      }),
-    });
+    // The AWS SDK loads on the first S3 request, never at boot: the feature
+    // is experimental and off by default.
+    const s3 = await import('./project-s3-client.js');
+    return {
+      ...s3,
+      client: s3.createProjectS3Client(entry, () =>
+        this.current(expected, authority),
+      ),
+    };
   }
   private refusal(error: unknown): never {
     if (error instanceof ProjectS3SourceError) throw error;
@@ -323,7 +307,10 @@ export class ProjectS3Sources {
       AbortSignal.timeout(20000),
       ...(authority.signal ? [authority.signal] : []),
     ]);
-    const client = this.client(expected, { ...authority, signal });
+    const { client, ListObjectsV2Command } = await this.client(expected, {
+      ...authority,
+      signal,
+    });
     try {
       const response = await awaitS3(
         client.send(
@@ -403,7 +390,10 @@ export class ProjectS3Sources {
       AbortSignal.timeout(20000),
       ...(authority.signal ? [authority.signal] : []),
     ]);
-    const client = this.client(expected, { ...authority, signal });
+    const { client, GetObjectCommand } = await this.client(expected, {
+      ...authority,
+      signal,
+    });
     try {
       const response = await awaitS3(
         client.send(

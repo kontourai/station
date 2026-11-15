@@ -1,3 +1,6 @@
+import { readdirSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+
 export const STATION_SERVER_EXTERNALS = [
   // Keep the official Node glue beside its package-relative WASM asset.
   // Desktop and portable staging consume this same runtime closure.
@@ -65,3 +68,37 @@ export const STATION_SERVER_EXTERNALS = [
   '@voltagent/server-core',
   '@voltagent/server-hono',
 ];
+
+/**
+ * Where the code-split server bundle writes its shared and lazily loaded
+ * chunks: beside `command-station.js`, named by content hash. The prefix is
+ * what lets a build remove an earlier build's chunks without touching any
+ * other file in the server directory.
+ */
+export const SERVER_CHUNK_PREFIX = 'station-chunk-';
+export const SERVER_CHUNK_NAMES = `${SERVER_CHUNK_PREFIX}[hash]`;
+const SERVER_CHUNK_FILE = /^station-chunk-[A-Z0-9]+\.js(?:\.map)?$/;
+
+/** True for a chunk file (or its map) that a server build wrote. */
+export function isServerChunkFile(name) {
+  return SERVER_CHUNK_FILE.test(name);
+}
+
+/**
+ * Removes the chunks an earlier build left in `dir`. A server already running
+ * from `dir` loses the chunks it has not loaded yet, exactly as it would lose
+ * them to any rebuild in place; the CLI builds into a fresh candidate
+ * directory and promotes it whole instead.
+ */
+export function removeServerChunks(dir) {
+  let names;
+  try {
+    names = readdirSync(dir);
+  } catch (error) {
+    if (error?.code === 'ENOENT') return [];
+    throw error;
+  }
+  const removed = names.filter(isServerChunkFile).sort();
+  for (const name of removed) rmSync(join(dir, name), { force: true });
+  return removed;
+}
