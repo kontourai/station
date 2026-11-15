@@ -45,6 +45,8 @@ let members: Array<typeof ada>;
 let writes: Array<Record<string, unknown>>;
 let typing: Array<Record<string, unknown>>;
 let live: ReadableStreamDefaultController<Uint8Array>[];
+let requestIds: string[];
+let agentCalls: Array<{ path: string; body: Record<string, unknown> }>;
 
 function push(event: string, data: Record<string, unknown>) {
   for (const stream of live)
@@ -77,6 +79,8 @@ beforeEach(() => {
   writes = [];
   typing = [];
   live = [];
+  agentCalls = [];
+  requestIds = [];
   _setApiBase(requestScope.apiBase);
   setClientCredentialResolver(() => ({
     origin: requestScope.apiBase,
@@ -88,7 +92,41 @@ beforeEach(() => {
       const url = new URL(input);
       const body = init?.body ? JSON.parse(String(init.body)) : undefined;
       const ok = (data: unknown) => Response.json({ success: true, data });
-      if (url.pathname === '/api/agents') return ok([]);
+      if (url.pathname === '/api/agents')
+        return ok([{ slug: 'writer', name: 'Writer' }]);
+      if (url.pathname.includes('/room/agents')) {
+        agentCalls.push({ path: url.pathname, body });
+        const handle = (state: string, extra: Record<string, unknown> = {}) =>
+          ok({
+            intentId: agentCalls[0]?.body.intentId,
+            agentId: 'writer',
+            text: 'Draft the notes',
+            roomId,
+            requestId: requestIds.at(-1),
+            actor: ada,
+            state,
+            createdAt: at,
+            updatedAt: at,
+            ...extra,
+          });
+        if (url.pathname.endsWith('/cancel')) return handle('cancelled');
+        if (url.pathname.endsWith('/room/agents')) {
+          requestIds.push(randomCorrelationId());
+          return ok({
+            ...body,
+            expectedRoomId: undefined,
+            expectedProjectId: undefined,
+            expectedActorId: undefined,
+            roomId,
+            requestId: requestIds.at(-1),
+            actor: ada,
+            state: 'started',
+            createdAt: at,
+            updatedAt: at,
+          });
+        }
+        return handle('started');
+      }
       if (url.pathname === '/api/read-markers/mark')
         return ok({
           target: body.target,
@@ -302,4 +340,47 @@ test('a notification’s message is brought into view and marked', async () => {
     ),
   );
   act(() => navigationStore.navigate('/projects/team', { message: null }));
+});
+
+test('the person who asked can Stop a working request, and Retry asks again with the same words', async () => {
+  const list = await mount();
+  const composer = await screen.findByRole<HTMLTextAreaElement>('textbox', {
+    name: 'Message the project',
+  });
+  // Ask Writer through the @ list, as a person would.
+  composer.setSelectionRange(0, 0);
+  fireEvent.change(composer, { target: { value: '@' } });
+  fireEvent.click(await screen.findByRole('option', { name: /^Writer/ }));
+  fireEvent.change(composer, { target: { value: 'Draft the notes' } });
+  fireEvent.click(await screen.findByRole('button', { name: 'Ask Writer' }));
+  await waitFor(() => expect(requestIds).toHaveLength(1));
+  const request = {
+    requestId: requestIds[0],
+    agentId: 'writer',
+    actor: ada,
+    state: 'started',
+    createdAt: at,
+    updatedAt: at,
+  };
+  push('agents', { requests: [request] });
+  const stop = await within(list).findByRole('button', { name: 'Stop Writer' });
+  fireEvent.click(stop);
+  await waitFor(() =>
+    expect(agentCalls.map((call) => call.path.split('/').at(-1))).toContain(
+      'cancel',
+    ),
+  );
+  push('agents', {
+    requests: [
+      { ...request, state: 'cancelled', updatedAt: '2026-11-15T12:06:00.000Z' },
+    ],
+  });
+  expect(await within(list).findByText('Stopped')).toBeTruthy();
+  fireEvent.click(within(list).getByRole('button', { name: 'Retry Writer' }));
+  await waitFor(() => expect(requestIds).toHaveLength(2));
+  const asks = agentCalls.filter((call) => call.path.endsWith('/room/agents'));
+  expect(asks).toHaveLength(2);
+  // A new request with the same words: the ended one is never replayed.
+  expect(asks[1]?.body.text).toBe(asks[0]?.body.text);
+  expect(asks[1]?.body.intentId).not.toBe(asks[0]?.body.intentId);
 });
