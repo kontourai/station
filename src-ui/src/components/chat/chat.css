@@ -3447,6 +3447,22 @@
   margin-inline-start: auto;
 }
 
+.chat-input__activity:has(.agent-schedule-notes) {
+  flex: 1 1 100%;
+  align-items: flex-end;
+}
+
+.chat-input__activity > .agent-schedule-notes {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+}
+
+.chat-input__activity .agent-schedule-notes__note,
+.chat-input__activity .agent-schedule-card {
+  margin-bottom: 0;
+}
+
 .chat-input__activity .chat-scroll-to-bottom {
   position: static;
   flex: 0 0 auto;
@@ -3469,14 +3485,16 @@
     flex-basis: 100%;
   }
 
-  .chat-input__activity:not(:has(.chat-status-pill, .chat-scroll-to-bottom)) {
+  .chat-input__activity:not(
+    :has(.chat-status-pill, .chat-scroll-to-bottom, .agent-schedule-notes)
+  ) {
     display: none;
   }
 
   /* In a dock too short for the transcript the Scroll to bottom button is not
      shown (see data-composer-priority), so it cannot hold this row open. */
   .chat-dock__body[data-composer-priority]
-    .chat-input__activity:not(:has(.chat-status-pill)) {
+    .chat-input__activity:not(:has(.chat-status-pill, .agent-schedule-notes)) {
     display: none;
   }
 

@@ -67,6 +67,7 @@ export type WorkStatusRung =
   | 'stopped'
   | 'unanswerable'
   | 'childWork'
+  | 'scheduled'
   | 'quiet'
   | 'running'
   | 'draft'
@@ -155,6 +156,17 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
       reason: `${item.agentLabel} · Replies unavailable here`,
     };
   }
+  if (
+    item.nextWakeUpAt &&
+    parseEpochMs(item.nextWakeUpAt) !== undefined &&
+    (item.lifecycleLabel === 'Completed' || item.lifecycleLabel === 'Recent')
+  )
+    return {
+      rung: 'scheduled',
+      lane: 'running',
+      tone: 'neutral',
+      word: 'Waiting',
+    };
   switch (item.lifecycleLabel) {
     case 'Needs attention': {
       // With no recorded kind (no facts, an older server)

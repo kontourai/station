@@ -349,7 +349,15 @@ function SubagentCallGroup({
   }
 
   return (
-    <div className="subagent-group" data-grouped={grouped}>
+    <div
+      className="subagent-group"
+      data-grouped={grouped}
+      data-finished={
+        children.every(
+          (child) => childWorkDisplayStatus(child.item) === 'completed',
+        ) || undefined
+      }
+    >
       {grouped && (
         <button
           type="button"

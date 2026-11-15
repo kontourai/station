@@ -1,12 +1,24 @@
+import { mkdir } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import type { Plugin } from 'esbuild';
 import { expect, test } from 'vitest';
+import { resolveCssImports } from '../../../tests/helpers/css-cascade-fixture';
 import { scrollBrowserFixture } from './scroll-browser-fixture';
+
+const cascade = [
+  'src-ui/src/index.css',
+  'src-ui/src/components/chat/chat.css',
+  'src-ui/src/components/chat-dock/AgentScheduleNotes.css',
+]
+  .map((path) => resolveCssImports(resolve(path)))
+  .join('\n');
 
 // Controls unrelated to draft sizing have no API provider in this fixture.
 const controls: Plugin = {
   name: 'composer-controls',
   setup(builder) {
     const modules: Record<string, string> = {
+      useAgentSchedule: `export const useAgentSchedule=()=>({schedule:{wakeUps:[{id:'wake',dueAt:'2026-11-15T23:00:00Z',state:'pending',note:'Check results'}],jobProposals:[],automationProposals:[]},loaded:true,cancelWakeUp:{mutate(){}},approveWakeUp:{},declineWakeUp:{},declineProposal:{},approveProposal:{},confirmAutomationProposal:{},declineAutomationProposal:{}});`,
       DeviceSettingsContext:
         'export const useDeviceSettings = () => ({chatReturnBehavior:"newline"});',
       KeyboardShortcutsContext: 'export const setShortcutContext = () => {};',
@@ -46,26 +58,32 @@ const controls: Plugin = {
   },
 };
 
-test('sizes draft content without transiently clamping the pinned transcript', async () => {
-  const { browser, page, errors } = await scrollBrowserFixture(
-    `
+const composerFixture = `
     import React, {useRef,useState} from 'react';
     import {createRoot} from 'react-dom/client';
     import {ChatInputArea} from './src-ui/src/components/chat/ChatInputArea';
+    import {AgentScheduleNotes} from './src-ui/src/components/chat-dock/AgentScheduleNotes';
+    import {ScrollToBottomButton} from './src-ui/src/components/chat/ScrollToBottomButton';
+    import {EphemeralMessage} from './src-ui/src/components/chat/EphemeralMessage';
     function App(){
       const [input,setInput] = useState('one\\ntwo\\nthree\\nfour\\nfive');
       const textareaRef=useRef(null);
       const noop=()=>{};
       return <div className="chat-dock__body" style={{height:600,display:'flex',flexDirection:'column'}}>
-        <div id="transcript" className="chat-messages" style={{flex:'1 1 0',minHeight:0,overflow:'auto',overflowAnchor:'none'}}><div style={{height:3000}}>Transcript</div></div>
-        <ChatInputArea agentSlug="station" sessionId="fixture" input={input} textareaRef={textareaRef} attachments={[]} disabled={false} turnInFlight={false} modelSupportsAttachments={false} fontSize={14} dockHeight={600} apiBase="http://station.test" canModelSelect={false} availableModels={[]} modelQuery={null} commandQuery={null} slashCommands={[]} onInputChange={setInput} onSend={noop} onCancel={noop} onClearInput={noop} selectAttachmentFiles={noop} onRemoveAttachment={noop} onClearAttachments={noop} onModelSelect={noop} onModelReset={noop} onModelClose={noop} onModelOpen={noop} onModelRuntimeOptionChange={noop} onApprovalModeChange={noop} onCommandSelect={noop} onCommandClose={noop} onHistoryUp={noop} onHistoryDown={noop} onShowStats={noop} updateFromInput={noop} closeAll={noop}/>
+        <div id="transcript" className="chat-messages" style={{flex:'1 1 0',minHeight:0,overflow:'auto',overflowAnchor:'none'}}><div style={{height:3000}}>Transcript<EphemeralMessage msg={{content:'Task finished',backgroundTaskNotice:{status:'completed',child:{producer:'engine-subagent',reporterThreadId:'reporter',childId:'child',status:'completed',title:'Review implementation',result:{summary:'The check passed.',source:'provider-summary'}}}}} idx={0} fontSize={14} isRemoving={false} onDismiss={noop}/></div></div>
+        <ChatInputArea activity={<><AgentScheduleNotes conversationId="fixture" refreshKey="settled"/><ScrollToBottomButton onClick={noop}/></>} agentSlug="station" sessionId="fixture" input={input} textareaRef={textareaRef} attachments={[]} disabled={false} turnInFlight={false} modelSupportsAttachments={false} fontSize={14} dockHeight={600} apiBase="http://station.test" canModelSelect={false} availableModels={[]} modelQuery={null} commandQuery={null} slashCommands={[]} onInputChange={setInput} onSend={noop} onCancel={noop} onClearInput={noop} selectAttachmentFiles={noop} onRemoveAttachment={noop} onClearAttachments={noop} onModelSelect={noop} onModelReset={noop} onModelClose={noop} onModelOpen={noop} onModelRuntimeOptionChange={noop} onApprovalModeChange={noop} onCommandSelect={noop} onCommandClose={noop} onHistoryUp={noop} onHistoryDown={noop} onShowStats={noop} updateFromInput={noop} closeAll={noop}/>
       </div>;
     }
     createRoot(document.getElementById('root')).render(<App/>);
-  `,
+  `;
+
+test('sizes draft content without transiently clamping the pinned transcript', async () => {
+  const { browser, page, errors } = await scrollBrowserFixture(
+    composerFixture,
     [controls],
   );
   try {
+    await page.addStyleTag({ content: cascade });
     await page.waitForSelector('textarea');
     expect(errors).toEqual([]);
     await page.locator('textarea').focus();
@@ -110,4 +128,49 @@ test('sizes draft content without transiently clamping the pinned transcript', a
   } finally {
     await browser.close();
   }
+});
+
+test('scheduled check-backs share the composer activity row with Scroll to bottom in both themes and widths', async () => {
+  const artifacts = resolve('.surface/inbox-chat-polish');
+  await mkdir(artifacts, { recursive: true });
+  for (const width of [390, 1440])
+    for (const theme of ['dark', 'light']) {
+      const { browser, page, errors } = await scrollBrowserFixture(
+        composerFixture,
+        [controls],
+        { viewport: { width, height: 900 } },
+      );
+      try {
+        await page.addStyleTag({ content: cascade });
+        await page.evaluate(
+          (value) => (document.documentElement.dataset.theme = value),
+          theme,
+        );
+        const note = page.getByText(/Checking back at/);
+        await note.waitFor();
+        const noteBox = (await note.boundingBox())!;
+        const scroll = (await page
+          .getByRole('button', { name: 'Scroll to bottom' })
+          .boundingBox())!;
+        expect(scroll.y).toBeLessThan(noteBox.y + noteBox.height);
+        expect(scroll.y + scroll.height).toBeGreaterThan(noteBox.y);
+        expect(scroll.x).toBeGreaterThan(noteBox.x + noteBox.width);
+        expect(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth > innerWidth,
+          ),
+        ).toBe(false);
+        expect(await page.locator('.ephemeral-message').count()).toBe(0);
+        expect(
+          await page.getByTestId('subagent-card').getAttribute('data-status'),
+        ).toBe('completed');
+        expect(errors).toEqual([]);
+        await page.screenshot({
+          path: resolve(artifacts, `scheduled-${width}-${theme}.png`),
+          animations: 'disabled',
+        });
+      } finally {
+        await browser.close();
+      }
+    }
 });

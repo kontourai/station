@@ -1746,7 +1746,19 @@ describe('OrchestrationService', () => {
 
     // Client B connects afterwards with no cursor: the snapshot rows carry
     // the same activity, running tool included, with no further events.
+    const schedule = eventStore.agentScheduleStore();
+    const wake = schedule.insertWakeUp({
+      conversationId: root, sessionId: child, actor: { userId: 'owner-user', attribution: 'unattributed-agent' },
+      caller: { assurance: 'bound', sessionId: child }, note: 'Check the result',
+      dueAtMs: Date.parse('2026-09-22T09:10:00.000Z'), state: 'pending', now: Date.parse('2026-09-22T09:00:00.000Z'),
+    });
+    if (typeof wake === 'string') throw new Error(wake);
     const snapshot = await service.listSessionReadModel();
+    for (const threadId of [root, child]) {
+      expect(snapshot.find((session) => session.threadId === threadId)?.nextWakeUpAt).toBe('2026-09-22T09:10:00.000Z');
+    }
+    schedule.settleWakeUp(wake.id, 'canceled', Date.parse('2026-09-22T09:01:00.000Z'));
+    expect((await service.listSessionReadModel()).find((session) => session.threadId === child)?.nextWakeUpAt).toBeUndefined();
     for (const threadId of [root, child])
       expect(
         snapshot.find((session) => session.threadId === threadId)

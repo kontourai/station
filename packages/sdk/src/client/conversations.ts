@@ -377,10 +377,10 @@ export async function getConversationTurnDirectory(
   cursor?: string,
   opts?: ClientRequestOptions,
 ): Promise<ConversationTurnDirectory | null> {
-  const params = new URLSearchParams({ turnLimit: '25' });
+  const params = new URLSearchParams({ turnLimit: '100' });
   if (cursor) params.set('cursor', cursor);
   const response = await getJson(
-    `${apiBase}/api/orchestration/session-reads/${encodeURIComponent(conversationId)}/digest?${params}`,
+    `${apiBase}/api/orchestration/session-reads/${encodeURIComponent(conversationId)}/turn-directory?${params}`,
     opts,
   );
   if (response.status === 404) return null;

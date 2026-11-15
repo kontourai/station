@@ -69,6 +69,7 @@ import {
   sameMessageResendSource,
 } from './fork-turn-source';
 import { formatFormSubmission } from './formSubmission';
+import { IndexedTranscriptTurnRail } from './IndexedTranscriptTurnRail';
 import { MessageBubble, type MessageBubbleSession } from './MessageBubble';
 import { PendingApprovalStrip } from './PendingApprovalStrip';
 import { QuoteSelectionToolbar } from './QuoteSelectionToolbar';
@@ -334,6 +335,16 @@ function ChatMessageListComponent({
   const coarsePointer = useCoarsePointer();
   const touchTurnControls = isMobile || coarsePointer;
   const [turnBrowserOpen, setTurnBrowserOpen] = useState(false);
+  const openTurnBrowser = useCallback(() => setTurnBrowserOpen(true), []);
+  const loadTurnAndReveal = useCallback(
+    async (turnId: string, signal: AbortSignal) => {
+      if (!onLoadTurn) return false;
+      const found = await onLoadTurn(turnId, signal);
+      if (found && !signal.aborted) setPendingTurnJump(turnId);
+      return found;
+    },
+    [onLoadTurn],
+  );
   const [pendingTurnJump, setPendingTurnJump] = useState<string | null>(null);
   useEffect(() => {
     const browse = (event: Event) => {
@@ -733,6 +744,10 @@ function ChatMessageListComponent({
   );
   // History replay keeps its own timeline; the live transcript gets the rail.
   const turnNavigation = !activeSession.replay && turnLandmarks.length > 0;
+  const TurnRail =
+    target?.requestScope && activeSession.conversationId && onLoadTurn
+      ? IndexedTranscriptTurnRail
+      : TranscriptTurnRail;
   const turnRailRef = useRef<HTMLElement>(null);
   const turnViewport = useTranscriptTurnViewport({
     enabled: turnNavigation,
@@ -2290,19 +2305,13 @@ function ChatMessageListComponent({
                 conversationId: activeSession.conversationId,
                 landmarks: turnLandmarks,
                 onJumpLoaded: jumpToTurn,
-                onLoadTurn: onLoadTurn
-                  ? async (turnId: string, signal: AbortSignal) => {
-                      const found = await onLoadTurn(turnId, signal);
-                      if (found && !signal.aborted) setPendingTurnJump(turnId);
-                      return found;
-                    }
-                  : undefined,
+                onLoadTurn: onLoadTurn ? loadTurnAndReveal : undefined,
                 onClose: () => setTurnBrowserOpen(false),
               }}
             />
           )}
           {turnNavigation && (
-            <TranscriptTurnRail
+            <TurnRail
               // A chat switch starts the rail over: a hover or a dismissed
               // preview names a turn index in the chat it was made in.
               key={activeSession.id}
@@ -2313,11 +2322,15 @@ function ChatMessageListComponent({
               activeTurn={turnViewport.activeTurn}
               onJump={jumpToTurn}
               olderHistory={Boolean(hasOlderMessages)}
+              onBrowse={openTurnBrowser}
               previousTurn={previousTurn}
               nextTurn={nextTurn}
               onStep={stepToTurn}
               touchControls={touchTurnControls}
               touchStepsShown={isUserScrolledUp}
+              conversationId={activeSession.conversationId!}
+              activeStartVisible={turnViewport.activeStartVisible}
+              onLoadTurn={loadTurnAndReveal}
             />
           )}
           {/* Mounted with the navigation, before anything is said: a region

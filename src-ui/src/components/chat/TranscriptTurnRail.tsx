@@ -10,7 +10,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { ArrowDownGlyph, ArrowUpGlyph } from '../icons/Glyph';
+import { ArrowDownGlyph, ArrowUpGlyph, MenuGlyph } from '../icons/Glyph';
 import {
   type TranscriptTurnLandmark,
   type TranscriptTurnMarker,
@@ -98,17 +98,27 @@ export function useTranscriptTurnViewport({
     const activeTurn = turnIndexForRow(landmarks, centre);
     const activeStartVisible = landmarks[activeTurn]!.rowIndex >= first;
     const rail = railRef.current;
-    const drawn = `${first}:${last}:${rowCount}`;
+    const drawn = `${first}:${last}:${rowCount}:${rail?.dataset.indexed}:${rail?.dataset.turnCount}`;
     if (
       rail &&
       (drawnRef.current?.rail !== rail || drawnRef.current.key !== drawn)
     ) {
       drawnRef.current = { rail, key: drawn };
-      const firstTurn = turnIndexForRow(landmarks, first);
-      const lastTurn = turnIndexForRow(landmarks, last);
-      for (const tick of rail.querySelectorAll<HTMLElement>(
-        '[data-turn-index]',
-      )) {
+      let firstTurn = turnIndexForRow(landmarks, first);
+      let lastTurn = turnIndexForRow(landmarks, last);
+      const ticks = [
+        ...rail.querySelectorAll<HTMLElement>('[data-turn-index]'),
+      ];
+      const indexed = rail.dataset.indexed !== undefined;
+      if (indexed) {
+        firstTurn = ticks.findIndex(
+          (tick) => tick.dataset.turnId === landmarks[firstTurn]?.turnId,
+        );
+        lastTurn = ticks.findIndex(
+          (tick) => tick.dataset.turnId === landmarks[lastTurn]?.turnId,
+        );
+      }
+      for (const tick of ticks) {
         const turn = Number(tick.dataset.turnIndex);
         tick.toggleAttribute(
           'data-in-view',
@@ -119,8 +129,8 @@ export function useTranscriptTurnViewport({
         '.transcript-turn-rail__band',
       );
       if (band) {
-        band.style.top = `${(first / rowCount) * 100}%`;
-        band.style.height = `${((last + 1 - first) / rowCount) * 100}%`;
+        band.style.top = `${(indexed ? firstTurn / ticks.length : first / rowCount) * 100}%`;
+        band.style.height = `${(indexed ? (lastTurn + 1 - firstTurn) / ticks.length : (last + 1 - first) / rowCount) * 100}%`;
       }
     }
     setViewport((current) =>
@@ -189,6 +199,8 @@ interface TranscriptTurnRailProps {
   readonly onJump: (turnIndex: number) => void;
   /** Older history exists beyond the loaded rows (see `turnPosition`). */
   readonly olderHistory: boolean;
+  readonly onBrowse?: () => void;
+  readonly indexed?: boolean;
   readonly previousTurn: number | undefined;
   readonly nextTurn: number | undefined;
   readonly onStep: (turnIndex: number) => void;
@@ -242,6 +254,8 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
   activeTurn,
   onJump,
   olderHistory,
+  onBrowse,
+  indexed,
   previousTurn,
   nextTurn,
   onStep,
@@ -416,9 +430,22 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
       >
         <ArrowUpGlyph />
       </button>
+      {onBrowse && (
+        <button
+          type="button"
+          className="transcript-turn-rail__browse"
+          aria-label="Browse all turns"
+          title="Browse all turns"
+          onClick={onBrowse}
+        >
+          <MenuGlyph />
+        </button>
+      )}
       <nav
         className="transcript-turn-rail"
         aria-label="Conversation turns"
+        data-indexed={indexed || undefined}
+        data-turn-count={landmarks.length}
         ref={railRef}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -458,6 +485,7 @@ export const TranscriptTurnRail = memo(function TranscriptTurnRail({
                 type="button"
                 className="transcript-turn-rail__tick"
                 data-turn-index={index}
+                data-turn-id={landmark.turnId}
                 data-marker={landmark.marker}
                 tabIndex={index === tabStop ? 0 : -1}
                 aria-current={index === activeTurn ? 'location' : undefined}

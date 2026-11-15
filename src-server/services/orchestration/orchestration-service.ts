@@ -5360,6 +5360,7 @@ export class OrchestrationService {
     // either way.
     const lineageByThread =
       eventStore?.conversationLineageForThreads(readableThreadIds);
+    const nextWakeUps = eventStore?.agentScheduleStore().nextArmedWakeUps();
     return readableThreadIds
       .map((threadId) => {
         // archive#1867: summary facts are queried by their load-bearing
@@ -5413,9 +5414,15 @@ export class OrchestrationService {
         });
         const lineageConversationId =
           lineageByThread?.get(threadId)?.conversationId;
-        return !summary.conversationId && lineageConversationId
-          ? { ...summary, conversationId: lineageConversationId }
-          : summary;
+        const conversationId = summary.conversationId ?? lineageConversationId;
+        const nextWakeUpAt = conversationId
+          ? nextWakeUps?.get(conversationId)
+          : undefined;
+        return {
+          ...summary,
+          ...(conversationId ? { conversationId } : {}),
+          ...(nextWakeUpAt ? { nextWakeUpAt } : {}),
+        };
       })
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }

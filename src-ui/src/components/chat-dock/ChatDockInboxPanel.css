@@ -324,3 +324,7 @@
   max-width: none;
   margin-right: var(--fold-split-gap);
 }
+
+.chat-dock-inbox__toolbar {
+  padding: var(--k-space-3);
+}
