@@ -231,9 +231,13 @@ vendor's refusal in the vendor's own words.
   paged its current state (status and update time) to the end; a page that
   failed is retried on the next sync. Devin's `410` on a finished session's
   messages ends paging instead of failing the sync. Cursor's runs list stays
-  readable for an archived agent. A call reads at most ten Cursor list pages;
-  when the list goes on, the vendor's `nextCursor` is kept as the resume
-  cursor and the next call continues the backlog before the task settles.
+  readable for an archived agent. A call reads at most ten Cursor list pages,
+  stopping at a stored run, and the stored cursor carries what it could not
+  finish: finished runs still to read on their own (read before anything is
+  listed again), the vendor's `nextCursor` where the ten pages ran out, and
+  one more pass from the newest run once a resumed backlog ends. The task
+  does not settle while any of it remains, and it survives a failed page and
+  a restart.
 - **What is retried.** Only failures that resolve on their own: a rate
   limit, an unreachable vendor, and the preview or policy turned off, which
   rechecks at the ceiling. Anything else stops polling until a client writes
@@ -319,7 +323,7 @@ undocumented:
   cursor Devin issued, so at worst one page is re-read per poll;
 - whether Cursor's runs list carries each finished run's `result`. When an
   entry leaves it out, Station reads that run, five per call and never one
-  already stored, and pages again before the task settles;
+  already stored, before the task settles;
 - whether a cancelled, failed or expired Cursor run has a `result`. One that
   has none is stored as a Station-authored note under the run's id, so it is
   read once and the task can settle.
