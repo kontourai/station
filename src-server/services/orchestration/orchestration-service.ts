@@ -4341,6 +4341,9 @@ export class OrchestrationService {
       });
       startInput = await this.resolveSessionAgentForStart(startInput);
       throwIfAborted(startInput.signal);
+      // #4435: before the start boundary, so a governance refusal is
+      // definitive rather than a start that may have happened.
+      await adapter.preflightStart?.(startInput);
       const admissionLease = await admitEngineStartForIntent(
         this.options.resourcePosture,
         this.options.logger,

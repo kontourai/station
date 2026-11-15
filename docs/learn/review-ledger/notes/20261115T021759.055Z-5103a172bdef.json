@@ -1,0 +1,7 @@
+{
+  "revision": "b9fd2b89153b463e4ea198b06e96785aded4db86",
+
+  "notes": [
+    {"path":"src-server/AGENTS.md","note":"Delta review only: docs/guides/testing.md gained one paragraph on qualification failure-manifest isolation under Known qualification failures. This page links testing.md only for other sections (lanes, focused evidence, test-effectiveness and fixture fidelity, heavy-check slots), and those sections did not change. No claim here is affected, so the prose is unchanged.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}
