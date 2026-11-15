@@ -22,13 +22,14 @@ Retention: retained as bounded review evidence for #4798, #4799 and #4800. Repla
 | Mention dot on the channel | `ProjectConversationListLive.test.tsx`; route test "the read summary marks a room…" | **(d)** not in the spec | n/a |
 | Renames update old mentions (keyed by id) | `RoomMessageText.test.tsx`; `ProjectRoomLive.test.tsx` "a mention renders by person id…" | **(d)** | `room-live-mention-*`: **(d) not captured** |
 | Legacy `**@name**` still renders | `RoomMessageText.test.tsx`, with a fixture in the stored Task-room history shape | n/a | n/a |
-| Non-member mention refused | route test; spec test 4: **(d) pending** | | |
+| Non-member mention refused | route test | spec test 4: **(d) pending** | n/a |
+| Member directory: room readers only, active people, `{id, displayName, kind}` only; non-member and revoked refused | route test "members (#4799): only a current room reader may list…" | **(d)** | n/a |
 | Agent working indicator follows the lifecycle | `ProjectRoomLive.test.tsx` "the Agent working row appears and clears…" (fails if hard-coded on); `ProjectConversationListLive.test.tsx` (sidebar) | spec test 5 sees only a recorded failure. No Agent can run on the e2e Station, so a real appear-then-clear is **(d) NOT_VERIFIED** | `room-agent-working-*`, `room-agent-outcome-*`: **(d) not captured** |
 | Stop, and Retry as a new request | `ProjectRoomLive.test.tsx` "the person who asked can Stop…" | **(d)** | n/a |
 
 ## Fault injection
 
-Each of the 18 injections ran from a clean committed tree. The named file was restored with `git checkout` and its test re-verified green. In round 1, four injections survived because their tests did not reach the behavior: typing stop and typing disconnect (masked by the 6 s expiry), the sidebar working mark (cleared by an empty list rather than a settled request), and the read summary (no unread message naming someone else). Those tests were tightened, and all four are caught in round 2. Full records, including failure lines, are in [fault-injection.json](fault-injection.json).
+Each of the 19 injections ran from a clean committed tree. The named file was restored with `git checkout` and its test re-verified green. In round 1, four injections survived because their tests did not reach the behavior: typing stop and typing disconnect (masked by the 6 s expiry), the sidebar working mark (cleared by an empty list rather than a settled request), and the read summary (no unread message naming someone else). Those tests were tightened, and all four are caught in round 2. The member-directory injection (listing inactive members) was added afterwards and is caught. Full records, including failure lines, are in [fault-injection.json](fault-injection.json).
 
 ## Not shipped, with reasons
 
