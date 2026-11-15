@@ -2859,7 +2859,7 @@ test.skipIf(process.getuid?.() === 0)(
 for (const [label, raw] of [
   ['partial', '{'],
   ['garbage', 'garbage'],
-  ['oversize', '{' + 'x'.repeat(8 * 1024 * 1024)],
+  ['oversize', `{${'x'.repeat(8 * 1024 * 1024)}`],
 ] as const)
   test(`message files: a warmed store refuses an upload while the repair inbox holds ${label} content (#4852 review)`, async () => {
     const fs = await import('node:fs');
@@ -2931,7 +2931,7 @@ test('message files: a repair whose bytes are gone stays pending and blocks, the
   fs.mkdirSync(dirname(path), { recursive: true });
   fs.writeFileSync(
     path,
-    JSON.stringify({ ...parsed, blobRef: 'sha256-' + 'f'.repeat(64) }),
+    JSON.stringify({ ...parsed, blobRef: `sha256-${'f'.repeat(64)}` }),
   );
   await f.remove(sent.messageId);
   await unavailable(await attempt());
