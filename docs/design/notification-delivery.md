@@ -1116,8 +1116,12 @@ and the right conversation.
   the link stays a relative in-app path with every same-origin check intact.
 - **One opener.** `requestNotificationOpen` (`src-ui/src/lib/notificationStationOpen.ts`)
   is the entry point for a desktop click, a Web Push tap, a cold load and a
-  phone tap. With no Station named (an older Station) or the active one, it
-  navigates at once. For another saved Station it shows "Opening
+  phone tap. The active Station's id is its saved connection's, or the
+  verified authority observation's when the connection never saved one (a
+  same-origin browser connection does not); taps wait for it, up to eight
+  seconds, before they are placed. With no Station named (an older
+  Station), the active one, or one it cannot place while the active id is
+  still unknown, it navigates at once. For another saved Station it shows "Opening
   conversation on <Station>…", switches (`setActiveConnection`), and only
   then navigates. A Station not saved on this device, or a failed switch,
   shows a notice with Manage Stations (and Retry for a failed switch)
