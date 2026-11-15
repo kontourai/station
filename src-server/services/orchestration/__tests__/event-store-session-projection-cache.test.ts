@@ -140,7 +140,11 @@ describe('EventStore session projection cache (#4992)', () => {
     expect(observed.folds.slice(1)).toEqual([['thread-b']]);
     expect(observed.counts.slice(1)).toEqual([['thread-b']]);
     expect(
-      ids(store.listSessionProjectionEventsForThreads(['thread-b']).get('thread-b')),
+      ids(
+        store
+          .listSessionProjectionEventsForThreads(['thread-b'])
+          .get('thread-b'),
+      ),
     ).toContain('thread-b-turn2-started');
   });
 
@@ -192,7 +196,11 @@ describe('EventStore session projection cache (#4992)', () => {
     });
     expectMatchesFreshRead(['thread-d']);
     expect(
-      ids(store.listSessionProjectionEventsForThreads(['thread-d']).get('thread-d')),
+      ids(
+        store
+          .listSessionProjectionEventsForThreads(['thread-d'])
+          .get('thread-d'),
+      ),
     ).toEqual(['thread-d-restarted']);
   });
 
@@ -210,7 +218,11 @@ describe('EventStore session projection cache (#4992)', () => {
       prompt: 'never committed',
     });
     expect(
-      ids(store.listSessionProjectionEventsForThreads(['thread-t']).get('thread-t')),
+      ids(
+        store
+          .listSessionProjectionEventsForThreads(['thread-t'])
+          .get('thread-t'),
+      ),
     ).toContain('thread-t-rolled-back');
     db.exec('ROLLBACK');
 
@@ -286,8 +298,9 @@ describe('EventStore session projection cache (#4992)', () => {
   test('returned rows are frozen, so one caller cannot change what the next read returns', () => {
     seedThread('thread-f');
     const [first] =
-      store.listSessionProjectionEventsForThreads(['thread-f']).get('thread-f') ??
-      [];
+      store
+        .listSessionProjectionEventsForThreads(['thread-f'])
+        .get('thread-f') ?? [];
     expect(first).toBeDefined();
     expect(Object.isFrozen(first)).toBe(true);
     expect(Object.isFrozen(first!.payload)).toBe(true);
