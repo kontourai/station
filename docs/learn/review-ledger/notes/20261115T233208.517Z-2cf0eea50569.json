@@ -1,0 +1,7 @@
+{
+  "revision": "2df442f566b413ffc416038ad5d5813693c79d94",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Added the Claude transcript discovery paragraph (layout, newest-folder traversal, sidechain exclusion, 16-record/4 MiB leading scan, earliest-timestamp createdAt, refusal rules, head-result reuse, one warning per state, recency approximation) and checked it against claude-transcript-session-source.ts and its discovery tests.","inputs":["docs/reference/session-api.md"]}
+  ]
+}
