@@ -275,6 +275,8 @@ describe('a cache root that is not a plain directory in the home', () => {
     mkdirSync(join(root, NODE_VERSION_DIR), { recursive: true });
     writeFileSync(join(root, NODE_VERSION_DIR, 'entry'), Buffer.alloc(1024));
     symlinkSync(outside, join(root, 'v0.0.0-linked-dir'), 'dir');
+    // Old enough that the age pass would remove it, if it followed the link.
+    utimesSync(outside, old, old);
     symlinkSync(
       join(outside, 'recent-file'),
       join(root, NODE_VERSION_DIR, 'linked-file'),
