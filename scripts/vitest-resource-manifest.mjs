@@ -249,6 +249,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/infra/__tests__/workload-scope-holder.process.test.ts',
   // Fake systemd manager; one case starts and reaps a real short-lived process.
   'src-server/services/infra/__tests__/workload-budget.test.ts',
+  // Fake systemd manager; reaps one real short-lived process for a dead pid.
+  'src-server/services/infra/__tests__/workload-scope-cleanup.test.ts',
   'scripts/__tests__/run-biome.process.test.ts',
   'scripts/__tests__/component-style-hygiene.process.test.ts',
   // Runs the UI copy length gate as a node child against a disposable Git tree.
