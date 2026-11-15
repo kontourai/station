@@ -489,6 +489,17 @@ function sameGroupRun(live, run, workflow, repository) {
   );
 }
 
+// A listed run's own workflow identity, which every later read of that run
+// must repeat.
+function runWorkflow(run) {
+  return Number.isSafeInteger(run.workflow_id) &&
+    run.workflow_id > 0 &&
+    typeof run.path === 'string' &&
+    run.path
+    ? { id: run.workflow_id, path: run.path }
+    : null;
+}
+
 // Queue squash commits intentionally do not retain the original PR head ancestry.
 // GitHub's live entry binds the current PR head to its synthetic commit instead.
 async function queueSourceBinding(number, source, run, repository) {
@@ -602,18 +613,23 @@ async function retireReplacedGroups(trigger, repository) {
   }
   let requested = 0;
   let refused = 0;
+  // Every workflow's merge-group runs, not only PR: CI: a superseded group's
+  // other runs belong to the same dead candidate commit. The deadness proof
+  // below is per candidate (PR number, commit, ref), never per workflow.
   const runs = [];
   for (const status of ['queued', 'pending', 'in_progress']) {
     runs.push(
       ...(await completeListing(
-        `actions/workflows/${workflow.id}/runs?event=merge_group&status=${status}`,
+        `actions/runs?event=merge_group&status=${status}`,
         'workflow_runs',
       )),
     );
   }
   for (const run of new Map(runs.map((run) => [run.id, run])).values()) {
+    const own = runWorkflow(run);
     if (
-      !sameGroupRun(run, run, workflow, repository) ||
+      !own ||
+      !sameGroupRun(run, run, own, repository) ||
       Number(GROUP_BRANCH.exec(run.head_branch)[1]) !== number ||
       run.head_sha === replacement.head_sha ||
       run.id === replacement.id ||
@@ -622,7 +638,7 @@ async function retireReplacedGroups(trigger, repository) {
       continue;
     const live = await github(`actions/runs/${run.id}`);
     if (
-      !sameGroupRun(live, run, workflow, repository) ||
+      !sameGroupRun(live, run, own, repository) ||
       !LIVE_RUN_STATES.has(live.status)
     )
       continue;
@@ -647,7 +663,7 @@ async function retireReplacedGroups(trigger, repository) {
     const finalRun = await github(`actions/runs/${run.id}`);
     if (
       !sameGroupRun(latest, replacement, workflow, repository) ||
-      !sameGroupRun(finalRun, run, workflow, repository) ||
+      !sameGroupRun(finalRun, run, own, repository) ||
       !LIVE_RUN_STATES.has(finalRun.status) ||
       currentOwner.state !== 'open' ||
       currentOwner.base?.ref !== 'main' ||
@@ -677,10 +693,10 @@ async function retireReplacedGroups(trigger, repository) {
     requested++;
     const settled = await github(`actions/runs/${run.id}`);
     const terminal =
-      sameGroupRun(settled, run, workflow, repository) &&
+      sameGroupRun(settled, run, own, repository) &&
       settled.status === 'completed';
     console.log(
-      `Replaced merge candidate #${number}: run ${run.id}/${run.run_attempt}, ${run.head_sha}; replacement ${replacement.id}/${replacement.run_attempt}, ${replacement.head_sha}; normal cancellation ${terminal ? `terminal ${settled.conclusion}` : 'requested, terminal state not verified'}`,
+      `Replaced merge candidate #${number}: ${run.path} run ${run.id}/${run.run_attempt}, ${run.head_sha}; replacement ${replacement.id}/${replacement.run_attempt}, ${replacement.head_sha}; normal cancellation ${terminal ? `terminal ${settled.conclusion}` : 'requested, terminal state not verified'}`,
     );
   }
   console.log(

@@ -761,6 +761,36 @@ describe('merged optional-tail retirement through the real GitHub HTTP boundary'
   });
 });
 
+// Workflow identities as GitHub lists them for this repository's merge-group
+// runs (`gh api repos/kontourai/station/actions/runs?event=merge_group`).
+const GROUP_WORKFLOWS = {
+  ci: {
+    id: 344177106,
+    path: '.github/workflows/ci.yml',
+    name: 'Source verification',
+  },
+  ios: {
+    id: 344177103,
+    path: '.github/workflows/build-ios.yml',
+    name: 'PR: iOS build',
+  },
+  docs: {
+    id: 381162934,
+    path: '.github/workflows/docs-kit.yml',
+    name: 'PR: Docs kit',
+  },
+  windows: {
+    id: 345371894,
+    path: '.github/workflows/windows-pr-verification.yml',
+    name: 'PR: Windows',
+  },
+  gallery: {
+    id: 366668403,
+    path: '.github/workflows/gallery-pr-check.yml',
+    name: 'PR: Gallery',
+  },
+} as const;
+
 async function replacedGroup(
   options: {
     oldRef?: boolean;
@@ -782,25 +812,80 @@ async function replacedGroup(
     queueUnmergeable?: boolean;
     oldRefDisplaced?: boolean;
     refuseCancel?: boolean;
+    // The dead group's PR: CI run already finished; its other runs still run.
+    oldCiFinished?: boolean;
+    // 100 live runs of another PR's group fill the first listing page.
+    paged?: boolean;
+    // The listing's total_count names one run it never returns.
+    truncated?: boolean;
   } = {},
 ) {
   const candidateBase = 'e'.repeat(40);
+  const laterSha = '1'.repeat(40);
+  const otherPrSha = 'f'.repeat(40);
   const branch = (sha: string) =>
     `gh-readonly-queue/main/pr-7-${sha === head ? candidateBase : old}`;
-  const candidate = (id: number, sha: string) =>
-    run(id, {
-      event: 'merge_group',
-      workflow_id: 50,
-      head_sha: sha,
-      head_branch: branch(sha),
-      created_at: id === 1 ? '2026-10-22T00:00:00Z' : '2026-10-22T00:01:00Z',
-    });
-  const obsolete = candidate(1, old);
-  const replacement = candidate(2, head);
+  const candidate = (
+    id: number,
+    sha: string,
+    workflow: (typeof GROUP_WORKFLOWS)[keyof typeof GROUP_WORKFLOWS],
+    overrides: Record<string, unknown> = {},
+  ) => ({
+    id,
+    name: workflow.name,
+    path: workflow.path,
+    workflow_id: workflow.id,
+    run_attempt: 1,
+    status: 'in_progress',
+    conclusion: null,
+    event: 'merge_group',
+    head_sha: sha,
+    head_branch: branch(sha),
+    head_repository: { full_name: repository },
+    pull_requests: [],
+    created_at: sha === old ? '2026-10-22T00:00:00Z' : '2026-10-22T00:01:00Z',
+    ...overrides,
+  });
+  // The dead group: one candidate commit, three workflows.
+  const obsoleteIds = [1, 3, 4];
+  const runs: Record<string, unknown>[] = [
+    candidate(
+      1,
+      old,
+      GROUP_WORKFLOWS.ci,
+      options.oldCiFinished
+        ? { status: 'completed', conclusion: 'failure' }
+        : {},
+    ),
+    candidate(3, old, GROUP_WORKFLOWS.ios, { status: 'queued' }),
+    candidate(4, old, GROUP_WORKFLOWS.docs),
+    // The live replacement group (the trigger and a sibling workflow).
+    candidate(2, head, GROUP_WORKFLOWS.ci),
+    candidate(5, head, GROUP_WORKFLOWS.windows),
+    // Another PR's group built on the dead candidate commit.
+    candidate(6, otherPrSha, GROUP_WORKFLOWS.gallery, {
+      head_branch: `gh-readonly-queue/main/pr-8-${old}`,
+      created_at: '2026-10-22T00:00:00Z',
+    }),
+    // A same-PR candidate created after the replacement.
+    candidate(7, laterSha, GROUP_WORKFLOWS.gallery, {
+      head_branch: `gh-readonly-queue/main/pr-7-${'2'.repeat(40)}`,
+      created_at: '2026-10-22T00:02:00Z',
+    }),
+  ];
+  const filler = options.paged
+    ? Array.from({ length: 100 }, (_, index) =>
+        candidate(1000 + index, '3'.repeat(40), GROUP_WORKFLOWS.windows, {
+          head_branch: `gh-readonly-queue/main/pr-9-${'4'.repeat(40)}`,
+        }),
+      )
+    : [];
+  const byId = new Map(runs.map((item) => [item.id as number, item]));
+  const replacement = byId.get(2)!;
   const ownerHead = 'c'.repeat(40);
   const cancelled: number[] = [];
   let ownerReads = 0;
-  let runReads = 0;
+  const runReads = new Map<number, number>();
   let queueReads = 0;
   let displacedResponses = 0;
   const server = createServer((req, res) => {
@@ -808,6 +893,9 @@ async function replacedGroup(
     const url = new URL(req.url ?? '', 'http://localhost');
     const path = url.pathname.replace('/repos/kontourai/station/', '');
     let data: unknown;
+    const runRoute =
+      /^actions\/runs\/(\d+)(\/attempts\/1\/jobs|\/cancel)?$/.exec(path);
+    const runId = Number(runRoute?.[1]);
     if (url.pathname === '/graphql') {
       expect(req.method).toBe('POST');
       if (options.queueHttpStatus) {
@@ -875,8 +963,31 @@ async function replacedGroup(
       });
       return;
     }
+    const live = (item: Record<string, unknown>) => ({
+      ...item,
+      ...(cancelled.includes(item.id as number)
+        ? { status: 'completed', conclusion: 'cancelled' }
+        : {}),
+    });
+    const listed = (filter: (item: Record<string, unknown>) => boolean) => {
+      const status = url.searchParams.get('status');
+      const all = [...filler, ...runs]
+        .filter(filter)
+        .map(live)
+        .filter((item) => item.status === status);
+      const page = Number(url.searchParams.get('page'));
+      const size = Number(url.searchParams.get('per_page'));
+      return {
+        total_count: all.length + (options.truncated ? 1 : 0),
+        workflow_runs: all.slice((page - 1) * size, page * size),
+      };
+    };
     if (path === 'actions/workflows/ci.yml')
-      data = { id: 50, path: '.github/workflows/ci.yml', name: 'PR: CI' };
+      data = {
+        id: GROUP_WORKFLOWS.ci.id,
+        path: GROUP_WORKFLOWS.ci.path,
+        name: 'PR: CI',
+      };
     else if (path === 'pulls/7') {
       ownerReads++;
       data = {
@@ -887,46 +998,49 @@ async function replacedGroup(
           repo: { full_name: repository },
         },
       };
-    } else if (path === `compare/${ownerHead}...${head}`)
+    } else if (path === 'actions/runs') {
+      expect(url.searchParams.get('event')).toBe('merge_group');
+      data = listed(() => true);
+    } else if (path === `actions/workflows/${GROUP_WORKFLOWS.ci.id}/runs`) {
+      // The PR: CI-only listing the controller used before every workflow of
+      // a dead group was retired; served so a revert is caught by its effect.
+      expect(url.searchParams.get('event')).toBe('merge_group');
+      data = listed((item) => item.workflow_id === GROUP_WORKFLOWS.ci.id);
+    } else if (runRoute && !runRoute[2]) {
+      const id = runId;
+      const item = byId.get(id) ?? filler.find((run) => run.id === id);
+      if (!item) {
+        res.writeHead(404);
+        res.end('{}');
+        return;
+      }
+      const reads = (runReads.get(id) ?? 0) + 1;
+      runReads.set(id, reads);
+      const obsolete = obsoleteIds.includes(id);
       data = {
-        // Real queue squash candidates do not retain the raw PR head as an ancestor.
-        status: 'diverged',
-        merge_base_commit: { sha: 'd'.repeat(40) },
-      };
-    else if (path === 'actions/workflows/50/runs')
-      data = {
-        total_count: url.searchParams.get('status') === 'in_progress' ? 2 : 0,
-        workflow_runs:
-          url.searchParams.get('status') === 'in_progress'
-            ? [obsolete, replacement]
-            : [],
-      };
-    else if (path === 'actions/runs/2') data = replacement;
-    else if (path === 'actions/runs/1') {
-      runReads++;
-      data = {
-        ...obsolete,
-        ...(options.badRun ? { event: 'workflow_dispatch' } : {}),
-        ...(options.attemptMoved && runReads > 1 ? { run_attempt: 2 } : {}),
-        ...(cancelled.length
-          ? { status: 'completed', conclusion: 'cancelled' }
+        ...live(item),
+        ...(obsolete && options.badRun ? { event: 'workflow_dispatch' } : {}),
+        ...(obsolete && options.attemptMoved && reads > 1
+          ? { run_attempt: 2 }
           : {}),
       };
-    } else if (path === 'actions/runs/1/attempts/1/jobs')
+    } else if (runRoute?.[2] === '/attempts/1/jobs') {
+      const id = runId;
+      const item = byId.get(id)!;
       data = {
         total_count: 1,
         jobs: [
           {
-            id: 10,
-            run_id: 1,
+            id: id * 10,
+            run_id: id,
             run_attempt: options.badJobs ? 2 : 1,
-            head_sha: old,
-            status: 'in_progress',
-            runner_id: 123,
+            head_sha: item.head_sha,
+            status: item.status === 'queued' ? 'queued' : 'in_progress',
+            runner_id: item.status === 'queued' ? null : 123,
           },
         ],
       };
-    else if (path === `git/ref/heads/${branch(head)}`) {
+    } else if (path === `git/ref/heads/${branch(head)}`) {
       if (options.replacementMissing) {
         res.writeHead(404);
         res.end('{}');
@@ -949,18 +1063,19 @@ async function replacedGroup(
         ref: `refs/heads/${branch(old)}`,
         object: { sha: options.oldRefDisplaced ? head : old },
       };
-    } else if (path === 'actions/runs/1/cancel') {
+    } else if (runRoute?.[2] === '/cancel') {
       expect(req.method).toBe('POST');
       if (options.refuseCancel) {
         res.writeHead(409);
         res.end('{"message":"Cannot cancel this workflow run."}');
         return;
       }
-      cancelled.push(1);
+      cancelled.push(runId);
       res.writeHead(202);
       res.end();
       return;
     } else {
+      // Every other ref (the other PR's and the later candidate's) is gone.
       res.writeHead(404);
       res.end('{}');
       return;
@@ -984,6 +1099,8 @@ async function replacedGroup(
     }));
   } catch (error) {
     code = (error as { code: number }).code;
+    lastGroupStdout = (error as { stdout: string }).stdout;
+    lastGroupStderr = (error as { stderr: string }).stderr;
   } finally {
     await new Promise<void>((ok, reject) =>
       server.close((error) => (error ? reject(error) : ok())),
@@ -991,18 +1108,40 @@ async function replacedGroup(
   }
   if (options.oldRefDisplaced && cancelled.length)
     expect(displacedResponses).toBeGreaterThan(0);
-  return { code, cancelled };
+  return { code, cancelled: cancelled.sort((a, b) => a - b) };
 }
-// The last replacedGroup run's stdout, kept out of its exact result shape.
+// The last replacedGroup run's output, kept out of its exact result shape.
 let lastGroupStdout = '';
+let lastGroupStderr = '';
 
 describe('replaced merge candidate retirement through the GitHub API', () => {
   it.each([{}, { oldRef: true, oldRefDisplaced: true }])(
-    'normally cancels obsolete queue-bound squash work with destroyed/displaced ref: %j',
+    'normally cancels every workflow run of the obsolete queue-bound squash candidate with destroyed/displaced ref: %j',
     async (options) => {
-      expect(await replacedGroup(options)).toEqual({ code: 0, cancelled: [1] });
+      // 1 is the dead group's PR: CI run; 3 (queued iOS) and 4 (Docs kit) are
+      // its other workflows. The live group (2, 5), another PR's group built
+      // on the dead commit (6) and a newer same-PR candidate (7) survive.
+      expect(await replacedGroup(options)).toEqual({
+        code: 0,
+        cancelled: [1, 3, 4],
+      });
+      expect(lastGroupStdout).toContain(
+        'Merge retirement #7: 3 normal cancellation request(s), 0 refused (HTTP 409)',
+      );
     },
   );
+  it('retires the rest of a dead group after its PR: CI run has finished', async () => {
+    expect(await replacedGroup({ oldCiFinished: true })).toEqual({
+      code: 0,
+      cancelled: [3, 4],
+    });
+  });
+  it('reads every listing page before retiring', async () => {
+    expect(await replacedGroup({ paged: true })).toEqual({
+      code: 0,
+      cancelled: [1, 3, 4],
+    });
+  });
   it.each([
     { oldRef: true },
     { replacementMissing: true },
@@ -1030,8 +1169,15 @@ describe('replaced merge candidate retirement through the GitHub API', () => {
       cancelled: [],
     });
     expect(lastGroupStdout).toContain(
-      '0 normal cancellation request(s), 1 refused (HTTP 409)',
+      '0 normal cancellation request(s), 3 refused (HTTP 409)',
     );
+  });
+  it('cancels nothing on a listing that does not account for every run', async () => {
+    expect(await replacedGroup({ truncated: true })).toEqual({
+      code: 1,
+      cancelled: [],
+    });
+    expect(lastGroupStderr).toContain('Truncated retirement inventory');
   });
   it.each([
     { badJobs: true },

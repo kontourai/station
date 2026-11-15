@@ -316,9 +316,20 @@ heads in CI, iOS, Windows, security, Gallery and Docs kit workflows. Each
 cancellation rechecks the PR head and run attempt. The PR-head path never cancels
 merge-group, main-push, manual diagnostic or publication runs.
 
-A new merge-group Source request also retires older Source candidates for the
+A new merge-group Source request also retires older candidates for the
 same leading PR, only when a live GitHub queue ref and GitHub's merge-queue entry
 bind the replacement commit and its base to the current same-repository PR head.
+Retirement covers every workflow's queued, pending or running merge-group run on
+an older candidate commit (Source, iOS, Windows, security, Gallery, Docs kit),
+not only Source. GitHub does not document it, but run history (2026-11-04 to
+11-15) shows every group in flight at a direct push to main, such as a
+deploy-ledger commit, discarded and rebuilt on the new tip; before this, the
+dead group's other runs ran to completion for nothing. The repository-wide
+run listings must be complete; a truncated or changing listing fails the pass
+and cancels nothing.
+A run is retired only if its candidate is older than the replacement and names
+the same PR; another PR's group built on the dead commit waits for that PR's
+own replacement request.
 The entry identity and source binding are re-read before each cancellation.
 This supports squash candidates: the raw PR head need not be an ancestor of the
 synthetic commit. A missing, mismatched, changed or unmergeable entry cannot
@@ -329,8 +340,11 @@ unknown runner metadata or API failure prevents it. This path can normally
 cancel an assigned runner doing obsolete work, but never force-cancels. A 202
 is a request, not terminal settlement. A 409 refusal, here and when retiring a
 merged PR's optional delivery runs, cancels nothing and is reported as a
-warning; the pass continues. It does not cancel unrelated workflow
-families or replace any regression result with success.
+warning; the pass continues. A retired run of a dead candidate reports
+`cancelled` only on that candidate's commit: `Main: Health` and the main-only
+trackers ignore queue branches, and the source status publisher reads only
+Source runs, which were already retired. It never cancels a live candidate's
+runs or replaces any regression result with success.
 
 For the one-candidate throughput trial and its before/after measurements, use
 [the throughput epic](https://github.com/kontourai/station/issues/3101). The live
