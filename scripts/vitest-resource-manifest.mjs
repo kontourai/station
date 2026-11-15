@@ -1204,6 +1204,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // exhaustion, and the duplicate re-record refusal all assert real git
   // state, so the child processes are the claim.
   'scripts/__tests__/deploy-ledger-commit.test.ts',
+  // Runs the Nightly's real ledger step scripts under bash against a local
+  // fixture origin, then every ledger reader as a child process on the
+  // resulting history: one commit per run is a claim about real git state.
+  'scripts/__tests__/deploy-ledger-nightly-batch.test.ts',
   // Proves the published-packages
   // JSON parse's success and refusal exit statuses as a real child process,
   // the same "gate as a real child" shape as the entry-point gates above.

@@ -9,7 +9,7 @@ Release records appended by the publishing workflows, plus explicitly qualified 
 
 ### JSON schema (one array element per ship)
 
-- `timestampUtc` — ISO 8601 UTC. When the recording workflow step ran (immediately after the publish it records); never in the future.
+- `timestampUtc` — ISO 8601 UTC, never in the future. For a `nightly-npm` row, the moment the publishing job verified the publish against the registry (the row itself may be written later in the run); for every other row, when the recording workflow step ran, immediately after the publish it records.
 - `artifactBuiltAt` — canonical ISO 8601 UTC from the immutable packaged artifact manifest, or `null` when a provider/package artifact cannot prove one. It is never a provider upload, device install, or ledger-recording timestamp.
 - `channel` — one of `nightly-android`, `nightly-npm`, `nightly-desktop`, `stable-desktop`, `stable-npm`.
 - `version` — the channel-specific version identity users see (`station --version`, Play console, npm); alphanumeric plus `. + ~ -` only.
