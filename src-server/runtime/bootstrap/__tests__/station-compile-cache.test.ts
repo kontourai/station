@@ -77,7 +77,8 @@ describe('adoptStationCompileCache', () => {
 });
 
 describe('built-in child environment', () => {
-  const definition = (path: string) => ({
+  const definition = (id: string, path: string) => ({
+    id,
     kind: 'mcp' as const,
     transport: 'stdio' as const,
     command: 'node',
@@ -92,28 +93,28 @@ describe('built-in child environment', () => {
     expect(
       withStationControlRuntimeEnv(
         'station-control',
-        definition(builtinStationControlServerPath()),
+        definition('station-control', builtinStationControlServerPath()),
         {},
       ),
     ).toMatchObject({ NODE_COMPILE_CACHE: cache });
     expect(
       withStationControlRuntimeEnv(
         'station-knowledge',
-        definition(builtinStationKnowledgeServerPath()),
+        definition('station-knowledge', builtinStationKnowledgeServerPath()),
         {},
       ),
     ).toMatchObject({ NODE_COMPILE_CACHE: cache });
     expect(
       withStationControlRuntimeEnv(
         'third-party',
-        definition(builtinStationControlServerPath()),
+        definition('third-party', builtinStationControlServerPath()),
         { SAFE: 'value' },
       ),
     ).toEqual({ SAFE: 'value' });
     expect(
       withStationControlRuntimeEnv(
         'station-control',
-        definition('/tmp/station-control.js'),
+        definition('station-control', '/tmp/station-control.js'),
         {},
       ),
     ).not.toHaveProperty('NODE_COMPILE_CACHE');
