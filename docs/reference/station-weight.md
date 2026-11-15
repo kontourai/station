@@ -209,8 +209,9 @@ end-to-end daemon), so a killed test worker does not leak them.
 **Attribution (report only).** Both memory metrics carry `byRole`: the
 memory of each process role, largest first. The supervisor
 (`station-supervisor.js`) and the server (`command-station.js`) are fixed
-roles; any other process is named by its first script argument, or by its
-executable (`claude`). `attribution.serverHeapAtRest` and
+roles, and the UI listener, which runs a script from stdin, is named from the
+instance record's fingerprint (pid plus birth). Any other process is named by
+its first script argument, or by its executable (`claude`). `attribution.serverHeapAtRest` and
 `attribution.serverHeapWithSessions` set the server's memory beside its V8
 heap: `heapTotalBytes` and `heapUsedBytes` come from the server's own
 `/api/system/resource-posture` (`process.memoryUsage()`, with no forced GC),

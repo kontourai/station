@@ -1429,6 +1429,24 @@ describe('station-weight memory attribution', () => {
     expect(processRole('/opt/claude --print')).toBe('claude');
   });
 
+  test('names a known identity by its pid and birth, not its command line', () => {
+    const ui = { ...row(5, 18), started: 'Sun Nov 15 18:06:17 2026' };
+    const known = [
+      { pid: 5, started: 'Sun Nov 15 18:06:17 2026', role: 'ui-listener' },
+    ];
+    expect(memoryByRole([ui], [{ pid: 5, command: 'node -' }], known)).toEqual([
+      { role: 'ui-listener', processCount: 1, memoryBytes: 18 },
+    ]);
+    // A reused pid with another birth is not the known process.
+    expect(
+      memoryByRole(
+        [{ ...ui, started: 'Sun Nov 15 18:09:00 2026' }],
+        [{ pid: 5, command: 'node -' }],
+        known,
+      ),
+    ).toEqual([{ role: 'node', processCount: 1, memoryBytes: 18 }]);
+  });
+
   test('sums memory per role from the described command lines, largest first', () => {
     const rows = [row(1, 10), row(2, 500), row(3, 30), row(4, 20, 'claude')];
     expect(

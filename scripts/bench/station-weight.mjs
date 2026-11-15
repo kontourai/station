@@ -1354,17 +1354,24 @@ export function processRole(commandLine) {
 }
 
 /**
- * Memory per role, largest first. Roles come from `describe`, which reads
- * each row's command line; a row it did not describe keeps the table's name.
+ * Memory per role, largest first. A row matching a `known` identity (pid and
+ * birth, such as the UI listener from the instance record, which runs a
+ * script from stdin) takes that role; others come from `described`, which
+ * holds each row's command line, or keep the table's name.
  * @param {ProcessRow[]} rows rows with `memoryBytes`
  * @param {Array<{ pid: number, command: string }>} described
+ * @param {Array<{ pid: number, started: string, role: string }>} [known]
  */
-export function memoryByRole(rows, described) {
+export function memoryByRole(rows, described, known = []) {
   const commands = new Map(described.map((row) => [row.pid, row.command]));
   /** @type {Map<string, { role: string, processCount: number, memoryBytes: number }>} */
   const roles = new Map();
   for (const row of rows) {
-    const role = processRole(commands.get(row.pid) ?? row.command);
+    const role =
+      known.find(
+        (identity) =>
+          identity.pid === row.pid && identity.started === row.started,
+      )?.role ?? processRole(commands.get(row.pid) ?? row.command);
     const entry = roles.get(role) ?? { role, processCount: 0, memoryBytes: 0 };
     entry.processCount += 1;
     entry.memoryBytes += row.memoryBytes ?? 0;
@@ -2448,10 +2455,20 @@ export async function runStationWeight({
     progress('paired; settling');
     const memorySnapshot = () => withMemory(treeNow());
     const restSettled = await settleTree(memorySnapshot, settings);
+    const knownRoles = instanceRecord.uiFingerprint
+      ? [
+          {
+            pid: instanceRecord.uiFingerprint.pid,
+            started: instanceRecord.uiFingerprint.startToken,
+            role: 'ui-listener',
+          },
+        ]
+      : [];
     result.metrics.restMemoryBytes = restMetric(restSettled, {
       byRole: memoryByRole(
         restSettled.rows,
         describeProcesses(restSettled.rows),
+        knownRoles,
       ),
     });
     // Report only: where the rest memory sits, never compared.
@@ -2545,6 +2562,7 @@ export async function runStationWeight({
         byRole: memoryByRole(
           sessionsSettled.rows,
           describeProcesses(sessionsSettled.rows),
+          knownRoles,
         ),
       });
       result.attribution.serverHeapWithSessions = await serverHeapReport(

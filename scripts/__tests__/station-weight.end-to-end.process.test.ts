@@ -129,7 +129,9 @@ describe.skipIf(!posix)('station-weight end to end', () => {
         result.metrics.restMemoryBytes.byRole.map(
           (entry: { role: string }) => entry.role,
         ),
-      ).toEqual(expect.arrayContaining(['supervisor', 'server']));
+      ).toEqual(
+        expect.arrayContaining(['supervisor', 'server', 'ui-listener']),
+      );
       const serverRole = result.metrics.restMemoryBytes.byRole.find(
         (entry: { role: string }) => entry.role === 'server',
       );
