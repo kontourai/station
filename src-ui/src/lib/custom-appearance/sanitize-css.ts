@@ -145,14 +145,12 @@ function sanitizeRules(
     if (is(rule, 'CSSStyleRule')) {
       const styleRule = rule as CSSStyleRule;
       sanitizeDeclarations(styleRule.style, styleRule.selectorText, stripped);
-      const nested = (styleRule as CSSStyleRule & { cssRules?: CSSRuleList })
-        .cssRules;
+      // Nested style rules (CSS nesting) give a style rule grouping members.
+      const nestingRule = styleRule as CSSStyleRule &
+        Partial<Pick<CSSGroupingRule, 'cssRules' | 'deleteRule'>>;
+      const nested = nestingRule.cssRules;
       if (nested && nested.length > 0)
-        sanitizeRules(
-          nested,
-          (i) => (styleRule as unknown as CSSGroupingRule).deleteRule(i),
-          stripped,
-        );
+        sanitizeRules(nested, (i) => nestingRule.deleteRule!(i), stripped);
       continue;
     }
     if (is(rule, 'CSSNestedDeclarations')) {
