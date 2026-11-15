@@ -32,6 +32,34 @@ import { ledgerEquivalentSources } from '../qualification-evidence.mjs';
  */
 
 const root = resolve(import.meta.dirname, '../..');
+/** Every repository file this suite reads, anchored so the path-read scanner pins them. */
+const WORKFLOW_URLS: Record<string, URL> = {
+  'nightly.yml': new URL(
+    '../../.github/workflows/nightly.yml',
+    import.meta.url,
+  ),
+  'nightly-native-cohort.yml': new URL(
+    '../../.github/workflows/nightly-native-cohort.yml',
+    import.meta.url,
+  ),
+  'main-qualification.yml': new URL(
+    '../../.github/workflows/main-qualification.yml',
+    import.meta.url,
+  ),
+  'publish-packages.yml': new URL(
+    '../../.github/workflows/publish-packages.yml',
+    import.meta.url,
+  ),
+};
+const LEDGER_JSON_URL = new URL(
+  '../../docs/reference/deploy-ledger.json',
+  import.meta.url,
+);
+const workflowText = (name: string) => {
+  const url = WORKFLOW_URLS[name];
+  expect(url, `anchored workflow: ${name}`).toBeDefined();
+  return readFileSync(url as URL, 'utf8');
+};
 const makeTempDir = trackTempDirs();
 
 const RUN_ID = '43700000001';
@@ -60,10 +88,7 @@ type Job = {
   steps?: Step[];
 };
 type Workflow = { jobs: Record<string, Job> };
-const workflow = (name: string) =>
-  load(
-    readFileSync(resolve(root, '.github/workflows', name), 'utf8'),
-  ) as Workflow;
+const workflow = (name: string) => load(workflowText(name)) as Workflow;
 const stepRun = (job: Job, name: string) => {
   const step = (job.steps ?? []).find((candidate) => candidate.name === name);
   expect(step, `step must exist: ${name}`).toBeDefined();
@@ -178,9 +203,7 @@ type Entry = {
 
 /** The newest real npm, Android and desktop rows the checked-in ledger holds. */
 function realNightlyRows(): Entry[] {
-  const entries = JSON.parse(
-    readFileSync(resolve(root, 'docs/reference/deploy-ledger.json'), 'utf8'),
-  ) as Entry[];
+  const entries = JSON.parse(readFileSync(LEDGER_JSON_URL, 'utf8')) as Entry[];
   return ['nightly-desktop', 'nightly-android', 'nightly-npm'].map(
     (channel) => {
       const row = entries.find((entry) => entry.channel === channel);
@@ -866,9 +889,7 @@ describe.skipIf(process.platform === 'win32')(
         for (const commit of fixture.commitsSince(fixture.sourceSha))
           expect(commit.paths.sort()).toEqual(LEDGER_PATHS);
         for (const name of ['main-qualification.yml', 'publish-packages.yml'])
-          expect(
-            readFileSync(resolve(root, '.github/workflows', name), 'utf8'),
-          ).toMatch(
+          expect(workflowText(name)).toMatch(
             /paths-ignore:\n\s+- docs\/reference\/deploy-ledger\.json\n\s+- docs\/reference\/deploy-ledger\.md\n/,
           );
         // The documentation review's generated-output contract.
