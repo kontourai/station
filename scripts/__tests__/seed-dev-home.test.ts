@@ -279,6 +279,12 @@ describe('seedDevHome', () => {
     expect(() =>
       seedDevHome({ source: home, target: join(home, 'nested') }),
     ).toThrow(/outside the source/);
+    // The same place reached through a symlinked directory is still inside.
+    const alias = join(base, 'alias');
+    symlinkSync(home, alias, 'junction');
+    expect(() =>
+      seedDevHome({ source: home, target: join(alias, 'nested') }),
+    ).toThrow(/outside the source/);
     const foreign = join(base, 'foreign');
     write(foreign, 'keep-me.txt', 'mine');
     expect(() => seedDevHome({ source: home, target: foreign })).toThrow(

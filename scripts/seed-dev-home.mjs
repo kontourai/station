@@ -258,6 +258,23 @@ function isInside(child, parent) {
   );
 }
 
+/**
+ * `path` with its symlinks resolved as far as it exists. A target is usually
+ * not there yet, so `realpathSync` alone cannot answer; resolving the part
+ * that does exist is what lets it be compared with the real source path.
+ */
+function realpathThroughExisting(path) {
+  let existing = resolve(path);
+  const missing = [];
+  while (!existsSync(existing)) {
+    const parent = dirname(existing);
+    if (parent === existing) return resolve(path);
+    missing.unshift(relative(parent, existing));
+    existing = parent;
+  }
+  return join(realpathSync(existing), ...missing);
+}
+
 function quoteIdentifier(name) {
   return `"${name.replaceAll('"', '""')}"`;
 }
@@ -388,7 +405,9 @@ export function seedDevHome({
   now = new Date(),
 }) {
   const sourceHome = realpathSync(resolve(source));
-  const targetHome = resolve(target);
+  // Resolved like the source, or a target reached through a symlinked
+  // directory would look like it lies outside a source it is inside.
+  const targetHome = realpathThroughExisting(target);
   if (!existsSync(join(sourceHome, '.station-home-schema.json'))) {
     throw new Error(`${sourceHome} is not a Station home`);
   }
