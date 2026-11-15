@@ -203,11 +203,17 @@ test('the open panel marks the choice that raised the trigger warning', () => {
         aria-label="Permissions: Full access"
         safetyLabel="Full access"
       />
-      <ComposerChoice caption="Model" value="Sonnet" aria-label="Model: Sonnet" />
+      <ComposerChoice
+        caption="Model"
+        value="Sonnet"
+        aria-label="Model: Sonnet"
+      />
     </ComposerRunControl>,
   );
   fireEvent.click(screen.getByTestId('run-setup-trigger'));
-  const risky = screen.getByRole('button', { name: 'Permissions: Full access' });
+  const risky = screen.getByRole('button', {
+    name: 'Permissions: Full access',
+  });
   expect(risky.querySelector('.composer-choice__safety')?.textContent).toBe(
     '⚠ ',
   );
