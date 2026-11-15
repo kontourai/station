@@ -1471,8 +1471,12 @@ background work finishes, is published as a turn whose `turn.started` and
 terminal carry `metadata.trigger: 'provider'`; `isProviderTriggeredTurn` in
 `runtime-events` is the one derivation consumers read. It has no prompt, moves
 the session lifecycle like any turn (reasons `provider_turn_started` /
-`provider_turn_completed`), and records a "Your agent replied" notification
-whose interruptions the delivery router decides by focus. A send while it runs is refused with the retryable code
+`provider_turn_completed`). Its completion joins the thread's completion
+episode: the episode's one alert reads "Your agent replied" when every turn in
+it was the engine's own, and "Your agent finished" when it follows a user turn
+whose finish was still held
+([finished alerts](../design/notification-delivery.md#finished-alerts-one-per-completion-episode)).
+The delivery router decides its interruptions by focus. A send while it runs is refused with the retryable code
 `provider_turn_in_progress`, and the client queues the message until it ends,
 unless the send asked Station to hold it (`whenBusy: 'queue'`, below).
 A send to an ACP session that is still starting (for a restored session,
