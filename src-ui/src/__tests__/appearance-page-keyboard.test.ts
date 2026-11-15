@@ -94,7 +94,8 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
               namespace: 'stub',
             }));
             builder.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({
-              contents: 'export function CustomAppearanceSection() { return null; }',
+              contents:
+                'export function CustomAppearanceSection() { return null; }',
               loader: 'js',
             }));
           },
