@@ -408,6 +408,11 @@ export function cursorFake() {
     /** List entries leave `result` out (the get-run read carries it). */
     omitResultInList: false,
     /**
+     * The most runs a list page returns, whatever `limit` asks (a vendor may
+     * return fewer); unset, `limit` decides.
+     */
+    maxPageSize: undefined as number | undefined,
+    /**
      * The agent stream as Cursor documents it for an ordinary agent:
      * `assistant` events are text deltas. Station must never open it.
      */
@@ -469,7 +474,10 @@ export function cursorFake() {
   // (default 20) and `nextCursor`, and readable for an archived agent (only
   // the stream answers 409 agent_archived).
   fake.on('GET', /^\/v1\/agents\/[^/]+\/runs$/, (request) => {
-    const limit = Number(request.url.searchParams.get('limit') ?? 20);
+    const limit = Math.min(
+      Number(request.url.searchParams.get('limit') ?? 20),
+      state.maxPageSize ?? Number.POSITIVE_INFINITY,
+    );
     const cursor = request.url.searchParams.get('cursor');
     const start = cursor ? Number(cursor) : 0;
     const page = state.runs.slice(start, start + limit).map((entry) => {
