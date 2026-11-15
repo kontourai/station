@@ -441,7 +441,15 @@ describe('deploy-ledger commit-back with bounded re-derive-and-retry (MED-2)', (
       sha: B_SHA,
       artifact: 'github-release:v1.0.0',
     });
-    for (const [label, options] of [
+    const modes: Array<
+      [
+        string,
+        Pick<
+          Parameters<typeof commitLedgerWithRetry>[0],
+          'recordArgv' | 'recordArgvs' | 'commitSubject' | 'subjectRunId'
+        >,
+      ]
+    > = [
       [
         '--commit-subject --',
         {
@@ -453,7 +461,8 @@ describe('deploy-ledger commit-back with bounded re-derive-and-retry (MED-2)', (
         '--subject-run-id --record',
         { recordArgvs: [multi], subjectRunId: '2' },
       ],
-    ] as const) {
+    ];
+    for (const [label, options] of modes) {
       const before = git(origin, 'rev-parse', 'main').trim();
       expect(
         commitLedgerWithRetry({ repoRoot: writerA, env: testEnv(), ...options })
