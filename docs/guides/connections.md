@@ -405,12 +405,18 @@ uses the name the chip shows. Holding the phone's chip shows the full name
 without switching or opening the chooser. On a phone the chooser offers
 **Connect another device** where a computer offers **Pair phone**.
 
-Opening the chooser checks whether each other Station answers its public
-handshake, from this device, without credentials. Each row reads **Checking…**
-until its answer arrives, then **Online** or **Unreachable**, with why and
-when: "no answer in time" or "nothing answered", "checked just now", and when
-this device last connected to it. Answering proves only that the address
-responds, not that this device still has access. Stations reached through a
+Opening the chooser checks each other Station's public handshake, from this
+device, without credentials, and checks again every 15 seconds while it stays
+open. Each row reads **Checking…** until its answer arrives, then **Online**
+only when a Station handshake answered; **Recovering** when the Station's own
+proxy answered that its server is down or restarting; **Not confirmed** when
+something answered but not as a Station this page can read (its address does
+not admit this app, or something else answers there); or **Unreachable**. Each
+says why and when: "no answer in time" or "nothing answered", "checked just
+now", and when this device last connected to it. **Recovering** and
+**Unreachable** rows are greyed out and cannot be chosen until a later check
+finds them answering; they can still be forgotten. **Online** proves only that
+the server is serving, not that this device still has access. Stations reached through a
 broker route are not checked, nor, from an HTTPS page, a plain-HTTP address
 other than loopback, which the browser would block; those rows show the last
 failure this device saved and how old it is, or **Not checked**. A Station that
@@ -498,7 +504,7 @@ and is not yet verified; inspect it under **Connection details**. Saving does
 not connect, sign in, approve a Device, or grant Project access.
 
 Choose **Share device details**, then **Copy device details**, and send them to
-the Station owner for approval. These are public installation details, not a
+the Station operator for approval. These are public installation details, not a
 password or private key. This action is available even when the Station is
 already confirmed. It does not rotate trust or issue an invitation.
 
@@ -667,7 +673,7 @@ For a native signing-key approval, select the saved broker route and choose
 **Share device details**. Station creates or reopens this install's
 proof key in the OS keyring and shows only its public key, thumbprint, client
 instance, app/channel, and selected route. Choose **Copy device details** and
-send this public installation proof to the Station owner. On the owner's machine, with the self-hosted connector
+send this public installation proof to the Station operator. On the operator's machine, with the self-hosted connector
 configured and online, save that JSON to a private file and run:
 
 ```sh
@@ -862,6 +868,7 @@ on this computer's `PATH`; detection does not mean it is signed in or ready.
 | Grok Build | `grok agent stdio` | Agent Client Protocol |
 | Mistral Vibe | `vibe-acp` | Agent Client Protocol |
 | Google Antigravity | `agy acp --process-per-session` | Agent Client Protocol; needs Antigravity CLI 1.5.0 or later, and Station names an older install and says to run `agy update` |
+| Gemini CLI | `gemini --acp` | Agent Client Protocol. Since June 18, 2026 Google serves Gemini CLI only to paid Gemini API keys and Gemini Code Assist Standard or Enterprise. Sign in with Google (Station shows Gemini CLI's terms beside it) or save a `GEMINI_API_KEY`. Gemini CLI uses its saved sign-in first and the key only when none is saved |
 | Factory Droid | `droid exec --output-format acp-daemon` | Agent Client Protocol |
 | Hermes Agent | `hermes acp` | Agent Client Protocol |
 | pi | `pi-acp` | Agent Client Protocol through the community `pi-acp` bridge, which does not pass Station tool servers and has no model switching |
