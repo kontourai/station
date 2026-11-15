@@ -852,7 +852,10 @@ by the `PR source admission` job (`scripts/pr-source-admission.mjs`) before the
 plan, shards and statics run, because it cannot merge and that work would be
 discarded. Only the job's explicit `admitted=false` output defers: mergeability
 still being computed, an API failure or the job failing to start admit the run.
-A deferred run fails `fast-checks` with the annotation naming the conflict. Merge `main`
+A deferred run fails `fast-checks` with the annotation naming the conflict. The
+pre-push hook warns about the same conflict before the push, against the
+`origin/main` the checkout last fetched (`scripts/prepush-main-conflict.mjs`);
+that `main` may be stale, so the warning never refuses a push. Merge `main`
 (a new head starts a new run), or, when `main` has since cleared
 the conflict without a head change, use "Re-run failed jobs" on the run: the
 source-policy publisher reads each run's newest attempt, so the rerun supersedes
@@ -1094,9 +1097,9 @@ clearing package caches leaves those installed dependency trees in place.
 
 **A pure merge of main skips the expensive lanes (#3101).** When every pushed
 ref only adds clean merges of `origin/main` on top of the tip the remote
-already holds, `.githooks/pre-push` skips the transfer gate, static gates, SDK
-barrel; biome, the governance proof and the
-commit-subject gate still run. `scripts/prepush-pure-merge.mjs` owns the rule:
+already holds, `.githooks/pre-push` skips the push-range checks, transfer
+gate, static gates, SDK barrel and code health; the main-conflict warning,
+biome, the governance proof and the commit-subject gate still run. `scripts/prepush-pure-merge.mjs` owns the rule:
 the remote ref is the record of the last push the hook accepted, each merge's
 second parent must be on `main` as the remote itself reports it (`git
 ls-remote`, never a local ref such as `origin/main`), and each merge's tree
@@ -2071,7 +2074,7 @@ slot and then runs the script as the slot holder. These entry points use it:
 | `npm run docs:learn:build`, `npm run docs:learn:check` | `docs:learn:build`, `docs:learn:check` |
 | `npm run typecheck` (its lanes run under this slot) | `typecheck` |
 | Each `scripts/tsc-slot.mjs` compile run on its own (`npm run typecheck:<lane>`) | `typecheck <tsconfig>`, taken before its typecheck slot |
-| Pre-push transfer budgets, static gates, SDK barrel | `pre-push:transfer-budgets`, `pre-push:static-gates`, `pre-push:sdk-barrel` |
+| Pre-push transfer budgets, static gates, SDK barrel, code health | `pre-push:transfer-budgets`, `pre-push:static-gates`, `pre-push:sdk-barrel`, `pre-push:code-health` |
 | A verification-coordinator lane that executes (`ci:fast`, `verify:static`, `test-changed`, …) | `verification:<lane>` |
 | Each `full:regression` phase, requested or submitted | `verification:full-regression:<phase>` |
 

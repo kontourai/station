@@ -1,0 +1,450 @@
+import { spawnSync } from 'node:child_process';
+import {
+  cpSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { join, resolve } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { sanitizedGitEnvironment } from '../lib/git-environment.mjs';
+import { SCOPE_SENTINELS } from '../test-temp-dir-ratchet.mjs';
+
+/**
+ * The real pre-push hook, run by a real `git push` to a local bare remote.
+ * The push-range checks (whitespace, test temp dirs), the main-conflict
+ * warning and the code-health step are the real scripts, including one real
+ * fallow audit per push. Only the unrelated gates (lint, governance proof,
+ * transfer, static gates, SDK barrel, commit subjects) are recorders. Each
+ * refusal is asserted on the push's exit status AND on the remote ref never
+ * moving.
+ */
+
+const REPO_ROOT = resolve(import.meta.dirname, '../..');
+const makeTempDir = trackTempDirs();
+
+// Assembled so this file does not itself contain the call the ratchet counts.
+const MK = 'mkdtemp';
+const RAW = `const d = ${MK}Sync(join(tmpdir(), 'x-'));\n`;
+
+const HARNESS_SCRIPTS = [
+  'prepush-pure-merge.mjs',
+  'prepush-main-conflict.mjs',
+  'check-prepush-push-range.mjs',
+  'diff-whitespace-gate.mjs',
+  'test-temp-dir-ratchet.mjs',
+  'heavy-check-slot.mjs',
+  'check-prepush-code-health.mjs',
+  'code-health-gate.mjs',
+  'run-fallow-audit.mjs',
+  'code-health-inventory.mjs',
+  'fallow-review-status.mjs',
+];
+const RECORDED_GATES = [
+  'scripts/check-prepush-orchestration-transfer.mjs',
+  'scripts/check-prepush-static-gates.mjs',
+  'scripts/check-prepush-sdk-barrel.mjs',
+];
+
+function fixture() {
+  const root = realpathSync(makeTempDir('station-prepush-range-'));
+  const remote = join(root, 'remote.git');
+  const repo = join(root, 'repo');
+  const bin = join(root, 'bin');
+  const report = join(root, 'gates.log');
+  const env = {
+    ...sanitizedGitEnvironment(process.env),
+    GIT_CONFIG_GLOBAL: '/dev/null',
+    GIT_CONFIG_NOSYSTEM: '1',
+    GIT_AUTHOR_NAME: 'Fixture',
+    GIT_AUTHOR_EMAIL: 'fixture@example.invalid',
+    GIT_COMMITTER_NAME: 'Fixture',
+    GIT_COMMITTER_EMAIL: 'fixture@example.invalid',
+  };
+  const git = (args: string[]) => {
+    const result = spawnSync(
+      'git',
+      ['-c', 'core.hooksPath=/dev/null', ...args],
+      { cwd: repo, env, encoding: 'utf8', windowsHide: true, timeout: 15_000 },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    return result.stdout.trim();
+  };
+  const write = (path: string, text: string) => {
+    mkdirSync(join(repo, path, '..'), { recursive: true });
+    writeFileSync(join(repo, path), text);
+  };
+  const commit = (files: Record<string, string>, message: string) => {
+    for (const [path, text] of Object.entries(files)) write(path, text);
+    git(['add', '-A']);
+    git(['commit', '-qm', message]);
+    return git(['rev-parse', 'HEAD']);
+  };
+
+  spawnSync('git', ['init', '--bare', '-q', '-b', 'main', remote], {
+    env,
+    windowsHide: true,
+  });
+  mkdirSync(repo);
+  git(['init', '-q', '-b', 'main']);
+  git(['remote', 'add', 'origin', remote]);
+
+  // The hook and the scripts it runs, untracked so they are never part of a
+  // pushed range. Fallow resolves from the repository's own install.
+  mkdirSync(join(repo, '.githooks'));
+  writeFileSync(
+    join(repo, '.githooks', 'pre-push'),
+    readFileSync(join(REPO_ROOT, '.githooks/pre-push')),
+    { mode: 0o755 },
+  );
+  cpSync(join(REPO_ROOT, 'scripts/lib'), join(repo, 'scripts/lib'), {
+    recursive: true,
+  });
+  for (const script of HARNESS_SCRIPTS)
+    writeFileSync(
+      join(repo, 'scripts', script),
+      readFileSync(join(REPO_ROOT, 'scripts', script)),
+    );
+  for (const shared of [
+    'packages/shared/src/process-identity.mjs',
+    'packages/shared/src/windows-system-utility.mjs',
+  ]) {
+    mkdirSync(join(repo, shared, '..'), { recursive: true });
+    writeFileSync(join(repo, shared), readFileSync(join(REPO_ROOT, shared)));
+  }
+  mkdirSync(join(repo, 'node_modules'));
+  symlinkSync(
+    join(REPO_ROOT, 'node_modules', 'fallow'),
+    join(repo, 'node_modules', 'fallow'),
+  );
+  for (const gate of RECORDED_GATES)
+    writeFileSync(
+      join(repo, gate),
+      `import { appendFileSync } from 'node:fs';\nappendFileSync(${JSON.stringify(report)}, ${JSON.stringify(`${gate}\n`)});\n`,
+    );
+  writeFileSync(
+    join(repo, '.git', 'info', 'exclude'),
+    [
+      '.githooks/',
+      '/scripts/*.mjs',
+      '/scripts/lib/',
+      '/packages/shared/',
+      '/node_modules',
+      '.kontourai/',
+      '.fallow/',
+    ].join('\n'),
+  );
+  mkdirSync(bin);
+  const record = `require('node:fs').appendFileSync(${JSON.stringify(report)}, gate + '\\n');`;
+  writeFileSync(
+    join(bin, 'npm'),
+    `#!${process.execPath}\nconst gate = process.argv.at(-1);\n${record}\n`,
+    { mode: 0o755 },
+  );
+  writeFileSync(
+    join(bin, 'node'),
+    `#!${process.execPath}
+const { spawnSync } = require('node:child_process');
+const args = process.argv.slice(2);
+if (args[0] === 'scripts/commit-message-gate.mjs') {
+  const gate = args[0];
+  ${record}
+  require('node:fs').readFileSync(0);
+} else {
+  const result = spawnSync(${JSON.stringify(process.execPath)}, args, { stdio: 'inherit', env: process.env, windowsHide: true });
+  process.exit(result.status ?? 1);
+}
+`,
+    { mode: 0o755 },
+  );
+
+  // A small analyzable project: one entry, two modules, one test, and the
+  // ratchet's scope sentinels at their baseline.
+  commit(
+    {
+      'package.json': `${JSON.stringify({ name: 'fixture', version: '1.0.0', type: 'module', main: 'src/index.ts' })}\n`,
+      '.fallowrc.json': `${JSON.stringify({
+        rules: { 'unused-exports': 'warn', 'unused-types': 'warn' },
+        overrides: [
+          {
+            files: ['**/*.test.ts'],
+            rules: { 'unused-exports': 'off', 'unused-types': 'off' },
+          },
+        ],
+      })}\n`,
+      'src/index.ts':
+        "import { used } from './a';\nimport { helper } from './b';\nconsole.log(used(), helper());\n",
+      'src/a.ts':
+        'export function used() {\n  return 1;\n}\nexport function alsoUsed() {\n  return 2;\n}\n',
+      'src/b.ts':
+        "import { alsoUsed } from './a';\nexport function helper() {\n  return alsoUsed();\n}\n",
+      'src/a.test.ts': "import { used } from './a';\nused();\n",
+      'docs/notes.md': 'notes\n',
+      ...Object.fromEntries(SCOPE_SENTINELS.map((path) => [path, RAW])),
+      'scripts/test-temp-dir-baseline.json': `${JSON.stringify({
+        files: Object.fromEntries(SCOPE_SENTINELS.map((path) => [path, 1])),
+      })}\n`,
+    },
+    'chore: root',
+  );
+  // The code-health gate reads its allowances from the base revision; these
+  // are fallow's own baseline files for the root commit.
+  mkdirSync(join(repo, 'fallow-baselines'));
+  for (const kind of ['dead-code', 'health', 'dupes'])
+    spawnSync(
+      process.execPath,
+      [
+        join(REPO_ROOT, 'node_modules/fallow/bin/fallow'),
+        kind,
+        '--quiet',
+        '--format',
+        'json',
+        '--save-baseline',
+        `fallow-baselines/${kind}.json`,
+      ],
+      { cwd: repo, env, windowsHide: true, timeout: 30_000 },
+    );
+  commit({}, 'chore: record fallow baselines');
+  git(['push', '-q', 'origin', 'main']);
+  git(['checkout', '-q', '-b', 'feat']);
+  git(['fetch', '-q', 'origin']);
+
+  const slotDir = join(root, 'heavy-check-slots');
+  const push = (refs = ['feat']) => {
+    writeFileSync(report, '');
+    const pushEnv: NodeJS.ProcessEnv = {
+      ...env,
+      PATH: `${bin}:${process.env.PATH ?? ''}`,
+      STATION_HEAVY_CHECK_SLOT_DIR: slotDir,
+    };
+    delete pushEnv.CI;
+    delete pushEnv.GITHUB_ACTIONS;
+    delete pushEnv.STATION_HEAVY_CHECK_SLOT_HELD;
+    const result = spawnSync(
+      'git',
+      ['-c', 'core.hooksPath=.githooks', 'push', '-q', 'origin', ...refs],
+      {
+        cwd: repo,
+        env: pushEnv,
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 90_000,
+      },
+    );
+    return {
+      status: result.status,
+      output: `${result.stdout}${result.stderr}`,
+      gates: readFileSync(report, 'utf8').trim().split('\n').filter(Boolean),
+    };
+  };
+  const remoteHas = (branch: string) =>
+    spawnSync(
+      'git',
+      ['--git-dir', remote, 'rev-parse', '--verify', `refs/heads/${branch}`],
+      { env, encoding: 'utf8', windowsHide: true },
+    ).stdout.trim();
+  return { repo, git, write, commit, push, remoteHas };
+}
+
+const TIMEOUT = 120_000;
+
+describe.skipIf(process.platform === 'win32')(
+  'pre-push push-range checks on the commit being pushed',
+  () => {
+    it(
+      'accepts a clean source push after running every new step against it',
+      () => {
+        const f = fixture();
+        const head = f.commit(
+          {
+            'src/b.ts':
+              "import { alsoUsed } from './a';\nexport function helper() {\n  return alsoUsed() + 1;\n}\n",
+          },
+          'fix: adjust helper',
+        );
+        const result = f.push();
+        expect(result.status, result.output).toBe(0);
+        expect(f.remoteHas('feat')).toBe(head);
+        expect(result.output).toContain('[diff-whitespace] OK');
+        expect(result.output).toContain('OK: 3 raw mkdtemp calls');
+        expect(result.output).toContain(
+          'Code health: checking — 1 changed file(s) can carry an unused export or type: src/b.ts',
+        );
+        expect(result.output).toContain(
+          'Code health: no new unused export or type.',
+        );
+        expect(result.output).not.toContain('WARNING');
+        // The other gates still ran, after the new cheap step.
+        expect(result.gates).toEqual([
+          'lint:check',
+          'proof:repo-governance',
+          ...RECORDED_GATES,
+          'scripts/commit-message-gate.mjs',
+        ]);
+      },
+      TIMEOUT,
+    );
+
+    it(
+      'refuses a pushed commit that adds trailing whitespace',
+      () => {
+        const f = fixture();
+        f.commit({ 'docs/notes.md': 'notes\ntrailing space \n' }, 'docs: x');
+        const result = f.push();
+        expect(result.status).not.toBe(0);
+        expect(result.output).toContain(
+          'docs/notes.md:2: trailing whitespace.',
+        );
+        expect(result.output).toContain('[diff-whitespace] FAIL');
+        expect(result.output).toContain(
+          'FAIL: 1 push-range check(s) did not pass',
+        );
+        expect(f.remoteHas('feat')).toBe('');
+        // Refused before the heavier lanes started.
+        expect(result.gates).not.toContain(RECORDED_GATES[0]);
+      },
+      TIMEOUT,
+    );
+
+    it(
+      'refuses a pushed commit that adds a raw mkdtemp to a test file',
+      () => {
+        const f = fixture();
+        f.commit(
+          { 'src-server/feature/__tests__/leaky.test.ts': RAW },
+          'test: leaky',
+        );
+        const result = f.push();
+        expect(result.status).not.toBe(0);
+        expect(result.output).toContain(
+          'src-server/feature/__tests__/leaky.test.ts: 1 (baseline 0)',
+        );
+        expect(result.output).toContain('trackTempDirs()');
+        expect(result.output).toMatch(
+          /node scripts\/test-temp-dir-ratchet\.mjs --rev=[0-9a-f]{40}/,
+        );
+        expect(f.remoteHas('feat')).toBe('');
+      },
+      TIMEOUT,
+    );
+
+    it(
+      'refuses a pushed commit that introduces an unused export, naming it',
+      () => {
+        const f = fixture();
+        f.commit(
+          {
+            'src/b.ts':
+              "import { alsoUsed } from './a';\nexport function helper() {\n  return alsoUsed();\n}\nexport function newlyUnused() {\n  return 4;\n}\n",
+          },
+          'feat: add an export nothing calls',
+        );
+        const result = f.push();
+        expect(result.status).not.toBe(0);
+        expect(result.output).toContain(
+          'FAIL: this push introduces 1 unused export(s) or type(s)',
+        );
+        expect(result.output).toMatch(
+          /src\/b\.ts:5 {2}unused export newlyUnused/,
+        );
+        expect(result.output).toMatch(
+          /node scripts\/code-health-gate\.mjs --base=[0-9a-f]{40}/,
+        );
+        expect(f.remoteHas('feat')).toBe('');
+      },
+      TIMEOUT,
+    );
+
+    it(
+      'judges the pushed commit, not uncommitted or untracked edits',
+      () => {
+        const f = fixture();
+        const head = f.commit(
+          { 'docs/notes.md': 'notes, edited\n' },
+          'docs: y',
+        );
+        // Neither of these is part of the push, so neither may refuse it.
+        f.write('src-server/feature/__tests__/leaky.test.ts', RAW);
+        f.write('docs/notes.md', 'notes, edited \n');
+        const result = f.push();
+        expect(result.status, result.output).toBe(0);
+        expect(f.remoteHas('feat')).toBe(head);
+        expect(result.output).toContain('OK: 3 raw mkdtemp calls');
+      },
+      TIMEOUT,
+    );
+
+    it(
+      'skips code health when the push changes only files it cannot report in',
+      () => {
+        const f = fixture();
+        f.commit(
+          {
+            'docs/notes.md': 'more notes\n',
+            'src/a.test.ts': "import { used } from './a';\nused();\nused();\n",
+          },
+          'test: exercise used twice',
+        );
+        const result = f.push();
+        expect(result.status, result.output).toBe(0);
+        expect(result.output).toContain(
+          'Code health: skipped — none of the 2 changed path(s) is a file fallow can report an unused export or type in.',
+        );
+      },
+      TIMEOUT,
+    );
+
+    it(
+      'warns, without refusing, when the pushed commit conflicts with origin/main',
+      () => {
+        const f = fixture();
+        f.git(['checkout', '-q', 'main']);
+        f.commit({ 'docs/notes.md': 'main wrote this\n' }, 'docs: main');
+        f.git(['push', '-q', 'origin', 'main']);
+        f.git(['checkout', '-q', 'feat']);
+        const head = f.commit(
+          { 'docs/notes.md': 'feat wrote this\n' },
+          'docs: feat',
+        );
+        f.git(['fetch', '-q', 'origin']);
+        const result = f.push();
+        expect(result.status, result.output).toBe(0);
+        expect(f.remoteHas('feat')).toBe(head);
+        expect(result.output).toContain(
+          'WARNING: refs/heads/feat (' +
+            head.slice(0, 12) +
+            ') does not merge cleanly into origin/main',
+        );
+        expect(result.output).toContain('  docs/notes.md');
+        expect(result.output).toContain(
+          'CI will refuse to run source checks on a pull request that conflicts with',
+        );
+      },
+      TIMEOUT,
+    );
+
+    it(
+      'is silent about main when origin/main is unknown, and says code health was not checked',
+      () => {
+        const f = fixture();
+        f.commit(
+          {
+            'src/a.ts':
+              'export function used() {\n  return 9;\n}\nexport function alsoUsed() {\n  return 2;\n}\n',
+          },
+          'fix: z',
+        );
+        f.git(['update-ref', '-d', 'refs/remotes/origin/main']);
+        const result = f.push();
+        expect(result.status, result.output).toBe(0);
+        expect(result.output).not.toContain('merge cleanly');
+        expect(result.output).not.toContain('could not check');
+        expect(result.output).toContain('Code health: NOT CHECKED');
+      },
+      TIMEOUT,
+    );
+  },
+);

@@ -688,6 +688,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // classifier, and once the real pre-push hook through `git push` with
   // stubbed gate commands, as bounded single-shot children.
   'scripts/__tests__/prepush-pure-merge.test.ts',
+  // Runs the real pre-push hook through `git push` against small real Git
+  // graphs, with the real push-range, main-conflict and code-health steps
+  // (one real fallow audit per push) and the other gates stubbed. Bounded
+  // single-shot children.
+  'scripts/__tests__/prepush-push-range.process.test.ts',
   // #3101 slice F: runs the fixture policy's real main() as a child process
   // against a small real Git graph (merge base versus main's tip).
   'scripts/__tests__/test-fixture-policy.process.test.ts',

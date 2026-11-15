@@ -33,25 +33,40 @@ a pane package it also names the gallery screens whose module graph loads the
 path and the commands to capture just those
 ([gallery product assertions](testing.md#gallery-product-assertions)).
 
-The pre-push hook runs six checks, in this order. Costs in this table are
+The pre-push hook runs these checks, in this order. Costs in this table are
 historical measurements, not deadlines or guarantees on the current host. The hook file,
 `.githooks/pre-push`, is the source of truth if this table drifts:
 
 | Check | Cost | Refuses |
 | --- | --- | --- |
+| `node scripts/prepush-main-conflict.mjs` | instant | nothing: it warns, naming the files, when the pushed commit does not merge cleanly into the `origin/main` this checkout last fetched, because CI's `PR source admission` then runs no source check. That `main` may be stale, so it never refuses, and it is silent when `origin/main` is unknown |
 | `npm run lint:check` | ~4s | a lint, formatting, or organize-imports error |
 | `npm run proof:repo-governance` | ~4s | a governance-proof violation. Until 2026-09-14 this proof was composed only by `full:regression:raw`, which no pull-request, push or merge-queue trigger reaches, so two violations landed on `main` while the Nightly that owned them was itself red |
+| `node scripts/check-prepush-push-range.mjs` | ~1s | trailing whitespace or a conflict marker in the lines the pushed commit adds since its merge base with `origin/main` (the merge queue's `git diff --check`), or a raw `mkdtemp` in a test file above its baseline (#2421). Both read the pushed commit, never the working tree |
 | `node scripts/check-prepush-orchestration-transfer.mjs` | scoped; requires a verified baseline at the merge base when orchestration transport inputs change | missing, stale, incomplete, or over-budget two-baseline-plus-candidate transfer evidence |
 | `node scripts/check-prepush-static-gates.mjs` | ~7s before the windowsHide ratchet (~4s) joined, and only when the push changes something these gates read | a UI-contract ratchet or content-gate violation (#3208), or a new child-process launch without `windowsHide` |
 | `node scripts/check-prepush-sdk-barrel.mjs` | ~6s, and only when the push changes the SDK's own sources | an SDK export missing from the public barrel (#3629) |
+| `node scripts/check-prepush-code-health.mjs` | 25-50s, and only when the push changes a file the analyzer can report an unused export or type in | a new unused export or type, the same verdict CI's statics job reaches with `scripts/code-health-gate.mjs` against the merge base. It judges only a push of the checked-out commit, because the analyzer reads the working tree |
 | `node scripts/commit-message-gate.mjs --prepush-stdin` | instant | a commit subject in the push range that breaks the conventional grammar the forthcoming deploy-ledger changelog (station#4572) will generate from |
 
 Repository-wide Veritas readiness and all typecheck lanes belong to hosted
 `fast-checks-statics`, via `FAST_STATIC_COMMANDS` in
 `scripts/run-ci-fast.mjs`. The `fast-checks` aggregate rejects any
 non-success statics result, and the required `Source verification policy`
-context reconciles that aggregate. Local pushes retain cheap lint/governance and
-commit checks plus scoped transfer, static and SDK checks.
+context reconciles that aggregate. Local pushes retain cheap lint/governance,
+whitespace, test temp-dir and commit checks plus scoped transfer, static, SDK
+and code-health checks.
+
+**Why the push-range and code-health checks moved here.** Of 87 failed
+pull-request CI runs between 2026-11-13 and 2026-11-15 (732 runs in all), 16
+were the code-health gate's unused-export blocker, up to 16 the raw-`mkdtemp`
+ratchet and 3 the whitespace check. Each cost a push and a CI round trip,
+for checks that take one second (whitespace, temp dirs) or under a minute
+(code health) here. Code health is scoped the way the gate attributes
+findings: `fallow audit --changed-since` reports dead code only in changed
+files, so the hook runs it only when a changed file is one `fallow list
+--files` analyzes and `.fallowrc.json` does not exempt from both blocker rules
+(tests, examples and the published package sources are exempt).
 
 Biome 2.6 keeps Markdown and YAML formatting disabled in `biome.json`,
 preserving their existing documentation and fixture formatting. The new
@@ -63,7 +78,7 @@ Existing error-level lint rules remain enforced.
 The accessibility ratchet recognizes the `recommended` and `all` group presets;
 an explicit preset takes precedence over the deprecated `recommended` boolean.
 
-The hook runs the transfer, static and SDK checks through
+The hook runs the transfer, static, SDK and code-health checks through
 `node scripts/heavy-check-slot.mjs <label> <script>`. Each one first waits for a
 [host heavy-check slot](testing.md#host-heavy-check-slots), so pushes from
 several worktrees on one host queue instead of running together. If that wait
@@ -75,7 +90,8 @@ scale once and exports it to every step (see the
 a budget or assertion.
 
 A push that only adds clean merges of `origin/main` onto the tip the remote
-already holds skips the transfer, static-gate and SDK-barrel rows; the other three still run, and every row runs for a conflict
+already holds skips the push-range, transfer, static-gate, SDK-barrel and
+code-health rows; the other four still run, and every row runs for a conflict
 resolution, an edited merge or any new commit of the author's
 ([testing guide](testing.md#pre-push-orchestration-transfer-gate)).
 

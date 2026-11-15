@@ -12,6 +12,10 @@
 // question BEFORE writing anything. The output is a report plus matching
 // Veritas guidance. It runs no evidence checks and exits 2 when the edit scope
 // or required governance context cannot be read.
+import {
+  decideCodeHealthScope,
+  readCodeHealthAnalyzer,
+} from './check-prepush-code-health.mjs';
 import { decideOrchestrationTransferScope } from './check-prepush-orchestration-transfer.mjs';
 import { decideSdkBarrelScope } from './check-prepush-sdk-barrel.mjs';
 import { decideStaticGateScope } from './check-prepush-static-gates.mjs';
@@ -44,6 +48,10 @@ function resolveBaseSha(base) {
 /** Unscoped commands in the hook's normal source-edit push path. */
 export const EVERY_PUSH_CHECKS = Object.freeze([
   Object.freeze({
+    command: 'node scripts/prepush-main-conflict.mjs',
+    note: 'warns (never refuses) when the pushed commit conflicts with origin/main',
+  }),
+  Object.freeze({
     command: 'npm run lint:check',
     note: 'biome lint/format/imports',
   }),
@@ -54,6 +62,10 @@ export const EVERY_PUSH_CHECKS = Object.freeze([
   Object.freeze({
     command: 'node scripts/prepush-pure-merge.mjs',
     note: 'classifies actual pushed refs against remote main (#3101)',
+  }),
+  Object.freeze({
+    command: 'node scripts/check-prepush-push-range.mjs',
+    note: 'git diff --check and the raw-mkdtemp test ratchet on the pushed commit (~1s)',
   }),
   Object.freeze({
     command: 'node scripts/commit-message-gate.mjs --prepush-stdin',
@@ -98,10 +110,19 @@ export const LANE_LADDER = Object.freeze([
  *
  * @returns {{ name: string, runs: boolean, reason: string, command: string }[]}
  */
-export function gateScopes({ changedPaths, baseSha }) {
+export function gateScopes({
+  changedPaths,
+  baseSha,
+  codeHealthAnalyzer = readCodeHealthAnalyzer(),
+}) {
   const statics = decideStaticGateScope({ baseSha, changedPaths });
   const barrel = decideSdkBarrelScope({ baseSha, changedPaths });
   const transfer = decideOrchestrationTransferScope({ baseSha, changedPaths });
+  const codeHealth = decideCodeHealthScope({
+    baseSha,
+    changedPaths,
+    analyzer: codeHealthAnalyzer,
+  });
   return [
     {
       name: 'orchestration transfer budgets',
@@ -120,6 +141,12 @@ export function gateScopes({ changedPaths, baseSha }) {
       decision: barrel,
       command:
         'node scripts/heavy-check-slot.mjs pre-push:sdk-barrel scripts/check-prepush-sdk-barrel.mjs',
+    },
+    {
+      name: 'code health (unused exports and types)',
+      decision: codeHealth,
+      command:
+        'node scripts/heavy-check-slot.mjs pre-push:code-health scripts/check-prepush-code-health.mjs',
     },
   ].map(({ name, decision, command }) => ({
     name,

@@ -1,6 +1,10 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import {
+  decideCodeHealthScope,
+  readCodeHealthAnalyzer,
+} from '../check-prepush-code-health.mjs';
 import { decideOrchestrationTransferScope } from '../check-prepush-orchestration-transfer.mjs';
 import { decideSdkBarrelScope } from '../check-prepush-sdk-barrel.mjs';
 import { decideStaticGateScope } from '../check-prepush-static-gates.mjs';
@@ -114,7 +118,7 @@ describe('gate-for report', () => {
     );
   });
 
-  it('marks every scoped gate as running for a surface that feeds all three, each a command the hook runs', () => {
+  it('marks every scoped gate as running for a surface that feeds all four, each a command the hook runs', () => {
     const scopes = gateScopes({
       changedPaths: [
         'src-ui/src/App.tsx',
@@ -137,13 +141,52 @@ describe('gate-for report', () => {
     const changedPaths = ['docs/assets/diagram.png'];
     const scopes = gateScopes({ changedPaths, baseSha });
     expect(scopes.filter((scope) => scope.runs)).toEqual([]);
-    expect(scopes.map((scope) => scope.reason)).toEqual(
-      [
+    expect(scopes.map((scope) => scope.reason)).toEqual([
+      ...[
         decideOrchestrationTransferScope,
         decideStaticGateScope,
         decideSdkBarrelScope,
       ].map((decide) => decide({ baseSha, changedPaths }).reason),
-    );
+      decideCodeHealthScope({
+        baseSha,
+        changedPaths,
+        analyzer: readCodeHealthAnalyzer(),
+      }).reason,
+    ]);
+  });
+
+  it("scopes code health by the analyzer's own file list and config, not by path shape", () => {
+    const analyzer = readCodeHealthAnalyzer();
+    expect(analyzer).not.toBeNull();
+    const decide = (changedPaths: string[]) =>
+      decideCodeHealthScope({ baseSha, changedPaths, analyzer });
+    // A product module fallow analyzes can carry a new unused export.
+    expect(decide(['src-server/routes/browser.ts'])).toMatchObject({
+      run: true,
+      candidates: ['src-server/routes/browser.ts'],
+    });
+    // .fallowrc.json turns both blocker rules off for tests and for the
+    // published package sources, so neither can produce a blocker.
+    expect(
+      decide([
+        'src-server/routes/__tests__/browser-pane-page.routes.test.ts',
+        'packages/sdk/src/mobile-device.ts',
+        'docs/guides/testing.md',
+        'package.json',
+      ]).run,
+    ).toBe(false);
+    // A path not on disk (a hypothetical new file, or a deletion) is judged
+    // by the extensions fallow analyzes.
+    expect(decide(['src-server/not-written-yet.ts']).run).toBe(true);
+    expect(decide(['docs/not-written-yet.md']).run).toBe(false);
+    // An unreadable analyzer view runs rather than assuming.
+    expect(
+      decideCodeHealthScope({
+        baseSha,
+        changedPaths: ['docs/guides/testing.md'],
+        analyzer: null,
+      }).run,
+    ).toBe(true);
   });
 
   it('reports the static gates as running for a docs-only text surface, because the vocabulary gate reads it', () => {
