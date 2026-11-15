@@ -10,6 +10,7 @@ import { AttentionSection } from '../components/attention/AttentionSection';
 import { ACKNOWLEDGE_ATTENTION_ACTION } from '../components/attention/notificationRowActions';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { NotificationSection } from '../components/notifications/NotificationSection';
+import { PersonMentionsSection } from '../components/notifications/PersonMentionsSection';
 import { PageFrameActions } from '../components/page-frame';
 import {
   describeReadFailure,
@@ -248,6 +249,8 @@ export function NotificationsPage() {
             navigate('/settings', { view: 'notifications' })
           }
         />
+        {/* The reader's own mentions (#4799), whatever else is pending. */}
+        <PersonMentionsSection />
         <SkeletonList count={4} label="Loading notifications" />
         <RecentAppMessages />
       </div>

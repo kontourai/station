@@ -33,7 +33,7 @@ import {
   roomShortTime,
 } from './groupRows';
 import { RoomAvatar } from './RoomAvatar';
-import { RoomMessageText } from './RoomMessageText';
+import { RoomMessageText, type RoomTextMention } from './RoomMessageText';
 import './RoomConversation.css';
 
 export interface RoomConversationRow {
@@ -53,6 +53,8 @@ export interface RoomConversationRow {
   readonly context?: ReactNode;
   /** Markdown body. Ignored when `body` is given. */
   readonly text?: string;
+  /** People `text` names (#4799), rendered by id. */
+  readonly mentions?: readonly RoomTextMention[];
   /** Custom body (an agent answer with its own Show more). */
   readonly body?: ReactNode;
   readonly attachments?: ReactNode;
@@ -80,6 +82,12 @@ export interface RoomConversationRow {
   readonly tone?: 'failed' | 'pending';
   /** Written by the reader: the list follows it instead of counting it as new. */
   readonly own?: boolean;
+}
+
+/** Who mentions name (#4799): current names by id, and the reader. */
+export interface RoomConversationPeople {
+  nameOf(actorId: string): string | undefined;
+  selfId?: string;
 }
 
 /** A struck-through circle: content that was removed. */
@@ -136,7 +144,12 @@ function Row({
   showMore,
   onLongPress,
   onCloseActions,
+  people,
+  focused,
 }: {
+  people: RoomConversationPeople | undefined;
+  /** The row a notification opened: marked for a moment. */
+  focused: boolean;
   row: RoomConversationRow;
   placement: RoomRowPlacement;
   unread: boolean;
@@ -281,6 +294,7 @@ function Row({
         className={[
           'room-row',
           'room-row--message',
+          focused && 'room-row--focused',
           stacked && 'room-row--stacked',
           placement.stackNext && 'room-row--continues',
           row.tone && `room-row--${row.tone}`,
@@ -329,7 +343,12 @@ function Row({
             >
               {row.body ??
                 (row.text !== undefined ? (
-                  <RoomMessageText text={row.text} />
+                  <RoomMessageText
+                    text={row.text}
+                    mentions={row.mentions}
+                    nameOf={people?.nameOf}
+                    selfId={people?.selfId}
+                  />
                 ) : null)}
               {row.editedAt && (
                 <span
@@ -409,7 +428,19 @@ export function RoomConversation({
   onLoadOlder,
   trailing,
   className,
+  people,
+  focusId,
+  typing,
 }: {
+  /** Current names for mentions, and the reader (#4799). */
+  people?: RoomConversationPeople;
+  /**
+   * A row to bring into view and mark once it is shown (a notification
+   * opened it, #4799). The list stops following the end for it.
+   */
+  focusId?: string;
+  /** "Lin is typing…" under the rows (#4798); empty when nobody is. */
+  typing?: string;
   /** Accessible name of the message list. */
   label: string;
   /** Accessible name of the scroll region, e.g. "Messages in #general". */
@@ -616,6 +647,33 @@ export function RoomConversation({
 
   const closeActions = useCallback(() => setActionsFor(undefined), []);
 
+  // A row a notification opened (#4799): once it is loaded, bring it to the
+  // middle of the view, stop following the end, and mark it for a moment.
+  const [flashId, setFlashId] = useState<string>();
+  const focusedOnce = useRef<string | undefined>(undefined);
+  const focusLoaded = !!focusId && rows.some((row) => row.id === focusId);
+  useEffect(() => {
+    if (!focusId || !focusLoaded || focusedOnce.current === focusId) return;
+    focusedOnce.current = focusId;
+    setFollowing(false);
+    setFlashId(focusId);
+    const frame = requestAnimationFrame(() => {
+      const element = scroller.current?.querySelector<HTMLElement>(
+        `[data-chat-message-key="${CSS.escape(focusId)}"]`,
+      );
+      element?.scrollIntoView?.({ block: 'center' });
+      if (scroller.current) {
+        noteProgrammatic(scroller.current);
+        readerAnchor.current = captureChatScrollAnchor(scroller.current);
+      }
+    });
+    const clear = window.setTimeout(() => setFlashId(undefined), 2400);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(clear);
+    };
+  }, [focusId, focusLoaded, setFollowing, noteProgrammatic]);
+
   const renderRow = (row: RoomConversationRow, index: number) => {
     const placement = placements[index];
     if (!placement) return null;
@@ -628,6 +686,8 @@ export function RoomConversation({
         showMore={compact || touch}
         onLongPress={setActionsFor}
         onCloseActions={closeActions}
+        people={people}
+        focused={row.id === flashId}
       />
     );
   };
@@ -720,6 +780,10 @@ export function RoomConversation({
               </>
             )}
           </div>
+          {/* Polite: "is typing" changes on its own and is never focused. */}
+          <p className="room-conversation__typing" aria-live="polite">
+            {typing}
+          </p>
         </div>
       </section>
       {!isFollowing && (

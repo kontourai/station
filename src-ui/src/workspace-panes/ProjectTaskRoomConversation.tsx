@@ -207,6 +207,14 @@ export function ProjectTaskRoomConversation({
         participant.publication === 'published' &&
         participant.actor.kind === 'agent',
     ) ?? [];
+  // The Agent whose live work continues this execution's thread (#4800):
+  // the room's own live participant record, never a guess.
+  const workingOn = (sessionId: string) =>
+    running.find(
+      (participant) =>
+        participant.work.sessionId === sessionId &&
+        participant.work.workState !== 'blocked',
+    )?.actor.label;
   const [historyWindow, setHistoryWindow] = useState(HISTORY_WINDOW);
   const now = useElapsedClock(running.length > 0);
   // The history contract pages forward through a fixed checkpoint. Read to that
@@ -505,7 +513,7 @@ export function ProjectTaskRoomConversation({
               />
             ),
             footer:
-              !inThread && replies.length ? (
+              !inThread && (replies.length || workingOn(execution.sessionId)) ? (
                 <RoomThreadSummary
                   repliers={repliers.map((actor) => ({
                     key: actor.id ?? `${actor.kind}:${actor.label}`,
@@ -516,6 +524,7 @@ export function ProjectTaskRoomConversation({
                   lastAt={lastReply}
                   disabled={followup.isPending}
                   onOpen={() => changeThread(execution.sessionId)}
+                  working={workingOn(execution.sessionId)}
                 />
               ) : undefined,
             actions: (
