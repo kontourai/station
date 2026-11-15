@@ -9,9 +9,15 @@ const FIELD_LABELS: Record<ManagedPolicyEngineLaunchField, string> = {
 };
 
 /** The row subtitle prefix for an engine the managed policy governs. */
-export function managedEngineSubtitle(state: ManagedEngineState | null) {
-  if (!state) return '';
-  return state.disallowed ? 'Managed: not allowed · ' : 'Managed launch · ';
+/**
+ * The engine row's policy fact. A disallowed engine's badge already reads
+ * "Not allowed", so its fact names only who decided.
+ */
+export function managedEngineFact(
+  state: ManagedEngineState | null,
+): string | null {
+  if (!state) return null;
+  return state.disallowed ? 'Managed' : 'Managed launch';
 }
 
 /** Whether the policy owns this engine's launch environment. */

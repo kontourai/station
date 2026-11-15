@@ -1,0 +1,41 @@
+/* The thread summary under a message with replies (#4790, #4795): shared by
+   the Task room and the Project room. Moved from TaskWorkspaceView.css. */
+.room-thread-summary {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  margin-top: var(--k-space-1);
+  padding: 2px var(--k-space-2) 2px 2px;
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  background: color-mix(in oklab, var(--k-panel) 70%, transparent);
+}
+.room-thread-summary__faces {
+  --room-avatar-size: calc(var(--k-space-5) - var(--k-space-1));
+  display: inline-flex;
+  gap: 2px;
+}
+.room-thread-summary__faces > .task-room-avatar {
+  font-size: calc(var(--k-text-xs) - 2px);
+}
+.room-thread-summary .button.room-thread-summary__count {
+  min-height: calc(var(--k-space-5) + var(--k-space-1));
+  padding: 0 var(--k-space-1);
+  border: 0;
+  background: transparent;
+  color: var(--k-action);
+  font-size: var(--k-text-sm);
+  font-weight: 600;
+}
+.room-conversation--compact
+  .room-thread-summary
+  .button.room-thread-summary__count {
+  /* The base rule above is more specific than the phone floor (#4810 review 6). */
+  min-height: 44px;
+  min-width: 44px;
+}
+.room-thread-summary__last {
+  color: var(--k-text-faint);
+  font-size: var(--k-text-sm);
+}

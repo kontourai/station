@@ -1,5 +1,7 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { describe, expect, test } from 'vitest';
+import { mapServerRequestToEvent } from '../../../../../src-server/providers/adapters/codex-adapter-events';
 import type { ChatMessage } from '../../../types';
 import { unansweredApprovalRequests } from '../pendingRequestRows';
 
@@ -176,4 +178,48 @@ describe('unansweredApprovalRequests — Codex command approvals (#3382)', () =>
       expect(row).not.toHaveProperty('args');
     }
   });
+});
+
+test('a typed Codex question survives the adapter-to-reload presentation seam', () => {
+  const opened = mapServerRequestToEvent(
+    'question-thread',
+    'question-id',
+    'item/tool/requestUserInput',
+    {
+      questions: [
+        { id: 'goal', header: 'Goal', question: 'Which goal?', options: null },
+      ],
+    },
+    '2026-11-01T00:00:00Z',
+  );
+  expect(opened?.requestType).toBe('approval');
+  expect(opened).not.toBeNull();
+  const events = [opened!];
+  const transcript = projectRuntimeEventsToMessages(events);
+  expect(
+    transcript
+      .flatMap((message) => message.parts)
+      .some((part) => part.inputRequestRecord?.kind === 'form'),
+  ).toBe(true);
+  const [card] = unansweredApprovalRequests([], events);
+  expect(card).toMatchObject({
+    requestKind: 'input',
+    approvalId: 'question-id',
+    approvalThreadId: 'question-thread',
+    inputRequest: { source: 'harness:codex', body: { kind: 'form' } },
+  });
+  expect(
+    unansweredApprovalRequests(
+      [],
+      [
+        ...events,
+        {
+          ...opened!,
+          method: 'request.resolved',
+          status: 'approved',
+          eventId: 'resolved',
+        },
+      ],
+    ),
+  ).toHaveLength(0);
 });

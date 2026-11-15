@@ -36,6 +36,7 @@ import {
   type LiveSurfaceControlState,
 } from '../LiveSurfaceCanvas';
 import { liveSurfaceH264Declines } from '../useLiveSurface';
+import { inputSourceFixture } from './fixtures/inputSourceFixture';
 
 const SURFACE = 'browser:session-1';
 const API = 'http://127.0.0.1:3999';
@@ -119,6 +120,7 @@ function harness(
 ) {
   const streams: OpenStream[] = [];
   const inputs: { epoch: number; events: unknown[] }[] = [];
+  const sources = inputSourceFixture();
   const inputReply: InputReply =
     options.inputReply ??
     ((body) => ({
@@ -184,8 +186,14 @@ function harness(
         });
         return new Response(stream, { status: 200 });
       }
+      if (url === INPUT_URL.replace(/\/input$/, '/lease')) {
+        const response = sources.leaseReply(JSON.parse(String(init?.body)));
+        if (response) return response;
+      }
       if (url === INPUT_URL) {
         const body = JSON.parse(String(init?.body));
+        if (!sources.accepts(body.sourceId))
+          return Response.json({ success: false }, { status: 409 });
         inputs.push(body);
         const reply = await inputReply(body);
         return reply instanceof Response ? reply : Response.json(reply);
@@ -1644,7 +1652,9 @@ describe('LiveSurfaceCanvas: which input may take control', () => {
     const transport = vi.fn(
       async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
         if (String(input).endsWith('/lease')) {
-          claims.push(JSON.parse(String(init?.body)));
+          const body = JSON.parse(String(init?.body));
+          if (body.action !== 'claim') return base(input, init);
+          claims.push(body);
           return Response.json({
             success: true,
             data: { ok: true, lease: lease(8, MY_HOLD) },

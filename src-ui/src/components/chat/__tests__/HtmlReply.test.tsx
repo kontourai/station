@@ -5,12 +5,18 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
+import { stageHtmlReplyDocument } from '../../../platform/native/htmlReplyStagedDocument';
 import { HtmlReply } from '../HtmlReply';
 
 vi.mock('../../../platform/openExternalLink', () => ({
   openNativeExternalLink: vi.fn(async () => null),
+}));
+
+vi.mock('../../../platform/native/htmlReplyStagedDocument', () => ({
+  stageHtmlReplyDocument: vi.fn(async () => undefined),
 }));
 
 afterEach(() => {
@@ -27,15 +33,103 @@ const page = {
 };
 const origin = 'https://sandbox.example';
 
-test('refuses the app origin and loads HTML only after the isolated frame identifies itself', () => {
-  const view = render(
-    <HtmlReply page={page} frameOrigin={window.location.origin} theme="dark" />,
+test('without a reachable distinct origin, renders in an opaque-origin sandbox that never loads by message', () => {
+  vi.stubGlobal('navigator', { userActivation: { isActive: true } });
+  document.documentElement.style.setProperty('--k-bg', '#0a0e13');
+  // A value that would close the declaration is dropped, never written.
+  document.documentElement.style.setProperty('--k-text', 'red;}</style>');
+  // The app's own origin is not distinct, and an empty origin is what the
+  // server answers a client that cannot reach the loopback frame listener.
+  for (const unreachable of [window.location.origin, '']) {
+    const view = render(
+      <HtmlReply page={page} frameOrigin={unreachable} theme="light" />,
+    );
+    const frame = screen.getByTitle('Visual reply') as HTMLIFrameElement;
+    // No allow-same-origin: the frame's scripts cannot reach Station's origin.
+    expect(frame.getAttribute('sandbox')).toBe('allow-scripts');
+    expect(frame.getAttribute('src')).toBeNull();
+    const document_ = frame.getAttribute('srcdoc') ?? '';
+    expect(document_).toContain(page.html);
+    expect(document_).toContain('--background:#0a0e13;');
+    expect(document_).toContain('color-scheme:light');
+    expect(document_).not.toContain('--foreground:');
+    expect(document_).not.toContain('red;}');
+    // The authored bytes still follow the page's own Content Security Policy.
+    expect(document_.indexOf('Content-Security-Policy')).toBeLessThan(
+      document_.indexOf(page.html),
+    );
+    const post = vi.spyOn(frame.contentWindow!, 'postMessage');
+    const send = (data: unknown, sender: string) =>
+      act(() => {
+        window.dispatchEvent(
+          new MessageEvent('message', {
+            data,
+            source: frame.contentWindow,
+            origin: sender,
+          }),
+        );
+      });
+    // A page claiming to be the proxy gets nothing posted back.
+    send({ type: 'html-reply-ready' }, 'null');
+    expect(post).not.toHaveBeenCalled();
+    // Links are honoured only from the opaque frame itself.
+    send(
+      { type: 'html-reply-link', url: 'https://example.com/' },
+      'https://evil.example',
+    );
+    expect(screen.queryByText('Open link from visual reply?')).toBeNull();
+    send({ type: 'html-reply-link', url: 'https://example.com/' }, 'null');
+    expect(screen.getByText('Open link from visual reply?')).toBeTruthy();
+    view.unmount();
+  }
+});
+
+test('staging upgrades the opaque frame to a scheme-served document and posts the theme to it', async () => {
+  vi.stubGlobal('navigator', { userActivation: { isActive: true } });
+  document.documentElement.style.setProperty('--k-bg', '#0a0e13');
+  const staged = `station-html-reply://localhost/${'A'.repeat(43)}?capability=${'B'.repeat(43)}`;
+  vi.mocked(stageHtmlReplyDocument).mockResolvedValueOnce(staged);
+  const view = render(<HtmlReply page={page} frameOrigin="" theme="light" />);
+  // The srcdoc child paints immediately, before staging resolves.
+  const frame = screen.getByTitle('Visual reply') as HTMLIFrameElement;
+  expect(frame.getAttribute('srcdoc')).toBeTruthy();
+  // Staging swaps the source; the sandbox stays scripts-only either way.
+  await waitFor(() => expect(frame.getAttribute('src')).toBe(staged));
+  expect(frame.getAttribute('srcdoc')).toBeNull();
+  expect(frame.getAttribute('sandbox')).toBe('allow-scripts');
+  // The staged load posts the theme by message, wildcard-targeted: a
+  // sandboxed frame's opaque origin cannot be named.
+  const post = vi.spyOn(frame.contentWindow!, 'postMessage');
+  act(() => {
+    fireEvent.load(frame);
+  });
+  await waitFor(() => expect(post).toHaveBeenCalled());
+  expect(post.mock.calls[0]?.[0]?.type).toBe('html-reply-theme');
+  expect(post.mock.calls[0]?.[1]).toBe('*');
+  view.unmount();
+});
+
+test('a refused stage keeps the immediate srcdoc child and surfaces nothing', async () => {
+  vi.stubGlobal('navigator', { userActivation: { isActive: true } });
+  document.documentElement.style.setProperty('--k-bg', '#0a0e13');
+  vi.mocked(stageHtmlReplyDocument).mockRejectedValueOnce(
+    new Error('shell refused'),
   );
-  expect(screen.queryByTitle('Visual reply')).toBeNull();
-  expect(
-    screen.getByText('Visual replies require an isolated frame origin.'),
-  ).toBeTruthy();
-  view.rerender(<HtmlReply page={page} frameOrigin={origin} theme="dark" />);
+  const view = render(<HtmlReply page={page} frameOrigin="" theme="light" />);
+  const frame = screen.getByTitle('Visual reply') as HTMLIFrameElement;
+  expect(frame.getAttribute('srcdoc')).toContain(page.html);
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(frame.getAttribute('src')).toBeNull();
+  expect(frame.getAttribute('srcdoc')).toContain(page.html);
+  view.unmount();
+});
+
+test('loads HTML only after the isolated frame identifies itself', () => {
+  const view = render(
+    <HtmlReply page={page} frameOrigin={origin} theme="dark" />,
+  );
   const frame = screen.getByTitle('Visual reply') as HTMLIFrameElement;
   const post = vi.spyOn(frame.contentWindow!, 'postMessage');
   const ready = (source: unknown, sender: string) =>

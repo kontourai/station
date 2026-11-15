@@ -307,6 +307,33 @@ describe('paired Station foreground chat bridge', () => {
     expect(await response.text()).not.toContain('test-peer');
   });
 
+  test("forwards the transcript's revisioned checkpoint read to the receiver", async () => {
+    const { call, fetch } = fixture();
+    // The exact URL `useActiveChatTranscript` issues through the relay.
+    const response = await call(
+      '/api/orchestration/sessions/claude%3A1794521333066/checkpoints?revision=4',
+    );
+    expect(response.status).toBe(200);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls[1]![0]).toBe(
+      'https://desktop.test/api/orchestration/sessions/claude%3A1794521333066/checkpoints?revision=4',
+    );
+    expect(
+      classifyPeerChatOperation(
+        'GET',
+        '/api/orchestration/sessions/one/checkpoints',
+        '?revision=4&view=all',
+      ),
+    ).toBeNull();
+    expect(
+      classifyPeerChatOperation(
+        'GET',
+        '/api/orchestration/sessions/one/usage-limit',
+        '?revision=4',
+      ),
+    ).toBeNull();
+  });
+
   test('rechecks preview and request authority on the same composed route before any peer read', async () => {
     const { call, state, peers, fetch } = fixture();
     state.enabled = false;

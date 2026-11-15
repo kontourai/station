@@ -328,16 +328,9 @@ describe('RegionToolbarControls', () => {
       modifiers: ['cmd'],
       description: 'Toggle Chat region',
     });
-    expect(harness.shortcuts.get('activity.toggle')).toMatchObject({
-      key: 'a',
-      modifiers: ['cmd', 'shift'],
-      description: 'Toggle Activity region',
-    });
+    expect(harness.shortcuts.has('activity.toggle')).toBe(false);
     harness.shortcuts.get('dock.toggle')?.handler();
     expectOnlyToggle('chat');
-
-    harness.shortcuts.get('activity.toggle')?.handler();
-    expectOnlyToggle('activity', 2);
 
     // The same Hide the retired per-region button carried, then the retired
     // "Hide Chat" menu row, then #1552 D2's `Hidden` segment: on a fine
@@ -356,14 +349,14 @@ describe('RegionToolbarControls', () => {
     });
     // And it is not ALSO issuing the toggle: the chords above are the only
     // callers that did, so the count is still theirs.
-    expect(harness.toggleSurface).toHaveBeenCalledTimes(2);
+    expect(harness.toggleSurface).toHaveBeenCalledTimes(1);
   });
 
   /**
    * #928 coding stack: while the Coding layout's centre owns Chat, the dock
    * does not hold Chat on that route, so Chat's chord is not a dock toggle.
    * It asks the centre for its Chat page (which focuses the composer) and
-   * leaves every region as it was. Activity's chord is unaffected.
+   * leaves every region as it was. Agents's chord is unaffected.
    */
   test('while the Coding centre owns Chat, ⌘D goes to its Chat page and toggles nothing', () => {
     const requests = vi.fn();
@@ -381,8 +374,7 @@ describe('RegionToolbarControls', () => {
       expect(harness.placeSurface).not.toHaveBeenCalled();
       expect(harness.showSurface).not.toHaveBeenCalled();
 
-      harness.shortcuts.get('activity.toggle')?.handler();
-      expectOnlyToggle('activity');
+      expect(harness.shortcuts.has('activity.toggle')).toBe(false);
       expect(requests).toHaveBeenCalledOnce();
     } finally {
       unsubscribe();
@@ -399,53 +391,6 @@ describe('RegionToolbarControls', () => {
     expect(harness.toggleSurface).not.toHaveBeenCalled();
     expect(harness.setRegion).not.toHaveBeenCalled();
     expect(harness.showSurface).not.toHaveBeenCalled();
-  });
-
-  /**
-   * #1420, then #1523: the chord issues ONE model command and decides nothing
-   * itself — not where an unplaced surface lands (Chat in Activity's preferred
-   * region with a free region beside it was the fixture where the toolbar's
-   * own copy of the rules used to pick the free region), not whether a placed
-   * one is hidden or shown, and not what happens to a `main` occupant. Each
-   * of those is `toggleSurface` in region-model.ts, tested there; a change to
-   * the rules cannot leave the toolbar holding a stale copy.
-   */
-  test('the Activity chord issues the model toggle whether Activity is unplaced, docked or in main', () => {
-    Object.assign(harness.regions.bottom, {
-      visible: false,
-      panes: [],
-      occupant: null,
-    });
-    Object.assign(harness.regions.right, {
-      visible: true,
-      panes: ['chat'],
-      occupant: 'chat',
-    });
-    const { rerender } = render(<RegionToolbarControls />);
-
-    harness.shortcuts.get('activity.toggle')?.handler();
-    expectOnlyToggle('activity');
-
-    Object.assign(harness.regions.right, {
-      visible: true,
-      panes: ['activity'],
-      occupant: 'activity',
-    });
-    rerender(<RegionToolbarControls />);
-    harness.shortcuts.get('activity.toggle')?.handler();
-    expectOnlyToggle('activity', 2);
-
-    // ⌘⇧A with Activity occupying `main` (#1523): the same command. The
-    // model relocates it to its dock region; the toolbar must not turn this
-    // into a `showSurface` that reveals it where it already is.
-    Object.assign(harness.regions.right, { panes: [], occupant: null });
-    Object.assign(harness.regions.main, {
-      panes: ['activity'],
-      occupant: 'activity',
-    });
-    rerender(<RegionToolbarControls />);
-    harness.shortcuts.get('activity.toggle')?.handler();
-    expectOnlyToggle('activity', 3);
   });
 
   /**
@@ -490,8 +435,8 @@ describe('RegionToolbarControls', () => {
 
     Object.assign(harness.regions.left, {
       visible: false,
-      panes: ['activity'],
-      occupant: 'activity',
+      panes: ['workspace-agents'],
+      occupant: 'workspace-agents',
     });
     rerender(<RegionToolbarControls />);
     expect(toggleStates()).toEqual([
@@ -499,7 +444,7 @@ describe('RegionToolbarControls', () => {
       ['Bottom region', 'true'],
       ['Right region', 'false'],
     ]);
-    expect(toggleState('Left')).toBe('Show Left region: Activity');
+    expect(toggleState('Left')).toBe('Show Left region: Agents');
 
     Object.assign(harness.regions.left, {
       visible: true,
@@ -607,7 +552,7 @@ describe('RegionToolbarControls', () => {
   test('a hidden region HOLDING panes is a third state, distinct from a hidden empty one', () => {
     Object.assign(harness.regions.right, {
       visible: false,
-      panes: ['activity', 'chat'],
+      panes: ['workspace-agents', 'chat'],
       occupant: 'chat',
     });
     Object.assign(harness.regions.bottom, {
@@ -623,9 +568,7 @@ describe('RegionToolbarControls', () => {
     ]);
     const right = regionToggle('Right');
     const bottom = regionToggle('Bottom');
-    expect(right.title.split('\n')[0]).toBe(
-      'Show Right region: Activity, Chat',
-    );
+    expect(right.title.split('\n')[0]).toBe('Show Right region: Agents, Chat');
     expect(bottom.title.split('\n')[0]).toBe('Show Bottom region (empty)');
     // Same `aria-pressed`, different state: the class and the glyph carry
     // what "hidden" alone cannot say.
@@ -675,10 +618,13 @@ describe('RegionToolbarControls', () => {
     ).not.toHaveLength(0);
     expect(within(panel).getByRole('menuitem', { name: /^Chat/ })).toBeTruthy();
 
-    fireEvent.click(within(panel).getByRole('menuitem', { name: /^Activity/ }));
-    expect(harness.openSurfaceInRegion).toHaveBeenCalledWith('activity', {
-      region: 'right',
-    });
+    fireEvent.click(within(panel).getByRole('menuitem', { name: /^Agents/ }));
+    expect(harness.openSurfaceInRegion).toHaveBeenCalledWith(
+      'workspace-agents',
+      {
+        region: 'right',
+      },
+    );
     // A choice closes the panel, and places through the model — not through
     // a second placement rule in the toolbar.
     expect(screen.queryByRole('menu')).toBeNull();
@@ -1055,7 +1001,7 @@ describe('RegionToolbarControls', () => {
   /**
    * An OCCUPIED region gets the chooser too (#2154's "+" is offered for every
    * dock region, empty or not). The toolbar adds no emptiness rule of its
-   * own: a region holding Chat can still be handed Activity from here, and
+   * own: a region holding Chat can still be handed Agents from here, and
    * its toggle stays a toggle while the panel is open.
    */
   test('an occupied region’s toggle opens the chooser as well', async () => {
@@ -1131,7 +1077,7 @@ describe('RegionToolbarControls', () => {
       within(screen.getByRole('menu', { name: 'Region surfaces' }))
         .getAllByRole('menuitemcheckbox')
         .map((item) => item.textContent),
-    ).toEqual(['Hide Chat from the dock', 'Show Activity in the dock']);
+    ).toEqual(['Hide Chat from the dock']);
     // Flat, not grouped: the folded list is one Show/Hide per surface.
     expect(
       within(
@@ -1147,49 +1093,13 @@ describe('RegionToolbarControls', () => {
    * `Show <title>` checkbox an unplaced surface gets, which would reveal it
    * where it already is and read as nothing happening.
    */
-  test('the folded menu offers to move a main occupant to the dock, and to show an unplaced one', () => {
-    harness.bottomOnly = true;
-    harness.isMobile = false;
-    Object.assign(harness.regions.main, {
-      panes: ['activity'],
-      occupant: 'activity',
-    });
-    const { rerender } = render(<RegionToolbarControls />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Regions' }));
-    const menu = screen.getByRole('menu', { name: 'Region surfaces' });
-    expect(
-      within(menu)
-        .getAllByRole('menuitemcheckbox')
-        .map((item) => item.textContent),
-    ).toEqual(['Hide Chat from the dock']);
-    const move = within(menu).getByRole('menuitem', {
-      name: 'Move Activity to the dock',
-    });
-    expect(move.hasAttribute('aria-checked')).toBe(false);
-    expect(within(menu).queryByText('Show Activity in the dock')).toBeNull();
-    fireEvent.click(move);
-    expectOnlyToggle('activity');
-    expect(screen.queryByRole('menu')).toBeNull();
-
-    // Once the model has moved it out of `main`, the row is a toggle again.
-    Object.assign(harness.regions.main, { panes: ['home'], occupant: 'home' });
-    rerender(<RegionToolbarControls />);
-    fireEvent.click(screen.getByRole('button', { name: 'Regions' }));
-    expect(
-      within(screen.getByRole('menu', { name: 'Region surfaces' }))
-        .getAllByRole('menuitemcheckbox')
-        .map((item) => item.textContent),
-    ).toEqual(['Hide Chat from the dock', 'Show Activity in the dock']);
-    expect(screen.queryByRole('menuitem')).toBeNull();
-  });
 
   /**
    * #2046 2b, D2: the folded rows are per REGION, in the region's TAB ORDER.
    * A region holding two panes contributes both: the selected pane's row is
    * the region's Hide (checked), the pane behind its tab gets a Show row
    * (unchecked) that selects it — both through the model's own toggle. With
-   * the region hidden, both read Show. The fixture puts Activity FIRST in
+   * the region hidden, both read Show. The fixture puts Agents FIRST in
    * tab order, the reverse of registry order: the per-surface rows this
    * replaced walked the registry and would list Chat first, so a revert
    * fails on the order.
@@ -1199,7 +1109,7 @@ describe('RegionToolbarControls', () => {
     harness.isMobile = false;
     Object.assign(harness.regions.bottom, {
       visible: true,
-      panes: ['activity', 'chat'],
+      panes: ['workspace-agents', 'chat'],
       occupant: 'chat',
     });
     const { rerender } = render(<RegionToolbarControls />);
@@ -1211,16 +1121,16 @@ describe('RegionToolbarControls', () => {
         .getAllByRole('menuitemcheckbox')
         .map((item) => [item.textContent, item.getAttribute('aria-checked')]),
     ).toEqual([
-      ['Show Activity in the dock', 'false'],
+      ['Show Agents in the dock', 'false'],
       ['Hide Chat from the dock', 'true'],
     ]);
     expect(within(menu).queryByRole('menuitem')).toBeNull();
     fireEvent.click(
       within(menu).getByRole('menuitemcheckbox', {
-        name: 'Show Activity in the dock',
+        name: 'Show Agents in the dock',
       }),
     );
-    expectOnlyToggle('activity');
+    expectOnlyToggle('workspace-agents');
 
     harness.regions.bottom.visible = false;
     rerender(<RegionToolbarControls />);
@@ -1231,7 +1141,7 @@ describe('RegionToolbarControls', () => {
         .getAllByRole('menuitemcheckbox')
         .map((item) => [item.textContent, item.getAttribute('aria-checked')]),
     ).toEqual([
-      ['Show Activity in the dock', 'false'],
+      ['Show Agents in the dock', 'false'],
       ['Show Chat in the dock', 'false'],
     ]);
   });
@@ -1247,10 +1157,7 @@ describe('RegionToolbarControls', () => {
     // pin in `region-model.test.ts`, which asserts `shortcut` is undefined per
     // catalog entry.
     render(<RegionToolbarControls />);
-    expect([...harness.shortcuts.keys()].sort()).toEqual([
-      'activity.toggle',
-      'dock.toggle',
-    ]);
+    expect([...harness.shortcuts.keys()].sort()).toEqual(['dock.toggle']);
   });
 
   /**
@@ -1471,14 +1378,12 @@ describe('RegionToolbarControls', () => {
     render(<RegionToolbarControls />);
 
     // ⌘D: Chat occupies the visible folded region; the model's toggle hides
-    // it. ⌘⇧A: Activity is unplaced; the coarse rule — show it ALONE rather
+    // it. ⌘⇧A: Agents is unplaced; the coarse rule — show it ALONE rather
     // than open a second visible region beside Chat — is the model's too
     // (`toggleSurface` → `showSurface` → `showSurfaceAlone`, region-model.ts).
     // The chords only issue the command.
     harness.shortcuts.get('dock.toggle')?.handler();
     expectOnlyToggle('chat');
-    harness.shortcuts.get('activity.toggle')?.handler();
-    expectOnlyToggle('activity', 2);
   });
 
   test('a coarse device too wide to be mobile keeps the folded Regions menu in the toolbar', () => {
@@ -1506,10 +1411,10 @@ describe('RegionToolbarControls', () => {
         .getAttribute('aria-checked'),
     ).toBe('true');
     expect(
-      screen
-        .getByRole('menuitemcheckbox', { name: 'Show Activity in the dock' })
-        .getAttribute('aria-checked'),
-    ).toBe('false');
+      screen.queryByRole('menuitemcheckbox', {
+        name: 'Show Agents in the dock',
+      }),
+    ).toBeNull();
     fireEvent.click(
       screen.getByRole('menuitemcheckbox', { name: 'Hide Chat from the dock' }),
     );
@@ -1521,10 +1426,10 @@ describe('RegionToolbarControls', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Regions' }));
     fireEvent.click(
       screen.getByRole('menuitemcheckbox', {
-        name: 'Show Activity in the dock',
+        name: 'Show Chat in the dock',
       }),
     );
-    expectOnlyToggle('activity', 2);
+    expectOnlyToggle('chat', 2);
 
     fireEvent.click(screen.getByRole('button', { name: 'Regions' }));
     const backdrop = screen.getByRole('button', {

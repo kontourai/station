@@ -196,6 +196,7 @@ export {
   useStartIntegrationOAuthMutation,
 } from './query-domains/catalog';
 export {
+  type AcknowledgeConversationVariables,
   type AdoptOrchestrationSessionIntent,
   AdoptSessionError,
   type AdoptSessionFailureClass,
@@ -274,11 +275,15 @@ export {
   type OrchestrationSessionDetail,
   type OrchestrationSessionSummary,
   type ProviderCommandDescriptor,
+  type ReconnectEngineMcpServerInput,
+  type RewindSessionToTurnInput,
+  reconnectOrchestrationEngineMcpServer,
   regenerateConversationTitle,
   registerNativePush,
   renameCodingFile,
   renameConversation,
   resolveOrchestrationRequest,
+  rewindOrchestrationSessionToTurn,
   SESSION_SUMMARY_GENERATE_MUTATION_KEY,
   type SessionBoardItem,
   type SessionBoardLifecycleState,
@@ -328,11 +333,14 @@ export {
   useOrchestrationSessionsQuery,
   useProjectSessionBoardQuery,
   useProviderCommandsQuery,
+  useReconnectEngineMcpServerMutation,
   useRegenerateConversationTitleMutation,
   useRenameCodingFileMutation,
   useRenameConversationMutation,
+  useRewindSessionToTurnMutation,
   useSessionBuilderRunQuery,
   useSessionFlowRunQuery,
+  useSessionLiveContinuityQuery,
   useSessionSummaryQuery,
   useShowSessionSummaryMutation,
   useSteerChildWorkMutation,
@@ -607,6 +615,13 @@ export {
   useProposedChangesQuery,
   useRejectProposedChangeMutation,
 } from './query-domains/proposedChanges';
+export {
+  fetchReadMarkerSummary,
+  markRead,
+  readMarkerQueries,
+  useMarkReadMutation,
+  useReadMarkerSummaryQuery,
+} from './query-domains/readMarkers';
 export {
   fetchIndependentReviewReceipts,
   reviewEvidenceQueryKey,

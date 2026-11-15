@@ -43,7 +43,7 @@ const LANE_VOCABULARY: Record<SessionLaneId, ReadonlySet<string>> = {
   // it; `work-status.test.ts` pins its lane.
   needsYou: new Set([
     'Needs approval',
-    'Needs answer',
+    'Needs input',
     'Interrupted',
     'Blocked',
     'Waiting on you',
@@ -444,10 +444,8 @@ const SURFACE_ROOTS = [
   'components/session-detail',
   'components/status',
   'views/home',
-  'views/activity',
   'views/sessions',
   'views/project-page',
-  'views/SessionsView.tsx',
   'views/HomeView.tsx',
   'components/flow/WorkflowPlanPanel.tsx',
   'components/chat/PendingApprovalStrip.tsx',
@@ -473,7 +471,7 @@ const RETIRED: ReadonlyArray<[retired: string, use: string]> = [
   ['Approval required', 'Needs approval'],
   ['Approval needed', 'Needs approval'],
   ['approvals needed', 'Needs approval (n)'],
-  ['Needs your answer', 'Needs answer'],
+  ['Needs your answer', 'Needs input'],
   ['Engine complete', 'Done'],
   ['Engine running', 'Running'],
   ['Tool activity running', 'Running · tool'],
@@ -568,7 +566,6 @@ describe('one vocabulary on the work surfaces', () => {
     );
     for (const guarded of [
       'views/home/work-status.ts',
-      'views/SessionsView.tsx',
       'components/chat-dock/ChatDockInboxRows.tsx',
       'components/chat-dock/ChatInboxHoverCard.tsx',
       'components/chat-dock/ChatDockHeader.tsx',
@@ -611,7 +608,7 @@ describe('one vocabulary on the work surfaces', () => {
     // "Needs approval"; nothing else may spell a rung's word.
     const WORDS = [
       "'Needs approval'",
-      "'Needs answer'",
+      "'Needs input'",
       "'Interrupted'",
       "'Read only'",
       "'Idle'",

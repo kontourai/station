@@ -1,5 +1,11 @@
 import type { LiveSurfaceFrameHeader } from '@kontourai/station-contracts/live-surface';
 import { describe, expect, test, vi } from 'vitest';
+import {
+  closeHumanInputSource,
+  dispatchHumanInput,
+  LiveSurfaceRegistry,
+  openHumanInputSource,
+} from '../../live-surface/registry.js';
 import type { CdpTransport } from '../browser-host.js';
 import { CdpProtocolError } from '../cdp-pipe-transport.js';
 import {
@@ -494,6 +500,48 @@ describe('ChromiumScreencastProducer input', () => {
 });
 
 describe('ChromiumScreencastProducer held-input cancel', () => {
+  test('cancelling a viewer key leaves another viewer touch active', async () => {
+    const { fake, producer: p } = producer();
+    await p.dispatch({
+      kind: 'key',
+      type: 'down',
+      key: 'Shift',
+      code: 'ShiftLeft',
+    });
+    await p.dispatch({
+      kind: 'pointer',
+      type: 'down',
+      x: 4,
+      y: 4,
+      button: 'left',
+      pointerType: 'touch',
+    });
+    fake.calls.length = 0;
+    await p.cancelHeldInput({
+      buttons: [],
+      keys: [{ key: 'Shift', code: 'ShiftLeft' }],
+      pointer: { x: 4, y: 4 },
+      pointerType: 'touch',
+      buttonPointerTypes: {},
+    });
+    expect(fake.calls).toHaveLength(1);
+    expect(fake.calls[0]).toMatchObject({
+      method: 'Input.dispatchKeyEvent',
+      params: { type: 'keyUp', key: 'Shift' },
+    });
+    await p.dispatch({
+      kind: 'pointer',
+      type: 'move',
+      x: 6,
+      y: 8,
+      pointerType: 'touch',
+    });
+    expect(fake.calls.at(-1)).toMatchObject({
+      method: 'Input.dispatchTouchEvent',
+      params: { type: 'touchMove', touchPoints: [{ x: 6, y: 8, id: 0 }] },
+    });
+  });
+
   test('a held touch is cancelled with touchCancel, never a touchEnd tap', async () => {
     const { fake, producer: p } = producer();
     await p.dispatch({
@@ -1005,4 +1053,76 @@ describe("ChromiumScreencastProducer: a person's answer that does not land", () 
     });
     expect(broken.producer.pendingDialog()).toMatchObject({ dialogId: 'd1' });
   });
+});
+
+test('registry cancels displaced touch before a replacement mouse press and retires both sources', async () => {
+  const { fake, producer: p } = producer();
+  const inputEvents = () =>
+    fake.calls
+      .filter(({ method }) => method.startsWith('Input.'))
+      .map(({ method, params }) => [method, params?.type]);
+  const registry = new LiveSurfaceRegistry();
+  registry.register(p, { authorize: () => true });
+  const entry = registry.get(p.surfaceId)!;
+  const human = {
+    kind: 'human',
+    principal: 'human:test',
+    device: 'device:test',
+  } as const;
+  const first = openHumanInputSource(entry, human)!;
+  const second = openHumanInputSource(entry, human)!;
+  try {
+    expect(
+      await dispatchHumanInput(
+        entry,
+        human,
+        0,
+        [
+          {
+            kind: 'pointer',
+            type: 'down',
+            x: 4,
+            y: 4,
+            button: 'left',
+            pointerType: 'touch',
+          },
+        ],
+        first,
+      ),
+    ).toMatchObject({ ok: true });
+    expect(
+      await dispatchHumanInput(
+        entry,
+        human,
+        1,
+        [
+          {
+            kind: 'pointer',
+            type: 'down',
+            x: 8,
+            y: 8,
+            button: 'left',
+            pointerType: 'mouse',
+          },
+        ],
+        second,
+      ),
+    ).toMatchObject({ ok: true });
+    expect(inputEvents()).toEqual([
+      ['Input.dispatchTouchEvent', 'touchStart'],
+      ['Input.dispatchTouchEvent', 'touchCancel'],
+      ['Input.dispatchMouseEvent', 'mousePressed'],
+    ]);
+    expect(await closeHumanInputSource(entry, human, first)).toBe(true);
+    expect(await closeHumanInputSource(entry, human, second)).toBe(true);
+    expect(inputEvents()).toEqual([
+      ['Input.dispatchTouchEvent', 'touchStart'],
+      ['Input.dispatchTouchEvent', 'touchCancel'],
+      ['Input.dispatchMouseEvent', 'mousePressed'],
+      ['Input.dispatchMouseEvent', 'mouseMoved'],
+      ['Input.dispatchMouseEvent', 'mouseReleased'],
+    ]);
+  } finally {
+    await registry.dispose();
+  }
 });

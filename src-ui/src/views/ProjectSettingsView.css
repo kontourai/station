@@ -206,17 +206,7 @@
   border-bottom: 1px solid var(--border-primary);
 }
 .project-settings__section--hero {
-  background:
-    radial-gradient(
-      circle at top right,
-      color-mix(in srgb, var(--accent-primary) 14%, transparent),
-      transparent 30%
-    ),
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--bg-secondary) 92%, var(--surface-lift) 8%),
-      var(--bg-secondary)
-    );
+  background: var(--k-panel);
 }
 .project-settings__hero-grid {
   display: block;

@@ -89,6 +89,35 @@ describe('digestTurn', () => {
     expect(total).toBe(toolCalls.reduce((sum, entry) => sum + entry.calls, 0));
   });
 
+  test('a Station tool carries its plain-language label; any other tool only its name (#3418)', () => {
+    const turn = digestTurn(
+      facts({
+        toolCalls: [
+          { toolName: 'mcp__station-control__wait_session', calls: 3 },
+          { toolName: 'station-control/declare_pull_request', calls: 1 },
+          { toolName: 'Bash', calls: 2 },
+          // Another server's tool that shares a Station tool's name.
+          { toolName: 'mcp__other__wait_session', calls: 1 },
+        ],
+      }),
+      [],
+    );
+    expect(turn.toolCalls).toEqual([
+      {
+        tool: 'mcp__station-control__wait_session',
+        calls: 3,
+        label: 'Wait for a Session',
+      },
+      {
+        tool: 'station-control/declare_pull_request',
+        calls: 1,
+        label: 'Declare a pull request',
+      },
+      { tool: 'Bash', calls: 2 },
+      { tool: 'mcp__other__wait_session', calls: 1 },
+    ]);
+  });
+
   test('only pull-request declarations count; files, pull requests and children state their totals', () => {
     const pullRequest = (ref: string) => ({
       kind: 'pull-request',

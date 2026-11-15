@@ -1,0 +1,7 @@
+{
+  "revision": "504bb8da9bc90b35372aafb8c409568cdb72b2da",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed: the OpenCode engine-family note moved from inside the registry-rendered engine_turn section to the Event inventory introduction, so the rendered inventory matches the registry again. What it says is unchanged: a turn on the opencode engine reports acp (terminalEngineFamily).","inputs":["docs/reference/usage-telemetry.md"]}
+  ]
+}

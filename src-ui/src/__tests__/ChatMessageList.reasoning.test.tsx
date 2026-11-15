@@ -91,7 +91,6 @@ function renderStreamingRow({
           attachments: [],
           queuedMessages: [],
           inputHistory: [],
-          hasUnread: false,
           createdAt: 1,
           updatedAt: 1,
           source: 'manual',

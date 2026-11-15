@@ -1,0 +1,7 @@
+{
+  "revision": "be2fa829544999ddf85caf1b5953cfe05e22327c",
+
+  "notes": [
+    {"path":"docs/reference/deploy-ledger.md","note":"Bounded generated-output validation at be2fa8295449: parsed all 447 current entries, ran the existing assertValidEntry and identity uniqueness checks, and compared renderLedgerMarkdown for kontourai/station byte-for-byte with stored Markdown; all passed. No ledger data, renderer or review policy is edited by this native-channel slice. This confirms projection/entry shape only and renews no publication, artifact availability, completeness, platform or actual-release claim.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}

@@ -24,6 +24,8 @@ import { rejectUnexpectedFixtureRequest } from './fixture-audit';
  */
 
 const ROOM_ID = '7b0d3a52-9c1e-4c55-9a8b-2f4c1d7e6a10';
+/** The `channels` scene's second channel (#4792); `#general` is ROOM_ID. */
+const DESIGN_ID = '7b0d3a52-9c1e-4c55-9a8b-2f4c1d7e6a11';
 const VIEWER = { id: 'person:maya', displayName: 'Maya Chen', kind: 'person' };
 const JONAS = { id: 'person:jonas', displayName: 'Jonas Berg', kind: 'person' };
 const PRIYA = {
@@ -198,13 +200,41 @@ export type ProjectRoomScene =
   | 'agent-pending'
   | 'agent-abandon'
   /** The short room with the composer focused and, on a phone, a keyboard. */
-  | 'keyboard';
+  | 'keyboard'
+  | 'channels'
+  /**
+   * #4794/#4795: the channel list, a channel and a thread. `#general` holds
+   * the short history plus two replies to Scout's message (its thread).
+   */
+  | 'navigation';
+
+/** Replies to Scout's plan check (sequence 3): the navigation scene's thread. */
+const THREAD_REPLIES: ProjectLine[] = [
+  {
+    actor: PRIYA,
+    at: at(1, 14, 20),
+    text: 'Both numbers are fixed in the draft now.',
+    replyTo: 3,
+  },
+  {
+    actor: JONAS,
+    at: at(1, 14, 26),
+    text: 'Thanks. Shipping it after lunch.',
+    replyTo: 3,
+  },
+];
 
 function projectLines(scene: ProjectRoomScene): ProjectLine[] {
   if (scene === 'empty') return [];
   if (scene === 'long' || scene === 'new-messages') return longHistory();
+  if (scene === 'navigation') return [...SHORT, ...THREAD_REPLIES];
   return SHORT;
 }
+
+/** The navigation scene's thread root: Scout's plan check. */
+export const NAVIGATION_THREAD_ROOT = uuid(3, 'c1');
+/** `#design` room id, for routes and read markers. */
+export const GALLERY_DESIGN_ROOM_ID = DESIGN_ID;
 
 /** Arrive after the reader scrolls up in the new-messages scene. */
 const ARRIVALS: ProjectLine[] = [
@@ -217,13 +247,48 @@ const ARRIVALS: ProjectLine[] = [
   },
 ];
 
-function projectMessage(line: ProjectLine, seq: number) {
+/** `#design` in the channels scene: its own room and history. */
+const DESIGN: ProjectLine[] = [
+  {
+    actor: PRIYA,
+    at: at(1, 15, 2),
+    text: 'New checkout screens are up for review.',
+  },
+  {
+    actor: VIEWER,
+    at: at(1, 15, 9),
+    text: 'The step indicator reads well on phones. Can we shorten the CTA?',
+  },
+];
+/** Channels as the server lists them: default first, then by name. */
+function projectChannels(scene: ProjectRoomScene) {
+  const general = { channelId: ROOM_ID, name: 'general', isDefault: true };
+  if (scene !== 'channels' && scene !== 'navigation') return [general];
+  return [
+    { ...general, topic: 'Team-wide updates and launch decisions' },
+    {
+      channelId: DESIGN_ID,
+      name: 'design',
+      topic: 'Screens, flows and the checkout review',
+      isDefault: false,
+    },
+    { channelId: uuid(3, 'e1'), name: 'launch-plan', isDefault: false },
+    {
+      channelId: uuid(4, 'e1'),
+      name: 'user-research',
+      archivedAt: at(0, 13, 0),
+      isDefault: false,
+    },
+  ];
+}
+
+function projectMessage(line: ProjectLine, seq: number, roomId = ROOM_ID) {
   return {
-    intentId: uuid(seq, 'b1'),
+    intentId: uuid(seq, roomId === ROOM_ID ? 'b1' : 'b2'),
     text: line.text,
     ...(line.replyTo ? { replyTo: uuid(line.replyTo, 'c1') } : {}),
-    roomId: ROOM_ID,
-    messageId: uuid(seq, 'c1'),
+    roomId,
+    messageId: uuid(seq, roomId === ROOM_ID ? 'c1' : 'c2'),
     seq,
     actor: line.actor,
     createdAt: line.at,
@@ -277,27 +342,34 @@ export async function installProjectRoomFixture(
   });
   await new Promise<void>((resolve) => events.listen(0, '127.0.0.1', resolve));
   const eventsUrl = `http://127.0.0.1:${(events.address() as AddressInfo).port}/events`;
-  const base = `**/api/projects/${encodeURIComponent(slug)}/room`;
-  const handlers: [string, (route: Route) => Promise<void> | void][] = [
+  const project = `**/api/projects/${encodeURIComponent(slug)}`;
+  const base = `${project}/room`;
+  /** Discovery, history, presence and events for one room address. */
+  const roomRoutes = (
+    address: string,
+    roomId: string,
+    read: () => ReturnType<typeof projectMessage>[],
+    failSend: boolean,
+  ): [string, (route: Route) => Promise<void> | void][] => [
     [
-      base,
+      address,
       (route) => {
         if (route.request().method() !== 'GET')
           return rejectUnexpectedFixtureRequest(route);
-        const all = messages();
+        const all = read();
         return route.fulfill({
           json: {
             success: true,
             data: {
               scope,
-              roomId: ROOM_ID,
+              roomId,
               capabilities: {
                 view: true,
                 discuss: true,
                 edit: true,
                 execute: true,
               },
-              checkpoint: { roomId: ROOM_ID, lastSeq: all.length },
+              checkpoint: { roomId, lastSeq: all.length },
               note: null,
               actor: VIEWER,
               presence,
@@ -307,11 +379,11 @@ export async function installProjectRoomFixture(
       },
     ],
     [
-      `${base}/messages*`,
+      `${address}/messages*`,
       (route) => {
         const request = route.request();
         if (request.method() === 'POST') {
-          if (scene === 'failed-send')
+          if (failSend)
             return route.fulfill({
               status: 503,
               json: {
@@ -327,7 +399,7 @@ export async function installProjectRoomFixture(
         const url = new URL(request.url());
         const after = Number(url.searchParams.get('after') ?? 0);
         const limit = Number(url.searchParams.get('limit') ?? 25);
-        const all = messages();
+        const all = read();
         const page = all.filter(
           (message) => message.seq > after && message.seq <= after + limit,
         );
@@ -337,9 +409,9 @@ export async function installProjectRoomFixture(
             success: true,
             data: {
               scope,
-              roomId: ROOM_ID,
+              roomId,
               messages: page,
-              checkpoint: { roomId: ROOM_ID, lastSeq: all.length },
+              checkpoint: { roomId, lastSeq: all.length },
               nextAfter:
                 last < Math.min(all.length, after + limit) ? last : null,
             },
@@ -348,7 +420,7 @@ export async function installProjectRoomFixture(
       },
     ],
     [
-      `${base}/presence`,
+      `${address}/presence`,
       (route) => {
         if (route.request().method() !== 'POST')
           return rejectUnexpectedFixtureRequest(route);
@@ -356,7 +428,7 @@ export async function installProjectRoomFixture(
       },
     ],
     [
-      `${base}/events`,
+      `${address}/events`,
       (route) => {
         if (route.request().method() !== 'GET')
           return rejectUnexpectedFixtureRequest(route);
@@ -364,6 +436,58 @@ export async function installProjectRoomFixture(
       },
     ],
   ];
+  const handlers: [string, (route: Route) => Promise<void> | void][] = [
+    ...roomRoutes(base, ROOM_ID, messages, scene === 'failed-send'),
+    // A full room marks itself read through what it shows (#4794); these
+    // rooms are fixture rooms, so the fixture answers as the server would.
+    [
+      '**/api/read-markers/mark',
+      (route) => {
+        if (route.request().method() !== 'POST')
+          return rejectUnexpectedFixtureRequest(route);
+        const { target, version } = route.request().postDataJSON() as {
+          target: { kind: string; roomId?: string };
+          version: number;
+        };
+        if (target.kind !== 'project-room')
+          return rejectUnexpectedFixtureRequest(route);
+        return route.fulfill({
+          json: {
+            success: true,
+            data: {
+              target,
+              latestVersion: version,
+              seenVersion: version,
+              unread: false,
+              unreadCount: 0,
+            },
+          },
+        });
+      },
+    ],
+    [
+      `${project}/channels`,
+      (route) => {
+        if (route.request().method() !== 'GET')
+          return rejectUnexpectedFixtureRequest(route);
+        return route.fulfill({
+          json: { success: true, data: { channels: projectChannels(scene) } },
+        });
+      },
+    ],
+  ];
+  if (scene === 'channels' || scene === 'navigation')
+    handlers.push(
+      ...roomRoutes(
+        `${project}/channels/${DESIGN_ID}`,
+        DESIGN_ID,
+        () =>
+          DESIGN.map((line, index) =>
+            projectMessage(line, index + 1, DESIGN_ID),
+          ),
+        false,
+      ),
+    );
   if (scene === 'agent-pending' || scene === 'agent-abandon') {
     // The Station's real catalog plus one available Agent, Scout, shaped like
     // the catalog's own entries.
@@ -434,6 +558,156 @@ export async function installProjectRoomFixture(
     async cleanup() {
       for (const stream of streams) stream.end();
       await new Promise<void>((resolve) => events.close(() => resolve()));
+      for (const [pattern, handler] of handlers)
+        await page.unroute(pattern, handler);
+    },
+  };
+}
+
+/**
+ * The sidebar's and phone list's reads for one Project (#4794): its Tasks, a
+ * running session behind one of them, and the read-marker summary and mark
+ * routes (#3075) in the exact shapes `@kontourai/station-contracts/
+ * read-markers` defines. Markers are stateful: marking a room read makes the
+ * next summary answer it read, as the server does.
+ */
+export async function installProjectConversationsFixture(
+  page: Page,
+  input: { slug: string; projectId: string },
+) {
+  const { slug, projectId } = input;
+  const task = (
+    index: number,
+    title: string,
+    updatedAt: string,
+    extra: Record<string, unknown> = {},
+  ) => ({
+    id: `task:${slug}-${index}`,
+    projectId,
+    title,
+    description: '',
+    priority: 'normal',
+    status: 'in_progress',
+    createdBy: 'person:maya',
+    createdAt: at(0, 13, 0),
+    updatedAt,
+    ...extra,
+  });
+  const runningSession = `station:${slug}-review`;
+  const tasks = [
+    task(1, 'Fix the login redirect on Safari', at(2, 15, 40), {
+      sessionId: runningSession,
+    }),
+    task(2, 'Draft the release notes for 2.4', at(2, 15, 10)),
+    task(3, 'Audit the pricing page copy', at(2, 14, 0), { status: 'review' }),
+    // No room was ever opened for this Task: the summary answers unavailable.
+    task(4, 'Rename the onboarding checklist', at(2, 13, 0)),
+  ];
+  /** Room latest versions, and what this person has seen of each. */
+  const rooms = new Map<string, { latest: number; seen: number }>([
+    [`project-room:${slug}:${ROOM_ID}`, { latest: 6, seen: 3 }],
+    [`project-room:${slug}:${DESIGN_ID}`, { latest: 2, seen: 2 }],
+    [`project-room:${slug}:${uuid(3, 'e1')}`, { latest: 9, seen: 8 }],
+    [`task-room:${tasks[0]!.id}`, { latest: 12, seen: 10 }],
+    [`task-room:${tasks[1]!.id}`, { latest: 4, seen: 4 }],
+    [`task-room:${tasks[2]!.id}`, { latest: 7, seen: 7 }],
+  ]);
+  type Target =
+    | { kind: 'project-room'; projectSlug: string; roomId: string }
+    | { kind: 'task-room'; taskId: string }
+    | { kind: 'agent-conversation'; conversationId: string };
+  const keyOf = (target: Target) =>
+    target.kind === 'project-room'
+      ? `project-room:${target.projectSlug}:${target.roomId}`
+      : target.kind === 'task-room'
+        ? `task-room:${target.taskId}`
+        : `agent-conversation:${target.conversationId}`;
+  const stateOf = (target: Target) => {
+    const room = rooms.get(keyOf(target));
+    if (!room) return { target, unavailable: true as const };
+    return {
+      target,
+      latestVersion: room.latest,
+      seenVersion: room.seen,
+      unread: room.latest > room.seen,
+      unreadCount: Math.min(room.latest - room.seen, 99),
+    };
+  };
+  const handlers: [
+    string | ((url: URL) => boolean),
+    (route: Route) => Promise<void> | void,
+  ][] = [
+    [
+      '**/api/read-markers/summary',
+      (route) => {
+        if (route.request().method() !== 'POST')
+          return rejectUnexpectedFixtureRequest(route);
+        const { targets } = route.request().postDataJSON() as {
+          targets: Target[];
+        };
+        return route.fulfill({
+          json: { success: true, data: { items: targets.map(stateOf) } },
+        });
+      },
+    ],
+    [
+      '**/api/read-markers/mark',
+      (route) => {
+        if (route.request().method() !== 'POST')
+          return rejectUnexpectedFixtureRequest(route);
+        const { target, version } = route.request().postDataJSON() as {
+          target: Target;
+          version: number;
+        };
+        const room = rooms.get(keyOf(target));
+        if (!room) return rejectUnexpectedFixtureRequest(route);
+        room.seen = Math.max(room.seen, Math.min(version, room.latest));
+        return route.fulfill({
+          json: { success: true, data: stateOf(target) },
+        });
+      },
+    ],
+    [
+      (url) =>
+        url.pathname === '/api/tasks' &&
+        url.searchParams.get('projectId') === slug,
+      (route) => {
+        if (route.request().method() !== 'GET')
+          return rejectUnexpectedFixtureRequest(route);
+        return route.fulfill({ json: { success: true, data: tasks } });
+      },
+    ],
+    [
+      '**/api/orchestration/sessions/read-model',
+      (route) =>
+        route.fulfill({
+          json: {
+            success: true,
+            data: [
+              {
+                provider: 'station',
+                threadId: runningSession,
+                projectSlug: slug,
+                status: 'busy',
+                controlMode: 'station-owned',
+                lifecycleState: 'running',
+                hasActiveTurn: true,
+                answerability: { answerable: true },
+                isLoaded: true,
+                isPersisted: true,
+                eventCount: 1,
+                createdAt: at(2, 15, 30),
+                updatedAt: at(2, 15, 40),
+              },
+            ],
+          },
+        }),
+    ],
+  ];
+  for (const [pattern, handler] of handlers) await page.route(pattern, handler);
+  return {
+    tasks,
+    async cleanup() {
       for (const [pattern, handler] of handlers)
         await page.unroute(pattern, handler);
     },
@@ -685,6 +959,34 @@ export async function installTaskRoomFixture(
     [
       `**/api/tasks/${encoded}/**`,
       (route) => rejectUnexpectedFixtureRequest(route),
+    ],
+    // The open room marks itself read through its checkpoint (#4794).
+    [
+      '**/api/read-markers/mark',
+      (route) => {
+        const body = route.request().postDataJSON() as {
+          target: { kind: string; taskId?: string };
+          version: number;
+        };
+        if (
+          route.request().method() !== 'POST' ||
+          body.target.kind !== 'task-room' ||
+          body.target.taskId !== taskId
+        )
+          return rejectUnexpectedFixtureRequest(route);
+        return route.fulfill({
+          json: {
+            success: true,
+            data: {
+              target: body.target,
+              latestVersion: body.version,
+              seenVersion: body.version,
+              unread: false,
+              unreadCount: 0,
+            },
+          },
+        });
+      },
     ],
     [
       '**/api/tasks',

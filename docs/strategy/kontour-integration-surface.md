@@ -41,8 +41,9 @@ When Station needs something a primitive doesn't expose, the move is an upstream
 ### Conduit 0.2.1
 
 Station consumes Conduit's public `createStrandsAdapter`,
-`createVoltAgentAdapter`, shared conformance probe/report functions, and exported
-types. The package also ships its JSON schema and reference evidence as package
+`createVoltAgentAdapter`, `createInProcessHostAdapter` (since 0.8, so the probe
+takes its inert install path), shared conformance probe/report functions, and
+exported types. The package also ships its JSON schema and reference evidence as package
 assets. Station binds those adapters to its existing `IAgentHooks` seam and
 generates host-bound evidence against the exact Strands and VoltAgent versions
 in `pnpm-lock.yaml`; Conduit's adapter-contract reference rows are not
@@ -151,6 +152,7 @@ Load-bearing facts:
 - Persistence: implement `ReviewSessionEventStore` (`load(session)` / `save(session, events)`) backed by Station project storage; reference impls exist (in-memory, localStorage, async-persistent).
 - Record types: `RawSource`, `Extraction`, `Candidate`/`CandidateSet`, `ReviewOutcome` (`verified|assumed|rejected|proposed`), `EscalationRecord`; bundle input `SurveyInput`.
 - Projection: `buildSurveyTrustBundle(input, {reviewProofs?})` → Surface `TrustBundle` — so a completed review session renders in the same trust panel as everything else.
+- Review status (Survey 9.0): every projected claim names the bundled `survey.review-outcome.v1` policy as its `verificationPolicyId`, and an accepting review is recorded as attestation evidence. A reviewed claim therefore derives `verified` under Surface 5 and 6, where 8.x bundles derived `proposed`. The claim's `verificationPolicyId` takes precedence over a consumer's `claimType` policy. Merging a Survey bundle into another must keep its `policies`. Station composes no Survey claims itself; the example workbench writes `buildSurveyTrustBundle` output unchanged.
 - **MCP-UI server (SEP-1865) — contract-verified against Station's host (2026-06-29; the first real Kontour MCP-UI server verified end-to-end):** Survey ships `survey-review-mcp` (stdio; `src/mcp/review-mcp.ts`, PR archive#87; `@kontourai/survey@1.1.0`, bin `survey-review-mcp <session path>`) — an SDK-free newline-delimited JSON-RPC 2.0 server (protocol `2025-06-18`, capability ext `io.modelcontextprotocol/ui`). It serves the review card as a **declared SEP-1865 resource** `ui://survey/review-card/queue` (`mimeType: text/html;profile=mcp-app`), **dual-dialect**: the declared `ui://` resource (read by Station's resolver via `resources/read`) AND the legacy mcp-ui.dev embedded resource in tool results. The UI pointer is emitted under **both** the FLAT canonical `_meta["ui/resourceUri"]` key (what `@modelcontextprotocol/ext-apps`'s `registerAppTool` emits) and the nested `_meta.ui.resourceUri` convenience key. **Gap found + fixed:** Station's `mcp-ui-resolver.extractResourceUri` read only the nested key, so a strictly-canonical Apps server (flat key only) resolved to `missing_resource`; the resolver now reads the flat canonical key first (regression-tested with Survey's exact shapes — flat-only, nested-only, and both). Render flows through the existing hardened sandbox (opaque origin + deny-all CSP) and, post-archive#139, the per-server render permission (allow + revoke). Curated registry entry: `survey-mcp` (`examples/registry/integrations/survey-mcp/`).
 
 ### @kontourai/fieldwork — hosted extraction and review application

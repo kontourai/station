@@ -130,7 +130,7 @@ describe('deriveWorkflowRuntimeStrip — runtime-state strip derivation', () => 
 
   test('awaiting-approval status is an attention state', () => {
     expect(deriveWorkflowRuntimeStrip({ status: 'awaiting-approval' })).toEqual(
-      { label: 'Needs approval', tone: 'attention', live: true },
+      { label: 'Waiting on you', tone: 'attention', live: true },
     );
   });
 
@@ -321,4 +321,33 @@ describe('renderInlineMarkdown — link scheme guard (#764)', () => {
     expect(nodes.some((n) => n.type === 'a')).toBe(false);
     expect(JSON.stringify(nodes)).toContain('click me');
   });
+});
+
+test('input waits outrank tool activity and answered waits do not claim user attention', () => {
+  expect(
+    deriveWorkflowRuntimeStrip({
+      pendingInputs: 2,
+      isProcessingStep: true,
+      status: 'running',
+    })?.label,
+  ).toBe('Needs input (2)');
+  expect(
+    deriveWorkflowRuntimeStrip({ pendingInputs: 2, pendingApprovals: 1 })
+      ?.label,
+  ).toBe('Needs approval (1)');
+  expect(
+    deriveWorkflowRuntimeStrip({
+      status: 'awaiting-approval',
+      waitingOnUser: false,
+    }),
+  ).toBeNull();
+});
+
+test('an answered request does not fall back to asking the user again', () => {
+  expect(
+    deriveWorkflowRuntimeStrip({
+      status: 'awaiting-approval',
+      waitingOnUser: false,
+    }),
+  ).toBeNull();
 });

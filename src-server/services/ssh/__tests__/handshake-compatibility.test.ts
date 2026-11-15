@@ -113,6 +113,7 @@ describe('public handshake capability flags (station#1095)', () => {
       eventStreamResume: true,
       sessionEventWindow: true,
       sessionInventoryInputRead: true,
+      readMarkers: true,
       scopedPairing: true,
       fleetInference: true,
       portableExecutionOffers: true,
@@ -123,6 +124,7 @@ describe('public handshake capability flags (station#1095)', () => {
       coordinatorSession: true,
       sessionPersonReads: true,
       troubleshootPrepare: true,
+      usageConnectionFilters: true,
       followUpAttachments: true,
     });
   });
@@ -159,6 +161,7 @@ describe('public handshake capability flags (station#1095)', () => {
       eventStreamResume: true,
       sessionEventWindow: true,
       sessionInventoryInputRead: true,
+      readMarkers: true,
       scopedPairing: true,
       fleetInference: true,
       portableExecutionOffers: true,
@@ -169,6 +172,7 @@ describe('public handshake capability flags (station#1095)', () => {
       coordinatorSession: true,
       sessionPersonReads: true,
       troubleshootPrepare: true,
+      usageConnectionFilters: true,
       followUpAttachments: true,
     });
     for (const buildIdentityField of [

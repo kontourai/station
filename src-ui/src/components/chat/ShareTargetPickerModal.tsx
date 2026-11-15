@@ -4,13 +4,24 @@ import {
 } from '@kontourai/station-sdk';
 import { useQueries } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import type { ShareTarget } from '../../hooks/useShareToConversation';
+import { dispatchNewChatIntent } from '../../lib/newChatIntent';
 import type { FileAttachment } from '../../types';
 import type { AttachmentInputCapabilities } from '../../utils/chatAttachments';
 import { readChatAttachmentFiles } from '../../utils/chatAttachments';
 import { relativeTimeFromIso } from '../../utils/relativeTime';
-import { Empty, SkeletonList } from '../state';
+import { Button } from '../Button';
+import { contextGlyph } from '../chat-start/ContextPickerOptions';
+import { ArrowLeftGlyph, NewChatGlyph } from '../icons/Glyph';
+import { LayoutIcon } from '../icons/LayoutIcon';
+import {
+  buildContextOptions,
+  filterContextOptions,
+  type NewChatModalContextOption,
+} from '../modals/new-chat-modal-utils';
+import { Empty, ErrorState, SkeletonList } from '../state';
 import './share-target-picker.css';
 
 interface ShareTargetAgent {
@@ -43,15 +54,82 @@ export interface ShareTargetPickerModalProps {
 }
 
 /**
- * Android-Messages-style "Share to…" picker. Lists recent conversations across
- * the available agents and, on selection, drops the shared image(s) into that
- * conversation's composer through the shared `readChatAttachmentFiles`
- * pipeline — the same MIME/size/capability validation as the file picker,
- * paste, and drag-and-drop.
+ * The New chat step's project list: the start composer's own context options
+ * (No project first), read only once this step is open.
+ */
+function ShareTargetProjectList({
+  search,
+  onSelect,
+}: {
+  search: string;
+  onSelect: (option: NewChatModalContextOption) => void;
+}) {
+  const projectsQuery = useScopedProjectsQuery();
+  const options = useMemo(
+    () =>
+      filterContextOptions(
+        buildContextOptions(projectsQuery.data ?? []),
+        search.trim(),
+      ),
+    [projectsQuery.data, search],
+  );
+  if (projectsQuery.isError && !projectsQuery.data)
+    return (
+      <ErrorState
+        variant="compact"
+        title="Couldn’t load projects"
+        action={
+          <Button onClick={() => void projectsQuery.refetch()}>Retry</Button>
+        }
+      />
+    );
+  if (projectsQuery.isLoading)
+    return <SkeletonList count={4} label="Loading projects" />;
+  if (options.length === 0)
+    return <Empty variant="compact" label="Nothing matches that search" />;
+  return (
+    <ul className="share-target-picker__items">
+      {options.map((option) => (
+        <li key={option.value}>
+          <button
+            type="button"
+            className="share-target-picker__item"
+            disabled={Boolean(option.unavailable)}
+            title={option.unavailable}
+            onClick={() => onSelect(option)}
+          >
+            <span className="share-target-picker__item-title">
+              <LayoutIcon
+                layout={{ name: option.label, icon: option.icon }}
+                fallback={contextGlyph(option.glyph)}
+                size={20}
+              />
+              {option.label}
+            </span>
+            {option.unavailable && (
+              <span className="share-target-picker__item-meta">
+                Can't start here
+              </span>
+            )}
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * Android-Messages-style "Share to…" picker, opened by `ShareIntakeController`
+ * when images are shared into the Android app (`image-share-intake`). It lists
+ * recent conversations across the available agents and, on selection, drops
+ * the shared image(s) into that conversation's composer through the shared
+ * `readChatAttachmentFiles` pipeline — the same MIME/size/capability
+ * validation as the file picker, paste, and drag-and-drop.
  *
- * The picker is inert in production: it is only ever opened by the
- * `share-intake`-gated intake entry point, which stays disabled until a
- * reviewed native receiver ships.
+ * "New chat" instead asks for a project (the start composer's own context
+ * options) and hands the images to the dock's New chat through
+ * {@link dispatchNewChatIntent}; the chat that starts stages them under its
+ * own engine, as it does for Home's start.
  */
 export function ShareTargetPickerModal({
   isOpen,
@@ -65,6 +143,7 @@ export function ShareTargetPickerModal({
   const [search, setSearch] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [mode, setMode] = useState<'conversation' | 'new-chat'>('conversation');
   const dialogRef = useRef<HTMLDivElement>(null);
 
   // Escape closes the dialog. Without it the only dismissal paths were a
@@ -120,6 +199,19 @@ export function ShareTargetPickerModal({
 
   if (!isOpen) return null;
 
+  const handleStartNewChat = (option: NewChatModalContextOption) => {
+    setError(null);
+    const accepted = dispatchNewChatIntent({
+      initialFiles: sharedFiles,
+      selection: { context: option.value },
+    });
+    if (!accepted) {
+      setError('Open Chat, then share again to start a new chat.');
+      return;
+    }
+    onClose();
+  };
+
   const handleSelect = async (conversation: RecentConversation) => {
     if (pendingId) return;
     setError(null);
@@ -151,10 +243,12 @@ export function ShareTargetPickerModal({
   };
 
   const imageCount = sharedFiles.length;
+  const shared =
+    imageCount === 1 ? 'the shared image' : `${imageCount} shared images`;
   const subtitle =
-    imageCount === 1
-      ? 'Choose a conversation for the shared image'
-      : `Choose a conversation for ${imageCount} shared images`;
+    mode === 'new-chat'
+      ? `Choose a project for a new chat with ${shared}`
+      : `Choose a conversation for ${shared}`;
 
   return (
     // `presentation` on the backdrop: it is a click-catcher, not a control.
@@ -185,32 +279,75 @@ export function ShareTargetPickerModal({
           <input
             type="search"
             className="share-target-picker__search"
-            placeholder="Search conversations…"
+            placeholder={
+              mode === 'new-chat' ? 'Search projects…' : 'Search chats…'
+            }
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             // biome-ignore lint/a11y/noAutofocus: search-first picker focuses its filter on open.
             autoFocus
-            aria-label="Search conversations"
+            aria-label={
+              mode === 'new-chat' ? 'Search projects' : 'Search chats'
+            }
           />
           {error && (
             <div className="share-target-picker__error" role="alert">
               {error}
             </div>
           )}
+          {mode === 'conversation' ? (
+            <button
+              type="button"
+              className="share-target-picker__item share-target-picker__new-chat"
+              disabled={pendingId !== null}
+              onClick={() => {
+                setMode('new-chat');
+                setSearch('');
+                setError(null);
+              }}
+            >
+              <span className="share-target-picker__item-title">
+                <NewChatGlyph />
+                New chat
+              </span>
+              <span className="share-target-picker__item-meta">
+                Start a chat in a project
+              </span>
+            </button>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="share-target-picker__back"
+              onClick={() => {
+                setMode('conversation');
+                setSearch('');
+                setError(null);
+              }}
+            >
+              <ArrowLeftGlyph />
+              Conversations
+            </Button>
+          )}
           <div className="share-target-picker__list">
-            {isLoading ? (
-              <SkeletonList count={5} label="Loading conversations" />
+            {mode === 'new-chat' ? (
+              <ShareTargetProjectList
+                search={search}
+                onSelect={handleStartNewChat}
+              />
+            ) : isLoading ? (
+              <SkeletonList count={5} label="Loading chats" />
             ) : filtered.length === 0 ? (
               <Empty
                 variant="compact"
                 label={
                   conversations.length === 0
-                    ? 'No conversations yet'
-                    : 'No matching conversations'
+                    ? 'No chats yet'
+                    : 'No matching chats'
                 }
                 description={
                   conversations.length === 0
-                    ? 'Start a conversation to share images into it.'
+                    ? 'Start a chat to share images into it.'
                     : undefined
                 }
               />

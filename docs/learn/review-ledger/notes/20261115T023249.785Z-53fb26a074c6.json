@@ -1,0 +1,7 @@
+{
+  "revision": "eed803222d9aa398bbe40ce4ffc7c40bd6f3fd35",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"The pin now expects the npm row in the cohort ledger step alongside Android and desktop, with the iOS note only on native rows; release claims here are unaffected.","inputs":["scripts/__tests__/native-release-promotion.test.ts"]}
+  ]
+}

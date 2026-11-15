@@ -54,6 +54,10 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // from a denied read, so clients gate the drill-down on this flag. Hosted
   // deployments withdraw it (#4177): see servesSessionInventoryInputRead.
   sessionInventoryInputRead: true,
+  // Server-kept read state (#3075): src-server/routes/read-markers/
+  // read-marker-routes.ts. Served in both modes; hosted reads are keyed by
+  // the tenant, as the conversation inventory's own acknowledgements are.
+  readMarkers: true,
   // Scoped pairing (archive#1098): pairing grants/device sessions carry an
   // OAuth-style scope string, enforced by one route -> required-scope table.
   // src-server/security/pairing-route-scopes.ts,
@@ -131,6 +135,11 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // (src-server/routes/system/diagnostics.ts) and the station-control
   // troubleshoot tools. Served in every deployment mode.
   troubleshootPrepare: true,
+  // #4710: GET /api/analytics/usage-rollup (src-server/routes/operations/
+  // analytics.ts) filters by `connectionId`/`modelConnectionId` and accepts
+  // every declared usage provider. An older host ignores the connection filters and would
+  // answer unfiltered totals, so clients send them only on this flag.
+  usageConnectionFilters: true,
   // A busy `/chat` send with files is held in the conversation inbox
   // (src-server/routes/orchestration/orchestration.ts `inboxFollowUpOf`),
   // its bytes in the attachment blob store. Hosted deployments withdraw it:

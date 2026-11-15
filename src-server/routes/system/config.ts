@@ -294,9 +294,11 @@ export function createConfigRoutes(
   logger: Logger,
   eventBus?: EventBus,
   applyConfigurationMutation?: AgentConfigurationMutationRunner,
-  // Runtime-derived origin of the dedicated MCP-UI frame server, if running.
-  // Injected into GET /app only (never persisted via the update schema).
-  getMcpUiFrameOrigin?: () => string | undefined,
+  // Runtime-derived origin of the dedicated MCP-UI frame server, if running
+  // AND reachable by this request's client (it listens on the host's
+  // loopback only). Injected into GET /app only (never persisted via the
+  // update schema).
+  getMcpUiFrameOrigin?: (c: Context) => string | undefined,
   // archive#1194 (epic archive#1191, slice B): re-applies the built-in default
   // agent's engine binding via the existing bootstrap function whenever an
   // update touches `builtinAgentEngineConnectionId` — Voice is deliberately
@@ -456,7 +458,7 @@ export function createConfigRoutes(
       const config = withManagedApprovalCeiling(
         overlayManagedAppSettings(stored, managed),
       );
-      const frameOrigin = getMcpUiFrameOrigin?.();
+      const frameOrigin = getMcpUiFrameOrigin?.(c);
       const pluginFrameOrigin = getPluginFrameOrigin?.();
       // #1582 D9: what a terminal would start here with nothing configured,
       // derived from the resolver a spawn actually walks rather than a

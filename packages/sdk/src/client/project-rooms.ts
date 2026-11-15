@@ -2,9 +2,16 @@ import {
   PROJECT_ROOM_LIMITS as LIMITS,
   type ProjectRoomActor,
   type ProjectRoomAppendInput,
+  type ProjectRoomChannel,
+  type ProjectRoomChannelCreateInput,
+  type ProjectRoomChannelUpdateInput,
   type ProjectRoomNoteInput,
   type ProjectRoomView,
   parseProjectRoomAppendInput,
+  parseProjectRoomChannel,
+  parseProjectRoomChannelCreateInput,
+  parseProjectRoomChannelList,
+  parseProjectRoomChannelUpdateInput,
   parseProjectRoomNoteInput,
 } from '@kontourai/station-contracts/project-room';
 import { z } from 'zod';
@@ -102,10 +109,18 @@ function parse<T>(schema: z.ZodType<T>, value: unknown): T {
     );
   return result.data;
 }
-function path(slug: string, suffix = '') {
+function projectPath(slug: string) {
   if (!slug || slug.length > 512)
     throw new ProjectRoomProtocolError('Project identity is invalid.');
-  return `/api/projects/${encodeURIComponent(slug)}/room${suffix}`;
+  return `/api/projects/${encodeURIComponent(slug)}`;
+}
+/**
+ * A room's address: the Project's default channel (`/room`) without
+ * `channelId`, otherwise that channel (`/channels/:channelId`).
+ */
+function path(slug: string, suffix = '', channelId?: string) {
+  if (channelId === undefined) return `${projectPath(slug)}/room${suffix}`;
+  return `${projectPath(slug)}/channels/${parse(uuid, channelId)}${suffix}`;
 }
 async function envelope(response: Response): Promise<unknown> {
   // Bound the bytes before JSON parsing, including malformed success responses.
@@ -173,12 +188,13 @@ export async function discoverProjectRoom(
   slug: string,
   projectId: string,
   signal?: AbortSignal,
+  channelId?: string,
 ): Promise<ProjectRoomBrowserView> {
   const value = parse(
     view,
     await envelope(
       await getJson(
-        `${requestScope.apiBase}${path(slug)}`,
+        `${requestScope.apiBase}${path(slug, '', channelId)}`,
         options(requestScope, signal),
       ),
     ),
@@ -187,6 +203,7 @@ export async function discoverProjectRoom(
     value.scope.localProjectId !== projectId ||
     value.scope.localProjectSlug !== slug ||
     value.checkpoint.roomId !== value.roomId ||
+    (channelId !== undefined && value.roomId !== channelId) ||
     (value.note && value.note.roomId !== value.roomId)
   )
     throw new ProjectRoomProtocolError('Project room identity changed.');
@@ -223,6 +240,7 @@ export async function fetchProjectRoomHistory(
   after = 0,
   limit = 25,
   signal?: AbortSignal,
+  channelId?: string,
 ) {
   parse(seq, after);
   parse(z.number().int().min(1).max(LIMITS.maxPageSize), limit);
@@ -230,7 +248,7 @@ export async function fetchProjectRoomHistory(
     history,
     await envelope(
       await getJson(
-        `${requestScope.apiBase}${path(slug, `/messages?after=${after}&limit=${limit}`)}`,
+        `${requestScope.apiBase}${path(slug, `/messages?after=${after}&limit=${limit}`, channelId)}`,
         options(requestScope, signal),
       ),
     ),
@@ -262,6 +280,7 @@ export async function sendProjectRoomMessage(
   requestScope: ApiRequestScope,
   slug: string,
   input: ProjectRoomMessageIntent,
+  channelId?: string,
 ) {
   const { expectedRoomId, expectedProjectId, expectedActorId, ...proposal } =
     input;
@@ -271,7 +290,7 @@ export async function sendProjectRoomMessage(
     message,
     await envelope(
       await mutateJson(
-        `${requestScope.apiBase}${path(slug, '/messages')}`,
+        `${requestScope.apiBase}${path(slug, '/messages', channelId)}`,
         'POST',
         options(requestScope),
         input,
@@ -294,6 +313,7 @@ export async function saveProjectRoomNote(
   requestScope: ApiRequestScope,
   slug: string,
   input: ProjectRoomNoteIntent,
+  channelId?: string,
 ) {
   const { expectedRoomId, expectedProjectId, expectedActorId, ...proposal } =
     input;
@@ -303,7 +323,7 @@ export async function saveProjectRoomNote(
     note,
     await envelope(
       await mutateJson(
-        `${requestScope.apiBase}${path(slug, '/note')}`,
+        `${requestScope.apiBase}${path(slug, '/note', channelId)}`,
         'PUT',
         options(requestScope),
         input,
@@ -327,6 +347,7 @@ export async function setProjectRoomPresence(
   requestScope: ApiRequestScope,
   slug: string,
   input: ProjectRoomGuards & { clientId: string; state: 'join' | 'leave' },
+  channelId?: string,
 ) {
   const { clientId, state, ...identity } = input;
   guards(identity);
@@ -336,7 +357,7 @@ export async function setProjectRoomPresence(
     presence,
     await envelope(
       await mutateJson(
-        `${requestScope.apiBase}${path(slug, '/presence')}`,
+        `${requestScope.apiBase}${path(slug, '/presence', channelId)}`,
         'POST',
         options(requestScope),
         input,
@@ -357,45 +378,50 @@ export function subscribeProjectRoom(
     onError?(error: unknown): void;
     onTerminal?(error: unknown): void;
   },
+  channelId?: string,
 ) {
-  return fetchSSE(`${requestScope.apiBase}${path(slug, '/events')}`, {
-    requestScope,
-    onError: callbacks.onError,
-    onTerminal: callbacks.onTerminal,
-    onMessage(frame) {
-      if (frame.data.length > LIMITS.pageBytes) {
-        callbacks.onError?.(
-          new ProjectRoomProtocolError('Project room event is too large.'),
-        );
-        return false;
-      }
-      try {
-        const value: unknown = JSON.parse(frame.data);
-        if (frame.event === 'changed') {
-          const event = parse(checkpoint, value);
-          assertRoom(roomId, event);
-          callbacks.onEvent({ kind: 'changed', ...event });
-        } else if (frame.event === 'presence')
-          callbacks.onEvent({
-            kind: 'presence',
-            ...parse(z.strictObject({ participants: presence }), value),
-          });
-        else if (frame.event === 'revoked')
-          callbacks.onEvent({
-            kind: 'revoked',
-            ...parse(
-              z.strictObject({ reason: z.literal('access_changed') }),
-              value,
-            ),
-          });
-        else throw new ProjectRoomProtocolError('Unknown Project room event.');
-        return true;
-      } catch (error) {
-        callbacks.onError?.(error);
-        return false;
-      }
+  return fetchSSE(
+    `${requestScope.apiBase}${path(slug, '/events', channelId)}`,
+    {
+      requestScope,
+      onError: callbacks.onError,
+      onTerminal: callbacks.onTerminal,
+      onMessage(frame) {
+        if (frame.data.length > LIMITS.pageBytes) {
+          callbacks.onError?.(
+            new ProjectRoomProtocolError('Project room event is too large.'),
+          );
+          return false;
+        }
+        try {
+          const value: unknown = JSON.parse(frame.data);
+          if (frame.event === 'changed') {
+            const event = parse(checkpoint, value);
+            assertRoom(roomId, event);
+            callbacks.onEvent({ kind: 'changed', ...event });
+          } else if (frame.event === 'presence')
+            callbacks.onEvent({
+              kind: 'presence',
+              ...parse(z.strictObject({ participants: presence }), value),
+            });
+          else if (frame.event === 'revoked')
+            callbacks.onEvent({
+              kind: 'revoked',
+              ...parse(
+                z.strictObject({ reason: z.literal('access_changed') }),
+                value,
+              ),
+            });
+          else
+            throw new ProjectRoomProtocolError('Unknown Project room event.');
+          return true;
+        } catch (error) {
+          callbacks.onError?.(error);
+          return false;
+        }
+      },
     },
-  });
+  );
 }
 /** Validate a retained proposal before offering an explicit retry after reload. */
 export function parseProjectRoomMessageIntent(
@@ -412,4 +438,102 @@ export function parseProjectRoomMessageIntent(
     }),
     value,
   );
+}
+
+export type { ProjectRoomChannel } from '@kontourai/station-contracts/project-room';
+/** Guards a channel operation: the Project and person the client saw. */
+export type ProjectRoomChannelGuards = Omit<
+  ProjectRoomGuards,
+  'expectedRoomId'
+>;
+function channelGuards(input: ProjectRoomChannelGuards) {
+  parse(z.strictObject({ expectedProjectId: id, expectedActorId: id }), input);
+}
+function channel(value: unknown): ProjectRoomChannel {
+  try {
+    return parseProjectRoomChannel(value);
+  } catch {
+    throw new ProjectRoomProtocolError(
+      'Project room channel response is incompatible.',
+    );
+  }
+}
+/**
+ * The Project's channels, default first. A host without channels answers 404
+ * for this path; callers treat that as "this host has only the default room".
+ */
+export async function listProjectRoomChannels(
+  requestScope: ApiRequestScope,
+  slug: string,
+  signal?: AbortSignal,
+): Promise<ProjectRoomChannel[]> {
+  const value = await envelope(
+    await getJson(
+      `${requestScope.apiBase}${projectPath(slug)}/channels`,
+      options(requestScope, signal),
+    ),
+  );
+  try {
+    return parseProjectRoomChannelList(value);
+  } catch {
+    throw new ProjectRoomProtocolError(
+      'Project room channel list is incompatible.',
+    );
+  }
+}
+export async function createProjectRoomChannel(
+  requestScope: ApiRequestScope,
+  slug: string,
+  input: ProjectRoomChannelCreateInput & ProjectRoomChannelGuards,
+): Promise<ProjectRoomChannel> {
+  const { expectedProjectId, expectedActorId, ...proposal } = input;
+  channelGuards({ expectedProjectId, expectedActorId });
+  parseProjectRoomChannelCreateInput(proposal);
+  const value = channel(
+    await envelope(
+      await mutateJson(
+        `${requestScope.apiBase}${projectPath(slug)}/channels`,
+        'POST',
+        options(requestScope),
+        input,
+      ),
+    ),
+  );
+  if (value.name !== proposal.name || value.topic !== proposal.topic)
+    throw new ProjectRoomProtocolError(
+      'Project room channel acknowledgement does not match the proposal.',
+    );
+  return value;
+}
+export async function updateProjectRoomChannel(
+  requestScope: ApiRequestScope,
+  slug: string,
+  channelId: string,
+  input: ProjectRoomChannelUpdateInput & ProjectRoomChannelGuards,
+): Promise<ProjectRoomChannel> {
+  const { expectedProjectId, expectedActorId, ...proposal } = input;
+  channelGuards({ expectedProjectId, expectedActorId });
+  parseProjectRoomChannelUpdateInput(proposal);
+  const value = channel(
+    await envelope(
+      await mutateJson(
+        `${requestScope.apiBase}${path(slug, '', channelId)}`,
+        'PATCH',
+        options(requestScope),
+        input,
+      ),
+    ),
+  );
+  if (
+    value.channelId !== channelId ||
+    (proposal.name !== undefined && value.name !== proposal.name) ||
+    (proposal.topic !== undefined &&
+      value.topic !== (proposal.topic ?? undefined)) ||
+    (proposal.archived !== undefined &&
+      (value.archivedAt !== undefined) !== proposal.archived)
+  )
+    throw new ProjectRoomProtocolError(
+      'Project room channel acknowledgement does not match the proposal.',
+    );
+  return value;
 }

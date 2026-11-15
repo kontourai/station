@@ -306,6 +306,14 @@ endpoints `source: 'advertised'` and pruning those it stops reporting except
 the one in use; `addRoute` and `removeRoute` change the routes a user added.
 Relay, SSH-tunnel and native shared profiles keep their single route
 ([Station routes](../design/station-routes.md)).
+Each completed probe run, success or failure, also stamps `checkedAt`, so a
+surface can say how old the status it shows is; Station's switcher prints it as
+"checked 2m ago" beside the active Station. A managed-loopback server is
+trusted to its supervisor without a probe and reports `checkedAt: null`.
+`completedProbes` counts completed runs for both kinds (an aborted run does not
+count), and `onHealthyProbe` is called once per run that completes healthy
+after the consumer mounted; Station's plugin registry uses it to re-read a
+plugin inventory it could not read.
 Station's separate chat outbound queue has its own admission and replay rules;
 this is not a promise that the whole application has no queue.
 
@@ -990,6 +998,7 @@ interface UseConnectionStatusOptions {
     brokerRoute?: NonNullable<SavedConnection['brokerRoute']>,
   ) => Promise<ConnectionHealthCheckResult>;
   pollInterval?: number; // ms, default: 10_000
+  onHealthyProbe?: () => void; // once per run that completes healthy, after mount
 }
 
 interface ConnectionStatusResult {
@@ -1006,6 +1015,10 @@ interface ConnectionStatusResult {
                                // the automatic retry ladder is paused until recheck(),
                                // a credential change, or the browser regaining network
   routes: ReadonlyArray<ConnectionRouteResult>; // per-route outcome of the last check
+  checkedAt: number | null;   // epoch ms the last probe run finished, whatever its outcome;
+                               // null until one has; unchanged by an aborted run, and null
+                               // for a supervised managed-loopback server, which is not probed
+  completedProbes: number;    // completed runs of either endpoint kind; aborted runs excluded
   recheck: () => void;        // manually trigger a check
 }
 ```

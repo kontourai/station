@@ -326,6 +326,38 @@ describe('Project Room explicit agent participation', () => {
       ).toBe('published');
     },
   );
+  it('keeps an Agent request in its channel and refuses one in an archived channel (#4792)', async () => {
+    const f = fixture();
+    const store = f.room.store;
+    const design = store.createChannel(
+      f.authority.scope,
+      { name: 'design' },
+      f.authority.assertCurrent,
+    );
+    const inDesign = { ...f.authority, channelId: design.channelId };
+    const handle = await f.module.request(inDesign, f.input);
+    expect(handle.roomId).toBe(design.channelId);
+    expect(f.module.inspect(inDesign, handle.requestId).requestId).toBe(
+      handle.requestId,
+    );
+    // The default room cannot see the channel's request.
+    expect(() => f.module.inspect(f.authority, handle.requestId)).toThrow(
+      'not_found',
+    );
+    store.updateChannel(
+      f.authority.scope,
+      design.channelId,
+      { archived: true },
+      f.authority.assertCurrent,
+    );
+    const launches = f.launches;
+    const preparations = f.preparations;
+    await expect(
+      f.module.request(inDesign, { ...f.input, intentId: randomUUID() }),
+    ).rejects.toThrow('archived');
+    expect(f.launches).toBe(launches);
+    expect(f.preparations).toBe(preparations);
+  });
   it('includes a fitting note and history unchanged', async () => {
     const f = fixture();
     const source = f.room.store.append(

@@ -250,6 +250,8 @@ it('reads published task content through the real member SDK without starting op
         { success: false, error: 'Room unavailable' },
         { status: 404 },
       );
+    // A channel-aware host lists no channels before the room opens (#4792).
+    else if (path === '/api/projects/shared/channels') data = { channels: [] };
     else if (path === '/api/projects/shared/shared-work') data = [sharedTask];
     else if (path === '/api/projects/shared/shared-work/task-a/publication')
       data = { kind: 'shared', publication: sharedTask };
@@ -305,6 +307,7 @@ it('reads published task content through the real member SDK without starting op
       '/api/projects',
       '/api/projects/shared',
       '/api/projects/shared/room',
+      '/api/projects/shared/channels',
       '/api/projects/shared/shared-work',
       '/api/projects/shared/shared-work/task-a/publication',
       '/api/projects/shared/shared-work/task-a/document',

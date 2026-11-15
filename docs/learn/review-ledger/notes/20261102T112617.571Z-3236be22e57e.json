@@ -1,7 +1,0 @@
-{
-  "revision": "b731d4459aa64b3416d01545ae94a044f44c78f6",
-
-  "notes": [
-    {"path":"docs/guides/integrating-station.md","note":"Changed SDK reference text is the TerminalView session contract and touchKeys row only; this guide's SDK routing and integration claims do not describe either and remain accurate.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]}
-  ]
-}

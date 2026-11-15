@@ -34,6 +34,7 @@ import {
   recoverPlugin,
 } from '../client/plugins';
 import { createProject, listProjects } from '../client/projects';
+import { fetchReadMarkerSummary, markRead } from '../client/read-markers';
 import {
   createJob,
   disableJob,
@@ -818,6 +819,18 @@ describe('client/** fetcher failure paths (#167 iteration-2)', () => {
       () => acknowledgeConversation(API, 'c1', '2026-09-01T00:00:00.000Z'),
     ],
     [
+      'read-markers: markRead',
+      () =>
+        markRead(API, { kind: 'agent-conversation', conversationId: 'c1' }, 1),
+    ],
+    [
+      'read-markers: fetchReadMarkerSummary',
+      () =>
+        fetchReadMarkerSummary(API, [
+          { kind: 'agent-conversation', conversationId: 'c1' },
+        ]),
+    ],
+    [
       'orchestration: getOrchestrationSession',
       () => getOrchestrationSession(API, 't1'),
     ],
@@ -989,6 +1002,18 @@ describe('client/** fetcher failure paths (#167 iteration-2)', () => {
     [
       'conversations: acknowledgeConversation',
       () => acknowledgeConversation(API, 'c1', '2026-09-01T00:00:00.000Z'),
+    ],
+    [
+      'read-markers: markRead',
+      () =>
+        markRead(API, { kind: 'agent-conversation', conversationId: 'c1' }, 1),
+    ],
+    [
+      'read-markers: fetchReadMarkerSummary',
+      () =>
+        fetchReadMarkerSummary(API, [
+          { kind: 'agent-conversation', conversationId: 'c1' },
+        ]),
     ],
   ] as const)('%s: a non-JSON 502 keeps its status', async (_name, call) => {
     vi.mocked(fetch).mockResolvedValue(nonJson(502));

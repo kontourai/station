@@ -362,9 +362,19 @@ describe('what the chat says about subagents it cannot show', () => {
   });
 
   test('with no server word, the matrix speaks; an engine it declares is not silent', () => {
-    expect(subagentNoticeFor({ provider: 'acp', observed: [] })?.label).toBe(
-      'This engine does not report subagents',
-    );
+    // `station` has no subagents at all; ACP reports only on some
+    // connections, so with nothing from the server it may not be silent.
+    expect(
+      subagentNoticeFor({ provider: 'station', observed: [] })?.label,
+    ).toBe('This engine does not report subagents');
+    expect(subagentNoticeFor({ provider: 'acp', observed: [] })).toEqual({
+      label: 'Subagents are not shown for this engine',
+      description:
+        'Only some ACP engines report subagents, and this session has not reported since Station started.',
+    });
+    expect(
+      subagentNoticeFor({ provider: 'acp', observed: [{ kind: 'reported' }] }),
+    ).toBe(undefined);
     expect(subagentNoticeFor({ provider: 'claude', observed: [] })).toBe(
       undefined,
     );

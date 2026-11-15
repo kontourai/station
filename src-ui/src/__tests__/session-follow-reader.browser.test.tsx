@@ -27,7 +27,7 @@ const sessionFixture = (
       const [height, setHeight] = useState(${initialHeight});
       const [identity, setIdentity] = useState('session'), [ready, setReady] = useState(true);
       const session:ChatSession={id:identity,agentSlug:agentId('reader'),agentName:'Reader',title:'Record',source:'manual',
-        messages:ready?[{id:'height-row',role:'assistant',content:'x'.repeat(height)}]:[],input:'',attachments:[],queuedMessages:[],inputHistory:[],status:'idle',error:null,createdAt:0,updatedAt:0,hasUnread:false};
+        messages:ready?[{id:'height-row',role:'assistant',content:'x'.repeat(height)}]:[],input:'',attachments:[],queuedMessages:[],inputHistory:[],status:'idle',error:null,createdAt:0,updatedAt:0};
       return <QueryClientProvider client={new QueryClient()}><ConversationConnectionProvider value={{apiBase:'http://station.test',record:{readOnly:true}}}>
         <button onClick={()=>setHeight(h=>h+100)}>Grow</button><button onClick={()=>{setIdentity('next');setReady(false);setHeight(200)}}>Switch session</button><button onClick={()=>{setReady(true);setHeight(2400)}}>Load</button>
         <div id="scroll" tabIndex={0} ref={scrollRef} style={{height:300,overflow:'auto'}}>

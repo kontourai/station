@@ -1,7 +1,0 @@
-{
-  "revision": "3d6325c2787fcbbc582caeaba3ce0c1b18955bfe",
-
-  "notes": [
-    {"path":"packages/contracts/README.md","note":"#4515 integration: packages/contracts adds the registry-free ./managed-policy-status subpath (re-exported by ./managed-policy) and internal managed-policy-codes and record-guard modules. Checked that this doc names no subpath list or helper ownership the addition contradicts; the subpath is documented in docs/reference/contracts.md.","inputs":["packages/contracts/README.md","packages/contracts/package.json#/exports"]}
-  ]
-}

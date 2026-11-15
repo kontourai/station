@@ -100,6 +100,12 @@ export const SERVER_EVENTS = {
    * Project read authority instead.
    */
   PLUGIN_DRAFTS_REBUILT: 'plugin-drafts:rebuilt',
+  /**
+   * #3075: a person's read marker moved forward. The bus payload carries the
+   * person key so the orchestration stream can deliver it to that person's
+   * own clients only; the wire frame carries nothing ("re-read").
+   */
+  READ_MARKERS_CHANGED: 'read-markers:changed',
   PLUGINS_INSTALLED: 'plugins:installed',
   PLUGINS_REMOVED: 'plugins:removed',
   PLUGINS_UPDATED: 'plugins:updated',
@@ -228,6 +234,7 @@ export const SERVER_EVENT_BROADCAST_SAFETY: {
   // Names a Project by slug. Relayed only to subscribers who may read that
   // Project, through the events route's dedicated plugin-draft gate.
   [SERVER_EVENTS.PLUGIN_DRAFTS_REBUILT]: 'scoped',
+  [SERVER_EVENTS.READ_MARKERS_CHANGED]: 'scoped',
   [SERVER_EVENTS.PLUGINS_INSTALLED]: 'scoped',
   [SERVER_EVENTS.PLUGINS_REMOVED]: 'scoped',
   [SERVER_EVENTS.PLUGINS_UPDATED]: 'scoped',
@@ -491,6 +498,25 @@ export interface TurnStartedEvent extends CanonicalRuntimeEventBase {
    * `unknown`.
    */
   dispatchOrigin?: TurnDispatchOrigin;
+  /**
+   * #4827: the turn's `prompt` is not text the sender typed. `mcp-prompt`:
+   * the server-verified expansion of an MCP prompt (a slash command the
+   * person chose), which an MCP server authored. Stamped by Station from the
+   * verified prompt origin it admitted the send with; an adapter-supplied
+   * value is dropped, like `dispatchOrigin`. Absent means the prompt is the
+   * sender's own input.
+   */
+  promptSource?: 'mcp-prompt';
+  /**
+   * #4827: the prompt is text a person typed into one of Station's own
+   * clients (the chat composer's send or steer, or that send queued on the
+   * conversation inbox). Stamped by Station only, at those entry points; an
+   * adapter-supplied value is dropped, like `dispatchOrigin`. Absent means
+   * not known to be the person's: a peer Station, a delegated or background
+   * send, a handoff, a bridge, voice, a webhook, a Task, an Automation, an
+   * agent's tool call, the CLI, and every turn recorded before this field.
+   */
+  authoredBy?: 'person';
   /** Distinguishes input appended inside an already-running turn. */
   inputKind?: 'steer';
   /**
@@ -1097,10 +1123,106 @@ export interface TokenUsageUpdatedEvent extends CanonicalRuntimeEventBase {
    * must declare its scope there.
    *
    * A currency other than USD has no home here: an adapter whose engine
-   * reports, say, EUR must not convert (Station has no rate policy) and so
-   * reports no cost at all — see the ACP `usage_update` mapping.
+   * reports, say, EUR must not convert (Station has no rate policy). Such a
+   * cost, and any cost whose scope is the engine's own (ACP `usage_update`
+   * reports a cumulative session cost in any currency), rides
+   * `reportedCost` instead.
    */
   reportedCostUsd?: number;
+  /**
+   * A cost the engine reported in its own unit (an ISO currency, USD
+   * included, or a vendor unit such as Kiro's `credit`), carried as reported
+   * and never converted or added to `reportedCostUsd`. `scope` says what it covers: `turn` is this turn alone
+   * (the latest report for a turn replaces earlier ones); `session` is the
+   * engine session's running total. Absent means none was reported, which
+   * is different from a reported zero.
+   */
+  reportedCost?: EngineReportedCost;
+  /**
+   * The engine's own reading of how full its context window is, 0-100. An
+   * engine that reports this rarely reports the token pair, so it is kept
+   * apart from `contextTokens`/`contextWindowTokens` and never derived from
+   * them.
+   */
+  contextPercent?: number;
+}
+
+export interface EngineReportedCost {
+  amount: number;
+  /** As the engine spelled it: `USD`, `EUR`, `credit`. */
+  unit: string;
+  scope: 'turn' | 'session';
+}
+
+/**
+ * The engine moved work onto a different model than the one asked for (a
+ * refusal or availability fallback). Reported after the fact; Station does
+ * not second-guess it. `scope: 'session'` means the engine pinned `toModel`
+ * as the session's model, so the current model changes; `turn` means the next
+ * turn starts on the requested model again.
+ */
+export interface ModelReroutedEvent extends CanonicalRuntimeEventBase {
+  method: 'model.rerouted';
+  fromModel: string;
+  /** Absent when the engine did not say where it went. */
+  toModel?: string;
+  trigger: 'refusal' | 'availability' | 'other';
+  scope: 'turn' | 'session';
+  /** The child work (engine subagent) the reroute happened in, if any. */
+  childWorkId?: string;
+}
+
+/**
+ * `configured`: the engine's own configuration enables the server, and the
+ * engine reports no connection state for it (Muse Code, whose stable
+ * protocol has no MCP status). Never a claim that it started or connected.
+ */
+export type EngineMcpServerState =
+  | 'starting'
+  | 'ready'
+  | 'failed'
+  | 'needs-auth'
+  | 'disabled'
+  | 'configured';
+
+/** One MCP server as the engine reports it. Engine-attributed, never Station's own view. */
+/** The longest MCP server name an engine status names; a longer one is dropped. */
+export const ENGINE_MCP_SERVER_NAME_MAX_CHARS = 128;
+/** The most MCP servers one status report carries; the rest are dropped. */
+export const ENGINE_MCP_STATUS_MAX_SERVERS = 64;
+/** The longest engine error text one server carries; adapters shorten longer text. */
+export const ENGINE_MCP_ERROR_MAX_CHARS = 512;
+
+export interface EngineMcpServerStatus {
+  /** At most {@link ENGINE_MCP_SERVER_NAME_MAX_CHARS} characters. */
+  name: string;
+  state: EngineMcpServerState;
+  toolCount?: number;
+  /** Engine-supplied text, bounded by the adapter. */
+  error?: string;
+  /**
+   * A sign-in link the engine reported. Passive: the engine may no longer be
+   * listening for its callback, so a sign-in asks the engine to start one.
+   */
+  authUrl?: string;
+  /** `session`: Station passed this server; `engine-config`: the engine's own. */
+  scope: 'session' | 'engine-config';
+}
+
+/**
+ * The engine's MCP servers. `complete: true` lists every server and replaces
+ * the previous list; `complete: false` updates only the servers named.
+ */
+export interface EngineMcpStatusEvent extends CanonicalRuntimeEventBase {
+  method: 'engine-mcp.status';
+  servers: EngineMcpServerStatus[];
+  complete: boolean;
+  /**
+   * `true` when this session's engine can reconnect one of these servers on
+   * request (and start its sign-in); absent otherwise. Set by the adapter
+   * from what the engine declared, never guessed from the engine's name.
+   */
+  reconnect?: true;
 }
 
 /**
@@ -1427,7 +1549,9 @@ export type CanonicalRuntimeEvent =
   | PlanUpdatedEvent
   | ExtensionEvent
   | ChildWorkUpdatedEvent
-  | ConversationForkedEvent;
+  | ConversationForkedEvent
+  | ModelReroutedEvent
+  | EngineMcpStatusEvent;
 
 /** Built-in adapter writers must classify failures; legacy stored readers remain compatible. */
 export type ProviderRuntimeErrorEvent = RuntimeErrorEvent & ProviderFailure;

@@ -10,6 +10,10 @@ import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display'
 import { isPersonalTokenScope } from '@kontourai/station-contracts/personal-tokens';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { resolveProjectCheckoutStaleThresholds } from '@kontourai/station-contracts/project-checkout-freshness';
+import {
+  READ_MARKER_MARK_PATH,
+  READ_MARKER_SUMMARY_PATH,
+} from '@kontourai/station-contracts/read-markers';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import {
   parseTaskGateEvaluationReference,
@@ -70,7 +74,10 @@ import {
 } from '../../routes/system/native-relay-enrollment-routes.js';
 import { createNativeRelaySurfaceRoutes } from '../../routes/system/native-relay-surface-routes.js';
 import { createRelayEnrollmentRoutes } from '../../routes/system/relay-enrollment-routes.js';
-import { createRelayManagementRoutes } from '../../routes/system/relay-management-routes.js';
+import {
+  createRelayManagementRoutes,
+  createUnconfiguredRelayManagementRoutes,
+} from '../../routes/system/relay-management-routes.js';
 import { createTelemetryCompanionRoutes } from '../../routes/system/telemetry-companion-routes.js';
 import { createTelemetryIncidentLinkRoutes } from '../../routes/system/telemetry-incident-link-routes.js';
 import { createToolLibraryRoutes } from '../../routes/tool-library.js';
@@ -105,6 +112,8 @@ import {
   isPrincipalScopedAgentRequest,
   stationControlRequestAuthority,
 } from '../../security/station-control-request-authority.js';
+import { proposingTurnId } from '../../services/automation/automation-proposals.js';
+import { AutomationStore } from '../../services/automation/automation-store.js';
 import {
   type BrowserProjectAuthorizer,
   createBrowserOperatorAuthorizer,
@@ -440,6 +449,7 @@ import {
 import { createConversationWorkSearchRoutes } from '../../routes/chat/conversation-work-search.js';
 import { createConversationWorkStateRoutes } from '../../routes/chat/conversation-work-state.js';
 import {
+  createAgentConversationVersionSource,
   createConversationRoutes,
   createGlobalConversationRoutes,
 } from '../../routes/chat/conversations.js';
@@ -524,6 +534,7 @@ import { fullAccessGrantForRequest } from '../../routes/orchestration/approval-a
 import { createAttachmentStagingRoutes } from '../../routes/orchestration/attachment-staging.js';
 import { createAttachmentRoutes } from '../../routes/orchestration/attachments.js';
 import { createAttentionRoutes } from '../../routes/orchestration/attention.js';
+import { createAutomationProposalRoutes } from '../../routes/orchestration/automation-proposals.js';
 import { createCoordinatorRoutes } from '../../routes/orchestration/coordinator.js';
 import { createDeclarePullRequestRoutes } from '../../routes/orchestration/declare-pull-request.js';
 import {
@@ -604,6 +615,7 @@ import {
 import { createUICommandRoutes } from '../../routes/projects/ui-commands.js';
 import { createConversationPullRequestLinkRoutes } from '../../routes/pull-requests/conversation-pull-request-links.js';
 import { createPullRequestRoutes } from '../../routes/pull-requests/pull-request-routes.js';
+import { createReadMarkerRoutes } from '../../routes/read-markers/read-marker-routes.js';
 import { createSearchRoutes } from '../../routes/search.js';
 import { createSecretBindingRoutes } from '../../routes/secret-bindings.js';
 import { createSetupImportRoutes } from '../../routes/setup-imports.js';
@@ -910,6 +922,16 @@ import { ConversationPullRequestLinkStore } from '../../services/pull-requests/c
 import { GitHubPullRequestProvider } from '../../services/pull-requests/github-pull-request-provider.js';
 import { GitLabPullRequestProvider } from '../../services/pull-requests/gitlab-pull-request-provider.js';
 import { PullRequestRepositoryContextResolver } from '../../services/pull-requests/pull-request-repository-context-resolver.js';
+import {
+  ReadMarkerService,
+  readMarkerPersonKey,
+} from '../../services/read-markers/read-marker-service.js';
+import { FileReadMarkerStore } from '../../services/read-markers/read-marker-store.js';
+import { upgradeReadMarkerStore } from '../../services/read-markers/read-marker-upgrade.js';
+import {
+  projectRoomVersionSource,
+  taskRoomVersionSource,
+} from '../../services/read-markers/room-version-sources.js';
 import { createRemoteStationForwarder } from '../../services/remote-stations/remote-station-forwarder.js';
 import {
   conversationAutomationsFrom,
@@ -1652,14 +1674,24 @@ export function isProjectMemberDraftLease(method: string, path: string) {
   );
 }
 
-/** Only these leaves delegate membership actions to the Room service. */
+/**
+ * Only these leaves delegate membership actions to the Room service: the
+ * default room's, each channel's same per-room leaves (#4792), and channel
+ * create and update. The service checks each one's own member action.
+ */
 function isProjectMemberRoomAction(method: string, path: string) {
   return (
     (method === 'POST' &&
-      /^\/api\/projects\/[^/]+\/room\/(?:init|messages|presence|agents|agents\/[^/]+\/(?:cancel|reconcile))$/.test(
+      (/^\/api\/projects\/[^/]+\/room\/(?:init|messages|presence|agents|agents\/[^/]+\/(?:cancel|reconcile))$/.test(
         path,
-      )) ||
-    (method === 'PUT' && /^\/api\/projects\/[^/]+\/room\/note$/.test(path))
+      ) ||
+        /^\/api\/projects\/[^/]+\/channels(?:\/[^/]+\/(?:messages|presence|agents|agents\/[^/]+\/(?:cancel|reconcile)))?$/.test(
+          path,
+        ))) ||
+    (method === 'PUT' &&
+      /^\/api\/projects\/[^/]+\/(?:room|channels\/[^/]+)\/note$/.test(path)) ||
+    (method === 'PATCH' &&
+      /^\/api\/projects\/[^/]+\/channels\/[^/]+$/.test(path))
   );
 }
 
@@ -2367,6 +2399,36 @@ export function configureRuntimeRoutes(
         : undefined,
     );
   };
+  // #3075: whose read state a request reads and writes, for the read-marker
+  // service and the orchestration stream that announces its changes. A paired
+  // device shares the owner's read state only while it holds owner standing,
+  // the pairing service's own rule (`deviceHasOwnerStanding`): a read-only,
+  // delegated or person-bound device is its own person, and never receives
+  // the owner's read-marker changes (#3075 review).
+  const readMarkerOwnerDevice = (deviceId: string) =>
+    context.environmentSecurityService.deviceHasOwnerStanding(deviceId);
+  const readMarkerPersonKeyFor = (
+    c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+  ) => {
+    // A device admitted with owner standing acts as the owner for the life
+    // of its request. Standing is revalidated here, on every resolution, so a
+    // stream opened before the operator narrowed, rebound or revoked the
+    // device stops carrying the owner's read state at once (#3075 review).
+    const admitted = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+    if (
+      admitted?.standing === 'owner-device' &&
+      'credential' in admitted &&
+      !context.environmentSecurityService.credentialHasOwnerStanding(
+        admitted.credential,
+      )
+    )
+      return undefined;
+    return readMarkerPersonKey({
+      authority: conversationReadAuthorityForContext(c),
+      principal: () => resolveOrchestrationRequestPrincipal(c),
+      isOwnerDevice: readMarkerOwnerDevice,
+    });
+  };
   const conversationReadAuthorityForRequest = (request: Request) => {
     const authority = conversationRequestAuthorities.get(request);
     if (!authority) {
@@ -2749,6 +2811,10 @@ export function configureRuntimeRoutes(
         });
         return verdict.allowed ? undefined : verdict.reason;
       },
+      // #4828: a delegated child's untrusted read reaches its parent with
+      // the child's result.
+      delegatedResultRead: (conversationIds) =>
+        sharedUntrustedContentLedger.carryDescendantRead(...conversationIds),
       // #4769: a session whose start ran with a restricted network is
       // refused the tools that would have Station act outside its sandbox.
       networkRestrictedSession: (sessionId) =>
@@ -2934,10 +3000,20 @@ export function configureRuntimeRoutes(
       createNativeRelayEnrollmentOperatorRoutes(context.nativeRelayEnrollment),
     );
   }
+  const relayCapabilityDeps = {
+    resolveActor: (c: Context) => resolveOrchestrationRequestPrincipal(c),
+    isManager: (request: Request) =>
+      hasRelayManagementAuthority(
+        request,
+        context.environmentSecurityService,
+        context.environmentSecurityService.devicePairing,
+      ),
+  };
   if (context.relayInvitationOwner && context.nativeSurfaceRegistry)
     context.app.route(
       '/api/relay-management',
       createRelayManagementRoutes({
+        ...relayCapabilityDeps,
         owner: context.relayInvitationOwner,
         registry: context.nativeSurfaceRegistry,
         managedRemoteRefusal: () =>
@@ -2946,7 +3022,6 @@ export function configureRuntimeRoutes(
             ? managedRemoteClientsDenial(context.managedPolicy.summary)
             : undefined,
         enrollment: context.nativeRelayEnrollment,
-        resolveActor: (c) => resolveOrchestrationRequestPrincipal(c),
         actorCurrency: (request, actor) =>
           captureRelayManagementActor(
             request,
@@ -2990,13 +3065,12 @@ export function configureRuntimeRoutes(
             authority: native ? 'native-device-proof' : principal?.authority,
           });
         },
-        isManager: (request) =>
-          hasRelayManagementAuthority(
-            request,
-            context.environmentSecurityService,
-            context.environmentSecurityService.devicePairing,
-          ),
       }),
+    );
+  else
+    context.app.route(
+      '/api/relay-management',
+      createUnconfiguredRelayManagementRoutes(relayCapabilityDeps),
     );
   if (context.nativeSurfaceRegistry)
     context.app.route(
@@ -4258,6 +4332,11 @@ export function configureRuntimeRoutes(
             environmentId: async () =>
               (await context.environmentSecurityService.getPublicHandshake())
                 .environmentId ?? null,
+            // Says when the seeded conversation is not stored here (a paired
+            // Station's conversation), as scheduled conversation runs check.
+            ...(context.orchestrationEventStore
+              ? { conversations: context.orchestrationEventStore }
+              : {}),
           },
         ),
         ...(context.readConfinementPreflight
@@ -7000,6 +7079,10 @@ export function configureRuntimeRoutes(
               ownerAttribution: payload.actor.ownerAttribution,
               clientOrigin: payload.clientOrigin ?? UNKNOWN_CLIENT_ORIGIN,
             },
+            // #4827: a steer a person typed and queued stays theirs.
+            payload.authoredBy === 'person'
+              ? { personAuthored: true }
+              : undefined,
           );
           const result = dispatched.result as
             | { outcome: string; turnId?: string }
@@ -7252,6 +7335,69 @@ export function configureRuntimeRoutes(
       ),
     agentProject: async (agentSlug) =>
       (await context.agentService.getAgent(agentSlug)).project,
+    // #4830: an agent proposes Automation sources and rules; a person
+    // confirms. Not hosted: Automations have no tenant binding.
+    ...(hostedTenantRegistry === undefined
+      ? {
+          automationProposals: {
+            store: context.orchestrationEventStore?.automationProposalStore(),
+            // Stateless per call (it re-reads the file under its own lock),
+            // so this instance and the runtime's never disagree.
+            automations: new AutomationStore(
+              context.configLoader.getProjectHomeDir(),
+            ),
+            projectSlugForId: (projectId: string) =>
+              context.projectService
+                .listProjects()
+                .find((project) => project.id === projectId)?.slug,
+            projectName: (projectId: string) =>
+              context.projectService
+                .listProjects()
+                .find((project) => project.id === projectId)?.name,
+            agentDefinition: async (agentSlug: string) =>
+              context.agentService.getAgent(agentSlug),
+            proposingTurn: (sessionId: string) => {
+              const eventStore = context.orchestrationEventStore;
+              if (!eventStore) return undefined;
+              return proposingTurnId(
+                {
+                  callingTurn: (id) =>
+                    context.orchestrationService.stationControlCallingTurn(id),
+                  store: eventStore,
+                },
+                sessionId,
+              );
+            },
+            untrustedContent: async (conversationId: string) =>
+              (await sharedUntrustedContentLedger.conversationHasRead(
+                conversationId,
+              )) ||
+              sharedUntrustedContentLedger.hasDescendantRead(conversationId),
+            // The isolated-repair setup's operator gate: the operator in
+            // person, never an agent, re-checked inside the store's lock.
+            operator: async (request: Request) => {
+              const assertCurrent = async () => {
+                if (
+                  isHostedTenantExecutionRequired() ||
+                  !isOperatorInPersonNotAgent(request) ||
+                  !isRuntimeRequestPrincipalCurrent(
+                    request,
+                    context.environmentSecurityService,
+                  )
+                )
+                  throw new Error('Operator access required');
+                await projectMembershipAuthority(request).operator();
+              };
+              try {
+                await assertCurrent();
+              } catch {
+                return undefined;
+              }
+              return { id: getCachedUser().alias, assertCurrent };
+            },
+          },
+        }
+      : {}),
     // Read when a chat asks, after the scheduler below exists.
     ...(hostedTenantRegistry === undefined
       ? {
@@ -7296,6 +7442,10 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/orchestration',
     createAgentScheduleRoutes(agentSchedule.routeDeps),
+  );
+  context.app.route(
+    '/api/orchestration',
+    createAutomationProposalRoutes(agentSchedule.automationProposalRouteDeps),
   );
   // #3628: a person's coordinator Session, woken through the same inbox when
   // work they can read needs them, finished or failed. Not on a hosted
@@ -7449,6 +7599,10 @@ export function configureRuntimeRoutes(
     '/api/orchestration',
     createOrchestrationRoutes(context.orchestrationService, {
       eventBus: context.eventBus,
+      readMarkerPersonKey: (c) =>
+        readMarkerPersonKeyFor(
+          c as Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+        ),
       generalEventProducer: (c, stream, write, authority) =>
         generalEventProducer(c, stream, write, authority),
       ...(delegationResults ? { delegationResults } : {}),
@@ -9489,7 +9643,14 @@ export function configureRuntimeRoutes(
       module: roomAgentRuntime.module,
       observe: (authority, handle) =>
         roomPublication!.watch(authority, handle.requestId),
-      withAuthority: async (request, slug, action, guard, operation) => {
+      withAuthority: async (
+        request,
+        slug,
+        action,
+        guard,
+        operation,
+        channelId,
+      ) => {
         const result = await roomAccess.withAction(
           request,
           slug,
@@ -9500,7 +9661,7 @@ export function configureRuntimeRoutes(
               if (
                 guard &&
                 (scope.localProjectId !== guard.expectedProjectId ||
-                  roomStore.store.lookupRoom(scope)?.roomId !==
+                  roomStore.store.lookupRoom(scope, channelId)?.roomId !==
                     guard.expectedRoomId)
               )
                 throw new ProjectRoomRefusal('conflict');
@@ -9531,6 +9692,7 @@ export function configureRuntimeRoutes(
                 ok: true as const,
                 value: await operation({
                   scope,
+                  ...(channelId === undefined ? {} : { channelId }),
                   requester,
                   executionRoot,
                   assertCurrent: current,
@@ -10136,7 +10298,9 @@ export function configureRuntimeRoutes(
         },
         endProjectTerminals: async (projectId) =>
           scopedTerminals.sessions?.endProject(projectId),
-        visualFileFrameOrigin: () => context.getMcpUiFrameOrigin?.(),
+        visualFileFrameOrigin: clientReachableFrameOrigin(
+          context.getMcpUiFrameOrigin,
+        ),
         sessionWorkspaceDirectory: (routeContext, projectSlug, thread) =>
           sessionWorkspaceDirectory(routeContext.req.raw, projectSlug, thread),
         // station#3778: the SAME service instance the Board's availability
@@ -11757,7 +11921,7 @@ export function configureRuntimeRoutes(
       context.logger,
       context.eventBus,
       context.applyAgentConfigurationMutation,
-      context.getMcpUiFrameOrigin,
+      clientReachableFrameOrigin(context.getMcpUiFrameOrigin),
       context.rebindBuiltinAgents,
       context.getPluginFrameOrigin,
       // #2144 slice 2: one project record for `GET /config/app?project=`.
@@ -11799,14 +11963,15 @@ export function configureRuntimeRoutes(
     '/api/boot',
     createBootRoutes({
       auth: async () => (await createAuthRoutes().request('/status')).json(),
-      config: async () =>
+      // Reachability is decided by the boot request's client.
+      config: async (c) =>
         (
           await createConfigRoutes(
             context.configLoader,
             context.logger,
             context.eventBus,
             context.applyAgentConfigurationMutation,
-            context.getMcpUiFrameOrigin,
+            () => clientReachableFrameOrigin(context.getMcpUiFrameOrigin)(c),
             context.rebindBuiltinAgents,
             context.getPluginFrameOrigin,
           ).request('/app')
@@ -12008,7 +12173,7 @@ export function configureRuntimeRoutes(
     '/api/html-replies',
     createHtmlReplyRoutes({
       pages: runtimeContext.orchestrationEventStore.htmlReplyPages(),
-      frameOrigin: () => context.getMcpUiFrameOrigin?.(),
+      frameOrigin: clientReachableFrameOrigin(context.getMcpUiFrameOrigin),
       isInternalRequest: isStationInternalRequest,
       resolveCaller: (request) =>
         resolveStationControlCallerForRequest(
@@ -12097,6 +12262,88 @@ export function configureRuntimeRoutes(
       current: isRequestPrincipalCurrent,
     }),
   );
+  // #3075: one server-kept read marker per (person, conversation) for agent
+  // conversations, Project rooms and Task rooms, in the read-marker store.
+  // An agent conversation's marker is a content version from the event
+  // store's projection; the inventory's acknowledgement store keeps only the
+  // "last viewed" record Home's Just finished reads.
+  const conversationAcknowledgements = new FileConversationAcknowledgementStore(
+    context.configLoader.getProjectHomeDir(),
+    ownerDevicePredicate(() =>
+      context.environmentSecurityService.devicePairing.listDevices(),
+    ),
+  );
+  const requireOrchestrationEventStore = () => {
+    const store = context.orchestrationEventStore;
+    if (!store)
+      throw new Error('Conversation content versions are unavailable');
+    return store;
+  };
+  const readMarkerStore = new FileReadMarkerStore(
+    context.configLoader.getProjectHomeDir(),
+  );
+  // Read state begins once, before anything reads it: for a first-format
+  // store and for a home with none. Only a personal Station's owner gets a
+  // baseline; a hosted Station gives nobody one.
+  if (context.orchestrationEventStore)
+    try {
+      upgradeReadMarkerStore({
+        store: readMarkerStore,
+        events: context.orchestrationEventStore,
+        hosted:
+          hostedTenantRegistry !== undefined ||
+          isHostedTenantExecutionRequired(),
+        now: new Date(),
+      });
+    } catch (error) {
+      // Left unconverted, the store is refused (read state unavailable),
+      // never read as "read"; the next start tries again.
+      context.logger.warn('Read marker upgrade failed', {
+        error: error instanceof Error ? error.name : 'unknown',
+      });
+    }
+  const readMarkers = new ReadMarkerService({
+    personKeyFor: (c) =>
+      readMarkerPersonKeyFor(
+        c as Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+      ),
+    // Each of that person's open clients re-reads (orchestration `/events`).
+    onChanged: (personKey) =>
+      context.eventBus.emit(SERVER_EVENTS.READ_MARKERS_CHANGED, { personKey }),
+    conversations: conversationAcknowledgements,
+    store: readMarkerStore,
+    agentConversations: createAgentConversationVersionSource({
+      memoryAdapters: context.memoryAdapters,
+      sessionConversationReader: context.orchestrationService,
+      eventStore: context.orchestrationService,
+      authorityFor: conversationReadAuthorityForRequest,
+      // #3075: the content-version projection (never `updatedAt`, which a
+      // stop moves). Without the event store there is no content version
+      // to read: the inventory then reports the read state unavailable.
+      conversationContent: {
+        readConversationContentVersions: (ids) =>
+          requireOrchestrationEventStore().readConversationContentVersions(ids),
+      },
+    }),
+    projectRooms: projectRoomVersionSource(projectRoomService),
+    taskRooms: taskRoomVersionSource({
+      history: (input) =>
+        projectTaskRoomRuntime
+          ? projectTaskRoomRuntime.history(input)
+          : Promise.resolve({ kind: 'unavailable' as const }),
+    }),
+  });
+  // Each target is re-read under the caller's own authority: the conversation
+  // inventory needs the bound read authority, and the Task room runtime the
+  // cached request principal. Bound per classified POST leaf, as `/api/board`
+  // is, because an all-method `use` would register unclassified routes.
+  const readMarkerPaths = [READ_MARKER_SUMMARY_PATH, READ_MARKER_MARK_PATH];
+  context.app.on('POST', readMarkerPaths, bindConversationReadAuthority);
+  context.app.on('POST', readMarkerPaths, primeRoomRequestPrincipal);
+  context.app.route(
+    '/api/read-markers',
+    createReadMarkerRoutes({ service: readMarkers }),
+  );
   context.app.route(
     '/api/conversations',
     createGlobalConversationRoutes(
@@ -12106,12 +12353,7 @@ export function configureRuntimeRoutes(
       context.createMemoryAdapter,
       context.orchestrationService,
       undefined,
-      new FileConversationAcknowledgementStore(
-        context.configLoader.getProjectHomeDir(),
-        ownerDevicePredicate(() =>
-          context.environmentSecurityService.devicePairing.listDevices(),
-        ),
-      ),
+      conversationAcknowledgements,
       conversationReadAuthorityForRequest,
       context.orchestrationService,
       (query, signal) =>
@@ -12123,6 +12365,7 @@ export function configureRuntimeRoutes(
           peerCredentialStore,
         ),
       context.environmentSecurityService,
+      readMarkers,
     ),
   );
   // `rename_session`'s own leaf (never the person's `PATCH`, which stamps
@@ -13329,6 +13572,17 @@ function isSameMachineBrowserCaller(c: {
     classifyRuntimePeer(attestedClient).peerClass === 'loopback' &&
     isLoopbackAuthority(attestedBrowserVisibleHost(request))
   );
+}
+
+/**
+ * The frame listener binds this host's loopback, so only a browser on this
+ * machine can reach its origin (#4821). Other clients get none and render in
+ * the opaque-origin sandbox.
+ */
+function clientReachableFrameOrigin(
+  origin: (() => string | undefined) | undefined,
+): (c: Context) => string | undefined {
+  return (c) => (isSameMachineBrowserCaller(c) ? origin?.() : undefined);
 }
 
 /** Timing-safe compare over digests, so a length mismatch never short-circuits. */

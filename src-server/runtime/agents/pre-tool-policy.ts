@@ -6,7 +6,15 @@ import {
 } from '@kontourai/station-shared/mcp-tool-selection';
 import type { AgentPolicyService } from '../../services/agents/agent-policy-service.js';
 import type { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
-import { toolDenials } from '../../telemetry/metrics.js';
+import {
+  type GuardianDenialLedger,
+  sharedGuardianDenialLedger,
+} from '../../services/approvals/guardian-conversation.js';
+import {
+  isPersistenceRelevantTool,
+  untrustedPersistenceTarget,
+} from '../../services/plugins/untrusted-persistence-protection.js';
+import { approvalGuardianOps, toolDenials } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type { MCPToolNameMappingEntry } from '../tools/mcp-tool-names.js';
 import type {
@@ -29,7 +37,8 @@ type ToolDenialReason =
   | 'no_approval_channel'
   | 'policy_evaluation_failed'
   | 'project_tool_policy'
-  | 'untrusted_content_denied';
+  | 'untrusted_content_denied'
+  | 'untrusted_persistence_protection';
 
 /**
  * `defer` means "Station's policy is not deciding this call; the engine's own
@@ -92,6 +101,8 @@ interface StagedPreToolPolicyDeps {
   spec: AgentSpec;
   agentPolicyService?: AgentPolicyService;
   approvalGuardian?: ApprovalGuardianService;
+  /** #4827: defaults to the ledger shared by every Agent's evaluator. */
+  guardianDenialLedger?: GuardianDenialLedger;
   isCurrentRuntimeGeneration?: () => boolean;
   resolveUnattendedGrant?: (
     tool: ToolCallContext,
@@ -117,6 +128,16 @@ interface StagedPreToolPolicyDeps {
     tool: ToolCallContext,
     invocation: InvocationContext,
   ): Promise<'ask' | 'allow' | 'deny' | undefined>;
+  /**
+   * #4828: whether this conversation has read content written by others
+   * (an untrusted integration's result or an engine-native web read). After
+   * that, writes to known agent-instruction and git-hook or git
+   * configuration locations are denied by path, and a shell command naming
+   * one asks the person (`untrusted-persistence-protection.ts`). This is a
+   * best-effort early check; it does not contain git hook execution
+   * (#4860). Absent: no check.
+   */
+  untrustedContentRead?(invocation: InvocationContext): Promise<boolean>;
   logger: {
     warn(message: string, meta?: Record<string, unknown>): void;
     info(message: string, meta?: Record<string, unknown>): void;
@@ -322,34 +343,71 @@ type GuardianOutcome =
   | { kind: 'undecided'; enforceDeferral?: string };
 
 /**
+ * #4827: whether a refused call can be put to a person instead. A managed
+ * call needs a live requester; an external engine asks through its own flow,
+ * which reaches a person only when one sent the turn (an unattended external
+ * run would otherwise wait on a request nobody answers: the KNOWN GAP in the
+ * evaluator). A delegated child that may not grant approvals never can.
+ */
+function personCanDecide(
+  invocation: InvocationContext,
+  options: Parameters<StagedPreToolPolicyEvaluator>[2],
+  currentTurnInteractive: boolean,
+): boolean {
+  if (invocation.delegation?.denyApprovals === true) return false;
+  if (options.interaction === 'managed')
+    return options.hasInteractiveApproval === true;
+  return currentTurnInteractive;
+}
+
+/**
  * The approval guardian's verdict. An enforce-mode deny blocks; an allow
- * allows, in either mode. The guardian is shown the agent, the tool's name,
- * the call's arguments and a description where the adapter passes one (ACP
- * passes the call's title; Claude passes none), and nothing of the session: not
- * its working directories, its permission mode, or why an engine would ask.
+ * allows, in either mode. The guardian is shown what the person typed in this
+ * conversation (#4827: Station's record of their own turns, never a tool
+ * result or a reply), the agent, the tool's name, the call's arguments and a
+ * description where the adapter passes one (ACP passes the call's title;
+ * Claude passes none), and nothing else of the session: not its working
+ * directories, its permission mode, or why an engine would ask.
  * Its allow therefore speaks for the call as written. On an external engine
  * it answers plain calls only and never an escalation or a plan exit
  * (#2947; see the Claude and ACP adapters). Anything else leaves the call undecided — and in enforce mode that
  * undecided verdict (a `defer`, including the guardian's own error and
  * parse-failure fallbacks) is carried forward so an unattended call can treat
- * it as a refusal (#2613).
+ * it as a refusal (#2613). No verdict is ever an allow.
+ *
+ * #4827 escalation: once the guardian has refused
+ * `GUARDIAN_ESCALATE_AFTER_CONSECUTIVE` calls in a row, or
+ * `GUARDIAN_ESCALATE_AFTER_TOTAL` in the conversation, its next refusal is a
+ * required question for the person, through the same approval inbox every
+ * other ask uses, rather than another automatic deny. With no person to ask
+ * it stays a deny, as before.
  */
 async function reviewWithGuardian(
   deps: StagedPreToolPolicyDeps,
   tool: ToolCallContext,
   invocation: InvocationContext,
+  options: Parameters<StagedPreToolPolicyEvaluator>[2],
 ): Promise<GuardianOutcome> {
   const guardian = deps.approvalGuardian;
   if (!guardian?.isEnabled()) return { kind: 'undecided' };
+  const ledger = deps.guardianDenialLedger ?? sharedGuardianDenialLedger;
+  const conversation = guardian.readConversation(invocation.conversationId);
+  // #4827: count by the conversation, not the Session, so a successor
+  // Session does not start the run again. Routing still uses the Session.
+  const ledgerKey = invocation.conversationId
+    ? (conversation.conversationKey ?? invocation.conversationId)
+    : undefined;
   const review = await guardian.reviewToolCall({
     agentName: deps.spec.name,
     agentSlug: invocation.agentSlug,
     conversationId: invocation.conversationId,
+    conversation,
     toolName: tool.toolName,
     toolDescription: tool.toolDescription,
     toolArgs: tool.toolArgs,
   });
   if (review.decision === 'allow') {
+    if (ledgerKey) ledger.recordAllow(ledgerKey);
     deps.logger.info('Approval guardian allowed tool execution', {
       toolName: tool.toolName,
       agentSlug: invocation.agentSlug,
@@ -359,6 +417,27 @@ async function reviewWithGuardian(
   }
   if (guardian.getMode() !== 'enforce') return { kind: 'undecided' };
   if (review.decision === 'deny') {
+    const escalate =
+      ledgerKey !== undefined &&
+      ledger.recordDenial(ledgerKey).escalate &&
+      personCanDecide(invocation, options, conversation.currentTurnInteractive);
+    if (escalate) {
+      ledger.recordEscalation(ledgerKey!);
+      approvalGuardianOps.add(1, { action: 'escalated' });
+      deps.logger.warn(
+        'Approval guardian kept refusing; asking the person instead',
+        {
+          toolName: tool.toolName,
+          agentSlug: invocation.agentSlug,
+          conversationId: invocation.conversationId,
+          reason: review.reason,
+        },
+      );
+      return {
+        kind: 'decided',
+        decision: { behavior: 'ask', required: true },
+      };
+    }
     deps.logger.warn('Approval guardian denied tool execution', {
       toolName: tool.toolName,
       agentSlug: invocation.agentSlug,
@@ -480,7 +559,7 @@ export function createStagedPreToolPolicyEvaluator(
     // nothing below (a tool grant, a guardian allow, an unattended opt-in)
     // can answer it instead of a person.
     const requiredAsk = async (): Promise<PreToolPolicyDecision> => {
-      const review = await reviewWithGuardian(deps, tool, invocation);
+      const review = await reviewWithGuardian(deps, tool, invocation, options);
       if (review.kind === 'decided' && review.decision.behavior === 'deny')
         return review.decision;
       if (invocation.delegation?.denyApprovals)
@@ -493,6 +572,43 @@ export function createStagedPreToolPolicyEvaluator(
         );
       return { behavior: 'ask', required: true };
     };
+
+    // #4828: a best-effort early check, by path, against an injection
+    // persisting itself past this conversation. It does not contain git hook
+    // execution (#4860).
+    // The operation is the tool's own name: on the Station engine the
+    // loader's provenance (an MCP tool's original name), never the display
+    // name the loader composed; on an external engine its own leaf name.
+    // Only a write or shell tool waits on the ledger, and only a marked
+    // conversation's call has its targets read.
+    const operationName =
+      options.interaction === 'external'
+        ? identity.configProtectionToolName
+        : (tool.mcp?.provenance?.originalToolName ??
+          deps.toolNameMapping.get(tool.toolName)?.provenance
+            ?.originalToolName ??
+          deps.toolNameMapping.get(tool.toolName)?.tool ??
+          tool.toolName);
+    const persistence =
+      deps.untrustedContentRead &&
+      isPersistenceRelevantTool(operationName) &&
+      (await deps.untrustedContentRead(invocation))
+        ? untrustedPersistenceTarget(operationName, tool.toolArgs)
+        : undefined;
+    if (persistence) {
+      deps.logger.warn('Untrusted-content persistence protection applied', {
+        toolName: tool.toolName,
+        agentSlug: invocation.agentSlug,
+        conversationId: invocation.conversationId,
+        kind: persistence.kind,
+      });
+      if (persistence.kind === 'shell') return requiredAsk();
+      return deny(
+        'untrusted_persistence_protection',
+        tool.toolName,
+        "was refused: this conversation read content written by others, so it may not change agent instructions or repository hooks and configuration. Make this change yourself, or clear the conversation's untrusted-content mark first.",
+      );
+    }
 
     const untrusted = await deps.untrustedContentPermission?.(tool, invocation);
     if (untrusted === 'deny') {
@@ -536,7 +652,7 @@ export function createStagedPreToolPolicyEvaluator(
 
     if (deps.isGranted(tool)) return { behavior: 'allow', toolGrant: true };
 
-    const guardian = await reviewWithGuardian(deps, tool, invocation);
+    const guardian = await reviewWithGuardian(deps, tool, invocation, options);
     if (guardian.kind === 'decided') return guardian.decision;
 
     if (nobodyPresent(invocation, options)) {

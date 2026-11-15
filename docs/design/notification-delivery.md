@@ -893,7 +893,8 @@ build time (public values, but bound to one project); without them
 until `pushToken` is called, so installing the app does not contact Google
 before the user asks for push; the `clear` command turns it off again and
 deletes the token. The plugin's Kotlin unit tests also have a hosted job in
-`desktop-rust.yml`, using `scripts/run-agent-activity-android-unit-tests.mjs`.
+`desktop-rust.yml`, using `scripts/run-agent-activity-android-unit-tests.mjs`
+(which also runs the media-intake plugin's tests).
 The runner builds a temporary Gradle root, uses the locked Tauri Android library,
 and refuses missing test classes or required cases. That workflow contract is
 not a receipt for a particular hosted run or physical FCM delivery. Debug builds include a broadcast receiver,

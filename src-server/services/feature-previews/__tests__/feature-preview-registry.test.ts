@@ -88,6 +88,10 @@ describe('FeaturePreviewRegistry', () => {
       expect.objectContaining({ id: 'task-collaboration', enabled: false }),
       expect.objectContaining({ id: 'apps-library', enabled: false }),
       expect.objectContaining({ id: 'chat-apps', enabled: false }),
+      expect.objectContaining({
+        id: 'inline-browser-activity',
+        enabled: false,
+      }),
       expect.objectContaining({ id: 'visual-skills', enabled: false }),
       expect.objectContaining({
         id: 'integration-content-trust',
@@ -105,6 +109,10 @@ describe('FeaturePreviewRegistry', () => {
       expect.objectContaining({ id: 'task-collaboration', enabled: false }),
       expect.objectContaining({ id: 'apps-library', enabled: false }),
       expect.objectContaining({ id: 'chat-apps', enabled: false }),
+      expect.objectContaining({
+        id: 'inline-browser-activity',
+        enabled: false,
+      }),
       expect.objectContaining({ id: 'visual-skills', enabled: false }),
       expect.objectContaining({
         id: 'integration-content-trust',
@@ -156,6 +164,10 @@ describe('FeaturePreviewRegistry', () => {
       expect.objectContaining({ id: 'task-collaboration', enabled: false }),
       expect.objectContaining({ id: 'apps-library', enabled: false }),
       expect.objectContaining({ id: 'chat-apps', enabled: false }),
+      expect.objectContaining({
+        id: 'inline-browser-activity',
+        enabled: false,
+      }),
       expect.objectContaining({ id: 'visual-skills', enabled: false }),
       expect.objectContaining({
         id: 'integration-content-trust',

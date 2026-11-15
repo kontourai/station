@@ -1,7 +1,0 @@
-{
-  "revision": "443525c6391299e53e8c8c63d12af330b36d51b9",
-
-  "notes": [
-    {"path":"docs/user/personal-boards.md","note":"#4688 Delete (after confirm) and Move to project hide the Board and offer Undo/Mod+Z; the write runs when the notice closes, Undo writes nothing so other-device edits survive; open Board deletion goes Home and Undo returns; Station change or reload keeps the Board; refused write is shown and the row returns. Traced through ProjectSidebarBoards and undoable-actions with tests.","inputs":["docs/user/personal-boards.md","src-ui/src/__tests__/ProjectSidebarBoards.test.tsx","src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx"]}
-  ]
-}

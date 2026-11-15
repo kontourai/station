@@ -1,6 +1,8 @@
 import { useStatsQuery } from '@kontourai/station-sdk';
 import { useOptionalConversationConnection } from '../components/conversation/ConversationConnectionContext';
 
+const skipRefetch = async () => undefined;
+
 export function useStats(
   agentSlug: string,
   conversationId: string,
@@ -17,18 +19,26 @@ export function useStats(
   refetchIntervalMs?: number,
 ) {
   const target = useOptionalConversationConnection();
+  // A relay reaches the paired Station only through its chat tunnel, whose
+  // ceiling (`peer-chat-policy.ts`) has no agent-stats read: the source
+  // Station refuses it with a 404 every time. A relay chat has no stats, and
+  // `refetch` is withheld too: React Query's refetch ignores `enabled`, and
+  // callers refetch on every message-count change.
+  const relay = target?.station?.routeKind === 'relay';
   const {
     data: stats,
     error,
-    refetch,
+    refetch: refetchStats,
     isLoading,
   } = useStatsQuery(agentSlug, conversationId, {
     readTarget: target?.station,
-    enabled: shouldFetch && !!agentSlug,
+    enabled: shouldFetch && !!agentSlug && !relay,
     ...(refetchIntervalMs === undefined
       ? {}
       : { refetchInterval: refetchIntervalMs }),
   });
+
+  const refetch = relay ? skipRefetch : refetchStats;
 
   return {
     stats: stats || null,

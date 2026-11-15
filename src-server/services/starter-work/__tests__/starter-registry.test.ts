@@ -127,24 +127,6 @@ describe('StarterRegistry', () => {
         prerequisite: 'first-run-completed',
         status: { state: 'unbound' },
       },
-      {
-        id: 'inspect-approval',
-        targetKind: 'approval',
-        prerequisite: 'first-run-completed',
-        status: { state: 'unbound' },
-      },
-      {
-        id: 'inspect-receipt',
-        targetKind: 'receipt',
-        prerequisite: 'first-run-completed',
-        status: { state: 'unbound' },
-      },
-      {
-        id: 'run-scheduled-check',
-        targetKind: 'receipt',
-        prerequisite: 'first-run-completed',
-        status: { state: 'unbound' },
-      },
     ]);
     await expect(
       registry.bind({

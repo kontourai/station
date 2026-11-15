@@ -417,9 +417,20 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
         },
       },
     ];
-    render(<ProviderSettingsView onNavigate={onNavigate} />);
+    const { container } = render(
+      <ProviderSettingsView onNavigate={onNavigate} />,
+    );
 
-    expect(screen.getByText(/Saved — not verified · LLM/)).toBeTruthy();
+    // The readiness is the row's badge; the subtitle holds facts only, and
+    // the row no longer paints an inline status dot as its icon.
+    const row = container.querySelector('.split-pane__item')!;
+    expect(row.querySelector('.resource-status__badge')?.textContent).toBe(
+      'Saved — not verified',
+    );
+    const subtitle = row.querySelector('.split-pane__item-subtitle');
+    expect(subtitle?.textContent).toContain('LLM');
+    expect(subtitle?.textContent).not.toContain('Saved');
+    expect(row.querySelector('.split-pane__item-icon')).toBeNull();
   });
 
   // RT-17 — agent delete has always opened a confirm modal; provider delete

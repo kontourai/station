@@ -609,7 +609,7 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
         failures.push(error);
       }
     };
-    if (touchButtons.length > 0 || this.touchActive) {
+    if (touchButtons.length > 0) {
       // Ends the gesture without a tap; still active until that is delivered.
       await attempt(async () => {
         await this.send('Input.dispatchTouchEvent', {

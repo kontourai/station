@@ -273,7 +273,7 @@ describe('the row says exactly what the ladder says', () => {
     healthy.unmount();
 
     renderRow(rowFor({ turnProgress: SILENCE }));
-    expect(statusText()).toBe('No progress · Bash · 6m');
+    expect(statusText()).toBe('No progress · Bash · 6m 0s');
     expect(screen.getByTestId('inbox-row-status').dataset.tone).toBe('caution');
     expect(glyphPath()).toBeTruthy();
     expect(glyphPath()).not.toBe(healthyGlyph);
@@ -285,7 +285,7 @@ describe('the row says exactly what the ladder says', () => {
 describe('what a screen reader and a ticking clock each get', () => {
   it('describes the row by its status, with a coarse duration instead of the ticking one', () => {
     renderRow(rowFor());
-    expect(statusText()).toBe('Running · Bash · 1m');
+    expect(statusText()).toBe('Running · Bash · 1m 12s');
     // The per-second number is hidden from the description; a duration that
     // only moves with the host's clock stands in for it.
     expect(describedText()).toBe('Running · Bash, for about 1 minute');
@@ -295,12 +295,12 @@ describe('what a screen reader and a ticking clock each get', () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     renderRow(rowFor());
-    expect(statusText()).toBe('Running · Bash · 1m');
+    expect(statusText()).toBe('Running · Bash · 1m 12s');
     act(() => {
       vi.advanceTimersByTime(48_000);
     });
     // 72s + 48s: the shared clock moved the duration to the next minute.
-    expect(statusText()).toBe('Running · Bash · 2m');
+    expect(statusText()).toBe('Running · Bash · 2m 0s');
   });
 
   it('shows the real elapsed time even when the list clock is 30s stale', () => {
@@ -309,11 +309,11 @@ describe('what a screen reader and a ticking clock each get', () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     renderRow(rowFor(), { now: NOW - 30_000 });
-    expect(statusText()).toBe('Running · Bash · 1m');
+    expect(statusText()).toBe('Running · Bash · 1m 12s');
     act(() => {
       vi.advanceTimersByTime(48_000);
     });
-    expect(statusText()).toBe('Running · Bash · 2m');
+    expect(statusText()).toBe('Running · Bash · 2m 0s');
   });
 
   it('a host re-rendering with a fresh now does not restart the ticker', () => {
@@ -341,7 +341,7 @@ describe('what a screen reader and a ticking clock each get', () => {
       </QueryClientProvider>,
     );
     expect(setIntervalSpy.mock.calls.length).toBe(started);
-    expect(statusText()).toBe('Running · Bash · 2m');
+    expect(statusText()).toBe('Running · Bash · 2m 0s');
     setIntervalSpy.mockRestore();
   });
 
@@ -508,7 +508,7 @@ describe('the chip line exists only when a chip does', () => {
         chip.textContent,
       ]),
     ).toEqual([
-      ['remote', 'home-media'],
+      ['remote', 'Station: home-media'],
       ['woke', 'Woke from snooze'],
     ]);
     // #4266: no full-line "Unsent draft" chip. A pencil on the meta line,
@@ -525,6 +525,36 @@ describe('the chip line exists only when a chip does', () => {
     expect(screen.queryByTestId('inbox-row-draft-marker')).toBeNull();
   });
 
+  it('shows peer Station provenance from work facts with a project mark', () => {
+    const row = rowFor();
+    renderRow({
+      ...row,
+      facts: {
+        ...row.facts!,
+        station: { id: 'peer-1', label: 'Build Station' },
+      },
+    });
+    expect(screen.getByText('Station: Build Station')).toBeTruthy();
+    expect(document.querySelector('.project-icon')).not.toBeNull();
+  });
+
+  it('does not borrow host artwork or colour for a peer-bound chat with the same project slug', () => {
+    const row = rowFor();
+    renderRow(
+      {
+        ...row,
+        facts: {
+          ...row.facts!,
+          station: { id: 'peer', label: 'Peer Station' },
+        },
+      },
+      { projectIcon: '🚀', projectAccent: '#ff8800' },
+    );
+    expect(document.querySelector('.project-icon--icon')).toBeNull();
+    expect(document.querySelector('.project-icon--initials')).not.toBeNull();
+    expect(document.querySelector('[data-project-icon="dot"]')).toBeNull();
+  });
+
   it('the chip derivation, fact by fact', () => {
     expect(inboxRowChips({})).toEqual([]);
     expect(inboxRowChips({ receivedAgentMessage: true })).toEqual([
@@ -532,7 +562,7 @@ describe('the chip line exists only when a chip does', () => {
     ]);
     expect(inboxRowChips({}, { isWoken: false })).toEqual([]);
     expect(inboxRowChips({ environmentLabel: 'box' })).toEqual([
-      { kind: 'remote', label: 'box' },
+      { kind: 'remote', label: 'Station: box' },
     ]);
   });
 });
@@ -1387,4 +1417,15 @@ describe("the project's icon takes the swatch's place when it has one", () => {
     expect(marks[1]?.querySelector('img')).toBeNull();
     expect(marks[1]?.style.backgroundColor).toBe('var(--event-reasoning)');
   });
+});
+
+it('renders the answer rung for an input request after server projection', () => {
+  renderRow(
+    rowFor({
+      lifecycleState: 'needs_input',
+      transitionReason: 'input_requested',
+      pendingReview: false,
+    }),
+  );
+  expect(statusText()).toBe('Needs input');
 });

@@ -12,12 +12,22 @@ permissions:
   contents: read
   actions: read
 
-concurrency:
-  group: landing-${{ github.event.pull_request.number || github.event.workflow_run.head_branch }}
-  cancel-in-progress: false
-
 jobs:
   arm:
+    # Concurrency lives on this job, not the workflow: a run whose arm job is
+    # skipped (another label, a red or queue CI run, a dequeue) then never
+    # enters the group, so it cannot replace a pending real arm run and skip.
+    # GitHub keeps one pending run per group; each arm run re-reads the live
+    # PR, so a replaced pending run loses nothing. Keyed by the same-repository
+    # head branch, which both event types carry for the same PR.
+    # One sequence lost serialization: a dequeue run and a label arm run for
+    # the same PR, once one workflow group, now run concurrently. Both re-read
+    # the live PR and arm only with --match-head-commit, so the worst case is
+    # a redundant arm request for the same head, which GitHub accepts as a
+    # no-op.
+    concurrency:
+      group: landing-${{ github.event.pull_request.head.ref || github.event.workflow_run.head_branch }}
+      cancel-in-progress: false
     if: >-
       ${{ (github.event_name == 'pull_request_target' &&
            github.event.pull_request.head.repo.full_name == github.repository &&

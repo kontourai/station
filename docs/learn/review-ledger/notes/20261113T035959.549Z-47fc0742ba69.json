@@ -1,0 +1,7 @@
+{
+  "revision": "c5338677b826747bab21712b5f43fa79d7aca0b9",
+
+  "notes": [
+    {"path":"docs/learn/media/shared-task-document.png","note":"Opened and inspected the existing 1440px dark capture: it depicts the Task Plan tab and saved shared document, with no participant elapsed indicator. The only lane A source delta in ProjectTaskRoomConversation changes participant elapsed text to the shared formatter, so the depicted state and autosave/reload caption are unaffected. Retained original image bytes, captured revision and runtime limitations; this is source-delta review, not a new capture or renewed runtime qualification.","inputs":["docs/learn/media/shared-task-document.png","src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"]}
+  ]
+}

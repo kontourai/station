@@ -202,12 +202,6 @@ export function openChatIdentitiesSnapshot(): readonly OpenChatIdentity[] {
   return identitiesCache;
 }
 
-export function countOpenChatAttention(
-  chats: ReadonlyArray<{ hasUnread?: boolean }>,
-): number {
-  return chats.reduce((count, chat) => count + (chat.hasUnread ? 1 : 0), 0);
-}
-
 /**
  * #1582 B9: the chats that are WORK — what Home's Continue card and Recent
  * work may name. A chat created and never typed into produced a Continue card

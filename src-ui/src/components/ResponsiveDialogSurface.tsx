@@ -58,9 +58,9 @@ type InitialFocusPolicy = 'always' | 'desktop' | 'panel';
  *   so they already escape the dock and the free dialog layer is true for
  *   them.
  * - `ShareTargetPickerModal` reaches the dock through `ShareIntakeController`,
- *   which `ChatDock` mounts, and does NOT portal. It is inert today — the
- *   controller returns null unless the `share-intake` capability reports
- *   `enabled` — so it is a latent third instance rather than a live defect,
+ *   which `ChatDock` mounts, and does NOT portal. The controller renders it
+ *   only when the host reports `image-share-intake` enabled (the Android
+ *   app's image share target), so it is a third instance on Android only,
  *   and it is why "portal the two" is not the whole remedy.
  *
  * The sixth, `ProjectKnowledgeViewerModal`, is not in the dock at all, so

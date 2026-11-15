@@ -1,7 +1,0 @@
-{
-  "revision": "395462fd4b684fd7cae9e4cc6a288222c563bd75",
-
-  "notes": [
-    {"path":"docs/guides/nightly.md","note":"Reviewed the packaged Node, desktop staging and Windows installer claims against the koffi pruning change. The Windows loader and native package remain present; only vendor and doc are dropped there. Non-Windows keeps metadata and available licenses. No change to signing, installation or runtime qualification claims.","inputs":["docs/guides/nightly.md","scripts/lib/desktop-server-runtime.mjs"]}
-  ]
-}

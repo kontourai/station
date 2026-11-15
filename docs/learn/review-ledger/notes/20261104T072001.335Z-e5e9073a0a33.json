@@ -1,9 +1,0 @@
-{
-  "revision": "6f064aec9232c16856c23398e477d42d75097c4d",
-
-  "notes": [
-    {"path":"docs/learn/media/connections-models.png","note":"Inspected actual PNG SHA256c104e7d0 and its media.json/walkthrough caption and capture owner citations against source commit5ee6a25152. It shows a resting example local Model selection, sample Ready label and settings; no delete decision/completion is depicted. Current delta only retires owning dirtiness on successful deletion and defers the Models route, so this historical inspection illustration and its explicit fixture/no-provider/current-appearance limits remain accurate. No media/caption change justified; no new render, deletion, persistence or live provider evidence claimed.","inputs":["docs/learn/media/connections-models.png","src-ui/src/views/ProviderSettingsView.tsx"]},
-
-    {"path":"docs/learn/media/connections-tour.webm","note":"Decoded actual13.76second WebM SHA2568630aae6 locally and inspected frames at0,2,4,6,8,10,12,13.66seconds: example Model settings/Advanced, Engines selection, setup-required Codex and expanded Advanced. Reviewed media.json and walkthrough navigation-only/sample GET/no-test-login-inference/historical-appearance claims and cited ProviderSettingsView/AgentConnectionView/form/Connections frame owners. Source5ee6a25152 changes successful Model deletion completion only; this illustrated browsing/configuration path is unaffected. Retain original capture identity and honest historical limits; no fresh runtime, focus, narrow render or deletion qualification inferred.","inputs":["docs/learn/media/connections-tour.webm","src-ui/src/views/ProviderSettingsView.tsx"]}
-  ]
-}

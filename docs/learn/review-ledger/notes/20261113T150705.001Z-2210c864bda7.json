@@ -1,0 +1,7 @@
+{
+  "revision": "8afc463fe31604c0dbf954d8c9d85a6cf77b9b8b",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed Home work-facts caller change and component renders at 390/412/1440 in both themes: only session attention wording is refined to Needs input for known forms. Shared row geometry, visibility, touch targets and responsive layout are unchanged; this guide does not spell the replaced status word. No prose change. Component screenshots establish layout only, not a live provider journey.","inputs":["docs/guides/responsive-ui.md","src-ui/src/views/home/work-facts.ts"]}
+  ]
+}

@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
     | { entered: () => void; released: Promise<void> }
     | undefined,
   send: vi.fn(),
+  showSurface: vi.fn(),
   history: {
     data: {
       pages: [
@@ -113,6 +114,12 @@ vi.mock('../../../contexts/AuthorityPersistenceContext', () => ({
   useAuthorityPersistence: () => mocks.authority,
 }));
 
+vi.mock('../../../contexts/useShowSurface', () => ({
+  useShowSurface: () => mocks.showSurface,
+}));
+
+import { ChildChatContext } from '../../chat-dock/ChildChatNavigationContext';
+import { ConversationConnectionProvider } from '../../conversation/ConversationConnectionContext';
 import { ChildWorkInstructionPanel } from '../ChildWorkInstructionPanel';
 import { SubagentTranscriptCard } from '../SubagentTranscriptCard';
 import { UIBlockActionsContext } from '../UIBlockActionsContext';
@@ -377,7 +384,7 @@ test('a remounted child keeps the exact uncertain request and shows recorded del
   expect(mocks.history.refetch).toHaveBeenCalled();
 });
 
-test('an open engine transcript keeps sent instructions attributed behind a disclosure without hiding uncertain input', async () => {
+test('delivered and uncertain instructions remain attributed in the parent card', () => {
   mocks.history.data = {
     pages: [
       {
@@ -386,10 +393,10 @@ test('an open engine transcript keeps sent instructions attributed behind a disc
             clientInputId: 'sent',
             text: 'Check the report',
             delivery: 'delivered',
-            principal: { display: 'Brian' },
+            principal: { display: 'Sender' },
           },
           {
-            clientInputId: 'uncertain',
+            clientInputId: 'pending',
             text: 'Another request',
             delivery: 'indeterminate',
           },
@@ -403,34 +410,16 @@ test('an open engine transcript keeps sent instructions attributed behind a disc
     >
       <ChildWorkInstructionPanel
         historyAvailable
-        transcriptOpen
         threadId="parent"
         childId="child"
-        turnId="turn"
         running
         name="Worker"
       />
-      <section aria-label="Engine transcript">
-        <p>Initial task</p>
-        <p>Check the report</p>
-        <p>Another native prompt</p>
-      </section>
     </UIBlockActionsContext.Provider>,
   );
-  expect(
-    screen
-      .getAllByText('Check the report', { selector: 'p' })
-      .filter((node) => node.closest('details:not([open])') === null),
-  ).toHaveLength(1);
-  expect(screen.getByText('Initial task')).toBeTruthy();
-  expect(screen.getByText('Another native prompt')).toBeTruthy();
-  expect(screen.getByText('Another request').closest('details')).toBeNull();
-  const disclosure = screen.getByText(/Sent instruction · Brian/);
-  fireEvent.click(disclosure);
-  expect(disclosure.closest('details')?.open).toBe(true);
-  expect(
-    within(disclosure.closest('details')!).getByText('Check the report'),
-  ).toBeTruthy();
+  expect(screen.getByText('Check the report')).toBeTruthy();
+  expect(screen.getByText(/Sender ·/)).toBeTruthy();
+  expect(screen.getByText('Another request')).toBeTruthy();
 });
 
 test('opening the real card transcript keeps the provider prompt once and retains the attributed copy on demand', async () => {
@@ -448,40 +437,38 @@ test('opening the real card transcript keeps the provider prompt once and retain
       },
     ],
   };
+  const open = vi.fn();
   render(
-    <UIBlockActionsContext.Provider
-      value={{ submitForm: () => {}, canSendChildInstruction: true }}
-    >
-      <SubagentTranscriptCard
-        child={{
-          toolAnchor: false,
-          provider: 'codex',
-          item: {
-            producer: 'engine-subagent',
-            reporterThreadId: 'parent',
-            childId: 'child',
-            status: 'completed',
-            transcript: {
-              kind: 'codex-thread',
-              threadId: '00000000-0000-4000-8000-000000000001',
-            },
-          },
-        }}
-      />
-    </UIBlockActionsContext.Provider>,
+    <ConversationConnectionProvider value={{ apiBase: 'http://station.test' }}>
+      <ChildChatContext.Provider value={open}>
+        <UIBlockActionsContext.Provider
+          value={{ submitForm: () => {}, canSendChildInstruction: true }}
+        >
+          <SubagentTranscriptCard
+            child={{
+              toolAnchor: false,
+              provider: 'codex',
+              item: {
+                producer: 'engine-subagent',
+                reporterThreadId: 'parent',
+                childId: 'child',
+                status: 'completed',
+                transcript: {
+                  kind: 'codex-thread',
+                  threadId: '00000000-0000-4000-8000-000000000001',
+                },
+              },
+            }}
+          />
+        </UIBlockActionsContext.Provider>
+      </ChildChatContext.Provider>
+    </ConversationConnectionProvider>,
   );
   fireEvent.click(screen.getByTestId('subagent-card').querySelector('button')!);
   expect(screen.getByText('Check the report')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
-  await screen.findByText('Initial task');
-  const copies = screen
-    .getAllByText('Check the report')
-    .filter((node) => node.closest('details:not([open])') === null);
-  expect(copies).toHaveLength(1);
-  expect(screen.getByText('Another native prompt')).toBeTruthy();
-  const summary = screen.getByText(/Sent instruction · Brian/);
-  fireEvent.click(summary);
-  expect(
-    within(summary.closest('details')!).getByText('Check the report'),
-  ).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Open chat' }));
+  expect(open).toHaveBeenCalledWith(
+    expect.objectContaining({ threadId: 'parent', childId: 'child' }),
+  );
+  expect(screen.getByText('Check the report')).toBeTruthy();
 });

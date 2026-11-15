@@ -199,7 +199,7 @@ describe('Notifications inbox: a paired-Station item offers no local reply', () 
   test('the peer item has no reply, says where to answer, and opens Activity', () => {
     renderPage();
     const peer = row('attention-item', 'Peer task needs input');
-    expect(within(peer).queryByLabelText('Answer this session')).toBeNull();
+    expect(within(peer).queryByLabelText('Answer this request')).toBeNull();
     expect(within(peer).queryByRole('textbox')).toBeNull();
     expect(
       within(peer).queryByRole('button', { name: 'Send answer' }),

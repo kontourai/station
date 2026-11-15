@@ -455,7 +455,8 @@ pre-push checks. Follow
 [Landing a pull request](development.md#landing-a-pull-request) for the merge
 queue and [AGENTS.md](../../AGENTS.md) for handoff rules; do not manually merge
 or arm another lane's pull request.
-For the merge queue, arm and confirm once, then stop polling it. When checking
+For the merge queue, arm and confirm once, then stop polling it; the pull
+request is done only when it reads `MERGED`. When checking
 CI, inspect the actual job and failure before deciding what to rerun; silence is
 not success. Follow the task's required verification through its real outcome.
 Focused checks remain diagnostic; the hosted exact-revision completion receipt

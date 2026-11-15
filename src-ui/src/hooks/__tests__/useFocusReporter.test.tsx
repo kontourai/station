@@ -235,6 +235,53 @@ describe('useFocusReporter', () => {
     expect(sentStates()).toEqual(['focused', 'hidden']);
   });
 
+  test('unloading sends one hidden although pagehide and visibilitychange both fire before it answers', async () => {
+    await mountSettled();
+    // A real unload: the hidden from pagehide is still in flight (the page is
+    // going away) when the document turns hidden.
+    holdNextSend();
+    await fire(window, 'pagehide');
+    await setVisibility('hidden');
+    expect(sentStates()).toEqual(['hidden']);
+  });
+
+  test('a hidden that failed is sent again on the next hiding event', async () => {
+    await mountSettled();
+    mocks.authenticatedFetch.mockImplementationOnce(async () => {
+      throw new Error('offline');
+    });
+    await setVisibility('hidden');
+    await fire(window, 'pagehide');
+    expect(sentStates()).toEqual(['hidden', 'hidden']);
+  });
+
+  test('hiding again after showing sends a second hidden, so the server never keeps focused', async () => {
+    await mountSettled();
+    await setVisibility('hidden');
+    await setVisibility('visible');
+    await advance(FOCUS_REPORT_DEBOUNCE_MS);
+    await setVisibility('hidden');
+    expect(sentStates()).toEqual(['hidden', 'focused', 'hidden']);
+  });
+
+  test('a page restored from the back/forward cache reports hidden again on its next pagehide', async () => {
+    await mountSettled();
+    await fire(window, 'pagehide');
+    const restored = new Event('pageshow');
+    Object.defineProperty(restored, 'persisted', { value: true });
+    window.dispatchEvent(restored);
+    await advance(FOCUS_REPORT_DEBOUNCE_MS);
+    await fire(window, 'pagehide');
+    expect(sentStates()).toEqual(['hidden', 'focused', 'hidden']);
+  });
+
+  test('a document unloaded before its first report sends nothing', async () => {
+    await mount();
+    await fire(window, 'pagehide');
+    await setVisibility('hidden');
+    expect(mocks.authenticatedFetch).not.toHaveBeenCalled();
+  });
+
   test('a hung report is abandoned after the timeout and the next report goes', async () => {
     holdNextSend();
     await mount();

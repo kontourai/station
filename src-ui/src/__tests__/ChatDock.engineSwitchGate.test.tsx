@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 /**
- * The engine switch ("Change engine for this conversation") is offered only
+ * The engine switch ("Change engine for this chat") is offered only
  * when the server's open resolution lets this caller change the
  * conversation. `ChatWorkspacePane` owns that gate: it hands the content
  * area `onExecutionModelSelect` only while `conversationCanMutate` holds, the
@@ -107,7 +107,6 @@ vi.mock('../contexts/open-chats-store', () => ({
     items: [],
     currentSessionIdByConversation: new Map(),
   }),
-  countOpenChatAttention: () => 0,
 }));
 vi.mock('../hooks/useActiveChatSessions', () => ({
   useRehydrateSessions: () => () => {},
@@ -234,7 +233,6 @@ function session(
     source: 'manual',
     createdAt: 1,
     updatedAt: 1,
-    hasUnread: false,
     ...(conversationOpenState ? { conversationOpenState } : {}),
   } as unknown as ChatSession;
 }

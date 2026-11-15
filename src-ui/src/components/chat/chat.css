@@ -12,20 +12,12 @@
   cursor: pointer;
   padding: 4px 8px;
   border-radius: 8px;
-  transition:
-    transform var(--motion-base) var(--ease-standard),
-    box-shadow var(--motion-base) var(--ease-standard);
+  transition: background-color var(--motion-base) var(--ease-standard);
   position: relative;
 }
 
 .app-toolbar__brand:hover {
-  background: linear-gradient(
-    135deg,
-    var(--bg-hover) 0%,
-    var(--bg-tertiary) 100%
-  );
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  background: color-mix(in srgb, var(--k-text) 5%, var(--k-bg));
 }
 
 .app-toolbar__logo {
@@ -515,62 +507,6 @@
   position: relative;
 }
 
-.message-row__avatar::after {
-  content: "";
-  position: absolute;
-  inset: -2px;
-  border-radius: 50%;
-  background: linear-gradient(
-    135deg,
-    var(--accent-primary),
-    var(--accent-secondary, var(--accent-primary))
-  );
-  opacity: 0;
-  transition: opacity var(--motion-slow) var(--ease-standard);
-  z-index: -1;
-}
-
-.message-row:hover .message-row__avatar::after {
-  opacity: 0.2;
-}
-
-.message--from-prompt {
-  background: linear-gradient(
-    135deg,
-    var(--bg-tertiary) 0%,
-    var(--bg-secondary) 100%
-  );
-  border-left: 3px solid var(--accent-primary);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-  position: relative;
-  overflow: hidden;
-}
-
-.message--from-prompt::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 3px;
-  height: 100%;
-  background: linear-gradient(
-    180deg,
-    var(--accent-primary),
-    var(--accent-secondary, var(--accent-primary))
-  );
-  animation: prompt-glow var(--motion-status-breathe) var(--ease-standard)
-    infinite alternate;
-}
-
-@keyframes prompt-glow {
-  from {
-    opacity: 0.6;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
 .message__trace {
   position: absolute;
   top: 8px;
@@ -952,6 +888,14 @@
   margin-bottom: var(--k-space-1);
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
+}
+/* A turn an in-place engine rewind hid from the engine: kept, dimmed. */
+.message.message--rewound {
+  opacity: 0.55;
+}
+.message__rewound-badge {
+  display: flex;
+  margin-bottom: var(--k-space-1);
 }
 .message__station-glyph {
   width: 14px;
@@ -1867,10 +1811,9 @@
   display: none;
 }
 
-/* Said in the chip caption on a wide composer; its own line on a narrow one
-   (see the container query below). */
+/* The next-send destination stays visible while Run setup is closed. */
 .chat-input__next-turn-notice {
-  display: none;
+  display: block;
   flex-basis: 100%;
   margin: 0;
   padding-inline: var(--k-space-1);
@@ -2704,29 +2647,6 @@
   margin-bottom: 0;
 }
 
-/* A long chat title leaves the phone header's project control 40px of content
-   width (measured at 320, 390 and 412px), where it only ever read "New ch… /
-   No …"; there it collapses to its folder glyph, and the button's aria-label
-   still names the project. The shortest title ("Chat") leaves 56px at 320px,
-   where "No pr…" still reads, so the cut sits between the two at 48px. The
-   base header rules live in index.css; these are parent-qualified so source
-   order cannot decide. */
-.chat-dock__mobile-header .chat-dock__mobile-project {
-  container: chat-dock-mobile-project / inline-size;
-}
-.chat-dock__mobile-project .chat-dock__mobile-project-glyph {
-  display: none;
-  color: var(--text-secondary);
-}
-@container chat-dock-mobile-project (max-width: 48px) {
-  .chat-dock__mobile-project .chat-dock__mobile-project-glyph {
-    display: inline-flex;
-  }
-  .chat-dock__mobile-project .chat-dock__mobile-project-lines {
-    display: none;
-  }
-}
-
 /* Phone density: the transcript's own 16px gap separates rows; the base 16px
    margin on top of it doubled every step. A virtualized transcript positions
    rows absolutely, where the container gap does not apply, so the margin
@@ -3501,6 +3421,7 @@
 
 .chat-input {
   container-type: inline-size;
+  --composer-label-collapse: 380px;
 }
 
 .chat-input .chat-input__meta {
@@ -3556,10 +3477,6 @@
     display: none;
   }
 
-  .chat-input__settings {
-    flex-basis: 100%;
-  }
-
   /* #3050: a narrow composer gives up the Agent's route before its name. The
      chip's accessible name and tooltip keep the route. */
   .chat-input__agent-route {
@@ -3588,22 +3505,6 @@
     right: auto;
     left: 50%;
     translate: -50% 0;
-  }
-}
-
-@media (max-height: 540px) and (pointer: coarse) {
-  .app__main
-    .chat-dock--bottom
-    .chat-input:has(textarea:focus)
-    > .chat-input__meta:has(.chat-input__activity) {
-    display: flex;
-  }
-
-  .app__main
-    .chat-dock--bottom
-    .chat-input:has(textarea:focus)
-    .chat-input__settings {
-    display: none;
   }
 }
 
@@ -3721,4 +3622,32 @@
 }
 .chat-dock__reader[hidden] {
   display: none;
+}
+
+/* Tools lead; setup and Send share the trailing edge without wrapping. */
+.chat-input .chat-controls-row {
+  flex-wrap: nowrap;
+}
+/* Beat the global toolbar's fixed-child reset while keeping setup shrinkable. */
+div.chat-input
+  .chat-controls-row
+  > .composer-choices.chat-input__settings:has(
+    > .choice-trigger.composer-run-control
+  ) {
+  flex: 0 1 auto;
+  min-width: 44px;
+  max-width: 45%;
+  overflow: visible;
+}
+.chat-controls-row > .chat-input__send-group {
+  margin-inline-start: 0;
+}
+.chat-input__meta:not(
+  :has(.chat-input__next-turn-notice, .chat-status-pill, .chat-scroll-to-bottom)
+) {
+  display: none;
+}
+
+.chat-input .chat-controls-row {
+  gap: clamp(0px, calc((100cqw - 450px) * 1000), var(--k-space-2));
 }

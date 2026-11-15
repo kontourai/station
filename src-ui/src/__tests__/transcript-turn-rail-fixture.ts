@@ -157,7 +157,7 @@ export async function turnRailBrowserFixture({
       }
       return messages;
     }
-    const base={id:'turn-rail-session',agentSlug:'dev-agent',agentName:'Dev Agent',title:'Turn rail',input:'',attachments:[],queuedMessages:[],inputHistory:[],hasUnread:false,status:'idle',createdAt:1,updatedAt:1,source:'manual'};
+    const base={id:'turn-rail-session',agentSlug:'dev-agent',agentName:'Dev Agent',title:'Turn rail',input:'',attachments:[],queuedMessages:[],inputHistory:[],status:'idle',createdAt:1,updatedAt:1,source:'manual'};
     const client=new QueryClient({defaultOptions:{queries:{retry:false,enabled:false}}});
     function App(){
       const [session,setSession]=useState(()=>({...base,messages:makeMessages(${turns})}));

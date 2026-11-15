@@ -3,13 +3,13 @@
 This page combines current source contracts with historical provider probes.
 The recorded Claude 2.1.224 / Agent SDK 0.3.224 experiments below were not rerun.
 The earlier dependency review inspected Agent SDK 0.3.302. The current lockfile
-selects 0.3.318; source inspection of its installed `sdk.d.ts` still finds that
+selects 0.3.322; source inspection of its installed `sdk.d.ts` still finds that
 omitted `settingSources` loads all filesystem settings. That type declaration
 is not a fresh live test of permission-rule precedence, workspace trust, or
 memory/MCP discovery.
 
 Version-specific observations below retain the SDK and CLI versions actually
-inspected or executed. They are not new provider results for SDK 0.3.318.
+inspected or executed. They are not new provider results for SDK 0.3.322.
 
 `EngineCapabilityMatrix.toolPolicy` declares only whether Station can make a
 pre-tool blocking or grant decision on the actual tool-call path. It does not
@@ -35,7 +35,8 @@ opinion, and the engine asks `canUseTool` for anything it does not allow
 itself.
 
 An approval-guardian allow is handled the same way (#2947). The guardian is
-shown the Agent's name, the tool's name and the call's arguments. On ACP it
+shown what the person typed in the conversation (#4827; never a tool result
+or a reply), the Agent's name, the tool's name and the call's arguments. On ACP it
 is also shown the call's title as the tool description; the Claude hook
 passes no description. It is not shown the session's working directories, its permission
 mode, or why the engine would ask, so its allow speaks for the call as
@@ -56,7 +57,9 @@ is not applied the adapter logs that and why. An escalation, a plan exit or a qu
 call the engine allows itself never consults the allow. The guardian is asked
 once per call. At most 256 unanswered allows are kept per session; beyond
 that the oldest is dropped, and a call whose allow was dropped prompts. A
-guardian deny (enforce mode) is still a `PreToolUse` deny. What a hook allow
+guardian deny (enforce mode) is still a `PreToolUse` deny, except the
+escalation after repeated denials (#4827), which is a required ask: a
+`PreToolUse` `ask`, which reaches `canUseTool` and a person. What a hook allow
 skipped was read in the bundled 2.1.278 binary and not reproduced in a live
 session: after one the engine re-checks deny rules, ask rules, user-interaction
 tools, safety checks, the MCP organization ceiling and a sandbox override, and
@@ -103,7 +106,17 @@ limit: only calls that invoke that callback and report a tool name enter the
 policy check, and the external engine reports that identity. Which calls
 invoke the callback is the engine's own configuration; for OpenCode, Station
 sets that configuration from the chat's approval mode
-([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)). Codex
+([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)).
+The `opencode` engine delivers the same staged evaluator on both transports.
+Over ACP it is the `requestPermission` path above. On its native transport it
+runs on each OpenCode permission ask, the session's or a descendant's, in
+ACP's order, with OpenCode's own name for the asking tool (the name its ACP
+layer reports). The same coverage limit applies: only calls OpenCode asks
+about, whose tool it names, enter the check. An unnamed ask, or one that does
+not fit the tool recorded for its call (a Code Mode nested call names the
+`execute` call), goes to a person, or is rejected in a delegated session that
+may not grant approvals. A native deny reaches the model as the tool's failure with its reason
+([OpenCode native transport](../decisions/opencode-native-transport.md#governance)). Codex
 has no general Station pre-tool interception seam. Its preview bound browser
 and device dynamic calls pass through the staged evaluator and Station's
 approval path before execution; that narrow path does not cover other Codex
@@ -231,6 +244,33 @@ passes only on a person's recorded approval of that tool. Calls an engine
 makes to a server it connects to itself are not enforced
 ([design](../design/mcp-subregistry-curation.md#coverage-and-gaps)).
 
+Engine-native web reads set the same mark (#4828): Claude Code through an
+in-process `PostToolUse` hook on every session (`WebFetch`, `WebSearch`), Codex
+from a completed `webSearch` item, ACP from a tool call of kind `fetch`, the
+Station engine's HTTP request in `afterToolCall`, and Station's browser tools
+at the browser-agent route. Muse is not covered. In a marked conversation the
+staged evaluator then runs one more stage before the untrusted-content
+permission, a best-effort early check by path. A write, move, rename or copy
+that reaches a known agent-instruction file or git-hook or git configuration
+location (including the `core.hooksPath` git reports) is refused with
+`untrusted_persistence_protection`. A shell command naming one, or giving git
+a configuring global option, is a required Ask. This check does not contain
+git hook execution: an external absolute hooks path, a bare repository, a
+repository nested in a hooks folder, a symlinked hooks folder, a writable
+`[include]` that retargets the hooks path, and git inside a quoted `sh -c` or
+shell alias have each run a planted hook. OS-level enforcement is
+[#4860](https://github.com/kontourai/station/issues/4860). A delegated child
+takes its ancestors' marks, and a child's read marks its parent when the
+result returns. The stage reads a loaded MCP tool's original name from loader
+provenance. It runs wherever the staged evaluator runs (Station engine, Claude
+`PreToolUse`, ACP permission requests, OpenCode native asks). ACP edit, move
+and delete requests are also checked by kind when unnamed, at the absolute
+locations OpenCode's ACP layer reports. The OpenCode native transport checks
+its `edit` asks' files the same way, before the evaluator: OpenCode names them
+relative to the asking session's directory, so each is also checked at its
+absolute path there, where a custom `core.hooksPath` is read. It does not run
+for Codex's own file changes and commands.
+
 Claude's staged evaluator returns a required Ask as a `PreToolUse` permission
 ask; `canUseTool` also excludes it from automatic, guardian and session grants.
 Adapter tests exercise both callbacks, including repeated calls after a session
@@ -346,7 +386,7 @@ do not already allow, rather than claiming a floor Station does not impose.
 The standing grant covers calls to the tool, never an escalation beyond the
 call (#2915; #2911 set the same rule for Codex). The recorded escalation
 inspection used Agent SDK 0.3.278, which bundled Claude Code 2.1.278.
-This checkout now resolves SDK 0.3.318 as noted above; the historical
+This checkout now resolves SDK 0.3.322 as noted above; the historical
 2.1.261 and 2.1.278 observations below were not freshly rerun against it.
 That inspected engine signals escalations in several shapes. Read, Glob, Grep and LSP ask for a path outside
 the session's working directories without a `blockedPath`. They carry a session
@@ -493,7 +533,7 @@ Claude Code writes why it asks on each `can_use_tool` control request:
 `workingDir`, `safetyCheck`, `classifier`, `other`), `classifier_approvable`,
 `decision_reason_code` and `requires_user_interaction`. The installed Agent
 SDK 0.3.289 was observed forwarding reason type, reason code and interaction
-fields, but not `classifier_approvable`. The current 0.3.318 type contract exposes
+fields, but not `classifier_approvable`. The current 0.3.322 type contract exposes
 `requestId`, `decisionReason` and `matchedAskRule`; Station obtains the structured
 reason fields from its frame tap below. A test runs the real installed SDK against a stand-in
 CLI and verifies the reason values, request identities and classifier facts
@@ -727,7 +767,7 @@ promising more than it does:
 The conversation opens one approval sheet for its current tool requests. It
 shows each command in full and gives each request its own decision controls.
 Closing the sheet hides it without answering; that prompt remains dismissed
-until Answer or Needs approval reopens it. A newly opened prompt can open the
+until Answer, Needs input or Needs approval reopens it. A newly opened prompt can open the
 sheet again. Sending and failure state survive hiding the sheet. When Station
 answers a decision with "already settled", the view missed that request's
 resolution: the sheet drops the request and its count at once and refetches

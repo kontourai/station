@@ -1,0 +1,7 @@
+{
+  "revision": "83d60ef24f3a323eb2c513c76b5140006cea2b39",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed the ProjectService list/get display metadata delta and SDK reference project contract: repositoryDisplay is additive, derived from the manifest primary Git remote, cached by file revision, and unavailable manifest reads remain display-only. SDK transport/authority, session and terminal API contracts described here do not change. No SDK publication or provider proof claimed.","inputs":["docs/reference/sdk.md","src-server/services/projects/project-service.ts"]}
+  ]
+}

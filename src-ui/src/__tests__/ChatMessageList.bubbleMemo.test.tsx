@@ -122,7 +122,6 @@ function session(planRawText: string) {
     attachments: [],
     queuedMessages: [],
     inputHistory: [],
-    hasUnread: false,
     status: 'idle',
     createdAt: 0,
     updatedAt: 0,

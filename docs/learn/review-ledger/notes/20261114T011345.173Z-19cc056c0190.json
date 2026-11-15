@@ -1,0 +1,7 @@
+{
+  "revision": "aac3c60768bd001e27b57bf3d9b1e304ca2bb5b8",
+
+  "notes": [
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Checked: test-impact-manifest.mjs now adds test-runtime environment edges for dependency bumps; this context's claims about agent runtime storage and its test selection are unaffected. No prose change.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/test-impact-manifest.mjs"]}
+  ]
+}

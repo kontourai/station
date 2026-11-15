@@ -64,11 +64,13 @@ import {
   authorityPersistenceKey,
   buildAuthorityNamespace,
 } from '../lib/authorityNamespace';
+import { OPEN_CONNECTIONS_MODAL_EVENT } from '../lib/connectionModalEvents';
 import { resolveLocalUiSession } from '../lib/local-ui-bootstrap';
 import {
   QUERY_PERSISTENCE_STORAGE_KEY,
   queryPersistenceBuster,
 } from '../lib/queryPersistence';
+import { recordStationUse } from '../lib/stationSwitcher';
 
 vi.mock('../lib/local-ui-bootstrap', () => ({
   resolveLocalUiSession: vi.fn(async () => ({ kind: 'host-unavailable' })),
@@ -371,7 +373,7 @@ function renderTree(
       },
     },
   });
-  return render(
+  const rendered = render(
     <ApiBaseProvider>
       <ConnectionsProbe />
       <QueryClientProvider client={bootstrap}>
@@ -391,6 +393,7 @@ function renderTree(
       </QueryClientProvider>
     </ApiBaseProvider>,
   );
+  return Object.assign(rendered, { bootstrap });
 }
 
 function probe(): HTMLElement {
@@ -1843,5 +1846,140 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
       String(url).endsWith('/api/projects'),
     ).length;
     expect(listFetchesAfterReload).toBe(listFetchesAfterSave);
+  });
+
+  it('a slow switch names the Station it is reaching, then offers retry, going back, and Manage Stations', async () => {
+    const harness = createHarness();
+    harness.observationPlan.set('default', async () => OBS_DEFAULT);
+    const { unmount } = renderTree(harness);
+    const { id: idA, url: urlA } = await addHome('slowa');
+    const { id: idB, url: urlB } = await addHome('slowb');
+    harness.observationPlan.set(urlA, async () => OBS_A);
+    // B never answers: the observation waits out its request deadline.
+    harness.observationPlan.set(urlB, () => new Promise(() => {}));
+    await switchTo(idA);
+    await waitFor(() =>
+      expect(probe().getAttribute('data-namespace')).toBe(NS_A),
+    );
+    // The header records each Station it verifies; it is not mounted here.
+    recordStationUse(idA);
+    const opened: unknown[] = [];
+    const onOpen = (event: Event) => opened.push((event as CustomEvent).detail);
+    window.addEventListener(OPEN_CONNECTIONS_MODAL_EVENT, onOpen);
+    try {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+      await switchTo(idB);
+      const hostB = new URL(urlB).host;
+      // Which Station, which step — not anonymous placeholder cards.
+      expect(
+        screen.getByRole('heading', { name: 'Connecting to Home-slowb' }),
+      ).toBeTruthy();
+      expect(screen.getByText(hostB)).toBeTruthy();
+      expect(screen.getByRole('status').textContent).toBe(
+        'Checking Station access…',
+      );
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+
+      await act(async () => {
+        vi.advanceTimersByTime(7_000);
+      });
+      expect(screen.getByRole('status').textContent).toBe(
+        'Still no answer from Home-slowb. It may be offline or unreachable from this device.',
+      );
+      const callsBefore = harness.observationCalls.filter(
+        (call) => call.apiBase === urlB,
+      ).length;
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      });
+      // Retrying restarts the read and the wait.
+      expect(
+        harness.observationCalls.filter((call) => call.apiBase === urlB),
+      ).toHaveLength(callsBefore + 1);
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      await act(async () => {
+        vi.advanceTimersByTime(7_000);
+      });
+
+      // With Try again and Back to both offered, Manage Stations is the
+      // row's third action and waits in its menu (#3045).
+      fireEvent.click(
+        screen.getByRole('button', { name: 'More Station actions' }),
+      );
+      fireEvent.click(
+        await screen.findByRole('menuitem', { name: 'Manage Stations' }),
+      );
+      expect(opened).toEqual([{ mode: 'list' }]);
+
+      vi.useRealTimers();
+      await act(async () => {
+        fireEvent.click(
+          screen.getByRole('button', { name: 'Back to Home-slowa' }),
+        );
+      });
+      await waitFor(() =>
+        expect(probe().getAttribute('data-namespace')).toBe(NS_A),
+      );
+    } finally {
+      vi.useRealTimers();
+      window.removeEventListener(OPEN_CONNECTIONS_MODAL_EVENT, onOpen);
+      window.localStorage.removeItem('station.switcher.recent');
+      unmount();
+    }
+  });
+
+  it('Try again on a slow re-read of a verified Station never verifies the cached observation', async () => {
+    const harness = createHarness();
+    harness.observationPlan.set('default', async () => OBS_DEFAULT);
+    const { unmount, bootstrap } = renderTree(harness);
+    const { id: idA, url: urlA } = await addHome('rereada');
+    harness.observationPlan.set(urlA, async () => OBS_A);
+    await switchTo(idA);
+    await waitFor(() =>
+      expect(probe().getAttribute('data-namespace')).toBe(NS_A),
+    );
+    // The same activation re-reads its observation and the read hangs: the
+    // cache holds A's settled success while the screen waits.
+    harness.observationPlan.set(urlA, () => new Promise(() => {}));
+    const states: string[] = [];
+    const stopWatching = bootstrap.getQueryCache().subscribe((event) => {
+      const query = event.query;
+      if (query.queryKey[0] !== 'authority-observation') return;
+      states.push(
+        `${query.state.status}/${query.state.fetchStatus}/${query.state.data ? 'data' : 'none'}`,
+      );
+    });
+    try {
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+      await act(async () => {
+        void bootstrap.refetchQueries({
+          queryKey: ['authority-observation'],
+        });
+        // Query notifications are delivered on a real macrotask.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      expect(screen.getByRole('status').textContent).toBe(
+        'Checking Station access…',
+      );
+      await act(async () => {
+        vi.advanceTimersByTime(7_000);
+      });
+      states.length = 0;
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      // A settled success with A's data would verify the Station on a
+      // read that never completed.
+      expect(states).not.toContain('success/idle/data');
+      expect(states).toContain('pending/fetching/none');
+      expect(probe).toThrow();
+    } finally {
+      stopWatching();
+      vi.useRealTimers();
+      unmount();
+    }
   });
 });

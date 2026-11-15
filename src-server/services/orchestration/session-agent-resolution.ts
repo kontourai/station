@@ -49,6 +49,7 @@ import type {
   SessionCapabilityDeliveryMetadata,
 } from '@kontourai/station-contracts/provider';
 import {
+  isAcpFamilyEngine,
   SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
   SYSTEM_PROMPT_CAPABILITY_ID,
 } from '@kontourai/station-contracts/provider';
@@ -336,11 +337,11 @@ function resolveStationInstructions(args: {
   const boundChannel =
     provider === 'codex' && options.codexBoundToolsEnabled?.() === true;
   const browserAllowed = definition.browserTools !== false;
-  const harness =
-    provider === 'claude' ||
-    provider === 'codex' ||
-    provider === 'acp' ||
-    provider === 'muse'
+  // An engine running saved ACP connections (`opencode`) is told what an
+  // ACP engine is told.
+  const harness = isAcpFamilyEngine(provider)
+    ? 'acp'
+    : provider === 'claude' || provider === 'codex' || provider === 'muse'
       ? provider
       : 'other';
   // Device tools are bound-only, so the custody-filtered `controlTools` never
@@ -607,7 +608,7 @@ export function createSessionAgentResolver(
                   disabled.push(originalMcpToolName(id, name));
               }
               if (
-                input.provider === 'acp' &&
+                isAcpFamilyEngine(input.provider) &&
                 (selected !== undefined || disabled.length)
               )
                 return { ok: false, reason: 'engine-unsupported' };

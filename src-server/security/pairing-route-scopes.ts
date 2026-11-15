@@ -188,7 +188,11 @@ function isEngineSignInLeaf(request: {
     (['GET', 'DELETE'].includes(request.method) &&
       /^\/acp\/connections\/[^/]+\/sign-in\/attempt$/.test(path)) ||
     (['PUT', 'DELETE'].includes(request.method) &&
-      /^\/acp\/connections\/[^/]+\/credentials\/[^/]+$/.test(path))
+      /^\/acp\/connections\/[^/]+\/credentials\/[^/]+$/.test(path)) ||
+    (['GET', 'POST', 'DELETE'].includes(request.method) &&
+      /^\/acp\/connections\/[^/]+\/host-auth\/login$/.test(path)) ||
+    (request.method === 'POST' &&
+      /^\/acp\/connections\/[^/]+\/host-auth\/sign-out$/.test(path))
   );
 }
 
@@ -812,6 +816,31 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     method: 'POST',
     prefix: '/api/presence/focus',
     exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  // #3075: the caller's own read markers. Both are POSTs only because a batch
+  // body does not fit a query string; they read or advance the requesting
+  // person's markers and nothing else, and each target is re-authorized
+  // through its own conversation or room read. A read-only paired phone must
+  // reach them, or reading there could never clear unread anywhere. They are
+  // person self-service leaves, so an account-bound member's Device reaches
+  // them too; the target's own read still decides what it can see.
+  {
+    id: '/api/read-markers/summary:read',
+    method: 'POST',
+    prefix: '/api/read-markers/summary',
+    exact: true,
+    accountBoundPerson: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/read-markers/mark:own',
+    method: 'POST',
+    prefix: '/api/read-markers/mark',
+    exact: true,
+    accountBoundPerson: true,
     scope: PAIRING_SCOPE_ORCHESTRATION_READ,
     origin: 'explicit',
   },
@@ -1833,6 +1862,29 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     method: '*',
     prefix: '/acp/connections/:id/credentials',
     scope: PAIRING_SCOPE_ENGINE_LOGIN,
+    origin: 'explicit',
+  },
+  // Station-run engine sign-in (acp-sign-in.ts): starting, reading (it
+  // carries the device code) or cancelling one, and signing out, are the
+  // `engine:login` decision like the engine's own sign-in above.
+  ...(['host-auth/login', 'host-auth/sign-out'] as const).map(
+    (leaf): PairingScopeRouteRule => ({
+      id: `/acp/connections/:id/${leaf}:engine-login`,
+      method: '*',
+      prefix: `/acp/connections/:id/${leaf}`,
+      exact: true,
+      scope: PAIRING_SCOPE_ENGINE_LOGIN,
+      origin: 'explicit',
+    }),
+  ),
+  // Installing a managed engine downloads and lays down code Station runs:
+  // an operate-tier action, with explicit consent in the body.
+  {
+    id: '/acp/connections/:id/managed-install:operate',
+    method: 'POST',
+    prefix: '/acp/connections/:id/managed-install',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
     origin: 'explicit',
   },
   // Re-detecting engines re-runs the host user's login shell (bounded and
@@ -3692,6 +3744,22 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'POST',
       path: '/api/orchestration/station-control/job-proposals',
     },
+    // #4830 `propose_automation_source`, `propose_automation_rule` and
+    // `list_automation_proposals`: internal-only at the route like the leaves
+    // above, on the verified caller's own conversation. A proposal creates
+    // nothing; a person's Confirm below does.
+    {
+      method: 'POST',
+      path: '/api/orchestration/station-control/automation-proposals/sources',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/station-control/automation-proposals/rules',
+    },
+    {
+      method: 'GET',
+      path: '/api/orchestration/station-control/automation-proposals',
+    },
     // `terminal_run` and `terminal_read` (#3994): internal-only at the route
     // (404 otherwise), on the verified caller's own conversation. A request
     // runs nothing until a person approves it on `/api/terminal/runs`.
@@ -3730,6 +3798,19 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     {
       method: 'POST',
       path: '/api/orchestration/agent-schedule/:conversationId/job-proposals/:proposalId/decline',
+    },
+    // #4830: a person's Confirm and Decline of an agent's Automation
+    // proposal. The same gate as the job proposal's Decline (sending to the
+    // conversation, never a request that may be an agent's); Confirm also
+    // requires the Station operator in person, because it creates
+    // Station-wide configuration.
+    {
+      method: 'POST',
+      path: '/api/orchestration/agent-schedule/:conversationId/automation-proposals/:proposalId/confirm',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/agent-schedule/:conversationId/automation-proposals/:proposalId/decline',
     },
     // #3628: the person's own coordinator designation. Every leaf reads or
     // writes only the request principal's record and refuses a request that
@@ -4321,6 +4402,9 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'GET',
       path: '/integrations/untrusted-content/conversations/:conversationId',
     },
+    // #4828: per-engine coverage of native web reads; Station's own
+    // derivation, read like the mark above.
+    { method: 'GET', path: '/integrations/untrusted-content/coverage' },
     {
       method: 'POST',
       path: '/integrations/untrusted-content/conversations/:conversationId/clear',
@@ -4600,6 +4684,31 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'POST',
       path: '/api/orchestration/sessions/:threadId/provider-tasks/:taskId/stop',
     },
+    // Restart (or sign in to) one MCP server the Session's ENGINE runs, in
+    // a Session the caller already reaches through this family. Like the
+    // usage-limit actions below it is the person's act on their own Session
+    // (`canUserMutateSession`, the authority of sending the next turn). It
+    // returns only the engine's outcome; a sign-in link it starts arrives
+    // as an input request this family already reads.
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/mcp-servers/:serverName/reconnect',
+    },
+    // A Session's live continuity (which engine-native actions its engine
+    // declared) and the person's in-place rewind of that engine's context.
+    // The read returns only two declared mechanism names under the same
+    // session-read gate as its siblings; the rewind is the person's act on
+    // their own Session (`canUserMutateSession`, the authority of sending the
+    // next turn) and edits no transcript, so it takes the operate tier like
+    // the MCP reconnect above.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/continuity',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/rewind',
+    },
     // #3157: the usage-limit banner's recovery read and its two person-owned
     // actions (Resume now, Cancel auto-resume). Deliberate family inheritance:
     // the GET returns only the Session's recovery projection under the same
@@ -4818,6 +4927,42 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     {
       method: 'POST',
       path: '/api/projects/:slug/room/agents/:requestId/reconcile',
+    },
+    // Named channels (#4792): the same per-room actions, addressed per channel.
+    // Create, rename, topic and archive compose the room's `edit` tier.
+    { method: 'GET', path: '/api/projects/:slug/channels' },
+    { method: 'POST', path: '/api/projects/:slug/channels' },
+    { method: 'PATCH', path: '/api/projects/:slug/channels/:channelId' },
+    { method: 'GET', path: '/api/projects/:slug/channels/:channelId' },
+    {
+      method: 'GET',
+      path: '/api/projects/:slug/channels/:channelId/messages',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/messages',
+    },
+    { method: 'PUT', path: '/api/projects/:slug/channels/:channelId/note' },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/presence',
+    },
+    { method: 'GET', path: '/api/projects/:slug/channels/:channelId/events' },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/agents',
+    },
+    {
+      method: 'GET',
+      path: '/api/projects/:slug/channels/:channelId/agents/:requestId',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/agents/:requestId/cancel',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/agents/:requestId/reconcile',
     },
     // Epic #2323 S3: plugin draft preview. Status and a retained revision's
     // bytes are reads of this Project's own draft (read tier). Starting a

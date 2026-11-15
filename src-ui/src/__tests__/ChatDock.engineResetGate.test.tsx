@@ -150,7 +150,6 @@ vi.mock('../contexts/open-chats-store', () => ({
     items: [],
     currentSessionIdByConversation: new Map(),
   }),
-  countOpenChatAttention: () => 0,
 }));
 vi.mock('../hooks/useActiveChatSessions', () => ({
   useRehydrateSessions: () => () => {},
@@ -284,7 +283,6 @@ function session(
     source: 'manual',
     createdAt: 1,
     updatedAt: 1,
-    hasUnread: false,
     ...(conversationOpenState ? { conversationOpenState } : {}),
     ...overrides,
   } as unknown as ChatSession;

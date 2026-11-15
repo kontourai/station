@@ -1,7 +1,0 @@
-{
-  "revision": "16c029b65d04d8a6c2f4ff777dc8ce949d7f59f4",
-
-  "notes": [
-    {"path":"docs/contexts/operations/CONTEXT.md","note":"Re-read the testing-guide references (lines 84, 117). testing.md changed only in the host-bound required-tests section (flag name, runtime-skip wording, exit-2 description, a sentence that the check complements the test step's exit status); no heading or anchor changed and no claim this document relies on changed.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]}
-  ]
-}

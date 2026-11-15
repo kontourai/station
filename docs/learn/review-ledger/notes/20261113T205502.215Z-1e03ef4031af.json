@@ -1,0 +1,7 @@
+{
+  "revision": "07340a0edbe56b1ee6a667f037bae63d3968476a",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated station-docs-content.ts carries only the module-map MuseCodeAdapter line edited this round (muse-auth.ts keeps an ambient META_API_KEY out of credential-profile runs); station-docs.md's description of the shipped topic set and its generation is unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

@@ -10,8 +10,6 @@
   "limits": "Source and focused fixtures only. Final combined checks, owner package publication, installed/native/provider behavior, live billing or savings, human usability and credential-free repair publication require separate evidence. This record does not close the wider onboarding, supervision, tool-authority or Automations epics.",
 
   "sources": [
-    "docs/architecture/module-map.md",
-
     "docs/user/settings.md",
 
     "packages/contracts/src/learning-review.ts",

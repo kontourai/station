@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 2,
+  "request": {
+    "sourceRevision": "c776926480e86c36d9463c47412e5e4f66a9d284",
+    "recordedAt": "2026-11-13T09:29:21.336Z",
+    "claudeCodeVersion": "2.1.318",
+    "values": {
+      "request.stationAddedTextBytes": 979,
+      "request.stationAddedToolCount": 20,
+      "request.stationAddedToolDefinitionBytes": 4502,
+      "request.sideCallCount": 0
+    }
+  },
+  "hosts": {
+    "b8bafe2e59dd9411": {
+      "platform": "darwin-arm64",
+      "sourceRevision": "c776926480e86c36d9463c47412e5e4f66a9d284",
+      "recordedAt": "2026-11-13T09:29:21.336Z",
+      "values": {
+        "restMemoryBytes": 1239465328,
+        "idleSessionsMemoryBytes": 1721751592,
+        "idleCpuPercent": 0.1659149073772167,
+        "leftoverAfterStopMemoryBytes": 0
+      }
+    }
+  }
+}

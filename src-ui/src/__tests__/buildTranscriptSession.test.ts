@@ -21,7 +21,6 @@ function baseState(overrides: Partial<ChatUIState> = {}): ChatUIState {
     attachments: [],
     queuedMessages: [],
     inputHistory: [],
-    hasUnread: false,
     agentSlug: 'codex',
     agentName: 'Codex',
     messages: [],

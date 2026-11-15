@@ -164,7 +164,6 @@ vi.mock('../contexts/open-chats-store', () => ({
     items: [],
     currentSessionIdByConversation: new Map(),
   }),
-  countOpenChatAttention: () => 0,
 }));
 
 vi.mock('../hooks/useActiveChatSessions', () => ({
@@ -1052,7 +1051,7 @@ describe('linked pull requests', () => {
     expect(row.textContent).toContain('Parser fix');
     showSurfaceStub.mockClear();
     fireEvent.click(row);
-    expect(showSurfaceStub).toHaveBeenCalledWith('activity', {
+    expect(showSurfaceStub).toHaveBeenCalledWith('chat', {
       session: 'thread-1',
     });
   });

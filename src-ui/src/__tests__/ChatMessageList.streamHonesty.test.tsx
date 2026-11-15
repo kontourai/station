@@ -89,7 +89,6 @@ function managedSession(overrides: Partial<ChatSession>): ChatSession {
     attachments: [],
     queuedMessages: [],
     inputHistory: [],
-    hasUnread: false,
     status: 'idle',
     createdAt: 1,
     updatedAt: 1,

@@ -76,4 +76,22 @@ export interface ACPClientCallbacks {
     method: string,
     params: Record<string, unknown>,
   ) => Promise<void>;
+  /**
+   * Whether `extMethod` answers this extension request rather than refusing
+   * it. A client `_meta` capability flag is announced at `initialize` only
+   * while every method it promises answers (`ACP_ANNOUNCED_CLIENT_META_FLAGS`
+   * in `acp-process.ts`). Absent: nothing is announced.
+   */
+  answersExtensionMethod?: (method: string) => boolean;
+  /**
+   * Core `elicitation/create`, when Station answers it. Its `modes` are what
+   * `initialize` announces as `clientCapabilities.elicitation`; absent, no
+   * elicitation capability is announced.
+   */
+  createElicitation?: {
+    readonly modes: { readonly form: boolean; readonly url: boolean };
+    readonly handle: (
+      params: Record<string, unknown>,
+    ) => Promise<Record<string, unknown>>;
+  };
 }

@@ -1,5 +1,10 @@
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { ConversationTurnActivity } from '@kontourai/station-contracts/orchestration';
+import {
+  type StationToolPhase,
+  stationToolOf,
+  stationToolPhrase,
+} from '@kontourai/station-contracts/station-tool-phrases';
 import { useElapsedClock } from '../../hooks/useElapsedClock';
 import { formatToolName } from '../../utils/chat-progress';
 import { parseEpochMs } from '../../utils/parseEpochMs';
@@ -32,6 +37,20 @@ type TurnActivityProgressParts = {
   silence?: string;
 };
 
+/** #3418: a Station tool by its argument-free phrase; others keep their name. */
+function toolLine(
+  name: string,
+  phase: StationToolPhase,
+  lead: string,
+  tail: string,
+): ToolLine {
+  const tool = stationToolOf(name);
+  const phrase = tool && stationToolPhrase(tool.tool, phase);
+  return phrase
+    ? { lead: lead === 'Running ' ? '' : lead, name: phrase, tail }
+    : { lead, name: formatToolName(name), tail };
+}
+
 /**
  * #2309: what the open turn is doing, read off the server's record and
  * nothing else, so every device shows the same thing — including through a
@@ -54,13 +73,14 @@ function describeTurnActivity(
   if (current) {
     const startedAt = parseEpochMs(current.startedAt);
     const others = running.length - 1;
-    parts.running = {
-      lead: 'Running ',
-      name: formatToolName(current.name),
-      tail: `${
+    parts.running = toolLine(
+      current.name,
+      'running',
+      'Running ',
+      `${
         startedAt === undefined ? '' : ` · ${formatDuration(now - startedAt)}`
       }${others > 0 ? ` (+${others} more)` : ''}`,
-    };
+    );
   } else if (activity.lastTool) {
     // `lastTool` is the newest terminal on ANY child, in or out of a turn.
     // Only one that settled inside this turn says what this turn is between.
@@ -71,11 +91,13 @@ function describeTurnActivity(
       turnStartedAt !== undefined &&
       completedAt >= turnStartedAt
     ) {
-      parts.lastTool = {
-        lead: 'Last: ',
-        name: formatToolName(activity.lastTool.name),
-        tail: ` · ${OUTCOME_WORDS[activity.lastTool.outcome]}`,
-      };
+      // Past tense only for a success; the outcome word covers the rest.
+      parts.lastTool = toolLine(
+        activity.lastTool.name,
+        activity.lastTool.outcome === 'success' ? 'done' : 'pending',
+        'Last: ',
+        ` · ${OUTCOME_WORDS[activity.lastTool.outcome]}`,
+      );
     }
   }
   const silentSince = parseEpochMs(

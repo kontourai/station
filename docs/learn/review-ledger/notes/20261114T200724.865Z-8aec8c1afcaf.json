@@ -1,0 +1,7 @@
+{
+  "revision": "60fe48dbb8ea3c876d772e58bccd118f210fe2a8",
+
+  "notes": [
+    {"path":"packages/contracts/README.md","note":"Rechecked: child-work.ts gains one more pure reducer helper; the README's description of child-work reducers still holds.","inputs":["packages/contracts/README.md","packages/contracts/package.json#/exports","packages/contracts/src/child-work.ts","packages/contracts/src/index.ts"]}
+  ]
+}
