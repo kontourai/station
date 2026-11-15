@@ -34,6 +34,26 @@ const UNATTENDED_TURN_ORIGINS: ReadonlySet<TurnDispatchOrigin> = new Set([
   'task-dispatch',
 ]);
 
+/** The events that end a turn, on which the park is (re)decided. */
+const TURN_TERMINAL_METHODS: ReadonlySet<string> = new Set([
+  'turn.completed',
+  'turn.aborted',
+  'runtime.error',
+]);
+
+/**
+ * The early park's grace: off whenever idle parking is off, otherwise the
+ * configured value or {@link FINISHED_SESSION_PARK_AFTER_MS}.
+ */
+export function finishedSessionParkAfterMs(options: {
+  idleSessionParkAfterMs: number;
+  finishedSessionParkAfterMs?: number;
+}): number {
+  return options.idleSessionParkAfterMs > 0
+    ? (options.finishedSessionParkAfterMs ?? FINISHED_SESSION_PARK_AFTER_MS)
+    : 0;
+}
+
 export interface FinishedSessionParkingPorts {
   /** Grace after the settle; `0` turns early parking off. */
   afterMs: number;
@@ -81,10 +101,17 @@ export class FinishedSessionParking {
 
   /**
    * The engine reported something after the settle (a trailing tool event, a
-   * subagent's progress): the grace starts again from now.
+   * subagent's progress): the grace starts again from now. A terminal is
+   * skipped: {@link observeTurnSettled} decides on it once it is committed.
    */
-  observeEngineActivity(threadId: string): void {
-    if (this.stopped || !this.timers.has(threadId)) return;
+  observeEngineEvent(event: { threadId: string; method: string }): void {
+    const { threadId } = event;
+    if (
+      this.stopped ||
+      TURN_TERMINAL_METHODS.has(event.method) ||
+      !this.timers.has(threadId)
+    )
+      return;
     this.cancel(threadId);
     this.schedule(threadId);
   }

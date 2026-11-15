@@ -2952,6 +2952,13 @@ async function launchAndWait(instance, ports, scratch, env) {
   };
 }
 
+/** One line for the report-only delegated run. */
+function delegatedRunSummary(run) {
+  if (run.status !== 'measured')
+    return `NOT_MEASURED delegatedRun: ${run.reason}`;
+  return `REPORTED delegatedRun engines before=${run.engineProcessesBefore} atFinish=${run.engineProcessesAtFinish} releasedAfterMs=${formatValue(run.engineReleasedAfterMs)} finishedMemoryBytes=${formatValue(run.finishedMemoryBytes.value)} warmFollowUpMs=${formatValue(run.warmFollowUpMs)} releasedFollowUpMs=${formatValue(run.releasedFollowUpMs)}`;
+}
+
 function printSummary(result) {
   const line = (text) => console.log(`[station-weight] ${text}`);
   for (const [id, metric] of Object.entries(result.metrics ?? {}))
@@ -2961,14 +2968,7 @@ function printSummary(result) {
         : `NOT_MEASURED ${id}: ${metric.reason}`,
     );
   if (result.repoRules) line(`repoRules ${JSON.stringify(result.repoRules)}`);
-  if (result.delegatedRun) {
-    const run = result.delegatedRun;
-    line(
-      run.status === 'measured'
-        ? `REPORTED delegatedRun engines before=${run.engineProcessesBefore} atFinish=${run.engineProcessesAtFinish} releasedAfterMs=${formatValue(run.engineReleasedAfterMs)} finishedMemoryBytes=${formatValue(run.finishedMemoryBytes.value)} warmFollowUpMs=${formatValue(run.warmFollowUpMs)} releasedFollowUpMs=${formatValue(run.releasedFollowUpMs)}`
-        : `NOT_MEASURED delegatedRun: ${run.reason}`,
-    );
-  }
+  if (result.delegatedRun) line(delegatedRunSummary(result.delegatedRun));
   for (const text of formatVerdicts(result.budgets ?? [])) console.log(text);
   // What the run counted as its own but may not signal: left running.
   for (const row of result.leftRunning ?? [])

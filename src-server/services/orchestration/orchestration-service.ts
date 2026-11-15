@@ -441,8 +441,8 @@ import {
   readExecutionWorkspaceBinding,
 } from './execution-workspace-binding.js';
 import {
-  FINISHED_SESSION_PARK_AFTER_MS,
   FinishedSessionParking,
+  finishedSessionParkAfterMs,
 } from './finished-session-parking.js';
 import { FlowPolicySidecar } from './flow-policy-sidecar.js';
 import {
@@ -1092,7 +1092,7 @@ interface OrchestrationServiceOptions {
    * run's, a Task wake's) settles its at-rest engine is parked, when nothing
    * has happened on the Session since. `0` leaves such Sessions to the idle
    * park; `idleSessionParkAfterMs: 0` turns both off. Default
-   * {@link FINISHED_SESSION_PARK_AFTER_MS}.
+   * `FINISHED_SESSION_PARK_AFTER_MS` (finished-session-parking.ts).
    */
   finishedSessionParkAfterMs?: number;
   /**
@@ -2853,11 +2853,11 @@ export class OrchestrationService {
   constructor(private readonly options: OrchestrationServiceOptions) {
     this.nativeForkStoredReadVerifier = options.nativeForkStoredReadVerifier;
     this.finishedSessionParking = new FinishedSessionParking({
-      afterMs:
-        (options.idleSessionParkAfterMs ?? IDLE_SESSION_PARK_AFTER_MS) > 0
-          ? (options.finishedSessionParkAfterMs ??
-            FINISHED_SESSION_PARK_AFTER_MS)
-          : 0,
+      afterMs: finishedSessionParkAfterMs({
+        idleSessionParkAfterMs:
+          options.idleSessionParkAfterMs ?? IDLE_SESSION_PARK_AFTER_MS,
+        finishedSessionParkAfterMs: options.finishedSessionParkAfterMs,
+      }),
       latestTurnDispatchOrigin: (threadId) =>
         options.eventStore?.latestTurnDispatchOrigin(threadId),
       hasPersonTurn: (threadId) =>
@@ -13805,16 +13805,7 @@ export class OrchestrationService {
             this.lastEngineActivityAt.delete(normalized.threadId);
           } else {
             this.noteEngineActivity(normalized);
-            // A terminal schedules the early park after this point, in
-            // `observeCommittedEvent`; anything later restarts its grace.
-            if (
-              normalized.method !== 'turn.completed' &&
-              normalized.method !== 'turn.aborted' &&
-              normalized.method !== 'runtime.error'
-            )
-              this.finishedSessionParking.observeEngineActivity(
-                normalized.threadId,
-              );
+            this.finishedSessionParking.observeEngineEvent(normalized);
           }
           this.flowPolicy.applyPostHocToolPolicies(adapter, normalized);
           this.flowPolicy.spoolCommandEvidence(normalized);
