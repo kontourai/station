@@ -152,6 +152,13 @@ interface OpenTurn {
   closed: boolean;
   /** The vendor reacted to this message (a reply, or a new status). */
   sawActivity: boolean;
+  /**
+   * After a rate limit or an unreachable vendor, the time before which the
+   * vendor is not called again. Polls before then only report progress, so a
+   * Retry-After longer than the poll ceiling is honoured and the turn still
+   * shows it is alive.
+   */
+  retryAt?: number;
 }
 
 /**
@@ -515,6 +522,13 @@ export class RemoteTaskAdapter implements ProviderAdapterShape {
         taskId = task.taskId;
         baselineStatus = undefined;
       } else {
+        // Catch up first, so what the vendor said before this message (a
+        // late reply to an earlier turn) is stored before the turn's
+        // baseline: it still shows, but it is not the vendor reacting to
+        // this message. Best effort; a refused sync does not stop the send.
+        await this.#options.service
+          .syncTask(session.connectionId, taskId)
+          .catch(() => undefined);
         const stored = this.#stored(session);
         baselineStatus = stored.task?.vendorStatus;
         sentAtSequence = stored.latest;
@@ -585,6 +599,11 @@ export class RemoteTaskAdapter implements ProviderAdapterShape {
 
   #schedule(threadId: string, turn: OpenTurn, delayMs: number): void {
     turn.delayMs = delayMs;
+    this.#arm(threadId, turn, delayMs);
+  }
+
+  /** The next poll's timer, leaving the backoff delay as it is. */
+  #arm(threadId: string, turn: OpenTurn, delayMs: number): void {
     turn.handle = this.#setTimer(
       () => void this.#poll(threadId, turn),
       // Under the turn-stall window, so the progress this turn reports keeps
@@ -601,6 +620,20 @@ export class RemoteTaskAdapter implements ProviderAdapterShape {
     const polling =
       this.#options.service.pollingFor(session.connectionId) ??
       REMOTE_TASK_POLLING_DEFAULT;
+    if (turn.retryAt !== undefined && this.#now() < turn.retryAt) {
+      // Still inside the vendor's wait: report, never call it.
+      if (this.#endIfPastBounds(threadId, turn, this.#stored(session).task))
+        return;
+      const waitMs = turn.retryAt - this.#now();
+      this.#progress(
+        threadId,
+        turn,
+        `${label} asked Station to wait; checking again in ${Math.ceil(waitMs / 60_000)} min.`,
+      );
+      this.#arm(threadId, turn, waitMs);
+      return;
+    }
+    turn.retryAt = undefined;
     let task: RemoteTask;
     try {
       task = (
@@ -616,19 +649,20 @@ export class RemoteTaskAdapter implements ProviderAdapterShape {
         code === 'remote-task-rate-limited' ||
         code === 'remote-task-vendor-unavailable'
       ) {
+        // A vendor that keeps refusing does not hold the chat past the
+        // turn's bounds.
+        if (this.#endIfPastBounds(threadId, turn, this.#stored(session).task))
+          return;
+        const delayMs = nextRemoteTaskPollDelay(polling, turn.delayMs, {
+          kind: code === 'remote-task-rate-limited' ? 'rate-limited' : 'failed',
+          ...(error instanceof RemoteTaskError &&
+          error.details.retryAfterMs !== undefined
+            ? { retryAfterMs: error.details.retryAfterMs }
+            : {}),
+        });
+        turn.retryAt = this.#now() + delayMs;
         this.#progress(threadId, turn, `${label} is not answering; retrying.`);
-        this.#schedule(
-          threadId,
-          turn,
-          nextRemoteTaskPollDelay(polling, turn.delayMs, {
-            kind:
-              code === 'remote-task-rate-limited' ? 'rate-limited' : 'failed',
-            ...(error instanceof RemoteTaskError &&
-            error.details.retryAfterMs !== undefined
-              ? { retryAfterMs: error.details.retryAfterMs }
-              : {}),
-          }),
-        );
+        this.#schedule(threadId, turn, delayMs);
         return;
       }
       this.#endTurn(threadId, turn, {
@@ -679,7 +713,6 @@ export class RemoteTaskAdapter implements ProviderAdapterShape {
       turn.sawActivity = true;
     const resting =
       isRemoteTaskTerminal(task.status) || TURN_ENDING.includes(task.status);
-    const elapsed = this.#now() - turn.startedAt;
     if (resting && turn.sawActivity) {
       if (
         isRemoteTaskTerminal(task.status) &&
@@ -689,25 +722,49 @@ export class RemoteTaskAdapter implements ProviderAdapterShape {
       this.#endTurn(threadId, turn, { kind: 'rested', task });
       return;
     }
-    if (!turn.sawActivity && elapsed >= this.#bounds.wakeMs) {
-      // Not "completed with nothing": the vendor never picked it up.
-      this.#endTurn(threadId, turn, {
-        kind: 'aborted',
-        reason: `${label} has not picked this message up yet; it may still be waking. Its reply will show with your next message.`,
-        task,
-      });
-      return;
-    }
-    if (elapsed >= this.#bounds.workMs) {
-      this.#endTurn(threadId, turn, { kind: 'still-working', task });
-      return;
-    }
+    if (this.#endIfPastBounds(threadId, turn, task)) return;
     this.#progress(threadId, turn, `${label}: ${task.vendorStatus}`);
     this.#schedule(
       threadId,
       turn,
       nextRemoteTaskPollDelay(polling, turn.delayMs, { kind: 'ok' }),
     );
+  }
+
+  /**
+   * Ends the turn once it is past its wake bound (the vendor never reacted)
+   * or its work bound (it is still working), whatever the last poll returned.
+   * `task` is the newest snapshot, which a refused poll does not replace.
+   */
+  #endIfPastBounds(
+    threadId: string,
+    turn: OpenTurn,
+    task: RemoteTask | null,
+  ): boolean {
+    const session = this.#sessions.get(threadId);
+    const label = session
+      ? REMOTE_TASK_VENDOR_LABELS[session.vendor]
+      : 'The vendor';
+    const elapsed = this.#now() - turn.startedAt;
+    if (!turn.sawActivity && elapsed >= this.#bounds.wakeMs) {
+      // Not "completed with nothing": the vendor never picked it up.
+      this.#endTurn(threadId, turn, {
+        kind: 'aborted',
+        reason: `${label} has not picked this message up yet; it may still be waking. Its reply will show with your next message.`,
+        ...(task ? { task } : {}),
+      });
+      return true;
+    }
+    if (elapsed >= this.#bounds.workMs) {
+      if (task) this.#endTurn(threadId, turn, { kind: 'still-working', task });
+      else
+        this.#endTurn(threadId, turn, {
+          kind: 'aborted',
+          reason: `${label} is still working on this; send a message to check again.`,
+        });
+      return true;
+    }
+    return false;
   }
 
   #progress(threadId: string, turn: OpenTurn, message: string): void {

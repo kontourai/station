@@ -9557,11 +9557,14 @@ export class OrchestrationService {
           );
           // The person's own text rides the turn as `personText`: set from the
           // admitting route's decision (`personAuthored`), never from a body,
-          // and taken before Station composed its context into `input`.
+          // and taken before Station composed its context into `input`. Only
+          // an engine that takes nothing else (`turnAuthorship: 'person-only'`)
+          // receives it; every other engine never sees the field.
           {
             const { personText: _ignored, ...withoutPersonText } = turnInput;
             turnInput =
-              internal?.personAuthored === true
+              internal?.personAuthored === true &&
+              adapter.metadata.turnAuthorship === 'person-only'
                 ? {
                     ...withoutPersonText,
                     personText: turnInputWithFirstTurnPrompt.input,

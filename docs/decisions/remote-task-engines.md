@@ -92,8 +92,8 @@ The second, stacked on the first, composes the chat adapter:
 - **Adapter.** `RemoteTaskAdapter` over the service. The first turn creates
   the task (claimed before the vendor call, so concurrent first sends create
   one) and later turns send follow-ups. Only `personText`, the typed text
-  orchestration sets for a person-typed send and strips from every other, is
-  sent, never the composed input. The repository is the chat's working copy's
+  orchestration sets for a person-typed send to a person-only engine and
+  strips from every other, is sent, never the composed input. The repository is the chat's working copy's
   GitHub `origin`; Station reads only the remote's URL. A vendor that needs
   a repository (GitHub) is refused at start without one; others start with a
   warning.
@@ -105,10 +105,15 @@ The second, stacked on the first, composes the chat adapter:
 - **Transcript projection.** A turn polls only while it is open and reports
   the task's status as tool progress, under the turn-stall window. It shows
   every message the store holds after what the chat last showed, whoever
-  synced it. It ends only once the vendor reacted to the message (a reply, or
-  a status it did not have when it was sent) and rests. It ends early as
+  synced it. A follow-up catches the task up just before it is sent, so a
+  late reply to an earlier turn still shows but is not taken as the answer.
+  It ends only once the vendor reacted to the message (a reply stored after
+  it was sent, or a status it did not have then) and rests. It ends early as
   "still waking" if the vendor did not react within 10 minutes, or as "still
-  working" after an hour; the task goes on either way. Every turn ends with a
+  working" after an hour, also while the vendor is rate limiting or
+  unreachable; the task goes on either way. A vendor's Retry-After is
+  honoured even past the poll ceiling: until it passes, the turn reports
+  progress without calling the vendor. Every turn ends with a
   line naming the status, each pull request (by URL, or by the vendor's
   reference), the task's page, and where to answer when Station cannot (a
   GitHub task waiting for the person). A failed or timed-out task ends the
@@ -185,6 +190,13 @@ refusal sends nothing:
    In a chat, only a session a person started in the composer and a message a
    person typed reach the engine (see **Who may send**), so neither an agent
    nor any automatic path can send host code off the machine.
+
+   The residual is the one person-typed turns already accept (#4827): a
+   program on the host that holds the person's own credential and reports a
+   composer surface passes as the person. Station's agents never hold that
+   credential (theirs is the internal principal, which is refused), so this
+   is a program the person ran or a compromised account, not an agent
+   Station launched.
 
 Station never forwards anything the vendor could use to reach the host:
 

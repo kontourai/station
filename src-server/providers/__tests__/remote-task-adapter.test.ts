@@ -14,6 +14,7 @@ import {
   cursorFake,
   devinFake,
   githubFake,
+  json,
 } from '../../services/remote-task-engines/__tests__/vendor-fakes.js';
 import {
   PersonAuthoredTurnRequiredError,
@@ -246,6 +247,82 @@ describe('RemoteTaskAdapter', () => {
     s.devin.setStatus(taskId, 'running', 'finished');
     await s.poll();
     expect(s.texts()).toContain('Docs updated.');
+  });
+
+  test("a late reply to an earlier turn shows in the next one but is not the vendor's answer to it", async () => {
+    const s = await setup();
+    await s.start();
+    const first = await s.send('Go');
+    const taskId = (first.resumeCursor as { taskId: string }).taskId;
+    s.devin.reply(taskId, 'Done.');
+    s.devin.setStatus(taskId, 'running', 'finished');
+    await s.poll();
+    expect(s.ended()).toBe(1);
+    await s.send('Also the docs');
+    await s.poll(10 * 60_000);
+    expect(s.last('turn.aborted')?.reason).toContain('may still be waking');
+    expect(s.ended()).toBe(2);
+    // The reply to "Also the docs" lands after that turn ended, before the
+    // next message; Devin has not picked "And the changelog" up yet.
+    s.devin.reply(taskId, 'Docs updated.');
+    await s.send('And the changelog');
+    await s.poll();
+    expect(s.texts()).toContain('Docs updated.');
+    // Still open: a reply written before this message is not its answer.
+    expect(s.ended()).toBe(2);
+    s.devin.setStatus(taskId, 'running', 'working');
+    await s.poll();
+    s.devin.reply(taskId, 'Changelog updated.');
+    s.devin.setStatus(taskId, 'running', 'finished');
+    await s.poll();
+    expect(s.ended()).toBe(3);
+    expect(s.last('turn.completed')?.outputText).toContain(
+      'Changelog updated.',
+    );
+  });
+
+  test('a rate-limited vendor never holds a turn past its wake bound, and a long Retry-After is honoured', async () => {
+    const s = await setup();
+    await s.start();
+    await s.send('Go');
+    // Every request from here is refused with an hour's Retry-After.
+    s.devin.fake.inject(1000, () =>
+      json(429, { detail: 'Too many requests' }, { 'retry-after': '3600' }),
+    );
+    const requests = () => s.devin.fake.requests.length;
+    const before = requests();
+    await s.poll();
+    expect(requests()).toBe(before + 1);
+    // Inside the vendor's wait: progress only, never another request.
+    for (let i = 0; i < 3; i += 1) await s.poll(150_000);
+    expect(requests()).toBe(before + 1);
+    expect(s.last('tool.progress')?.message).toContain('asked Station to wait');
+    expect(s.ended()).toBe(0);
+    // Ten minutes after the send with no reaction: the turn ends.
+    await s.poll(150_000);
+    expect(s.last('turn.aborted')?.reason).toContain('may still be waking');
+    expect(s.pending()).toBe(0);
+    expect(requests()).toBe(before + 1);
+  });
+
+  test('a rate-limited vendor never holds a working turn past its work bound', async () => {
+    const s = await setup();
+    await s.start();
+    const turn = await s.send('Go');
+    const taskId = (turn.resumeCursor as { taskId: string }).taskId;
+    s.devin.setStatus(taskId, 'running', 'working');
+    await s.poll();
+    s.devin.fake.inject(1000, () =>
+      json(429, { detail: 'Too many requests' }, { 'retry-after': '3600' }),
+    );
+    const before = s.devin.fake.requests.length;
+    for (let i = 0; i < 30 && s.ended() === 0; i += 1) await s.poll(150_000);
+    const completed = s.last('turn.completed');
+    expect(completed?.metadata).toMatchObject({ stillWorking: true });
+    expect(completed?.outputText).toContain('still working');
+    // One refused request, then only progress until the bound.
+    expect(s.devin.fake.requests.length).toBe(before + 1);
+    expect(s.pending()).toBe(0);
   });
 
   test('Stop in a Devin chat stops following and leaves the session running', async () => {

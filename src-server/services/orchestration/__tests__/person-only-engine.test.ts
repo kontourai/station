@@ -221,6 +221,22 @@ describe('a person-only engine', () => {
     expect(s.adapter.sends[0]?.personText).toBe('Fix the flaky test');
   });
 
+  test("a person's typed turn to an ordinary engine carries no personText", async () => {
+    const s = setup();
+    Object.assign(s.adapter.metadata, { turnAuthorship: undefined });
+    await personStarted(s, 'chat');
+    await s.service.dispatchWithReceipt(
+      {
+        type: 'sendTurn',
+        input: { threadId: 'chat', input: 'Fix the flaky test' },
+      },
+      context,
+      { personAuthored: true },
+    );
+    expect(s.adapter.sends).toHaveLength(1);
+    expect(s.adapter.sends[0]).not.toHaveProperty('personText');
+  });
+
   test('an unmarked send loses any personText a body supplied', async () => {
     const s = setup();
     // An engine without the rule still takes unmarked sends; the field never
