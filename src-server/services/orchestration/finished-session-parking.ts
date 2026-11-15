@@ -84,7 +84,8 @@ export interface FinishedSessionParkingPorts {
  * about pending work: the park re-runs every idle-park refusal (open
  * request, running child work, engine-reported open work, an active turn,
  * no resume cursor, recent activity) when the timer fires, and parks only an
- * engine whose adapter declares `openEngineWork: 'complete'`. A refused park
+ * engine whose adapter declares `openEngineWork: 'complete'` and whose
+ * `earlyParkRefusal` gives no reason. A refused park
  * is left to the idle sweep.
  */
 export class FinishedSessionParking {

@@ -47,30 +47,6 @@ function exitingProcess(): IPtyProcess {
   };
 }
 
-/** A command that runs until its `exit` is called or it is killed. */
-function heldProcess(): { process: IPtyProcess; exit: () => void } {
-  const exits = new Set<
-    (event: { exitCode: number; signal: number | null }) => void
-  >();
-  const exit = () => {
-    for (const listener of exits) listener({ exitCode: 0, signal: null });
-  };
-  return {
-    process: {
-      pid: 4343,
-      write() {},
-      resize() {},
-      kill: exit,
-      onData: () => () => {},
-      onExit(cb) {
-        exits.add(cb);
-        return () => exits.delete(cb);
-      },
-    },
-    exit,
-  };
-}
-
 const stops: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const stop of stops.splice(0)) await stop();
@@ -79,14 +55,13 @@ afterEach(async () => {
 async function startSession(input: {
   confinement: StationConfinement | undefined;
   terminalSessions: boolean;
-  spawnProcess?: () => IPtyProcess;
 }) {
   const cwd = await realpath(temp('acp-terminal-authority-cwd-'));
   const spawns: string[] = [];
   const host: ShellHost = {
     spawn: async (spawn) => {
       spawns.push(spawn.launch?.file ?? 'shell');
-      return (input.spawnProcess ?? exitingProcess)();
+      return exitingProcess();
     },
   };
   const authorizeAgentCommand = vi.fn(async () => {});
@@ -133,11 +108,11 @@ async function startSession(input: {
   });
   if (!proc) throw new Error('adapter did not start the engine');
   const engine = proc;
-  const create = (args: string[] = ['-e', '']) =>
+  const create = () =>
     engine.client.createTerminal({
       sessionId: 'native',
       command: process.execPath,
-      args,
+      args: ['-e', ''],
     });
   return {
     adapter,
@@ -221,52 +196,5 @@ describe('ACP terminal/create without terminal sessions', () => {
     await expect(
       engine.client.waitForTerminalExit({ sessionId: 'native', terminalId }),
     ).resolves.toEqual({ exitCode: 0, signal: null });
-  });
-});
-
-/**
- * #2540: a terminal the engine opened holds state only that engine can use:
- * the command's output and exit status, read by terminal id. A park and
- * restart builds a new bridge with no such id, so until the engine releases
- * the terminal — whether or not its command still runs — the session has
- * open engine work and an idle or finished-session park leaves it alone.
- */
-describe('an unreleased terminal keeps the engine', () => {
-  test('on terminal sessions, after its command exits, until it is released', async () => {
-    const held = heldProcess();
-    const { adapter, engine, threadId, create } = await startSession({
-      confinement: 'host',
-      terminalSessions: true,
-      spawnProcess: () => held.process,
-    });
-    expect(adapter.hasOpenEngineWork(threadId)).toBe(false);
-    const { terminalId } = await create();
-    expect(adapter.hasOpenEngineWork(threadId)).toBe(true);
-    held.exit();
-    await engine.client.waitForTerminalExit({
-      sessionId: 'native',
-      terminalId,
-    });
-    // Exited, its output not yet read: still the engine's.
-    expect(adapter.hasOpenEngineWork(threadId)).toBe(true);
-    await engine.client.releaseTerminal({ sessionId: 'native', terminalId });
-    expect(adapter.hasOpenEngineWork(threadId)).toBe(false);
-  });
-
-  test('as a plain child process, after it is killed, until it is released', async () => {
-    const { adapter, engine, threadId, create } = await startSession({
-      confinement: 'host',
-      terminalSessions: false,
-    });
-    const { terminalId } = await create(['-e', 'setTimeout(() => {}, 60_000)']);
-    expect(adapter.hasOpenEngineWork(threadId)).toBe(true);
-    await engine.client.killTerminal({ sessionId: 'native', terminalId });
-    await engine.client.waitForTerminalExit({
-      sessionId: 'native',
-      terminalId,
-    });
-    expect(adapter.hasOpenEngineWork(threadId)).toBe(true);
-    await engine.client.releaseTerminal({ sessionId: 'native', terminalId });
-    expect(adapter.hasOpenEngineWork(threadId)).toBe(false);
   });
 });

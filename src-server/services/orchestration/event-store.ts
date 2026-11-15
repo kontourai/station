@@ -9450,13 +9450,15 @@ export class EventStore {
   }
 
   /**
-   * Whether a person has, or may have, sent into `threadId`: any of its turn
-   * starts, steers included, that Station placed as a person's
-   * (`interactive`, #4512) or marked person-typed (`authoredBy`, #4827), and
-   * any own turn start that records no origin this build recognises: a turn
-   * from before the field existed, or a newer Station's value, read
-   * conservatively as a person's. A turn the engine opened on its own
-   * (`PROVIDER_TURN_TRIGGER`) is demonstrably no one's send and does not count.
+   * Whether a person has, or may have, sent into `threadId`. Any turn start
+   * Station placed as a person's (`interactive`, #4512) or marked
+   * person-typed (`authoredBy`, #4827) counts, and so, read conservatively,
+   * does every steer whatever origin it carries (a steer inherits its turn's
+   * origin, so one a person sent from a surface that does not mark
+   * authorship reads as the turn's) and any turn start that records no origin
+   * this build recognises (one from before the field existed, a newer
+   * Station's value). A turn the engine opened on its own
+   * (`PROVIDER_TURN_TRIGGER`) is demonstrably no one's send and never counts.
    */
   hasPersonTurn(threadId: string): boolean {
     return (
@@ -9465,9 +9467,9 @@ export class EventStore {
          WHERE thread_id = ? AND method = 'turn.started' AND json_valid(payload)
            AND (json_extract(payload, '$.dispatchOrigin') = 'interactive'
              OR json_extract(payload, '$.authoredBy') = 'person'
-             OR (json_extract(payload, '$.inputKind') IS NOT 'steer'
-               AND COALESCE(json_extract(payload, '$.metadata.trigger'), '') <> '${PROVIDER_TURN_TRIGGER}'
-               AND (json_extract(payload, '$.dispatchOrigin') IS NULL
+             OR (COALESCE(json_extract(payload, '$.metadata.trigger'), '') <> '${PROVIDER_TURN_TRIGGER}'
+               AND (json_extract(payload, '$.inputKind') = 'steer'
+                 OR json_extract(payload, '$.dispatchOrigin') IS NULL
                  OR json_extract(payload, '$.dispatchOrigin') NOT IN (${KNOWN_TURN_DISPATCH_ORIGINS_SQL}))))
          LIMIT 1`,
       ).get(threadId) !== undefined

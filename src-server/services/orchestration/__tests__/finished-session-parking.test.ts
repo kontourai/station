@@ -58,6 +58,8 @@ class EngineProcessAdapter extends GateTestAdapter {
   /** Each turn's invocation, which its terminal reports as the engine's does. */
   readonly invocations = new Map<string, string>();
   openWork = new Set<string>();
+  /** What the engine says keeps it from the finished-session park only. */
+  earlyParkRefusals = new Map<string, string>();
   private nextProcess = 1;
 
   /**
@@ -134,6 +136,23 @@ class EngineProcessAdapter extends GateTestAdapter {
 
   hasOpenEngineWork(threadId: string): boolean {
     return this.openWork.has(threadId);
+  }
+
+  earlyParkRefusal(threadId: string): string | undefined {
+    return this.earlyParkRefusals.get(threadId);
+  }
+
+  /** Ends the thread's turn the way an engine reports a failed one. */
+  failTurn(threadId: string, turnId: string): void {
+    this.push(threadId, { method: 'turn.started', turnId, prompt: 'work' });
+    this.push(threadId, {
+      method: 'runtime.error',
+      turnId,
+      severity: 'error',
+      code: 'engine-turn-failed',
+      retriable: false,
+      message: 'limit reached',
+    });
   }
 
   /**
@@ -398,6 +417,112 @@ describe('finished-by-design Sessions release their engine early', () => {
     });
     const threadId = await start();
     await runTurn(threadId, 'delegation');
+    await new Promise((resolve) => setTimeout(resolve, SETTLED_WAIT_MS));
+    expect(adapter.stopped).toEqual([]);
+  });
+
+  test('an engine that refuses the early park keeps its engine', async () => {
+    const { adapter, runTurn, start } = await boot();
+    const threadId = await start();
+    adapter.earlyParkRefusals.set(
+      threadId,
+      'its scheduled wakeups are unknown',
+    );
+    await runTurn(threadId, 'delegation');
+    await new Promise((resolve) => setTimeout(resolve, SETTLED_WAIT_MS));
+    expect(adapter.stopped).toEqual([]);
+  });
+
+  // #2540 delta review P1: what refuses the early park must never hold an
+  // engine the recovery replay or the idle park would stop — a Claude engine
+  // whose failed turn left its wakeups unknown refuses sends, and only a
+  // park-and-restart recovers it.
+  test("a failed turn's recovery replay restarts an engine that refuses the early park", async () => {
+    const { adapter, service, start } = await boot();
+    const threadId = await start();
+    adapter.earlyParkRefusals.set(
+      threadId,
+      'its scheduled wakeups are unknown',
+    );
+    adapter.failTurn(threadId, 'failed-turn');
+    await vi.waitFor(() =>
+      expect(
+        (
+          service as unknown as {
+            sessionReadModel: Map<string, { status: string }>;
+          }
+        ).sessionReadModel.get(threadId)?.status,
+      ).toBe('error'),
+    );
+    const startsBefore = adapter.started.length;
+    await (
+      service as unknown as {
+        credentialProfileRecovery: {
+          createDispatchAdapter(): {
+            dispatch(input: unknown): Promise<unknown>;
+          };
+        };
+      }
+    ).credentialProfileRecovery
+      .createDispatchAdapter()
+      .dispatch({
+        intent: { provider: 'claude', threadId },
+        replay: {
+          threadId,
+          input: 'work',
+          recoveryCorrelationId: 'replay-after-failure',
+          signal: new AbortController().signal,
+        },
+      });
+    expect(adapter.stopped).toEqual([threadId]);
+    expect(adapter.started.length).toBe(startsBefore + 1);
+    expect(adapter.sent.at(-1)?.processId).toBe(adapter.started.at(-1)?.id);
+  });
+
+  test('the idle park still parks an engine that refuses the early park', async () => {
+    const { adapter, runTurn, service, start } = await boot({
+      idleSessionParkAfterMs: 60_000,
+    });
+    const threadId = await start();
+    adapter.earlyParkRefusals.set(threadId, 'a scheduled wakeup');
+    await runTurn(threadId, 'delegation');
+    await expect(
+      service.sweepIdleSessions(Date.now() + 120_000),
+    ).resolves.toEqual([threadId]);
+    expect(adapter.stopped).toEqual([threadId]);
+  });
+
+  test('a delegated run a steer reached keeps its engine', async () => {
+    const { adapter, lifecycle, service, start } = await boot();
+    const threadId = await start();
+    const accepted = (await service.dispatch(
+      {
+        type: 'sendTurn',
+        input: { threadId, input: 'work', clientTurnId: randomUUID() },
+      },
+      OWNER,
+      { dispatchOrigin: 'delegation' },
+    )) as ProviderTurnStartResult;
+    await vi.waitFor(async () =>
+      expect(await lifecycle(threadId)).toBe('running'),
+    );
+    // A steer with no mark of who sent it: Station stamps it with its
+    // turn's origin, so it reads `delegation` though anyone may have sent it.
+    adapter.push(threadId, {
+      method: 'turn.started',
+      turnId: accepted.turnId,
+      inputKind: 'steer',
+      prompt: 'also check the tests',
+    });
+    adapter.push(threadId, {
+      method: 'turn.completed',
+      turnId: accepted.turnId,
+      invocationId: adapter.invocations.get(accepted.turnId),
+      finishReason: 'stop',
+    });
+    await vi.waitFor(async () =>
+      expect(await lifecycle(threadId)).toBe('idle'),
+    );
     await new Promise((resolve) => setTimeout(resolve, SETTLED_WAIT_MS));
     expect(adapter.stopped).toEqual([]);
   });

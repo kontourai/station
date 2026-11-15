@@ -16454,15 +16454,32 @@ export class OrchestrationService {
   ): Promise<boolean> {
     const adapter = this.sessionAdapters.get(threadId);
     if (!adapter || this.eventConsumptionStopped) return false;
-    // Seconds after a turn, only an engine that reports everything it still
-    // runs can be told apart from one serving a quiet background process.
+    // Seconds after a turn, only an engine that accounts for everything it
+    // still holds can be told apart from one serving a quiet background
+    // process. Its refusal reaches no other park.
     if (
       adapter.metadata.openEngineWork !== 'complete' ||
-      !adapter.hasOpenEngineWork
+      !adapter.hasOpenEngineWork ||
+      !adapter.earlyParkRefusal
     )
       return false;
+    const refusedEarly = () => {
+      const reason = adapter.earlyParkRefusal?.(threadId);
+      if (reason !== undefined)
+        this.options.logger.debug('Finished session engine kept', {
+          threadId,
+          reason,
+        });
+      return reason !== undefined;
+    };
     try {
-      return await this.parkIdleSession(threadId, adapter, Date.now(), afterMs);
+      return await this.parkIdleSession(
+        threadId,
+        adapter,
+        Date.now(),
+        afterMs,
+        refusedEarly,
+      );
     } catch (error) {
       if (error instanceof SessionLifecycleClaimRefusedError) return false;
       throw error;
@@ -16474,6 +16491,8 @@ export class OrchestrationService {
     adapter: ProviderAdapterShape,
     now: number,
     parkAfterMs: number,
+    /** The finished-session park's own refusal, re-read under the lock. */
+    refusedEarly?: () => boolean,
   ): Promise<boolean> {
     // Serialized with turn starts: a send that arrives first wins, and the
     // park re-checks everything under the lock before touching the engine.
@@ -16482,7 +16501,8 @@ export class OrchestrationService {
       async () => {
         if (
           this.sessionAdapters.get(threadId) !== adapter ||
-          !this.isParkableIdleSession(threadId, now, parkAfterMs)
+          !this.isParkableIdleSession(threadId, now, parkAfterMs) ||
+          refusedEarly?.()
         )
           return false;
         const exited = new Promise<void>((resolve) =>

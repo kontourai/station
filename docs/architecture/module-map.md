@@ -2280,45 +2280,52 @@ context delivery not yet completed on the current Session.
 has a saved resume cursor, and is not known to lack resume support. "Unused" is
 measured from the later of the session row's `updatedAt` and the engine's latest
 event, so a backgrounded subagent's progress keeps its engine. An adapter that
-implements `hasOpenEngineWork` also vetoes the park while its engine still has
-work of its own. Claude vetoes while a task it started has not reported an
-end, while its last Stop hook listed a wakeup it scheduled for itself
-(CronCreate, ScheduleWakeup, a loop), and from any call to a scheduling tool
-until a Stop hook reports the wakeups again (a turn that ends through
-StopFailure runs none). An ACP engine vetoes while it holds a terminal it
-opened and has not released, running or exited: the command's output is read
-through that engine's bridge by terminal id, which a restarted engine does not
-know. That veto holds whatever the child-work record says.
+implements `hasOpenEngineWork` also vetoes the park while its engine still runs a
+task it never reported an end for, whatever the child-work record says.
 Parking stops the process but absorbs its exit, so the session stays dormant
 rather than ending: the next turn restarts it in place. No worktree, claim or
-room effect fires.
+room effect fires. The same check guards the recovery replay into a failed
+Claude turn and the relaunch for full access, so nothing below reaches them.
 
 A Session that is finished by design does not wait for that threshold.
 [`FinishedSessionParking`](../../src-server/services/orchestration/finished-session-parking.ts)
-watches every turn terminal the service commits. When the Session's newest turn
-a send produced was unattended and no person has sent a turn or steer into it,
-it parks the engine `finishedSessionParkAfterMs` (15 seconds) after the turn
-settled. A person has sent when any turn start was placed `interactive` or
-marked person-typed, or records no origin this build recognises: a turn from
-before the field existed counts as a person's. A turn the engine opened on its
-own (`metadata.trigger` `provider`) is skipped by both reads. Unattended
-means `dispatchOrigin` `delegation`, `automation` or `task-dispatch`. It also
-means `unknown` in a Session started as a delegated child whose context
-Station derived or attested, because a delegator's `continue_task` follow-up
-records no origin. This covers a delegated child, a dedicated Automation run
-and a Task dispatch nobody typed in. Only an engine whose adapter declares
-`openEngineWork: 'complete'` is parked this early: its `hasOpenEngineWork`
-reports everything the engine keeps running past a turn. Claude declares it.
-Codex, whose background command processes no veto tracks, and ACP engines,
-whose own tools can run processes Station never sees, do not, so their
-Sessions wait for the ordinary threshold, as does any new engine until it
-declares. The park is the idle park
+watches every turn terminal the service commits. It parks the engine
+`finishedSessionParkAfterMs` (15 seconds) after the turn settled when all of
+these hold:
+
+- The Session's newest turn a send produced was unattended: `dispatchOrigin`
+  `delegation`, `automation` or `task-dispatch`, or `unknown` in a Session
+  started as a delegated child whose context Station derived or attested (a
+  delegator's `continue_task` follow-up records no origin). A turn the engine
+  opened on its own (`metadata.trigger` `provider`) does not decide.
+- No person has, or may have, sent into it. Counted as a person's: a turn
+  start placed `interactive` or marked person-typed, every steer (a steer
+  inherits its turn's origin, so a person's steer from an unmarked surface
+  reads as the turn's), and a turn start with no origin this build
+  recognises (history from before the field). Engine-opened turns do not
+  count.
+- The engine's adapter declares `openEngineWork: 'complete'` and its
+  `earlyParkRefusal` gives no reason. Only Claude declares it. Claude refuses
+  while it has a housekeeping task running (`skip_transcript`, such as a
+  post-turn memory save), while its last `init` reported any MCP server that
+  is not one of Station's in-process (`sdk`) servers or reported none, and
+  while its scheduled wakeups (CronCreate, ScheduleWakeup, a loop) are
+  non-zero or unknown. They are unknown before any Stop hook reported
+  `session_crons` and after any scheduling-tool call until one does again;
+  a turn that ends through StopFailure runs none. The refusal is read again
+  under the lifecycle lock. Codex, whose background command processes nothing
+  tracks, and ACP engines, whose own tools can run processes Station never
+  sees, do not declare it, and neither does any engine until it can.
+
+So a delegated child, a dedicated Automation run or a Task dispatch nobody
+typed in qualifies when it runs on Claude with only Station's own MCP servers,
+scheduled nothing, and has no housekeeping running. The park is the idle park
 with that grace as its threshold, so every refusal above still applies under
 the lifecycle lock. An engine event after the settle restarts the grace. A
 delegator's follow-up or a queued inbox entry starts a turn, which the park
 never stops, and that turn's own settle decides again. A refused park is left
-to the sweep. A person's chat, including one an Automation run or a delegated
-result was queued into, keeps the ordinary threshold. So do `unknown` turns.
+to the sweep, which never reads `earlyParkRefusal`. Everything else, a
+person's chat included, keeps the ordinary threshold.
 `idleSessionParkAfterMs: 0` turns both parks off.
 `isSessionLifecycleStateAtRest` answers "is this session doing anything";
 `sessionLifecycleOutcome` is the one lifecycle-to-outcome mapping.

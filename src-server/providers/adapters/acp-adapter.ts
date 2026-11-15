@@ -828,13 +828,6 @@ export interface AcpSessionRecord {
   promptEpoch: number;
   /** Invalidation generation captured when this session start was accepted. */
   generation: number;
-  /**
-   * Whether the engine holds a terminal it opened (ACP `terminal/create`)
-   * and has not released, running or exited. Its output and exit status are
-   * read by terminal id through this bridge only; a restarted engine's
-   * bridge knows no such id, so a park must not stop it (`hasOpenEngineWork`).
-   */
-  hasUnreleasedTerminal?: () => boolean;
   /** A `session.started` receipt was published and needs a terminal peer. */
   startedPublished?: boolean;
   /**
@@ -1959,8 +1952,6 @@ export class AcpAdapter implements ProviderAdapterShape {
       cwd,
       confinement: () => record.executionConfinement,
     });
-    record.hasUnreleasedTerminal = () =>
-      terminals.size > 0 || sessionTerminals?.hasUnreleased() === true;
     let terminalCounter = 0;
     const logger = this.options.logger ?? console;
 
@@ -3705,16 +3696,6 @@ export class AcpAdapter implements ProviderAdapterShape {
 
   async hasSession(threadId: string): Promise<boolean> {
     return this.sessions.has(threadId);
-  }
-
-  /**
-   * #2540: the engine holds a terminal it has not released. A park would
-   * stop the engine that waits for, or has yet to read, that command's
-   * result. Partial: an ACP engine's own tools can run processes Station
-   * never sees, so the adapter does not declare `openEngineWork: 'complete'`.
-   */
-  hasOpenEngineWork(threadId: string): boolean {
-    return this.sessions.get(threadId)?.hasUnreleasedTerminal?.() ?? false;
   }
 
   async stopAll(): Promise<void> {

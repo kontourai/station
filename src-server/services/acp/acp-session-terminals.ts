@@ -122,11 +122,6 @@ export class AcpSessionTerminals {
     return this.terminals.has(id);
   }
 
-  /** Whether the agent holds a terminal it has not released. */
-  hasUnreleased(): boolean {
-    return this.terminals.size > 0;
-  }
-
   async create(
     id: string,
     input: {
