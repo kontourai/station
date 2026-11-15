@@ -12,6 +12,7 @@ import { ClaudeAdapter } from '../adapters/claude-adapter.js';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
 import { MuseAdapter } from '../adapters/muse-adapter.js';
 import { OllamaAdapter } from '../adapters/ollama-adapter.js';
+import { OpenCodeAdapter } from '../adapters/opencode-adapter.js';
 import { RemoteTaskAdapter } from '../adapters/remote-task-adapter.js';
 import { StationAgentAdapter } from '../adapters/station-agent-adapter.js';
 
@@ -20,6 +21,7 @@ const adapters = [
   new ClaudeAdapter(),
   new CodexAdapter(),
   new AcpAdapter({ getConnections: async () => [] }),
+  new OpenCodeAdapter({ getConnections: async () => [] }),
   // As the Station runtime builds it: sessions run on `muse serve`.
   new MuseAdapter({ serve: {} }),
   new BedrockAdapter(),

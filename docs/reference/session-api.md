@@ -892,6 +892,11 @@ Station's, the chat runs an agent Station does not govern
 ([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)), or
 the project's OpenCode configuration declares code OpenCode runs at launch
 ([what the modes cannot govern](../guides/acp.md#what-ask-and-auto-cannot-govern-on-opencode)).
+On OpenCode 2 it is also refused when the chat runs over ACP, where Station
+cannot verify OpenCode 2's rules ([OpenCode 2 and OpenCode 1](../guides/acp.md#opencode-2-and-opencode-1)).
+On the `opencode` engine's native transport, it is refused when OpenCode has
+saved approvals that would let a governed action run without asking
+([OpenCode native transport](../decisions/opencode-native-transport.md#governance)).
 The message names the setting and says what picking Default would do in that
 chat. A refused start keeps that code: it is checked before Station claims the
 start, so it is never reported as a start that may have happened

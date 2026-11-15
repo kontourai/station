@@ -100,6 +100,7 @@ import {
   CLIENT_TURN_IN_FLIGHT_CODE,
   DELEGATION_PROVENANCE_METADATA_KEY,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
+  isAcpFamilyEngine,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_LAUNCH_REQUESTED_OVERRIDE_METADATA_KEY,
   MUSE_TURN_SLOT_RELEASING_CODE,
@@ -2135,7 +2136,8 @@ async function resolveStartSessionCwd(
     // `default` project (no workingDirectory) and unbound chats both land
     // here; the resolver's product-side follow-ups in archive#1023 still apply.
     //
-    // ACP is still excluded here, for the same reason as before: its adapter
+    // ACP (and OpenCode, which runs saved ACP connections the same way:
+    // `isAcpFamilyEngine`) is still excluded here, for the same reason as before: its adapter
     // carries a connection-level fallback (`config.cwd`) that only the
     // adapter can see, and defaulting unconditionally here would permanently
     // shadow it. Since archive#1403, the adapter ends that chain in a private,
@@ -2146,7 +2148,11 @@ async function resolveStartSessionCwd(
     // own rather than the whole home folder, unless this Station opted out
     // (`AppConfig.noProjectChatFolder: 'home'`) or the conversation already
     // ran somewhere (the callback returns that folder).
-    if (!projectSlug && input.provider !== 'acp' && noProjectChatFolder) {
+    if (
+      !projectSlug &&
+      !isAcpFamilyEngine(input.provider) &&
+      noProjectChatFolder
+    ) {
       const folder = await noProjectChatFolder();
       if (folder) {
         sessionCwdResolution.add(1, {
@@ -2158,7 +2164,9 @@ async function resolveStartSessionCwd(
         return { ...input, cwd: folder, cwdDefaulted: true };
       }
     }
-    const home = input.provider === 'acp' ? undefined : safeHomeDirectory();
+    const home = isAcpFamilyEngine(input.provider)
+      ? undefined
+      : safeHomeDirectory();
     if (home) {
       sessionCwdResolution.add(1, {
         provider: input.provider,
@@ -2173,11 +2181,10 @@ async function resolveStartSessionCwd(
     sessionCwdResolution.add(1, {
       provider: input.provider,
       source: 'none',
-      outcome: input.provider === 'acp' ? 'deferred' : 'inherited',
-      reason:
-        input.provider === 'acp'
-          ? 'acp_connection_default'
-          : 'home_unavailable',
+      outcome: isAcpFamilyEngine(input.provider) ? 'deferred' : 'inherited',
+      reason: isAcpFamilyEngine(input.provider)
+        ? 'acp_connection_default'
+        : 'home_unavailable',
     });
     // archive#1174: still no real project/user cwd, even though this
     // degenerate-host/ACP branch leaves `cwd` itself untouched.
@@ -4342,6 +4349,9 @@ export class OrchestrationService {
       });
       startInput = await this.resolveSessionAgentForStart(startInput);
       throwIfAborted(startInput.signal);
+      // #4435: before the start boundary, so a governance refusal is
+      // definitive rather than a start that may have happened.
+      await adapter.preflightStart?.(startInput);
       const admissionLease = await admitEngineStartForIntent(
         this.options.resourcePosture,
         this.options.logger,
@@ -4874,6 +4884,8 @@ export class OrchestrationService {
       this.options.adapterRegistry
         .list()
         .filter((adapter) => adapter.provider !== 'station-agent')
+        // An adapter behind an off Feature Preview is not inventory.
+        .filter((adapter) => adapter.listedInProviderInventory?.() !== false)
         .map(async (adapter) => {
           const [sessions, prerequisites] = await Promise.all([
             adapter.listSessions(),

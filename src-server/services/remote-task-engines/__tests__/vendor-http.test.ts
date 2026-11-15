@@ -51,6 +51,38 @@ function streamed(bytes: number, status = 200): Response {
 }
 
 describe('VendorHttp bounds', () => {
+  test('the answer cap is 4 MiB', () => {
+    expect(VENDOR_RESPONSE_MAX_BYTES).toBe(4 * 1024 * 1024);
+  });
+
+  /** A vendor error body of exactly `bytes` bytes carrying `message`. */
+  function errorBody(bytes: number): string {
+    const frame = JSON.stringify({ message: '' }).length;
+    return JSON.stringify({ message: 'z'.repeat(bytes - frame) });
+  }
+
+  test('an error body of exactly 64 KiB is read for its message', async () => {
+    const body = errorBody(64 * 1024);
+    expect(body).toHaveLength(64 * 1024);
+    const { http } = client(() => new Response(body, { status: 400 }));
+    const error = (await http
+      .json({ method: 'GET', path: '/bad' })
+      .catch((caught: unknown) => caught)) as RemoteTaskError;
+    expect(error.code).toBe('remote-task-vendor-refused');
+    expect(error.message).toContain('zzzz');
+  });
+
+  test('an error body one byte over 64 KiB is not parsed', async () => {
+    const body = errorBody(64 * 1024 + 1);
+    expect(body).toHaveLength(64 * 1024 + 1);
+    const { http } = client(() => new Response(body, { status: 400 }));
+    const error = (await http
+      .json({ method: 'GET', path: '/bad' })
+      .catch((caught: unknown) => caught)) as RemoteTaskError;
+    expect(error.code).toBe('remote-task-vendor-refused');
+    expect(error.message).toBe('Vendor refused the request (400).');
+  });
+
   test('a streamed answer over the cap is refused without reading it all', async () => {
     let response: Response | undefined;
     const { http } = client(() => {

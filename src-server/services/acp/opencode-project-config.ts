@@ -44,7 +44,7 @@ const CODE_DIR_NAMES = ['plugin', 'plugins', 'tool', 'tools'] as const;
 export const OPENCODE_CONFIG_SCAN_MAX_BYTES = 1024 * 1024;
 
 /** The real path of `path`, or of its deepest existing ancestor joined back. */
-function realish(path: string): string {
+export function realish(path: string): string {
   let existing = path;
   const rest: string[] = [];
   while (!existsSync(existing)) {
@@ -239,6 +239,20 @@ export function openCodeEditNeedsPerson(
 ): boolean {
   const targets = openCodeEditTargets(rawInput);
   if (!targets) return true;
+  return openCodeWriteTargetsNeedPerson(targets, cwd, env, home);
+}
+
+/**
+ * {@link openCodeEditNeedsPerson} for absolute write targets already read
+ * from a request.
+ */
+function openCodeWriteTargetsNeedPerson(
+  targets: readonly string[],
+  cwd: string,
+  env: NodeJS.ProcessEnv,
+  home: string,
+): boolean {
+  if (targets.length === 0) return true;
   const root = openCodeGitRoot(cwd) ?? realish(resolve(cwd));
   const global = openCodeGlobalConfigPaths(env, home);
   return targets.some((target) => {
@@ -251,6 +265,68 @@ export function openCodeEditNeedsPerson(
       global.some((path) => isInsideIgnoringCase(real, path))
     );
   });
+}
+
+/**
+ * The native (OpenCode 2.x `opencode serve`) counterpart of
+ * {@link openCodeEditNeedsPerson}, for a `permission.asked` request's
+ * `action` and `resources`. OpenCode names a write's target relative to the
+ * session's directory when it is inside it, else absolute
+ * (`core/src/file-access.ts` resolve), so `cwd` must be the directory the
+ * session was created at.
+ *
+ * - `edit` (write, edit, patch, worktree removal, image output): a person's
+ *   when any target is one {@link openCodeEditNeedsPerson} would give a
+ *   person, or one Station cannot place (no resources, a relative target
+ *   with `.`/`..` segments).
+ * - `external_directory` (`<dir>/*`, asked before any read or write outside
+ *   the project): a person's when the directory is or holds OpenCode
+ *   configuration (an OpenCode config path, or a global configuration
+ *   location at, inside or under it), since a grant for it would let a later
+ *   write there through.
+ * - Anything else: not this guard's (false).
+ */
+export function openCodeNativeAskNeedsPerson(
+  request: { readonly action: string; readonly resources: readonly string[] },
+  cwd: string,
+  env: NodeJS.ProcessEnv = process.env,
+  home: string = homedir(),
+): boolean {
+  if (request.action === 'edit') {
+    if (request.resources.length === 0) return true;
+    const base = realish(resolve(cwd));
+    const targets: string[] = [];
+    for (const resource of request.resources) {
+      if (isAbsolute(resource)) {
+        targets.push(resource);
+        continue;
+      }
+      const parts = resource.split(/[\\/]+/);
+      if (parts.some((part) => part === '.' || part === '..' || part === ''))
+        return true;
+      targets.push(join(base, ...parts));
+    }
+    return openCodeWriteTargetsNeedPerson(targets, cwd, env, home);
+  }
+  if (request.action === 'external_directory') {
+    if (request.resources.length === 0) return true;
+    const global = openCodeGlobalConfigPaths(env, home);
+    return request.resources.some((resource) => {
+      const directory = resource.replace(/[\\/]\*+$/, '');
+      if (!isAbsolute(directory) || /[*?]/.test(directory)) return true;
+      const real = realish(resolve(directory));
+      return (
+        isOpenCodeConfigPath(directory) ||
+        isOpenCodeConfigPath(real) ||
+        global.some(
+          (path) =>
+            isInsideIgnoringCase(real, path) ||
+            isInsideIgnoringCase(path, real),
+        )
+      );
+    });
+  }
+  return false;
 }
 
 /** Entries of a config map (`mcp`, `formatter`, `lsp`) that run a command. */

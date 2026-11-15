@@ -1,0 +1,7 @@
+{
+  "revision": "abd7917280b4ec24d35f133af65d137fca5c6e5d",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Cited docs/guides/testing.md changed only in its merge-group supersession paragraph; this document's links and claims about testing.md (lanes, fixture fidelity, heavy-check slots, transfer gate) do not depend on it and remain accurate.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]}
+  ]
+}

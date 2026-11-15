@@ -9,7 +9,7 @@ Release records appended by the publishing workflows, plus explicitly qualified 
 
 ### JSON schema (one array element per ship)
 
-- `timestampUtc` — ISO 8601 UTC. When the recording workflow step ran (immediately after the publish it records); never in the future.
+- `timestampUtc` — ISO 8601 UTC, never in the future. For a `nightly-npm` row, the moment the publishing job verified the publish against the registry (the row itself may be written later in the run); for every other row, when the recording workflow step ran, immediately after the publish it records.
 - `artifactBuiltAt` — canonical ISO 8601 UTC from the immutable packaged artifact manifest, or `null` when a provider/package artifact cannot prove one. It is never a provider upload, device install, or ledger-recording timestamp.
 - `channel` — one of `nightly-android`, `nightly-npm`, `nightly-desktop`, `stable-desktop`, `stable-npm`.
 - `version` — the channel-specific version identity users see (`station --version`, Play console, npm); alphanumeric plus `. + ~ -` only.
@@ -28,6 +28,12 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-15T12:33:49Z | nightly-desktop | 0.1.11-nightly.20261115 | `89dc051` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/43709226198) |
+| 2026-11-15T12:33:49Z | nightly-android | 0.1.11-nightly.20261115 | `89dc051` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/43709226198) |
+| 2026-11-15T11:48:12Z | nightly-npm | 0.11.0-nightly.20261115.43709226198 | `89dc051` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/43709226198) |
+| 2026-11-15T00:22:06Z | nightly-desktop | 0.1.11-nightly.20261114.2 | `9c8fb04` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/43653046102) |
+| 2026-11-15T00:22:04Z | nightly-android | 0.1.11-nightly.20261114.2 | `9c8fb04` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/43653046102) |
+| 2026-11-14T23:38:21Z | nightly-npm | 0.11.0-nightly.20261114.43653046102 | `9c8fb04` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/43653046102) |
 | 2026-11-14T15:37:21Z | nightly-desktop | 0.1.11-nightly.20261114.1 | `e54d578` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/43605242413) |
 | 2026-11-14T15:37:17Z | nightly-android | 0.1.11-nightly.20261114.1 | `e54d578` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/43605242413) |
 | 2026-11-14T14:47:46Z | nightly-npm | 0.11.0-nightly.20261114.43605242413 | `e54d578` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/43605242413) |
@@ -480,6 +486,201 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-15T12:33:49Z · nightly-desktop · 0.1.11-nightly.20261115
+
+- Ship SHA: `89dc051aa7300c769d012c3aaae8bf84744a7eaa`
+- Artifact built at: `2026-11-15T11:44:05.731Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 43709226198)
+
+### Changelog
+
+Commits since `9c8fb04` ([full sha](https://github.com/kontourai/station/commit/9c8fb047ef9587996a77a464ec4721f66a82912c)):
+
+**Features**
+
+- [#4900](https://github.com/kontourai/station/pull/4900) feat(docs): rank station_docs search with Corpus over one shipped bundle (#4831)
+- [#4979](https://github.com/kontourai/station/pull/4979) feat(browser): record bounded HTML preview failure diagnostics
+
+**Fixes**
+
+- [#4982](https://github.com/kontourai/station/pull/4982) fix(qualification): keep test-spawned runners out of the real failure manifest
+- [#4968](https://github.com/kontourai/station/pull/4968) fix(html-replies): run visual-reply scripts in app shells and route visuals to html_render
+- [#4981](https://github.com/kontourai/station/pull/4981) fix(orchestration): don't fence a thread when recovery is refused by the governance check
+- [#4978](https://github.com/kontourai/station/pull/4978) fix(release): let the generated release pull request pass its source checks
+
+**CI / workflow**
+
+- [#4983](https://github.com/kontourai/station/pull/4983) ci(nightly): record each Nightly's deploy-ledger rows in one commit
+- [#4980](https://github.com/kontourai/station/pull/4980) ci(supersession): retire every workflow run of a superseded merge group
+- [#4977](https://github.com/kontourai/station/pull/4977) ci(gallery): capture PRs merged into main and attribute failures main already has
+- [#4976](https://github.com/kontourai/station/pull/4976) ci(qualification): list the #4948 and #4971 failures as known
+
+## 2026-11-15T12:33:49Z · nightly-android · 0.1.11-nightly.20261115
+
+- Ship SHA: `89dc051aa7300c769d012c3aaae8bf84744a7eaa`
+- Artifact built at: `2026-11-15T11:43:21.171Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 43709226198)
+
+### Changelog
+
+Commits since `9c8fb04` ([full sha](https://github.com/kontourai/station/commit/9c8fb047ef9587996a77a464ec4721f66a82912c)):
+
+**Features**
+
+- [#4900](https://github.com/kontourai/station/pull/4900) feat(docs): rank station_docs search with Corpus over one shipped bundle (#4831)
+- [#4979](https://github.com/kontourai/station/pull/4979) feat(browser): record bounded HTML preview failure diagnostics
+
+**Fixes**
+
+- [#4982](https://github.com/kontourai/station/pull/4982) fix(qualification): keep test-spawned runners out of the real failure manifest
+- [#4968](https://github.com/kontourai/station/pull/4968) fix(html-replies): run visual-reply scripts in app shells and route visuals to html_render
+- [#4981](https://github.com/kontourai/station/pull/4981) fix(orchestration): don't fence a thread when recovery is refused by the governance check
+- [#4978](https://github.com/kontourai/station/pull/4978) fix(release): let the generated release pull request pass its source checks
+
+**CI / workflow**
+
+- [#4983](https://github.com/kontourai/station/pull/4983) ci(nightly): record each Nightly's deploy-ledger rows in one commit
+- [#4980](https://github.com/kontourai/station/pull/4980) ci(supersession): retire every workflow run of a superseded merge group
+- [#4977](https://github.com/kontourai/station/pull/4977) ci(gallery): capture PRs merged into main and attribute failures main already has
+- [#4976](https://github.com/kontourai/station/pull/4976) ci(qualification): list the #4948 and #4971 failures as known
+
+## 2026-11-15T11:48:12Z · nightly-npm · 0.11.0-nightly.20261115.43709226198
+
+- Ship SHA: `89dc051aa7300c769d012c3aaae8bf84744a7eaa`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.11.0-nightly.20261115.43709226198 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `9c8fb04` ([full sha](https://github.com/kontourai/station/commit/9c8fb047ef9587996a77a464ec4721f66a82912c)):
+
+**Features**
+
+- [#4900](https://github.com/kontourai/station/pull/4900) feat(docs): rank station_docs search with Corpus over one shipped bundle (#4831)
+- [#4979](https://github.com/kontourai/station/pull/4979) feat(browser): record bounded HTML preview failure diagnostics
+
+**Fixes**
+
+- [#4982](https://github.com/kontourai/station/pull/4982) fix(qualification): keep test-spawned runners out of the real failure manifest
+- [#4968](https://github.com/kontourai/station/pull/4968) fix(html-replies): run visual-reply scripts in app shells and route visuals to html_render
+- [#4981](https://github.com/kontourai/station/pull/4981) fix(orchestration): don't fence a thread when recovery is refused by the governance check
+- [#4978](https://github.com/kontourai/station/pull/4978) fix(release): let the generated release pull request pass its source checks
+
+**CI / workflow**
+
+- [#4983](https://github.com/kontourai/station/pull/4983) ci(nightly): record each Nightly's deploy-ledger rows in one commit
+- [#4980](https://github.com/kontourai/station/pull/4980) ci(supersession): retire every workflow run of a superseded merge group
+- [#4977](https://github.com/kontourai/station/pull/4977) ci(gallery): capture PRs merged into main and attribute failures main already has
+- [#4976](https://github.com/kontourai/station/pull/4976) ci(qualification): list the #4948 and #4971 failures as known
+
+## 2026-11-15T00:22:06Z · nightly-desktop · 0.1.11-nightly.20261114.2
+
+- Ship SHA: `9c8fb047ef9587996a77a464ec4721f66a82912c`
+- Artifact built at: `2026-11-14T23:37:41.176Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 43653046102)
+
+### Changelog
+
+Commits since `e54d578` ([full sha](https://github.com/kontourai/station/commit/e54d5784edda09dc704955455b4fe000547231ca)):
+
+**Features**
+
+- [#4969](https://github.com/kontourai/station/pull/4969) feat(acp): make Google Antigravity (agy acp) a working built-in engine on generic ACP seams
+- [#4970](https://github.com/kontourai/station/pull/4970) feat(muse): full Muse Code support on muse serve, on generic engine seams
+- [#4961](https://github.com/kontourai/station/pull/4961) feat(docs): record one review note per widely cited input
+- [#4897](https://github.com/kontourai/station/pull/4897) feat(ui): unify run setup beside composer send actions
+
+**Fixes**
+
+- [#4967](https://github.com/kontourai/station/pull/4967) fix(plugins): recover from an unreadable plugin inventory instead of showing unsupported tabs
+- [#4966](https://github.com/kontourai/station/pull/4966) fix(deps): record the owner-approved zod exception and renew three residuals
+
+**CI / workflow**
+
+- [#4974](https://github.com/kontourai/station/pull/4974) ci(qualification): classify red runs from runner-written failure manifests, in report mode
+- [#4964](https://github.com/kontourai/station/pull/4964) ci(qualification): spend less runner time on main qualification
+- [#4962](https://github.com/kontourai/station/pull/4962) ci(fast-checks): spread PR shards over five slots and give the release bot its own
+- [#4960](https://github.com/kontourai/station/pull/4960) ci: repair scheduled automation that failed every run and harden its issue writes
+
+**Other**
+
+- [#4965](https://github.com/kontourai/station/pull/4965) test(android): reconcile release pairing keeper with Stable RC staging
+- [#4959](https://github.com/kontourai/station/pull/4959) test(gallery): phone chat actions lead the child-chat breadcrumb
+
+## 2026-11-15T00:22:04Z · nightly-android · 0.1.11-nightly.20261114.2
+
+- Ship SHA: `9c8fb047ef9587996a77a464ec4721f66a82912c`
+- Artifact built at: `2026-11-14T23:36:57.099Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 43653046102)
+
+### Changelog
+
+Commits since `e54d578` ([full sha](https://github.com/kontourai/station/commit/e54d5784edda09dc704955455b4fe000547231ca)):
+
+**Features**
+
+- [#4969](https://github.com/kontourai/station/pull/4969) feat(acp): make Google Antigravity (agy acp) a working built-in engine on generic ACP seams
+- [#4970](https://github.com/kontourai/station/pull/4970) feat(muse): full Muse Code support on muse serve, on generic engine seams
+- [#4961](https://github.com/kontourai/station/pull/4961) feat(docs): record one review note per widely cited input
+- [#4897](https://github.com/kontourai/station/pull/4897) feat(ui): unify run setup beside composer send actions
+
+**Fixes**
+
+- [#4967](https://github.com/kontourai/station/pull/4967) fix(plugins): recover from an unreadable plugin inventory instead of showing unsupported tabs
+- [#4966](https://github.com/kontourai/station/pull/4966) fix(deps): record the owner-approved zod exception and renew three residuals
+
+**CI / workflow**
+
+- [#4974](https://github.com/kontourai/station/pull/4974) ci(qualification): classify red runs from runner-written failure manifests, in report mode
+- [#4964](https://github.com/kontourai/station/pull/4964) ci(qualification): spend less runner time on main qualification
+- [#4962](https://github.com/kontourai/station/pull/4962) ci(fast-checks): spread PR shards over five slots and give the release bot its own
+- [#4960](https://github.com/kontourai/station/pull/4960) ci: repair scheduled automation that failed every run and harden its issue writes
+
+**Other**
+
+- [#4965](https://github.com/kontourai/station/pull/4965) test(android): reconcile release pairing keeper with Stable RC staging
+- [#4959](https://github.com/kontourai/station/pull/4959) test(gallery): phone chat actions lead the child-chat breadcrumb
+
+## 2026-11-14T23:38:21Z · nightly-npm · 0.11.0-nightly.20261114.43653046102
+
+- Ship SHA: `9c8fb047ef9587996a77a464ec4721f66a82912c`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.11.0-nightly.20261114.43653046102 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `e54d578` ([full sha](https://github.com/kontourai/station/commit/e54d5784edda09dc704955455b4fe000547231ca)):
+
+**Features**
+
+- [#4969](https://github.com/kontourai/station/pull/4969) feat(acp): make Google Antigravity (agy acp) a working built-in engine on generic ACP seams
+- [#4970](https://github.com/kontourai/station/pull/4970) feat(muse): full Muse Code support on muse serve, on generic engine seams
+- [#4961](https://github.com/kontourai/station/pull/4961) feat(docs): record one review note per widely cited input
+- [#4897](https://github.com/kontourai/station/pull/4897) feat(ui): unify run setup beside composer send actions
+
+**Fixes**
+
+- [#4967](https://github.com/kontourai/station/pull/4967) fix(plugins): recover from an unreadable plugin inventory instead of showing unsupported tabs
+- [#4966](https://github.com/kontourai/station/pull/4966) fix(deps): record the owner-approved zod exception and renew three residuals
+
+**CI / workflow**
+
+- [#4974](https://github.com/kontourai/station/pull/4974) ci(qualification): classify red runs from runner-written failure manifests, in report mode
+- [#4964](https://github.com/kontourai/station/pull/4964) ci(qualification): spend less runner time on main qualification
+- [#4962](https://github.com/kontourai/station/pull/4962) ci(fast-checks): spread PR shards over five slots and give the release bot its own
+- [#4960](https://github.com/kontourai/station/pull/4960) ci: repair scheduled automation that failed every run and harden its issue writes
+
+**Other**
+
+- [#4965](https://github.com/kontourai/station/pull/4965) test(android): reconcile release pairing keeper with Stable RC staging
+- [#4959](https://github.com/kontourai/station/pull/4959) test(gallery): phone chat actions lead the child-chat breadcrumb
 
 ## 2026-11-14T15:37:21Z · nightly-desktop · 0.1.11-nightly.20261114.1
 

@@ -41,7 +41,9 @@ export const ACP_DECLARED_FACT_BOUNDS = {
 export type AcpHandshakeIdentity =
   | { agentInfoName: string }
   | { capabilityMetaNamespace: string }
-  | { initializeMetaFlag: string };
+  | { initializeMetaFlag: string }
+  /** `_meta.<feature>.supported === true` on the `initialize` result itself. */
+  | { initializeMetaFeature: string };
 
 /** The parts of an `initialize` answer an identity is read from. */
 export type AcpIdentityHandshake = Pick<
@@ -59,8 +61,9 @@ function hasRecordKey(value: unknown, key: string): boolean {
 
 /**
  * Whether the live handshake says this about itself: its `agentInfo.name`,
- * a vendor namespace in `agentCapabilities._meta`, or a `true` flag in the
- * result's own `_meta`. Never the launch command.
+ * a vendor namespace in `agentCapabilities._meta`, a `true` flag in the
+ * result's own `_meta`, or a feature that `_meta` marks `{supported: true}`.
+ * Never the launch command.
  */
 export function matchesAcpHandshakeIdentity(
   handshake: AcpIdentityHandshake,
@@ -73,6 +76,14 @@ export function matchesAcpHandshakeIdentity(
     return hasRecordKey(
       handshake.agentCapabilities?._meta,
       identity.capabilityMetaNamespace,
+    );
+  }
+  if ('initializeMetaFeature' in identity) {
+    const feature: unknown = handshake._meta?.[identity.initializeMetaFeature];
+    return (
+      feature !== null &&
+      typeof feature === 'object' &&
+      (feature as { supported?: unknown }).supported === true
     );
   }
   return handshake._meta?.[identity.initializeMetaFlag] === true;

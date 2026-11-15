@@ -20,12 +20,13 @@ import { errorMessage } from '../../utils/error-message.js';
  */
 export type AcpSteerChannel =
   | 'session-steer'
+  | 'session-steering'
   | 'interject'
   | 'prompt-handoff'
   | 'cancel-reprompt';
 
 /** Channels that call an extension method. */
-type AcpSteerMethodChannel = 'session-steer' | 'interject';
+type AcpSteerMethodChannel = 'session-steer' | 'session-steering' | 'interject';
 
 const NATIVE_STEER_METHODS: ReadonlyArray<{
   channel: AcpSteerMethodChannel;
@@ -98,6 +99,18 @@ const ACP_UNDECLARED_STEER_ENGINES: ReadonlyArray<{
     channel: 'interject',
     methods: ['_x.ai/interject', 'x.ai/interject'],
     observed: 'grok 1.0.50 `agent stdio`',
+  },
+  {
+    // OpenCode 2.x declares `_meta.steering: {supported: true}` on its
+    // `initialize` result but lists no method. Keyed on that declaration,
+    // not on `agentInfo.name`: OpenCode 1.x names itself the same and has no
+    // `_session/steering`, so it keeps cancel + re-prompt. A second
+    // `session/prompt` mid-turn is refused -32603; this method is not.
+    identity: { initializeMetaFeature: 'steering' },
+    channel: 'session-steering',
+    methods: ['_session/steering'],
+    observed:
+      'opencode 2.3.0 `acp` (2026-11-13): `{sessionId, prompt}` answered {outcome: "injected"} mid-stream and during a held permission, and the text reached the model; idle answered {outcome: "promptRequired", reason: "noRunningTurn"} (cli/src/acp/turn.ts)',
   },
 ];
 
@@ -174,9 +187,30 @@ export function acpSteerParams(
   sessionId: string,
   input: string,
 ): Record<string, unknown> {
-  return channel === 'session-steer'
-    ? acpSessionSteerParams(sessionId, input)
-    : acpInterjectParams(sessionId, input);
+  if (channel === 'session-steer')
+    return acpSessionSteerParams(sessionId, input);
+  if (channel === 'session-steering')
+    return { sessionId, prompt: [{ type: 'text', text: input }] };
+  return acpInterjectParams(sessionId, input);
+}
+
+/**
+ * Whether an engine's answer to a native steer says it did not take the
+ * input. Only the `session-steering` channel (OpenCode 2.x) has such an
+ * answer: `{outcome: 'promptRequired'}` once no turn runs, so the steer
+ * reached nothing and the turn it was meant for has ended. Another
+ * channel's answer is never read this way.
+ */
+export function acpSteerDeclined(
+  channel: AcpSteerChannel,
+  result: unknown,
+): boolean {
+  return (
+    channel === 'session-steering' &&
+    result !== null &&
+    typeof result === 'object' &&
+    (result as { outcome?: unknown }).outcome === 'promptRequired'
+  );
 }
 
 function acpSessionSteerParams(

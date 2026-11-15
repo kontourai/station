@@ -9,6 +9,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { generatedLedgerSubject } from '../lib/deploy-ledger-commit.mjs';
 
 /**
  * #1780: the decide CLI must read the deploy ledger from `origin/main`, not
@@ -69,19 +70,19 @@ function commitLedger(content: string, subject: string) {
   return git('rev-parse', 'HEAD');
 }
 
-/** The subject the cohort's record job writes for `channel`, read from the
- * workflow itself with its shell variables substituted — so this fixture is
- * bound to the writer, not to a string the test happens to agree with. */
-function cohortLedgerSubject(channel: string, version: string, runId: string) {
+/** The subject the Nightly's ledger writers commit: the workflows pass
+ * `--subject-run-id`, and the commit helper derives the subject from the
+ * rows it adds — so this fixture is bound to that writer, not to a string
+ * the test happens to agree with. */
+function nightlyLedgerSubject(
+  rows: Array<{ channel: string; version: string }>,
+  runId: string,
+) {
   const workflow = readFileSync(COHORT_WORKFLOW, 'utf8');
-  const subjects = Array.from(
-    workflow.matchAll(/--commit-subject "([^"]+)"/g),
-    (m) => m[1],
-  ).filter((subject) => subject.includes(channel));
-  expect(subjects, `one cohort subject for ${channel}`).toHaveLength(1);
-  return subjects[0]
-    .replace(/\$GITHUB_RUN_ID\b/g, runId)
-    .replace(/\$[A-Za-z_][A-Za-z0-9_]*/g, version);
+  expect(workflow).toContain(
+    'node scripts/lib/deploy-ledger-commit.mjs --subject-run-id "$GITHUB_RUN_ID"',
+  );
+  return generatedLedgerSubject(rows, runId);
 }
 
 function commitLedgerPair(json: string, subject: string) {
@@ -212,19 +213,23 @@ describe('nightly-cohort-decide CLI against a git repository', () => {
       `${JSON.stringify([], null, 2)}\n`,
       'feat: a source change',
     );
+    // Since one-commit-per-run: the fallback's npm-only commit, then the
+    // record job's Android + desktop commit (a re-run order), each with the
+    // derived subject.
     const androidRow = commitLedgerPair(
-      `${JSON.stringify([row('nightly-android', source)], null, 2)}\n`,
-      cohortLedgerSubject(
-        'nightly-android',
-        '0.1.11-nightly.2442.5',
+      `${JSON.stringify([row('nightly-npm', source)], null, 2)}\n`,
+      nightlyLedgerSubject(
+        [{ channel: 'nightly-npm', version: '0.6.0-nightly.2442.34252063142' }],
         '34252063142',
       ),
     );
     const desktopRow = commitLedgerPair(
-      `${JSON.stringify([row('nightly-desktop', source), row('nightly-android', source)], null, 2)}\n`,
-      cohortLedgerSubject(
-        'nightly-desktop',
-        '0.1.11-nightly.2442.5',
+      `${JSON.stringify([row('nightly-desktop', source), row('nightly-android', source), row('nightly-npm', source)], null, 2)}\n`,
+      nightlyLedgerSubject(
+        [
+          { channel: 'nightly-android', version: '0.1.11-nightly.2442.5' },
+          { channel: 'nightly-desktop', version: '0.1.11-nightly.2442.5' },
+        ],
         '34252063142',
       ),
     );

@@ -1,3 +1,4 @@
+import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import type { EngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import {
   parseEngineConnectionId,
@@ -320,6 +321,14 @@ export interface ProviderAdapterMetadata {
    * `engineIdForAdapter` (adapter-identity.ts).
    */
   engineId?: EngineId;
+  /**
+   * `acp-registry`: the adapter has no connection of its own. It runs saved
+   * ACP connection records (those {@link ProviderAdapterShape.claimsAcpConnection}
+   * accepts), so its engine id never reserves a connection id (#3355) and it
+   * is not listed as an engine connection of its own; its sessions run on
+   * the ACP connection they name.
+   */
+  connectionBacking?: 'acp-registry';
   /** Evidence-scoping identity for models launched through this adapter. */
   modelExecution?: ModelInventoryExecutionIdentity;
   /** Abort does not settle discovery until adapter-owned resources are closed. */
@@ -633,6 +642,21 @@ export interface ProviderAdapterShape {
     threadId: string,
     turnId: string,
   ): Promise<SessionRewindOutcome>;
+  /**
+   * For an adapter whose `metadata.connectionBacking` is `acp-registry`:
+   * whether a new session on this saved ACP connection runs on this adapter
+   * now. Read when a connection is projected (its engine id and the provider
+   * a new chat starts with); a chat keeps the provider it started with.
+   * False hands the connection to the ACP adapter.
+   */
+  claimsAcpConnection?(config: ACPConnectionConfig): boolean;
+  /**
+   * Whether the provider inventory (`GET /api/orchestration/providers`)
+   * lists this adapter now. Absent: always. An adapter behind a Feature
+   * Preview answers false while it is off, so turning the preview on is the
+   * only thing that adds its row.
+   */
+  listedInProviderInventory?(): boolean;
   respondToRequest(
     threadId: string,
     requestId: string,

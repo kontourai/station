@@ -633,6 +633,14 @@ Station launches are started.
 Station refuses an unknown engine id, a repeated one, and an `instances`
 entry for an engine `allowed` leaves out.
 
+OpenCode has no id of its own here. The `acp` entry covers it in every form: an
+OpenCode ACP connection, and the `opencode` engine behind the OpenCode native
+engine Feature Preview, natively or over ACP, with the preview on or off.
+`instances.acp` pins it too. Natively, the pinned binary and environment apply
+to `opencode serve`, but pinned arguments do not, because they belong to the
+`acp` command line. Turning the preview on neither widens nor narrows a
+policy. See [the decision](../decisions/opencode-native-transport.md#managed-policy-r5).
+
 ### An engine that is not allowed
 
 An engine the policy does not allow is unavailable everywhere:

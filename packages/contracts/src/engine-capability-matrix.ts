@@ -855,6 +855,30 @@ export function acpStationApprovalEngine(
   return executable === 'opencode' ? 'opencode' : undefined;
 }
 
+/**
+ * Whether a saved ACP connection runs OpenCode: the OpenCode descriptor's own
+ * id, or a command whose executable is `opencode` launched as `opencode acp`.
+ * The `opencode` engine runs exactly these records; a managed policy governs
+ * them through its `acp` entry (R5′).
+ */
+export function isOpenCodeAcpConnection(
+  config:
+    | {
+        readonly id?: string;
+        readonly command?: string | null;
+        readonly args?: readonly string[] | null;
+      }
+    | null
+    | undefined,
+): boolean {
+  if (!config) return false;
+  if (config.id === 'opencode') return true;
+  return (
+    acpStationApprovalEngine(config.command) === 'opencode' &&
+    config.args?.[0] === 'acp'
+  );
+}
+
 /** Who decides which of this ACP connection's actions ask (#3290). */
 export function acpApprovalControl(
   command: string | null | undefined,
@@ -1481,6 +1505,101 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     builtInTools: { state: 'unenumerated' },
     builtInToolControl: { state: 'none' },
   },
+  // The `opencode` engine (`opencode-adapter.ts`, behind the
+  // `opencode-native-engine` Feature Preview). A session runs over OpenCode
+  // 2's own server (`opencode serve`) where Station verified its API, and
+  // over ACP otherwise, and the transport is chosen per session at start.
+  // The matrix has no per-transport cells, so each cell states what BOTH
+  // transports deliver; where the ACP fallback could do more, the comment
+  // says so and the cell stays at the native floor.
+  opencode: {
+    engineId: toEngineId('opencode'),
+    durability: ACP_ENGINE_DURABILITY,
+    // Neither transport has a system-prompt field: native `POST
+    // /api/session/{id}/prompt` takes `{id, text}`, ACP takes a text block.
+    systemPrompt: { state: 'unsupported' },
+    // Both send the turn's text as the prompt (`opencode-serve-session.ts`
+    // sendTurn; the inner ACP adapter's `session/prompt`), so the authored
+    // prompt prepended to the first turn arrives as ordinary text.
+    instructionsInFirstTurn: { state: 'session', channel: 'first-turn' },
+    // Both transports deliver the servers the `acp` row does, resolved the
+    // same way (`acp-mcp-passthrough.ts`). Native: each is added to the
+    // session's own OpenCode server (`PUT /api/experimental/mcp/{name}`,
+    // `opencode-native-mcp.ts`; fixture `opencode-serve-2.3.0-mcp-add.jsonl`),
+    // a server no session with other tool servers shares; HTTP MCP is part
+    // of the verified API. ACP: on `session/new`, behind the live
+    // `mcpCapabilities.http` gate, as for `acp`.
+    toolServers: {
+      state: 'session',
+      channel: 'wire',
+      builtinStationControlDelivery: {
+        mechanism: 'http-header-token',
+        basis: 'runtime_observation',
+        observation: 'acp-mcp-http',
+      },
+    },
+    skills: { state: 'unsupported' },
+    // Authored commands are not delivered on either transport; OpenCode's
+    // own commands run through `engine-command-dispatch.ts`.
+    commands: { state: 'unsupported' },
+    // Native: `POST /api/session` carries `model: {providerID, id}`
+    // (`readModelRef`); ACP: the session's catalog, as for `acp`. Start
+    // time only on both.
+    modelSelection: { state: 'session', channel: 'wire' },
+    // Station's staged policy, for a session started as an Agent, on both
+    // transports. ACP: at `requestPermission`, exactly as on the `acp` row
+    // (the declared hook and module, which the tool-policy tripwire checks).
+    // Native: on each OpenCode `permission.asked`, the session's or a
+    // descendant's, in ACP's order, with the tool name OpenCode's ACP layer
+    // reports (`OpenCodeNativeSession.decideAsk`; replay tests "a session
+    // started as an Agent runs natively, and its Station tool policy's deny
+    // ..." and siblings in `opencode-adapter.replay.test.ts`, and a live
+    // 2.3.0 deny in `opencode-native.process.test.ts`). On either, only calls
+    // OpenCode asks about and names a tool for are covered, and the engine
+    // reports that name.
+    toolPolicy: {
+      state: 'partial',
+      permissionHook: 'requestPermission',
+      evidence: 'sharedStagedPolicy',
+      toolIdentity: 'self-reported',
+      coverageLimit:
+        "Only calls OpenCode asks permission for and names a tool for enter this policy seam, over ACP or OpenCode's own server.",
+      adapterModule: 'acp-adapter',
+    },
+    // Native: images go as `POST .../prompt` `files` (data URIs), as
+    // OpenCode's own ACP layer sends them (fixture
+    // `opencode-serve-2.3.0-attachment.jsonl`); other files are refused.
+    // ACP: as the `acp` row, only when the connection's `initialize`
+    // advertised `promptCapabilities.image`, so the basis is an observation.
+    imageInput: {
+      state: 'session',
+      channel: 'native-content',
+      basis: 'runtime_observation',
+    },
+    // Native: `POST .../prompt {delivery:'steer'}`, acknowledged by
+    // `inbox.delivered` (fixture `opencode-serve-2.3.0-steer.jsonl`); ACP:
+    // OpenCode's `_session/steering` row in `acp-steer.ts`.
+    midTurnSteer: true,
+    // Native only: a descendant session (`parentID` this session's id, or a
+    // descendant's) becomes `child-work.updated` with its start and terminal status
+    // (`opencode-serve-session.ts`; fixture
+    // `opencode-serve-2.3.0-subagent.jsonl`). No progress, usage or result
+    // is mapped. A session on the ACP fallback names no reporting engine and
+    // states `not-reported` at start, as the `acp` row describes.
+    subagentObservability: {
+      state: 'declared',
+      signals: ['lifecycle'],
+      evidence:
+        'opencode-serve-2.3.0-subagent.jsonl: session.created with parentID, then session.execution.started / succeeded on the child',
+      adapterModule: 'opencode-serve-session.ts',
+    },
+    subagentControl: {
+      state: 'none',
+      reason: 'No OpenCode subagent stop or resume is wired.',
+    },
+    builtInTools: { state: 'unenumerated' },
+    builtInToolControl: { state: 'none' },
+  },
 };
 
 /**
@@ -1552,6 +1671,7 @@ export function sessionDeliveryChannels(
  * connection record carrying BOTH an acp type/id and a managed engine
  * identity resolves to `acp`, never letting the managed check shadow it).
  *
+ *   explicit engineId 'opencode'                   -> opencode
  *   id/type 'acp'                                 -> acp
  *   explicit engineId (top-level or config-nested) -> that engine only when
  *                                                     its type is its exact
@@ -1567,6 +1687,17 @@ export function resolveEngineCapabilityMatrix(
     config?: { engineId?: unknown; executionClass?: unknown };
   } | null,
 ): EngineCapabilityMatrix {
+  // A saved ACP connection that the `opencode` engine claims projects
+  // `engineId: 'opencode'` (only while its Feature Preview is on); it reads
+  // the `opencode` row, not the `acp` one its type would pick.
+  const projectedEngineId =
+    connection?.engineId ??
+    (typeof connection?.config?.engineId === 'string'
+      ? connection.config.engineId
+      : undefined);
+  if (projectedEngineId === 'opencode') {
+    return ENGINE_CAPABILITY_MATRICES.opencode;
+  }
   if (agentConnectionId === 'acp' || connection?.type === 'acp') {
     return ENGINE_CAPABILITY_MATRICES.acp;
   }

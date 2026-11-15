@@ -361,6 +361,7 @@
     "@kontourai/console-core": "^0.4.0",
     "@kontourai/console-server": "^1.1.0",
     "@kontourai/console-ui": "^0.3.0",
+    "@kontourai/corpus": "0.8.1",
     "@kontourai/corpus-store": "0.1.0-next.5",
     "@kontourai/dispatch": "0.8.1",
     "@kontourai/ephemeris": "0.4.1",
@@ -460,7 +461,11 @@
     "@ai-sdk/provider": "^3.0.19",
     "@axe-core/playwright": "^4.14.0",
     "@biomejs/biome": "^2.6.6",
+    "@changesets/assemble-release-plan": "7.0.0",
     "@changesets/cli": "^3.0.3",
+    "@changesets/config": "4.0.1",
+    "@changesets/parse": "1.0.0",
+    "@changesets/should-skip-package": "1.0.0",
     "@cyclonedx/cyclonedx-npm": "6.0.1",
     "@kontourai/console": "^2.9.0",
     "@kontourai/station-supervisor": "^0.1.0",
@@ -509,8 +514,7 @@
     "vitest": "4.1.12",
     "yaml": "2.9.1",
     "yazl": "^3.3.1",
-    "oxlint": "1.93.0",
-    "@kontourai/corpus": "github:kontourai/corpus#dfadba4e64883e6187fb42e32911ca9f091e0fa7"
+    "oxlint": "1.93.0"
   },
   "license": "Apache-2.0"
 }
