@@ -1,10 +1,10 @@
 import type { AccountPreferencesView } from '@kontourai/station-contracts/account-preferences';
-import type { CustomAppearanceDocument } from '@kontourai/station-contracts/custom-appearance';
 import {
   AUTHORITY_OBSERVATION_SCHEMA_VERSION,
   type AuthorityObservation,
   isAuthorityObservation,
 } from '@kontourai/station-contracts/authority-observation';
+import type { CustomAppearanceDocument } from '@kontourai/station-contracts/custom-appearance';
 import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts/environment-security';
 import type {
   BrowserPaneAccessView,
