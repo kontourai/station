@@ -2862,6 +2862,8 @@ export class OrchestrationService {
         options.eventStore?.latestTurnDispatchOrigin(threadId),
       hasPersonTurn: (threadId) =>
         options.eventStore?.hasPersonTurn(threadId) ?? true,
+      isDelegatedChild: (threadId) =>
+        this.sessionDispatchFacts(threadId).delegatedChild,
       park: (threadId, afterMs) => this.parkFinishedSession(threadId, afterMs),
       logger: options.logger,
     });

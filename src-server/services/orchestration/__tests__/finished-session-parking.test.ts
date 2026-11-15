@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
+import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
 import type {
@@ -217,7 +218,46 @@ async function boot(
     );
     return threadId;
   };
-  return { adapter, service, store, lifecycle, runTurn, start };
+  /**
+   * A child the delegation route started: its context, and the provenance
+   * stamp the route adds when Station derived that context from its caller.
+   */
+  const startDelegatedChild = async (
+    provenance: 'caller-derived' | 'direct-claim',
+  ) => {
+    const parentSessionId = await start(`parent-${randomUUID()}`);
+    const threadId = `child-${randomUUID()}`;
+    const context: AgentDelegationContext = {
+      mode: 'isolated-child',
+      depth: 1,
+      maxDepth: 3,
+      parentAgentSlug: 'lead',
+      rootAgentSlug: 'lead',
+      parentSessionId,
+    };
+    await service.dispatch(
+      {
+        type: 'startSession',
+        input: {
+          threadId,
+          provider: 'claude',
+          metadata: { ...OWNER, delegation: context },
+        },
+      },
+      OWNER,
+      { delegationProvenance: { context, provenance } },
+    );
+    return threadId;
+  };
+  return {
+    adapter,
+    service,
+    store,
+    lifecycle,
+    runTurn,
+    start,
+    startDelegatedChild,
+  };
 }
 
 describe('finished-by-design Sessions release their engine early', () => {
@@ -269,6 +309,29 @@ describe('finished-by-design Sessions release their engine early', () => {
         expect(adapter.stopped.sort()).toEqual([automation, taskWake].sort()),
       { timeout: 5_000 },
     );
+  });
+
+  test('a delegated child its agent follows up is released again after each follow-up', async () => {
+    const { adapter, runTurn, startDelegatedChild } = await boot();
+    const threadId = await startDelegatedChild('caller-derived');
+    await runTurn(threadId, 'delegation');
+    await vi.waitFor(() => expect(adapter.stopped).toEqual([threadId]), {
+      timeout: 5_000,
+    });
+    // The delegator's `continue_task` records no origin of its own.
+    await runTurn(threadId, 'unknown');
+    await vi.waitFor(
+      () => expect(adapter.stopped).toEqual([threadId, threadId]),
+      { timeout: 5_000 },
+    );
+  });
+
+  test('an unclassified turn into a child only its requester called delegated keeps its engine', async () => {
+    const { adapter, runTurn, startDelegatedChild } = await boot();
+    const threadId = await startDelegatedChild('direct-claim');
+    await runTurn(threadId, 'unknown');
+    await new Promise((resolve) => setTimeout(resolve, SETTLED_WAIT_MS));
+    expect(adapter.stopped).toEqual([]);
   });
 
   test("a person's own turn keeps its engine for the idle park", async () => {

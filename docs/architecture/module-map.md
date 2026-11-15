@@ -2292,11 +2292,14 @@ room effect fires.
 A Session that is finished by design does not wait for that threshold.
 [`FinishedSessionParking`](../../src-server/services/orchestration/finished-session-parking.ts)
 watches every turn terminal the service commits. When the Session's newest turn
-was unattended (`dispatchOrigin` `delegation`, `automation` or `task-dispatch`)
-and no person has sent a turn or steer into it (none placed `interactive` or
-marked person-typed), it parks the engine `finishedSessionParkAfterMs` (15
-seconds) after the turn settled. This covers a delegated child, a dedicated
-Automation run and a Task dispatch nobody typed in. The park is the idle park
+was unattended and no person has sent a turn or steer into it (none placed
+`interactive` or marked person-typed), it parks the engine
+`finishedSessionParkAfterMs` (15 seconds) after the turn settled. Unattended
+means `dispatchOrigin` `delegation`, `automation` or `task-dispatch`. It also
+means `unknown` in a Session started as a delegated child whose context
+Station derived or attested, because a delegator's `continue_task` follow-up
+records no origin. This covers a delegated child, a dedicated Automation run
+and a Task dispatch nobody typed in. The park is the idle park
 with that grace as its threshold, so every refusal above still applies under
 the lifecycle lock. An engine event after the settle restarts the grace. A
 delegator's follow-up or a queued inbox entry starts a turn, which the park
@@ -2412,8 +2415,9 @@ anything else as `unknown`. Who passes what:
   then a person's entry is `interactive`; a delegated child's result
   (server-stamped `delegation-result` sender, also delivered through
   `delegationResultStartPort`) is `delegation` when the parent Session is
-  itself unattended (bound to a Task, or a delegated child whose start
-  carries Station's provenance stamp), and otherwise takes the parent's own
+  itself unattended (bound to a Task, or a delegated child whose first
+  start carries Station's provenance stamp; an in-place restart after a park
+  does not repeat the stamp), and otherwise takes the parent's own
   newest non-result turn's origin (`readSessionDispatchFacts`), so a
   person's chat stays `interactive`; Station's other entries (a
   Task question wake, a check-back) are

@@ -21,9 +21,12 @@ const PARK_TIMER_SLACK_MS = 500;
  * such a turn settles in a Session no person has sent into, the run has
  * reported (its result is read from the event log, not from the engine), and
  * only a later send needs the engine — which restarts it in place from its
- * resume cursor. A person's chat (an Automation queued into it, a Task room
- * someone typed in, a delegated Session a person took over) and anything
- * unclassified (`unknown`) keep the ordinary idle park.
+ * resume cursor. An unclassified (`unknown`) turn counts only in a Session
+ * started as a delegated child Station derived or attested: there it is the
+ * delegating agent's follow-up (`continue_task` records no origin). A
+ * person's chat (an Automation queued into it, a Task room someone typed in,
+ * a delegated Session a person took over) and any other `unknown` turn keep
+ * the ordinary idle park.
  */
 const UNATTENDED_TURN_ORIGINS: ReadonlySet<TurnDispatchOrigin> = new Set([
   'delegation',
@@ -38,6 +41,8 @@ export interface FinishedSessionParkingPorts {
   latestTurnDispatchOrigin(threadId: string): TurnDispatchOrigin | undefined;
   /** Whether a person has sent any turn or steer into the Session. */
   hasPersonTurn(threadId: string): boolean;
+  /** Started as a delegated child Station derived or attested (#4512). */
+  isDelegatedChild(threadId: string): boolean;
   /**
    * Parks the Session if it is still parkable with nothing on it for
    * `afterMs` (the idle park's own checks, under its lifecycle lock).
@@ -124,10 +129,10 @@ export class FinishedSessionParking {
 
   private isUnattended(threadId: string): boolean {
     const origin = this.ports.latestTurnDispatchOrigin(threadId);
-    return (
-      origin !== undefined &&
-      UNATTENDED_TURN_ORIGINS.has(origin) &&
-      !this.ports.hasPersonTurn(threadId)
-    );
+    if (origin === undefined) return false;
+    const unattended =
+      UNATTENDED_TURN_ORIGINS.has(origin) ||
+      (origin === 'unknown' && this.ports.isDelegatedChild(threadId));
+    return unattended && !this.ports.hasPersonTurn(threadId);
   }
 }

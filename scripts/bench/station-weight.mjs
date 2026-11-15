@@ -1726,7 +1726,7 @@ async function awaitNewTurnReply(
 
 /** Follow-ups are timed to the reply; poll finely enough to tell them apart. */
 const FOLLOW_UP_POLL_MS = 50;
-/** Follow-up pairs timed in a delegated run; each re-parks the run first. */
+/** Delegated tasks timed, each with one released and one warm follow-up. */
 const FOLLOW_UP_ROUNDS = 3;
 
 /** One task delegated as the operator; resolves once its turn completed. */
@@ -1791,32 +1791,6 @@ async function continueDelegatedHi(api, taskId, sessionId) {
   );
 }
 
-/** A person's follow-up into an existing conversation, through `/chat`. */
-async function chatFollowUp(api, cwd, sessionId) {
-  const { turnIds } = await sessionTurns(api, sessionId);
-  const response = await api.call('POST', '/api/orchestration/chat', {
-    target: {
-      environment: { kind: 'current' },
-      agent: 'claude',
-      workspace: { kind: 'directory', cwd },
-    },
-    message: PROMPT,
-    clientTurnId: randomUUID(),
-    conversationId: sessionId,
-  });
-  assert(
-    response.status < 400 && response.json?.success !== false,
-    `chat follow-up: HTTP ${response.status} ${response.text.slice(0, 400)}`,
-  );
-  await awaitNewTurnReply(
-    api,
-    response.json?.data?.sessionId ?? sessionId,
-    turnIds,
-    'the chat follow-up to complete',
-    FOLLOW_UP_POLL_MS,
-  );
-}
-
 /**
  * Waits until the tree holds no more engines than `count`; resolves the
  * time that took, or `null` past `maxMs`.
@@ -1832,65 +1806,61 @@ async function engineCountFallsTo(treeNow, count, maxMs) {
 }
 
 /**
- * Delegates one stub-answered task, then reports whether and when its
+ * Delegates stub-answered tasks and reports whether and when the first one's
  * engine process left the tree, the tree's memory once settled after that,
- * and how long a follow-up takes into the released run (its engine restarts
- * in place) next to one into a session whose engine is still running.
- * Report-only: nothing here is a budget.
+ * and, per task, how long a follow-up takes once its engine was released (it
+ * restarts in place) next to a second one while that engine still runs. The
+ * operator's follow-up is a person's turn, so it keeps the engine for the
+ * idle park: each round delegates a new task. Report-only: nothing here is a
+ * budget.
  */
 async function measureDelegatedRun(api, cwd, context) {
-  const { treeNow, memorySnapshot, settings, warmSessionId } = context;
-  const enginesBefore = engineProcessCount(treeNow());
-  const delegated = await delegateHi(api, cwd);
-  const enginesAtFinish = engineProcessCount(treeNow());
-  const releasedAfterMs = await engineCountFallsTo(
-    treeNow,
-    enginesBefore,
-    settings.delegatedReleaseMaxMs,
-  );
-  const finishedMemory = restMetric(
-    await settleTree(memorySnapshot, settings),
-    {
-      note: 'after one delegated, stub-answered task finished, beside the idle sessions',
-    },
-  );
+  const { treeNow, memorySnapshot, settings } = context;
   const timed = async (run) => {
     const start = performance.now();
     await run();
     return performance.now() - start;
   };
-  const warm = [];
-  const released = [];
-  const releasedAgainAfterMs = [];
+  const enginesBefore = engineProcessCount(treeNow());
+  const rounds = [];
+  let finishedMemory;
   for (let round = 0; round < FOLLOW_UP_ROUNDS; round += 1) {
-    // Each follow-up restarts the run's engine; it is parked again first.
-    if (round > 0)
-      releasedAgainAfterMs.push(
-        await engineCountFallsTo(
-          treeNow,
-          enginesBefore,
-          settings.delegatedReleaseMaxMs,
-        ),
-      );
-    warm.push(await timed(() => chatFollowUp(api, cwd, warmSessionId)));
-    released.push(
-      await timed(() =>
-        continueDelegatedHi(api, delegated.taskId, delegated.sessionId),
-      ),
+    const enginesBeforeRound = engineProcessCount(treeNow());
+    const delegated = await delegateHi(api, cwd);
+    const enginesAtFinish = engineProcessCount(treeNow());
+    const releasedAfterMs = await engineCountFallsTo(
+      treeNow,
+      enginesBeforeRound,
+      settings.delegatedReleaseMaxMs,
     );
+    if (round === 0)
+      finishedMemory = restMetric(await settleTree(memorySnapshot, settings), {
+        note: 'after one delegated, stub-answered task finished, beside the idle sessions',
+      });
+    const follow = () =>
+      continueDelegatedHi(api, delegated.taskId, delegated.sessionId);
+    rounds.push({
+      enginesAtFinish,
+      releasedAfterMs,
+      // Timed only into a released engine; otherwise not a restart.
+      releasedFollowUpMs: releasedAfterMs === null ? null : await timed(follow),
+      warmFollowUpMs: await timed(follow),
+    });
   }
+  const values = (key) =>
+    rounds.map((entry) => entry[key]).filter((value) => value !== null);
+  const releasedSamples = values('releasedFollowUpMs');
   return {
     status: 'measured',
     reportOnly: true,
     engineProcessesBefore: enginesBefore,
-    engineProcessesAtFinish: enginesAtFinish,
-    engineReleasedAfterMs: releasedAfterMs,
-    engineReleasedAgainAfterMs: releasedAgainAfterMs,
+    engineProcessesAtFinish: rounds[0].enginesAtFinish,
+    engineReleasedAfterMs: rounds[0].releasedAfterMs,
     finishedMemoryBytes: finishedMemory,
-    warmFollowUpMs: median(warm),
-    releasedFollowUpMs: median(released),
-    followUpSamplesMs: { warm, released },
-    note: `engine processes are counted by executable name (claude); a follow-up is one stub-answered turn, timed from the request to its reply (polled every ${FOLLOW_UP_POLL_MS} ms), median of ${FOLLOW_UP_ROUNDS}`,
+    warmFollowUpMs: median(values('warmFollowUpMs')),
+    releasedFollowUpMs: releasedSamples.length ? median(releasedSamples) : null,
+    rounds,
+    note: `engine processes are counted by executable name (claude); a follow-up is one stub-answered turn through /delegations/:taskId/continue, timed from the request to its reply (polled every ${FOLLOW_UP_POLL_MS} ms), median over ${FOLLOW_UP_ROUNDS} delegated tasks`,
   };
 }
 
@@ -2679,7 +2649,6 @@ export async function runStationWeight({
             treeNow,
             memorySnapshot,
             settings,
-            warmSessionId: sessionIds[0],
           });
         } catch (error) {
           result.delegatedRun = {
