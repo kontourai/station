@@ -1161,19 +1161,34 @@ reacted. The stored message row is never rewritten.
   uploads, so every Station process sharing the home refuses alike, and no
   file write is needed for the refusal. `reclamation-blocked.json` in the
   store names each problem when it can be written; it is a diagnostic only.
+  A `bindings/` or `repair/` root, or any directory under them, that is a
+  symbolic link, is not a directory, or cannot be looked up for any reason
+  other than not existing (such as `EACCES` on a parent) counts as a
+  problem, not as empty. Linked store roots are not supported and pause
+  uploads until the path is a plain directory again.
 - **Supported repair.** With Station running, change records only in these
   ways:
   - To restore or correct a record, leave the damaged record where it is
     (it keeps every release blocked) and write the corrected record to
     `<STATION_HOME>/project-room-attachments/repair/<binding>/<id>.json`, the
-    same relative path it has under `bindings/`. Each upload and release
-    first takes the store lock, then publishes each complete repair record
-    whose bytes are still stored. It writes the exact bytes it read and
-    validated to a staging file and renames that into `bindings/`, then
-    removes the repair entry only if it still holds those bytes. If you
-    rewrite the entry meanwhile, the next pass applies or rejects the newer
-    content. A repair that is incomplete, or whose bytes are gone, stays in
-    `repair/`, refuses uploads, and is named in the marker.
+    same relative path it has under `bindings/`. Write it under a temporary
+    name in the same directory and rename it to `<id>.json`, so it appears
+    whole. Each upload and release first takes the store lock, then claims
+    each new entry by renaming it to
+    `<id>.json.claimed-<time>-<uuid>` beside it, and reads, validates and
+    publishes only the claimed file: it writes the exact bytes it validated
+    to a staging file, renames that into `bindings/`, and deletes the claimed
+    file only after that. Anything written to `<id>.json` after the claim is
+    a new entry for the next pass and is never deleted with the claimed one,
+    so a write that was not atomic is retried, not lost. When a record has
+    several claimed files, only the newest is published. The older ones are
+    superseded: they are deleted once it is published and refuse uploads
+    until then. A claimed file that is incomplete, whose bytes are gone or
+    that could not be published (including any left by a crash) stays in
+    `repair/`, refuses uploads and is named in the marker. Replace it by
+    writing a corrected `<id>.json`, or remove it. A failed publication
+    removes its own staging copy, and Station removes a repair directory
+    only once it is empty.
   - To fix an unreadable record's permissions, change them in place.
   - To give up a file, remove its record from `bindings/` once you have
     decided it is not needed.
