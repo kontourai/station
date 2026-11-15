@@ -193,3 +193,59 @@ test('spends visible text on the Model when the Agent mark names the Agent', () 
   ).toBe('Opus');
   expect(trigger.getAttribute('aria-label')).toBe('Claude Code · Opus');
 });
+
+test('the open panel marks the choice that raised the trigger warning', () => {
+  render(
+    <ComposerRunControl label="Writer · Sonnet" icon={null}>
+      <ComposerChoice
+        caption="Permissions"
+        value="Full access"
+        aria-label="Permissions: Full access"
+        safetyLabel="Full access"
+      />
+      <ComposerChoice
+        caption="Model"
+        value="Sonnet"
+        aria-label="Model: Sonnet"
+      />
+    </ComposerRunControl>,
+  );
+  fireEvent.click(screen.getByTestId('run-setup-trigger'));
+  const risky = screen.getByRole('button', {
+    name: 'Permissions: Full access',
+  });
+  expect(risky.querySelector('.composer-choice__safety')?.textContent).toBe(
+    '⚠',
+  );
+  // The mark sits beside the value, never inside the visible label text.
+  expect(risky.querySelector('.composer-choice__value')?.textContent).toBe(
+    'Full access',
+  );
+  expect(
+    screen
+      .getByRole('button', { name: 'Model: Sonnet' })
+      .querySelector('.composer-choice__safety'),
+  ).toBeNull();
+});
+
+test('effort follows the model and is dropped when no model is named', () => {
+  const view = render(
+    <ComposerRunControl label="Writer · Opus" effort="High" icon={null}>
+      <span />
+    </ComposerRunControl>,
+  );
+  const trigger = screen.getByTestId('run-setup-trigger');
+  expect(
+    trigger.querySelector('.composer-run-control__effort')?.textContent,
+  ).toBe(' · High');
+  expect(trigger.getAttribute('aria-label')).toBe('Writer · Opus · High');
+  view.unmount();
+  render(
+    <ComposerRunControl label="Writer" effort="High" icon={null}>
+      <span />
+    </ComposerRunControl>,
+  );
+  expect(
+    screen.getByTestId('run-setup-trigger').getAttribute('aria-label'),
+  ).toBe('Writer');
+});

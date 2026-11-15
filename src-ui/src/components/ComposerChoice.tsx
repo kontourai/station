@@ -57,6 +57,18 @@ export function ComposerChoice({
           {value}
         </span>
       </span>
+      {/* The same mark the closed Run setup trigger carries, so the open
+          panel shows which choice raised it. Outside the value, so the
+          visible label (and its Label-in-Name match) stays the value alone. */}
+      {safetyLabel && (
+        <span
+          className="composer-choice__safety"
+          aria-hidden="true"
+          title={safetyLabel}
+        >
+          ⚠
+        </span>
+      )}
       <ArrowDownGlyph className="choice-caret" />
     </button>
   );
