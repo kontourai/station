@@ -1500,6 +1500,7 @@ runtime wiring supplies these map sizes:
 | --- | --- |
 | `station.agents.active` | Loaded entries in `activeAgents`, not currently executing turns |
 | `station.mcp.connections` | Entries in `mcpConnectionStatus`, including failed entries, not only healthy connections |
+| `station.workload.scope_cleanup.backlog` | Workload scopes whose cleanup failed and has not settled, by `state` (`pending`, `abandoned`); registered by the Linux workload launcher, not `registerObservableGauges` |
 
 `station.tokens.context` is declared, but this audit found no current
 production recording call for it in the repository.
