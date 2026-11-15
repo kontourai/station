@@ -275,6 +275,46 @@ These are source-defined prerequisites. Their live IAM, secrets, listing,
 protected approvals, production release and physical installation remain
 separate verification work.
 
+## App Store review and a held update feed
+
+The [store engine](../../scripts/promote-store-release.mjs) keeps fresh release
+readback separate from submission. App Review submission is separate from public App Store release. Other Stable
+artifacts may publish while Apple reviews the selected build. If an App Store
+action custom feed is enabled, publication reads Apple with the protected API
+key and requires the exact version, linked RC build, bundle and processed build
+identity. `WAITING_FOR_REVIEW`, `IN_REVIEW` and approved-but-not-manually-released
+states retain the previous feed (or its known absence) with
+`DEFERRED_APP_STORE`; there is no feed PUT or announcement of the pending version
+from that feed. A first listing may still return 404 while pending. A matching
+released build must also pass the App Store URL/HTML checks before the feed
+advances. Unknown provider state, mismatched builds or missing credentials
+refuse publication rather than claiming pending or released.
+
+The feed is one `{channel, version, releaseUrl}` resource. Clients sharing it
+cannot advance independently by platform. This App Store gate currently uses
+the attested RC upload authority retained by `mode=promote`; direct-final and
+Nightly builds without that authority must keep App Store/TestFlight as their
+update authority rather than publishing an App Store-action custom feed.
+Artifact-action feeds keep their existing publication path.
+
+After Apple approves the version, release that exact build manually. Then run
+an explicit feed-only repair from the original public RC:
+
+```sh
+gh workflow run publish-release.yml --repo kontourai/station --ref main \
+  -f mode=promote -f tag=v0.2.0-rc.1 -F repair_app_store_feed_only=true
+```
+
+Use the actual accepted tag, not this example. The final release must already
+be public with its completed, attested promotion receipt and unchanged assets.
+This operation revalidates those bytes and performs fresh Apple readback; it
+creates no tag, resubmits no store build, and changes no desktop/host pointer,
+container alias, deploy ledger or issue label. It is separate from desktop
+`allow_published_pointer_repair` and cannot be combined with it. While review
+remains pending, it retains the feed again. Inspect `native-feed.json` in the
+retained store-effects artifact for the actual outcome; a readback or feed
+failure is not completion. Keep the source RC release and assets public.
+
 ## Not this checklist
 
 - Making the GitHub repository public (#1978)

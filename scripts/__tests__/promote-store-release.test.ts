@@ -1,9 +1,14 @@
 import { createHash, generateKeyPairSync } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
-import { main } from '../promote-store-release.mjs';
+import { deployUpdateFeed } from '../native-update-feed.mjs';
+import {
+  main,
+  observeAppleReleaseAvailability,
+} from '../promote-store-release.mjs';
 import {
   FIXTURE_TEST_TIMEOUT_MS,
   runBoundedFixture,
@@ -173,14 +178,24 @@ function appleProvider(
     submitLoss?: boolean;
     unrelatedReview?: boolean;
     missingVersion?: boolean;
-    modernState?: string;
+    modernState?: unknown;
+    state?: unknown;
+    linkedBuild?: string | null;
+    appId?: string;
   } = {},
 ) {
   const calls: Call[] = [];
-  let linked = options.submitted ? 'build-1' : null;
-  let appState = options.submitted
-    ? 'WAITING_FOR_REVIEW'
-    : 'PREPARE_FOR_SUBMISSION';
+  const appId = options.appId ?? 'app-1';
+  let linked = Object.hasOwn(options, 'linkedBuild')
+    ? options.linkedBuild
+    : options.submitted
+      ? 'build-1'
+      : null;
+  let appState = Object.hasOwn(options, 'state')
+    ? options.state
+    : options.submitted
+      ? 'WAITING_FOR_REVIEW'
+      : 'PREPARE_FOR_SUBMISSION';
   let review: any = options.unrelatedReview
     ? {
         type: 'reviewSubmissions',
@@ -212,11 +227,11 @@ function appleProvider(
       new Headers(init?.headers).get('Authorization')?.startsWith('Bearer '),
     ).toBe(true);
     if (method !== 'GET') pendingBeforeEffect(output, undefined);
-    if (method === 'GET' && path === '/v1/apps/app-1')
+    if (method === 'GET' && path === `/v1/apps/${appId}`)
       return response({
         data: {
           type: 'apps',
-          id: 'app-1',
+          id: appId,
           attributes: { bundleId: 'io.kontourai.station' },
         },
       });
@@ -230,7 +245,7 @@ function appleProvider(
             processingState: 'VALID',
           },
           relationships: {
-            app: { data: { type: 'apps', id: 'app-1' } },
+            app: { data: { type: 'apps', id: appId } },
             preReleaseVersion: {
               data: { type: 'preReleaseVersions', id: 'train-1' },
             },
@@ -244,7 +259,7 @@ function appleProvider(
           },
         ],
       });
-    if (method === 'GET' && path === '/v1/apps/app-1/appStoreVersions')
+    if (method === 'GET' && path === `/v1/apps/${appId}/appStoreVersions`)
       return response({
         data: options.missingVersion
           ? []
@@ -257,7 +272,7 @@ function appleProvider(
                   platform: 'IOS',
                   releaseType: options.releaseType ?? 'MANUAL',
                   appStoreState: appState,
-                  ...(options.modernState
+                  ...(Object.hasOwn(options, 'modernState')
                     ? { appVersionState: options.modernState }
                     : {}),
                 },
@@ -269,7 +284,7 @@ function appleProvider(
               },
             ],
       });
-    if (method === 'GET' && path === '/v1/apps/app-1/reviewSubmissions')
+    if (method === 'GET' && path === `/v1/apps/${appId}/reviewSubmissions`)
       return response({ data: review ? [review] : [] });
     if (method === 'GET' && /\/reviewSubmissions\/[^/]+\/items$/.test(path))
       return response({ data: items });
@@ -284,7 +299,7 @@ function appleProvider(
     if (method === 'POST' && path === '/v1/reviewSubmissions') {
       expect(body.data.relationships.app.data).toEqual({
         type: 'apps',
-        id: 'app-1',
+        id: appId,
       });
       review = {
         type: 'reviewSubmissions',
@@ -734,6 +749,341 @@ describe('exact uploaded Apple build submission', () => {
       ),
     ).toHaveLength(1);
   });
+});
+
+describe('exact Apple release availability readback', () => {
+  test.each([
+    'WAITING_FOR_REVIEW',
+    'IN_REVIEW',
+    'PENDING_DEVELOPER_RELEASE',
+    'PREPARE_FOR_SUBMISSION',
+  ])(
+    'keeps the exact selected build pending in %s without changing provider state',
+    async (state) => {
+      const f = fixture();
+      const provider = appleProvider(f.output, { submitted: true, state });
+      await expect(
+        observeAppleReleaseAvailability(
+          authority(),
+          appleEnv,
+          provider.fetchImpl,
+        ),
+      ).resolves.toEqual({
+        state: 'PENDING',
+        providerState: state,
+        version: '0.2.0',
+        appId: 'app-1',
+        bundleId: 'io.kontourai.station',
+        buildId: 'build-1',
+        buildNumber: '20001',
+        producerTag: 'v0.2.0-rc.1',
+        sourceSha,
+        appStoreVersionId: 'version-1',
+      });
+      expect(provider.calls.length).toBeGreaterThan(0);
+      expect(provider.calls.every((call) => call.method === 'GET')).toBe(true);
+      expect(existsSync(f.output)).toBe(false);
+    },
+  );
+
+  test.each([
+    { state: 'READY_FOR_SALE' },
+    { state: 'READY_FOR_SALE', modernState: 'READY_FOR_DISTRIBUTION' },
+  ])(
+    'admits released exact build using the provider state fields: %o',
+    async (states) => {
+      const f = fixture();
+      const provider = appleProvider(f.output, { submitted: true, ...states });
+      const result = await observeAppleReleaseAvailability(
+        authority(),
+        appleEnv,
+        provider.fetchImpl,
+      );
+      expect(result).toMatchObject({
+        state: 'RELEASED',
+        providerState: states.modernState ?? states.state,
+        version: '0.2.0',
+        appId: 'app-1',
+        buildId: 'build-1',
+        buildNumber: '20001',
+      });
+      expect(provider.calls.every((call) => call.method === 'GET')).toBe(true);
+      expect(existsSync(f.output)).toBe(false);
+    },
+  );
+
+  test.each([
+    [
+      'foreign selected build',
+      { state: 'READY_FOR_SALE', linkedBuild: 'foreign-build' },
+    ],
+    [
+      'missing selected build while released',
+      { state: 'READY_FOR_SALE', linkedBuild: null },
+    ],
+    [
+      'missing selected build while awaiting review',
+      { state: 'WAITING_FOR_REVIEW', linkedBuild: null },
+    ],
+    [
+      'wrong processed build slot',
+      { state: 'READY_FOR_SALE', wrongBuild: true },
+    ],
+    [
+      'missing exact version',
+      { state: 'READY_FOR_SALE', missingVersion: true },
+    ],
+    [
+      'conflicting modern live state',
+      { state: 'WAITING_FOR_REVIEW', modernState: 'READY_FOR_DISTRIBUTION' },
+    ],
+    [
+      'conflicting legacy live state',
+      { state: 'READY_FOR_SALE', modernState: 'IN_REVIEW' },
+    ],
+    ['null modern state', { state: 'READY_FOR_SALE', modernState: null }],
+    [
+      'unknown modern state',
+      { state: 'READY_FOR_SALE', modernState: 'NEW_PROVIDER_STATE' },
+    ],
+  ])(
+    'refuses %s rather than claiming pending or released',
+    async (_name, options) => {
+      const f = fixture();
+      const provider = appleProvider(f.output, { submitted: true, ...options });
+      await expect(
+        observeAppleReleaseAvailability(
+          authority(),
+          appleEnv,
+          provider.fetchImpl,
+        ),
+      ).rejects.toThrow('Store promotion refused:');
+      expect(provider.calls.length).toBeGreaterThan(0);
+      expect(provider.calls.every((call) => call.method === 'GET')).toBe(true);
+      expect(existsSync(f.output)).toBe(false);
+    },
+  );
+
+  test.each([undefined, null, 1, {}, 'NEW_PROVIDER_STATE'])(
+    'refuses missing, malformed or unknown legacy state %j',
+    async (state) => {
+      const f = fixture();
+      const provider = appleProvider(f.output, { submitted: true, state });
+      await expect(
+        observeAppleReleaseAvailability(
+          authority(),
+          appleEnv,
+          provider.fetchImpl,
+        ),
+      ).rejects.toThrow('availability state is not recognized');
+      expect(provider.calls.every((call) => call.method === 'GET')).toBe(true);
+    },
+  );
+
+  test('does not turn credential or provider-read failures into pending availability', async () => {
+    const f = fixture();
+    const provider = appleProvider(f.output, {
+      submitted: true,
+      state: 'READY_FOR_SALE',
+    });
+    await expect(
+      observeAppleReleaseAvailability(authority(), {}, provider.fetchImpl),
+    ).rejects.toThrow('protected provider credentials');
+    expect(provider.calls).toEqual([]);
+    await expect(
+      observeAppleReleaseAvailability(authority(), appleEnv, async () => {
+        throw new Error('untrusted provider private detail');
+      }),
+    ).rejects.toThrow('provider read failed');
+    expect(existsSync(f.output)).toBe(false);
+  });
+});
+
+describe('App Store release readback at the real feed publisher', () => {
+  test.each([
+    { state: 'WAITING_FOR_REVIEW', pageStatus: 200 },
+    { state: 'WAITING_FOR_REVIEW', pageStatus: 404 },
+    { state: 'READY_FOR_SALE', pageStatus: 200 },
+  ])(
+    'advances an App Store-action feed only after exact released build readback: %s',
+    async ({ state, pageStatus }) => {
+      const selected = authority();
+      selected.ios.appId = '123456789';
+      const f = fixture(selected);
+      const provider = appleProvider(f.output, {
+        appId: selected.ios.appId,
+        submitted: true,
+        state,
+      });
+      const actionUrl = 'https://apps.apple.com/app/station/id123456789';
+      const endpoint = 'https://updates.example/stable.json';
+      const previous = JSON.stringify({
+        channel: 'stable',
+        version: '0.1.0',
+        releaseUrl: actionUrl,
+      });
+      const candidate = JSON.stringify({
+        channel: 'stable',
+        version: '0.2.0',
+        releaseUrl: actionUrl,
+      });
+      let served = previous;
+      let etag = '"prior"';
+      const puts: string[] = [];
+      const fetchImpl: typeof fetch = async (input, init) => {
+        const url = new URL(input instanceof Request ? input.url : input);
+        const method = init?.method ?? 'GET';
+        if (url.origin === 'https://api.appstoreconnect.apple.com')
+          return provider.fetchImpl(input, init);
+        if (url.href === actionUrl && method === 'GET') {
+          const page = new Response(
+            '<html>Existing App Store page still serves the previous version</html>',
+            { status: pageStatus, headers: { 'content-type': 'text/html' } },
+          );
+          Object.defineProperty(page, 'url', { value: actionUrl });
+          return page;
+        }
+        if (url.href === endpoint && method === 'GET')
+          return new Response(served, { headers: { etag } });
+        if (url.href === endpoint && method === 'PUT') {
+          expect(new Headers(init?.headers).get('if-match')).toBe(etag);
+          expect(new Headers(init?.headers).get('authorization')).toBe(
+            'Bearer fixture-feed-token',
+          );
+          served = String(init?.body);
+          puts.push(served);
+          etag = '"current"';
+          return new Response('', { headers: { etag } });
+        }
+        throw new Error(`Unexpected feed fixture request ${method} ${url}`);
+      };
+      const result = await deployUpdateFeed({
+        endpoint,
+        actionUrl,
+        actionKind: 'store-page',
+        actionOrigins: 'https://apps.apple.com',
+        channel: 'stable',
+        version: '0.2.0',
+        token: 'fixture-feed-token',
+        bytes: candidate,
+        storeAuthority: selected,
+        providerEnv: appleEnv,
+        fetchImpl,
+      });
+      if (state === 'WAITING_FOR_REVIEW') {
+        expect(puts).toEqual([]);
+        expect(served).toBe(previous);
+        expect(JSON.parse(served).version).toBe('0.1.0');
+        expect(result).toMatchObject({
+          state: 'DEFERRED_APP_STORE',
+          previousVersion: '0.1.0',
+          availability: { state: 'PENDING', buildId: 'build-1' },
+        });
+      } else {
+        expect(puts).toEqual([candidate]);
+        expect(served).toBe(candidate);
+      }
+      expect(
+        provider.calls.some((call) => call.path.endsWith('/appStoreVersions')),
+      ).toBe(true);
+      expect(provider.calls.every((call) => call.method === 'GET')).toBe(true);
+      expect(existsSync(f.output)).toBe(false);
+    },
+  );
+});
+
+test('real feed CLI retains the prior App Store feed and records pending availability', {
+  timeout: FIXTURE_TEST_TIMEOUT_MS,
+}, async () => {
+  const selected = authority();
+  selected.ios.appId = '123456789';
+  const f = fixture(selected);
+  const provider = appleProvider(f.output, {
+    submitted: true,
+    state: 'WAITING_FOR_REVIEW',
+    appId: selected.ios.appId,
+  });
+  const paths = [
+    `/v1/apps/${selected.ios.appId}`,
+    `/v1/builds/${selected.ios.buildId}`,
+    `/v1/apps/${selected.ios.appId}/appStoreVersions`,
+  ];
+  const payloads: Record<string, unknown> = {};
+  for (const path of paths) {
+    const reply = await provider.fetchImpl(
+      `https://api.appstoreconnect.apple.com${path}`,
+      {
+        method: 'GET',
+        headers: { Authorization: 'Bearer fixture-snapshot-only' },
+      },
+    );
+    payloads[path] = await reply.json();
+  }
+  const endpoint = 'https://feed.example.test/stable.json';
+  const actionUrl = 'https://apps.apple.com/us/app/station/id123456789';
+  const prior = `${JSON.stringify({ channel: 'stable', version: '0.1.0', releaseUrl: actionUrl })}\n`;
+  const feedState = join(f.dir, 'served.json');
+  writeFileSync(feedState, prior);
+  const candidatePath = join(f.dir, 'candidate.json');
+  writeFileSync(
+    candidatePath,
+    JSON.stringify({
+      channel: 'stable',
+      version: '0.2.0',
+      releaseUrl: actionUrl,
+    }),
+  );
+  const calls = join(f.dir, 'fetch.log');
+  writeFileSync(calls, '');
+  const preload = join(f.dir, 'fetch-fixture.mjs');
+  writeFileSync(
+    preload,
+    `import {readFileSync,appendFileSync} from 'node:fs';
+const payloads=${JSON.stringify(payloads)}, endpoint=${JSON.stringify(endpoint)}, action=${JSON.stringify(actionUrl)}, state=${JSON.stringify(feedState)}, log=${JSON.stringify(calls)};
+globalThis.fetch=async(input,init={})=>{const u=new URL(String(input)),method=init.method??'GET';appendFileSync(log,method+' '+u.href+'\\n');
+if(u.origin==='https://api.appstoreconnect.apple.com'){if(method!=='GET'||!String(init.headers?.Authorization??'').startsWith('Bearer '))throw Error('invalid provider read');if(!payloads[u.pathname])throw Error('unexpected provider resource');return Response.json(payloads[u.pathname]);}
+if(u.href===action){const response=new Response('Not yet listed',{status:404,headers:{'content-type':'text/html'}});Object.defineProperty(response,'url',{value:action});return response;}
+if(u.href===endpoint&&method==='GET')return new Response(readFileSync(state,'utf8'),{headers:{etag:'"old"'}});
+throw Error('Unexpected fetch or feed mutation');};`,
+  );
+  const result = await runBoundedFixture(
+    process.execPath,
+    [
+      'scripts/native-update-feed.mjs',
+      'deploy',
+      candidatePath,
+      '--app-store-only',
+    ],
+    {
+      cwd: repository,
+      env: {
+        ...process.env,
+        ...appleEnv,
+        NODE_OPTIONS: `--import=${pathToFileURL(preload).href}`,
+        VITE_NATIVE_APP_UPDATE_CHANNEL: 'stable',
+        VITE_NATIVE_APP_VERSION: '0.2.0',
+        VITE_NATIVE_APP_UPDATE_FEED_URL: endpoint,
+        VITE_NATIVE_APP_UPDATE_PROVIDER_ORIGIN: 'https://feed.example.test',
+        NATIVE_APP_UPDATE_ACTION_URL: actionUrl,
+        NATIVE_APP_UPDATE_ACTION_KIND: 'store-page',
+        NATIVE_APP_UPDATE_ACTION_ORIGINS: 'https://apps.apple.com',
+        NATIVE_APP_UPDATE_PUBLISH_TOKEN: 'fixture-feed-token',
+        NATIVE_APP_UPDATE_STORE_AUTHORITY_FILE: f.input,
+        NATIVE_APP_UPDATE_RESULT_FILE: f.output,
+      },
+    },
+  );
+  expect(result.status, result.stderr).toBe(0);
+  expect(JSON.parse(readFileSync(f.output, 'utf8'))).toMatchObject({
+    state: 'DEFERRED_APP_STORE',
+    previousVersion: '0.1.0',
+    availability: { state: 'PENDING', buildId: 'build-1' },
+  });
+  expect(readFileSync(feedState, 'utf8')).toBe(prior);
+  expect(readFileSync(calls, 'utf8').split('\n').filter(Boolean)).toHaveLength(
+    4,
+  );
+  expect(readFileSync(calls, 'utf8')).not.toContain('PUT ');
 });
 
 describe('promotion review regression controls', () => {

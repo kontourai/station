@@ -854,6 +854,55 @@ async function appleState(authority, api) {
   };
 }
 
+function appleReleaseAvailabilityState(value) {
+  if (
+    typeof value !== 'string' ||
+    (!SUBMITTED.has(value) && !EDITABLE.has(value))
+  )
+    fail('App Store availability state is not recognized');
+  return value === 'READY_FOR_SALE' || value === 'READY_FOR_DISTRIBUTION'
+    ? 'RELEASED'
+    : 'PENDING';
+}
+
+/** Fresh provider readback; the caller still authenticates the RC upload authority. */
+export async function observeAppleReleaseAvailability(
+  authority,
+  env = process.env,
+  fetchImpl = fetch,
+) {
+  validateStoreAuthority(authority, 'ios');
+  const api = client('ios', env, fetchImpl);
+  const observed = await appleState(authority, (path, method = 'GET') => {
+    if (method !== 'GET') fail('availability observation must be read-only');
+    return api(path);
+  });
+  const ios = authority.ios;
+  if (observed.linked !== ios.buildId)
+    fail('App Store availability has no selected candidate build');
+  const state = appleReleaseAvailabilityState(observed.state);
+  for (const field of ['appVersionState', 'appStoreState']) {
+    if (
+      Object.hasOwn(observed.version.attributes, field) &&
+      appleReleaseAvailabilityState(observed.version.attributes[field]) !==
+        state
+    )
+      fail('App Store availability state is ambiguous');
+  }
+  return {
+    state,
+    providerState: observed.state,
+    version: authority.version,
+    appId: ios.appId,
+    bundleId: ios.bundleId,
+    buildId: ios.buildId,
+    buildNumber: ios.buildNumber,
+    producerTag: authority.producerTag,
+    sourceSha: authority.sourceSha,
+    appStoreVersionId: observed.version.id,
+  };
+}
+
 async function submissionState(ios, versionId, api) {
   const query = new URLSearchParams({ limit: '200' });
   const active = collection(

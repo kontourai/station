@@ -382,6 +382,13 @@ attempted or unknown effect; do not blindly retry. An existing final ref is not
 permission to overwrite it. Published-destination repair requires its completed,
 attested promotion receipt and explicit repair admission.
 
+An App Store-action custom feed remains at its previous version while the
+selected build awaits review or manual release, even when the other Stable
+artifacts publish. It advances only after exact released-build readback. See
+[App Store feed recovery](https://github.com/kontourai/station/blob/main/docs/guides/store-entry.md#app-store-review-and-a-held-update-feed)
+for the explicit operation and RC-authority limits; native store-managed updates
+remain separate.
+
 ## Upgrade and rollback behavior
 
 The installer records the selected channel and canonical install/data roots in a

@@ -564,6 +564,11 @@ Nightly cohort already publishes notarized macOS downloads and a separate
 signed updater channel. Preserve the Stable release trust contract; do not mix
 local archives into that feed or infer store/device delivery from signing.
 
+App Store-action custom feeds require attested Stable RC promotion authority.
+Nightly keeps native TestFlight/App Store update authority; this gate does not
+publish a Nightly App Store-action feed. See
+[the publication scope](https://github.com/kontourai/station/blob/main/docs/guides/store-entry.md#app-store-review-and-a-held-update-feed).
+
 ## Windows desktop and the shared update feed
 
 Windows Nightly uses Tauri's built-in NSIS installer and v2 updater artifacts.

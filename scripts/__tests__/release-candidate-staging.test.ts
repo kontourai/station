@@ -1104,6 +1104,39 @@ describe('candidate-to-final artifact transfer through the real promotion owner'
     expect(verifyAttestation).toHaveBeenCalledTimes(entries.length);
     expect(addLabel).not.toHaveBeenCalled();
     expect(removeLabel).not.toHaveBeenCalled();
+    // The caller authenticates the completed receipt before repair admission.
+    f.files.set('v0.1.11', published);
+    f.states.set('v0.1.11', {
+      ...f.states.get('v0.1.11')!,
+      draft: false,
+      prerelease: false,
+    });
+    const writesBeforeRepair = [...f.writes];
+    await expect(
+      copyCandidateToFinal({
+        plan: f.plan,
+        assetsDir: f.assets,
+        github: f.github,
+        journalPath: join(f.runnerTemp, 'repair-journal.json'),
+        receiptPath: f.receiptPath,
+        repairReceipt: f.receiptPath,
+      }),
+    ).resolves.toEqual({ publicationTag: 'v0.1.11', repairOnly: true });
+    expect(f.writes).toEqual(writesBeforeRepair);
+    f.refs.delete('v0.1.11');
+    f.states.delete('v0.1.11');
+    f.files.delete('v0.1.11');
+    await expect(
+      copyCandidateToFinal({
+        plan: f.plan,
+        assetsDir: f.assets,
+        github: f.github,
+        journalPath: join(f.runnerTemp, 'missing-repair-journal.json'),
+        receiptPath: f.receiptPath,
+        repairReceipt: f.receiptPath,
+      }),
+    ).rejects.toThrow('repair destination is missing');
+    expect(f.writes).toEqual(writesBeforeRepair);
   });
 
   it('refuses a same-SHA destination ref without completed attested recovery lineage', {

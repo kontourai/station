@@ -28,6 +28,11 @@ on:
         required: false
         default: false
         type: boolean
+      repair_app_store_feed_only:
+        description: Repair only a held App Store-action feed from an already completed RC promotion
+        required: false
+        default: false
+        type: boolean
       allow_empty_updater_channel_bootstrap:
         description: Owner bootstrap only - initialize a new empty rolling desktop release
         required: false
@@ -99,8 +104,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           ALLOW_PUBLISHED_POINTER_REPAIR: ${{ inputs.allow_published_pointer_repair }}
+          REPAIR_APP_STORE_FEED_ONLY: ${{ inputs.repair_app_store_feed_only }}
           ALLOW_EMPTY_UPDATER_CHANNEL_BOOTSTRAP: ${{ inputs.allow_empty_updater_channel_bootstrap }}
         run: |
+          if [[ "${REPAIR_APP_STORE_FEED_ONLY:-false}" == true ]] && { [[ "$RELEASE_MODE" != promote ]] || [[ "$ALLOW_PUBLISHED_POINTER_REPAIR" == true ]]; }; then
+            echo '::error::App Store feed-only repair requires promote mode and cannot be combined with desktop pointer repair.' >&2
+            exit 1
+          fi
           publication_identity=$(node release-policy/scripts/release-promotion.mjs identity --mode "${RELEASE_MODE:-stable}" --tag "$RELEASE_TAG")
           publication_tag=$(IDENTITY="$publication_identity" node -p 'JSON.parse(process.env.IDENTITY).publicationTag')
           release_version=$(IDENTITY="$publication_identity" node -p 'JSON.parse(process.env.IDENTITY).version')
@@ -119,6 +129,12 @@ jobs:
             test "$tag_release_state" = false
             test "$(TAG_RELEASE="$tag_release" node -p 'JSON.parse(process.env.TAG_RELEASE).isPrerelease')" = true
             pointer_repair_only=false
+            if [[ "${REPAIR_APP_STORE_FEED_ONLY:-false}" == true ]]; then
+              final_release=$(gh release view "$publication_tag" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease)
+              test "$(FINAL_RELEASE="$final_release" node -p 'JSON.parse(process.env.FINAL_RELEASE).isDraft')" = false
+              test "$(FINAL_RELEASE="$final_release" node -p 'JSON.parse(process.env.FINAL_RELEASE).isPrerelease')" = false
+              pointer_repair_only=true
+            fi
           elif [[ "$tag_release_state" == true ]]; then
             pointer_repair_only=false
           elif [[ "$RELEASE_MODE" == rc && "$tag_release_state" == false ]]; then
@@ -132,7 +148,7 @@ jobs:
           fi
           desktop_updater_tag=$(node release-policy/scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --print-desktop-updater-tag)
           has_current_updater_manifest=false
-          if [[ "$RELEASE_MODE" != rc ]]; then
+          if [[ "$RELEASE_MODE" != rc && "${REPAIR_APP_STORE_FEED_ONLY:-false}" != true ]]; then
             if ! updater_release=$(gh release view "$desktop_updater_tag" --repo "$GITHUB_REPOSITORY" --json isDraft,assets); then
               echo "::error::Could not query rolling release $desktop_updater_tag; see the GitHub CLI diagnostic above. Bootstrap it if it does not exist, otherwise retry after API recovery." >&2
               exit 1
@@ -300,7 +316,7 @@ jobs:
       # public versioned release and moves the rolling pointer. scripts/__tests__/portable-release-publish-workflow.test.ts
       # pins the gate, the secret scope and the order.
       - name: Authenticate the protected Play promotion authority
-        if: needs.resolve.outputs.mode == 'promote' && !inputs.allow_published_pointer_repair
+        if: needs.resolve.outputs.mode == 'promote' && !inputs.allow_published_pointer_repair && !inputs.repair_app_store_feed_only
         id: promotion_google_auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
@@ -310,7 +326,7 @@ jobs:
           access_token_scopes: https://www.googleapis.com/auth/androidpublisher
           create_credentials_file: false
       - name: Plan exact store operations before publication effects
-        if: needs.resolve.outputs.mode == 'promote' && !inputs.allow_published_pointer_repair
+        if: needs.resolve.outputs.mode == 'promote' && !inputs.allow_published_pointer_repair && !inputs.repair_app_store_feed_only
         env:
           ANDROID_ROLLOUT_FRACTION: ${{ inputs.android_rollout_fraction }}
           GOOGLE_PLAY_ACCESS_TOKEN: ${{ steps.promotion_google_auth.outputs.access_token }}
@@ -335,7 +351,7 @@ jobs:
           if-no-files-found: error
           retention-days: 90
       - name: Authenticate a published destination's recovery receipt
-        if: needs.resolve.outputs.mode == 'promote' && inputs.allow_published_pointer_repair
+        if: needs.resolve.outputs.mode == 'promote' && (inputs.allow_published_pointer_repair || inputs.repair_app_store_feed_only)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -357,7 +373,7 @@ jobs:
         run: |
           set -euo pipefail
           repair=()
-          if [ '${{ inputs.allow_published_pointer_repair }}' = true ]; then repair=(--repair-receipt "$RUNNER_TEMP/release-promotion-repair/station-release-promotion.json"); fi
+          if [ '${{ inputs.allow_published_pointer_repair }}' = true ] || [ '${{ inputs.repair_app_store_feed_only }}' = true ]; then repair=(--repair-receipt "$RUNNER_TEMP/release-promotion-repair/station-release-promotion.json"); fi
           result=$(node release-policy/scripts/release-promotion.mjs apply --plan "$RUNNER_TEMP/release-promotion-plan.json" --assets-dir release-assets --journal "$RUNNER_TEMP/release-promotion-journal.json" --receipt-output "$RUNNER_TEMP/station-release-promotion.json" "${repair[@]}")
           RESULT="$result" node -e 'const r=JSON.parse(process.env.RESULT); require("node:fs").appendFileSync(process.env.GITHUB_OUTPUT,`repair_only=${r.repairOnly}\n`);'
       - name: Attest the producer-to-publication transfer receipt
@@ -417,7 +433,7 @@ jobs:
           fi
           grep -qxF 'manifest signing key station-portable-release-dry-run is not pinned' "$dry_run/pinned-verify.err" || { echo '::error::the pinned-key check refused the dry-run host manifest for an unexpected reason:' >&2; cat "$dry_run/pinned-verify.err" >&2; exit 1; }
       - name: Sign the host-stream manifest with the pinned release key
-        if: ${{ vars.STATION_PORTABLE_RELEASE_PUBLISH == 'enabled' }}
+        if: ${{ !inputs.repair_app_store_feed_only && vars.STATION_PORTABLE_RELEASE_PUBLISH == 'enabled' }}
         env:
           SIGNING_KEY: ${{ secrets.STATION_PORTABLE_RELEASE_MANIFEST_SIGNING_KEY }}
           MANIFEST_ASSET: ${{ steps.host_plan.outputs.manifest_asset }}
@@ -431,12 +447,12 @@ jobs:
           mkdir -p "$RUNNER_TEMP/host-manifest"
           node release-policy/scripts/ecosystem-manifest.mjs create --payload release-assets/station-server-manifest-payload.json --key-id station-portable-release-2026-09 --private-key "$key" --output "$RUNNER_TEMP/host-manifest/$MANIFEST_ASSET"
       - name: Verify the signed host-stream manifest with the pinned key table
-        if: ${{ vars.STATION_PORTABLE_RELEASE_PUBLISH == 'enabled' }}
+        if: ${{ !inputs.repair_app_store_feed_only && vars.STATION_PORTABLE_RELEASE_PUBLISH == 'enabled' }}
         env:
           MANIFEST_ASSET: ${{ steps.host_plan.outputs.manifest_asset }}
         run: node release-policy/scripts/portable-release-publication.mjs verify --ring "$RELEASE_RING" --manifest "$RUNNER_TEMP/host-manifest/$MANIFEST_ASSET" --expected-payload release-assets/station-server-manifest-payload.json
       - name: Require the owner's rolling host-stream pointer release
-        if: ${{ needs.resolve.outputs.mode != 'rc' && vars.STATION_PORTABLE_RELEASE_PUBLISH == 'enabled' }}
+        if: ${{ needs.resolve.outputs.mode != 'rc' && !inputs.repair_app_store_feed_only && vars.STATION_PORTABLE_RELEASE_PUBLISH == 'enabled' }}
         env:
           GH_TOKEN: ${{ github.token }}
           ROLLING_TAG: ${{ steps.host_plan.outputs.rolling_tag }}
@@ -450,7 +466,7 @@ jobs:
       # error: the host pointer is left alone.
       - id: host_pointer
         name: Plan the rolling host-stream pointer
-        if: ${{ needs.resolve.outputs.mode != 'rc' && vars.STATION_PORTABLE_RELEASE_PUBLISH == 'enabled' }}
+        if: ${{ needs.resolve.outputs.mode != 'rc' && !inputs.repair_app_store_feed_only && vars.STATION_PORTABLE_RELEASE_PUBLISH == 'enabled' }}
         env:
           ROLLING_MANIFEST_URL: ${{ steps.host_plan.outputs.rolling_manifest_url }}
           MANIFEST_ASSET: ${{ steps.host_plan.outputs.manifest_asset }}
@@ -465,7 +481,7 @@ jobs:
             echo "$message" >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Attach the signed host-stream manifest to the versioned release
-        if: ${{ vars.STATION_PORTABLE_RELEASE_PUBLISH == 'enabled' }}
+        if: ${{ !inputs.repair_app_store_feed_only && vars.STATION_PORTABLE_RELEASE_PUBLISH == 'enabled' }}
         env:
           GH_TOKEN: ${{ github.token }}
           MANIFEST_ASSET: ${{ steps.host_plan.outputs.manifest_asset }}
@@ -490,7 +506,7 @@ jobs:
             gh release upload "$PUBLICATION_TAG" --repo "$GITHUB_REPOSITORY" "$RUNNER_TEMP/host-manifest/$MANIFEST_ASSET"
           fi
       - name: Assemble and validate the rolling desktop updater channel
-        if: needs.resolve.outputs.mode != 'rc'
+        if: needs.resolve.outputs.mode != 'rc' && !inputs.repair_app_store_feed_only
         env:
           GH_TOKEN: ${{ github.token }}
           HAS_CURRENT_UPDATER_MANIFEST: ${{ needs.resolve.outputs.has_current_updater_manifest }}
@@ -606,19 +622,40 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           NATIVE_APP_UPDATE_PUBLISH_TOKEN: ${{ secrets.NATIVE_APP_UPDATE_PUBLISH_TOKEN }}
+          NATIVE_APP_UPDATE_STORE_AUTHORITY_FILE: release-assets/station-release-store-authority.json
+          NATIVE_APP_UPDATE_RESULT_FILE: ${{ runner.temp }}/store-promotion/native-feed.json
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
         run: |
+          mkdir -p "$RUNNER_TEMP/store-promotion"
           feed_args=()
           if [ "$RELEASE_MODE" != rc ] && [ -n "$VITE_NATIVE_APP_UPDATE_FEED_URL" ]; then
             feed_args+=("release-assets/station-mobile-${VITE_NATIVE_APP_UPDATE_CHANNEL}.json")
           fi
           release-policy/scripts/publish-mobile-feed-transaction.sh "${feed_args[@]}"
 
+      - name: Repair the held App Store update feed
+        if: inputs.repair_app_store_feed_only && steps.promotion.outputs.repair_only == 'true'
+        env:
+          NATIVE_APP_UPDATE_PUBLISH_TOKEN: ${{ secrets.NATIVE_APP_UPDATE_PUBLISH_TOKEN }}
+          NATIVE_APP_UPDATE_STORE_AUTHORITY_FILE: release-assets/station-release-store-authority.json
+          NATIVE_APP_UPDATE_RESULT_FILE: ${{ runner.temp }}/store-promotion/native-feed.json
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/store-promotion"
+          test -n "$VITE_NATIVE_APP_UPDATE_FEED_URL"
+          node release-policy/scripts/native-update-feed.mjs deploy "release-assets/station-mobile-${VITE_NATIVE_APP_UPDATE_CHANNEL}.json" --app-store-only
+
       # The tag-bound release is public before this pointer advances. Updater
       # archives are uploaded first and latest.json is a separate invocation,
       # matching nightly's ordering so the manifest never advertises an asset
       # that this run has not finished uploading.
       - name: Publish and verify the rolling desktop updater channel
-        if: needs.resolve.outputs.mode != 'rc'
+        if: needs.resolve.outputs.mode != 'rc' && !inputs.repair_app_store_feed_only
         env:
           GH_TOKEN: ${{ github.token }}
           HAS_CURRENT_UPDATER_MANIFEST: ${{ needs.resolve.outputs.has_current_updater_manifest }}
@@ -800,7 +837,7 @@ jobs:
   host-pointer:
     name: Replace the rolling host-stream pointer
     needs: [resolve, publish]
-    if: ${{ !cancelled() && needs.resolve.outputs.mode != 'rc' && vars.STATION_PORTABLE_RELEASE_PUBLISH == 'enabled' && needs.resolve.result == 'success' && needs.publish.outputs.released == 'true' }}
+    if: ${{ !cancelled() && !inputs.repair_app_store_feed_only && needs.resolve.outputs.mode != 'rc' && vars.STATION_PORTABLE_RELEASE_PUBLISH == 'enabled' && needs.resolve.result == 'success' && needs.publish.outputs.released == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: native-release-publish

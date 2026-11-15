@@ -487,6 +487,10 @@ export async function copyCandidateToFinal({
     fail('candidate notes exceed the publication budget');
   const finalRef = await github.source(plan.publicationTag);
   const finalRelease = await github.release(plan.publicationTag);
+  if (repairReceipt && !finalRef && !finalRelease)
+    fail(
+      'repair destination is missing; a receipt cannot authorize a new publication',
+    );
   if (finalRef || finalRelease) {
     // The protected workflow verifies this receipt's publish-release.yml attestation before supplying it.
     if (

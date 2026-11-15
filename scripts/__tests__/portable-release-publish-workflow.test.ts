@@ -1322,6 +1322,7 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
     // The pointer job carries the same literal as a top-level conjunct.
     expect(conjuncts(pointerJob.if ?? '')).toEqual([
       '!cancelled()',
+      '!inputs.repair_app_store_feed_only',
       "needs.resolve.outputs.mode != 'rc'",
       `vars.${GATE_VARIABLE} == 'enabled'`,
       "needs.resolve.result == 'success'",
@@ -1374,10 +1375,13 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
     resolve: string;
     released: string;
     cancelled?: boolean;
+    feedRepairOnly?: boolean;
     mode?: string;
   }) {
     return conjuncts(pointerJob.if ?? '').every((part) => {
       if (part === '!cancelled()') return scenario.cancelled !== true;
+      if (part === '!inputs.repair_app_store_feed_only')
+        return scenario.feedRepairOnly !== true;
       const known: Record<string, string> = {
         [`vars.${GATE_VARIABLE}`]: scenario.gate,
         'needs.resolve.result': scenario.resolve,
@@ -1400,6 +1404,7 @@ describe('publish-release.yml signs and moves the host pointer only behind the o
     expect(pointerJobRuns(enabled)).toBe(true);
     for (const scenario of [
       { ...enabled, mode: 'rc' },
+      { ...enabled, feedRepairOnly: true },
       { ...enabled, gate: '' },
       { ...enabled, gate: 'true' },
       { ...enabled, resolve: 'failure' },

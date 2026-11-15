@@ -828,7 +828,9 @@ describe('native release workflow topology', () => {
         promotion,
         'Publish and verify the rolling desktop updater channel',
       ).if,
-    ).toBe("needs.resolve.outputs.mode != 'rc'");
+    ).toBe(
+      "needs.resolve.outputs.mode != 'rc' && !inputs.repair_app_store_feed_only",
+    );
     expect(promotion.needs).toEqual(['resolve', 'qualification', 'advisory']);
     expect(parsed.concurrency).toEqual({
       group: 'station-release-publish',
@@ -877,6 +879,7 @@ describe('native release workflow topology', () => {
         'scripts/ecosystem-manifest.mjs',
         'scripts/lib/deploy-ledger-commit.mjs',
         'scripts/lib/tauri-updater-manifest.mjs',
+        'scripts/native-update-feed.mjs',
         'scripts/portable-release-publication.mjs',
         'scripts/promote-store-release.mjs',
         'scripts/publish-mobile-feed-transaction.sh',

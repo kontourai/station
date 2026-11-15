@@ -768,6 +768,14 @@ cohort authority tags never opt in. See [Nightly external setup](mobile-release.
 
 ## Stage, inspect, publish, and roll back
 
+App Store review may outlast publication on other platforms. An enabled App
+Store-action feed retains its previous payload until authenticated readback
+confirms the exact RC build is released. The
+[held-feed procedure](https://github.com/kontourai/station/blob/main/docs/guides/store-entry.md#app-store-review-and-a-held-update-feed)
+uses `repair_app_store_feed_only` after manual release; the existing desktop
+pointer repair flag keeps its original scope.
+
+
 Push an immutable RC or direct-final tag only after an authorized release
 handoff. `Release: Stage` binds it to one source SHA, and hosted full regression
 must pass on that exact source before a producer can build, sign or upload.

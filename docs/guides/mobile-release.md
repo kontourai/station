@@ -776,6 +776,13 @@ are separate effects. Re-drafting GitHub cannot undo store changes. See
 and [native recovery](native-releases.md#stage-inspect-publish-and-roll-back)
 for retained receipt requirements.
 
+An enabled App Store-action feed waits for authenticated readback of the exact
+released version and linked RC build. Other Stable artifacts may publish while
+that feed retains its older payload during review/manual-release waits. See
+[the held-feed procedure](https://github.com/kontourai/station/blob/main/docs/guides/store-entry.md#app-store-review-and-a-held-update-feed)
+for the explicit feed-only repair and the RC-authority scope. Store submission
+acknowledgement alone never advances that feed.
+
 ## What's NOT verified by this pipeline
 
 Per [native-releases.md](./native-releases.md#required-protected-environments-and-secrets):

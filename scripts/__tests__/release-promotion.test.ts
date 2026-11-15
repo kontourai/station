@@ -193,6 +193,7 @@ const {appendFileSync}=await import('node:fs');
 const args=process.argv.slice(2);appendFileSync(process.env.CALL_LOG,'gh '+args.join(' ')+'\\n');
 if(args[0]!=='release'||args[1]!=='view')process.exit(9);
 if(args[2]===process.env.RELEASE_TAG){console.log(JSON.stringify({isDraft:process.env.RELEASE_MODE!=='promote',isPrerelease:process.env.RELEASE_MODE!=='stable'}));process.exit(0);}
+if(process.env.REPAIR_APP_STORE_FEED_ONLY==='true' && args[2]===process.env.RELEASE_TAG.replace(/-rc\\.[0-9]+$/, '')){if(process.env.FINAL_RELEASE_MISSING==='true')process.exit(1);console.log(JSON.stringify({isDraft:process.env.FINAL_RELEASE_DRAFT==='true',isPrerelease:false}));process.exit(0);}
 if(process.env.RELEASE_MODE==='rc')process.exit(91);
 console.log(JSON.stringify({isDraft:false,assets:[{name:'latest.json'}]}));`,
   );
@@ -223,6 +224,53 @@ console.log(JSON.stringify({isDraft:false,assets:[{name:'latest.json'}]}));`,
     },
   };
 }
+
+test.each([
+  'published',
+  'draft',
+  'missing',
+  'combined-desktop-repair',
+  'wrong-mode',
+])(
+  'App Store feed-only resolution admits only a completed published promotion: %s',
+  { timeout: FIXTURE_TEST_TIMEOUT_MS },
+  async (scenario) => {
+    const f = resolutionFixture(
+      scenario === 'wrong-mode' ? 'stable' : 'promote',
+    );
+    if (!sourceResolve || !branchGuard)
+      throw new Error('missing publication resolve boundary');
+    const result = await runBoundedFixture(
+      'bash',
+      [
+        '--noprofile',
+        '--norc',
+        '-eo',
+        'pipefail',
+        '-c',
+        `${branchGuard}\n${sourceResolve}`,
+      ],
+      {
+        cwd: f.cwd,
+        env: {
+          ...f.env,
+          REPAIR_APP_STORE_FEED_ONLY: 'true',
+          FINAL_RELEASE_DRAFT: scenario === 'draft' ? 'true' : 'false',
+          FINAL_RELEASE_MISSING: scenario === 'missing' ? 'true' : 'false',
+          ALLOW_PUBLISHED_POINTER_REPAIR:
+            scenario === 'combined-desktop-repair' ? 'true' : 'false',
+        },
+      },
+    );
+    if (scenario === 'published') {
+      expect(result.status, result.stderr).toBe(0);
+      expect(readFileSync(f.output, 'utf8')).toContain(
+        'pointer_repair_only=true',
+      );
+      expect(readFileSync(f.log, 'utf8')).not.toContain('stable-desktop');
+    } else expect(result.status).not.toBe(0);
+  },
+);
 
 test.each(['rc', 'promote', 'stable'])(
   'actual %s resolution preserves producer authority and isolates RC pointer preflights',
