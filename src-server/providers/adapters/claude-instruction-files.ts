@@ -12,13 +12,34 @@
  * CLAUDE.md already imports or links to. Station reads no instruction file
  * itself.
  *
- * The option goes in the flag settings tier (`Options.settings`), which sits
- * above the user's own settings and below managed policy. The engine reads the
- * plugin's options only from the user, flag and managed tiers. So, to keep a
- * choice the user made for themselves, Station sets the option only when
- * the user tier's `settings.json` provably makes no choice.
+ * The option goes in the flag settings tier (`Options.settings`). The engine
+ * reads the plugin's options from the user, flag and managed tiers, merged by
+ * key, with flag above user and managed above flag. Two things let Station's
+ * value override a choice someone else made:
+ *
+ * - a user-tier choice, because flag sits above user;
+ * - a choice on the older `projectInstructions` key in any tier, because the
+ *   engine reads that key only while `instructionFiles` is unset or at its
+ *   default, so Station's `instructionFiles` would win over a managed
+ *   `projectInstructions: "none"`.
+ *
+ * So Station sets the option only when every settings file it can read
+ * (the user's `settings.json`, and the machine's `managed-settings.json` and
+ * `managed-settings.d/*.json`) provably sets neither key. When it cannot tell,
+ * it sets nothing. Managed settings delivered by MDM (a macOS configuration
+ * profile or the Windows policy registry) or by the server are not files
+ * Station can read: a modern `instructionFiles` there still outranks
+ * Station's value, a legacy `projectInstructions` there does not.
  */
-import { closeSync, fstatSync, openSync, readSync } from 'node:fs';
+import {
+  closeSync,
+  constants as fsConstants,
+  fstatSync,
+  openSync,
+  readdirSync,
+  readSync,
+} from 'node:fs';
+import { platform } from 'node:os';
 import nodePath from 'node:path';
 
 /**
@@ -30,17 +51,31 @@ const AGENTS_MD_PLUGIN_KEYS = [
   'cc-plugin-agents-md@builtin',
 ] as const;
 
-/**
- * `projectInstructions` is the option's older name. The engine still honors
- * it when `instructionFiles` is unset, so a user who set either one has
- * chosen.
- */
+/** The option and its older name; either one set in a tier is a choice. */
 const CHOICE_OPTIONS = ['instructionFiles', 'projectInstructions'] as const;
 
 const STATION_INSTRUCTION_FILES = 'claude-md-and-agents-md';
 
-/** A user settings file past this size is not parsed, so Station sets nothing. */
+/** A settings file past this size is not parsed, so Station sets nothing. */
 export const CLAUDE_USER_SETTINGS_MAX_BYTES = 1024 * 1024;
+
+/**
+ * More managed drop-in files than this and Station sets nothing rather than
+ * read only some of them.
+ */
+export const CLAUDE_MANAGED_DROP_IN_MAX_FILES = 256;
+
+/**
+ * The engine's managed settings folder for this platform. Claude Code fixes
+ * it per platform; no environment variable moves it.
+ */
+export function claudeManagedSettingsRoot(
+  os: NodeJS.Platform = platform(),
+): string {
+  if (os === 'darwin') return '/Library/Application Support/ClaudeCode';
+  if (os === 'win32') return 'C:\\Program Files\\ClaudeCode';
+  return '/etc/claude-code';
+}
 
 type ClaudeInstructionFilesSettings = {
   pluginConfigs: Record<
@@ -57,7 +92,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function userChoice(settings: unknown): string | undefined {
+function choiceIn(settings: unknown): string | undefined {
   if (!isRecord(settings) || !isRecord(settings.pluginConfigs)) return;
   for (const key of AGENTS_MD_PLUGIN_KEYS) {
     const options = (settings.pluginConfigs[key] as { options?: unknown })
@@ -65,19 +100,22 @@ function userChoice(settings: unknown): string | undefined {
     if (!isRecord(options)) continue;
     for (const name of CHOICE_OPTIONS)
       if (options[name] !== undefined)
-        return `the user settings set pluginConfigs["${key}"].options.${name}`;
+        return `pluginConfigs["${key}"].options.${name}`;
   }
 }
 
 /**
  * Reads at most `max + 1` bytes of a regular file. `undefined` when the file
  * does not exist; throws when it exists but cannot be read, is not a regular
- * file, or is larger than `max`.
+ * file, or is larger than `max`. The open does not block: a FIFO with no
+ * writer opens at once and is then refused as not a regular file. Links are
+ * followed, as the engine follows them.
  */
 function readBounded(path: string, max: number): string | undefined {
   let fd: number;
   try {
-    fd = openSync(path, 'r');
+    // O_NONBLOCK is absent on Windows, which has no FIFOs in the filesystem.
+    fd = openSync(path, fsConstants.O_RDONLY | (fsConstants.O_NONBLOCK ?? 0));
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
     throw error;
@@ -98,40 +136,82 @@ function readBounded(path: string, max: number): string | undefined {
   }
 }
 
+/** The settings files to check, in no particular order. */
+function settingsFiles(
+  configHome: string,
+  managedRoot: string,
+): { files: Array<{ tier: string; path: string }> } | { reason: string } {
+  const files = [
+    { tier: 'user', path: nodePath.join(configHome, 'settings.json') },
+    {
+      tier: 'managed',
+      path: nodePath.join(managedRoot, 'managed-settings.json'),
+    },
+  ];
+  const dropIns = nodePath.join(managedRoot, 'managed-settings.d');
+  let names: string[];
+  try {
+    names = readdirSync(dropIns);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { files };
+    return {
+      reason: `the managed drop-in folder ${dropIns} was not read (${error instanceof Error ? error.message : String(error)})`,
+    };
+  }
+  const json = names.filter((name) => name.endsWith('.json'));
+  if (json.length > CLAUDE_MANAGED_DROP_IN_MAX_FILES)
+    return {
+      reason: `the managed drop-in folder ${dropIns} holds more than ${CLAUDE_MANAGED_DROP_IN_MAX_FILES} .json files`,
+    };
+  for (const name of json)
+    files.push({ tier: 'managed', path: nodePath.join(dropIns, name) });
+  return { files };
+}
+
 /**
  * The flag settings that make the engine load AGENTS.md beside CLAUDE.md, for
- * a session whose Claude config home is `configHome`. Settings are returned
- * only when the user's settings file is absent or readable and makes no
- * choice. When Station cannot tell (the file cannot be read, is too large,
- * or is not JSON), it leaves the engine's own default in place, and the
+ * a session whose Claude config home is `configHome` (already resolved the
+ * way the engine resolves it). Settings are returned only when every settings
+ * file Station can read is absent or readable and makes no choice. When
+ * Station cannot tell (a file cannot be read, is not a regular file, is too
+ * large, or is not JSON), it leaves the engine's own setting in place, and the
  * reason says why.
  */
 export function claudeInstructionFilesSettings(
   configHome: string,
-  maxBytes = CLAUDE_USER_SETTINGS_MAX_BYTES,
+  {
+    managedRoot = claudeManagedSettingsRoot(),
+    maxBytes = CLAUDE_USER_SETTINGS_MAX_BYTES,
+  }: { managedRoot?: string; maxBytes?: number } = {},
 ): ClaudeInstructionFilesDecision {
-  const path = nodePath.join(configHome, 'settings.json');
-  let text: string | undefined;
-  try {
-    text = readBounded(path, maxBytes);
-  } catch (error) {
-    return {
-      settings: undefined,
-      reason: `the user settings file ${path} was not read (${error instanceof Error ? error.message : String(error)})`,
-    };
-  }
-  if (text !== undefined && text.trim() !== '') {
+  const listed = settingsFiles(configHome, managedRoot);
+  if ('reason' in listed) return { settings: undefined, reason: listed.reason };
+  for (const { tier, path } of listed.files) {
+    let text: string | undefined;
+    try {
+      text = readBounded(path, maxBytes);
+    } catch (error) {
+      return {
+        settings: undefined,
+        reason: `the ${tier} settings file ${path} was not read (${error instanceof Error ? error.message : String(error)})`,
+      };
+    }
+    if (text === undefined || text.trim() === '') continue;
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
     } catch {
       return {
         settings: undefined,
-        reason: `the user settings file ${path} is not JSON`,
+        reason: `the ${tier} settings file ${path} is not JSON`,
       };
     }
-    const choice = userChoice(parsed);
-    if (choice) return { settings: undefined, reason: choice };
+    const choice = choiceIn(parsed);
+    if (choice)
+      return {
+        settings: undefined,
+        reason: `the ${tier} settings file ${path} sets ${choice}`,
+      };
   }
   return {
     settings: {

@@ -1004,12 +1004,23 @@ in the same way. It does not load an `AGENTS.md` twice when a `CLAUDE.md` import
 (`@AGENTS.md`) or links to it. Station reads no instruction file itself.
 
 Station sets the option only for the session, as a `--settings` value, and never writes your
-settings. It leaves the option out when `settings.json` in the session's Claude configuration
-directory already sets `instructionFiles`, or its older name `projectInstructions`, under
-`pluginConfigs["agents-md@builtin"].options`. It also leaves it out when it cannot read that
-file as JSON of at most 1 MiB. In both cases Claude Code's own setting applies. Your
-organization's managed settings take precedence over the session's option. A Claude Code version
-without the option ignores it and loads `CLAUDE.md` alone.
+settings. It leaves the option out when any settings file it can read already sets
+`instructionFiles`, or its older name `projectInstructions`, under
+`pluginConfigs["agents-md@builtin"].options`. It reads `settings.json` in the session's Claude
+configuration directory, resolving a relative `CLAUDE_CONFIG_DIR` against the session's working
+folder as Claude Code does. It also reads this machine's `managed-settings.json` and the `.json`
+files in `managed-settings.d` in Claude Code's managed settings folder
+(`/Library/Application Support/ClaudeCode` on macOS, `/etc/claude-code` on Linux,
+`C:\Program Files\ClaudeCode` on Windows). It also leaves the option out when it cannot read
+one of those files as a regular JSON file of at most 1 MiB, or when `managed-settings.d` holds
+more than 256 `.json` files. Then Claude Code's own setting applies.
+
+Managed settings that your organization delivers by MDM (a macOS configuration profile or the
+Windows policy registry) or from the server are not files Station can read. An
+`instructionFiles` value set there still takes precedence over the session's option. A
+`projectInstructions` value set only there does not, because Claude Code reads that older name
+only while `instructionFiles` is unset or at its default. A Claude Code version without the option ignores it and
+loads `CLAUDE.md` alone.
 
 ### Engines from the public registry
 

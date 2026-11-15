@@ -5,8 +5,9 @@
  * the real SDK and the Claude Code binary bundled with it, pointed at a
  * loopback stand-in for the Messages API, and read what reached the model.
  */
+import { execFileSync, spawn } from 'node:child_process';
 import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { Options } from '@anthropic-ai/claude-agent-sdk';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { bundledClaudeExecutable } from '../../../scripts/bench/station-weight.mjs';
@@ -92,12 +93,26 @@ function configHome(settings?: unknown): string {
   return home;
 }
 
+/**
+ * The engine's managed settings folder for the next session: a fresh empty
+ * folder unless a test writes into it, so this machine's own managed settings
+ * never decide a case.
+ */
+let managedRoot: string;
+
+/** Writes a managed settings file (or a drop-in) into the managed folder. */
+function managed(name: string, settings: unknown) {
+  const path = join(managedRoot, name);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, JSON.stringify(settings));
+}
+
 /** Starts a session through the real adapter and returns its SDK options. */
 async function startOptions(
   input: { cwd?: string; modelOptions?: Record<string, unknown> } = {},
 ): Promise<Options> {
   mockQuery.mockReturnValue(emptyQuery());
-  const adapter = new ClaudeAdapter();
+  const adapter = new ClaudeAdapter({ managedSettingsRoot: managedRoot });
   await adapter.startSession({
     provider: 'claude',
     threadId: 'thread-instruction-files',
@@ -109,6 +124,7 @@ async function startOptions(
 }
 
 beforeEach(() => {
+  managedRoot = makeTempDir('station-claude-managed-');
   mockQuery.mockReset();
   mockFindCliBinaryAsync.mockReset();
   mockFindCliBinaryAsync.mockResolvedValue(null);
@@ -189,7 +205,122 @@ describe('Claude sessions ask the engine for AGENTS.md beside CLAUDE.md', () => 
     configHome(`{}${' '.repeat(CLAUDE_USER_SETTINGS_MAX_BYTES - 2)}`);
     expect((await startOptions()).settings).toEqual(STATION_SETTING);
   });
+
+  test('a managed choice, on either key and in either managed file, is kept', async () => {
+    const legacyNone = {
+      pluginConfigs: {
+        'agents-md@builtin': { options: { projectInstructions: 'none' } },
+      },
+    };
+    const modern = {
+      pluginConfigs: {
+        'agents-md@builtin': { options: { instructionFiles: 'claude-md' } },
+      },
+    };
+    for (const [label, name, settings] of [
+      [
+        'legacy key, managed-settings.json',
+        'managed-settings.json',
+        legacyNone,
+      ],
+      ['legacy key, drop-in', 'managed-settings.d/10-policy.json', legacyNone],
+      ['modern key, drop-in', 'managed-settings.d/20-policy.json', modern],
+    ] as const) {
+      managedRoot = makeTempDir('station-claude-managed-');
+      configHome();
+      managed(name, settings);
+      expect((await startOptions()).settings, label).toBeUndefined();
+    }
+    // Control: managed settings that make no choice leave Station's setting.
+    managedRoot = makeTempDir('station-claude-managed-');
+    managed('managed-settings.json', { permissions: { deny: ['WebFetch'] } });
+    managed('managed-settings.d/10-other.json', {
+      pluginConfigs: {
+        'other@market': { options: { projectInstructions: 1 } },
+      },
+    });
+    managed('managed-settings.d/notes.txt', legacyNone);
+    expect((await startOptions()).settings).toEqual(STATION_SETTING);
+  });
+
+  test('a relative CLAUDE_CONFIG_DIR is read where the engine reads it: under the session cwd', async () => {
+    const repo = makeTempDir('station-claude-relative-');
+    mkdirSync(join(repo, 'cfg'));
+    writeFileSync(
+      join(repo, 'cfg', 'settings.json'),
+      JSON.stringify({
+        pluginConfigs: {
+          'agents-md@builtin': { options: { instructionFiles: 'claude-md' } },
+        },
+      }),
+    );
+    vi.stubEnv('CLAUDE_CONFIG_DIR', 'cfg');
+    // Station's own cwd has no cfg/settings.json; the session cwd does.
+    expect(process.cwd()).not.toBe(repo);
+    expect((await startOptions({ cwd: repo })).settings).toBeUndefined();
+  });
 });
+
+describe.skipIf(process.platform === 'win32')(
+  'a FIFO as the settings file',
+  () => {
+    test('is refused at once rather than blocking the session start', async () => {
+      const home = makeTempDir('station-claude-fifo-');
+      execFileSync('mkfifo', [join(home, 'settings.json')]);
+      const module = join(__dirname, '../adapters/claude-instruction-files.ts');
+      // A blocking open would stall this process's event loop for good, so the
+      // call runs in a child that is killed if it has not returned in time.
+      const code = `
+      const { claudeInstructionFilesSettings } = await import(${JSON.stringify(module)});
+      process.stdout.write('AT_CALL\\n');
+      const decision = claudeInstructionFilesSettings(${JSON.stringify(home)}, { managedRoot: ${JSON.stringify(managedRoot)} });
+      process.stdout.write(JSON.stringify(decision) + '\\n');
+    `;
+      const outcome = await new Promise<{ output: string; blocked: boolean }>(
+        (resolve, reject) => {
+          const child = spawn(
+            process.execPath,
+            ['--import', 'tsx', '--input-type=module', '--eval', code],
+            { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] },
+          );
+          let output = '';
+          let stderr = '';
+          let blocked = false;
+          let callTimer: ReturnType<typeof setTimeout> | undefined;
+          const startup = setTimeout(() => {
+            child.kill('SIGKILL');
+            reject(new Error(`child did not reach the call: ${stderr}`));
+          }, 30_000);
+          child.stdout.on('data', (chunk) => {
+            output += chunk.toString();
+            if (output.includes('AT_CALL') && !callTimer) {
+              clearTimeout(startup);
+              callTimer = setTimeout(() => {
+                blocked = true;
+                child.kill('SIGKILL');
+              }, 5_000);
+            }
+          });
+          child.stderr.on('data', (chunk) => {
+            stderr += chunk.toString();
+          });
+          child.on('error', reject);
+          child.on('exit', () => {
+            clearTimeout(startup);
+            clearTimeout(callTimer);
+            resolve({ output, blocked });
+          });
+        },
+      );
+      expect(outcome.blocked, 'the call returned without a writer').toBe(false);
+      const decision = JSON.parse(outcome.output.split('\n')[1] ?? 'null');
+      expect(decision).toMatchObject({
+        reason: expect.stringContaining('not a regular file'),
+      });
+      expect(decision.settings).toBeUndefined();
+    }, 60_000);
+  },
+);
 
 const engine = bundledClaudeExecutable();
 
