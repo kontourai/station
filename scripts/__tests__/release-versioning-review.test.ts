@@ -417,6 +417,68 @@ describe('release-versioning output contract', () => {
     ).toEqual(refused(/@x\/pkg is missing/));
   });
 
+  it('orders entries by byte order of note file names, as libuv’s sorted scandir lists them', () => {
+    // Byte order and locale order disagree on case, digits, `-` and `_`.
+    const ids = ['alpha', 'a_b', 'Zeta', 'a-b', '9x'];
+    const hash = (index: number) =>
+      `${String(index + 1).repeat(7)}${'0'.repeat(33)}`;
+    const before: Files = {};
+    const addedBy: Record<string, string> = {};
+    ids.forEach((id, index) => {
+      before[`.changeset/${id}.md`] =
+        `---\n"@x/dep": patch\n---\n\nFix ${id}.\n`;
+      addedBy[`.changeset/${id}.md`] = hash(index);
+    });
+    const deleted = Object.fromEntries(
+      Object.keys(before).map((file) => [file, undefined]),
+    );
+    const entry = (file: string) => {
+      if (file === 'two.md')
+        return { line: '- def5678: Fix the dep.', short: 'def5678' };
+      const id = file.replace(/\.md$/, '');
+      const short = hash(ids.indexOf(id)).slice(0, 7);
+      return { line: `- ${short}: Fix ${id}.`, short };
+    };
+    const outputFor = (files: string[]) => ({
+      ...deleted,
+      'packages/dep/CHANGELOG.md': prepend(
+        '@x/dep',
+        `## 1.0.1\n\n### Patch Changes\n\n${files.map((file) => entry(file).line).join('\n')}\n\n`,
+      ),
+      'packages/pkg/CHANGELOG.md': prepend(
+        '@x/pkg',
+        PKG_SECTION.replace(
+          '- Updated dependencies [def5678]',
+          files
+            .map((file) => `- Updated dependencies [${entry(file).short}]`)
+            .join('\n'),
+        ),
+      ),
+    });
+    const files = [...ids.map((id) => `${id}.md`), 'two.md'];
+    const byteOrder = [...files].sort((x, y) =>
+      Buffer.compare(Buffer.from(x), Buffer.from(y)),
+    );
+    const localeOrder = [...files].sort((x, y) => x.localeCompare(y));
+    // The case is reachable: the two orders really differ for these names.
+    expect(byteOrder).toEqual([
+      '9x.md',
+      'Zeta.md',
+      'a-b.md',
+      'a_b.md',
+      'alpha.md',
+      'two.md',
+    ]);
+    expect(localeOrder).not.toEqual(byteOrder);
+    expect(unit({ before, after: outputFor(byteOrder), addedBy })).toEqual({
+      ...ALL,
+      refused: undefined,
+    });
+    expect(unit({ before, after: outputFor(localeOrder), addedBy })).toEqual(
+      refused(/is missing its exact planned/),
+    );
+  });
+
   it('requires a note for a skipped private package to be kept, as changesets keeps it', () => {
     const before = {
       'pnpm-workspace.yaml': `${WORKSPACE}  - packages/private\n`,
