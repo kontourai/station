@@ -84,7 +84,7 @@ function storeDirectory(path: string): 'absent' | 'directory' | string {
  * or listed, bytes that could not be saved, a record that could not be
  * published), as distinct from input the store refuses (#4852 review).
  */
-export class RoomStorageFailure extends Error {}
+class RoomStorageFailure extends Error {}
 /** Runs one storage step, typing any failure as `RoomStorageFailure`. */
 function storage<T>(step: () => T): T {
   try {
