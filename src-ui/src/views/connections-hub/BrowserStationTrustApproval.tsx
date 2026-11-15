@@ -15,6 +15,7 @@ import {
 import { useEffect, useState } from 'react';
 import { Button } from '../../components/Button';
 import { SkeletonBlock } from '../../components/state';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { isRecord } from '../../utils/isRecord';
 
 const MAX_REPORT_BYTES = 4096;
@@ -186,6 +187,7 @@ function approvalError(cause: unknown) {
 export function BrowserStationTrustApproval() {
   const [reportText, setReportText] = useState('');
   const [candidate, setCandidate] = useState<OperatorKeyReport | null>(null);
+  useDecisionSurface('browser-station-trust', candidate !== null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [record, setRecord] = useState<DeviceConnectionTrustRecord | null>();
   const [recordError, setRecordError] = useState<string | null>(null);

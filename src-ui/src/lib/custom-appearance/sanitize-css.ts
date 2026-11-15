@@ -1,0 +1,185 @@
+/**
+ * The CSS sandbox for custom appearance (docs/decisions/custom-appearance.md).
+ *
+ * The server's text check (`customCssTextViolations`) is early feedback. This
+ * is the guard: the CSS is parsed by the browser into a constructed
+ * stylesheet, and the parsed rules are walked. Checking what the parser
+ * produced, not the text, is what makes it escape-proof: `\75 rl(` and
+ * `URL(` both serialize as `url(`, a shorthand's image is visible on its
+ * longhand, and a custom property's raw value (which `var()` would
+ * re-tokenize at use) still carries its backslash, which is refused.
+ *
+ * Kept: style rules (and nested ones), `@media`, `@supports`, `@container`,
+ * `@layer` and `@keyframes`. Dropped: every other at-rule. Constructed sheets
+ * already ignore `@import`; it is dropped here too in case a browser does
+ * not. A declaration whose value fetches is removed; a rule whose declaration
+ * block still fetches after that (a shorthand holding a `var()`, which the
+ * CSSOM does not expand) loses its whole block; and if the final sheet's text
+ * still fetches anything, nothing is applied.
+ */
+import {
+  type CustomCssStripped,
+  type CustomCssViolationKind,
+  fetchingValueKind,
+} from '@kontourai/station-contracts/custom-appearance';
+
+export interface SanitizedCss {
+  /** The adoptable sheet, or `null` where constructed sheets are unavailable. */
+  sheet: CSSStyleSheet | null;
+  /** The sheet's text after sanitizing; what the pre-paint cache stores. */
+  text: string;
+  stripped: CustomCssStripped[];
+}
+
+const cut = (value: string) => value.slice(0, 120);
+
+/** True where this browser can build and adopt constructed stylesheets. */
+export function constructedSheetsSupported(): boolean {
+  try {
+    return (
+      typeof CSSStyleSheet !== 'undefined' &&
+      typeof new CSSStyleSheet().replaceSync === 'function' &&
+      typeof document !== 'undefined' &&
+      'adoptedStyleSheets' in document
+    );
+  } catch {
+    return false;
+  }
+}
+
+function defined<T>(name: string): T | undefined {
+  return (globalThis as Record<string, unknown>)[name] as T | undefined;
+}
+
+type RuleCtor = abstract new (...args: never[]) => CSSRule;
+const is = (rule: CSSRule, name: string): boolean => {
+  const ctor = defined<RuleCtor>(name);
+  return ctor !== undefined && rule instanceof ctor;
+};
+
+/** Rules whose children are walked and which are otherwise harmless. */
+const GROUPING = [
+  'CSSMediaRule',
+  'CSSSupportsRule',
+  'CSSContainerRule',
+  'CSSLayerBlockRule',
+];
+
+function sanitizeDeclarations(
+  style: CSSStyleDeclaration,
+  where: string,
+  stripped: CustomCssStripped[],
+): void {
+  const names: string[] = [];
+  for (let i = 0; i < style.length; i += 1) names.push(style.item(i));
+  for (const name of names) {
+    const kind = fetchingValueKind(style.getPropertyValue(name).toLowerCase());
+    if (!kind) continue;
+    style.removeProperty(name);
+    stripped.push({ where: cut(where), what: cut(name), reason: kind });
+  }
+  // A shorthand with var() is kept whole and its longhands read empty, so the
+  // block's own text is the last word.
+  const rest = fetchingValueKind(style.cssText.toLowerCase());
+  if (rest) {
+    style.cssText = '';
+    stripped.push({ where: cut(where), what: '*', reason: rest });
+  }
+}
+
+function atRuleName(rule: CSSRule): string {
+  const match = /^@([a-z-]+)/i.exec(rule.cssText);
+  return match ? match[1]!.toLowerCase() : rule.constructor.name;
+}
+
+function reasonForDropped(name: string): CustomCssViolationKind {
+  if (name === 'import') return 'import';
+  if (name === 'font-face') return 'font-face';
+  return 'at-rule';
+}
+
+function sanitizeRules(
+  list: CSSRuleList,
+  remove: (index: number) => void,
+  stripped: CustomCssStripped[],
+): void {
+  for (let index = list.length - 1; index >= 0; index -= 1) {
+    const rule = list[index]!;
+    if (is(rule, 'CSSStyleRule')) {
+      const styleRule = rule as CSSStyleRule;
+      sanitizeDeclarations(styleRule.style, styleRule.selectorText, stripped);
+      const nested = (styleRule as CSSStyleRule & { cssRules?: CSSRuleList })
+        .cssRules;
+      if (nested && nested.length > 0)
+        sanitizeRules(
+          nested,
+          (i) => (styleRule as unknown as CSSGroupingRule).deleteRule(i),
+          stripped,
+        );
+      continue;
+    }
+    if (is(rule, 'CSSNestedDeclarations')) {
+      sanitizeDeclarations(
+        (rule as CSSRule & { style: CSSStyleDeclaration }).style,
+        '(nested)',
+        stripped,
+      );
+      continue;
+    }
+    if (is(rule, 'CSSKeyframeRule')) {
+      const frame = rule as CSSKeyframeRule;
+      sanitizeDeclarations(frame.style, frame.keyText, stripped);
+      continue;
+    }
+    if (is(rule, 'CSSLayerStatementRule')) continue;
+    if (is(rule, 'CSSKeyframesRule')) {
+      const frames = rule as CSSKeyframesRule;
+      sanitizeRules(
+        frames.cssRules,
+        (i) =>
+          frames.deleteRule((frames.cssRules[i] as CSSKeyframeRule).keyText),
+        stripped,
+      );
+      continue;
+    }
+    if (GROUPING.some((name) => is(rule, name))) {
+      const group = rule as CSSGroupingRule;
+      sanitizeRules(group.cssRules, (i) => group.deleteRule(i), stripped);
+      continue;
+    }
+    const name = atRuleName(rule);
+    remove(index);
+    stripped.push({
+      where: cut(rule.cssText.split('{')[0]!.trim()),
+      what: `@${name}`,
+      reason: reasonForDropped(name),
+    });
+  }
+}
+
+/**
+ * Parse and sanitize `css`. Returns the adoptable sheet (or `null` without
+ * constructed-sheet support, in which case nothing is applied) and what was
+ * removed.
+ */
+export function sanitizeCustomCss(css: string): SanitizedCss {
+  if (!constructedSheetsSupported())
+    return { sheet: null, text: '', stripped: [] };
+  const stripped: CustomCssStripped[] = [];
+  const sheet = new CSSStyleSheet();
+  try {
+    sheet.replaceSync(css);
+  } catch {
+    return { sheet: new CSSStyleSheet(), text: '', stripped };
+  }
+  sanitizeRules(sheet.cssRules, (i) => sheet.deleteRule(i), stripped);
+  const text = Array.from(sheet.cssRules, (rule) => rule.cssText).join('\n');
+  const left = fetchingValueKind(text.toLowerCase());
+  if (left) {
+    // Unreachable unless a rule type above serializes a fetch it did not
+    // expose to the walk; refuse the sheet rather than trust it.
+    stripped.push({ where: '(sheet)', what: '*', reason: left });
+    return { sheet: new CSSStyleSheet(), text: '', stripped };
+  }
+  return { sheet, text, stripped };
+}

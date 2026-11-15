@@ -1387,6 +1387,12 @@ export {
   useCodingFileMentionCandidatesQuery,
 } from './query-domains/chatRuntimeCoding.js';
 export {
+  type CustomAppearanceAction,
+  customAppearanceKey,
+  useCustomAppearanceMutation,
+  useCustomAppearanceQuery,
+} from './query-domains/customAppearance';
+export {
   confirmDevicePairingRequest,
   DevicePairingRequestActionError,
   denyDevicePairingRequest,

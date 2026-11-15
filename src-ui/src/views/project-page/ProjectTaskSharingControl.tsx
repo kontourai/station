@@ -16,6 +16,7 @@ import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { ErrorState } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { userFacingErrorMessage } from '../../utils/errorText';
 
 export function ProjectTaskSharingControl({
@@ -63,6 +64,7 @@ function ProjectTaskSharingControlInner({
   projectId?: string;
   task: { id: string; createdAt: string };
 }) {
+  useDecisionSurface('task-sharing');
   const client = useQueryClient();
   const [notice, setNotice] = useState<string>();
   const key = [

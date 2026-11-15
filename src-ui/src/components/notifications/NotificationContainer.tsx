@@ -32,6 +32,7 @@ import {
 } from '../status/approvalReveal';
 import { TroubleshootAction } from '../troubleshoot/TroubleshootAction';
 import './NotificationContainer.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { selectToastStackItems } from './toast-stack-layout';
 
 type Notification = ReturnType<typeof useNotificationHistory>[number];
@@ -70,6 +71,7 @@ function ToastCard({
   const isActivity = notification.type === 'tool-activity';
   const isTurn = notification.type === 'turn-activity';
   const isPairing = notification.type === 'pairing-request';
+  useDecisionSurface('approval-toast', isApproval || isPairing);
   const cardRef = useRef<HTMLElement>(null);
   const swipe = useSwipeToDismiss(swipeToDismiss, () =>
     dismissToast(notification.id),

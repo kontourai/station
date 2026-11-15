@@ -349,6 +349,12 @@ export {
   useTerminalProcessQuery,
 } from './query-domains/chatRuntime';
 export {
+  type CustomAppearanceAction,
+  customAppearanceKey,
+  useCustomAppearanceMutation,
+  useCustomAppearanceQuery,
+} from './query-domains/customAppearance';
+export {
   fetchPairedDevices,
   pairedDeviceQueries,
   usePairedDevicesQuery,

@@ -46,6 +46,7 @@ const PUBLIC_QUERY_DOMAINS = [
   'personalLayouts',
   'personNotifications',
   'personalBoards',
+  'customAppearance',
   'readMarkers',
   'pluginVisibility',
   'knowledgeStores',

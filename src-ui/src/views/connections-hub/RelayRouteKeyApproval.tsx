@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { copyToClipboard } from '../../lib/clipboard';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { cancelNativeRelayLink } from '../../platform/native/nativeRelayLinkCancellation';
 import { publishNativeRelaySetupChange } from '../../platform/native/nativeRelaySetupState';
 import {
@@ -50,6 +51,7 @@ export function RelayRouteKeyApproval({
     expiresAt: number;
   };
 }) {
+  useDecisionSurface('relay-route-key-approval');
   const linkedPendingId = linkedInvitation?.pendingId;
   const id = useId();
   const queryClient = useQueryClient();

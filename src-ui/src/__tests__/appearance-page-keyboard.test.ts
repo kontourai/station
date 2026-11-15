@@ -83,6 +83,23 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
       platform: 'browser',
       jsx: 'automatic',
       loader: { '.svg': 'dataurl', '.png': 'dataurl' },
+      plugins: [
+        {
+          // The Custom section reads the person's server document through the
+          // Station connection, which this page-only harness does not mount.
+          name: 'stub-custom-appearance-section',
+          setup(builder) {
+            builder.onResolve({ filter: /CustomAppearanceSection$/ }, () => ({
+              path: 'custom-appearance-section',
+              namespace: 'stub',
+            }));
+            builder.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({
+              contents: 'export function CustomAppearanceSection() { return null; }',
+              loader: 'js',
+            }));
+          },
+        },
+      ],
       define: {
         'import.meta.env': JSON.stringify({ DEV: false, PROD: true }),
         'process.env.NODE_ENV': '"production"',
