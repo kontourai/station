@@ -667,7 +667,7 @@ test('when the room pauses attachments, the reader is told plainly, nothing is s
   ).toBeUndefined();
 });
 
-test('review4852-r3: a failed edit keeps its text and can be retried', async () => {
+test('a failed edit keeps its text and can be retried', async () => {
   mount();
   const field = await screen.findByRole('textbox', {
     name: 'Message the project',

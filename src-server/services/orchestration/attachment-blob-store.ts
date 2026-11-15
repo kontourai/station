@@ -277,6 +277,17 @@ export class AttachmentBlobStore {
   }
 
   /**
+   * {@link removeByRef}, then reports whether the bytes are gone: `false`
+   * when they are still on disk (the unlink failed), so a caller that must
+   * not give up its record of them until deletion is confirmed can keep it.
+   */
+  removeByRefConfirmed(ref: string): boolean {
+    if (!isAttachmentBlobRef(ref)) return false;
+    this.removeByRef(ref);
+    return !existsSync(this.pathForDigest(ref.slice('sha256-'.length)));
+  }
+
+  /**
    * Age pass then size pass, oldest first — the same two axes and the same
    * order `RuntimeEventLog` and `ServerLogStore` already use. Runs at most
    * once a day, and only on a write, so an idle Station never walks the tree.

@@ -26,26 +26,31 @@ import { AttachmentBlobStore } from '../orchestration/attachment-blob-store.js';
 /** Files stored under one binding (a Task incarnation or a Project room). */
 const FILES_PER_BINDING = 1280;
 
-const BLOB_REFERENCE = /sha256-[0-9a-f]{64}/g;
+const BLOB_REF = /^sha256-[0-9a-f]{64}$/;
 /**
- * The blob references a record names: its `blobRef` when it parses, else
- * every reference recoverable from its text (conservative), else none.
+ * The blob reference a record names, only when its identity is fully
+ * determined (#4852 review): a record that parses names its `blobRef`; a
+ * damaged one names a reference only if its text holds exactly one `sha256-`
+ * token, and that token is a complete `"blobRef":"sha256-<64 hex>"` value.
+ * Anything else (a truncated reference, a second hash, a parsed record
+ * without a valid `blobRef`) is unknown, so its bytes cannot be ruled out.
  */
 function recordReferences(raw: string): string[] {
+  let stored: unknown;
   try {
-    const stored: unknown = JSON.parse(raw);
-    if (
-      stored &&
-      typeof stored === 'object' &&
-      'blobRef' in stored &&
-      typeof stored.blobRef === 'string' &&
-      /^sha256-[0-9a-f]{64}$/.test(stored.blobRef)
-    )
-      return [stored.blobRef];
+    stored = JSON.parse(raw);
   } catch {
-    // A damaged record: fall through to recovering references from its text.
+    const tokens = raw.match(/sha256-/g)?.length ?? 0;
+    const whole = /"blobRef":"(sha256-[0-9a-f]{64})"/.exec(raw);
+    return tokens === 1 && whole ? [whole[1]!] : [];
   }
-  return [...new Set(raw.match(BLOB_REFERENCE) ?? [])];
+  return stored &&
+    typeof stored === 'object' &&
+    'blobRef' in stored &&
+    typeof stored.blobRef === 'string' &&
+    BLOB_REF.test(stored.blobRef)
+    ? [stored.blobRef]
+    : [];
 }
 function describeError(error: unknown) {
   return error && typeof error === 'object' && 'code' in error
@@ -164,8 +169,6 @@ export class RoomAttachments {
   } {
     const byRecord = new Map<string, string[]>();
     const unknown: { path: string; reason: string }[] = [];
-    const bindings = join(this.root, 'bindings');
-    if (!existsSync(bindings)) return { byRecord, unknown };
     const list = (path: string) => {
       try {
         return readdirSync(path);
@@ -174,20 +177,26 @@ export class RoomAttachments {
         return [];
       }
     };
-    for (const key of list(bindings))
-      for (const name of list(join(bindings, key))) {
-        const path = join(bindings, key, name);
-        let raw: string;
-        try {
-          raw = readFileSync(path, 'utf8');
-        } catch (error) {
-          unknown.push({ path, reason: describeError(error) });
-          continue;
+    // Records waiting in `repair/` protect their bytes too: they are about
+    // to become live (`ProjectRoomAttachments`).
+    for (const tree of ['bindings', 'repair']) {
+      const top = join(this.root, tree);
+      if (!existsSync(top)) continue;
+      for (const key of list(top))
+        for (const name of list(join(top, key))) {
+          const path = join(top, key, name);
+          let raw: string;
+          try {
+            raw = readFileSync(path, 'utf8');
+          } catch (error) {
+            unknown.push({ path, reason: describeError(error) });
+            continue;
+          }
+          const refs = recordReferences(raw);
+          if (refs.length) byRecord.set(path, refs);
+          else unknown.push({ path, reason: 'no readable blob reference' });
         }
-        const refs = recordReferences(raw);
-        if (refs.length) byRecord.set(path, refs);
-        else unknown.push({ path, reason: 'no readable blob reference' });
-      }
+    }
     return { byRecord, unknown };
   }
   /**
@@ -201,12 +210,17 @@ export class RoomAttachments {
   reclaim(
     binding: readonly string[],
     ids: readonly string[],
-  ): { scanned: boolean; unknown: { path: string; reason: string }[] } {
+  ): {
+    scanned: boolean;
+    unknown: { path: string; reason: string }[];
+    /** Released records kept because their bytes could not be deleted. */
+    kept: number;
+  } {
     // Nothing to give up: nothing to prove, and no scan (an upload's sweep
     // usually finds nothing stale).
-    if (!ids.length) return { scanned: false, unknown: [] };
+    if (!ids.length) return { scanned: false, unknown: [], kept: 0 };
     const { byRecord, unknown } = this.scanReferences();
-    if (unknown.length) return { scanned: true, unknown };
+    if (unknown.length) return { scanned: true, unknown, kept: 0 };
     const directory = this.directory(binding);
     const released = new Set(
       ids
@@ -218,10 +232,26 @@ export class RoomAttachments {
     for (const [path, refs] of byRecord)
       for (const ref of refs)
         (released.has(path) ? candidates : named).add(ref);
-    for (const path of released) rmSync(path, { force: true });
+    // Bytes go first, and a record goes only once nothing it names is still
+    // owed a deletion: a failed unlink keeps the record, its quota charge and
+    // its retry (a later sweep releases it again) (#4852 review).
+    const stuck = new Set<string>();
     for (const ref of candidates)
-      if (!named.has(ref)) this.blobs.removeByRef(ref);
-    return { scanned: true, unknown: [] };
+      if (!named.has(ref) && !this.blobs.removeByRefConfirmed(ref))
+        stuck.add(ref);
+    let kept = 0;
+    for (const path of released) {
+      if ((byRecord.get(path) ?? []).some((ref) => stuck.has(ref))) {
+        kept += 1;
+        continue;
+      }
+      rmSync(path, { force: true });
+    }
+    return { scanned: true, unknown: [], kept };
+  }
+  /** Whether these bytes are stored, intact. */
+  hasBlob(ref: string) {
+    return this.blobs.readBytes(ref) !== undefined;
   }
   /**
    * This binding's files no standing message needs: any whose message was
@@ -321,16 +351,27 @@ export class TaskRoomAttachments {
  * `release` and `sweep` refuse to run outside `locked`.
  *
  * Fails closed: when any file record's references cannot be known (damaged
- * or unreadable), a release removes and deletes nothing and writes
- * `reclamation-blocked.json` naming each such record. While that marker
- * exists every upload re-checks the store and is refused with
- * `ProjectRoomFilesUnavailable` until an operator repairs or removes the
- * records; the first check that finds every record readable clears it.
- * Reading and resolving existing files never consult it.
+ * or unreadable), a release removes and deletes nothing. Uploads are then
+ * refused with `ProjectRoomFilesUnavailable` until a scan reads every record.
+ * The refusal never depends on a file write: this process latches it in
+ * memory, every process scans before its first upload, and
+ * `reclamation-blocked.json` (best effort) tells other processes and the
+ * operator which records to repair. Reading and resolving existing files
+ * never consult it.
+ *
+ * Supported repair, under the same lock: leave a damaged record in place (it
+ * keeps every release blocked) and write the corrected record to `repair/`
+ * at the same relative path as under `bindings/`. Each upload and release
+ * first moves complete repair records whose bytes are still stored into
+ * place. Removing a record, or fixing its permissions, may be done in place.
+ * Adding or rewriting a record directly under `bindings/` while Station runs
+ * is not supported: nothing could keep a release from missing it.
  */
 export class ProjectRoomAttachments {
   private readonly files: RoomAttachments;
   private holding = 0;
+  /** Whether this process has seen every record read cleanly since it began. */
+  private verified = false;
   constructor(private readonly root: string) {
     this.files = new RoomAttachments(root, 'room', { retention: false });
   }
@@ -353,13 +394,16 @@ export class ProjectRoomAttachments {
     inputs: ChatAttachmentInput[],
   ): TaskRoomAttachment[] {
     this.held();
-    if (existsSync(this.marker)) {
+    const pending = this.applyRepairs();
+    if (!this.verified || this.marked()) {
       const { unknown } = this.files.scanReferences();
       if (unknown.length) {
-        this.block(unknown);
+        this.verified = false;
+        this.block([...unknown, ...pending]);
         throw new ProjectRoomFilesUnavailable(unknown);
       }
-      rmSync(this.marker, { force: true });
+      this.verified = true;
+      this.unblock();
     }
     return this.files.store(binding, inputs);
   }
@@ -374,11 +418,13 @@ export class ProjectRoomAttachments {
   }
   /**
    * Gives up these files, and the bytes no other file names; `blocked` when
-   * the store could not prove its references and nothing changed.
+   * the store could not prove its references and nothing changed, `kept`
+   * when some bytes could not be deleted and their records stay for a retry.
    */
   release(binding: readonly string[], ids: readonly string[]): ReclaimOutcome {
     this.held();
-    return this.settle(this.files.reclaim(binding, ids));
+    const pending = this.applyRepairs();
+    return this.settle(this.files.reclaim(binding, ids), pending);
   }
   /** Releases the files no standing message needs (see `RoomAttachments.stale`). */
   sweep(
@@ -387,46 +433,106 @@ export class ProjectRoomAttachments {
     links: (ids: string[]) => { standing: Set<string>; linked: Set<string> },
   ): ReclaimOutcome {
     this.held();
+    const pending = this.applyRepairs();
     return this.settle(
       this.files.reclaim(
         binding,
         this.files.stale(binding, unsentBefore, links),
       ),
+      pending,
     );
   }
   private get marker() {
     return join(this.root, 'reclamation-blocked.json');
   }
-  private settle(result: {
-    scanned: boolean;
-    unknown: { path: string; reason: string }[];
-  }): ReclaimOutcome {
+  private marked() {
+    try {
+      return existsSync(this.marker);
+    } catch {
+      return true;
+    }
+  }
+  private settle(
+    result: {
+      scanned: boolean;
+      unknown: { path: string; reason: string }[];
+      kept: number;
+    },
+    pending: { path: string; reason: string }[],
+  ): ReclaimOutcome {
     if (result.unknown.length) {
-      this.block(result.unknown);
+      this.verified = false;
+      this.block([...result.unknown, ...pending]);
       return 'blocked';
     }
     // Only a full scan that read every record clears a block.
-    if (result.scanned) rmSync(this.marker, { force: true });
-    return 'reclaimed';
+    if (result.scanned) {
+      this.verified = true;
+      this.unblock();
+    }
+    return result.kept ? 'kept' : 'reclaimed';
   }
-  /** Records why reclamation stopped, for the operator (written whole). */
-  private block(unknown: { path: string; reason: string }[]) {
-    const pending = join(this.root, 'staging', 'reclamation-blocked.json');
-    mkdirSync(join(this.root, 'staging'), { recursive: true });
-    writeFileSync(
-      pending,
-      JSON.stringify(
-        {
-          since: new Date().toISOString(),
-          note: 'Project room file records could not be read, so no stored bytes are deleted and new attachments are refused. Repair each record (restore it, or fix its permissions) or remove it once you have decided its file is not needed; the next upload re-checks and clears this file.',
-          records: unknown,
-        },
-        null,
-        2,
-      ),
-      { mode: 0o600 },
-    );
-    renameSync(pending, this.marker);
+  /**
+   * Moves complete repair records into place (under the lock), replacing
+   * what is there. A repair record that is incomplete, or whose bytes are no
+   * longer stored, stays in `repair/` and is reported.
+   */
+  private applyRepairs(): { path: string; reason: string }[] {
+    const repair = join(this.root, 'repair');
+    if (!existsSync(repair)) return [];
+    const problems: { path: string; reason: string }[] = [];
+    for (const key of readdirSync(repair)) {
+      const from = join(repair, key);
+      for (const name of readdirSync(from)) {
+        const path = join(from, name);
+        const record = completeRecord(path);
+        if (!record) {
+          problems.push({ path, reason: 'not a complete file record' });
+          continue;
+        }
+        if (!this.files.hasBlob(record.blobRef)) {
+          problems.push({ path, reason: 'its bytes are no longer stored' });
+          continue;
+        }
+        const to = join(this.root, 'bindings', key);
+        mkdirSync(to, { recursive: true });
+        renameSync(path, join(to, name));
+      }
+      if (!readdirSync(from).length) rmSync(from, { recursive: true });
+    }
+    return problems;
+  }
+  /** Tells other processes and the operator; the latch does not rely on it. */
+  private block(records: { path: string; reason: string }[]) {
+    try {
+      const staging = join(this.root, 'staging');
+      mkdirSync(staging, { recursive: true });
+      const pending = join(staging, `reclamation-blocked.${randomUUID()}.json`);
+      writeFileSync(
+        pending,
+        JSON.stringify(
+          {
+            since: new Date().toISOString(),
+            note: 'Project room file records could not be read, so no stored bytes are deleted and new attachments are refused. Leave each damaged record in place and write its corrected record to repair/ at the same relative path, or remove it once you have decided its file is not needed, or fix its permissions; the next upload re-checks and clears this file.',
+            records,
+          },
+          null,
+          2,
+        ),
+        { mode: 0o600 },
+      );
+      renameSync(pending, this.marker);
+    } catch {
+      // The in-memory latch and each process's first-upload scan still hold
+      // the refusal; the service logs the block itself.
+    }
+  }
+  private unblock() {
+    try {
+      rmSync(this.marker, { force: true });
+    } catch {
+      // A marker that cannot be removed only causes a re-check next time.
+    }
   }
   private held() {
     if (!this.holding)
@@ -436,8 +542,33 @@ export class ProjectRoomAttachments {
   }
 }
 
+/** A file record that parses whole, with its descriptor and reference. */
+function completeRecord(
+  path: string,
+): { attachment: TaskRoomAttachment; blobRef: string } | undefined {
+  try {
+    const stored: unknown = JSON.parse(readFileSync(path, 'utf8'));
+    if (
+      !stored ||
+      typeof stored !== 'object' ||
+      !('attachment' in stored) ||
+      !('blobRef' in stored) ||
+      typeof stored.blobRef !== 'string' ||
+      !BLOB_REF.test(stored.blobRef) ||
+      !isTaskRoomAttachments([stored.attachment])
+    )
+      return undefined;
+    return {
+      attachment: stored.attachment as TaskRoomAttachment,
+      blobRef: stored.blobRef,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 /** What a release did: reclaimed, or stopped because the store was unsure. */
-export type ReclaimOutcome = 'reclaimed' | 'blocked';
+export type ReclaimOutcome = 'reclaimed' | 'blocked' | 'kept';
 /**
  * A Project room's file store cannot prove which bytes are referenced, so it
  * takes no new attachments until an operator repairs it.

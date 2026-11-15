@@ -447,7 +447,7 @@ it('an upload waiting on the store lock is refused if access is revoked meanwhil
   expect(files).toEqual([]);
 });
 
-it('review4852-r4: exact notice-journey helper fails when its limit note never appears, then passes restored', async () => {
+it('exact notice-journey helper fails when its limit note never appears, then passes restored', async () => {
   const { chromium, expect: browserExpect } = await import('@playwright/test');
   const source = readFileSync(
     'tests/project-room-message-actions.spec.ts',
@@ -482,17 +482,13 @@ it('review4852-r4: exact notice-journey helper fails when its limit note never a
       };
       if (mode === 'injected') {
         await expect(pageBack(client)).rejects.toThrow();
-        expect(await page.evaluate(() => Reflect.get(window, 'presses'))).toBe(
-          25,
-        );
+        expect(await page.evaluate('window.presses')).toBe(25);
         console.log(
           'R4_NOTICE_CONTROL injected: assertion failed after 25 working button presses without a note',
         );
       } else {
         await pageBack(client);
-        expect(await page.evaluate(() => Reflect.get(window, 'presses'))).toBe(
-          20,
-        );
+        expect(await page.evaluate('window.presses')).toBe(20);
         console.log(`R4_NOTICE_CONTROL ${mode}: PASS after 20 presses`);
       }
     }
@@ -501,7 +497,7 @@ it('review4852-r4: exact notice-journey helper fails when its limit note never a
   }
 }, 75000);
 
-it('review4852-r4: lock spans awaits, excludes a second caller, and releases after callback rejection', async () => {
+it('lock spans awaits, excludes a second caller, and releases after callback rejection', async () => {
   const home = makeTempDir('room-lock-await-');
   const root = join(home, 'files');
   const files = new ProjectRoomAttachments(root);
@@ -544,7 +540,7 @@ it('review4852-r4: lock spans awaits, excludes a second caller, and releases aft
   ).toHaveLength(1);
 });
 
-it('review4852-r4: persisted block survives an actual child-process restart, is per store, and repair clears without a release', async () => {
+it('persisted block survives an actual child-process restart, is per store, and repair clears without a release', async () => {
   const { rmSync } = await import('node:fs');
   const home = makeTempDir('room-restart-block-');
   const root = join(home, 'files');

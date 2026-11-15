@@ -482,6 +482,10 @@ export class ProjectRoomService {
                   logger.warn(
                     'Project room file records could not be read; nothing was reclaimed and new attachments are refused',
                   );
+                else if (outcome === 'kept')
+                  logger.warn(
+                    'Project room file bytes could not be deleted; their records are kept for a later retry',
+                  );
               } catch (error) {
                 logger.warn(
                   'Project room files of a deleted message were kept',
@@ -528,6 +532,10 @@ export class ProjectRoomService {
               if (outcome === 'blocked')
                 logger.warn(
                   'Project room file records could not be read; nothing was reclaimed and new attachments are refused',
+                );
+              else if (outcome === 'kept')
+                logger.warn(
+                  'Project room file bytes could not be deleted; their records are kept for a later retry',
                 );
             } catch (error) {
               logger.warn('Project room upload sweep did not finish', {
