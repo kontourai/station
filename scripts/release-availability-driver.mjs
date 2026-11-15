@@ -272,6 +272,12 @@ async function downloadAssets(api, release, directory) {
  * Discover only an already-public release, validate all provider receipts, then
  * project its bounded same-channel merged-issue facts. Any uncertainty fails
  * before the first label write.
+ * @param {unknown} event
+ * @param {{
+ *   api?: object, exec?: typeof execFileSync, updaterPublicKey?: string,
+ *   readInventoryFile?: typeof readInventory, assertAssets?: typeof assertOnlyExpectedAssets,
+ *   validateInventory?: typeof validateReleaseInventory, validatePredicates?: typeof validateReleaseSbomPredicates
+ * }} options
  */
 export async function runReleaseAvailability(
   event,

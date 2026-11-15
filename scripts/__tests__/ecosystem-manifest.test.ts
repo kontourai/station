@@ -1513,6 +1513,8 @@ describe('version-bound archive descriptor assembly', () => {
       sha: sourceSha,
       createdAt,
     });
+    if (!('version' in release))
+      throw new Error('Expected version-bound candidate provenance');
     const descriptor = {
       schemaVersion: 1,
       name,

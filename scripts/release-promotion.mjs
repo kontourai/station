@@ -443,7 +443,14 @@ export class PromotionGithubClient {
   }
 }
 
-/** A failed write remains UNKNOWN. Automatic retries never overwrite refs, releases or assets. */
+/**
+ * A failed write remains UNKNOWN. Automatic retries never overwrite refs, releases or assets.
+ * @param {{
+ *   plan: Awaited<ReturnType<typeof createPromotionPlan>>, assetsDir: string,
+ *   github: Pick<PromotionGithubClient, "source" | "release" | "createRef" | "createDraft" | "upload">,
+ *   journalPath: string, receiptPath: string, repairReceipt?: string
+ * }} options
+ */
 export async function copyCandidateToFinal({
   plan,
   assetsDir,

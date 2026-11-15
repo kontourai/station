@@ -186,6 +186,14 @@ export function writeNativeUpdateAuthorityReceipt(
   return authority;
 }
 
+/**
+ * @param {{
+ *   endpoint: string, actionUrl: string, actionKind: string, actionOrigins: string,
+ *   channel: string, version: string, token: string, bytes: string,
+ *   storeAuthority?: unknown, storeAuthorityFile?: string,
+ *   providerEnv?: NodeJS.ProcessEnv, fetchImpl?: typeof fetch
+ * }} options
+ */
 export async function deployUpdateFeed({
   endpoint,
   actionUrl,

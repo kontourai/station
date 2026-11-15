@@ -413,7 +413,10 @@ test('management response versions preserve legacy retained clients without Beta
   const f = await fixture();
   const legacyResponse = await f.send('');
   expect(legacyResponse.status).toBe(200);
-  const legacy = (await legacyResponse.json()).data;
+  const responseBody = z.object({
+    data: z.object({ setupLinks: z.record(z.string(), z.string()) }),
+  });
+  const legacy = responseBody.parse(await legacyResponse.json()).data;
   expect(Object.keys(legacy.setupLinks).sort()).toEqual([
     'beta',
     'nightly',
@@ -432,8 +435,7 @@ test('management response versions preserve legacy retained clients without Beta
   expect(intent).not.toHaveProperty('ticket');
   const modernResponse = await f.send('?viewVersion=2');
   expect(modernResponse.status).toBe(200);
-  expect(
-    Object.keys((await modernResponse.json()).data.setupLinks).sort(),
-  ).toEqual(['nightly', 'stable']);
+  const modern = responseBody.parse(await modernResponse.json()).data;
+  expect(Object.keys(modern.setupLinks).sort()).toEqual(['nightly', 'stable']);
   expect((await f.send('?viewVersion=other')).status).toBe(400);
 });
