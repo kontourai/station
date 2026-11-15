@@ -31,6 +31,34 @@ vi.mock('../agent-activity-session-reader.js', async (importOriginal) => {
   };
 });
 
+// Passthrough spy: the composition flushes the phone card when an episode
+// changes, which no lifecycle event announces.
+const publisher = vi.hoisted(() => ({ flushes: 0 }));
+vi.mock(
+  '../../../services/notifications/agent-activity-publisher.js',
+  async (importOriginal) => {
+    const original =
+      await importOriginal<
+        typeof import('../../../services/notifications/agent-activity-publisher.js')
+      >();
+    return {
+      ...original,
+      wireAgentActivityPublisher: (
+        options: Parameters<typeof original.wireAgentActivityPublisher>[0],
+      ) => {
+        const wired = original.wireAgentActivityPublisher(options);
+        return {
+          ...wired,
+          requestFlush: () => {
+            publisher.flushes += 1;
+            wired.requestFlush();
+          },
+        };
+      },
+    };
+  },
+);
+
 const { configureRuntimeSupportServices } = await import(
   '../runtime-route-support.js'
 );
@@ -165,7 +193,10 @@ test('a queued inbox follow-up holds the finished alert and the card Done until 
   await settle(FINISHED_ALERT_RECHECK_MS);
   expect(await finishedFor('thread-held')).toEqual([]);
   expect(cardDeps.finishedAlertHeld?.('thread-held')).toBe(true);
+  const flushesBefore = publisher.flushes;
   await settle(FINISHED_ALERT_CONFIRM_MS);
+  // The release reaches the card without any event of its own.
+  expect(publisher.flushes).toBeGreaterThan(flushesBefore);
   expect(await finishedFor('thread-held')).toEqual([
     expect.objectContaining({
       category: 'turn-completed',

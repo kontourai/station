@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { agentActivityPhaseFor } from '../../notifications/agent-activity-card.js';
@@ -1558,6 +1559,26 @@ describe('wireTurnCompletionNotifications: one finished alert per completion epi
       message: 'boom',
     });
     expect(titles()).toEqual(['Your agent needs attention']);
+  });
+
+  test('a hold that ends with no runtime event is read again on the session projection update', async () => {
+    facts.set('thread-1', { followUpPending: true });
+    await emit({ method: 'turn.started' });
+    await emit({ finishReason: 'stop' });
+    expect(timers.pending()).toEqual([FINISHED_ALERT_RECHECK_MS]);
+    // Claude's pending follow-up expires: only the projection says so.
+    facts.delete('thread-1');
+    bus.emit(SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED, {
+      threadId: 'thread-1',
+    });
+    await notificationService.drainAsyncDispatch();
+    // The window opens now, not at the next recheck.
+    expect(timers.pending()).toEqual([
+      FINISHED_ALERT_RECHECK_MS,
+      FINISHED_ALERT_CONFIRM_MS,
+    ]);
+    await elapse();
+    expect(titles()).toEqual(['Your agent finished']);
   });
 
   test('an unreadable hold fails open: the finish is still announced', async () => {

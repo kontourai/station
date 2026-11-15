@@ -210,8 +210,23 @@ function readRows(
 function pairingReader(
   pairing: () => DevicePairingService,
   sessions: Map<string, CanonicalRuntimeEvent[]>,
+  /** The runtime's finished-alert deps, as runtime-route-support.ts wires them. */
+  finish?: {
+    episodes: FinishedAlertEpisodes;
+    delegated: ReadonlySet<string>;
+  },
 ) {
   return createAgentActivitySessionReader({
+    ...(finish
+      ? {
+          finishedAlertHeld: (threadId: string) =>
+            finish.episodes.isPending(threadId),
+          finishedAlertRelease: (threadId: string) =>
+            finish.episodes.releaseFor(threadId),
+          isDelegatedChildSession: (threadId: string) =>
+            finish.delegated.has(threadId),
+        }
+      : {}),
     listDevices: () => pairing().listDevices(),
     deviceLocality: (deviceId) => pairing().deviceLocality(deviceId),
     listSessionReadModel: async () => readSummaries(sessions),
@@ -244,6 +259,11 @@ async function harness(
      * device's stored scope decides whether it may read, as in production.
      */
     readerFromPairing?: boolean;
+    /**
+     * With `readerFromPairing`: the reader also gets the runtime's
+     * finished-alert deps over `episodes` and `quiet` (delegated children).
+     */
+    finishFromRuntime?: boolean;
     /** The floor shared with the Station notification channel (#2588). */
     sendFloor?: NativePushSendFloor;
   } = {},
@@ -322,7 +342,13 @@ async function harness(
     signingKey: keys,
     sessionReaderFor: (deviceId) => {
       if (options.readerFromPairing)
-        return pairingReader(() => pairing, sessions)(deviceId);
+        return pairingReader(
+          () => pairing,
+          sessions,
+          options.finishFromRuntime
+            ? { episodes, delegated: quiet }
+            : undefined,
+        )(deviceId);
       if (!options.principalFor) return { principalId: 'reader', listSessions };
       const reader = options.principalFor(deviceId);
       if (!reader) return null;
@@ -1810,7 +1836,12 @@ describe('resolvePushGatewayConfig', () => {
 describe('one "Agent finished" per completion episode', () => {
   async function episodeWorld() {
     const sendFloor = createNativePushSendFloor();
-    const h = await harness({ sendFloor });
+    // The runtime's own reader: device scope, episodes, delegated children.
+    const h = await harness({
+      sendFloor,
+      readerFromPairing: true,
+      finishFromRuntime: true,
+    });
     const { deviceId } = await h.pairAndRegister();
     const recordsHome = join(h.homeDir, 'notification-records');
     mkdirSync(recordsHome);
