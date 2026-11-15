@@ -571,12 +571,14 @@ jobs:
           # source and the registry still binds that version to it; otherwise
           # record-cli-ledger in nightly.yml records it alone after this
           # workflow ends. --if-absent lets whichever lands second leave it.
+          # The registry read is hard-bounded: npm's fetch timeout does not
+          # cover a stalled connect, and a timeout is just another failure.
           npm_record=()
           android_record=()
           desktop_record=()
           if [ -f cli-receipt/nightly-cli.json ]; then
             registry_record=$(mktemp)
-            if handoff=$(node scripts/lib/nightly-cli-ledger-handoff.mjs cli-receipt/nightly-cli.json "$SOURCE_SHA" "$GITHUB_RUN_ID") && IFS=$'\t' read -r CLI_VERSION CLI_RECORDED_AT <<< "$handoff" && npm view --prefer-online --fetch-timeout=30000 --fetch-retries=2 --fetch-retry-maxtimeout=10000 "@kontourai/station-cli@$CLI_VERSION" gitHead --json > "$registry_record" && node scripts/verify-npm-registry-provenance.mjs "$registry_record" "$SOURCE_SHA" > /dev/null; then
+            if handoff=$(node scripts/lib/nightly-cli-ledger-handoff.mjs cli-receipt/nightly-cli.json "$SOURCE_SHA" "$GITHUB_RUN_ID") && IFS=$'\t' read -r CLI_VERSION CLI_RECORDED_AT <<< "$handoff" && timeout 120 npm view --prefer-online --fetch-timeout=30000 --fetch-retries=2 --fetch-retry-maxtimeout=10000 "@kontourai/station-cli@$CLI_VERSION" gitHead --json > "$registry_record" && node scripts/verify-npm-registry-provenance.mjs "$registry_record" "$SOURCE_SHA" > /dev/null; then
               npm_record=(node scripts/deploy-ledger.mjs --if-absent --channel nightly-npm --version "$CLI_VERSION" --sha "$SOURCE_SHA" --timestamp "$CLI_RECORDED_AT" --workflow-run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --gate-result 'Nightly exact gates success; npm registry gitHead equals source SHA' --github-repo "$GITHUB_REPOSITORY" --artifact "npm:@kontourai/station-cli@$CLI_VERSION (dist-tag nightly; artifactBuiltAt unknown)" --note 'artifactBuiltAt is null: npm package has no native artifact manifest')
             else
               echo '::warning::The CLI receipt did not verify here; record-cli-ledger records the npm row on its own.'

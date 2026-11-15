@@ -410,4 +410,72 @@ describe('deploy-ledger commit-back with bounded re-derive-and-retry (MED-2)', (
     );
     expect(git(origin, 'rev-parse', 'main').trim()).toBe(before);
   });
+
+  it("leaves the caller's other tracked edits and untracked files alone, in both modes", () => {
+    const { origin, writerA } = makeTwoWriterScratch();
+    writeFileSync(join(writerA, 'tracked.txt'), 'committed\n');
+    git(writerA, 'add', 'tracked.txt');
+    git(
+      writerA,
+      '-c',
+      'user.name=test',
+      '-c',
+      'user.email=test@example.com',
+      'commit',
+      '-q',
+      '-m',
+      'add a tracked file',
+    );
+    git(writerA, 'push', '-q', 'origin', 'HEAD:refs/heads/main');
+    writeFileSync(join(writerA, 'tracked.txt'), 'edited by an earlier step\n');
+    writeFileSync(join(writerA, 'untracked.txt'), 'left by an earlier step\n');
+    const single = recordArgv(writerA, {
+      channel: 'stable-npm',
+      version: '0.4.1',
+      sha: A_SHA,
+      artifact: 'npm:one',
+    });
+    const multi = recordArgv(writerA, {
+      channel: 'stable-desktop',
+      version: '1.0.0',
+      sha: B_SHA,
+      artifact: 'github-release:v1.0.0',
+    });
+    for (const [label, options] of [
+      [
+        '--commit-subject --',
+        {
+          recordArgv: single,
+          commitSubject: 'docs(ledger): record stable-npm 0.4.1 from run 1',
+        },
+      ],
+      [
+        '--subject-run-id --record',
+        { recordArgvs: [multi], subjectRunId: '2' },
+      ],
+    ] as const) {
+      const before = git(origin, 'rev-parse', 'main').trim();
+      expect(
+        commitLedgerWithRetry({ repoRoot: writerA, env: testEnv(), ...options })
+          .pushed,
+        label,
+      ).toBe(true);
+      expect(readFileSync(join(writerA, 'tracked.txt'), 'utf8'), label).toBe(
+        'edited by an earlier step\n',
+      );
+      expect(readFileSync(join(writerA, 'untracked.txt'), 'utf8'), label).toBe(
+        'left by an earlier step\n',
+      );
+      expect(
+        git(origin, 'diff', '--name-only', `${before}..main`)
+          .trim()
+          .split('\n')
+          .sort(),
+        label,
+      ).toEqual([
+        'docs/reference/deploy-ledger.json',
+        'docs/reference/deploy-ledger.md',
+      ]);
+    }
+  });
 });

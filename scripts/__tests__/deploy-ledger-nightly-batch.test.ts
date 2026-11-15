@@ -257,7 +257,10 @@ function makeFixture() {
   // A record group that fails is the seam the record step's fallback
   // exists for. The real appender runs as `deploy-ledger-real.mjs`; this
   // front exits 1 for the channel FIXTURE_REFUSE_CHANNEL names, as a
-  // validation refusal would, and is the real appender otherwise.
+  // validation refusal would, and is the real appender otherwise. With
+  // FIXTURE_REFUSE_ONCE_FILE it refuses only the first time. With
+  // FIXTURE_CONCURRENT_CLONE it also lands another writer's ledger commit
+  // on main at the moment of the refusal, from that clone.
   copyFileSync(
     resolve(root, 'scripts/deploy-ledger.mjs'),
     join(seed, 'scripts/deploy-ledger-real.mjs'),
@@ -267,12 +270,24 @@ function makeFixture() {
     [
       "import { main } from './deploy-ledger-real.mjs';",
       "export * from './deploy-ledger-real.mjs';",
-      "import { realpathSync } from 'node:fs';",
+      "import { existsSync, realpathSync, writeFileSync } from 'node:fs';",
+      "import { execFileSync } from 'node:child_process';",
       "import { fileURLToPath } from 'node:url';",
       'if (realpathSync(process.argv[1] ?? "") === realpathSync(fileURLToPath(import.meta.url))) {',
       '  const argv = process.argv.slice(2);',
       '  const refused = process.env.FIXTURE_REFUSE_CHANNEL;',
-      "  if (refused && argv[argv.indexOf('--channel') + 1] === refused) {",
+      '  const once = process.env.FIXTURE_REFUSE_ONCE_FILE;',
+      "  if (refused && argv[argv.indexOf('--channel') + 1] === refused && !(once && existsSync(once))) {",
+      "    if (once) writeFileSync(once, 'refused');",
+      '    const other = process.env.FIXTURE_CONCURRENT_CLONE;',
+      '    if (other) {',
+      "      const run = (cmd, args) => execFileSync(cmd, args, { cwd: other, stdio: 'ignore' });",
+      "      run('git', ['fetch', '-q', 'origin']);",
+      "      run('git', ['checkout', '-q', '--detach', 'origin/main']);",
+      "      run(process.execPath, [other + '/scripts/deploy-ledger-real.mjs', '--channel', 'stable-npm', '--version', '0.12.0', '--sha', 'c'.repeat(40), '--timestamp', '2026-11-14T12:00:00Z', '--gate-result', 'concurrent writer', '--github-repo', 'kontourai/station', '--artifact', 'npm:concurrent']);",
+      "      run('git', ['commit', '-q', '-am', 'docs(ledger): record stable-npm 0.12.0 from run 2']);",
+      "      run('git', ['push', '-q', 'origin', 'HEAD:refs/heads/main']);",
+      '    }',
       '    console.error(`::error::fixture refusal of ${refused}`);',
       '    process.exit(1);',
       '  }',
@@ -336,9 +351,18 @@ function makeFixture() {
   // `npm view <pkg>@<version> gitHead --json`: the registry's answer.
   writeFileSync(
     join(stubBin, 'npm'),
-    '#!/usr/bin/env bash\n[ "$1" = view ] || exit 64\nprintf \'"%s"\\n\' "$STUB_REGISTRY_GITHEAD"\n',
+    '#!/usr/bin/env bash\n[ "$1" = view ] || exit 64\n[ "$STUB_NPM_HANG" = 1 ] && exec sleep 600\nprintf \'"%s"\\n\' "$STUB_REGISTRY_GITHEAD"\n',
   );
   chmodSync(join(stubBin, 'npm'), 0o755);
+  // The record job's `timeout 120` is GNU coreutils on the runner. Here it
+  // is shortened to two seconds (perl's alarm, so it also runs on hosts
+  // without coreutils): the step must treat the bound's non-zero exit as
+  // any other registry failure.
+  writeFileSync(
+    join(stubBin, 'timeout'),
+    '#!/usr/bin/env bash\nshift\nexec perl -e \'alarm 2; exec @ARGV or exit 127\' "$@"\n',
+  );
+  chmodSync(join(stubBin, 'timeout'), 0o755);
 
   let runners = 0;
   /** A fresh job checkout at the source SHA, as actions/checkout leaves it. */
@@ -384,12 +408,18 @@ function makeFixture() {
     android = 'complete',
     macos = 'complete',
     refuseChannel = '',
+    refuseOnce = false,
+    concurrentWriter = false,
+    npmHangs = false,
   }: {
     receipt?: Record<string, unknown> | null;
     registryGitHead?: string;
     android?: string;
     macos?: string;
     refuseChannel?: string;
+    refuseOnce?: boolean;
+    concurrentWriter?: boolean;
+    npmHangs?: boolean;
   } = {}) => {
     const clone = runner();
     const write = (path: string, value: unknown) => {
@@ -425,6 +455,11 @@ function makeFixture() {
       GITHUB_OUTPUT: output,
       STUB_REGISTRY_GITHEAD: registryGitHead,
       FIXTURE_REFUSE_CHANNEL: refuseChannel,
+      FIXTURE_REFUSE_ONCE_FILE: refuseOnce
+        ? join(dir, `refused-${scratchFiles}`)
+        : '',
+      FIXTURE_CONCURRENT_CLONE: concurrentWriter ? runner() : '',
+      STUB_NPM_HANG: npmHangs ? '1' : '',
     });
     return { ...result, output: readFileSync(output, 'utf8') };
   };
@@ -609,6 +644,58 @@ describe.skipIf(process.platform === 'win32')(
       ).toHaveLength(1);
     });
 
+    it('still records the native rows when main moves a ledger file between the failed combined commit and the per-row fallback', () => {
+      // Desktop refused inside the combined commit leaves Android's row
+      // appended but uncommitted; another writer lands on main right then.
+      const f = makeFixture();
+      const before = f.mainHead();
+      const once = f.runNativeRecord({
+        refuseChannel: 'nightly-desktop',
+        refuseOnce: true,
+        concurrentWriter: true,
+      });
+      expect(once.status, once.stderr).toBe(0);
+      expect(once.stderr).not.toContain('would be overwritten by checkout');
+      expect(f.commitsSince(before).map((commit) => commit.subject)).toEqual([
+        'docs(ledger): record stable-npm 0.12.0 from run 2',
+        `docs(ledger): record nightly-android ${NATIVE_VERSION} from run ${RUN_ID}`,
+        `docs(ledger): record nightly-desktop ${NATIVE_VERSION} from run ${RUN_ID}`,
+      ]);
+      expect(markerRuns(once.status, once.output)).toBe(true);
+
+      const g = makeFixture();
+      const gBefore = g.mainHead();
+      const always = g.runNativeRecord({
+        refuseChannel: 'nightly-desktop',
+        concurrentWriter: true,
+      });
+      expect(always.status).not.toBe(0);
+      expect(always.stderr).not.toContain('would be overwritten by checkout');
+      expect(g.commitsSince(gBefore).map((commit) => commit.subject)).toEqual([
+        'docs(ledger): record stable-npm 0.12.0 from run 2',
+        `docs(ledger): record nightly-android ${NATIVE_VERSION} from run ${RUN_ID}`,
+      ]);
+      expect(markerRuns(always.status, always.output)).toBe(false);
+    });
+
+    it('treats a registry read that hits its hard bound like any other failure', () => {
+      const f = makeFixture();
+      const before = f.mainHead();
+      const native = f.runNativeRecord({ npmHangs: true });
+      expect(native.status, native.stderr).toBe(0);
+      expect(native.stdout).toContain(
+        'The CLI receipt did not verify here; record-cli-ledger records the npm row on its own.',
+      );
+      expect(f.commitsSince(before).map((commit) => commit.subject)).toEqual([
+        `docs(ledger): record nightly-android ${NATIVE_VERSION}, nightly-desktop ${NATIVE_VERSION} from run ${RUN_ID}`,
+      ]);
+      expect(markerRuns(native.status, native.output)).toBe(true);
+      expect(f.runFallback().status).toBe(0);
+      expect(
+        f.ledgerAt('main').filter((entry) => entry.version === CLI_VERSION),
+      ).toHaveLength(1);
+    });
+
     it('refuses rather than writes duplicates when the step runs again after its combined commit landed', () => {
       const f = makeFixture();
       const before = f.mainHead();
@@ -699,6 +786,30 @@ describe.skipIf(process.platform === 'win32')(
           'a verifiedAt in the future',
           (sha) => ({
             receipt: cliReceipt(sha, { verifiedAt: '2099-01-01T00:00:00Z' }),
+          }),
+        ],
+        [
+          'a seven-digit date',
+          (sha) => ({
+            receipt: cliReceipt(sha, {
+              version: `0.11.0-nightly.2026111.${RUN_ID}`,
+            }),
+          }),
+        ],
+        [
+          'an extra segment before the run id',
+          (sha) => ({
+            receipt: cliReceipt(sha, {
+              version: `0.11.0-nightly.20261114.1.${RUN_ID}`,
+            }),
+          }),
+        ],
+        [
+          'a non-numeric core',
+          (sha) => ({
+            receipt: cliReceipt(sha, {
+              version: `0.x.0-nightly.20261114.${RUN_ID}`,
+            }),
           }),
         ],
         [
@@ -1087,7 +1198,7 @@ describe('the workflow wiring of the one-commit Nightly ledger', () => {
       .split('\n')
       .find((line) => line.includes('npm view'));
     expect(registryRead).toContain(
-      'npm view --prefer-online --fetch-timeout=30000 --fetch-retries=2 --fetch-retry-maxtimeout=10000',
+      'timeout 120 npm view --prefer-online --fetch-timeout=30000 --fetch-retries=2 --fetch-retry-maxtimeout=10000',
     );
     expect(registryRead).toMatch(/^\s*if handoff=/);
     for (const step of nightly.jobs['nightly-cli'].steps ?? [])

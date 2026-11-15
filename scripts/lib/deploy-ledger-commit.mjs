@@ -302,11 +302,20 @@ export function commitLedgerWithRetry({
 
     // earlier workflow steps leaving tracked modifications is exactly the
     // kind of state this commit must not silently absorb.
+    // A record that failed part-way (an earlier call's later group refused)
+    // leaves rows appended to the two ledger files but never committed.
+    // Discard exactly those two files first: if main has since moved them,
+    // the detach below would otherwise refuse to overwrite the edits and
+    // lose this call's row. Nothing else in the tree is touched.
+    for (const path of [DEPLOY_LEDGER_JSON_PATH, DEPLOY_LEDGER_MD_PATH]) {
+      if (
+        git(['cat-file', '-e', `HEAD:${path}`], { allowFailure: true }) !== null
+      )
+        git(['checkout', 'HEAD', '--', path]);
+    }
     git(['checkout', '--detach', remoteHead]);
-    // The checkout carries uncommitted ledger edits forward, and a record
-    // that failed part-way (an earlier call's later group refused) leaves
-    // exactly that: rows appended but never committed. Reset the two files
-    // to origin/main so every attempt derives from main's ledger alone.
+    // Then take main's copies, so every attempt derives from main's ledger
+    // alone even where HEAD had no copy to reset to.
     for (const path of [DEPLOY_LEDGER_JSON_PATH, DEPLOY_LEDGER_MD_PATH]) {
       if (
         git(['cat-file', '-e', `${remoteHead}:${path}`], {
