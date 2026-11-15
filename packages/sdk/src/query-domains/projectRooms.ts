@@ -1,19 +1,24 @@
 import {
+  PROJECT_ROOM_LIMITS,
   PROJECT_ROOM_PROJECT_NOT_FOUND_CODE,
+  type ProjectRoomActor,
   type ProjectRoomChannelCreateInput,
   type ProjectRoomChannelUpdateInput,
   type ProjectRoomDeleteInput,
   type ProjectRoomEditInput,
+  type ProjectRoomMessage,
   type ProjectRoomReactionInput,
 } from '@kontourai/station-contracts/project-room';
+import type { ProjectRoomAgentActivity } from '@kontourai/station-contracts/project-room-browser';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
+  type InfiniteData,
   useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StationHttpError } from '../client/api-error-message';
 import type { ApiRequestScope } from '../client/http';
 import {
@@ -37,9 +42,147 @@ import {
   subscribeProjectRoom,
   updateProjectRoomChannel,
 } from '../client/project-rooms';
+import {
+  fetchProjectRoomMembers,
+  type ProjectRoomLiveEvent,
+  projectRoomLiveHub,
+  readProjectRoomLiveCapability,
+  setProjectRoomTyping,
+} from '../client/project-room-live';
 
 export type { ApiRequestScope } from '../client/http';
 export * from '../client/project-rooms';
+export {
+  fetchProjectRoomMembers,
+  readProjectRoomLiveCapability,
+} from '../client/project-room-live';
+/**
+ * Whether this Station serves one live stream for a Project's rooms, typing
+ * and person mentions (#4798, #4799). Read once per Station.
+ */
+export function useProjectRoomLiveCapability(apiBase: string) {
+  return useQuery({
+    queryKey: ['project-room-live-capability', apiBase],
+    queryFn: () => readProjectRoomLiveCapability(apiBase),
+    staleTime: Number.POSITIVE_INFINITY,
+    retry: false,
+  });
+}
+/**
+ * The people a message in this room may mention, with current names
+ * (#4799). Mentions render by id from this list, so a rename shows on old
+ * messages too.
+ */
+export function useProjectRoomMembers(
+  incomingScope: ApiRequestScope,
+  slug: string,
+  projectId: string,
+  channelId: string | undefined,
+  enabled: boolean,
+) {
+  const { apiBase, authorityKey } = incomingScope;
+  return useQuery({
+    queryKey: [
+      'project-room-members',
+      apiBase,
+      authorityKey,
+      projectId,
+      channelId ?? 'general',
+      slug,
+    ],
+    enabled,
+    retry: false,
+    staleTime: 60_000,
+    queryFn: ({ signal }) =>
+      fetchProjectRoomMembers(
+        { apiBase, authorityKey },
+        slug,
+        channelId,
+        signal,
+      ),
+  });
+}
+/** One room's live state as the Project's shared stream reports it. */
+export interface ProjectRoomLiveRoom {
+  /** The stream has announced this room since it last connected. */
+  connected: boolean;
+  typing: ProjectRoomActor[];
+  agents: ProjectRoomAgentActivity[];
+}
+/**
+ * Live state of many rooms over the Project's one stream (#4798, #4800), for
+ * a sidebar: who is typing and which Agent requests are in flight, per
+ * channel. `onActivity` hears each room's new messages and changes, so a
+ * caller can refresh what it derives from them (unread counts).
+ */
+export function useProjectRoomLiveIndex(
+  incomingScope: ApiRequestScope,
+  slug: string,
+  channelIds: readonly string[],
+  enabled: boolean,
+  onActivity?: (channelId: string) => void,
+) {
+  const { apiBase, authorityKey } = incomingScope;
+  const capability = useProjectRoomLiveCapability(apiBase);
+  const [rooms, setRooms] = useState<ReadonlyMap<string, ProjectRoomLiveRoom>>(
+    () => new Map(),
+  );
+  const activity = useRef(onActivity);
+  activity.current = onActivity;
+  const key = channelIds.join(',');
+  useEffect(() => {
+    if (!enabled || capability.data !== true || !key) return;
+    const hub = projectRoomLiveHub({ apiBase, authorityKey }, slug);
+    const ids = key.split(',');
+    const update = (id: string, patch: Partial<ProjectRoomLiveRoom>) =>
+      setRooms((current) => {
+        const next = new Map(current);
+        next.set(id, {
+          connected: false,
+          typing: [],
+          agents: [],
+          ...current.get(id),
+          ...patch,
+        });
+        return next;
+      });
+    const offs = ids.map((id) =>
+      hub.subscribe(id, (event) => {
+        if (event.kind === 'subscribed') update(id, { connected: true });
+        else if (
+          event.kind === 'disconnected' ||
+          event.kind === 'revoked' ||
+          event.kind === 'unavailable'
+        )
+          // Typing and working state are only as true as the connection.
+          update(id, { connected: false, typing: [], agents: [] });
+        else if (event.kind === 'typing') update(id, { typing: event.actors });
+        else if (event.kind === 'agents') update(id, { agents: event.requests });
+        else if (
+          event.kind === 'append' ||
+          event.kind === 'update' ||
+          event.kind === 'resync'
+        )
+          activity.current?.(id);
+      }),
+    );
+    return () => {
+      for (const off of offs) off();
+      setRooms(new Map());
+    };
+  }, [enabled, capability.data, key, apiBase, authorityKey, slug]);
+  return rooms;
+}
+/** The Agent requests still working: reserved or started, with no failure. */
+export function workingProjectRoomAgents(
+  requests: readonly ProjectRoomAgentActivity[],
+) {
+  return requests.filter(
+    (request) =>
+      (request.state === 'reserved' || request.state === 'started') &&
+      !request.failure,
+  );
+}
 export function projectRoomKey(
   scope: ApiRequestScope,
   projectId: string,
@@ -136,7 +279,8 @@ async function readProjectRoomWindow(
       slug,
       identity,
       after,
-      Math.max(1, end - after),
+      // A tail window that live appends grew reads in bounded pages.
+      Math.min(PROJECT_ROOM_LIMITS.maxPageSize, Math.max(1, end - after)),
       signal,
       channelId,
     );
@@ -169,6 +313,10 @@ function nextHistoryRead() {
   historyReads += 1;
   return historyReads;
 }
+/** One cached history window and its place in the SDK read order. */
+type HistoryPage = Awaited<ReturnType<typeof readProjectRoomWindow>> & {
+  readSeq: number;
+};
 /** Messages with `after` < seq <= `end`. */
 export interface ProjectRoomHistorySpan {
   after: number;
@@ -336,6 +484,16 @@ export function useProjectRoom(
   );
   const [stopped, setStopped] = useState(false);
   const [streamError, setStreamError] = useState(false);
+  const liveCapability = useProjectRoomLiveCapability(apiBase);
+  const live = liveCapability.data === true;
+  const [typing, setTyping] = useState<ProjectRoomActor[]>([]);
+  const [agents, setAgents] = useState<ProjectRoomAgentActivity[]>([]);
+  /** Sequence and activity the cached history reflects, per the stream. */
+  const known = useRef<{ lastSeq: number; activity: number } | undefined>(
+    undefined,
+  );
+  const [liveSeq, setLiveSeq] = useState<number>();
+  const connected = useRef(false);
   const discovery = useQuery({
     queryKey: [...root, 'discovery', slug],
     enabled: !stopped,
@@ -375,6 +533,73 @@ export function useProjectRoom(
       after > 0 ? { after: Math.max(0, after - 25), end: after } : undefined,
     maxPages: PROJECT_ROOM_HISTORY_MAX_PAGES,
   });
+  const historyKey = useMemo(
+    () => [...contentKey, tailAfter],
+    [contentKey, tailAfter],
+  );
+  /**
+   * Merges messages into the cached history (#4798) instead of re-reading
+   * it: each one replaces its row wherever a window holds it, and `append`
+   * adds new rows to the newest window. Every merge takes the next place in
+   * the SDK read order, so no older read in flight can undo it. Rows kept
+   * outside the windows are updated through the retained re-read's cache.
+   * Answers false when there is no history to merge into yet.
+   */
+  const merge = useCallback(
+    (messages: readonly ProjectRoomMessage[], append: boolean) => {
+      let merged = false;
+      client.setQueryData<InfiniteData<HistoryPage>>(historyKey, (data) => {
+        if (!data?.pages.length) return data;
+        merged = true;
+        const readSeq = nextHistoryRead();
+        const byId = new Map(messages.map((m) => [m.messageId, m]));
+        const pages = data.pages.map((page) =>
+          page.messages.some((m) => byId.has(m.messageId))
+            ? {
+                ...page,
+                messages: page.messages.map((m) => byId.get(m.messageId) ?? m),
+                readSeq,
+              }
+            : page,
+        );
+        const tail = pages[0]!;
+        const held = new Set(pages.flatMap((p) => p.messages.map((m) => m.messageId)));
+        const fresh = append
+          ? messages.filter((m) => !held.has(m.messageId))
+          : [];
+        if (fresh.length) {
+          const rows = [...tail.messages, ...fresh].sort((a, b) => a.seq - b.seq);
+          pages[0] = {
+            ...tail,
+            messages: rows,
+            checkpoint: {
+              ...tail.checkpoint,
+              lastSeq: Math.max(tail.checkpoint.lastSeq, rows[rows.length - 1]!.seq),
+            },
+            readSeq,
+          };
+        }
+        // The newest window now ends at its newest row, so a refetch of it
+        // reads the merged rows again rather than dropping them.
+        const pageParams = [...data.pageParams];
+        const first = pageParams[0] as { after: number; end: number } | undefined;
+        if (fresh.length && first)
+          pageParams[0] = {
+            ...first,
+            end: Math.max(first.end, pages[0]!.checkpoint.lastSeq),
+          };
+        return { ...data, pages, pageParams };
+      });
+      if (!append)
+        client.setQueryData(
+          [...contentKey, 'retained'],
+          (current: { messages: ProjectRoomMessage[]; readSeq: number } | undefined) =>
+            current ? { messages: [...messages], readSeq: nextHistoryRead() } : current,
+        );
+      return merged;
+    },
+    [client, historyKey, contentKey],
+  );
   const initialize = useMutation({
     retry: false,
     mutationFn: () => initializeProjectRoom(scope, slug, projectId),
@@ -392,11 +617,18 @@ export function useProjectRoom(
     discovery.error.status === 404 &&
     discovery.error.code === 'project_room_not_found';
   const projectMissing = isProjectRoomProjectMissing(discovery.error);
+  // While the live stream is connected the acknowledged message is merged
+  // where it belongs, and the stream's own frame for it changes nothing;
+  // without the stream the room is re-read as before.
+  const settled = (message: ProjectRoomMessage | undefined, append: boolean) =>
+    message && connected.current && merge([message], append)
+      ? undefined
+      : client.invalidateQueries({ queryKey: root });
   const send = useMutation({
     retry: false,
     mutationFn: (input: ProjectRoomMessageIntent) =>
       sendProjectRoomMessage(scope, slug, input, channelId),
-    onSuccess: () => client.invalidateQueries({ queryKey: root }),
+    onSuccess: (message) => settled(message, true),
   });
   const note = useMutation({
     retry: false,
@@ -414,7 +646,7 @@ export function useProjectRoom(
       ...input
     }: ProjectRoomReactionInput & { target: ProjectRoomMessageTarget }) =>
       reactToProjectRoomMessage(scope, slug, target, input, channelId),
-    onSettled: () => client.invalidateQueries({ queryKey: root }),
+    onSettled: (message) => settled(message, false),
   });
   const edit = useMutation({
     retry: false,
@@ -423,7 +655,7 @@ export function useProjectRoom(
       ...input
     }: ProjectRoomEditInput & { target: ProjectRoomMessageTarget }) =>
       editProjectRoomMessage(scope, slug, target, input, channelId),
-    onSettled: () => client.invalidateQueries({ queryKey: root }),
+    onSettled: (message) => settled(message, false),
   });
   const remove = useMutation({
     retry: false,
@@ -432,7 +664,7 @@ export function useProjectRoom(
       ...input
     }: ProjectRoomDeleteInput & { target: ProjectRoomMessageTarget }) =>
       deleteProjectRoomMessage(scope, slug, target, input, channelId),
-    onSettled: () => client.invalidateQueries({ queryKey: root }),
+    onSettled: (message) => settled(message, false),
   });
   useEffect(() => {
     if (
@@ -463,8 +695,162 @@ export function useProjectRoom(
     edit.error,
     remove.error,
   ]);
+  // Live frames apply strictly in order: a backfill finishes before the
+  // frame after it is looked at.
+  const queue = useRef<Promise<void>>(Promise.resolve());
   useEffect(() => {
-    if (!roomId || !actorId || stopped) return;
+    if (!roomId || !actorId || stopped || !live) return;
+    let active = true;
+    const hub = projectRoomLiveHub(scope, slug);
+    const guards = {
+      expectedRoomId: roomId,
+      expectedProjectId: projectId,
+      expectedActorId: actorId,
+    };
+    const revoke = () => {
+      if (!active) return;
+      active = false;
+      off();
+      setStopped(true);
+      void client.cancelQueries({ queryKey: root });
+      client.removeQueries({ queryKey: root });
+    };
+    const reconcile = () => client.invalidateQueries({ queryKey: root });
+    /**
+     * Applies one frame against what the cache reflects (#4798). A message
+     * past the next sequence means frames were missed: the messages between
+     * are read from history first, never skipped. An activity range that does
+     * not start where the cache is re-reads the room's windows.
+     */
+    const apply = async (event: ProjectRoomLiveEvent) => {
+      if (!active) return;
+      const state = known.current;
+      switch (event.kind) {
+        case 'subscribed':
+          connected.current = true;
+          setStreamError(false);
+          if (event.roomId !== roomId) {
+            revoke();
+            return;
+          }
+          // Every (re)connection reconciles with durable history once.
+          known.current = { lastSeq: event.lastSeq, activity: event.activity };
+          setLiveSeq(event.lastSeq);
+          await reconcile();
+          return;
+        case 'append': {
+          if (!state) return;
+          const { message } = event;
+          if (message.seq > state.lastSeq + 1) {
+            const window = await readProjectRoomWindow(
+              scope,
+              slug,
+              { projectId, roomId },
+              { after: state.lastSeq, end: message.seq - 1 },
+              new AbortController().signal,
+              channelId,
+            );
+            if (!active) return;
+            const filled = [...window.messages, message];
+            if (
+              filled.some(
+                (item, index) => item.seq !== state.lastSeq + index + 1,
+              ) ||
+              !merge(filled, true)
+            )
+              await reconcile();
+          } else if (!merge([message], true)) await reconcile();
+          state.lastSeq = Math.max(state.lastSeq, message.seq);
+          setLiveSeq(state.lastSeq);
+          return;
+        }
+        case 'update':
+          if (!state) return;
+          if (event.fromActivity !== state.activity || !merge(event.messages, false))
+            await reconcile();
+          state.activity = event.activity;
+          return;
+        case 'resync':
+          known.current = { lastSeq: event.lastSeq, activity: event.activity };
+          setLiveSeq(event.lastSeq);
+          await reconcile();
+          return;
+        case 'typing':
+          setTyping(event.actors.filter((person) => person.id !== actorId));
+          return;
+        case 'presence':
+          client.setQueryData(
+            [...root, 'discovery', slug],
+            (current: ProjectRoomBrowserView | undefined) =>
+              current ? { ...current, presence: event.participants } : current,
+          );
+          return;
+        case 'agents':
+          setAgents(event.requests);
+          return;
+        case 'revoked':
+          revoke();
+          return;
+        case 'unavailable':
+          // The room is gone or no longer readable: discovery says which.
+          await reconcile();
+          return;
+        case 'disconnected':
+          connected.current = false;
+          setStreamError(true);
+          setTyping([]);
+          return;
+      }
+    };
+    const off = hub.subscribe(roomId, (event) => {
+      queue.current = queue.current
+        .then(() => apply(event))
+        .catch(() => {
+          if (active) void reconcile();
+        });
+    });
+    // Presence lasts as long as this client's stream; no renewals.
+    void setProjectRoomPresence(
+      scope,
+      slug,
+      { ...guards, clientId: hub.clientId, state: 'join' },
+      channelId,
+    ).catch((error) => {
+      if (isProjectRoomAccessError(error)) revoke();
+    });
+    return () => {
+      const wasActive = active;
+      active = false;
+      off();
+      connected.current = false;
+      known.current = undefined;
+      setTyping([]);
+      setAgents([]);
+      if (wasActive)
+        void setProjectRoomPresence(
+          scope,
+          slug,
+          { ...guards, clientId: hub.clientId, state: 'leave' },
+          channelId,
+        ).catch(() => {});
+    };
+  }, [
+    client,
+    root,
+    roomId,
+    actorId,
+    stopped,
+    live,
+    merge,
+    scope,
+    slug,
+    projectId,
+    channelId,
+  ]);
+  // A host without the shared stream: this room's own stream, as before.
+  useEffect(() => {
+    if (!roomId || !actorId || stopped || liveCapability.data !== false)
+      return;
     let active = true;
     const guards = {
       expectedRoomId: roomId,
@@ -539,6 +925,7 @@ export function useProjectRoom(
     roomId,
     actorId,
     stopped,
+    liveCapability.data,
     scope,
     slug,
     projectId,
@@ -551,12 +938,66 @@ export function useProjectRoom(
     },
     [client, root],
   );
+  // "Is typing" (#4798): sent at most every few seconds while typing, and
+  // stopped on send, on a pause, and when the room closes. The server lets an
+  // unrenewed signal lapse on its own.
+  const typingState = useRef<{ sentAt: number; timer?: ReturnType<typeof setTimeout> }>({
+    sentAt: 0,
+  });
+  const notifyTyping = useCallback(
+    (active: boolean) => {
+      if (!live || !roomId || !actorId || stopped) return;
+      const state = typingState.current;
+      const hub = projectRoomLiveHub(scope, slug);
+      const signal = (typing: boolean) =>
+        void setProjectRoomTyping(
+          scope,
+          slug,
+          {
+            expectedRoomId: roomId,
+            expectedProjectId: projectId,
+            expectedActorId: actorId,
+            clientId: hub.clientId,
+            typing,
+          },
+          channelId,
+        ).catch(() => {});
+      if (state.timer) clearTimeout(state.timer);
+      state.timer = undefined;
+      if (!active) {
+        if (state.sentAt) signal(false);
+        state.sentAt = 0;
+        return;
+      }
+      const now = Date.now();
+      if (now - state.sentAt > 3000) {
+        state.sentAt = now;
+        signal(true);
+      }
+      state.timer = setTimeout(() => {
+        state.timer = undefined;
+        if (state.sentAt) signal(false);
+        state.sentAt = 0;
+      }, 4000);
+    },
+    [live, roomId, actorId, stopped, scope, slug, projectId, channelId],
+  );
+  useEffect(() => () => notifyTyping(false), [notifyTyping]);
   return {
     discovery,
     initialize,
     unprovisioned,
     projectMissing,
     history,
+    /** The room's newest sequence: the stream's when it is live. */
+    lastSeq: Math.max(liveSeq ?? 0, room?.checkpoint.lastSeq ?? 0),
+    /** Other people typing here now (#4798). */
+    typing,
+    /** This room's Agent requests, newest first, from their records (#4800). */
+    agents,
+    notifyTyping,
+    /** One stream carries this room with the Project's others. */
+    live,
     send,
     note,
     react,
