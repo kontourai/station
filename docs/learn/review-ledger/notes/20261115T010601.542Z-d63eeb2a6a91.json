@@ -1,0 +1,7 @@
+{
+  "revision": "abd7917280b4ec24d35f133af65d137fca5c6e5d",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Merge-group supersession paragraph only: checked against scripts/pr-ci-supersession.mjs retireReplacedGroups (repository-wide merge_group listing, per-run workflow identity, same PR number, older than replacement, queue entry and ref authority unchanged) and its tests; the deploy-ledger rebuild observation is dated run history, not GitHub documentation; side-effect claim checked against main-health.yml branch filter and the PR: CI-only workflow_run listeners. Rest of the guide not re-reviewed.","inputs":["docs/guides/testing.md","scripts/__tests__/pr-ci-supersession.test.ts","scripts/pr-ci-supersession.mjs"]}
+  ]
+}

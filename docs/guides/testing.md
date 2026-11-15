@@ -316,9 +316,23 @@ heads in CI, iOS, Windows, security, Gallery and Docs kit workflows. Each
 cancellation rechecks the PR head and run attempt. The PR-head path never cancels
 merge-group, main-push, manual diagnostic or publication runs.
 
-A new merge-group Source request also retires older Source candidates for the
+A new merge-group Source request also retires older candidates for the
 same leading PR, only when a live GitHub queue ref and GitHub's merge-queue entry
 bind the replacement commit and its base to the current same-repository PR head.
+Retirement covers the queued, pending or running merge-group run of any
+workflow (present or future) on an older candidate commit, not only Source.
+GitHub does not document it, but run history (2026-11-04 to 11-15) shows every
+group in flight at a direct push to main, such as a deploy-ledger commit,
+discarded and rebuilt on the new tip; before this, the dead group's other runs
+ran to completion for nothing. The repository-wide run listing must account
+for every run. GitHub's count can disagree with the returned page while a new
+group's runs are created, so a truncated, changing or duplicated listing is
+read up to three times in all, two seconds apart; if it stays inconsistent the
+pass warns, cancels nothing and succeeds, and the next queue event retries.
+The merged-PR path keeps an incomplete inventory fatal.
+A run is retired only if its candidate is older than the replacement and names
+the same PR; another PR's group built on the dead commit waits for that PR's
+own replacement request.
 The entry identity and source binding are re-read before each cancellation.
 This supports squash candidates: the raw PR head need not be an ancestor of the
 synthetic commit. A missing, mismatched, changed or unmergeable entry cannot
@@ -329,8 +343,18 @@ unknown runner metadata or API failure prevents it. This path can normally
 cancel an assigned runner doing obsolete work, but never force-cancels. A 202
 is a request, not terminal settlement. A 409 refusal, here and when retiring a
 merged PR's optional delivery runs, cancels nothing and is reported as a
-warning; the pass continues. It does not cancel unrelated workflow
-families or replace any regression result with success.
+warning; the pass continues. A retired run of a dead candidate reports
+`cancelled` only on that candidate's commit: `Main: Health` and the main-only
+trackers ignore queue branches, and the source status publisher reads only
+Source runs, which were already retired. It never cancels a live candidate's
+runs or replaces any regression result with success.
+
+After a change to this path, check the job's recent failure causes
+(`gh run list --repo kontourai/station --workflow pr-ci-supersession.yml
+--status failure`, then each run's log) and that no `cancelled` merge-group run
+sits on a commit that reached main (compare `head_sha` of
+`actions/runs?event=merge_group` runs concluded `cancelled` against
+`git rev-list origin/main`).
 
 For the one-candidate throughput trial and its before/after measurements, use
 [the throughput epic](https://github.com/kontourai/station/issues/3101). The live
