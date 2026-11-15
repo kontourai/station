@@ -1,7 +1,0 @@
-{
-  "revision": "cfbf76d1b0345749fd196d5173a2482359609661",
-
-  "notes": [
-    {"path":"docs/guides/desktop-build.md","note":"Rewrote the compile-cache paragraphs in Startup cost against station-compile-cache.ts, server-compile-cache.ts, station-control-runtime-env.ts, the station-control/knowledge/pty-host entries and lifecycle.ts serverEnv. Checked: CLI sets <home>/cache/node-compile for supervisor/core/workload host or direct server, none for --watch, after ensureStationHomeSchemaSync; supervisor keeps it for forks; server, PTY host and built-in MCP children delete it; only exact built-in station-control/knowledge receive it; early flush; 30-day/256 MiB prune limited to the home's own cache; no shipped cache (uid- and path-keyed version dir observed on Node 24.22.2, portable mode exists). Executed: focused unit/process/CLI tests and seven fault injections. Limits: no packaged desktop, Windows or Linux run; measured numbers are host-specific and not stated.","inputs":["docs/guides/desktop-build.md","src-server/index.ts"]}
-  ]
-}
