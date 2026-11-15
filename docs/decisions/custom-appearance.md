@@ -222,6 +222,12 @@ the cache; a network failure keeps it.
 - The server cannot rate a pair whose other side comes from the theme in
   force; the browser rates it at preview, in both modes, against the theme in
   force then. A later change of named theme is not re-rated.
+- White-label branding and a device accent are inline values written for the
+  mode on screen and are not rewritten during the other mode's read, so with
+  either active and no palette accent, the other mode's accent pairs are rated
+  with the shown mode's values (found in delta review). A person's draft Keep
+  also fails with 409 if an agent proposes during its preview; Save works
+  again on the re-read revision.
 - The cache follows the spirit of the appearance-cache ownership rule, not
   its full machinery: it belongs to whoever's document last answered on this
   origin. On a browser shared by two people, or on the signed-out connect
