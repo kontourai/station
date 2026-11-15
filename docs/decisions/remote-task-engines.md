@@ -107,6 +107,10 @@ The second, stacked on the first, composes the chat adapter:
   every message the store holds after what the chat last showed, whoever
   synced it. A follow-up catches the task up just before it is sent, so a
   late reply to an earlier turn still shows but is not taken as the answer.
+  The catch-up only sees what the vendor had written by then: a reply stored
+  after it counts as the new turn's answer, even when it answers the earlier
+  message. So after a turn ended at its wake or work bound while the vendor
+  was still answering it, that answer can end the next turn as its reply.
   It ends only once the vendor reacted to the message (a reply stored after
   it was sent, or a status it did not have then) and rests. It ends early as
   "still waking" if the vendor did not react within 10 minutes, or as "still
