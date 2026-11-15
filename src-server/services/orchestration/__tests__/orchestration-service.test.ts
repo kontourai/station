@@ -3229,7 +3229,7 @@ describe('OrchestrationService', () => {
         method: 'child-work.updated',
         delta: { kind: 'snapshot', ...reporter, running },
         createdAt: new Date().toISOString(),
-      } as CanonicalRuntimeEvent);
+      } as unknown as CanonicalRuntimeEvent);
       await new Promise((resolve) => setTimeout(resolve, 50));
     };
     const withOpenWork = claude as FakeAdapter & {
