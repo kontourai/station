@@ -6720,7 +6720,9 @@ exception, or gate completion. A cleanup result can retain the workspace when
 shutdown was not confirmed.
 
 The [SDK helper](../../packages/sdk/src/client/reviews.ts) defaults each HTTP
-request to 30 seconds. After submission failure it reads status; if that read
+request to 30 seconds. An explicit `409 review_request_conflict` is returned
+immediately, without status recovery or retry; it is distinct from a recorded
+indeterminate outcome. After other submission failures it reads status; if that read
 also fails, it retries the same request ID once. It polls a running status every
 500 ms and honors the caller's AbortSignal. This is a per-request timeout, not a
 30-second deadline for the whole review. Terminal rejected/indeterminate status
@@ -7533,6 +7535,59 @@ reads need view. [The guide](../guides/walkthroughs.md#rest-and-sdk) owns bounds
 authorization, failure, privacy and preview lifecycle limits.
 
 ## Task review threads
+
+### Independent code review
+
+Personal hosts expose `GET /api/tasks/:taskId/review/code?taskCreatedAt=...&projectId=...`
+with the existing Task review preview enabled. It returns
+`station.task-code-review/v1`: the Project ID and creation time, Task checkout
+observation, configured distinct Codex reviewer choices, and the newest 20
+Task-associated review requests. A supplied `projectId` is compared with the
+authorized current Project. `omittedRequests`, `requestsUnavailable`, and
+per-request `omittedFindings` disclose bounds and partial reads. Each request
+includes at most eight findings. Checkout availability, uncommitted changes,
+revision freshness and reviewer outcomes are separate; none is a gate verdict.
+
+`POST /api/tasks/:taskId/review/code` accepts `requestId`, `projectId`,
+`projectCreatedAt`, `taskCreatedAt`, `baseSha`, `headSha` and
+`reviewerAgentSlug`. Project identity fields are equality preconditions from the
+observed view, not authority. A changed Project returns 409 `project-changed`
+before admission; this refusal does not settle an earlier uncertain request.
+Both commits must be full 40-character lowercase Git object IDs. New requests
+require an observable Task checkout at the submitted head, a non-terminal Task,
+a lead Agent and a distinct configured Codex reviewer. The server rechecks Task
+execution authority and implementer identity before provider effects. Stable-key
+retries join retained requests even after the checkout advances. Reusing an ID
+for different work is 409 `review_request_conflict`; uncertain outcomes are not
+authorization for a new request ID.
+
+The read uses current Task person-review authority; submission also needs Task
+execution authority and the transport's POST permission. `canRequest` reflects
+both. Deployment-account principals cannot use either leaf, even alongside a
+valid operator or unbound Device credential; shared member code review is not
+enabled. Responses are `Cache-Control: no-store`. Hosted runtimes
+do not mount these routes. Older hosts return 404; clients must show unsupported
+host guidance. On personal hosts, disabling Task review refuses these code-review
+leaves with typed 404 `feature_preview_disabled`, `previewId: "task-review"`
+and the Feature previews `settingsPath`, before parsing a submission body.
+A bound Agent's existing Project independent-review request also derives its
+Task association from the server-owned execution binding and requires a recorded
+non-account Session owner. Missing owners refuse. Callers cannot supply a Task
+association in the generic review body.
+
+Task/Project incarnation is retained in the review submission record before
+reviewer invocation. Task-associated submission rows use private schema version
+2; older binaries refuse those rows rather than execute them without their
+binding. Immutable review receipt format remains unchanged.
+Project lists, direct receipt/status reads and the aggregate also exclude these
+Task-associated results for deployment-account readers. An unavailable admission
+association refuses rather than treating the result as ordinary Project evidence.
+Delta ancestry cannot transfer Task findings into an unbound Project review.
+Task review publication retains the admitted filesystem identity and rechecks
+current authority before receipt/index and submission commits; a Project change
+or revocation during execution cannot redirect publication to its replacement.
+
+### Anchored feedback
 
 Personal runtimes mount review routes under `/api/tasks/:taskId/review`, using
 Task room request authority. Reads require `orchestration:read`; comment

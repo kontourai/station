@@ -690,7 +690,7 @@ for (const [label, viewport] of [
     await expect(mic).toBeFocused();
   });
 
-  if (label === 'desktop') {
+  {
     test(`${label}: typing keeps Stop fixed at the send-row edge`, async ({
       page,
     }, testInfo) => {
@@ -721,6 +721,18 @@ for (const [label, viewport] of [
       const stop = page.getByRole('button', { name: 'Stop the current turn' });
       await expect(stop).toBeVisible();
       await evidence(page, testInfo, `running-turn-empty-${label}.png`);
+      if (label === 'phone') {
+        // An empty phone draft has nothing to send or steer: Send and its
+        // Steer/Queue segment take no room, and Run setup gets the width.
+        await expect(
+          messageComposer.locator('.chat-input__submit-controls'),
+        ).toBeHidden();
+        expect(
+          await messageComposer
+            .locator('.chat-input__submit-controls')
+            .boundingBox(),
+        ).toBeNull();
+      }
 
       const before = (await stop.boundingBox())!;
       await textarea.fill('a follow-up');
@@ -740,7 +752,7 @@ for (const [label, viewport] of [
           })),
         );
       expect(after.x, JSON.stringify(geometry)).toBeCloseTo(before.x, 0);
-      await evidence(page, testInfo, 'desktop-stop-after-typing.png');
+      await evidence(page, testInfo, `${label}-stop-after-typing.png`);
     });
   }
 

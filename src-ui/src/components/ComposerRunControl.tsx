@@ -30,12 +30,15 @@ import './ComposerRunControl.css';
 /** One setup entry point for replies and every start surface. Picker owners stay mounted. */
 export function ComposerRunControl({
   label,
+  effort,
   icon,
   engineId,
   children,
   loadingLabel,
 }: {
   label: string;
+  /** The requested reasoning effort, shown after the model; absent when the engine default applies. */
+  effort?: string;
   icon: ReactNode;
   engineId?: EngineId | null;
   children: ReactNode;
@@ -60,6 +63,8 @@ export function ComposerRunControl({
       ? cloneElement(icon, { fallbackGlyph: true })
       : icon || <AgentGlyph />;
   const separator = label.lastIndexOf(' · ');
+  // Effort qualifies a Model, so it is shown only beside one.
+  const shownEffort = separator < 0 ? undefined : effort;
   const contentId = useId();
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -109,7 +114,7 @@ export function ComposerRunControl({
   const changed = choices.some((choice) => choice.changed);
   const summary = [
     ...new Set([
-      label,
+      shownEffort ? `${label} · ${shownEffort}` : label,
       ...details,
       ...safety,
       ...(changed ? ['changed for this conversation'] : []),
@@ -142,6 +147,12 @@ export function ComposerRunControl({
                 <span className="composer-run-control__model">
                   {label.slice(separator + 3)}
                 </span>
+                {shownEffort && (
+                  <span className="composer-run-control__effort">
+                    {' · '}
+                    {shownEffort}
+                  </span>
+                )}
               </span>
             )
           }

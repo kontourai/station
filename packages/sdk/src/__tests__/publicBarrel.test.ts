@@ -70,6 +70,7 @@ const PUBLIC_QUERY_DOMAINS = [
   'stationUsage',
   'usageRollup',
   'systemRuntime',
+  'taskCodeReview',
   'taskGraph',
   'taskMemory',
   'taskReview',

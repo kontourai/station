@@ -9,6 +9,7 @@ import { generateStationDocs } from './scripts/generate-station-docs.mjs';
 import { authorTelemetryEndpoint } from './scripts/lib/author-telemetry-build.mjs';
 import { deriveServerBuildIdentity } from './scripts/lib/desktop-build-manifest.mjs';
 import { STATION_SERVER_EXTERNALS } from './scripts/lib/server-build-config.mjs';
+import { assertAsciiServerBundles } from './scripts/lib/server-bundle-ascii.mjs';
 
 // jsonc-parser exposes its CommonJS UMD entry as `main` and its fully
 // statically-importable implementation as `module`. esbuild's Node defaults
@@ -73,6 +74,8 @@ cpSync(
   `${serverDir}/third-party/media-tools/NOTICE`,
 );
 
+// Bundles this build writes are checked; older files in serverDir are not.
+const buildStartedMs = Date.now();
 await Promise.all([
   esbuild.build({
     ...shared,
@@ -215,3 +218,5 @@ await Promise.all([
     outfile: `${serverDir}/project-task-room-working-state-worker.js`,
   }),
 ]);
+
+assertAsciiServerBundles(serverDir, { sinceMs: buildStartedMs });
