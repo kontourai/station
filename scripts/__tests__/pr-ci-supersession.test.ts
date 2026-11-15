@@ -819,6 +819,10 @@ async function replacedGroup(
     // The first N repository-wide run listings name one run they never
     // return, as GitHub's count does while a new group's runs are created.
     inconsistentListings?: number;
+    // Every listing of this status names one run it never returns.
+    inconsistentStatus?: string;
+    // Listings answer a non-integer total_count.
+    malformedCount?: boolean;
     // PR_CI_SUPERSESSION_LISTING_PAUSE_MS for the child (default '0').
     pauseMs?: string;
   } = {},
@@ -982,9 +986,13 @@ async function replacedGroup(
       const page = Number(url.searchParams.get('page'));
       const size = Number(url.searchParams.get('per_page'));
       return {
-        total_count:
-          all.length +
-          (listings <= (options.inconsistentListings ?? 0) ? 1 : 0),
+        total_count: options.malformedCount
+          ? 'unknown'
+          : all.length +
+            (listings <= (options.inconsistentListings ?? 0) ||
+            status === options.inconsistentStatus
+              ? 1
+              : 0),
         workflow_runs: all.slice((page - 1) * size, page * size),
       };
     };
@@ -1199,6 +1207,26 @@ describe('replaced merge candidate retirement through the GitHub API', () => {
     expect(lastGroupStdout).toContain(
       '::warning::Merge retirement skipped for #7: Truncated retirement inventory on all 3 listing attempts; nothing was cancelled',
     );
+  });
+  it('retires nothing from a partial listing when a later status stays inconsistent', async () => {
+    // The queued listing (dead iOS run 3) is complete on every attempt; the
+    // in_progress listing never is, so no attempt yields a whole picture.
+    expect(await replacedGroup({ inconsistentStatus: 'in_progress' })).toEqual({
+      code: 0,
+      cancelled: [],
+    });
+    expect(lastGroupListings).toBe(9);
+    expect(lastGroupStdout).toContain(
+      '::warning::Merge retirement skipped for #7: Truncated retirement inventory on all 3 listing attempts; nothing was cancelled',
+    );
+  });
+  it('fails on a malformed listing count without retrying it', async () => {
+    expect(await replacedGroup({ malformedCount: true })).toEqual({
+      code: 1,
+      cancelled: [],
+    });
+    expect(lastGroupListings).toBe(1);
+    expect(lastGroupStderr).toContain('Malformed retirement inventory count');
   });
   it('refuses an out-of-range listing pause', async () => {
     expect(await replacedGroup({ pauseMs: '10001' })).toEqual({
