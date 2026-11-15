@@ -89,25 +89,25 @@
       "name": "channel-nav-list-dark-mobile",
       "width": 390,
       "height": 1200,
-      "sha256": "0361de6dd52e67856fae505f8ba6a877406ed63aa0de4e369370c3e116ebb00e"
+      "sha256": "6f47ecf0e96d151cbe20571ad2880b5f42b5eaf0f550915c9605f1e36801051b"
     },
     {
       "name": "channel-nav-list-light-mobile",
       "width": 390,
       "height": 1200,
-      "sha256": "b8d6e503f1f966436d1189a6c9fa7a2d180fb652fd4987cc917a400d65774851"
+      "sha256": "16a4f8121c447a8aa80a00137e584d7b4b45bf97e9485fb748ab99a14ea57aed"
     },
     {
       "name": "channel-nav-thread-dark-mobile",
       "width": 390,
       "height": 844,
-      "sha256": "fc7581edf14918d6c1139e797b80f5807bb8441f01b69a0b327bb52408229d44"
+      "sha256": "c8e7d8336cc7454818947c1254c8255927295863d67f980757793672fbf8bfef"
     },
     {
       "name": "channel-nav-thread-light-mobile",
       "width": 390,
       "height": 844,
-      "sha256": "14418615f0df55b68899294c74806120e135e9175b2e27a5bf5a6f07f838b8a7"
+      "sha256": "e5b0ca8610e50917078e3e84fcfb840b1e639756f3c697dd2d1c44e99ed07b66"
     },
     {
       "name": "child-chat-dark-1440",
