@@ -115,9 +115,15 @@ test('a phone composer shows the next-turn destination in full beside four chips
   try {
     await page.waitForSelector('textarea');
     expect(errors).toEqual([]);
-    // The row really carries four chips (the Mode chip loads lazily).
+    // The row carries the Run setup trigger, whose closed panel keeps the
+    // four real controls mounted (the Mode one loads lazily).
     await page.waitForFunction(
-      () => document.querySelectorAll('.chat-input__settings > *').length >= 4,
+      () =>
+        document.querySelectorAll(
+          '.chat-input__settings > .composer-run-control',
+        ).length === 1 &&
+        document.querySelectorAll('.composer-run-panel__choices > *').length >=
+          4,
     );
     const destination = await page.evaluate(
       unclipped,
