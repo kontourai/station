@@ -352,6 +352,111 @@
       "restored_summary": [
         "Tests  86 passed (86)"
       ]
+    },
+    {
+      "id": "members-minimal-fields",
+      "behavior": "the member directory returns id, displayName and kind only",
+      "file": "src-server/services/projects/project-room-service.ts",
+      "test": "src-server/routes/projects/project-room-routes.test.ts",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× members (#4799): only a current room reader may list, and the list is active people with id, name and kind only 182ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 86 passed (87)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  87 passed (87)"
+      ]
+    },
+    {
+      "id": "members-non-member",
+      "behavior": "listing requires existing room read: a signed-in non-member is refused",
+      "file": "src-server/services/projects/project-membership-store.ts",
+      "test": "src-server/routes/projects/project-room-routes.test.ts",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× members (#4799): only a current room reader may list, and the list is active people with id, name and kind only 155ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 86 passed (87)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  87 passed (87)"
+      ]
+    },
+    {
+      "id": "members-revoked",
+      "behavior": "a revoked member is refused",
+      "file": "src-server/services/projects/project-membership-store.ts",
+      "test": "src-server/routes/projects/project-room-routes.test.ts",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× SSE checkpoints are guarded at queued delivery and terminate with revoked while presence is removed 250ms",
+        "× idle SSE periodically notices membership revocation and shutdown clears its timers 20397ms",
+        "× live (#4798): losing access ends that room with revoked, and a viewer cannot type 290ms",
+        "× members (#4799): only a current room reader may list, and the list is active people with id, name and kind only 173ms",
+        "× live (#4798): a member revoked mid-stream gets revoked and nothing after it: no typing, presence or messages 5616ms"
+      ],
+      "injected_summary": [
+        "Tests  5 failed | 82 passed (87)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  87 passed (87)"
+      ]
+    },
+    {
+      "id": "stream-revoke-loop-check-only",
+      "behavior": "mid-stream revocation: remove only the per-frame admission check in the stream loop",
+      "file": "src-server/routes/projects/project-room-live.ts",
+      "test": "src-server/routes/projects/project-room-routes.test.ts",
+      "injected_exit": 0,
+      "injected_failures": [],
+      "injected_summary": [
+        "Tests  87 passed (87)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  87 passed (87)"
+      ],
+      "note": "survives alone: the response guard re-checks the same admission before every chunk and answers with the terminal revoked frames. Removing the guard terminal, or both layers, is caught."
+    },
+    {
+      "id": "stream-revoke-guard-terminal-only",
+      "behavior": "mid-stream revocation: remove only the guard's terminal revoked frames",
+      "file": "src-server/routes/projects/project-room-live.ts",
+      "test": "src-server/routes/projects/project-room-routes.test.ts",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× live (#4798): a member revoked mid-stream gets revoked and nothing after it: no typing, presence or messages 579ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 86 passed (87)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  87 passed (87)"
+      ]
+    },
+    {
+      "id": "stream-revoke-both-layers",
+      "behavior": "mid-stream revocation: remove the loop check and the guard's per-chunk re-check",
+      "file": "src-server/routes/projects/project-room-live.ts",
+      "test": "src-server/routes/projects/project-room-routes.test.ts",
+      "injected_exit": 1,
+      "injected_failures": [
+        "× live (#4798): a member revoked mid-stream gets revoked and nothing after it: no typing, presence or messages 533ms"
+      ],
+      "injected_summary": [
+        "Tests  1 failed | 86 passed (87)"
+      ],
+      "restored_exit": 0,
+      "restored_summary": [
+        "Tests  87 passed (87)"
+      ]
     }
   ]
 }
