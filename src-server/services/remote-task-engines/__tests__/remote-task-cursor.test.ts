@@ -9,7 +9,7 @@
 import { describe, expect, test } from 'vitest';
 import { RemoteTaskStore } from '../stores.js';
 import { harness } from './harness.js';
-import { cursorFake } from './vendor-fakes.js';
+import { cursorFake, json } from './vendor-fakes.js';
 
 const TOKEN = 'key_cursor_test_0001';
 
@@ -189,10 +189,11 @@ describe('Cursor binding', () => {
       1050,
     );
     expect(result.quiescent).toBe(true);
-    // Ten pages, then one more from the resume cursor.
+    // Ten pages, one more from the resume cursor, then the newest again.
     const lists = cursor.fake.matching('GET', /\/runs$/).slice(listsBefore);
-    expect(lists).toHaveLength(11);
-    expect(lists.at(-1)?.url.searchParams.get('cursor')).toBe('1000');
+    expect(lists).toHaveLength(12);
+    expect(lists[10]?.url.searchParams.get('cursor')).toBe('1000');
+    expect(lists[11]?.url.searchParams.get('cursor')).toBeNull();
     // The backlog read, listing starts from the newest run again.
     cursor.startRun(
       'run-00000000-0000-0000-0000-000000000099',
@@ -207,6 +208,91 @@ describe('Cursor binding', () => {
         .at(-1)
         ?.url.searchParams.get('cursor'),
     ).toBeNull();
+  });
+
+  test('a burst past ten pages whose list leaves results out is read in full', async () => {
+    const { cursor, h, connectionId } = await setup();
+    cursor.state.omitResultInList = true;
+    cursor.state.run.status = 'RUNNING';
+    await h.service.syncTask(connectionId, cursor.agentId);
+    // 1,010 runs, none with a listed result: ten past the ten pages a call
+    // reads, and every result needs its own read.
+    cursor.finishRun('run 0 done');
+    for (let i = 1; i < 1010; i += 1) {
+      cursor.startRun(
+        `run-10000000-0000-0000-0000-${String(i).padStart(12, '0')}`,
+        new Date(
+          Date.parse('2026-04-13T19:00:00.000Z') + i * 60_000,
+        ).toISOString(),
+      );
+      cursor.finishRun(`run ${i} done`);
+    }
+    let quiescent = false;
+    for (let sync = 0; sync < 40 && !quiescent; sync += 1)
+      quiescent = (await h.service.syncTask(connectionId, cursor.agentId))
+        .quiescent;
+    expect(quiescent).toBe(true);
+    const { events } = h.service.readEvents(connectionId, cursor.agentId, 0);
+    expect(new Set(agentMessages(events))).toEqual(
+      new Set(Array.from({ length: 1010 }, (_, i) => `run ${i} done`)),
+    );
+    expect(agentMessages(events)).toHaveLength(1010);
+  }, 180_000);
+
+  test('a run that finishes while a backlog is being resumed is still read', async () => {
+    const cursor = cursorFake();
+    // The list page resumed from the vendor cursor fails once.
+    let failResume = true;
+    const h = harness((input, init) => {
+      const url = new URL(String(input));
+      if (
+        failResume &&
+        /\/runs$/.test(url.pathname) &&
+        url.searchParams.get('cursor') !== null
+      ) {
+        failResume = false;
+        return Promise.resolve(
+          json(503, { error: { message: 'Unavailable' } }),
+        );
+      }
+      return cursor.fake.fetch(input, init);
+    });
+    const connectionId = await h.readyConnection('cursor', TOKEN);
+    cursor.state.run.status = 'RUNNING';
+    await h.service.syncTask(connectionId, cursor.agentId);
+    cursor.finishRun('run 0 done');
+    for (let i = 1; i < 1050; i += 1) {
+      cursor.startRun(
+        `run-10000000-0000-0000-0000-${String(i).padStart(12, '0')}`,
+        new Date(
+          Date.parse('2026-04-13T19:00:00.000Z') + i * 60_000,
+        ).toISOString(),
+      );
+      cursor.finishRun(`run ${i} done`);
+    }
+    await expect(
+      h.service.syncTask(connectionId, cursor.agentId),
+    ).rejects.toMatchObject({ code: 'remote-task-vendor-unavailable' });
+    // A new run finishes while the backlog's cursor is stored.
+    cursor.startRun(
+      'run-00000000-0000-0000-0000-000000000099',
+      '2026-04-14T19:00:00.000Z',
+    );
+    cursor.finishRun('the newest run');
+    // A restarted service reads the same stored state.
+    const restarted = harness(cursor.fake.fetch, h.home);
+    const result = await restarted.service.syncTask(
+      connectionId,
+      cursor.agentId,
+    );
+    expect(result.quiescent).toBe(true);
+    const { events } = restarted.service.readEvents(
+      connectionId,
+      cursor.agentId,
+      0,
+    );
+    expect(agentMessages(events)).toContain('the newest run');
+    expect(agentMessages(events)).toHaveLength(1051);
   });
 
   test('runs that ended with no result are read once each, and the task settles', async () => {

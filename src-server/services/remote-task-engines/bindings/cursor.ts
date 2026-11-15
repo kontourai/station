@@ -174,6 +174,55 @@ function emptyRunNote(
   };
 }
 
+/** What a run-list call left for the next one (see `pageEvents`). */
+interface RunPaging {
+  readonly pending: readonly string[];
+  readonly resume?: string;
+  readonly top?: true;
+}
+
+/**
+ * The stored cursor as paging state. A bare string is a vendor cursor from
+ * before the state existed; it resumes from there.
+ */
+function readRunPaging(cursor: string | null): RunPaging {
+  if (cursor === null) return { pending: [] };
+  let value: unknown;
+  try {
+    value = JSON.parse(cursor);
+  } catch {
+    return { pending: [], resume: cursor };
+  }
+  const record = asRecord(value);
+  if (record.kind !== 'cursor-runs') return { pending: [], resume: cursor };
+  const pending = Array.isArray(record.pending)
+    ? record.pending.filter(
+        (id): id is string => typeof id === 'string' && RUN_ID.test(id),
+      )
+    : [];
+  const resume = stringField(record, 'resume');
+  return {
+    pending,
+    ...(resume ? { resume } : {}),
+    ...(record.top === true ? { top: true as const } : {}),
+  };
+}
+
+function pagingResult(
+  events: RemoteTaskEvent[],
+  state: RunPaging,
+): { events: RemoteTaskEvent[]; cursor: string | null; hasMore: boolean } {
+  const more =
+    state.pending.length > 0 ||
+    state.resume !== undefined ||
+    state.top === true;
+  return {
+    events,
+    cursor: more ? JSON.stringify({ kind: 'cursor-runs', ...state }) : null,
+    hasMore: more,
+  };
+}
+
 export const cursorBinding: RemoteTaskBinding = {
   vendor: 'cursor',
   baseUrl: 'https://api.cursor.com',
@@ -277,24 +326,45 @@ export const cursorBinding: RemoteTaskBinding = {
   /**
    * The finished runs' results, oldest first. The runs list is newest first
    * and paged (`limit`, `nextCursor`); it is followed until a page reaches a
-   * run Station already stored, so a burst of runs between polls is not cut
-   * at the first page. A finished run the list leaves without its `result`
-   * is read on its own, at most five per call and never one already stored;
-   * one that ended with no result is stored as a note, so it counts as read.
-   * When more remain, `hasMore` asks the service to call again before the
-   * task can settle.
+   * run Station already stored, at most ten pages a call. Stopping there is
+   * safe only while every run older than a stored one is accounted for, so
+   * the cursor carries the work a call could not finish (`RunPaging`):
    *
-   * A call reads at most ten list pages. When the list goes on past them,
-   * the vendor's `nextCursor` comes back as the resume cursor with `hasMore`,
-   * and the next call continues from there; once that backlog is read the
-   * cursor returns to null, so listing starts again from the newest run.
-   * While results are still unread, the cursor does not advance, so the same
-   * window is read again first. `known` does the skipping either way.
+   * - `pending`: finished runs the list left without a `result`, oldest
+   *   first. They are read on their own, five a call, before anything is
+   *   listed again; a run that ended with no result is stored as a note.
+   * - `resume`: the vendor's `nextCursor` where ten pages ran out, so the
+   *   next call continues that backlog instead of dropping it.
+   * - `top`: a resumed backlog ran out, so the next call lists again from the
+   *   newest run, which finished runs may have joined meanwhile.
+   *
+   * `hasMore` holds while any of them remains, so the task cannot settle
+   * with work left. The service stores the cursor, so the work survives a
+   * failed page and a restart.
    */
   async pageEvents(context, taskId, cursor, known = () => false) {
+    const state = readRunPaging(cursor);
+    const events: RemoteTaskEvent[] = [];
+    if (state.pending.length > 0) {
+      const pending = state.pending.filter((id) => !known(`run:${id}`));
+      for (const runId of pending.slice(0, RESULT_READS_PER_PAGE)) {
+        const { body } = await context.http.json({
+          method: 'GET',
+          path: `${agentPath(taskId)}/runs/${encodeURIComponent(runId)}`,
+        });
+        const run = asRecord(body);
+        const message = runMessage(run) ?? emptyRunNote(run);
+        if (message) events.push(message);
+      }
+      return pagingResult(events, {
+        ...state,
+        pending: pending.slice(RESULT_READS_PER_PAGE),
+      });
+    }
+    const resuming = state.resume !== undefined;
     const runs: Array<Record<string, unknown>> = [];
-    let next: string | undefined = cursor ?? undefined;
-    let capped = false;
+    let next: string | undefined = state.resume;
+    let resume: string | undefined;
     for (let page = 0; page < RUN_LIST_PAGES; page += 1) {
       const { body } = await context.http.json({
         method: 'GET',
@@ -311,7 +381,7 @@ export const cursorBinding: RemoteTaskBinding = {
         return id !== undefined && known(`run:${id}`);
       });
       if (!next || reachedStored) break;
-      if (page === RUN_LIST_PAGES - 1) capped = true;
+      if (page === RUN_LIST_PAGES - 1) resume = next;
     }
     const finished = runs
       .filter((run) =>
@@ -323,35 +393,28 @@ export const cursorBinding: RemoteTaskBinding = {
           stringField(b, 'createdAt') ?? '',
         ),
       );
-    const events: RemoteTaskEvent[] = [];
-    let reads = 0;
-    let unread = 0;
+    const pending: string[] = [];
     for (const run of finished) {
-      let message = runMessage(run);
       const runId = stringField(run, 'id');
       // A list entry may leave `result` out; the run itself carries it.
-      if (!message && run.result === undefined && runId && RUN_ID.test(runId)) {
-        if (reads >= RESULT_READS_PER_PAGE) {
-          unread += 1;
-          continue;
-        }
-        reads += 1;
-        const { body: full } = await context.http.json({
-          method: 'GET',
-          path: `${agentPath(taskId)}/runs/${encodeURIComponent(runId)}`,
-        });
-        message = runMessage(asRecord(full)) ?? emptyRunNote(asRecord(full));
+      if (
+        !runMessage(run) &&
+        run.result === undefined &&
+        runId &&
+        RUN_ID.test(runId)
+      ) {
+        pending.push(runId);
+        continue;
       }
-      message ??= emptyRunNote(run);
+      const message = runMessage(run) ?? emptyRunNote(run);
       if (message) events.push(message);
     }
-    if (capped && unread === 0 && next)
-      return { events, cursor: next, hasMore: true };
-    return {
-      events,
-      cursor: unread > 0 ? (cursor ?? null) : null,
-      hasMore: unread > 0 || capped,
-    };
+    return pagingResult(events, {
+      pending,
+      ...(resume !== undefined ? { resume } : {}),
+      // A backlog that ran out: list from the newest run once more.
+      ...(resuming && resume === undefined ? { top: true } : {}),
+    });
   },
 
   async cancelTask(context, taskId) {
