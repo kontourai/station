@@ -7,7 +7,7 @@ import type { TurnDispatchOrigin } from '@kontourai/station-contracts/runtime-ev
  * report) and for a delegator's immediate follow-up or a queued inbox entry
  * to arrive and keep the engine; short against the 30-minute idle park.
  */
-export const FINISHED_SESSION_PARK_AFTER_MS = 15_000;
+const FINISHED_SESSION_PARK_AFTER_MS = 15_000;
 
 /**
  * Timers and event clocks disagree by milliseconds; the park is checked
