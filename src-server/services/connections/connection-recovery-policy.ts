@@ -61,6 +61,11 @@ export function selectCredentialRecoveryCandidate(input: {
    * invalid saved overlay never routes alike, so it is never auto-selected.
    */
   profiles?: readonly { ref: string; env?: unknown }[];
+  /**
+   * A person chose this candidate for this stop ("Continue on <label>"). It
+   * stands in for the `automatic` opt-in only; every other rule still holds.
+   */
+  consented?: true;
 }): CredentialRecoveryCandidateSelection {
   if (input.failure.kind === 'authentication') {
     return { outcome: 'refused', reason: 'authentication' };
@@ -74,7 +79,10 @@ export function selectCredentialRecoveryCandidate(input: {
   if (input.failure.scope !== 'account') {
     return { outcome: 'refused', reason: 'ineligible_scope' };
   }
-  if (!isAutomaticCredentialRecoveryEnabled(input.policy)) {
+  if (
+    input.consented !== true &&
+    !isAutomaticCredentialRecoveryEnabled(input.policy)
+  ) {
     return { outcome: 'refused', reason: 'automatic_disabled' };
   }
   if (

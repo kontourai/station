@@ -63,6 +63,11 @@ export type UsageLimitRecoveryActionResult =
   | { kind: 'retired'; reason: ConnectionRecoveryOutcomeReason }
   /** A person chose, for this stop, what happens at its reset. */
   | { kind: 'chosen'; choice: UsageLimitResumeChoice }
+  /**
+   * "Continue on <label>" did not switch: the profile no longer qualifies,
+   * or credential recovery is paused. The stop keeps waiting as it was.
+   */
+  | { kind: 'not-switched' }
   | { kind: 'not-waiting' };
 
 /**
@@ -728,6 +733,65 @@ export class SessionRecoveryCoordinator {
     return result;
   }
 
+  /**
+   * "Continue on <label>": the person's consent to continue this stop on one
+   * other enrolled credential profile now, through the same stage, restart
+   * and replay protocol as automatic credential recovery, with their click in
+   * place of the `automatic` opt-in. The pre-dispatch checks apply first. A
+   * profile that no longer qualifies leaves the stop waiting as it was.
+   */
+  async continueUsageLimitOnProfile(
+    threadId: string,
+    profileRef: string,
+  ): Promise<UsageLimitRecoveryActionResult> {
+    if (this.stopping || this.disposed || !this.credentialRecovery)
+      return { kind: 'not-waiting' };
+    const waiting = this.waitingUsageLimitIntent(threadId);
+    if (!waiting) return { kind: 'not-waiting' };
+    let result: UsageLimitRecoveryActionResult = { kind: 'not-waiting' };
+    await this.enqueueLifecycle(waiting.fingerprint, async () => {
+      const current = this.ledger.find(waiting.fingerprint);
+      if (
+        !current?.usageLimit ||
+        (current.outcome !== 'armed' && current.outcome !== 'manual')
+      )
+        return;
+      const obstacle = this.dispatchObstacle(current);
+      if (obstacle) {
+        result = this.retireWaiting(current, 'canceled', obstacle)
+          ? { kind: 'retired', reason: obstacle }
+          : { kind: 'not-waiting' };
+        return;
+      }
+      const source = this.findSourceEvent(current);
+      if (!this.replayableSource(source)) {
+        await this.failIntent(current);
+        result = { kind: 'failed' };
+        return;
+      }
+      const handled = await this.tryProfileRecoveryOrSchedule(
+        current,
+        source,
+        profileRef,
+      );
+      const after = this.ledger.find(current.fingerprint);
+      if (!handled) {
+        // Not staged: the stop is back to waiting, so its reset still counts.
+        if (after?.outcome === 'armed' && after.dueAt)
+          this.schedule(after.fingerprint, after.dueAt);
+        result = { kind: 'not-switched' };
+        return;
+      }
+      result =
+        after?.outcome === 'resumed' || after?.outcome === 'succeeded'
+          ? { kind: 'resumed' }
+          : after?.outcome === 'armed' || after?.outcome === 'manual'
+            ? { kind: 'not-switched' }
+            : { kind: 'failed' };
+    });
+    return result;
+  }
+
   /** #3157: the user's "Cancel auto-resume": retire the waiting intent unsent. */
   async cancelUsageLimitWaiting(
     threadId: string,
@@ -755,6 +819,7 @@ export class SessionRecoveryCoordinator {
   private async tryProfileRecoveryOrSchedule(
     intent: ConnectionRecoveryIntent,
     source: ReplayableTurnStart,
+    consentedProfileRef?: string,
   ): Promise<boolean> {
     const module = this.credentialRecovery;
     if (!module) return false;
@@ -777,6 +842,7 @@ export class SessionRecoveryCoordinator {
         '',
         controller.signal,
       ),
+      ...(consentedProfileRef !== undefined ? { consentedProfileRef } : {}),
     });
     if (outcome.kind !== 'unavailable') this.admissionRetry = undefined;
     if (outcome.kind === 'unnecessary') {

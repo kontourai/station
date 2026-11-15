@@ -219,6 +219,11 @@ export const credentialProfileImportRequestSchema = z.object({
   includeCredentials: z.boolean().optional(),
 });
 
+/** "Continue on <label>" on a usage-limit stop: the profile the person chose. */
+export const usageLimitContinueOnRequestSchema = z
+  .object({ profileRef: credentialProfileRefSchema })
+  .strict();
+
 export const credentialProfileApplyRequestSchema = z.object({
   // Applying a profile sends one bounded provider turn. `true` is a separate
   // literal so omitted/false confirmation never reaches the service seam.

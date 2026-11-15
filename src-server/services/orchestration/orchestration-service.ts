@@ -35,7 +35,10 @@ import type {
   ClientOriginActor,
 } from '@kontourai/station-contracts/client-origin';
 import type { NoProjectChatFolder } from '@kontourai/station-contracts/config';
-import type { ConnectionRecoveryProjection } from '@kontourai/station-contracts/connection-recovery';
+import type {
+  ConnectionRecoveryProjection,
+  UsageLimitContinueOnProfile,
+} from '@kontourai/station-contracts/connection-recovery';
 import type {
   ConversationContextBoundaryProjection,
   ConversationContextBoundaryRequest,
@@ -6061,6 +6064,42 @@ export class OrchestrationService {
   }
 
   /**
+   * The profiles a waiting usage-limit stop can be continued on ("Continue
+   * on <label>"). A separate read from the banner's, because it lists this
+   * Station's accounts: its route takes the credential-management tier. A
+   * hosted Station offers none (a tenant's Session must not switch a shared
+   * connection's account), and an unreadable list offers none.
+   */
+  async readUsageLimitContinueOn(
+    threadId: string,
+  ): Promise<UsageLimitContinueOnProfile[]> {
+    this.initialize();
+    const list =
+      this.options.credentialProfileRecoveryAdapter?.listContinueOnProfiles;
+    if (
+      !list ||
+      !this.credentialRecovery ||
+      this.options.requireTenantExecutionContext?.() === true
+    )
+      return [];
+    const projection = this.recoveryCoordinator?.latestProjection(threadId);
+    if (
+      !projection?.usageLimit ||
+      projection.scope !== 'account' ||
+      (projection.outcome !== 'armed' && projection.outcome !== 'manual')
+    )
+      return [];
+    const provider =
+      this.options.eventStore?.readSessionByThread(threadId)?.provider;
+    if (!provider) return [];
+    try {
+      return await list(provider);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
    * #3157: the banner's "Resume now" and "Cancel auto-resume". The caller
    * authorizes the mutation. Each answers with what it did and the projection
    * as it stands afterward, so a click on a banner that has since settled
@@ -6068,13 +6107,34 @@ export class OrchestrationService {
    */
   async actOnUsageLimitRecovery(
     threadId: string,
-    action: 'resume' | 'cancel' | 'resume-at-reset' | 'hold',
+    action: 'resume' | 'cancel' | 'resume-at-reset' | 'hold' | 'continue-on',
+    /** The profile "Continue on <label>" names; required for `continue-on`. */
+    profileRef?: string,
   ): Promise<{
     result: UsageLimitRecoveryActionResult;
     recovery: ConnectionRecoveryProjection | null;
   }> {
     this.initialize();
     const coordinator = this.recoveryCoordinator;
+    if (action === 'continue-on') {
+      // Only a profile this stop is offered now may be chosen.
+      const before = await this.readUsageLimitRecovery(threadId);
+      const waiting =
+        before?.outcome === 'armed' || before?.outcome === 'manual';
+      const offered = (await this.readUsageLimitContinueOn(threadId)).some(
+        (profile) => profile.ref === profileRef,
+      );
+      const result: UsageLimitRecoveryActionResult =
+        !coordinator || !waiting
+          ? { kind: 'not-waiting' }
+          : profileRef && offered
+            ? await coordinator.continueUsageLimitOnProfile(
+                threadId,
+                profileRef,
+              )
+            : { kind: 'not-switched' };
+      return { result, recovery: await this.readUsageLimitRecovery(threadId) };
+    }
     const result: UsageLimitRecoveryActionResult = coordinator
       ? action === 'resume'
         ? await coordinator.resumeUsageLimitNow(threadId)

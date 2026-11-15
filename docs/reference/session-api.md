@@ -2043,11 +2043,26 @@ in [contracts](contracts.md)). These routes serve the chat banner:
   A held stop keeps Resume now. Either answers `not-waiting` for a stop with
   no known reset or one no longer waiting.
 
+- `GET /sessions/:threadId/usage-limit/continue-on` answers `{ profiles }`
+  (`UsageLimitContinueOnOptions`): the enrolled credential profiles
+  (`ref`, optional `label`) a waiting stop may continue on, in enrollment
+  order. It is empty for an engine that cannot apply a profile (Claude Code),
+  a stop that is not waiting, or a hosted Station.
+  `POST /sessions/:threadId/usage-limit/continue-on` with `{ "profileRef" }`
+  ("Continue on <label>") stages that profile and replays the stopped turn
+  under it, through the same protocol as automatic credential recovery, with
+  this request as the consent the `automatic` policy otherwise gives. The
+  pre-dispatch checks apply first. A profile not currently offered, or one that
+  no longer qualifies when staged, answers `not-switched` and leaves the stop
+  waiting. Both list or switch this Station's accounts, so they need the
+  `access:manage` pairing scope as well as the Session's own person.
+
 Every POST answers `{ result, recovery }`: `result.kind` is `resumed` (the
 dispatch started; whether the provider accepts it shows later in `recovery`,
 which can still read `failed` if the dispatch is rejected), `failed` (it could
 not be dispatched at all, for example its attachment bytes are gone), `canceled`, `retired`
-(with `reason`), `chosen` (with `choice`) or `not-waiting` (nothing was left
+(with `reason`), `chosen` (with `choice`), `not-switched` (Continue on did
+not switch accounts) or `not-waiting` (nothing was left
 to act on), and `recovery`
 is the projection afterward.
 

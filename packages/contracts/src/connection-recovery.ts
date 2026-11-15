@@ -272,6 +272,26 @@ export interface ConnectionRecoveryProjection {
   updatedAt: string;
 }
 
+/** A credential profile a usage-limit stop can be continued on. */
+export interface UsageLimitContinueOnProfile {
+  ref: string;
+  /** Display label only; never an account identity. */
+  label?: string;
+}
+
+/**
+ * The enrolled credential profiles a usage-limit stop still waiting may be
+ * continued on ("Continue on <label>"), in enrollment order. Each passes the
+ * same selection rules as automatic credential recovery except the
+ * `automatic` opt-in, which the person's click replaces. Station does not know
+ * whether these accounts are themselves limited. Empty when the engine cannot
+ * switch profiles (Claude Code today), none qualifies, the stop is not
+ * waiting, or the Station is hosted.
+ */
+export interface UsageLimitContinueOnOptions {
+  profiles: UsageLimitContinueOnProfile[];
+}
+
 /**
  * #3157: why a usage-limit intent did not resume on its own. A `manual`
  * intent carries `auto-resume-off`. A `canceled` intent carries

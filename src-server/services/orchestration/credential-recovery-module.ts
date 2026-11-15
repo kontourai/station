@@ -5,6 +5,7 @@ import type {
 import type {
   ConnectionRecoveryIntent,
   RecoveryAdmissionRefusalReason,
+  UsageLimitContinueOnProfile,
 } from '@kontourai/station-contracts/connection-recovery';
 import { credentialProfileApplication } from '../../telemetry/metrics.js';
 import type { ClassifiedConnectionFailure } from '../connections/connection-recovery-policy.js';
@@ -45,7 +46,16 @@ export interface CredentialProfileRecoveryAdapter {
     failure: ClassifiedConnectionFailure;
     /** Claim-generated opaque key persisted before the registry is mutated. */
     recoveryFingerprint: string;
+    /**
+     * A person chose this profile for this stop ("Continue on <label>"); it
+     * replaces only the `automatic` opt-in, never the other selection rules.
+     */
+    consentedProfileRef?: string;
   }): Promise<CredentialProfileStageOutcome>;
+  /** Profiles a usage-limit stop on this provider may be continued on. */
+  listContinueOnProfiles?(
+    provider: string,
+  ): Promise<UsageLimitContinueOnProfile[]>;
   inspectStartup?(input: {
     provider: string;
     application: CredentialApplicationHandle;
@@ -87,6 +97,8 @@ interface CredentialRecoveryObservation {
    * bytes (archive#3374).
    */
   replay: RecoveryDispatchReplay;
+  /** A person's "Continue on <label>": stage exactly this profile. */
+  consentedProfileRef?: string;
 }
 
 /** Total results keep callers from reconstructing compensation policy. */
@@ -274,7 +286,11 @@ class CredentialRecoveryImplementation implements CredentialRecoveryModule {
     if (credential.kind !== 'owner') {
       return this.indeterminateProfileDispatch(claimed, prepared.attempt);
     }
-    const staged = await this.stage(intent, credential.attemptId);
+    const staged = await this.stage(
+      intent,
+      credential.attemptId,
+      observation.consentedProfileRef,
+    );
     if (staged.kind === 'unavailable') {
       const released = prepared.attempt.releaseBeforeInvocation({
         outcome: intent.outcome === 'manual' ? 'manual' : 'armed',
@@ -743,12 +759,14 @@ class CredentialRecoveryImplementation implements CredentialRecoveryModule {
   private async stage(
     intent: ConnectionRecoveryIntent,
     recoveryFingerprint: string,
+    consentedProfileRef?: string,
   ): Promise<CredentialProfileStageOutcome> {
     try {
       const outcome = await this.dependencies.adapter.stage({
         provider: intent.provider,
         failure: { kind: intent.failureKind, scope: intent.scope, timing: {} },
         recoveryFingerprint,
+        ...(consentedProfileRef !== undefined ? { consentedProfileRef } : {}),
       });
       if (outcome.kind !== 'staged') return outcome;
       if (outcome.attempt.capability !== 'restart_resume') {

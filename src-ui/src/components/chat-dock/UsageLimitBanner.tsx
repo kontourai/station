@@ -124,13 +124,21 @@ function UsageLimitBannerFor({
   const { namespace } = useAuthorityPersistence();
   const [engaged, setEngaged] = useState(false);
   const enabled = active || engaged;
-  const { recovery, refetch, resume, resumeAtReset, hold } =
-    useUsageLimitRecovery({
-      apiBase,
-      scope,
-      threadId,
-      enabled,
-    });
+  const {
+    recovery,
+    refetch,
+    resume,
+    resumeAtReset,
+    hold,
+    continueOnProfiles,
+    continueOn,
+  } = useUsageLimitRecovery({
+    apiBase,
+    scope,
+    threadId,
+    enabled,
+  });
+  const [notSwitched, setNotSwitched] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [notice, setNotice] = useState<string | null>(null);
   const wasEngaged = useRef(false);
@@ -252,8 +260,28 @@ function UsageLimitBannerFor({
       : dueKnown
         ? null
         : 'Reset time unknown. Resume when your limit is back.';
-  const failed = resume.isError || resumeAtReset.isError || hold.isError;
-  const busy = resume.isPending || resumeAtReset.isPending || hold.isPending;
+  const failed =
+    resume.isError ||
+    resumeAtReset.isError ||
+    hold.isError ||
+    continueOn.isError;
+  const busy =
+    resume.isPending ||
+    resumeAtReset.isPending ||
+    hold.isPending ||
+    continueOn.isPending;
+  const continueOnActions = continueOnProfiles.map((profile) => ({
+    key: `continue-on:${profile.ref}`,
+    label: `Continue on ${profile.label || profile.ref}`,
+    ref: profile.ref,
+  }));
+  const continueOnProfile = (profileRef: string) => {
+    setNotSwitched(false);
+    continueOn.mutate(profileRef, {
+      onSuccess: ({ result }) =>
+        setNotSwitched(result?.kind === 'not-switched'),
+    });
+  };
   const resumeNowButton = (
     <Button
       variant={canChoose && !autoOn ? 'secondary' : 'primary'}
@@ -306,6 +334,31 @@ function UsageLimitBannerFor({
       </Button>
     ) : undefined;
 
+  const secondary = resumeAtButton ? resumeNowButton : dontResumeButton;
+  // "Continue on <label>" takes the free labelled slot when there is one;
+  // otherwise, and for any further account, it waits behind the menu.
+  const [firstContinueOn, ...moreContinueOn] = continueOnActions;
+  const continueOnButton =
+    !secondary && firstContinueOn ? (
+      <Button
+        size="sm"
+        pending={continueOn.isPending}
+        pendingLabel="Switching…"
+        disabled={busy}
+        onClick={() => continueOnProfile(firstContinueOn.ref)}
+      >
+        {firstContinueOn.label}
+      </Button>
+    ) : undefined;
+  const overflow = (continueOnButton ? moreContinueOn : continueOnActions).map(
+    ({ key, label, ref }) => ({
+      key,
+      label,
+      disabled: busy,
+      onSelect: () => continueOnProfile(ref),
+    }),
+  );
+
   return (
     <section
       className="usage-limit-banner"
@@ -344,13 +397,18 @@ function UsageLimitBannerFor({
         <p className="usage-limit-banner__error" role="alert">
           That didn't go through. Try again.
         </p>
+      ) : notSwitched ? (
+        <p className="usage-limit-banner__error" role="alert">
+          Couldn't switch accounts. This conversation is still waiting.
+        </p>
       ) : null}
       {/* Two actions at most: the choice this stop offers, and Resume now. */}
       <ActionRow
         className="usage-limit-banner__actions"
         overflowLabel="More usage limit actions"
         primary={resumeAtButton ?? resumeNowButton}
-        secondary={resumeAtButton ? resumeNowButton : dontResumeButton}
+        secondary={secondary ?? continueOnButton}
+        overflow={overflow}
       />
     </section>
   );
