@@ -477,7 +477,9 @@ would. Write what you want done
 and choose **Start**. You do not need to choose anything first; the controls
 show what **Start** will use:
 
-- The combined **Agent · Model** button opens **Run setup**. Its Agent choice
+- The combined Run setup button shows the Agent's icon and the Model's name,
+  followed by the thinking effort when you chose one (for example
+  **Opus · High**). It opens **Run setup**. Its Agent choice
   lists **Station**, **Coding apps**, and **My agents**, with readiness and setup
   actions. Its Model choice opens the
   **Engine & model** picker, which also offers alternative engines when they
@@ -492,7 +494,8 @@ show what **Start** will use:
   **Use Agent defaults** for an engine override. In an existing conversation,
   changing or resetting the engine opens a handoff confirmation that keeps your draft.
   Full access, a pending or refused approval change, and a conversation override
-  add a warning glyph to the combined button; open Run setup for details.
+  add a warning glyph to the combined button; open Run setup to see the same
+  glyph on the choice that raised it.
   In the model picker, while a reply you sent is still running, the other
   engines and **Use Agent defaults** are shown but unavailable until it
   finishes. When Station reports that the conversation can't be changed right
