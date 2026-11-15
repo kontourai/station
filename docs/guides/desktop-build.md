@@ -316,7 +316,10 @@ one its own process uses. It then removes the whole cache if that is still over
 256 MiB. A subdirectory that is only read ages too, and costs one cold start
 once it is removed. The prune never follows a link inside the cache: it ages
 only real directories, counts only regular files, and removing a link removes
-the link, not its target.
+the link, not its target. These checks run before the prune, not atomically
+with it: something that can write inside the home could swap `cache` or
+`node-compile` for a link in between. The home is private to its user, so that
+needs access the user already has over the target.
 
 `cache` and `cache/node-compile` under the home must each be a real directory
 or not exist yet, and the cache must resolve inside the home's real path. The
