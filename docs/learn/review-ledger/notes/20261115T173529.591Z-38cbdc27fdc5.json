@@ -1,0 +1,7 @@
+{
+  "revision": "41f80d78659ea51b1aad1bb3a5a6e572fffa8509",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Phone empty draft: Send and Steer/Queue now take no room (display:none) instead of reserving width; Stop trails them so it stays put, Run setup narrows when they appear.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

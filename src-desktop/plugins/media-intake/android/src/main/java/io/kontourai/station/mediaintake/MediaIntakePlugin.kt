@@ -3,6 +3,7 @@ package io.kontourai.station.mediaintake
 import android.app.Activity
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -17,7 +18,11 @@ import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSArray
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import java.util.UUID
 import java.util.concurrent.Executors
+import org.json.JSONObject
 
 internal const val SHARED_IMAGES_EVENT = "sharedImages"
 private const val TAKEN_PREFERENCES = "station_media_intake"
@@ -36,7 +41,8 @@ private const val TAKEN_KEYS = "taken_shares"
  * [IntakeSources]; this class only turns Android types into their inputs.
  */
 @TauriPlugin
-class MediaIntakePlugin(private val activity: Activity) : Plugin(activity) {
+class MediaIntakePlugin(private var activity: Activity) : Plugin(activity) {
+  private var intakeView: WebView? = null
   private val reads = Executors.newSingleThreadExecutor()
 
   private val session = ShareIntakeSession<Uri>(
@@ -72,6 +78,57 @@ class MediaIntakePlugin(private val activity: Activity) : Plugin(activity) {
 
   override fun load(webView: WebView) {
     session.onLoad(activity.intent?.let(::facts), ShareIntentBuffer.intents.take()?.let(::facts))
+    KeyboardImageIntake.bind = ::bindView
+    bindView(webView)
+  }
+
+  private fun bindView(webView: WebView) {
+    activity = owningActivity(webView.context) ?: return
+    intakeView = webView
+    val bridge = activity.assets.open("station-image-paste.js").bufferedReader().use { it.readText() }
+    KeyboardImageIntake.install(webView) { uris, release ->
+      if (!KeyboardImageIntake.appOrigin(webView.url)) { release.release(); return@install }
+      val id = JSONObject.quote(UUID.randomUUID().toString())
+      webView.evaluateJavascript(appScript("$bridge;window.__stationImagePaste.capture($id)")) { captured ->
+        if (captured != "true") {
+          release.release()
+          Toast.makeText(activity, if (captured == "\"busy\"") "Wait for the pending images to finish." else "Focus a chat composer to insert an image.", Toast.LENGTH_SHORT).show()
+        } else {
+          try {
+            reads.execute {
+              if (release.isReleased) {
+                // The grant expired while queued; free the composer's pending slot too.
+                webView.post { if (KeyboardImageIntake.appOrigin(webView.url)) webView.evaluateJavascript(appScript("window.__stationImagePaste?.cancel($id)"), null) }
+                return@execute
+              }
+              try {
+                val images = readImages(uris, "pasted-image")
+                val payload = filesResult(images).toString()
+                webView.post { if (KeyboardImageIntake.appOrigin(webView.url)) webView.evaluateJavascript(appScript("window.__stationImagePaste?.deliver($id,$payload)"), null) }
+              } catch (error: Exception) {
+                webView.post {
+                  if (KeyboardImageIntake.appOrigin(webView.url)) webView.evaluateJavascript(appScript("window.__stationImagePaste?.cancel($id)"), null)
+                  Toast.makeText(activity, (error as? IntakeRefused)?.message ?: "Station could not read the images.", Toast.LENGTH_SHORT).show()
+                }
+              } finally {
+                release.release()
+              }
+            }
+          } catch (_: java.util.concurrent.RejectedExecutionException) {
+            release.release()
+            if (KeyboardImageIntake.appOrigin(webView.url)) webView.evaluateJavascript(appScript("window.__stationImagePaste?.cancel($id)"), null)
+          }
+        }
+      }
+    }
+  }
+
+  override fun onDestroy(activity: AppCompatActivity) {
+    if (intakeView?.context?.let(::owningActivity) === activity) {
+      intakeView?.let(KeyboardImageIntake::uninstall)
+      intakeView = null
+    }
+    // Tauri retains this plugin across activity recreation; the next view rebinds it.
   }
 
   override fun onNewIntent(intent: Intent) {
@@ -117,11 +174,7 @@ class MediaIntakePlugin(private val activity: Activity) : Plugin(activity) {
       if (clip == null) {
         emptyList()
       } else {
-        sources.clipboardItems(
-          (0 until clip.itemCount).mapNotNull { clip.getItemAt(it).uri },
-          { activity.contentResolver.getType(it) },
-          (0 until clip.description.mimeTypeCount).map { clip.description.getMimeType(it) },
-        )
+        clipboardImageUris(activity, clip)
       }
     }
   }
@@ -129,18 +182,7 @@ class MediaIntakePlugin(private val activity: Activity) : Plugin(activity) {
   private fun readOffMainThread(invoke: Invoke, prefix: String, uris: () -> List<Uri>) {
     reads.execute {
       try {
-        val resolver = activity.contentResolver
-        val images = sources.read(
-          uris(),
-          prefix,
-          open = { resolver.openInputStream(it) },
-          displayName = { uri ->
-            resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-              if (cursor.moveToFirst()) cursor.getString(0) else null
-            }
-          },
-          encodeBase64 = { Base64.encodeToString(it, Base64.NO_WRAP) },
-        )
+        val images = readImages(uris(), prefix)
         invoke.resolve(filesResult(images))
       } catch (refused: IntakeRefused) {
         invoke.reject(refused.message)
@@ -148,6 +190,20 @@ class MediaIntakePlugin(private val activity: Activity) : Plugin(activity) {
         invoke.reject("Station could not read the images.")
       }
     }
+  }
+
+  private fun readImages(uris: List<Uri>, prefix: String): List<IntakeImage> {
+    val resolver = activity.contentResolver
+    return sources.read(
+      uris, prefix,
+      open = { resolver.openInputStream(it) },
+      displayName = { uri ->
+        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+          if (cursor.moveToFirst()) cursor.getString(0) else null
+        }
+      },
+      encodeBase64 = { Base64.encodeToString(it, Base64.NO_WRAP) },
+    )
   }
 
   private fun filesResult(images: List<IntakeImage>): JSObject {
@@ -163,4 +219,31 @@ class MediaIntakePlugin(private val activity: Activity) : Plugin(activity) {
     result.put("files", files)
     return result
   }
+}
+
+/** Shared by the explicit clipboard command and Chromium's selection menu. */
+internal fun clipboardImageUris(context: Context, clip: android.content.ClipData): List<Uri> =
+  IntakeSources<Uri>(
+    ownAuthorities = {
+      @Suppress("DEPRECATION")
+      val info = context.packageManager.getPackageInfo(context.packageName, PackageManager.GET_PROVIDERS)
+      info.providers.orEmpty().flatMap { it.authority.orEmpty().split(';') }.filter { it.isNotBlank() }.toSet()
+    },
+    scheme = { it.scheme }, authority = { it.authority },
+  ).clipboardItems(
+    (0 until clip.itemCount).mapNotNull { clip.getItemAt(it).uri },
+    { context.contentResolver.getType(it) },
+    (0 until clip.description.mimeTypeCount).map { clip.description.getMimeType(it) },
+  )
+
+
+/** Tauri or a themed WebView may wrap its Activity context. */
+internal fun owningActivity(context: Context): Activity? {
+  var current = context
+  val seen = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Context, Boolean>())
+  while (seen.add(current)) {
+    if (current is Activity) return current
+    current = (current as? ContextWrapper)?.baseContext ?: return null
+  }
+  return null
 }
