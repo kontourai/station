@@ -111,6 +111,20 @@ CREATE INDEX \`session_v2_time_suspended_idx\` ON \`session_v2\` (\`time_suspend
 CREATE INDEX \`session_v2_workspace_idx\` ON \`session_v2\` (\`workspace_id\`);
 `;
 
+/**
+ * OpenCode's key-value table, verbatim from its migration
+ * `20260804233008_loose_psylocke` (OpenCode v2.3.0). It records the 1.x to 2.x
+ * migration's state under `migration.v1-v2`.
+ */
+export const OPENCODE_V2_KV_SCHEMA = `
+CREATE TABLE IF NOT EXISTS \`kv\` (
+          \`key\` text PRIMARY KEY,
+          \`value\` text NOT NULL,
+          \`time_created\` integer NOT NULL,
+          \`time_updated\` integer NOT NULL
+        );
+`;
+
 /** The same store before OpenCode 2.3 added `session_part`. */
 export const OPENCODE_V2_SCHEMA_WITHOUT_PARTS = OPENCODE_V2_SCHEMA.replace(
   /CREATE TABLE `session_part`[\s\S]*?\);\n/u,
@@ -396,6 +410,21 @@ export class OpenCodeV2FixtureWriter {
       time: { created },
       ...data,
     });
+  }
+
+  /**
+   * Records the 1.x to 2.x migration's state the way OpenCode's
+   * `V1Migration.run` does (`KVTable`, JSON value).
+   */
+  migrationState(phase: 'sessions' | 'completed'): void {
+    this.db.exec(OPENCODE_V2_KV_SCHEMA);
+    const now = this.tick();
+    this.db
+      .prepare(
+        `INSERT OR REPLACE INTO kv (key, value, time_created, time_updated)
+         VALUES ('migration.v1-v2', ?, ?, ?)`,
+      )
+      .run(JSON.stringify({ phase }), now, now);
   }
 
   touch(sessionId: string): void {

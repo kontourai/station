@@ -264,8 +264,10 @@ interface OpenCodeSessionSourceOptions {
  * pair can appear beside a store OpenCode last closed cleanly.)
  * Only the transcript tables are queried: `session`, `message` and `part`
  * in an OpenCode 1.x store, `session_v2`, `session_message` and
- * `session_part` in an OpenCode 2.x store (see `StoreLayout`). The same file
- * holds account tokens and credentials, which this source never selects.
+ * `session_part` in an OpenCode 2.x store (see `StoreLayout`), plus, in a
+ * 2.x store beside an `opencode-next.db`, the one `kv` row OpenCode keeps
+ * its migration state in, read by exact key. The same file holds account
+ * tokens and credentials, which this source never selects.
  * Reading through OpenCode's own server API instead would need an
  * `opencode serve` process kept running beside Station, and starting one
  * migrates (writes) this store.
@@ -447,14 +449,19 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
       updatedAt: number;
       registration: SourceRegistration;
     }> = [];
-    // OpenCode 2.x imports `opencode-next.db` into `opencode.db` (sessions
-    // and their `session_message` rows only, never a 1.x transcript) and
-    // leaves it in place. It is read last, by its own layout, so a session
-    // the 2.x store already lists is kept from the 2.x copy, which OpenCode
-    // keeps writing. A file no layout here reads that has the shape OpenCode
-    // imports (`isNextDatabase`: project, session and session_message) is
-    // skipped without a warning beside a 2.x store; anything else, or the
-    // same file alone, is read or fails closed like any other store.
+    // OpenCode 2.x's 1.x-to-2.x migration imports `opencode-next.db` into
+    // `opencode.db` (every session row and its `session_message` rows, never
+    // a 1.x message/part transcript) and leaves the file in place. It is
+    // read last, so beside a 2.x store:
+    // - once that migration has completed (`migration.v1-v2` in `kv`), a file
+    //   of the shape it imports (`isNextDatabase`: project, session and
+    //   session_message) is skipped whole: each of its sessions is in the
+    //   2.x store, or was deleted there;
+    // - a file of that shape no layout here reads is skipped too, silently;
+    // - otherwise it is read by its own layout, without any session the 2.x
+    //   store holds in any state (archived, a child, never prompted), whose
+    //   2.x copy is the one OpenCode keeps.
+    // Alone, the file is read or fails closed like any other store.
     const ordered = [
       ...listed.databases.filter(
         (database) => database.fileName !== NEXT_DATABASE,
@@ -463,13 +470,22 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
         (database) => database.fileName === NEXT_DATABASE,
       ),
     ];
-    let sawV2Store = false;
-    const v2SessionIds = new Set<string>();
+    const v2Stores: DatabaseRegistration[] = [];
+    let v2MigrationCompleted = false;
     for (const database of ordered) {
-      const besideV2 = database.fileName === NEXT_DATABASE && sawV2Store;
-      if (besideV2 && this.isImportedPreview(database)) continue;
+      const besideV2 =
+        database.fileName === NEXT_DATABASE && v2Stores.length > 0;
+      if (besideV2) {
+        const shape = this.nextStoreShape(database);
+        if (shape.importShape && (!shape.readable || v2MigrationCompleted)) {
+          continue;
+        }
+      }
       const result = await this.withDatabase(database, (db, layout) => {
-        if (layout.kind === 'v2') sawV2Store = true;
+        if (layout.kind === 'v2') {
+          v2Stores.push(database);
+          if (migrationCompleted(db)) v2MigrationCompleted = true;
+        }
         // `time_updated` has no index upstream, so this is one scan of the
         // session table (about 12 ms warm on a 61k-session store). The
         // EXISTS probe uses `message_session_time_created_id_idx` (2.x:
@@ -490,9 +506,6 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
                  ORDER BY time_updated DESC, id ASC LIMIT ?`,
           )
           .all(this.maxCandidates + 1);
-        if (layout.kind === 'v2') {
-          for (const row of rows) v2SessionIds.add(String(row.id));
-        }
         return rows;
       });
       if (!result.ok) {
@@ -502,11 +515,15 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
       if (result.value.length > this.maxCandidates) {
         outcome = mergeOutcome(outcome, 'candidate_limit');
       }
+      const held = besideV2
+        ? await this.heldByV2Stores(
+            result.value.map((row) => String(row.id)),
+            v2Stores,
+          )
+        : new Set<string>();
       // Every database contributes its newest; the merged list is capped below.
       for (const row of result.value) {
-        // Only sessions the 2.x store lists (its newest, within the candidate
-        // bound) are known to be duplicated.
-        if (besideV2 && v2SessionIds.has(String(row.id))) continue;
+        if (held.has(String(row.id))) continue;
         const registration = this.registrationFor(
           database,
           sourceHome.affinity,
@@ -572,7 +589,7 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     if (!cursor) return rejected();
 
     const signature = this.storeSignature(current);
-    const cursorKey = JSON.stringify(previousCursor);
+    const cursorKey = cursorCacheKey(previousCursor);
     const drained = this.drainedReads.get(session.threadId);
     if (drained?.signature === signature && drained.cursor === cursorKey) {
       return { outcome: drained.outcome, events: [], cursor: previousCursor };
@@ -628,7 +645,7 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     if (reachedEnd && !unreportedHold) {
       this.drainedReads.set(session.threadId, {
         signature,
-        cursor: JSON.stringify(read.cursor),
+        cursor: cursorCacheKey(read.cursor),
         outcome: read.outcome,
       });
       // Bounded by the discovered set: forget threads no longer discovered.
@@ -909,8 +926,9 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
 
   /**
    * Reports a running compaction that has held `session`'s read past the
-   * bound, once per thread and row. Returns whether it has been reported.
-   * Names the database and reason only, never transcript data.
+   * bound, once per thread and row in each Station run. Returns whether it
+   * has been reported. Names the database, conversation and session ids,
+   * never transcript data.
    */
   private reportLongHold(
     database: DatabaseRegistration,
@@ -930,6 +948,9 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
       {
         database: database.fileName,
         reason: 'compaction_unfinished',
+        // Identifiers only: Station's conversation and OpenCode's session.
+        threadId: session.threadId,
+        sessionId: session.sessionId,
         heldForMinutes: Math.floor((this.now() - held.time) / 60_000),
       },
     );
@@ -937,28 +958,53 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
   }
 
   /**
-   * Whether `database` is a store no layout here reads that has the shape
-   * OpenCode 2.x imports as `opencode-next.db` (its `isNextDatabase`:
-   * project, session and session_message tables).
+   * Whether `database` is readable by a layout here, and whether it has the
+   * shape OpenCode 2.x imports as `opencode-next.db` (its `isNextDatabase`:
+   * project, session and session_message tables). Unopenable reads as
+   * neither, so the caller's normal read reports it.
    */
-  private isImportedPreview(database: DatabaseRegistration): boolean {
+  private nextStoreShape(database: DatabaseRegistration): {
+    readable: boolean;
+    importShape: boolean;
+  } {
     try {
       const db = this.connectionFor(database).db;
-      if (!('mismatch' in this.checkedSchema(database, db))) return false;
       const tables = new Set(
         db
           .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
           .all()
           .map((row) => String(row.name)),
       );
-      return (
-        tables.has('project') &&
-        tables.has('session') &&
-        tables.has('session_message')
-      );
+      return {
+        readable: !('mismatch' in this.checkedSchema(database, db)),
+        importShape:
+          tables.has('project') &&
+          tables.has('session') &&
+          tables.has('session_message'),
+      };
     } catch {
-      return false;
+      return { readable: false, importShape: false };
     }
+  }
+
+  /**
+   * The ids among `ids` (one store's candidates, so at most the candidate
+   * bound plus one) that any 2.x store holds in `session_v2`, in any state:
+   * one primary-key lookup each. A 2.x store unreadable now holds none.
+   */
+  private async heldByV2Stores(
+    ids: string[],
+    stores: DatabaseRegistration[],
+  ): Promise<Set<string>> {
+    const held = new Set<string>();
+    for (const store of stores) {
+      const result = await this.withDatabase(store, (db) => {
+        const lookup = db.prepare('SELECT 1 FROM session_v2 WHERE id = ?');
+        return ids.filter((id) => lookup.get(id) !== undefined);
+      });
+      if (result.ok) for (const id of result.value) held.add(id);
+    }
+    return held;
   }
 
   /** Release every held connection (the follower is stopping). */
@@ -1038,6 +1084,24 @@ function closeQuietly(db: DatabaseSync): void {
 }
 
 type SchemaVerdict = { layout: StoreLayout } | { mismatch: string };
+
+/**
+ * Whether OpenCode's 1.x-to-2.x migration has completed in this 2.x store:
+ * the one `kv` row OpenCode keeps its state in (`migration.v1-v2`), read by
+ * its exact key. A store without the table or row has not.
+ */
+function migrationCompleted(db: DatabaseSync): boolean {
+  try {
+    const row = db
+      .prepare("SELECT value FROM kv WHERE key = 'migration.v1-v2'")
+      .get();
+    const state =
+      typeof row?.value === 'string' ? parseRecord(row.value) : null;
+    return state?.phase === 'completed';
+  } catch {
+    return false;
+  }
+}
 
 /**
  * The store's layout, or why it is not one this source reads. The verdict
@@ -2091,6 +2155,25 @@ function encodeCursor(
     sourceState: structuredClone(state),
     ...(eventIndex ? { eventIndex } : {}),
   };
+}
+
+/**
+ * A cursor's identity for the drained-read cache, independent of key order:
+ * a cursor the caller hands back after a JSON round trip, or one this source
+ * re-encodes from decoded state, names the same position.
+ */
+function cursorCacheKey(cursor: AttachedSessionCursor): string {
+  const canonical = (value: unknown): unknown =>
+    Array.isArray(value)
+      ? value.map(canonical)
+      : isRecord(value)
+        ? Object.fromEntries(
+            Object.keys(value)
+              .sort()
+              .map((key) => [key, canonical(value[key])]),
+          )
+        : value;
+  return JSON.stringify(canonical(cursor));
 }
 
 function cloneState(state: OpenCodeCursorState): OpenCodeCursorState {

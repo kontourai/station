@@ -648,6 +648,69 @@ describe('OpenCodeSessionSource on an OpenCode 2.x store', () => {
     ).toMatchObject([{ prompt: 'Imported into 2.x' }]);
   });
 
+  test('suppresses a next-store copy of any session the 2.x store holds: archived, child or promptless', async () => {
+    const dataDir = join(fixtureRoot(), 'opencode');
+    const store = writer(dataDir);
+    store.session('ses_live', '/workspace/project');
+    writeTurn(store, 'ses_live', 'Still live');
+    store.session('ses_archived', '/workspace/project', { archived: true });
+    writeTurn(store, 'ses_archived', 'Archived in 2.x');
+    store.session('ses_child', '/workspace/project', { parentId: 'ses_live' });
+    store.session('ses_promptless', '/workspace/project');
+    const next = new OpenCodeFixtureWriter(dataDir, 'opencode-next.db');
+    writers.push(next);
+    for (const sessionId of [
+      'ses_archived',
+      'ses_child',
+      'ses_promptless',
+      'ses_next_only',
+    ]) {
+      next.session(sessionId, '/workspace/project');
+      const user = next.user(sessionId, ['Stale 1.x copy']);
+      next.assistant(sessionId, user, { finish: 'stop' });
+    }
+    const warn = vi.fn();
+    const source = new OpenCodeSessionSource({ dataDir, warn });
+    const discovery = await source.discover();
+    expect(warn).not.toHaveBeenCalled();
+    expect(discovery.outcome).toBe('ok');
+    expect(
+      discovery.sessions.map((session) => session.sessionId).sort(),
+    ).toEqual(['ses_live', 'ses_next_only']);
+  });
+
+  test('lists nothing from an opencode-next.db a completed OpenCode migration imported, so a session deleted in 2.x stays gone', async () => {
+    const dataDir = join(fixtureRoot(), 'opencode');
+    const store = writer(dataDir);
+    store.session('ses_live', '/workspace/project');
+    writeTurn(store, 'ses_live', 'Still live');
+    const next = new OpenCodeFixtureWriter(dataDir, 'opencode-next.db');
+    writers.push(next);
+    next.session('ses_deleted_in_2x', '/workspace/project');
+    const user = next.user('ses_deleted_in_2x', ['Deleted after import']);
+    next.assistant('ses_deleted_in_2x', user, { finish: 'stop' });
+
+    // Mid-migration OpenCode may not have imported every session yet, so
+    // the next store is still read (per-session dedupe only).
+    store.migrationState('sessions');
+    const midway = new OpenCodeSessionSource({ dataDir });
+    expect(
+      (await midway.discover()).sessions
+        .map((session) => session.sessionId)
+        .sort(),
+    ).toEqual(['ses_deleted_in_2x', 'ses_live']);
+
+    store.migrationState('completed');
+    const warn = vi.fn();
+    const source = new OpenCodeSessionSource({ dataDir, warn });
+    const discovery = await source.discover();
+    expect(warn).not.toHaveBeenCalled();
+    expect(discovery.outcome).toBe('ok');
+    expect(discovery.sessions.map((session) => session.sessionId)).toEqual([
+      'ses_live',
+    ]);
+  });
+
   test('warns once when a running compaction has held a session past the bound', async () => {
     const dataDir = join(fixtureRoot(), 'opencode');
     const store = writer(dataDir);
@@ -676,6 +739,8 @@ describe('OpenCodeSessionSource on an OpenCode 2.x store', () => {
     expect(warn.mock.calls[0]![1]).toMatchObject({
       database: 'opencode.db',
       reason: 'compaction_unfinished',
+      threadId: session.threadId,
+      sessionId: 'ses_main',
     });
     expect(JSON.stringify(warn.mock.calls)).not.toContain('Long one');
   });
