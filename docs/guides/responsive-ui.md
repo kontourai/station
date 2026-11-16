@@ -216,8 +216,9 @@ shell, or a home-screen web app) locks page zoom through
 `platform/installedAppZoom.ts`. Transient toasts dismiss with a sideways touch
 swipe; approval and pairing cards keep their explicit dismiss.
 
-The chat header's **⋯** menu holds **Chat inventory** and **Browse turns** on
-desktop and phones. Keeping secondary actions there avoids wrapping the
+The chat header's **⋯** menu holds **Chat inventory** (the full reader) and
+**Browse turns** on desktop and phones; the **This chat** card's footer link
+opens the compact inventory beside the transcript. Keeping secondary actions there avoids wrapping the
 phone header onto a second line (#4192). This is separate from the compact Basis/answer inspection described
 above. Selecting a row reveals detail inline, within the existing scrollable
 reader; it does not add another modal. Closing returns focus to the opener.
