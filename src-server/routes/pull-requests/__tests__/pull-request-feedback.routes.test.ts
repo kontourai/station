@@ -152,6 +152,16 @@ describe('pull request feedback routes', () => {
         .status,
     ).toBe(404);
     expect((await t.put('chat-a', t.on)).status).toBe(404);
+    // A malformed body too: the preview is checked before the body.
+    expect((await t.put('chat-a', { nonsense: true })).status).toBe(404);
+    expect(
+      (
+        await t.app.request(
+          '/api/pull-request-feedback/conversations/chat-a/send-again',
+          { method: 'POST', body: 'not json' },
+        )
+      ).status,
+    ).toBe(404);
   });
 
   it('a body with unknown settings is refused', async () => {

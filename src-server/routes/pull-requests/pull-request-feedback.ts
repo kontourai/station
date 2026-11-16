@@ -61,6 +61,13 @@ export function createPullRequestFeedbackRoutes(
   access: PullRequestFeedbackRouteAccess,
 ) {
   const app = new Hono();
+  // Before any body is parsed: while the preview is off every route answers
+  // 404, a malformed body included.
+  app.use('*', async (c, next) => {
+    if (!access.enabled())
+      return c.json({ success: false, error: 'Conversation unavailable' }, 404);
+    await next();
+  });
   const unavailable = (c: any) =>
     c.json({ success: false, error: 'Conversation unavailable' }, 404);
   const readable = (c: any, conversationId: string) =>

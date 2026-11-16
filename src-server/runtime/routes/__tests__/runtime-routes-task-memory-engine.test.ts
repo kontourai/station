@@ -19,6 +19,8 @@
  * (`OrchestrationService` start admission -> `bindProjectTaskRoomExecution`)
  * is written here with that same store method.
  */
+
+import { existsSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
@@ -35,6 +37,11 @@ import { taskQuestionWakeKey } from '../../../services/orchestration/task-questi
 import { composeTaskDispatcher } from '../../../services/projects/task-dispatch-composition.js';
 import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
+import {
+  getInternalApiToken,
+  INTERNAL_API_TOKEN_HEADER,
+  INTERNAL_PROXY_CALLER_HEADER,
+} from '../../../utils/internal-api-token.js';
 import {
   __resetStationControlMcpTokensForTests,
   mintStationControlMcpToken,
@@ -429,6 +436,8 @@ describe('an engine keeps Task memory through its own MCP connection', () => {
     };
 
     return {
+      base,
+      homeDir,
       store,
       orchestration,
       taskGraph,
@@ -806,6 +815,66 @@ describe('an engine keeps Task memory through its own MCP connection', () => {
       conversationId: conversation,
       pullRequests: [],
     });
+  });
+
+  test("Station's internal principal cannot turn a chat's pull request feedback on, with or without an agent's tool token", async () => {
+    const e = await setup();
+    const { sessionId } = await e.dispatchedTask();
+    const conversation =
+      e.store.conversationForSession(sessionId)?.conversationId ?? sessionId;
+    const path = `/api/pull-request-feedback/conversations/${encodeURIComponent(conversation)}`;
+    const body = JSON.stringify({
+      identity: {
+        provider: 'github',
+        host: 'github.com',
+        repository: { owner: 'acme', name: 'widgets' },
+        ref: '42',
+      },
+      settings: { fixFailingChecks: true, addressReviewComments: true },
+    });
+    const internal = {
+      'content-type': 'application/json',
+      [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+      [INTERNAL_PROXY_CALLER_HEADER]: 'local',
+    };
+    // As an agent's tool call: the authority guard maps no tool to it.
+    const asTool = await fetch(`${e.base}${path}`, {
+      method: 'PUT',
+      headers: {
+        ...internal,
+        'x-station-control-caller-token': mintStationControlMcpToken(
+          sessionId,
+          'sdk-in-process',
+        ).token,
+      },
+      body,
+    });
+    expect(asTool.status).toBe(403);
+    expect(await asTool.json()).toMatchObject({
+      code: 'station_control_route_unmapped',
+    });
+    // As Station's own internal principal with no tool caller: the guard
+    // refuses every internal caller on a route no tool maps (the route's
+    // own person check is a second line behind it).
+    const asInternal = await fetch(`${e.base}${path}`, {
+      method: 'PUT',
+      headers: internal,
+      body,
+    });
+    expect(asInternal.status).toBe(403);
+    expect(await asInternal.json()).toMatchObject({
+      code: 'station_control_route_unmapped',
+    });
+    // Nothing was claimed: no store was even created.
+    expect(
+      existsSync(
+        join(
+          e.homeDir,
+          'pull-request-feedback',
+          'pull-request-feedback.sqlite',
+        ),
+      ),
+    ).toBe(false);
   });
 
   test("the production inbox asks pull request feedback's placement re-check before placing a queued prf- message", async () => {
