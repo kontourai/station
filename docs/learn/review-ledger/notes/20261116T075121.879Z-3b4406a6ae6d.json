@@ -1,0 +1,17 @@
+{
+  "revision": "a67ca01f8bc06a4dd81ffa8aac82bf61f3635db1",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked the citing pages: chat.css only gained the handoff picker rows and the attached-session Continue in Station action in its shared coarse-pointer 44px floor; every claim about touch targets, coarse-pointer queries and layout still holds.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the citing pages: chat.css only gained the handoff picker rows and the attached-session Continue in Station action in its shared coarse-pointer 44px floor; every claim about touch targets, coarse-pointer queries and layout still holds.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/placement.md","note":"Checked the citing pages: chat.css only gained the handoff picker rows and the attached-session Continue in Station action in its shared coarse-pointer 44px floor; every claim about touch targets, coarse-pointer queries and layout still holds.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/station-connection.md","note":"Checked the citing pages: chat.css only gained the handoff picker rows and the attached-session Continue in Station action in its shared coarse-pointer 44px floor; every claim about touch targets, coarse-pointer queries and layout still holds.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the citing pages: chat.css only gained the handoff picker rows and the attached-session Continue in Station action in its shared coarse-pointer 44px floor; every claim about touch targets, coarse-pointer queries and layout still holds.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the citing pages: chat.css only gained the handoff picker rows and the attached-session Continue in Station action in its shared coarse-pointer 44px floor; every claim about touch targets, coarse-pointer queries and layout still holds.","inputs":["src-ui/src/components/chat/chat.css"]}
+  ]
+}

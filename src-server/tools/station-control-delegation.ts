@@ -15,6 +15,13 @@ import {
   type AgentProfileCapability,
 } from '@kontourai/station-contracts/enriched-agent';
 import {
+  PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+  type PeerStationReadiness,
+  STATION_READINESS_STATUSES,
+  stationReadinessIsReady,
+  stationReadinessReason,
+} from '@kontourai/station-contracts/environment-security';
+import {
   type ExecutionConfinementRecord,
   STATION_CONFINEMENT_RECORD_METADATA_KEY,
 } from '@kontourai/station-contracts/execution-confinement';
@@ -3134,7 +3141,7 @@ function targetModelSelection(
  * verified filesystem binding.
  */
 export async function discoverDelegationEnvironments(): Promise<DelegationEnvironments> {
-  const [current, saved] = await Promise.all([
+  const [current, saved, peers] = await Promise.all([
     currentHandshake(),
     readSanitizedJson<ApiEnvelope<SshEnvironmentView[]>>(
       THIS_STATION,
@@ -3142,6 +3149,14 @@ export async function discoverDelegationEnvironments(): Promise<DelegationEnviro
       trustedRequest(),
       'Saved SSH environments are unavailable',
     ),
+    // Paired Stations are listed when this Station can read them; a refused
+    // or failed peer read hides only the peers, never the SSH list.
+    readSanitizedJson<ApiEnvelope<PeerListEntry[]>>(
+      THIS_STATION,
+      `${currentControlApiBase()}/api/environments/peers`,
+      trustedRequest(),
+      'Paired Stations are unavailable',
+    ).catch(() => undefined),
   ]);
   if (!saved.success || !Array.isArray(saved.data)) {
     throw new Error('Saved SSH environments are unavailable');
@@ -3177,7 +3192,63 @@ export async function discoverDelegationEnvironments(): Promise<DelegationEnviro
         : {}),
     });
   }
+  const pairedPeers =
+    peers?.success && Array.isArray(peers.data) ? peers.data : [];
+  for (const peer of pairedPeers) {
+    if (environments.length >= MAX_DISCOVERED_TARGETS) break;
+    const id = safeIdentifier(peer?.environmentId);
+    // A peer that is also a saved SSH profile is that SSH entry (SSH wins).
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const readiness = safePeerReadiness(peer.readiness);
+    const canOperate =
+      typeof peer.scope === 'string' &&
+      peer.scope.split(/\s+/).includes(PAIRING_SCOPE_ORCHESTRATION_OPERATE);
+    const online = readiness ? stationReadinessIsReady(readiness) : false;
+    const ready = canOperate && (readiness ? online : true);
+    const unavailableReason = !canOperate
+      ? 'This paired Station did not grant orchestration:operate.'
+      : readiness && !online
+        ? stationReadinessReason(readiness)
+        : undefined;
+    environments.push({
+      id,
+      // Like SSH, the listing never returns the peer's transport address.
+      name: safeLabel(peer.label, 'Paired Station'),
+      kind: 'peer',
+      ready,
+      connected: online,
+      ...(unavailableReason ? { unavailableReason } : {}),
+    });
+  }
   return { environments };
+}
+
+/** A `GET /api/environments/peers` row as this tool reads it (secret-free). */
+interface PeerListEntry {
+  environmentId?: unknown;
+  label?: unknown;
+  scope?: unknown;
+  readiness?: unknown;
+}
+
+function safePeerReadiness(value: unknown): PeerStationReadiness | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const record = value as Record<string, unknown>;
+  const status = record.status;
+  if (
+    typeof status !== 'string' ||
+    !(STATION_READINESS_STATUSES as readonly string[]).includes(status) ||
+    typeof record.checkedAt !== 'number'
+  )
+    return undefined;
+  return {
+    status: status as PeerStationReadiness['status'],
+    checkedAt: record.checkedAt,
+    ...(record.reason === 'identity-mismatch'
+      ? { reason: 'identity-mismatch' as const }
+      : {}),
+  };
 }
 
 /**

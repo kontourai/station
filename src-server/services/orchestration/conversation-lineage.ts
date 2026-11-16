@@ -12,6 +12,7 @@ import type {
   OrchestrationSessionDetail,
   OrchestrationSessionSummary,
 } from '@kontourai/station-contracts/orchestration';
+import { CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE } from '@kontourai/station-contracts/orchestration';
 import type {
   EngineId,
   NativeResumeIdentityStatus,
@@ -1137,8 +1138,11 @@ export class ConversationLineage {
       !isSessionLifecycleStateAtRest(lifecycle) ||
       detail.session.hasActiveTurn
     ) {
-      throw new Error(
-        'An Agent/engine handoff requires the predecessor Session to be terminal with no active turn.',
+      throw Object.assign(
+        new Error(
+          'An Agent/engine handoff requires the predecessor Session to be terminal with no active turn.',
+        ),
+        { code: CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE },
       );
     }
     const nativeReturn = !boundary

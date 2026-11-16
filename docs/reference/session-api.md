@@ -55,7 +55,10 @@ Provider handoffs retain the Conversation ID and append linked execution
 Sessions. Returning to a compatible built-in engine can resume its earlier
 native thread with a bounded seed of the intervening conversation, after the
 previous engine confirms retirement. Unsupported or unbound history uses
-bounded replay. An explicit fork creates a separate Conversation.
+bounded replay. An explicit fork creates a separate Conversation. A handoff
+while the current Session still has a turn running, or has not settled, is
+refused (`409`) with `code: "conversation_handoff_predecessor_busy"`
+(`CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE`).
 
 An ordinary follow-up is refused while the native return's seed-bearing turn
 has no observed completion, including a failed or uncertain turn. Acceptance of
@@ -1673,9 +1676,27 @@ That home therefore also supplies the continued process's account/configuration.
 Claude continuation requires the source home to match the SDK's globally
 configured home; an independently overridden observation root is not enough.
 Without an override, observation uses `CODEX_HOME` or `CLAUDE_CONFIG_DIR`, then
-the engine's default home directory. `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT`
+the engine's default home directory. Codex observation also reads the homes
+Station runs Codex in ([`configuredEngineHomes`](../../src-server/providers/app-home/credential-profile-env.ts):
+the connection's config home, the legacy app home and every credential-profile
+home), unless `STATION_EXTERNAL_CODEX_SOURCE_ROOT` is set. Each home has its
+own source affinity and thread ids, so continuation resumes in the home the
+rollout was found in, with a credential profile's env overlay applied
+(`credentialProfileEnvForHome`; an invalid overlay refuses the continuation, and so does an app home that is no current profile's, the legacy app home or the connection's config home, such as a deleted profile's).
+A native session id present in two homes is two threads, one per home. Each
+home reads its own newest 128 rollouts, up to 512 in all, default home first.
+An affinity resolves only for a currently configured home; on a miss the home
+list is re-read once, so a continuation right after a restart does not wait
+for discovery. `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT`
 selects the folder holding OpenCode's session database for observation only;
-OpenCode sessions have no continuation. See the
+OpenCode sessions have no continuation. With
+`STATION_EXTERNAL_ACP_SESSIONS=1`, the
+[ACP session list source](../../src-server/providers/sessions/acp-session-list-source.ts)
+lists the sessions an ACP connection reports through `session/list`, read by
+the capability probe Station already runs per connection
+([`acp-session-listing.ts`](../../src-server/services/acp/acp-session-listing.ts)).
+It imports no transcript, because `session/load` resumes the session in the
+agent, and ACP declares `externalSessionContinuation: unsupported`. See the
 [Codex adapter](../../src-server/providers/adapters/codex-adapter.ts) and
 [Claude source-home check](../../src-server/providers/adapters/claude-adapter.ts).
 

@@ -395,6 +395,11 @@ request does not revoke an already approved receiver grant. After confirmed
 cancellation, **Choose another Station** returns to destination selection.
 A saved peer
 credential establishes permission, not observed reachability or Project readiness.
+Reachability is observed separately: this Station keeps each paired
+Station's last public-handshake answer (probed with no credential, refreshed
+in the background while its list is being read, every few seconds while the
+**Runs on** list is open), so that list greys out one that is recovering, unreachable or answering as a
+different Station, and delegation to it fails at once with that reason.
 
 Tap the Station chip (its dot and name, in every state) on a phone, or the
 connection name on desktop, to
@@ -1508,7 +1513,10 @@ receive the connection's `env`; they use the selected profile's config home
 over the process environment. Changing `configHome` does not migrate existing
 history. Ordinary resumes resolve the current connection/profile environment,
 so changing it can make an older transcript unavailable. Adopted sessions with
-a recorded source-home binding follow that binding instead. Saving silently
+a recorded source-home binding follow that binding instead. Station also lists
+Codex conversations found in the connection's config home and in each
+profile's home, not only in `CODEX_HOME`, and continues one in the home it was
+found in ([conversations started outside Station](../user/getting-started.md#see-conversations-started-outside-station)). Saving silently
 drops invalid `env` entries, including values containing
 NUL or longer than 32,768 JavaScript string code units. It retains at most the
 first 64 valid entries. These rules are also applied when spawning from
@@ -1565,7 +1573,9 @@ one an Agent pins, the one credential recovery is trying, or else the
 connection's active profile. The overlay reaches Claude Code, Codex and Muse
 session starts and Codex quota reads for that profile. Muse has no connection
 `env` layer, and its profile's config-home key is `XDG_CONFIG_HOME`. It is not applied to model
-discovery, adopted sessions and source-home resumes, login readiness checks,
+discovery, adopted sessions and source-home resumes (except a Codex
+conversation found in a profile's own home, which continues with that
+profile's overlay), login readiness checks,
 login/enrolment into the profile, or the per-profile usage read
 (`GET /api/connections/agent/<engine>/credential-usage`), which reads the
 profile home directly.

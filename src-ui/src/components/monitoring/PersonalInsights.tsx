@@ -1086,7 +1086,7 @@ export function PersonalInsights() {
               Two connections to the same Station can't be combined. A copied
               Station with a different identity is counted as a separate
               Station. Project and engine filters need sources that report them.
-              — means not reported.
+              A dash (—) means not reported.
             </p>
           </details>
           <ActionRow

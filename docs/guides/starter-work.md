@@ -120,8 +120,8 @@ visible. Run `station doctor` for a local diagnosis.
 ## Continue an Attached Session
 
 Open the terminal Session from the **inbox**, where it reads like any chat, then
-type a message and press Send. Chat asks once, **Continue here?**,
-and **Continue and send** continues it there with that message.
+press **Continue in Station**. No message is needed; a typed draft is sent once
+the continuation opens, and Send continues the same way.
 Claude and Codex create independent children, so the original terminal Session
 can keep running. Codex starts from the latest completed turn Station has
 observed; wait for a completed turn if the message box is unavailable. Station

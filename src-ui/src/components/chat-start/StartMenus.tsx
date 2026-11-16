@@ -385,12 +385,22 @@ export function StartStationMenu({
       <div className="start-menu__list">
         {stations.map((station) => {
           const selected = station.id === selectedId;
+          // A Station that cannot take work now stays listed, greyed, with
+          // its reason; a disabled row is skipped by Tab and Enter. The
+          // current choice stays enabled so choosing it again just closes.
+          const unavailable = Boolean(station.unavailableReason) && !selected;
+          const reasonId = station.unavailableReason
+            ? `start-station-${station.id}-unavailable`
+            : undefined;
           return (
             <button
               type="button"
               key={station.id}
-              className={`new-chat-modal__dropdown-item ${selected ? 'new-chat-modal__dropdown-item--active' : ''}`}
+              className={`new-chat-modal__dropdown-item ${selected ? 'new-chat-modal__dropdown-item--active' : ''} ${station.unavailableReason ? 'start-menu__station--unavailable' : ''}`}
               aria-current={selected ? 'true' : undefined}
+              aria-describedby={reasonId}
+              disabled={unavailable}
+              title={station.unavailableReason}
               onClick={() => onChoose(station)}
             >
               <span className="new-chat-modal__dropdown-item-main">
@@ -400,8 +410,9 @@ export function StartStationMenu({
                   </span>
                   <span>{station.name}</span>
                 </span>
-                <span className="start-menu__detail">
-                  {STATION_KIND_DETAIL[station.kind]}
+                <span className="start-menu__detail" id={reasonId}>
+                  {station.unavailableReason ??
+                    STATION_KIND_DETAIL[station.kind]}
                 </span>
               </span>
               {selected && (

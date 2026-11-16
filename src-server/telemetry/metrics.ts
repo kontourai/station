@@ -1643,6 +1643,27 @@ export const schedulerHealthy = meter.createObservableGauge(
   { description: 'Scheduler heartbeat health (1=healthy, 0=unhealthy)' },
 );
 
+// ── Linux workload scopes ──
+/**
+ * Settled and failed workload scope cleanup attempts (#4993). Attributes are
+ * closed: `outcome`, `error_kind` and `trigger`; never a unit or session.
+ */
+export const workloadScopeCleanupAttempts = meter.createCounter(
+  'station.workload.scope_cleanup.attempts',
+  {
+    description:
+      "Workload scope cleanup attempts by outcome ('settled' | 'retry_scheduled' | 'abandoned'), error_kind ('none' | 'bus_unavailable' | 'command_failed' | 'other') and trigger ('monitor' | 'close' | 'shutdown')",
+  },
+);
+/** Workload scopes whose cleanup has failed and not settled, by state. */
+export const workloadScopeCleanupBacklog = meter.createObservableGauge(
+  'station.workload.scope_cleanup.backlog',
+  {
+    description:
+      "Workload scopes whose cleanup has not settled, by state ('pending' | 'abandoned')",
+  },
+);
+
 // ── MCP lifecycle ──
 export const mcpLifecycle = meter.createCounter('station.mcp.lifecycle', {
   description: 'MCP connection lifecycle events',

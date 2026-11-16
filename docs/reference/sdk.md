@@ -1913,6 +1913,36 @@ explicit captured scope. The generic wrapper does not add authority, validate a
 response, or partition an arbitrary caller-supplied key. Follow each operation's
 scope contract rather than assuming every SDK query is interchangeable.
 
+### Remote session history
+
+`fetchRemoteSessionHistory(environmentId, threadId, { cursor?, turnLimit? },
+{ apiBase?, requestScope?, signal? })` reads one read-only history page of a
+session on a connected SSH environment's Station. A conversation surface
+passes its owning connection's `apiBase` and `requestScope`; without them
+the host's configured Station is used. These are the rows `useRemoteSessionsQuery` lists.
+This Station relays the remote's bounded `window-v1` read over the
+environment's tunnel and peer bearer, and labels the page with its own
+`environmentName`. `readRemoteSessionHistoryCapability(apiBase)` reports the
+`remoteSessionHistory` handshake flag. Ask it before offering to open a
+remote row, because an older host answers the path 404. Failures reject with
+`StationHttpError` carrying the route's `code`: `environment_unavailable`,
+`authentication_required`, `not_found`, `unreachable`, `too_large` or
+`invalid_response`. Show fixed copy for a code, not the server's sentence. A caller who is not
+the Station's bound owner gets `Forbidden`, and so does any agent request. The
+page is view-only and carries no continuation.
+
+A request made with `maxResponseBytes` whose body passes it rejects with
+`StationResponseTooLargeError`, from `@kontourai/station-sdk/client`. The
+orchestration readers and `searchConversationMessages` keep that error as the
+`cause` of their unreadable-body error.
+`getOrchestrationSessionDetailWindow` rejects with
+`SessionDetailWindowUnsupportedError` (also exported from the agent entry)
+when the host answers without a `window-v1` page, as an older host does.
+`listOrchestrationSessions(apiBase, opts, { limit })` asks for only the
+newest `limit` sessions, still oldest first; an older host ignores it and
+answers every session. A `limit` that is not an integer from 1 to 1,000
+rejects with `RangeError` before any request is sent.
+
 ### `useAgentsQuery(config?)`
 
 Reads the Agent catalog under `['agents']`. `data` projects its Agent array;
@@ -6599,6 +6629,19 @@ outcome-unknown, persistence-failed and cancelled. Connected means the peer
 credential was saved, not that a Project checkout, Agent or execution offer is
 ready. See [the connection guide](../guides/connections.md#saved-station-addresses)
 for the independent Device and peer choices and current trusted-session limits.
+
+The saved peer inventory, `usePeerCredentialsQuery(config?)` /
+`fetchPeerCredentials()` from the
+[peer-credential query owner](../../packages/sdk/src/query-domains/peerCredentials.ts),
+returns secret-free `PeerCredentialSummary` rows. Each may carry an optional
+`readiness: PeerStationReadiness`: how that peer's public handshake last
+answered the controlling Station (`online`, `recovering`, `unconfirmed`,
+optionally with `reason: 'identity-mismatch'`, or `unreachable`), probed
+without its credential. The list answers from the server's stored readiness
+and never waits on a probe: a peer not yet probed omits it, and each read
+refreshes stale answers in the background, so poll the list to keep it
+current. An older host also omits it; treat an absent readiness as unknown,
+not as not ready.
 
 Task-room follow-up handles optionally include `taskRoomReplyDelivery: 'posted' |
 'unpublished'`. An unpublished reply can still have an acknowledged provider turn.

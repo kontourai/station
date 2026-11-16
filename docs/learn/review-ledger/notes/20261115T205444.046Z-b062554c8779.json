@@ -1,0 +1,7 @@
+{
+  "revision": "56920ae9d20b419b879ed1828ae140fa97ac0832",
+
+  "notes": [
+    {"path":"src-server/AGENTS.md","note":"Server routing guidance unaffected by the development guide's workload cleanup paragraph.","inputs":["src-server/AGENTS.md","docs/guides/development.md"]}
+  ]
+}

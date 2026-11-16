@@ -1,0 +1,7 @@
+{
+  "revision": "80933fd7347e17564b98c4707ef2c716b811e8f3",
+
+  "notes": [
+    {"path":"docs/reference/connect.md","note":"Cites peer-credential-routes.ts; it makes no claim about the peer list's readiness field or its timing.","inputs":["docs/reference/connect.md","src-server/routes/environments/peer-credential-routes.ts"]}
+  ]
+}

@@ -5,6 +5,7 @@ import {
   type PeerCredentialStore,
 } from '../../services/peers/peer-credential-store.js';
 import type { PeerEnrollmentService } from '../../services/peers/peer-enrollment-service.js';
+import type { PeerReadinessService } from '../../services/peers/peer-readiness-service.js';
 import {
   errorMessage,
   getBody,
@@ -59,6 +60,14 @@ export function createPeerCredentialRoutes(
   hasSshProfile?: (environmentId: string) => boolean,
   authorize?: (request: Request) => boolean,
   enrollments?: PeerEnrollmentService,
+  /**
+   * When provided, each listed peer carries `readiness`: how its public
+   * handshake last answered (`online`/`recovering`/`unconfirmed`/
+   * `unreachable`), probed without its credential. The list never waits on
+   * a probe: a peer not yet probed has no `readiness`, and stale ones are
+   * refreshed in the background for the next read.
+   */
+  readiness?: Pick<PeerReadinessService, 'snapshot'>,
 ) {
   const app = new Hono();
 
@@ -199,7 +208,18 @@ export function createPeerCredentialRoutes(
     }
   });
 
-  app.get('/', (c) => c.json({ success: true, data: store.list() }));
+  app.get('/', (c) => {
+    const peers = store.list();
+    if (!readiness) return c.json({ success: true, data: peers });
+    const observed = readiness.snapshot(peers);
+    return c.json({
+      success: true,
+      data: peers.map((peer, index) => {
+        const known = observed[index];
+        return known ? { ...peer, readiness: known } : peer;
+      }),
+    });
+  });
 
   app.post('/', validate(peerCredentialUpsertSchema), async (c) => {
     const request = c.req.raw;

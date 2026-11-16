@@ -3075,9 +3075,12 @@ describe('Global Conversation Routes', () => {
         },
       ],
     });
+    // The caller's own request travels with the query: the remote part is
+    // admitted per caller (remote-station-read-authority.ts).
     expect(searchRemoteMessages).toHaveBeenCalledWith(
       'cobalt',
       expect.any(AbortSignal),
+      expect.any(Request),
     );
   });
 

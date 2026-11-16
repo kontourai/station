@@ -1,0 +1,7 @@
+{
+  "revision": "d0b40f5acedf7081c71b42a863fa6af90716e240",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Final polish round: Continue in Station behavior unchanged; only its reason element id and header sizing changed.","inputs":["docs/guides/starter-work.md","src-ui/src/components/session-detail/AttachedSessionDetail.tsx"]}
+  ]
+}

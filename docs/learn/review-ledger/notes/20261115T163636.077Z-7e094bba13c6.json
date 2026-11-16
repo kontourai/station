@@ -1,0 +1,7 @@
+{
+  "revision": "cb69b57aa3b87a21ded01da72f46f7ddbf088904",
+
+  "notes": [
+    {"path":"docs/README.md","note":"Index entry for station-connection.md still describes it accurately; only one attached-session row wording changed.","inputs":["docs/README.md","docs/design/station-connection.md"]}
+  ]
+}

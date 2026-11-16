@@ -1,0 +1,7 @@
+{
+  "revision": "1d83584d2baf428cbf1ae7b399e172ea9a99c4e6",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Added that an app home no current profile owns (a deleted profile) refuses continuation, matching credentialProfileEnvForHome.","inputs":["docs/reference/session-api.md"]}
+  ]
+}
