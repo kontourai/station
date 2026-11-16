@@ -627,6 +627,21 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
     return null;
   }
 
+  /**
+   * {@link resolveSourceHome}, re-reading the configured home list once on a
+   * miss (no rollout scan), so a continuation right after a restart does not
+   * wait for the follower's first discovery. A home that is no longer
+   * configured still answers `null`.
+   */
+  async resolveSourceHomeWithRefresh(
+    affinity: ProviderSessionSourceAffinity | undefined,
+  ): Promise<string | null> {
+    const known = this.resolveSourceHome(affinity);
+    if (known || !affinity) return known;
+    await this.resolveHomes();
+    return this.resolveSourceHome(affinity);
+  }
+
   private canonicalSessionsRoot(configRoot: string): string | null {
     const sessionsDir = join(configRoot, 'sessions');
     try {

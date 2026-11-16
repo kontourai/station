@@ -870,6 +870,29 @@ describe('CodexRolloutSessionSource', () => {
     expect(source.resolveSourceHome(profileOnly.affinity)).toBeNull();
   });
 
+  test('after a restart, an affinity for a configured home resolves without waiting for a discovery', async () => {
+    const defaultHome = fixtureRoot();
+    const profileHome = fixtureRoot();
+    writeFileSync(rolloutPath(profileHome), line(meta('profile-session')));
+    const options = {
+      homeDir: defaultHome,
+      listConfiguredHomes: async () => [profileHome],
+    };
+    const before = await discoverOne(new CodexRolloutSessionSource(options));
+
+    const restarted = new CodexRolloutSessionSource(options);
+    expect(restarted.resolveSourceHome(before.affinity)).toBeNull();
+    await expect(
+      restarted.resolveSourceHomeWithRefresh(before.affinity),
+    ).resolves.toBe(realpathSync(profileHome));
+    // A home no longer configured still refuses after the refresh.
+    await expect(
+      new CodexRolloutSessionSource({
+        homeDir: defaultHome,
+      }).resolveSourceHomeWithRefresh(before.affinity),
+    ).resolves.toBeNull();
+  });
+
   test('a failing or oversized home list keeps the default home and reports the limit', async () => {
     const defaultHome = fixtureRoot();
     writeFileSync(rolloutPath(defaultHome), line(meta('default')));

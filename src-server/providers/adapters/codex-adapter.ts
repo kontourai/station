@@ -265,7 +265,7 @@ interface CodexAdapterOptions {
   /** Resolve only a source-owned affinity registered by runtime composition. */
   resolveSourceHome?: (
     affinity: ProviderSessionSourceAffinity,
-  ) => string | null;
+  ) => string | null | Promise<string | null>;
   /**
    * The env overlay a resolved source home requires: a credential profile's
    * routing overlay when the home is that profile's, else undefined. A
@@ -1847,7 +1847,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       sourceHome: string;
     }) => Promise<T>,
   ): Promise<T> {
-    const sourceHome = this.options.resolveSourceHome?.(affinity);
+    const sourceHome = await this.options.resolveSourceHome?.(affinity);
     if (!boundedFilesystemPath(sourceHome) || !isAbsolute(sourceHome)) {
       throw new Error('Codex source-home affinity is no longer available.');
     }
@@ -2112,7 +2112,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     let appHome: 'profile' | 'global' | 'source';
     let resolvedHome: ResolvedAppHome | undefined;
     if (sourceAffinity) {
-      const sourceHome = this.options.resolveSourceHome?.(sourceAffinity);
+      const sourceHome = await this.options.resolveSourceHome?.(sourceAffinity);
       if (!boundedFilesystemPath(sourceHome) || !isAbsolute(sourceHome)) {
         throw new Error('Codex source-home affinity is no longer available.');
       }

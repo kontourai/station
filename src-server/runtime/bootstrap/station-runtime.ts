@@ -1084,7 +1084,7 @@ export class StationRuntime {
         this.orchestrationEventStore.recordNativeSessionRetired(sessionId),
     },
     resolveSourceHome: (affinity) =>
-      this.codexRolloutSource.resolveSourceHome(affinity),
+      this.codexRolloutSource.resolveSourceHomeWithRefresh(affinity),
     // A session found in a credential-profile home runs with that profile's
     // overlay too, as a profile spawn would (proxy URL, masked ambient keys).
     resolveSourceHomeEnv: (sourceHome) =>

@@ -886,6 +886,35 @@ describe('Codex native attached-session adoption', () => {
     });
   });
 
+  test('a source home resolved asynchronously (after a refresh) is the home the child runs in', async () => {
+    const process = new FakeCodexProcess();
+    const processFactory = vi.fn(() => process);
+    const adapter = new CodexAdapter({
+      processFactory,
+      resolveSourceHome: async () => '/refreshed-home',
+    } as any);
+    const adoption = adapter.adoptSession(
+      adoptInput({
+        sourceAffinity: { ...AFFINITY },
+        sourceBoundary: {
+          kind: 'completed-turn',
+          providerTurnId: TURN_ID,
+          observedEventId: 'observed-completion',
+        },
+      }),
+      {
+        onProviderChildCreationStarted: vi.fn(async () => undefined),
+        onProviderChildCreated: vi.fn(async () => undefined),
+      },
+    );
+    await initialize(process);
+    respond(process, await waitForCall(process, 'thread/fork'), forkResult());
+    await adoption;
+    expect(processFactory.mock.calls[0]?.[0]).toMatchObject({
+      CODEX_HOME: '/refreshed-home',
+    });
+  });
+
   test('a profile home whose overlay cannot be prepared refuses continuation before spawning', async () => {
     const processFactory = vi.fn(() => new FakeCodexProcess());
     const adapter = new CodexAdapter({
