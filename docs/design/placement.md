@@ -981,15 +981,22 @@ spawns beyond the live registry's bounded history.
 All chats is a superset of every chat's own scope: besides the session read
 model's delegates and the child-work registry, it lists every chat's
 tool-call and delegated-task cards from the background-tasks store, grouped
-by chat. The current chat's group leads, each group shows the chat's project
-when the open chat or its session row records one, and a group's title opens
-that chat. Collapsed groups are a per-device convenience. The store holds
-what this window has seen, so the pane notes that tool calls are listed from
-when the window opened; finished tool calls of a closed chat are dropped as
-before. The global finished bound trims only delegates, because the
-registry already bounds engine subagents. Section headings count agents,
-commands and tools by name. `TaskRow` and `ChildWorkRow` share one
-sentence-case status pill (`WorkStatusPill`) with one tone per status. A row's
+by chat. Every row reaches its group through one resolver; a subagent's
+reporting session follows the store's reporter-to-chat binding, so a chat
+stays one group after it closes. The current chat's group leads, a group's
+title (a heading) opens the chat by its durable id, and the group shows the
+project only as the open chat's display name, never a session row's slug.
+Collapsed groups are a per-device convenience. The store holds what this
+window has seen, so when tool calls are listed the pane notes that they are
+listed from when the window opened; finished tool calls of a closed chat
+are dropped as before. The global finished bound trims only delegates,
+because the registry already bounds engine subagents. Section headings count
+agents, commands, monitors and tools by name; a Bash call that leaves a
+background command is counted once, as that command. `TaskRow` and
+`ChildWorkRow` share one sentence-case status pill (`WorkStatusPill`) with
+one tone per status. An agent card's completed turn reads **Run finished**
+like a child-work row, and **Completed** is kept for a tool call that
+reported success. A row's
 text keeps at least 22rem; actions that do not fit beside it wrap to their
 own line below (flex wrap, no at-rule), which qualifies the 2026-10-14
 “actions beside each row” wording above.
