@@ -186,9 +186,10 @@ export interface ConversationMessage {
     forkOrigin?: { eventId: string; digest: string };
     forkSourceMessageId?: string;
     /**
-     * A row another Station sent (`conversation-imports`), named as this
-     * Station's operator named that Station when pairing. That Station's
-     * claim, not a row this Station recorded.
+     * A row another Station sent (`conversation-imports`), named as that
+     * Station named itself when requesting pairing (the Device name this
+     * Station's operator approved). That Station's claim, not a row this
+     * Station recorded; every seed and memory copy quotes it.
      */
     importedFrom?: string;
     timestamp?: number;

@@ -10,9 +10,12 @@ import {
 } from '@kontourai/station-contracts/http';
 import {
   type ConversationImportRequestV1,
+  PAIRED_STATION_REQUIRED_CODE,
   PEER_CHAT_PRE_EFFECT_CODES,
   PEER_CHAT_REFUSAL_CODE,
   PEER_CHAT_UPLOAD_GRANT_HEADER,
+  PEER_CONVERSATION_HANDOFF_ACCESS_CODE,
+  PEER_CONVERSATION_HANDOFF_PAIRING_CODE,
   PEER_CONVERSATION_HANDOFF_REFUSAL_CODE,
   type PeerChatConnectionV1,
   type PeerChatTargetRefusalV1,
@@ -299,15 +302,25 @@ export function createPeerChatRoutes(deps: {
         response.headers.get(STATION_ENVELOPE_HEADER) ===
           STATION_ENVELOPE_HEADER_VALUE;
       if (!definite) throw new Error('Unconfirmed conversation import');
+      // The paired Station's own text is not relayed: it may name its
+      // internals, and its copy is not this Station's to show. Its machine
+      // code says which of three reasons applies.
+      const pairingRequired =
+        response.status === 403 &&
+        replyRecord.code === PAIRED_STATION_REQUIRED_CODE;
+      const access = response.status === 401 || response.status === 403;
       return c.json(
         {
           success: false,
-          code: PEER_CONVERSATION_HANDOFF_REFUSAL_CODE,
-          // The paired Station's own text is not relayed: it may name its
-          // internals, and its copy is not this Station's to show.
-          error:
-            response.status === 401 || response.status === 403
-              ? 'This connection cannot continue chats on the paired Station.'
+          code: pairingRequired
+            ? PEER_CONVERSATION_HANDOFF_PAIRING_CODE
+            : access
+              ? PEER_CONVERSATION_HANDOFF_ACCESS_CODE
+              : PEER_CONVERSATION_HANDOFF_REFUSAL_CODE,
+          error: pairingRequired
+            ? 'The paired Station takes chats only from a Station paired with it as a Station.'
+            : access
+              ? "The paired Station didn't let this Station continue chats there."
               : 'The paired Station refused this chat.',
         },
         424,

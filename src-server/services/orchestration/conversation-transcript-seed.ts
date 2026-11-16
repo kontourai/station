@@ -44,6 +44,11 @@ const TRANSCRIPT_SEED_LABEL_MAX_BYTES = 200;
 export interface TranscriptSeedEntry {
   role: 'user' | 'assistant';
   text: string;
+  /**
+   * `text` is already quoted line by line (`> `): another Station's record.
+   * Shortening keeps whole lines of it, so none starts unquoted.
+   */
+  quoted?: true;
 }
 
 export interface TranscriptSeedSource {
@@ -103,8 +108,19 @@ export function transcriptSeedSource(
             .map((part) => part.text!.trim())
             .filter(Boolean)
             .join('\n');
-    if (text) entries.push({ role: message.role, text });
-    else nonTextMessages += 1;
+    if (!text) {
+      nonTextMessages += 1;
+      continue;
+    }
+    // A row another Station sent is its claim, never a turn of this
+    // conversation: every seed and memory copy built from it quotes each line.
+    if (typeof message.metadata?.importedFrom === 'string')
+      entries.push({
+        role: message.role,
+        text: quotedLines(text).join('\n'),
+        quoted: true,
+      });
+    else entries.push({ role: message.role, text });
   }
   return { entries, nonTextMessages };
 }
@@ -225,7 +241,16 @@ function shortenNewest(
   const chars = Array.from(entry.text);
   const shortened = (keep: number) => {
     const headLength = Math.ceil(keep / 2);
-    const tailLength = keep - headLength;
+    let tailLength = keep - headLength;
+    // Quoted text keeps whole lines at the tail: a cut mid-line would leave
+    // an unquoted remainder that could pose as a turn after the marker.
+    if (entry.quoted && tailLength) {
+      const start = chars.length - tailLength;
+      if (chars[start - 1] !== '\n') {
+        const next = chars.indexOf('\n', start);
+        tailLength = next === -1 ? 0 : chars.length - (next + 1);
+      }
+    }
     const head = chars.slice(0, headLength).join('');
     const tail = tailLength
       ? chars.slice(chars.length - tailLength).join('')
@@ -234,7 +259,7 @@ function shortenNewest(
     const tailFence = tailLength
       ? openFence(chars.slice(0, chars.length - tailLength).join(''))
       : null;
-    return `${prefix(entry)}${head}${headFence ? `\n${headFence}` : ''}\n[… ${chars.length - keep} characters omitted from the middle of this message …]\n${tailFence ? `${tailFence}\n` : ''}${tail}`;
+    return `${prefix(entry)}${head}${headFence ? `\n${headFence}` : ''}\n[… ${chars.length - headLength - tailLength} characters omitted from the middle of this message …]\n${tailFence ? `${tailFence}\n` : ''}${tail}`;
   };
   let low = 0;
   let high = chars.length - 1;
@@ -276,10 +301,15 @@ export function buildTranscriptSeed(input: {
     );
   }
   const entries = input.quoteBodies
-    ? input.entries.map((entry) => ({
-        ...entry,
-        text: quotedLines(entry.text).join('\n'),
-      }))
+    ? input.entries.map((entry) =>
+        entry.quoted
+          ? entry
+          : {
+              ...entry,
+              text: quotedLines(entry.text).join('\n'),
+              quoted: true as const,
+            },
+      )
     : input.entries;
   const upstreamOmitted = input.upstream?.omittedMessages ?? 0;
   const upstreamShortened = input.upstream?.shortenedMessages ?? 0;

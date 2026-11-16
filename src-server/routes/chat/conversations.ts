@@ -18,6 +18,7 @@ import type {
   ConversationReadState,
   ConversationReadStateUnavailable,
 } from '@kontourai/station-contracts/orchestration';
+import { PAIRED_STATION_REQUIRED_CODE } from '@kontourai/station-contracts/peer-chat';
 import { agentAvailableInProject } from '@kontourai/station-contracts/project-reference-integrity';
 import { parseConversationStatsResponse } from '@kontourai/station-contracts/runtime';
 import {
@@ -896,6 +897,30 @@ export function createConversationRoutes(
     });
 
   /**
+   * Runs an import's save. Once saving starts, the import may exist, so a
+   * failure (including a refusal-shaped one) is not definite: the sender must
+   * retry the same key, which answers with that conversation, rather than mint
+   * a new key and create a second one.
+   */
+  const afterSave = async (save: () => Promise<Response>) => {
+    try {
+      const response = await save();
+      if (response.ok || response.status >= 500) return response;
+      throw new Error('The import save was refused after it began.');
+    } catch {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          outcome: 'indeterminate',
+          error:
+            'The conversation may have been saved. Retry with the same request.',
+        }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+  };
+
+  /**
    * An import's answer, read from what was SAVED, so a same-key retry reports
    * the first request's counts rather than whatever the sender reads now.
    */
@@ -1531,6 +1556,7 @@ export function createConversationRoutes(
         return c.json(
           {
             success: false,
+            code: PAIRED_STATION_REQUIRED_CODE,
             error: 'Only a paired Station can continue a conversation here.',
           },
           403,
@@ -1649,11 +1675,8 @@ export function createConversationRoutes(
             'Saved import context is unavailable.',
           );
         if (previous.state !== 'ready') {
-          const finished = await finishSavedFork(
-            c,
-            saved,
-            authority,
-            actionOperationActor,
+          const finished = await afterSave(() =>
+            finishSavedFork(c, saved, authority, actionOperationActor),
           );
           if (!finished.ok) return finished;
         }
@@ -1722,27 +1745,32 @@ export function createConversationRoutes(
           ? { projectSlug, requestedProjectSlug: projectSlug }
           : {}),
       });
-      const finished = await finishSavedFork(
-        c,
-        snapshot,
-        authority,
-        actionOperationActor,
-      );
-      if (!finished.ok) return finished;
-      const saved = eventStore.readConversationForkContextSnapshot(
-        snapshot.targetConversationId,
-        authority,
-      );
-      if (!saved)
-        throw new ConversationForkContextError(
-          'Saved import context is unavailable.',
+      return await afterSave(async () => {
+        const finished = await finishSavedFork(
+          c,
+          snapshot,
+          authority,
+          actionOperationActor,
         );
-      return importReply(
-        c,
-        saved,
-        ((await finished.clone().json()) as { data?: { idempotent?: boolean } })
-          .data?.idempotent === true,
-      );
+        if (!finished.ok) return finished;
+        const saved = eventStore.readConversationForkContextSnapshot(
+          snapshot.targetConversationId,
+          authority,
+        );
+        if (!saved)
+          throw new ConversationForkContextError(
+            'Saved import context is unavailable.',
+          );
+        return importReply(
+          c,
+          saved,
+          (
+            (await finished.clone().json()) as {
+              data?: { idempotent?: boolean };
+            }
+          ).data?.idempotent === true,
+        );
+      });
     } catch (error: unknown) {
       return conversationRouteFailure(
         c,

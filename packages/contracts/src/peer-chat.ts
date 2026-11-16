@@ -136,6 +136,17 @@ export function parsePeerChatTargetRefusal(
 /** The paired Station definitely refused the import; nothing was created there. */
 export const PEER_CONVERSATION_HANDOFF_REFUSAL_CODE =
   'peer_conversation_handoff_refused';
+/** The paired Station refused this Station's credential (scope, origin, auth). */
+export const PEER_CONVERSATION_HANDOFF_ACCESS_CODE =
+  'peer_conversation_handoff_access_refused';
+/**
+ * The paired Station takes imports only from a Station paired with it as a
+ * Station; this one reaches it with a person's device credential.
+ */
+export const PEER_CONVERSATION_HANDOFF_PAIRING_CODE =
+  'peer_conversation_handoff_pairing_required';
+/** The receiver's own code for a caller that is not a paired Station. */
+export const PAIRED_STATION_REQUIRED_CODE = 'paired_station_required';
 export const PEER_CONVERSATION_HANDOFF_MAX_MESSAGES = 400;
 /**
  * Bytes of carried message text AS JSON-ENCODED on the wire (escapes such as

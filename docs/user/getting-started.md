@@ -547,7 +547,9 @@ from the handoff on; this chat keeps the earlier ones. Its first message is your
 draft or a short catch-up request. Files are not copied: the picker lists uncommitted changes and unpushed
 commits that stay on this machine, so commit and push first if you need them.
 The original chat stays here. If Station can't confirm the move, **Retry
-safely** reuses the same request and never creates a second chat.
+safely** reuses the same request and never creates a second chat. A Station
+you added with a device sign-in can't take a chat: pair it as a Station in
+**Connections** first.
 
 Full access, choosing a folder, mentions, offline copies and local skill or
 workspace integrations are unavailable on a relayed chat. Turning the preview

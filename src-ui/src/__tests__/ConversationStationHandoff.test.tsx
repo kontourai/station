@@ -317,4 +317,48 @@ describe('continuing a chat on a paired Station', () => {
     await waitFor(() => expect(readCapability).toHaveBeenCalled());
     expect(screen.queryByRole('radiogroup', { name: 'Station' })).toBeNull();
   });
+
+  test.each([
+    [
+      'peer_conversation_handoff_access_refused',
+      "Receiver didn't let this Station continue chats there. Check the pairing's access in Connections.",
+    ],
+    [
+      'peer_conversation_handoff_pairing_required',
+      'Receiver is connected with a device sign-in. Pair it as a Station in Connections to continue chats there.',
+    ],
+  ])('the refusal %s says why', async (code, message) => {
+    const real = await vi.importActual<
+      typeof import('@kontourai/station-sdk/client')
+    >('@kontourai/station-sdk/client');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json(
+          { success: false, code, error: 'refused' },
+          {
+            status: 424,
+            headers: {
+              [STATION_ENVELOPE_HEADER]: STATION_ENVELOPE_HEADER_VALUE,
+            },
+          },
+        ),
+      ),
+    );
+    handoffConversationToStation.mockImplementationOnce((...args: unknown[]) =>
+      real.handoffConversationToStation(
+        ...(args as Parameters<typeof real.handoffConversationToStation>),
+      ),
+    );
+    try {
+      renderDialog();
+      await chooseReceiver();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Continue on Receiver' }),
+      );
+      expect((await screen.findByRole('alert')).textContent).toBe(message);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

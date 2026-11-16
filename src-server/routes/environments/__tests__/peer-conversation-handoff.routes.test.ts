@@ -4,7 +4,9 @@ import {
 } from '@kontourai/station-contracts/http';
 import {
   type ConversationImportRequestV1,
+  PEER_CONVERSATION_HANDOFF_ACCESS_CODE,
   PEER_CONVERSATION_HANDOFF_MAX_REQUEST_BYTES,
+  PEER_CONVERSATION_HANDOFF_PAIRING_CODE,
   PEER_CONVERSATION_HANDOFF_REFUSAL_CODE,
 } from '@kontourai/station-contracts/peer-chat';
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
@@ -270,20 +272,23 @@ describe('continuing a conversation on a paired Station (source side)', () => {
       name: 'a scope refusal (403 insufficient_scope)',
       status: 403,
       body: { error: { code: 'insufficient_scope' } },
+      code: PEER_CONVERSATION_HANDOFF_ACCESS_CODE,
     },
     {
       name: 'an origin refusal (403 origin_forbidden)',
       status: 403,
       body: { error: { code: 'origin_forbidden' } },
+      code: PEER_CONVERSATION_HANDOFF_ACCESS_CODE,
     },
     {
       name: 'a body-size refusal (413 request_too_large)',
       status: 413,
       body: { error: { code: 'request_too_large', limit_bytes: 1048576 } },
+      code: PEER_CONVERSATION_HANDOFF_REFUSAL_CODE,
     },
   ])(
     "takes the receiver middleware's $name as definite, so a retry is not offered forever",
-    async ({ status, body: reply }) => {
+    async ({ status, body: reply, code }) => {
       const { call } = fixture({
         importReply: () =>
           Response.json(reply, {
@@ -298,7 +303,7 @@ describe('continuing a conversation on a paired Station (source side)', () => {
       const body = (await response.json()) as Record<string, unknown>;
       expect(body).toMatchObject({
         success: false,
-        code: PEER_CONVERSATION_HANDOFF_REFUSAL_CODE,
+        code,
       });
       expect(body.outcome).toBeUndefined();
     },
@@ -379,5 +384,41 @@ describe('continuing a conversation on a paired Station (source side)', () => {
     const parsed = JSON.parse(sent) as ConversationImportRequestV1;
     expect(parsed.omittedMessages + parsed.messages.length).toBe(8);
     expect(parsed.shortenedMessages).toBe(parsed.messages.length);
+  });
+
+  test.each([
+    {
+      name: 'a credential the receiver will not let import (403 insufficient_scope)',
+      status: 403,
+      reply: { error: { code: 'insufficient_scope' } },
+      code: PEER_CONVERSATION_HANDOFF_ACCESS_CODE,
+    },
+    {
+      name: "a peer added with a person's device credential (403 paired_station_required)",
+      status: 403,
+      reply: {
+        success: false,
+        code: 'paired_station_required',
+        error: 'Only a paired Station can continue a conversation here.',
+      },
+      code: PEER_CONVERSATION_HANDOFF_PAIRING_CODE,
+    },
+    {
+      name: 'an ordinary refusal (404 Target agent not found)',
+      status: 404,
+      reply: { success: false, error: 'Target agent not found' },
+      code: PEER_CONVERSATION_HANDOFF_REFUSAL_CODE,
+    },
+  ])('names why for $name', async ({ status, reply, code }) => {
+    const { call } = fixture({
+      importReply: () =>
+        Response.json(reply, {
+          status,
+          headers: { [STATION_ENVELOPE_HEADER]: STATION_ENVELOPE_HEADER_VALUE },
+        }),
+    });
+    const response = await call();
+    expect(response.status).toBe(424);
+    expect(await response.json()).toMatchObject({ success: false, code });
   });
 });

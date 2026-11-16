@@ -859,6 +859,7 @@ import {
 import { TaskReviewSend } from '../../services/orchestration/task-review-send.js';
 import { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
 import { resolveWorkspaceIdentity } from '../../services/orchestration/workspace-identity.js';
+import { pairedStationImportCaller } from '../../services/peers/peer-conversation-handoff.js';
 import { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
 import { PeerEnrollmentService } from '../../services/peers/peer-enrollment-service.js';
 import { DistributionProfileService } from '../../services/plugins/distribution-profile-service.js';
@@ -11949,19 +11950,11 @@ export function configureRuntimeRoutes(
             : undefined,
         service: context.orchestrationService,
       },
-      // A conversation import comes only from a paired Station: the caller's
-      // verified delegation Device, named as this Station's operator named
-      // it when pairing. Nothing in the request body can claim this.
-      (request) => {
-        const principal = getRuntimeAuthenticatedRequestPrincipal(request);
-        if (principal?.deviceKind !== 'delegation' || !principal.deviceId)
-          return undefined;
-        const device = context.environmentSecurityService.identifyDevice(
-          principal.credential,
-        );
-        if (!device || device.id !== principal.deviceId) return undefined;
-        return { deviceId: device.id, stationName: device.name };
-      },
+      // A conversation import comes only from a paired Station, named as it
+      // named itself when requesting pairing (see pairedStationImportCaller).
+      pairedStationImportCaller((credential) =>
+        context.environmentSecurityService.identifyDevice(credential),
+      ),
     ),
   );
   // The bytes behind a transcript's attachment chips. Separate from

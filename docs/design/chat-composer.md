@@ -352,10 +352,14 @@ Agent/engine handoff seeds from
 bounded, to the receiver's [import](../../src-server/routes/chat/conversations.ts),
 which saves it as a fork context. Only an authenticated paired Station may
 import, and the receiver names it from that credential. That Station's first
-`/chat` start and every later continuation and handoff seed from it: the seed
-quotes each carried line and discloses what the sender left out. The copied
-rows carry `importedFrom` but its transcript views show them as ordinary rows;
-the tunnel admits no conversation-messages read. A relayed tab
+`/chat` start and every later continuation and handoff seed from it, and it
+discloses what the sender left out. The copied rows carry `importedFrom`;
+`transcriptSeedSource` quotes every such row, so each seed and the target
+Agent's memory copy quote each carried line, and shortening keeps whole quoted
+lines. Its transcript views show them as ordinary rows; the tunnel admits no
+conversation-messages read. A peer added by hand with a person's device
+credential is refused with `peer_conversation_handoff_pairing_required`, and
+the picker asks to pair it as a Station. A relayed tab
 therefore shows messages from the handoff on, and the source chat keeps the
 earlier ones. The source conversation is left as it was.
 

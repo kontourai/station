@@ -68,7 +68,11 @@ Agent, in one of its own Projects. Its answer reports the counts it saved. Answe
 `conversationStationHandoff`, nothing to carry, identity unconfirmed); **424**
 `peer_conversation_handoff_refused` when the receiver definitely refused, any
 4xx carrying its Station envelope, middleware refusals included (its text is
-not relayed); **409** when this Station cannot read or hand off its own chat; **502** with `outcome:'indeterminate'` once sent without a
+not relayed), with `peer_conversation_handoff_access_refused` for its 401/403
+and `peer_conversation_handoff_pairing_required` when it reaches the receiver
+with a person's device credential rather than a Station pairing. A receiver
+failure after the save began answers **500** `outcome:'indeterminate'`, so the
+same key is retried; **409** when this Station cannot read or hand off its own chat; **502** with `outcome:'indeterminate'` once sent without a
 confirmed answer. A same-key retry returns the same conversation with
 `idempotent:true`. The client sends the first turn through the tunnel's `chat`
 leaf to the returned conversation. Both Stations advertise the

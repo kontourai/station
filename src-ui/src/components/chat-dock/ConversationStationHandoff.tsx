@@ -1,5 +1,7 @@
 import {
+  PEER_CONVERSATION_HANDOFF_ACCESS_CODE,
   PEER_CONVERSATION_HANDOFF_MAX_MESSAGES,
+  PEER_CONVERSATION_HANDOFF_PAIRING_CODE,
   PEER_CONVERSATION_HANDOFF_REFUSAL_CODE,
   type PeerConversationHandoffReceiptV1,
 } from '@kontourai/station-contracts/peer-chat';
@@ -320,11 +322,15 @@ export function ConversationStationHandoff({
         retained.current = null;
         idempotencyKey.current = randomCorrelationId();
         setState('error');
+        const code = (error as { code?: unknown }).code;
         setFeedback(
-          (error as { code?: unknown }).code ===
-            PEER_CONVERSATION_HANDOFF_REFUSAL_CODE
-            ? `${stationName} didn't take this chat. Check that it has this Agent and the chosen project.`
-            : userFacingErrorMessage(error),
+          code === PEER_CONVERSATION_HANDOFF_PAIRING_CODE
+            ? `${stationName} is connected with a device sign-in. Pair it as a Station in Connections to continue chats there.`
+            : code === PEER_CONVERSATION_HANDOFF_ACCESS_CODE
+              ? `${stationName} didn't let this Station continue chats there. Check the pairing's access in Connections.`
+              : code === PEER_CONVERSATION_HANDOFF_REFUSAL_CODE
+                ? `${stationName} didn't take this chat. Check that it has this Agent and the chosen project.`
+                : userFacingErrorMessage(error),
         );
       } else {
         setState('indeterminate');

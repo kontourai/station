@@ -9,6 +9,7 @@ import {
 } from '@kontourai/station-contracts/peer-chat';
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
 import { z } from 'zod';
+import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import { transcriptSeedSource } from '../orchestration/conversation-transcript-seed.js';
 
 /**
@@ -223,4 +224,26 @@ export function importedConversationMessages(
     role: message.role,
     parts: [{ type: 'text', text: message.text }],
   }));
+}
+
+/**
+ * Who may import (`POST /agents/:slug/conversation-imports`): only a paired
+ * Station, meaning a request admitted with a verified `delegation` Device
+ * credential whose Device record still names that same Device when re-read
+ * here. The name is the one the paired Station gave itself when it requested
+ * pairing (its `deviceName`), which this Station's operator approved.
+ */
+export function pairedStationImportCaller(
+  identifyDevice: (
+    credential: string,
+  ) => { id: string; name: string } | null | undefined,
+): (request: Request) => { deviceId: string; stationName: string } | undefined {
+  return (request) => {
+    const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+    if (principal?.deviceKind !== 'delegation' || !principal.deviceId)
+      return undefined;
+    const device = identifyDevice(principal.credential);
+    if (!device || device.id !== principal.deviceId) return undefined;
+    return { deviceId: device.id, stationName: device.name };
+  };
 }
