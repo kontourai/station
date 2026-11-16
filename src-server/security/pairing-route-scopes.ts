@@ -2358,6 +2358,18 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
   // enroll, import, enable automatic recovery, or apply a profile. The
   // `:id` segment is a route parameter, matched structurally below rather
   // than treated as a literal pathname component.
+  // "Continue on <label>" on a usage-limit stop lists this Station's
+  // enrolled credential profiles and switches the connection's account, the
+  // same effects as credential-recovery below, so it takes the same tier
+  // instead of the Session family's.
+  {
+    id: '/api/orchestration/sessions/:threadId/usage-limit/continue-on:manage',
+    method: '*',
+    prefix: '/api/orchestration/sessions/:threadId/usage-limit/continue-on',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
   {
     id: '/api/connections/agent/:id/credential-recovery:manage',
     method: '*',

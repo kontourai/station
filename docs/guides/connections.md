@@ -1653,6 +1653,38 @@ preference; send `"allowancePreference": null` to clear it. The existing SDK
 `useSetCredentialRecoveryAutomaticPolicyMutation` accepts the same optional
 field. This policy remains opt-in and automatic recovery remains off by default.
 
+### Continue a usage-limited conversation on another account
+
+With automatic recovery off, a Codex conversation stopped by a usage limit
+still offers **Continue on <label>** on its usage-limit banner, one per
+enrolled profile that automatic recovery could select (same routing, not the
+active profile). The first takes the banner's free button slot; the rest sit in
+its actions menu. Choosing one runs the same stage, restart and replay as
+automatic recovery, with the click in place of the `automatic` opt-in, and
+switches the connection's active profile like any profile application: every
+chat that starts or restarts on that connection without its own pinned profile
+uses it, including other people's chats and restored ones. The button's
+tooltip and the resuming line say so.
+Station does not know whether that account is limited too; if it is, the
+replay stops on its own usage limit. An `allowancePreference` does not rank or
+exclude these choices. A profile that no longer qualifies leaves the stop
+waiting. So does a failure before the replay reaches the engine's send (for
+example the chosen account is signed out and its session cannot start):
+Station rolls the account back, restarts the session on the connection's
+account and keeps the reset. If that session cannot restart either, Station
+closes it and retires the stop ("the session has ended") rather than promising
+a resume; an automatic attempt that ends this way says the same. A failure after the send was called stops as
+"may not have gone through" and does not resume on its own, so the turn is
+never sent twice. Nothing is offered while automatic recovery is paused (see
+above).
+
+Claude Code offers no account here: its adapter declares profile application
+`unsupported`, because `CLAUDE_CONFIG_DIR` does not isolate the macOS Keychain
+sign-in, so Station cannot show a profile switch changed accounts. The offer
+needs the `access:manage` pairing scope, like the profile routes, and a hosted
+Station never makes it. Routes:
+[usage-limit recovery](../reference/session-api.md#usage-limit-recovery-sessionsthreadidusage-limit).
+
 The overlay is not secret. It is visible to the engine and to every tool it
 runs (an agent can read these variables, for example from a shell), and to
 anyone who can read this Station's connection settings, not only to holders

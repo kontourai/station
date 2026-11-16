@@ -1037,6 +1037,12 @@ reset time shows, in its banner, a choice for that stop alone: **Resume at
 <reset> also snoozes the chat in the inbox until the reset. Every check the
 automatic resume runs before it sends still applies.
 
+A Codex conversation whose connection has another enrolled credential profile
+also offers **Continue on <label>**, which continues the stopped turn on that
+account now; see
+[the connections guide](connections.md#continue-a-usage-limited-conversation-on-another-account).
+Claude Code offers no other account.
+
 OpenCode and other ACP engines do not get an automatic resume. An OpenCode
 plan-quota error can report a reset only as display text with no time zone
 (`provider-plan-quota.ts`), which Station shows but does not parse into a

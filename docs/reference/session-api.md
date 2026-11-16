@@ -2090,11 +2090,38 @@ in [contracts](contracts.md)). These routes serve the chat banner:
   A held stop keeps Resume now. Either answers `not-waiting` for a stop with
   no known reset or one no longer waiting.
 
+- `GET /sessions/:threadId/usage-limit/continue-on` answers `{ profiles }`
+  (`UsageLimitContinueOnOptions`): the enrolled credential profiles
+  (`ref`, optional `label`) a waiting stop may continue on, in enrollment
+  order. It is empty for an engine that cannot apply a profile (Claude Code),
+  a stop that is not waiting, a hosted Station, or while credential-recovery
+  admission is blocked.
+  The answer also carries `stopId`, the waiting stop the accounts are offered
+  for. `POST /sessions/:threadId/usage-limit/continue-on` with
+  `{ "profileRef", "stopId" }`
+  ("Continue on <label>") stages that profile and replays the stopped turn
+  under it, through the same protocol as automatic credential recovery, with
+  this request as the consent the `automatic` policy otherwise gives. The
+  pre-dispatch checks apply first. A `stopId` that is not the waiting stop
+  answers `not-waiting` (a click from an older banner never acts on a newer
+  stop). A profile not currently offered, one that no longer qualifies when
+  staged, or a failure before the replay reaches the engine's send (the
+  account is rolled back and the session restarted on the connection's
+  account) answers `not-switched` and leaves the stop waiting for its reset.
+  If the session cannot be restarted on the connection's account either, it is
+  quarantined and the answer is `retired` with `session-ended` (or
+  `not-waiting` if that retirement could not be written; the stop then retires
+  at its reset, when the pre-dispatch check finds the closed session).
+  A failure after the send was called answers `failed`, and the stop does not
+  resume on its own. Both list or switch this Station's accounts, so they need the
+  `access:manage` pairing scope as well as the Session's own person.
+
 Every POST answers `{ result, recovery }`: `result.kind` is `resumed` (the
 dispatch started; whether the provider accepts it shows later in `recovery`,
 which can still read `failed` if the dispatch is rejected), `failed` (it could
 not be dispatched at all, for example its attachment bytes are gone), `canceled`, `retired`
-(with `reason`), `chosen` (with `choice`) or `not-waiting` (nothing was left
+(with `reason`), `chosen` (with `choice`), `not-switched` (Continue on did
+not switch accounts) or `not-waiting` (nothing was left
 to act on), and `recovery`
 is the projection afterward.
 

@@ -903,6 +903,9 @@ not resume on its own: `auto-resume-off`, `superseded`, `request-pending`,
 stop, which decides `autoResume` in place of the setting. The chat banner
 reads it through the Session API's
 [usage-limit routes](session-api.md#usage-limit-recovery-sessionsthreadidusage-limit).
+`UsageLimitContinueOnOptions` lists the `UsageLimitContinueOnProfile`s
+(`ref`, optional display `label`) a waiting stop may continue on; it says
+nothing about whether those accounts are limited.
 
 `@kontourai/station-contracts/agent-schedule` owns what an agent schedules
 for itself and what it only proposes: `AgentWakeUp`, `AgentJobProposal`,

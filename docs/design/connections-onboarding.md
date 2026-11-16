@@ -368,12 +368,23 @@ a candidate whose env overlay differs from the active profile's (`environment_mi
 or an unsupported adapter all refuse. The selected recovery restart/resume follows the
 same stage → commit-on-live-success / rollback-on-failure protocol as manual adoption.
 
+**A person's "Continue on <label>".** A usage-limit stop still waiting offers each
+enrolled profile the same selector would choose, with the person's click replacing
+only the `automatic` opt-in (`consented`); every other refusal above still applies,
+and the stage, restart and replay are the automatic path's. Its list and action
+(`/api/orchestration/sessions/:threadId/usage-limit/continue-on`) take the
+`access:manage` pairing tier like the profile-management routes, are refused on a
+hosted Station, and need the Session's own person. The application metric records it
+as `source: recovery`, like the automatic path. Station does not know whether the chosen
+account is limited too.
+
 **Privacy and telemetry.** The bounded `station.credential_profile.application` metric
 contains only source, declared capability, outcome, classified scope, and bounded reason.
 It excludes profile refs, labels, profile paths, provider/engine identity, account identity,
 credential material, raw runtime errors, prompts, and attachments. The same exclusions
 apply to logs and recovery receipts. Profile refs and management-only labels appear only
-on explicit profile-management UI/API/CLI surfaces; those surfaces still exclude
+on explicit profile-management UI/API/CLI surfaces and the `access:manage`
+"Continue on" list on a usage-limit banner; those surfaces still exclude
 profile-home paths, account identity, credential material, and raw runtime data.
 
 **Current recovery boundary.** This is recovery from an observed failure, not proactive

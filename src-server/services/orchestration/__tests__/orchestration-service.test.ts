@@ -134,6 +134,7 @@ import { createLogger } from '../../../utils/logger.js';
 import { LOG_BINDING_KEYS } from '../../../utils/logger-correlation.js';
 import { AgentPolicyService } from '../../agents/agent-policy-service.js';
 import { ApprovalRegistry } from '../../approvals/approval-registry.js';
+import { isSessionUntouched } from '../recovery-dispatch-adapter.js';
 import { stationWorkflowActorKey } from '../../evidence/orchestration-workflow-sidecar.js';
 import { buildSyntheticTrustBundle } from '../../evidence/trust-bundle.js';
 import { VeritasReadinessService } from '../../evidence/veritas-readiness-service.js';
@@ -5986,9 +5987,22 @@ describe('OrchestrationService', () => {
       // The credential-replay shape bypasses dispatch and ends in a DIRECT
       // adapter.sendTurn — so the restart seam itself must refuse: no
       // respawn, no teardown of the live engine, no replay.
-      await expect(restart('portable-credential-restart')).rejects.toThrow(
+      const refused = await restart('portable-credential-restart').catch(
+        (error: unknown) => error,
+      );
+      expect(String(refused)).toContain(
         'This portable task cannot continue without a current execution offer',
       );
+      // Refused before anything stopped: recovery must not restore it.
+      expect(isSessionUntouched(refused)).toBe(true);
+      // So is a restart for a Session Station does not know.
+      const unknown = await restart('no-such-credential-session').catch(
+        (error: unknown) => error,
+      );
+      expect(String(unknown)).toContain(
+        'Credential profile recovery session is unavailable.',
+      );
+      expect(isSessionUntouched(unknown)).toBe(true);
       expect(claude.startSession.mock.calls.length).toBe(startsBefore);
       expect(claude.stopSession).not.toHaveBeenCalled();
       // Legacy control: an unmarked session restarts.
