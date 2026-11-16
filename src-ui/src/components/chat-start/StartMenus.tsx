@@ -389,7 +389,8 @@ export function StartStationMenu({
           // its reason; a disabled row is skipped by Tab and Enter. The
           // current choice stays enabled so choosing it again just closes.
           const unavailable = Boolean(station.unavailableReason) && !selected;
-          const reasonId = station.unavailableReason
+          const note = station.unavailableReason ?? station.notice;
+          const reasonId = note
             ? `start-station-${station.id}-unavailable`
             : undefined;
           return (
@@ -400,7 +401,7 @@ export function StartStationMenu({
               aria-current={selected ? 'true' : undefined}
               aria-describedby={reasonId}
               disabled={unavailable}
-              title={station.unavailableReason}
+              title={note}
               onClick={() => onChoose(station)}
             >
               <span className="new-chat-modal__dropdown-item-main">
@@ -411,8 +412,7 @@ export function StartStationMenu({
                   <span>{station.name}</span>
                 </span>
                 <span className="start-menu__detail" id={reasonId}>
-                  {station.unavailableReason ??
-                    STATION_KIND_DETAIL[station.kind]}
+                  {note ?? STATION_KIND_DETAIL[station.kind]}
                 </span>
               </span>
               {selected && (

@@ -32,15 +32,28 @@ export type ExecutionStation = {
   kind: 'current' | 'ssh' | 'paired';
   /**
    * Set when the Station is listed but cannot take work right now (a paired
-   * Station that is not `online`, an SSH connection in error). The picker
-   * shows it greyed with this reason instead of hiding it.
+   * Station that is not `online`). The picker shows it greyed with this
+   * reason instead of hiding it.
    */
   unavailableReason?: string;
+  /**
+   * Something worth knowing that does not stop the Station being chosen: an
+   * SSH Station whose last connection failed reconnects when work is sent,
+   * so it stays choosable and says so.
+   */
+  notice?: string;
 };
 
-/** Why a saved SSH Station cannot take work now, from its live state. */
-function sshUnavailableReason(state: { phase: string }): string | undefined {
-  return state.phase === 'error' ? 'Connection failed' : undefined;
+/**
+ * A note for a saved SSH Station whose last connection failed. It is not a
+ * refusal: launching work there reconnects it (`remote-station-forwarder`),
+ * and the error phase stays until something reconnects, so greying it out
+ * would leave no way to choose it from here.
+ */
+function sshNotice(state: { phase: string }): string | undefined {
+  return state.phase === 'error'
+    ? 'Disconnected · reconnects when used'
+    : undefined;
 }
 
 /**
@@ -63,8 +76,10 @@ function sshUnavailableReason(state: { phase: string }): string | undefined {
  * before it is known.
  *
  * A Station that is offered but not ready to take work right now (a paired
- * Station whose handshake is not `online`, an SSH connection in error) stays
- * listed with `unavailableReason`, so the picker can grey it out and say why.
+ * Station whose handshake is not `online`) stays listed with
+ * `unavailableReason`, so the picker can grey it out and say why. An SSH
+ * Station whose last connection failed stays choosable with a `notice`,
+ * because choosing it reconnects.
  *
  * A paired Station whose id is also a saved SSH profile is that SSH profile:
  * the server resolves a saved id to its SSH profile first and the launcher
@@ -140,7 +155,7 @@ export function useExecutionStations({
               id: entry.profile.environmentId,
               name: entry.profile.name,
               kind: 'ssh' as const,
-              unavailableReason: sshUnavailableReason(entry.state),
+              notice: sshNotice(entry.state),
               offered:
                 canStartTasks &&
                 sshPlacementRefusals(entry.profile, projectSelected).length ===
@@ -162,9 +177,11 @@ export function useExecutionStations({
   ];
   const stations: ExecutionStation[] = listed
     .filter((station) => station.offered)
-    .map(({ offered: _offered, unavailableReason, ...station }) =>
-      unavailableReason ? { ...station, unavailableReason } : station,
-    );
+    .map(({ offered: _offered, unavailableReason, notice, ...station }) => ({
+      ...station,
+      ...(unavailableReason ? { unavailableReason } : {}),
+      ...(notice ? { notice } : {}),
+    }));
   return {
     enabled,
     stations,

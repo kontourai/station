@@ -288,8 +288,10 @@ the caller may list whose credential holds `orchestration:operate`. An
 offered Station that cannot take work right now stays listed but disabled,
 with its reason in place of its kind: a paired Station whose public handshake
 is not `online` (**Recovering · server down or restarting**, **Unreachable**,
-**Unconfirmed · not answering as a Station**, or an identity mismatch), or an
-SSH environment whose connection is in error (**Connection failed**). The
+**Unconfirmed · not answering as a Station**, or an identity mismatch). An
+SSH environment whose last connection failed stays choosable and reads
+**Disconnected · reconnects when used**, because launching work
+there reconnects it. The
 server keeps each paired Station's last handshake answer and returns it with
 `GET /api/environments/peers` without waiting on a probe
 ([peer readiness](../../src-server/services/peers/peer-readiness-service.ts));
