@@ -160,8 +160,10 @@ source type's `plan()` can describe the source, it should write a proposal's
   included (#2377 slice D), and so does a Station-engine run an
   authenticated request starts without a session (the invoke endpoints, the
   SDK's raw tool call or direct chat stream), acting for that request's
-  principal. A run with no caller at all (a voice session, an untargeted
-  scheduled job) cannot propose: the guard refuses it
+  principal. So does a signed-in voice session (its person) and a scheduled
+  job (its recorded owner). A run with no caller at all (a voice session with
+  no credential, which is offered no Station tools, or a job with no recorded
+  owner on a shared or hosted Station) cannot propose: the guard refuses it
   (`station_control_caller_required`).
 - Station does not yet have a route that removes a source or rule (it is
   proposed in [#4646](https://github.com/kontourai/station/pull/4646)), so

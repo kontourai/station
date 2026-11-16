@@ -5848,6 +5848,13 @@ as create), and returns `{success: true, data: {output}}`. An edit never
 changes `createdBy`. Re-enabling a disabled job resets its
 `consecutiveFailures`.
 
+Every job records `createdBy`, the owner its runs act as, resolved from the
+creating request (an untargeted job too, since #2377 slice D): an untargeted
+run's Station tools act for that owner through a per-run `bound` caller. On a
+personal Station, jobs stored before owners were recorded are given the
+operator at start. Elsewhere such a job's view carries `ownerNeeded` (the
+reason), and its runs get no Station tools and are told so.
+
 For a job that already has a `target`, every edit (any field), `run`,
 `enable`, `disable` and `DELETE` is admitted against the **stored** target
 first, whatever the body names: a person must be able to send to its

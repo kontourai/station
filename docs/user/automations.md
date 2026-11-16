@@ -91,8 +91,12 @@ Templates only ask for work an agent can do with its workspace and tools.
 - An agent can create, change, run or delete an automation only in its own
   chat. A dedicated chat is your choice. To change or run an automation that
   runs in a chat, you must be able to send to that chat.
-- An automation that runs in a chat acts as the person who created it; editing
-  it does not change that.
+- An automation acts as the person who created it; editing it does not change
+  that. Its Station tools act for that person too.
+- On a personal Station, older automations created before Station recorded an
+  owner belong to you. On a shared or hosted Station such an automation shows
+  that it needs an owner, and its runs have no Station tools until someone
+  re-creates it.
 - Start notifications are not sent; the old `notifyStart` setting is ignored.
 - GitHub event triggers are not part of Automations yet
   ([#3439](https://github.com/kontourai/station/issues/3439)).
