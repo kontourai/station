@@ -216,7 +216,9 @@ describe('#4518: the managed approval ceiling at real server startup', () => {
     });
     const result = await bounded(owned.completion, 'refused boot', 90_000);
     const { stdout, stderr } = capture.finish();
-    expect(result.status).toBe(1);
+    // A managed-policy refusal is terminal: the reserved startup-refused
+    // status (CORE_STARTUP_REFUSED_EXIT_CODE), which a supervisor does not retry.
+    expect(result.status, stderr.text.slice(-3000)).toBe(78);
     expect(stdout.text).not.toContain(readyPrefix);
     const markerLine = stderr.text
       .split('\n')
