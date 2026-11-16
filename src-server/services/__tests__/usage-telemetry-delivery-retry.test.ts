@@ -396,7 +396,12 @@ describe('usage telemetry ledger dispositions (#5053)', () => {
   test('a batch retried three times then acknowledged records no drop', async () => {
     clock();
     vi.spyOn(Math, 'random').mockReturnValue(1);
-    const { fetch } = transport('network', { status: 503 }, 'network', 'accept');
+    const { fetch } = transport(
+      'network',
+      { status: 503 },
+      'network',
+      'accept',
+    );
     const { service, track, at, homeDir } = await subject(fetch);
     try {
       await track();
