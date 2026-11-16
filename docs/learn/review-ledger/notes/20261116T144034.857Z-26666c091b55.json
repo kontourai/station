@@ -1,0 +1,9 @@
+{
+  "revision": "d4162ec815080bb9c4bfe5b77f239af107950292",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Checked the diff: one new test, scripts/__tests__/server-static-imports.test.ts, joins the process-heavy group because esbuild starts a service child. The manifest's groups, worker caps and validation rules that these pages describe are unchanged.","inputs":["scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Checked the diff: one new test, scripts/__tests__/server-static-imports.test.ts, joins the process-heavy group because esbuild starts a service child. The manifest's groups, worker caps and validation rules that these pages describe are unchanged.","inputs":["scripts/vitest-resource-manifest.mjs"]}
+  ]
+}
