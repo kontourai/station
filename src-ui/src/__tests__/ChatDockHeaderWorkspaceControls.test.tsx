@@ -467,11 +467,16 @@ describe('one-bar rule (#3309)', () => {
       // bracket these are the REGION's since #2046 2b and render in the
       // region bar (`RegionChromeBar.test.tsx` pins them there).
       'Hide inbox',
+      // Chat settings came back out of the menu as the bar's one gear.
+      'Chat settings',
       'More dock actions',
     ]);
     expect(screen.queryByLabelText('Hide Chat')).toBeNull();
-    // The gear is a row of that one menu now, not a control of its own.
-    expect(screen.queryByRole('button', { name: 'Chat settings' })).toBeNull();
+    // Chat settings is the bar's gear, and so not also a row of the menu.
+    fireEvent.click(screen.getByRole('button', { name: /^More dock actions/ }));
+    expect(
+      screen.queryByRole('menuitem', { name: 'Chat settings' }),
+    ).toBeNull();
   });
 
   test('the context meter is not a header control: it lives in the composer', () => {
@@ -655,6 +660,30 @@ describe('the region’s commands fold into the More menu', () => {
 });
 
 describe('ChatDockHeader More menu groups', () => {
+  test('while the This chat card is beside the transcript, the menu drops what the card carries', () => {
+    renderHeader({
+      workspaceControls: workspaceControls(),
+      backgroundTasksBadgeHidden: true,
+      moreActions: [
+        {
+          key: 'turn-into-task',
+          label: 'New Task from this',
+          onSelect: vi.fn(),
+        },
+      ],
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^More dock actions/ }));
+    const menu = screen.getByRole('menu');
+    expect(
+      within(menu).queryByRole('menuitem', { name: /Background tasks/ }),
+    ).toBeNull();
+    expect(
+      within(menu).queryByRole('menuitem', { name: 'Chat settings' }),
+    ).toBeNull();
+    // Chat settings is the bar's gear instead, one press.
+    expect(screen.getByRole('button', { name: 'Chat settings' })).toBeTruthy();
+  });
+
   test('rows render by group — switch, this chat, copy, about — with one separator per boundary', () => {
     renderHeader({
       workspaceControls: workspaceControls(),
@@ -700,7 +729,6 @@ describe('ChatDockHeader More menu groups', () => {
       'Changed files',
       'New Task from this',
       'Background tasks',
-      'Chat settings',
       '—',
       'Copy chat ID',
       '—',
