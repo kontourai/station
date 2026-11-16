@@ -106,7 +106,9 @@ describe('createAgentHooks', () => {
 
     expect(approved).toMatchObject({
       allowed: false,
-      reason: expect.stringContaining('runtime configuration changed'),
+      reason: expect.stringContaining(
+        "this agent's configuration changed after this session started. Retrying in this turn will be refused again",
+      ),
     });
     expect(deps.logger.warn).toHaveBeenCalledWith(
       'Stale agent generation blocked tool execution',
@@ -114,6 +116,7 @@ describe('createAgentHooks', () => {
         toolName: 'github_create_issue',
         agentSlug: 'planner',
         conversationId: 'conv-1',
+        generation: 'replaced',
       },
     );
     expect(toolDenials.add).toHaveBeenCalledWith(1, {

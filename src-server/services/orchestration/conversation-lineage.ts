@@ -253,6 +253,12 @@ interface ConversationLineageDeps {
     conversationId: string,
     detail: OrchestrationSessionDetail,
   ) => boolean;
+  /**
+   * Whether this Session's pre-tool policy was bound to an Agent definition
+   * that has since changed. Its engine cannot re-bind, so the next ordinary
+   * turn starts a successor, which binds the current definition.
+   */
+  needsPolicySuccessor?: (threadId: string) => Promise<boolean>;
   nativeReturnSupported?: (provider: EngineId) => boolean;
   nativeMemoryOwnsTranscriptFor?: (provider: EngineId) => boolean;
   nativeIdentityRequiredFor?: (provider: EngineId) => boolean;
@@ -511,11 +517,15 @@ export class ConversationLineage {
     const needsToolsSuccessor =
       this.deps.needsCoordinatorToolsSuccessor?.(conversationId, detail) ===
       true;
+    const needsPolicySuccessor =
+      (await this.deps.needsPolicySuccessor?.(detail.session.threadId)) ===
+      true;
     if (
       delivery !== 'redeliver' &&
       sessionTakesNextTurn(detail.session) &&
       !needsModelRestart &&
-      !needsToolsSuccessor
+      !needsToolsSuccessor &&
+      !needsPolicySuccessor
     ) {
       observeConversationContinuation('current_open');
       return { sessionId: current.sessionId, startRequired: false };
@@ -620,6 +630,8 @@ export class ConversationLineage {
       delivery === 'redeliver' ||
       !sessionTakesNextTurn(described.session) ||
       this.deps.needsCoordinatorToolsSuccessor?.(conversationId, described) ===
+        true ||
+      (await this.deps.needsPolicySuccessor?.(described.session.threadId)) ===
         true
     );
   }

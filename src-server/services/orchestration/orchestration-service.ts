@@ -1297,6 +1297,12 @@ interface OrchestrationServiceOptions {
    * which case `startSession` input reaches the adapter exactly as before.
    */
   coordinatorGenerationForSession?: (threadId: string) => number;
+  /**
+   * Whether an external engine Session's own Agent definition changed after
+   * its pre-tool policy was bound. Such a Session refuses every tool call and
+   * cannot re-bind, so the conversation's next turn starts a successor.
+   */
+  preToolPolicyReplaced?: (threadId: string) => Promise<boolean>;
   /** #3628: the `coordinator-session` preview; absent reads as off. */
   coordinatorEnabled?: () => boolean;
   resolveSessionAgent?: (
@@ -3526,6 +3532,9 @@ export class OrchestrationService {
       perTurnModelOverride: (provider) =>
         options.adapterRegistry.get(provider)?.metadata.modelLaunch
           ?.overridePerTurn !== false,
+      ...(options.preToolPolicyReplaced
+        ? { needsPolicySuccessor: options.preToolPolicyReplaced }
+        : {}),
       needsCoordinatorToolsSuccessor: (conversationId, detail) => {
         const store = options.eventStore;
         const provider = detail.session.provider;

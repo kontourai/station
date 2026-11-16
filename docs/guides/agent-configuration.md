@@ -284,8 +284,21 @@ legacy SSE approval transport. Canonical orchestration clients instead read
 The [staged evaluator](../../src-server/runtime/agents/pre-tool-policy.ts)
 can allow, deny, or request an interactive decision. It checks current runtime
 generation, delegation and configuration protection before grants; the approval
-guardian can also decide a call. The following is the interactive branch, not
-every possible tool outcome:
+guardian can also decide a call.
+
+The runtime-generation check refuses a call decided by policy that has since
+been replaced. On Station's engine, an Agent's hooks are replaced when that
+Agent is rebuilt, and its next turn uses the rebuilt Agent. An external engine
+(Claude Code, Codex, OpenCode and other ACP engines) keeps the policy it was
+started with for the whole session, together with the grants and tool servers
+its engine process was launched with. A
+[policy generation](../../src-server/runtime/agents/pre-tool-policy-generation.ts)
+therefore re-reads the session's own Agent when any configuration change
+lands. An unchanged definition keeps the session running. A changed or
+deleted one refuses every later call in that session, and the conversation's
+next message starts a successor session under the current definition. While
+a change is still being applied, a call is refused with a request to retry
+it. The following is the interactive branch, not every possible tool outcome:
 
 1. `beforeToolCall` invokes the staged policy with the current invocation.
 2. If the result requires interaction and a requester exists, the hook calls

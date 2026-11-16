@@ -110,7 +110,13 @@ interface StagedPreToolPolicyDeps {
   approvalGuardian?: ApprovalGuardianService;
   /** #4827: defaults to the ledger shared by every Agent's evaluator. */
   guardianDenialLedger?: GuardianDenialLedger;
-  isCurrentRuntimeGeneration?: () => boolean;
+  /**
+   * Whether the hooks deciding this call belong to the Agent generation in
+   * force now. `'settling'`: a configuration change is still being applied,
+   * so the same call may pass once it lands. `false`: this session's Agent
+   * was replaced, and only a new session runs under the new definition.
+   */
+  isCurrentRuntimeGeneration?: () => boolean | 'settling';
   resolveUnattendedGrant?: (
     tool: ToolCallContext,
     invocation: InvocationContext,
@@ -484,16 +490,24 @@ export function createStagedPreToolPolicyEvaluator(
       delegationToolName: tool.toolName,
       configProtectionToolName: tool.toolName,
     };
-    if (deps.isCurrentRuntimeGeneration && !deps.isCurrentRuntimeGeneration()) {
+    const generation = deps.isCurrentRuntimeGeneration?.() ?? true;
+    if (generation !== true) {
       deps.logger.warn('Stale agent generation blocked tool execution', {
         toolName: identity.delegationToolName,
         agentSlug: invocation.agentSlug,
         conversationId: invocation.conversationId,
+        generation: generation === 'settling' ? 'settling' : 'replaced',
       });
+      // The text tells the model what will work. A replaced Agent is never
+      // re-bound inside the running turn, so retrying there only repeats the
+      // refusal; the next message runs under the current definition (a new
+      // engine session for an external engine, the rebuilt Agent here).
       return deny(
         'stale_generation',
         tool.toolName,
-        "was blocked because the agent's runtime configuration changed mid-run. Retry the request.",
+        generation === 'settling'
+          ? 'was blocked while Station finishes applying a configuration change. Retry it in a moment.'
+          : "was blocked because this agent's configuration changed after this session started. Retrying in this turn will be refused again: stop, and tell the person that the agent's configuration changed. Their next message continues the conversation under the current configuration.",
       );
     }
 

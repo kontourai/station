@@ -293,7 +293,15 @@ import {
   type AgentHooksDeps,
   createAgentHooks,
 } from '../agents/agent-hooks.js';
-import { createStagedPreToolPolicyEvaluator } from '../agents/pre-tool-policy.js';
+import {
+  createStagedPreToolPolicyEvaluator,
+  type StagedPreToolPolicyEvaluator,
+} from '../agents/pre-tool-policy.js';
+import {
+  bindPreToolPolicyGeneration,
+  type PreToolPolicyGeneration,
+  PreToolPolicyGenerations,
+} from '../agents/pre-tool-policy-generation.js';
 import {
   activatePreparedRuntimeAgentInstance,
   buildRuntimeAgentInstance,
@@ -342,24 +350,7 @@ function credentialRecoveryRuntimeConnectionId(
   return undefined;
 }
 
-export async function loadStablePreToolPolicySpec(options: {
-  getStableRevision(): number | null;
-  loadAgent(): Promise<AgentSpec>;
-}): Promise<{ spec: AgentSpec; revision: number }> {
-  const revision = options.getStableRevision();
-  if (revision === null) {
-    throw new Error(
-      'Station agent configuration is not stable; pre-tool policy preparation was denied.',
-    );
-  }
-  const spec = await options.loadAgent();
-  if (options.getStableRevision() !== revision) {
-    throw new Error(
-      'Station agent configuration changed during pre-tool policy preparation; execution was denied.',
-    );
-  }
-  return { spec, revision };
-}
+export { loadStablePreToolPolicySpec } from '../agents/pre-tool-policy-generation.js';
 
 import { recordAdoptedBuiltinEngine } from './builtin-engine-adoption.js';
 import { primeEnginePrerequisites } from './engine-prerequisite-priming.js';
@@ -763,6 +754,8 @@ export class StationRuntime {
   >();
   private agentStatus = new Map<string, 'idle' | 'running'>();
   private agentConfigurationRevision = 0;
+  /** Each external session's pre-tool policy binding, by provider thread. */
+  private readonly preToolPolicyGenerations = new PreToolPolicyGenerations();
   private agentConfigurationMutationQueue: Promise<void> = Promise.resolve();
   private agentConfigurationPersistenceQueue: Promise<void> = Promise.resolve();
   private agentConfigurationPersistenceRevision = 0;
@@ -1461,12 +1454,35 @@ export class StationRuntime {
   private async resolveExternalPreToolPolicy(
     input: ProviderSessionStartInput,
     toolNameProvenance: 'authentic' | 'self-reported',
-  ) {
+  ): Promise<StagedPreToolPolicyEvaluator | undefined> {
     if (!input.agent) return undefined;
-    const { spec, revision } = await loadStablePreToolPolicySpec({
+    const generation = await bindPreToolPolicyGeneration({
       getStableRevision: () => this.getStableAgentConfigurationRevision(),
       loadAgent: () => this.configLoader.loadAgent(input.agent!.slug),
     });
+    this.preToolPolicyGenerations.register(input.threadId, generation);
+    // Rebuilt whenever the binding advances, so the approval guardian is
+    // never one built from a replaced app configuration.
+    const build = () =>
+      this.buildExternalPreToolPolicy(input, toolNameProvenance, generation);
+    let evaluate = build();
+    let builtAt = generation.revision();
+    return async (tool, invocation, options) => {
+      await generation.refresh();
+      if (generation.revision() !== builtAt) {
+        evaluate = build();
+        builtAt = generation.revision();
+      }
+      return evaluate(tool, invocation, options);
+    };
+  }
+
+  private buildExternalPreToolPolicy(
+    input: ProviderSessionStartInput,
+    toolNameProvenance: 'authentic' | 'self-reported',
+    generation: PreToolPolicyGeneration,
+  ): StagedPreToolPolicyEvaluator {
+    const spec = generation.spec;
     return createStagedPreToolPolicyEvaluator({
       spec,
       projectToolPolicy: () => {
@@ -1497,8 +1513,11 @@ export class StationRuntime {
           this.orchestrationEventStore,
         ),
       }),
-      isCurrentRuntimeGeneration: () =>
-        this.getStableAgentConfigurationRevision() === revision,
+      isCurrentRuntimeGeneration: () => {
+        const state = generation.state();
+        if (state === 'settling') return 'settling';
+        return state === 'current';
+      },
       resolveUnattendedGrant: this.resolveUnattendedGrant,
       toolNameMapping: this.toolNameMapping,
       isGranted: (tool) =>
@@ -4591,6 +4610,8 @@ export class StationRuntime {
           integrationSecretResolver: this.secretBindingAdministration,
           resolveAcpPreToolPolicy: (input) =>
             this.resolveExternalPreToolPolicy(input, 'self-reported'),
+          preToolPolicyReplaced: (threadId) =>
+            this.preToolPolicyGenerations.replaced(threadId),
           acpAgentTerminals: agentTerminalsFor({
             sessions: () => this.scopedTerminals.sessions,
             projectId: (slug) => {
