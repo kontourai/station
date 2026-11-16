@@ -1,0 +1,9 @@
+{
+  "revision": "041d04f42340cfb76040a27bbefde54ce90d6514",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"One child-process test classified (nightly-source-gate-receipt.test.ts, loopback Actions API); no policy text changed.","inputs":["scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"One child-process test classified (nightly-source-gate-receipt.test.ts, loopback Actions API); no policy text changed.","inputs":["scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

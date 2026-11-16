@@ -1,0 +1,27 @@
+{
+  "revision": "041d04f42340cfb76040a27bbefde54ce90d6514",
+
+  "notes": [
+    {"path":"docs/guides/android-build.md","note":"Checked for claims about the order of native staging builds after stage-ios and stage-windows came to need only plan-cohort: no page names an order between platform builds; job anchors, the assemble-desktop join (macOS and Windows) and publication claims are unchanged.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Checked for claims about the order of native staging builds after stage-ios and stage-windows came to need only plan-cohort: no page names an order between platform builds; job anchors, the assemble-desktop join (macOS and Windows) and publication claims are unchanged.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Checked for claims about the order of native staging builds after stage-ios and stage-windows came to need only plan-cohort: no page names an order between platform builds; job anchors, the assemble-desktop join (macOS and Windows) and publication claims are unchanged.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Checked for claims about the order of native staging builds after stage-ios and stage-windows came to need only plan-cohort: no page names an order between platform builds; job anchors, the assemble-desktop join (macOS and Windows) and publication claims are unchanged.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Checked for claims about the order of native staging builds after stage-ios and stage-windows came to need only plan-cohort: no page names an order between platform builds; job anchors, the assemble-desktop join (macOS and Windows) and publication claims are unchanged.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"docs/guides/nightly.md","note":"Checked for claims about the order of native staging builds after stage-ios and stage-windows came to need only plan-cohort: no page names an order between platform builds; job anchors, the assemble-desktop join (macOS and Windows) and publication claims are unchanged.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Checked for claims about the order of native staging builds after stage-ios and stage-windows came to need only plan-cohort: no page names an order between platform builds; job anchors, the assemble-desktop join (macOS and Windows) and publication claims are unchanged.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Checked for claims about the order of native staging builds after stage-ios and stage-windows came to need only plan-cohort: no page names an order between platform builds; job anchors, the assemble-desktop join (macOS and Windows) and publication claims are unchanged.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"docs/guides/store-entry.md","note":"Checked for claims about the order of native staging builds after stage-ios and stage-windows came to need only plan-cohort: no page names an order between platform builds; job anchors, the assemble-desktop join (macOS and Windows) and publication claims are unchanged.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"docs/guides/store-listing.md","note":"Checked for claims about the order of native staging builds after stage-ios and stage-windows came to need only plan-cohort: no page names an order between platform builds; job anchors, the assemble-desktop join (macOS and Windows) and publication claims are unchanged.","inputs":[".github/workflows/nightly-native-stage.yml"]},
+
+    {"path":"src-desktop/icons/README.md","note":"Checked for claims about the order of native staging builds after stage-ios and stage-windows came to need only plan-cohort: no page names an order between platform builds; job anchors, the assemble-desktop join (macOS and Windows) and publication claims are unchanged.","inputs":[".github/workflows/nightly-native-stage.yml"]}
+  ]
+}
