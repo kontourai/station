@@ -1727,7 +1727,7 @@ async function claudeReadiness(api) {
 }
 
 /** One stub-answered turn; resolves when the turn completed with the stub reply. */
-async function sendHi(api, cwd) {
+async function sendHi(api, cwd, conversationId) {
   const { json } = await poll(
     'the chat dispatch to be accepted',
     90_000,
@@ -1740,6 +1740,7 @@ async function sendHi(api, cwd) {
         },
         message: PROMPT,
         clientTurnId: randomUUID(),
+        ...(conversationId ? { conversationId } : {}),
       });
       // Declared-transient refusal while the agent catalog settles.
       if (
@@ -1768,6 +1769,191 @@ async function sendHi(api, cwd) {
     );
   });
   return sessionId;
+}
+
+// ---------------------------------------------------------------------------
+// The optional delegated run (`--delegated-run`, report-only).
+
+/** A Claude engine process in the instance's tree, by its executable name. */
+const ENGINE_COMMAND = /(^|\/)claude(\s|$)/;
+const engineProcessCount = (rows) =>
+  rows.filter((row) => ENGINE_COMMAND.test(row.command)).length;
+
+/** The ids of every turn the session's detail lists, oldest first. */
+async function sessionTurns(api, sessionId) {
+  const detail = await api.call(
+    'GET',
+    `/api/orchestration/sessions/${encodeURIComponent(sessionId)}`,
+  );
+  const events = detail.json?.data?.events ?? [];
+  return {
+    events,
+    turnIds: events
+      .filter((event) => event?.method === 'turn.started' && event.turnId)
+      .map((event) => event.turnId),
+  };
+}
+
+/** Waits for a turn not in `known` to complete with the stub's reply. */
+async function awaitNewTurnReply(
+  api,
+  sessionId,
+  known,
+  label,
+  intervalMs = 500,
+) {
+  await poll(
+    label,
+    120_000,
+    async () => {
+      const { events, turnIds } = await sessionTurns(api, sessionId);
+      const turnId = turnIds.find((id) => !known.includes(id));
+      return turnId
+        ? acceptedTurnReply(events, turnId, STUB_REPLY_TEXT)
+        : false;
+    },
+    intervalMs,
+  );
+}
+
+/** Follow-ups are timed to the reply; poll finely enough to tell them apart. */
+const FOLLOW_UP_POLL_MS = 50;
+/** Delegated tasks timed, each with one released and one warm follow-up. */
+const FOLLOW_UP_ROUNDS = 3;
+
+/** One task delegated as the operator; resolves once its turn completed. */
+async function delegateHi(api, cwd) {
+  const { json } = await poll(
+    'the delegation to be accepted',
+    90_000,
+    async () => {
+      const response = await api.call(
+        'POST',
+        '/api/orchestration/delegations',
+        {
+          target: {
+            environment: { kind: 'current' },
+            agent: 'claude',
+            workspace: { kind: 'directory', cwd },
+          },
+          prompt: PROMPT,
+          clientTurnId: randomUUID(),
+        },
+      );
+      if (
+        response.status === 400 &&
+        /Agent catalog is refreshing/.test(response.json?.error ?? '')
+      )
+        return false;
+      assert(
+        response.status < 400 && response.json?.success !== false,
+        `delegation: HTTP ${response.status} ${response.text.slice(0, 400)}`,
+      );
+      return response;
+    },
+  );
+  const { sessionId, taskId } = json.data ?? {};
+  assert(sessionId && taskId, 'delegation named no session/task');
+  await awaitNewTurnReply(
+    api,
+    sessionId,
+    [],
+    'the delegated stub-answered turn to complete',
+  );
+  return { sessionId, taskId };
+}
+
+async function continueDelegatedHi(api, taskId, sessionId) {
+  const { turnIds } = await sessionTurns(api, sessionId);
+  const response = await api.call(
+    'POST',
+    `/api/orchestration/delegations/${encodeURIComponent(taskId)}/continue`,
+    { message: PROMPT, clientTurnId: randomUUID() },
+  );
+  assert(
+    response.status < 400 && response.json?.success !== false,
+    `delegation follow-up: HTTP ${response.status} ${response.text.slice(0, 400)}`,
+  );
+  await awaitNewTurnReply(
+    api,
+    sessionId,
+    turnIds,
+    'the delegated follow-up to complete',
+    FOLLOW_UP_POLL_MS,
+  );
+}
+
+/**
+ * Waits until the tree holds no more engines than `count`; resolves the
+ * time that took, or `null` past `maxMs`.
+ */
+async function engineCountFallsTo(treeNow, count, maxMs) {
+  const start = performance.now();
+  while (performance.now() - start < maxMs) {
+    if (engineProcessCount(treeNow()) <= count)
+      return performance.now() - start;
+    await wait(250);
+  }
+  return null;
+}
+
+/**
+ * Delegates stub-answered tasks and reports whether and when the first one's
+ * engine process left the tree, the tree's memory once settled after that,
+ * and, per task, how long a follow-up takes once its engine was released (it
+ * restarts in place) next to a second one while that engine still runs. The
+ * operator's follow-up is a person's turn, so it keeps the engine for the
+ * idle park: each round delegates a new task. Report-only: nothing here is a
+ * budget.
+ */
+async function measureDelegatedRun(api, cwd, context) {
+  const { treeNow, memorySnapshot, settings } = context;
+  const timed = async (run) => {
+    const start = performance.now();
+    await run();
+    return performance.now() - start;
+  };
+  const enginesBefore = engineProcessCount(treeNow());
+  const rounds = [];
+  let finishedMemory;
+  for (let round = 0; round < FOLLOW_UP_ROUNDS; round += 1) {
+    const enginesBeforeRound = engineProcessCount(treeNow());
+    const delegated = await delegateHi(api, cwd);
+    const enginesAtFinish = engineProcessCount(treeNow());
+    const releasedAfterMs = await engineCountFallsTo(
+      treeNow,
+      enginesBeforeRound,
+      settings.delegatedReleaseMaxMs,
+    );
+    if (round === 0)
+      finishedMemory = restMetric(await settleTree(memorySnapshot, settings), {
+        note: 'after one delegated, stub-answered task finished, beside the idle sessions',
+      });
+    const follow = () =>
+      continueDelegatedHi(api, delegated.taskId, delegated.sessionId);
+    rounds.push({
+      enginesAtFinish,
+      releasedAfterMs,
+      // Timed only into a released engine; otherwise not a restart.
+      releasedFollowUpMs: releasedAfterMs === null ? null : await timed(follow),
+      warmFollowUpMs: await timed(follow),
+    });
+  }
+  const values = (key) =>
+    rounds.map((entry) => entry[key]).filter((value) => value !== null);
+  const releasedSamples = values('releasedFollowUpMs');
+  return {
+    status: 'measured',
+    reportOnly: true,
+    engineProcessesBefore: enginesBefore,
+    engineProcessesAtFinish: rounds[0].enginesAtFinish,
+    engineReleasedAfterMs: rounds[0].releasedAfterMs,
+    finishedMemoryBytes: finishedMemory,
+    warmFollowUpMs: median(values('warmFollowUpMs')),
+    releasedFollowUpMs: releasedSamples.length ? median(releasedSamples) : null,
+    rounds,
+    note: `engine processes are counted by executable name (claude); a follow-up is one stub-answered turn through /delegations/:taskId/continue, timed from the request to its reply (polled every ${FOLLOW_UP_POLL_MS} ms), median over ${FOLLOW_UP_ROUNDS} delegated tasks`,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -2233,6 +2419,9 @@ export const DEFAULT_SETTINGS = Object.freeze({
   cpuWindowMs: 30_000,
   cpuSampleIntervalMs: 250,
   idleSessions: 3,
+  // 1 adds the report-only delegated-run measurement (`--delegated-run`).
+  delegatedRun: 0,
+  delegatedReleaseMaxMs: 90_000,
   stopGraceMs: 5_000,
   sideCallWindowMs: 5_000,
   readyLaunches: 1,
@@ -2570,6 +2759,23 @@ export async function runStationWeight({
         sessionsSettled.rows,
       );
 
+      if (settings.delegatedRun) {
+        progress('idle-session sample taken; delegating one run');
+        try {
+          result.delegatedRun = await measureDelegatedRun(api, repo, {
+            treeNow,
+            memorySnapshot,
+            settings,
+          });
+        } catch (error) {
+          result.delegatedRun = {
+            status: 'not_measured',
+            reportOnly: true,
+            reason: error instanceof Error ? error.message : String(error),
+          };
+        }
+      }
+
       mkdirSync(controlConfigDir, { recursive: true });
       progress('idle-session sample taken; running the control request');
       const controlCalls = await controlRequest({
@@ -2863,6 +3069,13 @@ async function launchAndWait(instance, ports, scratch, env) {
   };
 }
 
+/** One line for the report-only delegated run. */
+function delegatedRunSummary(run) {
+  if (run.status !== 'measured')
+    return `NOT_MEASURED delegatedRun: ${run.reason}`;
+  return `REPORTED delegatedRun engines before=${run.engineProcessesBefore} atFinish=${run.engineProcessesAtFinish} releasedAfterMs=${formatValue(run.engineReleasedAfterMs)} finishedMemoryBytes=${formatValue(run.finishedMemoryBytes.value)} warmFollowUpMs=${formatValue(run.warmFollowUpMs)} releasedFollowUpMs=${formatValue(run.releasedFollowUpMs)}`;
+}
+
 /**
  * REPORT lines for the report-only attribution: memory per process role for
  * each memory metric, and the server's heap beside its measured memory.
@@ -2893,6 +3106,7 @@ function printSummary(result) {
         : `NOT_MEASURED ${id}: ${metric.reason}`,
     );
   if (result.repoRules) line(`repoRules ${JSON.stringify(result.repoRules)}`);
+  if (result.delegatedRun) line(delegatedRunSummary(result.delegatedRun));
   for (const text of formatAttribution(result)) line(text);
   for (const text of formatVerdicts(result.budgets ?? [])) console.log(text);
   // What the run counted as its own but may not signal: left running.
@@ -2932,6 +3146,8 @@ if (invokedDirectly(import.meta.url)) {
       settleMaxMs: number('settle-max-ms'),
       cpuWindowMs: number('cpu-window-ms'),
       idleSessions: number('sessions'),
+      delegatedRun: args['delegated-run'] === true ? 1 : undefined,
+      delegatedReleaseMaxMs: number('delegated-release-max-ms'),
       stopGraceMs: number('stop-grace-ms'),
       readyLaunches: number('ready-launches'),
     }).filter(([, value]) => value !== undefined),

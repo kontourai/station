@@ -6,6 +6,7 @@ import {
   ResponsiveDialogSurface,
   ResponsiveSurfaceActions,
 } from '../../components/ResponsiveDialogSurface';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { InstallPluginModal } from './InstallPluginModal';
 import { InstallPreviewExtensionAccess } from './InstallPreviewExtensionAccess';
 import { InstallPreviewModal } from './InstallPreviewModal';
@@ -99,6 +100,7 @@ export function PluginModalStack({
   onCreateProject: () => Promise<void>;
   onAddToProjects: () => Promise<void>;
 }) {
+  useDecisionSurface('plugin-update-confirm', updateConfirm !== null);
   // #1131: rendered where `PluginManagementView` places it — a plain sibling
   // of `SplitPaneLayout`, inside the route frame `PageFrame` marks `inert`
   // while that layout's mobile detail sheet is open (PageFrame.tsx). The

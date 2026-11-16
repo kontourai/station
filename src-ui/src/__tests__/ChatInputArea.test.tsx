@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { APPEARANCE_HOOKS } from '@kontourai/station-contracts/custom-appearance';
 import { CHAT_INPUT_MAX_CHARS } from '@shared/chat-input-limits';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -24,6 +25,10 @@ import {
   startConversationReferenceDrag,
 } from '../components/chat/conversationReferenceDrag';
 import { deviceSettingsStore } from '../lib/device-settings-store';
+
+/** A custom-appearance hook selector, from the contract (APPEARANCE_HOOKS). */
+const appearanceHook = (id: string) =>
+  APPEARANCE_HOOKS.find((hook) => hook.id === id)!.selector;
 
 const fetchConversationInventory = vi.hoisted(() => vi.fn());
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
@@ -152,6 +157,12 @@ describe('ChatInputArea', () => {
     expect(
       screen.getByRole('button', { name: 'Stop the current turn' }),
     ).toBeTruthy();
+  });
+
+  test('renders the composer custom-appearance hook around its text box', () => {
+    renderChatInputArea();
+    const composer = document.querySelector(appearanceHook('composer'));
+    expect(composer?.contains(screen.getByRole('textbox'))).toBe(true);
   });
 
   test('an explicit Queue choice wins over the native steer default', () => {

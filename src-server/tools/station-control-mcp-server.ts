@@ -10,6 +10,7 @@ import {
 } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { registerAgentTools } from './station-control-agent-tools.js';
+import { registerAppearanceTools } from './station-control-appearance-tools.js';
 import { registerAssessmentTools } from './station-control-assessment-tools.js';
 import { registerAutomationProposalTools } from './station-control-automation-proposal-tools.js';
 import { registerBasisTools } from './station-control-basis-tools.js';
@@ -433,6 +434,7 @@ export function createSelectedStationControlMcpServer(
   registerWorkDiscoveryTools(registry);
   registerBoardTools(registry);
   registerPersonalBoardTools(registry);
+  registerAppearanceTools(registry);
   registerCatalogTools(registry);
   registerOperationsTools(registry);
   registerScheduleTools(registry);

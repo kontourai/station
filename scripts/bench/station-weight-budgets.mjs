@@ -134,10 +134,33 @@ export function evaluateBudgets(result, baseline, { reportOnly = false } = {}) {
 }
 
 /**
+ * The fixture repository's instruction files whose markers must reach
+ * Station's first request. Each is checked by name, so a result that omits
+ * one fails rather than passing on the others.
+ */
+const REQUIRED_REPO_RULES = Object.freeze(['claudeMd', 'agentsMd']);
+
+/**
+ * Why the repository's instruction files did not all reach the first
+ * request, or `undefined` when they did. Unmeasured is a failure, not a pass.
+ */
+function repoRulesGap(repoRules) {
+  if (repoRules?.status === 'not_measured')
+    return `repoRules not measured: ${repoRules.reason ?? 'no reason recorded'}`;
+  const missing = REQUIRED_REPO_RULES.filter(
+    (name) => repoRules?.[name] !== true,
+  );
+  if (missing.length)
+    return `repository instructions did not reach the first request: ${missing.join(', ')}`;
+}
+
+/**
  * Whether a run passes as a gate. A run that did not complete, a budget that
- * should have been compared and was not, and a budget past its headroom all
- * fail. Report-only mode compares nothing but still fails when a metric was
- * not measured: it skips the baseline, not the measurement.
+ * should have been compared and was not, a budget past its headroom, and a
+ * repository instruction file whose marker did not reach the first request
+ * all fail. Report-only mode compares nothing but still fails when a metric
+ * was not measured or a marker was missing: it skips the baseline, not the
+ * measurement.
  */
 export function gateOutcome(result, verdicts, { reportOnly = false } = {}) {
   const reasons = [];
@@ -145,6 +168,8 @@ export function gateOutcome(result, verdicts, { reportOnly = false } = {}) {
     reasons.push(
       `run ${result.outcome ?? 'unknown'}: ${String(result.reason ?? result.error ?? 'no reason recorded').split('\n')[0]}`,
     );
+  const rulesGap = repoRulesGap(result.repoRules);
+  if (rulesGap) reasons.push(rulesGap);
   const notMeasured = verdicts.filter(
     (entry) => entry.verdict === 'NOT_MEASURED',
   );
@@ -185,6 +210,10 @@ export function recordBaseline(result, previous) {
     throw new Error('refusing to record a baseline from a dirty tree');
   if (!result.host?.fingerprint || !result.host?.label)
     throw new Error('refusing to record a baseline without a host fingerprint');
+  // The request baseline sizes Station's first request; one recorded while
+  // an instruction file was missing from it would understate that size.
+  const rulesGap = repoRulesGap(result.repoRules);
+  if (rulesGap) throw new Error(`refusing to record a baseline: ${rulesGap}`);
   const missing = STATION_WEIGHT_BUDGETS.filter(compared)
     .filter((budget) => result.metrics?.[budget.id]?.status !== 'measured')
     .map((budget) => budget.id);

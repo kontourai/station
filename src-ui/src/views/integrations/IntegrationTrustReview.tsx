@@ -6,6 +6,7 @@ import {
 import { StatusBadge } from '@kontourai/ui/react';
 import { Button } from '../../components/Button';
 import { ErrorState } from '../../components/state';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { userFacingErrorMessage } from '../../utils/errorText';
 
 const FIELD_LABEL: Record<IntegrationTrustReviewField['field'], string> = {
@@ -38,6 +39,7 @@ export function IntegrationTrustReview({
 }: {
   form: IntegrationViewModel;
 }) {
+  useDecisionSurface('integration-trust-review');
   const decide = useDecideIntegrationTrustReviewMutation();
   const fields = form.trustReview?.fields ?? [];
   if (fields.length === 0) return null;

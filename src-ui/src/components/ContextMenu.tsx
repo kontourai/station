@@ -142,6 +142,7 @@ export function ContextMenu({
       <div
         ref={menuRef}
         className="menu-surface context-menu"
+        data-surface="menu"
         role="menu"
         aria-label={label}
         tabIndex={-1}
