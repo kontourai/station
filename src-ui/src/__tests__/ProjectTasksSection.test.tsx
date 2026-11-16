@@ -505,6 +505,21 @@ describe('ProjectTasksSection', () => {
     });
   });
 
+  test('only the board reads pull request facts from the forge', () => {
+    const { unmount } = render(<ProjectTasksSection slug="project-alpha" />);
+    expect(
+      useTaskPullRequestFactsQuery.mock.calls.every(
+        ([, config]) => config?.enabled === false,
+      ),
+    ).toBe(true);
+    unmount();
+    useTaskPullRequestFactsQuery.mockClear();
+    render(<ProjectTasksSection slug="project-alpha" presentation="board" />);
+    expect(useTaskPullRequestFactsQuery).toHaveBeenCalledWith('project-alpha', {
+      enabled: true,
+    });
+  });
+
   test('a list row wears the same derived word as its board card', () => {
     tasks[0] = { ...tasks[0], status: 'todo', sessionId: 'run-1' };
     sessions = [

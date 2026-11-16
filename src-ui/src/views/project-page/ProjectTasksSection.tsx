@@ -1,7 +1,6 @@
 import type { StartTaskStarterLaunchResult } from '@kontourai/station-contracts/starter-work';
 import type {
   TaskLaneDerivation,
-  TaskLaneTone,
   TaskNextAction,
 } from '@kontourai/station-contracts/task-lane';
 import { workItemRefKey } from '@kontourai/station-contracts/work-item-provider';
@@ -51,6 +50,10 @@ import { isPlainLeftClick } from '../../utils/attentionOpen';
 import { openSessionFromSummary } from '../../utils/openSession';
 import { absoluteTime } from '../../utils/relativeTime';
 import { ProjectTaskSharingControl } from './ProjectTaskSharingControl';
+import {
+  TASK_TONE,
+  type TaskStatusPresentation,
+} from './taskStatusPresentation';
 import { useTaskBoardModel } from './useTaskBoardModel';
 import '../ProjectPage.css';
 import './ProjectTasksSection.css';
@@ -77,18 +80,6 @@ function relationLabel(link: RelationGraphLink): string {
 function sortTasks(tasks: TaskListRecord[]): TaskListRecord[] {
   return [...tasks].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
-
-/** The badge tone for a derived status: the board's colour meanings. */
-const BADGE_TONE: Record<
-  TaskLaneTone,
-  'positive' | 'caution' | 'negative' | 'active' | 'neutral'
-> = {
-  attention: 'active',
-  caution: 'caution',
-  active: 'positive',
-  broken: 'negative',
-  neutral: 'neutral',
-};
 
 const KEPT_REASON_TEXT: Record<
   NonNullable<NonNullable<TaskRecord['taskWorktree']>['kept']>['reason'],
@@ -208,6 +199,9 @@ export function ProjectTasksSection({
     projectSlug: slug,
     tasks,
     tasksSettled: tasksLoaded,
+    agents: agentSummaries,
+    // Only the board reads the forge; the list claims nothing about PRs.
+    readPullRequests: presentation === 'board',
   });
   const tasksById = new Map(sortedTasks.map((task) => [task.id, task]));
   const [pendingTaskIds, setPendingTaskIds] = useState<ReadonlySet<string>>(
@@ -793,9 +787,9 @@ export function ProjectTasksSection({
                     <ProjectTaskBoard
                       partition={board.partition}
                       derivations={board.derivations}
+                      presentations={board.presentations}
                       tasks={tasksById}
-                      sessionsById={board.sessionsById}
-                      agents={agentSummaries}
+                      settled={board.pullRequests.settled}
                       projectBranch={
                         gitStatus?.isRepo ? gitStatus.branch : undefined
                       }
@@ -833,9 +827,9 @@ export function ProjectTasksSection({
                       </span>
                       <span className="project-page__task-row-meta">
                         <TaskDerivedBadge
-                          derivation={
+                          presentation={
                             board.status === 'ready'
-                              ? board.derivations.get(task.id)
+                              ? board.presentations.get(task.id)
                               : undefined
                           }
                         />
@@ -847,8 +841,10 @@ export function ProjectTasksSection({
                         )}
                       </span>
                       <TaskPlanProgressForTask
-                        task={task}
-                        live={isRunning(board.derivations.get(task.id))}
+                        sessionId={
+                          board.derivations.get(task.id)?.evidence.sessionId
+                        }
+                        running={isRunning(board.derivations.get(task.id))}
                       />
                       <span className="project-tasks-section__next">
                         Open Task
@@ -1185,20 +1181,20 @@ function isRunning(derivation: TaskLaneDerivation | undefined) {
   );
 }
 
-/** A list row's one status word: the same derived word the board shows. */
+/** A list row's one status: the same presentation the board card prints. */
 function TaskDerivedBadge({
-  derivation,
+  presentation,
 }: {
-  derivation: TaskLaneDerivation | undefined;
+  presentation: TaskStatusPresentation | undefined;
 }) {
-  if (!derivation) return null;
+  if (!presentation) return null;
   return (
     <StatusBadge
-      tone={BADGE_TONE[derivation.tone]}
+      tone={TASK_TONE[presentation.tone].badge}
       status={
-        derivation.detail
-          ? `${derivation.word} · ${derivation.detail}`
-          : derivation.word
+        presentation.detail
+          ? `${presentation.word} · ${presentation.detail}`
+          : presentation.word
       }
     />
   );

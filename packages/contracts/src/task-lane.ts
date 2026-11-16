@@ -67,12 +67,14 @@ export const TASK_DONE_SHELF_LIMIT = 20;
 /**
  * The colour discipline of the status ladder: colour means act-now
  * (`attention`), in-motion (`active`) or broken; `caution` is worth a look
- * without being owed; everything else is `neutral`.
+ * without being owed; `positive` is the one ready-to-land state (every open
+ * pull request clean); everything else is `neutral`.
  */
 export type TaskLaneTone =
   | 'attention'
   | 'caution'
   | 'active'
+  | 'positive'
   | 'broken'
   | 'neutral';
 
@@ -296,7 +298,7 @@ const OPEN_RUNG_TONES: Record<OpenPullRequestRung, TaskLaneTone> = {
   awaitingReview: 'neutral',
   repoBlocked: 'neutral',
   behind: 'neutral',
-  readyToMerge: 'active',
+  readyToMerge: 'positive',
   prOpen: 'neutral',
 };
 

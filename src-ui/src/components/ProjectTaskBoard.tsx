@@ -7,23 +7,25 @@ import {
   type TaskNextAction,
   type TaskShelfId,
 } from '@kontourai/station-contracts/task-lane';
-import type {
-  OrchestrationSessionSummary,
-  TaskListRecord,
-} from '@kontourai/station-sdk';
+import type { TaskListRecord } from '@kontourai/station-sdk';
 import {
+  type CSSProperties,
   type FocusEvent,
   type ReactNode,
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
 } from 'react';
-import type { AgentSummary } from '../types';
 import { isPlainLeftClick } from '../utils/attentionOpen';
 import { parseEpochMs } from '../utils/parseEpochMs';
 import { relativeTime } from '../utils/relativeTime';
-import { sessionWorkStatus } from '../views/sessions/sessions-lane-model';
+import {
+  TASK_LANE_TONE,
+  TASK_TONE,
+  type TaskStatusPresentation,
+} from '../views/project-page/taskStatusPresentation';
 import { Button } from './Button';
 import { DisclosureToggle } from './DisclosureToggle';
 import {
@@ -45,29 +47,37 @@ const ANNOUNCED_LANES: ReadonlySet<TaskLaneId> = new Set([
 ]);
 const ANNOUNCE_INTERVAL_MS = 5_000;
 
-/** Rungs whose words come from the run itself, refined by the ladder. */
-const SESSION_RUNGS: ReadonlySet<TaskLaneDerivation['rung']> = new Set([
-  'approval',
-  'answer',
-  'interrupted',
-  'blocked',
-  'waiting',
-  'failed',
-  'running',
-  'elsewhere',
-]);
+/** A focused element's place on a card, so focus returns to the same one. */
+type CardFocus = {
+  taskId: string;
+  role: 'title' | 'action';
+  element: HTMLElement;
+};
+const ROLE_SELECTOR = {
+  title: '.task-card__title',
+  action: '.task-card__action button',
+} as const;
+
+/** The colour of a tone, as a custom property the stylesheet reads. */
+const toneStyle = (tone: keyof typeof TASK_TONE) =>
+  ({ '--task-tone': TASK_TONE[tone].color }) as CSSProperties;
 
 export interface ProjectTaskBoardProps {
   partition: TaskLanePartition;
   derivations: ReadonlyMap<string, TaskLaneDerivation>;
+  /** Each Task's one status (`taskStatusPresentation`), shared with the list. */
+  presentations: ReadonlyMap<string, TaskStatusPresentation>;
   tasks: ReadonlyMap<string, TaskListRecord>;
-  sessionsById: ReadonlyMap<string, OrchestrationSessionSummary>;
-  agents: AgentSummary[];
+  /**
+   * The facts the lanes depend on have answered. Before then nothing is
+   * announced: facts arriving move cards, but no card arrived anywhere.
+   */
+  settled: boolean;
   /** The checkout branch of the Project, which a Task's branch chip omits. */
   projectBranch?: string;
   /** Tasks whose action is in flight; their button shows it. */
   pendingTaskIds?: ReadonlySet<string>;
-  /** A line under the lanes' headers, such as "Checking pull requests…". */
+  /** Shown above the lanes, such as the pull request wait. */
   notice?: ReactNode;
   onOpenTask(taskId: string): void;
   onAction(taskId: string, action: TaskNextAction): void;
@@ -83,9 +93,9 @@ export interface ProjectTaskBoardProps {
 export function ProjectTaskBoard({
   partition,
   derivations,
+  presentations,
   tasks,
-  sessionsById,
-  agents,
+  settled,
   projectBranch,
   pendingTaskIds,
   notice,
@@ -93,30 +103,44 @@ export function ProjectTaskBoard({
   onAction,
 }: ProjectTaskBoardProps) {
   const boardRef = useRef<HTMLDivElement>(null);
-  const focusedTaskId = useRef<string | null>(null);
-  const announcement = useLaneAnnouncement(partition, tasks);
+  const focused = useRef<CardFocus | null>(null);
+  const announcement = useLaneAnnouncement(partition, tasks, settled);
 
   // A card that changes lanes is a new element in another list, so the
-  // browser drops its focus to the body. Put it back on the same card.
+  // browser drops its focus to the body. Put it back on the same control of
+  // the same card, and only then: if the reader has moved focus anywhere
+  // else, or the element it was on still exists, nothing is taken.
   // biome-ignore lint/correctness/useExhaustiveDependencies: runs after each new partition, the only render that moves a card.
   useLayoutEffect(() => {
-    const taskId = focusedTaskId.current;
+    const last = focused.current;
     const board = boardRef.current;
-    if (!taskId || !board) return;
-    // Only when focus was dropped: never take it from where the reader is.
+    if (!last || !board || last.element.isConnected) return;
     const active = document.activeElement;
     if (active && active !== document.body) return;
-    const card = board.querySelector<HTMLElement>(
-      `[data-task-id="${CSS.escape(taskId)}"] .task-card__title`,
+    const target = board.querySelector<HTMLElement>(
+      `[data-task-id="${CSS.escape(last.taskId)}"] ${ROLE_SELECTOR[last.role]}`,
     );
-    card?.focus();
+    if (!target) return;
+    target.focus();
+    focused.current = { ...last, element: target };
   }, [partition]);
 
   const rememberFocus = (event: FocusEvent<HTMLDivElement>) => {
-    const card = (event.target as HTMLElement).closest<HTMLElement>(
-      '[data-task-id]',
-    );
-    focusedTaskId.current = card?.dataset.taskId ?? null;
+    const element = event.target as HTMLElement;
+    const card = element.closest<HTMLElement>('[data-task-id]');
+    const taskId = card?.dataset.taskId;
+    focused.current = taskId
+      ? {
+          taskId,
+          role: element.closest('.task-card__action') ? 'action' : 'title',
+          element,
+        }
+      : null;
+  };
+  const forgetFocus = (event: FocusEvent<HTMLDivElement>) => {
+    const next = event.relatedTarget as Node | null;
+    // Focus left the board for somewhere real: the reader chose it.
+    if (next && !boardRef.current?.contains(next)) focused.current = null;
   };
 
   const card = (taskId: string) => {
@@ -128,12 +152,12 @@ export function ProjectTaskBoard({
         <TaskCard
           task={task}
           derivation={derivation}
-          session={
-            derivation.evidence.sessionId
-              ? sessionsById.get(derivation.evidence.sessionId)
-              : undefined
+          presentation={
+            presentations.get(taskId) ?? {
+              word: derivation.word,
+              tone: derivation.tone,
+            }
           }
-          agents={agents}
           projectBranch={projectBranch}
           pending={pendingTaskIds?.has(taskId) ?? false}
           onOpenTask={onOpenTask}
@@ -148,6 +172,7 @@ export function ProjectTaskBoard({
       className="project-task-board"
       ref={boardRef}
       onFocusCapture={rememberFocus}
+      onBlurCapture={forgetFocus}
     >
       {notice}
       <div className="project-task-board__lanes">
@@ -164,6 +189,7 @@ export function ProjectTaskBoard({
               <h3 className="project-task-board__lane-header" id={headingId}>
                 <span
                   className="project-task-board__lane-dot"
+                  style={toneStyle(TASK_LANE_TONE[lane.id])}
                   aria-hidden="true"
                 />
                 <span>{lane.label}</span>
@@ -240,12 +266,7 @@ function TaskShelf({
 function StatusSlot({ derivation }: { derivation: TaskLaneDerivation }) {
   const glyph = derivation.statusGlyph;
   return (
-    <span
-      className="task-card__status"
-      data-tone={derivation.tone}
-      data-glyph={glyph}
-      aria-hidden="true"
-    >
+    <span className="task-card__status" data-glyph={glyph} aria-hidden="true">
       {glyph === 'spinner' ? (
         <LiveStatusGlyph kind="working" />
       ) : glyph === 'pr-open' ? (
@@ -266,8 +287,7 @@ function StatusSlot({ derivation }: { derivation: TaskLaneDerivation }) {
 function TaskCard({
   task,
   derivation,
-  session,
-  agents,
+  presentation,
   projectBranch,
   pending,
   onOpenTask,
@@ -275,8 +295,7 @@ function TaskCard({
 }: {
   task: TaskListRecord;
   derivation: TaskLaneDerivation;
-  session: OrchestrationSessionSummary | undefined;
-  agents: AgentSummary[];
+  presentation: TaskStatusPresentation;
   projectBranch?: string;
   pending: boolean;
   onOpenTask(taskId: string): void;
@@ -285,19 +304,12 @@ function TaskCard({
   const running =
     derivation.placement.kind === 'lane' &&
     derivation.placement.lane === 'running';
-  const plan = useTaskPlanProgress(task, { live: running });
+  const plan = useTaskPlanProgress(derivation.evidence.sessionId, {
+    running,
+  });
+  const reasonId = useId();
   const now = Date.now();
-  // The run's own rungs read the status ladder's line, which knows the
-  // running tool, sub-agents and a failure's cause. The lane stays the
-  // derivation's.
-  const ladder =
-    session && SESSION_RUNGS.has(derivation.rung)
-      ? sessionWorkStatus(session, agents, now)
-      : undefined;
-  const word = ladder?.word ?? derivation.word;
-  const detail = ladder ? ladder.detail : derivation.detail;
-  const tone = ladder && running ? ladder.tone : derivation.tone;
-  const reason = ladder?.reason ?? derivation.reason;
+  const { word, detail, tone, reason } = presentation;
   const href = `/tasks/${encodeURIComponent(task.id)}`;
   const pullRequests = derivation.evidence.pullRequests;
   const shownPullRequest = pullRequests[0];
@@ -323,12 +335,15 @@ function TaskCard({
       data-task-id={task.id}
       data-rung={derivation.rung}
       data-tone={tone}
+      data-colors-word={TASK_TONE[tone].colorsWord ? 'true' : undefined}
+      style={toneStyle(tone)}
     >
       <div className="task-card__header">
         <StatusSlot derivation={{ ...derivation, tone }} />
         <a
           className="task-card__title"
           href={href}
+          aria-describedby={reason ? reasonId : undefined}
           onClick={(event) => {
             if (!isPlainLeftClick(event)) return;
             event.preventDefault();
@@ -338,13 +353,20 @@ function TaskCard({
           {task.title}
         </a>
       </div>
-      <p className="task-card__status-line" title={reason}>
+      <p className="task-card__status-line">
         <span className="task-card__word">{word}</span>
         {detail ? <span className="task-card__detail"> · {detail}</span> : null}
         {derivation.certainty === 'partial' ? (
           <span className="sr-only">, some facts could not be read</span>
         ) : null}
       </p>
+      {reason ? (
+        // Why: the PR's title, a failure's cause, why it could not be read.
+        // Real text, one muted line, above the card's stretched link.
+        <p className="task-card__reason" id={reasonId} title={reason}>
+          {reason}
+        </p>
+      ) : null}
       {plan && running ? <TaskPlanProgressLine progress={plan} /> : null}
       <div className="task-card__footer">
         <p className="task-card__meta">
@@ -416,11 +438,18 @@ function TaskCard({
 function useLaneAnnouncement(
   partition: TaskLanePartition,
   tasks: ReadonlyMap<string, TaskListRecord>,
+  settled: boolean,
 ) {
   const [message, setMessage] = useState('');
   const previous = useRef<Map<string, TaskLaneId> | null>(null);
   const lastAt = useRef(0);
   useEffect(() => {
+    // Until the facts answer, there is no baseline: the first settled
+    // partition is the board as it is, not a set of arrivals.
+    if (!settled) {
+      previous.current = null;
+      return;
+    }
     const current = new Map<string, TaskLaneId>();
     for (const lane of partition.lanes)
       for (const taskId of lane.taskIds) current.set(taskId, lane.id);
@@ -440,6 +469,6 @@ function useLaneAnnouncement(
     lastAt.current = at;
     const title = tasks.get(arrival.taskId)?.title ?? 'A Task';
     setMessage(`${title}: ${arrival.label}`);
-  }, [partition, tasks]);
+  }, [partition, tasks, settled]);
   return message;
 }

@@ -64,17 +64,8 @@
   height: 8px;
   flex-shrink: 0;
   border-radius: 50%;
-  background: var(--k-neutral);
-}
-
-.project-task-board__lane[data-lane="needs_you"] .project-task-board__lane-dot {
-  background: var(--k-action);
-}
-
-.project-task-board__lane[data-lane="running"] .project-task-board__lane-dot,
-.project-task-board__lane[data-lane="ready_to_merge"]
-  .project-task-board__lane-dot {
-  background: var(--k-positive);
+  /* The lane's tone, from the one tone map (taskStatusPresentation.ts). */
+  background: var(--task-tone, var(--k-neutral));
 }
 
 .project-task-board__count {
@@ -153,20 +144,15 @@
   background: currentColor;
 }
 
-.task-card[data-tone="attention"] .task-card__status {
-  color: var(--k-action);
+/* Colour comes from the one tone map as --task-tone: the glyph always
+   wears it; the word only where the map says so (needs-you keeps its word
+   in the text colour, as an inbox row does). */
+.task-card__status {
+  color: var(--task-tone, var(--k-text-muted));
 }
-.task-card[data-tone="caution"] .task-card__status,
-.task-card[data-tone="caution"] .task-card__word {
-  color: var(--k-caution);
-}
-.task-card[data-tone="active"] .task-card__status,
-.task-card[data-tone="active"] .task-card__word {
-  color: var(--k-positive);
-}
-.task-card[data-tone="broken"] .task-card__status,
-.task-card[data-tone="broken"] .task-card__word {
-  color: var(--k-negative);
+
+.task-card[data-colors-word="true"] .task-card__word {
+  color: var(--task-tone);
 }
 
 /* The title is the card's one link; its box stretches over the whole card
@@ -217,13 +203,11 @@
 /* A fine pointer on a wide board: the action takes no layout space at all
    (so neither the title nor the meta line ever reflows) and appears over
    the footer's end on hover or focus, on the card's own surface. */
+/* A fine pointer on a wide board: the action keeps its place in the
+   footer (the meta line wraps beside it, so nothing ever covers a fact or
+   reflows) and only becomes visible on hover or focus. */
 @media (hover: hover) and (pointer: fine) and (min-width: 721px) {
   .task-card__action {
-    position: absolute;
-    right: var(--k-space-2);
-    bottom: var(--k-space-2);
-    padding-inline-start: var(--k-space-2);
-    background: var(--k-panel-raised);
     visibility: hidden;
   }
 
@@ -248,6 +232,19 @@
 
 .task-card__detail {
   color: var(--k-text-muted);
+}
+
+/* One muted line of why, above the stretched link so it can be hovered. */
+.task-card__reason {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .task-card__meta > * {

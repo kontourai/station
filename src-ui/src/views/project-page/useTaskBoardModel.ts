@@ -13,6 +13,11 @@ import {
   useTaskPullRequestFactsQuery,
 } from '@kontourai/station-sdk';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { AgentSummary } from '../../types';
+import {
+  type TaskStatusPresentation,
+  taskStatusPresentation,
+} from './taskStatusPresentation';
 
 /** How long the board waits for its first pull request facts. */
 const FIRST_FACTS_WAIT_MS = 2_000;
@@ -21,12 +26,20 @@ export interface TaskBoardModel {
   /** `loading` until Tasks and runs have answered (and briefly, facts). */
   status: 'loading' | 'ready';
   derivations: ReadonlyMap<string, TaskLaneDerivation>;
+  /** Each Task's one status, as both the board and the list print it. */
+  presentations: ReadonlyMap<string, TaskStatusPresentation>;
   partition: TaskLanePartition;
   sessionsById: ReadonlyMap<string, OrchestrationSessionSummary>;
   sessions: { failed: boolean; refetch(): void };
   pullRequests: {
     /** The first read has not answered yet. */
     checking: boolean;
+    /**
+     * The board's facts have answered (or are not read here), so a card's
+     * lane now reflects them: order and arrival announcements start from
+     * here, and the facts' own arrival is not a card arriving anywhere.
+     */
+    settled: boolean;
     /** The last read failed; `asOf` is when the facts shown were read. */
     failed: boolean;
     asOf?: string;
@@ -36,24 +49,32 @@ export interface TaskBoardModel {
 
 /**
  * The Project Tasks board's one read model: each Task joined to its run (by
- * `TaskRecord.sessionId`, the only Task→run join) and its pull request
- * facts, derived into lanes by the contract's `deriveTaskLane`. Nothing here
- * decides a lane; it only says which facts were and were not read.
+ * `TaskRecord.sessionId`, followed to the execution its conversation has
+ * moved on to, see {@link currentExecution}) and its pull request facts,
+ * derived into lanes by the contract's `deriveTaskLane`. Nothing here decides
+ * a lane; it only says which facts were and were not read.
+ *
+ * `readPullRequests` is the board's: the list does not read the forge, so its
+ * rows claim nothing about pull requests unless facts are already cached.
  */
 export function useTaskBoardModel({
   projectSlug,
   tasks,
   tasksSettled,
+  agents,
+  readPullRequests,
 }: {
   projectSlug: string;
   tasks: readonly TaskListRecord[];
   tasksSettled: boolean;
+  agents: AgentSummary[];
+  readPullRequests: boolean;
 }): TaskBoardModel {
   const sessionsQuery = useOrchestrationSessionsQuery();
   const factsQuery = useTaskPullRequestFactsQuery(projectSlug, {
-    enabled: tasksSettled,
+    enabled: tasksSettled && readPullRequests,
   });
-  const [waitedForFacts, setWaitedForFacts] = useState(false);
+  const [waitedForFacts, setWaitedForFacts] = useState(!readPullRequests);
   useEffect(() => {
     const timer = setTimeout(
       () => setWaitedForFacts(true),
@@ -76,7 +97,7 @@ export function useTaskBoardModel({
   const sessionsKnown = sessionsQuery.data !== undefined;
   const facts = factsQuery.data;
   const factsFailed = factsQuery.isError;
-  const factsSettled = facts !== undefined || factsFailed;
+  const factsSettled = !readPullRequests || facts !== undefined || factsFailed;
 
   const derivations = useMemo(() => {
     const byId = new Map<string, TaskLaneDerivation>();
@@ -118,10 +139,33 @@ export function useTaskBoardModel({
     [derivations],
   );
   useEffect(() => {
+    // Until the facts answer, every partition seeds afresh: their arrival
+    // moves cards into PR lanes, and none of them is "new" there.
+    if (!factsSettled) return;
     previousOrder.current = new Map(
       partition.lanes.map((lane) => [lane.id, lane.taskIds]),
     );
-  }, [partition]);
+  }, [partition, factsSettled]);
+
+  const now = Date.now();
+  // `now` only feeds a duration the presentation does not print.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see above.
+  const presentations = useMemo(() => {
+    const byId = new Map<string, TaskStatusPresentation>();
+    for (const [taskId, derivation] of derivations) {
+      const runId = derivation.evidence.sessionId;
+      byId.set(
+        taskId,
+        taskStatusPresentation(
+          derivation,
+          runId ? sessionsById.get(runId) : undefined,
+          agents,
+          now,
+        ),
+      );
+    }
+    return byId;
+  }, [derivations, sessionsById, agents]);
 
   const ready =
     tasksSettled &&
@@ -130,6 +174,7 @@ export function useTaskBoardModel({
   return {
     status: ready ? 'ready' : 'loading',
     derivations,
+    presentations,
     partition,
     sessionsById,
     sessions: {
@@ -138,6 +183,7 @@ export function useTaskBoardModel({
     },
     pullRequests: {
       checking: !factsSettled,
+      settled: factsSettled,
       failed: factsFailed,
       ...(facts?.observedAt ? { asOf: facts.observedAt } : {}),
       refetch: () => void factsQuery.refetch(),

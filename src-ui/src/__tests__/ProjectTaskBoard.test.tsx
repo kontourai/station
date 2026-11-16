@@ -111,15 +111,17 @@ function Harness({
     projectSlug: 'demo',
     tasks,
     tasksSettled: true,
+    agents: [],
+    readPullRequests: true,
   });
   if (model.status === 'loading') return <p>loading</p>;
   return (
     <ProjectTaskBoard
       partition={model.partition}
       derivations={model.derivations}
+      presentations={model.presentations}
       tasks={new Map(tasks.map((t) => [t.id, t]))}
-      sessionsById={model.sessionsById}
-      agents={[]}
+      settled={model.pullRequests.settled}
       onAction={onAction}
       onOpenTask={onOpenTask}
     />
@@ -130,10 +132,13 @@ function given({
   sessions = [],
   pullRequests = {},
   tasks,
+  factsPending = false,
 }: {
   sessions?: OrchestrationSessionSummary[];
   pullRequests?: Record<string, TaskPullRequestFact[]>;
   tasks: TaskRecord[];
+  /** The facts read has not answered yet. */
+  factsPending?: boolean;
 }) {
   sdk.useOrchestrationSessionsQuery.mockReturnValue({
     data: sessions,
@@ -141,7 +146,7 @@ function given({
     refetch: vi.fn(),
   });
   sdk.useTaskPullRequestFactsQuery.mockReturnValue({
-    data: facts(tasks, pullRequests),
+    data: factsPending ? undefined : facts(tasks, pullRequests),
     isError: false,
     refetch: vi.fn(),
   });
@@ -339,6 +344,177 @@ describe('ProjectTaskBoard', () => {
       sessionId: 'run-first:session:2',
       label: 'Open run',
     });
+  });
+
+  test('focus the reader moved off the board stays where they put it', () => {
+    const tasks = [task('moving', { sessionId: 'run-m' })];
+    given({
+      tasks,
+      sessions: [
+        session('run-m', { lifecycleState: 'running', hasActiveTurn: true }),
+      ],
+    });
+    const { rerender } = render(
+      <>
+        <button type="button">elsewhere</button>
+        <Harness tasks={tasks} />
+      </>,
+    );
+    act(() => screen.getByRole('link', { name: 'Work moving' }).focus());
+    const elsewhere = screen.getByRole('button', { name: 'elsewhere' });
+    act(() => elsewhere.focus());
+    given({
+      tasks,
+      sessions: [
+        session('run-m', {
+          lifecycleState: 'review_pending',
+          pendingReview: true,
+        }),
+      ],
+    });
+    rerender(
+      <>
+        <button type="button">elsewhere</button>
+        <Harness tasks={tasks} />
+      </>,
+    );
+    expect(cardTitles('Needs you')).toEqual(['Work moving']);
+    expect(document.activeElement).toBe(elsewhere);
+  });
+
+  test('focus on a moved card’s action returns to its action, not its title', () => {
+    const tasks = [task('moving', { sessionId: 'run-m' })];
+    given({
+      tasks,
+      sessions: [
+        session('run-m', { lifecycleState: 'running', hasActiveTurn: true }),
+      ],
+    });
+    const { rerender } = render(<Harness tasks={tasks} />);
+    act(() =>
+      screen.getByRole('button', { name: 'Open run Work moving' }).focus(),
+    );
+    given({
+      tasks,
+      sessions: [
+        session('run-m', {
+          lifecycleState: 'review_pending',
+          pendingReview: true,
+        }),
+      ],
+    });
+    rerender(<Harness tasks={tasks} />);
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Approve Work moving' }),
+    );
+  });
+
+  test('pull request facts arriving late are not arrivals: no announcement, no jump to the top', () => {
+    const tasks = [
+      task('a', { status: 'ready', updatedAt: '2026-11-10T00:00:00.000Z' }),
+      task('pr', {
+        sessionId: 'run-pr',
+        updatedAt: '2026-11-01T00:00:00.000Z',
+      }),
+      task('pr2', {
+        sessionId: 'run-pr2',
+        updatedAt: '2026-11-02T00:00:00.000Z',
+      }),
+    ];
+    const finished = [
+      session('run-pr', { lifecycleState: 'completed' }),
+      session('run-pr2', { lifecycleState: 'completed' }),
+    ];
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      given({ tasks, sessions: finished, factsPending: true });
+      const { rerender } = render(<Harness tasks={tasks} />);
+      // The board renders without facts once its short wait is over.
+      act(() => {
+        vi.advanceTimersByTime(2_000);
+      });
+      expect(cardTitles('Idle')).toEqual(['Work a', 'Work pr2', 'Work pr']);
+      given({
+        tasks,
+        sessions: finished,
+        pullRequests: {
+          pr: [pr('7', { readiness: 'clean' })],
+          pr2: [pr('8', { readiness: 'clean' })],
+        },
+      });
+      rerender(<Harness tasks={tasks} />);
+    } finally {
+      vi.useRealTimers();
+    }
+    // Seeded order (most recent first), not "arrivals on top" in reverse.
+    expect(cardTitles('Ready to merge')).toEqual(['Work pr2', 'Work pr']);
+    expect(document.querySelector('[aria-live="polite"]')?.textContent).toBe(
+      '',
+    );
+  });
+
+  test('a later move into Ready to merge is announced once', () => {
+    const tasks = [task('pr', { sessionId: 'run-pr' })];
+    const finished = [session('run-pr', { lifecycleState: 'completed' })];
+    given({
+      tasks,
+      sessions: finished,
+      pullRequests: { pr: [pr('7', { readiness: 'behind' })] },
+    });
+    const { rerender } = render(<Harness tasks={tasks} />);
+    given({
+      tasks,
+      sessions: finished,
+      pullRequests: { pr: [pr('7', { readiness: 'clean' })] },
+    });
+    rerender(<Harness tasks={tasks} />);
+    expect(document.querySelector('[aria-live="polite"]')?.textContent).toBe(
+      'Work pr: Ready to merge',
+    );
+  });
+
+  test('the why behind a status is real text the title link points at', () => {
+    const tasks = [task('pr', { sessionId: 'run-pr' })];
+    given({
+      tasks,
+      sessions: [session('run-pr', { lifecycleState: 'completed' })],
+      pullRequests: {
+        pr: [pr('7', { readiness: 'behind', title: 'Tighten CSP' })],
+      },
+    });
+    render(<Harness tasks={tasks} />);
+    const link = screen.getByRole('link', { name: 'Work pr' });
+    const reasonId = link.getAttribute('aria-describedby');
+    expect(reasonId && document.getElementById(reasonId)?.textContent).toBe(
+      'Tighten CSP',
+    );
+  });
+
+  test('only a running card reads its run’s plan, at the run the derivation read', () => {
+    const tasks = [
+      task('runs', { sessionId: 'run-first' }),
+      task('idle', { sessionId: 'run-idle' }),
+    ];
+    given({
+      tasks,
+      sessions: [
+        session('run-first', {
+          lifecycleState: 'failed',
+          currentSessionId: 'run-now',
+        }),
+        session('run-now', {
+          lifecycleState: 'running',
+          hasActiveTurn: true,
+          currentSessionId: 'run-now',
+        }),
+        session('run-idle', { lifecycleState: 'completed' }),
+      ],
+    });
+    render(<Harness tasks={tasks} />);
+    const enabledReads = sdk.useOrchestrationSessionActivityQuery.mock.calls
+      .filter(([, , config]) => config?.enabled)
+      .map(([sessionId]) => sessionId);
+    expect([...new Set(enabledReads)]).toEqual(['run-now']);
   });
 
   test('a run that cannot be read is "Run status unavailable", never Stopped', () => {
