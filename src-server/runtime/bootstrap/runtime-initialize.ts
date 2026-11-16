@@ -128,6 +128,7 @@ import type { VoiceSessionService } from '../../voice/voice-session.js';
 import type { AgentHooksDeps } from '../agents/agent-hooks.js';
 import { stationAgentRuntimeOwner } from '../agents/durable-agent-owner.js';
 import { configureDurableAgentRecovery } from '../agents/durable-agent-recovery.js';
+import { createFeedbackAnalyzer } from '../agents/feedback-analysis-agent.js';
 import type { StagedPreToolPolicyEvaluator } from '../agents/pre-tool-policy.js';
 import { initializeRuntimeAgents } from '../agents/runtime-agent-registry.js';
 import {
@@ -1334,13 +1335,24 @@ export async function initializeRuntime(
   await eventLog.loadRecentEvents();
   await startHealthChecks();
 
-  feedbackService.setAnalyzeCallback(async (prompt: string) => {
-    const agent =
-      activeAgents.get('default') || activeAgents.values().next().value;
-    if (!agent) throw new Error('No agents available for feedback analysis');
-    const result = await agent.generateText(prompt);
-    return result.text;
-  });
+  // #2377 slice D: Station's own utility work, on the default agent's model
+  // with no tools (it acts for no person, so it has no station-control caller).
+  feedbackService.setAnalyzeCallback(
+    createFeedbackAnalyzer({
+      framework,
+      resolveSpec: () =>
+        deps.agentSpecs.get('default') ?? deps.agentSpecs.values().next().value,
+      createModel: (spec) =>
+        createRuntimeFrameworkModel(spec, {
+          framework,
+          appConfig,
+          projectHomeDir: configLoader.getProjectHomeDir(),
+          modelCatalog,
+          listProviderConnections: () =>
+            storageAdapter.listProviderConnections(),
+        }),
+    }),
+  );
   feedbackService.start();
 
   // Plugin-contributed ACP entries are durable identities before any probe;
