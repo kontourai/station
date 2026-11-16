@@ -1841,7 +1841,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'At a phone and a desktop width through the real dock: Chat Settings keeps Done inside the panel and hittable at any scroll position, its replay import is a styled button, and backgrounded-task settles arriving over the orchestration SSE seam render as compact, distinct status lines that name their title once.',
+      'At a phone and a desktop width through the real dock: Chat Settings keeps Done inside the panel and hittable at any scroll position, its replay import is a styled button, and backgrounded-task settles arriving over the orchestration SSE seam use shared child-work disclosures with distinct outcomes and expandable results, a non-repeating successful command title, and no separate finished-task banners.',
     exceptions: [],
   },
   {
@@ -2279,7 +2279,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "station#3027 + UX audit RT-02/SHELL-12: the 'Which agents do you use?' chapter in a browser. Proves WHERE it renders (inside Home's route content, on the shared dialog surface, never on another route) and WHEN (the durable AppConfig.firstRun record: pending opens it, skipped leaves only Home's card and stays closed for ten seconds, completed offers nothing, and the connect launcher still goes first), that each externalEngines row maps to its rendered state (available pre-ticked and tickable, already-enabled shown as ready with no control, blocked with the server's reason, undetected collapsed), that a confirm issues exactly one create per newly ticked engine and none for an already-bound one, that a failing create does not abort the rest of the batch, and that 'Not now' creates nothing and writes the deferral. Declared after first-run-live.spec.ts so that spec still observes the pristine temp-home boot state; this one is browser-local (route-patched status/agent catalog/app config) and mutates no server state.",
+      "station#3027 + UX audit RT-02/SHELL-12: the 'Which engines do you use?' chapter in a browser. Proves WHERE it renders (inside Home's route content, on the shared dialog surface, never on another route) and WHEN (the durable AppConfig.firstRun record: pending opens it, skipped leaves only Home's card and stays closed for ten seconds, completed offers nothing, and the connect launcher still goes first), that each externalEngines row maps to its rendered state (available pre-ticked and tickable, already-enabled shown as ready with no control, blocked with the server's reason, undetected collapsed), that a confirm issues exactly one create per newly ticked engine and none for an already-bound one, that a failing create does not abort the rest of the batch, and that 'Not now' creates nothing and writes the deferral. Declared after first-run-live.spec.ts so that spec still observes the pristine temp-home boot state; this one is browser-local (route-patched status/agent catalog/app config) and mutates no server state.",
     exceptions: [],
   },
   {

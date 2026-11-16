@@ -152,6 +152,7 @@ User-facing docs not named in the audience table:
 [user/workspace-checkpoints.md](user/workspace-checkpoints.md),
 [user/work-board.md](user/work-board.md),
 [user/personal-boards.md](user/personal-boards.md),
+[user/appearance.md](user/appearance.md),
 [user/houston.md](user/houston.md), and
 [user/contributing.md](user/contributing.md).
 

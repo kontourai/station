@@ -36,6 +36,7 @@ export interface AgentActivitySessionReaderDeps {
   deviceHasOwnerStanding?(deviceId: string): boolean;
   listSessionReadModel(
     authority: SessionReadAuthority,
+    options: { purpose: 'agent-activity' },
   ): Promise<OrchestrationSessionSummary[]>;
   /** The lifecycle projection events the read model folds, per thread. */
   listProjectionEvents?(
@@ -79,6 +80,7 @@ export function createAgentActivitySessionReader(
         // no tenant context exists to carry.
         const sessions = await deps.listSessionReadModel(
           sessionReadAuthorityFromRequest(principal.id, undefined, undefined),
+          { purpose: 'agent-activity' },
         );
         const projects = deps.projectNames();
         const finish: AgentActivityFinishFacts | undefined =

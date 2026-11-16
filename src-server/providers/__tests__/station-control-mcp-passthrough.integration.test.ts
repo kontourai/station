@@ -14,6 +14,7 @@
  * caught that the real, env-bearing record was rejected before ever
  * reaching the adapter's token-injection branch.
  */
+import { resolve } from 'node:path';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type {
   ProviderSessionStartInput,
@@ -57,6 +58,7 @@ import {
 } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { createSessionAgentResolver } from '../../services/orchestration/session-agent-resolution.js';
 import { INTERNAL_API_TOKEN_ENV } from '../../utils/internal-api-token.js';
+import { resolveHomeDir } from '../../utils/paths.js';
 import { ClaudeAdapter } from '../adapters/claude-adapter.js';
 
 function createMockQuery() {
@@ -162,6 +164,7 @@ describe('station#1157 e2e: resolver → Claude adapter delivers the REAL statio
         STATION_API_BASE: 'http://127.0.0.1:4321',
         STATION_PORT: '4321',
         [INTERNAL_API_TOKEN_ENV]: expect.any(String),
+        NODE_COMPILE_CACHE: resolve(resolveHomeDir(), 'cache', 'node-compile'),
       },
     });
   });

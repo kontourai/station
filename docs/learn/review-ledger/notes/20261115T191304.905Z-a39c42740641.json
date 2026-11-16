@@ -1,0 +1,7 @@
+{
+  "revision": "d313a7bad426f3deabedf3acaf527daeda8ef668",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"connections.md changed only in the Claude project-instructions paragraphs (drop-in naming rule, legacy-key deprecation note); machine-relationships.md's claims about relationship ownership and setup routing are unaffected.","inputs":["docs/guides/connections.md"]}
+  ]
+}

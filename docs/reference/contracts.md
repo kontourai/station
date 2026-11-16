@@ -394,6 +394,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/learning-review` | Owner-neutral learning lifecycle projections and explicit access gaps |
 | `@kontourai/station-contracts/layout` | `layoutOwner` derives ownership and `layoutSubject` derives the optional Project subject. Project ownership implies its Project; principal ownership without a subject remains a Board or reusable template. Personal records never inherit Coding's implicit primary Chat claim. Layout definitions, tabs, skills, templates, and repository workspace binding (`workspaceBinding: 'repository'`); legacy Coding records retain their repository binding. The layout contract fields `primary`, `presentation` and `drillIns` (#2995): `parseLayoutPresentationDeclaration` refuses unknown values and unresolvable drill-ins with `InvalidLayoutDeclarationError`; `layoutPresentationDeclaration`, `layoutClaimsPrimaryChat`, `layoutPresentsAsStack` and `findPrimaryChatLayout` (built-in Coding first, then the lowest `id`) read a layout read's stated declaration (a withheld read declares nothing; a stored built-in Coding record that states nothing reads as `BUILTIN_CODING_LAYOUT`'s declaration until slice j). `LAYOUT_PRIMARY_CHAT_PERMISSION` names the plugin permission a contributed `primary: 'chat'` needs. A catalog contribution's optional, server-issued `lifecycleGeneration` is identity only, never a permission; a reinstall or an enablement change replaces it and it never repeats. `null` is history the server cannot vouch for, under which a host admits nothing |
 | `@kontourai/station-contracts/personal-board` | Declarative dashboard sections, saved/proposed Board document and revisioned authoring inputs |
+| `@kontourai/station-contracts/custom-appearance` | A person's custom appearance (palette over `APPEARANCE_ROLE_PROPERTIES`, accent and CSS), its document, proposal and render report; `parseCustomAppearance`, the CSS text check (`customCssTextViolations`, `fetchingValueKind`), contrast rules rated with a caller-supplied ratio (`rateAppearancePalette`), the stable hook selectors (`APPEARANCE_HOOKS`) and the agent guide. See the [decision](../decisions/custom-appearance.md) |
 | `@kontourai/station-contracts/local-accounts` | Operator-only account projections, sign-in/session actions, one-time recovery results and the Project sharing setting |
 | `@kontourai/station-contracts/notification` | Notification payloads and actions |
 | `@kontourai/station-contracts/orchestration` | Connected-agent/orchestration request and response shapes. A session event window may carry `latestTool: { turnId, name }` independently of its transcript caps, bounded to a 256-byte UTF-8 name and 4096-byte turn ID at the snapshot watermark. `null` means no usable current-turn tool; only an absent field permits older-server event fallback. A new turn clears the fact; steering the same turn preserves it. No arguments or inferred tool-running state are included. `turnStartDetached: true` marks a capped newest page whose oldest event is its oldest turn's `turn.started`, re-added across events the page left out; its `nextCursor` reads that gap first. Absent means the page is contiguous, or the host predates the field. Conversation windows may include `memoryContinuation: { eligible, turnId? }`, the server's current person-continuation decision; an absent field does not authorize a stored-event Continue action. Submission still checks the sender's permission and current state. |
@@ -2054,6 +2055,18 @@ Work-chat listings expose only currently readable canonical IDs and revisions.
 `ProjectSharedTaskService` remains the separate default-private publication
 owner. See the real-store relationship and mounted-route tests for the local
 persistence/transport boundary; these do not qualify production composition.
+
+### Scheduled check-backs
+
+`OrchestrationSessionSummary.nextWakeUpAt` is the earliest armed check-back
+in that conversation, as an ISO timestamp. Approval proposals are excluded.
+The field is absent when no check-back is pending, and on older hosts. It is a
+display fact; it grants no send or execution permission.
+
+Home work rows carry this field too. Its description is part of the canonical
+Home-role projection record. A grant that predates the widened field list no
+longer covers that projection; the built-in Home remains the fallback until
+the grant is approved again.
 
 ### Finish time and engines run
 

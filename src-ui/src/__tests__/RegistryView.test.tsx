@@ -1000,7 +1000,7 @@ describe('RegistryView', () => {
         ).toBeTruthy();
         expect(
           within(installedDetail).getByRole('button', {
-            name: 'Remove Plugin',
+            name: 'Remove plugin',
           }),
         ).toBeTruthy();
       } else {
@@ -1067,20 +1067,32 @@ describe('RegistryView', () => {
     });
   });
 
-  test('shows in-app empty-state guidance and docs, not a terminal command', () => {
+  test('shows in-app empty-state guidance, not a terminal command', () => {
     emptyTabs.add('agents');
     render(<RegistryView />);
 
     expect(
-      screen.getByText(
-        'No agents are available from the configured registry sources yet.',
-      ),
+      screen.getByText('No agents in your marketplaces yet.'),
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Manage plugins' })).toBeNull();
     expect(
-      screen.getByText(/Ask an administrator to include an item/i),
+      screen.getByText(
+        'Add a marketplace, or ask the Station operator to add one.',
+      ),
     ).toBeTruthy();
     expect(screen.queryByText(/station plugin install/i)).toBeNull();
+    // Plugin guidance belongs to the Plugins tab only.
+    expect(
+      screen.queryByRole('link', { name: 'Open plugin guidance' }),
+    ).toBeNull();
+  });
+
+  test('offers plugin guidance on an empty Plugins tab', () => {
+    emptyTabs.add('plugins');
+    render(<RegistryView initialTab="plugins" />);
+    expect(
+      screen.getByText('No plugins in your marketplaces yet.'),
+    ).toBeTruthy();
 
     const docsLink = screen.getByRole('link', { name: 'Open plugin guidance' });
     expect(docsLink.getAttribute('href')).toBe(
@@ -1335,7 +1347,7 @@ describe('RegistryView', () => {
     expectInstalledToast('Installed Demo Layout', 'demo-layout');
 
     fireEvent.click(
-      within(detail).getByRole('button', { name: 'Remove Plugin' }),
+      within(detail).getByRole('button', { name: 'Remove plugin' }),
     );
     expect(screen.getByText('Removed Demo Layout')).toBeTruthy();
     expect(

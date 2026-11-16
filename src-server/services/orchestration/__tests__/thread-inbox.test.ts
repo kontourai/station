@@ -1233,6 +1233,7 @@ describe('thread inbox (#3568)', () => {
     await runningFirstTurn(world);
     const sessions = await world.service.listSessionReadModel(
       INTERNAL_SESSION_READ_SCOPE,
+      { purpose: 'session-list' },
     );
     expect(sessions).toContainEqual(
       expect.objectContaining({ provider: 'claude', durability: declaration }),

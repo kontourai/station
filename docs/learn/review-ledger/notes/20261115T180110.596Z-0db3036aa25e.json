@@ -1,0 +1,7 @@
+{
+  "revision": "a0e92944078d47afd3ad9ab67d497f9bdeeeb5a5",
+
+  "notes": [
+    {"path":"docs/design/acp-chat-architecture.md","note":"Re-read against the ACP guide's added sentence (a running terminal/create command keeps its engine from being parked). This design links the guide only for current behaviour and makes no parking or agent-terminal-command claim; it remains accurate.","inputs":["docs/design/acp-chat-architecture.md","docs/guides/acp.md"]}
+  ]
+}
