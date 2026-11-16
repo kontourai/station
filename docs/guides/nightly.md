@@ -155,7 +155,9 @@ which the publish job reads back byte for byte. See the
 [archive install contract](release-channel-ports.md#prebuilt-archives-and-source-releases).
 
 The `publish` job is the only one with `contents: write` and the only one that
-reads a secret. The Nightly caller passes `secrets: inherit`; the called
+reads the Nightly signing secret. Planning uses the run's read-only GitHub
+token to fetch release history for the product-base guard. The Nightly caller
+passes `secrets: inherit`; the called
 `publish` job separately names the protected `portable-nightly-signing`
 environment. A retained earlier call without inheritance reported an empty
 signing key. Keep that incident's receipt separate from the
