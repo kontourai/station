@@ -180,13 +180,21 @@
    reveals it on hover or focus. */
 .task-card__footer {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   gap: var(--k-space-2);
   min-width: 0;
 }
 
+/* The meta line takes the room it needs on one line; when that and the
+   action do not fit side by side, the action moves below it (right
+   aligned) rather than sitting over it. */
 .task-card__footer .task-card__meta {
-  flex: 1;
+  flex: 1 1 auto;
+}
+
+.task-card__footer .task-card__action {
+  margin-inline-start: auto;
 }
 
 .task-card__action {
@@ -248,6 +256,7 @@
 }
 
 .task-card__meta > * {
+  max-width: 100%;
   white-space: nowrap;
 }
 
