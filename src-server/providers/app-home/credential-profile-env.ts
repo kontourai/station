@@ -20,7 +20,6 @@
  */
 
 import { realpathSync } from 'node:fs';
-import { relative, sep } from 'node:path';
 import {
   appHomeActive,
   type ConnectionEnvEngine,
@@ -28,6 +27,7 @@ import {
   validateCredentialProfileEnv,
 } from '../../services/connections/connection-env.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { isCanonicalPathStrictlyWithin } from '../../utils/path-containment.js';
 import {
   appHomeProfileDir,
   appHomesRootDir,
@@ -247,9 +247,7 @@ export async function credentialProfileEnvForHome(
   } catch {
     return undefined;
   }
-  const inside = relative(root, canonicalHome);
-  if (!inside || inside === '..' || inside.startsWith(`..${sep}`))
-    return undefined;
+  if (!isCanonicalPathStrictlyWithin(root, canonicalHome)) return undefined;
   const realOrNull = (path: string) => {
     try {
       return realpathSync(path);
