@@ -304,6 +304,26 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
   await expect(newProjectOverlay(page)).toHaveCount(0, { timeout: timeoutMs });
 }
 
+/** How long a full navigation may wait for the app shell past the splash. */
+const APP_SHELL_READY_TIMEOUT_MS = 20_000;
+
+/**
+ * Navigates and waits past the "Warming up" splash for the real app shell.
+ * A screen's first navigation and any later full navigation in its own
+ * `afterGoto` use this, so each gets the same budget (run 43671004780 failed
+ * a child-chat reopen that waited 5 s with the splash still up).
+ */
+async function gotoAppShell(page: Page, url: string) {
+  await page.goto(url, { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(
+    () =>
+      !!document.querySelector('.app') &&
+      !document.body.textContent?.includes('Warming up'),
+    undefined,
+    { timeout: APP_SHELL_READY_TIMEOUT_MS },
+  );
+}
+
 /**
  * Hides always-visible chrome/widget regions whose content is genuinely
  * environment/timing-dependent rather than a property of the page under
@@ -4607,10 +4627,12 @@ function childChatScreens(): Screen[] {
           await expect(
             dock.getByText('The review is ready.', { exact: true }),
           ).toBeVisible();
-          await page.goto(reopen.toString());
+          // A full navigation: the same splash wait and breadcrumb budget as
+          // this screen's first load, not the 5 s default.
+          await gotoAppShell(page, reopen.toString());
           await expect(
             dock.getByRole('navigation', { name: 'Chat breadcrumb' }),
-          ).toBeVisible();
+          ).toBeVisible({ timeout: 20000 });
           // Real pointer actions prove both controls survive header clipping,
           // including a long ancestor title at desktop and phone widths.
           for (const name of [
@@ -7102,15 +7124,7 @@ test('build gallery — capture key screens', async ({ page }) => {
         // reading the diff, like the other six steps.
         await runScreenshotCaptureSequence(page, {
           reachScreen: async () => {
-            await page.goto(screen.path, { waitUntil: 'domcontentloaded' });
-            // Wait past the "Warming up" splash for the real app shell.
-            await page.waitForFunction(
-              () =>
-                !!document.querySelector('.app') &&
-                !document.body.textContent?.includes('Warming up'),
-              undefined,
-              { timeout: 20_000 },
-            );
+            await gotoAppShell(page, screen.path);
             // Route-only captures must not inherit a drawer opened by an
             // earlier scenario. Surface stress cases opt in through their URL.
             const requestedState = new URL(
