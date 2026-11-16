@@ -166,3 +166,36 @@ test('every channel rides one connection; a working Agent and a mention of the r
   });
   expect(liveRequests).toHaveLength(1);
 });
+
+test('a message that lands while the stream is connecting still marks its row', async () => {
+  render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <ProjectConversationList
+        project={{ slug: 'team', id: 'project-team', name: 'Team' }}
+        requestScope={{ apiBase: API, authorityKey: 'one' }}
+        variant="sidebar"
+        onOpenChannel={() => {}}
+        onOpenTask={() => {}}
+        onMoreTasks={() => {}}
+        onNewChannel={() => {}}
+      />
+    </QueryClientProvider>,
+  );
+  await screen.findByRole('button', { name: 'general, 2 unread' });
+  await waitFor(() => expect(liveRequests).toHaveLength(1));
+  const before = summaries;
+  // The message committed after the summary was read and before the
+  // server announced the room: it is in `subscribed`, never an `append`.
+  mentioned = true;
+  push(general, 'subscribed', { roomId: general, lastSeq: 4, activity: 0 });
+  await waitFor(() => expect(summaries).toBeGreaterThan(before), {
+    timeout: 3000,
+  });
+  await screen.findByRole('button', {
+    name: 'general, 2 unread, mentions you',
+  });
+});

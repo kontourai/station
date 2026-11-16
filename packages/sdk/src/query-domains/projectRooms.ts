@@ -151,8 +151,13 @@ export function useProjectRoomLiveIndex(
       });
     const offs = ids.map((id) =>
       hub.subscribe(id, (event) => {
-        if (event.kind === 'subscribed') update(id, { connected: true });
-        else if (
+        if (event.kind === 'subscribed') {
+          update(id, { connected: true });
+          // A (re)connection reports the room as it stands, including
+          // messages committed while it connected: re-read what derives
+          // from them, as for any change.
+          activity.current?.(id);
+        } else if (
           event.kind === 'disconnected' ||
           event.kind === 'revoked' ||
           event.kind === 'unavailable'
