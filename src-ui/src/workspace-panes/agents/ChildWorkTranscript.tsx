@@ -5,9 +5,9 @@ import {
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import {
   StationHttpError,
-  useChildWorkTranscriptQuery,
+  useChildWorkTranscriptTailQuery,
 } from '@kontourai/station-sdk';
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Button } from '../../components/Button';
 import { ChatMessageList } from '../../components/chat/ChatMessageList';
 import { useOptionalConversationConnection } from '../../components/conversation/ConversationConnectionContext';
@@ -20,18 +20,13 @@ import './ChildWorkTranscript.css';
 /**
  * #3163: an engine subagent's own transcript, read-only. The server resolves
  * it from the reporting session's persisted facts; this view names only the
- * session and the child. Running children poll; settlement stops polling.
+ * session and the child. It opens on the latest messages; older ones load
+ * above as the reader scrolls up, as in the main chat. A running child reads
+ * only what follows its last message; settlement stops that.
  */
 
 /** A reporting child's transcript re-reads at most this often. */
 const TRANSCRIPT_REFRESH_THROTTLE_MS = 2_000;
-
-/**
- * The server pages a transcript oldest first, so a chat that opens on its
- * latest message reads every page. Past this many pages the reader stops
- * and offers the rest by request instead of reading without end.
- */
-export const CHILD_TRANSCRIPT_AUTO_PAGES = 20;
 
 function failureText(error: unknown): string {
   if (error instanceof StationHttpError && error.status === 503)
@@ -65,11 +60,11 @@ export function ChildWorkTranscript({
   revision: string;
 }) {
   const target = useOptionalConversationConnection();
-  const transcript = useChildWorkTranscriptQuery(
+  const transcript = useChildWorkTranscriptTailQuery(
     { threadId, childId, running, requestScope: target?.requestScope },
     target?.apiBase,
   );
-  const { refetch } = transcript;
+  const { refreshLatest, reload } = transcript;
   const seenRevision = useRef(revision);
   const pendingRefresh = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
@@ -83,27 +78,27 @@ export function ChildWorkTranscript({
     if (pendingRefresh.current !== null) return;
     pendingRefresh.current = setTimeout(() => {
       pendingRefresh.current = null;
-      void refetch();
+      refreshLatest();
     }, TRANSCRIPT_REFRESH_THROTTLE_MS);
-  }, [revision, refetch]);
+  }, [revision, refreshLatest]);
   useEffect(
     () => () => {
       if (pendingRefresh.current !== null) clearTimeout(pendingRefresh.current);
     },
     [],
   );
-  const entries = transcript.data?.pages.flatMap((page) => page.entries) ?? [];
-  const pageCount = transcript.data?.pages.length ?? 0;
-  const { hasNextPage, isFetchingNextPage, isFetchNextPageError } = transcript;
-  const { fetchNextPage } = transcript;
-  // The server pages oldest first. Later pages load on their own, so the
-  // reader opens on the latest message as the main chat does, with no
-  // button at the foot of the transcript.
-  const autoPage = hasNextPage && pageCount < CHILD_TRANSCRIPT_AUTO_PAGES;
-  useEffect(() => {
-    if (autoPage && !isFetchingNextPage && !isFetchNextPageError)
-      void fetchNextPage();
-  }, [autoPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage]);
+  const pages = transcript.data?.pages;
+  const entries = useMemo(
+    () => pages?.flatMap((page) => page.entries) ?? [],
+    [pages],
+  );
+  const messages = useMemo(() => childTranscriptMessages(entries), [entries]);
+  const {
+    hasPreviousPage,
+    isFetchingPreviousPage,
+    isFetching,
+    fetchPreviousPage,
+  } = transcript;
   const engine = parseEngineId(engineId);
   const session: ChatSession = {
     id: JSON.stringify([
@@ -118,7 +113,7 @@ export function ChildWorkTranscript({
     agentName: (engine && engineDisplayLabel(engine)) || title,
     title,
     source: 'manual',
-    messages: childTranscriptMessages(entries),
+    messages,
     input: '',
     attachments: [],
     queuedMessages: [],
@@ -137,16 +132,24 @@ export function ChildWorkTranscript({
       {transcript.isPending && (
         <SkeletonBlock count={3} label="Loading transcript" />
       )}
-      {transcript.isError && !transcript.isFetchNextPageError && (
+      {transcript.isError && (
         <ErrorState
           variant="compact"
           title={
             entries.length > 0
-              ? 'Could not refresh the transcript'
+              ? 'Could not load earlier messages'
               : 'Could not read the transcript'
           }
           description={failureText(transcript.error)}
-          action={<Button onClick={() => void refetch()}>Retry</Button>}
+          action={
+            <Button
+              onClick={() =>
+                entries.length > 0 ? void fetchPreviousPage() : reload()
+              }
+            >
+              Retry
+            </Button>
+          }
         />
       )}
       {transcript.isSuccess && entries.length === 0 && (
@@ -159,23 +162,20 @@ export function ChildWorkTranscript({
         showReasoning={false}
         showToolDetails
         suppressStreamingRow
+        hasOlderMessages={hasPreviousPage}
+        historyLoading={isFetchingPreviousPage}
+        onLoadOlder={async () => {
+          // A read already in flight would be cancelled by a new one.
+          if (isFetching) return;
+          await fetchPreviousPage({ cancelRefetch: false });
+        }}
       />
-      {hasNextPage && !autoPage && (
-        <Button
-          size="sm"
-          className="tap-target"
-          pending={isFetchingNextPage}
-          onClick={() => void fetchNextPage()}
-        >
-          Show later messages
-        </Button>
-      )}
-      {isFetchNextPageError && (
+      {transcript.latestError && (
         <ErrorState
           variant="compact"
-          title="Could not load later messages"
-          description={failureText(transcript.error)}
-          action={<Button onClick={() => void fetchNextPage()}>Retry</Button>}
+          title="Could not read the latest messages"
+          description={failureText(transcript.latestError)}
+          action={<Button onClick={() => refreshLatest()}>Retry</Button>}
         />
       )}
     </section>

@@ -18,10 +18,18 @@ vi.mock('../../../contexts/RegionModelContext', () => ({
 vi.mock('../../../contexts/DeviceSettingsContext', () => ({
   useDeviceSettings: () => ({ inboxOpen: false }),
 }));
+// The working chat, answering membership as `threadInChat` would: its own
+// ids and an earlier session of its conversation.
 const host = {
   id: 'working-tab',
-  conversationId: 'parent-conversation',
-  currentSessionId: 'parent-session',
+  owns: (threadId: string | undefined) =>
+    threadId !== undefined &&
+    [
+      'working-tab',
+      'parent-conversation',
+      'parent-session',
+      'earlier-session',
+    ].includes(threadId),
 };
 function mount(hostSession: typeof host | null = host) {
   const hostSessionRef = { current: hostSession };
@@ -104,40 +112,15 @@ test('consuming an older child request cannot clear a later request', () => {
   act(() => result.current.onOpenInboxSession('parent-session'));
   expect(result.current.readerSurfaceIntent).toBeUndefined();
 });
-test('leaving a child opened over its parent record lands on the working chat once that chat is the parent', () => {
+test('a child reported by an earlier session of the working conversation opens over the working chat, not a record of that session', () => {
   offered.intent = {
-    session: 'parent-session',
+    session: 'earlier-session',
     childId: 'engine-child',
-    token: 4,
-  };
-  // The working chat had not bound yet when the request arrived.
-  const hostSessionRef = { current: null as typeof host | null };
-  const args = {
-    isMobile: false,
-    composerMenuTriggerRef: createRef<HTMLButtonElement>(),
-    setDeviceSetting: vi.fn(),
-    setShowNewChatModalState: vi.fn(),
-    hasConversationIntent: true,
-    onReaderIntent: vi.fn(),
-    hostSessionRef,
-  };
-  const { result } = renderHook(() => useChatDockOverlays(args));
-  expect(result.current.importedSessionId).toBe('parent-session');
-  hostSessionRef.current = host;
-  act(() => result.current.onChildCoveredChange(true));
-  expect(result.current.importedSessionId).toBe('parent-session');
-  act(() => result.current.onChildCoveredChange(false));
-  expect(result.current.importedSessionId).toBeNull();
-});
-test('leaving a child whose parent is not the working chat keeps the parent record', () => {
-  offered.intent = {
-    session: 'another-session',
-    childId: 'engine-child',
-    token: 5,
+    token: 6,
   };
   const { result } = mount();
-  expect(result.current.importedSessionId).toBe('another-session');
-  act(() => result.current.onChildCoveredChange(true));
-  act(() => result.current.onChildCoveredChange(false));
-  expect(result.current.importedSessionId).toBe('another-session');
+  expect(result.current.importedSessionId).toBeNull();
+  expect(result.current.readerSurfaceIntent?.workingSessionId).toBe(
+    'working-tab',
+  );
 });

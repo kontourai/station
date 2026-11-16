@@ -410,17 +410,29 @@ function isInheritedContextMarker(record: TranscriptJsonlRecord): boolean {
 }
 
 /**
- * The page from message `offset`, plus whether another message follows.
- * A message is a record that maps to at least one entry, or a record too
- * large to read. Memory holds the page plus at most one line's capped bytes.
+ * The page from message `offset`, plus whether another message follows, or,
+ * for a tail read, the last `limit` messages. A message is a record that maps
+ * to at least one entry, or a record too large to read. Memory holds the page
+ * plus at most one line's capped bytes.
  */
 async function readPage(
   handle: FileHandle,
   threadId: string,
   offset: number,
   limit: number,
-): Promise<{ entries: ChildWorkTranscriptEntry[]; more: boolean } | undefined> {
+  tail = false,
+): Promise<
+  | {
+      entries: ChildWorkTranscriptEntry[];
+      more: boolean;
+      start: number;
+      end: number;
+    }
+  | undefined
+> {
   const entries: ChildWorkTranscriptEntry[] = [];
+  // A tail read keeps each of the last `limit` messages' entries.
+  const lastMessages: ChildWorkTranscriptEntry[][] = [];
   let index = 0;
   let first = true;
   let start: OwnHistoryStart = { kind: 'whole' };
@@ -455,17 +467,32 @@ async function readPage(
       ? [{ message: index, kind: 'too-large' as const }]
       : codexRolloutEntries(record, index);
     if (mapped.length === 0) continue;
-    if (index >= offset + limit) return { entries, more: true };
+    if (tail) {
+      lastMessages.push(capEntries(mapped, index));
+      if (lastMessages.length > limit) lastMessages.shift();
+      index += 1;
+      continue;
+    }
+    if (index >= offset + limit)
+      return { entries, more: true, start: offset, end: offset + limit };
     if (index >= offset) entries.push(...capEntries(mapped, index));
     index += 1;
   }
-  return first ? undefined : { entries, more: false };
+  if (first) return undefined;
+  if (tail)
+    return {
+      entries: lastMessages.flat(),
+      more: false,
+      start: index - lastMessages.length,
+      end: index,
+    };
+  return { entries, more: false, start: offset, end: Math.max(offset, index) };
 }
 
 /** A page of the child thread's transcript, starting at message `offset`. */
 export async function readCodexSubagentTranscriptPage(
   ref: CodexThreadTranscriptRef,
-  options: { offset: number; limit: number },
+  options: { offset: number; limit: number; tail?: boolean },
 ): Promise<CodexSubagentTranscriptOutcome> {
   const key = JSON.stringify([ref.configHome ?? '', ref.threadId]);
   let handle: FileHandle | undefined;
@@ -489,6 +516,7 @@ export async function readCodexSubagentTranscriptPage(
       ref.threadId,
       options.offset,
       options.limit,
+      options.tail === true,
     );
     if (!page) {
       resolvedPaths.forget(key);
@@ -498,6 +526,8 @@ export async function readCodexSubagentTranscriptPage(
       status: 'found',
       page: {
         entries: page.entries,
+        offset: page.start,
+        endOffset: page.end,
         ...(page.more ? { nextOffset: options.offset + options.limit } : {}),
       },
     };

@@ -94,6 +94,33 @@ describe('#3163 Claude subagent transcript', () => {
     expect(second.page.entries.at(-1)).toMatchObject({ text: 'INNER DONE' });
   });
 
+  test('a tail read returns the last messages with where they start and end', async () => {
+    ({ restore } = installClaudeSubagentTranscript(makeTempDir));
+    const tail = await readClaudeSubagentTranscriptPage(ref, {
+      offset: 0,
+      limit: 3,
+      tail: true,
+    });
+    if (tail.status !== 'found') throw new Error(tail.status);
+    // Messages 2–4; message 1 is thinking only and maps to no entry.
+    expect(
+      tail.page.entries.map((entry) => [entry.kind, entry.message]),
+    ).toEqual([
+      ['tool-call', 2],
+      ['tool-result', 3],
+      ['text', 4],
+    ]);
+    expect(tail.page).toMatchObject({ offset: 2, endOffset: 5 });
+    expect(tail.page.nextOffset).toBeUndefined();
+    const whole = await readClaudeSubagentTranscriptPage(ref, {
+      offset: 0,
+      limit: 30,
+      tail: true,
+    });
+    if (whole.status !== 'found') throw new Error(whole.status);
+    expect(whole.page).toMatchObject({ offset: 0, endOffset: 5 });
+  });
+
   test('the ref’s config home wins over the server’s: a profile session reads its own transcript', async () => {
     ({ restore } = installClaudeSubagentTranscript(makeTempDir, {
       withAgent: false,

@@ -3,7 +3,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
-import { useChildWorkTranscriptQuery } from '../query-domains/chatRuntimeOrchestration';
+import {
+  useChildWorkTranscriptQuery,
+  useChildWorkTranscriptTailQuery,
+} from '../query-domains/chatRuntimeOrchestration';
 
 const read = vi.hoisted(() => vi.fn(async () => ({ entries: [] })));
 vi.mock('../client/orchestration', async (importOriginal) => ({
@@ -43,6 +46,106 @@ test('a running child refreshes through React Query and settlement stops refresh
     await vi.advanceTimersByTimeAsync(4_000);
   });
   expect(read).toHaveBeenCalledTimes(2);
+  observer.unmount();
+  client.clear();
+});
+
+test('a chat-shaped read opens on the latest messages, loads older ones before them, and a running child polls only past its cursor', async () => {
+  vi.useFakeTimers();
+  // The server's shapes: a tail page names where it starts and ends; a
+  // forward read from a cursor returns what follows.
+  const transcript = Array.from({ length: 70 }, (_, message) => ({
+    kind: 'text' as const,
+    role: 'assistant' as const,
+    message,
+    text: `m${message}`,
+  }));
+  let length = 70;
+  read.mockImplementation((async (
+    _apiBase: string,
+    _thread: string,
+    _child: string,
+    page: { offset?: number; limit?: number; tail?: boolean },
+  ) => {
+    const limit = page.limit ?? 30;
+    const offset = page.tail ? Math.max(0, length - limit) : (page.offset ?? 0);
+    const end = Math.min(length, offset + limit);
+    return {
+      entries: transcript.slice(offset, end),
+      offset,
+      endOffset: Math.max(offset, end),
+    };
+  }) as never);
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  const observer = renderHook(
+    ({ running }) =>
+      useChildWorkTranscriptTailQuery(
+        { threadId: 'parent', childId: 'child', running },
+        'https://station.test',
+      ),
+    { wrapper, initialProps: { running: true } },
+  );
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1);
+  });
+  const messages = () =>
+    observer.result.current.data?.pages.flatMap((page) =>
+      page.entries.map((entry) => entry.message),
+    ) ?? [];
+  expect(read.mock.calls[0]?.[3]).toEqual({ tail: true, limit: 30 });
+  expect(messages()[0]).toBe(40);
+  expect(messages().at(-1)).toBe(69);
+  expect(observer.result.current.hasPreviousPage).toBe(true);
+  // Older history loads before the first message.
+  await act(async () => {
+    await observer.result.current.fetchPreviousPage();
+    await vi.advanceTimersByTimeAsync(1);
+  });
+  expect(read).toHaveBeenLastCalledWith(
+    'https://station.test',
+    'parent',
+    'child',
+    { offset: 10, limit: 30 },
+    expect.anything(),
+  );
+  expect(messages().slice(0, 2)).toEqual([10, 11]);
+  // A poll reads only from the cursor; two new messages are appended.
+  read.mockClear();
+  transcript.push(
+    { kind: 'text', role: 'assistant', message: 70, text: 'm70' },
+    { kind: 'text', role: 'assistant', message: 71, text: 'm71' },
+  );
+  length = 72;
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2_000);
+  });
+  expect(read.mock.calls.length).toBeGreaterThan(0);
+  for (const call of read.mock.calls)
+    expect(call[3]).toMatchObject({ offset: expect.any(Number) });
+  expect(read.mock.calls.every((call) => !call[3]?.tail)).toBe(true);
+  expect(read.mock.calls[0]?.[3]).toEqual({ offset: 70, limit: 50 });
+  expect(messages().slice(-2)).toEqual([70, 71]);
+  expect(new Set(messages()).size).toBe(messages().length);
+  // Settled: no more polls.
+  observer.rerender({ running: false });
+  read.mockClear();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(6_000);
+  });
+  expect(read).not.toHaveBeenCalled();
+  // A reported change still reads past the cursor once.
+  await act(async () => {
+    observer.result.current.refreshLatest();
+    await vi.advanceTimersByTimeAsync(1);
+  });
+  expect(read.mock.calls.map((call) => call[3])).toEqual([
+    { offset: 72, limit: 50 },
+  ]);
   observer.unmount();
   client.clear();
 });

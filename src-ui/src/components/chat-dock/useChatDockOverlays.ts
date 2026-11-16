@@ -22,9 +22,18 @@ import type {
   NewChatClosedOutcome,
   NewChatIntent,
 } from '../../lib/newChatIntent';
-import type { ChatSession } from '../../types';
 import type { ActiveWorkPanel } from './ActiveWorkContextFrame';
 import { CHAT_DOCK_INBOX_EXIT_MS } from './chat-dock-utils';
+
+/**
+ * The chat the dock is working in, when it runs on this Station: its tab id,
+ * and whether a reporting session belongs to it (`threadInChat`, the Agents
+ * pane's own membership rule).
+ */
+export interface WorkingParent {
+  id: string;
+  owns: (threadId: string | undefined) => boolean;
+}
 
 /**
  * The dock's overlay open flags and the toggles that drive them: history,
@@ -45,6 +54,7 @@ export function useChatDockOverlays({
   hasConversationIntent,
   onReaderIntent,
   hostSessionRef,
+  workingParentPending = false,
 }: {
   isMobile: boolean;
   composerMenuTriggerRef: RefObject<HTMLButtonElement | null>;
@@ -52,10 +62,13 @@ export function useChatDockOverlays({
   setShowNewChatModalState: (open: boolean) => void;
   hasConversationIntent: boolean;
   onReaderIntent: () => void;
-  hostSessionRef?: RefObject<Pick<
-    ChatSession,
-    'id' | 'conversationId' | 'currentSessionId'
-  > | null>;
+  hostSessionRef?: RefObject<WorkingParent | null>;
+  /**
+   * The requested chat is open but not yet the working one (a cold load).
+   * A child request waits for it, so it is not read against a parent that
+   * has not bound yet.
+   */
+  workingParentPending?: boolean;
 }) {
   const [mobileInboxOpen, setMobileInboxOpen] = useState(
     isMobile && !hasConversationIntent,
@@ -69,33 +82,33 @@ export function useChatDockOverlays({
     SurfaceIntentRecord & { workingSessionId?: string }
   >();
   const consumeIntent = regionModel?.consumeSurfaceIntent;
-  // A child opened over a record reader of its parent, because the working
-  // chat could not be matched when the request arrived (it was still
-  // loading, say). Leaving the child re-checks, so the way back lands on the
-  // working chat rather than the record reader.
-  const childParentRecord = useRef(false);
-  const childCovered = useRef(false);
   useEffect(() => {
     if (!incoming?.session) return;
-    onReaderIntent();
-    setMobileInboxOpen(false);
-    const hostSession = hostSessionRef?.current;
     const opensChild = Boolean(
       (incoming.childId || incoming.childSessionId) &&
         !incoming.messageAnchor &&
         !incoming.focus,
     );
+    if (opensChild && workingParentPending) return;
+    onReaderIntent();
+    setMobileInboxOpen(false);
+    const hostSession = hostSessionRef?.current;
     const reusesWorkingParent = Boolean(
-      opensChild && hostSession && isHostSession(hostSession, incoming.session),
+      opensChild && hostSession?.owns(incoming.session),
     );
-    childParentRecord.current = opensChild && !reusesWorkingParent;
     setImportedSessionId(reusesWorkingParent ? null : incoming.session);
     setReaderSurfaceIntent({
       ...incoming,
       workingSessionId: reusesWorkingParent ? hostSession!.id : undefined,
     });
     consumeIntent?.('chat', incoming.token);
-  }, [incoming, consumeIntent, onReaderIntent, hostSessionRef]);
+  }, [
+    incoming,
+    consumeIntent,
+    onReaderIntent,
+    hostSessionRef,
+    workingParentPending,
+  ]);
   const consumeChildIntent = useCallback(
     (token: number) =>
       setReaderSurfaceIntent((current) =>
@@ -110,28 +123,12 @@ export function useChatDockOverlays({
       ),
     [],
   );
-  const onChildCoveredChange = useCallback(
-    (covered: boolean) => {
-      const left = childCovered.current && !covered;
-      childCovered.current = covered;
-      if (!left || !childParentRecord.current) return;
-      childParentRecord.current = false;
-      const hostSession = hostSessionRef?.current;
-      setImportedSessionId((current) =>
-        current && hostSession && isHostSession(hostSession, current)
-          ? null
-          : current,
-      );
-    },
-    [hostSessionRef],
-  );
   // An imported conversation occupies the same reading surface as an owned chat.
   const onOpenInboxSession = useCallback(
     (threadId: string) => {
       onReaderIntent();
       setMobileInboxOpen(false);
       setReaderSurfaceIntent(undefined);
-      childParentRecord.current = false;
       setImportedSessionId(threadId);
     },
     [onReaderIntent],
@@ -263,7 +260,6 @@ export function useChatDockOverlays({
     importedSessionId,
     readerSurfaceIntent,
     consumeChildIntent,
-    onChildCoveredChange,
     setImportedSessionId,
     onOpenInboxSession,
     newChatRequestEpoch,
@@ -298,14 +294,4 @@ export function useChatDockOverlays({
     backgroundTasksTriggerRef,
     restoreComposerMenuFocus,
   };
-}
-
-/** The bound working chat answers to its tab, conversation or session id. */
-function isHostSession(
-  host: Pick<ChatSession, 'id' | 'conversationId' | 'currentSessionId'>,
-  threadId: string,
-): boolean {
-  return [host.id, host.conversationId, host.currentSessionId].includes(
-    threadId,
-  );
 }

@@ -163,6 +163,10 @@ import { useOptionalObservedWorkStatus } from '../../views/home/useObservedWorkS
 import { useWorkFacts } from '../../views/home/useWorkFacts';
 import type { ConversationOpenResult } from '../../views/home/work-item-open-policy';
 import { workStatusText } from '../../views/home/work-status';
+import {
+  threadInChat,
+  uniqueChatKey,
+} from '../../workspace-panes/agents/childWorkSelectors';
 import { agentRunnability } from '../agent-runnability';
 import { durableMentionAuthority } from '../chat/composer-mentions';
 import { publishReferenceableConversations } from '../chat/conversationReferenceDrag';
@@ -232,7 +236,7 @@ import {
 } from './sessionInventoryOccurrence';
 import { useAcknowledgeVisibleConversation } from './useAcknowledgeVisibleConversation';
 import { useChatDockActiveChatSync } from './useChatDockActiveChatSync';
-import { useChatDockOverlays } from './useChatDockOverlays';
+import { useChatDockOverlays, type WorkingParent } from './useChatDockOverlays';
 import { useChatDockViewModel } from './useChatDockViewModel';
 import {
   type ForkFollowUp,
@@ -957,10 +961,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const notifyTaskStarted = useTaskStartedNotice(collapseDockForNavigation);
 
   const childChatController = useRef<ChildChatController | null>(null);
-  const hostSessionRef = useRef<Pick<
-    ChatSession,
-    'id' | 'conversationId' | 'currentSessionId'
-  > | null>(null);
+  const hostSessionRef = useRef<WorkingParent | null>(null);
   const readerIntent = useRef(0);
   const pendingReaderOpen = useRef<{ accepted: boolean } | null>(null);
   const cancelReaderOpen = useCallback(() => {
@@ -1016,11 +1017,27 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     [cancelReaderOpenAndChildren, requestAuthority, workObservation],
   );
   const { setDeviceSetting } = useDeviceSettingsActions();
+  // A cold load names a chat the store already holds before the dock makes
+  // it the working chat. A child request waits for that, so its parent is
+  // matched against the chat it was opened from.
+  const requestedChatKey = useMemo(
+    () =>
+      activeChat
+        ? uniqueChatKey(
+            Object.fromEntries(
+              allSessions.map((session) => [session.id, session]),
+            ),
+            activeChat,
+          )
+        : undefined,
+    [activeChat, allSessions],
+  );
+  const workingParentPending =
+    requestedChatKey !== undefined && activeSessionId === null;
   const {
     importedSessionId,
     readerSurfaceIntent,
     consumeChildIntent,
-    onChildCoveredChange,
     setImportedSessionId,
     onOpenInboxSession,
     newChatRequestEpoch,
@@ -1059,19 +1076,13 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     hasConversationIntent: Boolean(activeChat),
     onReaderIntent: cancelReaderOpenAndChildren,
     hostSessionRef,
+    workingParentPending,
     composerMenuTriggerRef,
     setDeviceSetting,
     setShowNewChatModalState,
   });
   const mobileInboxShown = isMobile && mobileInboxOpen;
   const [isChildReaderOpen, setIsChildReaderOpen] = useState(false);
-  const childCoveredChange = useCallback(
-    (covered: boolean) => {
-      setIsChildReaderOpen(covered);
-      onChildCoveredChange(covered);
-    },
-    [onChildCoveredChange],
-  );
   const readerCovered =
     mobileInboxShown || showNewChatModal || isChildReaderOpen;
   useEffect(() => {
@@ -1678,8 +1689,31 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     sessionModel: activeSession?.model,
     agentDefaultModel: agentDefaultModelId,
   });
+  // The working chat runs on this Station: a host route, or a chat of this
+  // Station that needs no route (a local chat resolves none).
+  const hostBound = Boolean(
+    activeSession &&
+      (conversationConnection
+        ? conversationConnection.routeKind === 'host'
+        : chatBelongsToStation(activeSession)),
+  );
+  // A child request names its reporting session. It is this chat's when
+  // that session is, by the Agents pane's own rule (`threadInChat`): this
+  // chat's ids, or an earlier session of its conversation.
   hostSessionRef.current =
-    conversationConnection?.routeKind === 'host' ? activeSession : null;
+    hostBound && activeSession
+      ? {
+          id: activeSession.id,
+          owns: threadInChat(
+            {
+              sessions: orchestrationSessions,
+              chatKeyFor: (threadId) =>
+                uniqueChatKey(activeChatsStore.getSnapshot(), threadId),
+            },
+            activeSession.id,
+          ),
+        }
+      : null;
   const initialChildChat = useMemo<ChildChatTarget | undefined>(() => {
     if (
       !readerSurfaceIntent?.session ||
@@ -1689,7 +1723,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     const workingParent =
       importedSessionId === null &&
       readerSurfaceIntent.workingSessionId === activeSessionId &&
-      conversationConnection?.routeKind === 'host';
+      hostBound;
     if (!workingParent && readerSurfaceIntent.session !== importedSessionId)
       return;
     return {
@@ -1717,6 +1751,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     readerSurfaceIntent,
     importedSessionId,
     activeSessionId,
+    hostBound,
     conversationConnection,
     apiBase,
     requestAuthority,
@@ -3605,7 +3640,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       title={presentationTitle}
       initialChild={initialChildChat}
       controllerRef={childChatController}
-      onCoveredChange={childCoveredChange}
+      onCoveredChange={setIsChildReaderOpen}
       onBeforeChildOpen={cancelReaderOpen}
       onInitialChildConsumed={consumeInitialChild}
     >

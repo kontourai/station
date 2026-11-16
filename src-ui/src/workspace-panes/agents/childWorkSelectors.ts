@@ -106,9 +106,15 @@ function sessionIndex(sessions: readonly ChildWorkSessionSource[]) {
  * The chat a session belongs to: its own id, else its durable conversation's
  * (a conversation's older execution child still resolves to its chat).
  */
+/** What chat membership reads: session rows and the open-chat lookup. */
+export type ChatMembershipInput = Pick<
+  ChildWorkSelectorInput,
+  'sessions' | 'chatKeyFor'
+>;
+
 function resolveChat(
   threadId: string,
-  input: ChildWorkSelectorInput,
+  input: ChatMembershipInput,
   sessions: Map<string, ChildWorkSessionSource>,
 ): string | undefined {
   const direct = input.chatKeyFor(threadId);
@@ -440,7 +446,7 @@ export function uniqueChatKey(
  * conversation resolves to.
  */
 export function threadInChat(
-  input: ChildWorkSelectorInput,
+  input: ChatMembershipInput,
   chatKey: string,
 ): (threadId: string | undefined) => boolean {
   const sessions = sessionIndex(input.sessions);
