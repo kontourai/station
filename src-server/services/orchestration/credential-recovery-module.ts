@@ -110,6 +110,13 @@ type CredentialRecoveryOutcome =
   | { kind: 'restarted'; turnId: string }
   | { kind: 'recovered' }
   | { kind: 'rolled-back' }
+  /**
+   * A definite pre-send refusal whose session had to be quarantined: the
+   * account is rolled back and the session is closed. `retired` says whether
+   * the stop was durably retired as `session-ended`; when it was not, it is
+   * still recorded as waiting, but nothing should claim it will resume.
+   */
+  | { kind: 'session-ended'; retired: boolean }
   | { kind: 'indeterminate' };
 
 /**
@@ -349,8 +356,13 @@ class CredentialRecoveryImplementation implements CredentialRecoveryModule {
         }
         // The provider definitely did not take the replay, and the account is
         // back. A person's choice that failed must not cost the stop its own
-        // wait: it returns to waiting instead of ending failed.
-        if (observation.consentedProfileRef !== undefined) {
+        // wait: it returns to waiting instead of ending failed. A quarantined
+        // session is closed, so whoever chose, the stop is retired with that
+        // reason instead.
+        if (
+          observation.consentedProfileRef !== undefined ||
+          session === 'quarantined'
+        ) {
           const released = prepared.attempt.releaseBeforeInvocation({
             outcome: intent.outcome === 'manual' ? 'manual' : 'armed',
             now: this.now(),
@@ -358,16 +370,17 @@ class CredentialRecoveryImplementation implements CredentialRecoveryModule {
           if (released.kind === 'applied') {
             this.claims.delete(intent.fingerprint);
             this.claimedFingerprints.delete(intent.fingerprint);
-            // A quarantined session is closed: the stop cannot resume at its
-            // reset, so it is retired with that reason, not left waiting.
-            if (session === 'quarantined')
-              this.dependencies.ledger.retireWaiting({
-                fingerprint: intent.fingerprint,
-                outcome: 'canceled',
-                reason: 'session-ended',
-                now: this.now(),
-              });
-            return { kind: 'rolled-back' };
+            if (session !== 'quarantined') return { kind: 'rolled-back' };
+            const retired = this.dependencies.ledger.retireWaiting({
+              fingerprint: intent.fingerprint,
+              outcome: 'canceled',
+              reason: 'session-ended',
+              now: this.now(),
+            });
+            return {
+              kind: 'session-ended',
+              retired: retired.kind === 'applied',
+            };
           }
         }
         if (

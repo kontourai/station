@@ -124,6 +124,11 @@ export class SessionRecoveryCoordinator {
   private disposed = false;
   private dueScanRetry?: ReturnType<typeof setTimeout>;
   private admissionRetry?: { delayMs: number; retryAt: string };
+  /**
+   * Stops whose session was quarantined but whose retirement could not be
+   * written: still recorded as waiting, so a click must not say so.
+   */
+  private readonly unretiredSessionEnds = new Set<string>();
 
   constructor(
     private readonly options: {
@@ -785,6 +790,10 @@ export class SessionRecoveryCoordinator {
         profileRef,
       );
       const after = this.ledger.find(current.fingerprint);
+      if (this.unretiredSessionEnds.delete(current.fingerprint)) {
+        result = { kind: 'not-waiting' };
+        return;
+      }
       if (!handled) {
         // Not staged: the stop is back to waiting, so its reset still counts.
         if (after?.outcome === 'armed' && after.dueAt)
@@ -889,6 +898,19 @@ export class SessionRecoveryCoordinator {
         return true;
       }
       this.deferAdmission(intent, outcome.reason);
+      return true;
+    }
+    if (outcome.kind === 'session-ended') {
+      // The session was quarantined: nothing may still resume it.
+      this.clearIntentRuntime(intent, true);
+      if (outcome.retired) {
+        this.clearTimer(intent.fingerprint);
+        this.recordIntentOutcome(intent, 'canceled');
+      } else if (consentedProfileRef !== undefined) {
+        // The reset timer stays: its pre-dispatch check finds the closed
+        // session and retires the stop then.
+        this.unretiredSessionEnds.add(intent.fingerprint);
+      }
       return true;
     }
     if (outcome.kind === 'conflicted') {

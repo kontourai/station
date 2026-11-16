@@ -5954,6 +5954,14 @@ describe('OrchestrationService', () => {
       );
       // Refused before anything stopped: recovery must not restore it.
       expect(isSessionUntouched(refused)).toBe(true);
+      // So is a restart for a Session Station does not know.
+      const unknown = await restart('no-such-credential-session').catch(
+        (error: unknown) => error,
+      );
+      expect(String(unknown)).toContain(
+        'Credential profile recovery session is unavailable.',
+      );
+      expect(isSessionUntouched(unknown)).toBe(true);
       expect(claude.startSession.mock.calls.length).toBe(startsBefore);
       expect(claude.stopSession).not.toHaveBeenCalled();
       // Legacy control: an unmarked session restarts.

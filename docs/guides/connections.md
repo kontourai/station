@@ -1632,7 +1632,7 @@ example the chosen account is signed out and its session cannot start):
 Station rolls the account back, restarts the session on the connection's
 account and keeps the reset. If that session cannot restart either, Station
 closes it and retires the stop ("the session has ended") rather than promising
-a resume. A failure after the send was called stops as
+a resume; an automatic attempt that ends this way says the same. A failure after the send was called stops as
 "may not have gone through" and does not resume on its own, so the turn is
 never sent twice. Nothing is offered while automatic recovery is paused (see
 above).

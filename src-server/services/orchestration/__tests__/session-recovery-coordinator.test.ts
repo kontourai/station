@@ -896,6 +896,8 @@ describe('SessionRecoveryCoordinator', () => {
         }) => Promise<void>;
         quarantineSession?: (threadId: string) => Promise<void>;
         onOutcome?: (input: { outcome: string }) => void;
+        /** The ledger refuses to retire a waiting stop (a storage fault). */
+        retireWaitingFails?: boolean;
       } = {},
     ) {
       vi.useFakeTimers({ now: STOPPED_AT });
@@ -904,8 +906,14 @@ describe('SessionRecoveryCoordinator', () => {
       );
       const restartResume = vi.fn(async () => ({ turnId: 'profile-turn' }));
       const sendTurn = vi.fn(async () => ({ turnId: 'same-account-turn' }));
+      const recoveryLedger = store.createRecoveryLedger();
+      if (extra.retireWaitingFails)
+        vi.spyOn(recoveryLedger, 'retireWaiting').mockReturnValue({
+          kind: 'unavailable',
+        } as any);
       const coordinator = new SessionRecoveryCoordinator({
         eventStore: store,
+        recoveryLedger,
         adapterForProvider: () =>
           ({
             metadata: {
@@ -1387,7 +1395,67 @@ describe('SessionRecoveryCoordinator', () => {
       expect(coordinator.latestProjection(THREAD)).toMatchObject({
         outcome: 'failed',
       });
-      expect(outcomes).toContain('failed');
+      // Exactly once each: a duplicate recording would show here.
+      expect(outcomes).toEqual(['armed', 'failed']);
+      await coordinator.dispose();
+      store.close();
+      vi.useRealTimers();
+    });
+
+    test('with the production adapter, an automatic attempt whose session is quarantined retires the stop as session-ended', async () => {
+      const outcomes: string[] = [];
+      const automatic: TestCredentialRecoveryAdapter['stage'] = async () => ({
+        candidateProfileRef: 'work',
+        capability: 'restart_resume',
+      });
+      const production = productionDispatch({
+        restart: async () => {
+          throw new Error('engine will not start');
+        },
+        providerSendTurn: async () => ({ turnId: 'never' }),
+      });
+      const { store, coordinator } = setup(automatic, () => true, {
+        recoveryDispatchAdapter: production.recovery.createDispatchAdapter(),
+        restoreSession: (input) => production.recovery.restoreSession(input),
+        quarantineSession: vi.fn(async () => undefined),
+        onOutcome: ({ outcome }) => outcomes.push(outcome),
+      });
+      stopOnUsageLimit(store, coordinator);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(coordinator.latestProjection(THREAD)).toMatchObject({
+        outcome: 'canceled',
+        outcomeReason: 'session-ended',
+      });
+      expect(outcomes).toEqual(['armed', 'canceled']);
+      await coordinator.dispose();
+      store.close();
+      vi.useRealTimers();
+    });
+
+    test('with the production adapter, a quarantine whose retirement cannot be written answers not-waiting, never still-waiting', async () => {
+      const production = productionDispatch({
+        restart: async () => {
+          throw new Error('engine will not start');
+        },
+        providerSendTurn: async () => ({ turnId: 'never' }),
+      });
+      const { store, coordinator } = setup(consentedOnly, () => true, {
+        recoveryDispatchAdapter: production.recovery.createDispatchAdapter(),
+        restoreSession: (input) => production.recovery.restoreSession(input),
+        quarantineSession: vi.fn(async () => undefined),
+        retireWaitingFails: true,
+      });
+      stopOnUsageLimit(store, coordinator);
+      await vi.advanceTimersByTimeAsync(0);
+
+      await expect(
+        coordinator.continueUsageLimitOnProfile(
+          THREAD,
+          'work',
+          stopIdOf(coordinator),
+        ),
+      ).resolves.toEqual({ kind: 'not-waiting' });
       await coordinator.dispose();
       store.close();
       vi.useRealTimers();

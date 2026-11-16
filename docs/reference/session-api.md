@@ -2062,7 +2062,9 @@ in [contracts](contracts.md)). These routes serve the chat banner:
   account is rolled back and the session restarted on the connection's
   account) answers `not-switched` and leaves the stop waiting for its reset.
   If the session cannot be restarted on the connection's account either, it is
-  quarantined and the answer is `retired` with `session-ended`.
+  quarantined and the answer is `retired` with `session-ended` (or
+  `not-waiting` if that retirement could not be written; the stop then retires
+  at its reset, when the pre-dispatch check finds the closed session).
   A failure after the send was called answers `failed`, and the stop does not
   resume on its own. Both list or switch this Station's accounts, so they need the
   `access:manage` pairing scope as well as the Session's own person.
