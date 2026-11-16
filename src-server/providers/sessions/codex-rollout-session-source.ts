@@ -644,7 +644,10 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
     if (!isCodexHomeAffinity(affinity)) return null;
     const known = this.resolveSourceHome(affinity);
     if (known) return known;
-    // Concurrent misses share one read of the configured home list.
+    // Concurrent misses share one read of the configured home list. Known
+    // gap (accepted): a caller that joins a read already in flight can
+    // answer null for a home configured after that read began; the next
+    // miss or discovery reads the list again.
     this.homeRefresh ??= this.resolveHomes()
       .then(() => undefined)
       .finally(() => {
