@@ -323,6 +323,17 @@ export interface IPullRequestProvider {
     context: PullRequestRepositoryIdentityContext,
     ref: string,
   ): Promise<PullRequestResult<PullRequest>>;
+  /**
+   * The same exact read, narrowed to what a status surface (the Task board)
+   * reads: state, title, branches, mergeability, draft, review decision and
+   * readiness. `body` is null and `commits`/`comments` are 0, not observed.
+   * Concurrent reads of one pull request share one forge call, and an answer
+   * may be served from a short cache that a write to the repository clears.
+   */
+  getPullRequestStatusByIdentity?(
+    context: PullRequestRepositoryIdentityContext,
+    ref: string,
+  ): Promise<PullRequestResult<PullRequest>>;
   openPullRequest(
     context: PullRequestRepositoryContext,
     input: PullRequestOpenInput,

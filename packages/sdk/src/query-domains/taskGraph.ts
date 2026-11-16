@@ -25,7 +25,13 @@ import {
   getTaskAnswerSupportCards,
   type TaskAnswerSupportStandingWithCard,
 } from '../client/answer-support';
-import { getJson, readEnvelopeOrThrow } from '../client/http';
+import {
+  envelopeErrorCode,
+  envelopeErrorMessage,
+  getJson,
+  readEnvelopeOrThrow,
+  readJsonBody,
+} from '../client/http';
 import {
   type AttachTaskUserInputReferenceInput,
   attachTaskUserInputReference as attachTaskUserInputReferenceClient,
@@ -156,8 +162,9 @@ export type TaskListRecord = TaskRecord &
 /**
  * Derived Task lanes: the provider's current facts for each pull request kept
  * on a Project's live Tasks (`GET /api/tasks/pull-request-facts`). `null`
- * when the host answers 404: a Station older than this read, whose board
- * then claims nothing about pull requests.
+ * when the host answers a plain 404: a Station older than this read, whose
+ * board then claims nothing about pull requests. A 404 carrying
+ * `request_principal_changed` is lost standing, and is thrown as an error.
  */
 export async function fetchTaskPullRequestFacts(
   projectId: string,
@@ -167,7 +174,11 @@ export async function fetchTaskPullRequestFacts(
   const response = await authenticatedFetch(
     `${resolvedApiBase}/api/tasks/pull-request-facts?${new URLSearchParams({ projectId })}`,
   );
-  if (response.status === 404) return null;
+  if (response.status === 404) {
+    const body = await readJsonBody(response);
+    if (envelopeErrorCode(body) !== 'request_principal_changed') return null;
+    throw new Error(envelopeErrorMessage(body, 'Request failed with HTTP 404'));
+  }
   return readApiResult<TaskPullRequestFactsProjection>(response);
 }
 

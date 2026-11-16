@@ -2484,6 +2484,14 @@ describe('Task routes', () => {
         '/pull-request-facts?projectId=project-alpha',
       );
       expect(response.status).toBe(404);
+      expect((await readJson<any>(response)).code).toBe(
+        'request_principal_changed',
+      );
+    });
+
+    test('a read without a Project is refused, not answered for every Project', async () => {
+      const { app } = await arrange();
+      expect((await app.request('/pull-request-facts')).status).toBe(400);
     });
 
     test('a hosted request reads nothing through this host', async () => {

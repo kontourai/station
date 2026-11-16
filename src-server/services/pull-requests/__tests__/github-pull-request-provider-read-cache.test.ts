@@ -454,3 +454,59 @@ describe('GitHubPullRequestProvider forge read coalescing (#2937)', () => {
     ).toEqual(['github.com/o1/r', 'github.com/o2/r']);
   });
 });
+
+describe('GitHubPullRequestProvider status reads for the Task board', () => {
+  const identity = {
+    host: 'github.com',
+    repository: { owner: 'kontourai', name: 'station' },
+  };
+
+  test('concurrent status reads of one pull request spawn one narrow gh pr view', async () => {
+    const gh = fakeGh();
+    const { provider } = providerWith(gh);
+    gh.holdAll();
+    const pending = [
+      provider.getPullRequestStatusByIdentity(identity, '7'),
+      provider.getPullRequestStatusByIdentity(identity, '7'),
+    ];
+    await Promise.resolve();
+    gh.releaseAll();
+    const [first, second] = await Promise.all(pending);
+    expect(gh.count('pr view')).toBe(1);
+    expect(first).toMatchObject({ available: true, data: { ref: '7' } });
+    expect(second).toEqual(first);
+    const fields = gh.calls[0]?.[gh.calls[0].indexOf('--json') + 1] ?? '';
+    expect(fields.split(',')).toEqual(
+      expect.arrayContaining(['state', 'mergeStateStatus', 'isDraft']),
+    );
+    expect(fields.split(',')).not.toEqual(expect.arrayContaining(['body']));
+  });
+
+  test('a status read is retained until its TTL or a write to the repository', async () => {
+    const gh = fakeGh();
+    const { provider, clock } = providerWith(gh);
+    await provider.getPullRequestStatusByIdentity(identity, '7');
+    await provider.getPullRequestStatusByIdentity(identity, '7');
+    expect(gh.count('pr view')).toBe(1);
+    await provider.mergePullRequest(station, '7', { method: 'squash' });
+    const afterWrite = gh.count('pr view');
+    await provider.getPullRequestStatusByIdentity(identity, '7');
+    expect(gh.count('pr view')).toBe(afterWrite + 1);
+    clock.now += 60_001;
+    await provider.getPullRequestStatusByIdentity(identity, '7');
+    expect(gh.count('pr view')).toBe(afterWrite + 2);
+  });
+
+  test('a failed status read is not retained', async () => {
+    const gh = fakeGh();
+    const { provider } = providerWith(gh);
+    gh.failNext('pr view');
+    expect(
+      (await provider.getPullRequestStatusByIdentity(identity, '7')).available,
+    ).toBe(false);
+    expect(
+      (await provider.getPullRequestStatusByIdentity(identity, '7')).available,
+    ).toBe(true);
+    expect(gh.count('pr view')).toBe(2);
+  });
+});

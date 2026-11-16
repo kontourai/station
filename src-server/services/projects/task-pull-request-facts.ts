@@ -8,10 +8,14 @@
  * could not read as `unavailable` with a reason rather than leaving it out,
  * so the board can say "PR status unavailable" instead of claiming none.
  *
- * Bounded per request: at most {@link MAX_TASKS} Tasks and
- * {@link MAX_KEEPS_PER_TASK} kept pull requests each are read, four at a
- * time, within one deadline. Anything past a bound is still listed, as
- * `unavailable`, and its Task is marked `partial`.
+ * Bounded per request: at most {@link MAX_PULL_REQUESTS} distinct pull
+ * requests are read, those kept on the most recently updated Tasks first,
+ * four at a time, within one deadline. Tasks with nothing kept cost nothing.
+ * Anything past the bound is still listed, as `unavailable`, and its Task is
+ * marked `partial`. Reads use the provider's narrow status read, which
+ * shares one in-flight forge call per pull request and retains it briefly
+ * (GitHub); gh cannot be cancelled, so a read past the deadline is left to
+ * finish and the next request joins it instead of starting another.
  */
 import type { TaskKeptDeclaredPullRequest } from '@kontourai/station-contracts';
 import type { IPullRequestProvider } from '@kontourai/station-contracts/pull-request-provider';
@@ -22,8 +26,7 @@ import type {
 } from '@kontourai/station-contracts/task-lane';
 import { readPullRequestByIdentity } from '../pull-requests/pull-request-identity-read.js';
 
-const MAX_TASKS = 40;
-const MAX_KEEPS_PER_TASK = 5;
+const MAX_PULL_REQUESTS = 60;
 const READ_CONCURRENCY = 4;
 const DEFAULT_DEADLINE_MS = 8_000;
 
@@ -73,21 +76,22 @@ export async function readTaskPullRequestFacts(input: {
     keepsByTask.set(keep.taskId, list);
   }
 
-  // What to read, once per pull request even when two Tasks keep it.
+  // What to read, once per pull request even when two Tasks keep it, in
+  // Task recency order until the bound.
   const toRead = new Map<string, Identity>();
-  const plan = live.map((task, index) => {
+  const plan = live.map((task) => {
     const keeps = (keepsByTask.get(task.id) ?? []).sort((a, b) =>
       a.keptAt.localeCompare(b.keptAt),
     );
-    const overTasks = index >= MAX_TASKS;
-    const reads = keeps.map((keep, at) => {
-      const skipped = overTasks
-        ? `Not read: more than ${MAX_TASKS} Tasks on this board.`
-        : at >= MAX_KEEPS_PER_TASK
-          ? `Not read: more than ${MAX_KEEPS_PER_TASK} pull requests kept on this Task.`
-          : undefined;
-      if (!skipped) toRead.set(identityKey(keep), keep);
-      return { keep, skipped };
+    const reads = keeps.map((keep) => {
+      const key = identityKey(keep);
+      if (!toRead.has(key) && toRead.size >= MAX_PULL_REQUESTS)
+        return {
+          keep,
+          skipped: `Not read: more than ${MAX_PULL_REQUESTS} pull requests on this board.`,
+        };
+      toRead.set(key, keep);
+      return { keep, skipped: undefined };
     });
     return { task, reads };
   });
@@ -159,7 +163,7 @@ async function readBounded(
         continue;
       }
       const read = await Promise.race([
-        readPullRequestByIdentity(providers, identity),
+        readPullRequestByIdentity(providers, identity, { status: true }),
         deadline,
       ]);
       results.set(key, toFact(read, identity, now));

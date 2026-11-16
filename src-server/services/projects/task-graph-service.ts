@@ -2088,7 +2088,10 @@ export class TaskGraphService {
    * #4507 for a Tasks list: each Task's worktree projection, as
    * {@link readTaskForOpen} computes it, from one worktree-record read for
    * the whole list. Only the projection fields are added; the Task's stored
-   * `workspaceBinding` is left as recorded.
+   * `workspaceBinding` is left as recorded. While the record store cannot be
+   * read, each Task with a repository root costs one `existsSync` of its
+   * default worktree path (the same fallback `readTaskForOpen` makes); a
+   * Project's list is bounded by its Task count, and that state is a fault.
    */
   projectTaskWorktrees<T extends TaskRecord>(tasks: readonly T[]): T[] {
     if (!tasks.length) return [];

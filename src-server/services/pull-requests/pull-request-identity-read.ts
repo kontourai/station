@@ -26,15 +26,25 @@ type PullRequestIdentityRead =
 export async function readPullRequestByIdentity(
   providers: () => IPullRequestProvider[],
   identity: PullRequestIdentityQuery,
+  /**
+   * `status`: the narrow, shared read a status surface needs, where the
+   * provider offers one (`getPullRequestStatusByIdentity`); otherwise the
+   * full read.
+   */
+  options: { status?: true } = {},
 ): Promise<PullRequestIdentityRead> {
   const provider = providers().find(
     (candidate) =>
       candidate.id === identity.provider &&
       candidate.canServeHost(identity.host),
   );
-  if (!provider?.getPullRequestByIdentity) return { kind: 'unsupported' };
+  const read =
+    (options.status &&
+      provider?.getPullRequestStatusByIdentity?.bind(provider)) ||
+    provider?.getPullRequestByIdentity?.bind(provider);
+  if (!read) return { kind: 'unsupported' };
   try {
-    const result = await provider.getPullRequestByIdentity(
+    const result = await read(
       { host: identity.host, repository: identity.repository },
       identity.ref,
     );

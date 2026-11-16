@@ -186,41 +186,83 @@ describe('readTaskPullRequestFacts', () => {
     expect(Object.keys(facts.tasks)).toEqual(['live']);
   });
 
-  test('past the per-request bounds, keeps are listed unread and the Task is partial', async () => {
+  test('Tasks with nothing kept cost nothing against the bound', () => {
+    // A backlog-heavy board: 45 newer Tasks with no pull requests, then one
+    // older Task with one. Its pull request is read.
+    const tasks = [
+      ...Array.from({ length: 45 }, (_, i) =>
+        task(`b${String(i).padStart(2, '0')}`, {
+          updatedAt: `2026-11-12T00:00:${String(i).padStart(2, '0')}.000Z`,
+        }),
+      ),
+      task('old', { updatedAt: '2026-11-01T00:00:00.000Z' }),
+    ];
+    return read(
+      tasks,
+      [keep('old', '7')],
+      [provider(async (ref) => pullRequest(ref))],
+    ).then((facts) => {
+      expect(facts.tasks.old).toEqual({
+        taskCreatedAt: '2026-11-01T00:00:00.000Z',
+        pullRequests: [
+          expect.objectContaining({
+            status: expect.objectContaining({ state: 'current' }),
+          }),
+        ],
+      });
+    });
+  });
+
+  test('past 60 distinct pull requests, the rest are listed unread and their Task is partial', async () => {
     const getPullRequest = vi.fn(async (ref: string) => pullRequest(ref));
-    const tasks = Array.from({ length: 41 }, (_, i) =>
+    const tasks = Array.from({ length: 31 }, (_, i) =>
       task(`t${String(i).padStart(2, '0')}`, {
         updatedAt: `2026-11-10T00:00:${String(59 - i).padStart(2, '0')}.000Z`,
       }),
     );
-    const keeps = [
-      ...['1', '22', '333', '4444', '55555', '666666'].map((ref) =>
-        keep('t00', ref),
-      ),
-      keep('t40', '9'),
-    ];
-    const facts = await read(tasks, keeps, [provider(getPullRequest)]);
-    const many = facts.tasks.t00;
-    expect(many?.partial).toBe(true);
-    expect(many?.pullRequests.map((fact) => fact.status.state)).toEqual([
-      'current',
-      'current',
-      'current',
-      'current',
-      'current',
-      'unavailable',
+    // Two pull requests per Task, newest Task first: 62 in all.
+    const keeps = tasks.flatMap((t, i) => [
+      keep(t.id, `${i}a`),
+      keep(t.id, `${i}b`),
     ]);
-    // The 41st most recent Task is past the Task bound.
-    expect(facts.tasks.t40).toMatchObject({
+    const facts = await read(tasks, keeps, [provider(getPullRequest)]);
+    expect(getPullRequest).toHaveBeenCalledTimes(60);
+    expect(facts.tasks.t00).not.toHaveProperty('partial');
+    expect(facts.tasks.t30).toMatchObject({
       partial: true,
-      pullRequests: [{ ref: '9', status: { state: 'unavailable' } }],
+      pullRequests: [
+        { status: { state: 'unavailable' } },
+        { status: { state: 'unavailable' } },
+      ],
     });
-    expect(getPullRequest).toHaveBeenCalledTimes(5);
-    // A Task with no keeps is known to have none, and is not partial.
-    expect(facts.tasks.t01).toEqual({
-      taskCreatedAt: '2026-11-01T00:00:00.000Z',
-      pullRequests: [],
-    });
+    // A pull request kept again after the bound is still read once.
+    expect(facts.tasks.t29).not.toHaveProperty('partial');
+  });
+
+  test('uses the provider’s narrow status read when it offers one', async () => {
+    const full = vi.fn();
+    const status = vi.fn(async (_c: unknown, ref: string) => ({
+      available: true,
+      data: pullRequest(ref),
+      effectiveCapabilities: {},
+      effectiveMergeMethods: [],
+      mergeMethodsSource: 'provider-default',
+    }));
+    const facts = await read(
+      [task('a')],
+      [keep('a', '7')],
+      [
+        {
+          id: 'github',
+          canServeHost: () => true,
+          getPullRequestByIdentity: full,
+          getPullRequestStatusByIdentity: status,
+        } as unknown as IPullRequestProvider,
+      ],
+    );
+    expect(status).toHaveBeenCalledOnce();
+    expect(full).not.toHaveBeenCalled();
+    expect(facts.tasks.a?.pullRequests[0]?.status.state).toBe('current');
   });
 
   test('a read past the deadline is unavailable, not missing', async () => {

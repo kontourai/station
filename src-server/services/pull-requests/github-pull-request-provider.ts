@@ -93,6 +93,8 @@ export const GITHUB_READ_CACHE_TTL_MS = 20_000;
 export interface GitHubPullRequestProviderOptions {
   /** 0 keeps single-flight coalescing but retains nothing once settled. */
   readCacheTtlMs?: number;
+  /** TTL of {@link GitHubPullRequestProvider.getPullRequestStatusByIdentity}. */
+  statusReadCacheTtlMs?: number;
   now?: () => number;
 }
 
@@ -177,6 +179,17 @@ const githubMergeability = (value: unknown): PullRequest['mergeability'] =>
  */
 const GITHUB_PULL_REQUEST_FIELDS =
   'number,url,title,body,state,author,headRefName,baseRefName,headRefOid,commits,reviews,comments,mergeable,mergeStateStatus,isDraft,reviewDecision';
+
+/**
+ * The status read's fields: what the Task board derives its lanes from, and
+ * what `normalizeGitHubPullRequest` requires. No body, commits, reviews or
+ * comments, which are the expensive parts of a full read.
+ */
+const GITHUB_PULL_REQUEST_STATUS_FIELDS =
+  'number,url,title,state,headRefName,baseRefName,headRefOid,mergeable,mergeStateStatus,isDraft,reviewDecision';
+
+/** How long a status read is shared; a write to the repository clears it. */
+export const GITHUB_STATUS_READ_CACHE_TTL_MS = 60_000;
 
 /** `mergeStateStatus` in the board's vocabulary; absent when not reported. */
 const githubMergeReadiness = (
@@ -306,8 +319,19 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
       options.readCacheTtlMs ?? GITHUB_READ_CACHE_TTL_MS,
       options.now ?? Date.now,
     );
+    this.statusReads = new ForgeReadCache(
+      options.statusReadCacheTtlMs ?? GITHUB_STATUS_READ_CACHE_TTL_MS,
+      options.now ?? Date.now,
+    );
   }
   private readonly reads: ForgeReadCache;
+  /**
+   * Status reads for the Task board: one in-flight `gh pr view` per pull
+   * request, retained briefly. gh offers no cancellation, so a read that
+   * outlives a caller's deadline is joined by the next caller rather than
+   * started again; that is what keeps refreshes from piling reads up.
+   */
+  private readonly statusReads: ForgeReadCache;
   /**
    * The cache key's repository. Sharing an answer across checkouts is sound
    * because gh never reads the checkout (#2363): every read is fully named
@@ -453,6 +477,7 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
       return await run(await this.probeAvailability(context));
     } finally {
       this.reads.invalidate(this.repositoryKey(context));
+      this.statusReads.invalidate(this.repositoryKey(context));
     }
   }
   /**
@@ -639,6 +664,30 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
       '--json',
       GITHUB_PULL_REQUEST_FIELDS,
     ]);
+  }
+  async getPullRequestStatusByIdentity(
+    c: PullRequestRepositoryIdentityContext,
+    ref: string,
+  ): Promise<PullRequestResult<PullRequest>> {
+    const repository =
+      `${c.host}/${c.repository.owner}/${c.repository.name}`.toLowerCase();
+    const args = [
+      'pr',
+      'view',
+      ref,
+      '--repo',
+      `${c.host}/${c.repository.owner}/${c.repository.name}`,
+      '--json',
+      GITHUB_PULL_REQUEST_STATUS_FIELDS,
+    ];
+    // Only an available answer is retained; a failure is shared in flight.
+    const result = await this.statusReads.read(
+      `status ${JSON.stringify(args)}`,
+      repository,
+      () => this.callByIdentity(c, args),
+      (value) => value.available,
+    );
+    return structuredClone(result);
   }
   openPullRequest(c: PullRequestRepositoryContext, input: any) {
     const host = this.getHost(c);
