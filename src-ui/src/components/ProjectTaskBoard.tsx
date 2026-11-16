@@ -25,6 +25,7 @@ import { parseEpochMs } from '../utils/parseEpochMs';
 import { relativeTime } from '../utils/relativeTime';
 import { sessionWorkStatus } from '../views/sessions/sessions-lane-model';
 import { Button } from './Button';
+import { DisclosureToggle } from './DisclosureToggle';
 import {
   BranchGlyph,
   PullRequestClosedGlyph,
@@ -210,17 +211,25 @@ function TaskShelf({
   total: number;
   children: ReactNode;
 }) {
+  const [open, setOpen] = useState(false);
+  const regionId = `project-task-shelf-${shelf}`;
   if (!total) return null;
   const count =
     total > taskIds.length ? `${taskIds.length} of ${total}` : String(total);
   return (
-    <details className="project-task-board__shelf" data-shelf={shelf}>
-      <summary>
-        <span>{TASK_SHELF_LABELS[shelf]}</span>
+    <section className="project-task-board__shelf" data-shelf={shelf}>
+      <DisclosureToggle
+        expanded={open}
+        onToggle={() => setOpen((value) => !value)}
+        controls={regionId}
+      >
+        {TASK_SHELF_LABELS[shelf]}{' '}
         <span className="project-task-board__count">{count}</span>
-      </summary>
-      <ul className="project-task-board__cards">{children}</ul>
-    </details>
+      </DisclosureToggle>
+      <ul className="project-task-board__cards" id={regionId} hidden={!open}>
+        {open ? children : null}
+      </ul>
+    </section>
   );
 }
 
@@ -297,6 +306,11 @@ function TaskCard({
   const showBranch =
     !pullRequests.length && branch !== undefined && branch !== projectBranch;
   const factTime = parseEpochMs(derivation.factTime);
+  // State each fact once: the status line already names a lone PR.
+  const detailNamesPullRequest =
+    shownPullRequest !== undefined &&
+    pullRequests.length === 1 &&
+    detail === `#${shownPullRequest.ref}`;
   const action = derivation.nextAction;
 
   return (
@@ -319,6 +333,62 @@ function TaskCard({
         >
           {task.title}
         </a>
+      </div>
+      <p className="task-card__status-line" title={reason}>
+        <span className="task-card__word">{word}</span>
+        {detail ? <span className="task-card__detail"> · {detail}</span> : null}
+        {derivation.certainty === 'partial' ? (
+          <span className="sr-only">, some facts could not be read</span>
+        ) : null}
+      </p>
+      {plan && running ? <TaskPlanProgressLine progress={plan} /> : null}
+      <div className="task-card__footer">
+        <p className="task-card__meta">
+          {shownPullRequest && !detailNamesPullRequest ? (
+            <span
+              className="task-card__evidence"
+              title={
+                shownPullRequest.status.state === 'current'
+                  ? shownPullRequest.status.title
+                  : shownPullRequest.status.reason
+              }
+            >
+              {repositories.size > 1
+                ? `${shownPullRequest.repository.owner}/${shownPullRequest.repository.name}`
+                : null}
+              #{shownPullRequest.ref}
+              {pullRequests.length > 1 ? ` +${pullRequests.length - 1}` : null}
+            </span>
+          ) : null}
+          {showBranch ? (
+            <span className="task-card__chip">
+              <BranchGlyph />
+              {branch}
+            </span>
+          ) : null}
+          {task.taskWorktreeUnknown ? (
+            <span className="task-card__chip">Worktree unknown</span>
+          ) : null}
+          {task.taskWorktree?.kept ? (
+            <span
+              className="task-card__chip"
+              title={
+                task.taskWorktree.kept.detail ?? task.taskWorktree.kept.reason
+              }
+            >
+              Worktree kept
+            </span>
+          ) : null}
+          {factTime !== undefined ? (
+            <span>{relativeTime(factTime, now)}</span>
+          ) : null}
+          {task.agentId?.trim() ? <span>{task.agentId}</span> : null}
+          {task.priority !== 'normal' ? (
+            <span className="task-card__priority" data-priority={task.priority}>
+              {task.priority}
+            </span>
+          ) : null}
+        </p>
         <span className="task-card__action">
           <Button
             size="sm"
@@ -330,60 +400,6 @@ function TaskCard({
           </Button>
         </span>
       </div>
-      <p className="task-card__status-line" title={reason}>
-        <span className="task-card__word">{word}</span>
-        {detail ? <span className="task-card__detail"> · {detail}</span> : null}
-        {derivation.certainty === 'partial' ? (
-          <span className="sr-only">, some facts could not be read</span>
-        ) : null}
-      </p>
-      {plan && running ? <TaskPlanProgressLine progress={plan} /> : null}
-      <p className="task-card__meta">
-        {shownPullRequest ? (
-          <span
-            className="task-card__evidence"
-            title={
-              shownPullRequest.status.state === 'current'
-                ? shownPullRequest.status.title
-                : shownPullRequest.status.reason
-            }
-          >
-            {repositories.size > 1
-              ? `${shownPullRequest.repository.owner}/${shownPullRequest.repository.name}`
-              : null}
-            #{shownPullRequest.ref}
-            {pullRequests.length > 1 ? ` +${pullRequests.length - 1}` : null}
-          </span>
-        ) : null}
-        {showBranch ? (
-          <span className="task-card__chip">
-            <BranchGlyph />
-            {branch}
-          </span>
-        ) : null}
-        {task.taskWorktreeUnknown ? (
-          <span className="task-card__chip">Worktree unknown</span>
-        ) : null}
-        {task.taskWorktree?.kept ? (
-          <span
-            className="task-card__chip"
-            title={
-              task.taskWorktree.kept.detail ?? task.taskWorktree.kept.reason
-            }
-          >
-            Worktree kept
-          </span>
-        ) : null}
-        {factTime !== undefined ? (
-          <span>{relativeTime(factTime, now)}</span>
-        ) : null}
-        {task.agentId?.trim() ? <span>{task.agentId}</span> : null}
-        {task.priority !== 'normal' ? (
-          <span className="task-card__priority" data-priority={task.priority}>
-            {task.priority}
-          </span>
-        ) : null}
-      </p>
     </article>
   );
 }

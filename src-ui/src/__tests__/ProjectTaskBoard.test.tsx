@@ -194,9 +194,11 @@ describe('ProjectTaskBoard', () => {
     expect(cardTitles('In review')).toEqual(['Work review']);
     expect(cardTitles('Ready to merge')).toEqual(['Work ready']);
     expect(cardTitles('Idle')).toEqual(['Work fresh']);
-    // The shelves hold intent, not lanes.
+    // The shelves hold intent, not lanes; each opens to its cards.
+    for (const name of [/^Backlog/, /^Done/])
+      fireEvent.click(screen.getByRole('button', { name }));
     const shelves = [
-      ...document.querySelectorAll<HTMLDetailsElement>('details[data-shelf]'),
+      ...document.querySelectorAll<HTMLElement>('[data-shelf]'),
     ].map((shelf) => [
       shelf.dataset.shelf,
       within(shelf).queryAllByRole('article').length,

@@ -4,6 +4,7 @@
    is the action colour, a look-worthy state is caution, in motion is
    positive, broken is negative; everything else is neutral. */
 .project-task-board {
+  container-type: inline-size;
   display: grid;
   gap: var(--k-space-4);
   min-width: 0;
@@ -22,7 +23,11 @@
   min-width: 0;
 }
 
-@media (min-width: 1200px) {
+/* Five across once the board itself is wide enough for a two-line title in
+   each lane. It is a container query, not a viewport one: on a desktop the
+   Project page's own navigation takes a column, and the board's width is
+   what decides. */
+@container (min-width: 880px) {
   .project-task-board__lanes {
     grid-template-columns: repeat(5, minmax(0, 1fr));
   }
@@ -109,7 +114,7 @@
 
 .task-card__header {
   display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) auto;
+  grid-template-columns: 16px minmax(0, 1fr);
   align-items: start;
   gap: var(--k-space-2);
 }
@@ -160,7 +165,7 @@
   font: 600 var(--k-text-sm) / var(--k-leading-normal) var(--k-font-ui);
   text-decoration: none;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
 }
 
 .task-card__title::after {
@@ -179,15 +184,36 @@
   outline-offset: var(--k-focus-ring-offset);
 }
 
-/* The action always takes its width, so the title never reflows when it
-   appears; a fine pointer reveals it on hover or focus. */
+/* The footer carries the meta line and the one action. The action always
+   takes its space, so nothing reflows when it appears; a fine pointer
+   reveals it on hover or focus. */
+.task-card__footer {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--k-space-2);
+  min-width: 0;
+}
+
+.task-card__footer .task-card__meta {
+  flex: 1;
+}
+
 .task-card__action {
   position: relative;
   z-index: 1;
+  flex-shrink: 0;
 }
 
+/* A fine pointer on a wide board: the action takes no layout space at all
+   (so neither the title nor the meta line ever reflows) and appears over
+   the footer's end on hover or focus, on the card's own surface. */
 @media (hover: hover) and (pointer: fine) and (min-width: 721px) {
   .task-card__action {
+    position: absolute;
+    right: var(--k-space-2);
+    bottom: var(--k-space-2);
+    padding-inline-start: var(--k-space-2);
+    background: var(--k-panel-raised);
     visibility: hidden;
   }
 
@@ -207,7 +233,6 @@
 .task-card__meta {
   min-width: 0;
   margin: 0;
-  padding-inline-start: calc(16px + var(--k-space-2));
   font-size: var(--k-text-sm);
   line-height: var(--k-leading-normal);
 }
@@ -221,8 +246,8 @@
   color: var(--k-text-muted);
 }
 
-.task-card .task-plan-progress {
-  margin-inline-start: calc(16px + var(--k-space-2));
+.task-card__meta > * {
+  white-space: nowrap;
 }
 
 .task-card__meta {
@@ -245,6 +270,8 @@
 }
 
 .task-card__chip {
+  /* A branch name can outrun a lane; it wraps, the page never scrolls. */
+  white-space: normal;
   display: inline-flex;
   min-width: 0;
   align-items: center;
@@ -274,24 +301,15 @@
 }
 
 .project-task-board__shelf {
+  display: grid;
+  gap: var(--k-space-2);
   min-width: 0;
   border-top: 1px solid var(--k-line);
 }
 
-.project-task-board__shelf > summary {
-  display: flex;
-  align-items: center;
-  gap: var(--k-space-2);
-  width: fit-content;
+.project-task-board__shelf .disclosure-toggle {
   min-height: 44px;
-  color: var(--k-text);
   font: 600 var(--k-text-sm) / var(--k-leading-normal) var(--k-font-ui);
-  cursor: pointer;
-}
-
-.project-task-board__shelf > summary:focus-visible {
-  outline: var(--k-focus-ring-width) solid var(--k-focus);
-  outline-offset: var(--k-focus-ring-offset);
 }
 
 .project-task-board__shelf > .project-task-board__cards {
@@ -317,7 +335,15 @@
   }
 }
 
-/* Board presentation in the Project page grid: the board takes the row. */
+/* Board presentation in the Project page grid: the board takes the row and
+   draws no frame of its own around the lanes. */
+.project-page__task-list.project-page__task-list--board {
+  min-height: 0;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+}
+
 .project-page__task-grid.project-page__task-grid--board {
   grid-template-columns: minmax(0, 1fr);
 }
@@ -328,4 +354,9 @@
 
 .project-page__task-detail a {
   color: var(--k-action);
+}
+
+/* `hidden` must win over the list's own display. */
+.project-task-board__cards[hidden] {
+  display: none;
 }

@@ -729,7 +729,9 @@ export function ProjectTasksSection({
             tasksError ||
             (sortedTasks.length === 0 && providerItems.length === 0)
               ? 'project-page__task-list project-page__task-list--state'
-              : 'project-page__task-list'
+              : presentation === 'board'
+                ? 'project-page__task-list project-page__task-list--board'
+                : 'project-page__task-list'
           }
         >
           {tasksError ? (
