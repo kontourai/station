@@ -4105,6 +4105,26 @@ function parseTaskEventCursor(cursor: string | undefined): number {
   return sequence;
 }
 
+/**
+ * #5077: the bound for a task event cursor is the thread's highest per-thread
+ * `sequence`, not its event count: compaction can leave gaps, so a valid
+ * sequence can exceed the count. A page from a host that predates
+ * `highWaterSequence` has a gap-free log, where the count is the high water.
+ * The count is read apart from the page, so it is not compared with the
+ * high water: an append landing between the two reads would fail a sound page.
+ */
+function taskEventHighWater(
+  page: RawTaskEventPage,
+  eventCount: number,
+): number {
+  if (page.highWaterSequence === undefined) return eventCount;
+  const highWater = optionalCount(page.highWaterSequence);
+  if (highWater === undefined) {
+    throw new Error('The selected Station returned invalid task event state');
+  }
+  return highWater;
+}
+
 function taskEventCursor(sequence: number): string {
   return `${TASK_EVENT_CURSOR_PREFIX}${sequence}`;
 }
@@ -4488,6 +4508,7 @@ interface RawTaskEventPage {
   events?: Array<{ sequence?: unknown; event?: unknown }>;
   hasMore?: unknown;
   nextSequence?: unknown;
+  highWaterSequence?: unknown;
 }
 
 function taskTargetFromDelegation(
@@ -4794,7 +4815,8 @@ export async function observeDelegatedTaskEvents(
   if (eventCount === undefined) {
     throw new Error('The selected Station returned invalid task event state');
   }
-  if (afterSequence > eventCount) {
+  const highWaterSequence = taskEventHighWater(page, eventCount);
+  if (afterSequence > highWaterSequence) {
     throw new Error(
       'The task event cursor is ahead of the available task history; restart without a cursor',
     );
@@ -4803,7 +4825,7 @@ export async function observeDelegatedTaskEvents(
   if (
     rawNextSequence === undefined ||
     rawNextSequence < afterSequence ||
-    rawNextSequence > eventCount ||
+    rawNextSequence > highWaterSequence ||
     !Array.isArray(page.events) ||
     page.events.length > limit ||
     typeof page.hasMore !== 'boolean'
