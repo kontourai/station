@@ -143,3 +143,80 @@ describe('RemoteSessionReaderHost', () => {
     ).toBe('That computer is not connected. Connect it, then try again.');
   });
 });
+
+describe('a budget-shortened remote page says so (security review L3)', () => {
+  test('withheld events show the same omitted-details notice the local reader shows', async () => {
+    sdk.fetchRemoteSessionHistory.mockResolvedValue({
+      environmentId: 'env-a',
+      environmentName: 'Home media',
+      window: {
+        protocolVersion: 1,
+        session: {
+          threadId: THREAD,
+          provider: 'claude',
+          controlMode: 'read-only-attached',
+          createdAt: '2026-11-01T00:00:00.000Z',
+          updatedAt: '2026-11-01T00:00:00.000Z',
+          answerability: { answerable: true },
+        },
+        events: [
+          {
+            ...ev(1, { method: 'turn.started', turnId: 'r1' }),
+            elided: 'byte_limit',
+          },
+          ev(2, {
+            method: 'content.text-delta',
+            itemId: 'i1',
+            delta: 'Reply.',
+          }),
+          ev(3, {
+            method: 'turn.completed',
+            turnId: 'r1',
+            finishReason: 'stop',
+          }),
+        ],
+        hasMore: false,
+        watermark: 3,
+      },
+    });
+    renderHost();
+    openReader();
+    const notice = await screen.findByTestId('remote-session-history-elided');
+    expect(notice.textContent).toContain(
+      '1 recorded event has omitted content in this view.',
+    );
+  });
+
+  test('a detached turn start stays partial until an older page reads it in range', async () => {
+    const { remoteHistoryEvents } = await import(
+      '../components/remote-session/RemoteSessionReaderHost'
+    );
+    const detached = {
+      window: {
+        turnStartDetached: true as const,
+        events: [
+          ev(5, { method: 'turn.started', turnId: 'r2' }),
+          ev(9, { method: 'turn.completed', turnId: 'r2' }),
+        ],
+      },
+    };
+    expect([
+      ...remoteHistoryEvents([detached]).partialTurnStartEventIds,
+    ]).toEqual(['e5']);
+    const older = {
+      window: {
+        events: [
+          ev(5, { method: 'turn.started', turnId: 'r2' }),
+          ev(6, { method: 'content.text-delta', itemId: 'i', delta: 'x' }),
+        ],
+      },
+    };
+    const both = remoteHistoryEvents([detached, older]);
+    expect([...both.partialTurnStartEventIds]).toEqual([]);
+    expect(both.events.map((event) => event.eventId)).toEqual([
+      'e5',
+      'e6',
+      'e9',
+    ]);
+  });
+});

@@ -87,7 +87,10 @@ async function unwrapOrchestrationResponse<T>(response: Response): Promise<T> {
     // retried a request that could never clear (station#3378 review, HIGH).
     // An unreadable 2xx is a protocol failure: there is no failure status.
     if (!response.ok) throw envelopeError(response, undefined, fallback);
-    throw new Error(fallback);
+    // The cause keeps why the body was unreadable (a byte ceiling, say).
+    // Assigned rather than passed: this package's lib predates ES2022's
+    // `ErrorOptions`.
+    throw Object.assign(new Error(fallback), { cause: error });
   }
   if (!response.ok || !result.success) {
     // #2708: status, `code` (a station-control authority refusal, #2377),

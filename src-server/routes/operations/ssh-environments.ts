@@ -1,4 +1,5 @@
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
+import { requestMayBeAnAgent } from '../../security/coding-authority.js';
 import type { PairingScopeContextStore } from '../../security/pairing-route-scopes.js';
 import { getBudgetPrincipal } from '../../security/runtime-request-security.js';
 import type { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
@@ -35,6 +36,16 @@ function errorStatus(message: string): 400 | 404 | 409 | 500 {
   return 500;
 }
 
+/** The local caller standing that a remote read through this Station needs. */
+export interface RemoteStationReadAuthority {
+  /** A hosted deployment: no tenant binds the Station-wide peer bearer. */
+  hosted: boolean;
+  /** The request's principal is still the current one (not revoked). */
+  current: (request: Request) => boolean;
+  /** The request is the Station's bound owner, the person the bearer serves. */
+  owner: (request: Request) => boolean;
+}
+
 /** Profile ids and thread ids are opaque, single path segments. */
 const REMOTE_HISTORY_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/u;
 
@@ -60,6 +71,11 @@ const REMOTE_HISTORY_FAILURES: Record<
     status: 502,
     message: 'That computer did not answer in time. Try again.',
   },
+  too_large: {
+    status: 502,
+    message:
+      "That computer's session page is larger than this Station relays. Update Station there, then try again.",
+  },
   invalid_response: {
     status: 502,
     message:
@@ -84,8 +100,49 @@ export function createSshEnvironmentRoutes(
   }),
   /** For tests: how one remote history page is fetched over the tunnel. */
   fetchRemoteHistory?: RemoteSessionHistoryFetcher,
+  /**
+   * Who may read another Station's sessions through this one. Absent means
+   * nobody: both remote reads fail closed until runtime composition binds it.
+   */
+  remoteReads?: RemoteStationReadAuthority,
 ) {
   const app = new Hono();
+
+  /**
+   * The remote Station authorizes the stored outbound peer bearer, which is
+   * Station-wide: it does not say which local caller asked. So the local
+   * caller must be the one person that bearer stands for, as the paired
+   * Station chat relay requires over the same credential
+   * (`peer-chat-routes.ts`): the bound owner, still current, and never a
+   * request an agent could have sent. A hosted Station has no tenant binding
+   * for that bearer, so it serves neither read (its handshake withdraws
+   * `remoteSessionHistory` to match).
+   */
+  const refuseRemoteRead = (c: Context): Response | undefined => {
+    if (!remoteReads)
+      return c.json({ success: false, error: 'Forbidden' }, 403);
+    if (remoteReads.hosted)
+      return c.json(
+        {
+          success: false,
+          error: 'This Station does not read other computers.',
+        },
+        404,
+      );
+    const request = c.req.raw;
+    let admitted = false;
+    try {
+      admitted =
+        !requestMayBeAnAgent(request) &&
+        remoteReads.current(request) === true &&
+        remoteReads.owner(request) === true;
+    } catch {
+      admitted = false;
+    }
+    return admitted
+      ? undefined
+      : c.json({ success: false, error: 'Forbidden' }, 403);
+  };
 
   app.get('/hosts', async (c) => {
     try {
@@ -100,6 +157,8 @@ export function createSshEnvironmentRoutes(
   // Hono matches route definitions in order, so a param route defined first
   // would swallow this literal path.
   app.get('/sessions', async (c) => {
+    const refused = refuseRemoteRead(c);
+    if (refused) return refused;
     try {
       return c.json({
         success: true,
@@ -119,6 +178,8 @@ export function createSshEnvironmentRoutes(
   // pairing-route-scopes.ts. Never dials: an environment that is not
   // connected answers `environment_unavailable`.
   app.get('/sessions/:environmentId/:threadId/history', async (c) => {
+    const refused = refuseRemoteRead(c);
+    if (refused) return refused;
     const environmentId = param(c, 'environmentId');
     const threadId = param(c, 'threadId');
     const cursor = c.req.query('cursor');

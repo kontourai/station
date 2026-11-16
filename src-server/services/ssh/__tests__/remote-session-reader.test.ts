@@ -837,3 +837,90 @@ describe('readConnectedRemoteSessionHistory through the real SDK fetcher', () =>
     }
   });
 });
+
+describe('the relayed history page has a byte ceiling (security review M2)', () => {
+  const thread = 'external:claude:0123456789abcdef0123456789abcdef';
+
+  /** A valid envelope padded to exactly `bytes` UTF-8 bytes. */
+  function envelopeOf(bytes: number): string {
+    const build = (pad: string) =>
+      JSON.stringify({
+        success: true,
+        data: {
+          protocolVersion: 1,
+          session: { threadId: thread, pad },
+          events: [],
+          hasMore: false,
+          watermark: 0,
+        },
+      });
+    const body = build('x'.repeat(bytes - build('').length));
+    expect(Buffer.byteLength(body)).toBe(bytes);
+    return body;
+  }
+
+  async function readServing(body: string) {
+    const { createServer } = await import('node:http');
+    const { readConnectedRemoteSessionHistory } = await import(
+      '../remote-session-reader.js'
+    );
+    const server = createServer((_request, response) => {
+      response.setHeader('Content-Type', 'application/json');
+      response.end(body);
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, '127.0.0.1', resolve),
+    );
+    try {
+      const { port } = server.address() as { port: number };
+      return await readConnectedRemoteSessionHistory(
+        {
+          list: () =>
+            [
+              connectedView(
+                'env-1',
+                'Home media',
+                `http://127.0.0.1:${port}`,
+                'peer-env',
+              ),
+            ] as any,
+        },
+        'env-1',
+        thread,
+        { turnLimit: 10 },
+        undefined,
+        { get: () => ({ credential: 'peer-bearer-for-test' }) as any },
+      ).then(
+        (page) => ({ ok: true as const, page }),
+        (error: unknown) => ({ ok: false as const, error }),
+      );
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  }
+
+  test('a page of exactly the ceiling is relayed; one byte more is refused as too_large', async () => {
+    const {
+      MAX_REMOTE_SESSION_HISTORY_RESPONSE_BYTES,
+      RemoteSessionHistoryError,
+    } = await import('../remote-session-reader.js');
+    // Pinned beside the constant so a change to both still reds.
+    expect(MAX_REMOTE_SESSION_HISTORY_RESPONSE_BYTES).toBe(262_144);
+
+    const atCeiling = await readServing(
+      envelopeOf(MAX_REMOTE_SESSION_HISTORY_RESPONSE_BYTES),
+    );
+    expect(atCeiling.ok).toBe(true);
+
+    const over = await readServing(
+      envelopeOf(MAX_REMOTE_SESSION_HISTORY_RESPONSE_BYTES + 1),
+    );
+    expect(over.ok).toBe(false);
+    expect(over.ok === false && over.error).toBeInstanceOf(
+      RemoteSessionHistoryError,
+    );
+    expect(
+      over.ok === false && (over.error as { reason?: string }).reason,
+    ).toBe('too_large');
+  });
+});

@@ -391,7 +391,10 @@ import type { HonoServerConfig } from '@voltagent/server-hono';
 import type { Context } from 'hono';
 import { setCookie } from 'hono/cookie';
 import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
-import { servesCoordinatorSession } from '../../capabilities/station-capability-flags.js';
+import {
+  servesCoordinatorSession,
+  servesRemoteSessionReads,
+} from '../../capabilities/station-capability-flags.js';
 import {
   loadOrCreateAgentRegistry,
   replacePluginEngineConnections,
@@ -10699,6 +10702,17 @@ export function configureRuntimeRoutes(
       context.sshEnvironmentService,
       undefined,
       peerCredentialStore,
+      undefined,
+      undefined,
+      // The same caller standing the paired Station chat relay requires over
+      // the same Station-wide peer bearer (createPeerChatRoutes below).
+      {
+        hosted: !servesRemoteSessionReads({
+          hosted: isHostedTenantExecutionRequired(),
+        }),
+        current: isRequestPrincipalCurrent,
+        owner: isBoundRuntimeOwner,
+      },
     ),
   );
   // station#1123 slice 2: outbound peer-credential admin routes. Gated to

@@ -1887,14 +1887,32 @@ Station discovered those on its own host with its own follower, so no
 transcript path, source handle or provider home crosses the tunnel: the remote
 answers its ordinary bounded `window-v1` session read, and the remote Station
 authorizes it. The relay never dials an environment that is not already
-connected. It refuses a page that names a different session or carries more
-than 2,000 events, rather than truncating it. It caps a page at the remote
-route's own 20-turn and 512-character cursor bounds, and relays only the
-page's own fields. The environment name on the result comes from this
-Station's profile, never from the remote's answer. A remote 401 is reported as
-`authentication_required` with a 409, never as a 401 from this Station, which
-a client would read as its own credential being refused. The read is
-view-only: this Station offers no continuation of a remote session.
+connected. It refuses a page that names a different session, carries more
+than 2,000 events, or whose response passes 262,144 bytes. The byte limit
+covers a remote that ignores `view=window-v1` and sends its whole detail. A
+current remote's window answers at most 64,000 bytes. These pages are
+refused, not truncated. It caps a page at the remote route's own 20-turn and
+512-character cursor bounds. Only the page's own top-level fields cross. The
+session summary and each event are relayed as the remote's authorized read
+returned them: the events are the transcript, and the summary has the same
+shape, working folder included, that the list already relays to this caller.
+The environment name on the result comes from this Station's profile, never
+from the remote's answer. A remote 401 is reported as `authentication_required`
+with a 409, never as a 401 from this Station, which a client would read as its
+own credential being refused. The read is view-only: this Station offers no
+continuation of a remote session.
+
+The remote Station authorizes the outbound peer bearer, and that bearer is
+Station-wide: it does not say which local caller asked. So both the list and
+the history read admit only the person that bearer stands for, the same rule
+the paired Station chat relay applies over the same credential. The caller
+must be the bound owner, the request principal must still be current, and the
+request must not be one an agent could have sent (an agent tool origin or the
+internal token). Any other paired device, including an operate-scoped device
+bound to another person, gets 403 and nothing is sent to the remote. A Station
+whose runtime composed no read authority fails closed the same way. A hosted
+Station has no tenant binding for the bearer, so it serves neither read
+(404). Its handshake withdraws `remoteSessionHistory` to match.
 
 Separately, disclosing that read to a caller of this Station is gated at
 `orchestration:operate` here — deliberately stricter than the

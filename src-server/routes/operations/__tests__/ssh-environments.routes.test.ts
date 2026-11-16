@@ -7,6 +7,13 @@ import {
 import { SshProbeAdmission } from '../../../services/ssh/ssh-probe-admission.js';
 import { createSshEnvironmentRoutes } from '../ssh-environments.js';
 
+/** The bound, current owner on a personal Station: the one admitted caller. */
+const OWNER_READS = {
+  hosted: false,
+  current: () => true,
+  owner: () => true,
+};
+
 function service() {
   const view = {
     profile: {
@@ -206,7 +213,14 @@ describe('SSH environment routes', () => {
       unavailable: [],
       authenticationRequired: [],
     }));
-    const app = createSshEnvironmentRoutes(mock as any, listRemoteSessions);
+    const app = createSshEnvironmentRoutes(
+      mock as any,
+      listRemoteSessions,
+      undefined,
+      undefined,
+      undefined,
+      OWNER_READS,
+    );
     const response = await app.request('/sessions');
     expect(response.status).toBe(200);
     const body = await json(response);
@@ -233,7 +247,14 @@ describe('SSH environment routes', () => {
     const listRemoteSessions = vi.fn(async () => {
       throw new Error('boom');
     });
-    const app = createSshEnvironmentRoutes(mock as any, listRemoteSessions);
+    const app = createSshEnvironmentRoutes(
+      mock as any,
+      listRemoteSessions,
+      undefined,
+      undefined,
+      undefined,
+      OWNER_READS,
+    );
     const response = await app.request('/sessions');
     expect(response.status).toBe(503);
     expect((await json(response)).success).toBe(false);
@@ -520,6 +541,7 @@ describe('remote session history (read-only, over a connected environment)', () 
       peerCredentials,
       undefined,
       fetchHistory,
+      OWNER_READS,
     );
     const response = await app.request(
       `/sessions/${ENV_ID}/${encodeURIComponent(THREAD)}/history?turnLimit=5&cursor=c0`,
@@ -553,6 +575,7 @@ describe('remote session history (read-only, over a connected environment)', () 
       peerCredentials,
       undefined,
       fetchHistory as any,
+      OWNER_READS,
     );
     const response = await app.request(
       `/sessions/${ENV_ID}/${encodeURIComponent(THREAD)}/history`,
@@ -572,6 +595,7 @@ describe('remote session history (read-only, over a connected environment)', () 
       { get: () => null } as any,
       undefined,
       fetchHistory as any,
+      OWNER_READS,
     );
     const response = await app.request(
       `/sessions/${ENV_ID}/${encodeURIComponent(THREAD)}/history`,
@@ -591,6 +615,7 @@ describe('remote session history (read-only, over a connected environment)', () 
       async () => {
         throw new StationHttpError(401, 'Unauthorized');
       },
+      OWNER_READS,
     );
     const response = await app.request(
       `/sessions/${ENV_ID}/${encodeURIComponent(THREAD)}/history`,
@@ -609,6 +634,7 @@ describe('remote session history (read-only, over a connected environment)', () 
       peerCredentials,
       undefined,
       async () => window('external:claude:ffffffffffffffffffffffffffffffff'),
+      OWNER_READS,
     );
     const otherResponse = await other.request(
       `/sessions/${ENV_ID}/${encodeURIComponent(THREAD)}/history`,
@@ -630,6 +656,7 @@ describe('remote session history (read-only, over a connected environment)', () 
       peerCredentials,
       undefined,
       async () => oversized,
+      OWNER_READS,
     );
     const bigResponse = await big.request(
       `/sessions/${ENV_ID}/${encodeURIComponent(THREAD)}/history`,
@@ -650,11 +677,107 @@ describe('remote session history (read-only, over a connected environment)', () 
       peerCredentials,
       undefined,
       fetchHistory as any,
+      OWNER_READS,
     );
     const response = await app.request(
       `/sessions/${ENV_ID}/${encodeURIComponent(THREAD)}/history${query}`,
     );
     expect(response.status).toBe(400);
     expect(fetchHistory).not.toHaveBeenCalled();
+  });
+});
+
+describe("remote reads are the bound owner's alone (security review H1)", () => {
+  const ENV_ID = '22222222-2222-4222-8222-222222222222';
+  const THREAD = 'external:claude:0123456789abcdef0123456789abcdef';
+  const HISTORY = `/sessions/${ENV_ID}/${encodeURIComponent(THREAD)}/history`;
+
+  function connected() {
+    return {
+      list: vi.fn(() => [
+        {
+          profile: {
+            id: ENV_ID,
+            name: 'Home media',
+            environmentId: 'peer-env',
+          },
+          state: { phase: 'connected', localUrl: 'http://127.0.0.1:45999' },
+        },
+      ]),
+    };
+  }
+  const peers = { get: () => ({ credential: 'peer-bearer-for-test' }) as any };
+
+  function routes(remoteReads: unknown) {
+    const fetchHistory = vi.fn(async () => ({
+      protocolVersion: 1 as const,
+      session: { threadId: THREAD } as any,
+      events: [],
+      hasMore: false,
+      watermark: 0,
+    }));
+    const listRemoteSessions = vi.fn(async () => ({
+      environments: [],
+      unavailable: [],
+      authenticationRequired: [],
+    }));
+    const app = createSshEnvironmentRoutes(
+      connected() as any,
+      listRemoteSessions,
+      peers,
+      undefined,
+      fetchHistory,
+      remoteReads as any,
+    );
+    return { app, fetchHistory, listRemoteSessions };
+  }
+
+  test.each([
+    [
+      'a paired device bound to someone else',
+      { hosted: false, current: () => true, owner: () => false },
+      {},
+    ],
+    [
+      'a principal that is no longer current',
+      { hosted: false, current: () => false, owner: () => true },
+      {},
+    ],
+    [
+      'an agent-originated request, even from the owner',
+      OWNER_READS,
+      { 'x-station-control-origin': 'agent-tool' },
+    ],
+    ['a Station that composed no read authority', undefined, {}],
+  ])(
+    'refuses %s on both remote reads, reaching no remote',
+    async (_label, reads, headers) => {
+      const { app, fetchHistory, listRemoteSessions } = routes(reads);
+      const history = await app.request(HISTORY, { headers });
+      expect(history.status).toBe(403);
+      const list = await app.request('/sessions', { headers });
+      expect(list.status).toBe(403);
+      expect(fetchHistory).not.toHaveBeenCalled();
+      expect(listRemoteSessions).not.toHaveBeenCalled();
+    },
+  );
+
+  test('a hosted Station serves no remote reads: no tenant binds the Station-wide peer bearer', async () => {
+    const { app, fetchHistory, listRemoteSessions } = routes({
+      ...OWNER_READS,
+      hosted: true,
+    });
+    expect((await app.request(HISTORY)).status).toBe(404);
+    expect((await app.request('/sessions')).status).toBe(404);
+    expect(fetchHistory).not.toHaveBeenCalled();
+    expect(listRemoteSessions).not.toHaveBeenCalled();
+  });
+
+  test('the bound, current owner reads both', async () => {
+    const { app, fetchHistory, listRemoteSessions } = routes(OWNER_READS);
+    expect((await app.request(HISTORY)).status).toBe(200);
+    expect((await app.request('/sessions')).status).toBe(200);
+    expect(fetchHistory).toHaveBeenCalledTimes(1);
+    expect(listRemoteSessions).toHaveBeenCalledTimes(1);
   });
 });

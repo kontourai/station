@@ -1,4 +1,7 @@
-import type { OrchestrationSequencedEvent } from '@kontourai/station-contracts/orchestration';
+import type {
+  OrchestrationSequencedEvent,
+  OrchestrationSessionEventWindow,
+} from '@kontourai/station-contracts/orchestration';
 import {
   fetchRemoteSessionHistory,
   readRemoteSessionHistoryCapability,
@@ -10,6 +13,11 @@ import {
   type RemoteSessionReaderRequest,
   remoteSessionReaderStore,
 } from '../../contexts/remote-session-reader-store';
+import { notePartialTurnStarts } from '../../hooks/orchestration/useSessionEventWindow';
+import {
+  elidedHistoryNoticeText,
+  summarizeElidedReasons,
+} from '../../utils/elidedHistory';
 import { displayProvider } from '../../utils/sessionDisplay';
 import { ConversationBody } from '../conversation/ConversationBody';
 import { Dialog } from '../Dialog';
@@ -21,19 +29,48 @@ export function remoteContinuationReason(environmentLabel: string): string {
   return `This session runs on ${environmentLabel}. Open Station on ${environmentLabel} to continue it.`;
 }
 
-/** Pages arrive newest first; the reader wants one oldest-first stream. */
-export function remoteHistoryEvents(
-  pages: readonly {
-    window: { events: readonly OrchestrationSequencedEvent[] };
-  }[],
-) {
+type RemoteHistoryPage = {
+  window: Pick<OrchestrationSessionEventWindow, 'events' | 'turnStartDetached'>;
+};
+
+/**
+ * Pages arrive newest first (each older page from the previous one's
+ * cursor); the reader wants one oldest-first stream. A page's own reports of
+ * what it left out survive the merge: which turn starts are detached from
+ * their turns (`turnStartDetached`, decided as the local window reader does)
+ * and how many events the remote's budget withheld (`elided`).
+ */
+export function remoteHistoryEvents(pages: readonly RemoteHistoryPage[]) {
   const bySequence = new Map<number, OrchestrationSequencedEvent>();
-  for (const page of pages)
+  const partial = new Set<string>();
+  const closed = new Set<string>();
+  for (const page of pages) {
     for (const entry of page.window.events)
       bySequence.set(entry.sequence, entry);
-  return [...bySequence.values()]
-    .sort((left, right) => left.sequence - right.sequence)
-    .map((entry) => entry.event);
+    notePartialTurnStarts(page.window, partial, closed);
+  }
+  const ordered = [...bySequence.values()].sort(
+    (left, right) => left.sequence - right.sequence,
+  );
+  return {
+    events: ordered.map((entry) => entry.event),
+    partialTurnStartEventIds: partial as ReadonlySet<string>,
+    // Same filter as the local reader (ConversationBody): tool-detail
+    // reductions are not a banner over an otherwise complete conversation.
+    elidedNotice: elidedHistoryNoticeText(
+      summarizeElidedReasons(
+        ordered
+          .filter(
+            (entry) =>
+              entry.event.method !== 'tool.progress' &&
+              entry.event.method !== 'tool.started' &&
+              entry.event.method !== 'tool.completed' &&
+              entry.event.method !== 'token-usage.updated',
+          )
+          .map((entry) => entry.elided),
+      ),
+    ),
+  };
 }
 
 function RemoteSessionReader({
@@ -69,7 +106,7 @@ function RemoteSessionReader({
     retry: false,
   });
   const pages = history.data?.pages ?? [];
-  const events = useMemo(() => remoteHistoryEvents(pages), [pages]);
+  const merged = useMemo(() => remoteHistoryEvents(pages), [pages]);
   const session = pages[0]?.window.session;
   const reason = remoteContinuationReason(request.environmentLabel);
 
@@ -106,8 +143,20 @@ function RemoteSessionReader({
           agentLabel: displayProvider(session),
           isStreaming: false,
         }}
+        beforeTranscript={
+          merged.elidedNotice ? (
+            <details
+              className="history-elided chat-dock__history-elided"
+              data-testid="remote-session-history-elided"
+            >
+              <summary>Some recorded details are omitted</summary>
+              {merged.elidedNotice}
+            </details>
+          ) : undefined
+        }
         source={{
-          events,
+          events: merged.events,
+          partialTurnStartEventIds: merged.partialTurnStartEventIds,
           settled: !history.isFetching,
           hasMore: history.hasNextPage,
           loadOlder: async () => {

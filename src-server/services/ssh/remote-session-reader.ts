@@ -14,6 +14,7 @@ import {
   listOrchestrationSessions,
   StationHttpError,
   StationRequestTimeoutError,
+  StationResponseTooLargeError,
   searchConversationMessages,
 } from '@kontourai/station-sdk/client';
 import type { PeerCredentialStore } from '../peers/peer-credential-store.js';
@@ -411,6 +412,26 @@ const REMOTE_SESSION_HISTORY_TIMEOUT_MS = 5_000;
 /** Newest turns asked of the remote per page; the route refuses more. */
 export const MAX_REMOTE_SESSION_HISTORY_TURNS = 20;
 
+/**
+ * Byte ceiling on one relayed page's complete response. A current remote
+ * answers at most `SESSION_EVENT_WINDOW_MAX_RESPONSE_BYTES` (64,000) per
+ * window; this leaves headroom for other versions while bounding a legacy
+ * remote that ignores `view=window-v1` and sends its whole detail. Read past
+ * it is refused (`too_large`), never parsed.
+ */
+export const MAX_REMOTE_SESSION_HISTORY_RESPONSE_BYTES = 262_144;
+
+/** The SDK's refusal of a bounded body, found anywhere on the cause chain. */
+function isResponseTooLarge(error: unknown): boolean {
+  for (
+    let current: unknown = error, depth = 0;
+    current instanceof Error && depth < 8;
+    current = current.cause, depth += 1
+  )
+    if (current instanceof StationResponseTooLargeError) return true;
+  return false;
+}
+
 /** Matches the remote orchestration route's own cursor bound. */
 export const MAX_REMOTE_HISTORY_CURSOR_LENGTH = 512;
 
@@ -438,6 +459,7 @@ const defaultHistoryFetcher: RemoteSessionHistoryFetcher = (
     timeoutMs: REMOTE_SESSION_HISTORY_TIMEOUT_MS,
     readOnly: true,
     ...options,
+    maxResponseBytes: MAX_REMOTE_SESSION_HISTORY_RESPONSE_BYTES,
   });
 
 export type RemoteSessionHistoryFailure =
@@ -449,6 +471,8 @@ export type RemoteSessionHistoryFailure =
   | 'not_found'
   /** The remote did not answer in time or could not be reached. */
   | 'unreachable'
+  /** The remote's page passed this Station's byte ceiling. */
+  | 'too_large'
   /** The remote answered with a page this Station will not relay. */
   | 'invalid_response';
 
@@ -519,6 +543,9 @@ export async function readConnectedRemoteSessionHistory(
         throw new RemoteSessionHistoryError('not_found');
       }
     }
+    if (isResponseTooLarge(error)) {
+      throw new RemoteSessionHistoryError('too_large');
+    }
     if (
       error instanceof Error &&
       /does not support bounded session detail/u.test(error.message)
@@ -546,8 +573,11 @@ export async function readConnectedRemoteSessionHistory(
   return {
     environmentId: environment.id,
     environmentName: environment.name,
-    // Only the fields a read-only history page needs are relayed; anything
-    // else a remote adds stays on the remote.
+    // Only the page's own top-level fields are relayed; any other top-level
+    // field a remote adds stays on the remote. The session summary and each
+    // event are relayed as the remote's ordinary authorized read returned
+    // them: the events are the transcript, and the summary is the same shape
+    // (cwd included) the remote-sessions list already relays to this caller.
     window: {
       protocolVersion: 1,
       session: withNormalizedAnswerability(window.session),

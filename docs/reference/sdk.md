@@ -1924,7 +1924,13 @@ environment's tunnel and peer bearer, and labels the page with its own
 `remoteSessionHistory` handshake flag. Ask it before offering to open a
 remote row, because an older host answers the path 404. Failures throw with
 the server's sentence: not connected, needs a repaired credential, not found,
-or did not answer. The page is view-only and carries no continuation.
+did not answer, or a page larger than the Station relays. A caller who is not
+the Station's bound owner gets `Forbidden`, and so does any agent request. The
+page is view-only and carries no continuation.
+
+A request made with `maxResponseBytes` whose body passes it rejects with
+`StationResponseTooLargeError`, from `@kontourai/station-sdk/client`. The
+orchestration readers keep it as the `cause` of their unreadable-body error.
 
 ### `useAgentsQuery(config?)`
 

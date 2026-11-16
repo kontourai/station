@@ -56,6 +56,7 @@ import {
   STATION_CAPABILITY_FLAGS,
   servesCoordinatorSession,
   servesFollowUpAttachments,
+  servesRemoteSessionReads,
 } from '../station-capability-flags.js';
 import { TABLED_CAPABILITY_FLAGS } from './consumed-capability-flag-names.js';
 
@@ -422,7 +423,8 @@ const CONSUMED_FLAGS: Record<
     return response.status === 200;
   },
   // GET /sessions/:environmentId/:threadId/history relays one remote page.
-  remoteSessionHistory: async () => {
+  // Built with the same deployment predicate runtime-routes.ts composes.
+  remoteSessionHistory: async ({ hosted }) => {
     const service = {
       list: () => [
         {
@@ -443,6 +445,11 @@ const CONSUMED_FLAGS: Record<
         hasMore: false,
         watermark: 0,
       }),
+      {
+        hosted: !servesRemoteSessionReads({ hosted }),
+        current: () => true,
+        owner: () => true,
+      },
     );
     const response = await routes.request(
       '/sessions/env-1/external:claude:abc/history',
@@ -728,7 +735,7 @@ describe('consumed capability flags match what their routes serve', () => {
     readMarkers: { personal: true, hosted: true },
     scheduledConversationTarget: { personal: true, hosted: false },
     sessionEventWindow: { personal: true, hosted: true },
-    remoteSessionHistory: { personal: true, hosted: true },
+    remoteSessionHistory: { personal: true, hosted: false },
     sessionInventoryInputRead: { personal: true, hosted: false },
     eventStreamResume: { personal: true, hosted: true },
     sessionPersonReads: { personal: true, hosted: true },

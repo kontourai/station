@@ -53,7 +53,10 @@ files itself. Opening a remote row shows its history read-only, labeled with
 the computer it lives on, and pages older turns on request. The composer stays
 disabled with the reason: to continue the session, open Station on that
 computer. A host without the `remoteSessionHistory` handshake flag says it
-cannot show remote sessions rather than opening an empty transcript.
+cannot show remote sessions rather than opening an empty transcript. Only the
+Station's owner, in person, sees remote sessions: the connection's credential
+belongs to the whole Station, so other people's paired devices and agents are
+refused. A hosted Station offers neither the list nor the reader.
 
 The current SSH creator calls the server's environment probe and create APIs.
 It saves an SSH host alias, remote project path, and optional remote Station
