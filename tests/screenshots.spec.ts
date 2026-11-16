@@ -1,7 +1,10 @@
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import type { PublicStationHandshake } from '@kontourai/station-contracts/environment-security';
+import {
+  PUBLIC_STATION_HANDSHAKE_PATH,
+  type PublicStationHandshake,
+} from '@kontourai/station-contracts/environment-security';
 import { expect, type Locator, type Page, type Route } from '@playwright/test';
 import { execFileSyncBounded } from '../scripts/lib/bounded-capture.mjs';
 import { buildLongSessionTurns } from './fixtures/long-session';
@@ -2591,9 +2594,12 @@ function inventoryDrilldownScreens(): Screen[] {
  * The Station switcher with a desktop's worth of saved Stations: the active
  * one, two that answer and two whose connections are refused, at 390 and 1440
  * in both themes, plus the inline forget confirmation. Every extra Station is
- * routed here, because the gallery answers the public handshake on any
- * origin. Extra profiles join the gallery's own seed only on this screen's
- * URL, and only once, since init scripts outlive the screen.
+ * routed here. The switcher calls a Station Online only when its public
+ * handshake answers as a Station, so the two that answer serve the gallery's
+ * handshake on that path; an empty 200 there reads as "Not confirmed".
+ * (Playwright adds the CORS headers a cross-origin read needs to a fulfilled
+ * response that has none.) Extra profiles join the gallery's own seed only on
+ * this screen's URL, and only once, since init scripts outlive the screen.
  */
 function stationSwitcherScreens(): Screen[] {
   const online = 'https://online.gallery.test';
@@ -2616,7 +2622,11 @@ function stationSwitcherScreens(): Screen[] {
       path: '/?gallery=station-switcher',
       viewport,
       beforeGoto: async (page) => {
-        const answer = (route: Route) => route.fulfill({ status: 200 });
+        const answer = (route: Route) =>
+          new URL(route.request().url()).pathname ===
+          PUBLIC_STATION_HANDSHAKE_PATH
+            ? fulfillGalleryStationHandshake(route)
+            : route.fulfill({ status: 200 });
         const refuse = (route: Route) => route.abort('connectionrefused');
         await page.route(`${online}/**`, answer);
         await page.route(`${offline}/**`, refuse);
@@ -2686,6 +2696,17 @@ function stationSwitcherScreens(): Screen[] {
         await expect(
           menu.getByRole('menuitem', { name: 'Forget 2 unreachable' }),
         ).toBeVisible();
+        // A Station that would fail if chosen is drawn greyed out. Its row is
+        // `aria-disabled`, not `disabled`, so the shared disabled-row style
+        // does not reach it and only its own rule keeps it apart from a row
+        // that can be chosen.
+        const rowColour = (name: RegExp) =>
+          menu
+            .getByRole('menuitemradio', { name })
+            .evaluate((row) => getComputedStyle(row).color);
+        expect(await rowColour(/^Laptop — Unreachable/)).not.toBe(
+          await rowColour(/^Media server — Online/),
+        );
         if (armed) {
           await menu
             .getByRole('menuitemradio', { name: /^Old dev instance/ })
@@ -4331,7 +4352,7 @@ function channelNavigationScreens(): Screen[] {
                   }
                 } else {
                   await expect(
-                    room.getByText('Both numbers are fixed in the draft now.'),
+                    room.getByText('Both fixes are in the branch now.'),
                   ).toBeVisible();
                   await expect(
                     room.getByRole('heading', { name: 'Thread' }),

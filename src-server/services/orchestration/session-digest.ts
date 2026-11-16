@@ -109,7 +109,10 @@ export function digestTurnOutcome(
   return terminal.finishReason === 'cancelled' ? 'interrupted' : 'completed';
 }
 
-function firstLine(prompt: string): { line: string; clipped: boolean } {
+export function digestRequestPreview(prompt: string): {
+  line: string;
+  clipped: boolean;
+} {
   const lines = prompt.split(/\r?\n/u);
   const index = lines.findIndex((candidate) => candidate.trim().length > 0);
   const trimmed = index < 0 ? '' : lines[index]!.trim();
@@ -156,7 +159,7 @@ export function digestTurn(
 ): DigestTurn {
   const request =
     facts.promptPrefix !== undefined
-      ? firstLine(
+      ? digestRequestPreview(
           facts.sender
             ? (unframeAgentMessage(facts.promptPrefix) ?? facts.promptPrefix)
             : facts.promptPrefix,

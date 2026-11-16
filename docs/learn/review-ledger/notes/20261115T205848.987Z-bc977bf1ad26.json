@@ -1,0 +1,7 @@
+{
+  "revision": "648c125c9ee583f7c059a11723c85fbfa9659850",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Updated for #4994: 4xx (not 408/429) refusals drop the batch as rejected with ledger reason rejected; retryable failures back off 10s->15min with equal jitter, Retry-After floor on 429/503 bounded at 1h, reset on ack/refusal/destination change, ignored by shutdown flush; warn-once per code/status; lastFailure.detail sanitization; new batches/suppressed_warnings counters. Checked against usage-telemetry-service.ts and telemetry-response.ts.","inputs":["docs/reference/usage-telemetry.md","packages/contracts/src/product-telemetry.ts","packages/sdk/src/query-domains/telemetryDelivery.ts","src-server/services/telemetry-response.ts","src-server/services/usage-telemetry-service.ts"]}
+  ]
+}

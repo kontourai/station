@@ -2185,6 +2185,18 @@ saved-Environment forwarding,
 portable workspace, prepared attempt or Task room request. File limits and cleanup are described in
 the [CLI delegate reference](cli.md#delegate).
 
+### `getConversationTurnDirectory`
+
+`getConversationTurnDirectory(apiBase, conversationId, cursor?, options?)` reads
+up to 100 prompt excerpts and outcomes per page, without transcript bodies,
+tools or file details. Later pages may supply `options.turnCountSnapshot` from
+the first page to retain that count and skip a full-history recount. The conversation rail and turn browser share its
+React Query entry, keyed by the owning Station and request authority. Selecting
+an unloaded turn uses the bounded transcript loader. A `404` returns `null` for
+the older-host fallback; other failures remain errors. This navigation read
+uses the person's existing conversation access and does not enable the richer
+CLI digest Feature Preview.
+
 ### `waitForSession`, `getSessionDigest` and `listSessionActivity`
 
 `@kontourai/station-sdk/client` has one fetcher for each
@@ -6648,6 +6660,20 @@ These preferences follow one person across devices connected to the same
 Station. They grant no execution permissions and do not provide cross-Station
 cloud synchronization. See the [settings architecture](../design/settings-architecture.md#account-preferences-and-device-settings).
 
+
+## Custom appearance
+
+The client barrel exports `getCustomAppearance`, `proposeCustomAppearance`,
+`saveCustomAppearance`, `keepCustomAppearanceProposal`,
+`dismissCustomAppearanceProposal` and `reportCustomAppearanceRender` over
+`/api/me/appearance`. Shapes come from
+`@kontourai/station-contracts/custom-appearance`. Only the proposal is open to
+Station-control tool requests; the others are the person's own steps and
+answer 403 to them. Propose, save and keep take the document's `revision`; a
+stale one is 409. `useCustomAppearanceQuery(requestScope)` reads the document
+(polling every 15 seconds by default) and `useCustomAppearanceMutation` runs
+the person's steps and updates that cache. See the
+[decision](../decisions/custom-appearance.md).
 
 ## Personal Board authoring
 

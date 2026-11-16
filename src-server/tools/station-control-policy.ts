@@ -484,6 +484,18 @@ export const STATION_CONTROL_TOOL_POLICY = {
     routes: [get('/api/board')],
   },
 
+  // ── appearance ─────────────────────────────────────────────────────────
+  // The person's own custom appearance. An agent reads and proposes; the
+  // route refuses it every other step (keep, save, dismiss, report).
+  get_appearance: { ...SELF_READ, routes: [get('/api/me/appearance')] },
+  propose_appearance: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [post('/api/me/appearance/proposal')],
+  },
+
   // ── catalog (skills) ───────────────────────────────────────────────────
   list_skills: { ...READ, routes: [get('/api/system/skills')] },
   list_registry_skills: { ...READ, routes: [get('/api/registry/skills')] },
@@ -2050,6 +2062,8 @@ export const RESTRICTED_NETWORK_STATION_CONTROL_TOOLS: ReadonlySet<string> =
     'get_personal_board',
     'propose_personal_board',
     'board_read',
+    'get_appearance',
+    'propose_appearance',
     'list_skills',
     'list_registry_skills',
     'track_skill_run',

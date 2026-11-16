@@ -42,10 +42,10 @@ without adding a model API key:
    select **Station Assistant**. Ask it to list your projects to exercise a read-only
    Station tool as well as chat.
 
-For a customized Codex Agent, open **Customize → Agents → New agent → Use an
-AI app**, enter a name, select **Codex**, and choose its model and Project.
+For a customized Codex Agent, open **Customize → Agents → New agent → Use a
+connected engine**, enter a name, select **Codex**, and choose its model and Project.
 In **Tools**, choose **Station** to add read-only controls; expand the row to
-inspect the selection. Save with **Create Agent**, then choose it in a new chat.
+inspect the selection. Save with **Create agent**, then choose it in a new chat.
 Codex receives your instructions with the first message in each new chat, at
 the same priority as that message. (With the **Station orchestration instructions** Feature Preview on, an Agent that has Station controls also gets Station's own guidance on using them in that first message.) You can edit or clear them before saving. See the [Agents guide](https://github.com/kontourai/station/blob/main/docs/guides/agent-configuration.md#mcp-tool-configuration)
 for tool selection and approval details.
@@ -137,7 +137,8 @@ configured. Both devices still need access to that address.
 
 For local network access, enable **Settings → Pairing → Discover this Station
 nearby** on the computer, then choose **Find nearby Stations** on the native phone
-app (on the welcome screen it is under **More connection options**). Discovery is off by default and shows names and local addresses without
+app (on the welcome screen it is under **More ways to connect**). Discovery is
+off by default and shows names and local addresses without
 granting access. Select the intended computer, confirm the exact address and any
 unencrypted HTTP warning, request access, and approve on the computer. Android
 versions before Android 14 offer QR and manual address entry instead. Browser
@@ -477,7 +478,9 @@ would. Write what you want done
 and choose **Start**. You do not need to choose anything first; the controls
 show what **Start** will use:
 
-- The combined **Agent · Model** button opens **Run setup**. Its Agent choice
+- The combined Run setup button shows the Agent's icon and the Model's name,
+  followed by the thinking effort when you chose one (for example
+  **Opus · High**). It opens **Run setup**. Its Agent choice
   lists **Station**, **Coding apps**, and **My agents**, with readiness and setup
   actions. Its Model choice opens the
   **Engine & model** picker, which also offers alternative engines when they
@@ -492,7 +495,8 @@ show what **Start** will use:
   **Use Agent defaults** for an engine override. In an existing conversation,
   changing or resetting the engine opens a handoff confirmation that keeps your draft.
   Full access, a pending or refused approval change, and a conversation override
-  add a warning glyph to the combined button; open Run setup for details.
+  add a warning glyph to the combined button; open Run setup to see the same
+  glyph on the choice that raised it.
   In the model picker, while a reply you sent is still running, the other
   engines and **Use Agent defaults** are shown but unavailable until it
   finishes. When Station reports that the conversation can't be changed right
@@ -670,16 +674,17 @@ restarted; the dialog says why. On Grok Build, if you changed a file since that
 message that the rewind would restore, nothing is rewound and the dialog names
 the file.
 
-The usage disclosure ends after your usage decision. **Personalize Station**
-opens optional preferences after the work entry; it is not a prerequisite for a
-chat.
+The usage disclosure ends after your usage decision. **Open setup** on the
+**Finish setup** card opens optional preferences after the work entry; it is not
+a prerequisite for a chat.
 Closing preparation prevents a late response from starting work. The request stays
 in the Home field while that Home view remains mounted and through the temporary
 setup-return flow; changing Stations or authorization ends that flow.
 
 When creating an agent, choose **Use a model connection** for Station's engine
-or **Use an AI app** for Claude Code, Codex, or another connected engine. Those
-apps run on the computer hosting your Station, including when you use a phone.
+or **Use a connected engine** for Claude Code, Codex, or another connected
+engine. Those engines run on the computer hosting your Station, including when
+you use a phone.
 An agent's setup warning names that agent; other ready agents can still run.
 
 At the end of first-run setup, choose **Start your first chat**. Station saves
@@ -769,7 +774,7 @@ when the conversation's work is done, or **Reopen** to bring it back. Closed
 Tasks follow their existing close-on-merge setting; standalone linked PRs do
 not settle a conversation automatically. Settlement syncs across your devices
 and is separate from dismissal or deletion. **Working** holds running and
-monitoring chats; **Needs attention** takes priority whenever input is owed.
+monitoring chats and armed check-backs, which show **Waiting**; **Needs attention** takes priority whenever input is owed.
 Drafts appear as a pencil on the chat row in its current status. Collapse a
 shelf to move it below expanded work. Shelf menus let you move sections up or
 down, with that order saved on this device. **Settled** is last by default.
@@ -1204,15 +1209,28 @@ Station looks in four places:
   Station, which is already there.
 - OpenCode's session database, `opencode.db` or `opencode-<channel>.db` (for
   example `opencode-stable.db`), in `opencode` under `XDG_DATA_HOME`, or
-  `~/.local/share/opencode` when that is not set. Station opens it read-only
-  and lists top-level OpenCode sessions you have sent a message in; subagent
-  sessions and archived sessions are left out. A message appears once OpenCode
-  has finished writing it. Conversations Station itself runs through an
-  OpenCode connection are not listed a second time. Older OpenCode releases
-  kept sessions as JSON files under `storage`; Station does not read those,
-  and current OpenCode moves them into the database when it starts. If an
-  OpenCode update changes the database layout, Station stops reading it and
-  logs one warning instead of guessing.
+  `~/.local/share/opencode` when that is not set. Station reads both OpenCode
+  1.x and OpenCode 2.x databases. Beside an OpenCode 2.x database, an
+  `opencode-next.db` is read only for sessions OpenCode 2.x does not hold: a
+  session it copied is shown as OpenCode 2.x has it, archived or deleted
+  there included. Once OpenCode's upgrade has finished, only sessions
+  created in `opencode-next.db` after it are listed from that file, since
+  OpenCode copies it only once. A file in the OpenCode preview format, which
+  Station cannot read, is skipped. Station opens each database read-only and lists top-level
+  OpenCode sessions you have sent a message in; subagent sessions and
+  archived sessions are left out. A message appears once OpenCode has
+  finished writing it. Later messages wait for an unfinished OpenCode
+  compaction; if one is still unfinished after 15 minutes (OpenCode stopped
+  partway and the conversation was not reopened), Station logs one warning
+  naming the conversation, once per Station run. Conversations Station
+  itself runs through an OpenCode connection are not listed a second time.
+  Older OpenCode releases kept sessions as JSON files under `storage`;
+  Station does not read those, and current OpenCode moves them into the
+  database when it starts. If an OpenCode update changes the database
+  layout, Station stops reading it and
+  logs one warning instead of guessing. A conversation Station already listed
+  from an OpenCode 1.x database stops updating once OpenCode 2.x converts that
+  database; its earlier messages stay in history.
 
 `STATION_EXTERNAL_CLAUDE_SOURCE_ROOT`, `STATION_EXTERNAL_CODEX_SOURCE_ROOT`,
 `STATION_EXTERNAL_GROK_SOURCE_ROOT` and `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT`
@@ -1341,7 +1359,7 @@ configured Projects.
 
 ## Run A Scheduled Readiness Check
 
-An automation that runs in a chat can use any agent, including AI app agents
+An automation that runs in a chat can use any agent, including agents that use an engine
 such as Claude Code or Codex, when your Station supports it (see
 [Automations](https://github.com/kontourai/station/blob/main/docs/user/automations.md)). The older output-file run needs an agent with
 a model connection (Station's engine); if none is ready, the form offers **Set

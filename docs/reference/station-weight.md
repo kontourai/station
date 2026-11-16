@@ -39,7 +39,9 @@ decomposes what reached it, and the
    separately.
 5. Samples the instance's process tree, sends `hi` to the Claude agent in the
    fixture repository, creates more idle sessions the same way, runs the
-   control request, then runs `station stop` and looks for survivors.
+   optional [delegated run](#delegated-run-optional-report-only) when asked,
+   runs the control request, then runs `station stop` and looks for
+   survivors.
 
 Every turn is answered by the stub (`ok`). No real model is called.
 
@@ -58,7 +60,7 @@ Every turn is answered by the stub (`ok`). No real model is called.
 | `request.stationAddedToolCount` | Tools Station's request carries beyond the control's, with schemas or named only (deferred). |
 | `request.stationAddedToolDefinitionBytes` | JSON size of the added tool definitions, plus the byte growth of any tool both requests carry whose definition Station changed. Tools are compared by whole definition, not by name. |
 | `request.sideCallCount` | Other Messages requests during the turn window, such as a title request. |
-| `repoRules` | Whether the `CLAUDE.md` and `AGENTS.md` markers reached the first request: yes or no for each. |
+| `repoRules` | Whether the `CLAUDE.md` and `AGENTS.md` markers reached the first request: yes or no for each. Not a budget but a requirement: a marker that did not arrive, or a turn that was never measured, fails the gate, report-only runs included, and a baseline is not recorded from such a run. Station has Claude Code load `AGENTS.md` beside `CLAUDE.md` (see [Connections](../guides/connections.md#add-an-engine)), so the control request, which runs the engine without Station, lacks the `AGENTS.md` text, and `request.stationAddedTextBytes` counts it. |
 
 **Process tree.** The tree is found three ways, and the union is measured:
 
@@ -206,6 +208,39 @@ removed, when its owner (the test worker, passed in as pid plus birth) no
 longer answers or has another birth, or at a deadline (60 s; 120 s for the
 end-to-end daemon), so a killed test worker does not leak them.
 
+**Attribution (report only).** Both memory metrics carry `byRole`: the
+memory of each process role, largest first. The supervisor
+(`station-supervisor.js`) and the server (`command-station.js`) are fixed
+roles, and the UI listener, which runs a script from stdin, is named from the
+instance record's fingerprint (pid plus birth). Any other process is named by
+its first script argument, or by its executable (`claude`). `attribution.serverHeapAtRest` and
+`attribution.serverHeapWithSessions` set the server's memory beside its V8
+heap: `heapTotalBytes` and `heapUsedBytes` come from the server's own
+`/api/system/resource-posture` (`process.memoryUsage()`, with no forced GC),
+and `outsideHeapBytes` is the server's measured memory minus `heapTotalBytes`.
+That remainder is native memory: malloc, worker isolates, code and stacks.
+The output prints these as `REPORT` lines. Nothing in the attribution is
+compared or recorded, and a read that fails is `not_measured` with its reason
+without affecting the gate.
+
+### Server memory at rest
+
+On one 64 GB Mac (macOS 26), an idle server on a build without the source-map
+leak had a footprint of 576–603 MB. Its V8 heap was 301 MB committed, but
+only 146 MB was live after GC. 134 MB of the committed heap was young-generation space with 1 MB live:
+V8 sizes the young generation from the host's memory and does not shrink it
+at rest. The supervisor therefore forks each core with
+`--max-semi-space-size=16`
+([supervisor](../../packages/supervisor/src/supervisor.ts)), which bounds it
+near 34 MB. The rest was native: 96–209 MB of `MALLOC_SMALL` (about 100 MB
+live; the rest is freed memory the allocator keeps, and the amount varied
+from run to run), and a worker isolate for room working state that started at
+composition. That worker now starts on first use (see
+[ProjectTaskRoom](../architecture/module-map.md#projecttaskroom)). The
+Task and transcript search workers stay warm on purpose, so the first search
+does not pay their startup. The desktop app launches its server sidecar
+directly, not through the supervisor, so it does not get the flag.
+
 **Memory basis.** Memory is `phys_footprint` on macOS (from `footprint`,
 compressed pages included) and RSS elsewhere. macOS compresses idle pages out
 of RSS: on a busy host one process showed 4 MiB RSS and an 87 MiB footprint.
@@ -223,6 +258,40 @@ not measured.
 
 **Sizes.** Sizes are UTF-8 bytes and Unicode code points. No tokenizer is
 applied, so the results contain no token counts or estimates.
+
+### Delegated run (optional, report-only)
+
+`--delegated-run` adds one step after the idle-session sample. It writes a
+`delegatedRun` section to `result.json`, which is never a budget and never
+recorded in the baseline. The step runs three rounds. Each round delegates a
+new stub-answered task as the operator (`POST /api/orchestration/delegations`),
+the way an agent's delegation starts a child Session. It waits for that task's
+engine to be [parked early](../architecture/module-map.md#conversationsessionlineage),
+then sends the task two stub-answered follow-ups through
+`POST /api/orchestration/delegations/:taskId/continue`. The first restarts the
+released engine in place from its resume cursor; the second reaches it warm.
+Each round needs a new task because the operator's follow-up is a person's
+turn, which keeps that engine for the ordinary idle park afterwards.
+
+- `engineProcessesBefore`: Claude engine processes in the tree, counted by
+  executable name, before the first task.
+- `engineProcessesAtFinish`, `engineReleasedAfterMs`: for the first task, the
+  count when its turn completed, and how long after that the count fell back
+  to what it was before the task. `null` when that did not happen within
+  `--delegated-release-max-ms` (default 90 s).
+- `finishedMemoryBytes`: the tree's memory after the first task's engine was
+  released, settled as for the other memory metrics. Compare it with
+  `idleSessionsMemoryBytes`.
+- `releasedFollowUpMs`, `warmFollowUpMs`: the medians, over the rounds, of
+  the first and second follow-up, each timed from the request to its reply,
+  polled every 50 ms. A round whose engine was not released records no
+  released follow-up.
+- `rounds`: each round's `enginesAtFinish`, `releasedAfterMs`,
+  `releasedFollowUpMs` (`null` when its engine was not released) and
+  `warmFollowUpMs`.
+
+A failed step is written as `delegatedRun.status: not_measured` with its
+reason. It does not fail the run.
 
 ## Budgets and baseline
 
@@ -280,8 +349,9 @@ Each run writes `result.json` (metrics, per-process detail, request breakdown,
 verdicts) and `requests.json` (every request the stub received) under
 `.kontourai/station-weight/<sha>/<run-id>/`. Diff two results to compare
 revisions. `--out=<dir>`, `--baseline=<file>`, `--settle-ms`,
-`--settle-max-ms`, `--cpu-window-ms`, `--sessions`, `--stop-grace-ms` and
-`--ready-launches` override the defaults.
+`--settle-max-ms`, `--cpu-window-ms`, `--sessions`, `--stop-grace-ms`,
+`--ready-launches` and `--delegated-release-max-ms` override the defaults.
+`--delegated-run` adds the [delegated run](#delegated-run-optional-report-only).
 
 ## Gaps
 

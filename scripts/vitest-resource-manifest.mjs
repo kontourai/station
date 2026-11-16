@@ -156,6 +156,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // fixture replay's persistence decline reads; no wall-clock assertion.
   'src-server/providers/__tests__/opencode-adapter.replay.test.ts',
   'src-server/providers/__tests__/claude-adapter-native-web-read.test.ts',
+  // Runs the bundled Claude engine for one stub-answered turn per case,
+  // against a loopback stand-in for the Messages API; no wall-clock assertion.
+  'src-server/providers/__tests__/claude-adapter-instruction-files.process.test.ts',
   // #4852 review: one short-lived tsx child commits a Project-room file in a
   // second Project on the same home while the parent releases a deleted
   // message's files; no wall-clock assertion.
@@ -1906,6 +1909,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/supervisor/src/__tests__/crash-restart.test.ts',
   'packages/supervisor/src/__tests__/build-root.test.ts',
   'packages/supervisor/src/__tests__/listener-handle.test.ts',
+  // A real supervisor child forks a fixture core that records its Node flags.
+  'packages/supervisor/src/__tests__/core-node-flags.test.ts',
   // Fixture core generations relay workload requests to a fixture workload
   // host child that runs command children; one test SIGKILLs that host.
   'packages/supervisor/src/__tests__/workloads.test.ts',

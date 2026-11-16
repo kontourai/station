@@ -490,7 +490,7 @@ test.describe('Onboarding Setup Launcher', () => {
     await expect(page.getByTestId('setup-launcher')).toBeVisible({
       timeout: 10000,
     });
-    await page.getByRole('button', { name: 'Continue Without Setup' }).click();
+    await page.getByRole('button', { name: 'Dismiss setup reminder' }).click();
 
     await expect(page.getByTestId('setup-launcher')).toHaveCount(0);
     const openLocalProject = page.getByRole('button', {

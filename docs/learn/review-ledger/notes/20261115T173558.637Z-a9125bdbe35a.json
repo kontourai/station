@@ -1,0 +1,7 @@
+{
+  "revision": "41f80d78659ea51b1aad1bb3a5a6e572fffa8509",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"The queued-retry Discard check now skips the Send comparison when an empty draft collapses Send; coverage-matrix claims unchanged.","inputs":["tests/mobile-chat-composer.spec.ts"]}
+  ]
+}

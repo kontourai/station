@@ -682,7 +682,7 @@ export function ProviderConnectionForm({
             value={(form.config.defaultModel as string) ?? ''}
             options={modelOptions}
             placeholder="The model id to use when an agent names none"
-            hint="Used when an agent names no model, and by Test Connection if no model list is returned."
+            hint="Used when an agent doesn't name a model. Test connection also uses it if the model list is unavailable."
             onChange={(next) => onSetConfigField('defaultModel', next)}
           />
         </div>
@@ -815,7 +815,7 @@ export function ProviderConnectionForm({
             value={(form.config.defaultModel as string) ?? ''}
             options={modelOptions}
             placeholder="A model or inference-profile id this account can invoke"
-            hint="Used when an agent names no model, and by Test Connection if Bedrock models can't be listed."
+            hint="Used when an agent doesn't name a model. Test connection also uses it if the model list is unavailable."
             onChange={(next) => onSetConfigField('defaultModel', next)}
           />
         </>
@@ -848,8 +848,7 @@ export function ProviderConnectionForm({
         >
           Create saves this connection and checks its model list. If the service
           cannot list models, Station may send a small test prompt using the
-          default model. Your provider may charge for that request. A saved
-          connection is ready only after its check succeeds.
+          default model. Your provider may charge for that request.
         </p>
       ) : null}
 
@@ -867,7 +866,7 @@ export function ProviderConnectionForm({
             disabled={isTesting}
             aria-describedby="provider-test-disclosure"
           >
-            {isTesting ? 'Testing…' : 'Test Connection'}
+            {isTesting ? 'Testing…' : 'Test connection'}
           </button>
           {/* The contract used to call this non-billable,
               and the button said nothing at all. It asks the provider for its

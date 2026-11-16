@@ -719,6 +719,7 @@ describe('UsageTelemetryService', () => {
   });
 
   test('lost response retry preserves observation IDs, time and build on real delivery', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
     const bodies: ProductTelemetryBatch[] = [];
     const receivedKeys: Array<string | string[] | undefined> = [];
     const receiver = createServer(async (request, response) => {
@@ -763,6 +764,8 @@ describe('UsageTelemetryService', () => {
       });
       await subject.flush();
       expect(subject.bufferedCount).toBe(1);
+      // The first retry waits out at most one flush interval (#4994).
+      vi.setSystemTime(Date.now() + 10_000);
       await subject.flush();
       expect(subject.bufferedCount).toBe(0);
       expect(await subject.deliveryStatus()).toMatchObject({
@@ -1298,12 +1301,15 @@ describe('UsageTelemetryService', () => {
       fetch,
       setInterval: vi.fn() as any,
     });
+    vi.useFakeTimers({ toFake: ['Date'] });
     await subject.stationStarted();
     await subject.flush();
     expect(
       subject.bufferedCount,
       'failed telemetry batch was dropped instead of requeued',
     ).toBe(1);
+    // The first retry waits out at most one flush interval (#4994).
+    vi.setSystemTime(Date.now() + 10_000);
     await expect(
       subject.flush(),
       'permanently failing telemetry endpoint threw into caller',

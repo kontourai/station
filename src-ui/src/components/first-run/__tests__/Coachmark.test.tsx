@@ -16,8 +16,8 @@ import { FIRST_RUN_ANCHOR_ATTRIBUTE } from '../tour-steps';
 function renderCoachmark(overrides: Partial<CoachmarkProps> = {}) {
   const props: CoachmarkProps = {
     anchor: 'schedule',
-    title: 'Unattended work is held to the same standard',
-    body: 'A scheduled job produces the same evidence as work you start yourself.',
+    title: 'Scheduled work',
+    body: 'Scheduled runs keep the same record as runs you start.',
     stepNumber: 2,
     stepCount: 4,
     onNext: vi.fn(),
@@ -75,10 +75,10 @@ describe('Coachmark accessibility', () => {
     const labelledBy = dialog.getAttribute('aria-labelledby');
     const describedBy = dialog.getAttribute('aria-describedby');
     expect(document.getElementById(labelledBy!)?.textContent).toBe(
-      'Unattended work is held to the same standard',
+      'Scheduled work',
     );
     expect(document.getElementById(describedBy!)?.textContent).toBe(
-      'A scheduled job produces the same evidence as work you start yourself.',
+      'Scheduled runs keep the same record as runs you start.',
     );
   });
 

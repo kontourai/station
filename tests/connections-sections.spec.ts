@@ -391,7 +391,7 @@ test.describe('Connections IA', () => {
     await expect(page).toHaveURL(/\/connections\/models\/oa-compat-1$/);
 
     const testButton = page.getByRole('button', {
-      name: 'Test Connection',
+      name: 'Test connection',
       exact: true,
     });
     await expect(testButton).toBeVisible();
@@ -624,7 +624,7 @@ test.describe('Connections sections at 390x844', () => {
     await expect(page).toHaveURL(/\/connections\/models\/oa-compat-1$/);
 
     const testButton = page.getByRole('button', {
-      name: 'Test Connection',
+      name: 'Test connection',
       exact: true,
     });
     await expect(testButton).toBeVisible();
