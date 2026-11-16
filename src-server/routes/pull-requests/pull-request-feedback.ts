@@ -16,6 +16,10 @@ import type { PullRequestFeedbackDelivery } from '../../services/pull-requests/p
 import type { PullRequestFeedbackOwnership } from '../../services/pull-requests/pull-request-feedback-ownership.js';
 import { getBody, param, validate } from '../schemas/schemas.js';
 import { pullRequestLinkIdentitySchema } from './conversation-pull-request-links.js';
+import {
+  type PullRequestFeedbackTaskBranchRoutePorts,
+  registerPullRequestFeedbackTaskBranchRoutes,
+} from './pull-request-feedback-task-branches.js';
 
 export interface PullRequestFeedbackRouteAccess {
   enabled(): boolean;
@@ -84,6 +88,8 @@ export function createPullRequestFeedbackRoutes(
   delivery: () => PullRequestFeedbackDelivery | undefined,
   refresh: (conversationId: string) => void,
   access: PullRequestFeedbackRouteAccess,
+  /** Project defaults and Task-branch pull requests, when composed. */
+  taskBranches?: PullRequestFeedbackTaskBranchRoutePorts,
 ) {
   const app = new Hono();
   // Before any body is parsed: while the preview is off every route answers
@@ -227,5 +233,13 @@ export function createPullRequestFeedbackRoutes(
     },
   );
 
+  if (taskBranches)
+    registerPullRequestFeedbackTaskBranchRoutes(
+      app,
+      access,
+      taskBranches,
+      (request, conversationId) =>
+        pullRequestFeedbackWriterId(access, request, conversationId),
+    );
   return app;
 }

@@ -4,7 +4,8 @@
  * what Station decided to tell the agent (deliveries, unique per pull
  * request, category and signature, so the same feedback is never sent
  * twice), the inbox messages that carried them (batches), and how many
- * rounds each head has had.
+ * rounds each head has had. Also each Project's defaults and the pull
+ * requests Station found opened from a Task's own branch (derived links).
  *
  * One SQLite file in the Station home, opened only once something writes to
  * it, like the Task follow-up store.
@@ -72,6 +73,35 @@ export interface PullRequestFeedbackClaim {
   condition?: StoredClaimCondition;
   /** repeated-failure was overridden for this head by Send again. */
   overrideHead?: string;
+  /**
+   * `project-default`: Station turned it on from the Project's defaults and
+   * no person has changed it since. Absent: a person set it.
+   */
+  origin?: 'project-default';
+}
+
+/** A Project's defaults, for one incarnation of the Project. */
+export interface StoredProjectDefaults {
+  settings: PullRequestFeedbackSettings;
+  setBy: string;
+  setAt: string;
+}
+
+/**
+ * A pull request Station found opened from a Task's own branch, shown in
+ * the Task lead's chat. Dismissed: a person removed it from that chat, for
+ * good, for that pull request on that Task.
+ */
+export interface StoredDerivedLink {
+  taskId: string;
+  taskCreatedAt: string;
+  projectId: string;
+  conversationId: string;
+  prKey: string;
+  identity: PullRequestLinkIdentity;
+  headRef: string;
+  derivedAt: string;
+  dismissedAt?: string;
 }
 
 export type StoredDeliveryState =
@@ -193,6 +223,27 @@ const SCHEMA = [
     settled_at TEXT
   ) STRICT`,
   `CREATE INDEX IF NOT EXISTS batches_by_conversation ON batches (conversation_id, state)`,
+  `CREATE TABLE IF NOT EXISTS project_defaults (
+    project_id TEXT NOT NULL,
+    project_created_at TEXT NOT NULL,
+    settings TEXT NOT NULL,
+    set_by TEXT NOT NULL,
+    set_at TEXT NOT NULL,
+    PRIMARY KEY (project_id, project_created_at)
+  ) STRICT`,
+  `CREATE TABLE IF NOT EXISTS derived_links (
+    task_id TEXT NOT NULL,
+    task_created_at TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    pr_key TEXT NOT NULL,
+    identity TEXT NOT NULL,
+    head_ref TEXT NOT NULL,
+    derived_at TEXT NOT NULL,
+    dismissed_at TEXT,
+    PRIMARY KEY (task_id, task_created_at, pr_key)
+  ) STRICT`,
+  `CREATE INDEX IF NOT EXISTS derived_links_by_conversation ON derived_links (conversation_id)`,
   `CREATE TABLE IF NOT EXISTS rounds (
     pr_key TEXT NOT NULL,
     head_sha TEXT NOT NULL,
@@ -226,6 +277,7 @@ function readClaim(row: Record<string, unknown>): PullRequestFeedbackClaim {
   if (!settings) throw new Error('Pull request feedback settings unreadable.');
   const condition = optStr(row, 'condition');
   const overrideHead = optStr(row, 'override_head');
+  const origin = optStr(row, 'origin');
   return {
     prKey: str(row, 'pr_key'),
     identity: JSON.parse(str(row, 'identity')),
@@ -236,6 +288,22 @@ function readClaim(row: Record<string, unknown>): PullRequestFeedbackClaim {
     generation: int(row, 'generation'),
     ...(condition ? { condition: JSON.parse(condition) } : {}),
     ...(overrideHead ? { overrideHead } : {}),
+    ...(origin === 'project-default' ? { origin } : {}),
+  };
+}
+
+function readDerivedLink(row: Record<string, unknown>): StoredDerivedLink {
+  const dismissedAt = optStr(row, 'dismissed_at');
+  return {
+    taskId: str(row, 'task_id'),
+    taskCreatedAt: str(row, 'task_created_at'),
+    projectId: str(row, 'project_id'),
+    conversationId: str(row, 'conversation_id'),
+    prKey: str(row, 'pr_key'),
+    identity: JSON.parse(str(row, 'identity')),
+    headRef: str(row, 'head_ref'),
+    derivedAt: str(row, 'derived_at'),
+    ...(dismissedAt ? { dismissedAt } : {}),
   };
 }
 
@@ -301,6 +369,12 @@ export class PullRequestFeedbackStore {
         .map((row) => row.name);
       if (!columns.includes('incomplete_since'))
         db.exec('ALTER TABLE observations ADD COLUMN incomplete_since TEXT');
+      const claimColumns = db
+        .prepare('PRAGMA table_info(claims)')
+        .all()
+        .map((row) => row.name);
+      if (!claimColumns.includes('origin'))
+        db.exec('ALTER TABLE claims ADD COLUMN origin TEXT');
     } catch (error) {
       db.close();
       throw error;
@@ -368,7 +442,7 @@ export class PullRequestFeedbackStore {
            ON CONFLICT (pr_key) DO UPDATE SET identity = excluded.identity,
              conversation_id = excluded.conversation_id, settings = excluded.settings,
              enabled_by = excluded.enabled_by, enabled_at = excluded.enabled_at,
-             generation = excluded.generation, next_due_at = 0,
+             generation = excluded.generation, next_due_at = 0, origin = NULL,
              condition = CASE WHEN claims.conversation_id = excluded.conversation_id THEN claims.condition ELSE NULL END,
              override_head = CASE WHEN claims.conversation_id = excluded.conversation_id THEN claims.override_head ELSE NULL END`,
         )
@@ -389,6 +463,45 @@ export class PullRequestFeedbackStore {
           )
           .run(input.now, input.prKey);
       return this.claim(input.prKey)!;
+    });
+  }
+
+  /**
+   * Station's own claim from a Project's defaults: written only when no
+   * claim row exists for the pull request (any row means a person engaged
+   * with it, even one with every switch off) and the pull request was not
+   * removed from that chat. Returns whether it was written.
+   */
+  autoClaim(input: {
+    prKey: string;
+    identity: PullRequestLinkIdentity;
+    conversationId: string;
+    settings: PullRequestFeedbackSettings;
+    enabledBy: string;
+    now: string;
+  }): boolean {
+    return this.transaction(() => {
+      if (this.claim(input.prKey)) return false;
+      const dismissed = this.db
+        .prepare(
+          'SELECT 1 FROM derived_links WHERE conversation_id = ? AND pr_key = ? AND dismissed_at IS NOT NULL LIMIT 1',
+        )
+        .get(input.conversationId, input.prKey);
+      if (dismissed) return false;
+      this.db
+        .prepare(
+          `INSERT INTO claims (pr_key, identity, conversation_id, settings, enabled_by, enabled_at, generation, condition, override_head, origin)
+           VALUES (?, ?, ?, ?, ?, ?, 1, NULL, NULL, 'project-default')`,
+        )
+        .run(
+          input.prKey,
+          JSON.stringify(input.identity),
+          input.conversationId,
+          JSON.stringify(input.settings),
+          input.enabledBy,
+          input.now,
+        );
+      return true;
     });
   }
 
@@ -439,6 +552,138 @@ export class PullRequestFeedbackStore {
     this.db
       .prepare('UPDATE claims SET override_head = ? WHERE pr_key = ?')
       .run(headSha, prKey);
+  }
+
+  // Project defaults ---------------------------------------------------------
+
+  projectDefaults(
+    projectId: string,
+    projectCreatedAt: string,
+  ): StoredProjectDefaults | undefined {
+    const row = this.db
+      .prepare(
+        'SELECT * FROM project_defaults WHERE project_id = ? AND project_created_at = ?',
+      )
+      .get(projectId, projectCreatedAt);
+    if (!row) return undefined;
+    const settings = parsePullRequestFeedbackSettings(
+      JSON.parse(str(row, 'settings')),
+    );
+    if (!settings) throw new Error('Project feedback defaults unreadable.');
+    return { settings, setBy: str(row, 'set_by'), setAt: str(row, 'set_at') };
+  }
+
+  /** Whether any Project's defaults send anything: discovery's cheap gate. */
+  anyProjectDefaultsOn(): boolean {
+    return this.db
+      .prepare('SELECT settings FROM project_defaults')
+      .all()
+      .some((row) => {
+        const settings = parsePullRequestFeedbackSettings(
+          JSON.parse(str(row, 'settings')),
+        );
+        return (
+          !!settings &&
+          (settings.fixFailingChecks || settings.addressReviewComments)
+        );
+      });
+  }
+
+  writeProjectDefaults(input: {
+    projectId: string;
+    projectCreatedAt: string;
+    settings: PullRequestFeedbackSettings;
+    setBy: string;
+    now: string;
+  }): void {
+    this.db
+      .prepare(
+        `INSERT INTO project_defaults (project_id, project_created_at, settings, set_by, set_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT (project_id, project_created_at) DO UPDATE SET
+           settings = excluded.settings, set_by = excluded.set_by, set_at = excluded.set_at`,
+      )
+      .run(
+        input.projectId,
+        input.projectCreatedAt,
+        JSON.stringify(input.settings),
+        input.setBy,
+        input.now,
+      );
+  }
+
+  /**
+   * Claims a Project's defaults turned on that still send and no person has
+   * changed since.
+   */
+  projectDefaultClaimsOn(projectId: string): number {
+    return this.db
+      .prepare(
+        `SELECT DISTINCT claims.* FROM claims JOIN derived_links ON derived_links.pr_key = claims.pr_key
+           AND derived_links.conversation_id = claims.conversation_id
+         WHERE claims.origin = 'project-default' AND derived_links.project_id = ?`,
+      )
+      .all(projectId)
+      .map(readClaim)
+      .filter(
+        (claim) =>
+          claim.settings.fixFailingChecks ||
+          claim.settings.addressReviewComments,
+      ).length;
+  }
+
+  // Derived links -------------------------------------------------------------
+
+  /** Record a pull request found on a Task's branch; an existing row stays. */
+  recordDerivedLink(input: Omit<StoredDerivedLink, 'dismissedAt'>): void {
+    this.db
+      .prepare(
+        `INSERT INTO derived_links (task_id, task_created_at, project_id, conversation_id, pr_key, identity, head_ref, derived_at, dismissed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
+         ON CONFLICT (task_id, task_created_at, pr_key) DO NOTHING`,
+      )
+      .run(
+        input.taskId,
+        input.taskCreatedAt,
+        input.projectId,
+        input.conversationId,
+        input.prKey,
+        JSON.stringify(input.identity),
+        input.headRef,
+        input.derivedAt,
+      );
+  }
+
+  /** Whether discovery already found something for this Task incarnation. */
+  hasDerivedLinks(taskId: string, taskCreatedAt: string): boolean {
+    return !!this.db
+      .prepare(
+        'SELECT 1 FROM derived_links WHERE task_id = ? AND task_created_at = ? LIMIT 1',
+      )
+      .get(taskId, taskCreatedAt);
+  }
+
+  /** The chat's derived links not removed from it, oldest first. */
+  derivedLinks(conversationId: string): StoredDerivedLink[] {
+    return this.db
+      .prepare(
+        'SELECT * FROM derived_links WHERE conversation_id = ? AND dismissed_at IS NULL ORDER BY derived_at, pr_key',
+      )
+      .all(conversationId)
+      .map(readDerivedLink);
+  }
+
+  /** Remove a derived link from its chat for good. Returns whether one was. */
+  dismissDerivedLink(conversationId: string, prKey: string, now: string) {
+    return (
+      Number(
+        this.db
+          .prepare(
+            'UPDATE derived_links SET dismissed_at = ? WHERE conversation_id = ? AND pr_key = ? AND dismissed_at IS NULL',
+          )
+          .run(now, conversationId, prKey).changes,
+      ) > 0
+    );
   }
 
   // Observations -------------------------------------------------------------
