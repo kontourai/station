@@ -329,13 +329,22 @@ export async function getConversationUsageTree(
   return unwrapOrchestrationResponse<ThreadUsageTree>(response);
 }
 
-/** `GET /api/orchestration/sessions/read-model` — the session read-model list. */
+/**
+ * `GET /api/orchestration/sessions/read-model` — the session read-model list.
+ * `query.limit` asks for only the newest N sessions (1–1,000), still oldest
+ * first; a Station that predates it ignores it and answers every session.
+ */
 export async function listOrchestrationSessions<T = unknown[]>(
   apiBase: string,
   opts?: ClientRequestOptions,
+  query?: { limit?: number },
 ): Promise<T> {
+  const search =
+    query?.limit !== undefined
+      ? `?limit=${encodeURIComponent(query.limit)}`
+      : '';
   const response = await getJson(
-    `${apiBase}/api/orchestration/sessions/read-model`,
+    `${apiBase}/api/orchestration/sessions/read-model${search}`,
     opts,
   );
   return unwrapOrchestrationResponse<T>(response);

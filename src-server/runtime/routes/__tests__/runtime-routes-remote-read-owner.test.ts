@@ -76,8 +76,10 @@ afterEach(async () => {
 /** The remote Station: answers its list, window and search reads. */
 async function remoteStation() {
   const received: string[] = [];
+  const bearers: Array<string | undefined> = [];
   const server = createServer((request, response) => {
     received.push(`${request.method} ${request.url}`);
+    bearers.push(request.headers.authorization);
     response.setHeader('Content-Type', 'application/json');
     const url = new URL(request.url ?? '/', 'http://remote');
     if (url.pathname === '/api/orchestration/sessions/read-model')
@@ -117,7 +119,7 @@ async function remoteStation() {
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   servers.add(server);
   const { port } = server.address() as { port: number };
-  return { url: `http://127.0.0.1:${port}`, received };
+  return { url: `http://127.0.0.1:${port}`, received, bearers };
 }
 
 async function composedStation() {
@@ -271,6 +273,9 @@ describe('remote reads through the real runtime composition', () => {
         line.includes('/api/conversations/search'),
       ),
     ).toBe(true);
+    // Every one of those reads carried the stored outbound peer bearer.
+    expect(remote.bearers).toHaveLength(remote.received.length);
+    expect(new Set(remote.bearers)).toEqual(new Set([`Bearer ${PEER_SECRET}`]));
   }, 120_000);
 
   test('a device bound to another person is refused on the list and history, and gets only local search results', async () => {

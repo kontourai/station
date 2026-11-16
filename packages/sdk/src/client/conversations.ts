@@ -106,7 +106,8 @@ export async function searchConversationMessages(
     // A non-2xx keeps its status; an unreadable 2xx is a protocol failure
     // with no failure status to carry (#2708, as `readEnvelopeOrThrow`).
     if (!response.ok) throw envelopeError(response, undefined, unreadable);
-    throw new Error(unreadable);
+    // The cause keeps why the body was unreadable (a byte ceiling, say).
+    throw Object.assign(new Error(unreadable), { cause: error });
   }
   if (!response.ok || !result.success) {
     // #2708: a 2xx `success:false` is a refusal too, and keeps its observed

@@ -1892,10 +1892,14 @@ than 2,000 events, or whose response passes 262,144 bytes. The byte limit
 covers a remote that ignores `view=window-v1` and sends its whole detail. A
 current remote's window answers at most 64,000 bytes. These pages are
 refused, not truncated. It caps a page at the remote route's own 20-turn and
-512-character cursor bounds. A remote's session list is capped at 2,097,152
-bytes and its search answer at 262,144 bytes. Past either, that remote reads
-as unavailable or unreachable for the read, rather than being parsed. Only
-the page's own top-level fields cross. The
+512-character cursor bounds. The list asks the remote for its newest 200
+sessions (`limit=200`) and is capped at 8,388,608 bytes. That cap holds 200
+summaries at the largest measured size, or about 2,000 typical ones from an
+older remote that ignores `limit`. A remote's search answer is capped at
+262,144 bytes. Past either cap the answer is not parsed. The existing status
+then reports the remote as unavailable (list) or unreachable (search), even
+though it did answer, and this Station logs the refusal by environment id
+alone. Only the page's own top-level fields cross. The
 session summary and each event are relayed as the remote's authorized read
 returned them: the events are the transcript, and the summary has the same
 shape, working folder included, that the list already relays to this caller.

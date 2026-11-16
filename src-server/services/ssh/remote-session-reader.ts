@@ -22,8 +22,26 @@ import {
   guardRemoteMessageSearch,
   type RemoteStationReadAuthority,
 } from '../../security/remote-station-read-authority.js';
+import { createLogger } from '../../utils/logger.js';
 import type { PeerCredentialStore } from '../peers/peer-credential-store.js';
 import type { SshEnvironmentService } from './ssh-environment-service.js';
+
+const logger = createLogger({ name: 'remote-session-reader' });
+
+/**
+ * A remote's answer passed this Station's byte ceiling. Its status stays the
+ * read's existing one (unavailable, unreachable), so it is logged, by
+ * environment id alone: no name, address or content.
+ */
+function logTooLarge(
+  environmentId: string,
+  read: 'session-list' | 'message-search' | 'session-history',
+): void {
+  logger.warn('Remote Station answer exceeded its byte ceiling', {
+    environmentId,
+    read,
+  });
+}
 
 /** R1 (archive#1097): keep every remote read well under the local list's own
  * render budget — a slow/unreachable environment must never make the human
@@ -129,11 +147,14 @@ export type RemoteMessageSearchFetcher = (
 ) => Promise<RemoteMessageSearchMatch[]>;
 
 /**
- * Byte ceiling on one remote's session list: room for the 200 summaries this
- * Station keeps from it (`MAX_REMOTE_SESSIONS_PER_ENVIRONMENT`). Past it the
- * environment is unavailable for this read, never parsed.
+ * Byte ceiling on one remote's session list. The list asks for the newest
+ * `MAX_REMOTE_SESSIONS_PER_ENVIRONMENT`; measured summaries (132 real attached
+ * sessions: p50 4,128, p90 6,502, max 30,840 bytes) put 200 of the largest at
+ * about 6.2 MB. An older remote that ignores `limit` sends every session, and
+ * this still holds about 2,000 typical ones. Past it the environment is
+ * unavailable for this read, logged, never parsed.
  */
-export const MAX_REMOTE_SESSION_LIST_RESPONSE_BYTES = 2_097_152;
+export const MAX_REMOTE_SESSION_LIST_RESPONSE_BYTES = 8_388_608;
 
 /**
  * Byte ceiling on one remote's search answer. It keeps at most five short
@@ -143,11 +164,15 @@ export const MAX_REMOTE_SESSION_LIST_RESPONSE_BYTES = 2_097_152;
 export const MAX_REMOTE_MESSAGE_SEARCH_RESPONSE_BYTES = 262_144;
 
 const defaultFetcher: RemoteSessionsFetcher = (apiBase, options) =>
-  listOrchestrationSessions<OrchestrationSessionSummary[]>(apiBase, {
-    timeoutMs: REMOTE_SESSION_FETCH_TIMEOUT_MS,
-    ...options,
-    maxResponseBytes: MAX_REMOTE_SESSION_LIST_RESPONSE_BYTES,
-  });
+  listOrchestrationSessions<OrchestrationSessionSummary[]>(
+    apiBase,
+    {
+      timeoutMs: REMOTE_SESSION_FETCH_TIMEOUT_MS,
+      ...options,
+      maxResponseBytes: MAX_REMOTE_SESSION_LIST_RESPONSE_BYTES,
+    },
+    { limit: MAX_REMOTE_SESSIONS_PER_ENVIRONMENT },
+  );
 
 const defaultMessageSearchFetcher: RemoteMessageSearchFetcher = (
   apiBase,
@@ -308,6 +333,8 @@ export async function searchConnectedRemoteMessages(
     if (isAbort(result.reason, signal)) {
       throw result.reason;
     }
+    if (isResponseTooLarge(result.reason))
+      logTooLarge(environment.id, 'message-search');
     instances.push({
       instanceId: environment.id,
       instanceName: environment.name,
@@ -405,8 +432,10 @@ export async function listConnectedRemoteSessions(
         return {
           environmentId: environment.id,
           environmentName: environment.name,
+          // The read model is oldest first; keep the newest (all of them
+          // from a remote that honoured `limit`).
           sessions: sessions
-            .slice(0, MAX_REMOTE_SESSIONS_PER_ENVIRONMENT)
+            .slice(-MAX_REMOTE_SESSIONS_PER_ENVIRONMENT)
             .map(withNormalizedAnswerability),
         } satisfies RemoteEnvironmentSessions;
       }),
@@ -418,6 +447,8 @@ export async function listConnectedRemoteSessions(
         return;
       }
       const source = batch[index];
+      if (isResponseTooLarge(result.reason))
+        logTooLarge(source.id, 'session-list');
       if (
         result.reason instanceof RemoteSessionAuthenticationRequiredError ||
         (result.reason instanceof StationHttpError &&
@@ -595,6 +626,7 @@ export async function readConnectedRemoteSessionHistory(
       }
     }
     if (isResponseTooLarge(error)) {
+      logTooLarge(environment.id, 'session-history');
       throw new RemoteSessionHistoryError('too_large');
     }
     if (error instanceof SessionDetailWindowUnsupportedError) {

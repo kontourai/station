@@ -168,9 +168,22 @@ describe('orchestration lifecycle-control client', () => {
         ),
       ),
     );
-    await expect(
-      getOrchestrationSessionDetailWindow('http://station.test', 'task'),
-    ).rejects.toThrow('does not support bounded session detail');
+    const refusal = await getOrchestrationSessionDetailWindow(
+      'http://station.test',
+      'task',
+    ).catch((error: unknown) => error);
+    // Typed, so a caller (the remote history relay) branches on the class.
+    const { SessionDetailWindowUnsupportedError } = await import(
+      '../client/orchestration'
+    );
+    expect(refusal).toBeInstanceOf(SessionDetailWindowUnsupportedError);
+    expect((refusal as Error).message).toBe(
+      'Station does not support bounded session detail',
+    );
+    const agentEntry = await import('../agent/index');
+    expect(agentEntry.SessionDetailWindowUnsupportedError).toBe(
+      SessionDetailWindowUnsupportedError,
+    );
   });
 
   test('interrupts a turn without closing its session', async () => {

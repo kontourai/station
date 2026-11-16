@@ -543,8 +543,12 @@ describe('remote session history (read-only, over a connected environment)', () 
       fetchHistory,
       OWNER_READS,
     );
+    const client = new AbortController();
     const response = await app.request(
-      `/sessions/${ENV_ID}/${encodeURIComponent(THREAD)}/history?turnLimit=5&cursor=c0`,
+      new Request(
+        `http://station.test/sessions/${ENV_ID}/${encodeURIComponent(THREAD)}/history?turnLimit=5&cursor=c0`,
+        { signal: client.signal },
+      ),
     );
     expect(response.status).toBe(200);
     const body = await json(response);
@@ -554,10 +558,21 @@ describe('remote session history (read-only, over a connected environment)', () 
       { cursor: 'c0', turnLimit: 5 },
       {
         headers: { Authorization: 'Bearer peer-bearer-for-test' },
-        // A client that goes away cancels the remote read too.
         signal: expect.any(AbortSignal),
       },
     );
+    // The caller's own signal: a client that goes away cancels the remote read.
+    const forwarded = (
+      fetchHistory.mock.calls[0] as unknown as [
+        string,
+        string,
+        unknown,
+        { signal: AbortSignal },
+      ]
+    )[3].signal;
+    expect(forwarded.aborted).toBe(false);
+    client.abort();
+    expect(forwarded.aborted).toBe(true);
     expect(svc.connect).not.toHaveBeenCalled();
     expect(body.data.environmentId).toBe(ENV_ID);
     expect(body.data.environmentName).toBe('Home media');

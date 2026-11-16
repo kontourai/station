@@ -1288,6 +1288,9 @@ const sessionEventPageQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 
+/** The most sessions one `GET /sessions/read-model?limit` asks for. */
+const SESSION_READ_MODEL_MAX_LIMIT = 1_000;
+
 const sessionEventWindowQuerySchema = z.object({
   direction: z.literal('newest').optional(),
   cursor: z.string().min(1).max(512).optional(),
@@ -2599,8 +2602,19 @@ export function createOrchestrationRoutes(
     // and published by the NEXT read rather than this one. archive#847 asked
     // that peer evidence reach Activity, not that a poll block on a peer's
     // network round trip to do it.
+    // `limit`: only the newest N sessions by creation, still oldest first.
+    // Another Station's remote-sessions list asks for its 200; a Station that
+    // predates the parameter ignores it and that caller keeps its newest 200.
+    const limitText = c.req.query('limit');
+    if (
+      limitText !== undefined &&
+      (!/^[1-9][0-9]{0,3}$/u.test(limitText) ||
+        Number(limitText) > SESSION_READ_MODEL_MAX_LIMIT)
+    )
+      return c.json({ success: false, error: 'Invalid session limit' }, 400);
     startDelegatedTaskActivityRefresh(resolveActorPrincipal(deps, c).userId);
-    const data = await orchestrationService.listSessionReadModel(authority);
+    const all = await orchestrationService.listSessionReadModel(authority);
+    const data = limitText === undefined ? all : all.slice(-Number(limitText));
     return c.json({ success: true, data });
   });
 
