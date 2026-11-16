@@ -63,7 +63,10 @@ export function createPullRequestFeedbackRoutes(
   const app = new Hono();
   // Before any body is parsed: while the preview is off every route answers
   // 404, a malformed body included.
-  app.use('*', async (c, next) => {
+  // Only the methods the routes serve: an all-method `use` would register
+  // HEAD and PATCH paths the pairing table does not classify, and the
+  // runtime refuses to start with an unclassified route.
+  app.on(['GET', 'PUT', 'POST', 'DELETE'], '*', async (c, next) => {
     if (!access.enabled())
       return c.json({ success: false, error: 'Conversation unavailable' }, 404);
     await next();

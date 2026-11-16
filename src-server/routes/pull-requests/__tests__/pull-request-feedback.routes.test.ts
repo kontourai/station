@@ -10,7 +10,10 @@ import type { PullRequestLinkIdentity } from '@kontourai/station-contracts/conve
 import { Hono } from 'hono';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
-import { requiredPairingScope } from '../../../security/pairing-route-scopes.js';
+import {
+  findUnclassifiedRuntimeHttpRoutes,
+  requiredPairingScope,
+} from '../../../security/pairing-route-scopes.js';
 import { PullRequestFeedbackDelivery } from '../../../services/pull-requests/pull-request-feedback-delivery.js';
 import { PullRequestFeedbackOwnership } from '../../../services/pull-requests/pull-request-feedback-ownership.js';
 import { PullRequestFeedbackStore } from '../../../services/pull-requests/pull-request-feedback-store.js';
@@ -189,5 +192,10 @@ describe('pull request feedback routes', () => {
     expect(requiredPairingScope('POST', `${path}/send-again`)).toBe(
       'access:manage',
     );
+  });
+
+  it('registers only routes the pairing table classifies (the runtime refuses to start otherwise)', () => {
+    const t = setup();
+    expect(findUnclassifiedRuntimeHttpRoutes(t.app.routes)).toEqual([]);
   });
 });
