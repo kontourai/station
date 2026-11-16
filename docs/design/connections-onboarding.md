@@ -170,8 +170,8 @@ carrying source affinity resolve the recorded source home and refuse an unavaila
 home; that `CODEX_HOME` overrides profile and connection settings. When the
 source home is a credential profile's own home, that profile's env overlay is
 applied with it. An invalid overlay refuses the continuation, as does an app
-home that is neither the legacy app home nor a current profile's (a deleted
-profile keeps its directory and credentials). The legacy
+home that is not the legacy app home, the connection's config home or a
+current profile's (a deleted profile keeps its directory and credentials). The legacy
 toggle-boundary caveat below applies to cursors without that affinity.
 
 **Import-from-global rules (claude):** an explicit, dedicated user action —
