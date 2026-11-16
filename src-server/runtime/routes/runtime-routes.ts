@@ -10728,6 +10728,20 @@ export function configureRuntimeRoutes(
       preview: peerChatPreview,
       previewGeneration: () =>
         context.featurePreviews.generation('paired-station-chats'),
+      handoff: {
+        readSource: (c, conversationId) =>
+          context.orchestrationService.readConversationCarriedHistory(
+            conversationId,
+            conversationReadAuthorityForContext(c),
+          ),
+        sourceStation: async () => {
+          const handshake =
+            await context.environmentSecurityService.getPublicHandshake();
+          if (!handshake.environmentId)
+            throw new Error('This Station has no environment identity yet.');
+          return { environmentId: handshake.environmentId, name: hostname() };
+        },
+      },
     }),
   );
   // station#1423: the operator's own answer-share management family. The base

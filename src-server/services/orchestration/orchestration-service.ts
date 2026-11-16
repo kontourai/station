@@ -6254,6 +6254,58 @@ export class OrchestrationService {
     );
   }
 
+  /**
+   * What a handoff to another Station carries: the conversation's current
+   * Agent and title, and its history read exactly as an Agent/engine handoff
+   * reads it. A portable-marked conversation is refused, as that handoff is,
+   * because no receiver offer admits it. `undefined` when the caller cannot
+   * read the conversation.
+   */
+  async readConversationCarriedHistory(
+    conversationId: string,
+    authority: SessionReadScope,
+  ): Promise<
+    | {
+        agentSlug: string;
+        title: string;
+        projectSlug?: string;
+        messages: ConversationMessage[];
+      }
+    | undefined
+  > {
+    this.initialize();
+    const currentSessionId = this.currentConversationSessionId(conversationId);
+    const conversation =
+      (await this.conversationLineage.readSessionConversation(
+        currentSessionId,
+        authority,
+      )) ??
+      (currentSessionId === conversationId
+        ? null
+        : await this.conversationLineage.readSessionConversation(
+            conversationId,
+            authority,
+          ));
+    if (!conversation) return undefined;
+    const consent =
+      this.persistedPortableConsentOfThread(conversationId) ??
+      this.persistedPortableConsentOfThread(currentSessionId);
+    if (consent) throw portableRefusalForUnadmittedThread(consent);
+    const messages =
+      await this.conversationLineage.readConversationCarriedMessages(
+        conversationId,
+        authority,
+      );
+    return {
+      agentSlug: conversation.agentSlug,
+      title: conversation.title,
+      ...(conversation.projectSlug
+        ? { projectSlug: conversation.projectSlug }
+        : {}),
+      messages,
+    };
+  }
+
   /** Read-only delivery lookup; see `ConversationLineage.inspectTurnDelivery`. */
   /**
    * The turn another attempt holds `clientTurnId` for on `threadId`, waited

@@ -15,6 +15,7 @@ import type { useChatInput } from '../../hooks/useChatInput';
 import type { ChatSession } from '../../types';
 import { ConversationContextResetDialog } from './ConversationContextResetDialog';
 import { ConversationHandoffDialog } from './ConversationHandoffDialog';
+import type { ContinuedOnStation } from './ConversationStationHandoff';
 import { writeConversationContextBoundaryUiState } from './conversationContextBoundaryUiState';
 import {
   acceptConversationHandoffUiState,
@@ -53,6 +54,7 @@ export function ConversationBoundaryDialogs({
   invalidate,
   showToast,
   refetchOrchestrationSessions,
+  continueOnStation,
 }: {
   dialogs: ConversationBoundaryDialogsState;
   apiBase: string;
@@ -73,6 +75,11 @@ export function ConversationBoundaryDialogs({
   refetchOrchestrationSessions: ReturnType<
     typeof useOrchestrationSessionsQuery
   >['refetch'];
+  /** Opens the paired Station's new chat and sends its first turn there. */
+  continueOnStation?: (
+    result: ContinuedOnStation,
+    sourceTitle?: string,
+  ) => void;
 }) {
   const {
     handoffSource,
@@ -138,6 +145,26 @@ export function ConversationBoundaryDialogs({
             setHandoffSource(null);
             requestAnimationFrame(() => handoffReturnFocusRef.current?.focus());
           }}
+          // Only a chat this Station owns can be carried to a paired one.
+          {...(continueOnStation &&
+          (!handoffSession.stationBinding ||
+            handoffSession.stationBinding.affinity.kind === 'host')
+            ? {
+                onContinuedOnStation: (result: ContinuedOnStation) => {
+                  setArmedHandoff(null);
+                  if (handoffSession.id === activeSession?.id) {
+                    chatInput.handleClearInput();
+                    chatInput.handleClearAttachments();
+                  }
+                  setHandoffSource(null);
+                  continueOnStation(result, handoffSession.title);
+                  showToast(
+                    `Continuing on ${result.connection.stationName}`,
+                    'success',
+                  );
+                },
+              }
+            : {})}
           onAccepted={({ receipt, target, targetId }) => {
             const state = activeChatsStore.getSnapshot()[handoffSession.id];
             updateChat(

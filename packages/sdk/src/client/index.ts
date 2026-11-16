@@ -41,6 +41,7 @@ export * from './board';
 export { ChatHttpError } from './chatHttpError';
 export { setClientOriginResolver } from './client-origin.js';
 export * from './cloud-move';
+export * from './conversationStationHandoff';
 export * from './conversations';
 export * from './delegations';
 export * from './execution';

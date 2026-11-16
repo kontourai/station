@@ -1298,7 +1298,12 @@ on the host (`ui-bootstrap`):
   [`EnvironmentSecurityService.authorizeCredential`](../../src-server/services/ssh/environment-security-service.ts),
   so the owner can chat on a paired Station from a phone. The bridge's own
   allowlist and agent-origin refusal still apply, and the receiver still
-  checks the saved peer grant. Every other peer-family write (adding,
+  checks the saved peer grant. The exact leaf
+  `POST /api/environments/peers/:id/conversation-handoffs`
+  (`isPeerConversationHandoff`) is admitted the same way: it sends history the
+  caller can already read here, as that caller's own record, to the paired
+  Station under the saved peer grant, which saves it as a new conversation and
+  shows and seeds it as quoted context. Every other peer-family write (adding,
   replacing, enrolling or removing outbound peer credentials) stays
   operator-only.
 

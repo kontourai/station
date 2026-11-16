@@ -21,6 +21,11 @@ import type { StationCapabilityFlags } from '@kontourai/station-contracts';
 export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   peerChatTunnelV1: true,
   delegationLocalConversationV1: true,
+  // Cross-Station conversation handoff: the source route in
+  // src-server/routes/environments/peer-chat-routes.ts and the receiver's
+  // import in src-server/routes/chat/conversations.ts. Hosted deployments
+  // withdraw it: see servesConversationStationHandoff.
+  conversationStationHandoff: true,
   childWorkSteering: true,
   privateOperationalOutcomes: true,
   // Automation targets: src-server/routes/operations/scheduler.ts accepts a
@@ -217,6 +222,17 @@ export function servesFollowUpAttachments(
   return !deployment.hosted;
 }
 
+/**
+ * Whether the cross-Station handoff routes serve. Peer credentials and fork
+ * contexts have no durable tenant ownership, so a hosted deployment refuses
+ * both routes.
+ */
+export function servesConversationStationHandoff(
+  deployment: StationCapabilityDeployment,
+): boolean {
+  return !deployment.hosted;
+}
+
 /** Flags whose route serves only in some deployment modes. */
 const DEPLOYMENT_SERVED_FLAGS: Readonly<
   Partial<
@@ -229,6 +245,7 @@ const DEPLOYMENT_SERVED_FLAGS: Readonly<
   peerChatTunnelV1: (deployment) =>
     !deployment.hosted && deployment.peerChatEnabled === true,
   delegationLocalConversationV1: (deployment) => !deployment.hosted,
+  conversationStationHandoff: servesConversationStationHandoff,
   sessionInventoryInputRead: servesSessionInventoryInputRead,
   webPushNotifications: servesWebPushNotifications,
   connectionRoutes: servesConnectionRoutes,

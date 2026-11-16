@@ -197,6 +197,7 @@ import {
 } from './ChatPaneFileDropBoundary';
 import type { ComposerActionsMenuProps } from './ComposerActionsMenu';
 import { ConversationPickerRecovery } from './ConversationPickerRecovery';
+import type { ContinuedOnStation } from './ConversationStationHandoff';
 import {
   chatModelLabel,
   effectiveChatModelId,
@@ -3363,6 +3364,55 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     requestComposerFocus(sessionId, { whileBusy: true });
   };
 
+  /**
+   * A handoff to a paired Station saved this chat's history there as a new
+   * conversation. Open it the way a paired-Station start opens (the tab is
+   * bound to that Station's connection) under the imported conversation id,
+   * and send the first turn through the tab's owner, so delivery, retry and
+   * refusal take the same durable path as any message to that Station.
+   */
+  const continueOnStation = (
+    result: ContinuedOnStation,
+    sourceTitle?: string,
+  ) => {
+    const agent = agents.find((entry) => entry.slug === result.agentSlug);
+    if (!agent) {
+      showToast('This chat’s Agent is no longer available.', 'error');
+      return;
+    }
+    const sessionId = openChatForAgentInScopedPane(agent, result.projectSlug);
+    if (!sessionId) {
+      showToast(
+        `The chat was saved on ${result.connection.stationName} but could not be opened.`,
+        'error',
+      );
+      return;
+    }
+    updateChat(sessionId, {
+      stationBinding: result.connection.binding,
+      conversationId: result.receipt.conversationId,
+      projectSlug: result.projectSlug,
+      projectName: result.projectName,
+      provider: undefined,
+      executionAgentId: result.executionAgentId,
+      executionOnCurrentStation: true,
+      expectedDefinitionFingerprint: result.expectedDefinitionFingerprint,
+      requestedModel: result.modelId,
+      requestedProviderOptions: result.providerOptions,
+      conversationOpenPending: false,
+      // The first send goes when the composer holds exactly this prompt.
+      input: result.message,
+      title: sourceTitle || result.message.trim().slice(0, 80) || 'Chat',
+    });
+    navigate(pathname, { chat: sessionId });
+    setPendingGoalSend({
+      sessionId,
+      prompt: result.message,
+      // The tab resolves its persisted owner (the paired Station) before sending.
+      authority: undefined,
+    });
+  };
+
   const runFork = async (
     source: NonNullable<typeof forkSource>,
     agent: AgentData,
@@ -4778,6 +4828,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 invalidate,
                 showToast,
                 refetchOrchestrationSessions,
+                continueOnStation,
               }}
               pending={null}
             />

@@ -125,3 +125,101 @@ export function parsePeerChatTargetRefusal(
       : { mutationKey: expected.mutationKey }),
   };
 }
+
+/**
+ * Continuing a conversation on a paired Station. The source Station reads its
+ * own transcript and sends it, bounded, to the receiver, which saves it as the
+ * new conversation's carried context (`POST /agents/:slug/conversation-imports`).
+ * The conversation identity does not move: the receiver owns a new
+ * conversation, and the source conversation is left as it was.
+ */
+/** The paired Station definitely refused the import; nothing was created there. */
+export const PEER_CONVERSATION_HANDOFF_REFUSAL_CODE =
+  'peer_conversation_handoff_refused';
+export const PEER_CONVERSATION_HANDOFF_MAX_MESSAGES = 400;
+/** Total UTF-8 bytes of carried message text. */
+export const PEER_CONVERSATION_HANDOFF_MAX_TEXT_BYTES = 512 * 1024;
+/** UTF-8 bytes of one carried message; a longer one is cut with a marker. */
+export const PEER_CONVERSATION_HANDOFF_MAX_MESSAGE_BYTES = 64 * 1024;
+
+/** Browser to its own Station: `POST /api/environments/peers/:id/conversation-handoffs`. */
+export interface PeerConversationHandoffRequestV1 {
+  idempotencyKey: string;
+  conversationId: string;
+  /** The Agent on the paired Station; it must match this conversation's Agent. */
+  targetAgent: string;
+  /** A Project of the paired Station, chosen from its own list. */
+  projectSlug?: string;
+}
+
+export interface ConversationImportMessageV1 {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+}
+
+/** Source Station to receiver: the bounded text history it carries. */
+export interface ConversationImportRequestV1 {
+  version: 1;
+  idempotencyKey: string;
+  source: {
+    environmentId: string;
+    stationName: string;
+    conversationId: string;
+    title: string;
+    agent: string;
+  };
+  projectSlug?: string;
+  messages: ConversationImportMessageV1[];
+  /** Older text messages the source left out to stay inside the bounds. */
+  omittedMessages: number;
+  /** Tool, reasoning and other rows with no text to carry. */
+  nonTextMessages: number;
+  /** Carried messages whose middle was cut to the per-message bound. */
+  shortenedMessages: number;
+}
+
+export interface PeerConversationHandoffReceiptV1 {
+  version: 1;
+  environmentId: string;
+  /** The receiver's new conversation. Its first turn has not been sent yet. */
+  conversationId: string;
+  carriedMessages: number;
+  omittedMessages: number;
+  nonTextMessages: number;
+  shortenedMessages: number;
+  /** The receiver already held this key's conversation. */
+  idempotent: boolean;
+}
+
+function count(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+export function parsePeerConversationHandoffReceipt(
+  value: unknown,
+  expected: { environmentId: string },
+): PeerConversationHandoffReceiptV1 | null {
+  const body = record(value);
+  if (
+    body?.version !== 1 ||
+    body.environmentId !== expected.environmentId ||
+    !text(body.conversationId, 256) ||
+    !count(body.carriedMessages) ||
+    !count(body.omittedMessages) ||
+    !count(body.nonTextMessages) ||
+    !count(body.shortenedMessages) ||
+    typeof body.idempotent !== 'boolean'
+  )
+    return null;
+  return {
+    version: 1,
+    environmentId: expected.environmentId,
+    conversationId: body.conversationId,
+    carriedMessages: body.carriedMessages,
+    omittedMessages: body.omittedMessages,
+    nonTextMessages: body.nonTextMessages,
+    shortenedMessages: body.shortenedMessages,
+    idempotent: body.idempotent,
+  };
+}

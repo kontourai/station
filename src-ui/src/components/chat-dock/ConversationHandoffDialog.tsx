@@ -41,6 +41,12 @@ import {
 import { Empty } from '../state';
 import '../chat/ConversationHandoff.css';
 import { userFacingErrorMessage } from '../../utils/errorText';
+import {
+  type ContinuedOnStation,
+  ConversationStationChoice,
+  ConversationStationHandoff,
+  readPendingStationHandoff,
+} from './ConversationStationHandoff';
 
 export interface AcceptedConversationHandoff {
   receipt: ConversationHandoffReceipt;
@@ -103,6 +109,11 @@ interface ConversationHandoffDialogProps {
   /** Choose the target for the next composer message instead of sending now. */
   onArm?: (armed: ArmedConversationHandoff) => void;
   onAccepted: (result: AcceptedConversationHandoff) => void;
+  /**
+   * Offer paired Stations as well: the chat's history moves to a new chat
+   * there, which the dock opens and sends the first turn to.
+   */
+  onContinuedOnStation?: (result: ContinuedOnStation) => void;
   onDispatchStarted: (input: { message: string; clientTurnId: string }) => void;
   onDefiniteFailure: (clientTurnId: string) => void;
   onClose: () => void;
@@ -231,6 +242,7 @@ export function ConversationHandoffDialog({
   autoSubmit,
   onArm,
   onAccepted,
+  onContinuedOnStation,
   onDispatchStarted,
   onDefiniteFailure,
   onClose,
@@ -238,6 +250,18 @@ export function ConversationHandoffDialog({
   const restoredIntent = useRef(
     readPendingIntent(apiBase, conversationId),
   ).current;
+  const restoredStation = useRef(
+    onContinuedOnStation
+      ? readPendingStationHandoff(apiBase, conversationId)
+      : null,
+  ).current;
+  const [where, setWhere] = useState(
+    restoredStation?.environmentId ?? 'current',
+  );
+  const stationOffered = Boolean(
+    onContinuedOnStation && !executionPreset && !autoSubmit && !restoredIntent,
+  );
+  const currentAgent = agents.find((agent) => agent.slug === currentAgentId);
   const selectedContext = projectSlug ?? GLOBAL_CONTEXT;
   const selection = useNewChatSelectionModel({
     agents,
@@ -625,7 +649,45 @@ export function ConversationHandoffDialog({
         />
       </div>
 
-      {executionPreset ? (
+      {stationOffered && (
+        <ConversationStationChoice
+          apiBase={apiBase}
+          value={where}
+          disabled={mutationLocked}
+          onChange={setWhere}
+        />
+      )}
+
+      {stationOffered && where !== 'current' && onContinuedOnStation ? (
+        currentAgent ? (
+          <ConversationStationHandoff
+            key={where}
+            apiBase={apiBase}
+            conversationId={conversationId}
+            agent={currentAgent}
+            environmentId={where}
+            sourceProject={projects.find(
+              (project) => project.slug === projectSlug,
+            )}
+            message={message}
+            draft={Boolean(draft)}
+            blockedReason={
+              blockedReason ??
+              (attachments.length > 0
+                ? 'Send or remove attachments before continuing on another Station.'
+                : undefined)
+            }
+            restored={restoredStation}
+            onContinued={onContinuedOnStation}
+          />
+        ) : (
+          <Empty
+            variant="compact"
+            label="Agent unavailable"
+            description="This chat's Agent isn't on this Station anymore."
+          />
+        )
+      ) : executionPreset ? (
         <p className="conversation-handoff-dialog__summary">
           Keep the {targetName} agent and run this chat on{' '}
           {engineLabel ?? 'its default engine'}.
@@ -674,7 +736,7 @@ export function ConversationHandoffDialog({
         </div>
       )}
 
-      {targetId && (
+      {where === 'current' && targetId && (
         <div className="conversation-handoff-dialog__confirmation">
           {targetModels.length > 0 && (
             <div className="conversation-handoff-dialog__model">

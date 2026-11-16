@@ -74,6 +74,11 @@ import {
 import { readConversationContextSeedPin } from '../../services/orchestration/conversation-handoff-module.js';
 import type { ConversationForkProvenance } from '../../services/orchestration/event-store.js';
 import {
+  conversationImportRequestSchema,
+  importedConversationMessages,
+  importedSourceConversationId,
+} from '../../services/peers/peer-conversation-handoff.js';
+import {
   type AgentConversationVersion,
   type AgentConversationVersionItem,
   type AgentConversationVersionSource,
@@ -1479,6 +1484,199 @@ export function createConversationRoutes(
       }
     },
   );
+
+  // Continue a conversation from a paired Station (`conversationStationHandoff`).
+  // The other Station sends its bounded text history; this one saves it as a
+  // fork context on a new conversation for `:slug`, exactly as a fork of a
+  // local conversation is saved, so its first `/chat` start and every later
+  // continuation carry it. The history is the sender's own record, shown and
+  // seeded as quoted context, never as this Station's provider output.
+  app.post('/:slug/conversation-imports', async (c) => {
+    try {
+      let targetAgent: string;
+      try {
+        targetAgent = agentId(param(c, 'slug'));
+      } catch {
+        return c.json({ success: false, error: 'Invalid Agent identity' }, 400);
+      }
+      const parsed = conversationImportRequestSchema.safeParse(
+        await c.req.json().catch(() => undefined),
+      );
+      if (!parsed.success)
+        return c.json(
+          { success: false, error: 'Invalid conversation import' },
+          400,
+        );
+      const body = parsed.data;
+      let sourceAgent: string;
+      try {
+        sourceAgent = agentId(body.source.agent);
+      } catch {
+        return c.json({ success: false, error: 'Invalid Agent identity' }, 400);
+      }
+      if (sourceAgent !== targetAgent)
+        return c.json(
+          {
+            success: false,
+            error:
+              'A conversation continues on another Station with the same Agent.',
+          },
+          400,
+        );
+      const projectSlug = body.projectSlug;
+      // A Station Control caller imports only where it could start a Session.
+      const scopeRefused = refuseOutOfScopeDispatch(
+        c,
+        stationControlDispatchScope,
+        (ownerId) =>
+          ownerId
+            ? {
+                kind: 'new',
+                ownerId,
+                ...(projectSlug ? { projectSlug } : {}),
+                remote: false,
+              }
+            : undefined,
+      );
+      if (scopeRefused) return scopeRefused;
+      const resolvedTarget = isKnownAgent
+        ? await isKnownAgent(targetAgent)
+        : true;
+      if (!eventStore || !resolvedTarget)
+        return c.json({ success: false, error: 'Target agent not found' }, 404);
+      let authority: SessionReadAuthority;
+      try {
+        authority = resolveForkReadAuthority?.(c) ?? authorityFor(c.req.raw);
+      } catch {
+        return c.json(
+          {
+            success: false,
+            error: 'Import caller identity could not be resolved',
+          },
+          403,
+        );
+      }
+      // Paired Stations have no tenant-owned peer records, so a hosted
+      // deployment does not accept one (it withdraws the capability flag).
+      if (isHostedSessionReadAuthority(authority))
+        return c.json(
+          { success: false, error: 'Conversation import is not served here' },
+          404,
+        );
+      if (!hasForkContextPorts(eventStore))
+        throw new ConversationForkContextError(
+          'Fork context persistence is unavailable.',
+        );
+      const actionOperationActor = actionOperationActorForRequest(
+        c.req.raw,
+        authority,
+        async (sessionId) =>
+          (await sessionMessageReader?.readSessionConversation(
+            sessionId,
+            authority,
+          )) != null,
+      );
+      const sourceConversationId = importedSourceConversationId(body.source);
+      const previous = eventStore.readConversationForkContextForRequest(
+        sourceConversationId,
+        body.idempotencyKey,
+        authority,
+      );
+      if (previous) {
+        if (
+          previous.state === 'deleted' ||
+          !forkRequestMatches(previous, {
+            sourceAgent,
+            targetAgent,
+            requestedProjectSlug: projectSlug,
+            requestedBranchPointTurnId: undefined,
+          })
+        )
+          throw new ConversationForkContextError(
+            'The import key already names another request.',
+          );
+        const saved = eventStore.readConversationForkContextSnapshot(
+          previous.targetConversationId,
+          authority,
+        );
+        if (!saved)
+          throw new ConversationForkContextError(
+            'Saved import context is unavailable.',
+          );
+        return previous.state === 'ready'
+          ? forkReply(c, saved, true)
+          : await finishSavedFork(c, saved, authority, actionOperationActor);
+      }
+      const ownedTargetProject =
+        typeof resolvedTarget === 'object' ? resolvedTarget.project : undefined;
+      if (ownedTargetProject && projectSlug !== ownedTargetProject)
+        return c.json({ success: false, error: 'Target agent not found' }, 404);
+      // A project-owned Agent was refused above unless the request names it.
+      if (projectSlug) {
+        const target =
+          typeof resolvedTarget === 'object'
+            ? resolvedTarget
+            : await configLoader?.loadAgent(targetAgent);
+        const project = projectScope?.getProject(projectSlug);
+        if (
+          !target ||
+          !project ||
+          !agentAvailableInProject(projectSlug, project.agents, {
+            slug: agentId(targetAgent),
+            project: target.project,
+          })
+        )
+          return c.json(
+            { success: false, error: 'Target agent not found' },
+            404,
+          );
+      }
+      if (!getAdapter(runtimeAgentKey(targetAgent)))
+        return c.json({ success: false, error: 'Target agent not found' }, 404);
+      const targetConversationId = `conversation:import:${createHash('sha256')
+        .update(
+          JSON.stringify([
+            authority.userId,
+            authority.tenantExecutionContext?.tenantId ?? null,
+            sourceConversationId,
+            body.idempotencyKey,
+          ]),
+        )
+        .digest('hex')
+        .slice(0, 32)}`;
+      const snapshot = createConversationForkContext({
+        forkEventId: `conversation-fork:${createHash('sha256').update(`${sourceConversationId}\u0000${targetConversationId}`).digest('hex')}`,
+        sourceConversationId,
+        sourceAgent,
+        targetConversationId,
+        targetAgent,
+        ownerUserId: authority.userId,
+        createdAt: new Date().toISOString(),
+        sourceTitle: `${body.source.title.trim() || 'Previous conversation'} (from ${body.source.stationName})`,
+        messages: importedConversationMessages(body),
+        idempotencyKey: body.idempotencyKey,
+        ...(authority.tenantExecutionContext
+          ? { tenantId: authority.tenantExecutionContext.tenantId }
+          : {}),
+        ...(projectSlug
+          ? { projectSlug, requestedProjectSlug: projectSlug }
+          : {}),
+      });
+      return await finishSavedFork(
+        c,
+        snapshot,
+        authority,
+        actionOperationActor,
+      );
+    } catch (error: unknown) {
+      return conversationRouteFailure(
+        c,
+        logger,
+        'Failed to import conversation',
+        error,
+      );
+    }
+  });
 
   // Get conversations for an agent
   app.get('/:slug/conversations', async (c) => {

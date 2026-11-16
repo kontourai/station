@@ -461,6 +461,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
   ],
   sharedInstanceExclusive: [
     'tests/station-connection-chat.spec.ts',
+    'tests/station-conversation-handoff.spec.ts',
     // Creates real Projects, channels and read markers on the instance.
     'tests/project-channel-navigation.spec.ts',
     'tests/conversation-surfaces.spec.ts',
@@ -536,6 +537,16 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
 };
 
 export const e2eManifest = [
+  {
+    path: 'tests/station-conversation-handoff.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Station connections',
+    tierTarget: 'partial',
+    primary: false,
+    rationale:
+      'Two disposable real Stations and real delegation pairing: a host conversation continues on the paired Station with its history carried, the first turn goes through the relay, and a same-key retry reuses the receiver conversation. Deterministic local HTTP model; no conversation route mocks.',
+    exceptions: [],
+  },
   {
     path: 'tests/station-connection-chat.spec.ts',
     bucket: 'product',

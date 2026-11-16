@@ -9,16 +9,24 @@ import {
   STATION_ENVELOPE_HEADER_VALUE,
 } from '@kontourai/station-contracts/http';
 import {
+  type ConversationImportRequestV1,
   PEER_CHAT_PRE_EFFECT_CODES,
   PEER_CHAT_REFUSAL_CODE,
   PEER_CHAT_UPLOAD_GRANT_HEADER,
+  PEER_CONVERSATION_HANDOFF_REFUSAL_CODE,
   type PeerChatConnectionV1,
   type PeerChatTargetRefusalV1,
+  type PeerConversationHandoffReceiptV1,
 } from '@kontourai/station-contracts/peer-chat';
+import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
 import { type Context, Hono } from 'hono';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import { requestMayBeAnAgent } from '../../security/coding-authority.js';
 import type { FeaturePreviewSelector } from '../../services/feature-previews/feature-preview-registry.js';
+import {
+  boundCarriedMessages,
+  peerConversationHandoffRequestSchema,
+} from '../../services/peers/peer-conversation-handoff.js';
 import type { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
 import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
 import {
@@ -39,10 +47,284 @@ export function createPeerChatRoutes(deps: {
   current: (request: Request) => boolean;
   owner: (request: Request) => boolean;
   previewGeneration?: () => number;
+  /** Continuing a conversation on a paired Station; absent, the route is not served. */
+  handoff?: {
+    /** The history the caller may read, as `readConversationCarriedHistory` reads it. */
+    readSource: (
+      c: Context,
+      conversationId: string,
+    ) => Promise<
+      | {
+          agentSlug: string;
+          title: string;
+          messages: readonly ConversationMessage[];
+        }
+      | undefined
+    >;
+    /** This Station, as the receiver records where the history came from. */
+    sourceStation: () => Promise<{ environmentId: string; name: string }>;
+  };
 }) {
   const app = new Hono();
   app.all('/:environmentId/chat-connection', handle);
   app.all('/:environmentId/chat-api/*', handle);
+  if (deps.handoff) {
+    const handoff = deps.handoff;
+    app.post('/:environmentId/conversation-handoffs', (c) =>
+      handleConversationHandoff(c, handoff),
+    );
+  }
+
+  const previewEnabled = () =>
+    deps.preview?.select({ enabled: () => true, disabled: () => false }) ===
+    true;
+
+  /**
+   * #machine-handoff: the source half of continuing a conversation on a
+   * paired Station. This Station reads the history the caller may read,
+   * bounds it, and sends it with its own stored peer credential, the same one
+   * the relay uses, so the receiver records the import for the principal the
+   * relayed first turn will run as. It starts no turn: the caller sends that
+   * through the relay to the conversation this returns. Same-key retries are
+   * answered by the receiver, which owns the effect.
+   */
+  async function handleConversationHandoff(
+    c: Context,
+    handoff: NonNullable<typeof deps.handoff>,
+  ) {
+    const request = c.req.raw;
+    const previewGeneration = deps.previewGeneration?.();
+    if (
+      requestMayBeAnAgent(request) ||
+      !deps.current(request) ||
+      !deps.owner(request)
+    )
+      return c.json({ success: false, error: 'Forbidden' }, 403);
+    if (!previewEnabled()) return previewDisabled(c);
+    const bounded = await readBoundedRequestBody(request, 16 * 1024);
+    let parsedBody: unknown;
+    try {
+      parsedBody =
+        bounded.status === 'ok' ? JSON.parse(bounded.body) : undefined;
+    } catch {
+      parsedBody = undefined;
+    }
+    const parsed = peerConversationHandoffRequestSchema.safeParse(parsedBody);
+    if (!parsed.success)
+      return c.json({ success: false, error: 'Invalid handoff request' }, 400);
+    const body = parsed.data;
+    const id = c.req.param('environmentId')!;
+    const peer = deps.peers.get(id);
+    if (!peer)
+      return c.json(
+        { success: false, error: 'Paired Station unavailable' },
+        404,
+      );
+    const current = () => {
+      const now = deps.peers.get(id);
+      return (
+        deps.current(request) &&
+        deps.owner(request) &&
+        previewEnabled() &&
+        deps.previewGeneration?.() === previewGeneration &&
+        !request.signal.aborted &&
+        now?.environmentId === id &&
+        now.apiBase === peer.apiBase &&
+        now.credential === peer.credential &&
+        now.updatedAt === peer.updatedAt
+      );
+    };
+    let forwarded = false;
+    try {
+      const source = await handoff.readSource(c, body.conversationId);
+      if (!source)
+        return c.json({ success: false, error: 'Conversation not found' }, 404);
+      if (source.agentSlug !== body.targetAgent)
+        return c.json(
+          {
+            success: false,
+            error:
+              'A conversation continues on another Station with the same Agent.',
+          },
+          400,
+        );
+      const carried = boundCarriedMessages(source.messages);
+      if (carried.messages.length === 0)
+        return c.json(
+          {
+            success: false,
+            error: 'This chat has no messages to carry yet.',
+          },
+          409,
+        );
+      const target = await deps.remote.resolve(id);
+      if (
+        target.kind !== 'peer' ||
+        target.environmentId !== id ||
+        target.apiBase !== peer.apiBase ||
+        target.requestOptions.headers.Authorization !==
+          `Bearer ${peer.credential}` ||
+        !current()
+      )
+        return c.json(
+          { success: false, error: 'Reconnect to the paired Station.' },
+          409,
+        );
+      const handshake = await fetchRemoteStationBytes(
+        `${target.apiBase}/.well-known/station/v1`,
+        { headers: target.requestOptions.headers, signal: request.signal },
+        target.requestOptions.timeoutMs,
+        current,
+        64 * 1024,
+      );
+      const identity: unknown = await handshake.json().catch(() => null);
+      if (
+        !handshake.ok ||
+        !identity ||
+        typeof identity !== 'object' ||
+        !('environmentId' in identity) ||
+        identity.environmentId !== id ||
+        !current()
+      )
+        return c.json(
+          {
+            success: false,
+            error:
+              'The paired Station did not confirm its identity. Reconnect before continuing.',
+          },
+          409,
+        );
+      const flags =
+        'capabilities' in identity &&
+        identity.capabilities &&
+        typeof identity.capabilities === 'object'
+          ? (identity.capabilities as Record<string, unknown>)
+          : {};
+      if (flags.conversationStationHandoff !== true)
+        return c.json(
+          {
+            success: false,
+            error: 'Update the paired Station to continue chats there.',
+          },
+          409,
+        );
+      const station = await handoff.sourceStation();
+      const importBody: ConversationImportRequestV1 = {
+        version: 1,
+        idempotencyKey: body.idempotencyKey,
+        source: {
+          environmentId: station.environmentId,
+          stationName: station.name.slice(0, 120) || 'another Station',
+          conversationId: body.conversationId,
+          title: source.title.slice(0, 500),
+          agent: source.agentSlug,
+        },
+        ...(body.projectSlug ? { projectSlug: body.projectSlug } : {}),
+        ...carried,
+      };
+      const headers = new Headers(target.requestOptions.headers);
+      headers.set(
+        CLIENT_PROTOCOL_HEADER,
+        String(STATION_COMPAT_PROTOCOL_VERSION),
+      );
+      headers.set('Content-Type', 'application/json');
+      if (!current())
+        return c.json(
+          { success: false, error: 'Station access changed.' },
+          409,
+        );
+      forwarded = true;
+      const response = await fetchRemoteStationBytes(
+        `${target.apiBase}/agents/${encodeURIComponent(body.targetAgent)}/conversation-imports`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(importBody),
+          signal: request.signal,
+        },
+        target.requestOptions.timeoutMs,
+        current,
+        256 * 1024,
+      );
+      const reply: unknown = await response.json().catch(() => null);
+      const replyRecord =
+        reply && typeof reply === 'object'
+          ? (reply as Record<string, unknown>)
+          : {};
+      const data =
+        replyRecord.data && typeof replyRecord.data === 'object'
+          ? (replyRecord.data as Record<string, unknown>)
+          : {};
+      if (
+        response.ok &&
+        replyRecord.success === true &&
+        typeof data.conversationId === 'string' &&
+        data.conversationId.length > 0 &&
+        data.conversationId.length <= 256
+      ) {
+        const receipt: PeerConversationHandoffReceiptV1 = {
+          version: 1,
+          environmentId: id,
+          conversationId: data.conversationId,
+          carriedMessages: carried.messages.length,
+          omittedMessages: carried.omittedMessages,
+          nonTextMessages: carried.nonTextMessages,
+          shortenedMessages: carried.shortenedMessages,
+          idempotent: data.idempotent === true,
+        };
+        return c.json({ success: true, data: receipt });
+      }
+      // A Station's own answer that it refused is definite; anything else
+      // after the request left (a gateway page, a 5xx, an unreadable body)
+      // leaves the import's outcome unknown, so the key must be retried.
+      const definite =
+        response.status >= 400 &&
+        response.status < 500 &&
+        response.headers.get(STATION_ENVELOPE_HEADER) ===
+          STATION_ENVELOPE_HEADER_VALUE &&
+        replyRecord.success === false;
+      if (!definite) throw new Error('Unconfirmed conversation import');
+      return c.json(
+        {
+          success: false,
+          code: PEER_CONVERSATION_HANDOFF_REFUSAL_CODE,
+          // The paired Station's own text is not relayed: it may name its
+          // internals, and its copy is not this Station's to show.
+          error:
+            response.status === 401 || response.status === 403
+              ? 'This connection cannot continue chats on the paired Station.'
+              : 'The paired Station refused this chat.',
+        },
+        424,
+      );
+    } catch {
+      return c.json(
+        {
+          success: false,
+          error: forwarded
+            ? "The paired Station didn't confirm the handoff. Retrying won't create a second chat."
+            : 'Could not reach the paired Station. Reconnect and try again.',
+          ...(forwarded ? { outcome: 'indeterminate' } : {}),
+        },
+        502,
+      );
+    }
+  }
+
+  function previewDisabled(c: Context) {
+    return c.json(
+      {
+        success: false,
+        error:
+          'Enable Paired Station chats in Settings → Advanced → Feature previews.',
+        code: 'feature_preview_disabled',
+        previewId: 'paired-station-chats',
+        settingsPath:
+          '/settings?view=feature-previews&highlight=feature-previews',
+      },
+      404,
+    );
+  }
 
   async function handle(c: Context) {
     const request = c.req.raw;
@@ -53,22 +335,7 @@ export function createPeerChatRoutes(deps: {
       !deps.owner(request)
     )
       return c.json({ success: false, error: 'Forbidden' }, 403);
-    const previewEnabled = () =>
-      deps.preview?.select({ enabled: () => true, disabled: () => false }) ===
-      true;
-    if (!previewEnabled())
-      return c.json(
-        {
-          success: false,
-          error:
-            'Enable Paired Station chats in Settings → Advanced → Feature previews.',
-          code: 'feature_preview_disabled',
-          previewId: 'paired-station-chats',
-          settingsPath:
-            '/settings?view=feature-previews&highlight=feature-previews',
-        },
-        404,
-      );
+    if (!previewEnabled()) return previewDisabled(c);
     const url = new URL(request.url);
     const descriptor = url.pathname.endsWith('/chat-connection');
     const operation = descriptor

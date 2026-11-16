@@ -10,6 +10,7 @@ export const TABLED_CAPABILITY_FLAGS: readonly string[] = Object.freeze([
   'delegationLocalConversationV1',
   'childWorkSteering',
   'connectionRoutes',
+  'conversationStationHandoff',
   'coordinatorSession',
   'eventStreamResume',
   'followUpAttachments',
