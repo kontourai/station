@@ -1,0 +1,7 @@
+{
+  "revision": "fc123315c8e6523544dd45a02d6291d20d4ac911",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"ChatDock now gives the This chat card the Copy commands and origin (From row), drops Background tasks/Chat inventory from the More menu while the card is shown and Copy/origin while card or chip is shown (also from the phone sheet while This chat is offered), and the header gains a Chat settings gear; Inspect-what-a-chat-used now starts from the This chat panel's Chat inventory; the phone This chat paragraph is unchanged.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

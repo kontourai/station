@@ -120,8 +120,9 @@ test.describe('buffered answer delivery (#585)', () => {
     await openChatRegion(page);
     await waitForMockOrchestrationSse(page);
 
-    await page.getByRole('button', { name: 'More dock actions' }).click();
-    await page.getByRole('menuitem', { name: 'Chat settings' }).click();
+    await page
+      .getByRole('button', { name: 'Chat settings', exact: true })
+      .click();
     const delivery = page.getByLabel('Answer delivery');
     await delivery.selectOption('buffered');
     await expect(delivery).toHaveValue('buffered');
@@ -222,8 +223,9 @@ test.describe('buffered answer delivery (#585)', () => {
     await settleBrowserFrames(page);
     await expect(transcript).not.toContainText('Flushed by disabling.');
 
-    await page.getByRole('button', { name: 'More dock actions' }).click();
-    await page.getByRole('menuitem', { name: 'Chat settings' }).click();
+    await page
+      .getByRole('button', { name: 'Chat settings', exact: true })
+      .click();
     await page.getByLabel('Answer delivery').selectOption('token');
     await expect(transcript).toContainText('Flushed by disabling.');
     await page.getByRole('button', { name: 'Done' }).click();

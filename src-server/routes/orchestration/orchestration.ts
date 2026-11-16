@@ -2446,14 +2446,15 @@ export function createOrchestrationRoutes(
   /**
    * One in-flight peer-delegation reconciliation per caller.
    *
-   * `refreshDelegatedTaskActivity` builds its own read model, takes the last
-   * 20 live peer delegations and `Promise.allSettled`s a remote HTTP read per
+   * `refreshDelegatedTaskActivity` reads the caller's peer delegation
+   * records (only those, never a second full read model: #5051), takes the
+   * last 20 live ones and `Promise.allSettled`s a remote HTTP read per
    * delegation, each with a 1.5s timeout
    * (`station-control-delegation.ts`'s `refreshPeerDelegationActivity`).
    * `GET /sessions/read-model` is polled, so awaiting that in the response
-   * path put up to 1.5s of peer network latency plus a second full read-model
-   * build in front of data the local store already had, and a slow peer
-   * stalled every subsequent poll behind its own predecessor.
+   * path put up to 1.5s of peer network latency in front of data the local
+   * store already had, and a slow peer stalled every subsequent poll behind
+   * its own predecessor.
    *
    * Keyed by userId, never shared: a poll from one caller must not suppress
    * another caller's reconciliation, whose peer set and authority are

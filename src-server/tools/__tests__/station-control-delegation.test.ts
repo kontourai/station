@@ -6092,3 +6092,182 @@ describe('bound answers to a delegated input request (delegatedInputAnswers)', (
     ).rejects.toMatchObject({ code: 'input_request_changed' });
   });
 });
+
+describe('#5051 a session-list request folds the read model once', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', fetchMock);
+    fetchMock.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    fetchMock.mockReset();
+  });
+
+  // Through the REAL route, the REAL refresh it starts, and a REAL
+  // OrchestrationService over a real EventStore: the refresh reads only the
+  // caller's peer delegation records, so the request pays for one full
+  // read-model build, and the refresh still advances peer Activity.
+  test('GET /sessions/read-model builds one full read model and still reconciles readable peer Activity', async () => {
+    const eventStore = new EventStore(
+      join(makeTempDir('delegation-peer-refresh-'), 'orchestration.sqlite'),
+    );
+    const service = new OrchestrationService({
+      adapterRegistry: { register() {}, get: () => undefined, list: () => [] },
+      eventBus: new EventBus(),
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    try {
+      service.initialize();
+      const authorityFor = (userId: string) =>
+        sessionReadAuthorityFromRequest(userId, undefined, undefined);
+      const dispatch = (taskId: string, userId: string) =>
+        service.recordPeerDelegationActivityDispatch({
+          taskId,
+          conversationId: taskId,
+          prompt: `Work on ${taskId}`,
+          userId,
+          environment: {
+            id: 'environment-remote',
+            name: 'Station B',
+            kind: 'peer',
+          },
+          target: { kind: 'agent', id: 'codex' },
+        });
+      const at = new Date().toISOString();
+      for (const threadId of ['owner-chat-1', 'owner-chat-2']) {
+        eventStore.upsertSession({
+          provider: 'codex',
+          threadId,
+          status: 'ready',
+          createdAt: at,
+          updatedAt: at,
+        });
+        eventStore.appendEvent({
+          eventId: `${threadId}-started`,
+          provider: 'codex',
+          threadId,
+          createdAt: at,
+          method: 'session.started',
+          sessionId: threadId,
+          metadata: { userId: 'owner-user' },
+        });
+      }
+      dispatch('task-peer-5051-mine', 'owner-user');
+      // Another person's record on the same peer: the owner's refresh must
+      // neither read it nor ask the peer about it.
+      dispatch('task-peer-5051-theirs', 'other-user');
+
+      const peerReads: string[] = [];
+      fetchMock.mockImplementation(async (input) => {
+        const url = String(input);
+        if (url === `${CURRENT_API}/.well-known/station/v1`)
+          return json({ environmentId: 'environment-current' });
+        const prefix = `${REMOTE_API}/api/orchestration/delegations/`;
+        if (url.startsWith(prefix)) {
+          const taskId = decodeURIComponent(url.slice(prefix.length));
+          peerReads.push(taskId);
+          return json({
+            success: true,
+            data: {
+              conversationId: taskId,
+              taskId,
+              sessionId: taskId,
+              currentSessionId: taskId,
+              status: 'running',
+              environment: {
+                id: 'environment-remote',
+                name: 'Station B',
+                kind: 'peer',
+              },
+              target: { kind: 'agent', id: 'codex' },
+              eventCount: 1,
+              canInterrupt: false,
+              resumable: false,
+            },
+          });
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      });
+
+      const reads: Array<{ purpose: string; scoped: boolean }> = [];
+      const listSessionReadModel = service.listSessionReadModel.bind(service);
+      vi.spyOn(service, 'listSessionReadModel').mockImplementation(
+        (authority, options) => {
+          reads.push({
+            purpose: options.purpose,
+            scoped: options.threadIds !== undefined,
+          });
+          return listSessionReadModel(authority, options);
+        },
+      );
+      const { refreshPeerDelegationActivity } = await import(
+        '../station-control-delegation.js'
+      );
+      const { createOrchestrationRoutes } = await import(
+        '../../routes/orchestration/orchestration.js'
+      );
+      const refreshes: Promise<void>[] = [];
+      const app = createOrchestrationRoutes(service, {
+        eventBus: new EventBus(),
+        logger: { debug: vi.fn(), warn: vi.fn() },
+        getUserId: () => 'owner-user',
+        refreshDelegatedTaskActivity: (input) => {
+          const refresh = refreshPeerDelegationActivity(
+            { ...input, readAuthority: authorityFor(input.userId) },
+            service,
+          );
+          refreshes.push(refresh);
+          return refresh;
+        },
+      });
+
+      const response = await app.request('/sessions/read-model');
+      expect(response.status).toBe(200);
+      expect(refreshes).toHaveLength(1);
+      await refreshes[0];
+
+      // One full build for the request; the refresh's read is scoped.
+      expect(reads.filter((read) => !read.scoped)).toEqual([
+        { purpose: 'session-list', scoped: false },
+      ]);
+      expect(reads.filter((read) => read.scoped)).toEqual([
+        { purpose: 'peer-delegation-refresh', scoped: true },
+      ]);
+      const byPurpose = service.sessionReadModelMeasurement().byPurpose;
+      expect(byPurpose['session-list']).toMatchObject({
+        reads: 1,
+        threadScopedReads: 0,
+      });
+      expect(byPurpose['peer-delegation-refresh']).toMatchObject({
+        reads: 1,
+        threadScopedReads: 1,
+        threadsConsidered: 1,
+      });
+
+      // The refresh asked the peer about the caller's own record only, and
+      // advanced it; the unreadable record is untouched.
+      expect(peerReads).toEqual(['task-peer-5051-mine']);
+      const stateOf = async (userId: string, taskId: string) =>
+        (
+          await listSessionReadModel(authorityFor(userId), {
+            purpose: 'session-list',
+          })
+        ).find((session) => session.delegation?.taskId === taskId)
+          ?.lifecycleState;
+      expect(await stateOf('owner-user', 'task-peer-5051-mine')).toBe(
+        'running',
+      );
+      expect(await stateOf('owner-user', 'task-peer-5051-theirs')).toBe(
+        undefined,
+      );
+      expect(await stateOf('other-user', 'task-peer-5051-theirs')).toBe(
+        'queued',
+      );
+    } finally {
+      await service.shutdown();
+      eventStore.close();
+    }
+  });
+});

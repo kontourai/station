@@ -1880,7 +1880,8 @@ the conversation's lineage as its parent:
 - by its delegation context (`metadata.delegation.parentConversationId`).
   When a Claude Code or Codex session calls `delegate_task` through its
   session-bound station-control (Claude Code's in-process server, Codex's
-  per-session HTTP server), Station derives it from the calling session's own
+  per-session HTTP server or, with its bound-channel preview on, its bound
+  `dynamicTools` channel), Station derives it from the calling session's own
   record. For Station's own agent, the runtime attests it from the
   conversation it ran the tool call in. Neither comes from the request. On a
   direct request it is the requester's own claim. A paired-Station dispatch

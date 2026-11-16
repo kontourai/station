@@ -1,0 +1,13 @@
+{
+  "revision": "acef3efc2b6b5faad35c0fc425e53ce32bc3f8cb",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"#2376 slice 2: only the assurance doc comment changed (Codex uses the header token, delegated-custody, since #4372; bound now also covers Codex's dynamicTools channel). Checked this page's token, assurance and Codex custody claims; none relied on the stale argv wording.","inputs":["src-server/runtime/mcp/station-control-mcp-token.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#2376 slice 2: only the assurance doc comment changed (Codex uses the header token, delegated-custody, since #4372; bound now also covers Codex's dynamicTools channel). Checked this page's token, assurance and Codex custody claims; none relied on the stale argv wording.","inputs":["src-server/runtime/mcp/station-control-mcp-token.ts"]},
+
+    {"path":"docs/guides/knowledge.md","note":"#2376 slice 2: only the assurance doc comment changed (Codex uses the header token, delegated-custody, since #4372; bound now also covers Codex's dynamicTools channel). Checked this page's token, assurance and Codex custody claims; none relied on the stale argv wording.","inputs":["src-server/runtime/mcp/station-control-mcp-token.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"#2376 slice 2: only the assurance doc comment changed (Codex uses the header token, delegated-custody, since #4372; bound now also covers Codex's dynamicTools channel). Checked this page's token, assurance and Codex custody claims; none relied on the stale argv wording.","inputs":["src-server/runtime/mcp/station-control-mcp-token.ts"]}
+  ]
+}

@@ -754,7 +754,27 @@ related selection. Hosted shard planning instead retains the other mapped
 related paths and concrete explicit targets, including selections over 32,
 while preserving every unresolved lane obligation. This produces earlier
 failures without declaring global coverage complete.
-A third kind is derived per diff, from its base content: when a `package.json`
+A third derivation covers native files that a test names by a literal
+repository path (#4891). A change under `src-desktop/**` only names the deferred
+`verify-local` lane, yet many suites assert on the text of Rust, Kotlin, Swift,
+plist, manifest and Tauri configuration files they read through a cwd-relative
+literal such as `readFileSync('src-desktop/src/lib.rs')`, which the path-read
+scan refuses by design. In a test under `packages`, `scripts`, `src-server` or
+`src-ui`, a string literal whose whole value is a path to an existing file under `src-desktop/`,
+`tests/ios-runtime-smoke/`, `scripts/templates/` or `deployment/`, or to a
+`Dockerfile` or `docker-compose` file, that is not a JS or TS module
+and not in a generated tree selects that test when the file changes. The
+`verify-local` deferral is still reported; the edge only adds tests. A literal
+in a fixture string or an error message counts too, so some selections are more
+than a read. In local unsharded feedback, which runs an escalated diff's explicit
+targets only up to 32 of them, a test that only this derivation selected is the
+first to be left out, so these edges cannot push a diff past that bound; the
+hosted shard plan keeps every one. It does not see a path built from several segments
+(`join('src-desktop', 'src', 'lib.rs')`), a template literal with a
+substitution, a literal inside a longer string, or a suite under `tests/`, which
+a pull-request shard cannot run. For a path that also escalates, such as
+`Dockerfile`, the escalation is still reported and the named tests run beside it.
+A fourth kind is derived per diff, from its base content: when a `package.json`
 dependency section or a `pnpm-lock.yaml` importer's resolved version changes
 for a sibling `@kontourai/*` package that is not a workspace package, the
 suites that import that package by name are selected (#3149). A version bump
@@ -1151,9 +1171,10 @@ the context Station itself puts in front of every engine session: the
 `tools/list` of each built-in MCP server (name, description and input schema)
 and Station's injected text (orchestration instructions, workload budget,
 chat-image line). station-control is measured twice: `bound`, the listing
-Claude's in-process delivery receives, and `delegated-custody`, the subset Codex
-and ACP engines list. `codexBoundToolsJsonBytes` measures the `dynamicTools`
-Codex's bound browser and device channel offers at thread start, through the
+Claude's in-process delivery receives, and `delegated-custody`, the subset ACP
+engines, and Codex without its bound channel, list. `codexBoundToolsJsonBytes`
+measures the `dynamicTools` Codex's bound channel offers at thread start, the
+browser tools plus the whole station-control catalog at `bound`, through the
 mapping the adapter sends. `agent-context-budget.test.ts` beside it recomputes each
 number from live source and fails when the file disagrees, so update the JSON
 to the measured values in the same change. When text shrinks, lower the
@@ -1623,7 +1644,13 @@ a failure is never excused; a message whose own last line is
 current message ends that way. An app error surface's identity (below) leads
 the error and carries only the surfaces and the failed chunk paths with their
 content hashes masked, so the same chunk failing compares equal between two
-builds as long as it keeps its name.
+builds as long as it keeps its name. When every failure `main` does not have
+is such an identity naming a failed chunk request (not `no failed chunk
+request`), the comparison answers `infrastructure` instead of `pr`: the job
+still fails, under the title `Gallery chunk load failure` and with each screen
+and chunk listed as `CHUNK LOAD`, so a lost chunk is not reported as the pull
+request's layout (#5028). It is not excused, because a pull request that breaks
+a chunk's delivery fails the same way.
 So a break already on `main` does not turn unrelated
 PRs red, while breaking the same screen another way stays red. A crash or
 test-level assertion with no failing screen, a failing screen `main` lacks,
@@ -1843,7 +1870,13 @@ what differs between two captures of one failure: requests of the document a
 navigation was replacing, error text (one aborted chunk read `ERR_ABORTED` on one
 attempt and `ERR_FAILED` on another), whether it surfaced before or after the
 photo, counts, and a capture step's own error. All of that is in the screen's
-`appError` in `capture.json`, with the console errors.
+`appError` in `capture.json`, with the console errors. The capture's log and
+its final assertion name each failed screen; one that lost a chunk reads
+`lazy chunk unavailable: <screen> (<path> <error>)` with the real request paths.
+`scripts/__tests__/gallery-app-error-state.browser.test.ts` aborts a chunk on
+both attempts of one screen whose error row sits in a hard clip, and checks that
+reason and that the findings judge reports only `capture-failed`, though the
+same row audited directly yields `hit-target:unreachable` for Retry and Reload.
 
 A second capture needs both in the same attempt: a detected surface and a
 failed chunk request. A failed chunk request alone is not evidence that the

@@ -397,8 +397,12 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         ).value,
       ).toBe('project:["station:local","alpha"]');
       fireEvent.click(
+        // Desktop: a count badge on the scope picker; the phone keeps its notice.
         screen.getByRole('button', {
-          name: '1 need you outside this filter · Show all',
+          name:
+            host === 'desktop'
+              ? '1 need you outside this filter. Show all work'
+              : '1 need you outside this filter · Show all',
         }),
       );
       expect(screen.getByText('Remote approval')).toBeTruthy();
@@ -1042,7 +1046,9 @@ describe('inbox rows show the agent they belong to (station#2802)', () => {
       [{ slug: 'claude', name: 'Claude Code' }] as any,
     );
     const row = screen.getByTestId('inbox-row');
-    expect(row.textContent).toContain('Claude Code');
+    // A hover row draws the agent as its mark, named in the mark's tooltip.
+    const marks = row.querySelector('[data-testid="identity-marks"]');
+    expect(marks?.getAttribute('title')).toBe('Claude Code');
     expect(row.textContent).not.toContain('Codex');
   });
   beforeEach(() => {
@@ -1108,7 +1114,8 @@ describe('inbox rows show the agent they belong to (station#2802)', () => {
       vi.fn(),
       AGENTS,
     );
-    expect(container.querySelector('.inbox-row__meta-text')?.textContent).toBe(
+    // No mark to stand for it, so the agent stays in words before the project.
+    expect(container.querySelector('.inbox-row__context')?.textContent).toBe(
       'Codex · Shared project',
     );
   });
@@ -1293,11 +1300,10 @@ describe('inbox row engine fallback for a resolved agent without engineId (#3355
       container
         .querySelector('[data-testid="identity-marks"]')
         ?.getAttribute('title'),
-    ).toBe('Ran on Claude Code, Codex');
-    // The agent stays named in text beside the marks.
-    expect(container.querySelector('.inbox-row__agent')?.textContent).toBe(
-      'Station',
-    );
+    ).toBe('Station — Ran on Claude Code, Codex');
+    // The marks stand in for the agent's name on a hover row: it is in their
+    // tooltip (above) and the hover card, not repeated as text.
+    expect(container.querySelector('.inbox-row__agent')).toBeNull();
 
     const many = renderPanelHost(
       rowFor({
