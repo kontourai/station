@@ -245,6 +245,8 @@ async function boot(options: {
    * guard fails closed.
    */
   retargetsGrantedJob?: () => boolean;
+  /** Who a person's request resolves to; default the operator. */
+  requestUserId?: () => string;
 }): Promise<World> {
   const store = createSqliteAgentScheduleStore(new DatabaseSync(':memory:'));
   const pictureDb = new DatabaseSync(':memory:');
@@ -301,7 +303,7 @@ async function boot(options: {
       ['credential', 'internal'].includes(
         getRuntimeAuthenticatedRequestPrincipal(request)?.kind ?? '',
       ),
-    requestUserId: () => LOCAL_OPERATOR_PRINCIPAL_ID,
+    requestUserId: options.requestUserId ?? (() => LOCAL_OPERATOR_PRINCIPAL_ID),
     readAuthorityFor: () => ({ mode: 'personal' }) as never,
     tenantFor: () => undefined,
     dispatchActor: (c) =>
@@ -3249,6 +3251,185 @@ describe('legacy scheduler diagnostics privacy', () => {
       await served.close();
       await scheduler.stop();
       resetServerLogSinkForTests();
+    }
+  });
+});
+
+/**
+ * #2377 slice D review (HIGH B): an untargeted job's runs act as its recorded
+ * owner, so editing, running, enabling, disabling or deleting it is admitted
+ * against that owner, for people and for the agent tools (`update_job`,
+ * `run_job`), the same way a targeted automation is. Real boundary, guard,
+ * composition, scheduler routes, BuiltinScheduler and SQLite ledger.
+ */
+describe('acting on an untargeted job is admitted against its owner', () => {
+  const makeTempDir = trackTempDirs();
+  const turns: string[] = [];
+
+  async function ownedWorld(owner: string, requestUserId?: () => string) {
+    const scheduler = new SchedulerService({
+      logger: quietLogger(),
+      builtin: {
+        ledger: createSchedulerLedger({
+          directory: makeTempDir('untargeted-owner-'),
+        }),
+        turnAdapter: {
+          invoke: async (input) => {
+            turns.push(input.prompt);
+            return { kind: 'completed', output: '' };
+          },
+        },
+      },
+    });
+    const served = await boot({
+      hosted: false,
+      scheduler,
+      retargetsGrantedJob: () => false,
+      ...(requestUserId ? { requestUserId } : {}),
+    });
+    await scheduler.addJob({
+      name: 'owned-job',
+      schedule: { kind: 'every', everyMs: 60_000 },
+      prompt: 'Original',
+      createdBy: { userId: owner },
+    });
+    return {
+      scheduler,
+      at: { baseUrl: served.baseUrl, port: served.port },
+      close: async () => {
+        await served.close();
+        await scheduler.stop();
+      },
+    };
+  }
+
+  afterEach(() => {
+    turns.length = 0;
+  });
+
+  test('another person (a second local account) cannot update or run it', async () => {
+    const world = await ownedWorld(
+      'human:local:person-a',
+      () => 'human:local:person-b',
+    );
+    try {
+      const edited = await personRequest(
+        'PUT',
+        '/scheduler/jobs/owned-job',
+        { prompt: 'Injected' },
+        world.at.baseUrl,
+      );
+      expect([edited.status, edited.body.code]).toEqual([
+        404,
+        'automation_not_found',
+      ]);
+      const ran = await personRequest(
+        'POST',
+        '/scheduler/jobs/owned-job/run',
+        undefined,
+        world.at.baseUrl,
+      );
+      expect(ran.status).toBe(404);
+      expect(turns).toEqual([]);
+      expect((await world.scheduler.listJobs())[0]?.prompt).toBe('Original');
+    } finally {
+      await world.close();
+    }
+  });
+
+  test('a paired device without owner standing cannot edit a job owned by the operator', async () => {
+    // Such a device's requests resolve to the device itself, not the operator.
+    const world = await ownedWorld(
+      LOCAL_OPERATOR_PRINCIPAL_ID,
+      () => 'device:local:phone',
+    );
+    try {
+      const edited = await personRequest(
+        'PUT',
+        '/scheduler/jobs/owned-job',
+        { prompt: 'Injected' },
+        world.at.baseUrl,
+      );
+      expect(edited.status).toBe(404);
+      expect((await world.scheduler.listJobs())[0]?.prompt).toBe('Original');
+    } finally {
+      await world.close();
+    }
+  });
+
+  test('its owner may update and run it', async () => {
+    const world = await ownedWorld(LOCAL_OPERATOR_PRINCIPAL_ID);
+    try {
+      const edited = await personRequest(
+        'PUT',
+        '/scheduler/jobs/owned-job',
+        { prompt: 'Revised' },
+        world.at.baseUrl,
+      );
+      expect(edited.status).toBe(200);
+      const ran = await personRequest(
+        'POST',
+        '/scheduler/jobs/owned-job/run',
+        undefined,
+        world.at.baseUrl,
+      );
+      expect(ran.status).toBe(200);
+      await vi.waitFor(() => expect(turns).toEqual(['Revised']));
+    } finally {
+      await world.close();
+    }
+  });
+
+  test('update_job and run_job: an agent acting for another person cannot touch it', async () => {
+    const world = await ownedWorld('human:local:person-a');
+    try {
+      const edited = await agent(
+        'bound',
+        nextSession(),
+        'PUT',
+        '/scheduler/jobs/owned-job',
+        { prompt: 'Injected' },
+        world.at,
+      );
+      expect(edited.status).toBe(403);
+      const ran = await agent(
+        'bound',
+        nextSession(),
+        'POST',
+        '/scheduler/jobs/owned-job/run',
+        undefined,
+        world.at,
+      );
+      expect(ran.status).toBe(403);
+      expect(turns).toEqual([]);
+    } finally {
+      await world.close();
+    }
+  });
+
+  test('update_job and run_job: an agent acting for the owner may', async () => {
+    const world = await ownedWorld(LOCAL_OPERATOR_PRINCIPAL_ID);
+    try {
+      const edited = await agent(
+        'bound',
+        nextSession(),
+        'PUT',
+        '/scheduler/jobs/owned-job',
+        { prompt: 'Revised' },
+        world.at,
+      );
+      expect(edited.status).toBe(200);
+      const ran = await agent(
+        'bound',
+        nextSession(),
+        'POST',
+        '/scheduler/jobs/owned-job/run',
+        undefined,
+        world.at,
+      );
+      expect(ran.status).toBe(200);
+    } finally {
+      await world.close();
     }
   });
 });

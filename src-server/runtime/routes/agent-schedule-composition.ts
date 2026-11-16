@@ -303,6 +303,13 @@ function admitAutomationJobFor(
     if (requestMayBeAnAgent(c.req.raw)) {
       const authority = stationControlRequestAuthority(c.req.raw);
       if (authority?.kind !== 'caller') return TARGET_OUT_OF_SCOPE;
+      // #2377 slice D: an untargeted job's runs act as its owner, so only
+      // an agent acting for that same person may change or run it.
+      if (!job.target)
+        return job.createdBy?.userId !== undefined &&
+          authority.caller.principal?.id === job.createdBy.userId
+          ? { ok: true }
+          : TARGET_OUT_OF_SCOPE;
       const own = authority.caller.conversationId ?? authority.caller.sessionId;
       return job.target?.kind === 'conversation' && conversationId === own
         ? { ok: true }

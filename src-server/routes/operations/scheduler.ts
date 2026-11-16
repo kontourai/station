@@ -253,7 +253,10 @@ export function createSchedulerRoutes(
 
   /**
    * The refusal for acting on `name`, or undefined when it may proceed.
-   * Jobs without a target keep their existing (operator) authority.
+   * #2377 slice D: a job's runs act as its recorded owner, so a job with a
+   * target OR an owner is admitted against them (`admitAutomationJob`): the
+   * person who owns it, or an agent acting for that person. Only a job with
+   * neither (an older ownerless job) keeps its existing (operator) authority.
    */
   const refuseStoredTarget = async (
     c: Context,
@@ -262,14 +265,20 @@ export function createSchedulerRoutes(
     const job = (await schedulerService.listJobs()).find(
       (candidate) => candidate.name === name,
     );
-    if (!job?.target) return undefined;
+    if (!job?.target && !job?.createdBy) return undefined;
     if (!options.admitAutomationJob)
       return c.json(
-        {
-          success: false,
-          code: 'automation_target_unavailable',
-          error: "This Station can't run an automation in a conversation.",
-        },
+        job.target
+          ? {
+              success: false,
+              code: 'automation_target_unavailable',
+              error: "This Station can't run an automation in a conversation.",
+            }
+          : {
+              success: false,
+              code: 'automation_owner_unavailable',
+              error: "This Station can't check who owns this job.",
+            },
         503,
       );
     const admitted = options.admitAutomationJob(c, job);
