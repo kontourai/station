@@ -647,12 +647,13 @@ export function selectAllChatsWork(
     return current;
   };
 
-  const groups = new Map<string, AllChatsGroup & { latest: number }>();
-  const groupFor = (anchor: string | undefined) => {
+  type Group = AllChatsGroup & { latest: number };
+  const groups = new Map<string, Group>();
+  const groupFor = (anchor: string | undefined): Group => {
     if (!anchor) {
       const existing = groups.get(OUTSIDE_CHAT_GROUP);
       if (existing) return existing;
-      const created = {
+      const created: Group = {
         key: OUTSIDE_CHAT_GROUP,
         outsideChat: true,
         current: false,
