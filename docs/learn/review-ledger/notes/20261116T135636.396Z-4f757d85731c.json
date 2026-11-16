@@ -1,0 +1,7 @@
+{
+  "revision": "1def1d5df43db4343033b2eba5bbab526b6b3725",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Re-read the Run setup bullet after merging main: the button adds Agent moved when the Agent points at another engine, Run setup's Engine and model choice names where, and an ended session shows the Next turn starts on line instead; matches ChatInputArea.tsx on the merged tree.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/ChatInputArea.tsx"]}
+  ]
+}
