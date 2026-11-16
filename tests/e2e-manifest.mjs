@@ -445,6 +445,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/new-chat-provider-managed.spec.ts',
     'tests/new-chat-mobile-context-sheet.spec.ts',
     'tests/chat-settings-and-task-notices.spec.ts',
+    'tests/notification-deep-link-opening.spec.ts',
     'tests/cross-runtime-chat-switching.spec.ts',
     'tests/daily-driver-scenarios.spec.ts',
     'tests/daily-driver-switching.spec.ts',
@@ -1854,6 +1855,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'At a phone and a desktop width through the real dock: Chat Settings keeps Done inside the panel and hittable at any scroll position, its replay import is a styled button, and backgrounded-task settles arriving over the orchestration SSE seam use shared child-work disclosures with distinct outcomes and expandable results, a non-repeating successful command title, and no separate finished-task banners.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/notification-deep-link-opening.spec.ts',
+    bucket: 'product',
+    surface: 'Chat',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'At 390 and 1440 in light and dark, through the notification panel and the real dock: a held deep-linked conversation shows its opening identity and covers the previous transcript, a refused one says why with a keyboard-dismissable notice, and an imported conversation opened from the Inbox keeps its header and Continue over the pending open, with Continue reachable by Tab and sending the real continue-session launch.',
     exceptions: [],
   },
   {
