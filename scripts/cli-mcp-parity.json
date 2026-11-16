@@ -1272,6 +1272,10 @@
     "enable_job": {
       "cli": ["schedule enable"]
     },
+    "forget_project_note": {
+      "exempt": "agent-self",
+      "reason": "The caller Session's own Project memory (route uses authority.caller.sessionId); people use Project settings › Memory."
+    },
     "fork_conversation": {
       "cli": ["conversation fork"]
     },
@@ -1450,6 +1454,10 @@
       "cli": ["projects layouts"],
       "note": "CLI layouts also creates/updates/deletes layouts; MCP is read-only."
     },
+    "list_project_notes": {
+      "exempt": "agent-self",
+      "reason": "The caller Session's own Project memory (route uses authority.caller.sessionId); people use Project settings › Memory."
+    },
     "list_project_s3_objects": {
       "missing": 4283,
       "want": "Knowledge s3 objects"
@@ -1549,6 +1557,10 @@
     "read_monitoring_events": {
       "cli": ["monitoring events", "insights events"]
     },
+    "read_project_note": {
+      "exempt": "agent-self",
+      "reason": "The caller Session's own Project memory (route uses authority.caller.sessionId); people use Project settings › Memory."
+    },
     "read_project_s3_object": {
       "missing": 4283,
       "want": "Knowledge s3 read"
@@ -1567,6 +1579,10 @@
     "release_claim": {
       "missing": 3427,
       "want": "Claims release"
+    },
+    "remember_project_note": {
+      "exempt": "agent-self",
+      "reason": "The caller Session's own Project memory (route uses authority.caller.sessionId); people use Project settings › Memory."
     },
     "remove_answer_assessment": {
       "exempt": "agent-self",

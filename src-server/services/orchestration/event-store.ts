@@ -823,6 +823,14 @@ const USAGE_RECEIPT_EVENT_SELECT = `SELECT e.id, e.provider, e.thread_id, e.turn
                     AND json_valid(config.payload)
                     AND json_type(config.payload, '$.metadata.taskId') = 'text'
                   ORDER BY config.sequence DESC LIMIT 1) AS task_id,
+                (SELECT json_extract(config.payload, '$.metadata.projectSlug')
+                   FROM orchestration_events config
+                  WHERE config.thread_id = e.thread_id
+                    AND config.sequence <= e.sequence
+                    AND config.method = 'session.started'
+                    AND json_valid(config.payload)
+                    AND json_type(config.payload, '$.metadata.projectSlug') = 'text'
+                  ORDER BY config.sequence DESC LIMIT 1) AS project_slug,
                 (SELECT COALESCE(json_extract(config.payload, '$.metadata.effectiveModel'), json_extract(config.payload, '$.model'))
                    FROM orchestration_events config
                   WHERE config.thread_id = e.thread_id
@@ -1037,6 +1045,8 @@ export interface UsageReceiptEventRow {
   event: PersistedRuntimeEvent;
   conversationId: string;
   taskId?: string;
+  /** The Project the Session's start recorded (#5068). */
+  projectSlug?: string;
   model?: string;
   /**
    * The `CumulativeCostSegments` key of this event's cost figure when its
@@ -8560,6 +8570,9 @@ export class EventStore {
       event: this.mapEventRow(row),
       conversationId: row.conversation_id,
       ...(typeof row.task_id === 'string' ? { taskId: row.task_id } : {}),
+      ...(typeof row.project_slug === 'string' && row.project_slug
+        ? { projectSlug: row.project_slug }
+        : {}),
       ...(typeof row.model === 'string' ? { model: row.model } : {}),
       ...(typeof accountKey === 'string' ? { accountKey } : {}),
       ...(typeof row.connection_id === 'string' && row.connection_id

@@ -130,6 +130,7 @@ import {
   managedPolicyAllowsRemoteClients,
   managedRemoteClientsDenial,
 } from '@kontourai/station-contracts/managed-policy';
+import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import {
   INTERNAL_SESSION_READ_SCOPE,
@@ -322,6 +323,10 @@ import {
   startMcpUiFrameServer,
 } from '../mcp/mcp-ui-frame-server.js';
 import { createNativeOutputDeclarationTool } from '../native-output-declaration.js';
+import {
+  composeProjectCoordinationRuntime,
+  type ProjectCoordinationRuntime,
+} from '../project-coordination-runtime.js';
 import {
   composeProjectWorkingRuntime,
   type ProjectWorkingRuntime,
@@ -1359,6 +1364,8 @@ export class StationRuntime {
   private codexBoundToolsPreview?: FeaturePreviewSelector;
   private stationInstructionsPreview?: FeaturePreviewSelector;
   private coordinatorSessionPreview?: FeaturePreviewSelector;
+  /** #5062/#5065/#5068: the `project-coordination` preview's composition. */
+  private projectCoordination!: ProjectCoordinationRuntime;
   private openCodeNativeEnginePreview?: FeaturePreviewSelector;
   private sshEnvironmentService: SshEnvironmentService;
   private timers: NodeJS.Timeout[] = [];
@@ -1990,6 +1997,7 @@ export class StationRuntime {
       this.proposedChangeService = services.proposedChangeService;
       this.knowledgeService = services.knowledgeService;
       this.knowledgeStoreProvider = services.knowledgeStoreProvider;
+      this.projectCoordination = this.composeProjectCoordination();
       this.fileTreeService = services.fileTreeService;
       this.ptyAdapter = services.ptyAdapter;
       this.voiceService = services.voiceService;
@@ -4550,6 +4558,16 @@ export class StationRuntime {
           orchestrationEventStore: this.orchestrationEventStore,
           hostImagesPreview: this.chatHostImagesPreview,
           coordinatorSessionPreview: this.coordinatorSessionPreview,
+          projectSessionContext: this.projectCoordination.sessionContext,
+          projectCoordinatorEffort: (projectSlug) => {
+            if (!this.projectCoordination.enabled()) return undefined;
+            try {
+              return this.storageAdapter.getProject(projectSlug)
+                .coordinatorEffort;
+            } catch {
+              return undefined;
+            }
+          },
           openCodeNativeEnginePreview: this.openCodeNativeEnginePreview,
           durableAgentPreview: this.featurePreviews.bind({
             id: 'durable-station-agent',
@@ -4875,6 +4893,28 @@ export class StationRuntime {
                       this.orchestrationService,
                     ),
                   ),
+                // #5068: the Project's Task model and effort, read at each
+                // dispatch, while the `project-coordination` preview is on.
+                projectTaskDefaults: (projectSlug) => {
+                  if (!this.projectCoordination.enabled()) return undefined;
+                  let project: ProjectConfig;
+                  try {
+                    project = this.storageAdapter.getProject(projectSlug);
+                  } catch {
+                    return undefined;
+                  }
+                  return {
+                    ...(project.taskModel
+                      ? { modelId: project.taskModel }
+                      : {}),
+                    ...(project.taskProviderId
+                      ? { providerId: project.taskProviderId }
+                      : {}),
+                    ...(project.taskEffort
+                      ? { effort: project.taskEffort }
+                      : {}),
+                  };
+                },
                 // A seeded dispatch records its Agent; refuse one this
                 // Station does not have.
                 assertAgentExists: (agentId) =>
@@ -5564,6 +5604,7 @@ export class StationRuntime {
       getPluginFrameOrigin: () => this.mcpUiFrameServer?.origin,
       featurePreviews: this.featurePreviews,
       coordinatorSessionPreview: this.coordinatorSessionPreview,
+      projectCoordination: this.projectCoordination,
       projectWorkingConfiguration: this.projectWorkingConfiguration,
       learningReview: this.learningReview,
       getReviewedTariffConfiguration: this.getReviewedTariffConfiguration,
@@ -6018,6 +6059,51 @@ export class StationRuntime {
         .designationForConversation(conversationId)?.actor.userId ===
       principal.id
     );
+  }
+
+  private composeProjectCoordination(): ProjectCoordinationRuntime {
+    const projectCoordination = composeProjectCoordinationRuntime({
+      preview: this.featurePreviews.bind({
+        id: 'project-coordination',
+        label: 'Project brief, memory and models',
+        description:
+          "Start every new Session in a Project with its goal, instructions and memory notes, on every engine, and set its coordinator and Task models. Adds the brief and memory index to each new Session's first turn.",
+      }),
+      projectHomeDir: this.configLoader.getProjectHomeDir(),
+      getProject: (slug) => {
+        try {
+          return this.storageAdapter.getProject(slug);
+        } catch {
+          return undefined;
+        }
+      },
+      saveProject: async (slug, update) => {
+        const revision = this.storageAdapter.projectRevision(slug);
+        await revision.replace({
+          ...revision.value,
+          ...update,
+          updatedAt: new Date().toISOString(),
+        });
+      },
+      knowledge: {
+        listDocuments: (slug, namespace) =>
+          this.knowledgeService.listDocuments(slug, namespace),
+        getDocumentContent: (slug, docId, namespace) =>
+          this.knowledgeService.getDocumentContent(slug, docId, namespace),
+      },
+      warn: (message, fields) => this.logger.warn(message, fields),
+    });
+    this.knowledgeService.setBriefCarriesRules((slug) => {
+      if (!projectCoordination.enabled()) return false;
+      try {
+        return Boolean(
+          this.storageAdapter.getProject(slug).instructionsMigratedAt,
+        );
+      } catch {
+        return false;
+      }
+    });
+    return projectCoordination;
   }
 
   private bindChatHostImagesPreview(): void {

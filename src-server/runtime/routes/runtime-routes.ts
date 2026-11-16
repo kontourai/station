@@ -555,6 +555,7 @@ import {
   isForegroundIndeterminateShape,
   resolveDispatchActor,
 } from '../../routes/orchestration/orchestration.js';
+import { createProjectMemoryToolRoutes } from '../../routes/orchestration/project-memory-tool-routes.js';
 import { createProjectTaskRoomRoutes } from '../../routes/orchestration/project-task-rooms.js';
 import { createRunRoutes } from '../../routes/orchestration/runs.js';
 import {
@@ -607,6 +608,7 @@ import {
   createProjectContributionRoutes,
   delegationContributionQueryAuthorized,
 } from '../../routes/projects/project-contribution-routes.js';
+import { createProjectMemoryRoutes } from '../../routes/projects/project-memory-routes.js';
 import { createProjectS3SourceRoutes } from '../../routes/projects/project-s3-source-routes.js';
 import { createProjectWorkingConfigurationRoutes } from '../../routes/projects/project-working-configuration-routes.js';
 import {
@@ -1431,6 +1433,8 @@ export interface ConfigureRuntimeRoutesContext {
   featurePreviews: FeaturePreviewRegistry;
   /** #3628: bound by the runtime, absent on a hosted Station. */
   coordinatorSessionPreview?: import('../../services/feature-previews/feature-preview-registry.js').FeaturePreviewSelector;
+  /** #5062/#5065/#5068: the `project-coordination` preview's composition. */
+  projectCoordination?: import('../project-coordination-runtime.js').ProjectCoordinationRuntime;
   progressiveToolsEnabled?: () => boolean;
   projectWorkingConfiguration?: import('../project-working-configuration-runtime.js').ProjectWorkingRuntime;
   learningReview?: import('../learning-review-runtime.js').LearningReviewRuntime;
@@ -3618,6 +3622,40 @@ export function configureRuntimeRoutes(
         taskBriefSource.listingForSession(sessionId, include),
     }),
   );
+  // #5065 Project memory tools' REST side: the verified caller's own
+  // Session, and the Project that Session's start recorded.
+  if (context.projectCoordination) {
+    const projectCoordination = context.projectCoordination;
+    context.app.route(
+      '/api/orchestration',
+      createProjectMemoryToolRoutes({
+        isInternalRequest: isStationInternalRequest,
+        scope: stationControlDispatchScope,
+        enabled: projectCoordination.enabled,
+        memory: projectCoordination.memory,
+        projectOfSession: (sessionId) => {
+          const slug =
+            context.orchestrationService.firstStartedMetadataOfThread(
+              sessionId,
+            )?.projectSlug;
+          return typeof slug === 'string' &&
+            context.projectService
+              .listProjects()
+              .some((project) => project.slug === slug)
+            ? slug
+            : undefined;
+        },
+        authorLabel: (sessionId) => {
+          const metadata =
+            context.orchestrationService.firstStartedMetadataOfThread(
+              sessionId,
+            );
+          const agent = metadata?.agentSlug;
+          return typeof agent === 'string' && agent ? agent : 'Agent';
+        },
+      }),
+    );
+  }
   // #4003 `task_summary_update` and `task_record`'s REST side: the verified
   // caller's own Session; the room runtime derives its Task from the
   // immutable execution binding. Composed later in this function, so the
@@ -9278,6 +9316,43 @@ export function configureRuntimeRoutes(
       throw new ProjectMembershipRefusal('forbidden');
     return projectMembershipAuthority(request);
   };
+  // #5065: Project memory, the owner's until multiplayer Projects decide
+  // its audience. Every leaf requires the Station operator.
+  if (context.projectCoordination) {
+    const projectCoordination = context.projectCoordination;
+    const primeMemoryPrincipal = async (
+      c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+      next: () => Promise<void>,
+    ) => {
+      roomRequestPrincipals.set(
+        c.req.raw,
+        resolveOrchestrationRequestPrincipal(c),
+      );
+      await next();
+    };
+    context.app.use('/api/projects/:slug/memory', primeMemoryPrincipal);
+    context.app.use('/api/projects/:slug/memory/*', primeMemoryPrincipal);
+    context.app.route(
+      '/api/projects',
+      createProjectMemoryRoutes({
+        enabled: projectCoordination.enabled,
+        memory: projectCoordination.memory,
+        projectExists: (slug) =>
+          context.projectService
+            .listProjects()
+            .some((project) => project.slug === slug),
+        authorize: async (request) => {
+          if (isStationInternalRequest(request)) return undefined;
+          try {
+            await projectMembershipAuthority(request).operator();
+            return { kind: 'person' as const, label: 'Project owner' };
+          } catch {
+            return undefined;
+          }
+        },
+      }),
+    );
+  }
   if (context.learningReview) {
     const learning = context.learningReview;
     const primeLearningPrincipal = async (

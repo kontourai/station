@@ -1,6 +1,7 @@
 import type { EnvironmentRef } from '@kontourai/station-contracts/execution-target';
 import type {
   MemberProjectView,
+  ProjectEffort,
   ProjectRepositorySource,
   ProjectRunLocations,
   ProjectRunsAt,
@@ -635,6 +636,14 @@ export interface ProjectMetadata {
 
 export interface ProjectConfig extends ProjectMetadata {
   toolDefaults?: ProjectToolDefaults;
+  /** #5062: the Project brief. See `ProjectConfig` in the contracts. */
+  goal?: string;
+  instructions?: string;
+  /** #5068: coordinator and Task model and effort. */
+  coordinatorEffort?: ProjectEffort;
+  taskModel?: string;
+  taskProviderId?: string;
+  taskEffort?: ProjectEffort;
   workingDirectory?: string;
   defaultModel?: string;
   /** See `ProjectConfig` in `@kontourai/station-contracts/project`. */

@@ -50,11 +50,16 @@ import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { userFacingErrorMessage } from '../utils/errorText';
 import { AccessSection } from './project-settings/AccessSection';
 import { AgentsSection } from './project-settings/AgentsSection';
+import { BriefSection } from './project-settings/BriefSection';
 import { KnowledgeSection } from './project-settings/KnowledgeSection';
 import { LayoutsSection } from './project-settings/LayoutsSection';
+import { MemorySection } from './project-settings/MemorySection';
 import { NewChatDefaultsSection } from './project-settings/NewChatDefaultsSection';
 import { ProjectCheckoutFreshnessNotice } from './project-settings/ProjectCheckoutFreshnessNotice';
+import { ProjectModelsSection } from './project-settings/ProjectModelsSection';
 import { ProjectSourcesSection } from './project-settings/ProjectSourcesSection';
+import { ProjectUsageSection } from './project-settings/ProjectUsageSection';
+import { useProjectCoordinationPreview } from './project-settings/projectCoordinationPreview';
 import { ToolsSection } from './project-settings/ToolsSection';
 import type { ProjectForm } from './project-settings/types';
 import {
@@ -68,7 +73,11 @@ import './ProjectSettingsView.css';
 const PROJECT_SETTINGS_SECTIONS = [
   ['workspace', 'Workspace'],
   ['basic-info', 'Basic info'],
+  ['brief', 'Brief'],
+  ['memory', 'Memory'],
   ['model', 'Model'],
+  ['models', 'Models and effort'],
+  ['usage', 'Usage'],
   ['new-chat', 'New chats'],
   ['thread-execution', 'Chat workspace'],
   ['agents', 'Agents'],
@@ -79,6 +88,14 @@ const PROJECT_SETTINGS_SECTIONS = [
   ['knowledge', 'Project knowledge'],
   ['danger', 'Danger zone'],
 ] as const;
+
+/** Sections only the `project-coordination` preview shows. */
+const PROJECT_COORDINATION_SECTIONS: ReadonlySet<string> = new Set([
+  'brief',
+  'memory',
+  'models',
+  'usage',
+]);
 
 /** How each stored workspace mode reads in this picker. */
 const WORKSPACE_MODE_LABELS: Record<WorkspaceIsolationMode, string> = {
@@ -176,9 +193,13 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const projectCoordination = useProjectCoordinationPreview();
+  const settingsSections = PROJECT_SETTINGS_SECTIONS.filter(
+    ([id]) => projectCoordination || !PROJECT_COORDINATION_SECTIONS.has(id),
+  );
   const { activeSection, hrefForSection, navigateToSection } =
     useSectionNavigation(
-      PROJECT_SETTINGS_SECTIONS.map(([id]) => id),
+      settingsSections.map(([id]) => id),
       'workspace',
       { scrollOnNavigate: false },
     );
@@ -346,7 +367,9 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
     try {
       const saved = await saveMutation.mutateAsync({
         slug,
-        ...buildProjectSavePayload(form, workingDirectory, savedForm),
+        ...buildProjectSavePayload(form, workingDirectory, savedForm, {
+          projectCoordination,
+        }),
       });
       const savedProjectForm = buildProjectForm(saved);
       setSavedForm(savedProjectForm);
@@ -402,7 +425,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
         <SectionNavigation
           label="Project settings sections"
           pickerLabel="Project settings section"
-          items={PROJECT_SETTINGS_SECTIONS.map(([id, label]) => ({
+          items={settingsSections.map(([id, label]) => ({
             key: id,
             label,
             href: hrefForSection(id),
@@ -414,11 +437,19 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
         {/* Body */}
         <div className="section-nav-rail__body project-settings__body">
           <p className="project-settings__save-hint">
-            {['layouts', 'resources', 'access', 'knowledge'].includes(
-              activeSection,
-            )
-              ? 'Actions in this section apply when confirmed.'
-              : 'Save to apply changes to project defaults.'}
+            {activeSection === 'brief' || activeSection === 'models'
+              ? 'Save to apply. Changes reach new Sessions, not ones already running.'
+              : activeSection === 'usage'
+                ? 'Usage on this Station only.'
+                : [
+                      'layouts',
+                      'resources',
+                      'access',
+                      'knowledge',
+                      'memory',
+                    ].includes(activeSection)
+                  ? 'Actions in this section apply when confirmed.'
+                  : 'Save to apply changes to project defaults.'}
           </p>
           {activeSection !== 'basic-info' &&
             (!form.name.trim() || iconProblem) && (
@@ -619,6 +650,23 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             </PageSection>
           </div>
 
+          {projectCoordination && (
+            <>
+              <div
+                className="project-settings__panel"
+                hidden={activeSection !== 'brief'}
+              >
+                <BriefSection form={form} setField={setField} />
+              </div>
+              <div
+                className="project-settings__panel"
+                hidden={activeSection !== 'memory'}
+              >
+                {activeSection === 'memory' && <MemorySection slug={slug} />}
+              </div>
+            </>
+          )}
+
           {/* Default AI Model */}
           <div
             className="project-settings__panel"
@@ -726,6 +774,25 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
               )}
             </PageSection>
           </div>
+
+          {projectCoordination && (
+            <>
+              <div
+                className="project-settings__panel"
+                hidden={activeSection !== 'models'}
+              >
+                <ProjectModelsSection form={form} setField={setField} />
+              </div>
+              <div
+                className="project-settings__panel"
+                hidden={activeSection !== 'usage'}
+              >
+                {activeSection === 'usage' && (
+                  <ProjectUsageSection slug={slug} />
+                )}
+              </div>
+            </>
+          )}
 
           <div
             className="project-settings__panel"

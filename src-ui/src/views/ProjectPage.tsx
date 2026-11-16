@@ -56,6 +56,7 @@ import { useProjectSearch } from './project-page/project-room-navigation';
 import type { AvailableLayout } from './project-page/types';
 import { useListScrollMemory } from './project-page/useListScrollMemory';
 import { ProjectSourcesSection } from './project-settings/ProjectSourcesSection';
+import { useProjectCoordinationPreview } from './project-settings/projectCoordinationPreview';
 import './project-page-frame.css';
 import './ProjectPage.css';
 
@@ -229,6 +230,7 @@ function ProjectOperatorPage({
   // #4795: on a phone the Project page is its channel list, and a channel
   // is its own full screen; one breakpoint, `MOBILE_MEDIA_QUERY`.
   const phone = useIsMobile();
+  const projectCoordination = useProjectCoordinationPreview();
   const roomScreen = phone && destination === 'room';
   const pageRef = useRef<HTMLDivElement>(null);
   const { openFromList } = useListScrollMemory(
@@ -358,6 +360,9 @@ function ProjectOperatorPage({
         {!roomScreen && (
           <ProjectPageHeader
             project={project}
+            {...(projectCoordination && project.goal
+              ? { goal: project.goal }
+              : {})}
             gitStatus={gitStatus}
             navigateToSettings={() => navigate(`/projects/${slug}/edit`)}
           />

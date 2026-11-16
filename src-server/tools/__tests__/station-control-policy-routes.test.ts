@@ -267,6 +267,9 @@ const ARGS: Record<string, Record<string, unknown>> = {
   },
   task_summary_update: { text: 'Now: tests pass.', baseRevision: 0 },
   task_record: { kind: 'decision', key: 'storage', text: 'Use SQLite.' },
+  read_project_note: { id: 'note-1' },
+  remember_project_note: { title: 'Release moved', body: 'To Friday.' },
+  forget_project_note: { id: 'note-1' },
   task_thread_list: {},
   task_thread_reply: {
     threadId: 'thread-1',
