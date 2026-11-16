@@ -2502,8 +2502,18 @@ export class CodexAdapter implements ProviderAdapterShape {
       const codexThread = extractThread(result);
       const offeredNames = new Set(offeredTools.map((tool) => tool.name));
       if (!boundTools && catalogWithdrawn)
-        record.boundToolHandler = async () => {
-          throw new Error('bound-catalog-withdrawn');
+        record.boundToolHandler = async (params) => {
+          // Point only a station-control name at its MCP twin; a saved
+          // browser or device copy has no twin on the header server.
+          const tool =
+            params && typeof params === 'object' && !Array.isArray(params)
+              ? (params as Record<string, unknown>).tool
+              : undefined;
+          throw new Error(
+            typeof tool === 'string' && stationControlToolPolicy(tool)
+              ? 'bound-catalog-withdrawn'
+              : 'bound-tool-refused',
+          );
         };
       if (boundTools) {
         const channel = new CodexBoundToolChannel(
@@ -2529,17 +2539,22 @@ export class CodexAdapter implements ProviderAdapterShape {
             payload.callId.length > 256 ||
             typeof payload.tool !== 'string' ||
             payload.tool.length > 256 ||
-            payload.namespace != null ||
-            Buffer.byteLength(JSON.stringify(payload.arguments) ?? '') >
-              boundToolArgumentMaxBytes(payload.tool, servesCatalog)
+            payload.namespace != null
           )
             throw new Error('bound-tool-refused');
+          // Before the size check: a withdrawn catalog name gets its pointer
+          // whatever it carries, and never reaches the cap or approval.
           if (
             catalogWithdrawn &&
             !offeredNames.has(payload.tool) &&
             stationControlToolPolicy(payload.tool)
           )
             throw new Error('bound-catalog-withdrawn');
+          if (
+            Buffer.byteLength(JSON.stringify(payload.arguments) ?? '') >
+            boundToolArgumentMaxBytes(payload.tool, servesCatalog)
+          )
+            throw new Error('bound-tool-refused');
           const call = {
             threadId: payload.threadId,
             turnId: payload.turnId,

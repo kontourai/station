@@ -402,6 +402,13 @@ test('the argument cap is per tool: browser and device stay at 40,000 bytes, the
     arguments: { pad: 'x'.repeat(40_000) },
   });
   expect(browser.error).toBeDefined();
+  const device = await callTool(h, 94, {
+    ...call,
+    callId: 'big-device',
+    tool: 'device_list',
+    arguments: { pad: 'x'.repeat(40_000) },
+  });
+  expect(device.error).toBeDefined();
   const overhead = Buffer.byteLength(JSON.stringify({ html: '' }));
   const over = await callTool(h, 96, {
     ...call,
@@ -537,6 +544,15 @@ test('a catalog thread resumed with the preview off uses the header server and p
     arguments: {},
   });
   expect(reply.error.message).toContain('station-control MCP tool');
+  // A saved browser copy has no MCP twin, so it gets no pointer.
+  const browser = await callTool(h, 101, {
+    threadId: 'native-o',
+    turnId: 'turn-o',
+    callId: 'persisted-browser',
+    tool: 'browser_status',
+    arguments: {},
+  });
+  expect(browser.error.message).toBe('Bound tool refused');
   expect(h.calls).toEqual([]);
   await h.adapter.stopSession('catalog-off-resume');
 });
@@ -563,6 +579,15 @@ test('a catalog thread whose control became coordinator-derived refuses persiste
     arguments: {},
   });
   expect(reply.error.message).toContain('station-control MCP tool');
+  // A withdrawn catalog name gets its pointer before any size check.
+  const big = await callTool(h, 102, {
+    threadId: 'native-cr',
+    turnId: 'turn-cr',
+    callId: 'persisted-big',
+    tool: 'html_render',
+    arguments: { html: 'x'.repeat(50_000) },
+  });
+  expect(big.error.message).toContain('station-control MCP tool');
   expect(h.calls).toEqual([]);
   await h.adapter.stopSession('catalog-coord-resume');
 });
