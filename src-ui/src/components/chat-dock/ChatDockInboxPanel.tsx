@@ -18,10 +18,7 @@ import {
   InboxGroupList,
   type InboxGroupListProps,
 } from './ChatDockInboxRows';
-import {
-  InboxScopeFilter,
-  InboxScopeHiddenAttention,
-} from './InboxScopeFilter';
+import { InboxScopeFilter } from './InboxScopeFilter';
 import {
   type InboxPanelControllerOptions,
   useInboxPanelController,
@@ -184,7 +181,6 @@ function ChatDockInboxPanelImpl({
         <InboxScopeFilter scope={scope} inline />
         {onNewChat && <NewChatAction iconOnly onClick={onNewChat} />}
       </div>
-      <InboxScopeHiddenAttention scope={scope} />
       <div className="chat-dock-inbox__scroll">
         {/* A retry keeps the notice up, disabled, until its re-read settles:
             starting it can clear one failed source (the stream reconnects)

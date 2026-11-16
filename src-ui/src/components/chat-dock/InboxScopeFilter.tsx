@@ -145,8 +145,8 @@ export function InboxScopeFilter({
   scope: ReturnType<typeof useInboxScope>;
   /**
    * A toolbar control beside search: its label is for assistive technology
-   * only, and the hidden-attention notice renders on its own
-   * (`InboxScopeHiddenAttention`) so the toolbar keeps one line.
+   * only, and work the scope hides that needs the person is a count badge on
+   * the picker (choosing it shows all work), so the toolbar keeps one line.
    */
   inline?: boolean;
 }) {
@@ -178,13 +178,27 @@ export function InboxScopeFilter({
           ))}
         </select>
       </label>
-      {!inline && <InboxScopeHiddenAttention scope={scope} />}
+      {inline ? (
+        scope.hiddenAttention > 0 ? (
+          <button
+            type="button"
+            className="chat-dock-inbox__scope-badge"
+            aria-label={`${scope.hiddenAttention} need you outside this filter. Show all work`}
+            title={`${scope.hiddenAttention} need you outside this filter. Show all work`}
+            onClick={() => scope.onChange('all')}
+          >
+            {scope.hiddenAttention}
+          </button>
+        ) : null
+      ) : (
+        <InboxScopeHiddenAttention scope={scope} />
+      )}
     </div>
   );
 }
 
 /** Work that needs the person but the chosen scope hides, with the way back. */
-export function InboxScopeHiddenAttention({
+function InboxScopeHiddenAttention({
   scope,
 }: {
   scope: ReturnType<typeof useInboxScope>;
