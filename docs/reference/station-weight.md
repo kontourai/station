@@ -60,7 +60,7 @@ Every turn is answered by the stub (`ok`). No real model is called.
 | `request.stationAddedToolCount` | Tools Station's request carries beyond the control's, with schemas or named only (deferred). |
 | `request.stationAddedToolDefinitionBytes` | JSON size of the added tool definitions, plus the byte growth of any tool both requests carry whose definition Station changed. Tools are compared by whole definition, not by name. |
 | `request.sideCallCount` | Other Messages requests during the turn window, such as a title request. |
-| `repoRules` | Whether the `CLAUDE.md` and `AGENTS.md` markers reached the first request: yes or no for each. |
+| `repoRules` | Whether the `CLAUDE.md` and `AGENTS.md` markers reached the first request: yes or no for each. Not a budget but a requirement: a marker that did not arrive, or a turn that was never measured, fails the gate, report-only runs included, and a baseline is not recorded from such a run. Station has Claude Code load `AGENTS.md` beside `CLAUDE.md` (see [Connections](../guides/connections.md#add-an-engine)), so the control request, which runs the engine without Station, lacks the `AGENTS.md` text, and `request.stationAddedTextBytes` counts it. |
 
 **Process tree.** The tree is found three ways, and the union is measured:
 

@@ -9517,6 +9517,7 @@ describe('ClaudeAdapter', () => {
   });
 
   describe('#895 wave B: agent-authored system prompt', () => {
+    const makeTempDir = trackTempDirs();
     test("startSession passes systemPrompt { type: 'preset', preset: 'claude_code', append } to query() when input.agent.systemPrompt is set, and merges a systemPrompt delivery report into session.configured", async () => {
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter();
@@ -9570,6 +9571,15 @@ describe('ClaudeAdapter', () => {
     });
 
     test('startSession keeps the promptless SDK options shape apart from the required engine-spawn TMPDIR', async () => {
+      // A Claude config home with no settings.json, so the developer's own
+      // settings cannot change the AGENTS.md setting below.
+      vi.stubEnv(
+        'CLAUDE_CONFIG_DIR',
+        makeTempDir('station-claude-options-shape-'),
+      );
+      onTestFinished(() => {
+        vi.unstubAllEnvs();
+      });
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter();
 
@@ -9612,7 +9622,14 @@ describe('ClaudeAdapter', () => {
         allowDangerouslySkipPermissions: undefined,
         thinking: undefined,
         effort: undefined,
-        settings: undefined,
+        // AGENTS.md beside CLAUDE.md (claude-instruction-files.ts).
+        settings: {
+          pluginConfigs: {
+            'agents-md@builtin': {
+              options: { instructionFiles: 'claude-md-and-agents-md' },
+            },
+          },
+        },
         // #4828: every session marks the conversation on a native web read;
         // with no Agent there is no PreToolUse policy.
         hooks: {

@@ -245,6 +245,7 @@ import {
   claudeExitDetailWithStderr,
   createClaudeEngineProcess,
 } from './claude-code-spawn.js';
+import { claudeInstructionFilesSettings } from './claude-instruction-files.js';
 import {
   type ClaudeToolServerSkip,
   resolveClaudeMcpServers,
@@ -988,13 +989,19 @@ function claudeSpawnConfigHome(
   appHomeEnv: Record<string, string> | undefined,
   connectionEnv: Record<string, string> | undefined,
   augmentedEnv: Record<string, string | undefined> | undefined,
+  /**
+   * Where a relative value is resolved. The engine resolves it against the cwd
+   * it is spawned in; callers that key bindings by this path keep resolving
+   * against Station's own cwd, as they always have.
+   */
+  base: string = process.cwd(),
 ): string {
   const configured =
     appHomeEnv?.[CLAUDE_CONFIG_DIR_ENV_KEY] ??
     connectionEnv?.[CLAUDE_CONFIG_DIR_ENV_KEY] ??
     (augmentedEnv ?? process.env)[CLAUDE_CONFIG_DIR_ENV_KEY];
   return configured?.trim()
-    ? nodePath.resolve(configured.trim())
+    ? nodePath.resolve(base, configured.trim())
     : nodePath.join(homedir(), '.claude');
 }
 
@@ -1276,6 +1283,12 @@ export interface ClaudeAdapterOptions {
    */
   logNetworkDecision?: (details: Record<string, unknown>) => void;
   logger?: ClaudeAdapterLogger;
+  /**
+   * The engine's managed settings folder, read to keep a managed choice of
+   * project instruction files. Defaults to the platform's fixed folder
+   * (`claudeManagedSettingsRoot`).
+   */
+  managedSettingsRoot?: string;
 }
 
 /**
@@ -4603,6 +4616,23 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     artifactsEnv: ClaudeArtifactsSpawnEnv = claudeArtifactsSpawnEnv(false),
   ): Options {
     const modelOptions = claudeAppliedModelOptions(input.modelOptions);
+    // AGENTS.md beside CLAUDE.md, unless the user chose otherwise in the
+    // config home this spawn reads (claude-instruction-files.ts).
+    const instructionFiles = claudeInstructionFilesSettings(
+      // A relative CLAUDE_CONFIG_DIR is resolved by the engine against the cwd
+      // it is spawned in (the SDK's default is this process's cwd).
+      claudeSpawnConfigHome(
+        appHomeEnv,
+        connectionEnv,
+        augmentedEnv,
+        input.cwd ?? process.cwd(),
+      ),
+      { managedRoot: this.options.managedSettingsRoot },
+    );
+    if (!instructionFiles.settings)
+      (this.options.logger ?? console).debug?.(
+        `[claude] AGENTS.md loading left to the engine's setting: ${instructionFiles.reason}`,
+      );
     // #2947: the approval guardian's allows, by the engine's tool-use id,
     // from the PreToolUse hook to `canUseTool`. The hook states no opinion,
     // so the guardian's verdict is carried here and answers the engine's
@@ -5289,7 +5319,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       effort: modelOptions.effort,
       settings:
         modelOptions.fastMode !== undefined ||
-        modelOptions.autoMode !== undefined
+        modelOptions.autoMode !== undefined ||
+        instructionFiles.settings
           ? {
               ...(modelOptions.fastMode !== undefined
                 ? { fastMode: modelOptions.fastMode }
@@ -5297,6 +5328,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
               ...(modelOptions.autoMode === false
                 ? { disableAutoMode: 'disable' as const }
                 : {}),
+              ...instructionFiles.settings,
             }
           : undefined,
     };
