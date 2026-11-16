@@ -107,8 +107,8 @@ Station and runs its read, and the result returns to the model.
 It runs `codex exec`, and `codex app-server` with the station-control server in
 `thread/start` configuration as Station delivers it, each with the feature off
 and on. Exit status 0 means every required case qualified, 1 means one did not,
-and 3 means no binary was found (SKIPPED, not a pass). Feature-off cases are
-reported controls.
+and 3 means no binary was found (SKIPPED, not a pass). The feature-on cases
+are required; the feature-off cases are reported controls.
 
 Result on 2026-11-16 with codex-cli 0.167.0:
 

@@ -96,7 +96,8 @@ const CASES: QualificationCase[] = [
   },
   {
     id: 'app-server-flag-in-thread-config',
-    required: false,
+    // How Station delivers configuration, so this one gates too.
+    required: true,
     driver: 'app-server',
     feature: 'thread',
     description: `codex app-server, features.${FEATURE}=true inside thread/start config`,
@@ -465,7 +466,14 @@ async function runAppServer(
       buffer = buffer.slice(newline + 1);
       newline = buffer.indexOf('\n');
       if (!line) continue;
-      const message = JSON.parse(line) as Json;
+      let message: Json;
+      try {
+        message = JSON.parse(line) as Json;
+      } catch {
+        // Not a JSON-RPC line (a stray log); the case still stands or falls
+        // on what the protocol messages show.
+        continue;
+      }
       if (typeof message.id === 'number' && !message.method) {
         pending.get(message.id)?.(message);
         pending.delete(message.id);

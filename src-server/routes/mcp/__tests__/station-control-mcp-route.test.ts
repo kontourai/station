@@ -82,8 +82,6 @@ function envFor(remoteAddress: string | undefined): TestBindings {
   return { incoming: { socket: { remoteAddress } } } as TestBindings;
 }
 
-/** Extract the first JSON-RPC payload from an SSE (`text/event-stream`) or
- * plain-JSON streamable-HTTP response body. */
 /** Every JSON-RPC message a response carries, in stream order. */
 async function readJsonRpcMessages(response: Response): Promise<any[]> {
   const text = await response.text();
