@@ -21,12 +21,16 @@ import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { createInvokeRoutes } from '../../../routes/agents/invoke.js';
 import { createStationControlAuthorityGuard } from '../../../security/station-control-authority-guard.js';
 import { stationControlRequestAuthority } from '../../../security/station-control-request-authority.js';
-import { __resetStationServerSelfAttestationForTests } from '../../../security/station-server-scope.js';
+import {
+  __resetStationServerSelfAttestationForTests,
+  runAsStationServer,
+} from '../../../security/station-server-scope.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import {
   __resetStationControlStdioEntryForTests,
+  api,
   setRuntimeControlApiBase,
 } from '../../../tools/station-control-shared.js';
 import {
@@ -283,5 +287,24 @@ test('outside a request run the tool acts for no one, and the raw internal token
       'station_control_route_unmapped',
     ]);
   }
+  expect(seen).toEqual([]);
+});
+
+test('an internal request never opens a run, even Station’s own server code', async () => {
+  // Passes the guard as server code; the run middleware still gives it no
+  // caller, so the tool it runs acts for no one.
+  const answer = (await runAsStationServer(() =>
+    api('/agents/helper/tools/stationControl_updateConfig', {
+      method: 'POST',
+      body: JSON.stringify({ updates: { theme: 'dark' } }),
+    }),
+  )) as { success: boolean; response?: { code?: string } };
+  expect(answer).toMatchObject({
+    success: false,
+  });
+  // The raw tool route answers a control tool's refusal with its message.
+  expect(JSON.stringify(answer)).toContain(
+    'Station tools need a verified calling session',
+  );
   expect(seen).toEqual([]);
 });
