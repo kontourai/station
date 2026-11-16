@@ -120,6 +120,9 @@ import {
   sessionActivityEvents,
   sessionBackgroundTasks,
   sessionOwnerCacheOps,
+  sessionReadModelDuration,
+  sessionReadModelReads,
+  sessionReadModelThreads,
   tenantExecutionContextOutcomes,
   turnProvenanceProjections,
 } from '../../../telemetry/metrics.js';
@@ -224,6 +227,9 @@ vi.mock('../../../telemetry/metrics.js', async (importOriginal) => ({
   sessionBackgroundTasks: { add: vi.fn() },
   projectResourceShadowComparisons: { add: vi.fn() },
   sessionOwnerCacheOps: { add: vi.fn() },
+  sessionReadModelDuration: { record: vi.fn() },
+  sessionReadModelReads: { add: vi.fn() },
+  sessionReadModelThreads: { record: vi.fn() },
   sessionStateDuration: { record: vi.fn() },
   sessionTransitions: { add: vi.fn() },
   tenantExecutionContextAttributes: vi.fn((value) => value),
@@ -632,6 +638,7 @@ type InternalObserver = Omit<
   ): ReturnType<RawOrchestrationService['listSessions']>;
   listSessionReadModel(
     authority?: SessionReadAuthority,
+    options?: Parameters<RawOrchestrationService['listSessionReadModel']>[1],
   ): ReturnType<RawOrchestrationService['listSessionReadModel']>;
   listLoadedSessionReadModel(
     authority?: SessionReadAuthority,
@@ -798,6 +805,8 @@ function internalObserver(
       if (scopeIndex === undefined) return value.bind(instance);
       return (...args: unknown[]) => {
         args[scopeIndex] ??= INTERNAL_SESSION_READ_SCOPE;
+        if (property === 'listSessionReadModel')
+          args[1] ??= { purpose: 'session-list' };
         return value.apply(instance, args);
       };
     },
@@ -1782,7 +1791,7 @@ describe('OrchestrationService', () => {
       expect(
         (
           await restarted.listSessionReadModel(
-            personalReadAuthority('owner-user'),
+            personalReadAuthority('owner-user'), { purpose: 'session-list' }
           )
         ).find((session) => session.threadId === root)?.conversationActivity,
       ).toEqual(lastA?.activity);
@@ -16081,7 +16090,7 @@ describe('OrchestrationService', () => {
 
       const startedAt = performance.now();
       const items = await perfService.listSessionReadModel(
-        personalReadAuthority('owner-user'),
+        personalReadAuthority('owner-user'), { purpose: 'session-list' }
       );
       const durationMs = performance.now() - startedAt;
       rawDb.prepare = originalPrepare;
@@ -16274,13 +16283,13 @@ describe('OrchestrationService', () => {
       ) =>
         sessions.find((session) => session.threadId === threadId)?.eventCount;
 
-      const first = await cacheService.listSessionReadModel(authority);
+      const first = await cacheService.listSessionReadModel(authority, { purpose: 'session-list' });
       expect(first).toHaveLength(threadIds.length);
       expect(factReads).toHaveLength(1);
       expect([...factReads[0]!].sort()).toEqual([...threadIds].sort());
       expect(countReads).toHaveLength(1);
 
-      const unchanged = await cacheService.listSessionReadModel(authority);
+      const unchanged = await cacheService.listSessionReadModel(authority, { purpose: 'session-list' });
       expect(unchanged).toEqual(
         first.map((session) =>
           expect.objectContaining({
@@ -16302,7 +16311,7 @@ describe('OrchestrationService', () => {
         method: 'turn.completed',
         finishReason: 'stop',
       } as any);
-      const after = await cacheService.listSessionReadModel(authority);
+      const after = await cacheService.listSessionReadModel(authority, { purpose: 'session-list' });
       expect(factReads.slice(1)).toEqual([[moved]]);
       expect(countReads.slice(1)).toEqual([[moved]]);
       expect(eventCountOf(after, moved)).toBe((eventCountOf(first, moved) ?? 0) + 1);
@@ -16310,6 +16319,251 @@ describe('OrchestrationService', () => {
       rawDb.prepare = originalPrepare;
     } finally {
       cacheEventStore.close();
+    }
+  }, 60_000);
+
+  /** A real store and service for the #4992 measurement tests below. */
+  async function readModelMeasurementWorld(label: string) {
+    const eventStore = new EventStore(
+      join(makeReadModelCacheDir(label), 'orchestration.sqlite'),
+    );
+    const service = new OrchestrationService({
+      adapterRegistry: createRegistry([new FakeAdapter('claude')]),
+      eventBus: new EventBus(),
+      eventStore,
+      adoptionLedger: eventStore.createAdoptionLedger(),
+      flowRunService: new FlowRunService(),
+      listProjects: () => [],
+      agentPolicyService: new AgentPolicyService({
+        env: { ...process.env, SA_HOOK_PROFILE: '', SA_DISABLED_HOOKS: '' },
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      }),
+      workflowSidecarService: new WorkflowSidecarService({
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      }),
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    service.initialize();
+    await awaitSessionRecoveryCompleted(service);
+    const seed = (threadId: string, userId: string, index: number) => {
+      const createdAt = new Date(2026, 0, 1, 0, 0, index).toISOString();
+      eventStore.upsertSession({
+        provider: 'claude',
+        threadId,
+        status: 'ready',
+        createdAt,
+        updatedAt: createdAt,
+      });
+      eventStore.appendEvent({
+        eventId: `${threadId}-started`,
+        provider: 'claude',
+        threadId,
+        createdAt,
+        method: 'session.started',
+        sessionId: threadId,
+        metadata: { agentSlug: 'claude', userId },
+      });
+    };
+    return { eventStore, service, seed };
+  }
+
+  // #4992: which callers drive the read model's rate, and what the event
+  // store's per-thread cache saved them, measured at the service seam.
+  test('#4992: each read model read is recorded under its purpose with the cache refold and reuse counts', async () => {
+    const { eventStore, service, seed } = await readModelMeasurementWorld(
+      'orchestration-service-read-model-measurement-',
+    );
+    try {
+      const owned = ['measured-0', 'measured-1', 'measured-2', 'measured-3'];
+      owned.forEach((threadId, index) => seed(threadId, 'owner-user', index));
+      seed('measured-other', 'other-user', 9);
+      const owner = personalReadAuthority('owner-user');
+      vi.mocked(sessionReadModelReads.add).mockClear();
+      vi.mocked(sessionReadModelDuration.record).mockClear();
+      vi.mocked(sessionReadModelThreads.record).mockClear();
+      const before = service.sessionReadModelMeasurement().byPurpose;
+      const baseline = {
+        list: before['session-list'],
+        snapshot: before['sse-snapshot'],
+      };
+      expect(baseline).toEqual({ list: undefined, snapshot: undefined });
+
+      // Cold: every readable thread is folded and counted.
+      await service.listSessionReadModel(owner, { purpose: 'session-list' });
+      // Warm: nothing moved, so everything is reused.
+      await service.listSessionReadModel(owner, { purpose: 'session-list' });
+      // One thread moves; a narrowed read of two threads refolds only it.
+      eventStore.appendEvent({
+        eventId: 'measured-1-turn',
+        provider: 'claude',
+        threadId: 'measured-1',
+        turnId: 'turn-1',
+        createdAt: new Date(2026, 0, 2).toISOString(),
+        method: 'turn.started',
+        prompt: 'moved',
+      } as any);
+      await service.listSessionReadModel(owner, {
+        purpose: 'sse-snapshot',
+        threadIds: ['measured-1', 'measured-2', 'measured-other'],
+      });
+
+      const byPurpose = service.sessionReadModelMeasurement().byPurpose;
+      expect(byPurpose['session-list']).toMatchObject({
+        reads: 2,
+        threadScopedReads: 0,
+        threadsConsidered: 8,
+        projectionRefolded: 4,
+        projectionReused: 4,
+        countRefreshed: 4,
+        countReused: 4,
+      });
+      // `measured-other` is not the owner's: it is never considered.
+      expect(byPurpose['sse-snapshot']).toMatchObject({
+        reads: 1,
+        threadScopedReads: 1,
+        threadsConsidered: 2,
+        projectionRefolded: 1,
+        projectionReused: 1,
+        countRefreshed: 1,
+        countReused: 1,
+      });
+      expect(Object.keys(byPurpose).sort()).toEqual([
+        'session-list',
+        'sse-snapshot',
+      ]);
+
+      // The same numbers reach the meter, by bounded purpose and scope only.
+      expect(vi.mocked(sessionReadModelReads.add).mock.calls).toEqual([
+        [1, { purpose: 'session-list', scope: 'all' }],
+        [1, { purpose: 'session-list', scope: 'all' }],
+        [1, { purpose: 'sse-snapshot', scope: 'threads' }],
+      ]);
+      const threads = vi
+        .mocked(sessionReadModelThreads.record)
+        .mock.calls.filter(([, attributes]) =>
+          String(attributes?.outcome).startsWith('projection_'),
+        );
+      expect(threads).toEqual([
+        [4, { purpose: 'session-list', outcome: 'projection_refolded' }],
+        [0, { purpose: 'session-list', outcome: 'projection_reused' }],
+        [0, { purpose: 'session-list', outcome: 'projection_refolded' }],
+        [4, { purpose: 'session-list', outcome: 'projection_reused' }],
+        [1, { purpose: 'sse-snapshot', outcome: 'projection_refolded' }],
+        [1, { purpose: 'sse-snapshot', outcome: 'projection_reused' }],
+      ]);
+      expect(
+        vi
+          .mocked(sessionReadModelDuration.record)
+          .mock.calls.map(([, attributes]) => attributes),
+      ).toEqual([
+        { purpose: 'session-list', phase: 'total' },
+        { purpose: 'session-list', phase: 'build' },
+        { purpose: 'session-list', phase: 'total' },
+        { purpose: 'session-list', phase: 'build' },
+        { purpose: 'sse-snapshot', phase: 'total' },
+        { purpose: 'sse-snapshot', phase: 'build' },
+      ]);
+
+      // A purpose outside the closed vocabulary never becomes a dimension.
+      await service.listSessionReadModel(owner, {
+        purpose: 'user-42-session-abc' as never,
+      });
+      expect(vi.mocked(sessionReadModelReads.add).mock.calls.at(-1)).toEqual([
+        1,
+        { purpose: 'invalid', scope: 'all' },
+      ]);
+    } finally {
+      eventStore.close();
+    }
+  }, 60_000);
+
+  // #4992: the hosting check read the caller's whole read model to answer
+  // for one Task. It now reads the one record the (environment, Task) pair
+  // names. Equivalence is pinned against the old fold, kept here as the
+  // reference, over records the caller can and cannot read.
+  test('#4992: peerDelegationHostsTask answers as the full read model fold did, reading one record', async () => {
+    const { eventStore, service, seed } = await readModelMeasurementWorld(
+      'orchestration-service-peer-host-',
+    );
+    try {
+      const dispatch = (taskId: string, environmentId: string, userId: string) =>
+        service.recordPeerDelegationActivityDispatch({
+          taskId,
+          conversationId: `conversation-${taskId}`,
+          prompt: `Work on ${taskId}`,
+          userId,
+          environment: { id: environmentId, name: environmentId, kind: 'peer' },
+          target: { kind: 'agent', id: 'codex' },
+        });
+      dispatch('task-a', 'env-1', 'owner-user');
+      dispatch('task-a', 'env-2', 'owner-user');
+      dispatch('task-b', 'env-1', 'owner-user');
+      // Another person's record: the owner must not learn it names a host.
+      dispatch('task-a', 'env-3', 'other-user');
+      // Ordinary Sessions the old fold had to read too.
+      seed('unrelated-1', 'owner-user', 1);
+      seed('unrelated-2', 'other-user', 2);
+
+      const referenceHosts = async (
+        taskId: string,
+        authority: ReturnType<typeof personalReadAuthority>,
+      ) =>
+        new Set(
+          (
+            await service.listSessionReadModel(authority, {
+              purpose: 'session-list',
+            })
+          ).flatMap((session) =>
+            session.delegation?.environmentKind === 'peer' &&
+            session.delegation.taskId === taskId &&
+            session.delegation.environmentId
+              ? [session.delegation.environmentId]
+              : [],
+          ),
+        );
+      const authorities = {
+        owner: personalReadAuthority('owner-user'),
+        other: personalReadAuthority('other-user'),
+        stranger: personalReadAuthority('stranger-user'),
+      };
+      const answers: string[] = [];
+      for (const [who, authority] of Object.entries(authorities)) {
+        for (const taskId of ['task-a', 'task-b', 'task-c']) {
+          const expected = await referenceHosts(taskId, authority);
+          for (const environmentId of ['env-1', 'env-2', 'env-3']) {
+            const hosted = await service.peerDelegationHostsTask(
+              taskId,
+              environmentId,
+              authority,
+            );
+            expect(
+              { who, taskId, environmentId, hosted },
+            ).toEqual({
+              who,
+              taskId,
+              environmentId,
+              hosted: expected.has(environmentId),
+            });
+            if (hosted) answers.push(`${who}:${taskId}:${environmentId}`);
+          }
+        }
+      }
+      // Non-vacuous: the matrix holds both answers, and the unreadable
+      // record answers only for its own owner.
+      expect(answers.sort()).toEqual([
+        'other:task-a:env-3',
+        'owner:task-a:env-1',
+        'owner:task-a:env-2',
+        'owner:task-b:env-1',
+      ]);
+
+      // Each check considered at most the one record it names.
+      const host =
+        service.sessionReadModelMeasurement().byPurpose['peer-delegation-host'];
+      expect(host).toMatchObject({ reads: 27, threadScopedReads: 27 });
+      expect(host!.threadsConsidered).toBe(answers.length);
+    } finally {
+      eventStore.close();
     }
   }, 60_000);
 
@@ -22106,6 +22360,7 @@ describe('OrchestrationService', () => {
     // The complete method-targeted projection + count are the bounded work.
     expect(projectionSpy).toHaveBeenCalledWith(
       expect.arrayContaining([threadId]),
+      expect.any(Function),
     );
     expect(countSpy).toHaveBeenCalled();
     // THE bounded-work guard: this thread has 5,002 rows, but the fold's
@@ -29772,7 +30027,7 @@ describe('OrchestrationService', () => {
       service.listSessions(personalReadAuthority('other-user')),
     ).resolves.toEqual([]);
     await expect(
-      service.listSessionReadModel(personalReadAuthority('other-user')),
+      service.listSessionReadModel(personalReadAuthority('other-user'), { purpose: 'session-list' }),
     ).resolves.toEqual([]);
     await expect(
       service.readSession(

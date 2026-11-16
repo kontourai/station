@@ -238,6 +238,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   usePromotePersonalLayoutMutation: () => ({ mutate: vi.fn() }),
 }));
 
+import { APPEARANCE_HOOKS } from '@kontourai/station-contracts/custom-appearance';
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
 import { HomeRecentWorkSection } from '../components/home/HomeRecentWorkSection';
 import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
@@ -248,6 +249,10 @@ import { useProjectAccents } from '../hooks/useProjectAccents';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import type { HomeWorkItem } from '../views/home/home-view-model';
 import { useHomeWorkLanes } from '../views/home/useHomeWorkLanes';
+
+/** A custom-appearance hook selector, from the contract (APPEARANCE_HOOKS). */
+const appearanceHook = (id: string) =>
+  APPEARANCE_HOOKS.find((hook) => hook.id === id)!.selector;
 
 // #1765 routed the sidebar status row's command-palette keycap through
 // `useShortcutDisplay`, which throws outside KeyboardShortcutsProvider; an
@@ -315,6 +320,14 @@ describe('ProjectSidebar Home affordances reveal the Home surface (#928 C2a)', (
     fireEvent.click(screen.getByRole('button', { name: 'Station home' }));
     expect(showSurfaceStub).toHaveBeenCalledWith('home');
     expect(navigate).not.toHaveBeenCalled();
+  });
+
+  test('renders the sidebar custom-appearance hook on its navigation', () => {
+    resetState();
+    renderSidebar(<ProjectSidebar />);
+    const sidebar = document.querySelectorAll(appearanceHook('sidebar'));
+    expect(sidebar).toHaveLength(1);
+    expect(sidebar[0]!.tagName).toBe('NAV');
   });
 
   test('the Home row is active at / only while main shows Home', () => {

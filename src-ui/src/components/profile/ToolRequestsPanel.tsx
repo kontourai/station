@@ -13,6 +13,7 @@ import { Dialog } from '../Dialog';
 import { PageHeaderScope } from '../page-frame';
 import { SkeletonList } from '../state';
 import './ToolRequestsPanel.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 
 const Registry = lazy(() =>
   import('../../views/RegistryView').then((module) => ({
@@ -31,6 +32,14 @@ export function ToolRequestsPanel({ requestId }: { requestId?: string }) {
   const [plugin, setPlugin] = useState<ToolAccessRequest>();
   const [connection, setConnection] = useState<ToolAccessRequest>();
   const [dirty, setDirty] = useState(false);
+  useDecisionSurface(
+    'tool-requests-panel',
+    access.data?.station.operator === true &&
+      (requests.data?.some((request) =>
+        ['pending', 'setting-up', 'failed'].includes(request.status),
+      ) ??
+        false),
+  );
   if (access.data?.station.operator !== true) return null;
   const pending =
     requests.data?.filter(

@@ -197,6 +197,7 @@ const ARGS: Record<string, Record<string, unknown>> = {
   },
   device_close: { deviceSessionId: 'device-session' },
 
+  propose_appearance: { revision: 'r', name: 'Quiet', css: '' },
   get_personal_board: { slug: 'daily' },
   propose_personal_board: {
     slug: 'daily.v2',

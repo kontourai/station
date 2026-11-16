@@ -3356,7 +3356,9 @@ describe('#3071: a request the interrupted turn opened is settled', () => {
       lastEventMethod: 'session.state-changed',
     });
     const listed = (
-      await service.listSessionReadModel(INTERNAL_SESSION_READ_SCOPE)
+      await service.listSessionReadModel(INTERNAL_SESSION_READ_SCOPE, {
+        purpose: 'session-list',
+      })
     ).find((session) => session.threadId === threadId);
     expect(listed).toMatchObject({
       lifecycleState: 'needs_input',
@@ -3860,7 +3862,9 @@ describe('#3071: a request the interrupted turn opened is settled', () => {
       hasActiveTurn: false,
     });
     const listed = (
-      await service.listSessionReadModel(INTERNAL_SESSION_READ_SCOPE)
+      await service.listSessionReadModel(INTERNAL_SESSION_READ_SCOPE, {
+        purpose: 'session-list',
+      })
     ).find((session) => session.threadId === threadId);
     expect(listed).toMatchObject({
       lifecycleState: 'needs_input',

@@ -206,6 +206,9 @@ vi.mock('../../../components/DeferredCapabilityBoundary', () => ({
 vi.mock('../../../components/BrandingThemeBridge', () => ({
   BrandingThemeBridge: () => null,
 }));
+vi.mock('../../../components/CustomAppearanceBridge', () => ({
+  CustomAppearanceBridge: () => null,
+}));
 vi.mock('../../../components/notifications/NotificationContainer', () => ({
   NotificationContainer: () => null,
 }));

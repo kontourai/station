@@ -68,12 +68,68 @@ describe('spatial-board production owner adapters', () => {
         },
       ]),
     );
-    expect(listSessionReadModel).toHaveBeenCalledWith(authority);
+    expect(listSessionReadModel).toHaveBeenCalledWith(authority, {
+      purpose: 'spatial-board',
+      threadIds: ['persisted-session'],
+    });
     expect(result.pins).toMatchObject([
       { state: 'current', title: 'Persisted title' },
       { state: 'current' },
       { state: 'unavailable' },
     ]);
+  });
+
+  // #4992: the board names its Sessions, so it reads only those, never the
+  // viewer's whole read model. A named Session the read model does not
+  // return (unreadable, deleted, ephemeral) resolves as missing.
+  test('reads only the Sessions the board names, and none when it names none', async () => {
+    const authority = sessionReadAuthorityFromRequest(
+      'board-test-user',
+      undefined,
+      undefined,
+    );
+    const listSessionReadModel = vi.fn(
+      async (
+        _authority: unknown,
+        options: { purpose: 'spatial-board'; threadIds: readonly string[] },
+      ) =>
+        options.threadIds
+          .filter((threadId) => threadId === 'readable-session')
+          .map((threadId) => ({ threadId, displayTitle: 'Readable' })),
+    );
+    const resolver = createSpatialBoardOwnerResolver({
+      projects: { listProjects: () => [] },
+      tasks: { listTasks: () => [] },
+      sessions: { listSessionReadModel },
+      sessionAuthority: () => authority,
+      approvals: { has: () => false },
+      reviews: { read: async () => null },
+      flow: { listRuns: async () => [] },
+      runs: { listRuns: async () => [] },
+      agents: { listAgents: async () => [] },
+    });
+
+    const result = await resolver.resolve(
+      board([
+        { kind: 'session', id: 'readable-session' },
+        { kind: 'session', id: 'unreadable-session' },
+        { kind: 'approval', id: 'approval-1' },
+      ]),
+    );
+    expect(listSessionReadModel).toHaveBeenCalledTimes(1);
+    expect(listSessionReadModel).toHaveBeenCalledWith(authority, {
+      purpose: 'spatial-board',
+      threadIds: ['readable-session', 'unreadable-session'],
+    });
+    expect(result.pins).toMatchObject([
+      { state: 'current', title: 'Readable' },
+      { state: 'missing' },
+      { state: 'missing' },
+    ]);
+
+    listSessionReadModel.mockClear();
+    await resolver.resolve(board([{ kind: 'approval', id: 'approval-1' }]));
+    expect(listSessionReadModel).not.toHaveBeenCalled();
   });
 
   test('uses one all-source RunService observation for artifact and scheduler owners', async () => {

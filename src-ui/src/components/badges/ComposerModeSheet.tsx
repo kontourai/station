@@ -4,6 +4,7 @@ import type { ReactNode, RefObject } from 'react';
 import { useState } from 'react';
 import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
 import { useManagedApprovalCeiling } from '../../contexts/ManagedPolicyContext';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import {
   APPROVAL_MODE_OPTIONS,
   type ApprovalMode,
@@ -280,6 +281,7 @@ function ComposerModeSheetContent({
 }
 
 export function ComposerModeSheet(props: ComposerModeSheetProps) {
+  useDecisionSurface('approval-mode');
   return (
     <ConversationManagedPolicyProvider>
       <ComposerModeSheetContent {...props} />
