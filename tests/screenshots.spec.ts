@@ -34,25 +34,16 @@ import { resolveE2EApiBase } from './helpers/e2e-target';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import {
   type AppErrorObservation,
-  type AppErrorPhase,
   type AppErrorSurfaceCounts,
+  type ControlBox,
+  type ControlMovement,
   type ControlNameDiff,
   createFailedRequestLog,
-  diffControlNames,
-  formatAppErrorIdentity,
-  formatLayoutShiftTable,
+  formatControlChangeTable,
   type GalleryFault,
-  hasAppErrorSurface,
   isChunkPath,
-  LAYOUT_SHIFT_RECORDER,
-  type LayoutShiftEntry,
-  type LayoutShiftSummary,
   READ_APP_ERROR_SURFACES,
-  READ_PERFORMANCE_NOW,
   readGalleryFaults,
-  readLayoutShiftsSince,
-  shouldCaptureAgain,
-  summariseLayoutShifts,
 } from './helpers/gallery-app-error-state';
 import {
   assertGalleryAssetScopeCapacity,
@@ -62,6 +53,14 @@ import {
   retainGalleryAssetDiagnostics,
 } from './helpers/gallery-asset-diagnostics';
 import { createDocumentTracker } from './helpers/gallery-document-tracker';
+import {
+  AFTER_PHOTO_WINDOW_MS,
+  attemptScreen,
+  captureScreen,
+  createRetryBudget,
+  MAX_SECOND_CAPTURES,
+  type SecondCaptureRecord,
+} from './helpers/gallery-screen-attempt';
 import {
   auditGalleryScreen,
   type GalleryUiAudit,
@@ -6771,22 +6770,12 @@ interface Shot {
   /** The final attempt's app error surface, when that is why the screen failed. */
   appError?: AppErrorObservation;
   /**
-   * Report only. Layout shifts from the start of the screenshot step to after
-   * the audit, and the control names that changed between the photo and the
-   * audit.
+   * Report only. Between the controls read just before the screenshot and
+   * those read after the audit: which names changed, and how far
+   * same-identity controls moved.
    */
-  layoutShift?: LayoutShiftSummary;
   controlsAfterPhoto?: ControlNameDiff;
-}
-
-/** One screen's first attempt that ended on an app error surface. */
-interface AppErrorRetry {
-  screen: string;
-  first: AppErrorObservation;
-  /** The first attempt's image, kept beside the gallery. */
-  firstFile: string | null;
-  /** `passed`: a transient. Anything else failed the screen as before. */
-  second: 'passed' | 'app-error-surface' | 'failed';
+  controlMovement?: ControlMovement;
 }
 
 /** Visible controls, as the capture records them for a screen. */
@@ -6810,27 +6799,27 @@ async function readVisibleControls(page: Page) {
           );
         })
         .slice(0, 100)
-        .map((element) => ({
-          label: (
-            element.getAttribute('aria-label') ||
-            element.textContent ||
-            element.getAttribute('value') ||
-            ''
-          )
-            .trim()
-            .slice(0, 160),
-          disabled:
-            element.matches(':disabled') ||
-            element.getAttribute('aria-disabled') === 'true',
-        })),
-    );
-}
-
-/** Thrown by the capture's own error-surface checks; carries what was seen. */
-class AppErrorSurfaceFailure extends Error {
-  constructor(readonly observation: AppErrorObservation) {
-    super(formatAppErrorIdentity(observation));
-  }
+        .map((element) => {
+          const rect = element.getBoundingClientRect();
+          return {
+            label: (
+              element.getAttribute('aria-label') ||
+              element.textContent ||
+              element.getAttribute('value') ||
+              ''
+            )
+              .trim()
+              .slice(0, 160),
+            disabled:
+              element.matches(':disabled') ||
+              element.getAttribute('aria-disabled') === 'true',
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+          };
+        }),
+    ) as Promise<ControlBox[]>;
 }
 
 function escapeHtml(value: string): string {
@@ -7000,12 +6989,24 @@ test('build gallery — capture key screens', async ({ page }) => {
   }
 
   // Keep the gallery's timeout proportional to its declared coverage instead
-  // of raising the shared Playwright default used by smaller specs.
-  test.setTimeout(Math.max(90_000, selectedScreens.length * 7_000));
+  // of raising the shared Playwright default used by smaller specs: 7 s a
+  // screen as before, plus each screen's minimum after-photo window and the
+  // run's bounded second captures.
+  test.setTimeout(
+    Math.max(
+      90_000,
+      selectedScreens.length * (7_000 + AFTER_PHOTO_WINDOW_MS) +
+        MAX_SECOND_CAPTURES * 7_000,
+    ),
+  );
 
   // Test-only; refused on GitHub Actions and on a full capture (see
   // readGalleryFaults).
-  const faults = readGalleryFaults(process.env, requestedScreens);
+  const faults = readGalleryFaults(
+    process.env,
+    requestedScreens,
+    SCREENS.map((screen) => screen.name),
+  );
   if (faults.length > 0)
     console.log(
       `Gallery fault injection is ACTIVE for this targeted capture: ${JSON.stringify(faults)}`,
@@ -7055,14 +7056,12 @@ test('build gallery — capture key screens', async ({ page }) => {
   page.on('requestfinished', onFinished);
   page.on('requestfailed', onFailed);
   page.on('framenavigated', onNavigated);
-  const appErrorRetries: AppErrorRetry[] = [];
-  // Report-only layout-shift record; every document buffers its own.
-  await page.addInitScript(LAYOUT_SHIFT_RECORDER);
-  // The attempt the fault injection acts on, and the screenshot it may wait for.
+  const secondCaptures: SecondCaptureRecord[] = [];
+  const retryBudget = createRetryBudget();
+  // The attempt the fault injection acts on, and the photo it may wait for.
   let faultAttempt: {
     screen: string;
     attempt: number;
-    fired: Set<GalleryFault>;
     screenshotWritten: Promise<void>;
     release: () => void;
   } | null = null;
@@ -7072,26 +7071,50 @@ test('build gallery — capture key screens', async ({ page }) => {
     kind: GalleryFault['kind'];
     path?: string;
   }> = [];
-  const abortFaults = faults.filter((fault) => fault.kind === 'abort-chunk');
-  if (abortFaults.length > 0)
+  const chunkFaults = faults.filter(
+    (fault): fault is Extract<GalleryFault, { kind: 'chunk' }> =>
+      fault.kind === 'chunk',
+  );
+  // Test-only: a worker-cached chunk would never reach the network, and a
+  // poisoned one must not outlive its screen.
+  const evictFaultedChunks = () =>
+    page
+      .evaluate(
+        async (chunks) => {
+          if (typeof caches === 'undefined') return;
+          for (const name of await caches.keys()) {
+            const cache = await caches.open(name);
+            for (const request of await cache.keys()) {
+              const { pathname } = new URL(request.url);
+              if (
+                chunks.some((chunk) => pathname.startsWith(`/assets/${chunk}-`))
+              )
+                await cache.delete(request);
+            }
+          }
+        },
+        chunkFaults.map((fault) => fault.chunk),
+      )
+      .catch(() => {});
+  if (chunkFaults.length > 0)
     // The context, not the page: chunks are served through the app's service
     // worker, whose own fetches page.route never sees.
     await page.context().route(
       (url) =>
-        abortFaults.some((fault) => isChunkPath(url.pathname, fault.chunk)),
+        chunkFaults.some((fault) => isChunkPath(url.pathname, fault.chunk)),
       async (route) => {
         const pathname = new URL(route.request().url()).pathname;
         const active = faultAttempt;
-        const fault = abortFaults.find(
+        const fault = chunkFaults.find(
           (candidate) =>
             active !== null &&
             candidate.screen === active.screen &&
             candidate.attempts.includes(active.attempt) &&
-            !active.fired.has(candidate) &&
             isChunkPath(pathname, candidate.chunk),
         );
+        // Every request for the chunk in the attempt: a route chunk is also
+        // preloaded, and failing only the first left the import to succeed.
         if (!active || !fault) return route.fallback();
-        active.fired.add(fault);
         if (fault.when === 'after-screenshot') await active.screenshotWritten;
         faultsFired.push({
           screen: active.screen,
@@ -7099,6 +7122,13 @@ test('build gallery — capture key screens', async ({ page }) => {
           kind: fault.kind,
           path: pathname,
         });
+        if (fault.mode === 'not-found') return route.fulfill({ status: 404 });
+        if (fault.mode === 'poison')
+          return route.fulfill({
+            status: 200,
+            contentType: 'text/javascript',
+            body: 'throw new Error("Gallery fault injection: a chunk that throws when evaluated");',
+          });
         await route.abort('aborted');
       },
     );
@@ -7266,30 +7296,26 @@ test('build gallery — capture key screens', async ({ page }) => {
     for (const screen of selectedScreens) {
       assets.screen(screen.name);
       const file = `${screen.name}.png`;
-      const readSurfaces = async () =>
-        (await page.evaluate(READ_APP_ERROR_SURFACES)) as AppErrorSurfaceCounts;
-      const observeAppError = (
-        surfaces: AppErrorSurfaceCounts,
-        phase: AppErrorPhase,
-        stepError?: string,
-      ): AppErrorObservation => {
-        const { records, omitted } = failedRequests.snapshot();
-        return {
-          surfaces,
-          phase,
-          failedRequests: records,
-          failedRequestsOmitted: omitted,
-          consoleErrors: [...browserErrors],
-          ...(stepError ? { stepError } : {}),
-        };
-      };
-      // One capture of this screen. Every attempt is a fresh navigation on
-      // the same instance; `beforeGoto` and `cleanup` run for each.
-      const attemptScreen = async (
-        attempt: number,
-      ): Promise<{ shot: Shot; appError: AppErrorObservation | null }> => {
+      const screenFault = (kind: GalleryFault['kind'], attempt: number) =>
+        faults.find(
+          (fault) =>
+            fault.screen === screen.name &&
+            fault.kind === kind &&
+            fault.attempts.includes(attempt),
+        );
+      let layout: Shot['layout'];
+      let rasterDiagnostic: Shot['rasterDiagnostic'];
+      let uiAudit: Shot['uiAudit'];
+      // One capture of this screen (gallery-screen-attempt.ts owns the order of
+      // the error-surface checks and the retry rule). Every attempt is a fresh
+      // navigation on the same instance; `beforeGoto` and `cleanup` run for
+      // each.
+      const runAttempt = (attempt: 1 | 2) => {
         browserErrors.length = 0;
         failedRequests.reset();
+        layout = undefined;
+        rasterDiagnostic = undefined;
+        uiAudit = undefined;
         let release = () => {};
         const screenshotWritten = new Promise<void>((resolve) => {
           release = resolve;
@@ -7297,398 +7323,332 @@ test('build gallery — capture key screens', async ({ page }) => {
         faultAttempt = {
           screen: screen.name,
           attempt,
-          fired: new Set(),
           screenshotWritten,
           release,
         };
-        const screenFault = (kind: GalleryFault['kind']) =>
-          faults.find(
-            (fault) =>
-              fault.screen === screen.name &&
-              fault.kind === kind &&
-              fault.attempts.includes(attempt),
-          );
-        let layout: Shot['layout'];
-        let rasterDiagnostic: Shot['rasterDiagnostic'];
-        let uiAudit: Shot['uiAudit'];
-        let shiftStart: number | null = null;
-        try {
-          if (screenFault('abort-chunk'))
-            // The worker serves a chunk it already holds from its cache, so the
-            // aborted request would never reach the network. Test-only.
-            await page
-              .evaluate(
-                async (chunks) => {
-                  if (typeof caches === 'undefined') return;
-                  for (const name of await caches.keys()) {
-                    const cache = await caches.open(name);
-                    for (const request of await cache.keys()) {
-                      const { pathname } = new URL(request.url);
-                      if (
-                        chunks.some((chunk) =>
-                          pathname.startsWith(`/assets/${chunk}-`),
-                        )
-                      )
-                        await cache.delete(request);
-                    }
-                  }
-                },
-                abortFaults.map((fault) => fault.chunk),
-              )
-              .catch(() => {});
-          await page.setViewportSize(screen.viewport);
-          await page.emulateMedia({
-            reducedMotion: screen.reducedMotion ? 'reduce' : 'no-preference',
-          });
-          if (screen.beforeGoto) {
-            await screen.beforeGoto(page);
-          }
-          // Delivery is live-only. Observe this document's general-event stream
-          // before navigation so the POST cannot beat its subscription.
-          const notificationStream = [
-            'motion-reduced-notification',
-            'overlay-toast',
-            'overlay-toast-action',
-          ].includes(screen.name)
-            ? page.waitForResponse(
-                (response) => {
-                  const url = new URL(response.url());
-                  return (
-                    response.status() === 200 &&
-                    (url.pathname === '/events' ||
-                      (url.pathname === '/api/orchestration/events' &&
-                        url.searchParams.get('includeGeneral') === '1'))
-                  );
-                },
-                { timeout: 10_000 },
-              )
-            : null;
-          // #1650: the ORDER of everything below lives in
-          // `runScreenshotCaptureSequence` so it is a unit a test can execute —
-          // a passing gallery run compares pixels and can never report a step
-          // having moved to the wrong side of another one. Each step's own
-          // reason stays here, next to the mechanic it performs. The web-font
-          // settle is the one step that module performs itself, against the page
-          // passed here, so the STEP MAP cannot wire in a settle that reads
-          // nothing. That the object passed here is the real page is checked by
-          // `typecheck:e2e` (the structural assignment on this line) and by
-          // reading the diff, like the other six steps.
-          await runScreenshotCaptureSequence(page, {
-            reachScreen: async () => {
-              await gotoAppShell(page, screen.path);
-              // Route-only captures must not inherit a drawer opened by an
-              // earlier scenario. Surface stress cases opt in through their URL.
-              const requestedState = new URL(
-                screen.path,
-                'http://gallery.invalid',
-              );
-              if (requestedState.searchParams.get('surface') !== 'activity') {
-                const hideActivity = page.getByRole('button', {
-                  name: 'Hide Activity',
-                  exact: true,
-                });
-                if (await hideActivity.count()) await hideActivity.click();
-              }
-              if (requestedState.searchParams.get('dock') !== 'open') {
-                const collapseChat = page.getByRole('button', {
-                  name: 'Collapse chat',
-                  exact: true,
-                });
-                if (await collapseChat.count()) await collapseChat.click();
-              }
-              if (screen.waitFor) {
-                await page.waitForSelector(screen.waitFor, { timeout: 10_000 });
-              }
-              // Let async panels settle so the shot reflects loaded data.
-              await page.waitForTimeout(1200);
-            },
-            assertNoLoadingSkeleton: screen.expectSkeleton
-              ? null
-              : () => assertNoLoadingSkeleton(page),
-            // Called as a method on `screen`, not as a bare extracted function:
-            // no declared hook uses `this` today, and this keeps that from being
-            // a precondition of the refactor rather than a property of the file.
-            afterGoto: screen.afterGoto
-              ? async () => {
-                  await notificationStream;
-                  await screen.afterGoto?.(page);
-                }
-              : null,
-            // The identity-mismatch tile deliberately overrides the global
-            // healthy handshake and waits for its own deterministic blocked
-            // state. Every other screen must prove the gallery-wide route has
-            // reached the fixed healthy posture before capture rather than
-            // racing the opening probe.
-            assertConnectionChrome:
-              screen.name === 'overlay-connection-banner'
-                ? null
-                : () => assertGalleryConnectionChrome(page),
-            hideVolatileChrome: () => hideVolatileChrome(page),
-            screenshot: async () => {
-              if (screenFault('fail-step'))
-                throw new Error(
-                  'Gallery fault injection: an ordinary capture-step failure (fail-step).',
-                );
-              // Report-only: shifts from here (the screen judged ready) to after
-              // the audit.
-              shiftStart = (await page.evaluate(
-                READ_PERFORMANCE_NOW,
-              )) as number;
-              // Lazy brand marks can settle after the data skeleton disappears.
-              // A pending or failed mark is an incomplete reference image.
-              await expect(
-                page.locator('.brand-icon[data-brand-key]').filter({
-                  hasNot: page.locator('svg, img, .brand-icon__glyph'),
-                }),
-              ).toHaveCount(0, { timeout: 15_000 });
-              if (screen.name === 'settings-info-tip') {
-                layout = await page.evaluate(() => {
-                  const main =
-                    document.querySelector<HTMLElement>('.app__main');
-                  if (!main)
-                    throw new Error('Gallery app main column is missing');
-                  return {
-                    appMainScrollTop: main.scrollTop,
-                    appMainScrollHeight: main.scrollHeight,
-                    appMainClientHeight: main.clientHeight,
-                    documentScrollY: window.scrollY,
-                  };
-                });
-              }
-              if (screen.name !== 'settings-info-tip') {
-                await page.mouse.move(0, 0);
-              }
-              if (screen.captureTheme) {
-                await page.evaluate(
-                  (theme) =>
-                    document.documentElement.setAttribute('data-theme', theme),
-                  screen.captureTheme,
-                );
-                await expect(page.locator('html')).toHaveAttribute(
-                  'data-theme',
-                  screen.captureTheme,
-                );
-              }
-              // The product's error surfaces are not a state to photograph or
-              // audit: name it instead (checked again after the audit).
-              const beforeShot = await readSurfaces();
-              if (hasAppErrorSurface(beforeShot))
-                throw new AppErrorSurfaceFailure(
-                  observeAppError(beforeShot, 'before capture'),
-                );
-              await page.screenshot({
-                path: join(GALLERY_DIR, file),
-                fullPage: true,
-                // archive#4464: freeze CSS animations/transitions at their end
-                // state instead of racing them — `reducedMotion` above only sets
-                // the OS media-query preference, it does not itself stop an
-                // in-flight transition from being mid-frame at capture time.
-                animations: 'disabled',
-              });
-              faultAttempt?.release();
-              if (screen.name === 'overlay-dock-project-mismatch') {
-                const before = await statusRasterState(page);
-                const retiredCount = await page
-                  .getByRole('button', {
-                    name: 'Status unavailable — resync this conversation',
-                    exact: true,
-                  })
-                  .locator('..')
-                  .evaluate((host) => {
-                    const finished = host
-                      .getAnimations({ subtree: true })
-                      .filter((animation) => {
-                        const timing = animation.effect?.getComputedTiming();
-                        return (
-                          animation.playState === 'finished' &&
-                          timing?.iterations !== Infinity &&
-                          (timing?.fill === 'both' ||
-                            timing?.fill === 'forwards')
-                        );
-                      });
-                    for (const animation of finished) animation.cancel();
-                    return finished.length;
-                  });
-                await page.evaluate(
-                  () =>
-                    new Promise<void>((resolveFrame) =>
-                      requestAnimationFrame(() =>
-                        requestAnimationFrame(() => resolveFrame()),
-                      ),
-                    ),
-                );
-                const after = await statusRasterState(page);
-                const diagnosticFile = `${GALLERY_DIAGNOSTICS}/${screen.name}.retired-effects-diagnostic.png`;
-                await page.screenshot({
-                  path: join(GALLERY_DIR, diagnosticFile),
-                  fullPage: true,
-                  animations: 'disabled',
-                });
-                rasterDiagnostic = {
-                  before,
-                  after,
-                  retiredCount,
-                  file: diagnosticFile,
-                  sha256: createHash('sha256')
-                    .update(readFileSync(join(GALLERY_DIR, diagnosticFile)))
-                    .digest('hex'),
-                };
-              }
-            },
-          });
-          const controls = await readVisibleControls(page);
-          // Audit the photographed state, before any post-shot interaction.
-          try {
-            uiAudit = await auditGalleryScreen(page, screen.name);
-          } catch (error) {
-            uiAudit = {
-              error: error instanceof Error ? error.message : String(error),
-            };
-          }
-          // Report only: never fails the screen.
-          let layoutShift: LayoutShiftSummary | undefined;
-          let controlsAfterPhoto: ControlNameDiff | undefined;
-          try {
-            if (shiftStart !== null)
-              layoutShift = summariseLayoutShifts(
-                (await page.evaluate(readLayoutShiftsSince(shiftStart))) as {
-                  supported: boolean;
-                  dropped: number;
-                  entries: LayoutShiftEntry[];
-                },
-              );
-            controlsAfterPhoto = diffControlNames(
-              controls.map(({ label }) => label),
-              (await readVisibleControls(page)).map(({ label }) => label),
-            );
-          } catch {
-            /* report-only data; an unreadable page leaves it absent */
-          }
-          // The second check: a surface that appeared after the photo means
-          // the audit judged a page that was never photographed (run
-          // 43704347024). It replaces the one-screen extension-registry check
-          // telemetry-feedback-mobile carried since #4289. The shift and
-          // control record above travel with it as evidence of the change.
-          const afterAudit = await readSurfaces();
-          if (hasAppErrorSurface(afterAudit))
-            throw new AppErrorSurfaceFailure({
-              ...observeAppError(afterAudit, 'after capture'),
-              layoutShift,
-              controlsAfterPhoto,
+        const faulted = chunkFaults.some(
+          (fault) => fault.screen === screen.name,
+        );
+        return attemptScreen<NonNullable<Shot['uiAudit']>>({
+          capture: async (photo) => {
+            if (faulted) await evictFaultedChunks();
+            await page.setViewportSize(screen.viewport);
+            await page.emulateMedia({
+              reducedMotion: screen.reducedMotion ? 'reduce' : 'no-preference',
             });
-          if (
-            screen.name === 'desktop-conversation-resync' ||
-            screen.name === 'mobile-conversation-resync'
-          ) {
-            await verifyConversationRecovery(page);
-          }
-          return {
-            shot: {
-              screen,
-              file,
-              ok: true,
-              controls,
-              layout,
-              rasterDiagnostic,
-              uiAudit,
-              layoutShift,
-              controlsAfterPhoto,
-              sha256: createHash('sha256')
-                .update(readFileSync(join(GALLERY_DIR, file)))
-                .digest('hex'),
-            },
-            appError: null,
-          };
-        } catch (error) {
-          const message =
-            error instanceof Error ? error.message : String(error);
-          // A step that threw while an error surface was on the page is named
-          // by that surface (it is most likely why the step failed); the step's
-          // own error stays below the identity.
-          let appError =
-            error instanceof AppErrorSurfaceFailure ? error.observation : null;
-          if (!appError) {
-            try {
-              const surfaces = await readSurfaces();
-              if (hasAppErrorSurface(surfaces))
-                appError = observeAppError(
-                  surfaces,
-                  'during capture',
-                  message.split('\n')[0],
-                );
-            } catch {
-              /* nothing readable: an ordinary failure */
+            if (screen.beforeGoto) {
+              await screen.beforeGoto(page);
             }
-          }
+            // Delivery is live-only. Observe this document's general-event stream
+            // before navigation so the POST cannot beat its subscription.
+            const notificationStream = [
+              'motion-reduced-notification',
+              'overlay-toast',
+              'overlay-toast-action',
+            ].includes(screen.name)
+              ? page.waitForResponse(
+                  (response) => {
+                    const url = new URL(response.url());
+                    return (
+                      response.status() === 200 &&
+                      (url.pathname === '/events' ||
+                        (url.pathname === '/api/orchestration/events' &&
+                          url.searchParams.get('includeGeneral') === '1'))
+                    );
+                  },
+                  { timeout: 10_000 },
+                )
+              : null;
+            // #1650: the ORDER of everything below lives in
+            // `runScreenshotCaptureSequence` so it is a unit a test can execute —
+            // a passing gallery run compares pixels and can never report a step
+            // having moved to the wrong side of another one. Each step's own
+            // reason stays here, next to the mechanic it performs. The web-font
+            // settle is the one step that module performs itself, against the page
+            // passed here, so the STEP MAP cannot wire in a settle that reads
+            // nothing. That the object passed here is the real page is checked by
+            // `typecheck:e2e` (the structural assignment on this line) and by
+            // reading the diff, like the other six steps.
+            await runScreenshotCaptureSequence(page, {
+              reachScreen: async () => {
+                await gotoAppShell(page, screen.path);
+                // Route-only captures must not inherit a drawer opened by an
+                // earlier scenario. Surface stress cases opt in through their URL.
+                const requestedState = new URL(
+                  screen.path,
+                  'http://gallery.invalid',
+                );
+                if (requestedState.searchParams.get('surface') !== 'activity') {
+                  const hideActivity = page.getByRole('button', {
+                    name: 'Hide Activity',
+                    exact: true,
+                  });
+                  if (await hideActivity.count()) await hideActivity.click();
+                }
+                if (requestedState.searchParams.get('dock') !== 'open') {
+                  const collapseChat = page.getByRole('button', {
+                    name: 'Collapse chat',
+                    exact: true,
+                  });
+                  if (await collapseChat.count()) await collapseChat.click();
+                }
+                if (screen.waitFor) {
+                  await page.waitForSelector(screen.waitFor, {
+                    timeout: 10_000,
+                  });
+                }
+                // Let async panels settle so the shot reflects loaded data.
+                await page.waitForTimeout(1200);
+              },
+              assertNoLoadingSkeleton: screen.expectSkeleton
+                ? null
+                : () => assertNoLoadingSkeleton(page),
+              // Called as a method on `screen`, not as a bare extracted function:
+              // no declared hook uses `this` today, and this keeps that from being
+              // a precondition of the refactor rather than a property of the file.
+              afterGoto: screen.afterGoto
+                ? async () => {
+                    await notificationStream;
+                    await screen.afterGoto?.(page);
+                  }
+                : null,
+              // The identity-mismatch tile deliberately overrides the global
+              // healthy handshake and waits for its own deterministic blocked
+              // state. Every other screen must prove the gallery-wide route has
+              // reached the fixed healthy posture before capture rather than
+              // racing the opening probe.
+              assertConnectionChrome:
+                screen.name === 'overlay-connection-banner'
+                  ? null
+                  : () => assertGalleryConnectionChrome(page),
+              hideVolatileChrome: () => hideVolatileChrome(page),
+              screenshot: async () => {
+                if (screenFault('fail-step', attempt))
+                  throw new Error(
+                    'Gallery fault injection: an ordinary capture-step failure (fail-step).',
+                  );
+                // Lazy brand marks can settle after the data skeleton disappears.
+                // A pending or failed mark is an incomplete reference image.
+                await expect(
+                  page.locator('.brand-icon[data-brand-key]').filter({
+                    hasNot: page.locator('svg, img, .brand-icon__glyph'),
+                  }),
+                ).toHaveCount(0, { timeout: 15_000 });
+                if (screen.name === 'settings-info-tip') {
+                  layout = await page.evaluate(() => {
+                    const main =
+                      document.querySelector<HTMLElement>('.app__main');
+                    if (!main)
+                      throw new Error('Gallery app main column is missing');
+                    return {
+                      appMainScrollTop: main.scrollTop,
+                      appMainScrollHeight: main.scrollHeight,
+                      appMainClientHeight: main.clientHeight,
+                      documentScrollY: window.scrollY,
+                    };
+                  });
+                }
+                if (screen.name !== 'settings-info-tip') {
+                  await page.mouse.move(0, 0);
+                }
+                if (screen.captureTheme) {
+                  await page.evaluate(
+                    (theme) =>
+                      document.documentElement.setAttribute(
+                        'data-theme',
+                        theme,
+                      ),
+                    screen.captureTheme,
+                  );
+                  await expect(page.locator('html')).toHaveAttribute(
+                    'data-theme',
+                    screen.captureTheme,
+                  );
+                }
+                await photo();
+                if (screen.name === 'overlay-dock-project-mismatch') {
+                  const before = await statusRasterState(page);
+                  const retiredCount = await page
+                    .getByRole('button', {
+                      name: 'Status unavailable — resync this conversation',
+                      exact: true,
+                    })
+                    .locator('..')
+                    .evaluate((host) => {
+                      const finished = host
+                        .getAnimations({ subtree: true })
+                        .filter((animation) => {
+                          const timing = animation.effect?.getComputedTiming();
+                          return (
+                            animation.playState === 'finished' &&
+                            timing?.iterations !== Infinity &&
+                            (timing?.fill === 'both' ||
+                              timing?.fill === 'forwards')
+                          );
+                        });
+                      for (const animation of finished) animation.cancel();
+                      return finished.length;
+                    });
+                  await page.evaluate(
+                    () =>
+                      new Promise<void>((resolveFrame) =>
+                        requestAnimationFrame(() =>
+                          requestAnimationFrame(() => resolveFrame()),
+                        ),
+                      ),
+                  );
+                  const after = await statusRasterState(page);
+                  const diagnosticFile = `${GALLERY_DIAGNOSTICS}/${screen.name}.retired-effects-diagnostic.png`;
+                  await page.screenshot({
+                    path: join(GALLERY_DIR, diagnosticFile),
+                    fullPage: true,
+                    animations: 'disabled',
+                  });
+                  rasterDiagnostic = {
+                    before,
+                    after,
+                    retiredCount,
+                    file: diagnosticFile,
+                    sha256: createHash('sha256')
+                      .update(readFileSync(join(GALLERY_DIR, diagnosticFile)))
+                      .digest('hex'),
+                  };
+                }
+              },
+            });
+          },
+          readSurfaces: async () =>
+            (await page.evaluate(
+              READ_APP_ERROR_SURFACES,
+            )) as AppErrorSurfaceCounts,
+          screenshot: async () => {
+            await page.screenshot({
+              path: join(GALLERY_DIR, file),
+              fullPage: true,
+              // archive#4464: freeze CSS animations/transitions at their end
+              // state instead of racing them — `reducedMotion` above only sets
+              // the OS media-query preference, it does not itself stop an
+              // in-flight transition from being mid-frame at capture time.
+              animations: 'disabled',
+            });
+            faultAttempt?.release();
+            const move = screenFault('move-after-photo', attempt);
+            if (move && move.kind === 'move-after-photo')
+              await page.evaluate((delayMs) => {
+                setTimeout(() => {
+                  const block = document.createElement('div');
+                  block.style.height = '80px';
+                  document.querySelector('.app')?.before(block);
+                }, delayMs);
+              }, move.delayMs);
+          },
+          readControls: () => readVisibleControls(page),
+          // Audit the photographed state, before any post-shot interaction.
+          audit: async () => {
+            try {
+              uiAudit = await auditGalleryScreen(page, screen.name);
+            } catch (error) {
+              uiAudit = {
+                error: error instanceof Error ? error.message : String(error),
+              };
+            }
+            return uiAudit;
+          },
+          afterAudit: async () => {
+            if (
+              screen.name === 'desktop-conversation-resync' ||
+              screen.name === 'mobile-conversation-resync'
+            )
+              await verifyConversationRecovery(page);
+          },
           // Capture whatever rendered so the broken state is still inspectable.
-          try {
+          fallbackScreenshot: async () => {
             await hideVolatileChrome(page);
             await page.screenshot({
               path: join(GALLERY_DIR, file),
               animations: 'disabled',
             });
-          } catch {
-            /* nothing renderable */
-          }
-          return {
-            shot: {
+          },
+          cleanup: async () => {
+            faultAttempt?.release();
+            faultAttempt = null;
+            try {
+              await screen.cleanup?.();
+            } finally {
+              if (faulted) await evictFaultedChunks();
+            }
+            if (screenFault('fail-cleanup', attempt))
+              throw new Error(
+                'Gallery fault injection: the screen cleanup threw (fail-cleanup).',
+              );
+          },
+          now: () => performance.now(),
+          wait: (ms) => page.waitForTimeout(ms),
+          evidence: () => {
+            const { records, omitted } = failedRequests.snapshot();
+            return {
+              failedRequests: records,
+              omitted,
+              consoleErrors: [...browserErrors],
+            };
+          },
+        });
+      };
+      try {
+        const result = await captureScreen(
+          screen.name,
+          runAttempt,
+          retryBudget,
+          {
+            keepFirstImage: () => {
+              try {
+                mkdirSync(join(GALLERY_DIR, 'transients'), { recursive: true });
+                const kept = `transients/${screen.name}.attempt-1.png`;
+                copyFileSync(join(GALLERY_DIR, file), join(GALLERY_DIR, kept));
+                return kept;
+              } catch {
+                return null;
+              }
+            },
+            log: (line) => process.stdout.write(`${line}\n`),
+          },
+        );
+        if (result.record) secondCaptures.push(result.record);
+        const { final } = result;
+        const shot: Shot = final.ok
+          ? {
+              screen,
+              file,
+              ok: true,
+              controls: final.atPhoto.map(({ label, disabled }) => ({
+                label,
+                disabled,
+              })),
+              layout,
+              rasterDiagnostic,
+              uiAudit: final.audit,
+              controlsAfterPhoto: final.controlsAfterPhoto,
+              controlMovement: final.controlMovement,
+              sha256: createHash('sha256')
+                .update(readFileSync(join(GALLERY_DIR, file)))
+                .digest('hex'),
+            }
+          : {
               screen,
               file,
               ok: false,
-              // Preserve the already bounded per-screen console/page errors when
-              // a render assertion fails; the fallback PNG alone cannot explain
-              // a lazy-boundary failure. Failure and capture counts stay intact.
-              // An app error surface leads with its one-line identity.
+              // An app error surface leads with its identity; the already
+              // bounded console/page errors stay as the last line, which
+              // attribution sets aside.
               error: [
-                ...(appError ? [formatAppErrorIdentity(appError)] : []),
-                ...(appError && error instanceof AppErrorSurfaceFailure
-                  ? []
-                  : [message]),
+                ...result.errorLines,
                 ...(browserErrors.length
                   ? [`Browser errors: ${JSON.stringify(browserErrors)}`]
                   : []),
               ].join('\n'),
-              ...(appError ? { appError } : {}),
-            },
-            appError,
-          };
-        } finally {
-          faultAttempt?.release();
-          faultAttempt = null;
-          await screen.cleanup?.();
-        }
-      };
-      try {
-        let { shot, appError } = await attemptScreen(1);
-        if (shouldCaptureAgain(1, { ok: shot.ok, appError }, screen.name)) {
-          // Once, and only for an app error surface: a transient passes on
-          // the second capture; a real break fails it too and stays red.
-          const first = appError as AppErrorObservation;
-          let firstFile: string | null = null;
-          try {
-            mkdirSync(join(GALLERY_DIR, 'transients'), { recursive: true });
-            firstFile = `transients/${screen.name}.attempt-1.png`;
-            copyFileSync(join(GALLERY_DIR, file), join(GALLERY_DIR, firstFile));
-          } catch {
-            firstFile = null;
-          }
-          ({ shot, appError } = await attemptScreen(2));
-          shot.attempts = 2;
-          appErrorRetries.push({
-            screen: screen.name,
-            first,
-            firstFile,
-            second: shot.ok
-              ? 'passed'
-              : appError
-                ? 'app-error-surface'
-                : 'failed',
-          });
-          if (shot.ok)
-            process.stdout.write(
-              `::warning title=Gallery transient app error::${screen.name} passed on its second capture after ${formatAppErrorIdentity(first)}\n`,
-            );
-        }
+              ...(final.appError ? { appError: final.appError } : {}),
+            };
+        shot.attempts = result.attempts;
         shots.push(shot);
       } finally {
         assets.screenFinished(screen.name);
@@ -7771,7 +7731,7 @@ test('build gallery — capture key screens', async ({ page }) => {
           // Every screen whose first attempt ended on an app error surface,
           // and how its single second capture went; `second: "passed"` is a
           // transient. Counted, never hidden.
-          appErrorRetries,
+          secondCaptures,
           faultInjection:
             faults.length > 0 ? { faults, fired: faultsFired } : null,
           screens: shots.map(
@@ -7787,8 +7747,8 @@ test('build gallery — capture key screens', async ({ page }) => {
               uiAudit,
               attempts,
               appError,
-              layoutShift,
               controlsAfterPhoto,
+              controlMovement,
             }) => ({
               file,
               ok,
@@ -7802,8 +7762,8 @@ test('build gallery — capture key screens', async ({ page }) => {
               uiAudit,
               attempts: attempts ?? 1,
               appError,
-              layoutShift,
               controlsAfterPhoto,
+              controlMovement,
             }),
           ),
         },
@@ -7811,21 +7771,21 @@ test('build gallery — capture key screens', async ({ page }) => {
         2,
       )}\n`,
     );
-    for (const line of formatLayoutShiftTable(
-      shots.map(({ screen, layoutShift, controlsAfterPhoto }) => ({
+    for (const line of formatControlChangeTable(
+      shots.map(({ screen, controlsAfterPhoto, controlMovement }) => ({
         name: screen.name,
-        layoutShift,
         controlsAfterPhoto,
+        controlMovement,
       })),
     ))
       console.log(line);
-    const transients = appErrorRetries.filter(
-      (retry) => retry.second === 'passed',
-    ).length;
-    if (appErrorRetries.length > 0)
+    if (secondCaptures.length > 0) {
+      const count = (second: SecondCaptureRecord['second']) =>
+        secondCaptures.filter((record) => record.second === second).length;
       console.log(
-        `Gallery app error surfaces: ${appErrorRetries.length} screen(s) captured a second time, ${transients} passed (transient), ${appErrorRetries.length - transients} failed again.`,
+        `Gallery app error surfaces with a failed chunk request: ${secondCaptures.length} screen(s); ${count('passed')} passed a second capture (transient), ${secondCaptures.length - count('passed') - count('budget-exhausted')} failed it, ${count('budget-exhausted')} not captured again (budget of ${retryBudget.max}).`,
       );
+    }
   }
 
   const ok = shots.filter((shot) => shot.ok).length;

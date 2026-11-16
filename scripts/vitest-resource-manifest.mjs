@@ -851,8 +851,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/gallery-pr-composition.test.ts',
   // Launches one headless Chromium for the gallery audit's fixture pages.
   'scripts/__tests__/gallery-ui-audit.browser.test.ts',
-  // Launches one headless Chromium for the gallery error-surface and
-  // layout-shift probes' fixture pages.
+  // Launches one headless Chromium for the gallery error-surface probe's
+  // fixture pages.
   'scripts/__tests__/gallery-app-error-state.browser.test.ts',
   'scripts/__tests__/code-hygiene.test.ts',
   // Runs the component/style gate as a child against disposable Git trees.

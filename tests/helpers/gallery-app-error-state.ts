@@ -1,18 +1,19 @@
 import { EXTENSIONS_UNAVAILABLE_LABEL } from '../../src-ui/src/core/pluginRegistryCopy';
+import { enUSCatalog } from '../../src-ui/src/i18n/catalog.en-US';
 import type { DocumentTracker } from './gallery-document-tracker';
 import { LAZY_BOUNDARY_ERROR_SELECTOR } from './lazy-surface-readiness';
 
 /**
  * The Gallery's handling of "the app itself was in an error state" during a
- * capture, and the report-only layout-shift record that sits next to it.
+ * capture.
  *
  * A lazily loaded chunk that fails inside the live page leaves the product on
  * a permanent error surface with no automatic retry. Photographing and
  * auditing that state produced hit-target findings that attribution then
  * blamed on whichever pull request happened to be captured (runs 43751068714,
  * 43739274329, 43704347024, 43769487439). The capture now names the state
- * instead of judging its layout, captures that one screen once more, and keeps
- * a record of every time that happened.
+ * instead of judging its layout and, when the page shows that a chunk failed
+ * to download, captures that one screen once more (`gallery-screen-attempt.ts`).
  *
  * Everything here is either pure or a browser-side probe written as source
  * text (like `gallery-ui-audit.ts`), so the root `scripts` lane, which has no
@@ -20,42 +21,59 @@ import { LAZY_BOUNDARY_ERROR_SELECTOR } from './lazy-surface-readiness';
  */
 
 /**
- * The product's own error surfaces, by the hooks the product renders:
+ * The product's own error surfaces, by the hooks the product renders. A
+ * surface says that something in a lazily loaded part failed, NOT that a
+ * download failed: `LazyBoundary` shows its row for any error its child
+ * throws, including a render error. Whether a chunk download failed is read
+ * from the failed requests instead (`chunkLoadFailed`).
  * - `lazy-boundary-row`: `LazyBoundaryError`'s `.lazy-boundary__error` row
  *   (`src-ui/src/components/LazyBoundary.tsx`). The ones `App.tsx` mounts
  *   above `.app` push the whole page down.
  * - `extension-registry-toast`: the notification `DeferredCapabilityBoundary`
- *   shows when the plugin registry chunk fails on a healthy connection. Its
- *   title is `EXTENSIONS_UNAVAILABLE_LABEL`, imported from the module the
- *   product renders it from; the card is `data-testid="toast-card"`.
+ *   shows (notification mode) when the plugin registry chunk fails on a
+ *   healthy connection: a `data-testid="toast-card"` carrying
+ *   `EXTENSIONS_UNAVAILABLE_LABEL`.
+ * - `route-chunk-error`: `RouteViewBoundary`'s `ErrorState` (`.error-state`)
+ *   for a route whose chunk failed, titled with the catalog's
+ *   `route.chunk.title` or `route.chunk.offlineTitle`.
  *
- * Not covered: a `LazyBoundary` whose caller passes its own `unavailable`
- * slot (the command palette, message bubbles, the file preview, ...) renders
- * that caller's markup, not this row, and the connection-recovery boundary's
- * condition lives in the Station details dialog. Neither has a shared hook.
+ * NOT detected, because none has a shared hook: `WorkspacePaneFrame` and
+ * `HomeRolePane` boundaries, `RequiredSlotHost` rendering nothing,
+ * `MonitoringErrorBoundary`, `DeferredCapabilityBoundary` in banner mode
+ * (its condition lives in the Station details dialog), and a `LazyBoundary`
+ * whose caller passes its own `unavailable` slot (several render nothing).
  *
- * No screen in `SCREENS` shows either surface on purpose (checked by grep for
- * the selector, the label and chunk routes when this was written); a screen
- * that starts to must be exempted by name in `APP_ERROR_SURFACE_EXEMPT_SCREENS`
- * with the reason.
+ * No screen in `SCREENS` shows a detected surface on purpose (checked by grep
+ * and by a full capture when this was written); a screen that starts to must
+ * be exempted by name in `APP_ERROR_SURFACE_EXEMPT_SCREENS` with the reason.
  */
 const APP_ERROR_SURFACES = {
   'lazy-boundary-row': LAZY_BOUNDARY_ERROR_SELECTOR,
   'extension-registry-toast': '[data-testid="toast-card"]',
+  'route-chunk-error': '.error-state',
 } as const;
 export type AppErrorSurfaceName = keyof typeof APP_ERROR_SURFACES;
+const ROUTE_CHUNK_TITLES = [
+  enUSCatalog['route.chunk.title'],
+  enUSCatalog['route.chunk.offlineTitle'],
+];
 
 /** Screens that show an error surface on purpose. None today. */
-const APP_ERROR_SURFACE_EXEMPT_SCREENS: ReadonlySet<string> = new Set();
+export const APP_ERROR_SURFACE_EXEMPT_SCREENS: ReadonlySet<string> = new Set();
 
 /** Browser-side: the error surfaces attached to the document, with counts. */
 export const READ_APP_ERROR_SURFACES = `(() => {
   const found = {};
+  const textOf = (element) => element.textContent || '';
   const rows = document.querySelectorAll(${JSON.stringify(APP_ERROR_SURFACES['lazy-boundary-row'])}).length;
   if (rows > 0) found['lazy-boundary-row'] = rows;
   const toasts = Array.from(document.querySelectorAll(${JSON.stringify(APP_ERROR_SURFACES['extension-registry-toast'])}))
-    .filter((card) => (card.textContent || '').includes(${JSON.stringify(EXTENSIONS_UNAVAILABLE_LABEL)})).length;
+    .filter((card) => textOf(card).includes(${JSON.stringify(EXTENSIONS_UNAVAILABLE_LABEL)})).length;
   if (toasts > 0) found['extension-registry-toast'] = toasts;
+  const titles = ${JSON.stringify(ROUTE_CHUNK_TITLES)};
+  const routes = Array.from(document.querySelectorAll(${JSON.stringify(APP_ERROR_SURFACES['route-chunk-error'])}))
+    .filter((state) => titles.some((title) => textOf(state).includes(title))).length;
+  if (routes > 0) found['route-chunk-error'] = routes;
   return found;
 })()`;
 
@@ -97,22 +115,20 @@ export interface AppErrorObservation {
   consoleErrors: string[];
   /** First line of the step error, for `during capture`. */
   stepError?: string;
-  /** For `after capture`: how the page moved and which controls changed. */
-  layoutShift?: LayoutShiftSummary;
+  /** For `after capture`: which controls changed or moved after the photo. */
   controlsAfterPhoto?: ControlNameDiff;
+  controlMovement?: ControlMovement;
 }
 
+/** Retained per attempt for script requests and, separately, for the rest. */
 export const MAX_FAILED_REQUESTS = 12;
-const MAX_IDENTITY_REQUESTS = 4;
 const MAX_TEXT = 160;
 const bounded = (text: string, max = MAX_TEXT) =>
   text.length > max ? `${text.slice(0, max - 1)}…` : text;
 
 /**
- * A content-hashed asset name with its hash replaced, so the identity of the
- * same failure compares equal across two builds (attribution compares a
- * `capture-failed` error verbatim after `normaliseFailureDetail`). The record
- * keeps the real path.
+ * A content-hashed asset name with its hash replaced, so the same chunk reads
+ * the same in two builds. The record keeps the real path.
  */
 export function withoutAssetHash(path: string): string {
   return path.replace(
@@ -127,60 +143,61 @@ export function hasAppErrorSurface(counts: AppErrorSurfaceCounts): boolean {
 }
 
 /**
- * The one-line identity of a screen that failed on an app error surface.
- * It is the first line of the screen's `error`, so the findings judge reports
- * it as `capture-failed` and never judges that state's layout.
+ * The live document's failed script requests, hash-masked, sorted and
+ * deduplicated: the direct evidence that a chunk did not download.
+ */
+function failedChunkPaths(observation: AppErrorObservation): string[] {
+  return [
+    ...new Set(
+      observation.failedRequests
+        .filter(
+          (request) =>
+            request.document === 'current' && request.resourceType === 'script',
+        )
+        .map((request) => withoutAssetHash(request.path)),
+    ),
+  ].sort();
+}
+
+/** Whether the attempt shows a chunk download failing in the live page. */
+export function chunkLoadFailed(observation: AppErrorObservation): boolean {
+  return failedChunkPaths(observation).length > 0;
+}
+
+/**
+ * The one-line identity of a screen that failed on an app error surface: the
+ * first line of the screen's `error`, which the findings judge reports as
+ * `capture-failed` (no layout findings for that state) and attribution
+ * compares exactly after `normaliseFailureDetail`.
+ *
+ * It carries only what is the same for two captures of the same failure: the
+ * surfaces, and the live document's failed chunk paths with hashes masked,
+ * or `no failed chunk request` so a render error is never read as a failed
+ * download. Deliberately left out, and kept in the record (`appError`):
+ * previous-document requests (they depend on the screen before and on
+ * timing), error text (one aborted chunk reads ERR_ABORTED on one attempt and
+ * ERR_FAILED on another), the phase (the same failure can surface before the
+ * photo on one capture and after it on the next), counts, and a step's error.
+ * Hash masking makes the identity comparable between two builds only where
+ * the failing chunk keeps its name; a renamed chunk is a different identity.
  */
 export function formatAppErrorIdentity(observation: AppErrorObservation) {
   const surfaces = (Object.keys(observation.surfaces) as AppErrorSurfaceName[])
     .filter((name) => (observation.surfaces[name] ?? 0) > 0)
     .sort();
-  // The live document's own script failures lead: they are the likely cause,
-  // and the identity shows only the first few.
-  const rank = (request: FailedRequestRecord) =>
-    (request.document === 'current' ? 0 : 2) +
-    (request.resourceType === 'script' ? 0 : 1);
-  const requests = [...observation.failedRequests]
-    .map((request) => ({
-      rank: rank(request),
-      text: `${withoutAssetHash(request.path)} ${bounded(request.errorText, 60)} (${request.resourceType}, ${request.document} document)`,
-    }))
-    .sort((a, b) => a.rank - b.rank || a.text.localeCompare(b.text))
-    .map(({ text }) => text);
-  const shown = requests.slice(0, MAX_IDENTITY_REQUESTS);
-  const more =
-    requests.length - shown.length + observation.failedRequestsOmitted;
-  const requestText =
-    shown.length === 0
-      ? 'none recorded'
-      : `${shown.join(', ')}${more > 0 ? `, +${more} more` : ''}`;
-  return [
-    `app-error-surface: ${surfaces.join(', ')}`,
-    observation.phase,
-    `failed requests: ${requestText}`,
-    ...(observation.stepError
-      ? [`step error: ${bounded(observation.stepError)}`]
-      : []),
-  ].join('; ');
+  const chunks = failedChunkPaths(observation);
+  return `app-error-surface: ${surfaces.join(', ')}; ${
+    chunks.length > 0
+      ? `failed chunk requests: ${chunks.join(', ')}`
+      : 'no failed chunk request'
+  }`;
 }
 
-/**
- * Whether a finished attempt earns the screen its single second capture:
- * only the first attempt, only when it failed, and only when an app error
- * surface was on the page. An ordinary assertion or audit failure has no
- * surface and is never captured again; nothing is captured a third time.
- */
-export function shouldCaptureAgain(
-  attempt: number,
-  outcome: { ok: boolean; appError: AppErrorObservation | null },
-  screen: string,
-): boolean {
-  return (
-    attempt === 1 &&
-    !outcome.ok &&
-    outcome.appError !== null &&
-    !APP_ERROR_SURFACE_EXEMPT_SCREENS.has(screen)
-  );
+/** Thrown by the capture's own error-surface checks; carries what was seen. */
+export class AppErrorSurfaceFailure extends Error {
+  constructor(readonly observation: AppErrorObservation) {
+    super(formatAppErrorIdentity(observation));
+  }
 }
 
 type RequestLike = {
@@ -198,7 +215,10 @@ export function createFailedRequestLog(
   documents: Pick<DocumentTracker, 'classify'>,
   now: () => number = Date.now,
 ) {
-  let records: FailedRequestRecord[] = [];
+  // Scripts are kept apart so navigation teardown cannot crowd out the one
+  // record a retry decision depends on.
+  let scripts: FailedRequestRecord[] = [];
+  let others: FailedRequestRecord[] = [];
   let omitted = 0;
   const host = new URL(origin).host;
   return {
@@ -210,6 +230,7 @@ export function createFailedRequestLog(
       } catch {
         path = '<unparseable>';
       }
+      const records = request.resourceType() === 'script' ? scripts : others;
       if (records.length >= MAX_FAILED_REQUESTS) {
         omitted++;
         return;
@@ -224,102 +245,18 @@ export function createFailedRequestLog(
     },
     /** Starts a new attempt's log. */
     reset() {
-      records = [];
+      scripts = [];
+      others = [];
       omitted = 0;
     },
     snapshot() {
-      return { records: [...records], omitted };
+      return {
+        records: [...scripts, ...others].sort(
+          (a, b) => a.failedAt - b.failedAt,
+        ),
+        omitted,
+      };
     },
-  };
-}
-
-/** Browser-side init script: buffers layout-shift entries for this document. */
-export const LAYOUT_SHIFT_RECORDER = `(() => {
-  if (globalThis.__galleryLayoutShifts) return;
-  const store = { entries: [], dropped: 0, supported: true, observer: null };
-  globalThis.__galleryLayoutShifts = store;
-  const describe = (node) => {
-    if (!node) return null;
-    const element = node.nodeType === 1 ? node : node.parentElement;
-    if (!element) return '#text';
-    const classes = Array.from(element.classList || []).slice(0, 2).map((name) => '.' + name).join('');
-    return (element.tagName.toLowerCase() + (element.id ? '#' + element.id : '') + classes).slice(0, 100);
-  };
-  const take = (entries) => {
-    for (const entry of entries) {
-      if (entry.hadRecentInput) continue;
-      if (store.entries.length >= 200) { store.dropped++; continue; }
-      store.entries.push({
-        startTime: entry.startTime,
-        value: entry.value,
-        sources: Array.from(entry.sources || []).slice(0, 3).map((source) => describe(source.node)).filter(Boolean),
-      });
-    }
-  };
-  try {
-    store.observer = new PerformanceObserver((list) => take(list.getEntries()));
-    store.observer.observe({ type: 'layout-shift', buffered: true });
-    store.take = () => take(store.observer.takeRecords());
-  } catch {
-    store.supported = false;
-  }
-})()`;
-
-/** Browser-side: the document's current high-resolution time. */
-export const READ_PERFORMANCE_NOW = 'performance.now()';
-
-/** Browser-side: the shifts recorded since `since` (performance.now()). */
-export function readLayoutShiftsSince(since: number): string {
-  return `(() => {
-  const store = globalThis.__galleryLayoutShifts;
-  if (!store) return { supported: false, entries: [], dropped: 0 };
-  if (store.take) store.take();
-  return {
-    supported: store.supported,
-    dropped: store.dropped,
-    entries: store.entries.filter((entry) => entry.startTime >= ${Number(since)}),
-  };
-})()`;
-}
-
-export interface LayoutShiftEntry {
-  startTime: number;
-  value: number;
-  sources: string[];
-}
-
-export interface LayoutShiftSummary {
-  /** False when Chromium's `layout-shift` entry type was unavailable. */
-  supported: boolean;
-  count: number;
-  /** Sum of the shift values in the window (not the CLS session window). */
-  score: number;
-  largest: { value: number; sources: string[] } | null;
-  /** Entries the page-side buffer refused once it held 200. */
-  dropped: number;
-}
-
-const round = (value: number) => Math.round(value * 10_000) / 10_000;
-
-export function summariseLayoutShifts(read: {
-  supported: boolean;
-  dropped: number;
-  entries: LayoutShiftEntry[];
-}): LayoutShiftSummary {
-  let largest: LayoutShiftEntry | null = null;
-  let score = 0;
-  for (const entry of read.entries) {
-    score += entry.value;
-    if (!largest || entry.value > largest.value) largest = entry;
-  }
-  return {
-    supported: read.supported,
-    count: read.entries.length,
-    score: round(score),
-    largest: largest
-      ? { value: round(largest.value), sources: largest.sources }
-      : null,
-    dropped: read.dropped,
   };
 }
 
@@ -357,37 +294,109 @@ export function diffControlNames(atPhoto: string[], atAudit: string[]) {
 }
 export type ControlNameDiff = ReturnType<typeof diffControlNames>;
 
-/** The end-of-capture table: the ten screens that moved most after ready. */
-export function formatLayoutShiftTable(
+/** A visible control and its box in viewport CSS pixels. */
+export interface ControlBox {
+  label: string;
+  disabled: boolean;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface ControlMovement {
+  /** Controls present at both reads, paired by name and order. */
+  compared: number;
+  /** Of those, how many moved more than half a CSS pixel. */
+  moved: number;
+  largest: { control: string; dx: number; dy: number; distance: number } | null;
+  /** Milliseconds from the photo to the second read. */
+  windowMs?: number;
+}
+
+const MOVE_THRESHOLD_PX = 0.5;
+const px = (value: number) => Math.round(value * 10) / 10;
+
+/**
+ * How far same-identity controls moved between two reads. A control is
+ * identified by its name and its position among controls of that name, in
+ * document order; one that appeared or disappeared is the names diff's
+ * business, not a movement.
+ */
+export function measureControlMovement(
+  atPhoto: ControlBox[],
+  atAudit: ControlBox[],
+): ControlMovement {
+  const byName = (boxes: ControlBox[]) => {
+    const groups = new Map<string, ControlBox[]>();
+    for (const box of boxes) {
+      const group = groups.get(box.label) ?? [];
+      group.push(box);
+      groups.set(box.label, group);
+    }
+    return groups;
+  };
+  const later = byName(atAudit);
+  let compared = 0;
+  let moved = 0;
+  let largest: ControlMovement['largest'] = null;
+  for (const [label, earlier] of byName(atPhoto)) {
+    const now = later.get(label) ?? [];
+    for (let index = 0; index < Math.min(earlier.length, now.length); index++) {
+      compared++;
+      const dx = now[index].x - earlier[index].x;
+      const dy = now[index].y - earlier[index].y;
+      const distance = Math.hypot(dx, dy);
+      if (distance <= MOVE_THRESHOLD_PX) continue;
+      moved++;
+      if (!largest || distance > largest.distance)
+        largest = {
+          control: bounded(label || '(unnamed)', 80),
+          dx: px(dx),
+          dy: px(dy),
+          distance: px(distance),
+        };
+    }
+  }
+  return { compared, moved, largest };
+}
+
+/**
+ * The end-of-capture table, report only. The window is exactly: controls read
+ * immediately before the full-page screenshot, against controls read again
+ * once the audit has finished and at least `AFTER_PHOTO_WINDOW_MS` after the
+ * photo.
+ */
+export function formatControlChangeTable(
   rows: Array<{
     name: string;
-    layoutShift?: LayoutShiftSummary;
     controlsAfterPhoto?: ControlNameDiff;
+    controlMovement?: ControlMovement;
   }>,
 ): string[] {
-  const measured = rows.filter((row) => row.layoutShift?.supported);
-  const moved = measured.filter(
+  const measured = rows.filter((row) => row.controlMovement);
+  const changed = measured.filter(
     (row) =>
-      (row.layoutShift?.count ?? 0) > 0 || row.controlsAfterPhoto?.changed,
+      (row.controlMovement?.moved ?? 0) > 0 || row.controlsAfterPhoto?.changed,
   );
-  const worst = [...moved]
+  const worst = [...changed]
     .sort(
       (a, b) =>
-        (b.layoutShift?.score ?? 0) - (a.layoutShift?.score ?? 0) ||
-        (b.layoutShift?.count ?? 0) - (a.layoutShift?.count ?? 0) ||
+        (b.controlMovement?.largest?.distance ?? 0) -
+          (a.controlMovement?.largest?.distance ?? 0) ||
+        (b.controlMovement?.moved ?? 0) - (a.controlMovement?.moved ?? 0) ||
         a.name.localeCompare(b.name),
     )
     .slice(0, 10);
   const lines = [
-    `Gallery layout shift from ready to after the audit (report only; nothing fails on it): ${measured.length} of ${rows.length} screen(s) measured, ${moved.length} moved or changed controls.`,
+    `Gallery controls between the photo (read just before the screenshot) and a second read at least 1 s later, after the audit (report only; nothing fails on it): ${measured.length} of ${rows.length} screen(s) measured, ${changed.length} moved or changed controls.`,
   ];
   if (worst.length === 0) return lines;
-  lines.push('  score    shifts  controls  screen  (largest shift: sources)');
+  lines.push('  largest px  moved  names    screen  (largest: control)');
   for (const row of worst) {
-    const shift = row.layoutShift as LayoutShiftSummary;
-    const controls = row.controlsAfterPhoto?.changed ? 'changed' : 'same';
+    const movement = row.controlMovement as ControlMovement;
     lines.push(
-      `  ${shift.score.toFixed(4)}  ${String(shift.count).padStart(6)}  ${controls.padEnd(8)}  ${row.name}${shift.largest ? `  (${shift.largest.value.toFixed(4)}: ${shift.largest.sources.join(', ') || 'no source'})` : ''}`,
+      `  ${String(movement.largest?.distance ?? 0).padStart(10)}  ${String(movement.moved).padStart(5)}  ${(row.controlsAfterPhoto?.changed ? 'changed' : 'same').padEnd(7)}  ${row.name}${movement.largest ? `  (${movement.largest.control}: dx ${movement.largest.dx}, dy ${movement.largest.dy})` : ''}`,
     );
   }
   return lines;
@@ -395,33 +404,46 @@ export function formatLayoutShiftTable(
 
 /**
  * Test-only fault injection for the capture, from `STATION_E2E_GALLERY_FAULTS`
- * (a JSON array). It exists so the detection and the single retry can be
- * shown against the real app: there is no other way to make a chunk fail on
- * one named screen. Refused (the capture throws before any screen) on a
- * GitHub Actions runner and on a full capture, so no gallery the PR check or
- * the nightly judges can carry one; a targeted capture is never complete
- * evidence for attribution or the pixel baseline anyway. When accepted it is
- * recorded under `faultInjection` in `capture.json`.
+ * (a JSON array). It exists so the detection, the retry rule and the control
+ * record can be shown against the real app: there is no other way to make a
+ * chunk fail on one named screen. Refused (the capture throws before any
+ * screen) on a GitHub Actions runner and whenever the selection covers every
+ * declared screen, however it was written, so no gallery the PR check or the
+ * nightly judges can carry one; a targeted capture is never complete evidence
+ * for attribution or the pixel baseline anyway. When accepted it is recorded
+ * under `faultInjection` in `capture.json`.
  *
- * - `abort-chunk`: abort (net::ERR_ABORTED) the first request on each listed
- *   attempt for `/assets/<chunk>-<hash>.js`. `when: 'after-screenshot'` holds
- *   that request until the screenshot is written, so the surface appears
- *   only after the photo.
+ * - `chunk`: every request in each listed attempt for
+ *   `/assets/<chunk>-<hash>.js` is aborted (`mode: 'abort'`, the default),
+ *   answered 404 (`'not-found'`), or answered with a module that throws when
+ *   evaluated (`'poison'`, a failure with no failed request). `when:
+ *   'after-screenshot'` holds the request until the photo is written.
  * - `fail-step`: throw an ordinary error in the screenshot step.
+ * - `move-after-photo`: insert an 80 px block above `.app` `delayMs` after
+ *   the photo.
+ * - `fail-cleanup`: throw from the screen's cleanup after it ran.
  */
 export type GalleryFault =
   | {
       screen: string;
-      kind: 'abort-chunk';
+      kind: 'chunk';
       chunk: string;
       attempts: number[];
+      mode: 'abort' | 'not-found' | 'poison';
       when: 'load' | 'after-screenshot';
     }
-  | { screen: string; kind: 'fail-step'; attempts: number[] };
+  | { screen: string; kind: 'fail-step' | 'fail-cleanup'; attempts: number[] }
+  | {
+      screen: string;
+      kind: 'move-after-photo';
+      attempts: number[];
+      delayMs: number;
+    };
 
 export function readGalleryFaults(
   env: Record<string, string | undefined>,
   selection: readonly string[] | null,
+  declared: readonly string[],
 ): GalleryFault[] {
   const raw = env.STATION_E2E_GALLERY_FAULTS;
   if (raw === undefined || raw === '') return [];
@@ -429,9 +451,9 @@ export function readGalleryFaults(
     throw new Error(
       'STATION_E2E_GALLERY_FAULTS is refused on a GitHub Actions runner.',
     );
-  if (!selection)
+  if (!selection || declared.every((name) => selection.includes(name)))
     throw new Error(
-      'STATION_E2E_GALLERY_FAULTS needs a targeted capture (--screens=...).',
+      'STATION_E2E_GALLERY_FAULTS needs a targeted capture that leaves out at least one screen.',
     );
   let parsed: unknown;
   try {
@@ -441,11 +463,12 @@ export function readGalleryFaults(
   }
   if (!Array.isArray(parsed) || parsed.length === 0)
     throw new Error('STATION_E2E_GALLERY_FAULTS must be a non-empty array.');
-  return parsed.map((fault, index) => {
+  return parsed.map((fault, index): GalleryFault => {
     const where = `STATION_E2E_GALLERY_FAULTS[${index}]`;
     if (typeof fault !== 'object' || fault === null)
       throw new Error(`${where} is not an object.`);
-    const { screen, kind, attempts } = fault as Record<string, unknown>;
+    const fields = fault as Record<string, unknown>;
+    const { screen, kind, attempts } = fields;
     if (typeof screen !== 'string' || !selection.includes(screen))
       throw new Error(`${where}.screen must name a selected screen.`);
     if (
@@ -454,22 +477,32 @@ export function readGalleryFaults(
       attempts.some((attempt) => attempt !== 1 && attempt !== 2)
     )
       throw new Error(`${where}.attempts must list attempts 1 and/or 2.`);
-    if (kind === 'fail-step')
-      return { screen, kind, attempts: attempts as number[] };
-    if (kind !== 'abort-chunk')
-      throw new Error(`${where}.kind must be abort-chunk or fail-step.`);
-    const { chunk, when = 'load' } = fault as Record<string, unknown>;
+    const listed = attempts as number[];
+    if (kind === 'fail-step' || kind === 'fail-cleanup')
+      return { screen, kind, attempts: listed };
+    if (kind === 'move-after-photo') {
+      const { delayMs } = fields;
+      if (
+        typeof delayMs !== 'number' ||
+        !Number.isInteger(delayMs) ||
+        delayMs < 0 ||
+        delayMs > 5000
+      )
+        throw new Error(`${where}.delayMs must be an integer from 0 to 5000.`);
+      return { screen, kind, attempts: listed, delayMs };
+    }
+    if (kind !== 'chunk')
+      throw new Error(
+        `${where}.kind must be chunk, fail-step, fail-cleanup or move-after-photo.`,
+      );
+    const { chunk, when = 'load', mode = 'abort' } = fields;
     if (typeof chunk !== 'string' || !/^[A-Za-z0-9_.-]{1,80}$/.test(chunk))
       throw new Error(`${where}.chunk must be a chunk name without its hash.`);
     if (when !== 'load' && when !== 'after-screenshot')
       throw new Error(`${where}.when must be load or after-screenshot.`);
-    return {
-      screen,
-      kind,
-      chunk,
-      attempts: attempts as number[],
-      when,
-    };
+    if (mode !== 'abort' && mode !== 'not-found' && mode !== 'poison')
+      throw new Error(`${where}.mode must be abort, not-found or poison.`);
+    return { screen, kind, chunk, attempts: listed, mode, when };
   });
 }
 

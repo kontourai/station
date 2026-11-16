@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   type AppErrorObservation,
+  chunkLoadFailed,
   createFailedRequestLog,
   diffControlNames,
   formatAppErrorIdentity,
-  formatLayoutShiftTable,
+  formatControlChangeTable,
   isChunkPath,
   MAX_FAILED_REQUESTS,
+  measureControlMovement,
   readGalleryFaults,
-  shouldCaptureAgain,
-  summariseLayoutShifts,
   withoutAssetHash,
 } from '../../tests/helpers/gallery-app-error-state';
 import { createDocumentTracker } from '../../tests/helpers/gallery-document-tracker';
@@ -36,62 +36,98 @@ const observation = (
   ...overrides,
 });
 
+const request = (
+  path: string,
+  document: 'current' | 'previous',
+  resourceType = 'script',
+  errorText = 'net::ERR_ABORTED',
+  failedAt = 1,
+) => ({ path, document, resourceType, errorText, failedAt });
+
 describe('app error identity', () => {
-  it('names the surface, the phase and the failed requests on one line, without build hashes', () => {
+  it('names the surfaces and the live document failed chunks, hashes masked, on one line', () => {
     const identity = formatAppErrorIdentity(
       observation({
         surfaces: { 'extension-registry-toast': 1, 'lazy-boundary-row': 2 },
-        phase: 'after capture',
         failedRequests: [
-          {
-            path: '/api/orchestration/events',
-            errorText: 'net::ERR_ABORTED',
-            resourceType: 'fetch',
-            failedAt: 1,
-            document: 'previous',
-          },
-          {
-            path: '/assets/CoreUpdateLaunchCheck-DDGWUae_.js',
-            errorText: 'net::ERR_ABORTED',
-            resourceType: 'script',
-            failedAt: 2,
-            document: 'current',
-          },
+          request('/api/orchestration/events', 'previous', 'fetch'),
+          request('/assets/ServerOlderLaunchCheck-1bLuJgi9.js', 'current'),
+          request('/assets/CoreUpdateLaunchCheck-DDGWUae_.js', 'current'),
+          request('/assets/CoreUpdateLaunchCheck-DDGWUae_.js', 'current'),
+          request('/assets/Stale-abcdefgh.js', 'previous'),
+          request('/api/projects', 'current', 'fetch'),
         ],
       }),
     );
     expect(identity).toBe(
-      'app-error-surface: extension-registry-toast, lazy-boundary-row; after capture; failed requests: /assets/CoreUpdateLaunchCheck-<hash>.js net::ERR_ABORTED (script, current document), /api/orchestration/events net::ERR_ABORTED (fetch, previous document)',
+      'app-error-surface: extension-registry-toast, lazy-boundary-row; failed chunk requests: /assets/CoreUpdateLaunchCheck-<hash>.js, /assets/ServerOlderLaunchCheck-<hash>.js',
     );
     expect(identity).not.toContain('\n');
   });
 
-  it('bounds the requests it shows and counts the rest, including those the log dropped', () => {
-    const failedRequests = Array.from({ length: 6 }, (_, index) => ({
-      path: `/assets/chunk${index}-abcdefgh.js`,
-      errorText: 'net::ERR_FAILED',
-      resourceType: 'script',
-      failedAt: index,
-      document: 'current' as const,
-    }));
-    const identity = formatAppErrorIdentity(
-      observation({ failedRequests, failedRequestsOmitted: 3 }),
+  // Run 2026-11-16: one screen, one fault, two captures in one build gave
+  // different identities when they carried teardown requests and error text.
+  it('is equal for two captures of one failure that differ in teardown requests, error text, phase, counts and step error', () => {
+    const first = observation({
+      phase: 'before capture',
+      surfaces: { 'lazy-boundary-row': 1 },
+      failedRequests: [
+        request('/api/orchestration/events', 'previous', 'fetch'),
+        request('/api/models', 'previous', 'fetch'),
+        request(
+          '/assets/CoreUpdateLaunchCheck-DDGWUae_.js',
+          'current',
+          'script',
+          'net::ERR_FAILED',
+          5,
+        ),
+      ],
+    });
+    const second = observation({
+      phase: 'after capture',
+      surfaces: { 'lazy-boundary-row': 2 },
+      stepError: 'locator.waitFor: Timeout 10000ms exceeded.',
+      failedRequests: [
+        request(
+          '/assets/CoreUpdateLaunchCheck-DDGWUae_.js',
+          'current',
+          'script',
+          'net::ERR_ABORTED',
+          9,
+        ),
+        request('/api/projects/gallery-x', 'current', 'fetch'),
+      ],
+    });
+    expect(formatAppErrorIdentity(first)).toBe(formatAppErrorIdentity(second));
+  });
+
+  it('never reads a surface without a failed chunk request like a failed download', () => {
+    const renderError = observation({
+      failedRequests: [
+        request('/api/orchestration/events', 'previous', 'fetch'),
+      ],
+    });
+    const download = observation({
+      failedRequests: [
+        request('/assets/CoreUpdateLaunchCheck-DDGWUae_.js', 'current'),
+      ],
+    });
+    expect(formatAppErrorIdentity(renderError)).toBe(
+      'app-error-surface: lazy-boundary-row; no failed chunk request',
     );
-    expect(identity.match(/chunk\d-<hash>\.js/g)).toHaveLength(4);
-    expect(identity).toMatch(/, \+5 more$/);
-    expect(formatAppErrorIdentity(observation())).toBe(
-      'app-error-surface: lazy-boundary-row; before capture; failed requests: none recorded',
+    expect(formatAppErrorIdentity(renderError)).not.toBe(
+      formatAppErrorIdentity(download),
     );
+    expect(chunkLoadFailed(renderError)).toBe(false);
+    expect(chunkLoadFailed(download)).toBe(true);
+    // A previous document's script is navigation teardown, not evidence.
     expect(
-      formatAppErrorIdentity(
+      chunkLoadFailed(
         observation({
-          phase: 'during capture',
-          stepError: 'locator.waitFor: Timeout 10000ms exceeded.',
+          failedRequests: [request('/assets/A-abcdefgh.js', 'previous')],
         }),
       ),
-    ).toMatch(
-      /; during capture; .*; step error: locator\.waitFor: Timeout 10000ms exceeded\.$/,
-    );
+    ).toBe(false);
   });
 
   it('replaces only a content hash in an asset name', () => {
@@ -105,22 +141,6 @@ describe('app error identity', () => {
       '/assets/short-abc.js',
     );
     expect(withoutAssetHash('/api/projects')).toBe('/api/projects');
-  });
-});
-
-describe('the single second capture', () => {
-  it('captures again only a first attempt that failed on an app error surface', () => {
-    const appError = observation();
-    expect(shouldCaptureAgain(1, { ok: false, appError }, 'home')).toBe(true);
-    // An ordinary assertion or audit failure has no surface.
-    expect(shouldCaptureAgain(1, { ok: false, appError: null }, 'home')).toBe(
-      false,
-    );
-    expect(shouldCaptureAgain(1, { ok: true, appError: null }, 'home')).toBe(
-      false,
-    );
-    // Never a third capture.
-    expect(shouldCaptureAgain(2, { ok: false, appError }, 'home')).toBe(false);
   });
 });
 
@@ -188,7 +208,9 @@ describe('failed request log', () => {
     expect(JSON.stringify(log.snapshot())).not.toContain('secret');
     // A request the tracker never saw is not guessed.
     log.failed(failing('/unseen'));
-    expect(log.snapshot().records.at(-1)?.document).toBe('unknown');
+    expect(
+      log.snapshot().records.find(({ path }) => path === '/unseen')?.document,
+    ).toBe('unknown');
   });
 
   it('is bounded per attempt and starts empty after a reset', () => {
@@ -203,10 +225,24 @@ describe('failed request log', () => {
     expect(log.snapshot().omitted).toBe(3);
     log.reset();
     expect(log.snapshot()).toEqual({ records: [], omitted: 0 });
+    // Navigation teardown cannot crowd out the chunk a retry depends on.
+    for (let index = 0; index < MAX_FAILED_REQUESTS + 8; index++)
+      log.failed(
+        failing(`/api/teardown-${index}`, 'net::ERR_ABORTED', 'fetch'),
+      );
+    log.failed(failing('/assets/CoreUpdateLaunchCheck-DDGWUae_.js'));
+    expect(
+      log
+        .snapshot()
+        .records.some(
+          ({ path }) => path === '/assets/CoreUpdateLaunchCheck-DDGWUae_.js',
+        ),
+    ).toBe(true);
+    expect(log.snapshot().omitted).toBe(8);
   });
 });
 
-describe('report-only change record', () => {
+describe('report-only control record', () => {
   it('diffs control names as multisets', () => {
     expect(
       diffControlNames(['Back', 'Send', 'Send'], ['Retry', 'Back', 'Send']),
@@ -219,51 +255,76 @@ describe('report-only change record', () => {
     expect(diffControlNames(['A', 'B'], ['B', 'A']).changed).toBe(false);
   });
 
-  it('summarises shifts and lists the worst ten screens', () => {
-    const summary = summariseLayoutShifts({
-      supported: true,
-      dropped: 0,
-      entries: [
-        { startTime: 1, value: 0.02, sources: ['div.app'] },
-        {
-          startTime: 2,
-          value: 0.15354,
-          sources: ['div.app.app--with-sidebar'],
-        },
-      ],
+  const box = (label: string, x: number, y: number) => ({
+    label,
+    disabled: false,
+    x,
+    y,
+    width: 44,
+    height: 44,
+  });
+
+  it('measures how far same-identity controls moved, paired by name and order', () => {
+    const atPhoto = [
+      box('Send', 10, 10),
+      box('Send', 10, 60),
+      box('Back', 0, 0),
+    ];
+    expect(measureControlMovement(atPhoto, atPhoto)).toEqual({
+      compared: 3,
+      moved: 0,
+      largest: null,
     });
-    expect(summary).toEqual({
-      supported: true,
-      count: 2,
-      score: 0.1735,
-      largest: { value: 0.1535, sources: ['div.app.app--with-sidebar'] },
-      dropped: 0,
+    // Sub-pixel noise is not a movement.
+    expect(
+      measureControlMovement(atPhoto, [
+        box('Send', 10.3, 10),
+        box('Send', 10, 60.4),
+        box('Back', 0, 0),
+      ]).moved,
+    ).toBe(0);
+    // The row pushed everything below it down by 80 px; Retry is new.
+    expect(
+      measureControlMovement(atPhoto, [
+        box('Retry', 0, 0),
+        box('Send', 10, 90),
+        box('Send', 10, 140),
+        box('Back', 0, 0),
+      ]),
+    ).toEqual({
+      compared: 3,
+      moved: 2,
+      largest: { control: 'Send', dx: 0, dy: 80, distance: 80 },
     });
-    const still = summariseLayoutShifts({
-      supported: true,
-      dropped: 0,
-      entries: [],
+  });
+
+  it('lists the ten screens that changed most and names the window', () => {
+    const moved = (distance: number) => ({
+      compared: 4,
+      moved: 1,
+      largest: { control: 'Send', dx: 0, dy: distance, distance },
     });
+    const still = { compared: 4, moved: 0, largest: null };
     const rows = Array.from({ length: 12 }, (_, index) => ({
       name: `screen-${index}`,
-      layoutShift: { ...summary, score: index / 100, count: 1 },
+      controlMovement: moved(index + 1),
     }));
-    const table = formatLayoutShiftTable([
+    const table = formatControlChangeTable([
       ...rows,
-      { name: 'still', layoutShift: still },
+      { name: 'still', controlMovement: still },
       {
-        name: 'changed-controls',
-        layoutShift: still,
+        name: 'renamed',
+        controlMovement: still,
         controlsAfterPhoto: diffControlNames([], ['Retry']),
       },
       { name: 'unmeasured' },
     ]);
     expect(table[0]).toBe(
-      'Gallery layout shift from ready to after the audit (report only; nothing fails on it): 14 of 15 screen(s) measured, 13 moved or changed controls.',
+      'Gallery controls between the photo (read just before the screenshot) and a second read at least 1 s later, after the audit (report only; nothing fails on it): 14 of 15 screen(s) measured, 13 moved or changed controls.',
     );
     expect(table).toHaveLength(12);
     expect(table[2]).toContain('screen-11');
-    expect(table.join('\n')).not.toContain('screen-1 ');
+    expect(table.join('\n')).not.toMatch(/screen-1 |still|renamed/);
   });
 });
 
@@ -271,14 +332,15 @@ describe('test-only fault injection', () => {
   const faults = JSON.stringify([
     {
       screen: 'home',
-      kind: 'abort-chunk',
+      kind: 'chunk',
       chunk: 'CoreUpdateLaunchCheck',
       attempts: [1],
     },
   ]);
+  const declared = ['home', 'agents'];
 
   it('is off unless asked for', () => {
-    expect(readGalleryFaults({}, null)).toEqual([]);
+    expect(readGalleryFaults({}, null, declared)).toEqual([]);
   });
 
   it('is refused on GitHub Actions and on a full capture', () => {
@@ -286,24 +348,51 @@ describe('test-only fault injection', () => {
       readGalleryFaults(
         { STATION_E2E_GALLERY_FAULTS: faults, GITHUB_ACTIONS: 'true' },
         ['home'],
+        declared,
       ),
     ).toThrow(/refused on a GitHub Actions runner/);
     expect(() =>
-      readGalleryFaults({ STATION_E2E_GALLERY_FAULTS: faults }, null),
+      readGalleryFaults({ STATION_E2E_GALLERY_FAULTS: faults }, null, declared),
     ).toThrow(/needs a targeted capture/);
+    // --screens= naming every screen is a full capture too.
+    expect(() =>
+      readGalleryFaults(
+        { STATION_E2E_GALLERY_FAULTS: faults },
+        ['agents', 'home'],
+        declared,
+      ),
+    ).toThrow(/leaves out at least one screen/);
   });
 
   it('accepts only well-formed faults on selected screens', () => {
     expect(
-      readGalleryFaults({ STATION_E2E_GALLERY_FAULTS: faults }, ['home']),
+      readGalleryFaults(
+        { STATION_E2E_GALLERY_FAULTS: faults },
+        ['home'],
+        declared,
+      ),
     ).toEqual([
       {
         screen: 'home',
-        kind: 'abort-chunk',
+        kind: 'chunk',
         chunk: 'CoreUpdateLaunchCheck',
         attempts: [1],
+        mode: 'abort',
         when: 'load',
       },
+    ]);
+    expect(
+      readGalleryFaults(
+        {
+          STATION_E2E_GALLERY_FAULTS:
+            '[{"screen":"home","kind":"move-after-photo","attempts":[1],"delayMs":600},{"screen":"home","kind":"fail-cleanup","attempts":[2]}]',
+        },
+        ['home'],
+        declared,
+      ),
+    ).toEqual([
+      { screen: 'home', kind: 'move-after-photo', attempts: [1], delayMs: 600 },
+      { screen: 'home', kind: 'fail-cleanup', attempts: [2] },
     ]);
     for (const bad of [
       '{',
@@ -311,11 +400,18 @@ describe('test-only fault injection', () => {
       '[{"screen":"other","kind":"fail-step","attempts":[1]}]',
       '[{"screen":"home","kind":"fail-step","attempts":[3]}]',
       '[{"screen":"home","kind":"nope","attempts":[1]}]',
-      '[{"screen":"home","kind":"abort-chunk","chunk":"../x","attempts":[1]}]',
-      '[{"screen":"home","kind":"abort-chunk","chunk":"X","attempts":[1],"when":"later"}]',
+      '[{"screen":"home","kind":"chunk","chunk":"../x","attempts":[1]}]',
+      '[{"screen":"home","kind":"chunk","chunk":"X","attempts":[1],"when":"later"}]',
+      '[{"screen":"home","kind":"chunk","chunk":"X","attempts":[1],"mode":"slow"}]',
+      '[{"screen":"home","kind":"move-after-photo","attempts":[1],"delayMs":9000}]',
     ])
       expect(
-        () => readGalleryFaults({ STATION_E2E_GALLERY_FAULTS: bad }, ['home']),
+        () =>
+          readGalleryFaults(
+            { STATION_E2E_GALLERY_FAULTS: bad },
+            ['home'],
+            declared,
+          ),
         bad,
       ).toThrow(/STATION_E2E_GALLERY_FAULTS/);
   });

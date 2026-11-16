@@ -1,0 +1,320 @@
+import { describe, expect, it } from 'vitest';
+import type {
+  AppErrorSurfaceCounts,
+  ControlBox,
+  FailedRequestRecord,
+} from '../../tests/helpers/gallery-app-error-state';
+import {
+  type AttemptOutcome,
+  attemptScreen,
+  captureScreen,
+  createRetryBudget,
+  MAX_SECOND_CAPTURES,
+  type ScreenAttemptPorts,
+} from '../../tests/helpers/gallery-screen-attempt';
+
+// The per-screen order the Gallery capture runs (tests/screenshots.spec.ts is
+// a thin caller of these two functions), driven with fake page operations.
+
+const box = (label: string, y: number): ControlBox => ({
+  label,
+  disabled: false,
+  x: 0,
+  y,
+  width: 44,
+  height: 44,
+});
+const chunkFailure: FailedRequestRecord = {
+  path: '/assets/CoreUpdateLaunchCheck-DDGWUae_.js',
+  errorText: 'net::ERR_FAILED',
+  resourceType: 'script',
+  failedAt: 1,
+  document: 'current',
+};
+const row: AppErrorSurfaceCounts = { 'lazy-boundary-row': 1 };
+
+/** A fake page: `surfaces` is what each successive surface read returns. */
+function fakePorts(
+  options: {
+    surfaces?: AppErrorSurfaceCounts[];
+    failedRequests?: FailedRequestRecord[];
+    controls?: ControlBox[][];
+    stepError?: string;
+    cleanupError?: string;
+  } = {},
+) {
+  const calls: string[] = [];
+  let clock = 0;
+  const surfaces = [...(options.surfaces ?? [])];
+  const controls = [...(options.controls ?? [])];
+  const ports: ScreenAttemptPorts<{ findings: [] }> = {
+    capture: async (photo) => {
+      calls.push('capture');
+      if (options.stepError) throw new Error(options.stepError);
+      await photo();
+      calls.push('after-photo');
+    },
+    readSurfaces: async () => {
+      calls.push('surfaces');
+      return surfaces.shift() ?? {};
+    },
+    screenshot: async () => {
+      calls.push('screenshot');
+    },
+    readControls: async () => {
+      calls.push('controls');
+      return controls.shift() ?? [box('Send', 100)];
+    },
+    audit: async () => {
+      calls.push('audit');
+      return { findings: [] };
+    },
+    afterAudit: async () => {
+      calls.push('after-audit');
+    },
+    fallbackScreenshot: async () => {
+      calls.push('fallback');
+    },
+    cleanup: async () => {
+      calls.push('cleanup');
+      if (options.cleanupError) throw new Error(options.cleanupError);
+    },
+    now: () => clock,
+    wait: async (ms) => {
+      calls.push(`wait ${ms}`);
+      clock += ms;
+    },
+    evidence: () => ({
+      failedRequests: options.failedRequests ?? [],
+      omitted: 0,
+      consoleErrors: ['TypeError: Failed to fetch dynamically imported module'],
+    }),
+  };
+  return { ports, calls };
+}
+
+describe('one attempt', () => {
+  it('checks for a surface before the photo and after the audit, then cleans up', async () => {
+    const { ports, calls } = fakePorts();
+    const outcome = await attemptScreen(ports);
+    expect(outcome.ok).toBe(true);
+    expect(calls).toEqual([
+      'capture',
+      'surfaces',
+      'controls',
+      'screenshot',
+      'after-photo',
+      'audit',
+      'wait 1000',
+      'controls',
+      'surfaces',
+      'after-audit',
+      'cleanup',
+    ]);
+    if (outcome.ok)
+      expect(outcome.controlMovement).toEqual({
+        compared: 1,
+        moved: 0,
+        largest: null,
+        windowMs: 1000,
+      });
+  });
+
+  it('does not photograph or audit a surface that is there before the photo', async () => {
+    const { ports, calls } = fakePorts({
+      surfaces: [row],
+      failedRequests: [chunkFailure],
+    });
+    const outcome = await attemptScreen(ports);
+    expect(outcome).toMatchObject({
+      ok: false,
+      photoTaken: false,
+      message:
+        'app-error-surface: lazy-boundary-row; failed chunk requests: /assets/CoreUpdateLaunchCheck-<hash>.js',
+      appError: { phase: 'before capture' },
+    });
+    expect(calls).not.toContain('screenshot');
+    expect(calls).not.toContain('audit');
+    expect(calls).toContain('fallback');
+    expect(calls.at(-1)).toBe('cleanup');
+  });
+
+  it('fails a surface that appeared after the photo and keeps the photo', async () => {
+    const { ports, calls } = fakePorts({
+      surfaces: [{}, row],
+      failedRequests: [chunkFailure],
+      controls: [[box('Send', 100)], [box('Retry', 0), box('Send', 180)]],
+    });
+    const outcome = await attemptScreen(ports);
+    expect(outcome).toMatchObject({
+      ok: false,
+      photoTaken: true,
+      appError: {
+        phase: 'after capture',
+        controlsAfterPhoto: { changed: true, added: ['Retry'] },
+        controlMovement: { moved: 1, largest: { control: 'Send', dy: 80 } },
+      },
+    });
+    expect(calls).toContain('audit');
+    expect(calls).not.toContain('after-audit');
+    // The real photo stays; the viewport-only fallback would overwrite it.
+    expect(calls).not.toContain('fallback');
+  });
+
+  it('names a step failure by the surface on the page, and an ordinary one by its error', async () => {
+    const withSurface = await attemptScreen(
+      fakePorts({ surfaces: [row], stepError: 'locator timeout' }).ports,
+    );
+    expect(withSurface).toMatchObject({
+      ok: false,
+      message: 'app-error-surface: lazy-boundary-row; no failed chunk request',
+      appError: { phase: 'during capture', stepError: 'locator timeout' },
+    });
+    const ordinary = await attemptScreen(
+      fakePorts({ stepError: 'expect(locator).toBeVisible() failed' }).ports,
+    );
+    expect(ordinary).toMatchObject({
+      ok: false,
+      appError: null,
+      message: 'expect(locator).toBeVisible() failed',
+    });
+  });
+});
+
+type Outcome = AttemptOutcome<{ findings: [] }>;
+const passed: Outcome = {
+  ok: true,
+  audit: { findings: [] },
+  atPhoto: [],
+  controlsAfterPhoto: { changed: false, added: [], removed: [], omitted: 0 },
+  controlMovement: { compared: 0, moved: 0, largest: null },
+};
+const surfaceFailure = (failedRequests: FailedRequestRecord[]): Outcome => ({
+  ok: false,
+  message: 'identity',
+  appError: {
+    surfaces: row,
+    phase: 'before capture',
+    failedRequests,
+    failedRequestsOmitted: 0,
+    consoleErrors: [],
+  },
+  photoTaken: false,
+});
+const ordinaryFailure: Outcome = {
+  ok: false,
+  message: 'expect(locator).toBeVisible() failed',
+  appError: null,
+  photoTaken: false,
+};
+
+async function run(
+  outcomes: Array<Outcome | Error>,
+  budget = createRetryBudget(),
+) {
+  const attempts: number[] = [];
+  const logs: string[] = [];
+  const result = await captureScreen(
+    'home',
+    async (n) => {
+      attempts.push(n);
+      const next = outcomes.shift() as Outcome | Error;
+      if (next instanceof Error) throw next;
+      return next;
+    },
+    budget,
+    {
+      keepFirstImage: () => 'transients/home.attempt-1.png',
+      log: (line) => logs.push(line),
+    },
+  );
+  return { result, attempts, logs };
+}
+
+describe('the second capture', () => {
+  it('captures again once when the live page lost a chunk download, and records a transient', async () => {
+    const { result, attempts, logs } = await run([
+      surfaceFailure([chunkFailure]),
+      passed,
+    ]);
+    expect(attempts).toEqual([1, 2]);
+    expect(result.final.ok).toBe(true);
+    expect(result.record).toMatchObject({
+      second: 'passed',
+      firstFile: 'transients/home.attempt-1.png',
+      identity:
+        'app-error-surface: lazy-boundary-row; failed chunk requests: /assets/CoreUpdateLaunchCheck-<hash>.js',
+    });
+    expect(logs[0]).toMatch(
+      /^::warning title=Gallery transient app error::home /,
+    );
+  });
+
+  it('fails a second time like the first, never a third', async () => {
+    const { result, attempts } = await run([
+      surfaceFailure([chunkFailure]),
+      surfaceFailure([chunkFailure]),
+    ]);
+    expect(attempts).toEqual([1, 2]);
+    expect(result.final.ok).toBe(false);
+    expect(result.record?.second).toBe('app-error-surface');
+  });
+
+  it('does not capture again a surface without a failed chunk request (a render error), or an ordinary failure', async () => {
+    for (const first of [
+      surfaceFailure([]),
+      surfaceFailure([{ ...chunkFailure, document: 'previous' }]),
+      surfaceFailure([{ ...chunkFailure, resourceType: 'fetch' }]),
+      ordinaryFailure,
+    ]) {
+      const { result, attempts } = await run([first, passed]);
+      expect(attempts).toEqual([1]);
+      expect(result.final.ok).toBe(false);
+      expect(result.record).toBeNull();
+    }
+  });
+
+  it(`stops after ${MAX_SECOND_CAPTURES} second captures in a run and says so once`, async () => {
+    expect(MAX_SECOND_CAPTURES).toBe(5);
+    const budget = createRetryBudget();
+    const logs: string[] = [];
+    for (let screen = 0; screen < 7; screen++) {
+      const outcome = await run(
+        [surfaceFailure([chunkFailure]), passed],
+        budget,
+      );
+      logs.push(
+        ...outcome.logs.filter((line) => !line.startsWith('::warning')),
+      );
+      expect(outcome.attempts, `screen ${screen}`).toEqual(
+        screen < 5 ? [1, 2] : [1],
+      );
+      if (screen >= 5) {
+        expect(outcome.result.final.ok).toBe(false);
+        expect(outcome.result.record?.second).toBe('budget-exhausted');
+      }
+    }
+    expect(logs).toEqual([
+      'Gallery second captures exhausted (5 this run); home and any later app error surface fail without one.',
+    ]);
+  });
+
+  it('fails the one screen with both errors when the second capture throws, and lets the capture go on', async () => {
+    const { result } = await run([
+      surfaceFailure([chunkFailure]),
+      new Error('cleanup: expected 0 rooms, received 1\nCall log: ...'),
+    ]);
+    expect(result.final.ok).toBe(false);
+    expect(result.record?.second).toBe('threw');
+    expect(result.errorLines).toEqual([
+      'app-error-surface: lazy-boundary-row; failed chunk requests: /assets/CoreUpdateLaunchCheck-<hash>.js',
+      'second capture threw: cleanup: expected 0 rooms, received 1',
+    ]);
+  });
+
+  it('lets a first attempt that throws propagate, as before', async () => {
+    await expect(run([new Error('cleanup failed')])).rejects.toThrow(
+      'cleanup failed',
+    );
+  });
+});
