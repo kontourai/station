@@ -1294,6 +1294,13 @@ export interface StationCapabilityFlags {
    */
   projectRoomMessageActions?: boolean;
   /**
+   * #4798, #4799: one live stream carries all of a Project's rooms
+   * (`GET /api/projects/:slug/rooms/live`), rooms take typing signals
+   * (`POST …/typing`) and list who can be mentioned (`GET …/members`). A host
+   * without them answers 404; a client keeps the per-room stream instead.
+   */
+  projectRoomLive?: boolean;
+  /**
    * Scoped pairing (archive#1098): pairing grants and device sessions carry
    * an OAuth-style scope string, enforced by a single route -> required-scope
    * table (`src-server/security/pairing-route-scopes.ts`).

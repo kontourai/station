@@ -1,0 +1,19 @@
+{
+  "revision": "d16a7c0afffbba8185f3135effc0709ad73f1d2b",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked recentRequests: the frame carries the newest 20 records plus the newest 50 unsettled requests with no recorded failure (selected through the failure journal before the bound); corrected 'every one still working' to that.","inputs":["docs/architecture/module-map.md","src-server/services/projects/project-room-store.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the agents frame against the store selection, failure port and parser: newest 20 plus newest 50 reserved/started with no recorded failure, failed and settled ones never take those places, oldest working left out past 50, at most 70; removed the claim that running work can never be hidden.","inputs":["docs/reference/api.md","src-server/services/projects/project-room-store.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the history queryFn: merged rows are kept in the cache and the awaited result while the hook still remembers them (last 500); a read outliving a forgotten row is read again up to three times and otherwise fails with the cache unchanged; reworded the unconditional promise to say exactly that.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-domains/projectRooms.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Only says the project-room-browser subpath holds browser views and strict wire parsers; the corrected working-request comment there is consistent with it.","inputs":["docs/reference/contracts.md","packages/contracts/src/project-room-browser.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Cites the API reference for the terminal socket transport only; the agents-frame wording change is in the rooms section.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Links the API and SDK references as routes only; the corrected room wording changes no claim in this row.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Routes SDK work to the SDK reference; the corrected read-in-flight wording lives there, consistent with this instruction.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

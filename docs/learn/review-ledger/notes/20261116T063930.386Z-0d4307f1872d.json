@@ -1,0 +1,11 @@
+{
+  "revision": "f28998ce747abd767931e155d3fccc9336bb0a8b",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Corrected the backfill bound: useProjectRoom reads history after the last sequence the stream delivered (known.lastSeq), not whatever a reconcile read may already have cached; a re-read message merges idempotently.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Only links the SDK reference; the backfill wording fix changes no claim here.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Only routes SDK work to the SDK reference; the backfill wording fix is consistent with it.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

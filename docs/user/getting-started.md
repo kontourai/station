@@ -343,7 +343,9 @@ immutable `v<version>` release, next to its archives.
 ### Nightly desktop downloads
 
 Each Nightly desktop publication also uploads its installers under fixed
-names, so these links always serve the newest published build:
+names, so these links normally serve the newest published build (each
+replacement deletes the old file first, so a download at that moment, or
+after a failed upload until the next build, can briefly find nothing):
 
 - macOS (Apple silicon):
   `https://github.com/kontourai/station/releases/download/nightly-desktop/station-nightly-macos-aarch64.dmg`
@@ -351,7 +353,8 @@ names, so these links always serve the newest published build:
   `https://github.com/kontourai/station/releases/download/nightly-desktop/station-nightly-windows-x86_64-setup.exe`
 
 The release also carries the same builds under versioned names
-(`station-<version>-…`), and older retained builds. Its `SHA256SUMS` lists
+(`station-<version>-…`), and versioned downloads of earlier builds; older
+ones may be removed once 30 newer builds have been published. Its `SHA256SUMS` lists
 the newest build's downloads under both names. Download it next to the
 installer and check it, for example
 `shasum -a 256 --ignore-missing -c SHA256SUMS` on macOS,
@@ -498,7 +501,11 @@ show what **Start** will use:
   message.
   Full access, a pending or refused approval change, and a conversation override
   add a warning glyph to the combined button; open Run setup to see the same
-  glyph on the choice that raised it.
+  glyph on the choice that raised it. When the conversation's Agent now points
+  at another engine, the button adds **Agent moved**; Run setup's Engine &
+  model choice names where. If the conversation's engine session has already
+  ended, a **Next turn starts on …** line above the message box says where the
+  next turn goes instead.
   In the model picker, while a reply you sent is still running, the other
   engines and **Use Agent defaults** are shown but unavailable until it
   finishes. When Station reports that the conversation can't be changed right
@@ -738,7 +745,10 @@ a scope, it follows the project whose page you are on and shows all work anywher
 else. The control shows **This project: <name>** on its page and **All work**
 elsewhere. **Always <name> · <Station>** pins a project across navigation. An
 explicit choice such as **All work** stays selected as you navigate. If work needs
-you outside the filter, choose **Show all** from the notice.
+you outside the filter, choose **Show all** from the notice. On a computer the
+scope picker sits beside search; **Browse all conversations** is at the end of
+the list. Each row leads with its title and time, then its status, then the
+agent and project.
 
 To clear your inbox, hover a conversation on desktop and choose **× Dismiss
 from inbox**. On mobile, tap **⋯** or hold a row to open its actions and

@@ -3942,7 +3942,18 @@ composes Project membership with current transport grants and checks again at
 mutation commit and delivery. Reading, discussion, note editing and Agent execution
 are separate actions. Presence expires and is not restored as live after restart.
 The [routes](../../src-server/routes/projects/project-room-routes.ts) expose bounded
-history and guarded live delivery. The [SDK](../reference/sdk.md#shared-project-room)
+history and guarded live delivery. [One live stream](../../src-server/routes/projects/project-room-live.ts)
+per client and Project carries up to 50 channels, each admitted as its own history
+read and re-checked before each frame (#4798). It sends the next message and the
+messages a reaction, edit or delete changed, from the store's commit hints, with the
+sequence and activity range each covers; a change it cannot describe exactly (an
+other-process writer, a burst) is a `resync`. Typing and stream-bound presence live
+in the service's memory and clear when their stream closes. Structured person
+mentions (#4799) are validated against the access adapter's member directory and
+told once per newly named person through the notification service's principal
+feed (`project-room-mention-notifications.ts`). The stream also carries each room's
+newest Agent request records and its newest 50 still working (unsettled with no
+recorded failure), never their Sessions (#4800). The [SDK](../reference/sdk.md#shared-project-room)
 retains exact send intents and retires protected content when authority changes.
 
 [ProjectRoomAgentModule](../../src-server/services/projects/project-room-agent-module.ts)

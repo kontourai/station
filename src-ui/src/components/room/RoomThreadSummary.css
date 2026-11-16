@@ -39,3 +39,10 @@
   color: var(--k-text-faint);
   font-size: var(--k-text-sm);
 }
+.room-thread-summary__working {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}

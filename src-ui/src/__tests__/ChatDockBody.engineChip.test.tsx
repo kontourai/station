@@ -252,15 +252,21 @@ async function engineChip() {
     name: /^Engine & model:/,
   });
   const caption = button.querySelector('.chat-input__chip-caption');
-  // jsdom applies no container query, so both hint variants are in the DOM;
-  // the caption's own text node is the engine, each span one hint variant.
-  const text = (selector: string) =>
-    caption?.querySelector(selector)?.textContent ?? null;
+  // The caption's own text node is the engine, its span the move hint; the
+  // short hint is the Run setup trigger's, shown while the panel is closed.
+  const describedBy = trigger.getAttribute('aria-describedby');
   return {
     button,
+    trigger,
     engine: caption?.firstChild?.textContent ?? '',
-    hint: text('.chat-input__engine-moved--full'),
-    shortHint: text('.chat-input__engine-moved--short'),
+    hint:
+      caption?.querySelector('.chat-input__engine-moved')?.textContent ?? null,
+    shortHint:
+      trigger.querySelector('.composer-run-control__notice')?.textContent ??
+      null,
+    triggerDescription: describedBy
+      ? (document.getElementById(describedBy)?.textContent ?? null)
+      : null,
     // The narrow composer's own line for a next-turn move.
     notice:
       document.querySelector('.chat-input__next-turn-notice')?.textContent ??
@@ -291,11 +297,16 @@ describe('ChatDockBody composer engine chip', () => {
       id: 'opencode',
       name: 'OpenCode',
     });
-    const { button, engine, hint, shortHint } = await engineChip();
+    const { button, trigger, engine, hint, shortHint, triggerDescription } =
+      await engineChip();
     expect(engine).toBe('Codex');
     // The repoint is stated as a fact about the Agent, never as the engine.
-    expect(hint).toBe(' · Agent now on OpenCode');
-    expect(shortHint).toBe(' · Agent moved');
+    expect(hint).toBe('Agent now on OpenCode');
+    expect(shortHint).toBe('· Agent moved');
+    expect(trigger.getAttribute('aria-label')).toMatch(/; Agent moved$/);
+    expect(triggerDescription).toBe(
+      'This conversation runs on Codex. Its Agent now uses OpenCode.',
+    );
     expect(document.querySelector('.chat-input__next-turn-notice')).toBeNull();
     const name = button.getAttribute('aria-label') ?? '';
     expect(name).toContain(
@@ -312,10 +323,23 @@ describe('ChatDockBody composer engine chip', () => {
       ),
       { id: 'opencode', name: 'OpenCode' },
     );
-    const { button, engine, hint, shortHint, notice } = await engineChip();
+    const {
+      button,
+      trigger,
+      engine,
+      hint,
+      shortHint,
+      notice,
+      triggerDescription,
+    } = await engineChip();
     expect(engine).toBe('Codex');
-    expect(hint).toBe(' · Next turn on OpenCode');
+    expect(hint).toBe('Next turn on OpenCode');
+    // The notice above the draft states this move, so the trigger does not.
     expect(shortHint).toBeNull();
+    expect(trigger.getAttribute('aria-label')).not.toMatch(/Agent moved/);
+    expect(triggerDescription).toBe(
+      "This conversation's Codex session has ended; its next turn starts on OpenCode, where its Agent now points.",
+    );
     expect(notice).toBe('Next turn starts on OpenCode');
     expect(button.getAttribute('aria-label')).toContain(
       "This conversation's Codex session has ended; its next turn starts on OpenCode",
@@ -329,7 +353,7 @@ describe('ChatDockBody composer engine chip', () => {
     });
     const { engine, hint } = await engineChip();
     expect(engine).toBe('OpenCode');
-    expect(hint).toBe(' · Agent now on Codex');
+    expect(hint).toBe('Agent now on Codex');
   });
 
   test("a session on the Agent's own engine carries no repoint hint", async () => {
@@ -337,9 +361,12 @@ describe('ChatDockBody composer engine chip', () => {
       id: 'opencode',
       name: 'OpenCode',
     });
-    const { button, engine, hint } = await engineChip();
+    const { button, engine, hint, shortHint, triggerDescription } =
+      await engineChip();
     expect(engine).toBe('OpenCode');
     expect(hint).toBeNull();
+    expect(shortHint).toBeNull();
+    expect(triggerDescription).toBeNull();
     expect(button.getAttribute('aria-label')).not.toContain('Agent now uses');
   });
 
@@ -485,7 +512,7 @@ describe('ChatDockBody composer engine chip', () => {
     });
     const { engine, hint, notice } = await engineChip();
     expect(engine).toBe('Codex');
-    expect(hint).toBe(' · Next turn on OpenCode');
+    expect(hint).toBe('Next turn on OpenCode');
     expect(notice).toBe('Next turn starts on OpenCode');
   });
 
@@ -498,7 +525,7 @@ describe('ChatDockBody composer engine chip', () => {
       renderDock(reopened(open), { id: 'opencode', name: 'OpenCode' });
       const { engine, hint } = await engineChip();
       expect(engine).toBe('Codex');
-      expect(hint).toBe(' · Agent now on OpenCode');
+      expect(hint).toBe('Agent now on OpenCode');
     },
   );
 

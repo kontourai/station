@@ -831,6 +831,38 @@ next message and `fetchProjectRoomAttachment` reads one back.
 `projectRoomMessageActions` handshake flag; offer these actions only when it is
 true, because an older host answers 404.
 
+On a host with the `projectRoomLive` flag (#4798), every room hook of a
+Project on one Station and authority shares one live connection
+(`GET /api/projects/:slug/rooms/live`), reopened once when the set of rooms
+changes. Instead of re-reading history on each change, `useProjectRoom` merges
+an `append` into the newest window and an `update` into every window or kept
+row that holds the message, each merge taking the next `readSeq`. A message
+past the next sequence is first backfilled from history (`after` the last
+sequence the stream delivered); an `update` whose activity range does not start
+where the cache is, a `resync`, or any (re)connection re-reads the room once.
+The hook takes the stream's position only after that read succeeds; while it
+has failed, the next frame re-reads the room instead of trusting the frames
+in between. A history read that started before a merge keeps the merged rows
+in the cache and in the result its caller awaits. The hook remembers its last
+500 merged rows; a read that outlives a forgotten one is read again, up to
+three times, and otherwise fails with the cache left as it was.
+The newest window always reads as far as its cached rows reach, so a window
+that merges or a re-read widened stays that wide on every later read.
+A hook that joins a connection already open starts from where the room stands
+on it, so a gap after that is still backfilled.
+Acknowledged sends, reactions, edits and deletes merge their returned message
+while the stream is connected. The hook also returns `lastSeq` (the live
+sequence), `typing` (other people), `agents` (the room's newest Agent request
+records, see `workingProjectRoomAgents`) and `notifyTyping(active)`, which
+sends at most one typing signal every three seconds and stops after four idle
+seconds, on send, and on unmount. Presence joins once and lasts while the
+stream is open. `useProjectRoomLiveIndex(scope, slug, channelIds, enabled,
+onActivity?)` reads typing and Agent activity for many channels over the same
+connection, for a sidebar, and calls `onActivity(channelId)` on each change
+and each time the connection announces the channel.
+`useProjectRoomMembers` lists the people a message may mention, with current
+names. Without the flag the hook keeps the per-room `/events` stream.
+
 On a host with that flag, the embeddable `ProjectRoom` UI shows reaction pills
 under each message (a tap toggles yours; who reacted is a tooltip, or a long
 press or **Who reacted** on touch), a quick picker of recent emoji with search,

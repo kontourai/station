@@ -1,0 +1,7 @@
+{
+  "revision": "79c677596d077e961a5dad38a10cbe09a3d582e4",
+
+  "notes": [
+    {"path":"docs/guides/nightly.md","note":"Edited (#3593 fix round). Checked against scripts/lib/publish-nightly-desktop.mjs and the workflow step: 30 cohorts is a floor, any publishing run (dispatch, re-run) removes up to 25 more; latest.json protection by version and by download URL; URL must be exactly the release prefix plus one versioned asset name (manifestCohortOf: URL parse, no query/fragment/encoding/dot segment, href equals input), empty platforms refused; plans nothing when latest.json's version is older than this cohort (compare < 0), when this cohort's five downloads are not all uploaded, or on truncated/duplicate/changing/over-1,000 listings; incomplete cohorts kept indefinitely incl. the two 2026-09-17 starter uploads (2451.1, 2451.2; seen in the paged listing, absent from the release object, both read 2026-11-16); per-request 15 s bound and 180 s budget inside a 5-minute step timeout; vars precedence environment > repository > organization per GitHub's documented variable precedence, job environment native-release; once enabled, ADR 0015's 2463.2 and this guide's 2475.3 builds stop being downloadable (citations kept; ADR is frozen so the note is here). Verified by nightly-desktop-asset-retention(.workflow).test.ts with 18 fault injections. Not executed: a hosted Nightly with the step.","inputs":["docs/guides/nightly.md",".github/workflows/nightly-native-cohort.yml"]}
+  ]
+}

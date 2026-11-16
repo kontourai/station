@@ -859,6 +859,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/gallery-pr-composition.test.ts',
   // Launches one headless Chromium for the gallery audit's fixture pages.
   'scripts/__tests__/gallery-ui-audit.browser.test.ts',
+  // Launches one headless Chromium for the gallery error-surface probe's
+  // fixture pages.
+  'scripts/__tests__/gallery-app-error-state.browser.test.ts',
   'scripts/__tests__/code-hygiene.test.ts',
   // Runs the component/style gate as a child against disposable Git trees.
   'scripts/__tests__/component-style-hygiene.test.ts',
@@ -1014,6 +1017,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2675 slice E: drives the manifest signer and the Nightly publication
   // helper CLIs as bounded single-shot children (dry-run sign and verify).
   'scripts/__tests__/portable-nightly-publish-workflow.test.ts',
+  // #3593: runs the nightly-desktop retention step's own bash as bounded
+  // children against a recording `gh` stand-in.
+  'scripts/__tests__/nightly-desktop-asset-retention-workflow.test.ts',
   // #2959: runs the release publication and signer CLIs, the release and
   // publish workflows' own bash steps, and install.sh as bounded children.
   'scripts/__tests__/portable-release-publish-workflow.test.ts',

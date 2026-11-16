@@ -322,6 +322,33 @@ export class ProjectMembershipStore {
       });
   }
 
+  /**
+   * Active members who may view this exact Project incarnation, in principal
+   * order (#4799). Discloses the roster: call only inside an admitted
+   * operation on this scope. A Project that was never shared has none.
+   */
+  viewingMembers(scope: ProjectMembershipScope): PrincipalRef[] {
+    const shared = this.db
+      .prepare(
+        'SELECT portable_id, local_slug FROM shared_projects WHERE local_id=?',
+      )
+      .get(scope.localProjectId);
+    if (!shared) return [];
+    this.assertScope(scope);
+    return this.db
+      .prepare(
+        'SELECT record FROM project_members WHERE project_id=? ORDER BY principal_id',
+      )
+      .all(scope.localProjectId)
+      .map((row) => this.parseMember(row.record))
+      .filter(
+        (member) =>
+          member.status === 'active' &&
+          this.actions(member.role).includes('view'),
+      )
+      .map((member) => structuredClone(member.principal));
+  }
+
   invitationScope(token: string): ProjectMembershipScope {
     const { scope, invitation } = this.pendingInvitation(token);
     this.requireGrant(scope, invitation.invitedBy, invitation.role);

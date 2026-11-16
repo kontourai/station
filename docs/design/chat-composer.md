@@ -24,10 +24,20 @@ status/resync action stay above the box when present.
 Run setup is a quiet ghost pill with overlapping Agent and engine marks, a
 secondary-weight model label, and the shared caret. The Agent mark names the
 Agent, so the label spends its text on the model; without an Agent mark it reads
-Agent · model and the Agent name truncates first. A requested reasoning effort
+Agent · model and the Agent name truncates first, but never below about eight
+characters: where that and the model do not both fit, the name is left out of the
+label rather than cut to a stub (the accessible name keeps it). A requested reasoning effort
 follows the model ("Opus · High") and truncates before it; with no effort
 requested the engine default applies and no level is named. Safety warnings stay
-on the marks, and the open panel repeats the mark on the choice that raised it. In narrow composers the label hides, keeping marks and caret. On phones, More draft options groups Saved drafts
+on the marks, and the open panel repeats the mark on the choice that raised it. When the
+Agent now points at another engine (and its Session has not ended; see 3.1), the trigger
+adds "· Agent moved" at every width, 8px after the label and with a plain space after
+the dot. The label gives way before it, and in narrow composers the label hides,
+keeping marks, the hint without its dot, and caret. Showing the hint on the trigger at
+every width is a decision of #4971: before #4897 a wide composer said "Agent now on …"
+in the Engine chip's caption and a narrow one "Agent moved", and from #4897 the closed
+row said neither. The trigger's accessible name ends with "Agent moved"
+and its description gives the full sentence. On phones, More draft options groups Saved drafts
 and Clear message to preserve the toolbar targets. The full summary remains in the accessible name
 and hover title, and the touch target stays at least 44px. The existing setup
 owner opens above the toolbar on desktop and as a bottom sheet on phones.
@@ -946,13 +956,15 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   for that Session (conversation open, the Session's own `session.started`, or the
   receipt of the send that started it); otherwise the caption names only a native
   engine's product and claims no move. When the Agent now points elsewhere, the caption
-  adds "Agent now on …" (a narrow composer: "Agent moved", kept visible by letting the
-  engine name shrink to an ellipsis first), and the accessible name says
-  the conversation runs on its engine and the Agent now uses another. Once the Session's
+  adds "Agent now on …" on its own line below the engine name, with no separator, wrapping
+  rather than being cut, and the accessible name says
+  the conversation runs on its engine and the Agent now uses another. The closed Run
+  setup trigger says "Agent moved" (see Run setup in the composer toolbar). Once the Session's
   engine binding has ended (`exited`, `closed`, `dead` or `error`), the caption says
   "Next turn on …", because the next turn starts a successor
-  there. A narrow composer has no chip room for a destination name, so it says this on
-  its own line above the chips instead ("Next turn starts on …"). A tab that has observed no status for the Session, such as a freshly opened
+  there. Since the closed trigger has no room for a destination name, the composer also
+  says this on its own line above the box ("Next turn starts on …"), and the trigger's
+  description gives the sentence. A tab that has observed no status for the Session, such as a freshly opened
   conversation, reads that from the open read's `nextTurnStartsSession` (#4179), the
   server's continuation rule, while it still describes the chat's current Session.
   Both surfaces resolve the execution Agent with `chatExecutionBinding`: an override
@@ -1413,14 +1425,18 @@ alone do not automatically settle standalone conversations.
 Every populated shelf can be collapsed; collapsed shelves sit below expanded
 work, with Settled at the bottom by default. Shelf menus offer Move up and
 Move down; that order is saved on this device within expanded and collapsed
-shelves. The inbox header contains search
-and New chat. Search also finds dismissed work; there is no Dismissed shelf in
+shelves. The inbox header is one line: search, the
+work scope picker (its "Show work" label kept for assistive technology), and
+New chat; a notice under it appears only while the scope hides work that needs
+the person (2026-11-15). Search also finds dismissed work; there is no Dismissed shelf in
 the normal list. Third-party sessions can be hidden without stopping the
 external harness, and stay hidden through its status updates. Adoption into
 Station restores their normal status handling. Task family summaries use an
 explicit Open task control; chat rows open chats. Browse all conversations
-retains paginated history, rename and delete. Refresh lives in overflow with a
-direct retry on failure. Dismissal offers a
+sits at the end of the list and retains paginated history, rename and delete.
+The inbox has no overflow menu: a failed read offers Retry, disabled while the
+re-read runs. A card row reads its title and time first, then its status line,
+then agent and project. Dismissal offers a
 transient Undo toast and the configurable inbox Undo shortcut. Native editor
 and terminal undo retain their keys.
 

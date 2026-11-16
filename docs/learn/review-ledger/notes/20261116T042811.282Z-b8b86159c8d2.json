@@ -1,0 +1,7 @@
+{
+  "revision": "bb92f90571eeebb284604a0f2dda3627b47e9419",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Control-record paragraph re-read against tests/helpers/gallery-screen-attempt.ts and the spec: second read follows the audit directly (no default pad), windowMs recorded, STATION_E2E_GALLERY_SETTLE_WINDOW_MS (1..5000, readSettleWindow) widens it, grows the test timeout per screen and is recorded as settleWindowMs; states that a change after the audit is not seen. Rest of the Gallery section unchanged and still matches the code. Verified with focused vitest suites and local captures.","inputs":["docs/guides/testing.md","tests/helpers/gallery-app-error-state.ts","tests/helpers/gallery-screen-attempt.ts","tests/screenshots.spec.ts"]}
+  ]
+}
