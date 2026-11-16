@@ -6332,7 +6332,7 @@ These are the person-facing leaves of the same reads and of `wait_session`
 - `GET /api/orchestration/session-reads/:sessionId/wait?until=&timeoutMs=&afterEventCursor=`
 
 They answer a person's own credential. Every internal request (a
-station-control caller, a caller-less child, Station's own server code) gets
+station-control caller, a copied internal token, Station's own server code) gets
 `403`: the station-control guard refuses the unmapped route, and the leaf
 itself answers `person_credential_required`. The agent-only leaves above keep
 refusing a person with `station_control_caller_required`. The leaves inherit

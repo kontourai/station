@@ -1878,21 +1878,19 @@ A session is a child of the conversation when its launch names any session of
 the conversation's lineage as its parent:
 
 - by its delegation context (`metadata.delegation.parentConversationId`).
-  When a Claude Code or Codex session calls `delegate_task` through its
-  session-bound station-control (Claude Code's in-process server, Codex's
-  per-session HTTP server), Station derives it from the calling session's own
-  record. For Station's own agent, the runtime attests it from the
-  conversation it ran the tool call in. Neither comes from the request. On a
+  When a Claude Code, Codex or Station-agent session calls `delegate_task`
+  through its session-bound station-control (the in-process server for
+  Claude Code and Station's own agent, Codex's per-session HTTP server),
+  Station derives it from the calling session's own record. It never comes
+  from the request. On a
   direct request it is the requester's own claim. A paired-Station dispatch
   record keeps the same value as `metadata.parentConversationId`;
 - otherwise by `metadata.parentTaskId`, which a request may set itself. A
   delegation context naming another conversation always wins over it.
 
-A task launched through a caller-less station-control process (a stdio child
-with no per-session credential, as a Strands-runtime agent uses) carries no
-delegation context. Unless its
-request named `parentTaskId`, it is not found as a child and the total doesn't
-show it as missing.
+A station-control request with no per-session credential is refused before
+it reaches the dispatch route (`station_control_caller_required`), so it
+launches no task.
 
 Tokens: `totalTokens` is input + output as each engine reported them; cache
 reads and writes are listed separately and are not added. `total.tokens`

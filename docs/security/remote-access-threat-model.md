@@ -2350,9 +2350,12 @@ machine", and the difference is the residue, stated without softening:
   per-boot `STATION_UI_BOOTSTRAP_TOKEN`). Spawned PTYs and generic engine
   subprocesses do **not** inherit those keys: `childProcessEnvironment()` /
   `scrubBootInternalSecrets()` delete them at every production spawn/PTY
-  seam. The one child that still receives the internal token is the built-in
-  `station-control` MCP server, via `withStationControlRuntimeEnv` after the
-  scrub, because that child is Station's own loopback API client.
+  seam. Since #2377 slice D no child receives it, the built-in
+  `station-control` MCP server included: Station's own engine and
+  in-process Claude serve station-control in-process as the session's
+  verified caller, and `withStationControlRuntimeEnv` strips the token from
+  every child. A holder of the bare token is refused by the station-control
+  authority guard on every route except the CLI readiness probes.
 - **Accepted boundary (UX audit D6).** A paired principal with
   `terminal:operate` (or agent execution) runs as the Station OS user. That
   principal can read `<STATION_HOME>/logs/server/` from disk even when the

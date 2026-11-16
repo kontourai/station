@@ -1259,11 +1259,11 @@ Give such work to a top-level conversation instead of a delegated child.
 ### Which requests can name a context
 
 - A station-control tool call with a verified per-session credential gets
-  the derived context.
-- Station's own engine's pooled tool child has no per-session credential. Its
-  context is kept only when Station's runtime attested it.
+  the derived context. That includes Station's own engine, which calls
+  station-control in-process as its session, as in-process Claude does.
 - Any other internal request that is neither verified nor attested starts a
-  root.
+  root. A station-control request with no verified caller is refused before
+  it reaches the route (`station_control_caller_required`).
 - A request from outside this Station's process, such as a peer Station, an
   operator credential, or a paired device, may send a `delegation` body on
   `POST /api/orchestration/delegations`, as on `/chat/delegated`. Its context

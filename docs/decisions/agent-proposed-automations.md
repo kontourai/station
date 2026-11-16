@@ -156,10 +156,11 @@ source type's `plan()` can describe the source, it should write a proposal's
 - An Agent recreated with an identical definition under the same slug
   matches the recorded binding. It is indistinguishable, and it grants the
   same authority.
-- A Station-engine Agent whose station-control connection carries no
-  verified caller (for example one on a model connection) cannot propose:
-  the guard refuses it (`station_control_caller_required`). Engines that
-  carry a verified caller can.
+- A run with no session carries no verified station-control caller (a
+  Station-engine Agent run through `/invoke`, a raw tool call, or voice), so
+  it cannot propose: the guard refuses it (`station_control_caller_required`).
+  Every engine's session carries a verified caller, Station's own engine
+  included (#2377 slice D), and can.
 - Station does not yet have a route that removes a source or rule (it is
   proposed in [#4646](https://github.com/kontourai/station/pull/4646)), so
   "removing a rule leaves things exactly as before" is not covered here.

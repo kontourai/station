@@ -307,9 +307,10 @@ child-process environments still scrub it. User and third-party Node
 programs, terminal PTYs and engine children never write into this cache.
 [`station-compile-cache.ts`](../../src-server/runtime/bootstrap/station-compile-cache.ts)
 gives the home's cache directory only to the built-in `station-control` and
-`station-knowledge` bundles, through the same exact-binary check that gates
-their API credential. That covers the pooled MCP children and the copies an
-engine starts from its MCP configuration. Measured, a warm cache starts those
+`station-knowledge` bundles, through the same exact-binary check
+(`withStationControlRuntimeEnv`), which no longer hands them any API
+credential. That covers the copies an engine or the tool catalogue starts
+from its MCP configuration. Measured, a warm cache starts those
 bundles faster and leaves them smaller. Each removes the setting from its own
 environment at startup and writes its cache straight away, because an engine
 may end it with a signal, after which Node writes nothing. A cold cache, the
