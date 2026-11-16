@@ -1537,6 +1537,132 @@ describe('#3429: a continued attached conversation opens in the dock', () => {
     expect(f.engines.claude.adoptions).toHaveLength(1);
   });
 
+  // Delta review item 1: an open turn whose events are old but whose source
+  // still writes (a step streaming, a subagent) is refused at adoption, not
+  // only labelled active in the read.
+  test('a source with an old event but a recent source write is refused at adoption', async () => {
+    const f = await fixture({ engineAgent: true });
+    const source = f.attached('claude');
+    f.store.appendEvent({
+      eventId: `${source}:turn-2`,
+      provider: 'claude',
+      threadId: source,
+      turnId: 'source-turn-2',
+      createdAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+      method: 'turn.started',
+      prompt: 'long job',
+    } as never);
+    const row = f.store.readSessionByThread(source)!;
+    f.store.upsertSession({
+      ...row,
+      attachedSource: {
+        ...row.attachedSource!,
+        lastWriteAt: new Date(Date.now() - 20_000).toISOString(),
+      },
+    });
+    const refused = await f.request('/api/orchestration/commands', {
+      type: 'adoptSession',
+      sourceThreadId: source,
+    });
+    expect(refused.status, refused.text).toBe(409);
+    expect(refused.body.code).toBe('continuation_source_active');
+    expect(f.engines.claude.adoptions).toEqual([]);
+  });
+
+  // Delta review item 2: the order is existing continuation (the same-key
+  // retry test above), then a reservation held elsewhere, then the
+  // still-running check. A continuation another owner is already creating
+  // is reported as such, never as "still running". (The ledger does not
+  // store a reservation's idempotency key, so a reservation held elsewhere
+  // is contention, not a same-intent join.)
+  test('a reservation held elsewhere is reported before the still-running check', async () => {
+    const f = await fixture({ engineAgent: true });
+    const source = f.attached('claude');
+    f.store.appendEvent({
+      eventId: `${source}:turn-2`,
+      provider: 'claude',
+      threadId: source,
+      turnId: 'source-turn-2',
+      createdAt: new Date(Date.now() - 30_000).toISOString(),
+      method: 'turn.started',
+      prompt: 'keep going',
+    } as never);
+    const key = '6c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f';
+    const row = f.store.readSessionByThread(source)!;
+    const now = new Date().toISOString();
+    const elsewhere = f.store.createAdoptionLedger().reserve({
+      sourceThreadId: source,
+      targetThreadId: randomUUID(),
+      ownerId: randomUUID(),
+      // Another live process, so startup reconciliation keeps it.
+      ownerPid: process.ppid,
+      provider: 'claude',
+      sourceSessionId: row.attachedSource!.externalSessionId,
+      sourceKind: row.attachedSource!.kind,
+      cwd: row.cwd!,
+      projectRoot: row.cwd!,
+      idempotencyKey: key,
+      createdAt: now,
+      updatedAt: now,
+    });
+    expect(elsewhere.kind).toBe('owner');
+    const contended = await f.request('/api/orchestration/commands', {
+      type: 'adoptSession',
+      sourceThreadId: source,
+      idempotencyKey: key,
+    });
+    expect(contended.body.code, contended.text).not.toBe(
+      'continuation_source_active',
+    );
+    expect(contended.body.error).toBe(
+      'This attached session is already being continued.',
+    );
+    expect(f.engines.claude.adoptions).toEqual([]);
+  });
+
+  // Delta review item 3: one plain and two overriding requests of the same
+  // intent at once. The plain one is refused as still running; both
+  // overrides end on one continuation, the second joining the first.
+  test('two overriding requests racing a refused plain one end on one continuation', async () => {
+    const f = await fixture({ engineAgent: true });
+    const source = f.attached('claude');
+    f.store.appendEvent({
+      eventId: `${source}:turn-2`,
+      provider: 'claude',
+      threadId: source,
+      turnId: 'source-turn-2',
+      createdAt: new Date(Date.now() - 30_000).toISOString(),
+      method: 'turn.started',
+      prompt: 'keep going',
+    } as never);
+    const key = '9d8c7b6a-5f4e-4d3c-8b2a-1f0e9d8c7b6a';
+    const dispatch = (override: boolean) =>
+      (f.service as any).dispatchWithReceipt(
+        {
+          type: 'adoptSession',
+          sourceThreadId: source,
+          idempotencyKey: key,
+          ...(override ? { continueWhileSourceActive: true } : {}),
+        },
+        { userId: 'operator' },
+      ) as Promise<{ result: { threadId: string } }>;
+    const [plain, first, second] = await Promise.allSettled([
+      dispatch(false),
+      dispatch(true),
+      dispatch(true),
+    ]);
+    expect(plain).toMatchObject({
+      status: 'rejected',
+      reason: { code: 'continuation_source_active' },
+    });
+    expect(first.status, String((first as any).reason)).toBe('fulfilled');
+    expect(second.status, String((second as any).reason)).toBe('fulfilled');
+    expect((second as PromiseFulfilledResult<any>).value.result.threadId).toBe(
+      (first as PromiseFulfilledResult<any>).value.result.threadId,
+    );
+    expect(f.engines.claude.adoptions).toHaveLength(1);
+  });
+
   // An open turn the transcript stopped writing long ago (interrupted,
   // crashed, or an engine that records no completions) is not "running".
   test('an open turn silent past the window reads quiet and continues in one step', async () => {

@@ -322,29 +322,30 @@ export class AttachedSessionAdoption {
         // The override is not part of the intent: a retry without it joins
         // the continuation an overriding request already started.
       ]);
-      const inFlight = this.adoptionIntents.get(intentScope);
-      if (inFlight) {
-        let settled:
-          | OrchestrationCommandDispatchResult<AdoptedSessionResult>
-          | undefined;
+      // Join whatever attempt of this intent is in flight. One refused only
+      // because the source is running does not answer a request that says
+      // to continue anyway, so that request looks again: another overriding
+      // request may have started an attempt meanwhile, which it joins.
+      const refused = new Set<Promise<unknown>>();
+      for (
+        let inFlight = this.adoptionIntents.get(intentScope);
+        inFlight && !refused.has(inFlight);
+        inFlight = this.adoptionIntents.get(intentScope)
+      ) {
         try {
-          settled = await inFlight;
-        } catch (error) {
-          // Refused only because the source is running: that does not
-          // answer a request that says to continue anyway, which then
-          // starts its own attempt below.
-          if (
-            !continueWhileSourceActive ||
-            !(error instanceof AdoptionSourceActiveError)
-          )
-            throw error;
-        }
-        if (settled) {
+          const settled = await inFlight;
           this.deps.persistReceipt(receipt);
           return {
             receipt,
             result: { ...settled.result, alreadyAdopted: true },
           };
+        } catch (error) {
+          if (
+            !continueWhileSourceActive ||
+            !(error instanceof AdoptionSourceActiveError)
+          )
+            throw error;
+          refused.add(inFlight);
         }
       }
       const intent = this.performAttachedSessionAdoption(
@@ -362,7 +363,10 @@ export class AttachedSessionAdoption {
       try {
         return await intent;
       } finally {
-        this.adoptionIntents.delete(intentScope);
+        // Only this attempt's entry: a later attempt of the same intent may
+        // have replaced it after this one was refused.
+        if (this.adoptionIntents.get(intentScope) === intent)
+          this.adoptionIntents.delete(intentScope);
       }
     }
     return this.performAttachedSessionAdoption(

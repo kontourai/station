@@ -68,8 +68,19 @@ const DEFAULT_READ_YIELD_EVERY_LINES = 256;
  * this long, so a poll does not stat every old session's subagents.
  */
 const SUBAGENT_WRITE_HORIZON_MS = 2 * 60 * 60_000;
-/** Past this many entries the subagents directory is not read at all. */
-const MAX_SUBAGENT_ENTRIES = 512;
+/**
+ * Bounds on one subagents directory. Each subagent writes a transcript and a
+ * `.meta.json` beside it, so transcripts and entries are bounded apart; past
+ * either bound the directory is not read at all (no partial newest).
+ */
+const DEFAULT_MAX_SUBAGENT_TRANSCRIPTS = 1024;
+const DEFAULT_MAX_SUBAGENT_ENTRIES = 4096;
+/**
+ * A scan is reused while its directory's own time is unchanged (no subagent
+ * added) for this long. Appends move only the file, so a reused scan can be
+ * this stale; the attachment records writes in 30-second steps anyway.
+ */
+const SUBAGENT_SCAN_REUSE_MS = 25_000;
 /** `runtime.warning` code for a transcript record skipped by `maxLineBytes`. */
 
 const EPOCH = '1970-01-01T00:00:00.000Z';
@@ -89,6 +100,10 @@ interface ClaudeTranscriptSessionSourceOptions {
   readYieldEveryLines?: number;
   /** Test seam: observe/replace the interior yield (archive#1997). */
   yieldFn?: () => Promise<void>;
+  maxSubagentTranscripts?: number;
+  maxSubagentEntries?: number;
+  /** Test seam: the clock for subagent scan horizons and reuse. */
+  now?: () => number;
 }
 
 /**
@@ -133,7 +148,21 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
     this.yieldFn =
       options.yieldFn ??
       (() => new Promise<void>((resolve) => setImmediate(resolve)));
+    this.maxSubagentTranscripts =
+      options.maxSubagentTranscripts ?? DEFAULT_MAX_SUBAGENT_TRANSCRIPTS;
+    this.maxSubagentEntries =
+      options.maxSubagentEntries ?? DEFAULT_MAX_SUBAGENT_ENTRIES;
+    this.now = options.now ?? Date.now;
   }
+
+  private readonly maxSubagentTranscripts: number;
+  private readonly maxSubagentEntries: number;
+  private readonly now: () => number;
+  /** Per subagents directory: its last scan, keyed by the directory's time. */
+  private readonly subagentScans = new Map<
+    string,
+    { directoryMs: number; scannedAt: number; newest: number }
+  >();
 
   async discover(): Promise<AttachedSessionDiscoveryResult> {
     const sourceHome = deriveConfigHomeAffinity(
@@ -298,7 +327,7 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
     } catch {
       return undefined;
     }
-    if (Date.now() - newest <= SUBAGENT_WRITE_HORIZON_MS) {
+    if (this.now() - newest <= SUBAGENT_WRITE_HORIZON_MS) {
       const subagents = join(
         dirname(canonical),
         basename(canonical, '.jsonl'),
@@ -310,17 +339,47 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
   }
 
   private newestSubagentWrite(root: string, directory: string): number {
-    let newest = 0;
+    let directoryMs: number;
     try {
       const stat = lstatSync(directory);
       if (!stat.isDirectory() || stat.isSymbolicLink()) return 0;
       if (!this.canonicalInside(root, directory)) return 0;
+      directoryMs = stat.mtimeMs;
+    } catch {
+      this.subagentScans.delete(directory);
+      return 0;
+    }
+    const now = this.now();
+    const reused = this.subagentScans.get(directory);
+    if (
+      reused &&
+      reused.directoryMs === directoryMs &&
+      now - reused.scannedAt < SUBAGENT_SCAN_REUSE_MS
+    )
+      return reused.newest;
+    const newest = this.scanSubagents(directory);
+    this.subagentScans.delete(directory);
+    this.subagentScans.set(directory, { directoryMs, scannedAt: now, newest });
+    // Bounded by the discovered set, like the source's other per-session state.
+    if (this.subagentScans.size > this.maxCandidates * 2) {
+      const oldest = this.subagentScans.keys().next().value;
+      if (oldest !== undefined) this.subagentScans.delete(oldest);
+    }
+    return newest;
+  }
+
+  /** The newest subagent transcript write, or 0 past either bound. */
+  private scanSubagents(directory: string): number {
+    let newest = 0;
+    try {
       const dir = opendirSync(directory);
       try {
         let entries = 0;
+        let transcripts = 0;
         for (let entry = dir.readSync(); entry; entry = dir.readSync()) {
-          if (++entries > MAX_SUBAGENT_ENTRIES) return 0;
+          if (++entries > this.maxSubagentEntries) return 0;
           if (!entry.isFile() || !entry.name.endsWith('.jsonl')) continue;
+          if (++transcripts > this.maxSubagentTranscripts) return 0;
           newest = Math.max(
             newest,
             lstatSync(join(directory, entry.name)).mtimeMs,
