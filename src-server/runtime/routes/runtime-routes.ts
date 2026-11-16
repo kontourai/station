@@ -619,6 +619,7 @@ import {
 } from '../../routes/projects/terminal-session-routes.js';
 import { createUICommandRoutes } from '../../routes/projects/ui-commands.js';
 import { createConversationPullRequestLinkRoutes } from '../../routes/pull-requests/conversation-pull-request-links.js';
+import { createPullRequestFeedbackRoutes } from '../../routes/pull-requests/pull-request-feedback.js';
 import { createPullRequestRoutes } from '../../routes/pull-requests/pull-request-routes.js';
 import { createReadMarkerRoutes } from '../../routes/read-markers/read-marker-routes.js';
 import { createSearchRoutes } from '../../routes/search.js';
@@ -10681,7 +10682,10 @@ export function configureRuntimeRoutes(
     },
   });
   if (pullRequestFeedback)
-    context.app.route('/api/pull-request-feedback', pullRequestFeedback.routes);
+    context.app.route(
+      '/api/pull-request-feedback',
+      createPullRequestFeedbackRoutes(...pullRequestFeedback.routeArgs),
+    );
   context.app.route(
     '/api/pull-requests',
     createPullRequestRoutes(

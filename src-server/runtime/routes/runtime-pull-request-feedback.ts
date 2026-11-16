@@ -18,9 +18,10 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import { isSessionLifecycleStateStopped } from '@kontourai/station-contracts/session-lifecycle';
 import type { TaskKeptDeclaredPullRequest } from '@kontourai/station-contracts/task-graph';
 import { parseGitHubWorkItemRef } from '@kontourai/station-contracts/work-item-provider';
-import type { Hono } from 'hono';
-import type { PullRequestFeedbackRouteAccess } from '../../routes/pull-requests/pull-request-feedback.js';
-import { createPullRequestFeedbackRoutes } from '../../routes/pull-requests/pull-request-feedback.js';
+import type {
+  createPullRequestFeedbackRoutes,
+  PullRequestFeedbackRouteAccess,
+} from '../../routes/pull-requests/pull-request-feedback.js';
 import { isOperatorInPersonNotAgent } from '../../security/coding-authority.js';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import type { FeaturePreviewRegistry } from '../../services/feature-previews/feature-preview-registry.js';
@@ -106,7 +107,11 @@ export interface PullRequestFeedbackRuntimeDeps {
 }
 
 export interface PullRequestFeedbackRuntime {
-  routes: Hono;
+  /**
+   * `createPullRequestFeedbackRoutes`'s arguments: runtime-routes mounts the
+   * call itself, so the pairing-scope leaf scan can follow it to the routes.
+   */
+  routeArgs: Parameters<typeof createPullRequestFeedbackRoutes>;
   placementRefusal(input: {
     conversationId: string;
     clientTurnId: string;
@@ -312,14 +317,13 @@ export function composePullRequestFeedbackRuntime(
     refresh: (conversationId) => void poller.refresh(conversationId),
     deliver: (conversationId) => void delivery.deliver(conversationId),
   });
-  const routes = createPullRequestFeedbackRoutes(
-    ownership,
-    () => delivery,
-    (conversationId) => void poller.refresh(conversationId),
-    { ...deps.access, enabled, isPerson: requestIsPerson },
-  );
   return {
-    routes,
+    routeArgs: [
+      ownership,
+      () => delivery,
+      (conversationId) => void poller.refresh(conversationId),
+      { ...deps.access, enabled, isPerson: requestIsPerson },
+    ],
     placementRefusal: (input) => delivery.placementRefusal(input),
     tick: (input) => poller.tick(input),
     owns: (itemRef) => {

@@ -29,6 +29,7 @@ import { createCoordinatorRoutes } from '../../routes/orchestration/coordinator.
 import { createOrchestrationRoutes } from '../../routes/orchestration/orchestration.js';
 import { createSessionPersonActivityRoutes } from '../../routes/orchestration/session-project-activity.js';
 import { createProjectRoomRoutes } from '../../routes/projects/project-room-routes.js';
+import { createPullRequestFeedbackRoutes } from '../../routes/pull-requests/pull-request-feedback.js';
 import { createReadMarkerRoutes } from '../../routes/read-markers/read-marker-routes.js';
 import { createDiagnosticsRoutes } from '../../routes/system/diagnostics.js';
 import { createSystemStatusRoutes } from '../../routes/system/system-status-routes.js';
@@ -522,7 +523,7 @@ const CONSUMED_FLAGS: Record<
     try {
       const app = new Hono().route(
         '/api/pull-request-feedback',
-        runtime.routes,
+        createPullRequestFeedbackRoutes(...runtime.routeArgs),
       );
       const response = await app.request(
         '/api/pull-request-feedback/conversations/conversation-a',
