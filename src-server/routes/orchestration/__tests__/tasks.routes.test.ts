@@ -2367,6 +2367,161 @@ describe('Task routes', () => {
     expect(readSessionRelations).not.toHaveBeenCalled();
   });
 
+  describe('GET /pull-request-facts (derived Task lanes)', () => {
+    /** The shape `listKeptDeclaredPullRequests*` returns from the store. */
+    const keptOn = (taskId: string, ref: string, sessionId: string) => ({
+      schemaVersion: 1 as const,
+      taskId,
+      provider: 'github',
+      host: 'github.com',
+      repository: { owner: 'acme', name: 'app' },
+      ref,
+      nativeId: ref,
+      provenance: {
+        sessionId,
+        turnId: 'turn-1',
+        toolCallId: 'tool-1',
+        declarationId: `decl-${ref}`,
+        eventId: `event-${ref}`,
+      },
+      keptAt: '2026-11-10T00:00:00.000Z',
+    });
+    const githubProvider = {
+      id: 'github',
+      canServeHost: () => true,
+      getPullRequestByIdentity: vi.fn(
+        async (_context: unknown, ref: string) => ({
+          available: true,
+          data: {
+            provider: 'github',
+            host: 'github.com',
+            ref,
+            url: `https://github.com/acme/app/pull/${ref}`,
+            repository: { owner: 'acme', name: 'app' },
+            title: `PR ${ref}`,
+            body: null,
+            state: 'OPEN',
+            author: { login: 'casey' },
+            sourceBranch: 'feature',
+            targetBranch: 'main',
+            commits: 1,
+            reviewStatus: 'NONE',
+            comments: 0,
+            nativeId: ref,
+            mergeability: 'mergeable',
+            mergeReadiness: 'clean',
+          },
+          effectiveCapabilities: {},
+          effectiveMergeMethods: [],
+          mergeMethodsSource: 'provider-default',
+        }),
+      ),
+    };
+
+    async function arrange(
+      principalCurrent: () => boolean = () => true,
+      provider: object = githubProvider,
+    ) {
+      const service = createRouteService();
+      const task = await service.createTask({
+        projectId: 'project-alpha',
+        title: 'Lane facts',
+      });
+      vi.spyOn(service, 'listKeptDeclaredPullRequestsForTasks').mockReturnValue(
+        [
+          keptOn(task.id, '7', 'readable-run'),
+          keptOn(task.id, '8', 'hidden-run'),
+        ],
+      );
+      const readTaskForOpen = vi.spyOn(service, 'readTaskForOpen');
+      const app = createTaskRoutes(service, {
+        taskDispatcher: inertTaskDispatcher,
+        readAuthorityForRequest: () =>
+          sessionReadAuthorityFromRequest('local-user', undefined, undefined),
+        canReadSession: (sessionId) => sessionId === 'readable-run',
+        isRequestPrincipalCurrent: principalCurrent,
+        pullRequestProviders: () => [provider as never],
+      });
+      return { app, task, readTaskForOpen };
+    }
+
+    test('answers the readable kept pull requests, and is never read as a Task id', async () => {
+      const { app, task, readTaskForOpen } = await arrange();
+      const response = await app.request(
+        '/pull-request-facts?projectId=project-alpha',
+      );
+      expect(response.status).toBe(200);
+      expect(response.headers.get('cache-control')).toBe('private, no-store');
+      const body = await readJson<any>(response);
+      expect(body.data.tasks[task.id]).toMatchObject({
+        taskCreatedAt: task.createdAt,
+        pullRequests: [
+          {
+            ref: '7',
+            status: {
+              state: 'current',
+              pullRequestState: 'OPEN',
+              readiness: 'clean',
+            },
+          },
+        ],
+      });
+      expect(body.data.tasks[task.id].pullRequests).toHaveLength(1);
+      expect(readTaskForOpen).not.toHaveBeenCalled();
+    });
+
+    test('a requester who lost standing during the provider reads gets 404', async () => {
+      let current = true;
+      const { app } = await arrange(() => current, {
+        ...githubProvider,
+        getPullRequestByIdentity: async (context: unknown, ref: string) => {
+          // Standing is lost while the forge is being read.
+          current = false;
+          return githubProvider.getPullRequestByIdentity(context, ref);
+        },
+      });
+      const response = await app.request(
+        '/pull-request-facts?projectId=project-alpha',
+      );
+      expect(response.status).toBe(404);
+      expect((await readJson<any>(response)).code).toBe(
+        'request_principal_changed',
+      );
+    });
+
+    test('a read without a Project is refused, not answered for every Project', async () => {
+      const { app } = await arrange();
+      expect((await app.request('/pull-request-facts')).status).toBe(400);
+    });
+
+    test('a hosted request reads nothing through this host', async () => {
+      const registry = parseHostedTenantRegistry({
+        schemaVersion: 1,
+        tenants: [{ id: 'alpha', authority: 'alpha.station.test' }],
+      });
+      const service = { listTasks: vi.fn() };
+      const providers = vi.fn(() => [githubProvider as never]);
+      const app = createTaskRoutes(service as never, {
+        taskDispatcher: inertTaskDispatcher,
+        readAuthorityForRequest: () =>
+          sessionReadAuthorityFromRequest(
+            'shared-user',
+            { tenantId: tenantId('alpha') },
+            registry,
+          ),
+        taskGraphServiceForRequest: () => service as never,
+        pullRequestProviders: providers,
+      });
+      const response = await app.request('/pull-request-facts?projectId=x');
+      expect(response.status).toBe(200);
+      expect((await readJson<any>(response)).data.tasks).toEqual({});
+      // Validation comes first, hosted or not.
+      expect((await app.request('/pull-request-facts')).status).toBe(400);
+      expect(service.listTasks).not.toHaveBeenCalled();
+      expect(providers).not.toHaveBeenCalled();
+    });
+  });
+
   test('hosted task routes suppress every unbound store read and mutation', async () => {
     const registry = parseHostedTenantRegistry({
       schemaVersion: 1,

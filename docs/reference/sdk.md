@@ -4829,6 +4829,16 @@ content, while retaining the observed HTTP status (usually 200).
   differs on purpose from `useAnswerBasisQuery`, which still revokes on any
   refusal: the inventory route reserves 503 for a read it could not
   perform, so a 503 is not evidence of lost authority.
+- `useTaskPullRequestFactsQuery(projectId)` and `fetchTaskPullRequestFacts`
+  read `GET /api/tasks/pull-request-facts` for the Project Tasks board. The
+  query refreshes every two minutes and on focus, never retries a failure,
+  and keeps the last answer when a refresh fails. A host that answers a plain
+  404 (one older than this read) resolves to `null`, and the board then
+  claims nothing about pull requests; a 404 with `request_principal_changed`
+  (lost standing) is an error. Only the board enables it; the list view
+  claims nothing about pull requests. `useMergePullRequestMutation`
+  invalidates every Project's facts query, so a merge through Station moves
+  its card on the next read.
 - `useTasksQuery` accepts `TaskDestinationQueryConfig` for a scoped Keep
   destination picker. `TaskDestinationRequestError` identifies a rejected
   destination read; both are exported from the SDK root and query barrel.

@@ -1,0 +1,7 @@
+{
+  "revision": "b923ec90845d1fcd6d04dd7df6525a0b6fc9090a",
+
+  "notes": [
+    {"path":"docs/reference/env-vars.md","note":"child-process-environment.ts again changed only the comment on the NODE_COMPILE_CACHE scrub (now: no supervisor sets it; scrubbed against inherited or hand-set values). Scrub list and env-vars claims unchanged.","inputs":["docs/reference/env-vars.md","src-server/utils/child-process-environment.ts"]}
+  ]
+}

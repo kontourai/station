@@ -415,6 +415,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/system-status` | Device presentation, the answering server's runtime identity, update-provenance issue codes, service and server update state, and engine workload memory budgets |
 | `@kontourai/station-contracts/troubleshoot` | In-app troubleshooting (#4470): the prepare route request and response, the seed's fields and limits (route, error summary, conversation and turn ids, which the host refuses rather than truncates), the `troubleshoot-report.yml` field ids, and a prefilled issue-link builder that returns over-limit fields separately instead of truncating |
 | `@kontourai/station-contracts/task-room-work` | Versioned Task agent request intent, explicit engine/model/options digest identity, authorized request records, list and submission outcomes. Requester IDs are Task-scoped display pseudonyms; execution references do not grant Session access or prove completion |
+| `@kontourai/station-contracts/task-lane` | Derived Task lanes: `deriveTaskLane` computes a Task's board lane (Needs you, Running, In review, Ready to merge, Idle) or shelf (Backlog, Done, Canceled), its status word and its one next action from the Task, its run summary and its kept pull requests' provider facts; `partitionTaskLanes` keeps lane order stable. Pure; never stored. Also the `GET /api/tasks/pull-request-facts` projection shapes |
 | `@kontourai/station-contracts/task-memory` | Task memory (#4003): the Task summary revision and keyed record shapes, limits, default importance, the stateless write check (`checkTaskRecordWrite`, `taskSummaryRefusal`), refusal wording, the person's views, `taskAwaitsAnswer` for the Tasks list's `openQuestionCount`, and the Learning shapes (`TaskLearningView`, candidates, promotion and dismissal input, limits) for a done Task's promotion candidates. Every bound is a refusal |
 | `@kontourai/station-contracts/task-review` | Task review thread, event, evidence, capture and independent code-review checkout projections; person and caller-bound station-control DTOs; strict boundary parsing, append-transition checks, derived views/counts, quote relocation and freshness. Code-review request identity retains Project and Task incarnations. [Contract source](../../packages/contracts/src/task-review.ts) and [pure contract tests](../../packages/contracts/src/__tests__/task-review.test.ts). Runtime integration and evidence belong to the Task review API and SDK references |
 | `@kontourai/station-contracts/chat-app` | Discord/Slack chips sharing status action shapes, principal links and explicit legacy import provenance, Project/conversation channel bindings, approval-correlated delivery attempts, per-app kill switches, hashed two-step link-code records and confirmation requests; [source](../../packages/contracts/src/chat-app.ts), [boundary tests](../../packages/contracts/src/__tests__/chat-app.test.ts) |
@@ -903,6 +904,9 @@ not resume on its own: `auto-resume-off`, `superseded`, `request-pending`,
 stop, which decides `autoResume` in place of the setting. The chat banner
 reads it through the Session API's
 [usage-limit routes](session-api.md#usage-limit-recovery-sessionsthreadidusage-limit).
+`UsageLimitContinueOnOptions` lists the `UsageLimitContinueOnProfile`s
+(`ref`, optional display `label`) a waiting stop may continue on; it says
+nothing about whether those accounts are limited.
 
 `@kontourai/station-contracts/agent-schedule` owns what an agent schedules
 for itself and what it only proposes: `AgentWakeUp`, `AgentJobProposal`,
@@ -1074,6 +1078,7 @@ non-retryable.
 | `acp-approval-takeover-failed` | `warning` | `false` |
 | `acp_approval_governance_refused` | `permission_denied` | `false` |
 | `adoption_continuation_in_progress` | `busy` | `true` |
+| `conversation_handoff_predecessor_busy` | `busy` | `true` |
 | `approval-escalation-requires-restart` | `warning` | `false` |
 | `approval-full-access-not-granted` | `permission_denied` | `false` |
 | `attachment_input_unsupported` | `input_unsupported` | `false` |
@@ -1474,8 +1479,12 @@ background work finishes, is published as a turn whose `turn.started` and
 terminal carry `metadata.trigger: 'provider'`; `isProviderTriggeredTurn` in
 `runtime-events` is the one derivation consumers read. It has no prompt, moves
 the session lifecycle like any turn (reasons `provider_turn_started` /
-`provider_turn_completed`), and records a "Your agent replied" notification
-whose interruptions the delivery router decides by focus. A send while it runs is refused with the retryable code
+`provider_turn_completed`). Its completion joins the thread's completion
+episode: the episode's one alert reads "Your agent replied" when every turn in
+it was the engine's own, and "Your agent finished" when it follows a user turn
+whose finish was still held
+([finished alerts](../design/notification-delivery.md#finished-alerts-one-per-completion-episode)).
+The delivery router decides its interruptions by focus. A send while it runs is refused with the retryable code
 `provider_turn_in_progress`, and the client queues the message until it ends,
 unless the send asked Station to hold it (`whenBusy: 'queue'`, below).
 A send to an ACP session that is still starting (for a restored session,
@@ -2002,6 +2011,15 @@ optional; a provider without it reads as `unsupported`. See
 `TaskRecord.closeOnMerge` is optional and absent means off. It is a person's
 opt-in to move a Task to `done` when every pull request kept on it is merged;
 a Task store that carries it is refused by Station builds that predate it.
+
+`FocusReport.viewingSessionIds` (`@kontourai/station-contracts/presence`) is
+optional, and absent means the client does not say what it shows, so focus
+stays device-wide. A list (at most `FOCUS_VIEWING_SESSION_IDS_MAX`, each
+matching `FOCUS_VIEWING_SESSION_ID_PATTERN`; `[]` for no chat on screen) scopes
+a focused surface's quieting of `done`/`info` records to those sessions. A host
+built before the field refuses a report carrying it with 400. The client then
+drops the field for that document
+([notification delivery](../design/notification-delivery.md#finished-alerts-one-per-completion-episode)).
 
 `@kontourai/station-shared` still re-exports many of these types so older code can compile during convergence. That is a compatibility layer, not the canonical ownership model. New code should import the owning `@kontourai/station-contracts/*` module directly.
 

@@ -799,23 +799,21 @@ function ApprovalDecisionStatus({
   check?: () => Promise<void>;
   checking?: boolean;
 }) {
+  // The chosen button already reads "Allowing…" / "Denying…" while a
+  // decision is in flight, so no sentence repeats it. A sent decision whose
+  // settlement has not arrived keeps only the way to check on it.
   return (
     <>
-      {(phase === 'sending' || phase === 'sent') && (
-        <p className="tool-call__approve-status" role="status">
-          {phase === 'sending'
-            ? 'Sending your decision…'
-            : 'Decision sent. Waiting for the tool to continue.'}
-          {phase === 'sent' && check && (
-            <Button pending={checking} onClick={() => void check()}>
-              Check status
-            </Button>
-          )}
+      {phase === 'sent' && check && (
+        <p className="tool-call__approve-status">
+          <Button pending={checking} onClick={() => void check()}>
+            Check status
+          </Button>
         </p>
       )}
       {phase === 'already-settled' && (
         <p className="tool-call__approve-status" role="status">
-          This request is no longer open.
+          Already answered.
         </p>
       )}
       {failure && (
@@ -1004,11 +1002,8 @@ function ToolApprovalButtons({
   ruleGrant,
   sessionGrant,
 }: ToolApprovalControlProps) {
-  const { phase, failure, decide, check, checking, busy } = useApprovalDecision(
-    onApprove,
-    onCheck,
-    reference,
-  );
+  const { phase, failure, decide, chosen, check, checking, busy } =
+    useApprovalDecision(onApprove, onCheck, reference);
   // #2915/#2916: undefined where no session grant is offered.
   const grantLabel = toolRequestGrantLabel(grantToolName, sessionGrant);
   // #3390: the options come from the approval's decision body. #2316: the
@@ -1026,6 +1021,8 @@ function ToolApprovalButtons({
           ruleGrant,
         )}
         busy={busy}
+        inFlight={phase === 'sending' || phase === 'sent'}
+        chosen={chosen}
         onChoose={decide}
       />
       <ApprovalDecisionStatus

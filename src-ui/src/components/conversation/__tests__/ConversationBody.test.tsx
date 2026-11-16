@@ -162,6 +162,11 @@ function Harness({
     quotes: [],
     quotedDraftText: input,
     removeQuote: () => {},
+    prepareOutgoingText: async () => ({
+      text: stored?.input ?? input,
+      draft: stored?.input ?? input,
+      quotes: [],
+    }),
     input: stored?.input ?? input,
     attachments: [],
     attachmentError: null,

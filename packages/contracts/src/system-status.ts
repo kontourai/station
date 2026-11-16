@@ -377,6 +377,47 @@ export interface WorkloadBudgetStatus {
     /** Why an engine scope's holder is unplaced. */
     holderReason?: WorkloadHolderUnplacedReason;
   }>;
+  /** Scopes whose cleanup failed and has not settled. Absent from older hosts. */
+  cleanup?: WorkloadScopeCleanupStatus;
+}
+
+/**
+ * Why a workload scope's cleanup failed: `bus_unavailable` when systemctl
+ * could not reach the user manager's bus (retried rarely, since it does not
+ * heal within seconds), `command_failed` when systemctl ran and failed, and
+ * `other` for anything else.
+ */
+export type WorkloadScopeCleanupErrorKind =
+  | 'bus_unavailable'
+  | 'command_failed'
+  | 'other';
+
+/** One scope whose cleanup has failed at least once and not settled. */
+export interface WorkloadScopeCleanupFailure {
+  unit: string;
+  sessionId?: string;
+  /** Failed cleanup attempts so far. */
+  attempts: number;
+  errorKind: WorkloadScopeCleanupErrorKind;
+  /** The last failure's final line, truncated. */
+  lastError: string;
+  firstFailedAt: string;
+  /** A pending scope: the earliest time Station retries it on its own. */
+  nextAttemptAt?: string;
+  /** An abandoned scope: when Station stopped retrying it. */
+  abandonedAt?: string;
+}
+
+/**
+ * Cleanup that has not settled. A `pending` scope is retried with
+ * exponential backoff; an `abandoned` one is no longer retried until
+ * shutdown, which tries every scope once more. At most 256 abandoned scopes
+ * are kept; `abandonedDropped` counts those dropped beyond that.
+ */
+export interface WorkloadScopeCleanupStatus {
+  pending: WorkloadScopeCleanupFailure[];
+  abandoned: WorkloadScopeCleanupFailure[];
+  abandonedDropped: number;
 }
 
 /**

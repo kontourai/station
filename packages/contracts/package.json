@@ -182,6 +182,7 @@
     "./review-evidence": "./src/review-evidence.ts",
     "./runs": "./src/runs.ts",
     "./session-attention": "./src/session-attention.ts",
+    "./task-lane": "./src/task-lane.ts",
     "./work-claims": "./src/work-claims.ts",
     "./session-lifecycle": "./src/session-lifecycle.ts",
     "./session-output-declaration": "./src/session-output-declaration.ts",

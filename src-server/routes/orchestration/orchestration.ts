@@ -25,6 +25,7 @@ import {
 } from '@kontourai/station-contracts/chat-attachment';
 import { CHILD_WORK_TRANSCRIPT_PAGE_MAX } from '@kontourai/station-contracts/child-work';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
+import type { UsageLimitContinueOnOptions } from '@kontourai/station-contracts/connection-recovery';
 import type {
   ConversationContextBoundaryProjection,
   ConversationContextBoundaryRequest,
@@ -246,7 +247,13 @@ import {
 } from '../../tools/station-control-delegation.js';
 import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
 import { assertBoundedJsonResponse } from '../chat/bounded-response.js';
-import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
+import {
+  errorMessage,
+  getBody,
+  param,
+  usageLimitContinueOnRequestSchema,
+  validate,
+} from '../schemas/schemas.js';
 import { sseKeepalive, streamSSE } from '../sse-response.js';
 import { refuseUngrantedDirectoryWorkspace } from '../working-directory-authority.js';
 import { adoptSessionTargetSchema } from './adopt-session-target-schema.js';
@@ -6016,6 +6023,62 @@ export function createOrchestrationRoutes(
       });
     });
   }
+
+  // "Continue on <label>": the enrolled credential profiles a waiting
+  // usage-limit stop may continue on, and the person's choice of one. These
+  // list and switch this Station's accounts, so their pairing scope is the
+  // credential-management tier, not the Session family's.
+  app.get('/sessions/:threadId/usage-limit/continue-on', async (c) => {
+    const threadId = param(c, 'threadId');
+    if (deps.isRequestPrincipalCurrent?.(c.req.raw) !== true)
+      return c.json({ success: false, error: 'Session not found' }, 404);
+    const identity = mutationIdentity(c);
+    if (
+      !orchestrationService.canUserMutateSession(
+        threadId,
+        identity.userId,
+        identity.tenant,
+      )
+    )
+      return c.json({ success: false, error: 'Session not found' }, 404);
+    return c.json({
+      success: true,
+      data: (await orchestrationService.readUsageLimitContinueOn(
+        threadId,
+      )) satisfies UsageLimitContinueOnOptions,
+    });
+  });
+
+  app.post(
+    '/sessions/:threadId/usage-limit/continue-on',
+    validate(usageLimitContinueOnRequestSchema),
+    async (c) => {
+      const threadId = param(c, 'threadId');
+      if (deps.isRequestPrincipalCurrent?.(c.req.raw) !== true)
+        return c.json({ success: false, error: 'Session not found' }, 404);
+      const identity = mutationIdentity(c);
+      if (
+        !orchestrationService.canUserMutateSession(
+          threadId,
+          identity.userId,
+          identity.tenant,
+        )
+      )
+        return c.json({ success: false, error: 'Session not found' }, 404);
+      const { profileRef, stopId } = getBody(c) as {
+        profileRef: string;
+        stopId: string;
+      };
+      return c.json({
+        success: true,
+        data: await orchestrationService.actOnUsageLimitRecovery(
+          threadId,
+          'continue-on',
+          { profileRef, stopId },
+        ),
+      });
+    },
+  );
 
   // Session -> Builder run join (archive#189 S4). A separate route from
   // `/flow-run` on purpose: the two runs have independent lifecycles, and a

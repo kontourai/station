@@ -1,6 +1,8 @@
 import type {
   ConnectionRecoveryOutcomeReason,
   ConnectionRecoveryProjection,
+  UsageLimitContinueOnOptions,
+  UsageLimitContinueOnProfile,
 } from '@kontourai/station-contracts/connection-recovery';
 import { getJson, mutateJson } from '@kontourai/station-sdk';
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
@@ -22,6 +24,7 @@ export type UsageLimitActionResult =
   | { kind: 'canceled' }
   | { kind: 'retired'; reason: ConnectionRecoveryOutcomeReason }
   | { kind: 'chosen'; choice: 'resume' | 'hold' }
+  | { kind: 'not-switched' }
   | { kind: 'not-waiting' };
 
 interface UsageLimitRecoveryAnswer {
@@ -34,6 +37,7 @@ const ACTION_KINDS = [
   'canceled',
   'retired',
   'chosen',
+  'not-switched',
   'not-waiting',
 ];
 
@@ -72,6 +76,32 @@ const usageLimitRecoveryKey = (
   scope: ApiRequestScope | undefined,
   threadId: string,
 ) => ['usage-limit-recovery', apiBase, scope?.authorityKey ?? null, threadId];
+
+const NO_ACCOUNTS: UsageLimitContinueOnOptions = { profiles: [] };
+
+/**
+ * Bounded, shape-checked account list for one stop; anything malformed, or a
+ * list without the stop it is for, offers nothing.
+ */
+function readOptions(data: unknown): UsageLimitContinueOnOptions {
+  const { profiles, stopId } = (data ?? {}) as {
+    profiles?: unknown;
+    stopId?: unknown;
+  };
+  if (!Array.isArray(profiles) || typeof stopId !== 'string')
+    return NO_ACCOUNTS;
+  const valid = profiles
+    .slice(0, 16)
+    .filter(
+      (profile): profile is UsageLimitContinueOnProfile =>
+        !!profile &&
+        typeof profile === 'object' &&
+        typeof (profile as { ref?: unknown }).ref === 'string' &&
+        ((profile as { label?: unknown }).label === undefined ||
+          typeof (profile as { label?: unknown }).label === 'string'),
+    );
+  return valid.length > 0 ? { stopId, profiles: valid } : NO_ACCOUNTS;
+}
 
 const path = (apiBase: string, threadId: string, leaf = '') =>
   `${apiBase}/api/orchestration/sessions/${encodeURIComponent(threadId)}/usage-limit${leaf}`;
@@ -126,6 +156,65 @@ export function useUsageLimitRecovery(input: {
       void queryClient.invalidateQueries({ queryKey: ['agent-schedule'] });
     },
   });
+  // "Continue on <label>" is offered only on a stop still waiting. Its read
+  // takes the credential-management scope; a refusal offers nothing.
+  const waitingOutcome = query.data?.recovery?.outcome;
+  const continueOnKey = [...key, 'continue-on'];
+  const continueOnQuery = useQuery({
+    queryKey: continueOnKey,
+    enabled:
+      enabled &&
+      query.data?.recovery?.usageLimit === true &&
+      (waitingOutcome === 'armed' || waitingOutcome === 'manual'),
+    retry: false,
+    staleTime: 5_000,
+    queryFn: async ({ signal }): Promise<UsageLimitContinueOnOptions> => {
+      const response = await getJson(path(apiBase, threadId, '/continue-on'), {
+        signal,
+        ...(scope ? { requestScope: scope } : {}),
+        maxResponseBytes: 16 * 1024,
+      });
+      // A device without the credential-management scope is refused: that
+      // is "nothing to offer", not a banner error.
+      if (!response.ok) return NO_ACCOUNTS;
+      try {
+        const body = (await response.json()) as {
+          success?: boolean;
+          data?: unknown;
+        };
+        return body.success === true ? readOptions(body.data) : NO_ACCOUNTS;
+      } catch {
+        return NO_ACCOUNTS;
+      }
+    },
+  });
+  /** Continue this stop on another enrolled credential profile, now. */
+  const continueOn = useMutation({
+    /** The account chosen and the stop it was offered for. */
+    mutationFn: async ({
+      profileRef,
+      stopId,
+    }: {
+      profileRef: string;
+      stopId: string;
+    }) =>
+      readData(
+        await mutateJson(
+          path(apiBase, threadId, '/continue-on'),
+          'POST',
+          {
+            ...(scope ? { requestScope: scope } : {}),
+            maxResponseBytes: 64 * 1024,
+          },
+          { profileRef, stopId },
+        ),
+      ),
+    onSuccess: ({ recovery }) => {
+      queryClient.setQueryData<UsageLimitRecoveryAnswer>(key, { recovery });
+      void queryClient.invalidateQueries({ queryKey: continueOnKey });
+      void queryClient.invalidateQueries({ queryKey: ['agent-schedule'] });
+    },
+  });
   const resume = useMutation(mutationFor('resume'));
   const cancel = useMutation(mutationFor('cancel'));
   /** This stop only: resume at the reset whatever the setting says. */
@@ -139,5 +228,8 @@ export function useUsageLimitRecovery(input: {
     cancel,
     resumeAtReset,
     hold,
+    continueOnProfiles: continueOnQuery.data?.profiles ?? [],
+    continueOnStopId: continueOnQuery.data?.stopId,
+    continueOn,
   };
 }

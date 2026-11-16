@@ -1,0 +1,59 @@
+{
+  "revision": "b1cdbe51c0fb427bc9eb9c81909d227dd20e2c6a",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Fix round 1: the facts section now states the 60-distinct-PR bound (newest Tasks first), the GitHub status read and its 60 s sharing, checks-not-passing and the BLOCKED known limit, the 400 without projectId and the coded standing-loss 404; checked against tasks.ts, task-pull-request-facts.ts, github-pull-request-provider.ts and their tests.","inputs":["docs/reference/api.md","src-server/routes/orchestration/tasks.ts","src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Fix round 1: the facts query entry now distinguishes a plain 404 (null) from request_principal_changed (error) and says only the board enables it; checked against taskGraph.ts, its new SDK test and ProjectTasksSection.tsx.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-domains/taskGraph.ts","src-server/routes/orchestration/tasks.ts","src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Fix round 1: board paragraph now says checks not passing, that an unread run keeps a Task out of Ready to merge, and that Marked blocked outranks pull requests; checked against deriveTaskLane and its tests.","inputs":["docs/user/concepts.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Fix round 1: the facts route requires projectId and codes its standing-loss 404; no other Task route changed.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Fix round 1: the facts route requires projectId and codes its standing-loss 404; no other Task route changed.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Fix round 1: the facts route requires projectId and codes its standing-loss 404; no other Task route changed.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Fix round 1: the facts route requires projectId and codes its standing-loss 404; no other Task route changed.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/task-basis-mcp-app.md","note":"Fix round 1: the facts route requires projectId and codes its standing-loss 404; no other Task route changed.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Fix round 1: the facts route requires projectId and codes its standing-loss 404; no other Task route changed.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Fix round 1: the facts route requires projectId and codes its standing-loss 404; no other Task route changed.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Fix round 1: comment only, on the list projection's existsSync fallback.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Fix round 1: comment only, on the list projection's existsSync fallback.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Fix round 1: comment only, on the list projection's existsSync fallback.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Fix round 1: comment only, on the list projection's existsSync fallback.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Fix round 1: comment only, on the list projection's existsSync fallback.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Fix round 1: comment only, on the list projection's existsSync fallback.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Fix round 1: comment only, on the list projection's existsSync fallback.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"api.md's pull request facts section changed (bounds, sharing, known limit); no claim this page cites from it changed.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"api.md's pull request facts section changed (bounds, sharing, known limit); no claim this page cites from it changed.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"sdk.md's facts query entry changed (404 handling, board-only); no claim this page cites from it changed.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"sdk.md's facts query entry changed (404 handling, board-only); no claim this page cites from it changed.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"Adds the optional getPullRequestStatusByIdentity provider method and renames the unreleased readiness value to checks-not-passing; no row in this page enumerates either.","inputs":["packages/contracts/src/pull-request-provider.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"fetchTaskPullRequestFacts now throws on a coded standing-loss 404; the facts entry above says so.","inputs":["packages/sdk/src/query-domains/taskGraph.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Fix round 1: card action space, focus restore, reason line and one tone map; the board, actions and toggle this page describes are unchanged.","inputs":["src-ui/src/components/ProjectTaskBoard.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Fix round 1: list badges share the board's presentation and the list no longer reads PR facts; the behaviour this page describes is unchanged.","inputs":["src-ui/src/views/project-page/ProjectTasksSection.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Adds a board-only facts test; no stated claim changed.","inputs":["src-ui/src/__tests__/ProjectTasksSection.test.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Plan progress is now read only for a running card, at the run its derivation read; this page's description of plan progress still holds.","inputs":["src-ui/src/components/TaskPlanProgress.tsx"]}
+  ]
+}

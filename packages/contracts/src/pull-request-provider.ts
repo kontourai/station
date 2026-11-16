@@ -133,7 +133,30 @@ export interface PullRequest {
   comments: number;
   nativeId: string;
   mergeability: 'mergeable' | 'conflicting' | 'unknown';
+  /** The forge's draft flag. Absent: the provider did not report it. */
+  draft?: boolean;
+  /**
+   * The forge's aggregate review requirement (GitHub `reviewDecision`;
+   * GitLab `not_approved`). Absent: not reported, or no review is required.
+   */
+  reviewDecision?: 'approved' | 'changes_requested' | 'review_required';
+  /**
+   * Whether the forge would merge this now, in its own words mapped to one
+   * vocabulary (GitHub `mergeStateStatus`, GitLab `detailed_merge_status`).
+   * `checks-not-passing` means some checks are failing or still pending
+   * (GitHub `UNSTABLE`); it does not say they are required. A failing
+   * required check reads `blocked`. Absent: the provider did not report it.
+   */
+  mergeReadiness?: PullRequestMergeReadiness;
 }
+export type PullRequestMergeReadiness =
+  | 'clean'
+  | 'blocked'
+  | 'checks-not-passing'
+  | 'conflicting'
+  | 'behind'
+  | 'draft'
+  | 'unknown';
 /**
  * One open pull request's source branch and whether it merges cleanly: what
  * a conflict indicator needs, and nothing a review needs (#2937). A provider
@@ -312,6 +335,20 @@ export interface IPullRequestProvider {
     ref: string,
     signal?: AbortSignal,
   ): Promise<PullRequestFeedbackObservationResult>;
+  /**
+   * The same exact read, narrowed to what a status surface (the Task board)
+   * reads: state, title, branches, mergeability, draft, review decision and
+   * readiness. These are placeholders, not observations: `body` null,
+   * `commits` and `comments` 0, `author.login` '' and `reviewStatus` 'NONE'.
+   * Concurrent reads of one pull request share one forge call, and an answer
+   * may be served from a short cache that a write to the repository clears;
+   * `observedAt` is when the forge was actually read, so a cached answer
+   * says how old it is.
+   */
+  getPullRequestStatusByIdentity?(
+    context: PullRequestRepositoryIdentityContext,
+    ref: string,
+  ): Promise<PullRequestResult<PullRequest> & { observedAt?: string }>;
   openPullRequest(
     context: PullRequestRepositoryContext,
     input: PullRequestOpenInput,

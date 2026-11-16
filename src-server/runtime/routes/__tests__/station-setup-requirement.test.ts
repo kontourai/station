@@ -6,16 +6,21 @@
  * records — rather than a stub of it.
  */
 
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import { AgentConfigNotFoundError } from '../../../domain/config-loader-agents.js';
 import { chatStationEngineAvailabilitySource } from '../../../routes/chat/chat.js';
+import { AgentService } from '../../../services/agents/agent-service.js';
+import { stationSetupRequirementProbeOutcomes } from '../../../telemetry/metrics.js';
 import { createStationEngineAvailabilityReader } from '../../plugins/runtime-provider-resolution.js';
 import {
+  createStationSetupRequirementProbe,
   memoizeStationSetupRequirement,
   readStationSetupRequirement,
 } from '../runtime-route-support.js';
 import type { ConfigureRuntimeRoutesContext } from '../runtime-routes.js';
 
 const warnings: unknown[] = [];
+const infos: unknown[] = [];
 
 function contextWith(input: {
   agents: Array<{ slug: string; name?: string }>;
@@ -30,10 +35,20 @@ function contextWith(input: {
     agentService: {
       listAgents:
         input.listAgents ?? (async () => input.agents as unknown as never),
+      // Absence is the loader's own error, as `loadAgentConfig` throws it for
+      // a listed registry default that has no `agent.json` (#4995).
       getAgent: async (slug: string) => {
         const spec = input.specs[slug];
-        if (!spec) throw new Error(`no spec for ${slug}`);
+        if (!spec)
+          throw new AgentConfigNotFoundError(
+            slug,
+            `/home/agents/${slug}/agent.json`,
+          );
         return spec;
+      },
+      // The service's real absence classification, over the stub above.
+      findAgent(this: Pick<AgentService, 'getAgent'>, slug: string) {
+        return AgentService.prototype.findAgent.call(this, slug);
       },
     },
     getLiveAppConfig: () => ({
@@ -49,6 +64,7 @@ function contextWith(input: {
     },
     logger: {
       warn: (...args: unknown[]) => warnings.push(args),
+      info: (...args: unknown[]) => infos.push(args),
     },
   } as unknown as ConfigureRuntimeRoutesContext;
 }
@@ -226,6 +242,127 @@ describe('readStationSetupRequirement (#1536 D8)', () => {
           }),
         ),
       ).toBeNull();
+    });
+  });
+
+  /**
+   * #4995: on a live home this warned every poll with "Agent 'muse' not found
+   * at …/agents/muse/agent.json". `listAgents` lists registry defaults that
+   * never have a file; reading one failed the whole probe.
+   */
+  describe('a listed Agent with no agent.json (#4995)', () => {
+    test('is passed over without failing, and the blocked Agent behind it is still reported', async () => {
+      warnings.length = 0;
+      expect(
+        await readStationSetupRequirement(
+          contextWith({
+            agents: [
+              { slug: 'muse', name: 'Muse Code' },
+              { slug: 'zeta', name: 'Zeta' },
+            ],
+            specs: { zeta: { name: 'Zeta', model: 'anthropic/opus' } },
+            connections: [],
+          }),
+        ),
+      ).toMatchObject({ agentSlug: 'zeta' });
+      expect(warnings).toEqual([]);
+    });
+
+    test('only absence is passed over: an unreadable spec still fails the read', async () => {
+      warnings.length = 0;
+      const context = contextWith({
+        agents: [{ slug: 'zeta', name: 'Zeta' }],
+        specs: {},
+      });
+      (
+        context.agentService as unknown as { getAgent: () => Promise<never> }
+      ).getAgent = async () => {
+        throw new Error('EACCES: permission denied');
+      };
+      expect(await readStationSetupRequirement(context)).toBeNull();
+      expect(warnings).toHaveLength(1);
+    });
+  });
+
+  describe('repeated failures (#4995)', () => {
+    test('warns once per failure identity, logs recovery once, and counts every outcome', async () => {
+      warnings.length = 0;
+      infos.length = 0;
+      const add = vi.spyOn(stationSetupRequirementProbeOutcomes, 'add');
+      let failure: string | undefined = 'agent store unavailable';
+      let blocked = false;
+      const probe = createStationSetupRequirementProbe(
+        contextWith({
+          agents: [{ slug: 'zeta', name: 'Zeta' }],
+          specs: { zeta: { name: 'Zeta', model: 'anthropic/opus' } },
+          connections: [],
+          listAgents: async () => {
+            if (failure) throw new Error(failure);
+            return (blocked
+              ? [{ slug: 'zeta', name: 'Zeta' }]
+              : []) as unknown as never;
+          },
+        }),
+      );
+      try {
+        for (let poll = 0; poll < 5; poll++) expect(await probe()).toBeNull();
+        expect(warnings).toEqual([
+          [
+            'Station setup requirement probe failed',
+            { error: 'agent store unavailable' },
+          ],
+        ]);
+
+        // A different failure is a different identity: reported once.
+        failure = 'agent registry is corrupt';
+        await probe();
+        await probe();
+        expect(warnings).toHaveLength(2);
+        expect(warnings[1]).toEqual([
+          'Station setup requirement probe failed',
+          { error: 'agent registry is corrupt' },
+        ]);
+
+        // Recovery is logged once, then quiet.
+        failure = undefined;
+        expect(await probe()).toBeNull();
+        blocked = true;
+        expect(await probe()).toMatchObject({ agentSlug: 'zeta' });
+        expect(infos).toEqual([
+          [
+            'Station setup requirement probe recovered',
+            { previousError: 'agent registry is corrupt' },
+          ],
+        ]);
+
+        // The same failure after a recovery is news again.
+        failure = 'agent registry is corrupt';
+        await probe();
+        expect(warnings).toHaveLength(3);
+
+        expect(add.mock.calls.map(([, attributes]) => attributes)).toEqual([
+          ...Array(7).fill({ outcome: 'failed' }),
+          { outcome: 'ready' },
+          { outcome: 'blocked' },
+          { outcome: 'failed' },
+        ]);
+      } finally {
+        add.mockRestore();
+      }
+    });
+
+    test('each probe owns its own memory: a second owner still reports', async () => {
+      warnings.length = 0;
+      const context = contextWith({
+        agents: [],
+        specs: {},
+        listAgents: async () => {
+          throw new Error('agent store unavailable');
+        },
+      });
+      await createStationSetupRequirementProbe(context)();
+      await createStationSetupRequirementProbe(context)();
+      expect(warnings).toHaveLength(2);
     });
   });
 

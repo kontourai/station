@@ -877,6 +877,48 @@ worktree was not removed (`policy`, `uncommitted`, `unpushed`,
 `session-running` or `failed`). See [Task dispatch](../design/task-dispatcher.md#workspace-isolation)
 (#4507).
 
+`GET /api/tasks?projectId=` carries the same `taskWorktree` (or
+`taskWorktreeUnknown: true` when the worktree record cannot be read and a
+worktree exists on disk) on each row, from one record read per list. A row's
+`workspaceBinding` stays as recorded at creation; a reader shows
+`taskWorktree` first. A worktree record left by an earlier Task with the same
+id is not projected.
+
+## Pull request facts for the Task board
+
+`GET /api/tasks/pull-request-facts?projectId=` answers
+`{observedAt, tasks: {[taskId]: {taskCreatedAt, pullRequests, partial?}}}`
+for the Project's live Tasks (not done or canceled). Each entry lists the
+pull requests kept on that Task whose declaring session the requester may
+read, each read from its provider at its exact identity:
+`status: {state: "current", pullRequestState, title, draft?, reviewDecision?,
+readiness?, mergeability, sourceBranch}` or `{state: "unavailable" |
+"unsupported", reason}`. `readiness` is `clean`, `blocked`, `checks-not-passing`,
+`conflicting`, `behind`, `draft` or `unknown`; absent means the provider did
+not report it. On GitHub `checks-not-passing` is `UNSTABLE`: some checks are
+failing or still pending, none of them required. A failing required check is
+`BLOCKED`, which the board words "Blocked by repository rules" (a known limit:
+it does not yet say which rule). Pull requests kept on the most recently
+updated Tasks are read first, at most 60 distinct ones, 4 at a time. The
+answer waits at most 8 seconds: a pull request past the bound, or not read by
+then, is listed `unavailable` and its Task is `partial`. Reads still pending
+at the deadline keep going in the background, so the next refresh finds them.
+GitHub reads ask for status fields only and share one `gh pr view` per pull
+request for 150 seconds (longer than the board's 120-second refresh); a write
+to the repository through Station clears it. Each fact's `observedAt` is when
+the forge was read, which for a shared answer is earlier than the request.
+Known limit: a change made outside Station (on the forge, or by an agent's own
+`gh`) can take up to about two board refreshes (roughly 240 seconds) to show,
+because a refresh inside the 150-second cache window is answered from the
+cache. The read moves no Task (close-on-merge is separate) and is
+`Cache-Control: private, no-store`. `projectId` is required (`400` without
+it, before anything else). A hosted request answers `tasks: {}`. A requester whose
+standing changed during the reads gets `404` with `code:
+"request_principal_changed"`, which a client can tell from a Station without
+this route (a plain `404`). The board derives its lanes
+from these facts with `deriveTaskLane`
+([`task-lane`](../../packages/contracts/src/task-lane.ts)).
+
 ## Start a Task from a tracker item
 
 `POST /api/tasks/from-work-item` takes `{projectId, workItemRef, agentId?,
@@ -5826,7 +5868,11 @@ scopes, recent outcomes and available slice measurements. A recent outcome's
 `result` is `oom-kill-in-scope` when the kernel killed any process in the
 scope (the engine or a command), with `oomKills`, its `oomKillsSource`
 (`close`, exact; or `last-poll` when the scope was already collected) and
-systemd's own `systemdResult`. Measurement failure
+systemd's own `systemdResult`. `cleanup` lists scopes whose cleanup failed
+and has not settled: `pending` ones (retried with backoff, with
+`nextAttemptAt`) and `abandoned` ones (no longer retried until shutdown, with
+`abandonedAt`), each with its `attempts`, `errorKind` (`bus_unavailable`,
+`command_failed` or `other`) and `lastError`. Measurement failure
 is separate from enforcement state; see
 [Linux service workload budgets](../guides/development.md#linux-service-workload-budgets)
 for platform scope and admission behavior.
@@ -5841,7 +5887,9 @@ under `/api/system/workload`:
   (`ready`, `unmanaged`, `unavailable` or `stopping`) with any reason, host
   memory, effective `limits`, the `sources` of the two memory budgets
   (`environment`, `settings` or `default`), saved `settings`, any
-  `settingsError`, and `applies` (`new-scopes` or `restart`).
+  `settingsError`, `applies` (`new-scopes` or `restart`), running `scopes`,
+  and `cleanup` (scopes whose cleanup has not settled, as above; absent from
+  older hosts).
 - `PUT /api/system/workload/settings` takes `{ memoryMiB, totalMemoryMiB }`
   (whole MiB, or `null` for the default) and returns the new status. While the
   `workload-budget-settings` Feature Preview is off it answers 404 with

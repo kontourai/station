@@ -7,6 +7,7 @@ import {
   STATION_BROWSER_SERVER_GRANT_LABEL,
   sessionGrantPermissionUpdates,
   TOOL_REQUEST_ARGS_FIELDS,
+  toolRequestChangesAuthority,
   toolRequestDisplayName,
   toolRequestEscalates,
   toolRequestFromPayload,
@@ -22,6 +23,8 @@ import {
   toolRequestServerGrantFromPayload,
   toolRequestSessionGrant,
   toolRequestSessionGrantFromPayload,
+  toolRequestStrictSessionGrant,
+  toolRequestStrictSessionGrantFromPayload,
 } from '../tool-request-preview.js';
 
 describe('#2915: directory permission updates', () => {
@@ -121,7 +124,7 @@ describe('#2915/#2916: what a session answer grants', () => {
       { toolName: 'Read', suggestions: [readRule] },
       'read-folder',
     ],
-    ['a read with nothing to forward', { toolName: 'Glob' }, 'none'],
+    ['a read with nothing to forward', { toolName: 'Glob' }, 'tool'],
     [
       'an edit outside the folders',
       {
@@ -141,12 +144,12 @@ describe('#2915/#2916: what a session answer grants', () => {
     [
       'a blocked Bash path with nothing to forward',
       { toolName: 'Bash', blockedPath: '/work/b/x' },
-      'none',
+      'tool',
     ],
     [
       'a rule-forced ask',
       { toolName: 'Bash', matchedAskRule: { source: 'userSettings' } },
-      'none',
+      'tool',
     ],
     ["another engine's read tool", { toolName: 'read' }, 'tool'],
     [
@@ -157,7 +160,7 @@ describe('#2915/#2916: what a session answer grants', () => {
     [
       'a sensitive-file edit once in acceptEdits',
       { toolName: 'Write', suggestions: [] },
-      'none',
+      'tool',
     ],
     [
       'an edit forced by an ask rule',
@@ -166,7 +169,7 @@ describe('#2915/#2916: what a session answer grants', () => {
         matchedAskRule: { source: 'userSettings' },
         suggestions: [acceptEdits],
       },
-      'none',
+      'tool',
     ],
     ["another engine's edit tool", { toolName: 'edit' }, 'tool'],
     [
@@ -176,12 +179,12 @@ describe('#2915/#2916: what a session answer grants', () => {
         permissionMode: 'bypassPermissions',
         suggestions: [acceptEdits],
       },
-      'none',
+      'tool',
     ],
     [
       'a file edit in plan mode',
       { toolName: 'Edit', permissionMode: 'plan', suggestions: [acceptEdits] },
-      'none',
+      'tool',
     ],
   ])('%s', (_case, request, grant) => {
     expect(toolRequestSessionGrant(request)).toBe(grant);
@@ -312,10 +315,10 @@ describe('#2932: escalation signals the engine forwards', () => {
       toolInput: { host: 'api.example.com' },
       suggestions: [localRule('WebFetch', 'domain:api.example.com')],
     };
-    expect(toolRequestSessionGrant(request)).toBe('none');
+    expect(toolRequestStrictSessionGrant(request)).toBe('none');
     expect(toolRequestIsPlainCall(request)).toBe(false);
     expect(
-      toolRequestSessionGrantFromPayload({
+      toolRequestStrictSessionGrantFromPayload({
         toolName: 'SandboxNetworkAccess',
         toolInput: { host: 'api.example.com' },
         suggestions: request.suggestions,
@@ -349,12 +352,12 @@ describe('#2932: escalation signals the engine forwards', () => {
   ])('%s escalates: no tool grant, not a plain call', (_case, signal) => {
     const request = { toolName: 'Bash', ...signal };
     expect(toolRequestEscalates(request)).toBe(true);
-    expect(toolRequestSessionGrant(request)).toBe('none');
+    expect(toolRequestStrictSessionGrant(request)).toBe('none');
     expect(toolRequestIsPlainCall(request)).toBe(false);
     // The surfaces read the same signals from a request.opened payload.
     const { toolInput, ...rest } = signal;
     expect(
-      toolRequestSessionGrantFromPayload({
+      toolRequestStrictSessionGrantFromPayload({
         toolName: 'Bash',
         toolInput: toolInput ?? { command: 'curl x' },
         ...rest,
@@ -369,14 +372,14 @@ describe('#2932: escalation signals the engine forwards', () => {
       destination: 'session',
     };
     expect(
-      toolRequestSessionGrant({
+      toolRequestStrictSessionGrant({
         toolName: 'Bash',
         decisionReason: 'requiresUserInteraction',
         suggestions: [addDir],
       }),
     ).toBe('folder');
     expect(
-      toolRequestSessionGrant({
+      toolRequestStrictSessionGrant({
         toolName: 'Bash',
         suppressAlwaysAllowRule: true,
         suggestions: [addDir],
@@ -413,7 +416,7 @@ describe('#2932: escalation signals the engine forwards', () => {
     ],
   ])('positive control: %s is still a plain tool call', (_case, extra) => {
     const request = { toolName: 'Bash', ...extra };
-    expect(toolRequestSessionGrant(request)).toBe('tool');
+    expect(toolRequestStrictSessionGrant(request)).toBe('tool');
     expect(toolRequestIsPlainCall(request)).toBe(true);
   });
 });
@@ -455,7 +458,7 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
       claudeAsk: { decisionReasonType: type },
     };
     expect(toolRequestEscalates(request)).toBe(true);
-    expect(toolRequestSessionGrant(request)).toBe('none');
+    expect(toolRequestStrictSessionGrant(request)).toBe('none');
     expect(toolRequestIsPlainCall(request)).toBe(false);
   });
 
@@ -470,11 +473,11 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
     test('on Bash is a plain call when the frame shows nothing about its parts; on PowerShell it always escalates', () => {
       const bash = compound();
       expect(claudeAskEscalates(bash)).toBe(false);
-      expect(toolRequestSessionGrant(bash)).toBe('tool');
+      expect(toolRequestStrictSessionGrant(bash)).toBe('tool');
       expect(toolRequestIsPlainCall(bash)).toBe(true);
       const powerShell = compound({ toolName: 'PowerShell' });
       expect(claudeAskEscalates(powerShell)).toBe(true);
-      expect(toolRequestSessionGrant(powerShell)).toBe('none');
+      expect(toolRequestStrictSessionGrant(powerShell)).toBe('none');
       expect(toolRequestIsPlainCall(powerShell)).toBe(false);
       // Reason text alone does not keep a person's whole-tool session grant
       // from a chain (owner decision): the engine's command-analysis
@@ -491,9 +494,10 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
         [1, false],
       ] as const) {
         const request = compound({ decisionReason });
-        expect(toolRequestSessionGrant(request), String(decisionReason)).toBe(
-          'tool',
-        );
+        expect(
+          toolRequestStrictSessionGrant(request),
+          String(decisionReason),
+        ).toBe('tool');
         expect(toolRequestIsPlainCall(request), String(decisionReason)).toBe(
           plainForPattern,
         );
@@ -567,7 +571,7 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
       const request = compound(extra);
       expect(toolRequestEscalates(request)).toBe(true);
       expect(toolRequestIsPlainCall(request)).toBe(false);
-      expect(toolRequestSessionGrant(request)).not.toBe('tool');
+      expect(toolRequestStrictSessionGrant(request)).not.toBe('tool');
     });
 
     test('claudeAskEscalates reads the reason text of a chain only when strict', () => {
@@ -603,7 +607,7 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
 
     test('a read-rule suggestion from a part keeps the folder option and no tool grant', () => {
       expect(
-        toolRequestSessionGrant(
+        toolRequestStrictSessionGrant(
           compound({
             suggestions: [
               {
@@ -662,7 +666,7 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
         ).toBe(true);
     }
     expect(
-      toolRequestSessionGrant({
+      toolRequestStrictSessionGrant({
         toolName: 'Bash',
         decisionReason: ORDINARY,
         claudeAsk: { decisionReasonType: 'other' },
@@ -674,16 +678,16 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
     for (const toolName of ['mcp__github__create_issue', 'WebFetch', 'Edit'])
       expect(escalates({}, undefined, toolName), toolName).toBe(false);
     expect(
-      toolRequestSessionGrant({
+      toolRequestStrictSessionGrant({
         toolName: 'mcp__github__create_issue',
         claudeAsk: {},
       }),
     ).toBe('tool');
     expect(
-      toolRequestSessionGrant({ toolName: 'WebFetch', claudeAsk: {} }),
+      toolRequestStrictSessionGrant({ toolName: 'WebFetch', claudeAsk: {} }),
     ).toBe('tool');
     expect(
-      toolRequestSessionGrant({
+      toolRequestStrictSessionGrant({
         toolName: 'Edit',
         suggestions: [acceptEdits],
         claudeAsk: {},
@@ -708,23 +712,23 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
         classifierApprovable: true,
       },
     };
-    expect(toolRequestSessionGrant(sensitive)).toBe('none');
+    expect(toolRequestStrictSessionGrant(sensitive)).toBe('none');
     expect(toolRequestIsPlainCall(sensitive)).toBe(false);
   });
 
   test('a Claude ask whose frame was not read escalates; an engine that reports none is left alone', () => {
     for (const missing of [null, 'other', 0, false, [], [{}]])
       expect(escalates(missing, ORDINARY), String(missing)).toBe(true);
-    expect(toolRequestSessionGrant({ toolName: 'Bash', claudeAsk: null })).toBe(
-      'none',
-    );
+    expect(
+      toolRequestStrictSessionGrant({ toolName: 'Bash', claudeAsk: null }),
+    ).toBe('none');
     expect(toolRequestIsPlainCall({ toolName: 'Bash', claudeAsk: null })).toBe(
       false,
     );
     // Other engines (ACP, Codex, Station's own) set no `claudeAsk`.
     expect(escalates(undefined, undefined)).toBe(false);
     expect(escalates(undefined, undefined, 'WebFetch')).toBe(false);
-    expect(toolRequestSessionGrant({ toolName: 'Bash' })).toBe('tool');
+    expect(toolRequestStrictSessionGrant({ toolName: 'Bash' })).toBe('tool');
   });
 
   test('a decision reason code escalates with any reason type or none', () => {
@@ -747,7 +751,7 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
       ).toBe(true);
     }
     expect(
-      toolRequestSessionGrant({
+      toolRequestStrictSessionGrant({
         toolName: 'Bash',
         decisionReason: ORDINARY,
         claudeAsk: {
@@ -762,19 +766,21 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
     for (const toolName of ['Bash', 'PowerShell']) {
       expect(escalates({}, undefined, toolName), toolName).toBe(true);
       expect(escalates({}, ORDINARY, toolName), toolName).toBe(true);
-      expect(toolRequestSessionGrant({ toolName, claudeAsk: {} })).toBe('none');
+      expect(toolRequestStrictSessionGrant({ toolName, claudeAsk: {} })).toBe(
+        'none',
+      );
       expect(toolRequestIsPlainCall({ toolName, claudeAsk: {} })).toBe(false);
     }
     // Positive control: the same ask with the ordinary reason type.
     expect(
-      toolRequestSessionGrant({
+      toolRequestStrictSessionGrant({
         toolName: 'Bash',
         decisionReason: ORDINARY,
         claudeAsk: { decisionReasonType: 'other' },
       }),
     ).toBe('tool');
     // Another engine's Bash carries no `claudeAsk` and is left alone.
-    expect(toolRequestSessionGrant({ toolName: 'Bash' })).toBe('tool');
+    expect(toolRequestStrictSessionGrant({ toolName: 'Bash' })).toBe('tool');
   });
 
   test('a reason type that is not a string escalates', () => {
@@ -787,7 +793,7 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
 
   test('an escalating ask still forwards the folder the engine suggested', () => {
     expect(
-      toolRequestSessionGrant({
+      toolRequestStrictSessionGrant({
         toolName: 'Edit',
         suggestions: [
           acceptEdits,
@@ -809,27 +815,27 @@ describe("#2932 part 2: the engine's structured ask reason", () => {
       decisionReason: ORDINARY,
     };
     expect(
-      toolRequestSessionGrantFromPayload({
+      toolRequestStrictSessionGrantFromPayload({
         ...payload,
         claudeAsk: { decisionReasonType: 'other' },
       }),
     ).toBe('tool');
     expect(
-      toolRequestSessionGrantFromPayload({
+      toolRequestStrictSessionGrantFromPayload({
         ...payload,
         claudeAsk: { decisionReasonType: 'rule' },
       }),
     ).toBe('none');
     expect(
-      toolRequestSessionGrantFromPayload({ ...payload, claudeAsk: null }),
+      toolRequestStrictSessionGrantFromPayload({ ...payload, claudeAsk: null }),
     ).toBe('none');
     // A payload round-tripped through JSON keeps the null.
     expect(
-      toolRequestSessionGrantFromPayload(
+      toolRequestStrictSessionGrantFromPayload(
         JSON.parse(JSON.stringify({ ...payload, claudeAsk: null })),
       ),
     ).toBe('none');
-    expect(toolRequestSessionGrantFromPayload(payload)).toBe('tool');
+    expect(toolRequestStrictSessionGrantFromPayload(payload)).toBe('tool');
   });
 });
 
@@ -864,11 +870,11 @@ describe("Claude's Bash command-analysis warnings (owner decision)", () => {
         opened(reason),
         opened(reason, { suggestions: undefined }),
       ]) {
-        expect(toolRequestSessionGrantFromPayload(payload)).toBe('tool');
+        expect(toolRequestStrictSessionGrantFromPayload(payload)).toBe('tool');
         expect(
           toolRequestGrantLabel(
             'Bash',
-            toolRequestSessionGrantFromPayload(payload),
+            toolRequestStrictSessionGrantFromPayload(payload),
           ),
         ).toBe('Allow all Bash commands for this session');
         // No prefix was suggested, so no narrow choice.
@@ -889,7 +895,9 @@ describe("Claude's Bash command-analysis warnings (owner decision)", () => {
   );
 
   test('a Bash other ask with no reason text is a plain call too', () => {
-    expect(toolRequestSessionGrantFromPayload(opened(undefined))).toBe('tool');
+    expect(toolRequestStrictSessionGrantFromPayload(opened(undefined))).toBe(
+      'tool',
+    );
   });
 
   test.each([
@@ -955,9 +963,10 @@ describe("Claude's Bash command-analysis warnings (owner decision)", () => {
   ])('still prompts with %s: no tool grant', (_label, extra) => {
     for (const reason of [WARNINGS[0], 'This command requires approval']) {
       const payload = opened(reason, extra);
-      expect(toolRequestSessionGrantFromPayload(payload), String(reason)).toBe(
-        'none',
-      );
+      expect(
+        toolRequestStrictSessionGrantFromPayload(payload),
+        String(reason),
+      ).toBe('none');
       expect(toolRequestRuleGrantFromPayload(payload)).toBeUndefined();
     }
   });
@@ -967,7 +976,9 @@ describe("Claude's Bash command-analysis warnings (owner decision)", () => {
     ['requiresUserInteraction'],
     ['Your organization requires approval for this tool'],
   ])('the literal escalation reason %s still prompts', (reason) => {
-    expect(toolRequestSessionGrantFromPayload(opened(reason))).toBe('none');
+    expect(toolRequestStrictSessionGrantFromPayload(opened(reason))).toBe(
+      'none',
+    );
   });
 
   test('a directory suggestion still offers only the folder', () => {
@@ -980,13 +991,13 @@ describe("Claude's Bash command-analysis warnings (owner decision)", () => {
         },
       ],
     });
-    expect(toolRequestSessionGrantFromPayload(payload)).toBe('folder');
+    expect(toolRequestStrictSessionGrantFromPayload(payload)).toBe('folder');
     expect(toolRequestRuleGrantFromPayload(payload)).toBeUndefined();
   });
 
   test('a chained Bash command with warning text but no ask rule is plain', () => {
     expect(
-      toolRequestSessionGrantFromPayload(
+      toolRequestStrictSessionGrantFromPayload(
         opened(WARNINGS[1], {
           claudeAsk: { decisionReasonType: 'subcommandResults' },
         }),
@@ -1024,9 +1035,9 @@ describe('the command-prefix session grant (owner decision)', () => {
         label: `Allow "${rule}" for this session`,
       });
       // The whole-tool choice stays beside it.
-      expect(toolRequestSessionGrantFromPayload(opened([prefix(rule)]))).toBe(
-        'tool',
-      );
+      expect(
+        toolRequestStrictSessionGrantFromPayload(opened([prefix(rule)])),
+      ).toBe('tool');
     },
   );
 
@@ -1516,6 +1527,30 @@ describe('#1545 D4: an engine that names no argument bag (Codex)', () => {
   });
 });
 
+describe('built-in tools that change authority (owner decision)', () => {
+  test.each([
+    'mcp__station-control__update_config',
+    'station-control_update_agent',
+    'stationControl_installPlugin',
+    'mcp__station-control__connect_ssh_environment',
+  ])('%s needs a person: no session grant, pattern or guardian', (toolName) => {
+    expect(toolRequestChangesAuthority(toolName)).toBe(true);
+    expect(toolRequestNeedsPerson(toolName)).toBe(true);
+    expect(toolRequestSessionGrant({ toolName })).toBe('none');
+    expect(toolRequestIsPlainCall({ toolName })).toBe(false);
+  });
+
+  test.each([
+    'mcp__station-control__list_agents',
+    'mcp__station-control__send_message',
+    'mcp__other__update_config',
+    'update_config',
+  ])('%s keeps its session grant', (toolName) => {
+    expect(toolRequestChangesAuthority(toolName)).toBe(false);
+    expect(toolRequestSessionGrant({ toolName })).toBe('tool');
+  });
+});
+
 describe('the server-wide Station browser grant', () => {
   const browserCall = {
     toolName: 'mcp__station-browser__browser_click',
@@ -1540,6 +1575,25 @@ describe('the server-wide Station browser grant', () => {
       'an unauthenticated flag value',
       { ...browserCall, authenticStationBrowser: 'true' },
     ],
+  ])('is not offered for %s', (_label, request) => {
+    expect(toolRequestServerGrant(request)).toBe('none');
+  });
+
+  // Owner decision (2026-11-16): a person's session answer is offered on
+  // every tool approval, escalations included. Captured from a real Claude
+  // session at full access: Station's untrusted-content hook asked for a
+  // browser call after a page snapshot, and only Allow Once was offered.
+  test.each([
+    [
+      'a hook-forced ask (untrusted content read earlier in the turn)',
+      {
+        ...browserCall,
+        toolName: 'mcp__station-browser__browser_evaluate',
+        permissionMode: 'bypassPermissions',
+        claudeAsk: { decisionReasonType: 'hook' },
+        decisionReason: 'This Agent requires approval for this tool.',
+      },
+    ],
     [
       'a rule-forced ask (an escalation)',
       { ...browserCall, matchedAskRule: 'mcp__station-browser__browser_click' },
@@ -1548,9 +1602,16 @@ describe('the server-wide Station browser grant', () => {
       'an ask the engine says no standing allowance may answer',
       { ...browserCall, suppressAlwaysAllowRule: true },
     ],
-  ])('is not offered for %s', (_label, request) => {
-    expect(toolRequestServerGrant(request)).toBe('none');
-  });
+  ])(
+    'an escalation offers the per-tool grant, never the server-wide one, for %s',
+    (_label, request) => {
+      expect(toolRequestSessionGrant(request)).toBe('tool');
+      expect(toolRequestStrictSessionGrant(request)).toBe('none');
+      expect(toolRequestServerGrant(request)).toBe('none');
+      // A pattern, the guardian and a delegated child still never answer it.
+      expect(toolRequestIsPlainCall(request)).toBe(false);
+    },
+  );
 
   test('reads the adapter finding off the request.opened payload, never the name', () => {
     const payload = {

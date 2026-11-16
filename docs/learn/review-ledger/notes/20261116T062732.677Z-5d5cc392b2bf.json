@@ -1,0 +1,269 @@
+{
+  "revision": "412e11da49dfd4f3543125593f887c5195865ff0",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Added the GET /api/tasks/pull-request-facts section (bounds, filters, hosted and stale-principal answers) and the list taskWorktree projection; checked against tasks.ts, task-pull-request-facts.ts and their route tests. Other changed inputs: one runtime option line, one scope leaf, two SDK exports.","inputs":["docs/reference/api.md","packages/sdk/src/queries.ts","src-server/routes/orchestration/tasks.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts","src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Added the task-lane subpath row; checked against packages/contracts/src/task-lane.ts and its package export. PullRequest gains optional draft/reviewDecision/mergeReadiness, which no row here enumerates.","inputs":["docs/reference/contracts.md","packages/contracts/package.json","packages/contracts/package.json#/exports","packages/contracts/src/pull-request-provider.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts","src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Added useTaskPullRequestFactsQuery/fetchTaskPullRequestFacts with its refresh, retry and 404 behaviour, checked against taskGraph.ts and queryFactories.ts; other changed inputs add exports or one server option line and change no stated claim.","inputs":["docs/reference/sdk.md","packages/sdk/src/index.ts","packages/sdk/src/query-domains/taskGraph.ts","packages/sdk/src/queryFactories.ts","src-server/routes/orchestration/tasks.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts","src-server/services/projects/task-graph-service.ts","src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/glossary.md","note":"Added the Task lanes term, checked against task-lane.ts and useTaskBoardModel.ts (current-execution join); no existing term changed.","inputs":["docs/glossary.md","docs/reference/contracts.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Added the Tasks board paragraph: lanes, shelves, unread facts claim nothing; checked against deriveTaskLane and the board UI.","inputs":["docs/user/concepts.md"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Rewrote the Tasks section paragraph for the board default, card actions and the list toggle; checked against ProjectTasksSection.tsx, ProjectTaskBoard.tsx and ProjectPage.tsx.","inputs":["docs/guides/starter-work.md","src-server/runtime/routes/runtime-routes.ts","src-server/services/projects/task-graph-service.ts","src-ui/src/__tests__/ProjectTasksSection.test.tsx","src-ui/src/components/ProjectTaskBoard.tsx","src-ui/src/views/ProjectPage.tsx","src-ui/src/views/project-page/ProjectTasksSection.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"One clause now names the board and the list; TaskPlanProgress liveness now follows the derived Running lane, which this page does not describe in more detail.","inputs":["docs/user/getting-started.md","docs/guides/starter-work.md","src-server/routes/orchestration/tasks.ts","src-ui/src/components/TaskPlanProgress.tsx","src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"One option line passes pullRequestProviders to createTaskRoutes (the same listProviders('pullRequest') expression used elsewhere); no route, authority or composition claim on this page changes.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"One family-inherited leaf added: GET /api/tasks/pull-request-facts takes the /api/tasks read tier; no other scope or rule changes.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"One family-inherited leaf added: GET /api/tasks/pull-request-facts takes the /api/tasks read tier; no other scope or rule changes.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/connection-broker.md","note":"One family-inherited leaf added: GET /api/tasks/pull-request-facts takes the /api/tasks read tier; no other scope or rule changes.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/inference-fleet.md","note":"One family-inherited leaf added: GET /api/tasks/pull-request-facts takes the /api/tasks read tier; no other scope or rule changes.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"One family-inherited leaf added: GET /api/tasks/pull-request-facts takes the /api/tasks read tier; no other scope or rule changes.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-relay-enrollment.md","note":"One family-inherited leaf added: GET /api/tasks/pull-request-facts takes the /api/tasks read tier; no other scope or rule changes.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"One family-inherited leaf added: GET /api/tasks/pull-request-facts takes the /api/tasks read tier; no other scope or rule changes.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"One family-inherited leaf added: GET /api/tasks/pull-request-facts takes the /api/tasks read tier; no other scope or rule changes.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"One family-inherited leaf added: GET /api/tasks/pull-request-facts takes the /api/tasks read tier; no other scope or rule changes.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"One family-inherited leaf added: GET /api/tasks/pull-request-facts takes the /api/tasks read tier; no other scope or rule changes.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"One family-inherited leaf added: GET /api/tasks/pull-request-facts takes the /api/tasks read tier; no other scope or rule changes.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"One family-inherited leaf added: GET /api/tasks/pull-request-facts takes the /api/tasks read tier; no other scope or rule changes.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"One family-inherited leaf added: GET /api/tasks/pull-request-facts takes the /api/tasks read tier; no other scope or rule changes.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"One family-inherited leaf added: GET /api/tasks/pull-request-facts takes the /api/tasks read tier; no other scope or rule changes.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"One family-inherited leaf added: GET /api/tasks/pull-request-facts takes the /api/tasks read tier; no other scope or rule changes.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"One family-inherited leaf added: GET /api/tasks/pull-request-facts takes the /api/tasks read tier; no other scope or rule changes.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"One family-inherited leaf added: GET /api/tasks/pull-request-facts takes the /api/tasks read tier; no other scope or rule changes.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"One family-inherited leaf added: GET /api/tasks/pull-request-facts takes the /api/tasks read tier; no other scope or rule changes.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"One family-inherited leaf added: GET /api/tasks/pull-request-facts takes the /api/tasks read tier; no other scope or rule changes.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"packages/connect/README.md","note":"One family-inherited leaf added: GET /api/tasks/pull-request-facts takes the /api/tasks read tier; no other scope or rule changes.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","note":"One family-inherited leaf added: GET /api/tasks/pull-request-facts takes the /api/tasks read tier; no other scope or rule changes.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/architecture.md","note":"Adds the fetchTaskPullRequestFacts and useTaskPullRequestFactsQuery exports; nothing removed or renamed.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/knowledge-recall-ui.md","note":"Adds the fetchTaskPullRequestFacts and useTaskPullRequestFactsQuery exports; nothing removed or renamed.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/pane-host-contract.md","note":"Adds the fetchTaskPullRequestFacts and useTaskPullRequestFactsQuery exports; nothing removed or renamed.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Adds the fetchTaskPullRequestFacts and useTaskPullRequestFactsQuery exports; nothing removed or renamed.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Adds the fetchTaskPullRequestFacts and useTaskPullRequestFactsQuery exports; nothing removed or renamed.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Adds the fetchTaskPullRequestFacts and useTaskPullRequestFactsQuery exports; nothing removed or renamed.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Adds the fetchTaskPullRequestFacts and useTaskPullRequestFactsQuery exports; nothing removed or renamed.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Adds the fetchTaskPullRequestFacts and useTaskPullRequestFactsQuery exports; nothing removed or renamed.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"examples/meeting-transcription/README.md","note":"Adds the fetchTaskPullRequestFacts and useTaskPullRequestFactsQuery exports; nothing removed or renamed.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Adds the fetchTaskPullRequestFacts and useTaskPullRequestFactsQuery exports; nothing removed or renamed.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Adds the fetchTaskPullRequestFacts and useTaskPullRequestFactsQuery re-exports; nothing removed or renamed.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Adds the fetchTaskPullRequestFacts and useTaskPullRequestFactsQuery re-exports; nothing removed or renamed.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Adds the fetchTaskPullRequestFacts and useTaskPullRequestFactsQuery re-exports; nothing removed or renamed.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Adds the fetchTaskPullRequestFacts and useTaskPullRequestFactsQuery re-exports; nothing removed or renamed.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Adds the fetchTaskPullRequestFacts and useTaskPullRequestFactsQuery re-exports; nothing removed or renamed.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Adds taskQueries.pullRequestFacts; existing keys and stale times unchanged.","inputs":["packages/sdk/src/queryFactories.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Adds taskQueries.pullRequestFacts; existing keys and stale times unchanged.","inputs":["packages/sdk/src/queryFactories.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Adds taskQueries.pullRequestFacts; existing keys and stale times unchanged.","inputs":["packages/sdk/src/queryFactories.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Adds taskQueries.pullRequestFacts; existing keys and stale times unchanged.","inputs":["packages/sdk/src/queryFactories.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Adds taskQueries.pullRequestFacts; existing keys and stale times unchanged.","inputs":["packages/sdk/src/queryFactories.ts"]},
+
+    {"path":"docs/architecture.md","note":"Adds the ./task-lane subpath; existing exports unchanged.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Adds the ./task-lane subpath; existing exports unchanged.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/reference/contracts.md","note":"Adds the ./task-lane subpath; existing exports unchanged.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Adds the ./task-lane subpath; existing exports unchanged.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"packages/contracts/README.md","note":"Adds the ./task-lane subpath; existing exports unchanged.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Adds listKeptDeclaredPullRequestsForTasks and the list worktree projection; readTaskForOpen's output is unchanged (shared helper). No claim on this page changes.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Adds listKeptDeclaredPullRequestsForTasks and the list worktree projection; readTaskForOpen's output is unchanged (shared helper). No claim on this page changes.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Adds listKeptDeclaredPullRequestsForTasks and the list worktree projection; readTaskForOpen's output is unchanged (shared helper). No claim on this page changes.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Adds listKeptDeclaredPullRequestsForTasks and the list worktree projection; readTaskForOpen's output is unchanged (shared helper). No claim on this page changes.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Adds listKeptDeclaredPullRequestsForTasks and the list worktree projection; readTaskForOpen's output is unchanged (shared helper). No claim on this page changes.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Adds listKeptDeclaredPullRequestsForTasks and the list worktree projection; readTaskForOpen's output is unchanged (shared helper). No claim on this page changes.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Adds listKeptDeclaredPullRequestsForTasks and the list worktree projection; readTaskForOpen's output is unchanged (shared helper). No claim on this page changes.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Adds the read-only GET /pull-request-facts and per-row taskWorktree on the list; other Task routes unchanged.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Adds the read-only GET /pull-request-facts and per-row taskWorktree on the list; other Task routes unchanged.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Adds the read-only GET /pull-request-facts and per-row taskWorktree on the list; other Task routes unchanged.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Adds the read-only GET /pull-request-facts and per-row taskWorktree on the list; other Task routes unchanged.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/task-basis-mcp-app.md","note":"Adds the read-only GET /pull-request-facts and per-row taskWorktree on the list; other Task routes unchanged.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Adds the read-only GET /pull-request-facts and per-row taskWorktree on the list; other Task routes unchanged.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Adds the read-only GET /pull-request-facts and per-row taskWorktree on the list; other Task routes unchanged.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"The Tasks section gains a Board/List toggle and opens on the board; other sections unchanged. Captures of the Tasks section still show the earlier list and are not recaptured in this change.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"The Tasks section gains a Board/List toggle and opens on the board; other sections unchanged. Captures of the Tasks section still show the earlier list and are not recaptured in this change.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/media/project-start-after.png","note":"The Tasks section gains a Board/List toggle and opens on the board; other sections unchanged. Captures of the Tasks section still show the earlier list and are not recaptured in this change.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/media/project-start-before.png","note":"The Tasks section gains a Board/List toggle and opens on the board; other sections unchanged. Captures of the Tasks section still show the earlier list and are not recaptured in this change.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"The Tasks section gains a Board/List toggle and opens on the board; other sections unchanged. Captures of the Tasks section still show the earlier list and are not recaptured in this change.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"The Tasks section gains a Board/List toggle and opens on the board; other sections unchanged. Captures of the Tasks section still show the earlier list and are not recaptured in this change.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"The Tasks section gains a Board/List toggle and opens on the board; other sections unchanged. Captures of the Tasks section still show the earlier list and are not recaptured in this change.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"The Tasks section gains a Board/List toggle and opens on the board; other sections unchanged. Captures of the Tasks section still show the earlier list and are not recaptured in this change.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/design/terminal.md","note":"api.md gained the pull-request-facts section and list worktree note; no claim this page cites from it changed.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"api.md gained the pull-request-facts section and list worktree note; no claim this page cites from it changed.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/glossary.md","note":"contracts.md gained the task-lane row only.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"contracts.md gained the task-lane row only.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"contracts.md gained the task-lane row only.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"sdk.md gained the Task pull request facts query entry only.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"sdk.md gained the Task pull request facts query entry only.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"CONTEXT-MAP.md","note":"The glossary gained the Task lanes term; no existing term changed.","inputs":["docs/glossary.md"]},
+
+    {"path":"CONTEXT.md","note":"The glossary gained the Task lanes term; no existing term changed.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"The Tasks paragraph now describes the board default and list toggle; no other section changed.","inputs":["docs/guides/starter-work.md"]}
+  ]
+}
