@@ -1,0 +1,7 @@
+{
+  "revision": "332a602da2a61ebad4f58add4a26b52d05e5f073",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Staleness bound for outside changes restated as about two board refreshes (~240s): a refresh inside the 150s status-cache window is served from cache. Verified against the 150s TTL and 120s refetch in the provider and SDK.","inputs":["docs/reference/api.md"]}
+  ]
+}
