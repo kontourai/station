@@ -18,7 +18,10 @@ import type {
   ConversationReadState,
   ConversationReadStateUnavailable,
 } from '@kontourai/station-contracts/orchestration';
-import { PAIRED_STATION_REQUIRED_CODE } from '@kontourai/station-contracts/peer-chat';
+import {
+  CONVERSATION_IMPORT_DELETED_CODE,
+  PAIRED_STATION_REQUIRED_CODE,
+} from '@kontourai/station-contracts/peer-chat';
 import { agentAvailableInProject } from '@kontourai/station-contracts/project-reference-integrity';
 import { parseConversationStatsResponse } from '@kontourai/station-contracts/runtime';
 import {
@@ -1677,7 +1680,7 @@ export function createConversationRoutes(
           return c.json(
             {
               success: false,
-              code: 'conversation_import_deleted',
+              code: CONVERSATION_IMPORT_DELETED_CODE,
               error:
                 'This continued conversation was deleted before it started. Start the handoff again.',
             },

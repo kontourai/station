@@ -147,6 +147,11 @@ export const PEER_CONVERSATION_HANDOFF_PAIRING_CODE =
   'peer_conversation_handoff_pairing_required';
 /** The receiver's own code for a caller that is not a paired Station. */
 export const PAIRED_STATION_REQUIRED_CODE = 'paired_station_required';
+/**
+ * The import this key saved was deleted before its first turn; nothing of it
+ * remains, so a new request (a new key) is safe.
+ */
+export const CONVERSATION_IMPORT_DELETED_CODE = 'conversation_import_deleted';
 export const PEER_CONVERSATION_HANDOFF_MAX_MESSAGES = 400;
 /**
  * Bytes of carried message text AS JSON-ENCODED on the wire (escapes such as
