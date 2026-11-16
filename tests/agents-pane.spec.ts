@@ -553,6 +553,19 @@ test.describe('Agents pane child work (#2459)', () => {
         path: testInfo.outputPath(`agents-pane-all-${width}-dark.png`),
       });
     }
+    // The same list in light theme, for the record.
+    await page.emulateMedia({ colorScheme: 'light' });
+    for (const width of [600, 380]) {
+      await setPaneWidth(width);
+      await expectActionsClearOfText(
+        page.getByRole('listitem').filter({
+          hasText: 'Inventory event-row readers for retention and replay',
+        }),
+      );
+      await pane.screenshot({
+        path: testInfo.outputPath(`agents-pane-all-${width}-light.png`),
+      });
+    }
   });
 
   /**
