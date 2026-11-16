@@ -271,7 +271,7 @@ test('a transcript rewritten shorter than the cursor starts again from its lates
 
 test('an invalidation rebuilds every loaded page instead of keeping only the first', async () => {
   vi.useFakeTimers();
-  let length = 30;
+  let length = 60;
   read.mockImplementation((async (
     _apiBase: string,
     _thread: string,
@@ -293,7 +293,7 @@ test('an invalidation rebuilds every loaded page instead of keeping only the fir
   await act(async () => {
     await vi.advanceTimersByTimeAsync(1);
   });
-  length = 33;
+  length = 63;
   await act(async () => {
     await vi.advanceTimersByTimeAsync(2_100);
   });
@@ -303,7 +303,7 @@ test('an invalidation rebuilds every loaded page instead of keeping only the fir
     await vi.advanceTimersByTimeAsync(1);
   });
   expect(messages()[0]).toBe(0);
-  expect(messages().at(-1)).toBe(32);
+  expect(messages().at(-1)).toBe(62);
   observer.rerender({ running: false });
   await act(async () => {
     await client.invalidateQueries();
@@ -311,7 +311,7 @@ test('an invalidation rebuilds every loaded page instead of keeping only the fir
   });
   // Still from the oldest loaded message to the latest one, once each.
   expect(messages()[0]).toBe(0);
-  expect(messages().at(-1)).toBe(32);
+  expect(messages().at(-1)).toBe(62);
   expect(new Set(messages()).size).toBe(messages().length);
   observer.unmount();
   client.clear();
