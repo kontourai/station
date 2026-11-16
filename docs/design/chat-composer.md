@@ -215,7 +215,9 @@ Undo. While armed, every send from that composer (Send, Return, or Queue
 during a turn) is the handoff, prepared like any send (mentions, quotes and
 the size limit), through the same idempotent request. It waits, with the
 reason, while a turn or queued message blocks the switch, and nothing else can
-be sent while it dispatches. A retried earlier request leaves a newer draft in
+be sent (nor the choice undone) while it is in flight, from any pane showing
+that chat. Another chat's picker stays closed until an in-flight armed send
+finishes. A retried earlier request leaves a newer draft in
 the composer. The first message (including the exact catch-up text) and what
 carries over and resets are under **Details**. There the picker lists
 only the other engines this client can start (an unready or incompatible one is
