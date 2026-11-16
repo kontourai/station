@@ -1,5 +1,7 @@
+import { resolve } from 'node:path';
 import type { Plugin } from 'esbuild';
 import { expect, test } from 'vitest';
+import { resolveCssImports } from '../../../tests/helpers/css-cascade-fixture';
 import { scrollBrowserFixture } from './scroll-browser-fixture';
 
 // Controls that need an API provider are stubbed; the four chips on the row
@@ -153,30 +155,92 @@ test('a phone composer keeps "Agent moved" visible ahead of a long engine name',
     [controls],
   );
   try {
+    // Design tokens: the row and the Run setup sheet at their real widths.
+    await page.addStyleTag({
+      content: resolveCssImports(resolve('src-ui/src/index.css')),
+    });
     await page.waitForSelector('textarea');
     await page.waitForFunction(
-      () => document.querySelectorAll('.chat-input__settings > *').length >= 4,
+      () =>
+        document.querySelectorAll(
+          '.chat-input__settings > .composer-run-control',
+        ).length === 1 &&
+        document.querySelectorAll('.composer-run-panel__choices > *').length >=
+          4,
     );
     expect(errors).toEqual([]);
     expect(await page.locator('.chat-input__next-turn-notice').count()).toBe(0);
+    // With Run setup closed, its trigger on the row says the Agent moved.
     const hint = await page.evaluate(
       unclipped,
-      '.chat-input__engine-moved--short',
+      '.composer-run-control__notice',
     );
     expect(hint).toMatchObject({
       found: true,
-      text: ' · Agent moved',
+      text: '· Agent moved',
       inViewport: true,
       clippedBy: null,
     });
+    expect(hint.display).not.toBe('none');
     expect(hint.width).toBeGreaterThan(0);
     expect(hint.ownOverflow).toBeLessThanOrEqual(0);
-    // The engine name is what gave way.
-    const engine = await page.evaluate(
+    // The run summary beside it (Agent · model) is what gave way.
+    const summary = await page.evaluate(
       unclipped,
-      '.chat-input__chip-caption-engine',
+      '.composer-run-control__model',
     );
-    expect(engine.ownOverflow).toBeGreaterThan(0);
+    expect(summary.ownOverflow).toBeGreaterThan(0);
+    // Not by position alone: the trigger's name and description say it too.
+    const trigger = page.getByRole('button', { name: /; Agent moved$/ });
+    expect(await trigger.count()).toBe(1);
+    expect(
+      await trigger.evaluate(
+        (button) =>
+          document.getElementById(button.getAttribute('aria-describedby')!)
+            ?.textContent,
+      ),
+    ).toBe(
+      'This conversation runs on Claude Code (work). Its Agent now uses OpenCode Zen gateway (work).',
+    );
+
+    // Opened, the sheet holds the four real controls and names where the
+    // Agent moved, with nothing wider than the sheet.
+    await trigger.click();
+    const sheet = page.getByRole('dialog', { name: 'Run setup' });
+    await sheet.waitFor();
+    for (const name of [
+      /^Agent: /,
+      /^Engine & model: /,
+      /^Session mode: /,
+      /^Approval: /,
+    ])
+      expect(await sheet.getByRole('button', { name }).isVisible()).toBe(true);
+    const move = await page.evaluate(
+      unclipped,
+      '.composer-run-panel .chat-input__engine-moved',
+    );
+    expect(move).toMatchObject({
+      found: true,
+      text: ' · Agent now on OpenCode Zen gateway (work)',
+      inViewport: true,
+      clippedBy: null,
+    });
+    expect(move.ownOverflow).toBeLessThanOrEqual(0);
+    const outside = await page.evaluate(() => {
+      const panel = document.querySelector('.composer-run-panel')!;
+      const box = panel.getBoundingClientRect();
+      return [
+        ...(box.left < 0 || box.right > window.innerWidth ? [panel] : []),
+        ...[...panel.querySelectorAll('*')].filter((element) => {
+          const rect = element.getBoundingClientRect();
+          return (
+            rect.width > 0 &&
+            (rect.left < box.left - 0.5 || rect.right > box.right + 0.5)
+          );
+        }),
+      ].map((element) => element.className);
+    });
+    expect(outside).toEqual([]);
     expect(errors).toEqual([]);
   } finally {
     await browser.close();

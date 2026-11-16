@@ -17,6 +17,8 @@ type ComposerChoiceProps = Omit<
   caption: ReactNode;
   value: ReactNode;
   icon?: ReactNode;
+  /** Text after the label that stays whole while the label gives way. */
+  notice?: ReactNode;
   valueClassName?: string;
   safetyLabel?: string;
   changedForConversation?: boolean;
@@ -29,6 +31,7 @@ export function ComposerChoice({
   changedForConversation,
   value,
   icon,
+  notice,
   valueClassName,
   className = '',
   ...props
@@ -57,6 +60,7 @@ export function ComposerChoice({
           {value}
         </span>
       </span>
+      {notice}
       {/* The same mark the closed Run setup trigger carries, so the open
           panel shows which choice raised it. Outside the value, so the
           visible label (and its Label-in-Name match) stays the value alone. */}

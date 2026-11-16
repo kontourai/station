@@ -1789,9 +1789,9 @@
   color: white;
 }
 
-/* The caption's parts in priority order: the engine name (and an override
-   marker) shrink to an ellipsis first; the move hint keeps its width, since a
-   flex item's default `min-width: auto` will not go below its unwrapped text. */
+/* The caption's parts: the engine name (and an override marker) shrink to an
+   ellipsis; the move hint is never cut. When both do not fit on one line (the
+   Run setup sheet on a phone), the hint takes its own line and wraps there. */
 .chat-input__chip-caption-engine {
   flex: 0 1 auto;
   min-width: 0;
@@ -1800,15 +1800,13 @@
   white-space: pre;
 }
 
-.chat-input__engine-moved--full,
-.chat-input__engine-moved--short {
-  white-space: pre;
+.chat-input__chip-caption:has(.chat-input__engine-moved) {
+  flex-wrap: wrap;
 }
 
-/* A narrow composer states only that the Agent moved; the chip's tooltip and
-   accessible name keep the full sentence (see the container query below). */
-.chat-input__engine-moved--short {
-  display: none;
+.chat-input__engine-moved {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 /* The next-send destination stays visible while Run setup is closed. */
@@ -3484,14 +3482,6 @@
      chip's accessible name and tooltip keep the route. */
   .chat-input__agent-route {
     display: none;
-  }
-
-  .chat-input__engine-moved--full {
-    display: none;
-  }
-
-  .chat-input__engine-moved--short {
-    display: inline;
   }
 
   .chat-input__next-turn-notice {

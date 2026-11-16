@@ -762,16 +762,17 @@ export function ChatInputArea({
   const fullModelIdentity = resolvedLabel
     ? `${aliasLabel} → ${resolvedLabel}`
     : aliasLabel;
+  const agentEngineMoveSentence = agentEngineMove
+    ? agentEngineMove.nextTurn
+      ? `This conversation's ${executionEngineLabel ?? 'engine'} session has ended; its next turn starts on ${agentEngineMove.to}, where its Agent now points.`
+      : `This conversation runs on ${executionEngineLabel ?? 'its current engine'}. Its Agent now uses ${agentEngineMove.to}.`
+    : undefined;
   const modelAccessibleLabel = [
     'Engine & model:',
     executionEngineLabel,
     modelLabel,
     `${executionEngineLabel ?? 'Engine & model'} ${modelLabel}`,
-    agentEngineMove
-      ? agentEngineMove.nextTurn
-        ? `This conversation's ${executionEngineLabel ?? 'engine'} session has ended; its next turn starts on ${agentEngineMove.to}, where its Agent now points.`
-        : `This conversation runs on ${executionEngineLabel ?? 'its current engine'}. Its Agent now uses ${agentEngineMove.to}.`
-      : '',
+    agentEngineMoveSentence,
     currentExecutionAgentId ? 'Conversation override.' : '',
     modelProviderLabel
       ? `${modelProviderLabel} — ${fullModelIdentity}`
@@ -1740,6 +1741,14 @@ export function ChatInputArea({
               engineId={parseEngineId(
                 acpApproval?.engineId ?? executionEngineId,
               )}
+              // The move shows on the closed trigger at every width; a
+              // next-turn move has its own notice above the draft instead.
+              notice={
+                agentEngineMove && !agentEngineMove.nextTurn
+                  ? 'Agent moved'
+                  : undefined
+              }
+              description={agentEngineMoveSentence}
             >
               {onOpenAgentHandoff && (
                 <ComposerChoice
@@ -1784,27 +1793,19 @@ export function ChatInputArea({
                 title={modelAccessibleLabel}
                 caption={
                   <>
-                    {/* The engine name gives way first, so a narrow chip keeps
-                    the move hint rather than cutting it to an ellipsis. */}
+                    {/* The engine name gives way before the move hint, which
+                    wraps onto its own line rather than being cut. */}
                     <span className="chat-input__chip-caption-engine">
                       {executionEngineLabel ?? 'Engine & model'}
                     </span>
+                    {/* The closed Run setup trigger says "Agent moved"; here
+                    the open panel names the destination. */}
                     {agentEngineMove && (
-                      <>
-                        <span className="chat-input__engine-moved--full">
-                          {agentEngineMove.nextTurn
-                            ? ` · Next turn on ${agentEngineMove.to}`
-                            : ` · Agent now on ${agentEngineMove.to}`}
-                        </span>
-                        {/* A narrow composer states the next-turn move in the
-                        notice above the chips instead (no chip has room for
-                        a destination name). */}
-                        {!agentEngineMove.nextTurn && (
-                          <span className="chat-input__engine-moved--short">
-                            {' · Agent moved'}
-                          </span>
-                        )}
-                      </>
+                      <span className="chat-input__engine-moved">
+                        {agentEngineMove.nextTurn
+                          ? ` · Next turn on ${agentEngineMove.to}`
+                          : ` · Agent now on ${agentEngineMove.to}`}
+                      </span>
                     )}
                     {currentExecutionAgentId ? (
                       <span className="chat-input__chip-caption-engine">

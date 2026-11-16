@@ -35,6 +35,8 @@ export function ComposerRunControl({
   engineId,
   children,
   loadingLabel,
+  notice,
+  description,
 }: {
   label: string;
   /** The requested reasoning effort, shown after the model; absent when the engine default applies. */
@@ -43,6 +45,10 @@ export function ComposerRunControl({
   engineId?: EngineId | null;
   children: ReactNode;
   loadingLabel?: string;
+  /** A short fact the closed trigger states beside its label, which gives way first. */
+  notice?: string;
+  /** The trigger's accessible description: the sentence behind `notice`. */
+  description?: string;
 }) {
   const agent =
     isValidElement<React.ComponentProps<typeof AgentIcon>>(icon) &&
@@ -66,6 +72,7 @@ export function ComposerRunControl({
   // Effort qualifies a Model, so it is shown only beside one.
   const shownEffort = separator < 0 ? undefined : effort;
   const contentId = useId();
+  const descriptionId = useId();
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const [summaries, setSummaries] = useState<
@@ -118,6 +125,7 @@ export function ComposerRunControl({
       ...details,
       ...safety,
       ...(changed ? ['changed for this conversation'] : []),
+      ...(notice ? [notice] : []),
     ]),
   ].join('; ');
   return (
@@ -177,14 +185,28 @@ export function ComposerRunControl({
               )}
             </span>
           }
-          title={summary}
+          notice={
+            notice && (
+              <span className="composer-run-control__notice" aria-hidden="true">
+                {'· '}
+                {notice}
+              </span>
+            )
+          }
+          title={description ? `${summary}. ${description}` : summary}
           aria-label={summary}
+          aria-describedby={description ? descriptionId : undefined}
           data-testid="run-setup-trigger"
           aria-haspopup="dialog"
           aria-controls={contentId}
           aria-expanded={open}
           onClick={() => setOpen(true)}
         />
+      )}
+      {description && (
+        <span id={descriptionId} hidden>
+          {description}
+        </span>
       )}
       <ResponsiveDialogSurface
         open={open}

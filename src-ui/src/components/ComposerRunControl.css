@@ -114,6 +114,13 @@
   );
 }
 
+/* A fact the closed trigger states (the Agent moved) stays whole; the label
+   beside it gives way, and it outlasts the label's narrow-composer collapse. */
+.composer-run-control__notice {
+  flex: none;
+  white-space: pre;
+}
+
 /* Effort qualifies the Model, so it gives way before the Model does. */
 .composer-run-control__effort {
   flex: 0 100 auto;
