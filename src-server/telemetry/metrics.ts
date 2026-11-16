@@ -1512,6 +1512,18 @@ export const notificationOps = meter.createCounter(
   },
 );
 /**
+ * #5052: settled records (`status`: `expired` | `actioned` | `dismissed`)
+ * removed from `notifications.json` once their settle time is older than the
+ * retention window. Never carries ids, sources, tags or content.
+ */
+export const notificationRetentionPruned = meter.createCounter(
+  'station.notification.retention_pruned',
+  {
+    description:
+      'Settled notification records removed by retention, by bounded status',
+  },
+);
+/**
  * #2584: `notify_user` outcomes by `result` (the tool's status) and
  * `urgency`. Never carries session ids, titles or bodies.
  */
