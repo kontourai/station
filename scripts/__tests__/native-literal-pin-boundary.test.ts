@@ -19,18 +19,11 @@
  * NOT covered, deliberately: paths built from several segments, template
  * literals with substitutions, and tests outside `scripts/__tests__`.
  */
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   listSuiteFiles,
   NATIVE_LITERAL_ROOTS,
@@ -57,15 +50,10 @@ function selectedTests(paths: string[], manifest: unknown = built): string[] {
     .sort();
 }
 
-const tempRoots: string[] = [];
-afterEach(() => {
-  for (const dir of tempRoots.splice(0))
-    rmSync(dir, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 
 function fixtureTree(files: Record<string, string>): string {
-  const dir = mkdtempSync(join(tmpdir(), 'native-literal-pin-'));
-  tempRoots.push(dir);
+  const dir = makeTempDir('native-literal-pin-');
   for (const [path, text] of Object.entries(files)) {
     mkdirSync(dirname(join(dir, path)), { recursive: true });
     writeFileSync(join(dir, path), text);
