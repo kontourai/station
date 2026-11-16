@@ -51,6 +51,7 @@ import { registerTaskBriefTools } from './station-control-task-brief-tools.js';
 import { registerTaskMemoryTools } from './station-control-task-memory-tools.js';
 import { registerTaskThreadTools } from './station-control-task-thread-tools.js';
 import { registerTerminalTools } from './station-control-terminal-tools.js';
+import { stationToolFamily } from './station-control-tool-families.js';
 import { registerTroubleshootTools } from './station-control-troubleshoot-tools.js';
 import { registerWalkthroughTools } from './station-control-walkthrough-tools.js';
 import { registerWorkClaimTools } from './station-control-work-claim-tools.js';
@@ -108,23 +109,7 @@ function withToolSideRefusal<
 }
 
 function stationControlToolMetadata(name: string) {
-  const groups: [string, RegExp][] = [
-    ['Knowledge', /knowledge/],
-    ['Evidence', /basis|assessment|review|receipt/],
-    ['Agents', /agent/],
-    // The Sessions in a Project: a chat-level read, not a Project record.
-    ['Chats', /^(list_project_activity|list_active_work)$/],
-    // #3413 B: what a Session says it is on, shown with Project activity.
-    ['Chats', /^(claim_work|renew_claim|release_claim)$/],
-    ['Projects', /project|layout|^board_|personal_board/],
-    ['Chats', /conversation|session|message/],
-    ['Tasks', /task|delegat|ssh_environment|pull_request/],
-    ['Scheduling', /job|schedul|wake_up/],
-    ['Skills', /skill/],
-    ['Integrations', /integration|provider|plugin/],
-  ];
-  const group =
-    groups.find(([, pattern]) => pattern.test(name))?.[0] ?? 'Station';
+  const group = stationToolFamily(name) ?? 'Station';
   const policy = stationControlToolPolicy(name);
   return {
     title: name
