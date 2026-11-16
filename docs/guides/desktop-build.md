@@ -350,8 +350,9 @@ Every static import in `dist-server/command-station.js` is loaded when the
 server boots, whether or not its code runs. The Claude Agent SDK,
 `@kontourai/console-server` and `@kontourai/veritas/engine` are loaded on first
 use instead, because an idle server needs none of them and each costs memory
-once loaded. The server build fails if the bundle imports one of them
-statically again ([deny list](../../scripts/lib/server-static-imports.mjs)).
+once loaded. The server build fails if the bundle statically imports any of
+those packages, or any subpath of one, again
+([deny list](../../scripts/lib/server-static-imports.mjs)).
 The `@kontourai/flow-agents` root is still imported at boot because some
 synchronous callers need values only it exports.
 
