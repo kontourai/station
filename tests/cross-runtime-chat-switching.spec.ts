@@ -1057,7 +1057,6 @@ async function selectProductPath(page: Page, path: ProductPath) {
 }
 
 async function openConversationHistoryFromInbox(
-  page: Page,
   chatList: ReturnType<Page['getByRole']>,
 ) {
   // The end of the Inbox list, not a menu (#5029).
@@ -1089,7 +1088,7 @@ async function selectInventoryConversation(
   await chatList
     .getByRole('combobox', { name: 'Inbox scope' })
     .selectOption({ label: 'All work' });
-  await openConversationHistoryFromInbox(page, chatList);
+  await openConversationHistoryFromInbox(chatList);
   await page
     .locator('.conversation-history .session-item__content', {
       hasText: title,
@@ -1373,7 +1372,7 @@ async function assertConversationHistory(
   page: Page,
   chatList: ReturnType<Page['getByRole']>,
 ) {
-  await openConversationHistoryFromInbox(page, chatList);
+  await openConversationHistoryFromInbox(chatList);
   const history = page.locator('.conversation-history');
   await expect(history).toContainText('Claude Alpha Chat');
   await expect(history).toContainText('Codex Beta Chat');
