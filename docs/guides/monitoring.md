@@ -930,6 +930,31 @@ optional refresh, time bounds and structured records with scan-coverage warnings
 See the [Developer surface](../design/developer-surface.md) for implementation
 owners. None of these views requires OTel export to be enabled.
 
+### Session read model readers
+
+Every read of the session read model (`listSessionReadModel`) declares a
+caller purpose from a closed vocabulary
+(`src-server/services/orchestration/session-read-model-purpose.ts`, for example
+`session-list`, `sse-snapshot`, `attention` or `agent-activity`), so you can see
+which consumers drive its rate (#4992). Each read records:
+
+- `station.orchestration.session_read_model.reads`, by `purpose` and `scope`
+  (`all`, or `threads` for a `threadIds` read)
+- `station.orchestration.session_read_model.duration` (ms), by `purpose` and
+  `phase`. `total` includes the awaited adapter session sync; `build` is the
+  synchronous fold that holds the main thread.
+- `station.orchestration.session_read_model.threads`, by `purpose` and
+  `outcome`. `considered` counts the readable threads built. The other
+  outcomes say whether the event store's per-thread cache folded or counted a
+  thread again or reused it: `projection_refolded`, `projection_reused`,
+  `count_refreshed` and `count_reused`.
+
+A purpose outside the vocabulary is recorded as `invalid`. No session, user or
+thread identity is ever a dimension. Without a collector, the diagnostics
+bundle's `sessionReadModel` field carries the same per-purpose totals since the
+server process's first read; divide `reads` by the time since `since` for a
+rate.
+
 ## Profile usage and paired people
 
 The [Profile page](../../src-ui/src/pages/ProfilePage.tsx) puts the current

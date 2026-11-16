@@ -1,0 +1,39 @@
+{
+  "revision": "9fe99ad13dca1ca6fc187932e64a3c32cd3a3c61",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"ProjectTaskRoom: added the room worker lifecycle (lazy start, 60 s idle retirement without a watcher or in-flight request, retirement is not failure). Checked against createProjectTaskRoomWorkingState and createWorkerStorage and their focused tests, including the idle and watched-worker cases. The rest of the section is unchanged; the data_version sampling paragraph still holds because retirement waits for the last watcher.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/project-task-room-history.ts","src-server/services/orchestration/project-task-room-working-state.ts"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"Performance: added that core generations are forked with --max-semi-space-size=16 and without the supervisor's own flags. Checked createForkLauncher and core-node-flags.test.ts, which records the execArgv the forked core sees. Desktop's sidecar launch is not under this supervisor and is described in station-weight.md.","inputs":["docs/design/process-supervisor.md","packages/supervisor/src/supervisor.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Re-read the room-worker rows (source seal enforced inside the workers' commit transactions, write transaction holds). The change only alters when a worker isolate starts and retires; commit-time seal enforcement and the transaction shape are unchanged. No prose change.","inputs":["docs/design/channel-home-authority.md","src-server/services/orchestration/project-task-room-history.ts"]},
+
+    {"path":"docs/design/conversation-state.md","note":"No claim about the room history worker's lifecycle; the history storage protocol, records and limits are unchanged by idle retirement. No prose change.","inputs":["docs/design/conversation-state.md","src-server/services/orchestration/project-task-room-history.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Re-read the write-admission and lock-wait text: a request still runs in one worker transaction with the same lock wait and response budget. Idle retirement closes the worker through the existing close path only when no request is in flight, and the next request opens a fresh one. No prose change; the lifecycle is in the module map.","inputs":["docs/design/project-task-room-history.md","src-server/services/orchestration/project-task-room-history.ts"]},
+
+    {"path":"docs/design/shared-working-state.md","note":"Re-read the working-state worker references (snapshot validation, malformed snapshot handling). Lazy start and idle retirement do not change what the worker validates or persists. No prose change.","inputs":["docs/design/shared-working-state.md","src-server/services/orchestration/project-task-room-working-state.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"No dependency on the room history worker's lifecycle; unchanged.","inputs":["docs/guides/delegation-attempt-claims.md","src-server/services/orchestration/project-task-room-history.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Room-write ordering and receipt reconciliation still go through the same history storage requests; only worker start/retire timing changed. No prose change.","inputs":["docs/guides/home-transfer-controller.md","src-server/services/orchestration/project-task-room-history.ts"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"No claim affected by room worker lifecycle; unchanged.","inputs":["docs/guides/private-runner-partition.md","src-server/services/orchestration/project-task-room-history.ts"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"No claim affected by room worker lifecycle; unchanged.","inputs":["docs/guides/product-law-authoring.md","src-server/services/orchestration/project-task-room-history.ts"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"No directories or routing changed; unchanged.","inputs":["docs/guides/repository-layout.md","src-server/services/orchestration/project-task-room-history.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"No claim affected by room worker lifecycle; unchanged.","inputs":["docs/guides/work-board-security.md","src-server/services/orchestration/project-task-room-history.ts"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"No claim affected by room worker lifecycle; unchanged.","inputs":["docs/guides/workspace-packages.md","src-server/services/orchestration/project-task-room-history.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"The resource manifest gained one classified real-process supervisor test (core-node-flags.test.ts) beside the existing supervisor entries; the classification rules the guide describes are unchanged.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/reference/env-vars.md","note":"STATION_SUPERVISOR_IPC and the supervisor env rows are unchanged; the fork now adds a Node flag, not an environment variable. No prose change.","inputs":["docs/reference/env-vars.md","packages/supervisor/src/supervisor.ts"]},
+
+    {"path":"scripts/AGENTS.md","note":"The manifest gained one classified real-process supervisor test; the rule that new child-process tests are classified in scripts/vitest-resource-manifest.mjs is unchanged and still accurate.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/reference/station-docs.md","note":"The generated bundle changed only by regeneration from the edited canonical pages (module map ProjectTaskRoom worker lifecycle); the reference's claims about how the bundle is built, served and digested are unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

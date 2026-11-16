@@ -20,6 +20,7 @@ import { Button } from '../../components/Button';
 import { Empty, ErrorState, SkeletonList } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import './MemoryReview.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 
 const LABEL: Record<
   MemoryRecallEntry['review']['label'],
@@ -77,6 +78,7 @@ function QueueCard({
   onOpen: () => void;
   onDecide: (outcome: MemoryDecisionOutcome, correctedValue?: string) => void;
 }) {
+  useDecisionSurface('memory-review');
   const [open, setOpen] = useState(false);
   const [correcting, setCorrecting] = useState(false);
   const [value, setValue] = useState('');

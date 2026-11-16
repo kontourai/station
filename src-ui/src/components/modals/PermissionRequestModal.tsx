@@ -3,6 +3,7 @@ import type {
   PluginPermissionPrompt,
 } from '@kontourai/station-contracts/plugin';
 import { describePermission } from '../../core/permission-vocabulary';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
 
@@ -45,6 +46,7 @@ export function PermissionRequestModal({
   onApprove: () => void | Promise<void>;
   onDeny: () => void;
 }) {
+  useDecisionSurface('permission-request-modal');
   return (
     <Dialog
       title={

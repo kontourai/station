@@ -129,7 +129,7 @@ describe('UX audit A7: two capable engines and no default', () => {
     const labelId = dialog.getAttribute('aria-labelledby');
     expect(labelId).toBe('engine-picker-title');
     expect(document.getElementById(labelId!)?.textContent).toBe(
-      'Choose what powers your default assistant',
+      'Choose the engine for the Station agent',
     );
     // No focus trap, Escape handler or focus restoration lives here (that is
     // ResponsiveDialogSurface's contract), so the picker must not claim
@@ -150,7 +150,7 @@ describe('UX audit A7: two capable engines and no default', () => {
     expect(
       document.getElementById(dialog.getAttribute('aria-labelledby')!)
         ?.textContent,
-    ).toMatch(/No connected engine can run the built-in assistant/);
+    ).toMatch(/No connected engine can run the Station agent/);
   });
 });
 

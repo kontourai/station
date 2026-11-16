@@ -46,6 +46,7 @@ const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
   'station-accent-color', // Read-only first-paint compatibility path; migrated and deleted by the envelope.
   'station-branding-theme-v1', // Validated branding cache for first paint; re-validated on read. Server data, not a device setting.
   'station-appearance-v1', // The mode and color theme this device last rendered and whether the account supplied them, so startup-theme.js can paint a signed-in person's appearance before first paint. A render cache, not a setting: nothing edits it and the account's answer replaces it (lib/appearance-cache.ts).
+  'station-custom-appearance-v1', // The person's custom appearance text the server last accepted, so main.tsx can paint it before first render. Re-parsed and re-sanitized on read, and the server's answer replaces it. Server data, not a device setting (lib/custom-appearance/controller.ts).
   'station-startup-mark', // The channel mark the native host last reported, so startup-theme.js can paint the splash before the report arrives. Host identity, not a setting.
 ] as const;
 
