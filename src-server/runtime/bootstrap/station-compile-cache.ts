@@ -16,9 +16,10 @@ import { createLogger } from '../../utils/logger.js';
  * a warm cache starts them faster and leaves them smaller.
  *
  * The server itself gets no cache from `station start` or the desktop
- * sidecar: measured on both launches, a warm cache left it larger at rest. The server still removes any inherited setting at
- * boot (`server-compile-cache.ts`), so generic child launchers never pass it
- * to third-party or user programs.
+ * sidecar: measured on both launches, a warm cache left it larger at rest.
+ * The server still removes any inherited setting at boot
+ * (`server-compile-cache.ts`), so generic child launchers never pass it to
+ * third-party or user programs.
  */
 const COMPILE_CACHE_ENV = 'NODE_COMPILE_CACHE';
 

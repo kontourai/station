@@ -290,17 +290,17 @@ cache; the sidecar removes any `NODE_COMPILE_CACHE` it inherits. Measured on
 the supervised server, a warm cache left it larger at rest and did not make
 startup measurably faster. Measured on the sidecar launch on one 64 GB Mac
 (three alternating rounds, medians after a 45-second settle), the cache added
-about 120 MB to the idle server. Without the flag below, it started the server
-about 1.2 s sooner in every round; with the flag, it was faster in one round of
-three. Memory at rest wins that trade. The server does not enable a cache after
+about 120 MiB to the idle server. Without the flag below, it started the
+server sooner in every round (0.5 to 1.9 s); with the flag, it was faster in one
+round of three. Memory at rest wins that trade. The server does not enable a cache after
 loading its bundle either: that is too late to cache compilation of the entry
 point.
 
 The sidecar starts Node with `--max-semi-space-size=16`, the young-generation
 cap the process supervisor gives each core it forks
 ([server memory at rest](../reference/station-weight.md#server-memory-at-rest)).
-On the same measurement, the sidecar's idle process tree dropped from 663 MB
-to 425 MB with both changes.
+On the same measurement, the sidecar's idle process tree dropped from 663 MiB
+to 425 MiB with both changes.
 
 The server removes any inherited `NODE_COMPILE_CACHE` at boot, and
 child-process environments still scrub it. User and third-party Node
