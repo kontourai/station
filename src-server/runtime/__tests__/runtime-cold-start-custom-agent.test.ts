@@ -52,6 +52,7 @@ import { rmDirSyncRetrying } from '@kontourai/station-shared/fs-windows-compat';
 import { createStationHomeBackup } from '@kontourai/station-shared/station-home-archive';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { adoptNativeEngineConnection } from '../../domain/agent-registry.js';
 import { ConfigLoader } from '../../domain/config-loader.js';
 import { ensureStationHomeSchema } from '../../domain/home-schema-gate.js';
 import { getOrchestrationDatabasePath } from '../../domain/migrations/003-orchestration-events.js';
@@ -854,6 +855,75 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     // is left racing the (about-to-be-deleted) home directory.
     expect(bootSettled).toBe(true);
     await boot;
+  });
+
+  it('resolves the built-in engine binding at boot without model discovery or commands', async () => {
+    // Either can start the engine's program: Claude's catalog probe spawns
+    // Claude Code and loads the Agent SDK. The binding reads readiness, which
+    // prerequisites decide, so a boot must not pay for either.
+    home = await createSchemaHome('station-coldstart-binding-');
+    mkdirSync(join(home, 'config'), { recursive: true });
+    writeFileSync(
+      join(home, 'config', 'app.json'),
+      JSON.stringify({
+        defaultModel: '',
+        invokeModel: '',
+        structureModel: '',
+        systemPrompt: 'You are {{AGENT_NAME}}.',
+        templateVariables: [],
+        region: 'eu-west-1',
+      }),
+    );
+    // Registered, so the inspector inspects Claude rather than skipping an
+    // engine the registry does not list.
+    await expect(
+      adoptNativeEngineConnection(
+        new ConfigLoader({ projectHomeDir: home }),
+        'claude',
+      ),
+    ).resolves.toBe('adopted');
+    // Restored below: this file does not restore spies between cases, and a
+    // ready Claude would change every later case's binding.
+    const getPrerequisites = vi
+      .spyOn(ClaudeAdapter.prototype, 'getPrerequisites')
+      .mockResolvedValue([]);
+    const listModelCatalog = vi
+      .spyOn(ClaudeAdapter.prototype, 'listModelCatalog')
+      .mockResolvedValue({ models: [] });
+    const getCommands = vi
+      .spyOn(ClaudeAdapter.prototype, 'getCommands')
+      .mockResolvedValue([]);
+    vi.spyOn(OllamaLLMProvider.prototype, 'healthCheck').mockResolvedValue(
+      false,
+    );
+    vi.spyOn(MCPManager, 'loadAgentTools').mockResolvedValue([]);
+    runtime = new StationRuntime({
+      projectHomeDir: home,
+      port: TEST_PORT,
+      host: '127.0.0.1',
+    });
+    const resolveBinding = vi.spyOn(
+      runtime as unknown as {
+        resolveBuiltinEngineBinding: (...args: unknown[]) => Promise<unknown>;
+      },
+      'resolveBuiltinEngineBinding',
+    );
+
+    try {
+      await expect(runtime.initialize()).resolves.toBeUndefined();
+
+      // The seam was reached with Claude ready: it is the binding boot chose.
+      expect(resolveBinding).toHaveBeenCalled();
+      await expect(resolveBinding.mock.results[0]?.value).resolves.toEqual(
+        expect.objectContaining({ connectionId: 'claude' }),
+      );
+      expect(listModelCatalog).not.toHaveBeenCalled();
+      expect(getCommands).not.toHaveBeenCalled();
+    } finally {
+      getPrerequisites.mockRestore();
+      listModelCatalog.mockRestore();
+      getCommands.mockRestore();
+    }
   });
 
   it('primes engine prerequisites once at boot, on a signal shutdown aborts (station#1586)', async () => {
