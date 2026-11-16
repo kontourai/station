@@ -62,7 +62,13 @@ const EPOCH = '1970-01-01T00:00:00.000Z';
 const SOURCE_HOME_NAMESPACE = 'opencode-data-home';
 const PROMPT_SOURCE = 'opencode-session';
 const DATABASE_FILE_PATTERN = /^opencode(?:-[A-Za-z0-9._-]{1,64})?\.db$/u;
-const NEXT_PREVIEW_DATABASE = 'opencode-next.db';
+const NEXT_DATABASE = 'opencode-next.db';
+/**
+ * A running compaction usually finishes within minutes. One held longer is
+ * most likely from an OpenCode process that died mid-compaction in a session
+ * nobody reopened (reopening settles it); it is reported once.
+ */
+const COMPACTION_HOLD_WARN_MS = 15 * 60 * 1000;
 
 /**
  * The only tables this source reads, and the columns it depends on. Message
@@ -240,6 +246,8 @@ interface OpenCodeSessionSourceOptions {
   yieldFn?: () => Promise<void>;
   /** Test seam for the one-per-reason schema/open warning. */
   warn?: (message: string, meta: Record<string, unknown>) => void;
+  /** Test seam for the clock that ages a held compaction. */
+  now?: () => number;
 }
 
 /**
@@ -286,6 +294,9 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
   private readonly readYieldEveryMessages: number;
   private readonly yieldFn: () => Promise<void>;
   private readonly warned = new Set<string>();
+  private readonly now: () => number;
+  /** Held compactions already reported, by thread and message. */
+  private readonly heldWarned = new Set<string>();
   private readonly handles = new Map<string, SourceRegistration>();
   /**
    * One long-lived read-only connection per database, reopened only when the
@@ -361,6 +372,7 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
       options.yieldFn ??
       (() => new Promise<void>((resolve) => setImmediate(resolve)));
     this.warn = options.warn ?? ((message, meta) => logger.warn(message, meta));
+    this.now = options.now ?? Date.now;
   }
 
   /**
@@ -435,22 +447,27 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
       updatedAt: number;
       registration: SourceRegistration;
     }> = [];
-    // OpenCode 2.x imports its preview store `opencode-next.db` into
-    // `opencode.db` read-only and leaves it in place, so beside a 2.x store
-    // it is a stale copy: skipped, not warned about. Read last so every other
-    // store's layout is known; alone (or a 1.x `next` channel store) it is
-    // read like any other.
+    // OpenCode 2.x imports `opencode-next.db` into `opencode.db` (sessions
+    // and their `session_message` rows only, never a 1.x transcript) and
+    // leaves it in place. It is read last, by its own layout, so a session
+    // the 2.x store already lists is kept from the 2.x copy, which OpenCode
+    // keeps writing. A file no layout here reads that has the shape OpenCode
+    // imports (`isNextDatabase`: project, session and session_message) is
+    // skipped without a warning beside a 2.x store; anything else, or the
+    // same file alone, is read or fails closed like any other store.
     const ordered = [
       ...listed.databases.filter(
-        (database) => database.fileName !== NEXT_PREVIEW_DATABASE,
+        (database) => database.fileName !== NEXT_DATABASE,
       ),
       ...listed.databases.filter(
-        (database) => database.fileName === NEXT_PREVIEW_DATABASE,
+        (database) => database.fileName === NEXT_DATABASE,
       ),
     ];
     let sawV2Store = false;
+    const v2SessionIds = new Set<string>();
     for (const database of ordered) {
-      if (database.fileName === NEXT_PREVIEW_DATABASE && sawV2Store) continue;
+      const besideV2 = database.fileName === NEXT_DATABASE && sawV2Store;
+      if (besideV2 && this.isImportedPreview(database)) continue;
       const result = await this.withDatabase(database, (db, layout) => {
         if (layout.kind === 'v2') sawV2Store = true;
         // `time_updated` has no index upstream, so this is one scan of the
@@ -473,6 +490,9 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
                  ORDER BY time_updated DESC, id ASC LIMIT ?`,
           )
           .all(this.maxCandidates + 1);
+        if (layout.kind === 'v2') {
+          for (const row of rows) v2SessionIds.add(String(row.id));
+        }
         return rows;
       });
       if (!result.ok) {
@@ -484,6 +504,9 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
       }
       // Every database contributes its newest; the merged list is capped below.
       for (const row of result.value) {
+        // Only sessions the 2.x store lists (its newest, within the candidate
+        // bound) are known to be duplicated.
+        if (besideV2 && v2SessionIds.has(String(row.id))) continue;
         const registration = this.registrationFor(
           database,
           sourceHome.affinity,
@@ -594,8 +617,15 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
       );
     });
     if (!result.ok || !result.value) return rejected();
-    const { read, drained: reachedEnd } = result.value;
-    if (reachedEnd) {
+    const { read, drained: reachedEnd, held } = result.value;
+    // A read held by a running compaction is not answered from the drained
+    // cache until the hold is reported: a crashed session nobody reopens
+    // leaves the store unchanged, and the bound must still be noticed.
+    const unreportedHold =
+      held?.info?.role === 'compaction' &&
+      held.info.status === 'running' &&
+      !this.reportLongHold(current, session, held);
+    if (reachedEnd && !unreportedHold) {
       this.drainedReads.set(session.threadId, {
         signature,
         cursor: JSON.stringify(read.cursor),
@@ -613,13 +643,19 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
   private async readMessages(
     cursor: DecodedCursor,
     reader: LayoutReader,
-  ): Promise<{ read: AttachedSessionReadResult; drained: boolean }> {
+  ): Promise<{
+    read: AttachedSessionReadResult;
+    drained: boolean;
+    held?: MessageRow;
+  }> {
     const messageRows = reader.messages();
     let outcome: AttachedSessionSourceOutcome = 'ok';
     const events: CanonicalRuntimeEvent[] = [];
     let state = cloneState(cursor.state);
     let offset = cursor.offset;
     let bytesUsed = 0;
+    /** The unsettled message that ended the read, if one did. */
+    let held: MessageRow | undefined;
     // Reached the end of what is settled: no page bound stopped the read.
     let drained = messageRows.length <= this.maxMessages;
     const window = messageRows.slice(0, this.maxMessages);
@@ -672,6 +708,7 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
       if (mapped.kind === 'unsettled') {
         outcome = mergeOutcome(outcome, 'incomplete_tail');
         drained = true;
+        held = message;
         break;
       }
       if (mapped.kind === 'oversized') {
@@ -716,6 +753,7 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     return {
       read: { outcome, events, cursor: encodeCursor(offset, state) },
       drained,
+      ...(held ? { held } : {}),
     };
   }
 
@@ -866,6 +904,60 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     } catch {
       // An unreadable store has no stable signature; never reuse a cache.
       return `unreadable:${++this.generations}`;
+    }
+  }
+
+  /**
+   * Reports a running compaction that has held `session`'s read past the
+   * bound, once per thread and row. Returns whether it has been reported.
+   * Names the database and reason only, never transcript data.
+   */
+  private reportLongHold(
+    database: DatabaseRegistration,
+    session: AttachedSessionDescriptor,
+    held: MessageRow,
+  ): boolean {
+    const key = `${session.threadId}\u0000${held.id}`;
+    if (this.heldWarned.has(key)) return true;
+    if (this.now() - held.time < COMPACTION_HOLD_WARN_MS) return false;
+    this.heldWarned.add(key);
+    if (this.heldWarned.size > this.maxCandidates * 2) {
+      const oldest = this.heldWarned.values().next().value;
+      if (oldest !== undefined) this.heldWarned.delete(oldest);
+    }
+    this.warn(
+      'An OpenCode compaction has not finished; later messages in this conversation wait for it.',
+      {
+        database: database.fileName,
+        reason: 'compaction_unfinished',
+        heldForMinutes: Math.floor((this.now() - held.time) / 60_000),
+      },
+    );
+    return true;
+  }
+
+  /**
+   * Whether `database` is a store no layout here reads that has the shape
+   * OpenCode 2.x imports as `opencode-next.db` (its `isNextDatabase`:
+   * project, session and session_message tables).
+   */
+  private isImportedPreview(database: DatabaseRegistration): boolean {
+    try {
+      const db = this.connectionFor(database).db;
+      if (!('mismatch' in this.checkedSchema(database, db))) return false;
+      const tables = new Set(
+        db
+          .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+          .all()
+          .map((row) => String(row.name)),
+      );
+      return (
+        tables.has('project') &&
+        tables.has('session') &&
+        tables.has('session_message')
+      );
+    } catch {
+      return false;
     }
   }
 
@@ -1609,10 +1701,13 @@ const V2_MESSAGE_TYPES = new Set([
 /**
  * Settled: an assistant step once completed or failed, or once a later step
  * or idle row exists (the writer died mid-write). A compaction once it is no
- * longer running: OpenCode finishes the latest running compaction row in
- * place (`session.compaction.ended`/`failed`), however many rows follow it,
- * so a running one is settled early only when a later running compaction
- * has superseded it. Every other 2.x row is written whole, content inline.
+ * longer running. OpenCode finishes a running compaction row in place,
+ * however many rows follow it: `session.compaction.ended` completes the
+ * latest running one, and when the session next runs `settleStaleCompactions`
+ * marks every row still running failed. A running row with a later running
+ * one after it can therefore only end failed, which maps to nothing, so it
+ * is passed; the latest holds the read (see `reportLongHold`). Every other
+ * 2.x row is written whole, content inline.
  */
 function isSettledV2(
   info: MessageInfo | null,

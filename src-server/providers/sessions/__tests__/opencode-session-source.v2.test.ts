@@ -605,6 +605,81 @@ describe('OpenCodeSessionSource on an OpenCode 2.x store', () => {
     });
   });
 
+  test('reads a 1.x-layout opencode-next.db beside a 2.x store, keeping the 2.x copy of a session both hold', async () => {
+    const dataDir = join(fixtureRoot(), 'opencode');
+    const store = writer(dataDir);
+    store.session('ses_shared', '/workspace/project');
+    writeTurn(store, 'ses_shared', 'Imported into 2.x');
+    // OpenCode 1.x on the `next` channel writes opencode-next.db in the 1.x
+    // layout, which also carries `session_message`, so it passes OpenCode's
+    // own `isNextDatabase` check; 2.x copies only session and
+    // session_message rows from it, never the 1.x transcript.
+    const next = new OpenCodeFixtureWriter(dataDir, 'opencode-next.db');
+    writers.push(next);
+    next.session('ses_next_only', '/workspace/other');
+    const nextUser = next.user('ses_next_only', ['From the next channel']);
+    next.assistant('ses_next_only', nextUser, { finish: 'stop' });
+    next.session('ses_shared', '/workspace/project');
+    const sharedUser = next.user('ses_shared', ['Stale 1.x copy']);
+    next.assistant('ses_shared', sharedUser, { finish: 'stop' });
+
+    const warn = vi.fn();
+    const source = new OpenCodeSessionSource({ dataDir, warn });
+    const discovery = await source.discover();
+    expect(warn).not.toHaveBeenCalled();
+    expect(discovery.outcome).toBe('ok');
+    const listed = discovery.sessions.map((session) => session.sessionId);
+    expect([...listed].sort()).toEqual(['ses_next_only', 'ses_shared']);
+    const nextOnly = discovery.sessions.find(
+      (session) => session.sessionId === 'ses_next_only',
+    )!;
+    const read = await source.read(nextOnly);
+    expect(read.outcome).toBe('ok');
+    expect(
+      read.events.filter((event) => event.method === 'turn.started'),
+    ).toMatchObject([{ prompt: 'From the next channel' }]);
+    const shared = discovery.sessions.find(
+      (session) => session.sessionId === 'ses_shared',
+    )!;
+    expect(
+      (await source.read(shared)).events.filter(
+        (event) => event.method === 'turn.started',
+      ),
+    ).toMatchObject([{ prompt: 'Imported into 2.x' }]);
+  });
+
+  test('warns once when a running compaction has held a session past the bound', async () => {
+    const dataDir = join(fixtureRoot(), 'opencode');
+    const store = writer(dataDir);
+    store.session('ses_main', '/workspace/project');
+    store.user('ses_main', 'Long one');
+    store.compaction('ses_main', 'running');
+    store.idle('ses_main', 'succeeded');
+    const compactedAt = store.tick() - 1000;
+    const warn = vi.fn();
+    let now = compactedAt + 60_000;
+    const source = new OpenCodeSessionSource({ dataDir, warn, now: () => now });
+    const session = (await source.discover()).sessions[0]!;
+    const fresh = await source.read(session);
+    expect(fresh.outcome).toBe('incomplete_tail');
+    expect(warn).not.toHaveBeenCalled();
+
+    // A crashed session that is never reopened leaves the store unchanged;
+    // the hold is still noticed once it passes the bound.
+    now = compactedAt + 24 * 60 * 60 * 1000;
+    for (let poll = 0; poll < 3; poll += 1) {
+      expect((await source.read(session, fresh.cursor)).outcome).toBe(
+        'incomplete_tail',
+      );
+    }
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]![1]).toMatchObject({
+      database: 'opencode.db',
+      reason: 'compaction_unfinished',
+    });
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('Long one');
+  });
+
   test('reads a row with part rows and later inline content in OpenCode order: parts first', async () => {
     const dataDir = join(fixtureRoot(), 'opencode');
     const store = writer(dataDir);

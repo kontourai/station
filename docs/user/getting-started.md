@@ -1208,13 +1208,17 @@ Station looks in four places:
 - OpenCode's session database, `opencode.db` or `opencode-<channel>.db` (for
   example `opencode-stable.db`), in `opencode` under `XDG_DATA_HOME`, or
   `~/.local/share/opencode` when that is not set. Station reads both OpenCode
-  1.x and OpenCode 2.x databases; beside an OpenCode 2.x database it skips
-  `opencode-next.db`, the preview copy OpenCode 2.x has already imported. It
-  opens the database read-only
+  1.x and OpenCode 2.x databases. When OpenCode 2.x has copied sessions from
+  an `opencode-next.db` beside it, Station lists each copied session once,
+  from the 2.x database, and skips an `opencode-next.db` in the OpenCode
+  preview format, which it cannot read. It opens the database read-only
   and lists top-level OpenCode sessions you have sent a message in; subagent
   sessions and archived sessions are left out. A message appears once OpenCode
-  has finished writing it. Conversations Station itself runs through an
-  OpenCode connection are not listed a second time. Older OpenCode releases
+  has finished writing it. Later messages wait for an unfinished OpenCode
+  compaction; if one is still unfinished after 15 minutes (OpenCode stopped
+  partway and the conversation was not reopened), Station logs one warning.
+  Conversations Station itself runs through an OpenCode connection are not
+  listed a second time. Older OpenCode releases
   kept sessions as JSON files under `storage`; Station does not read those,
   and current OpenCode moves them into the database when it starts. If an
   OpenCode update changes the database layout, Station stops reading it and
