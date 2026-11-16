@@ -125,7 +125,7 @@ export function registerScheduleTools(registry: StationControlToolRegistry) {
         .min(1)
         .optional()
         .describe(
-          'A Project id (not its slug). Each run then starts a new Task in that Project with the Task brief, instead of a turn in this chat; it does not run while the Project is paused or archived.',
+          'The Project id (not its slug); each run is a new Task there.',
         ),
       rationale: z
         .string()
