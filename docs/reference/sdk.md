@@ -2661,6 +2661,8 @@ delegates use `childSession` for their own Session thread. `childTitle` labels
 the breadcrumb. These selectors choose a read-only child view and grant no
 additional authority. The pane consumes each child request once and retains
 an already-open parent Chat, including its draft, when the bound parent matches.
+A child that opened over its parent's record, because no bound parent matched
+yet, returns to the working Chat when it closes if the bound parent matches then.
 Explicit target reads partition
 cache entries by that target and authority. These options grant no access and
 expose no outbound peer credential.
