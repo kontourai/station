@@ -131,3 +131,27 @@ test('the operator backfill is a one-time migration: a job created ownerless aft
   expect(job).not.toHaveProperty('createdBy');
   expect(job?.ownerNeeded).toBe(JOB_OWNER_NEEDED_REASON);
 });
+
+test('a Station that starts shared and later becomes personal does not hand later ownerless jobs to the operator', async () => {
+  const directory = join(makeTempDir('station-job-owner-shared-'), 'scheduler');
+  // First start on a shared Station: the migration settles, backfilling
+  // nothing.
+  const shared = schedulerOver(createSchedulerLedger({ directory }));
+  await shared.stop();
+  const between = createSchedulerLedger({ directory });
+  expect(
+    between.create({
+      name: 'stored-while-shared',
+      cron: '0 9 * * *',
+      prompt: 'tidy',
+      enabled: true,
+      createdAt: new Date().toISOString(),
+    } as never).kind,
+  ).toBe('created');
+  // The Station becomes personal (its other accounts removed) and restarts.
+  const personalLedger = createSchedulerLedger({ directory });
+  schedulerOver(personalLedger, { userId: LOCAL_OPERATOR_PRINCIPAL_ID });
+  const [job] = views(personalLedger);
+  expect(job).not.toHaveProperty('createdBy');
+  expect(job?.ownerNeeded).toBe(JOB_OWNER_NEEDED_REASON);
+});

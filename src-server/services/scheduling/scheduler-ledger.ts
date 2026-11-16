@@ -573,14 +573,17 @@ export interface SchedulerOwedAnnouncements {
 export interface SchedulerLedger {
   create(job: StoredSchedulerJob): SchedulerCreateOutcome;
   /**
-   * #2377 slice D: a one-time migration, recorded in the ledger. The first
-   * call records `owner` on every stored job that has none (the jobs created
-   * before owners were recorded) and marks the migration done; every later
-   * call changes nothing, so a job created ownerless afterwards stays
-   * ownerless (`ownerNeeded`). The caller decides who `owner` is (a personal
-   * Station's operator only). Returns how many jobs it changed.
+   * #2377 slice D: a one-time migration, recorded in the ledger on EVERY
+   * Station's first start with owner recording, personal or not. That first
+   * call is the boundary between jobs stored before owners were recorded and
+   * jobs stored after: given an `owner` (a personal Station's operator only)
+   * it records them on every job that has none; given none (a shared or
+   * hosted Station) it only marks the migration done. Every later call
+   * changes nothing, so a job created ownerless afterwards stays ownerless
+   * (`ownerNeeded`), even if the Station later becomes personal. Returns how
+   * many jobs it changed.
    */
-  backfillJobOwners(owner: SchedulerAutomationCreator): number;
+  backfillJobOwners(owner: SchedulerAutomationCreator | undefined): number;
   update(name: string, update: Record<string, unknown>): SchedulerUpdateOutcome;
   remove(name: string): SchedulerRemoveOutcome;
   list(): SchedulerReadOutcome<StoredSchedulerJob[]>;
@@ -1004,7 +1007,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
       : undefined;
   }
 
-  backfillJobOwners(owner: SchedulerAutomationCreator): number {
+  backfillJobOwners(owner: SchedulerAutomationCreator | undefined): number {
     return this.transaction(() => {
       // Decided under the write lock: two instances over one home migrate
       // once between them.
@@ -1016,7 +1019,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
         .prepare('SELECT name, data FROM scheduler_jobs')
         .all() as Array<{ name: string; data: string }>;
       let changed = 0;
-      for (const row of rows) {
+      for (const row of owner ? rows : []) {
         const job = parseStoredJob(row.data);
         if (job.createdBy) continue;
         this.db

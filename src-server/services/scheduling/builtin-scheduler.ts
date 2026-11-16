@@ -233,10 +233,12 @@ export interface BuiltinSchedulerOptions {
   turnAdapter: ScheduledTurnAdapter;
   /**
    * #2377 slice D: on a personal Station only, the operator, recorded once
-   * (a one-time ledger migration) as the owner of every stored job that had
-   * none, i.e. those created before owners were recorded. Absent on shared
-   * and hosted Stations, where such a job keeps no owner and runs without
-   * Station tools (`ownerNeeded`).
+   * (a one-time ledger migration settled at every Station's first start) as
+   * the owner of every stored job that had none, i.e. those created before
+   * owners were recorded. Absent on shared and hosted Stations, where such a
+   * job keeps no owner and runs without Station tools (`ownerNeeded`), and
+   * the migration is settled without backfilling, so a later switch to
+   * personal never hands newer ownerless jobs to the operator.
    */
   personalJobOwner?: SchedulerAutomationCreator;
   /**
@@ -407,24 +409,22 @@ export class BuiltinScheduler implements ISchedulerProvider {
             },
           ),
       });
-    if (options.personalJobOwner) {
-      try {
-        const backfilled = this.ledger.backfillJobOwners(
-          options.personalJobOwner,
+    try {
+      const backfilled = this.ledger.backfillJobOwners(
+        options.personalJobOwner,
+      );
+      if (backfilled > 0)
+        this.options.logger?.info(
+          'Recorded the operator as owner of older jobs',
+          {
+            count: backfilled,
+          },
         );
-        if (backfilled > 0)
-          this.options.logger?.info(
-            'Recorded the operator as owner of older jobs',
-            {
-              count: backfilled,
-            },
-          );
-      } catch (error) {
-        // A ledger that cannot be written reports itself on its next read.
-        this.options.logger?.warn('Could not record owners of older jobs', {
-          error,
-        });
-      }
+    } catch (error) {
+      // A ledger that cannot be written reports itself on its next read.
+      this.options.logger?.warn('Could not record owners of older jobs', {
+        error,
+      });
     }
     this.announcementOutbox = this.ledger.announcementOutbox();
     this.monitorTerminalOutbox =
