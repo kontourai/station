@@ -264,9 +264,8 @@ export function ComposerActionsMenu({
             aria-label="Composer actions"
           >
             {groups.map((group, index) => (
-              <div
+              <fieldset
                 key={group.key}
-                role="group"
                 aria-label={group.label}
                 className="composer-actions-menu__group"
               >
@@ -274,7 +273,7 @@ export function ComposerActionsMenu({
                   <hr className="composer-actions-menu__separator" />
                 )}
                 {group.rows}
-              </div>
+              </fieldset>
             ))}
           </div>
         </ResponsiveDialogSurface>

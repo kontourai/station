@@ -2117,6 +2117,10 @@
   color: var(--text-muted);
 }
 .composer-actions-menu__group {
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;

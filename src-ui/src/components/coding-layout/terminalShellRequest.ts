@@ -29,10 +29,6 @@ export function consumeProjectShellRequest(projectSlug: string): boolean {
   return true;
 }
 
-export function hasProjectShellRequest(projectSlug: string): boolean {
-  return pending.has(projectSlug);
-}
-
 function subscribe(listener: () => void) {
   listeners.add(listener);
   return () => listeners.delete(listener);

@@ -16,7 +16,6 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import { CodingTerminalPane } from '../CodingTerminalPane';
 import {
   consumeProjectShellRequest,
-  hasProjectShellRequest,
   requestProjectShell,
 } from '../terminalShellRequest';
 
@@ -401,7 +400,7 @@ test('an explicit Open terminal opens a shell even where the pane would show its
   expect(await screen.findByRole('tab', { name: 'Shell 1' })).toBeTruthy();
   expect(screen.queryByRole('dialog', { name: 'New terminal' })).toBeNull();
   // The request was taken: nothing waits to open a second shell.
-  expect(hasProjectShellRequest('project-a')).toBe(false);
+  expect(consumeProjectShellRequest('project-a')).toBe(false);
   expect(screen.getAllByRole('tab')).toHaveLength(1);
 });
 
