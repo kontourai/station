@@ -2049,6 +2049,11 @@ in that conversation, as an ISO timestamp. Approval proposals are excluded.
 The field is absent when no check-back is pending, and on older hosts. It is a
 display fact; it grants no send or execution permission.
 
+Home work rows carry this field too. Its description is part of the canonical
+Home-role projection record. A grant that predates the widened field list no
+longer covers that projection; the built-in Home remains the fallback until
+the grant is approved again.
+
 ### Finish time and engines run
 
 `OrchestrationSessionSummary.lifecycleChangedAt` is when the event that

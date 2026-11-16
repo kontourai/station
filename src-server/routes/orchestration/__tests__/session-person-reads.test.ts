@@ -16,12 +16,14 @@ import { EventStore } from '../../../services/orchestration/event-store.js';
 import type { AddressInfo } from 'node:net';
 import { serve } from '@hono/node-server';
 import {
+  type ConversationTurnDirectory,
   getSessionDigest,
   listSessionActivity,
   waitForSession,
 } from '@kontourai/station-sdk/client';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { readJson } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { configureRuntimePublicRoutes } from '../../../runtime/routes/runtime-routes.js';
 import { bindStationControlRequestAuthority } from '../../../security/station-control-request-authority.js';
@@ -283,6 +285,7 @@ test('the turn directory pages an entire long conversation with one total count 
         ...base,
         eventId: `${turnId}-tool`,
         method: 'tool.started',
+        itemId: `${turnId}-item`,
         toolCallId: `${turnId}-call`,
         toolName: 'shell',
       });
@@ -303,7 +306,13 @@ test('the turn directory pages an entire long conversation with one total count 
           `/r/in-viewable/turn-directory?turnLimit=100${cursor ? `&cursor=${cursor}&includeCount=false` : ''}`,
         );
         expect(response.status).toBe(200);
-        const page = (await response.json()).data;
+        const { data: page } = await readJson<{
+          data: {
+            session: { turnCount?: number };
+            turns: ConversationTurnDirectory['turns'];
+            nextCursor: string | null;
+          };
+        }>(response);
         expect(page.session.turnCount).toBe(cursor ? undefined : 205);
         expect(page.turns.length).toBeLessThanOrEqual(100);
         expect(page.turns[0]).toMatchObject({
@@ -331,7 +340,7 @@ test('turn navigation remains available without the CLI preview and preserves pe
   const routes = app(undefined, DANA, '/r', new Hono(), false);
   const allowed = await routes.request('/r/in-viewable/turn-directory');
   expect(allowed.status).toBe(200);
-  expect((await allowed.json()).data).toEqual({
+  expect(await allowed.json()).toHaveProperty('data', {
     session: { conversationId: 'in-viewable', turnCount: 0 },
     turns: [],
     nextCursor: null,

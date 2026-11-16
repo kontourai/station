@@ -56,7 +56,7 @@ export const IndexedTranscriptTurnRail = memo(
       );
       const turns = directory
         .data!.pages.flatMap((page) => page?.turns ?? [])
-        .toReversed();
+        .reverse();
       const known = new Set(turns.map((turn) => turn.turnId));
       const mapped = turns.map(
         (turn): TranscriptTurnLandmark => ({
