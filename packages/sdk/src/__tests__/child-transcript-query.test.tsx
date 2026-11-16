@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import type { ChildWorkTranscriptPage } from '@kontourai/station-contracts/child-work';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
@@ -8,7 +9,21 @@ import {
   useChildWorkTranscriptTailQuery,
 } from '../query-domains/chatRuntimeOrchestration';
 
-const read = vi.hoisted(() => vi.fn(async () => ({ entries: [] })));
+/** `getChildWorkTranscript`'s own parameters, so its calls read typed. */
+type TranscriptRead = (
+  apiBase: string,
+  threadId: string,
+  childId: string,
+  page: { offset?: number; limit?: number; tail?: boolean },
+  options?: unknown,
+) => Promise<ChildWorkTranscriptPage>;
+const read = vi.hoisted(() =>
+  vi.fn<TranscriptRead>(async () => ({ entries: [] })),
+);
+/** The last element; the SDK's library target predates `Array#at`. */
+function last<T>(items: readonly T[]): T | undefined {
+  return items[items.length - 1];
+}
 vi.mock('../client/orchestration', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../client/orchestration')>()),
   getChildWorkTranscript: read,
@@ -61,21 +76,25 @@ test('a chat-shaped read opens on the latest messages, loads older ones before t
     text: `m${message}`,
   }));
   let length = 70;
-  read.mockImplementation((async (
-    _apiBase: string,
-    _thread: string,
-    _child: string,
-    page: { offset?: number; limit?: number; tail?: boolean },
-  ) => {
-    const limit = page.limit ?? 30;
-    const offset = page.tail ? Math.max(0, length - limit) : (page.offset ?? 0);
-    const end = Math.min(length, offset + limit);
-    return {
-      entries: transcript.slice(offset, end),
-      offset,
-      endOffset: Math.max(offset, end),
-    };
-  }) as never);
+  read.mockImplementation(
+    async (
+      _apiBase: string,
+      _thread: string,
+      _child: string,
+      page: { offset?: number; limit?: number; tail?: boolean },
+    ) => {
+      const limit = page.limit ?? 30;
+      const offset = page.tail
+        ? Math.max(0, length - limit)
+        : (page.offset ?? 0);
+      const end = Math.min(length, offset + limit);
+      return {
+        entries: transcript.slice(offset, end),
+        offset,
+        endOffset: Math.max(offset, end),
+      };
+    },
+  );
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -99,7 +118,7 @@ test('a chat-shaped read opens on the latest messages, loads older ones before t
     ) ?? [];
   expect(read.mock.calls[0]?.[3]).toEqual({ tail: true, limit: 30 });
   expect(messages()[0]).toBe(40);
-  expect(messages().at(-1)).toBe(69);
+  expect(last(messages())).toBe(69);
   expect(observer.result.current.hasPreviousPage).toBe(true);
   // Older history loads before the first message.
   await act(async () => {
@@ -184,20 +203,24 @@ test('against a server from before page ranges, the reader pages forward by next
   // The old route: no `tail`, no `offset`/`endOffset`; a page from `offset`
   // and `nextOffset` while more follow. Unknown query parameters are ignored.
   let length = 40;
-  read.mockImplementation((async (
-    _apiBase: string,
-    _thread: string,
-    _child: string,
-    page: { offset?: number; limit?: number },
-  ) => {
-    const offset = page.offset ?? 0;
-    const limit = page.limit ?? 30;
-    const end = Math.min(length, offset + limit);
-    return {
-      entries: Array.from({ length: end - offset }, (_, i) => text(offset + i)),
-      ...(end < length ? { nextOffset: end } : {}),
-    };
-  }) as never);
+  read.mockImplementation(
+    async (
+      _apiBase: string,
+      _thread: string,
+      _child: string,
+      page: { offset?: number; limit?: number },
+    ) => {
+      const offset = page.offset ?? 0;
+      const limit = page.limit ?? 30;
+      const end = Math.min(length, offset + limit);
+      return {
+        entries: Array.from({ length: end - offset }, (_, i) =>
+          text(offset + i),
+        ),
+        ...(end < length ? { nextOffset: end } : {}),
+      };
+    },
+  );
   const { client, observer, messages } = mountTail(true);
   await act(async () => {
     await vi.advanceTimersByTimeAsync(1);
@@ -216,14 +239,14 @@ test('against a server from before page ranges, the reader pages forward by next
     { offset: 30, limit: 30 },
     expect.anything(),
   );
-  expect(messages().at(-1)).toBe(39);
+  expect(last(messages())).toBe(39);
   expect(observer.result.current.hasLaterPage).toBe(false);
   // Running: the loaded pages are re-read, so new messages appear.
   length = 42;
   await act(async () => {
     await vi.advanceTimersByTimeAsync(2_000);
   });
-  expect(messages().at(-1)).toBe(41);
+  expect(last(messages())).toBe(41);
   observer.unmount();
   client.clear();
 });
@@ -231,29 +254,33 @@ test('against a server from before page ranges, the reader pages forward by next
 test('a transcript rewritten shorter than the cursor starts again from its latest messages', async () => {
   vi.useFakeTimers();
   let length = 50;
-  read.mockImplementation((async (
-    _apiBase: string,
-    _thread: string,
-    _child: string,
-    page: { offset?: number; limit?: number; tail?: boolean },
-  ) => {
-    const limit = page.limit ?? 30;
-    // The server's shape: a read from past the end starts at the end.
-    const offset = page.tail
-      ? Math.max(0, length - limit)
-      : Math.min(page.offset ?? 0, length);
-    const end = Math.min(length, offset + limit);
-    return {
-      entries: Array.from({ length: end - offset }, (_, i) => text(offset + i)),
-      offset,
-      endOffset: end,
-    };
-  }) as never);
+  read.mockImplementation(
+    async (
+      _apiBase: string,
+      _thread: string,
+      _child: string,
+      page: { offset?: number; limit?: number; tail?: boolean },
+    ) => {
+      const limit = page.limit ?? 30;
+      // The server's shape: a read from past the end starts at the end.
+      const offset = page.tail
+        ? Math.max(0, length - limit)
+        : Math.min(page.offset ?? 0, length);
+      const end = Math.min(length, offset + limit);
+      return {
+        entries: Array.from({ length: end - offset }, (_, i) =>
+          text(offset + i),
+        ),
+        offset,
+        endOffset: end,
+      };
+    },
+  );
   const { client, observer, messages } = mountTail(true);
   await act(async () => {
     await vi.advanceTimersByTimeAsync(1);
   });
-  expect(messages().at(-1)).toBe(49);
+  expect(last(messages())).toBe(49);
   length = 10;
   await act(async () => {
     await vi.advanceTimersByTimeAsync(2_100);
@@ -264,7 +291,7 @@ test('a transcript rewritten shorter than the cursor starts again from its lates
   await act(async () => {
     await vi.advanceTimersByTimeAsync(2_100);
   });
-  expect(messages().at(-1)).toBe(10);
+  expect(last(messages())).toBe(10);
   observer.unmount();
   client.clear();
 });
@@ -272,23 +299,27 @@ test('a transcript rewritten shorter than the cursor starts again from its lates
 test('an invalidation rebuilds every loaded page instead of keeping only the first', async () => {
   vi.useFakeTimers();
   let length = 60;
-  read.mockImplementation((async (
-    _apiBase: string,
-    _thread: string,
-    _child: string,
-    page: { offset?: number; limit?: number; tail?: boolean },
-  ) => {
-    const limit = page.limit ?? 30;
-    const offset = page.tail
-      ? Math.max(0, length - limit)
-      : Math.min(page.offset ?? 0, length);
-    const end = Math.min(length, offset + limit);
-    return {
-      entries: Array.from({ length: end - offset }, (_, i) => text(offset + i)),
-      offset,
-      endOffset: end,
-    };
-  }) as never);
+  read.mockImplementation(
+    async (
+      _apiBase: string,
+      _thread: string,
+      _child: string,
+      page: { offset?: number; limit?: number; tail?: boolean },
+    ) => {
+      const limit = page.limit ?? 30;
+      const offset = page.tail
+        ? Math.max(0, length - limit)
+        : Math.min(page.offset ?? 0, length);
+      const end = Math.min(length, offset + limit);
+      return {
+        entries: Array.from({ length: end - offset }, (_, i) =>
+          text(offset + i),
+        ),
+        offset,
+        endOffset: end,
+      };
+    },
+  );
   const { client, observer, messages } = mountTail(true);
   await act(async () => {
     await vi.advanceTimersByTimeAsync(1);
@@ -303,7 +334,7 @@ test('an invalidation rebuilds every loaded page instead of keeping only the fir
     await vi.advanceTimersByTimeAsync(1);
   });
   expect(messages()[0]).toBe(0);
-  expect(messages().at(-1)).toBe(62);
+  expect(last(messages())).toBe(62);
   observer.rerender({ running: false });
   await act(async () => {
     await client.invalidateQueries();
@@ -311,7 +342,7 @@ test('an invalidation rebuilds every loaded page instead of keeping only the fir
   });
   // Still from the oldest loaded message to the latest one, once each.
   expect(messages()[0]).toBe(0);
-  expect(messages().at(-1)).toBe(62);
+  expect(last(messages())).toBe(62);
   expect(new Set(messages()).size).toBe(messages().length);
   observer.unmount();
   client.clear();
