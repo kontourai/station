@@ -336,7 +336,9 @@
 
     "src-ui/src/components/chat/IndexedTranscriptTurnRail.tsx",
 
-    "src-ui/src/components/chat/useTranscriptTurnDirectory.ts"
+    "src-ui/src/components/chat/useTranscriptTurnDirectory.ts",
+
+    "src-ui/src/components/chat-dock/ChatDockInboxPanel.css"
   ],
 
   "checks": [
