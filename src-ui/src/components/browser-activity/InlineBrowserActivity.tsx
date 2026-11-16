@@ -132,6 +132,7 @@ export function InlineBrowserActivity({
     floating ? (
       <Button
         variant="secondary"
+        className="inline-browser-activity__control"
         onClick={() => {
           closeFloat(scope.conversationKey);
         }}
@@ -141,6 +142,7 @@ export function InlineBrowserActivity({
     ) : (
       <Button
         variant="secondary"
+        className="inline-browser-activity__control"
         onClick={() => {
           openFloat(
             scope.conversationKey,
@@ -175,7 +177,11 @@ export function InlineBrowserActivity({
     </div>
   );
   const paneAction = openInPanel ? (
-    <Button variant="secondary" onClick={() => void openInPanel()}>
+    <Button
+      variant="secondary"
+      className="inline-browser-activity__control"
+      onClick={() => void openInPanel()}
+    >
       Open in pane
     </Button>
   ) : null;
