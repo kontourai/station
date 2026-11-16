@@ -1309,19 +1309,26 @@ export function InboxGroupList({
   const [swipedFor, setSwipedFor] = useState<string | null>(null);
   const isCurrent = (item: HomeWorkItem) =>
     isCurrentInboxItem(item, activeChatSessionId);
-  /** The rows a group actually renders, including the current row beyond page one. */
+  /** The row holds the open chat itself or, folded under it, as a member. */
+  const holdsCurrent = (group: MobileActivityGroup, item: HomeWorkItem) =>
+    isCurrent(item) ||
+    Boolean(group.childrenById?.get(item.id)?.some(isCurrent));
+  /**
+   * The rows a group actually renders, including the current row beyond page
+   * one. A collapsed section still shows the open chat's row under its
+   * header, so the chat on screen is never hidden from the list.
+   */
   const renderedItems = (group: MobileActivityGroup): HomeWorkItem[] => {
     const collapsed =
       collapsible &&
       group.id !== 'dismissed' &&
       collapsible.sections[group.id] === false;
-    if (collapsed) return [];
+    if (collapsed)
+      return group.items.filter((item) => holdsCurrent(group, item));
     if (group.id === 'earlier' || group.id === 'settled')
       return group.items.filter(
         (item, index) =>
-          index < settledVisibleCount ||
-          isCurrent(item) ||
-          Boolean(group.childrenById?.get(item.id)?.some(isCurrent)),
+          index < settledVisibleCount || holdsCurrent(group, item),
       );
     return group.items;
   };
@@ -1500,7 +1507,12 @@ export function InboxGroupList({
     [order[from], order[to]] = [order[to], order[from]];
     collapsible?.onReorder?.(order);
   };
-  const firstCollapsed = visibleGroups.find((group) => !isGroupExpanded(group));
+  // Collapsed shelves dock at the bottom below expanded work. With nothing
+  // expanded there is nothing to dock below, so they stack from the top
+  // rather than leaving the list empty above them.
+  const firstCollapsed = visibleGroups.some(isGroupExpanded)
+    ? visibleGroups.find((group) => !isGroupExpanded(group))
+    : undefined;
   return (
     <>
       {resolutionState.query.isError && (
@@ -1579,8 +1591,7 @@ export function InboxGroupList({
               </h3>
             )}
 
-            {isExpanded &&
-              renderedItems(group).map((item) => renderRow(group, item))}
+            {renderedItems(group).map((item) => renderRow(group, item))}
             {isExpanded &&
               (group.id === 'earlier' || group.id === 'settled') &&
               settledVisibleCount < group.items.length && (

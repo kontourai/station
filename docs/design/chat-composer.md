@@ -1009,6 +1009,13 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   takes its confirmation); the pick is the new chat's own and rides its first
   send. In the dock's New chat draft the picker opens on the popover layer, as
   on Home.
+  On desktop a picker opened from Run setup (approval, model) replaces the
+  panel rather than stacking on it: Run setup hides, the picker opens at the Run
+  setup trigger and stays inside the composer's column, Escape returns to Run
+  setup and a click outside closes both. The approval picker's first line says
+  the mode in effect as the engine confirmed it, or that the engine has not
+  confirmed one yet; its list and the chip both call the broadest mode
+  **Full access**.
   The running chip shows engine-confirmed values or a pending/restart state. Personal defaults
   apply to new interactive chats; saving a future default is explicit.
 - New-chat and running-chat selectors use `ComposerChoice` for the caption,
@@ -1437,7 +1444,9 @@ continues to follow its existing close-on-merge setting. Linked pull requests
 alone do not automatically settle standalone conversations.
 
 Every populated shelf can be collapsed; collapsed shelves sit below expanded
-work, with Settled at the bottom by default. Shelf menus offer Move up and
+work, with Settled at the bottom by default. With no shelf expanded they stack
+from the top of the list. A collapsed shelf still lists the row of the chat on
+screen, so the open chat is never hidden from the inbox. Shelf menus offer Move up and
 Move down; that order is saved on this device within expanded and collapsed
 shelves. The inbox header is one line: search, the
 work scope picker (its "Show work" label kept for assistive technology), and

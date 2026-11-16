@@ -1436,6 +1436,32 @@ describe('CodingWorkbench — one quiet bar, the inbox beside a tool, and names 
       focusVisible.mockRestore();
     }
   });
+
+  test('a zero count draws no badge and is not announced', () => {
+    const { container } = render(
+      <NavigationProvider>
+        <CodingWorkbench
+          stackName={BUILTIN_CODING_LAYOUT.name}
+          drillInOrder={BUILTIN_CODING_DRILL_INS}
+          projectId="project-uuid"
+          projectSlug="demo"
+          centerChat
+          location={{ page: 'chat', paneId: null }}
+          scope={scope}
+          instances={instances}
+          hostDocument={() => document}
+          paneLabel={label}
+          badges={{ [diff.descriptorId]: 0 }}
+          hostOpen={null}
+          onOpenCatalog={vi.fn()}
+        >
+          <div />
+        </CodingWorkbench>
+      </NavigationProvider>,
+    );
+    expect(railItem('Diff').getAttribute('aria-label')).toBe('Diff');
+    expect(container.querySelector('.coding-workbench__rail-count')).toBeNull();
+  });
 });
 
 describe('CodingWorkbench — the folded inbox’s edge, and the fold judged again on resize', () => {
@@ -1935,6 +1961,16 @@ describe('CodingWorkbench — design audit round: the flyout, Escape, the way ba
     const trigger = within(rail()).getByRole('button', {
       name: 'Open Browser pane',
     });
+    // It adds another pane beside any Browser on the rail, and says so: a
+    // "+" on its globe and its tip, so the two globes do not read as one.
+    expect(
+      trigger.querySelector('.coding-workbench__rail-add-mark')?.textContent,
+    ).toBe('+');
+    fireEvent.pointerEnter(trigger.parentElement!);
+    expect(screen.getByRole('tooltip').textContent).toBe(
+      'Open a new Browser pane',
+    );
+    fireEvent.pointerLeave(trigger.parentElement!);
     expect(screen.queryByRole('region', { name: 'Browser' })).toBeNull();
     // A pointer click focuses the button it lands on; jsdom's does not.
     trigger.focus();

@@ -2027,6 +2027,11 @@
   box-shadow: none;
   overflow: visible;
 }
+/* The approval picker is a short list; at the shared 380px it covered more of
+   the transcript than its rows need. */
+.composer-popover-panel.composer-mode-sheet {
+  --composer-popover-width: 340px;
+}
 .chat-input__model-popover-panel .session-model-picker {
   position: relative;
   right: auto;
@@ -2060,17 +2065,35 @@
   .session-model-picker {
   max-height: calc(100dvh - var(--responsive-anchor-bottom) - 20px);
 }
+/* Inside the composer's column where it has one (`data-popover-boundary`),
+   so a panel opened from the composer's trailing edge does not cover the
+   panes beside it; the viewport clamp still wins for a column too narrow. */
 .composer-popover-overlay--start[data-anchored] .composer-popover-panel {
   left: clamp(
     12px,
-    var(--responsive-anchor-left, 12px),
+    clamp(
+      var(--responsive-boundary-left, 12px),
+      var(--responsive-anchor-left, 12px),
+      calc(
+        var(--responsive-boundary-right, calc(100vw - 12px)) -
+        var(--composer-popover-width)
+      )
+    ),
     calc(100vw - var(--composer-popover-width) - 12px)
   );
 }
 .composer-popover-overlay--end[data-anchored] .composer-popover-panel {
   right: clamp(
     12px,
-    var(--responsive-anchor-right, 12px),
+    clamp(
+      calc(100vw - var(--responsive-boundary-right, calc(100vw - 12px))),
+      var(--responsive-anchor-right, 12px),
+      calc(
+        100vw -
+        var(--responsive-boundary-left, 12px) -
+        var(--composer-popover-width)
+      )
+    ),
     calc(100vw - var(--composer-popover-width) - 12px)
   );
 }
