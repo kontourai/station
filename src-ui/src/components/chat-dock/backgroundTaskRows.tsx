@@ -51,6 +51,22 @@ const OUTCOME_LABEL: Partial<Record<BackgroundTaskState, string>> = {
   failed: 'Failed',
 };
 
+/**
+ * A card's status words. A tool call that completed reported success, so it
+ * reads "Completed". An agent card's "completed" is only its turn ending,
+ * which says nothing about whether the work succeeded: it reads like a
+ * child-work row ("Run finished"), so one word keeps one meaning in a list
+ * that shows both.
+ */
+function outcomeLabel(
+  kind: BackgroundTaskEntry['kind'],
+  state: BackgroundTaskState,
+): string {
+  if (kind === 'agent' && state === 'completed')
+    return CHILD_WORK_STATUS_LABEL.completed;
+  return OUTCOME_LABEL[state] ?? state;
+}
+
 /** Every status a background-task card or a child-work row can show. */
 export type WorkStatus = BackgroundTaskState | ChildWorkDisplayStatus;
 
@@ -237,7 +253,7 @@ export function TaskRow({
         {outcomeChip && (
           <WorkStatusPill
             status={outcomeChip}
-            label={OUTCOME_LABEL[outcomeChip] ?? outcomeChip}
+            label={outcomeLabel(entry.kind, outcomeChip)}
           />
         )}
         <span className="background-tasks-sheet__chevron" aria-hidden="true">
@@ -274,7 +290,7 @@ export function TaskRow({
                 <dd>
                   {entry.state === 'running'
                     ? 'Running'
-                    : (OUTCOME_LABEL[entry.state] ?? entry.state)}
+                    : outcomeLabel(entry.kind, entry.state)}
                 </dd>
               </>
             )}

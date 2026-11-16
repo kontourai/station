@@ -350,7 +350,7 @@ test('per chat, delegates are the background-tasks store’s cards — live, as 
   expect(
     screen.getByRole('heading', { name: 'Finished · 1 agent' }),
   ).toBeTruthy();
-  expect(screen.getByText('Completed')).toBeTruthy();
+  expect(screen.getByText('Run finished')).toBeTruthy();
   // Delegate rows do not need the bounded subagent-history qualifier.
   expect(screen.queryByText('subagents: recent history')).toBeNull();
 });
@@ -838,7 +838,7 @@ test('All chats lists every row each chat lists, grouped by chat with the curren
 
     // Groups by chat: this chat first, then the other with its project.
     const titles = [
-      ...container.querySelectorAll('.agents-pane__group-title'),
+      ...container.querySelectorAll('.agents-pane__group-heading'),
     ].map((node) => node.textContent);
     expect(titles).toEqual(['Morning triage', 'Release prep']);
     const groups = container.querySelectorAll('.agents-pane__group');
@@ -854,10 +854,7 @@ test('All chats lists every row each chat lists, grouped by chat with the curren
     ]);
 
     // A group's title opens its chat (the caret beside it only folds).
-    const [openTitle] = screen
-      .getAllByRole('button', { name: 'Release prep' })
-      .filter((button) => !button.hasAttribute('aria-expanded'));
-    fireEvent.click(openTitle as HTMLElement);
+    fireEvent.click(screen.getByRole('button', { name: 'Open Release prep' }));
     expect(showSurface).toHaveBeenCalledWith('chat', { session: OTHER_CHAT });
   } finally {
     activeChatsStore.removeChat(OTHER_CHAT);
@@ -870,7 +867,7 @@ test('a collapsed chat group stays collapsed for this viewer', () => {
     localStorage.setItem('station.agents-pane.scope', 'all');
     const first = render(<AgentsWorkspacePane />);
     const toggle = screen.getByRole('button', {
-      name: 'Release prep',
+      name: 'Collapse Release prep',
       expanded: true,
     });
     fireEvent.click(toggle);
@@ -881,7 +878,7 @@ test('a collapsed chat group stays collapsed for this viewer', () => {
     render(<AgentsWorkspacePane />);
     expect(
       screen
-        .getByRole('button', { name: 'Release prep', expanded: false })
+        .getByRole('button', { name: 'Expand Release prep', expanded: false })
         .getAttribute('aria-expanded'),
     ).toBe('false');
     expect(screen.queryByText('Run telemetry tests after change')).toBeNull();
@@ -916,4 +913,223 @@ test('section counts name what they count, and every status pill shares one shap
   } finally {
     activeChatsStore.removeChat(OTHER_CHAT);
   }
+});
+
+const allRowTitles = (container: HTMLElement) => {
+  fireEvent.click(screen.getByRole('button', { name: 'All chats' }));
+  return rowTitles(container);
+};
+
+test('All chats lists a tool call that spawned a subagent once, as the subagent', () => {
+  openChat('claude');
+  backgroundTasksStore.ingest(
+    {
+      provider: 'claude',
+      threadId: CHAT,
+      createdAt: '2026-09-24T00:00:00.000Z',
+      method: 'tool.started',
+      turnId: 't-1',
+      itemId: 'call-spawn',
+      toolCallId: 'call-spawn',
+      toolName: 'Task',
+      arguments: { description: 'Spawn the survey' },
+    },
+    API,
+  );
+  childWorkGlobalStore.ingest(API, {
+    provider: 'claude',
+    threadId: 'exec-1',
+    createdAt: '2026-09-24T00:00:01.000Z',
+    method: 'child-work.updated',
+    delta: {
+      kind: 'upsert',
+      item: {
+        producer: 'engine-subagent',
+        reporterThreadId: 'exec-1',
+        childId: 'sub-spawned',
+        status: 'running',
+        title: 'Survey the repository',
+        parent: { toolCallId: 'call-spawn' },
+      },
+    },
+  });
+  const { container } = render(<AgentsWorkspacePane />);
+  const titles = allRowTitles(container);
+  expect(titles).toContain('Survey the repository');
+  expect(titles).not.toContain('Spawn the survey');
+  expect(titles).toHaveLength(1);
+});
+
+test('All chats lists a delegate the read model and the store both hold once', () => {
+  openChat('claude');
+  sessionsResult = {
+    data: [
+      {
+        threadId: 'del-both',
+        childWork: {
+          asChild: {
+            producer: 'station-delegate',
+            reporterThreadId: 'del-both',
+            childId: 'del-both',
+            status: 'running',
+            parent: { taskId: CHAT },
+            title: 'Audit the dependencies',
+          },
+        },
+      },
+    ],
+  };
+  backgroundTasksStore.ingest(
+    {
+      provider: 'codex',
+      threadId: 'del-both',
+      createdAt: '2026-09-24T00:00:00.000Z',
+      method: 'session.started',
+      sessionId: 'del-both',
+      metadata: { taskId: 'del-both', parentTaskId: CHAT },
+    },
+    API,
+  );
+  backgroundTasksStore.ingest(
+    {
+      provider: 'codex',
+      threadId: 'del-both',
+      createdAt: '2026-09-24T00:00:01.000Z',
+      method: 'turn.started',
+      turnId: 't-1',
+      prompt: 'Audit the dependencies',
+    },
+    API,
+  );
+  const { container } = render(<AgentsWorkspacePane />);
+  // Per chat: the store's card.
+  expect(rowTitles(container)).toEqual(['Audit the dependencies']);
+  expect(allRowTitles(container)).toEqual(['Audit the dependencies']);
+});
+
+test('a group opens its chat by the chat’s id, even when its first row is a subagent', () => {
+  openChat('claude');
+  activeChatsStore.updateChat(CHAT, { conversationId: 'conv-2459' });
+  // Only a subagent reported by the chat's execution session.
+  childWorkGlobalStore.ingest(API, {
+    provider: 'claude',
+    threadId: 'exec-1',
+    createdAt: '2026-09-24T00:00:01.000Z',
+    method: 'child-work.updated',
+    delta: {
+      kind: 'upsert',
+      item: {
+        producer: 'engine-subagent',
+        reporterThreadId: 'exec-1',
+        childId: 'sub-only',
+        status: 'running',
+        title: 'Survey the repository',
+      },
+    },
+  });
+  localStorage.setItem('station.agents-pane.scope', 'all');
+  render(<AgentsWorkspacePane />);
+  fireEvent.click(screen.getByRole('button', { name: 'Open Morning triage' }));
+  expect(showSurface).toHaveBeenCalledWith('chat', { session: 'conv-2459' });
+});
+
+test('a closed chat stays one group: its tool cards and its subagents share a key', () => {
+  openChat('claude');
+  // The session row names a project only by slug: the group shows none
+  // rather than a slug beside other groups' names.
+  sessionsResult = {
+    data: [
+      { threadId: 'exec-1', conversationId: 'conv-x', projectSlug: 'dev' },
+    ],
+  };
+  backgroundTasksStore.ingest(
+    {
+      provider: 'claude',
+      threadId: CHAT,
+      createdAt: '2026-09-24T00:00:00.000Z',
+      method: 'tool.started',
+      turnId: 't-1',
+      itemId: 'call-long',
+      toolCallId: 'call-long',
+      toolName: 'Bash',
+      arguments: { description: 'Run the long build' },
+    },
+    API,
+  );
+  childWorkGlobalStore.ingest(API, {
+    provider: 'claude',
+    threadId: 'exec-1',
+    createdAt: '2026-09-24T00:00:01.000Z',
+    method: 'child-work.updated',
+    delta: {
+      kind: 'upsert',
+      item: {
+        producer: 'engine-subagent',
+        reporterThreadId: 'exec-1',
+        childId: 'sub-1',
+        status: 'running',
+        title: 'Survey the repository',
+      },
+    },
+  });
+  backgroundTasksStore.bindProviderReporter(API, 'exec-1', CHAT);
+  activeChatsStore.removeChat(CHAT);
+  activeChat = null;
+  const { container } = render(<AgentsWorkspacePane />);
+  const groups = container.querySelectorAll('.agents-pane__group');
+  expect(groups).toHaveLength(1);
+  expect(rowTitles(groups[0] as Element)).toEqual([
+    'Run the long build',
+    'Survey the repository',
+  ]);
+  expect(
+    groups[0]?.querySelector('.agents-pane__group-meta')?.textContent,
+  ).toBe('2 running');
+});
+
+test('group controls have distinct names and the chat title is a heading', () => {
+  seedTwoChats();
+  try {
+    localStorage.setItem('station.agents-pane.scope', 'all');
+    render(<AgentsWorkspacePane />);
+    expect(
+      screen.getByRole('heading', { level: 3, name: /Release prep/ }),
+    ).toBeTruthy();
+    const toggle = screen.getByRole('button', {
+      name: 'Collapse Release prep',
+    });
+    fireEvent.click(toggle);
+    expect(
+      screen.getByRole('button', { name: 'Expand Release prep' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Open Release prep' }),
+    ).toBeTruthy();
+  } finally {
+    activeChatsStore.removeChat(OTHER_CHAT);
+  }
+});
+
+test('All chats notes the tool-call window only when tool calls are listed', () => {
+  sessionsResult = {
+    data: [
+      {
+        threadId: 'delegate-cli',
+        childWork: {
+          asChild: {
+            producer: 'station-delegate',
+            reporterThreadId: 'delegate-cli',
+            childId: 'delegate-cli',
+            status: 'running',
+            title: 'Nightly audit',
+          },
+        },
+      },
+    ],
+  };
+  render(<AgentsWorkspacePane />);
+  expect(screen.getByText('Nightly audit')).toBeTruthy();
+  expect(
+    screen.queryByText('Tool calls are listed from when this window opened.'),
+  ).toBeNull();
 });

@@ -1,3 +1,4 @@
+import { childWorkKindOf } from '@kontourai/station-contracts/child-work';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { useOrchestrationSessionsQuery } from '@kontourai/station-sdk';
 import { useQueryClient } from '@tanstack/react-query';
@@ -21,7 +22,10 @@ import { Empty, ErrorState, SkeletonBlock } from '../components/state';
 import { useAgents } from '../contexts/AgentsContext';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { useClientBootstrapReadiness } from '../contexts/AuthorityPersistenceContext';
-import type { ChatUIState } from '../contexts/active-chats-state';
+import {
+  activeChatDurableId,
+  type ChatUIState,
+} from '../contexts/active-chats-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import {
   type BackgroundTaskEntry,
@@ -153,7 +157,7 @@ function chatIndexSignature(chats: Record<string, ChatUIState>): string {
         chat.conversationId ?? '',
         chat.orchestrationProvider ?? '',
         chat.title ?? '',
-        chat.projectName ?? chat.projectSlug ?? '',
+        chat.projectName ?? '',
       ].join('\u0000'),
     )
     .join('\u0001');
@@ -207,9 +211,11 @@ function useChildWorkInput(
         return {
           provider: chat?.orchestrationProvider,
           title: chat?.title,
-          project: chat?.projectName ?? chat?.projectSlug,
+          project: chat?.projectName,
+          durableId: activeChatDurableId(chatKey, chat),
         };
       },
+      reporterChatOf: (threadId: string) => tasks.providerReporters?.[threadId],
       toolCallStartedAt: (toolCallId: string) =>
         tasks.entries[toolCallId]?.startedAt,
     }),
@@ -369,7 +375,18 @@ export function AgentsWorkspacePane() {
   const runningRows: AllChatsRow[] = allChats
     ? allChats.groups.flatMap((group) => group.running)
     : [
-        ...taskRunning.map((entry) => ({ kind: 'task' as const, entry })),
+        ...taskRunning.map((entry) => {
+          // A bridged card stands for an engine child; count it as one.
+          const item =
+            entry.source === 'provider-task'
+              ? engineItemFor(global, entry)
+              : undefined;
+          return {
+            kind: 'task' as const,
+            entry,
+            ...(item ? { workKind: childWorkKindOf(item) } : {}),
+          };
+        }),
         ...childRunning.map((row) => ({ kind: 'child' as const, row })),
       ];
   const finishedRows: AllChatsRow[] = allChats
@@ -603,9 +620,13 @@ export function AgentsWorkspacePane() {
                 {finishedOmitted} older delegated tasks not shown.
               </p>
             )}
-            <p className="agents-pane__note">
-              Tool calls are listed from when this window opened.
-            </p>
+            {[...runningRows, ...finishedRows].some(
+              (row) => row.kind === 'task' && row.entry.kind === 'tool',
+            ) && (
+              <p className="agents-pane__note">
+                Tool calls are listed from when this window opened.
+              </p>
+            )}
           </>
         ) : (
           <>
@@ -702,20 +723,27 @@ function ChatWorkGroup({
           controls={collapsed ? undefined : listId}
           className="agents-pane__group-toggle"
         >
-          <span className="sr-only">{title}</span>
+          <span className="sr-only">
+            {collapsed ? 'Expand' : 'Collapse'} {title}
+          </span>
         </DisclosureToggle>
         <span className="agents-pane__group-text">
-          {openThreadId && !group.outsideChat ? (
-            <button
-              type="button"
-              className="agents-pane__group-title"
-              onClick={() => onOpen(openThreadId)}
-            >
-              {title}
-            </button>
-          ) : (
-            <span className="agents-pane__group-title">{title}</span>
-          )}
+          <h3 className="agents-pane__group-heading">
+            {openThreadId && !group.outsideChat ? (
+              <button
+                type="button"
+                className="agents-pane__group-title"
+                // Distinct from the caret's "Collapse …"; starts with the
+                // visible title's words after the verb.
+                aria-label={`Open ${title}`}
+                onClick={() => onOpen(openThreadId)}
+              >
+                {title}
+              </button>
+            ) : (
+              <span className="agents-pane__group-title">{title}</span>
+            )}
+          </h3>
           <span className="agents-pane__group-meta">
             {[
               ...(group.current ? ['This chat'] : []),

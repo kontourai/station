@@ -1,5 +1,6 @@
 import {
   type ChildWorkItem,
+  type ChildWorkKind,
   type ChildWorkRegistryState,
   childWorkKindOf,
 } from '@kontourai/station-contracts/child-work';
@@ -73,7 +74,6 @@ export interface ChildWorkSessionSource {
   provider?: string;
   conversationId?: string;
   displayTitle?: string;
-  projectSlug?: string;
   turnOrigin?: { latest: { reported: { surface: string } } };
   childWork?: { asChild?: ChildWorkItem };
 }
@@ -90,8 +90,17 @@ export interface ChildWorkSelectorInput {
   chatFacts?: (chatKey: string) => {
     provider?: string;
     title?: string;
+    /** The project's display name, as the open chat records it. */
     project?: string;
+    /** The id navigation opens this chat by (its conversation, else its key). */
+    durableId?: string;
   };
+  /**
+   * A reporting session → the chat the background-tasks store bound it to
+   * (`providerReporters`). The binding outlives the chat while its children
+   * run, so a closed chat's subagents still group with its tool cards.
+   */
+  reporterChatOf?: (threadId: string) => string | undefined;
   /**
    * A delegate thread → the thread its bind event named as parent (the
    * background-tasks store's `delegateParents`), for per-chat nesting.
@@ -570,18 +579,31 @@ export function emptyStateFor(options: {
 /** One row in "All chats": a child-work row or a background-tasks card. */
 export type AllChatsRow =
   | { kind: 'child'; row: ChildWorkRowModel }
-  | { kind: 'task'; entry: BackgroundTaskEntry };
+  | {
+      kind: 'task';
+      entry: BackgroundTaskEntry;
+      /**
+       * The child-work kind a provider-task card stands for (the per-chat
+       * Stop bridge), so it is counted as what it is, not as its card.
+       */
+      workKind?: ChildWorkKind;
+    };
 
 /** The work one chat set running, as "All chats" groups it. */
 export interface AllChatsGroup {
-  /** The chat's store key, else the conversation or session it resolves to. */
+  /**
+   * The chat's store key when it is open; else the chat its reporting
+   * session was bound to, else the conversation or session it resolves to.
+   * Every row reaches this through one resolver, so a chat is one group.
+   */
   key: string;
   /** No chat: delegates started from the CLI or a task with no session here. */
   outsideChat: boolean;
   current: boolean;
   title?: string;
+  /** The project's display name, only when the open chat records one. */
   project?: string;
-  /** A session thread of this chat, for opening it. */
+  /** What opens this chat: its durable id, else the conversation or session. */
   openThreadId?: string;
   running: AllChatsRow[];
   finished: AllChatsRow[];
@@ -618,8 +640,10 @@ export function isListedTaskCard(
  * at least what each chat's own scope lists. The current chat's group leads,
  * then chats with running work, then the most recently active.
  *
- * A chat's title and project come from the open chat, else from its session
- * row; neither is guessed when both are silent.
+ * A chat's title comes from the open chat, else from its session row. Its
+ * project is the open chat's display name only: a session row carries a
+ * slug (and a delegation's slug may be an unverified cross-machine match),
+ * so a closed chat shows no project rather than a slug beside names.
  */
 export function selectAllChatsWork(
   input: ChildWorkSelectorInput,
@@ -647,6 +671,18 @@ export function selectAllChatsWork(
     return current;
   };
 
+  /** The ONE rule from a row's anchor thread to its chat's group key. */
+  const chatGroupKey = (anchor: string) => {
+    const target = input.reporterChatOf?.(anchor) ?? anchor;
+    const chatKey = resolveChat(target, input, sessions);
+    const session = sessions.get(target);
+    return {
+      key: chatKey ?? session?.conversationId ?? target,
+      chatKey,
+      session,
+    };
+  };
+
   type Group = AllChatsGroup & { latest: number };
   const groups = new Map<string, Group>();
   const groupFor = (anchor: string | undefined): Group => {
@@ -664,24 +700,21 @@ export function selectAllChatsWork(
       groups.set(OUTSIDE_CHAT_GROUP, created);
       return created;
     }
-    const chatKey = resolveChat(anchor, input, sessions);
-    const session = sessions.get(anchor);
-    const key = chatKey ?? session?.conversationId ?? anchor;
+    const { key, chatKey, session } = chatGroupKey(anchor);
     const facts = chatKey ? input.chatFacts?.(chatKey) : undefined;
     const conversation = session?.conversationId
       ? sessions.get(session.conversationId)
       : undefined;
     const title =
       facts?.title ?? session?.displayTitle ?? conversation?.displayTitle;
-    const project =
-      facts?.project ?? session?.projectSlug ?? conversation?.projectSlug;
+    const project = facts?.project;
     let group = groups.get(key);
     if (!group) {
       group = {
         key,
         outsideChat: false,
         current: currentChatKey !== undefined && key === currentChatKey,
-        openThreadId: anchor,
+        openThreadId: chatKey ? (facts?.durableId ?? chatKey) : key,
         running: [],
         finished: [],
         latest: Number.NEGATIVE_INFINITY,
@@ -765,21 +798,36 @@ export function selectAllChatsWork(
   };
 }
 
-/** What a list of rows holds, by kind, for a section or group heading. */
+/**
+ * What a list of rows holds, by kind, for a section or group heading. One
+ * noun per thing, whatever list it came from:
+ * - agents: engine subagents and delegated tasks;
+ * - commands: background shell commands a turn left running (Claude's
+ *   backgrounded Bash, `workKind: 'command'`);
+ * - monitors: background monitors (`workKind: 'monitor'`);
+ * - tools: tool calls in a turn, Bash included. A Bash call that leaves a
+ *   background command is listed once, as that command: its spawning tool
+ *   call is not listed (`isListedTaskCard`).
+ */
 export interface WorkCounts {
   agents: number;
   commands: number;
+  monitors: number;
   tools: number;
 }
 
 export function countWork(rows: readonly AllChatsRow[]): WorkCounts {
-  const counts: WorkCounts = { agents: 0, commands: 0, tools: 0 };
-  for (const row of rows) {
-    if (row.kind === 'task') {
-      if (row.entry.kind === 'agent') counts.agents += 1;
-      else counts.tools += 1;
-    } else if (childWorkKindOf(row.row.item) === 'agent') counts.agents += 1;
+  const counts: WorkCounts = { agents: 0, commands: 0, monitors: 0, tools: 0 };
+  const add = (kind: ChildWorkKind) => {
+    if (kind === 'agent') counts.agents += 1;
+    else if (kind === 'monitor') counts.monitors += 1;
     else counts.commands += 1;
+  };
+  for (const row of rows) {
+    if (row.kind === 'child') add(childWorkKindOf(row.row.item));
+    else if (row.workKind) add(row.workKind);
+    else if (row.entry.kind === 'agent') counts.agents += 1;
+    else counts.tools += 1;
   }
   return counts;
 }
@@ -791,6 +839,7 @@ export function workCountLabel(counts: WorkCounts): string {
   return [
     ...part(counts.agents, 'agent', 'agents'),
     ...part(counts.commands, 'command', 'commands'),
+    ...part(counts.monitors, 'monitor', 'monitors'),
     ...part(counts.tools, 'tool', 'tools'),
   ].join(' · ');
 }

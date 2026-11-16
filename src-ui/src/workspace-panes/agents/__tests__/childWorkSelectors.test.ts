@@ -50,6 +50,7 @@ import {
   type ChildWorkSelectorInput,
   type ChildWorkSessionSource,
   controlsFor,
+  countWork,
   emptyStateFor,
   GLOBAL_FINISHED_LIMIT,
   provenanceFor,
@@ -57,6 +58,7 @@ import {
   selectGlobalChildWork,
   subagentNoticeFor,
   uniqueChatKey,
+  workCountLabel,
 } from '../childWorkSelectors';
 
 function delegate(
@@ -431,5 +433,45 @@ describe('which open chat a session thread names', () => {
     expect(uniqueChatKey(chats, 'conv-c')).toBe('chat-c');
     expect(uniqueChatKey(chats, 'conv-shared')).toBe(undefined);
     expect(uniqueChatKey(chats, 'nobody')).toBe(undefined);
+  });
+});
+
+describe('work counts', () => {
+  test('each kind keeps one noun, whichever list a row came from', () => {
+    const child = (overrides: Partial<ChildWorkItem>) => ({
+      kind: 'child' as const,
+      row: {
+        key: String(Math.random()),
+        title: 't',
+        provenance: { kind: 'none' as const },
+        level: 0,
+        item: engineItem('exec-1', 'c', overrides),
+      },
+    });
+    const card = (kind: 'tool' | 'agent', workKind?: 'command') => ({
+      kind: 'task' as const,
+      entry: {
+        id: 'x',
+        kind,
+        source: workKind ? ('provider-task' as const) : ('tool-event' as const),
+        chatThreadId: 'chat-1',
+        title: 't',
+        state: 'running' as const,
+      },
+      ...(workKind ? { workKind } : {}),
+    });
+    expect(
+      workCountLabel(
+        countWork([
+          child({}),
+          child({ workKind: 'command' }),
+          child({ workKind: 'monitor' }),
+          card('tool'),
+          card('tool'),
+          // A bridged card for a background command is a command, not an agent.
+          card('agent', 'command'),
+        ]),
+      ),
+    ).toBe('1 agent · 2 commands · 1 monitor · 2 tools');
   });
 });

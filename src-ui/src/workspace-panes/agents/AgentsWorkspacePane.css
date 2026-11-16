@@ -79,6 +79,13 @@
   padding-top: var(--k-space-1);
 }
 
+.agents-pane__group-heading {
+  display: flex;
+  min-width: 0;
+  margin: 0;
+  font: inherit;
+}
+
 .agents-pane__group-title {
   overflow: hidden;
   max-width: 100%;
