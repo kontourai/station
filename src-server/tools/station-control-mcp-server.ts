@@ -22,6 +22,7 @@ import {
   StationControlDisclosure,
 } from './station-control-disclosure.js';
 import { registerHtmlReplyTools } from './station-control-html-reply-tools.js';
+import { listedForModels } from './station-control-listed-schema.js';
 import { registerNotifyTools } from './station-control-notify-tools.js';
 import { registerOperationsTools } from './station-control-operations-tools.js';
 import { registerPersonalBoardTools } from './station-control-personal-board-tools.js';
@@ -104,38 +105,6 @@ function withToolSideRefusal<
   // The SDK types a callback by its schema; `guarded` takes exactly the same
   // arguments and returns either the callback's result or a tool result.
   return guarded as Callback;
-}
-
-/**
- * `inputSchema` as `tools/list` carries it: without the `$schema` dialect URL
- * the SDK stamps on every converted schema. A tool schema that names no
- * dialect is read as JSON Schema 2020-12, the dialect that URL names, so it
- * told no engine anything while costing about 58 bytes a tool in every
- * session's context (`agent-context-budget.json`). Validation is unchanged:
- * calls are still checked by the wrapped schema itself.
- */
-function listedWithoutDialect<Schema extends StandardSchemaWithJSON>(
-  schema: Schema,
-): Schema {
-  const standard = schema['~standard'];
-  type Convert = typeof standard.jsonSchema.input;
-  const strip =
-    (convert: Convert): Convert =>
-    (options) => {
-      const { $schema: _dialect, ...listed } = convert(options);
-      return listed;
-    };
-  const listed = {
-    ...standard,
-    jsonSchema: {
-      input: strip(standard.jsonSchema.input),
-      output: strip(standard.jsonSchema.output),
-    },
-  };
-  return new Proxy(schema, {
-    get: (target, key, receiver) =>
-      key === '~standard' ? listed : Reflect.get(target, key, receiver),
-  });
 }
 
 function stationControlToolMetadata(name: string) {
@@ -238,7 +207,7 @@ export class StationControlToolRegistry {
       {
         description:
           'List available Station tool families. Load a family to discover its tools.',
-        inputSchema: listedWithoutDialect(z.object({})),
+        inputSchema: listedForModels(z.object({})),
         annotations: { readOnlyHint: true },
       },
       async () => {
@@ -262,7 +231,7 @@ export class StationControlToolRegistry {
       {
         description:
           'Load one Station tool family. Visibility never grants permission to call its tools.',
-        inputSchema: listedWithoutDialect(
+        inputSchema: listedForModels(
           z.object({ family: z.string().min(1).max(80) }),
         ),
         annotations: { readOnlyHint: true },
@@ -325,7 +294,7 @@ export class StationControlToolRegistry {
             ...(options ? { 'ai.kontour/durable-replay': options.replay } : {}),
           },
           description,
-          inputSchema: listedWithoutDialect(z.object(shape)),
+          inputSchema: listedForModels(z.object(shape)),
         },
         withToolSideRefusal(name, callback),
       ),
@@ -347,7 +316,7 @@ export class StationControlToolRegistry {
         {
           ...stationControlToolMetadata(name),
           description,
-          inputSchema: listedWithoutDialect(inputSchema),
+          inputSchema: listedForModels(inputSchema),
         },
         withToolSideRefusal(name, callback),
       ),
@@ -391,7 +360,7 @@ export class StationControlToolRegistry {
         name,
         {
           description,
-          inputSchema: listedWithoutDialect(inputSchema),
+          inputSchema: listedForModels(inputSchema),
           ...metadata,
           ...config,
           _meta: { ...metadata._meta, ...config._meta },
