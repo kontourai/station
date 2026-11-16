@@ -374,6 +374,6 @@ test.describe('Monitoring', () => {
     await page.getByRole('button', { name: 'CLEAR ALL' }).click();
     await expect(logEntries).toHaveCount(0);
     await expect(page.getByText('No events yet')).toBeVisible();
-    await expect(page.getByText('Waiting for agent activity...')).toBeVisible();
+    await expect(page.getByText('Waiting for agent activity…')).toBeVisible();
   });
 });
