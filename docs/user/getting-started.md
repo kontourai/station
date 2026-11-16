@@ -343,7 +343,9 @@ immutable `v<version>` release, next to its archives.
 ### Nightly desktop downloads
 
 Each Nightly desktop publication also uploads its installers under fixed
-names, so these links always serve the newest published build:
+names, so these links normally serve the newest published build (each
+replacement deletes the old file first, so a download at that moment, or
+after a failed upload until the next build, can briefly find nothing):
 
 - macOS (Apple silicon):
   `https://github.com/kontourai/station/releases/download/nightly-desktop/station-nightly-macos-aarch64.dmg`
@@ -351,7 +353,8 @@ names, so these links always serve the newest published build:
   `https://github.com/kontourai/station/releases/download/nightly-desktop/station-nightly-windows-x86_64-setup.exe`
 
 The release also carries the same builds under versioned names
-(`station-<version>-…`), and older retained builds. Its `SHA256SUMS` lists
+(`station-<version>-…`), and versioned downloads of earlier builds; older
+ones may be removed once 30 newer builds have been published. Its `SHA256SUMS` lists
 the newest build's downloads under both names. Download it next to the
 installer and check it, for example
 `shasum -a 256 --ignore-missing -c SHA256SUMS` on macOS,

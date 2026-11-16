@@ -1,0 +1,7 @@
+{
+  "revision": "77ed9afe6f8a3fbfb2959a0b2156731bb096be84",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"vitest-resource-manifest.mjs delta: adds scripts/__tests__/nightly-desktop-asset-retention-workflow.test.ts to PROCESS_HEAVY_VITEST_FILES (it runs the workflow step's bash with a gh stand-in). Re-read the shared Vitest worker policy and resource-group description: unchanged groups and ordering, still accurate. The workflow inventory row for nightly-native-cohort.yml (name, caller) is unchanged.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}
