@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   renameSync,
   rmSync,
+  statSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs';
@@ -563,17 +564,21 @@ describe('Claude transcript discovery of Claude Code 2.1 transcripts', () => {
     expect(headScans.count).toBe(1);
 
     // A transcript replaced by rename is a new file (new inode): re-scanned.
+    // The replacement is larger, so only the inode tells it apart.
     const replacement = join(project, 'replacement.tmp');
-    const moved = { ...user(), cwd: '/workspace/moved-project' };
+    const moved = { ...user(), cwd: '/workspace/replaced-example-project' };
     writeFileSync(
       replacement,
       jsonl([aiTitle(), enqueue(), dequeue(), moved, attachment()]),
+    );
+    expect(statSync(replacement).size).toBeGreaterThan(
+      statSync(transcript).size,
     );
     renameSync(replacement, transcript);
     const replaced = await source.discover();
     expect(headScans.count).toBe(2);
     expect(replaced.sessions.map((session) => session.cwd)).toEqual([
-      '/workspace/moved-project',
+      '/workspace/replaced-example-project',
     ]);
   });
 
