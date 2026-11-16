@@ -5,7 +5,6 @@ import type {
   ProjectLifecycleResult,
 } from '@kontourai/station-contracts/project-lifecycle';
 import {
-  StationHttpError,
   useDeleteProjectMutation,
   useProjectDeletionPreviewQuery,
   useProjectLifecycleMutation,
@@ -58,8 +57,17 @@ export function deletionPreviewLines(preview: ProjectDeletionPreview): {
   };
 }
 
+/** A Station without the route answers 404 (`StationHttpError.status`). */
+function isNotFound(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { status?: unknown }).status === 404
+  );
+}
+
 function lifecycleErrorText(error: unknown): string {
-  return error instanceof StationHttpError && error.status === 404
+  return isNotFound(error)
     ? 'This Station needs an update to pause or archive Projects.'
     : userFacingErrorMessage(error);
 }
@@ -113,8 +121,7 @@ export function ProjectLifecycleSection({
   }
 
   const lines = preview.data ? deletionPreviewLines(preview.data) : undefined;
-  const previewMissing =
-    preview.error instanceof StationHttpError && preview.error.status === 404;
+  const previewMissing = isNotFound(preview.error);
 
   return (
     <>
