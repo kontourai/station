@@ -1,5 +1,5 @@
 /**
- * A new export that no other file names: the one shape of the code-health
+ * A new export that no other module names: the one shape of the code-health
  * gate's `unused_exports` blocker that recurs on pull requests (nine distinct
  * exports on nine branches, 2026-11-13 to 15), found from Git alone in about
  * a second instead of a full fallow audit.
@@ -14,14 +14,19 @@
  *    function|async function|class|abstract class|type|interface|enum NAME`)
  *    and local export lists (`export { a, b as c }`, the exported name
  *    counts). `export default` is not collected (no declaration keyword
- *    follows `export`), nor are re-exports (`export … from`). A name the same file already exported at the merge base is
- *    inherited, not new.
- * 3. A name that no OTHER tracked file of the pushed commit contains as a
- *    whole word is a finding.
+ *    follows `export`), nor are re-exports (`export … from`). A name the
+ *    same file already exported at the merge base is inherited, not new.
+ * 3. A name that no OTHER JavaScript/TypeScript module of the pushed commit
+ *    mentions as a whole word in code (comments that start a line do not
+ *    count) is a finding, unless its file is one the analyzer counts as
+ *    used whole (see `newUnnamedExports`).
  *
- * It is narrower than the analyzer on purpose. A name that appears in another
- * file by coincidence passes here, and an export whose last caller was
- * removed is never collected; CI's statics job still judges both
+ * It is a heuristic for one recurring case, not a smaller copy of the gate.
+ * A name another module mentions by coincidence passes here; an export whose
+ * last caller was removed is never collected. Known false-refusal risk: an
+ * `export const` line inside a template literal (code generators) is read as
+ * a declaration; today every such name in this repo is also named by the
+ * generated output, so none refuses. CI's statics job judges all of these
  * (`node scripts/code-health-gate.mjs --base=<merge base>`).
  */
 import { spawnSync } from 'node:child_process';
@@ -122,16 +127,51 @@ function exportedNames(lines) {
 }
 
 /** Added lines per file in `base..sha`, for files that pass `keep`. */
+/**
+ * Test-only: lowers the diff's capture bound so a test can prove the
+ * over-bound path without a 64 MiB diff. Anything but a positive integer is
+ * ignored.
+ */
+const DIFF_BOUND_ENV = 'STATION_PREPUSH_EXPORT_DIFF_MAX_BYTES';
+function diffCaptureBytes(env = process.env) {
+  const raw = env[DIFF_BOUND_ENV];
+  return raw && /^[1-9][0-9]*$/.test(raw) ? Number(raw) : CAPTURE_MAX_BYTES;
+}
+
 function addedLines(base, sha, keep) {
-  const diff = git([
-    'diff',
-    '--no-renames',
-    '--no-color',
-    '--diff-filter=AM',
-    '-U0',
-    `${base}..${sha}`,
-  ]);
-  if (diff.status !== 0) throw new Error(`git diff failed: ${diff.stderr}`);
+  // Only the sources this check reads: an unfiltered diff against an old base
+  // reached 116 MB, past any capture bound.
+  const diff = git(
+    [
+      'diff',
+      '--no-renames',
+      '--no-color',
+      '--diff-filter=AM',
+      '-U0',
+      `${base}..${sha}`,
+      '--',
+      ...[...SOURCE_EXTENSIONS].map((ext) => `*${ext}`),
+    ],
+    { maxBuffer: diffCaptureBytes() },
+  );
+  // Node enforces maxBuffer between reads, so an output just over a small
+  // bound can come back whole; judge the bound on the result as well.
+  if (
+    diff.status === 0 &&
+    Buffer.byteLength(diff.stdout ?? '') > diffCaptureBytes()
+  )
+    diff.error = Object.assign(new Error('capture bound'), { code: 'ENOBUFS' });
+  if (diff.status !== 0 || diff.error)
+    throw new Error(
+      `git diff ${base.slice(0, 12)}..${sha.slice(0, 12)} did not complete (${
+        diff.error?.code === 'ENOBUFS'
+          ? 'its output passed the capture bound; the range is very large, which usually means the local origin/main is stale'
+          : (diff.error?.message ??
+            (diff.signal
+              ? `signal ${diff.signal}`
+              : diff.stderr?.trim() || `exit ${diff.status}`))
+      })`,
+    );
   const files = new Map();
   let current = null;
   for (const line of diff.stdout.split('\n')) {
@@ -219,10 +259,68 @@ const IDENTIFIER = /[A-Za-z_$][\w$]*/g;
 // `typeof import('…')` is a type position, not a load, so it does not count.
 const WHOLE_IMPORT =
   /(?:\*\s*as\s+[\w$]+\s+from\s*|(?<!typeof\s+)\bimport\s*\(\s*|\brequire\s*\(\s*)['"]([^'"]+)['"]/g;
-/** Block and line comments, roughly: a name only a comment mentions is not a use. */
-const COMMENTS = /\/\*[\s\S]*?\*\/|(^|[^:'"`\\])\/\/[^\n]*/g;
+// Only comments that start a line: a `/*` or `//` inside a string or regex
+// (`'image/*'`, `'**/*.ts'`, a URL) is code, and stripping from there to the
+// next `*/` once removed real uses from 179 files of this repository.
+const COMMENTS = /^[ \t]*(?:\/\/[^\n]*|\/\*[\s\S]*?\*\/)/gm;
 const GLOB_IMPORT = /import\.meta\.glob\(\s*\[?\s*['"]([^'"]+)['"]/g;
 const withoutExtension = (path) => path.replace(/\.[^./]+$/, '');
+
+/** Every string in a package.json entry field, however nested. */
+function entryStrings(value) {
+  if (typeof value === 'string') return [value];
+  if (value && typeof value === 'object')
+    return Object.values(value).flatMap(entryStrings);
+  return [];
+}
+
+/**
+ * Defining files a workspace package's own package.json names as an entry
+ * (`main`, `module`, `types`, `exports`, `bin`), resolved from that
+ * package's directory: their exports are the package's public surface.
+ */
+function packageEntryPaths(sha, paths) {
+  const manifests = new Map();
+  const manifestAt = (dir) => {
+    if (!manifests.has(dir)) {
+      const shown = git(['show', `${sha}:${dir ? `${dir}/` : ''}package.json`]);
+      let parsed = null;
+      if (shown.status === 0)
+        try {
+          parsed = JSON.parse(shown.stdout);
+        } catch {
+          parsed = null;
+        }
+      manifests.set(dir, parsed);
+    }
+    return manifests.get(dir);
+  };
+  const entries = new Set();
+  for (const path of paths) {
+    let dir = posix.dirname(path);
+    for (;;) {
+      const manifest = manifestAt(dir === '.' ? '' : dir);
+      if (manifest) {
+        const named = ['main', 'module', 'types', 'exports', 'bin']
+          .flatMap((field) => entryStrings(manifest[field]))
+          .map((entry) =>
+            posix.normalize(posix.join(dir === '.' ? '' : dir, entry)),
+          );
+        // `exports` subpath patterns (`./*`) name a directory of entries.
+        if (
+          named.some((entry) =>
+            entry.includes('*') ? matchesGlob(path, entry) : entry === path,
+          )
+        )
+          entries.add(path);
+        break;
+      }
+      if (dir === '.' || dir === '') break;
+      dir = posix.dirname(dir);
+    }
+  }
+  return entries;
+}
 
 /** Defining files another module loads whole: every export counts as used. */
 function wholeImportedPaths(modules, paths) {
@@ -271,9 +369,11 @@ function wholeImportedPaths(modules, paths) {
  *
  * Three cases the analyzer does not report are left out, each found by
  * fallow's own `--trace` on a landed commit this check first flagged:
- * - an entry-point file (a test-directory module, or a file package.json,
- *   a workflow, a hook or .fallowrc.json names): fallow treats its exports
- *   as externally accessible;
+ * - an entry-point file: a test-directory module, a file the root
+ *   package.json, a workflow, a hook or .fallowrc.json names by path, or a
+ *   file its nearest workspace package.json names in `main`, `module`,
+ *   `types`, `exports` or `bin`. fallow treats its exports as externally
+ *   accessible;
  * - a module another file imports whole (`import * as`, an `import()` or
  *   `require()` that is not destructured, or an `import.meta.glob` pattern
  *   that matches it): every export counts as used, and a name search cannot
@@ -311,6 +411,7 @@ export function newUnnamedExports({ base, sha }) {
       ENTRY_REFERENCE_PATHS,
     ).map(([, match]) => match),
   );
+  for (const path of packageEntryPaths(sha, definers)) entries.add(path);
   const modules = modulesAt(sha);
   const wholeImports = wholeImportedPaths(modules, definers);
   // Whole-word occurrences of each new name, per module, in one pass.
@@ -327,7 +428,7 @@ export function newUnnamedExports({ base, sha }) {
     let count = 0;
     for (const [token] of texts
       .get(file)
-      .replace(COMMENTS, '$1')
+      .replace(COMMENTS, '')
       .matchAll(IDENTIFIER))
       if (token === name) count++;
     return count;
