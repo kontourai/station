@@ -14,6 +14,10 @@ not fetch its trust key from a third origin or require manifest/artifact hosts
 to be distinct. A key URL is accepted only behind the explicit insecure-test
 override; do not use fixture overrides as a production trust configuration.
 
+Pinned-key verification validates the complete key table, including unused
+entries. Malformed entries, duplicate key IDs and grants for unsupported or
+retired rings are refused before a manifest is accepted.
+
 Signature and hash checks establish an authorized signer and named bytes, not
 freshness or safe behavior. Existing-install version checks refuse ordinary
 downgrades, same-version byte replacement within one layout, and any manifest

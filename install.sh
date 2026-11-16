@@ -1559,12 +1559,21 @@ if [ -n "$public_manifest_url" ]; then
       let envelope;
       try { envelope=JSON.parse(fs.readFileSync(manifestFile,"utf8")); } catch { refuse("manifest is not JSON"); }
       if (!exact(envelope,["algorithm","keyId","payload","schemaVersion","signature"])||envelope.schemaVersion!==1||envelope.algorithm!=="ed25519"||typeof envelope.keyId!=="string"||!/^[a-z0-9][a-z0-9-]{0,63}$/.test(envelope.keyId)||typeof envelope.signature!=="string"||!/^[A-Za-z0-9+/]+={0,2}$/.test(envelope.signature)) refuse("manifest envelope has an unexpected shape");
-      const pinned=JSON.parse(pinnedKeysJson).keys.find((k)=>k.keyId===envelope.keyId&&k.algorithm==="ed25519");
+      const keyTable=JSON.parse(pinnedKeysJson);
+      if (!exact(keyTable,["keys"])||!Array.isArray(keyTable.keys)) refuse("signing-key table has an unexpected shape");
+      const keys=new Map();
+      for (const entry of keyTable.keys) {
+        if (!exact(entry,["algorithm","channels","keyId","publicKeySpkiPem"])||entry.algorithm!=="ed25519"||typeof entry.keyId!=="string"||!/^[a-z0-9][a-z0-9-]{0,63}$/.test(entry.keyId)||keys.has(entry.keyId)||!Array.isArray(entry.channels)||entry.channels.length===0||!entry.channels.every((channel)=>typeof channel==="string"&&Object.hasOwn(shapes,channel))||typeof entry.publicKeySpkiPem!=="string") refuse("signing-key table has an invalid entry");
+        const key=crypto.createPublicKey(entry.publicKeySpkiPem);
+        if (key.asymmetricKeyType!=="ed25519") refuse("signing-key table has an invalid entry");
+        keys.set(entry.keyId,{channels:[...entry.channels],key});
+      }
+      const pinned=keys.get(envelope.keyId);
       if (!pinned) refuse(`manifest signing key ${envelope.keyId} is not pinned`,2);
       const p=envelope.payload;
       if (typeof p?.channel!=="string") refuse("invalid manifest channel");
       if (!pinned.channels.includes(p.channel)) refuse(`signing key ${envelope.keyId} is not authorized for channel ${p.channel}`,3);
-      const key=crypto.createPublicKey(testKeyFile?fs.readFileSync(testKeyFile,"utf8"):pinned.publicKeySpkiPem);
+      const key=testKeyFile?crypto.createPublicKey(fs.readFileSync(testKeyFile,"utf8")):pinned.key;
       if (!crypto.verify(null,Buffer.from(canonical(p)),key,Buffer.from(envelope.signature,"base64"))) refuse("manifest signature did not verify",4);
       if (!isObject(p)) refuse("manifest payload has an unexpected shape");
       if (p.schemaVersion===1) verifyV1(p);
