@@ -1840,16 +1840,22 @@ screen its own bucket; the capture refuses to start when the gallery outgrows
 `GALLERY_ASSET_MAX_SCOPES` instead of sharing one.
 
 Report only, never failing a screen: the visible controls are read immediately
-before the screenshot and again after the audit, at least 1 s
-(`AFTER_PHOTO_WINDOW_MS`) after the photo. `controlsAfterPhoto` lists names that
-appeared or disappeared, and `controlMovement` counts same-name controls that
-moved more than half a pixel, with the largest displacement in CSS pixels and
-the control. The capture prints the ten screens that changed most. Anything
-that changes later than the second read is not seen. An earlier version used
-Chromium's `layout-shift` observer instead; it read zero when an 80 px block was
-inserted right after the photo, so it was removed. Before anything gates on this
-record, a full hosted capture has to show which screens change by design and how
-stable the rest are run to run; there is no allowlist for it.
+before the screenshot and again as soon as the audit ends. `controlsAfterPhoto`
+lists names that appeared or disappeared, `controlMovement` counts same-name
+controls that moved more than half a pixel, with the largest displacement in CSS
+pixels and the control, and `windowMs` is how long the window actually was. The
+capture prints the ten screens that changed most. A change that arrives after
+the audit ends is not seen. To look for a screen that moves later, set
+`STATION_E2E_GALLERY_SETTLE_WINDOW_MS` (an integer from 1 to 5000) on a local
+capture: the second read then waits until at least that long after the photo,
+the test timeout grows by that much per screen, and `capture.json` records
+`settleWindowMs`. It is off by default because a 1 s pad cost about a second on
+every screen (four minutes on a full capture) for report-only data. An earlier
+version used Chromium's `layout-shift` observer instead; it read zero when an
+80 px block was inserted right after the photo, so it was removed. Before
+anything gates on this record, a full hosted capture has to show which screens
+change by design and how stable the rest are run to run; there is no allowlist
+for it.
 
 To see all of this against the real app, a targeted local capture accepts
 `STATION_E2E_GALLERY_FAULTS`, a JSON array: `chunk` fails every request for the

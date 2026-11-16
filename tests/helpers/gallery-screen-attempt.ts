@@ -44,6 +44,11 @@ export interface ScreenAttemptPorts<Audit> {
   /** Milliseconds on a monotonic clock, and a plain wait. */
   now(): number;
   wait(ms: number): Promise<void>;
+  /**
+   * The shortest time from the photo to the second read; 0, the default,
+   * reads as soon as the audit ends (`readSettleWindow`).
+   */
+  settleWindowMs: number;
   /** This attempt's failed requests and console errors so far. */
   evidence(): {
     failedRequests: FailedRequestRecord[];
@@ -70,11 +75,29 @@ export type AttemptOutcome<Audit> =
     };
 
 /**
- * The shortest time between the photo and the second read of the page (the
- * after-audit surface check and the control record). The audit usually takes
- * longer; this pads only a fast one.
+ * The longest settle window `STATION_E2E_GALLERY_SETTLE_WINDOW_MS` may ask
+ * for. Off by default: a 1 s pad measured about 1,010 ms on untouched screens,
+ * roughly four minutes on a 242-screen capture, for report-only data.
  */
-export const AFTER_PHOTO_WINDOW_MS = 1000;
+export const MAX_SETTLE_WINDOW_MS = 5000;
+
+/**
+ * The investigation-only settle window: 0 unless
+ * `STATION_E2E_GALLERY_SETTLE_WINDOW_MS` asks for a positive integer up to
+ * `MAX_SETTLE_WINDOW_MS`, which delays the second read (the after-audit surface
+ * check and the control record) to at least that long after the photo.
+ */
+export function readSettleWindow(
+  env: Record<string, string | undefined>,
+): number {
+  const raw = env.STATION_E2E_GALLERY_SETTLE_WINDOW_MS;
+  if (raw === undefined || raw === '') return 0;
+  if (!/^[1-9][0-9]*$/.test(raw) || Number(raw) > MAX_SETTLE_WINDOW_MS)
+    throw new Error(
+      `STATION_E2E_GALLERY_SETTLE_WINDOW_MS must be an integer from 1 to ${MAX_SETTLE_WINDOW_MS}.`,
+    );
+  return Number(raw);
+}
 
 export async function attemptScreen<Audit>(
   ports: ScreenAttemptPorts<Audit>,
@@ -111,13 +134,12 @@ export async function attemptScreen<Audit>(
         photoTaken = true;
       });
       const audit = await ports.audit();
-      // The second read waits until at least AFTER_PHOTO_WINDOW_MS after the
-      // photo, so a change that lands while a fast audit is already done is
-      // still seen (a block inserted 600 ms after the photo was missed when
-      // this read followed the audit directly).
+      // By default the second read follows the audit directly, so a change
+      // that lands after the audit ends is not seen; an investigation can
+      // widen the window (readSettleWindow).
       const elapsed = ports.now() - photoAt;
-      if (elapsed < AFTER_PHOTO_WINDOW_MS)
-        await ports.wait(AFTER_PHOTO_WINDOW_MS - elapsed);
+      if (elapsed < ports.settleWindowMs)
+        await ports.wait(ports.settleWindowMs - elapsed);
       const atAudit = await ports.readControls();
       const windowMs = Math.round(ports.now() - photoAt);
       const controlsAfterPhoto = diffControlNames(

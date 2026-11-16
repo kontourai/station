@@ -10,6 +10,8 @@ import {
   captureScreen,
   createRetryBudget,
   MAX_SECOND_CAPTURES,
+  MAX_SETTLE_WINDOW_MS,
+  readSettleWindow,
   type ScreenAttemptPorts,
 } from '../../tests/helpers/gallery-screen-attempt';
 
@@ -41,6 +43,8 @@ function fakePorts(
     controls?: ControlBox[][];
     stepError?: string;
     cleanupError?: string;
+    settleWindowMs?: number;
+    auditMs?: number;
   } = {},
 ) {
   const calls: string[] = [];
@@ -67,6 +71,7 @@ function fakePorts(
     },
     audit: async () => {
       calls.push('audit');
+      clock += options.auditMs ?? 0;
       return { findings: [] };
     },
     afterAudit: async () => {
@@ -84,6 +89,7 @@ function fakePorts(
       calls.push(`wait ${ms}`);
       clock += ms;
     },
+    settleWindowMs: options.settleWindowMs ?? 0,
     evidence: () => ({
       failedRequests: options.failedRequests ?? [],
       omitted: 0,
@@ -94,6 +100,34 @@ function fakePorts(
 }
 
 describe('one attempt', () => {
+  it('reads again as soon as the audit ends unless a settle window is set', async () => {
+    const byDefault = fakePorts({ auditMs: 300 });
+    const outcome = await attemptScreen(byDefault.ports);
+    expect(byDefault.calls.some((call) => call.startsWith('wait'))).toBe(false);
+    if (outcome.ok) expect(outcome.controlMovement.windowMs).toBe(300);
+    const widened = fakePorts({ auditMs: 300, settleWindowMs: 1000 });
+    const widenedOutcome = await attemptScreen(widened.ports);
+    expect(widened.calls).toContain('wait 700');
+    if (widenedOutcome.ok)
+      expect(widenedOutcome.controlMovement.windowMs).toBe(1000);
+  });
+
+  it('accepts a settle window only from the environment, bounded', () => {
+    expect(readSettleWindow({})).toBe(0);
+    expect(readSettleWindow({ STATION_E2E_GALLERY_SETTLE_WINDOW_MS: '' })).toBe(
+      0,
+    );
+    expect(
+      readSettleWindow({ STATION_E2E_GALLERY_SETTLE_WINDOW_MS: '1000' }),
+    ).toBe(1000);
+    expect(MAX_SETTLE_WINDOW_MS).toBe(5000);
+    for (const bad of ['0', '-5', '1.5', '5001', 'soon'])
+      expect(
+        () => readSettleWindow({ STATION_E2E_GALLERY_SETTLE_WINDOW_MS: bad }),
+        bad,
+      ).toThrow(/integer from 1 to 5000/);
+  });
+
   it('checks for a surface before the photo and after the audit, then cleans up', async () => {
     const { ports, calls } = fakePorts();
     const outcome = await attemptScreen(ports);
@@ -105,7 +139,6 @@ describe('one attempt', () => {
       'screenshot',
       'after-photo',
       'audit',
-      'wait 1000',
       'controls',
       'surfaces',
       'after-audit',
@@ -116,7 +149,7 @@ describe('one attempt', () => {
         compared: 1,
         moved: 0,
         largest: null,
-        windowMs: 1000,
+        windowMs: 0,
       });
   });
 

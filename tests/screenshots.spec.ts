@@ -54,11 +54,11 @@ import {
 } from './helpers/gallery-asset-diagnostics';
 import { createDocumentTracker } from './helpers/gallery-document-tracker';
 import {
-  AFTER_PHOTO_WINDOW_MS,
   attemptScreen,
   captureScreen,
   createRetryBudget,
   MAX_SECOND_CAPTURES,
+  readSettleWindow,
   type SecondCaptureRecord,
 } from './helpers/gallery-screen-attempt';
 import {
@@ -6990,13 +6990,14 @@ test('build gallery — capture key screens', async ({ page }) => {
 
   // Keep the gallery's timeout proportional to its declared coverage instead
   // of raising the shared Playwright default used by smaller specs: 7 s a
-  // screen as before, plus each screen's minimum after-photo window and the
-  // run's bounded second captures.
+  // screen, the run's bounded second captures, and an investigation's settle
+  // window when one is set (0 by default).
+  const settleWindowMs = readSettleWindow(process.env);
   test.setTimeout(
     Math.max(
       90_000,
-      selectedScreens.length * (7_000 + AFTER_PHOTO_WINDOW_MS) +
-        MAX_SECOND_CAPTURES * 7_000,
+      selectedScreens.length * (7_000 + settleWindowMs) +
+        MAX_SECOND_CAPTURES * (7_000 + settleWindowMs),
     ),
   );
 
@@ -7584,6 +7585,7 @@ test('build gallery — capture key screens', async ({ page }) => {
           },
           now: () => performance.now(),
           wait: (ms) => page.waitForTimeout(ms),
+          settleWindowMs,
           evidence: () => {
             const { records, omitted } = failedRequests.snapshot();
             return {
@@ -7732,6 +7734,8 @@ test('build gallery — capture key screens', async ({ page }) => {
           // and how its single second capture went; `second: "passed"` is a
           // transient. Counted, never hidden.
           secondCaptures,
+          // Only when an investigation widened the control record's window.
+          ...(settleWindowMs > 0 ? { settleWindowMs } : {}),
           faultInjection:
             faults.length > 0 ? { faults, fired: faultsFired } : null,
           screens: shots.map(
@@ -7777,6 +7781,7 @@ test('build gallery — capture key screens', async ({ page }) => {
         controlsAfterPhoto,
         controlMovement,
       })),
+      settleWindowMs,
     ))
       console.log(line);
     if (secondCaptures.length > 0) {

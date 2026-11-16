@@ -320,9 +320,12 @@ describe('report-only control record', () => {
       { name: 'unmeasured' },
     ]);
     expect(table[0]).toBe(
-      'Gallery controls between the photo (read just before the screenshot) and a second read at least 1 s later, after the audit (report only; nothing fails on it): 14 of 15 screen(s) measured, 13 moved or changed controls.',
+      'Gallery controls between the photo (read just before the screenshot) and a second read when the audit ends; a change after that is not seen (report only; nothing fails on it): 14 of 15 screen(s) measured, 13 moved or changed controls.',
     );
     expect(table).toHaveLength(12);
+    expect(formatControlChangeTable([], 1000)[0]).toContain(
+      'a second read at least 1000 ms after the photo, after the audit',
+    );
     expect(table[2]).toContain('screen-11');
     expect(table.join('\n')).not.toMatch(/screen-1 |still|renamed/);
   });

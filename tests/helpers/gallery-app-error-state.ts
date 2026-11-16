@@ -364,8 +364,8 @@ export function measureControlMovement(
 /**
  * The end-of-capture table, report only. The window is exactly: controls read
  * immediately before the full-page screenshot, against controls read again
- * once the audit has finished and at least `AFTER_PHOTO_WINDOW_MS` after the
- * photo.
+ * as soon as the audit has finished (later only when an investigation sets
+ * a settle window). A change after that read is not seen.
  */
 export function formatControlChangeTable(
   rows: Array<{
@@ -373,6 +373,7 @@ export function formatControlChangeTable(
     controlsAfterPhoto?: ControlNameDiff;
     controlMovement?: ControlMovement;
   }>,
+  settleWindowMs = 0,
 ): string[] {
   const measured = rows.filter((row) => row.controlMovement);
   const changed = measured.filter(
@@ -389,7 +390,7 @@ export function formatControlChangeTable(
     )
     .slice(0, 10);
   const lines = [
-    `Gallery controls between the photo (read just before the screenshot) and a second read at least 1 s later, after the audit (report only; nothing fails on it): ${measured.length} of ${rows.length} screen(s) measured, ${changed.length} moved or changed controls.`,
+    `Gallery controls between the photo (read just before the screenshot) and a second read ${settleWindowMs > 0 ? `at least ${settleWindowMs} ms after the photo, after the audit` : 'when the audit ends; a change after that is not seen'} (report only; nothing fails on it): ${measured.length} of ${rows.length} screen(s) measured, ${changed.length} moved or changed controls.`,
   ];
   if (worst.length === 0) return lines;
   lines.push('  largest px  moved  names    screen  (largest: control)');
