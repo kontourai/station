@@ -5,7 +5,7 @@ import type {
   ChildWorkItem,
   ChildWorkTranscriptEntry,
 } from '@kontourai/station-contracts/child-work';
-import { useChildWorkTranscriptQuery } from '@kontourai/station-sdk';
+import { useChildWorkTranscriptTailQuery } from '@kontourai/station-sdk';
 import { chromium } from '@playwright/test';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -62,9 +62,11 @@ const history = vi.hoisted(() => ({
     },
   ] as ChildWorkTranscriptEntry[],
   error: undefined as Error | undefined,
-  refetch: vi.fn(),
-  hasNextPage: false,
-  fetchNextPage: vi.fn(),
+  reload: vi.fn(),
+  refreshLatest: vi.fn(),
+  hasPreviousPage: false,
+  isFetching: false,
+  fetchPreviousPage: vi.fn(),
   sessions: [] as { threadId: string; childWork: { asChild: ChildWorkItem } }[],
 }));
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
@@ -73,17 +75,19 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
     data: history.sessions,
     isSuccess: true,
   }),
-  useChildWorkTranscriptQuery: vi.fn(() => ({
+  useChildWorkTranscriptTailQuery: vi.fn(() => ({
     data: { pages: [{ entries: history.entries }] },
     isSuccess: !history.error,
     isPending: false,
     isError: Boolean(history.error),
     error: history.error,
-    refetch: history.refetch,
-    hasNextPage: history.hasNextPage,
-    fetchNextPage: history.fetchNextPage,
-    isFetchingNextPage: false,
-    isFetchNextPageError: false,
+    reload: history.reload,
+    refreshLatest: history.refreshLatest,
+    hasPreviousPage: history.hasPreviousPage,
+    isFetching: history.isFetching,
+    isFetchingPreviousPage: false,
+    fetchPreviousPage: history.fetchPreviousPage,
+    latestError: null,
   })),
 }));
 vi.mock('../components/conversation/ConversationReader', () => ({
@@ -100,9 +104,11 @@ afterEach(() => {
   history.sessions = [];
   history.entries = initialEntries;
   history.error = undefined;
-  history.refetch.mockClear();
-  history.hasNextPage = false;
-  history.fetchNextPage.mockClear();
+  history.reload.mockClear();
+  history.refreshLatest.mockClear();
+  history.hasPreviousPage = false;
+  history.isFetching = false;
+  history.fetchPreviousPage.mockClear();
 });
 const connection = { apiBase: 'https://station.test' };
 const item: ChildWorkItem = {
@@ -339,18 +345,27 @@ test('an empty child record never mounts the initial-chat empty owner', async ()
   expect(screen.queryByTestId('initial-chat-empty')).toBeNull();
 });
 
-test('a failed refresh keeps recorded messages visible with a recovery action', async () => {
+test('a failed read of earlier messages keeps the recorded ones visible with a recovery action', async () => {
   history.error = new Error('Transcript fixture unavailable');
   render(tree());
   fireEvent.click(screen.getByRole('button', { name: 'Open nested' }));
   expect(
-    await screen.findByText('Could not refresh the transcript'),
+    await screen.findByText('Could not load earlier messages'),
   ).toBeTruthy();
   expect(screen.getByText('Inspect the child files')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
-  expect(history.refetch).toHaveBeenCalledOnce();
+  expect(history.fetchPreviousPage).toHaveBeenCalledOnce();
 });
 
+test('a transcript that could not be read at all retries from the latest messages', async () => {
+  history.error = new Error('Transcript fixture unavailable');
+  history.entries = [];
+  render(tree());
+  fireEvent.click(screen.getByRole('button', { name: 'Open nested' }));
+  expect(await screen.findByText('Could not read the transcript')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+  expect(history.reload).toHaveBeenCalledOnce();
+});
 test('a consumed external child intent stays open, then the pane controller returns to the exact parent draft', async () => {
   const controller = createRef<ChildChatController>();
   const consumed = vi.fn();
@@ -407,7 +422,7 @@ test('a mounted child consumes live settlement instead of retaining its open-tim
   fireEvent.click(screen.getByRole('button', { name: 'Open nested' }));
   await screen.findByRole('heading', { name: 'Child answer' });
   expect(
-    vi.mocked(useChildWorkTranscriptQuery).mock.calls.at(-1)?.[0].running,
+    vi.mocked(useChildWorkTranscriptTailQuery).mock.calls.at(-1)?.[0].running,
   ).toBe(true);
   act(() =>
     childWorkGlobalStore.reconcileSnapshot(connection.apiBase, [
@@ -426,7 +441,7 @@ test('a mounted child consumes live settlement instead of retaining its open-tim
   );
   await waitFor(() =>
     expect(
-      vi.mocked(useChildWorkTranscriptQuery).mock.calls.at(-1)?.[0].running,
+      vi.mocked(useChildWorkTranscriptTailQuery).mock.calls.at(-1)?.[0].running,
     ).toBe(false),
   );
 });
@@ -545,15 +560,43 @@ test('a subagent transcript reads as one chat turn: its prompt, then one batch o
   expect(screen.queryByRole('button', { name: 'Refresh' })).toBeNull();
 });
 
-test('later transcript pages load on their own instead of behind a button at the foot', async () => {
-  history.hasNextPage = true;
+test('older history loads above the first message, as in the main chat, and never cancels a read in flight', async () => {
+  history.hasPreviousPage = true;
   render(tree());
   fireEvent.click(screen.getByRole('button', { name: 'Open nested' }));
-  await screen.findByRole('heading', { name: 'Child answer' });
-  await waitFor(() => expect(history.fetchNextPage).toHaveBeenCalled());
+  const transcript = await screen.findByRole('log', {
+    name: 'Conversation transcript',
+  });
+  await within(transcript).findByRole('heading', { name: 'Child answer' });
+  const earlier = within(transcript).getByRole('button', {
+    name: 'Earlier messages',
+  });
+  const first = within(transcript).getByText('Inspect the child files');
+  expect(
+    earlier.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+  fireEvent.click(earlier);
+  await waitFor(() =>
+    expect(history.fetchPreviousPage).toHaveBeenCalledWith({
+      cancelRefetch: false,
+    }),
+  );
   expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Refresh' })).toBeNull();
 });
 
+test('a read already in flight is not cancelled by a request for earlier messages', async () => {
+  history.hasPreviousPage = true;
+  history.isFetching = true;
+  render(tree());
+  fireEvent.click(screen.getByRole('button', { name: 'Open nested' }));
+  const earlier = await screen.findByRole('button', {
+    name: 'Earlier messages',
+  });
+  fireEvent.click(earlier);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(history.fetchPreviousPage).not.toHaveBeenCalled();
+});
 test('the breadcrumb is one trail: the parent crumb goes back and one separator joins it to the child', async () => {
   render(tree());
   fireEvent.click(screen.getByRole('button', { name: 'Open nested' }));
@@ -682,4 +725,79 @@ test('in the Coding bar a subagent chat names its parent once and Open Browser k
   } finally {
     bar.remove();
   }
+});
+
+test('mid-run user records stay in the run as muted notices, and a result with no call on hand is a tool row, not prose', async () => {
+  // `claudeTranscriptEntries` output for: the prompt; a call; its result with
+  // hook text in the same message; a call the person stopped; the interrupt
+  // notice; a record left out; an unkeyed result; the answer.
+  history.entries = [
+    { kind: 'text', message: 0, role: 'user', text: 'Check the formatter.' },
+    {
+      kind: 'tool-call',
+      message: 1,
+      toolCallId: 'toolu_1',
+      name: 'Edit',
+      input: JSON.stringify({ file_path: 'a.ts' }),
+    },
+    { kind: 'tool-result', message: 2, toolCallId: 'toolu_1', text: 'ok' },
+    {
+      kind: 'text',
+      message: 2,
+      role: 'user',
+      text: 'PostToolUse hook: formatted 1 file',
+    },
+    {
+      kind: 'tool-call',
+      message: 3,
+      toolCallId: 'toolu_2',
+      name: 'Bash',
+      input: JSON.stringify({ command: 'npm test' }),
+    },
+    {
+      kind: 'text',
+      message: 4,
+      role: 'user',
+      text: '[Request interrupted by user for tool use]',
+    },
+    { kind: 'too-large', message: 5 },
+    { kind: 'tool-result', message: 6, text: 'orphan output' },
+    {
+      kind: 'text',
+      message: 7,
+      role: 'assistant',
+      text: 'Formatter checked.',
+    },
+  ] as ChildWorkTranscriptEntry[];
+  render(tree());
+  fireEvent.click(screen.getByRole('button', { name: 'Open nested' }));
+  const transcript = await screen.findByRole('log', {
+    name: 'Conversation transcript',
+  });
+  await within(transcript).findByText('Formatter checked.');
+  // One prompt, one reply: nothing in the run started a new row.
+  expect(
+    [...transcript.querySelectorAll('[data-message-role]')].map((row) =>
+      row.getAttribute('data-message-role'),
+    ),
+  ).toEqual(['user', 'assistant']);
+  const notices = [...transcript.querySelectorAll('.message-notice')].map(
+    (notice) => notice.textContent,
+  );
+  expect(notices).toEqual([
+    'PostToolUse hook: formatted 1 file',
+    '[Request interrupted by user for tool use]',
+    'An entry too large to show was left out.',
+  ]);
+  // The orphan result is a tool row; the reply's prose holds only the answer.
+  expect(within(transcript).getByText(/Tool result/)).toBeTruthy();
+  const prose = [
+    ...transcript.querySelectorAll(
+      '[data-message-role="assistant"] .markdown-content, [data-message-role="assistant"] p:not(.message-notice)',
+    ),
+  ]
+    .map((node) => node.textContent)
+    .join(' ');
+  expect(prose).not.toContain('orphan output');
+  expect(prose).not.toContain('Tool result');
 });

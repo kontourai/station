@@ -91,25 +91,31 @@ describe('Activity retirement', () => {
         truncated: true,
       },
     ]);
+    // The omission is the reader's note inside the run, not a new row.
     expect(result.map((message) => message.role)).toEqual([
       'user',
       'assistant',
-      'system',
-      'assistant',
     ]);
     expect(result[0]).toMatchObject({ role: 'user', content: 'Inspect' });
-    // The call, its truncation note and the unkeyed result are one turn.
-    expect(result[1]?.contentParts?.[0]).toMatchObject({
-      type: 'tool-invocation',
-      toolName: 'Read',
-      input: 'file.ts',
+    const parts = result[1]?.contentParts ?? [];
+    expect(parts.map((part) => part.type)).toEqual([
+      'tool-invocation',
+      'notice',
+      'tool-invocation',
+      'notice',
+      'text',
+    ]);
+    expect(parts[0]).toMatchObject({ toolName: 'Read', input: 'file.ts' });
+    expect(parts[1]?.content).toContain('Tool input truncated');
+    // An unkeyed result is a tool row of its own, never the agent's prose.
+    expect(parts[2]).toMatchObject({
+      toolName: 'Tool result',
+      state: 'output-error',
+      errorText: 'missing',
     });
-    expect(result[1]?.contentParts?.[1]?.content).toContain(
-      'Tool input truncated',
-    );
-    expect(result[1]?.contentParts?.[2]?.content).toContain('Tool error');
-    expect(result[2]?.content).toContain('3 blocks');
-    expect(result[3]?.content).toContain('truncated');
+    expect(parts[3]?.content).toContain('3 blocks');
+    expect(parts[4]?.content).toContain('truncated');
+    expect(result[1]?.content).toBe(parts[4]?.content);
   });
 });
 
@@ -187,8 +193,10 @@ test.each([undefined, ''])(
       output: 'Text output unavailable.',
     });
     expect(messages[0].contentParts?.[1]).toMatchObject({
-      type: 'text',
-      content: 'Tool result\n\nText output unavailable.',
+      type: 'tool-invocation',
+      toolName: 'Tool result',
+      output: 'Text output unavailable.',
     });
+    expect(messages[0].content).toBe('');
   },
 );
