@@ -1,0 +1,57 @@
+/* One quiet line under the pull request's head: whether its agent gets
+   feedback, from which chat, and what went last. It wraps on a narrow
+   pane; the owner's title gives way first. */
+.pr-feedback-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-1) var(--k-space-2);
+  min-width: 0;
+  min-height: 30px;
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+}
+.pr-feedback-strip__label {
+  color: var(--k-text);
+  font-weight: 500;
+}
+.pr-feedback-strip__dot {
+  color: var(--k-text-faint);
+}
+.pr-feedback-strip .button--link {
+  padding: 0;
+  font-size: inherit;
+}
+.pr-feedback-strip__owner {
+  min-width: 0;
+  max-width: 28ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pr-feedback-strip__last {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  white-space: nowrap;
+}
+.pr-feedback-strip__last time {
+  color: var(--k-text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.pr-feedback-strip__gear {
+  margin-left: auto;
+}
+@media (pointer: coarse) {
+  .pr-feedback-strip__gear {
+    --icon-button-size: 44px;
+  }
+  .pr-feedback-strip .button--link {
+    min-height: 44px;
+  }
+}
+@media (max-width: 480px) {
+  .pr-feedback-strip__owner {
+    max-width: 18ch;
+  }
+}

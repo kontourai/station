@@ -1,0 +1,207 @@
+import type { PullRequestLinkIdentity } from '@kontourai/station-contracts/conversation-pull-request-links';
+import {
+  describePullRequestFeedbackCategories,
+  type PullRequestFeedbackByPullRequest,
+  pullRequestFeedbackKey,
+} from '@kontourai/station-contracts/pull-request-feedback';
+import { StatusBadge } from '@kontourai/ui/react';
+import { useState } from 'react';
+import { openChatsStore } from '../../contexts/open-chats-store';
+import { useCoarseNow } from '../../hooks/useCoarseNow';
+import { Button } from '../Button';
+import { IconButton } from '../IconButton';
+import { SettingsGlyph } from '../icons/Glyph';
+import { PullRequestFeedbackDialog } from './PullRequestFeedbackDialog';
+import { pullRequestFeedbackBadge } from './pull-request-feedback-presentation';
+import { RelativeTime } from './RelativeTime';
+import {
+  usePullRequestFeedback,
+  usePullRequestFeedbackByPullRequest,
+} from './usePullRequestFeedback';
+import './PullRequestFeedbackStrip.css';
+
+/**
+ * Everything the strip reads, started where the pull request panel starts
+ * its own read: the strip then appears with the review instead of pushing
+ * it down a moment later.
+ */
+export function usePullRequestFeedbackStrip(
+  identity: PullRequestLinkIdentity,
+  activeConversationId: string | undefined,
+) {
+  const byPullRequest = usePullRequestFeedbackByPullRequest(identity);
+  const owner = byPullRequest.data?.owner;
+  // The chat whose switches the gear opens: the owner when readable, else
+  // the open chat, to offer turning it on there. Nothing while unreadable.
+  const chatId = owner?.readable
+    ? owner.conversationId
+    : owner === null
+      ? (activeConversationId ?? '')
+      : '';
+  const chat = usePullRequestFeedback(chatId);
+  return { identity, byPullRequest, chat, chatId, activeConversationId };
+}
+
+/**
+ * One line in the pull request panel saying whether its agent is getting
+ * feedback, and from which chat. Honest about the owner: a chat the reader
+ * may not read is only "another chat". Nothing at all while loading, on an
+ * error, or when no chat gets feedback and the open chat could not.
+ */
+export function PullRequestFeedbackStrip({
+  strip,
+  reference,
+}: {
+  strip: ReturnType<typeof usePullRequestFeedbackStrip>;
+  reference: string;
+}) {
+  const { identity, byPullRequest, chat, chatId, activeConversationId } = strip;
+  const [open, setOpen] = useState(false);
+  const now = useCoarseNow();
+  const data = byPullRequest.data;
+  if (!data || byPullRequest.error) return null;
+  const view = chatId && chat.available ? chat.viewFor(identity) : undefined;
+  const key = pullRequestFeedbackKey(identity);
+  const settings = () => setOpen(true);
+  let body: React.ReactNode;
+  if (data.owner === null) {
+    // Off, but this chat could turn it on: it is linked here.
+    if (!view) return null;
+    body = (
+      <>
+        <Separator />
+        <span>Off</span>
+        <Separator />
+        <Button variant="link" size="sm" onClick={settings}>
+          Turn on…
+        </Button>
+      </>
+    );
+  } else if (!data.owner.readable) {
+    body = (
+      <>
+        <Separator />
+        <span>goes to another chat</span>
+      </>
+    );
+  } else {
+    body = (
+      <ReadableOwner
+        data={data}
+        owner={data.owner}
+        here={data.owner.conversationId === activeConversationId}
+        now={now}
+        onSettings={settings}
+      />
+    );
+  }
+  return (
+    <div className="pr-feedback-strip">
+      <span className="pr-feedback-strip__label">Agent feedback</span>
+      {body}
+      {open && (
+        <PullRequestFeedbackDialog
+          reference={reference}
+          view={view}
+          pending={chat.pending !== null}
+          error={chat.error?.key === key ? chat.error.text : undefined}
+          conflict={
+            chat.conflict?.key === key ? chat.conflict.owner : undefined
+          }
+          onWrite={(next, move) =>
+            void chat.write(identity, next, move).then((ok) => {
+              if (ok) void byPullRequest.refetch();
+            })
+          }
+          onSendAgain={() =>
+            void chat.sendAgain(identity).then((ok) => {
+              if (ok) void byPullRequest.refetch();
+            })
+          }
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function Separator() {
+  return (
+    <span className="pr-feedback-strip__dot" aria-hidden="true">
+      ·
+    </span>
+  );
+}
+
+function ReadableOwner({
+  data,
+  owner,
+  here,
+  now,
+  onSettings,
+}: {
+  data: PullRequestFeedbackByPullRequest;
+  owner: { conversationId: string; title: string };
+  here: boolean;
+  now: number;
+  onSettings: () => void;
+}) {
+  const badge = data.status
+    ? pullRequestFeedbackBadge({
+        identity: data.identity,
+        ownedHere: true,
+        owner: null,
+        settings: data.settings ?? {
+          fixFailingChecks: false,
+          addressReviewComments: false,
+          reviewEachHead: false,
+        },
+        status: data.status,
+        history: [],
+      })
+    : undefined;
+  const last = data.last?.state === 'sent' ? data.last : undefined;
+  return (
+    <>
+      {badge && (
+        <>
+          <Separator />
+          <StatusBadge status={badge.label} tone={badge.tone} />
+        </>
+      )}
+      <Separator />
+      {here ? (
+        <span className="pr-feedback-strip__owner">this chat</span>
+      ) : (
+        <Button
+          variant="link"
+          size="sm"
+          className="pr-feedback-strip__owner"
+          title={`Open “${owner.title}”`}
+          onClick={() =>
+            void openChatsStore.openConversation(owner.conversationId)
+          }
+        >
+          {owner.title}
+        </Button>
+      )}
+      {last && (
+        <span className="pr-feedback-strip__last">
+          <Separator />
+          <span>
+            Sent {describePullRequestFeedbackCategories(last.categories)}
+          </span>
+          <Separator />
+          <RelativeTime iso={last.at} now={now} />
+        </span>
+      )}
+      <IconButton
+        className="pr-feedback-strip__gear"
+        aria-label="Agent feedback settings"
+        onClick={onSettings}
+      >
+        <SettingsGlyph />
+      </IconButton>
+    </>
+  );
+}
