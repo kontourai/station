@@ -1936,8 +1936,9 @@ orchestration readers and `searchConversationMessages` keep that error as the
 `SessionDetailWindowUnsupportedError` (also exported from the agent entry)
 when the host answers without a `window-v1` page, as an older host does.
 `listOrchestrationSessions(apiBase, opts, { limit })` asks for only the
-newest `limit` sessions (1–1,000), still oldest first; an older host ignores
-it and answers every session.
+newest `limit` sessions, still oldest first; an older host ignores it and
+answers every session. A `limit` that is not an integer from 1 to 1,000
+rejects with `RangeError` before any request is sent.
 
 ### `useAgentsQuery(config?)`
 
