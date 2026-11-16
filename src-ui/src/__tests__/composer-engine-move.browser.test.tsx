@@ -234,7 +234,9 @@ test('a phone composer keeps "Agent moved" visible ahead of a long engine name',
       )!;
       const engine = caption.querySelector('.chat-input__chip-caption-engine')!;
       const moved = caption.querySelector('.chat-input__engine-moved')!;
-      const style = getComputedStyle(moved, '::before').content;
+      // A generated separator counts too: `content` reads back quoted.
+      const before = getComputedStyle(moved, '::before').content;
+      const style = before.replace(/^"(.*)"$/, '$1');
       return {
         below:
           moved.getBoundingClientRect().top >=
