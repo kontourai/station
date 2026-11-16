@@ -767,7 +767,9 @@ type ChildTranscriptPageParam =
  * An engine subagent's transcript read the way a chat reads: the latest
  * messages first, older ones on request (`fetchPreviousPage`, shown above),
  * and, while the child runs, only what follows the last message read. A
- * poll reads from that cursor and appends; it never re-reads loaded pages.
+ * poll reads from that cursor and appends; against a server with ranges it
+ * never re-reads loaded pages (an older server, without them, re-reads its
+ * loaded pages each poll, as it always did).
  * `refreshLatest` reads past the cursor now (for a reported change, or the
  * settle that carries the last messages); `reload` starts again from the
  * latest messages.
@@ -855,6 +857,10 @@ export function useChildWorkTranscriptTailQuery(
     // from before ranges ignores `tail` and pages forward from the first
     // message by `nextOffset`, as `useChildWorkTranscriptQuery` does.
     getNextPageParam: (last) => {
+      // An empty ranged page is the transcript's end: stop there, so a
+      // refetch does not walk one empty read per page the cursor appended.
+      if (last.endOffset !== undefined && last.endOffset === last.offset)
+        return undefined;
       if (last.endOffset !== undefined)
         return {
           kind: 'range',
@@ -894,6 +900,34 @@ export function useChildWorkTranscriptTailQuery(
     refetchInterval: input.running ? 2_000 : false,
   });
   const latest = since.data;
+  // The first page was read as "the latest messages". Once it names its
+  // range, record that range as its param, so a refetch (any invalidation)
+  // re-reads the same messages instead of a newer tail that would drop the
+  // pages between them.
+  const first = pages?.[0];
+  const firstParam = history.data?.pageParams[0];
+  useEffect(() => {
+    if (
+      firstParam?.kind !== 'tail' ||
+      first?.offset === undefined ||
+      first.endOffset === undefined
+    )
+      return;
+    const { offset, endOffset } = first;
+    client.setQueryData<
+      InfiniteData<ChildWorkTranscriptPage, ChildTranscriptPageParam>
+    >(key, (data) =>
+      data && data.pageParams[0]?.kind === 'tail' && data.pages[0] === first
+        ? {
+            pages: data.pages,
+            pageParams: [
+              { kind: 'range', offset, end: Math.max(endOffset, offset + 1) },
+              ...data.pageParams.slice(1),
+            ],
+          }
+        : data,
+    );
+  }, [first, firstParam, client, key]);
   useEffect(() => {
     // A read from past the end names the transcript's end. Behind the
     // cursor means the transcript was rewritten shorter: start again from
@@ -944,6 +978,11 @@ export function useChildWorkTranscriptTailQuery(
   );
   return {
     ...history,
+    /**
+     * With ranges, later messages arrive past the cursor on their own; there
+     * is no later page to fetch, whatever the query's own param says.
+     */
+    hasNextPage: legacy && history.hasNextPage,
     /**
      * Later pages wait to be read: only from a server that pages forward
      * from the first message (no ranges), where they are not read on their

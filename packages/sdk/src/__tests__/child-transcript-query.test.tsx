@@ -347,3 +347,56 @@ test('an invalidation rebuilds every loaded page instead of keeping only the fir
   observer.unmount();
   client.clear();
 });
+
+test('an invalidation with no older history loaded keeps every polled message and stops at the end', async () => {
+  vi.useFakeTimers();
+  let length = 40;
+  read.mockImplementation(
+    async (
+      _apiBase: string,
+      _thread: string,
+      _child: string,
+      page: { offset?: number; limit?: number; tail?: boolean },
+    ) => {
+      const limit = page.limit ?? 30;
+      const offset = page.tail
+        ? Math.max(0, length - limit)
+        : Math.min(page.offset ?? 0, length);
+      const end = Math.min(length, offset + limit);
+      return {
+        entries: Array.from({ length: end - offset }, (_, i) =>
+          text(offset + i),
+        ),
+        offset,
+        endOffset: end,
+      };
+    },
+  );
+  const { client, observer, messages } = mountTail(true);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1);
+  });
+  expect(messages()[0]).toBe(10);
+  // Five polls, each appending one message as its own page.
+  for (let step = 0; step < 5; step += 1) {
+    length += 1;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_100);
+    });
+  }
+  expect(messages()).toEqual(Array.from({ length: 35 }, (_, i) => 10 + i));
+  observer.rerender({ running: false });
+  read.mockClear();
+  await act(async () => {
+    await client.invalidateQueries();
+    await vi.advanceTimersByTimeAsync(1);
+  });
+  // The same first message, the latest one, each once...
+  expect(messages()).toEqual(Array.from({ length: 35 }, (_, i) => 10 + i));
+  // ...rebuilt by reading the first page's range, the rest in one read, one
+  // read that finds the end, and the cursor read the invalidation also
+  // refreshes: not one read per appended page (seven here).
+  expect(read.mock.calls.length).toBeLessThanOrEqual(4);
+  observer.unmount();
+  client.clear();
+});
