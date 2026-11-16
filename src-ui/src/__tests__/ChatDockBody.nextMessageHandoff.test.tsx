@@ -183,6 +183,7 @@ type Armed = {
   label: string;
   kind: 'agent' | 'engine';
   pending: boolean;
+  phase?: 'sending' | 'attention';
   blockedReason?: string;
   onSend: ReturnType<typeof vi.fn>;
   onUndo: ReturnType<typeof vi.fn>;
@@ -200,10 +201,12 @@ async function renderBody({
   input,
   nextMessageHandoff,
   prepared,
+  attachments = [],
 }: {
   input: string;
   nextMessageHandoff?: Armed;
   prepared?: Prepared | null;
+  attachments?: unknown[];
 }) {
   agentsMock.current = [
     { slug: agentId('station'), name: 'Station', available: true },
@@ -213,6 +216,7 @@ async function renderBody({
   const chatInput = {
     ...buildChatInput(),
     input,
+    attachments,
     prepareOutgoingText: vi.fn(async () =>
       prepared === undefined
         ? { text: input, draft: input, quotes: [] }
@@ -293,7 +297,7 @@ describe('ChatDockBody next-message handoff', () => {
   });
 
   test('while the armed send dispatches, a second Send or Queue sends nothing', async () => {
-    const target = armed({ pending: true });
+    const target = armed({ pending: true, phase: 'sending' });
     const chatInput = await renderBody({
       input: 'Same draft',
       nextMessageHandoff: target,
@@ -321,6 +325,31 @@ describe('ChatDockBody next-message handoff', () => {
     await composerSeen.onSend?.();
     expect(target.onSend).not.toHaveBeenCalled();
     expect(chatInput.handleSend).not.toHaveBeenCalled();
+  });
+
+  test('an armed send with attachments says to remove them and sends nothing', async () => {
+    const target = armed();
+    const chatInput = await renderBody({
+      input: '',
+      nextMessageHandoff: target,
+      attachments: [{ id: 'a', name: 'a.png' }],
+    });
+    expect(composerSeen.sendBlockedReason).toBe(
+      'Remove attachments, or undo the switch to send them.',
+    );
+    await composerSeen.onSend?.();
+    expect(target.onSend).not.toHaveBeenCalled();
+    expect(chatInput.prepareOutgoingText).not.toHaveBeenCalled();
+  });
+
+  test('an armed send that needs the person says so instead of "Switching"', async () => {
+    await renderBody({
+      input: 'x',
+      nextMessageHandoff: armed({ pending: true, phase: 'attention' }),
+    });
+    expect(composerSeen.sendBlockedReason).toBe(
+      'Finish the switch to Codex · GPT-5 first.',
+    );
   });
 
   test('a slash command stays local while a target is armed', async () => {

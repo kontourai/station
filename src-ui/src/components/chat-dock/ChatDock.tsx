@@ -4555,13 +4555,13 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                                           : 'agent',
                                         pending:
                                           conversationBoundaryDialogs.armedHandoffPending,
+                                        phase:
+                                          conversationBoundaryDialogs.armedHandoffPhase,
                                         blockedReason: handoffDisabledReason,
                                         onSend:
                                           conversationBoundaryDialogs.sendArmedHandoff,
-                                        onUndo: () =>
-                                          conversationBoundaryDialogs.setArmedHandoff(
-                                            null,
-                                          ),
+                                        onUndo:
+                                          conversationBoundaryDialogs.undoArmedHandoff,
                                       }
                                     : undefined
                                 }

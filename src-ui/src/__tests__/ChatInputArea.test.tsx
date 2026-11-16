@@ -2484,3 +2484,21 @@ test('an engine-only choice says Undo keeps the current engine', () => {
     }),
   ).toBeTruthy();
 });
+
+test('Undo is unavailable while the armed send is in flight', () => {
+  const onUndo = vi.fn();
+  renderChatInputArea({
+    nextMessageHandoff: {
+      label: 'Codex',
+      kind: 'agent',
+      pending: true,
+      onUndo,
+    },
+  });
+  const undo = screen.getByRole('button', {
+    name: 'Undo: keep the current agent instead of Codex',
+  }) as HTMLButtonElement;
+  expect(undo.disabled).toBe(true);
+  fireEvent.click(undo);
+  expect(onUndo).not.toHaveBeenCalled();
+});

@@ -14,6 +14,7 @@ import {
 } from '@testing-library/react';
 import type React from 'react';
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
+import { armedHandoffStore } from '../components/chat-dock/armedHandoffStore';
 import {
   ConversationHandoffDialog,
   HANDOFF_CATCH_UP_MESSAGE,
@@ -852,6 +853,7 @@ describe('ConversationHandoffDialog', () => {
   });
 
   test('an armed target belongs to its conversation and turns the next send into the handoff', () => {
+    armedHandoffStore.clear();
     const chat = (conversationId: string, id: string) =>
       ({
         id,
@@ -905,10 +907,13 @@ describe('ConversationHandoffDialog', () => {
     expect(result.current.handoffSource).toEqual({
       id: 'conversation-a',
       agentSlug: 'claude',
+      nonce: expect.any(Number),
       autoSubmit: {
         message: 'The exact draft',
         targetId: 'codex',
         modelId: 'gpt-5',
+        draft: 'The exact draft',
+        quotes: [],
       },
       armedDraft: {
         sessionId: 'chat-a',
@@ -1386,7 +1391,7 @@ describe('handoff review fixes', () => {
     handoffExecutionMessage.mockResolvedValueOnce(receipt());
     renderDialog('claude', undefined, undefined, undefined, {
       initialMessage: '',
-      draftHasQuotes: true,
+      draftQuotes: [{ excerpt: 'only the quote' }] as never[],
       prepareDraft: async () => ({
         text: '> only the quote',
         draft: '',
@@ -1484,5 +1489,119 @@ describe('handoff review fixes', () => {
       ),
     );
     expect(handoffExecutionMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe('handoff delta-review fixes', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    handoffExecutionMessage.mockReset();
+    getConversationHandoffStatus.mockReset();
+    sessionStorage.clear();
+    useNewChatSelectionModel.mockReturnValue({
+      agentConnections: connections,
+      selectedProjectConfig: { agents: ['claude', 'codex', 'offline'] },
+      modelsForAgent: () => [{ id: 'gpt-5', name: 'GPT-5' }],
+      executionModelsForAgent: () => [{ id: 'gpt-5', name: 'GPT-5' }],
+      defaultEffectiveModelForAgent: () => ({
+        id: 'gpt-5',
+        source: 'agent default',
+      }),
+    });
+  });
+
+  test('after a reload, the same quoted draft is the retried request, and acceptance clears it', async () => {
+    const quote = {
+      version: 1,
+      origin: 'http://station.test',
+      sessionId: 's',
+      turnId: 't',
+      messageId: 'm',
+      revision: 'a'.repeat(64),
+      excerpt: 'q',
+    } as never;
+    handoffExecutionMessage.mockRejectedValueOnce(
+      new TypeError('response lost'),
+    );
+    const first = renderDialog('claude', undefined, undefined, undefined, {
+      draftQuotes: [quote],
+      prepareDraft: async () => ({
+        text: '> q\n\nfollow up',
+        draft: 'follow up',
+        quotes: [quote],
+      }),
+    });
+    fireEvent.click(screen.getByRole('radio', { name: /Codex reviewer/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
+    );
+    await waitFor(() => screen.getByRole('button', { name: 'Check status' }));
+    first.unmount();
+
+    getConversationHandoffStatus.mockResolvedValueOnce(acceptedStatus());
+    const restored = renderDialog('claude', undefined, undefined, undefined, {
+      draftQuotes: [quote],
+    });
+    expect(screen.getByText('Retries the earlier request.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Check status' }));
+    await waitFor(() => expect(restored.onAccepted).toHaveBeenCalledOnce());
+    expect(restored.onAccepted.mock.calls[0][0]).toMatchObject({
+      clearsComposer: true,
+      sentQuotes: [quote],
+    });
+  });
+
+  test('an armed send waits for the catalog, then dispatches; it is not refused as gone', async () => {
+    handoffExecutionMessage.mockResolvedValueOnce(receipt());
+    const ready = currentSelection();
+    useNewChatSelectionModel.mockReturnValue({
+      ...ready,
+      agentConnections: [],
+      runtimeLoading: true,
+      modelsLoading: true,
+      modelsForAgent: () => [],
+    });
+    const view = renderDialog('claude', undefined, undefined, undefined, {
+      autoSubmit: { message: 'armed', targetId: 'codex', modelId: 'gpt-5' },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(handoffExecutionMessage).not.toHaveBeenCalled();
+    useNewChatSelectionModel.mockReturnValue(ready);
+    view.rerender(
+      <ConversationHandoffDialog
+        apiBase="http://station.test"
+        conversationId="conversation-a"
+        sessionId="session-a"
+        currentAgentId="claude"
+        projectSlug="project-a"
+        agents={[claude, codex, unavailable] as never}
+        projects={[{ slug: 'project-a', name: 'Project A' }] as never}
+        initialMessage="follow up"
+        attachments={[]}
+        autoSubmit={{ message: 'armed', targetId: 'codex', modelId: 'gpt-5' }}
+        onAccepted={view.onAccepted}
+        onDispatchStarted={view.onDispatchStarted}
+        onDefiniteFailure={view.onDefiniteFailure}
+        onClose={view.onClose}
+      />,
+    );
+    await waitFor(() => expect(view.onAccepted).toHaveBeenCalledOnce());
+    expect(handoffExecutionMessage.mock.calls[0][2].message).toBe('armed');
+  });
+
+  test('an armed send reports whether it is sending or needs the person', async () => {
+    handoffExecutionMessage.mockRejectedValueOnce(
+      new TypeError('response lost'),
+    );
+    const onPhaseChange = vi.fn();
+    renderDialog('claude', undefined, undefined, undefined, {
+      autoSubmit: { message: 'armed', targetId: 'codex', modelId: 'gpt-5' },
+      onPhaseChange,
+    });
+    expect(onPhaseChange).toHaveBeenCalledWith('sending');
+    await waitFor(() =>
+      expect(onPhaseChange).toHaveBeenLastCalledWith('attention'),
+    );
   });
 });

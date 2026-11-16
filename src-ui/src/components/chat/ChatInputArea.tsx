@@ -401,6 +401,8 @@ interface ChatInputAreaProps {
   nextMessageHandoff?: {
     label: string;
     kind: 'agent' | 'engine';
+    /** The armed send is in flight: Undo would let the draft go twice. */
+    pending?: boolean;
     onUndo: () => void;
   };
   workspaceRefused?: boolean;
@@ -1182,6 +1184,7 @@ export function ChatInputArea({
               type="button"
               className="chat-input__handoff-undo"
               onClick={nextMessageHandoff.onUndo}
+              disabled={nextMessageHandoff.pending}
               aria-label={`Undo: keep the current ${nextMessageHandoff.kind} instead of ${nextMessageHandoff.label}`}
             >
               Undo

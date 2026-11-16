@@ -85,10 +85,14 @@ export interface ArmedConversationHandoff {
 
 /** A send from the composer while a target is armed. */
 export interface ConversationHandoffAutoSubmit {
+  /** The prepared text sent as the first turn. */
   message: string;
   targetId: string;
   modelId?: string;
   modelOptions?: Record<string, unknown>;
+  /** The raw composer draft and quotes it was prepared from. */
+  draft?: string;
+  quotes?: readonly DraftQuote[];
 }
 
 interface ConversationHandoffDialogProps {
@@ -113,8 +117,10 @@ interface ConversationHandoffDialogProps {
     draft: string;
     quotes: readonly DraftQuote[];
   } | null>;
-  /** The composer holds quotes, which are part of its draft. */
-  draftHasQuotes?: boolean;
+  /** The composer's quotes, which are part of its draft. */
+  draftQuotes?: readonly DraftQuote[];
+  /** Whether the armed send is still sending or now needs the person. */
+  onPhaseChange?: (phase: 'sending' | 'attention') => void;
   /** Keep the request running but show nothing (its chat is not on screen). */
   suspended?: boolean;
   /**
@@ -139,6 +145,12 @@ interface PendingHandoffIntent {
   modelId?: string;
   modelOptions?: Record<string, unknown>;
   message: string;
+  /**
+   * The raw composer draft and quotes `message` was prepared from (mentions
+   * expanded, quotes composed in), so a later draft is compared like for like.
+   */
+  draft?: string;
+  quotes?: readonly DraftQuote[];
 }
 
 function pendingStorageKey(apiBase: string, conversationId: string): string {
@@ -181,6 +193,10 @@ function readPendingIntent(
           typeof parsed.modelOptions === 'object' &&
           !Array.isArray(parsed.modelOptions)
             ? { modelOptions: parsed.modelOptions }
+            : {}),
+          ...(typeof parsed.draft === 'string' ? { draft: parsed.draft } : {}),
+          ...(Array.isArray(parsed.quotes)
+            ? { quotes: parsed.quotes as DraftQuote[] }
             : {}),
         }
       : null;
@@ -238,6 +254,11 @@ export function handoffStatusFeedback(
   }
 }
 
+const NO_QUOTES: readonly DraftQuote[] = [];
+function quoteKeys(quotes: readonly DraftQuote[]): string {
+  return JSON.stringify(quotes);
+}
+
 export function ConversationHandoffDialog({
   apiBase,
   conversationId,
@@ -251,7 +272,8 @@ export function ConversationHandoffDialog({
   attachments,
   blockedReason,
   prepareDraft,
-  draftHasQuotes = false,
+  draftQuotes = NO_QUOTES,
+  onPhaseChange,
   suspended = false,
   autoSubmit,
   onArm,
@@ -334,15 +356,22 @@ export function ConversationHandoffDialog({
   // A retained uncertain request is retried exactly as it was sent; a newer
   // draft is not part of it and stays in the composer.
   const composerDraft = (autoSubmit?.message ?? initialMessage).trim();
-  const composerHasDraft = Boolean(composerDraft) || draftHasQuotes;
+  const composerHasDraft = Boolean(composerDraft) || draftQuotes.length > 0;
+  // Like for like: the composer's raw draft and quotes against the raw draft
+  // and quotes the retained request was prepared from (an older request
+  // without them is compared by its sent text).
   const displacesDraft = Boolean(
     restoredIntent &&
       composerHasDraft &&
-      composerDraft !== restoredIntent.message.trim(),
+      (initialMessage.trim() !==
+        (restoredIntent.draft ?? restoredIntent.message).trim() ||
+        quoteKeys(draftQuotes) !== quoteKeys(restoredIntent.quotes ?? [])),
   );
   const message =
     restoredIntent?.message ?? (composerDraft || HANDOFF_CATCH_UP_MESSAGE);
-  const sentQuotes = useRef<readonly DraftQuote[]>([]);
+  const sentQuotes = useRef<readonly DraftQuote[]>(
+    restoredIntent?.quotes ?? autoSubmit?.quotes ?? NO_QUOTES,
+  );
   const starting = useRef(false);
   const [state, setState] = useState<
     'idle' | 'pending' | 'indeterminate' | 'error'
@@ -396,7 +425,9 @@ export function ConversationHandoffDialog({
       !executionPreset.modelId,
   );
   useEffect(() => {
-    if (mutationLocked || inheritsAgentDefaults) return;
+    // An armed send keeps exactly the model it was armed with; a model that
+    // has gone is refused at dispatch rather than silently replaced here.
+    if (mutationLocked || inheritsAgentDefaults || autoSubmit) return;
     if (!target) {
       setModelId(undefined);
       return;
@@ -410,6 +441,7 @@ export function ConversationHandoffDialog({
           : targetModels[0]?.id,
     );
   }, [
+    autoSubmit,
     defaultModel,
     inheritsAgentDefaults,
     mutationLocked,
@@ -430,6 +462,7 @@ export function ConversationHandoffDialog({
       return;
     }
     let firstMessage = message;
+    let firstDraft = autoSubmit?.draft ?? initialMessage;
     if (!retainedIntent.current) {
       // A new request names a target this client can still start: an armed
       // choice can outlive its Agent, engine or model.
@@ -457,6 +490,7 @@ export function ConversationHandoffDialog({
         // Refused (the reason is already shown) or changed underneath.
         if (!prepared) return;
         firstMessage = prepared.text.trim() || HANDOFF_CATCH_UP_MESSAGE;
+        firstDraft = prepared.draft;
         sentQuotes.current = prepared.quotes;
       }
     }
@@ -464,6 +498,8 @@ export function ConversationHandoffDialog({
       idempotencyKey: idempotencyKey.current,
       targetId,
       message: firstMessage,
+      draft: firstDraft,
+      ...(sentQuotes.current.length > 0 ? { quotes: sentQuotes.current } : {}),
       ...(executionAgentId
         ? {
             executionAgentId,
@@ -646,15 +682,29 @@ export function ConversationHandoffDialog({
     }
   };
 
-  // An armed send dispatches once, at mount. A retained uncertain request
-  // takes precedence: it opens as its recovery instead of sending again.
+  // An armed send dispatches once, when the catalog it is checked against has
+  // answered: before that, its Agent or model would read as gone. A retained
+  // uncertain request takes precedence: it opens as its recovery instead of
+  // sending again.
+  const catalogReady =
+    !selection.runtimeLoading &&
+    !selection.modelsLoading &&
+    selection.selectedContextResolved !== false;
   const autoSubmitted = useRef(false);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once at mount; runHandoff reads this render's choice, which is the armed one.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once the catalog is ready; runHandoff reads that render's choice, which is the armed one.
   useEffect(() => {
-    if (!autoSubmit || restoredIntent || autoSubmitted.current) return;
+    if (!autoSubmit || restoredIntent || autoSubmitted.current || !catalogReady)
+      return;
     autoSubmitted.current = true;
     void runHandoff();
-  }, []);
+  }, [catalogReady]);
+  const phase =
+    state === 'pending' || (state === 'idle' && !feedback)
+      ? 'sending'
+      : 'attention';
+  useEffect(() => {
+    if (autoSubmit) onPhaseChange?.(phase);
+  }, [autoSubmit, onPhaseChange, phase]);
 
   const targetModel = targetModels.find((model) => model.id === modelId);
   const choiceLabel = [

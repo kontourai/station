@@ -1845,8 +1845,13 @@
   cursor: pointer;
 }
 
-.chat-input__handoff-undo:hover {
+.chat-input__handoff-undo:hover:not(:disabled) {
   text-decoration: underline;
+}
+
+.chat-input__handoff-undo:disabled {
+  color: var(--k-text-muted);
+  cursor: default;
 }
 
 .chat-input__handoff-undo:focus-visible {

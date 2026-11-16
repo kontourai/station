@@ -335,8 +335,10 @@ export interface ConversationBodyProps {
     label: string;
     /** What the choice changes, for the chip's Undo wording. */
     kind: 'agent' | 'engine';
-    /** The armed send is dispatching: nothing else may be sent meanwhile. */
+    /** The armed send is in flight: nothing else may be sent meanwhile. */
     pending: boolean;
+    /** In flight: still sending, or its dialog needs the person. */
+    phase?: 'sending' | 'attention';
     /** Why the handoff cannot run now (a turn or queued message). */
     blockedReason?: string;
     onSend: (prepared: {
@@ -1155,7 +1157,12 @@ function LiveConversationBody({
       : undefined;
   const sendArmedHandoff = useCallback(
     async (armed: NonNullable<typeof nextMessageHandoff>) => {
-      if (armed.pending || armed.blockedReason) return;
+      if (
+        armed.pending ||
+        armed.blockedReason ||
+        chatInput.attachments.length > 0
+      )
+        return;
       const prepared = await chatInput.prepareOutgoingText();
       if (!prepared?.text.trim()) return;
       armed.onSend(prepared);
@@ -3092,9 +3099,13 @@ function LiveConversationBody({
                         // its notice says what failed and carries the Retry.
                         undefined
                       : armedHandoff?.pending
-                        ? `Switching to ${armedHandoff.label}…`
+                        ? armedHandoff.phase === 'attention'
+                          ? `Finish the switch to ${armedHandoff.label} first.`
+                          : `Switching to ${armedHandoff.label}…`
                         : (armedHandoff?.blockedReason ??
-                          chatInput.sendBlockedReason)
+                          (armedHandoff && chatInput.attachments.length > 0
+                            ? 'Remove attachments, or undo the switch to send them.'
+                            : chatInput.sendBlockedReason))
             }
             onRetryAttachmentStage={chatInput.retryAttachmentStage}
             onCancelAttachmentStage={chatInput.cancelAttachmentStage}

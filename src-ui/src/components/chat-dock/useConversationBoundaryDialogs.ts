@@ -10,6 +10,12 @@ import {
 } from '../../utils/execution';
 import type { SelectableModel } from '../../utils/modelCapabilities';
 import { agentRunnability } from '../agent-runnability';
+import {
+  type ArmedHandoffPhase,
+  armedHandoffKey,
+  armedHandoffStore,
+  useArmedHandoffEntry,
+} from './armedHandoffStore';
 import type {
   ArmedConversationHandoff,
   ConversationHandoffAutoSubmit,
@@ -55,6 +61,11 @@ export function useConversationBoundaryDialogs({
     id: string;
     agentSlug: string;
     executionPreset?: { executionAgentId?: string; modelId?: string };
+    /**
+     * Each open is a new dialog: the dialog is keyed by this, so one chat's
+     * request state can never carry into another's picker.
+     */
+    nonce: number;
     /** A composer send to dispatch as the handoff's first turn. */
     autoSubmit?: ConversationHandoffAutoSubmit;
     /**
@@ -67,10 +78,7 @@ export function useConversationBoundaryDialogs({
       quotes: readonly DraftQuote[];
     };
   } | null>(null);
-  // A target picked for the next composer send. Nothing is sent when it is
-  // picked, so it is in-memory only: a reload simply forgets the choice.
-  const [armedHandoff, setArmedHandoff] =
-    useState<ArmedConversationHandoff | null>(null);
+  const nextNonce = useRef(0);
   const [forkSource, setForkSource] = useState<{
     id: string;
     agentSlug: string;
@@ -203,55 +211,92 @@ export function useConversationBoundaryDialogs({
   // One reason gates every boundary action this hook owns: continuing with
   // another Agent, switching engines, and replacing engine context. The words
   // therefore name no single action; each surface supplies its own subject.
+  // An armed send in flight for another chat holds this pane's one handoff
+  // dialog (out of sight, possibly needing the person); a second picker here
+  // would replace it.
+  const otherChatSwitching = Boolean(
+    handoffSource?.autoSubmit &&
+      handoffSource.id !== activeSession?.conversationId,
+  );
   const handoffDisabledReason = !activeSession?.conversationId
     ? 'Send a message first.'
-    : isSessionExecutionActive(activeSession)
-      ? 'Wait for the current turn to finish.'
-      : hasLocalDeferredMessages
-        ? 'Send or discard queued messages first.'
-        : durableHandoffQueue.status === 'pending'
-          ? 'Checking queued messages…'
-          : durableHandoffQueue.status === 'error'
-            ? 'Queued message state is unavailable. Try again.'
-            : durableHandoffQueueCount > 0
-              ? 'Send or discard queued messages first.'
-              : undefined;
+    : otherChatSwitching
+      ? 'Another chat is still switching agents. Open it to finish first.'
+      : isSessionExecutionActive(activeSession)
+        ? 'Wait for the current turn to finish.'
+        : hasLocalDeferredMessages
+          ? 'Send or discard queued messages first.'
+          : durableHandoffQueue.status === 'pending'
+            ? 'Checking queued messages…'
+            : durableHandoffQueue.status === 'error'
+              ? 'Queued message state is unavailable. Try again.'
+              : durableHandoffQueueCount > 0
+                ? 'Send or discard queued messages first.'
+                : undefined;
 
   const openConversationHandoff = useCallback(
     (returnFocusTarget: HTMLButtonElement | null) => {
-      if (!activeSession?.conversationId) return;
+      if (!activeSession?.conversationId || handoffSource?.autoSubmit) return;
       handoffReturnFocusRef.current = returnFocusTarget;
       setHandoffSource({
         id: activeSession.conversationId,
         agentSlug: activeSession.agentSlug,
+        nonce: ++nextNonce.current,
       });
     },
-    [activeSession],
+    [activeSession, handoffSource],
   );
 
   const openExecutionHandoff = useCallback(
     (model?: SelectableModel) => {
-      if (!activeSession?.conversationId) return;
-      // The engine picker owns no button to return to; arming focuses the
-      // composer instead, and a cancel leaves focus where the picker put it.
+      if (!activeSession?.conversationId || handoffSource?.autoSubmit) return;
+      // The engine picker owns no button to return to; the dialog returns
+      // focus to the composer instead.
       handoffReturnFocusRef.current = null;
       setHandoffSource({
         id: activeSession.conversationId,
         agentSlug: activeSession.agentSlug,
+        nonce: ++nextNonce.current,
         executionPreset: {
           executionAgentId: model?.executionAgentId,
           modelId: model?.id,
         },
       });
     },
-    [activeSession],
+    [activeSession, handoffSource],
   );
 
-  const activeArmedHandoff =
-    armedHandoff &&
-    activeSession?.conversationId === armedHandoff.conversationId
-      ? armedHandoff
-      : null;
+  const activeKey = activeSession?.conversationId
+    ? armedHandoffKey(apiBase, activeSession.conversationId)
+    : undefined;
+  const activeEntry = useArmedHandoffEntry(activeKey);
+  const activeArmedHandoff = activeEntry.armed;
+  const setArmedHandoff = useCallback(
+    (armed: ArmedConversationHandoff | null, conversationId?: string) => {
+      const id = armed?.conversationId ?? conversationId;
+      if (id) armedHandoffStore.setArmed(armedHandoffKey(apiBase, id), armed);
+    },
+    [apiBase],
+  );
+  const undoArmedHandoff = useCallback(() => {
+    if (activeKey) armedHandoffStore.undo(activeKey);
+  }, [activeKey]);
+  // This pane owns the in-flight send while its dialog holds an armed
+  // source; the conversation's phase says so to every pane showing it.
+  const sourceKey = handoffSource?.autoSubmit
+    ? armedHandoffKey(apiBase, handoffSource.id)
+    : undefined;
+  useEffect(() => {
+    if (!sourceKey) return;
+    armedHandoffStore.setPhase(sourceKey, 'sending');
+    return () => armedHandoffStore.setPhase(sourceKey, undefined);
+  }, [sourceKey]);
+  const setArmedHandoffPhase = useCallback(
+    (phase: ArmedHandoffPhase) => {
+      if (sourceKey) armedHandoffStore.setPhase(sourceKey, phase);
+    },
+    [sourceKey],
+  );
 
   /**
    * The composer's send while a target is armed: the message becomes the
@@ -265,11 +310,18 @@ export function useConversationBoundaryDialogs({
       draft: string;
       quotes: readonly DraftQuote[];
     }) => {
-      if (!activeArmedHandoff || !activeSession || handoffSource) return;
+      if (
+        !activeArmedHandoff ||
+        !activeSession ||
+        handoffSource ||
+        activeEntry.phase
+      )
+        return;
       const message = prepared.text;
       setHandoffSource({
         id: activeArmedHandoff.conversationId,
         agentSlug: activeSession.agentSlug,
+        nonce: ++nextNonce.current,
         ...(activeArmedHandoff.executionPreset
           ? { executionPreset: activeArmedHandoff.executionPreset }
           : {}),
@@ -282,6 +334,8 @@ export function useConversationBoundaryDialogs({
           ...(activeArmedHandoff.modelOptions
             ? { modelOptions: activeArmedHandoff.modelOptions }
             : {}),
+          draft: prepared.draft,
+          quotes: prepared.quotes,
         },
         armedDraft: {
           sessionId: activeSession.id,
@@ -290,7 +344,7 @@ export function useConversationBoundaryDialogs({
         },
       });
     },
-    [activeArmedHandoff, activeSession, handoffSource],
+    [activeArmedHandoff, activeSession, handoffSource, activeEntry.phase],
   );
 
   const handoffSession = handoffSource
@@ -310,12 +364,12 @@ export function useConversationBoundaryDialogs({
     openConversationHandoff,
     openExecutionHandoff,
     armedHandoff: activeArmedHandoff,
-    /** The active chat's armed send is dispatching (its dialog is hidden). */
-    armedHandoffPending: Boolean(
-      handoffSource?.autoSubmit &&
-        activeSession?.conversationId === handoffSource.id,
-    ),
+    /** The active chat's armed send is in flight, in this pane or another. */
+    armedHandoffPending: Boolean(activeEntry.phase),
+    armedHandoffPhase: activeEntry.phase,
     setArmedHandoff,
+    undoArmedHandoff,
+    setArmedHandoffPhase,
     sendArmedHandoff,
     forkSource,
     setForkSource,

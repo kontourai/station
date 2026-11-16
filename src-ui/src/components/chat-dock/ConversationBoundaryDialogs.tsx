@@ -90,6 +90,7 @@ export function ConversationBoundaryDialogs({
     handoffDisabledReason,
     handoffReturnFocusRef,
     setArmedHandoff,
+    setArmedHandoffPhase,
     contextResetSource,
     setContextResetSource,
     contextBoundarySessionId,
@@ -102,6 +103,8 @@ export function ConversationBoundaryDialogs({
     <>
       {handoffSource && handoffSession?.conversationId && (
         <ConversationHandoffDialog
+          // A new dialog per open: request state never crosses chats.
+          key={`${handoffSource.id}\0${handoffSource.nonce}`}
           apiBase={apiBase}
           conversationId={handoffSession.conversationId}
           sessionId={handoffSession.id}
@@ -114,7 +117,8 @@ export function ConversationBoundaryDialogs({
           prepareDraft={
             handoffIsActive ? chatInput.prepareOutgoingText : undefined
           }
-          draftHasQuotes={handoffIsActive && chatInput.quotes.length > 0}
+          draftQuotes={handoffIsActive ? chatInput.quotes : undefined}
+          onPhaseChange={setArmedHandoffPhase}
           onArm={(armed) => {
             setArmedHandoff(armed);
             setHandoffSource(null);
@@ -155,7 +159,12 @@ export function ConversationBoundaryDialogs({
           }}
           onClose={() => {
             setHandoffSource(null);
-            requestAnimationFrame(() => handoffReturnFocusRef.current?.focus());
+            // The engine picker has no trigger to return to: the composer.
+            requestAnimationFrame(() =>
+              (
+                handoffReturnFocusRef.current ?? chatInput.textareaRef.current
+              )?.focus(),
+            );
           }}
           onAccepted={({
             receipt,
@@ -176,7 +185,7 @@ export function ConversationBoundaryDialogs({
                 ),
               ),
             );
-            setArmedHandoff(null);
+            setArmedHandoff(null, handoffSession.conversationId);
             const armedDraft = handoffSource.armedDraft;
             if (armedDraft) {
               // The armed send came from its own chat's composer: clear that
