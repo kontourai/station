@@ -607,10 +607,7 @@ describe('plan() — per-Project notification settings (#5072)', () => {
       ),
     ).toBe('send:nothing-focused');
     expect(
-      decision(
-        plan(on({ env: turn('done', null), prefs: blocked })),
-        PHONE,
-      ),
+      decision(plan(on({ env: turn('done', null), prefs: blocked })), PHONE),
     ).toBe('send:nothing-focused');
     expect(
       decision(
