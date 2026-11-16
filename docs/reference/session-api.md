@@ -1914,7 +1914,9 @@ reserved start metadata key `stationDelegationProvenance` (a request can't
 set it; Station strips any value a caller supplies):
 
 - `caller-derived` (from the calling session's own record) or
-  `runtime-attested` (Station's own runtime vouched for it): the session is
+  `runtime-attested` (Station's own runtime vouched for it; only sessions
+  launched before #2377 slice D, when Station's engine had no session
+  caller, carry it): the session is
   real work of your conversation that runs under another owner. In hosted
   mode that happens when Station can't attribute the dispatch to a bound
   caller (for example an external engine using a delegated-custody Session capability), so the
