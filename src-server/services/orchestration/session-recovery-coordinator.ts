@@ -897,16 +897,6 @@ export class SessionRecoveryCoordinator {
     }
     this.clearIntentRuntime(intent, true);
     const current = this.ledger.find(intent.fingerprint);
-    // A refused person's choice the module returned to waiting keeps its reset.
-    if (
-      consentedProfileRef !== undefined &&
-      outcome.kind === 'rolled-back' &&
-      current?.outcome === 'armed' &&
-      current.dueAt
-    ) {
-      this.schedule(current.fingerprint, current.dueAt);
-      return true;
-    }
     if (outcome.kind === 'indeterminate') {
       this.recordIntentOutcome(intent, 'compensation-required');
     } else if (current?.outcome === 'resumed') {
