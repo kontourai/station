@@ -1221,6 +1221,18 @@ Station looks in four places:
   OpenCode update changes the database layout, Station stops reading it and
   logs one warning instead of guessing.
 
+With `STATION_EXTERNAL_ACP_SESSIONS=1` set before Station starts, the inbox
+also lists the sessions an ACP engine you added under Connections reports
+itself, for an engine that offers a session list (Antigravity, Factory Droid,
+Hermes and Cursor do; Kiro does not). This is off by default. Station asks for
+the list when it checks the engine, about every five minutes, so it starts no
+extra engine process, and a new session can take that long to appear. Only
+the session's folder and Project are shown: ACP's one way to read a session's
+messages also resumes it inside the engine, so Station does not read them, and
+these sessions cannot be continued in Station. Grok and OpenCode sessions are
+read from their own stores as above, not from this list, and Station's own
+sessions and capability checks are left out.
+
 `STATION_EXTERNAL_CLAUDE_SOURCE_ROOT`, `STATION_EXTERNAL_CODEX_SOURCE_ROOT`,
 `STATION_EXTERNAL_GROK_SOURCE_ROOT` and `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT`
 point Station at a different folder (for OpenCode, the folder holding the

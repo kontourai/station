@@ -1657,7 +1657,14 @@ first home in that order. The affinity resolves only for a home the latest
 discovery listed, so continuing a profile-home session waits for the first
 discovery after a restart. `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT`
 selects the folder holding OpenCode's session database for observation only;
-OpenCode sessions have no continuation. See the
+OpenCode sessions have no continuation. With
+`STATION_EXTERNAL_ACP_SESSIONS=1`, the
+[ACP session list source](../../src-server/providers/sessions/acp-session-list-source.ts)
+lists the sessions an ACP connection reports through `session/list`, read by
+the capability probe Station already runs per connection
+([`acp-session-listing.ts`](../../src-server/services/acp/acp-session-listing.ts)).
+It imports no transcript, because `session/load` resumes the session in the
+agent, and ACP declares `externalSessionContinuation: unsupported`. See the
 [Codex adapter](../../src-server/providers/adapters/codex-adapter.ts) and
 [Claude source-home check](../../src-server/providers/adapters/claude-adapter.ts).
 

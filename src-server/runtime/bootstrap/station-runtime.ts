@@ -9,6 +9,7 @@ import {
   getBrandingProvider,
   listProviders,
 } from '../../providers/registries/registry.js';
+import { AcpSessionListSource } from '../../providers/sessions/acp-session-list-source.js';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
 import { GrokSessionSource } from '../../providers/sessions/grok-session-source.js';
@@ -4464,6 +4465,11 @@ export class StationRuntime {
             this.codexRolloutSource,
             new GrokSessionSource({ logger: this.logger }),
             this.openCodeSessionSource,
+            // Opt-in (STATION_EXTERNAL_ACP_SESSIONS=1), list only: reads the
+            // session lists the ACP capability probes already fetched.
+            new AcpSessionListSource({
+              listings: () => this.acpBridge?.sessionListings() ?? [],
+            }),
           ],
           port: this.port,
           host: this.host,

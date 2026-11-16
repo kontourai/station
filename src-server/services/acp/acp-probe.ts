@@ -41,6 +41,13 @@ import {
   type InitializeResult,
 } from './acp-process.js';
 import {
+  type AcpSessionListing,
+  acpSessionListingEnabled,
+  advertisesSessionListing,
+  hasDedicatedSessionSource,
+  readAcpSessionListing,
+} from './acp-session-listing.js';
+import {
   invalidateEngineStatus,
   isAcpAuthRequired,
   recordEngineSignInRefused,
@@ -544,6 +551,9 @@ function probeSessionAgentKey(initResult: InitializeResult): string {
  */
 const PROBE_SESSION_DELETE_FLOOR_MS = 2_000;
 
+/** How many of its own probe session ids a probe keeps out of listings. */
+const MAX_REMEMBERED_PROBE_SESSIONS = 64;
+
 export class ACPProbe {
   /**
    * #3411: the session this probe created or reattached to, kept so the next
@@ -569,6 +579,14 @@ export class ACPProbe {
   cachedDeclaredHandshake: AcpDeclaredHandshake | null = null;
   /** #352: the probe session's `models` list; `null` when it sent none. */
   cachedSessionModels: AcpSessionModelState | null = null;
+  /**
+   * The agent's own `session/list` answer from the last successful probe,
+   * when listing is opted into and the agent advertises it; `null` otherwise.
+   * Read by `AcpSessionListSource`; the probe's own sessions are left out.
+   */
+  cachedSessionListing: AcpSessionListing | null = null;
+  /** Probe sessions this probe minted, so a listing never reports one. */
+  private readonly mintedProbeSessionIds = new Set<string>();
   /**
    * archive#1549: the instant of the last SUCCESSFUL `initialize` handshake,
    * NOT `lastProbeAt`. The two differ exactly where it matters: a failed
@@ -1091,6 +1109,25 @@ export class ACPProbe {
       } catch {
         // Best-effort enrichment never fails a successful handshake.
       }
+      this.rememberProbeSession(sessionResult.sessionId);
+      if (
+        acpSessionListingEnabled() &&
+        advertisesSessionListing(initResult.agentCapabilities) &&
+        !hasDedicatedSessionSource(this.config)
+      ) {
+        // One bounded read on the process the probe already runs; it never
+        // fails the probe, whose capabilities are recorded above.
+        this.cachedSessionListing = await readAcpSessionListing(
+          (method, params) => process.extMethod(method, params),
+          {
+            deadlineMs: remainingHandshakeMs(),
+            exclude: this.mintedProbeSessionIds,
+          },
+        );
+        if (this.disposed) return false;
+      } else {
+        this.cachedSessionListing = null;
+      }
       if (sessionResult.disposition === 'delete') {
         // The capabilities are already recorded; a failed delete costs one
         // stored session, never the probe's result.
@@ -1191,6 +1228,7 @@ export class ACPProbe {
         this.cachedProviderRouting = null;
         this.cachedDeclaredHandshake = null;
         this.cachedSessionModels = null;
+        this.cachedSessionListing = null;
       }
       this.lastSuccess = false;
     } finally {
@@ -1331,6 +1369,20 @@ export class ACPProbe {
 
   getModes() {
     return this.cachedModes;
+  }
+  getSessionListing(): AcpSessionListing | null {
+    return this.cachedSessionListing;
+  }
+
+  private rememberProbeSession(sessionId: string): void {
+    this.mintedProbeSessionIds.delete(sessionId);
+    this.mintedProbeSessionIds.add(sessionId);
+    // Bounded: the oldest ids are the ones an agent has most likely dropped.
+    while (this.mintedProbeSessionIds.size > MAX_REMEMBERED_PROBE_SESSIONS) {
+      const oldest = this.mintedProbeSessionIds.values().next().value;
+      if (oldest === undefined) break;
+      this.mintedProbeSessionIds.delete(oldest);
+    }
   }
   getConfigOptions() {
     return this.cachedConfigOptions;
