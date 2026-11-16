@@ -1,0 +1,7 @@
+{
+  "revision": "fa31fa97e6e39924b12528f0d82e109c56b7dd7d",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"connections.md changed only in Codex profile-home overlay wording; machine relationship claims do not depend on it.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

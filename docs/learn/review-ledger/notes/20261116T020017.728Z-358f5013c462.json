@@ -1,0 +1,7 @@
+{
+  "revision": "fa31fa97e6e39924b12528f0d82e109c56b7dd7d",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Historical ADR; session-api.md's Codex home and overlay changes do not touch the managed-chat routing it records.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
+  ]
+}
