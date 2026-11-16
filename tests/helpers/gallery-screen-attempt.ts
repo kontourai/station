@@ -228,10 +228,12 @@ export type RetryBudget = ReturnType<typeof createRetryBudget>;
 
 /**
  * Why a failed first attempt is not captured again, or null when it is. Only
- * a surface with direct evidence of a chunk DOWNLOAD failing in the live page
- * (a failed script request of the current document) is retried, once per
- * screen, within the run's budget: a surface without one is a render error or
- * a chunk the server answered, and an ordinary failure has no surface.
+ * a surface together with a failed app chunk request of the current document
+ * is retried, once per screen, within the run's budget: a surface without one
+ * is a render error or a chunk the server answered, and an ordinary failure
+ * has no surface. The request alone proves nothing (healthy screens have had
+ * aborted chunk requests), so a render error that coincides with one is
+ * retried too.
  */
 function secondCaptureRefusal(
   outcome: AttemptOutcome<unknown>,
@@ -370,13 +372,20 @@ export interface CapturedScreen<P> {
 /**
  * Every selected screen, in order, under one second-capture budget for the
  * run. `ports` builds an attempt's page operations; the screen's own
- * `afterAudit` is added here. A first attempt that throws stops the capture,
+ * `afterAudit` is added here, and the failed-request log is emptied before
+ * each attempt. A first attempt that throws stops the capture,
  * as it always did, after `screenFinished` has run for that screen.
  */
 export async function captureScreens<P, S extends CapturedScreen<P>, Audit>(
   page: P,
   screens: readonly S[],
   options: {
+    /**
+     * The failed-request log the attempts' `evidence` reads. Emptied here
+     * before every attempt: a record left from an earlier screen keeps its
+     * `current` label and would earn another screen a second capture.
+     */
+    failedRequests: { reset(): void };
     ports(
       screen: S,
       attempt: 1 | 2,
@@ -399,13 +408,15 @@ export async function captureScreens<P, S extends CapturedScreen<P>, Audit>(
     try {
       const result = await captureScreen(
         screen.name,
-        (attempt) =>
-          attemptScreen({
+        (attempt) => {
+          options.failedRequests.reset();
+          return attemptScreen({
             ...options.ports(screen, attempt),
             afterAudit: async () => {
               await screen.afterAudit?.(page);
             },
-          }),
+          });
+        },
         budget,
         {
           keepFirstImage: () => options.keepFirstImage(screen),

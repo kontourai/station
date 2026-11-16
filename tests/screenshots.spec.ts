@@ -7290,12 +7290,12 @@ test('build gallery — capture key screens', async ({ page }) => {
     // retry rule. Every attempt is a fresh navigation on the same instance;
     // `beforeGoto` and `cleanup` run for each.
     await captureScreens(page, selectedScreens, {
+      failedRequests,
       screenStarted: (screen) => assets.screen(screen.name),
       screenFinished: (screen) => assets.screenFinished(screen.name),
       ports: (screen, attempt) => {
         const file = `${screen.name}.png`;
         browserErrors.length = 0;
-        failedRequests.reset();
         layout = undefined;
         rasterDiagnostic = undefined;
         uiAudit = undefined;

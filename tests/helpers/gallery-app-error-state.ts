@@ -154,8 +154,7 @@ const APP_ASSET_PATH = '/assets/';
 
 /**
  * The live document's failed requests for the app's own scripts (same origin
- * as the page, under `APP_ASSET_PATH`), hash-masked, sorted and deduplicated:
- * the direct evidence that a chunk did not download.
+ * as the page, under `APP_ASSET_PATH`), hash-masked, sorted and deduplicated.
  */
 function failedChunkPaths(observation: AppErrorObservation): string[] {
   return [

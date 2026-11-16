@@ -373,6 +373,7 @@ describe('every screen of a run', () => {
       Awaited<ReturnType<typeof captureScreen>>
     >();
     const run = captureScreens('the-page', screens, {
+      failedRequests: { reset: () => {} },
       ports: (screen, attempt) => {
         const fail = options.firstFails && attempt === 1;
         const { ports } = fakePorts({

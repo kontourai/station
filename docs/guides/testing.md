@@ -1787,9 +1787,11 @@ failed requests in `observeGalleryRequests`
 (`tests/helpers/gallery-document-tracker.ts`). The spec drives both with its
 page operations; `scripts/__tests__/gallery-screen-attempt.test.ts` drives them
 with fakes, and `scripts/__tests__/gallery-app-error-state.browser.test.ts`
-wires them as the spec does against a small real page in Chromium. That the two
-`*-conversation-resync` screens declare `afterAudit` and that the spec calls
-`failedRequests.reset()` for each attempt are seen only by reading the spec.
+wires them as the spec does against a small real page in Chromium. The helper
+empties the failed-request log before every attempt, so one screen's failed
+request cannot count for the next. That the two `*-conversation-resync`
+screens declare `afterAudit` is seen only by reading the spec, like any
+screen's own assertion.
 
 Detected surfaces (`tests/helpers/gallery-app-error-state.ts`): the
 `LazyBoundary` row (`.lazy-boundary__error`), the extension-registry
@@ -1825,8 +1827,13 @@ attempt and `ERR_FAILED` on another), whether it surfaced before or after the
 photo, counts, and a capture step's own error. All of that is in the screen's
 `appError` in `capture.json`, with the console errors.
 
-Only a surface with a failed chunk request, the direct evidence of a chunk
-download failing, earns a second capture: once, on the same
+A second capture needs both in the same attempt: a detected surface and a
+failed chunk request. A failed chunk request alone is not evidence that the
+screen lost a chunk it needed: in a full capture on 2026-11-16,
+`task-capabilities-light-desktop` and `task-capabilities-light-mobile` each had
+two app chunk requests aborted in the live document and rendered correctly. So
+a render error that coincides with an aborted request is captured again too,
+and its identity names that chunk. The second capture runs once, on the same
 instance with a fresh navigation (`beforeGoto` and `cleanup` run again), and for
 at most `MAX_SECOND_CAPTURES` (5) screens a run, after which further screens fail
 without one and the log says so. That includes a capture step that threw while

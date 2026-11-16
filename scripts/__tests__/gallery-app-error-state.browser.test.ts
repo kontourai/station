@@ -215,8 +215,8 @@ describe('the capture loop against a real page', { timeout: 60_000 }, () => {
     const chunk = '**/assets/Lazy-abcdefgh.js';
     try {
       await captureScreens(page, screens, {
+        failedRequests,
         ports: (screen, attempt) => {
-          failedRequests.reset();
           return {
             capture: async (photo) => {
               if (screen.failChunk?.includes(attempt))
@@ -367,6 +367,21 @@ describe('the capture loop against a real page', { timeout: 60_000 }, () => {
     );
     expect(next.record).toBeNull();
     expect(next.attempts).toBe(1);
+  });
+
+  it("does not carry one screen's failed chunk into the next screen's attempt", async () => {
+    const { results } = await capture([
+      { name: 'flaky', mode: 'lazy', failChunk: [1] },
+      // A render error: a surface with no failed request of its own.
+      { name: 'render-error', mode: 'render-error' },
+    ]);
+    expect(results.get('flaky')?.record?.second).toBe('passed');
+    const next = results.get('render-error');
+    expect(next).toMatchObject({ attempts: 1, record: null });
+    expect(next?.final).toMatchObject({
+      ok: false,
+      message: 'app-error-surface: lazy-boundary-row; no failed chunk request',
+    });
   });
 
   it('does not take a cross-origin script for one of the app chunks', async () => {
