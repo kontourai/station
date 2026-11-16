@@ -55,7 +55,10 @@ Provider handoffs retain the Conversation ID and append linked execution
 Sessions. Returning to a compatible built-in engine can resume its earlier
 native thread with a bounded seed of the intervening conversation, after the
 previous engine confirms retirement. Unsupported or unbound history uses
-bounded replay. An explicit fork creates a separate Conversation.
+bounded replay. An explicit fork creates a separate Conversation. A handoff
+while the current Session still has a turn running, or has not settled, is
+refused (`409`) with `code: "conversation_handoff_predecessor_busy"`
+(`CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE`).
 
 An ordinary follow-up is refused while the native return's seed-bearing turn
 has no observed completion, including a failed or uncertain turn. Acceptance of

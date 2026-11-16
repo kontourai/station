@@ -1,0 +1,7 @@
+{
+  "revision": "16e88eff3858c698bd785254d4e7a7573581a6fe",
+
+  "notes": [
+    {"path":"docs/user/personal-boards.md","note":"Polish round for the handoff UX lane (busy-predecessor refusal code, prepareOutgoingText returning refusals, continue action placement, Run setup close on phone): no claim in this document concerns the changed lines.","inputs":["docs/user/personal-boards.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

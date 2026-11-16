@@ -493,7 +493,9 @@ show what **Start** will use:
   you have chosen a Model, the picker's reset button names the default it
   returns to, such as **Use project default** for a model-only choice or
   **Use Agent defaults** for an engine override. In an existing conversation,
-  changing or resetting the engine opens a handoff confirmation that keeps your draft.
+  changing or resetting the engine opens a short handoff picker that switches
+  now: your draft, or a catch-up request when there is none, is the first
+  message.
   Full access, a pending or refused approval change, and a conversation override
   add a warning glyph to the combined button; open Run setup to see the same
   glyph on the choice that raised it.
@@ -1314,9 +1316,9 @@ ones inside a Project, but no account can open them there.
 ## Continue an Attached Session
 
 Open an attached terminal Session from the **inbox**. It reads like any chat. To
-continue it in Station, type a message and press Send: Chat asks once,
-**Continue here?**, and **Continue and send** continues it there with your
-message. **Cancel** keeps your draft. Claude and Codex create independent child
+continue it in Station, press **Continue in Station** next to where it says it started;
+no message is needed. If you typed one, it is sent there once the
+continuation opens, and pressing Send continues the same way. Claude and Codex create independent child
 Sessions; the original terminal Session can keep running. OpenCode and Grok
 conversations are read only: the message box shows why it is unavailable.
 Codex continues from the latest completed turn Station has observed, so wait

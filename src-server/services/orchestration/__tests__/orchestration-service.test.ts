@@ -37,7 +37,10 @@ import {
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { ConnectionRecoveryIntent } from '@kontourai/station-contracts/connection-recovery';
 import type { OrchestrationCommand } from '@kontourai/station-contracts/orchestration';
-import { PENDING_TURN_INTERRUPT_TTL_MS } from '@kontourai/station-contracts/orchestration';
+import {
+  CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
+  PENDING_TURN_INTERRUPT_TTL_MS,
+} from '@kontourai/station-contracts/orchestration';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import type { ProjectTaskRoomGrant } from '@kontourai/station-contracts/project-task-room';
 import {
@@ -4801,6 +4804,23 @@ describe('OrchestrationService', () => {
         eventStore.latestEventByMethod('handoff-conversation', 'session.started')?.payload,
       ).toMatchObject({ metadata: { userId: 'owner-user' } });
       expect(handoffService.sessionRecordedOwnerId('handoff-conversation')).toBe('owner-user');
+      // While the root is still running, a handoff is refused with a code a
+      // client can branch on (and nothing is reserved).
+      await expect(
+        handoffService.prepareConversationHandoff(
+          'handoff-conversation',
+          INTERNAL_SESSION_READ_SCOPE,
+          {
+            agentId: 'agent-b',
+            environmentId: 'environment-a',
+            connectionId: 'claude',
+            idempotencyKey: 'handoff-while-running',
+            messageDigest: 'message-running',
+          },
+        ),
+      ).rejects.toMatchObject({
+        code: CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
+      });
       eventStore.appendEvent({
         eventId: 'handoff-root-complete',
         provider: 'claude',

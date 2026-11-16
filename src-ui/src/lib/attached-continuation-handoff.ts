@@ -4,7 +4,8 @@
  * dock opens the continued conversation as its Agent's chat, which is what
  * keeps follow-ups in the conversation's own folder. So a message typed in
  * Activity is handed to the dock's reader of the same conversation, which
- * asks once to confirm and then continues with that exact text.
+ * continues at once with that exact text, under the same guards as its own
+ * Continue in Station action.
  *
  * One pending hand-off at a time, taken once by the reader it names. A reader
  * already open on that conversation is told, since it will not remount.
