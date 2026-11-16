@@ -686,23 +686,29 @@ describe('rows another Station sent (importedFrom)', () => {
   ])(
     'a shortened newest message keeps every remaining line quoted (%s)',
     (_name, text) => {
-      for (const budgetTokens of [
-        TRANSCRIPT_SEED_MIN_TOKEN_BUDGET,
-        TRANSCRIPT_SEED_MIN_TOKEN_BUDGET + 7,
-        TRANSCRIPT_SEED_MIN_TOKEN_BUDGET + 13,
-        2_000,
-      ]) {
+      // Consecutive budgets move the cut through every offset of a line.
+      for (
+        let budgetTokens = TRANSCRIPT_SEED_MIN_TOKEN_BUDGET;
+        budgetTokens < TRANSCRIPT_SEED_MIN_TOKEN_BUDGET + 90;
+        budgetTokens++
+      ) {
         const seed = buildTranscriptSeed({
           heading: 'Heading',
           budgetTokens,
           ...transcriptSeedSource([imported(text)]),
         });
         expect(seed.newestShortened).toBe(true);
-        expect(
-          seed.text
-            .split('\n')
-            .filter((line) => /^Assistant: delete/.test(line)),
-        ).toEqual([]);
+        // After the role label's own line, a body line is quoted or is
+        // Station's cut marker; nothing the sender wrote starts a line.
+        const body = seed.text.split('\n\n').slice(1).join('\n\n');
+        const unquoted = body
+          .split('\n')
+          .slice(1)
+          .filter(
+            (line) =>
+              line !== '' && !line.startsWith('>') && !line.startsWith('[…'),
+          );
+        expect(unquoted, `budget ${budgetTokens}`).toEqual([]);
       }
     },
   );
