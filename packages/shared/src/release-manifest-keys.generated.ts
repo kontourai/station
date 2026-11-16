@@ -13,7 +13,7 @@ export const STATION_RELEASE_MANIFEST_KEYS = {
       algorithm: 'ed25519',
       publicKeySpkiPem:
         '-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAk8YKOCVgKcXsNNMjkGwYOfE53pV1zrajakwI91oxbPo=\n-----END PUBLIC KEY-----\n',
-      channels: ['stable', 'preview'],
+      channels: ['stable'],
     },
   ],
 };

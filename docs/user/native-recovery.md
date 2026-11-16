@@ -9,7 +9,7 @@ Contributor and operator procedures are in the repository's
 
 ## What a normal packaged start does
 
-Stable, Beta, and Nightly configure their main desktop window to start hidden.
+Stable and Nightly configure their main desktop window to start hidden.
 For a Desktop-owned sidecar, the native host proves its exact generation,
 instance ID, boot ID, and local API base. Revealing application content also
 requires the main renderer to have mounted. The native shell starts the
@@ -174,7 +174,7 @@ Keep shell and service logs separate:
 | Desktop shell panic record | `crash.log` beside `station.log` | `crash.log` beside `station.log` | `crash.log` beside `station.log` |
 | Installed service log | `<STATION_HOME>/logs/<instance>-service.out.log` and `<STATION_HOME>/logs/<instance>-service.err.log` | `journalctl --user -u station-<instance>.service` (no service log file) | `<STATION_HOME>/logs/<instance>-service.log` |
 
-Choose the app identifier for your installed channel (Stable, Beta, or Nightly)
+Choose the app identifier for your installed channel (Stable or Nightly)
 from the [channel log path table in the repository guide](https://github.com/kontourai/station/blob/main/docs/guides/native-shell-verification.md).
 
 The desktop shell honors `STATION_DESKTOP_LOG_LEVEL` set before launch:

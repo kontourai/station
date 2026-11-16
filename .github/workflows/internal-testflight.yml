@@ -32,24 +32,6 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  admit-beta:
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-22.04
-    timeout-minutes: 10
-    environment: ios-beta
-    steps:
-      - name: Record no-effect Beta environment admission
-        env:
-          SOURCE_SHA: ${{ github.sha }}
-        run: >-
-          node --input-type=module -e 'import {writeFileSync} from "node:fs"; writeFileSync("admission-beta.json",JSON.stringify({schemaVersion:1,kind:"ios-testflight-environment-admission",channel:"beta",environment:"ios-beta",sourceSha:process.env.SOURCE_SHA,ref:"refs/heads/main"},null,2)+"\n",{mode:0o600});'
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: station-internal-ios-admission-beta-${{ github.run_id }}
-          path: admission-beta.json
-          if-no-files-found: error
-          retention-days: 30
-
   admit-nightly:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-22.04
@@ -69,8 +51,8 @@ jobs:
           retention-days: 30
 
   plan:
-    needs: [admit-stable, admit-beta, admit-nightly]
-    if: needs.admit-stable.result == 'success' && needs.admit-beta.result == 'success' && needs.admit-nightly.result == 'success'
+    needs: [admit-stable, admit-nightly]
+    if: needs.admit-stable.result == 'success' && needs.admit-nightly.result == 'success'
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     concurrency:
@@ -82,10 +64,8 @@ jobs:
       source_sha: ${{ steps.source.outputs.sha }}
       version: ${{ steps.builds.outputs.version }}
       stable_build: ${{ steps.builds.outputs.stable_build }}
-      beta_build: ${{ steps.builds.outputs.beta_build }}
       nightly_build: ${{ steps.authority.outputs.nightly_build }}
       stable_tag: ${{ steps.authority.outputs.stable_tag }}
-      beta_tag: ${{ steps.authority.outputs.beta_tag }}
       nightly_tag: ${{ steps.authority.outputs.nightly_tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -123,8 +103,7 @@ jobs:
           node scripts/product-version.mjs --check
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           stable_build=$(node --input-type=module -e 'import { internalTestFlightBuild } from "./scripts/ios-testflight-internal-authority.mjs"; process.stdout.write(internalTestFlightBuild({channel:"stable",version:process.argv[1]}));' "$version")
-          beta_build=$(node --input-type=module -e 'import { internalTestFlightBuild } from "./scripts/ios-testflight-internal-authority.mjs"; process.stdout.write(internalTestFlightBuild({channel:"beta",version:process.argv[1]}));' "$version")
-          { echo "version=$version"; echo "stable_build=$stable_build"; echo "beta_build=$beta_build"; } >> "$GITHUB_OUTPUT"
+          { echo "version=$version"; echo "stable_build=$stable_build"; } >> "$GITHUB_OUTPUT"
       - id: authority
         name: Sign, create, and verify immutable internal authority tags
         env:
@@ -136,7 +115,6 @@ jobs:
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
           VERSION: ${{ steps.builds.outputs.version }}
           STABLE_BUILD: ${{ steps.builds.outputs.stable_build }}
-          BETA_BUILD: ${{ steps.builds.outputs.beta_build }}
         run: |
           set -euo pipefail
           test -n "$TESTFLIGHT_AUTHORITY_GPG_PRIVATE_KEY"
@@ -239,8 +217,7 @@ jobs:
             nightly_tag=$(create_authority_tag nightly "$nightly_build")
           fi
           stable_tag=$(create_authority_tag stable "$STABLE_BUILD")
-          beta_tag=$(create_authority_tag beta "$BETA_BUILD")
-          { echo "stable_tag=$stable_tag"; echo "beta_tag=$beta_tag"; echo "nightly_tag=$nightly_tag"; echo "nightly_build=$nightly_build"; } >> "$GITHUB_OUTPUT"
+          { echo "stable_tag=$stable_tag"; echo "nightly_tag=$nightly_tag"; echo "nightly_build=$nightly_build"; } >> "$GITHUB_OUTPUT"
       - name: Retain bounded authority receipts
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -268,23 +245,9 @@ jobs:
       release_label: internal-nightly-${{ needs.plan.outputs.nightly_build }}
     secrets: inherit
 
-  deliver-beta:
+  deliver-stable:
     needs: [plan, deliver-nightly]
     if: needs.plan.result == 'success' && needs.deliver-nightly.result == 'success'
-    permissions: { contents: read, id-token: write, attestations: write }
-    uses: ./.github/workflows/testflight-delivery.yml
-    with:
-      channel: beta
-      source_sha: ${{ needs.plan.outputs.source_sha }}
-      source_ref: refs/tags/${{ needs.plan.outputs.beta_tag }}
-      marketing_version: ${{ needs.plan.outputs.version }}
-      bundle_version: ${{ needs.plan.outputs.beta_build }}
-      release_label: internal-beta-${{ needs.plan.outputs.beta_build }}
-    secrets: inherit
-
-  deliver-stable:
-    needs: [plan, deliver-beta]
-    if: needs.plan.result == 'success' && needs.deliver-beta.result == 'success'
     permissions: { contents: read, id-token: write, attestations: write }
     uses: ./.github/workflows/testflight-delivery.yml
     with:

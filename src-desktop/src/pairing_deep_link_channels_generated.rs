@@ -17,7 +17,7 @@ pub fn normalize_dev_pairing_deep_link_suffix(value: &str) -> String {
 }
 
 pub fn native_pairing_deep_link_scheme(identifier: &str, dev_build: bool, channel: &str) -> String {
-    if dev_build {
+    if dev_build || channel == "dev" {
         let suffix = identifier
             .strip_prefix("io.kontourai.station.dev.")
             .unwrap_or("instance");
@@ -27,8 +27,8 @@ pub fn native_pairing_deep_link_scheme(identifier: &str, dev_build: bool, channe
         );
     }
     match channel {
-        "beta" => "station-beta".to_string(),
         "nightly" => "station-nightly".to_string(),
-        _ => "station-stable".to_string(),
+        "stable" => "station-stable".to_string(),
+        _ => String::new(),
     }
 }

@@ -3,13 +3,29 @@ import type {
   ReviewGitTarget,
   ReviewGitTargetInput,
 } from '@kontourai/station-contracts/review-evidence';
-import { classifyNodes } from '@kontourai/veritas/engine';
+import type { classifyNodes } from '@kontourai/veritas/engine';
 import { execGit } from '../../utils/git-exec.js';
+import { createLogger } from '../../utils/logger.js';
 import { ownRepositoryGitArgs } from '../projects/git-read-repository.js';
 import {
   type GitReviewRangeInspection,
   inspectGitReviewRange,
 } from './git-review-workspace-source.js';
+
+const logger = createLogger({ name: 'review-lens-router' });
+
+let veritasEngine:
+  | Promise<typeof import('@kontourai/veritas/engine')>
+  | undefined;
+function loadVeritasEngine() {
+  veritasEngine ??= import('@kontourai/veritas/engine').catch(
+    (error: unknown) => {
+      veritasEngine = undefined;
+      throw error;
+    },
+  );
+  return veritasEngine;
+}
 
 const POLICY_INPUTS = [
   '.veritas/repo-map.json',
@@ -136,9 +152,22 @@ export class ReviewLensRouter {
       );
     }
     const paths = routingPaths(changes);
+    // Loaded on first plan, not at boot (scripts/lib/server-static-imports.mjs).
+    let engine: Awaited<ReturnType<typeof loadVeritasEngine>>;
+    try {
+      engine = await loadVeritasEngine();
+    } catch (error) {
+      logger.warn('Could not load the Veritas engine for review routing', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return humanRequired(
+        'The Veritas engine that classifies the change could not be loaded.',
+        changes,
+      );
+    }
     let classified: ReturnType<typeof classifyNodes>;
     try {
-      classified = classifyNodes(paths, repoMap, input.repositoryRoot);
+      classified = engine.classifyNodes(paths, repoMap, input.repositoryRoot);
     } catch {
       return humanRequired(
         'Trusted Repo Map could not classify the change.',

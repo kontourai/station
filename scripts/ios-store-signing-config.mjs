@@ -23,7 +23,6 @@ const REQUIRED = [
 ];
 const SUPPORTED_IOS_BUNDLE_IDS = new Set([
   'io.kontourai.station',
-  'io.kontourai.station.beta',
   'io.kontourai.station.nightly',
 ]);
 

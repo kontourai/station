@@ -5,7 +5,6 @@ import {
   type ContinuePausedFlowGateFromSurveyResult,
   createSurveyFlowGateAdapter,
   type DiscoverSurveyGateReviewWorkInput,
-  discoverSurveyGateReviewWork,
   type ResolvedSurveyFlowGateReviewSession,
   type SurveyGateReviewWorkRequest,
 } from '@kontourai/flow-agents';
@@ -19,6 +18,7 @@ import {
   surveyFlowReviewDiscoveries,
   surveyFlowReviewUnavailableProjects,
 } from '../../telemetry/metrics.js';
+import { loadFlowAgentsRoot } from '../evidence/load-flow-agents.js';
 
 export interface StationSurveyReviewSession
   extends ResolvedSurveyFlowGateReviewSession {
@@ -331,6 +331,7 @@ export class SurveyFlowReviewService {
     input: DiscoverSurveyGateReviewWorkInput,
   ): Promise<SurveyGateReviewWorkRequest[]> {
     try {
+      const { discoverSurveyGateReviewWork } = await loadFlowAgentsRoot();
       const result = await discoverSurveyGateReviewWork(input);
       surveyFlowReviewDiscoveries.add(result.length, { outcome: 'success' });
       return result;

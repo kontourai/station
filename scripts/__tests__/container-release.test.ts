@@ -1,10 +1,12 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer, type RequestListener } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { dirname, relative, resolve, sep } from 'node:path';
 import { load } from 'js-yaml';
 import { describe, expect, test } from 'vitest';
 import { validatePackagedReleaseManifest } from '../../packages/cli/src/commands/lifecycle.js';
+import { receiverBuildProvenance } from '../../packages/telemetry-broker/artifact-manifest.mjs';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { checkContainerHealth } from '../container-healthcheck.mjs';
 import {
   createContainerReleaseDescriptor,
@@ -335,7 +337,8 @@ describe('container release metadata', () => {
       tag: 'v1.2.3-rc.4',
       tags: ['v1.2.3-rc.4', `sha-${sha}`],
       stationManifest: {
-        ref: 'v1.2.3-rc.4',
+        schemaVersion: 3,
+        version: '1.2.3',
         channel: 'stable',
         releaseChannel: 'stable',
         prerelease: false,
@@ -361,23 +364,35 @@ describe('container release metadata', () => {
     },
   );
 
-  test('derives the strict Station packaged-release manifest from the same parser', () => {
-    const manifest = createPackagedReleaseManifest({
-      tag: 'v1.2.3-preview.4',
+  test('candidate and final tags produce identical version-bound packaged provenance', () => {
+    const candidate = createPackagedReleaseManifest({
+      tag: 'v1.2.3-rc.4',
       sha,
       createdAt,
     });
-
-    expect(manifest).toEqual({
-      schemaVersion: 2,
+    const final = createPackagedReleaseManifest({
+      tag: 'v1.2.3',
       sha,
-      ref: 'v1.2.3-preview.4',
       createdAt,
-      channel: 'beta',
-      releaseChannel: 'preview',
-      prerelease: true,
     });
-    expect(validatePackagedReleaseManifest(manifest)).toEqual(manifest);
+    expect(candidate).toEqual({
+      schemaVersion: 3,
+      sha,
+      version: '1.2.3',
+      createdAt,
+      channel: 'stable',
+      releaseChannel: 'stable',
+      prerelease: false,
+    });
+    expect(final).toEqual(candidate);
+    expect(validatePackagedReleaseManifest(candidate)).toEqual(candidate);
+    expect(() =>
+      createPackagedReleaseManifest({
+        tag: 'v1.2.3-preview.4',
+        sha,
+        createdAt,
+      }),
+    ).toThrow('Invalid container release metadata');
   });
 
   test('derives every release ring from the generated ring table, nightly included', () => {
@@ -1033,4 +1048,61 @@ describe('runtime COPY source parser', () => {
       expect(() => parseCopySources(stage)).toThrow();
     });
   });
+});
+
+const receiverTempDir = trackTempDirs();
+test.each([
+  ['v1.2.3-rc.1', 'v1.2.3'],
+  ['v1.2.3-nightly.12', 'v1.2.3-nightly.12'],
+])(
+  'receiver artifact provenance reads the product identity of %s',
+  async (tag, ref) => {
+    const dir = receiverTempDir('station-receiver-provenance-');
+    const release = createPackagedReleaseManifest({ tag, sha, createdAt });
+    writeFileSync(
+      resolve(dir, '.station-release.json'),
+      JSON.stringify(release),
+    );
+    await expect(receiverBuildProvenance(dir)).resolves.toEqual({
+      kind: 'declared-release',
+      head: sha,
+      ref,
+      createdAt,
+    });
+  },
+);
+
+test('receiver artifact provenance rejects retired preview instead of remapping it to Stable', async () => {
+  const dir = receiverTempDir('station-receiver-legacy-');
+  writeFileSync(
+    resolve(dir, '.station-release.json'),
+    JSON.stringify({
+      schemaVersion: 2,
+      ref: 'v1.2.3-preview.1',
+      sha,
+      createdAt,
+      channel: 'beta',
+      releaseChannel: 'preview',
+      prerelease: true,
+    }),
+  );
+  await expect(receiverBuildProvenance(dir)).rejects.toThrow(
+    'Invalid receiver source provenance',
+  );
+});
+
+test('receiver artifact provenance rejects extra origin fields in version-bound provenance', async () => {
+  const dir = receiverTempDir('station-receiver-invalid-');
+  const release = createPackagedReleaseManifest({
+    tag: 'v1.2.3-rc.1',
+    sha,
+    createdAt,
+  });
+  writeFileSync(
+    resolve(dir, '.station-release.json'),
+    JSON.stringify({ ...release, ref: 'v1.2.3-rc.1' }),
+  );
+  await expect(receiverBuildProvenance(dir)).rejects.toThrow(
+    'Invalid receiver source provenance',
+  );
 });

@@ -311,7 +311,7 @@ The mutation suite is deliberately focused and opt-in. Its runner safety and pol
 
 Dependency advisory scans are not part of PR, merge-queue or Nightly feature
 verification. The central scheduled scan retains one assigned actionable tracker;
-Preview/Stable publication runs a fresh exact-source audit using trusted policy.
+Stable RC/final publication runs a fresh exact-source audit using trusted policy.
 This does not remove secret scanning, dependency review, signatures, integrity or
 functional checks. See [dependency security](dependency-security.md#where-the-scan-runs).
 
@@ -507,7 +507,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`qualification-after-repair.yml`](../../.github/workflows/qualification-after-repair.yml) | Qualify landed repair | **Main: Qualify landed repair** | after `PR: CI` runs on `main`. |
 | [`qualification-repair.yml`](../../.github/workflows/qualification-repair.yml) | Qualification repair | **Main: Qualification repair** | after `Main: Qualification`; manual dispatch. |
 | [`recover-terminal-capacity-owner.yml`](../../.github/workflows/recover-terminal-capacity-owner.yml) | Recover terminal physical-host capacity owner | **Tool: Recover terminal capacity owner** | manual dispatch. |
-| [`release-advisory.yml`](../../.github/workflows/release-advisory.yml) | Release dependency advisory gate | **Release: Dependency advisory gate** | reused by tagged staging, protected release publication, manual npm publication and Beta/Stable TestFlight. |
+| [`release-advisory.yml`](../../.github/workflows/release-advisory.yml) | Release dependency advisory gate | **Release: Dependency advisory gate** | reused by tagged staging, protected release publication, manual npm publication and Stable TestFlight. |
 | [`release.yml`](../../.github/workflows/release.yml) | Stage Station release | **Release: Stage** | `v*` tag pushes. |
 | [`seatbelt-kernel.yml`](../../.github/workflows/seatbelt-kernel.yml) | Tool: Seatbelt kernel legs | **Main: Seatbelt kernel legs** | main pushes (path filtered); manual dispatch. |
 | [`secret-scan.yml`](../../.github/workflows/secret-scan.yml) | Secret Scan | **PR: Secret scan** | PR events; main pushes; manual dispatch. |
@@ -927,7 +927,7 @@ slots exclude planners, security checks, platform builds and status publishers;
 they are not a total repository or organization capacity reservation.
 
 The reusable hosted workflow `.github/workflows/full-regression.yml` owns the
-exact-source full qualification receipt. Scheduled main qualification and tagged Preview/Stable use it: every canonical phase and Android viewport test must
+exact-source full qualification receipt. Scheduled main qualification and tagged Stable RC/final use it: every canonical phase and Android viewport test must
 succeed, with bounded exact-source reuse. A manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.
 
 Nightly runs independently. Its hourly decision checks the default six-hour
@@ -1676,6 +1676,9 @@ base commit and skips the capture only when every changed path is one the
 capture never reads (docs, agent instructions, other workflows, desktop Rust,
 test files). The scope is an exclusion list because the capture boots the
 whole product through `./station start`, not just `src-ui/`. Review changed images in the run's `gallery-pr-<run>-<attempt>` artifact.
+Rendered screens retain bounded browser errors in `capture.json` beside their
+UI audit, so a valid PNG with a failing product assertion keeps its runtime
+diagnostics. These errors do not change the capture or findings verdict.
 When an intentional change should become the new reference, download that
 hosted artifact and run `npm run screenshot:baseline -- --gallery=<download dir>`.
 Commit reviewed baseline updates separately; they are optional for a green
