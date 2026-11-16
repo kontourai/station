@@ -6192,8 +6192,7 @@ describe('#5051 a session-list request folds the read model once', () => {
       });
 
       const reads: Array<{ purpose: string; scoped: boolean }> = [];
-      const listSessionReadModel =
-        service.listSessionReadModel.bind(service);
+      const listSessionReadModel = service.listSessionReadModel.bind(service);
       vi.spyOn(service, 'listSessionReadModel').mockImplementation(
         (authority, options) => {
           reads.push({
