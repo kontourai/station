@@ -310,6 +310,19 @@ jobs:
           node scripts/release-cohort.mjs promotion-receipt promotion-state.json windows-claim.json > promotion-windows-state.json
           node scripts/release-cohort.mjs group-desktop-states promotion-macos-state.json promotion-windows-state.json > promotion-desktop-state.pending.json
           mv promotion-desktop-state.pending.json promotion-desktop-state.json
+      # #3593: keeps the rolling release under GitHub's 1,000-asset cap. Runs
+      # only after this cohort's publication is read back and its claims are
+      # recorded, and always prints its plan; it deletes only when the owner
+      # sets the repository variable STATION_NIGHTLY_DESKTOP_PRUNE to exactly
+      # `enabled`. Its failure is a warning, never this publication's outcome.
+      - name: Prune versioned desktop downloads past the retention window
+        if: ${{ steps.publisher.outputs.desktop_needed == 'true' && steps.macos_provider_state.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 15
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STATION_NIGHTLY_DESKTOP_PRUNE: ${{ vars.STATION_NIGHTLY_DESKTOP_PRUNE }}
+        run: node scripts/retain-nightly-desktop-assets.mjs cohort/cohort-plan.json
       - name: Record unknown macOS provider state for disclosure
         if: ${{ always() && steps.macos_provider_state.outcome != 'success' }}
         run: |

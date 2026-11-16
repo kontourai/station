@@ -610,7 +610,7 @@ checks their GitHub sizes and digests. Then it replaces three more assets:
 the two installers again under fixed names,
 `station-nightly-macos-aarch64.dmg` and
 `station-nightly-windows-x86_64-setup.exe` (so
-`releases/download/nightly-desktop/<name>` is always the newest build), and
+`releases/download/nightly-desktop/<name>` normally serves the newest build), and
 `SHA256SUMS`, which lists this build's seven downloads under both names. It
 replaces `latest.json` last and reads every asset back. It refuses version
 regression. Previous versioned downloads are not overwritten, so an upload
@@ -620,7 +620,33 @@ is a delete then an upload, not a transaction: a download in between can
 miss a fixed name, or pair it with the other build's `SHA256SUMS`, which then
 fails the check. Interrupted provider writes remain unresolved until readback
 verifies them. The older `station-nightly-desktop-*` assets on the release
-come from builds before versioned names, and are not updated.
+come from builds before versioned names, and are not updated. Nothing current
+reads them: `latest.json` names the versioned downloads.
+
+GitHub refuses uploads to a release that holds 1,000 assets, and each cohort
+adds five. After the publication is read back and the provider claims are
+recorded, a retention step in the same job
+([`scripts/retain-nightly-desktop-assets.mjs`](../../scripts/retain-nightly-desktop-assets.mjs),
+planning in [`scripts/lib/publish-nightly-desktop.mjs`](../../scripts/lib/publish-nightly-desktop.mjs))
+keeps the versioned downloads of the newest 30 cohorts, ordered by parsed
+Nightly version (about two weeks at two cohorts a day). It always keeps the
+cohort just published, every cohort the live `latest.json` names, any cohort
+with an incomplete upload, and every asset whose name is not exactly one of
+the five versioned shapes with a canonical version: the fixed names,
+`SHA256SUMS`, `latest.json` and the legacy assets. Older cohorts are removed
+whole, oldest first, at most 25 assets (five cohorts) per run; a larger
+backlog is worked off over later runs. It plans nothing from a listing that
+is truncated, duplicated or changed between its reads, or before
+`latest.json` names this cohort. Each asset is re-read by ID and exact name
+before it is deleted.
+
+The step always prints its plan: how many assets, how many it would delete,
+and the window it keeps. It deletes only when the owner sets the repository
+variable `STATION_NIGHTLY_DESKTOP_PRUNE` to exactly `enabled`
+(`gh variable set STATION_NIGHTLY_DESKTOP_PRUNE --repo kontourai/station --body enabled`);
+any other value, or none, reports only. Deletion is permanent. A failure is a
+`::warning` and does not change the job's outcome or the published cohort; a
+cohort left partly deleted is finished by the next run.
 
 The final receipt records separate macOS and Windows claims for this shared
 publication. Android retains its separate provider outcome. A build or release
