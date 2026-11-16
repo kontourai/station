@@ -519,11 +519,14 @@ export function AttachedSessionDetail({
     }
     setSourceActiveWarning(false);
     adoptionInFlight.current = true;
-    adoption.mutate({ intent: getSelectionIntent(), override }, {
-      onSettled: () => {
-        adoptionInFlight.current = false;
+    adoption.mutate(
+      { intent: getSelectionIntent(), override },
+      {
+        onSettled: () => {
+          adoptionInFlight.current = false;
+        },
       },
-    });
+    );
   };
   const requestSend = async ({ allowEmpty = false } = {}) => {
     if ((!allowEmpty && !draft.trim()) || composerDisabled) return;
