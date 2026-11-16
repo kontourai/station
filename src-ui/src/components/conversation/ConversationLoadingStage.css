@@ -1,0 +1,91 @@
+/* A conversation's first load: the splash's mark and status line, sized for a
+   transcript. Centered by the `.chat-messages--empty` filler it sits in. */
+.conversation-loading {
+  display: grid;
+  justify-items: center;
+  gap: var(--k-space-2);
+  max-width: 360px;
+  padding: var(--k-space-4);
+  text-align: center;
+  /* A load that lands quickly paints nothing: the stage only appears once
+     the wait is long enough to notice. */
+  animation: conversation-loading-in var(--motion-slow) var(--ease-out) 180ms
+    both;
+}
+
+.conversation-loading__mark {
+  width: 32px;
+  height: 32px;
+  margin-bottom: var(--k-space-1);
+  opacity: 0.55;
+  animation: conversation-loading-breathe 2.4s ease-in-out infinite;
+}
+
+:root[data-startup-mark="nightly"] .conversation-loading__mark {
+  content: url("/favicon-nightly.png");
+}
+
+.conversation-loading__step {
+  margin: 0;
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+  animation: station-startup-stage var(--motion-slow) var(--ease-out) both;
+}
+
+.conversation-loading__long {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: baseline;
+  gap: var(--k-space-1) var(--k-space-2);
+  margin: 0;
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+  opacity: 0.85;
+  animation: station-startup-stage var(--motion-slow) var(--ease-out) both;
+}
+
+.conversation-loading__escape {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--accent-primary, var(--k-text));
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.conversation-loading__escape:hover {
+  text-decoration-thickness: 2px;
+}
+
+@keyframes conversation-loading-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes conversation-loading-breathe {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conversation-loading,
+  .conversation-loading__mark,
+  .conversation-loading__step,
+  .conversation-loading__long {
+    animation: none;
+  }
+}

@@ -154,6 +154,11 @@ import { LazyBoundary } from '../LazyBoundary';
 import { resolveNewChatAgentEnable } from '../modals/new-chat-agent-enable';
 import { SessionFailureAlert } from '../session-failure/SessionFailureAlert';
 import { ErrorState, SkeletonList } from '../state';
+import {
+  ConversationLoadingStage,
+  type ConversationLoadingStep,
+  conversationLoadingLongText,
+} from './ConversationLoadingStage';
 import { ConversationComposer } from './ConversationComposer';
 import { useConversationConnection } from './ConversationConnectionContext';
 import { ConversationStopControl } from './ConversationStopControl';
@@ -207,8 +212,12 @@ const loadChatMessageList = () =>
  * tests/transcript-load-stability.spec.ts).
  */
 const CHAT_MESSAGE_LIST_PENDING = (
-  <div className="chat-messages chat-messages--empty">
-    <SkeletonList count={4} label="Loading chat" />
+  <div
+    className="chat-messages chat-messages--empty"
+    role="status"
+    aria-label="Loading chat"
+  >
+    <ConversationLoadingStage step="rendering" />
   </div>
 );
 
@@ -288,8 +297,6 @@ const CALLER_CANNOT_SEND_REASON =
  */
 const WORKSPACE_REFUSED_WITHOUT_NEW_CHAT_REASON =
   "This chat can only continue in its original workspace, and you can't start a new chat here.";
-const LOADING_LONG_MESSAGE =
-  'This conversation is taking longer to load. Waiting for Station.';
 
 export interface ConversationBodyProps {
   owner?: OwnerAttribution | null;
@@ -1079,6 +1086,13 @@ function LiveConversationBody({
   // The empty filler's loading wait (the filler names the wait itself).
   const showLoadingSkeleton = conversationLoading && !historyFailureNotice;
   const loadingLabel = transcript.catchingUp ? 'Catching up' : 'Loading chat';
+  // The step the stage names: only the read that is actually in flight.
+  const loadingStep: ConversationLoadingStep = resolvingOpen
+    ? 'opening'
+    : transcript.catchingUp
+      ? 'catching-up'
+      : 'reading';
+  const loadingLongMessage = conversationLoadingLongText(station?.stationName);
   /*
    * What assistive tech hears about the wait. Screen readers announce a CHANGE
    * to a live region that already exists; a region inserted together with its
@@ -1096,7 +1110,7 @@ function LiveConversationBody({
   const showLoadingLongRow =
     conversationLoading && loadingLong && !recoveryOpen;
   const loadingAnnouncement = showLoadingLongRow
-    ? LOADING_LONG_MESSAGE
+    ? loadingLongMessage
     : showLoadingSkeleton
       ? loadingLabel
       : '';
@@ -1985,7 +1999,19 @@ function LiveConversationBody({
                * that had turns in it (#1582 E3/B6). The skeleton keeps the flex
                * fill this slot exists for while saying only what is known.
                */
-              <SkeletonList count={4} label={loadingLabel} announce={false} />
+              <ConversationLoadingStage
+                step={loadingStep}
+                long={showLoadingLongRow}
+                stationName={station?.stationName}
+                onNewChat={
+                  onNewChat
+                    ? () =>
+                        void Promise.resolve(onNewChat()).catch(
+                          surfaceRecoveryFailure,
+                        )
+                    : undefined
+                }
+              />
             ) : (
               <ChatEmptyState
                 agentSlug={renderedSession.agentSlug}
@@ -2687,7 +2713,10 @@ function LiveConversationBody({
         {announcedLoading}
       </div>
       {/*
-        The one way out of the wait. `.session-history-controls` is this pane's
+        The way out of a wait the loading stage is not showing (a history
+        failure replaced it, or rows are already on screen while the open
+        read resolves); over an empty transcript the stage carries the long
+        wait and its escape itself. `.session-history-controls` is this pane's
         existing control row (archive#3386 already widened it past "buttons
         only"), reused rather than given a class of its own — the entry
         stylesheet is at its budget ceiling to the byte.
@@ -2697,10 +2726,10 @@ function LiveConversationBody({
         BEFORE the transcript's first read satisfies both conditions at once,
         and rendered the control twice (#1607).
       */}
-      {showLoadingLongRow ? (
+      {showLoadingLongRow && !showLoadingSkeleton ? (
         <div className="session-history-controls">
           {/* Announced by the persistent region above, not by this span. */}
-          <span>{LOADING_LONG_MESSAGE}</span>
+          <span>{loadingLongMessage}</span>
           {onNewChat ? (
             <button
               type="button"

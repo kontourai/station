@@ -1585,16 +1585,18 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
         announcer,
       );
       expect(announcer.textContent).toBe(
-        'This conversation is taking longer to load. Waiting for Station.',
+        'Taking longer than usual. Waiting on Station.',
       );
       // The visible copy of those words is not a second live region.
       const visible = screen
-        .getAllByText(
-          'This conversation is taking longer to load. Waiting for Station.',
-        )
+        .getAllByText('Taking longer than usual. Waiting on Station.')
         .filter((node) => node !== announcer);
       expect(visible).toHaveLength(1);
-      expect(visible[0].closest('[role="status"], [aria-live]')).toBeNull();
+      // It sits in the filler's status region, so it is hidden from the
+      // accessibility tree: the announcement region alone speaks it.
+      expect(visible[0].closest('[aria-hidden="true"]')).not.toBeNull();
+      // One escape, on the stage: the under-composer row does not repeat it.
+      expect(document.querySelector('.session-history-controls')).toBeNull();
 
       // The load ends: the same region empties and says nothing more.
       view.rerenderSession({ ...loading, conversationOpenPending: false });
@@ -1631,14 +1633,12 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     });
     const row = document.querySelector('.session-history-controls');
     expect(row?.textContent).toContain(
-      'This conversation is taking longer to load. Waiting for Station.',
+      'Taking longer than usual. Waiting on Station.',
     );
     await waitFor(() =>
       expect(
         screen.getByTestId('chat-dock-loading-announcement').textContent,
-      ).toBe(
-        'This conversation is taking longer to load. Waiting for Station.',
-      ),
+      ).toBe('Taking longer than usual. Waiting on Station.'),
     );
   });
 
@@ -1740,13 +1740,46 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
         screen.getByRole('button', { name: 'Start new chat' }),
       ).toBeTruthy();
       expect(
-        document.querySelector('.session-history-controls')?.textContent,
-      ).toContain(
-        'This conversation is taking longer to load. Waiting for Station.',
-      );
+        document.querySelector('.conversation-loading__long')?.textContent,
+      ).toContain('Taking longer than usual. Waiting on Station.');
+      expect(
+        screen.getAllByRole('button', { name: 'Start new chat' }),
+      ).toHaveLength(1);
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  // The stage names only the read that is in flight: the open point-read
+  // first, then the transcript's first read once the open has landed.
+  test('the loading stage names the step the load is on', () => {
+    transcriptMock.enabled = true;
+    transcriptMock.settled = false;
+    const view = renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'idle',
+        lifecycleState: 'idle',
+      }),
+      session: buildSession({
+        conversationId: 'cool',
+        conversationOpenPending: true,
+        messages: [],
+      }),
+      loadingEscapeDelayMs: 60_000,
+    });
+    const stage = () => document.querySelector('.conversation-loading');
+    expect(stage()?.getAttribute('data-step')).toBe('opening');
+    expect(stage()?.textContent).toContain('Opening conversation');
+    view.rerenderSession(
+      buildSession({
+        conversationId: 'cool',
+        conversationOpenPending: false,
+        messages: [],
+      }),
+    );
+    expect(stage()?.getAttribute('data-step')).toBe('reading');
+    expect(stage()?.textContent).toContain('Loading messages');
+    expect(stage()?.textContent).not.toContain('Taking longer');
   });
 
   test('#1582 E3 a resolving conversation still offers a way out', async () => {
