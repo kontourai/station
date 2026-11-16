@@ -895,12 +895,20 @@ read, each read from its provider at its exact identity:
 readiness?, mergeability, sourceBranch}` or `{state: "unavailable" |
 "unsupported", reason}`. `readiness` is `clean`, `blocked`, `checks-not-passing`,
 `conflicting`, `behind`, `draft` or `unknown`; absent means the provider did
-not report it. At most 40 Tasks (most recently updated first) and 5 pull
-requests per Task are read, 4 at a time, within 8 seconds; anything past a
-bound or the deadline is listed `unavailable` and its Task is `partial`. The
-read moves no Task (close-on-merge is separate) and is `Cache-Control:
-private, no-store`. A hosted request answers `tasks: {}`; a requester whose
-standing changed during the reads gets `404`. The board derives its lanes
+not report it. On GitHub `checks-not-passing` is `UNSTABLE`: some checks are
+failing or still pending, none of them required. A failing required check is
+`BLOCKED`, which the board words "Blocked by repository rules" (a known limit:
+it does not yet say which rule). Pull requests kept on the most recently
+updated Tasks are read first, at most 60 distinct ones, 4 at a time, within 8
+seconds; anything past the bound or the deadline is listed `unavailable` and
+its Task is `partial`. GitHub reads ask for status fields only and share one
+in-flight `gh pr view` per pull request for 60 seconds, cleared by a write to
+the repository through Station. The read moves no Task (close-on-merge is
+separate) and is `Cache-Control: private, no-store`. `projectId` is required
+(`400` without it). A hosted request answers `tasks: {}`. A requester whose
+standing changed during the reads gets `404` with `code:
+"request_principal_changed"`, which a client can tell from a Station without
+this route (a plain `404`). The board derives its lanes
 from these facts with `deriveTaskLane`
 ([`task-lane`](../../packages/contracts/src/task-lane.ts)).
 
