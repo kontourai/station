@@ -376,7 +376,7 @@ export function createProjectLibraryRoutes(
       try {
         const { output, bytes } = await deps.outputs.readContentForProject(
           projectKeys(admission.project),
-          c.req.param('outputId'),
+          c.req.param('outputId') ?? '',
         );
         if (!(await admission.isCurrent())) return notFound(c);
         return contentResponse(

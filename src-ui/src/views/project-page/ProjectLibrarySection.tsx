@@ -250,7 +250,7 @@ function ProjectLibrary({ slug, scope }: { slug: string; scope: Scope }) {
       ) : items.length === 0 ? (
         <Empty
           variant="compact"
-          label="No files yet"
+          label="This Library is empty"
           description="Add files or a folder, or keep a file from a Task."
         />
       ) : (
@@ -355,7 +355,7 @@ function ProjectLibrary({ slug, scope }: { slug: string; scope: Scope }) {
                               From {item.task.title}
                             </button>
                           ) : (
-                            <StatusBadge tone="warning" status="Orphaned" />
+                            <StatusBadge tone="caution" status="Orphaned" />
                           )}
                           {item.kind === 'task-output' &&
                             item.task.state === 'orphaned' && (

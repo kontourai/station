@@ -67,7 +67,7 @@ function SetupRecommendations({
   if (
     settled ||
     !tasks.isSuccess ||
-    tasks.data.length > 0 ||
+    (tasks.data?.length ?? 0) > 0 ||
     recommendations.length === 0
   )
     return null;
