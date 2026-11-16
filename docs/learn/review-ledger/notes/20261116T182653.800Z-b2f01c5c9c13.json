@@ -1,0 +1,7 @@
+{
+  "revision": "50be642daa052938f0a880e12241ee065e8c45af",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"chatStatus names the chat's own running work when it knows it, even with Station's count at zero or absent; otherwise the Station-count wording and 'Waiting for background reply' are unchanged.","inputs":["src-ui/src/components/status/chatStatus.ts"]}
+  ]
+}
