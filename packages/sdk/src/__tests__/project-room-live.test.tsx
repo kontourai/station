@@ -55,6 +55,11 @@ let connections: { channels: string[]; response: ServerResponse }[];
 let reads: { after: number; limit: number }[];
 let typingPosts: { typing: boolean }[];
 let clients: QueryClient[];
+/** History answers 503 while set: an outage the stream does not see. */
+let historyFailure: boolean;
+/** The next history read is answered only when `heldHistory` is called. */
+let holdNextHistory: boolean;
+let heldHistory: (() => void) | undefined;
 
 beforeEach(async () => {
   db = new DatabaseSync(':memory:');
@@ -70,6 +75,9 @@ beforeEach(async () => {
   reads = [];
   typingPosts = [];
   clients = [];
+  historyFailure = false;
+  holdNextHistory = false;
+  heldHistory = undefined;
   server = createServer(async (request, response) => {
     const url = new URL(request.url!, apiBase);
     const ok = (data: unknown) => {
@@ -101,7 +109,20 @@ beforeEach(async () => {
       const after = Number(url.searchParams.get('after'));
       const limit = Number(url.searchParams.get('limit'));
       reads.push({ after, limit });
-      ok(store.history(scope, after, limit));
+      const snapshot = store.history(scope, after, limit);
+      if (historyFailure) {
+        response.writeHead(503, { 'Content-Type': 'application/json' });
+        response.end(
+          JSON.stringify({ success: false, error: 'History is unavailable.' }),
+        );
+        return;
+      }
+      if (holdNextHistory) {
+        holdNextHistory = false;
+        heldHistory = () => ok(snapshot);
+        return;
+      }
+      ok(snapshot);
       return;
     }
     ok({
@@ -390,4 +411,58 @@ test('a room opened after the sidebar already holds the connection still backfil
     ).toEqual([1, 2, 3, 4]),
   );
   expect(reads.slice(before)).toEqual([{ after: 2, limit: 1 }]);
+});
+
+// #4985 review: the cursor follows what history actually delivered, never
+// what the stream announced while history was failing.
+test('a resync whose history read fails never lets the next append skip the messages it announced', async () => {
+  seed(1);
+  const hook = await openRoom();
+  // 2 and 3 commit, but their frames never arrive.
+  append('missed two');
+  append('missed three');
+  historyFailure = true;
+  push('resync', { key: roomId, lastSeq: 3, activity: 0 });
+  await waitFor(() => expect(hook.result.current.history.isError).toBe(true));
+  // History recovers on the same open connection.
+  historyFailure = false;
+  const four = append('four');
+  push('append', { key: roomId, message: four });
+  await waitFor(() => expect(hook.result.current.lastSeq).toBe(4));
+  await waitFor(() => expect(seqs(hook)).toEqual([1, 2, 3, 4]));
+});
+
+test('a reconnection whose history read fails never lets the next append skip the messages it announced', async () => {
+  seed(1);
+  const hook = await openRoom();
+  append('missed two');
+  append('missed three');
+  historyFailure = true;
+  // The connection is announced again (a reconnect) while history is down.
+  push('subscribed', { key: roomId, roomId, lastSeq: 3, activity: 0 });
+  await waitFor(() => expect(hook.result.current.history.isError).toBe(true));
+  historyFailure = false;
+  const four = append('four');
+  push('append', { key: roomId, message: four });
+  await waitFor(() => expect(hook.result.current.lastSeq).toBe(4));
+  await waitFor(() => expect(seqs(hook)).toEqual([1, 2, 3, 4]));
+});
+
+test('a history read already in flight never undoes a live append, in the cache or for its caller', async () => {
+  seed(1);
+  const hook = await openRoom();
+  holdNextHistory = true;
+  const waiting = hook.result.current.history.refetch();
+  await waitFor(() => expect(heldHistory).toBeDefined());
+  // The held read captured [1]; 2 is appended and delivered meanwhile.
+  const two = append('two');
+  push('append', { key: roomId, message: two });
+  await waitFor(() => expect(seqs(hook)).toEqual([1, 2]));
+  heldHistory!();
+  const answer = await waiting;
+  await waitFor(() =>
+    expect(hook.result.current.history.isFetching).toBe(false),
+  );
+  expect(seqs(hook)).toEqual([1, 2]);
+  expect(answer.data?.pages[0]?.messages.map((m) => m.seq)).toEqual([1, 2]);
 });

@@ -248,6 +248,11 @@ export const PROJECT_ROOM_HISTORY_MAX_PAGES = 20;
 export const PROJECT_ROOM_RETAINED_REREAD_MESSAGES =
   PROJECT_ROOM_HISTORY_MAX_PAGES * 25;
 /**
+ * Live-merged rows a room hook remembers for history reads in flight: as
+ * many as its windows hold, far more than can merge during one read.
+ */
+const LIVE_ROWS_KEPT = PROJECT_ROOM_RETAINED_REREAD_MESSAGES;
+/**
  * The room route said the Project itself is not on this Station (#4855):
  * show "no such Project", never "unavailable" with a retry.
  */
@@ -495,9 +500,22 @@ export function useProjectRoom(
   const [streamError, setStreamError] = useState(false);
   const [typing, setTyping] = useState<ProjectRoomActor[]>([]);
   const [agents, setAgents] = useState<ProjectRoomAgentActivity[]>([]);
-  /** Sequence and activity the cached history reflects, per the stream. */
-  const known = useRef<{ lastSeq: number; activity: number } | undefined>(
-    undefined,
+  /**
+   * Where the stream says the room is. `stale` until a history read made
+   * after the stream announced it has succeeded: until then later frames are
+   * never taken as proof that the cache holds what came before them.
+   */
+  const known = useRef<
+    { lastSeq: number; activity: number; stale: boolean } | undefined
+  >(undefined);
+  /**
+   * Rows the stream (or an acknowledged write) merged into the cache, with
+   * their place in the read order, so a history read that started before a
+   * merge keeps that newer row instead of undoing it. Bounded: a read only
+   * needs the rows merged while it was in flight.
+   */
+  const liveRows = useRef(
+    new Map<string, { message: ProjectRoomMessage; readSeq: number }>(),
   );
   const [liveSeq, setLiveSeq] = useState<number>();
   const connected = useRef(false);
@@ -541,7 +559,37 @@ export function useProjectRoom(
         signal,
         channelId,
       );
-      return { ...page, readSeq };
+      // Rows merged after this read began are newer than what it read. The
+      // newest window (it starts at `tailAfter`) takes every newer row past
+      // its start; an older window only the rows inside it.
+      const newest = pageParam.after === tailAfter;
+      const newer = [...liveRows.current.values()]
+        .filter(
+          (row) =>
+            row.readSeq > readSeq &&
+            row.message.seq > pageParam.after &&
+            (newest || row.message.seq <= pageParam.end),
+        )
+        .map((row) => row.message);
+      if (!newer.length) return { ...page, readSeq };
+      const byId = new Map(newer.map((m) => [m.messageId, m]));
+      const read = new Set(page.messages.map((m) => m.messageId));
+      const messages = [
+        ...page.messages.map((m) => byId.get(m.messageId) ?? m),
+        ...newer.filter((m) => !read.has(m.messageId)),
+      ].sort((a, b) => a.seq - b.seq);
+      return {
+        ...page,
+        messages,
+        checkpoint: {
+          ...page.checkpoint,
+          lastSeq: Math.max(
+            page.checkpoint.lastSeq,
+            messages[messages.length - 1]?.seq ?? 0,
+          ),
+        },
+        readSeq,
+      };
     },
     getNextPageParam: (_last, _pages, { after }) =>
       after > 0 ? { after: Math.max(0, after - 25), end: after } : undefined,
@@ -567,6 +615,14 @@ export function useProjectRoom(
         merged = true;
         const readSeq = nextHistoryRead();
         const byId = new Map(messages.map((m) => [m.messageId, m]));
+        for (const message of messages) {
+          liveRows.current.delete(message.messageId);
+          liveRows.current.set(message.messageId, { message, readSeq });
+        }
+        for (const id of liveRows.current.keys()) {
+          if (liveRows.current.size <= LIVE_ROWS_KEPT) break;
+          liveRows.current.delete(id);
+        }
         const pages = data.pages.map((page) =>
           page.messages.some((m) => byId.has(m.messageId))
             ? {
@@ -746,6 +802,25 @@ export function useProjectRoom(
     };
     const reconcile = () => client.invalidateQueries({ queryKey: root });
     /**
+     * Re-reads the room and, only once that read has succeeded, takes
+     * `target` as where the cache stands. A failed read leaves the room
+     * stale, so the next frame re-reads it again rather than trusting it.
+     */
+    const settle = async (target: { lastSeq: number; activity: number }) => {
+      try {
+        await client.invalidateQueries(
+          { queryKey: root },
+          { throwOnError: true },
+        );
+      } catch {
+        if (active) known.current = { ...target, stale: true };
+        return;
+      }
+      if (!active) return;
+      known.current = { ...target, stale: false };
+      setLiveSeq(target.lastSeq);
+    };
+    /**
      * Applies one frame against what the cache reflects (#4798). A message
      * past the next sequence means frames were missed: the messages between
      * are read from history first, never skipped. An activity range that does
@@ -763,13 +838,20 @@ export function useProjectRoom(
             return;
           }
           // Every (re)connection reconciles with durable history once.
-          known.current = { lastSeq: event.lastSeq, activity: event.activity };
-          setLiveSeq(event.lastSeq);
-          await reconcile();
+          await settle({ lastSeq: event.lastSeq, activity: event.activity });
           return;
         case 'append': {
           if (!state) return;
           const { message } = event;
+          const target = {
+            lastSeq: Math.max(state.lastSeq, message.seq),
+            activity: state.activity,
+          };
+          // A history read is owed: it, not this frame, says what is held.
+          if (state.stale) {
+            await settle(target);
+            return;
+          }
           if (message.seq > state.lastSeq + 1) {
             const window = await readProjectRoomWindow(
               scope,
@@ -786,26 +868,32 @@ export function useProjectRoom(
                 (item, index) => item.seq !== state.lastSeq + index + 1,
               ) ||
               !merge(filled, true)
-            )
-              await reconcile();
-          } else if (!merge([message], true)) await reconcile();
-          state.lastSeq = Math.max(state.lastSeq, message.seq);
+            ) {
+              await settle(target);
+              return;
+            }
+          } else if (!merge([message], true)) {
+            await settle(target);
+            return;
+          }
+          state.lastSeq = target.lastSeq;
           setLiveSeq(state.lastSeq);
           return;
         }
         case 'update':
           if (!state) return;
           if (
+            state.stale ||
             event.fromActivity !== state.activity ||
             !merge(event.messages, false)
-          )
-            await reconcile();
+          ) {
+            await settle({ lastSeq: state.lastSeq, activity: event.activity });
+            return;
+          }
           state.activity = event.activity;
           return;
         case 'resync':
-          known.current = { lastSeq: event.lastSeq, activity: event.activity };
-          setLiveSeq(event.lastSeq);
-          await reconcile();
+          await settle({ lastSeq: event.lastSeq, activity: event.activity });
           return;
         case 'typing':
           setTyping(event.actors.filter((person) => person.id !== actorId));
@@ -838,7 +926,10 @@ export function useProjectRoom(
       queue.current = queue.current
         .then(() => apply(event))
         .catch(() => {
-          if (active) void reconcile();
+          if (!active) return;
+          // A failed backfill proves nothing about what the cache holds.
+          if (known.current) known.current.stale = true;
+          void reconcile();
         });
     });
     // Presence lasts as long as this client's stream; no renewals.
