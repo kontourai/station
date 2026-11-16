@@ -1,0 +1,17 @@
+{
+  "revision": "f3920b0f12df533b5bbf7b55ad44772559fdd8e2",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Checked the agent-context-budget section edit (delegated-custody and Codex bound-tool keys, new keys need the agent-context-increase label). This document's references to the testing guide do not rely on that section's wording.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Checked the agent-context-budget section edit (delegated-custody and Codex bound-tool keys, new keys need the agent-context-increase label). This document's references to the testing guide do not rely on that section's wording.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Checked the agent-context-budget section edit (delegated-custody and Codex bound-tool keys, new keys need the agent-context-increase label). This document's references to the testing guide do not rely on that section's wording.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Checked the agent-context-budget section edit (delegated-custody and Codex bound-tool keys, new keys need the agent-context-increase label). This document's references to the testing guide do not rely on that section's wording.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Checked the agent-context-budget section edit (delegated-custody and Codex bound-tool keys, new keys need the agent-context-increase label). This document's references to the testing guide do not rely on that section's wording.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Checked the agent-context-budget section edit (delegated-custody and Codex bound-tool keys, new keys need the agent-context-increase label). This document's references to the testing guide do not rely on that section's wording.","inputs":["docs/guides/testing.md"]}
+  ]
+}

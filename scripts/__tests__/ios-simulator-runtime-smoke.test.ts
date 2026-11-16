@@ -151,7 +151,7 @@ describe('iOS simulator runtime smoke selection', () => {
     // through the bounded tap-retry helper, never a bare existence wait.
     for (const [source, target] of [
       ['manual', 'manualAddress'],
-      ['otherWays', 'connect'],
+      ['moreWays', 'connect'],
       ['connect', 'connectStation'],
       ['connectStation', 'address'],
     ]) {
