@@ -419,12 +419,31 @@ test.describe
       // Fill the channel so the message is not simply on screen already.
       for (let index = 0; index < 30; index += 1)
         await operatorPost(channels.get('general')!, `Later note ${index}`);
+      // The one feed record for this message: its identity across reloads.
+      const mentionRecord = (
+        (await operatorJson('/api/me/notifications')).body.data as {
+          id: string;
+          category: string;
+          metadata?: { messageId?: string };
+        }[]
+      ).find(
+        (item) =>
+          item.category === 'room-mention' &&
+          item.metadata?.messageId === messageId,
+      );
+      expect(mentionRecord, 'the mention record').toBeTruthy();
       // Opening it from For you lands on the message, in view and marked.
       await operator.page.goto(`${live.ui}/notifications`);
       const forYou = operator.page.getByRole('region', { name: 'For you' });
-      await forYou
-        .getByRole('button', { name: /mentioned you in #general, unread/ })
-        .click();
+      const row = forYou.getByRole('button', {
+        name: /mentioned you in #general/,
+      });
+      await expect(row).toHaveCount(1);
+      // Explicitly unread before it is opened.
+      await expect(row).toHaveAccessibleName(/, unread/);
+      // The ordinary user action: Enter on the focused row.
+      await row.focus();
+      await operator.page.keyboard.press('Enter');
       await expect(operator.page).toHaveURL(new RegExp(`message=${messageId}`));
       const target = operator.room.locator('.room-row--focused');
       await expect(target).toBeVisible({ timeout: 15_000 });
@@ -432,6 +451,38 @@ test.describe
       await expect(target.locator('.room-mention--self')).toHaveText(
         `@${operatorView.actor.displayName}`,
       );
+      // Back on Notifications the same row now reads as read. The For you
+      // region must be present: a missing or loading section cannot pass.
+      const readRow = async () => {
+        const settled = operator.page.getByRole('region', { name: 'For you' });
+        await expect(settled).toBeVisible({ timeout: 15_000 });
+        const rows = settled.getByRole('button', {
+          name: /mentioned you in #general/,
+        });
+        await expect(rows).toHaveCount(1);
+        await expect(rows).not.toHaveAccessibleName(/, unread/);
+        return rows;
+      };
+      await operator.page.goto(`${live.ui}/notifications`);
+      const afterOpen = await readRow();
+      const name = await afterOpen.evaluate(
+        (node) => node.getAttribute('aria-label') ?? node.textContent,
+      );
+      await operator.page.reload();
+      const afterReload = await readRow();
+      expect(
+        await afterReload.evaluate(
+          (node) => node.getAttribute('aria-label') ?? node.textContent,
+        ),
+      ).toBe(name);
+      // Same record identity, read on the server.
+      const stored = (
+        (await operatorJson('/api/me/notifications')).body.data as {
+          id: string;
+          metadata?: { envelope?: { readAt?: string } };
+        }[]
+      ).find((item) => item.id === mentionRecord!.id);
+      expect(stored?.metadata?.envelope?.readAt).toBeTruthy();
       // A mention of someone outside the Project is refused at send time.
       const refused = await asGuest(`/api/projects/${SLUG}/room/messages`, {
         ...guards,
