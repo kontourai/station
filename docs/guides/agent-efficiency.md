@@ -123,10 +123,10 @@ The qualifying configuration needs both halves: Codex's
 `features.mcp_tool_list_changed=true` (an under-development flag, default off)
 and Station's `list_changed` on the load call's own stream. Without either, the
 qualification fails at the list-after-loading step. It does not establish that a
-real model chooses to load a family, behaviour after thread resume, or any ACP
-agent. ACP agents (OpenCode, Kiro, Cursor, Goose and others reached through
-Station's `acp` connection) each bring their own MCP client and remain
-unqualified. Claude keeps native tool search and is not a candidate.
+real model chooses to load a family, or behaviour after thread resume. Engines
+Station reaches over ACP (OpenCode, Kiro and custom engines) each bring their
+own MCP client and remain unqualified. Claude keeps native tool search and is
+not a candidate.
 
 ## Review and use a learning
 
