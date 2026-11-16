@@ -47,6 +47,8 @@ const DEFAULT_MAX_TRAVERSAL_ENTRIES = 1024;
 const DEFAULT_MAX_DEPTH = 8;
 const DEFAULT_READ_YIELD_EVERY_LINES = 256;
 const MAX_CANDIDATES_CEILING = 512;
+/** Total rollouts one discovery reads across every Codex home. */
+const MAX_TOTAL_CANDIDATES = 512;
 const MAX_BYTES_CEILING = 2 * 1024 * 1024;
 const MAX_LINE_BYTES_CEILING = 128 * 1024;
 const MAX_EVENTS_CEILING = 512;
@@ -99,8 +101,8 @@ interface CodexRolloutSessionSourceOptions {
   /**
    * The other Codex homes Station itself points sessions at (a connection's
    * `configHome`, the legacy app home, credential-profile homes), read once
-   * per discovery. `homeDir` stays first, so a session id found in several
-   * homes is attributed to the earliest one.
+   * per discovery, after `homeDir`. Each home's rollouts keep that home's
+   * affinity and thread ids.
    */
   listConfiguredHomes?: () => Promise<readonly string[]>;
   maxHomes?: number;
@@ -212,6 +214,9 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
     if (homes.length === 0) return { outcome: 'missing_root', sessions: [] };
     this.handles.clear();
 
+    // Each home keeps its own newest `maxCandidates`, so a busy profile home
+    // cannot evict the default home's sessions. Homes are taken in order
+    // (default first) up to one total ceiling that bounds a poll's reads.
     const candidates: Array<{
       path: string;
       modifiedAt: number;
@@ -223,12 +228,12 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
       const scan = this.scanHome(home.root);
       candidateLimitSeen ||= scan.limitSeen;
       rejected ||= scan.rejected;
-      for (const candidate of scan.candidates)
+      for (const candidate of scan.candidates.sort(compareCandidates)) {
+        if (candidates.length >= MAX_TOTAL_CANDIDATES) {
+          candidateLimitSeen = true;
+          break;
+        }
         candidates.push({ ...candidate, home: index });
-      if (candidates.length > this.maxCandidates) {
-        candidates.sort(compareCandidates);
-        candidates.length = this.maxCandidates;
-        candidateLimitSeen = true;
       }
     }
 
@@ -237,15 +242,12 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
       : rejected
         ? 'rejected_candidate'
         : 'ok';
-    // One descriptor per native session id: a rollout copied into a second
-    // home (an imported profile) is the same conversation, and two thread ids
-    // for it would import it twice. The earliest configured home wins, so the
-    // default home keeps the thread id it had before other homes were added.
-    const winners = new Map<
-      string,
-      { home: number; registration: SourceRegistration }
-    >();
-    const ordered: SourceRegistration[] = [];
+    // A native id found in two homes stays two threads, each bound to its own
+    // home. Station never copies rollouts between homes, so a shared id is a
+    // hand-made copy, and once both copies continue they have forked: picking
+    // one would hide the other's turns, and a winner that changed between
+    // polls would mint a new thread for the same conversation.
+    const sessions: AttachedSessionDescriptor[] = [];
     for (const candidate of candidates.sort(compareCandidates)) {
       const home = homes[candidate.home]!;
       const result = this.discoverFile(
@@ -258,24 +260,11 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
         outcome = mergeOutcome(outcome, result.outcome);
         continue;
       }
-      const sessionId = result.registration.descriptor.sessionId;
-      const previous = winners.get(sessionId);
-      if (previous && previous.home <= candidate.home) continue;
-      winners.set(sessionId, {
-        home: candidate.home,
-        registration: result.registration,
-      });
-      ordered.push(result.registration);
-    }
-    const sessions: AttachedSessionDescriptor[] = [];
-    for (const registration of ordered) {
-      if (
-        winners.get(registration.descriptor.sessionId)?.registration !==
-        registration
-      )
-        continue;
-      this.handles.set(registration.descriptor.sourceHandle, registration);
-      sessions.push(registration.descriptor);
+      this.handles.set(
+        result.registration.descriptor.sourceHandle,
+        result.registration,
+      );
+      sessions.push(result.registration.descriptor);
     }
     return { outcome, sessions };
   }

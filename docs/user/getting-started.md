@@ -1202,9 +1202,10 @@ Station looks in four places:
 - Codex sessions under `sessions` in `CODEX_HOME`, or `~/.codex` when that is
   not set, and in every other Codex home Station itself runs Codex in: the
   Codex connection's config home, its Station app home, and each credential
-  profile's home. A conversation found in more than one of them is listed
-  once, under the first in that order. Continuing one runs Codex in the home
-  it was found in, with that home's account.
+  profile's home. Continuing a conversation runs Codex in the home it was
+  found in, with that home's account and, for a profile, its settings. A
+  conversation copied by hand into two of them is listed once per copy,
+  since the copies can go on separately.
 - Grok Build sessions under `sessions` in `GROK_HOME`, or `~/.grok` when that
   is not set. A Grok session appears once it has a prompt. A subagent's own
   session is not listed separately, and neither is a Grok chat you started in
@@ -1238,8 +1239,8 @@ sessions and capability checks are left out.
 point Station at a different folder (for OpenCode, the folder holding the
 database). With `STATION_EXTERNAL_CODEX_SOURCE_ROOT` set, that folder is the
 only Codex home Station reads. Station checks every two seconds and reads the
-128 most recently changed conversations from each place (all Codex homes
-together count as one place). Older ones stay in history once Station has read
+128 most recently changed conversations from each place (each Codex home is
+its own place, up to 512 Codex conversations in all, the default home first). Older ones stay in history once Station has read
 them, but new messages in them are not picked up until they are among
 the 128 again. Conversations Station has not listed before appear only after it
 finishes restoring its own sessions at startup; if that restore fails, already

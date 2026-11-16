@@ -1651,11 +1651,14 @@ the engine's default home directory. Codex observation also reads the homes
 Station runs Codex in ([`configuredEngineHomes`](../../src-server/providers/app-home/credential-profile-env.ts):
 the connection's config home, the legacy app home and every credential-profile
 home), unless `STATION_EXTERNAL_CODEX_SOURCE_ROOT` is set. Each home has its
-own source affinity, so continuation resumes in the home the rollout was found
-in; a native session id found in several homes gets one descriptor, from the
-first home in that order. The affinity resolves only for a home the latest
-discovery listed, so continuing a profile-home session waits for the first
-discovery after a restart. `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT`
+own source affinity and thread ids, so continuation resumes in the home the
+rollout was found in, with a credential profile's env overlay applied
+(`credentialProfileEnvForHome`; an invalid overlay refuses the continuation).
+A native session id present in two homes is two threads, one per home. Each
+home reads its own newest 128 rollouts, up to 512 in all, default home first.
+An affinity resolves only for a currently configured home; on a miss the home
+list is re-read once, so a continuation right after a restart does not wait
+for discovery. `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT`
 selects the folder holding OpenCode's session database for observation only;
 OpenCode sessions have no continuation. With
 `STATION_EXTERNAL_ACP_SESSIONS=1`, the

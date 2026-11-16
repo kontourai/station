@@ -795,7 +795,7 @@ describe('CodexRolloutSessionSource', () => {
     expect(discovery.sessions).toHaveLength(1);
   });
 
-  test('discovers every configured Codex home, one descriptor per native id, and resolves each affinity to its own home', async () => {
+  test('discovers every configured Codex home and resolves each affinity to its own home', async () => {
     const defaultHome = fixtureRoot();
     const profileHome = fixtureRoot();
     const turn = (prompt: string) =>
@@ -829,13 +829,12 @@ describe('CodexRolloutSessionSource', () => {
     });
     const discovery = await source.discover();
     expect(discovery.outcome).toBe('ok');
-    const byId = new Map(discovery.sessions.map((s) => [s.sessionId, s]));
-    expect([...byId.keys()].sort()).toEqual([
-      'default-only',
-      'profile-only',
-      'shared',
-    ]);
-    expect(discovery.sessions).toHaveLength(3);
+    expect(discovery.sessions).toHaveLength(4);
+    const byId = new Map(
+      discovery.sessions
+        .filter((s) => s.sessionId !== 'shared')
+        .map((s) => [s.sessionId, s]),
+    );
 
     const defaultOnly = byId.get('default-only')!;
     const profileOnly = byId.get('profile-only')!;
@@ -846,16 +845,34 @@ describe('CodexRolloutSessionSource', () => {
     expect(source.resolveSourceHome(defaultOnly.affinity)).toBe(
       realpathSync(defaultHome),
     );
-    // The earliest home owns a shared id: the default home, with the thread id
-    // a single-home source gives it.
-    const shared = byId.get('shared')!;
-    expect(shared.affinity).toEqual(defaultOnly.affinity);
+    // A conversation copied into two homes is two threads, one per home, each
+    // continuing in its own home: once both copies continue they have forked.
+    const shared = discovery.sessions.filter((s) => s.sessionId === 'shared');
+    expect(shared).toHaveLength(2);
+    const sharedDefault = shared.find(
+      (s) => s.affinity?.ref === defaultOnly.affinity?.ref,
+    )!;
+    const sharedProfile = shared.find(
+      (s) => s.affinity?.ref === profileOnly.affinity?.ref,
+    )!;
+    expect(sharedDefault.threadId).not.toBe(sharedProfile.threadId);
+    // The default home keeps the thread id a single-home source gives it.
     const defaultAlone = await new CodexRolloutSessionSource({
       homeDir: defaultHome,
     }).discover();
     expect(
       defaultAlone.sessions.find((s) => s.sessionId === 'shared')?.threadId,
-    ).toBe(shared.threadId);
+    ).toBe(sharedDefault.threadId);
+
+    // The default copy failing to parse for one discovery leaves the profile
+    // copy's thread exactly as it was: no copy takes over another's thread.
+    const sharedDefaultPath = rolloutPath(defaultHome, 'shared.jsonl');
+    writeFileSync(sharedDefaultPath, 'not json\n');
+    const degraded = await source.discover();
+    expect(degraded.sessions.filter((s) => s.sessionId === 'shared')).toEqual([
+      sharedProfile,
+    ]);
+    writeFileSync(sharedDefaultPath, line(meta('shared')) + turn('shared'));
 
     const read = await drain(source, profileOnly);
     expect(JSON.stringify(read.events)).toContain('in profile');
@@ -867,6 +884,9 @@ describe('CodexRolloutSessionSource', () => {
       'default-only',
       'shared',
     ]);
+    expect(
+      narrowed.sessions.find((s) => s.sessionId === 'shared')?.threadId,
+    ).toBe(sharedDefault.threadId);
     expect(source.resolveSourceHome(profileOnly.affinity)).toBeNull();
   });
 
@@ -891,6 +911,32 @@ describe('CodexRolloutSessionSource', () => {
         homeDir: defaultHome,
       }).resolveSourceHomeWithRefresh(before.affinity),
     ).resolves.toBeNull();
+  });
+
+  test('each home has its own candidate budget, so a busy profile home cannot evict default-home sessions', async () => {
+    const defaultHome = fixtureRoot();
+    const busyProfile = fixtureRoot();
+    const old = rolloutPath(defaultHome, 'old.jsonl');
+    writeFileSync(old, line(meta('default-old')));
+    utimesSync(old, new Date(1_700_000_000_000), new Date(1_700_000_000_000));
+    for (const name of ['p1', 'p2', 'p3']) {
+      const path = rolloutPath(busyProfile, `${name}.jsonl`);
+      writeFileSync(path, line(meta(name)));
+      utimesSync(
+        path,
+        new Date(1_800_000_000_000),
+        new Date(1_800_000_000_000),
+      );
+    }
+    const discovery = await new CodexRolloutSessionSource({
+      homeDir: defaultHome,
+      maxCandidates: 2,
+      listConfiguredHomes: async () => [busyProfile],
+    }).discover();
+    expect(discovery.outcome).toBe('candidate_limit');
+    const ids = discovery.sessions.map((s) => s.sessionId);
+    expect(ids).toContain('default-old');
+    expect(ids.filter((id) => id.startsWith('p'))).toHaveLength(2);
   });
 
   test('a failing or oversized home list keeps the default home and reports the limit', async () => {
