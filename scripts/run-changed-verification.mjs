@@ -140,9 +140,17 @@ const vitest = await createVitest('test', {
 const repoPath = (path) => relative(root, path).split(sep).join('/');
 // The suites within two import edges of each escalated seed, read from the
 // same Vite SSR module graph getRelevantTestSpecifications walks (and reusing
-// its transforms when it already walked them). A list is emitted only within
-// its limit, so a wide seed reports a count, not an unbounded output.
+// its transforms when it already walked them). Seeds and graph modules are
+// compared by real path, as Vite resolves them. A list is emitted only within
+// its limit, so a wide seed reports a count, not an unbounded output. A seed
+// with no suite within two edges is looked up in the whole graph, so a file
+// the graph does not hold is not reported as merely unimported.
 async function escalatedImporters({ seeds, limits }) {
+  const reals = new Map();
+  const real = (path) => {
+    if (!reals.has(path)) reals.set(path, realpathSync(path));
+    return reals.get(path);
+  };
   const direct = new Map();
   const depsOf = (project, id) => {
     const key = project.name + '\\0' + id;
@@ -151,27 +159,39 @@ async function escalatedImporters({ seeds, limits }) {
       const transformed = ssr.moduleGraph.getModuleById(id)?.transformResult || await ssr.transformRequest(id);
       if (!transformed) return [];
       return [...new Set([...(transformed.deps || []), ...(transformed.dynamicDeps || [])].map((dep) =>
-        dep.startsWith('/@fs/') ? dep.slice(process.platform === 'win32' ? 5 : 4) : join(project.config.root, dep)))]
-        .filter((path) => !path.includes('node_modules') && existsSync(path));
+        dep.startsWith('/@fs/') ? dep.slice(process.platform === 'win32' ? 5 : 4) : join(project.config.root, dep))
+        .filter((path) => !path.includes('node_modules') && existsSync(path)).map(real))];
     })());
     return direct.get(key);
   };
+  const bySeed = new Map(seeds.map((seed) => [real(seed), seed]));
   const hits = new Map(seeds.map((seed) => [seed, { depth1: new Set(), depth2: new Set() }]));
+  const hit = (path) => hits.get(bySeed.get(path));
   const specifications = await vitest.globTestSpecifications();
   await Promise.all(specifications.map(async (specification) => {
     const test = repoPath(specification.moduleId);
     const first = await depsOf(specification.project, specification.moduleId);
     for (const dep of first) {
-      const hit = hits.get(dep);
-      if (hit) { hit.depth1.add(test); hit.depth2.add(test); }
+      const found = hit(dep);
+      if (found) { found.depth1.add(test); found.depth2.add(test); }
     }
     for (const deps of await Promise.all(first.map((dep) => depsOf(specification.project, dep))))
-      for (const dep of deps) hits.get(dep)?.depth2.add(test);
+      for (const dep of deps) hit(dep)?.depth2.add(test);
   }));
+  let graph;
+  if (seeds.some((seed) => hits.get(seed).depth2.size === 0)) {
+    graph = new Set();
+    const visit = async (project, id) => {
+      if (graph.has(id)) return;
+      graph.add(id);
+      await Promise.all((await depsOf(project, id)).map((dep) => visit(project, dep)));
+    };
+    await Promise.all(specifications.map((specification) => visit(specification.project, real(specification.moduleId))));
+  }
   const emitted = (set, limit) => (set.size <= limit ? [...set].sort() : undefined);
   const entries = seeds.map((seed) => {
     const { depth1, depth2 } = hits.get(seed);
-    return { seed, depth1Count: depth1.size, depth2Count: depth2.size, depth1: emitted(depth1, limits.depth1), depth2: emitted(depth2, limits.depth2) };
+    return { seed, inGraph: depth2.size > 0 || graph.has(real(seed)), depth1Count: depth1.size, depth2Count: depth2.size, depth1: emitted(depth1, limits.depth1), depth2: emitted(depth2, limits.depth2) };
   });
   const tests = [...new Set(entries.flatMap((entry) => [...(entry.depth1 ?? []), ...(entry.depth2 ?? [])]))].sort();
   const index = new Map(tests.map((test, position) => [test, position]));
@@ -228,15 +248,17 @@ export function parseRelatedTestDiscovery(result) {
  * `main` breaking suites that import such a file directly or through one
  * module. The hosted plan therefore also runs the suites within two import
  * edges of each escalated file when there are at most `depth2` of them, else
- * those within one edge when there are at most `depth1`, else none: that
- * path's importers stay with the deferred `ci-fast` lane and the plan names
- * it. Over the 150 merges before 2026-11-16 these limits added a median of 0
- * and at most 53 files to a plan, and deferred no path. The `ci-fast`
- * obligation is reported either way: running near importers narrows what it
- * leaves unrun, it does not discharge it.
+ * those within one edge when there are at most `depth1`, else none. Every
+ * path whose suites do not run here is named in a `ci-fast` reason. A file
+ * re-exported through a widely imported barrel (`packages/contracts/src/
+ * index.ts`) is often over the two-edge limit and so gets only its direct
+ * importers, which may be none. The `ci-fast` obligation is reported either
+ * way: running near importers narrows what it leaves unrun, it does not
+ * discharge it.
  *
  * @typedef {{
  *   path: string,
+ *   inGraph: boolean,
  *   depth1Count: number,
  *   depth2Count: number,
  *   depth1?: string[],
@@ -245,10 +267,22 @@ export function parseRelatedTestDiscovery(result) {
  */
 export const ESCALATED_IMPORTER_LIMITS = Object.freeze({
   depth1: 100,
-  depth2: 50,
+  depth2: 100,
 });
+/**
+ * The most suites the rule may add to one plan beyond those the plan runs
+ * anyway. The worst of the 150 merges before 2026-11-16 added 95; a plan's
+ * four shards run up to about 2,400 files. Above the cap the rule adds none.
+ */
+export const ESCALATED_IMPORTER_TOTAL_CAP = 250;
 export const ESCALATED_IMPORTER_DEFERRAL_REASON =
   'escalated path has more importing suites than the plan runs inline';
+export const ESCALATED_IMPORTER_UNCOVERED_REASON =
+  'escalated path has no importing suite within the bound';
+export const ESCALATED_IMPORTER_ABSENT_REASON =
+  "escalated path is not in Vitest's module graph";
+export const ESCALATED_IMPORTER_CAP_REASON =
+  'escalated paths would add more suites than the total cap, so none were added';
 /** Files Vitest can import: a seed of any other kind has no importer. */
 const ESCALATED_IMPORTER_SEED = /\.(?:[cm]?[jt]sx?|json)$/;
 
@@ -298,10 +332,12 @@ function parseEscalatedImporters(
       const entry = report.seeds[position];
       if (
         entry?.seed !== resolve(root, path) ||
+        typeof entry.inGraph !== 'boolean' ||
         !Number.isSafeInteger(entry.depth1Count) ||
         !Number.isSafeInteger(entry.depth2Count) ||
         entry.depth1Count < 0 ||
-        entry.depth2Count < entry.depth1Count
+        entry.depth2Count < entry.depth1Count ||
+        (!entry.inGraph && entry.depth2Count > 0)
       )
         throw new Error(`a malformed entry for ${path}`);
       const depth1 = importerList(
@@ -318,6 +354,7 @@ function parseEscalatedImporters(
       );
       return {
         path,
+        inGraph: entry.inGraph,
         depth1Count: entry.depth1Count,
         depth2Count: entry.depth2Count,
         ...(depth1 ? { depth1 } : {}),
@@ -333,9 +370,10 @@ function parseEscalatedImporters(
 
 /**
  * Two import edges when within `depth2`, else one when within `depth1`, else
- * deferred. A path over both limits selects none of its importers: running
- * an arbitrary part of them would read as coverage it does not have, so the
- * plan names the path instead.
+ * deferred. Only a non-empty set is `selected`: an empty one, a path over
+ * both limits, and a path the graph does not hold each carry the `ci-fast`
+ * reason that names it. A path over both limits selects none of its
+ * importers, never an arbitrary part of them.
  *
  * @param {EscalatedImporterReport[]} reports
  */
@@ -343,33 +381,78 @@ export function decideEscalatedImporters(
   reports,
   limits = ESCALATED_IMPORTER_LIMITS,
 ) {
-  return reports.map(({ path, depth1Count, depth2Count, depth1, depth2 }) => {
-    const counts = { depth1Count, depth2Count };
-    if (depth2Count <= limits.depth2)
-      return {
-        path,
-        disposition: 'selected',
-        depth: 2,
-        tests: depth2,
-        ...counts,
-      };
-    if (depth1Count <= limits.depth1)
-      return {
-        path,
-        disposition: 'selected',
-        depth: 1,
-        tests: depth1,
-        ...counts,
-      };
-    return {
-      path,
-      disposition: 'deferred',
-      depth: null,
-      tests: [],
-      ...counts,
-      reason: `${ESCALATED_IMPORTER_DEFERRAL_REASON}: ${path} (${depth1Count} import it directly, above ${limits.depth1})`,
-    };
-  });
+  return reports.map(
+    ({ path, inGraph, depth1Count, depth2Count, depth1, depth2 }) => {
+      const counts = { depth1Count, depth2Count };
+      if (!inGraph)
+        return {
+          path,
+          disposition: 'not-in-graph',
+          depth: null,
+          tests: [],
+          ...counts,
+          reason: `${ESCALATED_IMPORTER_ABSENT_REASON}: ${path}`,
+        };
+      const chosen =
+        depth2Count <= limits.depth2
+          ? { depth: 2, tests: depth2 }
+          : depth1Count <= limits.depth1
+            ? { depth: 1, tests: depth1 }
+            : undefined;
+      if (!chosen)
+        return {
+          path,
+          disposition: 'deferred',
+          depth: null,
+          tests: [],
+          ...counts,
+          reason: `${ESCALATED_IMPORTER_DEFERRAL_REASON}: ${path} (${depth1Count} import it directly, above ${limits.depth1})`,
+        };
+      if (chosen.tests.length === 0)
+        return {
+          path,
+          disposition: 'no-suite-within-bound',
+          depth: null,
+          tests: [],
+          ...counts,
+          reason: `${ESCALATED_IMPORTER_UNCOVERED_REASON}: ${path} (${
+            chosen.depth === 2
+              ? 'none within two imports'
+              : `${depth2Count} within two imports, above ${limits.depth2}; none directly`
+          })`,
+        };
+      return { path, disposition: 'selected', ...chosen, ...counts };
+    },
+  );
+}
+
+/**
+ * Applies the total cap to the suites the rule would add beyond `planned`:
+ * within it, every selected path's suites run; above it, none do, each such
+ * path is marked `over-total-cap`, and one reason gives the count.
+ *
+ * @param {ReturnType<typeof decideEscalatedImporters>} decisions
+ * @param {Iterable<string>} planned
+ */
+export function capEscalatedImporters(
+  decisions,
+  planned,
+  cap = ESCALATED_IMPORTER_TOTAL_CAP,
+) {
+  const already = new Set(planned);
+  const suites = [...new Set(decisions.flatMap(({ tests }) => tests))].sort();
+  const added = suites.filter((test) => !already.has(test));
+  if (added.length <= cap) return { decisions, suites, added };
+  return {
+    decisions: decisions.map((decision) =>
+      decision.disposition === 'selected'
+        ? { ...decision, disposition: 'over-total-cap', tests: [] }
+        : decision,
+    ),
+    suites: [],
+    added: [],
+    reason: `${ESCALATED_IMPORTER_CAP_REASON}: ${added.length} not otherwise planned, above ${cap}`,
+  };
 }
 
 function withoutChangedDeadline(env) {
@@ -686,8 +769,13 @@ export async function discoverRelatedTestFiles(
       );
     return files;
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    // Fail closed for every diff alike; name the query an escalated-only
+    // diff (which never started discovery before #5010) now depends on.
     const discoveryError = new Error(
-      error instanceof Error ? error.message : String(error),
+      escalatedSeeds.length
+        ? `${message} (with the escalated-importer query for ${escalatedSeeds.length} path(s))`
+        : message,
       { cause: error },
     );
     discoveryError.phase = 'related-discovery';
@@ -2139,6 +2227,24 @@ export function prepareChangedSelection(
   );
   const localTests =
     selection.tests.length <= 32 ? selection.tests : withoutNativeOnly;
+  // An escalated path the importer query cannot see is named, not dropped.
+  const escalatedQueries = (paths) => {
+    const queried = (path) =>
+      ESCALATED_IMPORTER_SEED.test(path) && pathExists(resolve(root, path));
+    return {
+      escalatedSeeds: paths.filter(queried),
+      escalatedUnqueried: paths
+        .filter((path) => !queried(path))
+        .map((path) => ({
+          path,
+          disposition: pathExists(resolve(root, path))
+            ? 'not-importable'
+            : 'absent',
+          depth: null,
+          suites: 0,
+        })),
+    };
+  };
   const executionSelection =
     selection.lanes.length === 0
       ? selection
@@ -2167,15 +2273,7 @@ export function prepareChangedSelection(
                   pathExists(resolve(root, entry.path)),
                 )
               : [],
-          ...(preserveMappedTargets
-            ? {
-                escalatedSeeds: escalationPaths.filter(
-                  (path) =>
-                    ESCALATED_IMPORTER_SEED.test(path) &&
-                    pathExists(resolve(root, path)),
-                ),
-              }
-            : {}),
+          ...(preserveMappedTargets ? escalatedQueries(escalationPaths) : {}),
         };
   return { changed, selection, productLawRouting, executionSelection };
 }
@@ -2475,6 +2573,7 @@ export async function planChangedVerificationShards(
   const globalTriggeredPaths = new Set();
   const escalatedSeeds = executionSelection.escalatedSeeds ?? [];
   let escalatedImporters;
+  let escalatedCap;
   if (
     executionSelection.tests.length ||
     executionSelection.relatedPaths.length ||
@@ -2526,27 +2625,29 @@ export async function planChangedVerificationShards(
           ...(timeoutMilliseconds === undefined ? {} : { timeoutMilliseconds }),
         };
         relatedDiscoveryCount = files.length;
+        if (!escalatedImporters) return files;
         // Added beside the related files: the empty-discovery check above
         // still reads related discovery's own answer.
-        return [
+        escalatedCap = capEscalatedImporters(escalatedImporters, [
           ...files,
-          ...(escalatedImporters ?? []).flatMap(({ tests }) => tests),
-        ];
+          ...executionSelection.tests.map(({ path }) => path),
+        ]);
+        escalatedImporters = escalatedCap.decisions;
+        return [...files, ...escalatedCap.suites];
       },
       partition: resourcePartition,
     });
     groups = planned?.groups ?? [];
-    const overBound = (escalatedImporters ?? []).filter(
-      ({ disposition }) => disposition === 'deferred',
-    );
-    // Stated, not truncated: an over-bound path keeps its `ci-fast`
-    // escalation and gains the reason none of its importers ran here.
-    if (overBound.length)
-      selection = withDeferredLaneReasons(
-        selection,
-        'ci-fast',
-        overBound.map(({ reason }) => reason),
-      );
+    // Stated, not truncated: a path whose importers did not run keeps its
+    // `ci-fast` escalation and gains the reason, as does a capped diff.
+    const unrun = [
+      ...(escalatedImporters ?? []).flatMap(({ reason }) =>
+        reason ? [reason] : [],
+      ),
+      ...(escalatedCap?.reason ? [escalatedCap.reason] : []),
+    ];
+    if (unrun.length)
+      selection = withDeferredLaneReasons(selection, 'ci-fast', unrun);
     if (globalTriggeredPaths.size)
       selection = withDeferredLaneReasons(
         selection,
@@ -2594,14 +2695,22 @@ export async function planChangedVerificationShards(
     ...(globalTriggeredPaths.size
       ? { globalTriggeredPaths: [...globalTriggeredPaths].sort() }
       : {}),
-    ...(escalatedImporters
+    ...(escalatedImporters || executionSelection.escalatedUnqueried?.length
       ? {
           escalatedImporters: {
             limits: ESCALATED_IMPORTER_LIMITS,
-            paths: escalatedImporters.map(({ tests, reason, ...entry }) => ({
-              ...entry,
-              suites: tests.length,
-            })),
+            totalCap: ESCALATED_IMPORTER_TOTAL_CAP,
+            suites: escalatedCap?.suites.length ?? 0,
+            added: escalatedCap?.added.length ?? 0,
+            paths: [
+              ...(escalatedImporters ?? []).map(
+                ({ tests, reason, ...entry }) => ({
+                  ...entry,
+                  suites: tests.length,
+                }),
+              ),
+              ...(executionSelection.escalatedUnqueried ?? []),
+            ].sort((a, b) => a.path.localeCompare(b.path)),
           },
         }
       : {}),

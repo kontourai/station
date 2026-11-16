@@ -321,14 +321,27 @@ async function planCommand({ out }, { cwd, env, report, planShards, now }) {
           : ` of its ${(plan.relatedDiscovery.timeoutMilliseconds / 1000).toFixed(1)}s timeout\n`),
     );
   if (plan.escalatedImporters) {
-    const { paths } = plan.escalatedImporters;
-    const deferred = paths.filter((entry) => entry.disposition === 'deferred');
-    const suites = paths.reduce((total, entry) => total + entry.suites, 0);
+    const { paths, suites, added } = plan.escalatedImporters;
+    const named = (disposition) =>
+      paths.filter((entry) => entry.disposition === disposition);
+    const selected = named('selected').length;
+    const unrun = [
+      ['no importing suite within the bound', named('no-suite-within-bound')],
+      ['over the bound', named('deferred')],
+      ['over the total cap', named('over-total-cap')],
+      ["not in Vitest's graph", named('not-in-graph')],
+      ['no importer graph (not importable)', named('not-importable')],
+      ['no importer graph (deleted)', named('absent')],
+    ].filter(([, entries]) => entries.length);
     report(
-      `[fast-checks] escalated paths: ${suites} importing suite(s) planned for ${paths.length - deferred.length} of ${paths.length}` +
-        (deferred.length
-          ? `; over the bound, deferred to ci-fast: ${deferred.map((entry) => `${entry.path} (${entry.depth1Count} direct importers)`).join(', ')}\n`
-          : '\n'),
+      `[fast-checks] escalated paths: ${suites} importing suite(s) (${added} not otherwise planned) for ${selected} of ${paths.length}` +
+        unrun
+          .map(
+            ([label, entries]) =>
+              `; ${label}: ${entries.map((entry) => entry.path).join(', ')}`,
+          )
+          .join('') +
+        '\n',
     );
   }
   return 0;

@@ -12,6 +12,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
@@ -357,37 +358,59 @@ describe('#5010: an escalated diff runs the suites near its escalated files', ()
     'src-server/routes/system/__tests__/archive-update-routes.test.ts',
   ];
 
-  test('the hosted plan runs them, and still defers ci-fast for every escalated path', async () => {
-    // Real related discovery (a Vitest child) over the recorded paths.
-    const plan = await planChangedVerificationShards('HEAD', {
-      root,
-      changedPathsFn: () => ({
-        mergeBase: 'HEAD',
-        paths: [...incidents['5010'].paths],
-      }),
+  // Real related discovery (a Vitest child). Its timeout derives from this
+  // deadline (less a 30 s reserve), so a loaded host waits up to 210 s
+  // instead of failing at the 60 s floor, inside the test's own 300 s.
+  const PLAN_TEST_TIMEOUT_MS = 300_000;
+  const makeTempDir = trackTempDirs();
+  const hostedPlan = (paths: readonly string[], planRoot = root) =>
+    planChangedVerificationShards('HEAD', {
+      root: planRoot,
+      changedPathsFn: () => ({ mergeBase: 'HEAD', paths: [...paths] }),
       headSha: 'c'.repeat(40),
+      discoveryDeadlineAt: Date.now() + PLAN_TEST_TIMEOUT_MS - 60_000,
+      ...(planRoot === root ? {} : { assertDependencyProvenance: () => ({}) }),
     });
-    const files = plan.groups.flatMap(
-      (group: { files: string[] }) => group.files,
-    );
-    expect(files).toEqual(expect.arrayContaining(NEAR_IMPORTERS));
-    const ciFast = plan.deferredLanes.find(
-      (lane: { id: string }) => lane.id === 'ci-fast',
-    );
-    expect(ciFast?.reasons).toEqual(
-      expect.arrayContaining([
-        'escalation: packages/shared/src/prebuilt-archive.ts',
-        'escalation: packages/shared/src/product-telemetry.ts',
-      ]),
-    );
-    expect(plan.escalatedImporters?.paths).toContainEqual(
-      expect.objectContaining({
-        path: 'packages/shared/src/prebuilt-archive.ts',
-        disposition: 'selected',
-        depth: 2,
-      }),
-    );
-  }, 300_000);
+
+  test(
+    'the hosted plan runs them, and still defers ci-fast for every escalated path',
+    async () => {
+      const plan = await hostedPlan(incidents['5010'].paths);
+      const files = plan.groups.flatMap(
+        (group: { files: string[] }) => group.files,
+      );
+      expect(files).toEqual(expect.arrayContaining(NEAR_IMPORTERS));
+      const ciFast = plan.deferredLanes.find(
+        (lane: { id: string }) => lane.id === 'ci-fast',
+      );
+      expect(ciFast?.reasons).toEqual(
+        expect.arrayContaining([
+          'escalation: packages/shared/src/prebuilt-archive.ts',
+          'escalation: packages/shared/src/product-telemetry.ts',
+        ]),
+      );
+      expect(plan.escalatedImporters?.paths).toContainEqual(
+        expect.objectContaining({
+          path: 'packages/shared/src/prebuilt-archive.ts',
+          disposition: 'selected',
+          depth: 2,
+        }),
+      );
+      // Vite reports real paths; a seed named under a symlinked root must
+      // still match them (it silently matched fewer when compared as given).
+      const seed = 'packages/shared/src/product-telemetry.ts';
+      const linked = join(makeTempDir('incident-symlinked-root-'), 'station');
+      symlinkSync(root, linked);
+      const entryFor = (planned: typeof plan) =>
+        planned.escalatedImporters?.paths.find(
+          (candidate: { path: string }) => candidate.path === seed,
+        );
+      const direct = entryFor(plan);
+      expect(direct).toMatchObject({ disposition: 'selected' });
+      expect(entryFor(await hostedPlan([seed], linked))).toEqual(direct);
+    },
+    2 * PLAN_TEST_TIMEOUT_MS,
+  );
 
   test('the selection itself, and so the local profile, does not change', () => {
     const local = select(incidents['5010'].paths);
@@ -402,10 +425,24 @@ describe('#5010: an escalated diff runs the suites near its escalated files', ()
         'packages/shared/src/product-telemetry.ts',
       ]),
     );
-    // Workflows, lockfiles and deleted files have no importer to find.
+    // A workflow has no importer graph to query.
     expect(hosted.executionSelection.escalatedSeeds).not.toContain(
       '.github/workflows/release.yml',
     );
+  });
+
+  test('#4904 deleted an escalated module: it is named absent, not queried', () => {
+    const DELETED = 'packages/contracts/src/workspace-activity-pane.ts';
+    expect(incidents['4904'].paths).toContain(DELETED);
+    expect(existsSync(join(root, DELETED))).toBe(false);
+    const hosted = select(incidents['4904'].paths, undefined, true);
+    expect(hosted.executionSelection.escalatedSeeds).not.toContain(DELETED);
+    expect(hosted.executionSelection.escalatedUnqueried).toContainEqual({
+      path: DELETED,
+      disposition: 'absent',
+      depth: null,
+      suites: 0,
+    });
   });
 });
 
