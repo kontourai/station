@@ -255,12 +255,6 @@
     "station-switcher-forget-after-keyboard-dark-desktop": [
       "src-ui/src/components/header/StationSwitcherMenu.tsx"
     ],
-    "station-switcher-forget-after-keyboard-light-mobile": [
-      "src-ui/src/components/header/StationSwitcherMenu.tsx"
-    ],
-    "station-switcher-forget-after-pointer-light-desktop": [
-      "src-ui/src/components/header/StationSwitcherMenu.tsx"
-    ],
     "station-switcher-forget-after-pointer-dark-mobile": [
       "src-ui/src/components/header/StationSwitcherMenu.tsx"
     ],

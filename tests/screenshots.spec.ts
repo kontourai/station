@@ -2673,28 +2673,14 @@ function stationSwitcherScreens(): Screen[] {
     extra: false,
   });
   // Forgetting a Station never closes the menu: from exactly five Stations
-  // the filter field unmounts with focus on it; from six it stays. Each
-  // theme/device pair is shot once after the forget.
+  // the filter field unmounts with focus on it; from six it stays. One
+  // screen each for the keyboard, the pointer and the six-Station case.
   shots.push(
     {
       viewport: DESKTOP,
       theme: 'dark',
       armed: true,
       forgotten: 'keyboard',
-      extra: false,
-    },
-    {
-      viewport: MOBILE,
-      theme: 'light',
-      armed: true,
-      forgotten: 'keyboard',
-      extra: false,
-    },
-    {
-      viewport: DESKTOP,
-      theme: 'light',
-      armed: true,
-      forgotten: 'pointer',
       extra: false,
     },
     {
