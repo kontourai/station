@@ -1,4 +1,4 @@
-import { realpathSync } from 'node:fs';
+import { mkdirSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -185,6 +185,82 @@ describe('AcpSessionListSource', () => {
       sessions: [],
     });
     await cursor.manager.shutdown();
+  });
+
+  test('after a restart, sessions an earlier probe minted are still left out', async () => {
+    vi.stubEnv(ACP_SESSION_LISTING_ENV, '1');
+    const config = {
+      id: 'droid',
+      name: 'Droid',
+      command: 'droid',
+      enabled: true,
+    };
+    const run = async (
+      probeSession: string,
+      listed: Array<{ sessionId: string; cwd: string }>,
+      connection: Partial<ACPConnectionConfig> = {},
+    ) => {
+      let spawnedCwd = '';
+      const probe = new ACPProbe(
+        { ...config, ...connection },
+        { warn: vi.fn(), debug: vi.fn() },
+        dir,
+        (options) => {
+          spawnedCwd = options.cwd;
+          return {
+            start: vi
+              .fn()
+              .mockResolvedValue(
+                capturedAgent('factory-droid-0.190.0').initialize,
+              ),
+            // Resume-capable agents retain the probe session; never deleted.
+            newSession: vi.fn().mockResolvedValue({ sessionId: probeSession }),
+            resumeSession: vi.fn().mockResolvedValue({}),
+            loadSession: vi.fn().mockResolvedValue({}),
+            deleteSession: vi.fn().mockResolvedValue(undefined),
+            extMethod: vi.fn(async () => ({
+              sessions: listed.map((entry) => ({
+                ...entry,
+                cwd: entry.cwd || spawnedCwd,
+              })),
+            })),
+            destroy: vi.fn().mockResolvedValue(undefined),
+            forceGroupKill: vi.fn().mockResolvedValue(undefined),
+            survivesCleanup: vi.fn().mockResolvedValue(false),
+            releaseIfConfirmedGone: vi.fn(),
+          } as unknown as ACPProcess;
+        },
+      );
+      await probe.probe('request');
+      const ids = probe.getSessionListing()?.sessions.map((s) => s.sessionId);
+      await probe.dispose();
+      return ids;
+    };
+
+    // Unconfigured folder: the probe's own managed workspace. A session the
+    // agent kept there from an earlier Station process is not the user's.
+    expect(
+      await run('probe-now', [
+        { sessionId: 'probe-earlier-process', cwd: '' },
+        { sessionId: 'user-session', cwd: '/work/project' },
+      ]),
+    ).toEqual(['user-session']);
+
+    // Configured folder: the probe runs in the user's folder, so its earlier
+    // sessions are recognized by id, remembered across the restart.
+    const userFolder = join(dir, 'user-folder');
+    mkdirSync(userFolder);
+    await run('probe-first-process', [], { cwd: userFolder });
+    expect(
+      await run(
+        'probe-second-process',
+        [
+          { sessionId: 'probe-first-process', cwd: userFolder },
+          { sessionId: 'user-session', cwd: userFolder },
+        ],
+        { cwd: userFolder },
+      ),
+    ).toEqual(['user-session']);
   });
 
   test('keeps out engines with their own source, disabled connections and Station-owned sessions', async () => {

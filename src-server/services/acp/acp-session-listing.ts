@@ -1,4 +1,13 @@
-import { basename, isAbsolute } from 'node:path';
+import { createHash } from 'node:crypto';
+import {
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { basename, dirname, isAbsolute, join } from 'node:path';
 import type { InitializeResult } from './acp-process.js';
 
 /**
@@ -149,6 +158,8 @@ export async function readAcpSessionListing(
   options: {
     deadlineMs: number;
     exclude?: ReadonlySet<string>;
+    /** Sessions in a folder this answers true for are left out too. */
+    excludeFolder?: (cwd: string) => boolean;
     now?: () => number;
   },
 ): Promise<AcpSessionListing> {
@@ -189,6 +200,7 @@ export async function readAcpSessionListing(
       let full = false;
       for (const session of parsed.sessions) {
         if (options.exclude?.has(session.sessionId)) continue;
+        if (options.excludeFolder?.(session.cwd)) continue;
         if (seen.has(session.sessionId)) continue;
         if (sessions.length >= ACP_SESSION_LISTING_BOUNDS.maxSessions) {
           full = true;
@@ -235,4 +247,66 @@ export function hasDedicatedSessionSource(connection: {
     DEDICATED_SOURCE_CONNECTION_IDS.has(connection.id) ||
     DEDICATED_SOURCE_COMMANDS.has(executable)
   );
+}
+
+/** At most this many probe session ids are remembered per connection. */
+export const MAX_REMEMBERED_PROBE_SESSIONS = 256;
+const PROBE_SESSION_LEDGER_MAX_BYTES = 64 * 1024;
+
+/**
+ * Where a connection's probe session ids are remembered across Station
+ * restarts: a private file under Station home, named by a digest of the
+ * connection id, never inside a folder the agent works in.
+ */
+export function probeSessionLedgerPath(
+  stationHome: string,
+  connectionId: string,
+): string {
+  const name = createHash('sha256').update(connectionId).digest('hex');
+  return join(stationHome, 'runtime', 'acp-probe-sessions', `${name}.json`);
+}
+
+/** The remembered ids, oldest first; a missing or unreadable file is none. */
+export function readProbeSessionIds(path: string): string[] {
+  try {
+    if (statSync(path).size > PROBE_SESSION_LEDGER_MAX_BYTES) return [];
+    const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (id): id is string =>
+          boundedString(id, ACP_SESSION_LISTING_BOUNDS.maxIdBytes) !==
+          undefined,
+      )
+      .slice(-MAX_REMEMBERED_PROBE_SESSIONS);
+  } catch {
+    return [];
+  }
+}
+
+/** Replaces the remembered ids atomically (owner-only file and folder). */
+export function writeProbeSessionIds(
+  path: string,
+  ids: readonly string[],
+): void {
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  const temporary = `${path}.${process.pid}.tmp`;
+  writeFileSync(
+    temporary,
+    JSON.stringify(ids.slice(-MAX_REMEMBERED_PROBE_SESSIONS)),
+    { mode: 0o600 },
+  );
+  renameSync(temporary, path);
+}
+
+/** A folder compared as given and as its real path, for agents that report either. */
+export function sameFolder(left: string, right: string): boolean {
+  const real = (path: string) => {
+    try {
+      return realpathSync(path);
+    } catch {
+      return path;
+    }
+  };
+  return left === right || real(left) === real(right);
 }

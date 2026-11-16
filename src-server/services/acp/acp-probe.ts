@@ -45,7 +45,12 @@ import {
   acpSessionListingEnabled,
   advertisesSessionListing,
   hasDedicatedSessionSource,
+  MAX_REMEMBERED_PROBE_SESSIONS,
+  probeSessionLedgerPath,
   readAcpSessionListing,
+  readProbeSessionIds,
+  sameFolder,
+  writeProbeSessionIds,
 } from './acp-session-listing.js';
 import {
   invalidateEngineStatus,
@@ -551,9 +556,6 @@ function probeSessionAgentKey(initResult: InitializeResult): string {
  */
 const PROBE_SESSION_DELETE_FLOOR_MS = 2_000;
 
-/** How many of its own probe session ids a probe keeps out of listings. */
-const MAX_REMEMBERED_PROBE_SESSIONS = 64;
-
 export class ACPProbe {
   /**
    * #3411: the session this probe created or reattached to, kept so the next
@@ -587,6 +589,7 @@ export class ACPProbe {
   cachedSessionListing: AcpSessionListing | null = null;
   /** Probe sessions this probe minted, so a listing never reports one. */
   private readonly mintedProbeSessionIds = new Set<string>();
+  private probeSessionLedgerLoaded = false;
   /**
    * archive#1549: the instant of the last SUCCESSFUL `initialize` handshake,
    * NOT `lastProbeAt`. The two differ exactly where it matters: a failed
@@ -1109,19 +1112,29 @@ export class ACPProbe {
       } catch {
         // Best-effort enrichment never fails a successful handshake.
       }
-      this.rememberProbeSession(sessionResult.sessionId);
-      if (
+      const listing =
         acpSessionListingEnabled() &&
         advertisesSessionListing(initResult.agentCapabilities) &&
-        !hasDedicatedSessionSource(this.config)
-      ) {
+        !hasDedicatedSessionSource(this.config);
+      this.rememberProbeSession(sessionResult.sessionId, listing);
+      if (listing) {
         // One bounded read on the process the probe already runs; it never
         // fails the probe, whose capabilities are recorded above.
+        // Probe sessions from earlier Station processes are left out too: by
+        // folder when the probe ran in its own managed workspace, and by the
+        // ids remembered under Station home otherwise.
+        const managedWorkspace = this.config.cwd ? undefined : cwd;
         this.cachedSessionListing = await readAcpSessionListing(
           (method, params) => process.extMethod(method, params),
           {
             deadlineMs: remainingHandshakeMs(),
             exclude: this.mintedProbeSessionIds,
+            ...(managedWorkspace
+              ? {
+                  excludeFolder: (folder: string) =>
+                    sameFolder(folder, managedWorkspace),
+                }
+              : {}),
           },
         );
         if (this.disposed) return false;
@@ -1374,7 +1387,18 @@ export class ACPProbe {
     return this.cachedSessionListing;
   }
 
-  private rememberProbeSession(sessionId: string): void {
+  /**
+   * Remembers a session this probe minted. With listing on, the ids are also
+   * kept under Station home so a later Station process leaves them out; a
+   * failed write costs only that exclusion, never the probe.
+   */
+  private rememberProbeSession(sessionId: string, persist: boolean): void {
+    if (persist && !this.probeSessionLedgerLoaded) {
+      this.probeSessionLedgerLoaded = true;
+      for (const id of readProbeSessionIds(this.probeSessionLedger()))
+        this.mintedProbeSessionIds.add(id);
+    }
+    const known = this.mintedProbeSessionIds.has(sessionId);
     this.mintedProbeSessionIds.delete(sessionId);
     this.mintedProbeSessionIds.add(sessionId);
     // Bounded: the oldest ids are the ones an agent has most likely dropped.
@@ -1383,7 +1407,23 @@ export class ACPProbe {
       if (oldest === undefined) break;
       this.mintedProbeSessionIds.delete(oldest);
     }
+    if (!persist || known) return;
+    try {
+      writeProbeSessionIds(this.probeSessionLedger(), [
+        ...this.mintedProbeSessionIds,
+      ]);
+    } catch (error) {
+      this.logger.warn('ACPProbe could not remember its probe session', {
+        err: error,
+        id: this.config.id,
+      });
+    }
   }
+
+  private probeSessionLedger(): string {
+    return probeSessionLedgerPath(this.managedWorkspaceHomeDir, this.config.id);
+  }
+
   getConfigOptions() {
     return this.cachedConfigOptions;
   }
