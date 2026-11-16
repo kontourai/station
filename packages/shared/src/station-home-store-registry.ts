@@ -121,6 +121,10 @@ export const STATION_HOME_ROOTS: Readonly<
   'pull-request-feedback': 'state',
   'pull-request-guides': 'state',
   // Durable receipts are state; nested working copies are external below.
+  // Remote task engine connections and the stored messages of their tasks
+  // (docs/decisions/remote-task-engines.md); the vendor token is in
+  // `security/`, not here.
+  'remote-task-engines': 'state',
   'repository-acquisitions': 'state',
   runtime: 'state',
   'runtime-auth-health.json': 'state',
