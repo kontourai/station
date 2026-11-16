@@ -1395,6 +1395,50 @@ describe('useActiveChatTranscript', () => {
     ]);
   });
 
+  test('open naming the current child mid-read neither restarts nor unsettles the window', async () => {
+    const page = {
+      protocolVersion: 1,
+      watermark: 1,
+      hasMore: false,
+      currentSessionId: 'opened-child',
+      events: [
+        event('e1', 'turn.started', {
+          turnId: 'turn-1',
+          prompt: 'kept question',
+        }),
+      ],
+    };
+    let answerFirst: (value: typeof page) => void = () => {};
+    fetchConversationWindow
+      .mockImplementationOnce(
+        () => new Promise((resolve) => (answerFirst = resolve)),
+      )
+      .mockResolvedValue(page);
+    const session: ChatSession = {
+      ...baseSession,
+      id: 'open-lands-mid-read',
+      conversationId: 'open-lands-mid-read',
+    };
+    const { result, rerender } = renderHook(
+      ({ session }) => useActiveChatTranscript('http://station.test', session),
+      { initialProps: { session } },
+    );
+    await waitFor(() =>
+      expect(fetchConversationWindow).toHaveBeenCalledTimes(1),
+    );
+    // `/open` lands while the first window read is still in flight.
+    rerender({ session: { ...session, currentSessionId: 'opened-child' } });
+    await act(async () => answerFirst(page));
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    expect(result.current.messages.map((message) => message.content)).toContain(
+      'kept question',
+    );
+    // Settled stays settled across a later child change too.
+    rerender({ session: { ...session, currentSessionId: 'later-child' } });
+    expect(result.current.settled).toBe(true);
+    expect(fetchConversationWindow).toHaveBeenCalledTimes(1);
+  });
+
   test('falls back once to a legacy single-session endpoint when an older channel lacks conversation reads', async () => {
     fetchConversationWindow.mockRejectedValueOnce({ status: 404 });
     fetchWindow.mockResolvedValueOnce({

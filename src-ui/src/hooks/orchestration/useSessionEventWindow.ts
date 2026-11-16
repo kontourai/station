@@ -269,11 +269,15 @@ export function useSessionEventWindow(
   const { namespace } = useAuthorityPersistence();
   const readingNamespace = useRef(namespace);
   readingNamespace.current = namespace;
+  // Only the 404 fallback to an older server reads this, at request time. It
+  // is not reader identity: `/open` naming the current child mid-read must not
+  // wipe and restart the window it is reading.
+  const legacySessionIdRef = useRef(legacySessionId);
+  legacySessionIdRef.current = legacySessionId;
   const readerKey = threadId
     ? JSON.stringify([
         apiBase,
         threadId,
-        legacySessionId,
         requestScope?.authorityKey,
         station?.runtimeKey,
       ])
@@ -403,7 +407,7 @@ export function useSessionEventWindow(
         apiBase,
         { turnLimit: 10 },
         { signal: controller.signal, requestScope },
-        legacySessionId,
+        legacySessionIdRef.current,
       );
       if (
         requestGeneration !== generation.current ||
@@ -522,16 +526,7 @@ export function useSessionEventWindow(
       }
     }
     if (fill) void fillRef.current(fill.cursor, fill.floor);
-  }, [
-    apiBase,
-    legacySessionId,
-    observation,
-    threadId,
-    namespace,
-    requestScope,
-    station,
-    bound,
-  ]);
+  }, [apiBase, observation, threadId, namespace, requestScope, station, bound]);
 
   /**
    * Read one older page at `pageCursor` and merge it. `adoptCursor` moves the
@@ -572,7 +567,7 @@ export function useSessionEventWindow(
           apiBase,
           { cursor: pageCursor, turnLimit: 20 },
           { signal: controller.signal, requestScope },
-          legacySessionId,
+          legacySessionIdRef.current,
         );
         if (
           requestGeneration !== generation.current ||
@@ -628,15 +623,7 @@ export function useSessionEventWindow(
           setLoading(false);
       }
     },
-    [
-      apiBase,
-      legacySessionId,
-      observation,
-      threadId,
-      requestScope,
-      station,
-      bound,
-    ],
+    [apiBase, observation, threadId, requestScope, station, bound],
   );
 
   // After a requested older read: run the `reload` it retired, if any. Not
