@@ -1231,15 +1231,24 @@ export class ProjectRoomStore {
     }, true);
   }
   /**
-   * The room's newest `limit` Agent requests, newest first (#4800): what a
-   * room reader sees of each is its lifecycle, never its Session.
+   * The room's newest `limit` Agent requests and its newest `working`
+   * unsettled ones (reserved or started), newest first (#4800). A request
+   * still working is never pushed out by newer settled ones. What a room
+   * reader sees of each is its lifecycle, never its Session.
    */
-  recentRequests(roomId: string, limit: number): ProjectRoomAgentRequest[] {
+  recentRequests(
+    roomId: string,
+    limit: number,
+    working: number,
+  ): ProjectRoomAgentRequest[] {
     return this.db
       .prepare(
-        'SELECT * FROM project_room_requests WHERE room_id=? ORDER BY rowid DESC LIMIT ?',
+        `SELECT * FROM project_room_requests WHERE room_id=? AND (
+          rowid IN (SELECT rowid FROM project_room_requests WHERE room_id=? ORDER BY rowid DESC LIMIT ?)
+          OR rowid IN (SELECT rowid FROM project_room_requests WHERE room_id=? AND json_extract(record, '$.state') IN ('reserved', 'started') ORDER BY rowid DESC LIMIT ?)
+        ) ORDER BY rowid DESC`,
       )
-      .all(roomId, limit)
+      .all(roomId, roomId, limit, roomId, working)
       .map((row) => this.storedRequest(row));
   }
   /**

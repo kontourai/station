@@ -2,6 +2,7 @@ import {
   PROJECT_ROOM_LIVE_AGENT_REQUESTS,
   PROJECT_ROOM_LIVE_MAX_ROOMS,
   PROJECT_ROOM_LIVE_UPDATE_MESSAGES,
+  PROJECT_ROOM_LIVE_WORKING_REQUESTS,
   type ProjectRoomAgentActivity,
   type ProjectRoomLiveFrame,
 } from '@kontourai/station-contracts/project-room-browser';
@@ -157,6 +158,7 @@ export async function projectRoomLiveResponse(
       const requests = service.recentRequests(
         roomId,
         PROJECT_ROOM_LIVE_AGENT_REQUESTS,
+        PROJECT_ROOM_LIVE_WORKING_REQUESTS,
       );
       const failed = failures?.(requests.map((r) => r.requestId));
       return requests.map((request): ProjectRoomAgentActivity => {

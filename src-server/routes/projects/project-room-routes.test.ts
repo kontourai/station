@@ -10,6 +10,7 @@ import {
   parseProjectRoomChannelList,
 } from '@kontourai/station-contracts/project-room';
 import {
+  PROJECT_ROOM_LIVE_AGENT_REQUESTS,
   PROJECT_ROOM_TYPING_TTL_MS,
   type ProjectRoomLiveFrame,
   parseProjectRoomBrowserView,
@@ -2568,6 +2569,41 @@ test('live (#4800): an Agent request shows from reserved to settled, from the re
   h.runtime.store.cancelRequest(h.scope, request.requestId, () => {});
   expect((await stream.until('agents')).requests[0]?.state).toBe('cancelled');
   await stream.cancel();
+});
+
+test('live (#4800): a request still working is carried however many newer requests have settled', async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  const first = h.runtime.store.reserveRequest(
+    h.scope,
+    a.actor,
+    { intentId: randomUUID(), agentId: 'scout', text: 'long running' },
+    () => {},
+  );
+  h.runtime.store.markStarted(h.scope, first.requestId, () => {});
+  // As many newer, settled requests as the frame's recent-outcome limit.
+  expect(PROJECT_ROOM_LIVE_AGENT_REQUESTS).toBe(20);
+  for (let index = 0; index < PROJECT_ROOM_LIVE_AGENT_REQUESTS; index++) {
+    const request = h.runtime.store.reserveRequest(
+      h.scope,
+      a.actor,
+      { intentId: randomUUID(), agentId: 'scout', text: `newer ${index}` },
+      () => {},
+    );
+    h.runtime.store.cancelRequest(h.scope, request.requestId, () => {});
+  }
+  const stream = liveReader(await live(h, 'bob', [a.roomId]));
+  try {
+    await stream.until('subscribed');
+    // Parsed by the contract's own reader, as the client parses it.
+    const frame = await stream.until('agents');
+    expect(
+      frame.requests.find((request) => request.requestId === first.requestId)
+        ?.state,
+    ).toBe('started');
+  } finally {
+    await stream.cancel();
+  }
 });
 
 test('mentions (#4799): a message names a member by id; only that person is told, once, and an edit tells only someone newly named', async () => {

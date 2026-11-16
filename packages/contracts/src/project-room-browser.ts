@@ -298,8 +298,14 @@ export type ProjectRoomAgentActivity = Pick<
     | 'execution_failed'
     | 'publication_failed';
 };
-/** Requests a live frame carries: the newest, and every unsettled one. */
+/** The newest requests a live frame carries, whatever their state. */
 export const PROJECT_ROOM_LIVE_AGENT_REQUESTS = 20;
+/**
+ * The unsettled (reserved or started) requests a live frame also carries,
+ * newest first, however many newer requests have settled. More than this
+ * still shows the room as working.
+ */
+export const PROJECT_ROOM_LIVE_WORKING_REQUESTS = 50;
 /** Rooms one live connection may carry (#4798): every channel a Project lists. */
 export const PROJECT_ROOM_LIVE_MAX_ROOMS =
   PROJECT_ROOM_LIMITS.channelsPerProject;
@@ -478,7 +484,8 @@ export function parseProjectRoomLiveFrame(
       const { v, key } = base(['requests']);
       if (
         !Array.isArray(v.requests) ||
-        v.requests.length > PROJECT_ROOM_LIVE_AGENT_REQUESTS
+        v.requests.length >
+          PROJECT_ROOM_LIVE_AGENT_REQUESTS + PROJECT_ROOM_LIVE_WORKING_REQUESTS
       )
         throw new Error('Invalid Room frame');
       return { kind, key, requests: v.requests.map(agentActivity) };

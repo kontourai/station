@@ -638,8 +638,8 @@ export class ProjectRoomService {
   projectedMessages(roomId: string, messageIds: readonly string[]) {
     return this.store.projectedMessages(roomId, messageIds);
   }
-  recentRequests(roomId: string, limit: number) {
-    return this.store.recentRequests(roomId, limit);
+  recentRequests(roomId: string, limit: number, working: number) {
+    return this.store.recentRequests(roomId, limit, working);
   }
   /** Starts or stops the caller's typing signal in a room (#4798). */
   updateTyping(
