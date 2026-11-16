@@ -567,10 +567,19 @@
 }
 
 /* #5062 Project brief. */
-.project-settings__brief-instructions {
+.project-settings__brief-field {
   display: flex;
   flex-direction: column;
   gap: var(--k-space-2);
+}
+
+.project-settings__brief-field + .project-settings__brief-field {
+  margin-top: var(--k-space-3);
+}
+
+.project-settings__brief-label {
+  font-size: var(--k-text-sm);
+  font-weight: 600;
 }
 
 .project-settings__brief-textarea,
@@ -596,10 +605,13 @@
 .project-settings__brief-kinds {
   display: grid;
   gap: var(--k-space-3);
-  margin: 0;
+  margin: var(--k-space-2) 0 0;
+  padding-top: var(--k-space-4);
+  border-top: var(--k-border-thin) solid var(--k-line);
 }
 
 .project-settings__brief-kinds dt {
+  font-size: var(--k-text-sm);
   font-weight: 600;
 }
 

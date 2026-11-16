@@ -3,7 +3,6 @@ import {
   PROJECT_INSTRUCTIONS_MAX_CHARS,
 } from '@kontourai/station-contracts/project-session-context';
 import { useId } from 'react';
-import { PageRow } from '../../components/PageRow';
 import { PageSection } from '../../components/PageSection';
 import type { ProjectForm } from './types';
 
@@ -36,6 +35,7 @@ export function BriefSection({
   setField: SetField;
 }) {
   const goalId = useId();
+  const goalHintId = useId();
   const instructionsId = useId();
   const instructionsHintId = useId();
   return (
@@ -45,25 +45,31 @@ export function BriefSection({
       title="Brief"
       description="Every new Session in this Project starts with its goal and instructions, on any engine. Running Sessions keep the brief they started with."
     >
-      <PageRow
-        label={<label htmlFor={goalId}>Goal</label>}
-        description="One line. Shown on the Project page."
-        control={
-          <input
-            id={goalId}
-            className="editor-input"
-            type="text"
-            maxLength={PROJECT_GOAL_MAX_CHARS}
-            value={form.goal}
-            placeholder="Ship the new export flow by Friday"
-            onChange={(event) =>
-              setField('goal', event.target.value.replace(/[\r\n]+/g, ' '))
-            }
-          />
-        }
-      />
-      <div className="project-settings__brief-instructions">
-        <label htmlFor={instructionsId} className="page-row__label">
+      <div className="project-settings__brief-field">
+        <label htmlFor={goalId} className="project-settings__brief-label">
+          Goal
+        </label>
+        <input
+          id={goalId}
+          className="editor-input"
+          type="text"
+          aria-describedby={goalHintId}
+          maxLength={PROJECT_GOAL_MAX_CHARS}
+          value={form.goal}
+          placeholder="Ship the new export flow by Friday"
+          onChange={(event) =>
+            setField('goal', event.target.value.replace(/[\r\n]+/g, ' '))
+          }
+        />
+        <p id={goalHintId} className="project-settings__brief-hint">
+          One line, shown on the Project page.
+        </p>
+      </div>
+      <div className="project-settings__brief-field">
+        <label
+          htmlFor={instructionsId}
+          className="project-settings__brief-label"
+        >
           Instructions
         </label>
         <textarea

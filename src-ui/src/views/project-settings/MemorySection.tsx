@@ -213,7 +213,7 @@ export function MemorySection({ slug }: { slug: string }) {
                   Edit
                 </Button>
                 <Button
-                  variant="danger"
+                  variant="danger-outline"
                   onClick={() => setForgetting(note)}
                   aria-label={`Delete note: ${note.title}`}
                 >
