@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import { IconButton } from '../IconButton';
 import { PlusGlyph, RefreshGlyph } from '../icons/Glyph';
+import { ConfirmModal } from '../modals/ConfirmModal';
 import { SkeletonList } from '../state';
 import { LinkPullRequestField } from './LinkPullRequestField';
 import { PullRequestFeedbackDialog } from './PullRequestFeedbackDialog';
@@ -29,7 +30,7 @@ const PROVENANCE: Record<
   string
 > = {
   explicit: 'linked',
-  'branch-derived': 'from branch',
+  'branch-derived': "from this Task's branch",
   'task-declared': 'from a Task',
 };
 
@@ -61,10 +62,22 @@ export function ConversationPullRequestLinks({
   const feedback = usePullRequestFeedback(conversationId);
   const [feedbackFor, setFeedbackFor] =
     useState<ConversationPullRequestLinkObservation | null>(null);
+  const [removing, setRemoving] =
+    useState<ConversationPullRequestLinkObservation | null>(null);
   const now = Date.now();
   // One exact PR may have several owners. Keep each provenance visible so
   // explicit unlink cannot erase a branch-derived or Task-kept association.
   const visibleLinks = [...(links.data?.links ?? []), ...derived];
+  // Agent feedback is per pull request, not per provenance: it goes on the
+  // first row for it (linked, then kept on a Task, then from the branch).
+  const feedbackRow = new Set<string>();
+  const firstFor = new Set<string>();
+  for (const link of visibleLinks) {
+    const key = linkKey(link);
+    if (firstFor.has(key)) continue;
+    firstFor.add(key);
+    feedbackRow.add(`${link.source}:${key}`);
+  }
 
   return (
     <section
@@ -129,10 +142,9 @@ export function ConversationPullRequestLinks({
             // The host is part of the identity: the same number on two
             // hosts is two pull requests.
             const reference = `${link.host}/${link.repository.owner}/${link.repository.name} #${link.ref}`;
-            // Agent feedback is per pull request, not per provenance: only
-            // the person-linked or Task-kept rows carry it.
             const view =
-              feedback.available && link.source !== 'branch-derived'
+              feedback.available &&
+              feedbackRow.has(`${link.source}:${linkKey(link)}`)
                 ? feedback.viewFor(link)
                 : undefined;
             const feedbackChip = pullRequestFeedbackChip(view);
@@ -188,6 +200,16 @@ export function ConversationPullRequestLinks({
                         },
                       ]
                     : []),
+                  ...(link.source === 'branch-derived' && feedback.available
+                    ? [
+                        {
+                          key: 'remove-derived',
+                          label: 'Remove from this chat',
+                          disabled: pending !== null,
+                          onSelect: () => setRemoving(link),
+                        },
+                      ]
+                    : []),
                 ]}
                 overflowLabel={`More actions for ${reference}`}
               />
@@ -200,6 +222,23 @@ export function ConversationPullRequestLinks({
           {mutationError}
         </p>
       )}
+      <ConfirmModal
+        isOpen={removing !== null}
+        role="alertdialog"
+        title="Remove from this chat"
+        message={
+          removing
+            ? `Station stops showing ${removing.repository.owner}/${removing.repository.name} #${removing.ref} here and stops its agent feedback. It won't come back for this Task.`
+            : ''
+        }
+        confirmLabel="Remove"
+        onConfirm={() => {
+          const link = removing;
+          setRemoving(null);
+          if (link) void mutate('remove-derived', link);
+        }}
+        onCancel={() => setRemoving(null)}
+      />
       {feedbackFor && (
         <PullRequestFeedbackDialog
           reference={`${feedbackFor.repository.owner}/${feedbackFor.repository.name} #${feedbackFor.ref}`}

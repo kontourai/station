@@ -31,6 +31,7 @@ import {
   ProjectIconPicker,
   projectIconInputProblem,
 } from '../components/project-icon/ProjectIconPicker';
+import { usePullRequestFeedbackAvailable } from '../components/pull-requests/usePullRequestFeedbackAvailable';
 import { SectionNavigation } from '../components/SectionNavigation';
 import { StationPath } from '../components/StationPath';
 import { ErrorState, Skeleton } from '../components/state';
@@ -49,6 +50,7 @@ import { useSectionNavigation } from '../hooks/useSectionNavigation';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { userFacingErrorMessage } from '../utils/errorText';
 import { AccessSection } from './project-settings/AccessSection';
+import { AgentFeedbackDefaultsSection } from './project-settings/AgentFeedbackDefaultsSection';
 import { AgentsSection } from './project-settings/AgentsSection';
 import { KnowledgeSection } from './project-settings/KnowledgeSection';
 import { LayoutsSection } from './project-settings/LayoutsSection';
@@ -74,6 +76,7 @@ const PROJECT_SETTINGS_SECTIONS = [
   ['agents', 'Agents'],
   ['tools', 'Tools'],
   ['layouts', 'Layouts'],
+  ['agent-feedback', 'Agent feedback'],
   ['resources', 'Sources'],
   ['access', 'People and access'],
   ['knowledge', 'Project knowledge'],
@@ -176,9 +179,19 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  // Offered only with the pull request agent feedback preview and the
+  // host's capability; kept allowed while that read is pending so a link
+  // to the section survives a reload.
+  const agentFeedback = usePullRequestFeedbackAvailable();
+  const sections = PROJECT_SETTINGS_SECTIONS.filter(
+    ([id]) =>
+      id !== 'agent-feedback' ||
+      agentFeedback.available ||
+      agentFeedback.pending,
+  );
   const { activeSection, hrefForSection, navigateToSection } =
     useSectionNavigation(
-      PROJECT_SETTINGS_SECTIONS.map(([id]) => id),
+      sections.map(([id]) => id),
       'workspace',
       { scrollOnNavigate: false },
     );
@@ -402,11 +415,15 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
         <SectionNavigation
           label="Project settings sections"
           pickerLabel="Project settings section"
-          items={PROJECT_SETTINGS_SECTIONS.map(([id, label]) => ({
-            key: id,
-            label,
-            href: hrefForSection(id),
-          }))}
+          items={sections
+            .filter(
+              ([id]) => id !== 'agent-feedback' || agentFeedback.available,
+            )
+            .map(([id, label]) => ({
+              key: id,
+              label,
+              href: hrefForSection(id),
+            }))}
           activeKey={activeSection}
           onNavigate={navigateToSection}
         />
@@ -414,9 +431,13 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
         {/* Body */}
         <div className="section-nav-rail__body project-settings__body">
           <p className="project-settings__save-hint">
-            {['layouts', 'resources', 'access', 'knowledge'].includes(
-              activeSection,
-            )
+            {[
+              'layouts',
+              'agent-feedback',
+              'resources',
+              'access',
+              'knowledge',
+            ].includes(activeSection)
               ? 'Actions in this section apply when confirmed.'
               : 'Save to apply changes to project defaults.'}
           </p>
@@ -807,6 +828,15 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           >
             <LayoutsSection slug={slug} />
           </div>
+
+          {agentFeedback.available && (
+            <div
+              className="project-settings__panel"
+              hidden={activeSection !== 'agent-feedback'}
+            >
+              <AgentFeedbackDefaultsSection slug={slug} />
+            </div>
+          )}
 
           <div
             className="project-settings__panel"

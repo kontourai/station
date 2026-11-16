@@ -134,6 +134,17 @@ vi.mock('../components/ModelSelector', () => ({
   ),
 }));
 
+// Agent feedback is offered only with its preview and the host's capability.
+const agentFeedback = vi.hoisted(() => ({ available: false }));
+vi.mock('../components/pull-requests/usePullRequestFeedbackAvailable', () => ({
+  usePullRequestFeedbackAvailable: () => ({
+    available: agentFeedback.available,
+    pending: false,
+  }),
+}));
+vi.mock('../views/project-settings/AgentFeedbackDefaultsSection', () => ({
+  AgentFeedbackDefaultsSection: () => <p>Agent feedback defaults</p>,
+}));
 vi.mock('../components/PathAutocomplete', () => ({
   PathAutocomplete: ({
     value,
@@ -414,6 +425,7 @@ function expectPageFullRoot(container: HTMLElement) {
 // Every suite here renders the Workspace section, so the stale checkout
 // warning's state starts empty for each test.
 beforeEach(() => {
+  agentFeedback.available = false;
   sdkMocks.previews = [];
   sdkMocks.checkoutFreshness = undefined;
   sdkMocks.checkoutFreshnessError = null;
@@ -912,6 +924,21 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       ].map((option) => option.value);
       expect(options).toEqual(['', 'openai-main']);
     });
+  });
+
+  test('offers Agent feedback only where the host serves it', () => {
+    const { unmount } = renderProjectSettings('agent-feedback');
+    expect(screen.queryByRole('link', { name: 'Agent feedback' })).toBeNull();
+    expect(screen.queryByText('Agent feedback defaults')).toBeNull();
+    unmount();
+    agentFeedback.available = true;
+    renderProjectSettings('agent-feedback');
+    expect(
+      screen
+        .getByRole('link', { name: 'Agent feedback' })
+        .getAttribute('aria-current'),
+    ).toBe('location');
+    expect(screen.getByText('Agent feedback defaults')).toBeTruthy();
   });
 
   test('section picker shows one topic and keeps hidden project drafts mounted', () => {
