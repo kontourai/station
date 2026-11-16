@@ -66,7 +66,6 @@ export function AgentsSection({
     <PageSection
       id="section-agents"
       className="project-settings__section"
-      eyebrow="Availability"
       title="Agents"
       description="Choose which agents are offered when a conversation starts in this project."
     >

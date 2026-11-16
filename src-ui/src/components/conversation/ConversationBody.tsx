@@ -2529,18 +2529,6 @@ function LiveConversationBody({
         session={activeSession}
         summary={activeOrchestrationSession}
       />
-      {/* What an agent scheduled here: check-backs and job proposals. */}
-      {activeSession.conversationId &&
-      !activeSession.replay &&
-      (!station || station.routeKind === 'host') ? (
-        <AgentScheduleNotes
-          conversationId={activeSession.conversationId}
-          refreshKey={agentScheduleRefreshKey(
-            activeSession.conversationActivity?.openTurn?.turnId,
-            activeSession.streamingMessage?.contentParts,
-          )}
-        />
-      ) : null}
       {/* Commands an agent asked to run here, each waiting for its own Run. */}
       {activeSession.conversationId &&
       !activeSession.replay &&
@@ -2880,7 +2868,22 @@ function LiveConversationBody({
             />
           )}
           <ConversationComposer
-            activity={statusPill}
+            activity={
+              <>
+                {activeSession.conversationId &&
+                !activeSession.replay &&
+                (!station || station.routeKind === 'host') ? (
+                  <AgentScheduleNotes
+                    conversationId={activeSession.conversationId}
+                    refreshKey={agentScheduleRefreshKey(
+                      activeSession.conversationActivity?.openTurn?.turnId,
+                      activeSession.streamingMessage?.contentParts,
+                    )}
+                  />
+                ) : null}
+                {statusPill}
+              </>
+            }
             contextMeter={
               showContextMeter && activeSession.conversationId ? (
                 <ContextPercentage

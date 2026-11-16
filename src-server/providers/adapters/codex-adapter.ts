@@ -42,6 +42,7 @@ import type {
   StagedPreToolPolicyEvaluator,
 } from '../../runtime/agents/pre-tool-policy.js';
 import { builtinStationApiServerId } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import { codexDynamicTools } from '../../runtime/mcp/codex-dynamic-tools.js';
 import type { InvocationContext } from '../../runtime/types.js';
 import {
   assertRequiredConfinementObserved,
@@ -2377,12 +2378,7 @@ export class CodexAdapter implements ProviderAdapterShape {
               experimentalRawEvents: false,
               ...(boundTools
                 ? {
-                    dynamicTools: offeredTools.map((tool) => ({
-                      type: 'function',
-                      name: tool.name,
-                      description: tool.description ?? tool.name,
-                      inputSchema: tool.inputSchema,
-                    })),
+                    dynamicTools: codexDynamicTools(offeredTools),
                   }
                 : {}),
               persistExtendedHistory: false,

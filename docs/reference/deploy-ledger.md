@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-16T03:26:30Z | nightly-npm | 0.11.0-nightly.20261116.43796408425 | `0f46969` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/43796408425) |
 | 2026-11-15T23:26:59Z | nightly-npm | 0.11.0-nightly.20261115.43773362126 | `95a6c12` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/43773362126) |
 | 2026-11-15T12:33:49Z | nightly-desktop | 0.1.11-nightly.20261115 | `89dc051` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/43709226198) |
 | 2026-11-15T12:33:49Z | nightly-android | 0.1.11-nightly.20261115 | `89dc051` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/43709226198) |
@@ -487,6 +488,43 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-16T03:26:30Z · nightly-npm · 0.11.0-nightly.20261116.43796408425
+
+- Ship SHA: `0f46969f18aa5080844d57fba8af1a079533cac4`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.11.0-nightly.20261116.43796408425 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `95a6c12` ([full sha](https://github.com/kontourai/station/commit/95a6c1253416050823e2a34089882e3261253cb8)):
+
+**Features**
+
+- [#5005](https://github.com/kontourai/station/pull/5005) feat(claude): load AGENTS.md beside CLAUDE.md in Claude sessions
+- [#5008](https://github.com/kontourai/station/pull/5008) feat(appearance): person-scoped custom palette and CSS that agents propose and people keep
+- [#5018](https://github.com/kontourai/station/pull/5018) feat(orchestration): measure who reads the session read model and what each read costs
+
+**Fixes**
+
+- [#5020](https://github.com/kontourai/station/pull/5020) fix(qualification): repair two stale main-qualification tests and the dev-home seed target check
+- [#5022](https://github.com/kontourai/station/pull/5022) fix(scripts): say how Biome ended when the a11y ratchet cannot measure
+- [#5015](https://github.com/kontourai/station/pull/5015) fix(ui): let Run setup use the composer row's free room
+- [#5013](https://github.com/kontourai/station/pull/5013) fix(connect): keep a greyed-out Station forgettable from the keyboard and repair the switcher gallery screens
+
+**CI / workflow**
+
+- [#5021](https://github.com/kontourai/station/pull/5021) ci(fast-checks): give pull-request statics a third slot
+
+**Docs**
+
+- [#4984](https://github.com/kontourai/station/pull/4984) docs(pages): rebuild the home around channels, agents and Tasks with real screens (#4801)
+
+**Other**
+
+- [#5007](https://github.com/kontourai/station/pull/5007) perf(sessions): release a finished delegated run's engine soon after its turn settles
+- [#5009](https://github.com/kontourai/station/pull/5009) perf(mcp): compile-cache the built-in station-control and station-knowledge children
 
 ## 2026-11-15T23:26:59Z · nightly-npm · 0.11.0-nightly.20261115.43773362126
 
