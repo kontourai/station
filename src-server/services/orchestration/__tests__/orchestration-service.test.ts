@@ -37,7 +37,10 @@ import {
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { ConnectionRecoveryIntent } from '@kontourai/station-contracts/connection-recovery';
 import type { OrchestrationCommand } from '@kontourai/station-contracts/orchestration';
-import { PENDING_TURN_INTERRUPT_TTL_MS } from '@kontourai/station-contracts/orchestration';
+import {
+  CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
+  PENDING_TURN_INTERRUPT_TTL_MS,
+} from '@kontourai/station-contracts/orchestration';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import type { ProjectTaskRoomGrant } from '@kontourai/station-contracts/project-task-room';
 import {
@@ -120,6 +123,9 @@ import {
   sessionActivityEvents,
   sessionBackgroundTasks,
   sessionOwnerCacheOps,
+  sessionReadModelDuration,
+  sessionReadModelReads,
+  sessionReadModelThreads,
   tenantExecutionContextOutcomes,
   turnProvenanceProjections,
 } from '../../../telemetry/metrics.js';
@@ -128,6 +134,7 @@ import { createLogger } from '../../../utils/logger.js';
 import { LOG_BINDING_KEYS } from '../../../utils/logger-correlation.js';
 import { AgentPolicyService } from '../../agents/agent-policy-service.js';
 import { ApprovalRegistry } from '../../approvals/approval-registry.js';
+import { isSessionUntouched } from '../recovery-dispatch-adapter.js';
 import { stationWorkflowActorKey } from '../../evidence/orchestration-workflow-sidecar.js';
 import { buildSyntheticTrustBundle } from '../../evidence/trust-bundle.js';
 import { VeritasReadinessService } from '../../evidence/veritas-readiness-service.js';
@@ -224,6 +231,9 @@ vi.mock('../../../telemetry/metrics.js', async (importOriginal) => ({
   sessionBackgroundTasks: { add: vi.fn() },
   projectResourceShadowComparisons: { add: vi.fn() },
   sessionOwnerCacheOps: { add: vi.fn() },
+  sessionReadModelDuration: { record: vi.fn() },
+  sessionReadModelReads: { add: vi.fn() },
+  sessionReadModelThreads: { record: vi.fn() },
   sessionStateDuration: { record: vi.fn() },
   sessionTransitions: { add: vi.fn() },
   tenantExecutionContextAttributes: vi.fn((value) => value),
@@ -632,6 +642,7 @@ type InternalObserver = Omit<
   ): ReturnType<RawOrchestrationService['listSessions']>;
   listSessionReadModel(
     authority?: SessionReadAuthority,
+    options?: Parameters<RawOrchestrationService['listSessionReadModel']>[1],
   ): ReturnType<RawOrchestrationService['listSessionReadModel']>;
   listLoadedSessionReadModel(
     authority?: SessionReadAuthority,
@@ -798,6 +809,8 @@ function internalObserver(
       if (scopeIndex === undefined) return value.bind(instance);
       return (...args: unknown[]) => {
         args[scopeIndex] ??= INTERNAL_SESSION_READ_SCOPE;
+        if (property === 'listSessionReadModel')
+          args[1] ??= { purpose: 'session-list' };
         return value.apply(instance, args);
       };
     },
@@ -1746,7 +1759,19 @@ describe('OrchestrationService', () => {
 
     // Client B connects afterwards with no cursor: the snapshot rows carry
     // the same activity, running tool included, with no further events.
+    const schedule = eventStore.agentScheduleStore();
+    const wake = schedule.insertWakeUp({
+      conversationId: root, sessionId: child, actor: { userId: 'owner-user', attribution: 'unattributed-agent' },
+      caller: { assurance: 'bound', sessionId: child }, note: 'Check the result',
+      dueAtMs: Date.parse('2026-09-22T09:10:00.000Z'), state: 'pending', now: Date.parse('2026-09-22T09:00:00.000Z'),
+    });
+    if (typeof wake === 'string') throw new Error(wake);
     const snapshot = await service.listSessionReadModel();
+    for (const threadId of [root, child]) {
+      expect(snapshot.find((session) => session.threadId === threadId)?.nextWakeUpAt).toBe('2026-09-22T09:10:00.000Z');
+    }
+    schedule.settleWakeUp(wake.id, 'canceled', Date.parse('2026-09-22T09:01:00.000Z'));
+    expect((await service.listSessionReadModel()).find((session) => session.threadId === child)?.nextWakeUpAt).toBeUndefined();
     for (const threadId of [root, child])
       expect(
         snapshot.find((session) => session.threadId === threadId)
@@ -1782,7 +1807,7 @@ describe('OrchestrationService', () => {
       expect(
         (
           await restarted.listSessionReadModel(
-            personalReadAuthority('owner-user'),
+            personalReadAuthority('owner-user'), { purpose: 'session-list' }
           )
         ).find((session) => session.threadId === root)?.conversationActivity,
       ).toEqual(lastA?.activity);
@@ -3198,6 +3223,159 @@ describe('OrchestrationService', () => {
     } finally {
       unsubscribe();
       await parkService.shutdown();
+    }
+  });
+
+  // A finished turn's alert (and phone card Done) waits for work that will
+  // produce more: a subagent always, a command only while not backgrounded,
+  // the engine's own open-work flag only when the child-work record cannot
+  // classify it. Read from the service's real child-work projection and
+  // adapter, the facts the idle park reads.
+  test('readFinishedAlertHold reads child work, engine work and delegation ownership', async () => {
+    const holdService = new OrchestrationService({
+      adapterRegistry: createRegistry([claude]),
+      eventBus,
+      eventStore,
+      flowRunService,
+      listProjects: () => configuredProjects,
+      workflowSidecarService,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    const threadId = 'held-finish-conversation';
+    const reporter = {
+      producer: 'engine-subagent' as const,
+      reporterThreadId: threadId,
+    };
+    const snapshot = async (running: Record<string, unknown>[]) => {
+      claude.events.push({
+        eventId: `child-work-${randomUUID()}`,
+        provider: 'claude',
+        threadId,
+        method: 'child-work.updated',
+        delta: { kind: 'snapshot', ...reporter, running },
+        createdAt: new Date().toISOString(),
+      } as unknown as CanonicalRuntimeEvent);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    };
+    const withOpenWork = claude as FakeAdapter & {
+      hasOpenEngineWork?: (threadId: string) => boolean;
+    };
+    try {
+      const started = await holdService.sessionCommands.execute(
+        {
+          type: 'start-session',
+          input: {
+            threadId,
+            provider: 'claude',
+            metadata: { userId: 'owner-user' },
+          },
+        },
+        { userId: 'owner-user' },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      expect(holdService.readFinishedAlertHold(threadId)).toEqual([]);
+
+      await snapshot([
+        { ...reporter, childId: 'agent-1', status: 'running', workKind: 'agent' },
+      ]);
+      expect(holdService.readFinishedAlertHold(threadId)).toEqual([
+        'child-agent',
+      ]);
+
+      // A dev server left running: backgrounded, so it does not hold, even
+      // though the engine counts it as open work.
+      withOpenWork.hasOpenEngineWork = (id) => id === threadId;
+      await snapshot([
+        {
+          ...reporter,
+          childId: 'bash-1',
+          status: 'running',
+          workKind: 'command',
+          backgrounded: true,
+        },
+      ]);
+      expect(holdService.readFinishedAlertHold(threadId)).toEqual([]);
+
+      // A command the turn did not background still holds.
+      await snapshot([
+        {
+          ...reporter,
+          childId: 'bash-2',
+          status: 'running',
+          workKind: 'command',
+          backgrounded: false,
+        },
+      ]);
+      expect(holdService.readFinishedAlertHold(threadId)).toEqual([
+        'foreground-command',
+      ]);
+
+      // Nothing the record lists explains the engine's open work: it holds.
+      await snapshot([]);
+      expect(holdService.readFinishedAlertHold(threadId)).toEqual([
+        'engine-work',
+      ]);
+      withOpenWork.hasOpenEngineWork = undefined;
+      expect(holdService.readFinishedAlertHold(threadId)).toEqual([]);
+
+      // Claude says it is about to open a turn of its own after a
+      // background child settled: that pending follow-up holds.
+      claude.events.push({
+        eventId: `follow-up-${randomUUID()}`,
+        provider: 'claude',
+        threadId,
+        method: 'extension.notification',
+        namespace: 'claude-code',
+        type: 'provider/follow-up-pending',
+        payload: { pending: true },
+        createdAt: new Date().toISOString(),
+      } as unknown as CanonicalRuntimeEvent);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(holdService.readFinishedAlertHold(threadId)).toEqual([
+        'follow-up-pending',
+      ]);
+      // The provider's turn opens: the fact is spent.
+      claude.events.push({
+        eventId: `follow-up-turn-${randomUUID()}`,
+        provider: 'claude',
+        threadId,
+        method: 'turn.started',
+        turnId: 'provider-turn-1',
+        createdAt: new Date().toISOString(),
+      } as CanonicalRuntimeEvent);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(holdService.readFinishedAlertHold(threadId)).toEqual([]);
+
+      // A Station-delegated child session this one started, still starting:
+      // its result comes back here, so it holds.
+      claude.events.push({
+        eventId: `held-finish-started-${randomUUID()}`,
+        provider: 'claude',
+        threadId,
+        method: 'session.started',
+        sessionId: threadId,
+        createdAt: new Date().toISOString(),
+      } as CanonicalRuntimeEvent);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      eventStore.reserveOwnershipStart('held-finish-owned-child', {
+        stationDelegationProvenance: 'caller-derived',
+        delegation: { parentSessionId: threadId },
+      });
+      expect(holdService.readFinishedAlertHold(threadId)).toEqual([
+        'owned-session',
+      ]);
+
+      expect(holdService.isDelegatedChildSession(threadId)).toBe(false);
+      eventStore.delegationResultStore().arm({
+        childConversationId: threadId,
+        taskId: threadId,
+        parentConversationId: 'delegating-parent',
+        actor: { userId: 'owner-user', attribution: 'verified-bound' },
+      });
+      expect(holdService.isDelegatedChildSession(threadId)).toBe(true);
+    } finally {
+      withOpenWork.hasOpenEngineWork = undefined;
+      await holdService.shutdown();
     }
   });
 
@@ -4780,6 +4958,23 @@ describe('OrchestrationService', () => {
         eventStore.latestEventByMethod('handoff-conversation', 'session.started')?.payload,
       ).toMatchObject({ metadata: { userId: 'owner-user' } });
       expect(handoffService.sessionRecordedOwnerId('handoff-conversation')).toBe('owner-user');
+      // While the root is still running, a handoff is refused with a code a
+      // client can branch on (and nothing is reserved).
+      await expect(
+        handoffService.prepareConversationHandoff(
+          'handoff-conversation',
+          INTERNAL_SESSION_READ_SCOPE,
+          {
+            agentId: 'agent-b',
+            environmentId: 'environment-a',
+            connectionId: 'claude',
+            idempotencyKey: 'handoff-while-running',
+            messageDigest: 'message-running',
+          },
+        ),
+      ).rejects.toMatchObject({
+        code: CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
+      });
       eventStore.appendEvent({
         eventId: 'handoff-root-complete',
         provider: 'claude',
@@ -5945,9 +6140,22 @@ describe('OrchestrationService', () => {
       // The credential-replay shape bypasses dispatch and ends in a DIRECT
       // adapter.sendTurn — so the restart seam itself must refuse: no
       // respawn, no teardown of the live engine, no replay.
-      await expect(restart('portable-credential-restart')).rejects.toThrow(
+      const refused = await restart('portable-credential-restart').catch(
+        (error: unknown) => error,
+      );
+      expect(String(refused)).toContain(
         'This portable task cannot continue without a current execution offer',
       );
+      // Refused before anything stopped: recovery must not restore it.
+      expect(isSessionUntouched(refused)).toBe(true);
+      // So is a restart for a Session Station does not know.
+      const unknown = await restart('no-such-credential-session').catch(
+        (error: unknown) => error,
+      );
+      expect(String(unknown)).toContain(
+        'Credential profile recovery session is unavailable.',
+      );
+      expect(isSessionUntouched(unknown)).toBe(true);
       expect(claude.startSession.mock.calls.length).toBe(startsBefore);
       expect(claude.stopSession).not.toHaveBeenCalled();
       // Legacy control: an unmarked session restarts.
@@ -13009,11 +13217,14 @@ describe('OrchestrationService', () => {
       eventStore,
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
+    // No confirmation window: this test is about the stop suppression, and
+    // the finished push it expects is otherwise held for five seconds.
     wireTurnCompletionNotifications(
       notificationBus,
       restartService,
       notificationService,
       logger,
+      { confirmMs: 0 },
     );
     wireInternalStopRedispatchFailureNotifications(
       notificationBus,
@@ -13117,8 +13328,12 @@ describe('OrchestrationService', () => {
             event.payload.turnId === 'turn-2',
         ),
     );
-    await notificationService.drainAsyncDispatch();
-    const notifications = await notificationService.list();
+    let notifications = await notificationService.list();
+    for (let attempt = 0; attempt < 100 && notifications.length === 0; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      await notificationService.drainAsyncDispatch();
+      notifications = await notificationService.list();
+    }
     expect(notifications).toHaveLength(1);
     expect(notifications[0]).toEqual(
       expect.objectContaining({
@@ -16081,7 +16296,7 @@ describe('OrchestrationService', () => {
 
       const startedAt = performance.now();
       const items = await perfService.listSessionReadModel(
-        personalReadAuthority('owner-user'),
+        personalReadAuthority('owner-user'), { purpose: 'session-list' }
       );
       const durationMs = performance.now() - startedAt;
       rawDb.prepare = originalPrepare;
@@ -16274,13 +16489,13 @@ describe('OrchestrationService', () => {
       ) =>
         sessions.find((session) => session.threadId === threadId)?.eventCount;
 
-      const first = await cacheService.listSessionReadModel(authority);
+      const first = await cacheService.listSessionReadModel(authority, { purpose: 'session-list' });
       expect(first).toHaveLength(threadIds.length);
       expect(factReads).toHaveLength(1);
       expect([...factReads[0]!].sort()).toEqual([...threadIds].sort());
       expect(countReads).toHaveLength(1);
 
-      const unchanged = await cacheService.listSessionReadModel(authority);
+      const unchanged = await cacheService.listSessionReadModel(authority, { purpose: 'session-list' });
       expect(unchanged).toEqual(
         first.map((session) =>
           expect.objectContaining({
@@ -16302,7 +16517,7 @@ describe('OrchestrationService', () => {
         method: 'turn.completed',
         finishReason: 'stop',
       } as any);
-      const after = await cacheService.listSessionReadModel(authority);
+      const after = await cacheService.listSessionReadModel(authority, { purpose: 'session-list' });
       expect(factReads.slice(1)).toEqual([[moved]]);
       expect(countReads.slice(1)).toEqual([[moved]]);
       expect(eventCountOf(after, moved)).toBe((eventCountOf(first, moved) ?? 0) + 1);
@@ -16310,6 +16525,251 @@ describe('OrchestrationService', () => {
       rawDb.prepare = originalPrepare;
     } finally {
       cacheEventStore.close();
+    }
+  }, 60_000);
+
+  /** A real store and service for the #4992 measurement tests below. */
+  async function readModelMeasurementWorld(label: string) {
+    const eventStore = new EventStore(
+      join(makeReadModelCacheDir(label), 'orchestration.sqlite'),
+    );
+    const service = new OrchestrationService({
+      adapterRegistry: createRegistry([new FakeAdapter('claude')]),
+      eventBus: new EventBus(),
+      eventStore,
+      adoptionLedger: eventStore.createAdoptionLedger(),
+      flowRunService: new FlowRunService(),
+      listProjects: () => [],
+      agentPolicyService: new AgentPolicyService({
+        env: { ...process.env, SA_HOOK_PROFILE: '', SA_DISABLED_HOOKS: '' },
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      }),
+      workflowSidecarService: new WorkflowSidecarService({
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      }),
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    service.initialize();
+    await awaitSessionRecoveryCompleted(service);
+    const seed = (threadId: string, userId: string, index: number) => {
+      const createdAt = new Date(2026, 0, 1, 0, 0, index).toISOString();
+      eventStore.upsertSession({
+        provider: 'claude',
+        threadId,
+        status: 'ready',
+        createdAt,
+        updatedAt: createdAt,
+      });
+      eventStore.appendEvent({
+        eventId: `${threadId}-started`,
+        provider: 'claude',
+        threadId,
+        createdAt,
+        method: 'session.started',
+        sessionId: threadId,
+        metadata: { agentSlug: 'claude', userId },
+      });
+    };
+    return { eventStore, service, seed };
+  }
+
+  // #4992: which callers drive the read model's rate, and what the event
+  // store's per-thread cache saved them, measured at the service seam.
+  test('#4992: each read model read is recorded under its purpose with the cache refold and reuse counts', async () => {
+    const { eventStore, service, seed } = await readModelMeasurementWorld(
+      'orchestration-service-read-model-measurement-',
+    );
+    try {
+      const owned = ['measured-0', 'measured-1', 'measured-2', 'measured-3'];
+      owned.forEach((threadId, index) => seed(threadId, 'owner-user', index));
+      seed('measured-other', 'other-user', 9);
+      const owner = personalReadAuthority('owner-user');
+      vi.mocked(sessionReadModelReads.add).mockClear();
+      vi.mocked(sessionReadModelDuration.record).mockClear();
+      vi.mocked(sessionReadModelThreads.record).mockClear();
+      const before = service.sessionReadModelMeasurement().byPurpose;
+      const baseline = {
+        list: before['session-list'],
+        snapshot: before['sse-snapshot'],
+      };
+      expect(baseline).toEqual({ list: undefined, snapshot: undefined });
+
+      // Cold: every readable thread is folded and counted.
+      await service.listSessionReadModel(owner, { purpose: 'session-list' });
+      // Warm: nothing moved, so everything is reused.
+      await service.listSessionReadModel(owner, { purpose: 'session-list' });
+      // One thread moves; a narrowed read of two threads refolds only it.
+      eventStore.appendEvent({
+        eventId: 'measured-1-turn',
+        provider: 'claude',
+        threadId: 'measured-1',
+        turnId: 'turn-1',
+        createdAt: new Date(2026, 0, 2).toISOString(),
+        method: 'turn.started',
+        prompt: 'moved',
+      } as any);
+      await service.listSessionReadModel(owner, {
+        purpose: 'sse-snapshot',
+        threadIds: ['measured-1', 'measured-2', 'measured-other'],
+      });
+
+      const byPurpose = service.sessionReadModelMeasurement().byPurpose;
+      expect(byPurpose['session-list']).toMatchObject({
+        reads: 2,
+        threadScopedReads: 0,
+        threadsConsidered: 8,
+        projectionRefolded: 4,
+        projectionReused: 4,
+        countRefreshed: 4,
+        countReused: 4,
+      });
+      // `measured-other` is not the owner's: it is never considered.
+      expect(byPurpose['sse-snapshot']).toMatchObject({
+        reads: 1,
+        threadScopedReads: 1,
+        threadsConsidered: 2,
+        projectionRefolded: 1,
+        projectionReused: 1,
+        countRefreshed: 1,
+        countReused: 1,
+      });
+      expect(Object.keys(byPurpose).sort()).toEqual([
+        'session-list',
+        'sse-snapshot',
+      ]);
+
+      // The same numbers reach the meter, by bounded purpose and scope only.
+      expect(vi.mocked(sessionReadModelReads.add).mock.calls).toEqual([
+        [1, { purpose: 'session-list', scope: 'all' }],
+        [1, { purpose: 'session-list', scope: 'all' }],
+        [1, { purpose: 'sse-snapshot', scope: 'threads' }],
+      ]);
+      const threads = vi
+        .mocked(sessionReadModelThreads.record)
+        .mock.calls.filter(([, attributes]) =>
+          String(attributes?.outcome).startsWith('projection_'),
+        );
+      expect(threads).toEqual([
+        [4, { purpose: 'session-list', outcome: 'projection_refolded' }],
+        [0, { purpose: 'session-list', outcome: 'projection_reused' }],
+        [0, { purpose: 'session-list', outcome: 'projection_refolded' }],
+        [4, { purpose: 'session-list', outcome: 'projection_reused' }],
+        [1, { purpose: 'sse-snapshot', outcome: 'projection_refolded' }],
+        [1, { purpose: 'sse-snapshot', outcome: 'projection_reused' }],
+      ]);
+      expect(
+        vi
+          .mocked(sessionReadModelDuration.record)
+          .mock.calls.map(([, attributes]) => attributes),
+      ).toEqual([
+        { purpose: 'session-list', phase: 'total' },
+        { purpose: 'session-list', phase: 'build' },
+        { purpose: 'session-list', phase: 'total' },
+        { purpose: 'session-list', phase: 'build' },
+        { purpose: 'sse-snapshot', phase: 'total' },
+        { purpose: 'sse-snapshot', phase: 'build' },
+      ]);
+
+      // A purpose outside the closed vocabulary never becomes a dimension.
+      await service.listSessionReadModel(owner, {
+        purpose: 'user-42-session-abc' as never,
+      });
+      expect(vi.mocked(sessionReadModelReads.add).mock.calls.at(-1)).toEqual([
+        1,
+        { purpose: 'invalid', scope: 'all' },
+      ]);
+    } finally {
+      eventStore.close();
+    }
+  }, 60_000);
+
+  // #4992: the hosting check read the caller's whole read model to answer
+  // for one Task. It now reads the one record the (environment, Task) pair
+  // names. Equivalence is pinned against the old fold, kept here as the
+  // reference, over records the caller can and cannot read.
+  test('#4992: peerDelegationHostsTask answers as the full read model fold did, reading one record', async () => {
+    const { eventStore, service, seed } = await readModelMeasurementWorld(
+      'orchestration-service-peer-host-',
+    );
+    try {
+      const dispatch = (taskId: string, environmentId: string, userId: string) =>
+        service.recordPeerDelegationActivityDispatch({
+          taskId,
+          conversationId: `conversation-${taskId}`,
+          prompt: `Work on ${taskId}`,
+          userId,
+          environment: { id: environmentId, name: environmentId, kind: 'peer' },
+          target: { kind: 'agent', id: 'codex' },
+        });
+      dispatch('task-a', 'env-1', 'owner-user');
+      dispatch('task-a', 'env-2', 'owner-user');
+      dispatch('task-b', 'env-1', 'owner-user');
+      // Another person's record: the owner must not learn it names a host.
+      dispatch('task-a', 'env-3', 'other-user');
+      // Ordinary Sessions the old fold had to read too.
+      seed('unrelated-1', 'owner-user', 1);
+      seed('unrelated-2', 'other-user', 2);
+
+      const referenceHosts = async (
+        taskId: string,
+        authority: ReturnType<typeof personalReadAuthority>,
+      ) =>
+        new Set(
+          (
+            await service.listSessionReadModel(authority, {
+              purpose: 'session-list',
+            })
+          ).flatMap((session) =>
+            session.delegation?.environmentKind === 'peer' &&
+            session.delegation.taskId === taskId &&
+            session.delegation.environmentId
+              ? [session.delegation.environmentId]
+              : [],
+          ),
+        );
+      const authorities = {
+        owner: personalReadAuthority('owner-user'),
+        other: personalReadAuthority('other-user'),
+        stranger: personalReadAuthority('stranger-user'),
+      };
+      const answers: string[] = [];
+      for (const [who, authority] of Object.entries(authorities)) {
+        for (const taskId of ['task-a', 'task-b', 'task-c']) {
+          const expected = await referenceHosts(taskId, authority);
+          for (const environmentId of ['env-1', 'env-2', 'env-3']) {
+            const hosted = await service.peerDelegationHostsTask(
+              taskId,
+              environmentId,
+              authority,
+            );
+            expect(
+              { who, taskId, environmentId, hosted },
+            ).toEqual({
+              who,
+              taskId,
+              environmentId,
+              hosted: expected.has(environmentId),
+            });
+            if (hosted) answers.push(`${who}:${taskId}:${environmentId}`);
+          }
+        }
+      }
+      // Non-vacuous: the matrix holds both answers, and the unreadable
+      // record answers only for its own owner.
+      expect(answers.sort()).toEqual([
+        'other:task-a:env-3',
+        'owner:task-a:env-1',
+        'owner:task-a:env-2',
+        'owner:task-b:env-1',
+      ]);
+
+      // Each check considered at most the one record it names.
+      const host =
+        service.sessionReadModelMeasurement().byPurpose['peer-delegation-host'];
+      expect(host).toMatchObject({ reads: 27, threadScopedReads: 27 });
+      expect(host!.threadsConsidered).toBe(answers.length);
+    } finally {
+      eventStore.close();
     }
   }, 60_000);
 
@@ -22106,6 +22566,7 @@ describe('OrchestrationService', () => {
     // The complete method-targeted projection + count are the bounded work.
     expect(projectionSpy).toHaveBeenCalledWith(
       expect.arrayContaining([threadId]),
+      expect.any(Function),
     );
     expect(countSpy).toHaveBeenCalled();
     // THE bounded-work guard: this thread has 5,002 rows, but the fold's
@@ -29772,7 +30233,7 @@ describe('OrchestrationService', () => {
       service.listSessions(personalReadAuthority('other-user')),
     ).resolves.toEqual([]);
     await expect(
-      service.listSessionReadModel(personalReadAuthority('other-user')),
+      service.listSessionReadModel(personalReadAuthority('other-user'), { purpose: 'session-list' }),
     ).resolves.toEqual([]);
     await expect(
       service.readSession(

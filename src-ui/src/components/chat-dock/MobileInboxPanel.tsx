@@ -191,7 +191,7 @@ export function MobileInboxPanel({
       {searchOpen && (
         <input
           ref={searchRef}
-          className="mobile-inbox__search"
+          className="control control--input mobile-inbox__search"
           type="search"
           aria-label="Search chats and tasks"
           placeholder="Search…"

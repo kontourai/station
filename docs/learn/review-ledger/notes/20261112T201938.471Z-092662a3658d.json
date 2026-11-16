@@ -1,0 +1,13 @@
+{
+  "revision": "366ad58d9e69c54bea271564c47a99fbe601b708",
+
+  "notes": [
+    {"path":"docs/guides/code-hygiene.md","note":"component-style-hygiene.mjs only exports LEGACY_TOKEN now (ui-css-slop reuses it); the pattern and the families the guide lists are unchanged, so the lint:component-style paragraph still holds.","inputs":["docs/guides/code-hygiene.md","scripts/component-style-hygiene.mjs"]},
+
+    {"path":"docs/guides/ui-copy.md","note":"Re-reviewed after the delta fix. The ui-css-slop row now says only a legacy-token var() fallback hex is skipped (lint:component-style counts it); checked against withoutLegacyVarCalls, which reuses component-style-hygiene's exported LEGACY_TOKEN, and the tests for legacy, non-legacy and nested-parenthesis fallbacks. Other gate rows unchanged. The IconButton sentence is kept on the coordinator's word that the shell lane lands first.","inputs":["docs/guides/ui-copy.md","scripts/component-style-hygiene.mjs","scripts/ui-css-slop.mjs"]},
+
+    {"path":"docs/reference/agent-plugins.md","note":"check-prepush-static-gates.mjs changed only a timing comment (now 'a few seconds each on an idle machine'); agent-plugin-validators-gate and its input prefix are unchanged.","inputs":["docs/reference/agent-plugins.md","scripts/check-prepush-static-gates.mjs"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Product copy section re-checked: it names npm run ui-css-slop:ratchet for CSS and links the guide; neither depends on the fallback rule that changed. Commands still exist in package.json.","inputs":["src-ui/AGENTS.md","docs/guides/ui-copy.md","scripts/ui-css-slop.mjs"]}
+  ]
+}

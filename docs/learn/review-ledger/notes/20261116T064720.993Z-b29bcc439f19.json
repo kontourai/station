@@ -1,0 +1,17 @@
+{
+  "revision": "5cfb8d87c5f3272109469339b46f355721173a72",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"One covered row added for src-ui/src/components/ProjectTaskBoard.tsx (card footer action, shared touch floor, 390/1440 renders); no existing row or the inventory's format changed.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"One covered row added for src-ui/src/components/ProjectTaskBoard.tsx (card footer action, shared touch floor, 390/1440 renders); no existing row or the inventory's format changed.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"One covered row added for src-ui/src/components/ProjectTaskBoard.tsx (card footer action, shared touch floor, 390/1440 renders); no existing row or the inventory's format changed.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"One covered row added for src-ui/src/components/ProjectTaskBoard.tsx (card footer action, shared touch floor, 390/1440 renders); no existing row or the inventory's format changed.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Board states moved onto Empty/SkeletonBlock and the action onto the shared touch-floor token; the board, card actions and list toggle this page describes are unchanged.","inputs":["src-ui/src/components/ProjectTaskBoard.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"The pull request wait now renders through SkeletonBlock; no behaviour this page describes changed.","inputs":["src-ui/src/views/project-page/ProjectTasksSection.tsx"]}
+  ]
+}

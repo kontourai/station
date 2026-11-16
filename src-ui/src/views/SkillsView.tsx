@@ -254,6 +254,9 @@ export function SkillsView({
     () => filterSkills(skills, '', filter === 'commands'),
     [skills, filter],
   );
+  // No skill at all (not merely none on the Commands tab): the list's empty
+  // state carries the two ways to add one, so the header link is dropped.
+  const librarySettledEmpty = !isLoading && !skillsError && skills.length === 0;
 
   const selected = skills.find((skill) => skill.name === selectedId);
   const selectedSkillName =
@@ -573,51 +576,60 @@ export function SkillsView({
         searchInputRef={searchInputRef}
         listFilteredEmptyNoun="skills"
         collectionEmpty={tabFiltered.length === 0}
-        searchPlaceholder="Search skills..."
+        searchPlaceholder="Search skills…"
         onAdd={handleAddSkill}
         addLabel="New skill"
         listEmptyTitle={
-          filter === 'commands'
-            ? 'No skills are commands yet'
-            : 'No installed skills yet'
+          filter === 'commands' ? 'No skills are commands yet' : 'No skills yet'
         }
         listEmptyDescription={
           filter === 'commands'
             ? 'Open a skill and turn on "Runnable as a slash command" to give it a /command.'
-            : 'Create a workspace skill here, or browse Registry to discover skills to install.'
+            : 'Reusable instructions an agent can follow.'
         }
         headerActions={
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => navigate('/registry/skills')}
-          >
-            Browse Registry Skills
-          </Button>
+          librarySettledEmpty ? undefined : (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => navigate('/registry/skills')}
+            >
+              Browse Registry Skills
+            </Button>
+          )
         }
         emptyIcon={<EngineGlyph />}
+        emptyTitle="Select a skill to see what it does"
+        emptyDescription="Choose a skill to see what it does and use it in a new chat."
         listIntro={
           <>
-            <p className="skill-library__intro">
-              Select a skill to see what it does and use it in a new chat.
-            </p>
             {/* List chrome sits above the rows, not in a footer: a footer over
                 a scrolling list shares its place with the rows a scroll
                 reaches. */}
             <div className="skill-library__list-actions">
-              <button
-                type="button"
-                className="split-pane__add-btn split-pane__add-btn--secondary"
-                aria-pressed={filter === 'commands'}
-                onClick={() =>
-                  navigate(basePath, {
-                    tab: 'skills',
-                    filter: filter === 'commands' ? null : 'commands',
-                  })
-                }
-              >
-                Commands only
-              </button>
+              {librarySettledEmpty ? (
+                <button
+                  type="button"
+                  className="split-pane__add-btn"
+                  onClick={() => navigate('/registry/skills')}
+                >
+                  Browse Registry
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="split-pane__add-btn split-pane__add-btn--secondary"
+                  aria-pressed={filter === 'commands'}
+                  onClick={() =>
+                    navigate(basePath, {
+                      tab: 'skills',
+                      filter: filter === 'commands' ? null : 'commands',
+                    })
+                  }
+                >
+                  Commands only
+                </button>
+              )}
               <button
                 type="button"
                 className="split-pane__add-btn split-pane__add-btn--secondary"
@@ -632,53 +644,14 @@ export function SkillsView({
             </div>
           </>
         }
-        emptyContent={
-          <div className="skill-library__welcome">
-            <EngineGlyph />
-            <h3>Good instructions, ready to reuse</h3>
-            <p>
-              Skills give an agent a repeatable way to approach a task. Choose
-              one from your library, review its instructions, and start a chat.
-            </p>
-            <div className="skill-library__next">
-              <h3>Find your next skill</h3>
-              <p>Browse the skill catalogs available through Registry.</p>
-              <Button onClick={() => navigate('/registry/skills')}>
-                Find skills in Registry
-              </Button>
-            </div>
-            <div className="skill-library__next">
-              <h3>Bring your own instructions</h3>
-              <p>
-                Import standalone Markdown skill files, or write a skill here.
-                Plugin packages are loaded through Registry.
-              </p>
-              <div className="skill-library__actions">
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    setImportResults(null);
-                    setImportError(null);
-                    setShowImportModal(true);
-                  }}
-                >
-                  Import skill files
-                </Button>
-                <Button variant="secondary" onClick={handleAddSkill}>
-                  Create a skill
-                </Button>
-              </div>
-            </div>
-          </div>
-        }
       >
         {(editableLocal || selected) && (
           <div className="skill-detail">
             <DetailHeader
               title={
                 isCreating
-                  ? 'New Skill'
-                  : form.name || selected?.name || 'Edit Skill'
+                  ? 'New skill'
+                  : form.name || selected?.name || 'Edit skill'
               }
               badge={
                 dirty

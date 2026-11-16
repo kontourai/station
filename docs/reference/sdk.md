@@ -831,6 +831,38 @@ next message and `fetchProjectRoomAttachment` reads one back.
 `projectRoomMessageActions` handshake flag; offer these actions only when it is
 true, because an older host answers 404.
 
+On a host with the `projectRoomLive` flag (#4798), every room hook of a
+Project on one Station and authority shares one live connection
+(`GET /api/projects/:slug/rooms/live`), reopened once when the set of rooms
+changes. Instead of re-reading history on each change, `useProjectRoom` merges
+an `append` into the newest window and an `update` into every window or kept
+row that holds the message, each merge taking the next `readSeq`. A message
+past the next sequence is first backfilled from history (`after` the last
+sequence the stream delivered); an `update` whose activity range does not start
+where the cache is, a `resync`, or any (re)connection re-reads the room once.
+The hook takes the stream's position only after that read succeeds; while it
+has failed, the next frame re-reads the room instead of trusting the frames
+in between. A history read that started before a merge keeps the merged rows
+in the cache and in the result its caller awaits. The hook remembers its last
+500 merged rows; a read that outlives a forgotten one is read again, up to
+three times, and otherwise fails with the cache left as it was.
+The newest window always reads as far as its cached rows reach, so a window
+that merges or a re-read widened stays that wide on every later read.
+A hook that joins a connection already open starts from where the room stands
+on it, so a gap after that is still backfilled.
+Acknowledged sends, reactions, edits and deletes merge their returned message
+while the stream is connected. The hook also returns `lastSeq` (the live
+sequence), `typing` (other people), `agents` (the room's newest Agent request
+records, see `workingProjectRoomAgents`) and `notifyTyping(active)`, which
+sends at most one typing signal every three seconds and stops after four idle
+seconds, on send, and on unmount. Presence joins once and lasts while the
+stream is open. `useProjectRoomLiveIndex(scope, slug, channelIds, enabled,
+onActivity?)` reads typing and Agent activity for many channels over the same
+connection, for a sidebar, and calls `onActivity(channelId)` on each change
+and each time the connection announces the channel.
+`useProjectRoomMembers` lists the people a message may mention, with current
+names. Without the flag the hook keeps the per-room `/events` stream.
+
 On a host with that flag, the embeddable `ProjectRoom` UI shows reaction pills
 under each message (a tap toggles yours; who reacted is a tooltip, or a long
 press or **Who reacted** on touch), a quick picker of recent emoji with search,
@@ -1913,6 +1945,36 @@ explicit captured scope. The generic wrapper does not add authority, validate a
 response, or partition an arbitrary caller-supplied key. Follow each operation's
 scope contract rather than assuming every SDK query is interchangeable.
 
+### Remote session history
+
+`fetchRemoteSessionHistory(environmentId, threadId, { cursor?, turnLimit? },
+{ apiBase?, requestScope?, signal? })` reads one read-only history page of a
+session on a connected SSH environment's Station. A conversation surface
+passes its owning connection's `apiBase` and `requestScope`; without them
+the host's configured Station is used. These are the rows `useRemoteSessionsQuery` lists.
+This Station relays the remote's bounded `window-v1` read over the
+environment's tunnel and peer bearer, and labels the page with its own
+`environmentName`. `readRemoteSessionHistoryCapability(apiBase)` reports the
+`remoteSessionHistory` handshake flag. Ask it before offering to open a
+remote row, because an older host answers the path 404. Failures reject with
+`StationHttpError` carrying the route's `code`: `environment_unavailable`,
+`authentication_required`, `not_found`, `unreachable`, `too_large` or
+`invalid_response`. Show fixed copy for a code, not the server's sentence. A caller who is not
+the Station's bound owner gets `Forbidden`, and so does any agent request. The
+page is view-only and carries no continuation.
+
+A request made with `maxResponseBytes` whose body passes it rejects with
+`StationResponseTooLargeError`, from `@kontourai/station-sdk/client`. The
+orchestration readers and `searchConversationMessages` keep that error as the
+`cause` of their unreadable-body error.
+`getOrchestrationSessionDetailWindow` rejects with
+`SessionDetailWindowUnsupportedError` (also exported from the agent entry)
+when the host answers without a `window-v1` page, as an older host does.
+`listOrchestrationSessions(apiBase, opts, { limit })` asks for only the
+newest `limit` sessions, still oldest first; an older host ignores it and
+answers every session. A `limit` that is not an integer from 1 to 1,000
+rejects with `RangeError` before any request is sent.
+
 ### `useAgentsQuery(config?)`
 
 Reads the Agent catalog under `['agents']`. `data` projects its Agent array;
@@ -2184,6 +2246,18 @@ This supports new current-host tasks with a shared workspace only; no
 saved-Environment forwarding,
 portable workspace, prepared attempt or Task room request. File limits and cleanup are described in
 the [CLI delegate reference](cli.md#delegate).
+
+### `getConversationTurnDirectory`
+
+`getConversationTurnDirectory(apiBase, conversationId, cursor?, options?)` reads
+up to 100 prompt excerpts and outcomes per page, without transcript bodies,
+tools or file details. Later pages may supply `options.turnCountSnapshot` from
+the first page to retain that count and skip a full-history recount. The conversation rail and turn browser share its
+React Query entry, keyed by the owning Station and request authority. Selecting
+an unloaded turn uses the bounded transcript loader. A `404` returns `null` for
+the older-host fallback; other failures remain errors. This navigation read
+uses the person's existing conversation access and does not enable the richer
+CLI digest Feature Preview.
 
 ### `waitForSession`, `getSessionDigest` and `listSessionActivity`
 
@@ -4791,6 +4865,16 @@ content, while retaining the observed HTTP status (usually 200).
   differs on purpose from `useAnswerBasisQuery`, which still revokes on any
   refusal: the inventory route reserves 503 for a read it could not
   perform, so a 503 is not evidence of lost authority.
+- `useTaskPullRequestFactsQuery(projectId)` and `fetchTaskPullRequestFacts`
+  read `GET /api/tasks/pull-request-facts` for the Project Tasks board. The
+  query refreshes every two minutes and on focus, never retries a failure,
+  and keeps the last answer when a refresh fails. A host that answers a plain
+  404 (one older than this read) resolves to `null`, and the board then
+  claims nothing about pull requests; a 404 with `request_principal_changed`
+  (lost standing) is an error. Only the board enables it; the list view
+  claims nothing about pull requests. `useMergePullRequestMutation`
+  invalidates every Project's facts query, so a merge through Station moves
+  its card on the next read.
 - `useTasksQuery` accepts `TaskDestinationQueryConfig` for a scoped Keep
   destination picker. `TaskDestinationRequestError` identifies a rejected
   destination read; both are exported from the SDK root and query barrel.
@@ -6592,6 +6676,19 @@ credential was saved, not that a Project checkout, Agent or execution offer is
 ready. See [the connection guide](../guides/connections.md#saved-station-addresses)
 for the independent Device and peer choices and current trusted-session limits.
 
+The saved peer inventory, `usePeerCredentialsQuery(config?)` /
+`fetchPeerCredentials()` from the
+[peer-credential query owner](../../packages/sdk/src/query-domains/peerCredentials.ts),
+returns secret-free `PeerCredentialSummary` rows. Each may carry an optional
+`readiness: PeerStationReadiness`: how that peer's public handshake last
+answered the controlling Station (`online`, `recovering`, `unconfirmed`,
+optionally with `reason: 'identity-mismatch'`, or `unreachable`), probed
+without its credential. The list answers from the server's stored readiness
+and never waits on a probe: a peer not yet probed omits it, and each read
+refreshes stale answers in the background, so poll the list to keep it
+current. An older host also omits it; treat an absent readiness as unknown,
+not as not ready.
+
 Task-room follow-up handles optionally include `taskRoomReplyDelivery: 'posted' |
 'unpublished'`. An unpublished reply can still have an acknowledged provider turn.
 Keep the human draft visible and inspect the full run before resending; the field
@@ -6639,6 +6736,20 @@ These preferences follow one person across devices connected to the same
 Station. They grant no execution permissions and do not provide cross-Station
 cloud synchronization. See the [settings architecture](../design/settings-architecture.md#account-preferences-and-device-settings).
 
+
+## Custom appearance
+
+The client barrel exports `getCustomAppearance`, `proposeCustomAppearance`,
+`saveCustomAppearance`, `keepCustomAppearanceProposal`,
+`dismissCustomAppearanceProposal` and `reportCustomAppearanceRender` over
+`/api/me/appearance`. Shapes come from
+`@kontourai/station-contracts/custom-appearance`. Only the proposal is open to
+Station-control tool requests; the others are the person's own steps and
+answer 403 to them. Propose, save and keep take the document's `revision`; a
+stale one is 409. `useCustomAppearanceQuery(requestScope)` reads the document
+(polling every 15 seconds by default) and `useCustomAppearanceMutation` runs
+the person's steps and updates that cache. See the
+[decision](../decisions/custom-appearance.md).
 
 ## Personal Board authoring
 

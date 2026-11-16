@@ -1,0 +1,7 @@
+{
+  "revision": "b923ec90845d1fcd6d04dd7df6525a0b6fc9090a",
+
+  "notes": [
+    {"path":"docs/guides/desktop-build.md","note":"Delta-review precision round: startup gain now given as its per-round range (0.5 to 1.9 s, from the raw rows), and the footprint figures are labelled MiB, which is what the measurement computed (bytes / 2^20).","inputs":["docs/guides/desktop-build.md"]}
+  ]
+}

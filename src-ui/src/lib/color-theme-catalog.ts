@@ -41,6 +41,7 @@
  * as their comments say; that mix is computed once here, not at runtime.
  */
 
+import { APPEARANCE_ROLE_PROPERTIES } from '@kontourai/station-contracts/custom-appearance';
 import type { ColorThemeId } from '@kontourai/station-contracts/device-settings';
 
 export type ColorThemeMode = 'dark' | 'light';
@@ -48,21 +49,8 @@ export type ColorThemeMode = 'dark' | 'light';
 /** A published value, or `[adjusted, official]` where contrast forced a change. */
 type CatalogColor = string | readonly [adjusted: string, official: string];
 
-export const COLOR_THEME_ROLE_PROPERTIES = [
-  '--k-bg',
-  '--k-panel',
-  '--k-panel-raised',
-  '--k-line',
-  '--k-line-strong',
-  '--k-text',
-  '--k-text-muted',
-  '--k-text-faint',
-  '--k-status-contrast',
-  '--k-positive',
-  '--k-caution',
-  '--k-negative',
-  '--k-active',
-] as const;
+/** The roles live in the contracts: a custom appearance's palette sets the same ones. */
+export const COLOR_THEME_ROLE_PROPERTIES = APPEARANCE_ROLE_PROPERTIES;
 
 export type ColorThemeRoleProperty =
   (typeof COLOR_THEME_ROLE_PROPERTIES)[number];

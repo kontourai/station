@@ -1,0 +1,7 @@
+{
+  "revision": "7922c763f7bff4ca3ca459905ea4aa57aef19fe1",
+
+  "notes": [
+    {"path":"docs/guides/desktop-build.md","note":"Review fix round: the startup trade is now stated from the per-round data (cache about 1.2 s sooner in every no-flag round, faster in one of three with the flag), and the prune exemption now names the only case it applies to (a server started with NODE_COMPILE_CACHE by hand; station-compile-cache.ts keep/activeDir).","inputs":["docs/guides/desktop-build.md"]}
+  ]
+}

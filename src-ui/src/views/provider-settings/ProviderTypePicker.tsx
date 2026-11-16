@@ -51,14 +51,14 @@ export function ProviderTypePicker({
       </DetailHeader>
       <div className="provider-picker-modal__body">
         <p className="provider-picker-modal__desc">
-          Choose a model service for Station's engine, or an AI app you already
-          use. Each choice opens its own setup.
+          Choose a model service for Station's engine, or another engine. Each
+          choice opens its own setup.
         </p>
         <input
           type="search"
           className="list-filter-input provider-picker-modal__search"
-          placeholder="Search providers…"
-          aria-label="Search providers"
+          placeholder="Search model services…"
+          aria-label="Search model services"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
@@ -134,9 +134,7 @@ export function ProviderTypePicker({
               now treats as one catalogue. One group, one noun, routing every
               choice into that same Add-engine flow.
             */}
-            <div className="provider-overview__group-label">
-              AI apps and other engines
-            </div>
+            <div className="provider-overview__group-label">Engines</div>
             <div className="provider-overview__quickstart-options">
               {agents.map((connection) => {
                 const presentation = resolveProviderChoicePresentation({

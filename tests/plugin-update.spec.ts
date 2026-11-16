@@ -432,9 +432,16 @@ test.describe('Plugin Update Flow', () => {
     await expect(
       page.getByRole('heading', { name: 'Lifecycle Plugin' }),
     ).toBeVisible();
-    await expect(page.getByText('layout:ops')).toBeVisible();
-    await expect(page.getByText('agent:lifecycle-agent')).toBeVisible();
-    await expect(page.getByText('type:voice')).toBeVisible();
+    const adds = page.locator('.plugins__contributions');
+    await expect(
+      adds.locator('.plugins__contribution', { hasText: 'Layout' }),
+    ).toContainText('Ops');
+    await expect(
+      adds.locator('.plugins__contribution', { hasText: 'Agent' }),
+    ).toContainText('Lifecycle Agent');
+    await expect(
+      adds.locator('.plugins__contribution', { hasText: 'Connection type' }),
+    ).toContainText('voice');
     await expect(page.getByText('main@abcdef1')).toBeVisible();
 
     await page.getByRole('button', { name: 'Update to v2.0.0' }).click();
@@ -474,7 +481,7 @@ test.describe('Plugin Update Flow', () => {
     await expect(page.getByText('Improve lifecycle hooks')).toBeVisible();
 
     await page.getByRole('button', { name: 'Remove' }).click();
-    await expect(page.getByText('Remove Plugin')).toBeVisible();
+    await expect(page.getByText('Remove plugin')).toBeVisible();
     await page.locator('.plugins__confirm-delete').click();
     await expect(page.getByText('Removed lifecycle-plugin.')).toBeVisible();
   });
@@ -552,7 +559,7 @@ test.describe('Plugin Update Flow', () => {
     await page.getByRole('button', { name: /Lifecycle Plugin/ }).click();
     const removeTrigger = page.getByRole('button', { name: 'Remove' });
     await removeTrigger.click();
-    const confirm = page.getByRole('dialog', { name: 'Remove Plugin' });
+    const confirm = page.getByRole('dialog', { name: 'Remove plugin' });
     await expect(confirm).toBeVisible();
     await expect(confirm).toBeFocused();
     for (const name of ['Cancel', 'Remove']) {

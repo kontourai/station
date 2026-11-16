@@ -1103,6 +1103,13 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     // remote-access-threat-model.md`'s "Cross-station reads" section.
     ['GET', '/api/environments/ssh/sessions', 'orchestration:operate'],
     ['HEAD', '/api/environments/ssh/sessions', 'orchestration:operate'],
+    // A remote session's relayed history: full transcripts of another
+    // Station, under the same leaf on purpose.
+    [
+      'GET',
+      '/api/environments/ssh/sessions/env-id/external:claude:thread/history',
+      'orchestration:operate',
+    ],
     ['GET', '/api/pairing/devices', 'access:manage'],
     ['GET', '/api/pairing/native-relay-surfaces', 'access:manage'],
     ['POST', '/api/pairing/native-relay-surfaces', 'access:manage'],
@@ -1633,6 +1640,10 @@ describe('pairing-route-scopes: table-driven lookups', () => {
         'POST',
         '/api/connections/agent/codex/credential-recovery/profiles/profile-a/apply',
       ],
+      // "Continue on <label>" lists and switches the same accounts from a
+      // usage-limit stop, so it is not the Session family's operate tier.
+      ['GET', '/api/orchestration/sessions/thread-1/usage-limit/continue-on'],
+      ['POST', '/api/orchestration/sessions/thread-1/usage-limit/continue-on'],
     ] as const;
     const standardResolver = {
       verifyCredential: vi.fn(async () => true),

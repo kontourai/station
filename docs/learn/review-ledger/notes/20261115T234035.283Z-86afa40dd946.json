@@ -1,0 +1,7 @@
+{
+  "revision": "f473ea771e3739e31d4a8f03f69689329e23d233",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Reviewed the final comment correction against the shared row/action offset calculation and executed Chromium geometry tests. The hit area starts at its own row top; no fixed spacing-token offset is claimed. This is a comment-only correction after the prior source and geometry review; no layout, motion or capture behavior changed.","inputs":["src-ui/src/components/inbox-row/InboxRow.css"]}
+  ]
+}

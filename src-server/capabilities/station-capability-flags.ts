@@ -31,6 +31,11 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // SSH environment management: src-server/services/ssh/, /api/ssh-environments
   // routes, packages/sdk/src/query-domains/sshEnvironments.ts.
   sshEnvironments: true,
+  // Read-only history of a session on a connected SSH environment's Station:
+  // src-server/routes/operations/ssh-environments.ts
+  // `/sessions/:environmentId/:threadId/history`. Hosted deployments withdraw
+  // it: see servesRemoteSessionReads.
+  remoteSessionHistory: true,
   // Private memory review, recall and briefing: src-server/routes/knowledge/
   // memory-routes.ts. Hosted deployments withdraw it: see servesPrivateMemory.
   privateMemoryReview: true,
@@ -62,6 +67,11 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // #4797, #4812): src-server/routes/projects/project-room-routes.ts. Served
   // wherever Project rooms are; the room's own access check decides each call.
   projectRoomMessageActions: true,
+  // One live connection for a Project's rooms, typing and the member
+  // directory (#4798, #4799): `GET /:slug/rooms/live`, `POST …/typing` and
+  // `GET …/members` in src-server/routes/projects/project-room-routes.ts.
+  // Served wherever Project rooms are; each room's own read check decides.
+  projectRoomLive: true,
   // Scoped pairing (archive#1098): pairing grants/device sessions carry an
   // OAuth-style scope string, enforced by one route -> required-scope table.
   // src-server/security/pairing-route-scopes.ts,
@@ -221,6 +231,17 @@ export function servesFollowUpAttachments(
   return !deployment.hosted;
 }
 
+/**
+ * Reads of another Station's sessions present this Station's Station-wide
+ * outbound peer bearer, which no hosted tenant binds, so a hosted Station
+ * serves neither the remote-sessions list nor a remote history page.
+ */
+export function servesRemoteSessionReads(
+  deployment: StationCapabilityDeployment,
+): boolean {
+  return !deployment.hosted;
+}
+
 /** Flags whose route serves only in some deployment modes. */
 const DEPLOYMENT_SERVED_FLAGS: Readonly<
   Partial<
@@ -240,6 +261,7 @@ const DEPLOYMENT_SERVED_FLAGS: Readonly<
   scheduledConversationTarget: servesScheduledConversationTarget,
   coordinatorSession: servesCoordinatorSession,
   followUpAttachments: servesFollowUpAttachments,
+  remoteSessionHistory: servesRemoteSessionReads,
 };
 
 /**

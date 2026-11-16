@@ -1,0 +1,7 @@
+{
+  "revision": "d0b40f5acedf7081c71b42a863fa6af90716e240",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"Final polish round: ImportedConversationPane only gained header-action sizing CSS; no relationship claim affected.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/session-detail/AttachedSessionDetail.tsx"]}
+  ]
+}

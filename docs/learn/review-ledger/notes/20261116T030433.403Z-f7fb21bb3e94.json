@@ -1,0 +1,7 @@
+{
+  "revision": "491a8f90a2032365f573dd05937db853806a7604",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Refusal wording now names the legacy app home and the connection config home as app homes that do not refuse, matching credentialProfileEnvForHome.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

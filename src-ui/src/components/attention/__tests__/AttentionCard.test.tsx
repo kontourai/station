@@ -110,6 +110,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   useQueryClient: () => ({ invalidateQueries: vi.fn() }),
 }));
 
+import { mountedDecisionSurfaces } from '../../../lib/custom-appearance/decision-surfaces';
 import { AttentionCard } from '../AttentionCard';
 
 beforeEach(() => {
@@ -395,6 +396,8 @@ describe('AttentionCard — device pairing kind (#765 D5)', () => {
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
     review();
+    // Custom CSS is held off while this decision is on screen.
+    expect(mountedDecisionSurfaces()).toContain('device-pairing-review');
     screen.getByRole('button', { name: 'Approve' }).click();
     expect(pairingMocks.confirmPairing).toHaveBeenCalledWith(
       'pair-req-1',

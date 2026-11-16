@@ -30,6 +30,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { AgentScheduleNotes } from '../components/chat-dock/AgentScheduleNotes';
 import { SessionScheduledSection } from '../components/chat-dock/SessionScheduledSection';
 import { schedulerJobDialogStore } from '../contexts/scheduler-job-dialog-store';
+import { mountedDecisionSurfaces } from '../lib/custom-appearance/decision-surfaces';
 
 const API = 'http://station.test';
 const CONVERSATION = 'conv-1';
@@ -385,6 +386,8 @@ describe('an Automation proposal waits for the person (#4830)', () => {
     };
     mount(<AgentScheduleNotes conversationId={CONVERSATION} refreshKey="1" />);
     await screen.findByRole('button', { name: 'Confirm' });
+    // Custom CSS is held off while this decision is on screen.
+    expect(mountedDecisionSurfaces()).toContain('automation-proposal');
     expect(screen.queryByRole('note')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Decline' }));
     await waitFor(() =>
@@ -440,6 +443,9 @@ describe('in-chat notes', () => {
 
   test('Approve is the person’s own scheduler create, naming the proposal, with exactly the proposed job', async () => {
     mount(<AgentScheduleNotes conversationId={CONVERSATION} refreshKey="1" />);
+    await screen.findByRole('button', { name: 'Approve' });
+    // Custom CSS is held off while this decision is on screen.
+    expect(mountedDecisionSurfaces()).toContain('job-proposal');
     fireEvent.click(await screen.findByRole('button', { name: 'Approve' }));
     await waitFor(() =>
       expect(posts()).toEqual([
@@ -509,6 +515,8 @@ describe('in-chat notes', () => {
     );
     // Not the quiet armed line.
     expect(screen.queryByText(/Checking back at/)).toBeNull();
+    // Custom CSS is held off while this decision is on screen.
+    expect(mountedDecisionSurfaces()).toContain('check-back-approval');
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
     await waitFor(() =>
       expect(posts()).toEqual([

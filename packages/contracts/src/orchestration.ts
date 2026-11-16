@@ -1167,6 +1167,8 @@ export interface OwnedSessionActivity {
 }
 
 export interface OrchestrationSessionSummary extends ProviderSession {
+  /** Soonest armed check-back in this conversation; approval proposals are excluded. */
+  nextWakeUpAt?: string;
   /** Aggregate owned execution activity; the parent's own event fold is retained. */
   ownedWork?: OwnedSessionActivity & {
     state: 'running' | 'stopping' | 'waiting-on-peer' | 'unknown';
@@ -1557,6 +1559,14 @@ export const CONVERSATION_HANDOFF_CARRIED_FIELDS = Object.freeze([
   'ownerTenantWorkspace',
   'targetAgentModel',
 ] as const);
+
+/**
+ * The machine code on a handoff refused because the conversation's current
+ * Session still has a turn running or has not settled, so a client can say
+ * what to do instead of showing the server's sentence.
+ */
+export const CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE =
+  'conversation_handoff_predecessor_busy';
 
 export const CONVERSATION_HANDOFF_RESET_FIELDS = Object.freeze([
   'providerNativeCursor',

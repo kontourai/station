@@ -45,6 +45,7 @@ import {
 import { resolveDensity, resolveMotion } from '../lib/display-preferences';
 import { AccentColorPicker } from '../views/settings/AccentColorPicker';
 import { formatSettingsMessage } from '../views/settings/settings-catalog';
+import { CustomAppearanceSection } from './CustomAppearanceSection';
 import './AppearancePage.css';
 import '../views/page-layout.css';
 
@@ -640,6 +641,7 @@ export function AppearancePage() {
           <AccentColorPicker description="Buttons, links and focus. A custom color also applies on other themes until you choose one of their accents." />
         )}
       </PageSection>
+      <CustomAppearanceSection />
     </div>
   );
 }

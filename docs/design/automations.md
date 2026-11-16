@@ -354,7 +354,7 @@ Four findings shape the design.
   scheduled jobs retain `{kind:'scheduled-job', jobId}`).
 - **The monitor Task path.** `onActionableMonitor` in
   [`runtime-route-support.ts`](../../src-server/runtime/routes/runtime-route-support.ts)
-  (around line 440) calls
+  calls
   `createTaskIdempotent(..., `${jobId}:${fingerprint}`)`, then
   `taskDispatcher.dispatch` with `fullAccessGrant: null`, the operator as
   owner, unattributed attribution, a budget envelope and

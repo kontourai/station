@@ -156,6 +156,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // fixture replay's persistence decline reads; no wall-clock assertion.
   'src-server/providers/__tests__/opencode-adapter.replay.test.ts',
   'src-server/providers/__tests__/claude-adapter-native-web-read.test.ts',
+  // Runs the bundled Claude engine for one stub-answered turn per case,
+  // against a loopback stand-in for the Messages API; no wall-clock assertion.
+  'src-server/providers/__tests__/claude-adapter-instruction-files.process.test.ts',
   // #4852 review: one short-lived tsx child commits a Project-room file in a
   // second Project on the same home while the parent releases a deleted
   // message's files; no wall-clock assertion.
@@ -249,10 +252,16 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/infra/__tests__/workload-scope-holder.process.test.ts',
   // Fake systemd manager; one case starts and reaps a real short-lived process.
   'src-server/services/infra/__tests__/workload-budget.test.ts',
+  // Fake systemd manager; reaps one real short-lived process for a dead pid.
+  'src-server/services/infra/__tests__/workload-scope-cleanup.test.ts',
   'scripts/__tests__/run-biome.process.test.ts',
   'scripts/__tests__/component-style-hygiene.process.test.ts',
   // Runs the UI copy length gate as a node child against a disposable Git tree.
   'scripts/__tests__/ui-copy-length.process.test.ts',
+  // Runs the UI copy style gate as a node child against a disposable Git tree.
+  'scripts/__tests__/ui-copy-style.process.test.ts',
+  // Runs the UI CSS slop gate as a node child against a disposable Git tree.
+  'scripts/__tests__/ui-css-slop.process.test.ts',
   // Real second-process Task/share writers contend with the publication fence.
   'src-server/services/projects/project-room-agent-task-context.test.ts',
   // Reviewed setup launches real bounded commands and verifies durable outcomes.
@@ -410,6 +419,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #4516: boots the source Station with injected managed policies (refused
   // and accepted) and runs `station policy show` against it; private homes.
   'src-server/__tests__/managed-policy-startup.process.test.ts',
+  // Real supervisor handoff through the CLI's policy preflight, in a private home.
+  'packages/cli/src/__tests__/lifecycle-restart-policy.test.ts',
   // #4521: boots the source Station with every capability switch off and
   // drives its routes over HTTP; private homes, ephemeral ports.
   'src-server/__tests__/managed-capability-switches.process.test.ts',
@@ -848,6 +859,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/gallery-pr-composition.test.ts',
   // Launches one headless Chromium for the gallery audit's fixture pages.
   'scripts/__tests__/gallery-ui-audit.browser.test.ts',
+  // Launches one headless Chromium for the gallery error-surface probe's
+  // fixture pages.
+  'scripts/__tests__/gallery-app-error-state.browser.test.ts',
   'scripts/__tests__/code-hygiene.test.ts',
   // Runs the component/style gate as a child against disposable Git trees.
   'scripts/__tests__/component-style-hygiene.test.ts',
@@ -1003,6 +1017,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2675 slice E: drives the manifest signer and the Nightly publication
   // helper CLIs as bounded single-shot children (dry-run sign and verify).
   'scripts/__tests__/portable-nightly-publish-workflow.test.ts',
+  // #3593: runs the nightly-desktop retention step's own bash as bounded
+  // children against a recording `gh` stand-in.
+  'scripts/__tests__/nightly-desktop-asset-retention-workflow.test.ts',
   // #2959: runs the release publication and signer CLIs, the release and
   // publish workflows' own bash steps, and install.sh as bounded children.
   'scripts/__tests__/portable-release-publish-workflow.test.ts',
@@ -1911,6 +1928,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/supervisor/src/__tests__/crash-restart.test.ts',
   'packages/supervisor/src/__tests__/build-root.test.ts',
   'packages/supervisor/src/__tests__/listener-handle.test.ts',
+  // A real supervisor child forks a fixture core that records its Node flags.
+  'packages/supervisor/src/__tests__/core-node-flags.test.ts',
   // Fixture core generations relay workload requests to a fixture workload
   // host child that runs command children; one test SIGKILLs that host.
   'packages/supervisor/src/__tests__/workloads.test.ts',
@@ -1939,6 +1958,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/supervisor/src/__tests__/protocol.test.ts',
   // Forks two children that pass a raw listening handle through this worker.
   'packages/supervisor/src/__tests__/handle-guard.test.ts',
+  // Boots the real server entrypoint as a child with an oversized STATION_LOG_FILE.
+  'src-server/__tests__/stdout-log-file-rotation.process.test.ts',
 ]);
 
 export const DOGFOOD_RECONCILE_PREFIX =

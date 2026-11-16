@@ -1,0 +1,11 @@
+{
+  "revision": "62c7ebf5c0b66459b1b54c7c2a25cccc14af1b4c",
+
+  "notes": [
+    {"path":"docs/guides/ui-copy.md","note":"Re-reviewed after the review-fix commit. Rule 4 now uses a text-button example and routes icon-only buttons to IconButton (tooltip from its accessible name, per the shell lane's change; not verified in this worktree). Checked the gate table against the scripts: title-dup compares only a literal title with the element's own non-empty literal text; ui-copy-style reads ariaLabel props and ariaLabel/'aria-label' object properties; the single-word-constant gap is stated and pinned by a test; ui-css-slop's z-index rule is 'other than -1, 0 or 1', masks are exempt from gradient and hex, and var() fallback hexes are not counted.","inputs":["docs/guides/ui-copy.md","scripts/ui-copy-length.mjs","scripts/ui-copy-style.mjs","scripts/ui-css-slop.mjs"]},
+
+    {"path":"docs/reference/agent-plugins.md","note":"check-prepush-static-gates.mjs changed only the timing comment above the UI copy and CSS ratchets. agent-plugin-validators-gate and the schemas/agent-plugins/ input prefix are unchanged, so this reference's pre-push claim holds.","inputs":["docs/reference/agent-plugins.md","scripts/check-prepush-static-gates.mjs"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Re-checked the Product copy section against the changed scripts and guide. Its bullet 'no title equal to the visible text' matches the narrowed title-dup rule; the ratchet commands and the --update guidance are unchanged; ui-copy-length still links #product-copy.","inputs":["src-ui/AGENTS.md","docs/guides/ui-copy.md","scripts/ui-copy-length.mjs","scripts/ui-copy-style.mjs","scripts/ui-css-slop.mjs"]}
+  ]
+}

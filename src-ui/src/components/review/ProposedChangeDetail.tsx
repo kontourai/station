@@ -1,6 +1,7 @@
 import type { ProposedChange } from '@kontourai/station-contracts/proposed-change';
 import { Button } from '../Button';
 import './review-detail.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 
 /**
  * The before/after read of one pending proposed change, with its two decision
@@ -21,6 +22,7 @@ export function ProposedChangeDetail({
   onApprove: () => void;
   onReject: () => void;
 }) {
+  useDecisionSurface('proposed-change');
   return (
     <section className="review-queue-detail" data-testid="review-queue-detail">
       <header className="review-queue-detail__header">

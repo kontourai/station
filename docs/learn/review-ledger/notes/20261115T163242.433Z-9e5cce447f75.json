@@ -1,0 +1,7 @@
+{
+  "revision": "81fca05fb00375b2193d7c39f0097cebdba7a257",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"Checked against the handoff UX change (compact handoff picker with catch-up/next-message arming, inline Continue in Station action): this document's claims about the changed sources (dock wiring, composer chip CSS, ConversationBody send routing) remain accurate; no handoff or continuation behavior is described here.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/session-detail/AttachedSessionDetail.tsx"]}
+  ]
+}

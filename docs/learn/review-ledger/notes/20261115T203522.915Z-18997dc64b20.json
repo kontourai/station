@@ -1,0 +1,7 @@
+{
+  "revision": "80933fd7347e17564b98c4707ef2c716b811e8f3",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Cites sdk.md; only the peer-list readiness paragraph changed there. This guide's 'readiness' mentions are about sources and hosted containers, not peer Stations.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]}
+  ]
+}

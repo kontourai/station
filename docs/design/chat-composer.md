@@ -44,11 +44,15 @@ conversations discovered in another coding app. A quiet "Started in Claude Code"
 (or the observed app name) identifies origin. Discovery is not evidence of running
 work; history uses source-event time and remains separate from active work.
 
-Opening a conversation or typing does not migrate it. The composer accepts a
-normal draft. Send (or the configured Return shortcut, except during IME composition) opens a one-time
-"Continue here?" confirmation; Cancel preserves the draft and Shift+Return adds a
-line. Confirmation opens the continuation through the normal dock controller
-and hands the exact draft to the normal sender once. The original conversation
+Opening a conversation or typing does not migrate it. One compact
+**Continue in Station** action sits with the origin (the dock title bar, a
+phone's origin row, or the Activity header) and needs no message; its reason
+when unavailable, or a conversation's own-folder choice with **Add a project
+instead**, follows on one quiet line. The composer is the plain **Message…**
+with **Send**: Send (or the configured Return shortcut, except during IME
+composition) continues with the draft; Shift+Return adds a line. Either way the continuation opens
+through the normal dock controller, and a draft, when there is one, goes to the
+normal sender once. The original conversation
 remains available in its original app. A failed opening retains the reader and offers a
 retry that does not create another continuation. Metadata is available through
 an explicit Details action.
@@ -206,8 +210,15 @@ execution binding. It retains the authored profile rather than substituting the
 coding app's default profile, and does not edit saved Agent defaults. Known
 capability incompatibilities remain visible with a refusal reason; live resource
 and adapter delivery checks still decide admission. In an existing conversation,
-changing or resetting the engine opens an explicit handoff with the real draft
-and the existing context/write-identity confirmation. There the picker lists
+changing or resetting the engine opens a compact **Switch engine** (or
+**Switch agent**) picker; on a phone it replaces Run setup. Its one action
+switches now, sending the composer's draft as the first turn, prepared like
+any send (mentions, quotes and the size limit), or, with no draft, a fixed
+catch-up turn (the route starts the target Session with a real turn, so
+nothing is switched without one); attachments are never carried and stay in
+the composer. A busy current agent is refused with a reason saying to wait. A retried earlier request leaves a newer
+draft in the composer. The first message (including the exact catch-up text)
+and what carries over and resets are under **Details**. There the picker lists
 only the other engines this client can start (an unready or incompatible one is
 left out rather than shown with a refusal), lists none when the conversation's
 open resolution does not allow changes (read-only, unverified, busy on the
@@ -263,7 +274,19 @@ accepts. A failed Station-list read keeps the chooser reachable, with an
 access/version explanation and a Retry action rather than hiding the control.
 The list uses one shared rule set: a verified SSH environment when no
 Project is selected (a Project is never placed over SSH), or a paired Station
-the caller may list whose credential holds `orchestration:operate`. A caller
+the caller may list whose credential holds `orchestration:operate`. An
+offered Station that cannot take work right now stays listed but disabled,
+with its reason in place of its kind: a paired Station whose public handshake
+is not `online` (**Recovering · server down or restarting**, **Unreachable**,
+**Unconfirmed · not answering as a Station**, or an identity mismatch), or an
+SSH environment whose connection is in error (**Connection failed**). The
+server keeps each paired Station's last handshake answer and returns it with
+`GET /api/environments/peers` without waiting on a probe
+([peer readiness](../../src-server/services/peers/peer-readiness-service.ts));
+each read refreshes stale answers in the background, and the open list re-reads
+every 5 seconds. A peer not yet probed, or one from an older host that reports
+no readiness, stays choosable. The
+current choice is never hidden. A caller
 whose authority observation reports a grant without `orchestration:operate`
 is offered This Station only; any failed read of the observation (an older
 Station without it, a refusal, a server error or an unreadable body) hides
@@ -335,8 +358,11 @@ action, which confirms continuation into an owned child.
 Owner, member and guest Task histories share record rendering and pagination;
 publication removal still clears a member's readable records. Desktop and mobile
 Inbox share search, activation currency, snooze, dismissal and Undo.
-Child-work notices retain their Station and result source. A structured tool
-return updates an earlier provider summary without adding a duplicate notice.
+Child-work results retain their Station and result source inside the shared
+subagent expander. When a spawn is outside loaded history, its completion uses
+the same expander without a dismissible message wrapper. A structured tool
+return updates the earlier provider summary. Successfully finished groups and
+cards use a quieter surface; failures and unknown outcomes retain their warnings.
 
 Request failures use the owning Station's shared translator. Source and target
 access failures name the appropriate Station; provider repair hints keep their
@@ -474,13 +500,22 @@ immediately to the right of that status and moves with it as the draft grows.
 When the chat pane is narrow, the status and scroll control are centered
 together in a row above the settings. In a dock too short to show the transcript
 (the composer has priority), there is nothing to scroll back to, so Scroll to
-bottom is not shown and a row left with no status takes no height. Scroll-button hover changes its background
+bottom is not shown and a row left with no status or scheduled notes takes no height. Scroll-button hover changes its background
 without enlarging its target. The desktop header exposes Hide inbox /
 Show inbox directly, as an icon button whose pressed state is available to assistive technology; its one labelled action is New, and "Open chat…" is the first row of its ⋯ menu.
 
 Pending tool permissions feed Needs approval; questions and forms feed Needs
 answer. Permission takes priority when both wait. The action opens the
-conversation's request sheet. Background work keeps the pill visible after the
+conversation's request sheet. Opening the sheet asks Station about each
+request it lists and drops any already settled, from the sheet and the pill
+alike; a failed check keeps the request. While a reconnect replays missed
+events, the sheet and the pill hold what they showed (at most five seconds),
+so requests opened and resolved in the gap do not run the count up and down.
+With two or more permissions waiting, the sheet's pinned actions offer
+**Allow all (N)** and, in its menu, **Allow all for this session**; each
+answer is its own authority check, and one refusal does not stop the rest.
+An in-flight decision shows on its chosen button (Allowing…, Denying…) with no
+status sentence. Background work keeps the pill visible after the
 main turn ends, using the server count and oldest reported start. Failed history or
 continuation observation shows Status unavailable and withholds the cached
 working clock; the remote turn may still be running. Already loaded transcript
@@ -739,19 +774,29 @@ These controls are owned by [ChatInputArea](../../src-ui/src/components/chat/Cha
 
 ### Turn navigation
 
+An armed check-back shares the composer activity row with **Scroll to bottom**.
+It takes the available width without moving that button to a second row.
+The shared work-status selector keeps a settled conversation with an armed
+check-back in **Working**, labelled **Waiting**. Running work, failures and
+requests for the person retain their existing priority; an unapproved proposal
+does not claim that the conversation will resume.
+
 A live transcript gets turn navigation from its first user turn (#342;
 [TranscriptTurnRail](../../src-ui/src/components/chat/TranscriptTurnRail.tsx)).
-Its user turns are derived from the whole transcript row model
-([transcriptTurnLandmarks](../../src-ui/src/components/chat/transcriptTurnLandmarks.ts)),
-so a virtualized transcript's unmounted turns are included; only the loaded
-window is mapped, and earlier history joins the map as it loads. Every user
-message row starts a turn.
+Its full turn map comes from the owning Station's paged turn directory,
+independent of loaded transcript bodies. Each page reads at most 100 prompt
+excerpts and outcomes through indexed queries. The first page counts turns;
+subsequent pages reuse that authorized count snapshot without recounting history. The rail and **Browse turns**
+share one authority-scoped query. The loaded row model
+([transcriptTurnLandmarks](../../src-ui/src/components/chat/transcriptTurnLandmarks.ts))
+still locates the reader and supplies previews for loaded replies. Older hosts
+without the directory retain the explicitly labelled loaded-window map.
 
 - **Turn rail.** A 16px gutter over the transcript's right edge, inside its
-  scrollbar, with one tick per user turn placed by the turn's position among
-  the rows. The rows on screen are drawn as a band, and their turns' ticks are
+  scrollbar, with one tick per indexed turn placed by its ordinal position. The loaded
+  fallback places ticks by their positions among transcript rows. The rows on screen are drawn as a band, and their turns' ticks are
   highlighted; both are written from the scroll handler, once per frame. Hover
-  or keyboard focus previews a turn: its prompt and the start of its first
+  or keyboard focus previews a turn: its prompt and, when loaded, the start of its first
   reply. Escape dismisses the preview without moving focus or the pointer:
   while it shows, the preview carries `data-escape-owner`, so the app's
   shortcuts (such as "Go up one level") leave that Escape to it. Pointing at
@@ -762,9 +807,9 @@ message row starts a turn.
   (measured on the column, not the viewport); a hidden rail unmounts its
   preview, so no Escape is spent on a preview nobody can see. A chat switch
   starts the rail over, dropping any hover, focus or dismissed preview.
-- **Markers.** A tick carries at most one marker, from facts the rows already
-  hold: a reply carrying the projected runtime error (`runtimeError`) marks
-  the turn as ended with an error; otherwise a standalone sub-agent row marks
+- **Markers.** A tick carries at most one marker. An indexed failed outcome,
+  or a loaded reply carrying the projected runtime error (`runtimeError`),
+  marks the turn as ended with an error; otherwise a loaded standalone sub-agent row marks
   it as having started a sub-agent. Sub-agents shown inside a reply's tool
   call, and interrupted turns, are not marked.
 - **Previous turn / Next turn.** Previous and next controls sit at the top and bottom of the turn rail.
@@ -779,9 +824,9 @@ message row starts a turn.
   is bounded to 64 pages; a retry continues from the retained cursor. Switching
   conversations or closing the browser cancels further page requests.
 
-- **Positions.** A turn is named "Turn N of M". While older history is not
-  loaded, the map covers only the loaded window, so it is named "Loaded turn
-  N of M" instead, and the numbers change as earlier history loads.
+- **Positions.** A turn is named "Turn N of M". The indexed map includes older turns before their bodies load. While the
+  directory is loading or unavailable on an older host, the fallback map is
+  named "Loaded turn N of M".
 - **Jumping.** A jump reveals the turn's prompt row, centred, through the same
   path a message link uses (`revealRowId`, then the virtualizer's
   `scrollToIndex`); a short transcript, with every row mounted, is scrolled
@@ -836,10 +881,22 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 
 1. **Input primary.** The textarea is the visually dominant element; everything else is
    secondary chrome.
-2. **One grouped secondary-actions affordance.** Delegate / Commands / Files /
-   Task-context collapse into a single "+" (or overflow) menu next to attach + mic;
+2. **One grouped secondary-actions affordance.** The composer's actions collapse into
+   a single "+" menu next to attach + mic, in three labelled groups divided by a rule
+   (2026-11-15): **Add to message** (Reference chat…, Commands); **Work in this
+   project** (Open terminal, which places the Project's Terminal in the bottom dock
+   region with a shell open, adopting a running one, even where the pane would
+   otherwise show its kind picker (`requestProjectShell`); Open in Coding, which switches to the chat's coding layout, where the same
+   chat shows; Delegate…); and **This conversation** (Continue with another agent…,
+   then Reset agent context… last, in the error tone). Open terminal is offered on a
+   desktop region host only, and is disabled with its reason as visible row text when
+   the chat has no working directory or the dock is bound to another Project (the
+   Terminal pane binds to the dock's Project). Panel toggles (Changed files, Task
+   context) are not composer actions: they are rows of the dock header's More menu
+   and of the phone's Actions sheet.
    Send stays a labeled primary button. Every item: real `button` role, accessible name,
    44px target (the ResponsiveDialogSurface/actions floor already owns this on mobile).
+   A disabled row states why in its own text, since a touch screen has no tooltip.
 3. **Model/connection selector is a value-only dialog button.** Its accessible name names Model and the active Provider/model;
    popover on the dialog-surface layer (no interception); shows model + connection with
    auth state; glossary vocabulary only. Default selection must prefer an
@@ -1356,14 +1413,18 @@ alone do not automatically settle standalone conversations.
 Every populated shelf can be collapsed; collapsed shelves sit below expanded
 work, with Settled at the bottom by default. Shelf menus offer Move up and
 Move down; that order is saved on this device within expanded and collapsed
-shelves. The inbox header contains search
-and New chat. Search also finds dismissed work; there is no Dismissed shelf in
+shelves. The inbox header is one line: search, the
+work scope picker (its "Show work" label kept for assistive technology), and
+New chat; a notice under it appears only while the scope hides work that needs
+the person (2026-11-15). Search also finds dismissed work; there is no Dismissed shelf in
 the normal list. Third-party sessions can be hidden without stopping the
 external harness, and stay hidden through its status updates. Adoption into
 Station restores their normal status handling. Task family summaries use an
 explicit Open task control; chat rows open chats. Browse all conversations
-retains paginated history, rename and delete. Refresh lives in overflow with a
-direct retry on failure. Dismissal offers a
+sits at the end of the list and retains paginated history, rename and delete.
+The inbox has no overflow menu: a failed read offers Retry, disabled while the
+re-read runs. A card row reads its title and time first, then its status line,
+then agent and project. Dismissal offers a
 transient Undo toast and the configurable inbox Undo shortcut. Native editor
 and terminal undo retain their keys.
 

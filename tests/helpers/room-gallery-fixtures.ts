@@ -57,6 +57,13 @@ interface ProjectLine {
   editedAt?: string;
   /** A tombstone: the history withholds its text (#4797). */
   deletedAt?: string;
+  /** Structured person mentions, as history serves them (#4799). */
+  mentions?: {
+    kind: 'person';
+    actorId: string;
+    display: string;
+    offset: number;
+  }[];
   /** Files on the message (#4812). */
   attachments?: {
     id: string;
@@ -227,8 +234,18 @@ export type ProjectRoomScene =
   /** An image and a file in a channel, and one staged to send (#4812). */
   | 'attachment'
   /**
+   * #4798, #4799 over the live stream: a message naming the reader, someone
+   * typing, and the composer's `@` list of the room's members.
+   */
+  | 'live-mention'
+  /** #4800: an Agent working in the channel and in a thread. */
+  | 'agent-working'
+  /** #4800: requests that ended without an answer stay inline. */
+  | 'agent-outcome'
+  /**
    * #4794/#4795: the channel list, a channel and a thread. `#general` holds
-   * the short history plus two replies to Scout's message (its thread).
+   * a bug triage with SHORT's shape (two Jonas lines, Scout, Maya) plus two
+   * replies to Scout's message (its thread).
    */
   | 'navigation';
 
@@ -236,12 +253,37 @@ export type ProjectRoomScene =
 const SHARED_IMAGE_ID = '6a1f2e3d-4c5b-4a69-8877-665544332211';
 const SHARED_FILE_ID = '6a1f2e3d-4c5b-4a69-8877-665544332212';
 
-/** Replies to Scout's plan check (sequence 3): the navigation scene's thread. */
-const THREAD_REPLIES: ProjectLine[] = [
+/**
+ * The navigation scene's `#general`. The Pages home publishes its thread
+ * capture (#4801), so it carries no pricing-like text. Sequence 3 is Scout's
+ * diagnosis, the thread root; the six messages keep the read-marker fixture's
+ * latest version (6).
+ */
+const NAVIGATION_HISTORY: ProjectLine[] = [
+  {
+    actor: JONAS,
+    at: at(1, 14, 2),
+    text: 'Morning! Two reports of the Safari sign-in loop came in overnight.',
+  },
+  {
+    actor: JONAS,
+    at: at(1, 14, 3),
+    text: 'Both are on the latest build, right after the login redirect.',
+  },
+  {
+    actor: SCOUT,
+    at: at(1, 14, 6),
+    text: 'I traced it in `auth/redirect.ts`. Two things differ on Safari:\n\n- The **return URL** loses its query string after sign-in.\n- The **session cookie** is set after the redirect, so the first load sees none.',
+  },
+  {
+    actor: VIEWER,
+    at: at(1, 14, 11),
+    text: 'Good catch. Jonas, can you take both before the release?',
+  },
   {
     actor: PRIYA,
     at: at(1, 14, 20),
-    text: 'Both numbers are fixed in the draft now.',
+    text: 'Both fixes are in the branch now.',
     replyTo: 3,
   },
   {
@@ -255,7 +297,7 @@ const THREAD_REPLIES: ProjectLine[] = [
 function projectLines(scene: ProjectRoomScene): ProjectLine[] {
   if (scene === 'empty') return [];
   if (scene === 'long' || scene === 'new-messages') return longHistory();
-  if (scene === 'navigation') return [...SHORT, ...THREAD_REPLIES];
+  if (scene === 'navigation') return NAVIGATION_HISTORY;
   const [first, second, third, fourth] = SHORT as [
     ProjectLine,
     ProjectLine,
@@ -281,6 +323,45 @@ function projectLines(scene: ProjectRoomScene): ProjectLine[] {
       },
       { ...fourth, reactions: [{ emoji: '✅', actors: [JONAS] }] },
     ];
+  if (scene === 'live-mention')
+    return [
+      ...SHORT,
+      {
+        actor: PRIYA,
+        at: at(1, 14, 14),
+        text: '@Maya Chen can you sign off on the copy today? @Jonas Berg has the numbers.',
+        mentions: [
+          {
+            kind: 'person',
+            actorId: VIEWER.id,
+            display: 'Maya Chen',
+            offset: 0,
+          },
+          {
+            kind: 'person',
+            actorId: JONAS.id,
+            display: 'Jonas Berg',
+            offset: 47,
+          },
+        ],
+      },
+    ];
+  if (scene === 'agent-working')
+    return [
+      ...SHORT,
+      {
+        actor: PRIYA,
+        at: at(1, 14, 12),
+        text: 'Can someone check the FAQ links?',
+      },
+      {
+        actor: JONAS,
+        at: at(1, 14, 13),
+        text: 'Asking Scout to look in this thread.',
+        replyTo: 5,
+      },
+    ];
+  if (scene === 'agent-outcome') return [...SHORT];
   if (scene === 'edited')
     return [
       first,
@@ -354,7 +435,7 @@ function projectLines(scene: ProjectRoomScene): ProjectLine[] {
   return SHORT;
 }
 
-/** The navigation scene's thread root: Scout's plan check. */
+/** The navigation scene's thread root: Scout's Safari diagnosis. */
 export const NAVIGATION_THREAD_ROOT = uuid(3, 'c1');
 /** `#design` room id, for routes and read markers. */
 export const GALLERY_DESIGN_ROOM_ID = DESIGN_ID;
@@ -419,7 +500,74 @@ function projectMessage(line: ProjectLine, seq: number, roomId = ROOM_ID) {
     ...(line.editedAt ? { editedAt: line.editedAt } : {}),
     ...(line.deletedAt ? { deletedAt: line.deletedAt } : {}),
     ...(line.reactions ? { reactions: line.reactions } : {}),
+    ...(line.mentions ? { mentions: line.mentions } : {}),
   };
+}
+/** Scenes the room shows over the shared live stream (#4798). */
+export const LIVE_ROOM_SCENES: readonly ProjectRoomScene[] = [
+  'live-mention',
+  'agent-working',
+  'agent-outcome',
+];
+/** An Agent request record as the live stream's `agents` frame carries it. */
+function agentRequest(
+  seed: number,
+  state: string,
+  extra: Record<string, unknown> = {},
+) {
+  return {
+    requestId: uuid(seed, 'f2'),
+    agentId: 'scout',
+    actor: PRIYA,
+    state,
+    createdAt: at(1, 14, 14),
+    updatedAt: at(1, 14, 14),
+    ...extra,
+  };
+}
+/** What the live stream says about the room right after it subscribes. */
+function liveFrames(scene: ProjectRoomScene, lastSeq: number) {
+  const frames: [string, Record<string, unknown>][] = [
+    ['subscribed', { roomId: ROOM_ID, lastSeq, activity: 0 }],
+  ];
+  if (scene === 'live-mention') frames.push(['typing', { actors: [JONAS] }]);
+  if (scene === 'agent-working')
+    frames.push([
+      'agents',
+      {
+        requests: [
+          agentRequest(1, 'started'),
+          // Asked in the thread under Priya's question.
+          agentRequest(2, 'started', {
+            actor: JONAS,
+            replyTo: uuid(5, 'c1'),
+          }),
+        ],
+      },
+    ]);
+  if (scene === 'agent-outcome')
+    frames.push([
+      'agents',
+      {
+        requests: [
+          agentRequest(3, 'started', {
+            failure: 'execution_failed',
+            updatedAt: at(1, 14, 20),
+          }),
+          agentRequest(4, 'cancelled', {
+            actor: JONAS,
+            agentId: 'writer',
+            updatedAt: at(1, 14, 21),
+          }),
+        ],
+      },
+    ]);
+  return frames
+    .map(
+      ([event, data]) =>
+        `event: ${event}\ndata: ${JSON.stringify({ key: ROOM_ID, ...data })}\n\n`,
+    )
+    .join('');
 }
 
 /**
@@ -458,12 +606,16 @@ export async function installProjectRoomFixture(
   // shows as a dropped connection. `deliver()` pushes a `changed` frame, the
   // way a live Station announces new rows.
   const streams = new Set<ServerResponse>();
-  const events = createServer((_request, response) => {
+  const events = createServer((request, response) => {
     response.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-store',
     });
     response.write(': open\n\n');
+    // The shared live stream (#4798) announces the room the way a Station
+    // does, for the channel ids it was asked about.
+    if (request.url?.startsWith('/live'))
+      response.write(liveFrames(scene, messages().length));
     streams.add(response);
     response.on('close', () => streams.delete(response));
   });
@@ -582,7 +734,48 @@ export async function installProjectRoomFixture(
       },
     ],
   ];
+  const live = LIVE_ROOM_SCENES.includes(scene);
+  const liveHandlers: [string, (route: Route) => Promise<void> | void][] = live
+    ? [
+        [
+          `${project}/rooms/live*`,
+          (route) => {
+            if (route.request().method() !== 'GET')
+              return rejectUnexpectedFixtureRequest(route);
+            const query = new URL(route.request().url()).search;
+            return route.continue({
+              url: `${eventsUrl.replace(/\/events$/, '/live')}${query}`,
+            });
+          },
+        ],
+        [
+          `${base}/members`,
+          (route) => {
+            if (route.request().method() !== 'GET')
+              return rejectUnexpectedFixtureRequest(route);
+            return route.fulfill({
+              json: {
+                success: true,
+                data: { members: [VIEWER, PRIYA, JONAS] },
+              },
+            });
+          },
+        ],
+        [
+          `${base}/typing`,
+          (route) => {
+            if (route.request().method() !== 'POST')
+              return rejectUnexpectedFixtureRequest(route);
+            const { typing } = route.request().postDataJSON() as {
+              typing: boolean;
+            };
+            return route.fulfill({ json: { success: true, data: { typing } } });
+          },
+        ],
+      ]
+    : [];
   const handlers: [string, (route: Route) => Promise<void> | void][] = [
+    ...liveHandlers,
     ...roomRoutes(base, ROOM_ID, messages, scene === 'failed-send'),
     // A full room marks itself read through what it shows (#4794); these
     // rooms are fixture rooms, so the fixture answers as the server would.
@@ -745,7 +938,7 @@ export async function installProjectConversationsFixture(
       sessionId: runningSession,
     }),
     task(2, 'Draft the release notes for 2.4', at(2, 15, 10)),
-    task(3, 'Audit the pricing page copy', at(2, 14, 0), { status: 'review' }),
+    task(3, 'Check the onboarding copy', at(2, 14, 0), { status: 'review' }),
     // No room was ever opened for this Task: the summary answers unavailable.
     task(4, 'Rename the onboarding checklist', at(2, 13, 0)),
   ];

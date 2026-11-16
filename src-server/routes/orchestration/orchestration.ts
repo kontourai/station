@@ -25,6 +25,7 @@ import {
 } from '@kontourai/station-contracts/chat-attachment';
 import { CHILD_WORK_TRANSCRIPT_PAGE_MAX } from '@kontourai/station-contracts/child-work';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
+import type { UsageLimitContinueOnOptions } from '@kontourai/station-contracts/connection-recovery';
 import type {
   ConversationContextBoundaryProjection,
   ConversationContextBoundaryRequest,
@@ -246,7 +247,13 @@ import {
 } from '../../tools/station-control-delegation.js';
 import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
 import { assertBoundedJsonResponse } from '../chat/bounded-response.js';
-import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
+import {
+  errorMessage,
+  getBody,
+  param,
+  usageLimitContinueOnRequestSchema,
+  validate,
+} from '../schemas/schemas.js';
 import { sseKeepalive, streamSSE } from '../sse-response.js';
 import { refuseUngrantedDirectoryWorkspace } from '../working-directory-authority.js';
 import { adoptSessionTargetSchema } from './adopt-session-target-schema.js';
@@ -1287,6 +1294,9 @@ const sessionEventPageQuerySchema = z.object({
   afterSequence: z.coerce.number().int().min(0).default(0),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
+
+/** The most sessions one `GET /sessions/read-model?limit` asks for. */
+const SESSION_READ_MODEL_MAX_LIMIT = 1_000;
 
 const sessionEventWindowQuerySchema = z.object({
   direction: z.literal('newest').optional(),
@@ -2594,13 +2604,26 @@ export function createOrchestrationRoutes(
 
   app.get('/sessions/read-model', async (c) => {
     const authority = readAuthorityFor(c);
+    // `limit`: only the newest N sessions by creation, still oldest first.
+    // Another Station's remote-sessions list asks for its 200; a Station that
+    // predates the parameter ignores it and that caller keeps its newest 200.
+    const limitText = c.req.query('limit');
+    if (
+      limitText !== undefined &&
+      (!/^[1-9][0-9]{0,3}$/u.test(limitText) ||
+        Number(limitText) > SESSION_READ_MODEL_MAX_LIMIT)
+    )
+      return c.json({ success: false, error: 'Invalid session limit' }, 400);
     // Started under the caller's own principal, exactly as before, but no
     // longer awaited: what the refresh learns is written to the local store
     // and published by the NEXT read rather than this one. archive#847 asked
     // that peer evidence reach Activity, not that a poll block on a peer's
     // network round trip to do it.
     startDelegatedTaskActivityRefresh(resolveActorPrincipal(deps, c).userId);
-    const data = await orchestrationService.listSessionReadModel(authority);
+    const all = await orchestrationService.listSessionReadModel(authority, {
+      purpose: 'session-list',
+    });
+    const data = limitText === undefined ? all : all.slice(-Number(limitText));
     return c.json({ success: true, data });
   });
 
@@ -6001,6 +6024,62 @@ export function createOrchestrationRoutes(
     });
   }
 
+  // "Continue on <label>": the enrolled credential profiles a waiting
+  // usage-limit stop may continue on, and the person's choice of one. These
+  // list and switch this Station's accounts, so their pairing scope is the
+  // credential-management tier, not the Session family's.
+  app.get('/sessions/:threadId/usage-limit/continue-on', async (c) => {
+    const threadId = param(c, 'threadId');
+    if (deps.isRequestPrincipalCurrent?.(c.req.raw) !== true)
+      return c.json({ success: false, error: 'Session not found' }, 404);
+    const identity = mutationIdentity(c);
+    if (
+      !orchestrationService.canUserMutateSession(
+        threadId,
+        identity.userId,
+        identity.tenant,
+      )
+    )
+      return c.json({ success: false, error: 'Session not found' }, 404);
+    return c.json({
+      success: true,
+      data: (await orchestrationService.readUsageLimitContinueOn(
+        threadId,
+      )) satisfies UsageLimitContinueOnOptions,
+    });
+  });
+
+  app.post(
+    '/sessions/:threadId/usage-limit/continue-on',
+    validate(usageLimitContinueOnRequestSchema),
+    async (c) => {
+      const threadId = param(c, 'threadId');
+      if (deps.isRequestPrincipalCurrent?.(c.req.raw) !== true)
+        return c.json({ success: false, error: 'Session not found' }, 404);
+      const identity = mutationIdentity(c);
+      if (
+        !orchestrationService.canUserMutateSession(
+          threadId,
+          identity.userId,
+          identity.tenant,
+        )
+      )
+        return c.json({ success: false, error: 'Session not found' }, 404);
+      const { profileRef, stopId } = getBody(c) as {
+        profileRef: string;
+        stopId: string;
+      };
+      return c.json({
+        success: true,
+        data: await orchestrationService.actOnUsageLimitRecovery(
+          threadId,
+          'continue-on',
+          { profileRef, stopId },
+        ),
+      });
+    },
+  );
+
   // Session -> Builder run join (archive#189 S4). A separate route from
   // `/flow-run` on purpose: the two runs have independent lifecycles, and a
   // session commonly has one and not the other. 404 means "no Builder run
@@ -7728,7 +7807,10 @@ export function createOrchestrationRoutes(
                     const sessions =
                       await orchestrationService.listSessionReadModel(
                         authority,
-                        threadId ? { threadIds: [threadId] } : undefined,
+                        {
+                          purpose: 'sse-overflow-reconcile',
+                          ...(threadId ? { threadIds: [threadId] } : {}),
+                        },
                       );
                     await writeAuthorized({
                       event: 'orchestration:snapshot',
@@ -8031,7 +8113,10 @@ export function createOrchestrationRoutes(
           if (!replayBudget.fitsBudget) {
             const sessions = await orchestrationService.listSessionReadModel(
               authority,
-              threadId !== undefined ? { threadIds: [threadId] } : undefined,
+              {
+                purpose: 'sse-snapshot',
+                ...(threadId !== undefined ? { threadIds: [threadId] } : {}),
+              },
             );
             // #2456 D1: `resolvedHead` stays `head` — see its declaration.
             await writeAuthorized({
@@ -8072,13 +8157,19 @@ export function createOrchestrationRoutes(
             // Reconcile present-tense side effects once, after the replay.
             replaySessions = await orchestrationService.listSessionReadModel(
               authority,
-              threadId !== undefined ? { threadIds: [threadId] } : undefined,
+              {
+                purpose: 'sse-replay-reconcile',
+                ...(threadId !== undefined ? { threadIds: [threadId] } : {}),
+              },
             );
           }
         } else {
           const sessions = await orchestrationService.listSessionReadModel(
             authority,
-            threadId !== undefined ? { threadIds: [threadId] } : undefined,
+            {
+              purpose: 'sse-snapshot',
+              ...(threadId !== undefined ? { threadIds: [threadId] } : {}),
+            },
           );
           // #2456 D1: the head is NOT re-read here. An earlier review
           // ("LOW") re-read it to make the cursor "exact", but an exact

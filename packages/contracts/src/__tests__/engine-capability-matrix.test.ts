@@ -59,6 +59,11 @@ describe('engine capability matrix', () => {
       state: 'unsupported',
       reason: expect.stringMatching(/Muse sessions it did not start/),
     });
+    // ACP sessions are listed read-only; resume is not evidenced to keep history.
+    expect(externalSessionContinuationSupport('acp')).toMatchObject({
+      state: 'unsupported',
+      reason: expect.stringMatching(/no evidence that resuming one keeps/),
+    });
   });
 
   test('sessionDeliveryChannels reproduces the shipped per-engine delivery truth (acp/claude/codex; bedrock/ollama undefined)', () => {

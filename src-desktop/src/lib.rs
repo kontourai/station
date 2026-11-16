@@ -10335,14 +10335,18 @@ fn build_sidecar_command(
 ) -> std::io::Result<Command> {
     let mut command = desktop_node_command(&context.shell_path)?;
     command
+        // The same young-generation cap the process supervisor gives each
+        // core it forks: V8 otherwise sizes new space from host memory and
+        // keeps it committed at rest (docs/reference/station-weight.md).
+        .arg("--max-semi-space-size=16")
         .arg(command_station_script_path(&context.resource_dir))
         .current_dir(&context.resource_dir)
         .env("STATION_HOME", &context.station_home)
-        // Node must enable this before it parses the bundled entry point.
-        .env(
-            "NODE_COMPILE_CACHE",
-            context.station_home.join("cache").join("node-compile"),
-        )
+        // No compile cache for the server itself, as with `station start`:
+        // measured on this launch, a warm cache left the idle server larger
+        // and did not start it consistently faster. The server still hands
+        // the home's cache to its built-in MCP children.
+        .env_remove("NODE_COMPILE_CACHE")
         .env("STATION_HOST", "127.0.0.1")
         .env("STATION_STDOUT_HANDSHAKE", "1")
         // Only the handshake line is read from stdout; every other line is
@@ -19976,20 +19980,15 @@ mod tests {
         assert_eq!(command.get_program(), "node");
         assert_eq!(
             command.get_args().collect::<Vec<_>>(),
-            vec![command_station_script_path(&context.resource_dir).as_os_str()]
+            vec![
+                std::ffi::OsStr::new("--max-semi-space-size=16"),
+                command_station_script_path(&context.resource_dir).as_os_str(),
+            ]
         );
         let env = command_env(&command);
-        assert!(env.contains(&(
-            "NODE_COMPILE_CACHE".into(),
-            Some(
-                context
-                    .station_home
-                    .join("cache")
-                    .join("node-compile")
-                    .to_string_lossy()
-                    .into_owned()
-            )
-        )));
+        // Removed, not merely unset: the desktop's own environment, such as a
+        // development launch from a shell, must not give the server a cache.
+        assert!(env.contains(&("NODE_COMPILE_CACHE".into(), None)));
         for (name, value) in [
             ("STATION_ROOT", "/home/example/.station"),
             ("STATION_HOME", "/home/example/.station-nightly"),

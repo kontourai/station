@@ -484,6 +484,18 @@ export const STATION_CONTROL_TOOL_POLICY = {
     routes: [get('/api/board')],
   },
 
+  // ── appearance ─────────────────────────────────────────────────────────
+  // The person's own custom appearance. An agent reads and proposes; the
+  // route refuses it every other step (keep, save, dismiss, report).
+  get_appearance: { ...SELF_READ, routes: [get('/api/me/appearance')] },
+  propose_appearance: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [post('/api/me/appearance/proposal')],
+  },
+
   // ── catalog (skills) ───────────────────────────────────────────────────
   list_skills: { ...READ, routes: [get('/api/system/skills')] },
   list_registry_skills: { ...READ, routes: [get('/api/registry/skills')] },
@@ -769,10 +781,12 @@ export const STATION_CONTROL_TOOL_POLICY = {
   },
   // Decision 2: the saved SSH environments are the operator's Station-wide
   // configuration (the same view `get_ssh_environment` gives), so listing
-  // them is an operator-wide read. No other entry reaches the leaf.
+  // them is an operator-wide read. No other entry reaches the leaf. The
+  // paired-Station list (secret-free summaries with readiness) is the same
+  // operator-wide configuration, read at the same bound-operator tier.
   list_delegation_environments: {
     ...OPERATOR_READ,
-    routes: [get('/api/environments/ssh')],
+    routes: [get('/api/environments/ssh'), get('/api/environments/peers')],
   },
   list_delegation_targets: {
     // Decision 1: discovery may reconnect a saved SSH environment. Since
@@ -2048,6 +2062,8 @@ export const RESTRICTED_NETWORK_STATION_CONTROL_TOOLS: ReadonlySet<string> =
     'get_personal_board',
     'propose_personal_board',
     'board_read',
+    'get_appearance',
+    'propose_appearance',
     'list_skills',
     'list_registry_skills',
     'track_skill_run',

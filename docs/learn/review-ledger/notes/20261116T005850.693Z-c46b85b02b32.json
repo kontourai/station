@@ -1,0 +1,7 @@
+{
+  "revision": "8f7a6d3b91fdfe484e7efebca0ca1c3616575697",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"8f7a6d3b91 flags unknown 2.x row types as malformed, holds a running compaction until OpenCode finishes it, and skips an imported opencode-next.db beside a 2.x store. Re-read the external transcript import and source-home lines citing the source: ordering, the observation-only source root and the absence of continuation are unchanged. No prose change needed.","inputs":["src-server/providers/sessions/opencode-session-source.ts"]}
+  ]
+}

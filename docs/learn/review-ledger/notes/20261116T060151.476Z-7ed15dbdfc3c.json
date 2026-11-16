@@ -1,0 +1,11 @@
+{
+  "revision": "5f2af46ee527fbad3f4dede47c4e700dfbd2d623",
+
+  "notes": [
+    {"path":"README.md","note":"Reviewed the plugin-guide change against downstream README, integration and getting-started claims. Bounded retry of a rejected healthy-connection capability import changes transient bootstrap recovery only; persistent failure still offers Reload Station. Installation, consent, permissions, public setup and advertised capabilities remain unchanged;11 mounted boundary tests cover recovery/failure/outage/no-remount. Hosted capture remains separate evidence.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the plugin-guide change against downstream README, integration and getting-started claims. Bounded retry of a rejected healthy-connection capability import changes transient bootstrap recovery only; persistent failure still offers Reload Station. Installation, consent, permissions, public setup and advertised capabilities remain unchanged;11 mounted boundary tests cover recovery/failure/outage/no-remount. Hosted capture remains separate evidence.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the plugin-guide change against downstream README, integration and getting-started claims. Bounded retry of a rejected healthy-connection capability import changes transient bootstrap recovery only; persistent failure still offers Reload Station. Installation, consent, permissions, public setup and advertised capabilities remain unchanged;11 mounted boundary tests cover recovery/failure/outage/no-remount. Hosted capture remains separate evidence.","inputs":["docs/guides/plugins.md"]}
+  ]
+}

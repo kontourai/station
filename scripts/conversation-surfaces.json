@@ -109,6 +109,11 @@
       "reason": "P2.1 attached conversation and read-only continuation adapter."
     },
     {
+      "file": "src-ui/src/components/remote-session/RemoteSessionReader.tsx",
+      "requires": ["body", "failure"],
+      "reason": "Read-only history of a session on a connected SSH environment's Station; the shell resolves this Station as the owning connection."
+    },
+    {
       "file": "src-ui/src/components/chat/ChildWorkInstructionPanel.tsx",
       "requires": ["delivery"],
       "reason": "Child instruction protocol retains its exact child/turn form and consumes shared delivery actions."

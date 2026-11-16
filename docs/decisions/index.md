@@ -16,6 +16,7 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 | [automations-unify-schedules](./automations-unify-schedules.md) | current | Automations are scheduled work that runs in a conversation, on any engine |
 | [browser-agent-actions-and-bound-channel](./browser-agent-actions-and-bound-channel.md) | current | Browser Agent actions and cross-engine binding |
 | [browser-viewport-is-shared-fit-is-per-viewer](./browser-viewport-is-shared-fit-is-per-viewer.md) | current | The Browser page viewport is shared by every viewer; each viewer's fit and zoom are local |
+| [custom-appearance](./custom-appearance.md) | current | A person's own palette and CSS; agents propose, the person previews and keeps |
 | [device-agent-control](./device-agent-control.md) | current | Bound agents control host-qualified device live surfaces through the shared lease |
 | [ended-task-resume](./ended-task-resume.md) | needs-decision | Resuming ended tracker-backed Tasks after GitHub follow-ups |
 | [engine-credential-provider](./engine-credential-provider.md) | current | Issue engine credentials only through a typed, scoped, reviewed provider |
@@ -29,6 +30,7 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 | [pull-request-guide-generation](./pull-request-guide-generation.md) | current | Generate shared pull request guides without model execution tools |
 | [rc-promotion-provenance](./rc-promotion-provenance.md) | current | Release-candidate archive identity and producer provenance |
 | [registry-sources-detected-by-structure](./registry-sources-detected-by-structure.md) | current | A registry source is a location; what it provides is detected from the structure of its content |
+| [remote-task-engines](./remote-task-engines.md) | current | Drive cloud-hosted coding agents through one remote task engine abstraction |
 | [revision-evidence-freeze-policy](./revision-evidence-freeze-policy.md) | current | Freeze Task room revision evidence only when a consumer references it |
 | [tailscale-serve-own-origin](./tailscale-serve-own-origin.md) | current | A Station trusts its own daemon-attested Tailscale Serve HTTPS origin without ALLOWED_ORIGINS |
 | [task-tracker-followups](./task-tracker-followups.md) | current | Bounded GitHub follow-ups for tracker-backed Tasks |

@@ -6,8 +6,10 @@ import {
 import {
   type ApiRequestScope,
   useProjectRoomChannels,
+  useProjectRoomLiveIndex,
+  workingProjectRoomAgents,
 } from '@kontourai/station-sdk/project-rooms';
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useAgents } from '../../contexts/AgentsContext';
 import { projectLiveLanes } from '../../views/project-page/project-live-work-model';
 import {
@@ -29,6 +31,8 @@ import {
  * at once (`useMarkReadMutation`).
  */
 export const CONVERSATION_SUMMARY_REFRESH_MS = 30_000;
+/** A burst of live activity re-reads the summary once, this long after it. */
+const LIVE_SUMMARY_SETTLE_MS = 750;
 
 export interface ProjectConversationIndex {
   channels: {
@@ -99,6 +103,38 @@ export function useProjectConversationIndex(
     refetchInterval: active ? CONVERSATION_SUMMARY_REFRESH_MS : false,
   });
   const states = useMemo(() => readStates(summary.data), [summary.data]);
+  // One live connection for every listed channel (#4798): a new message or
+  // change re-reads the summary (unread, mentions) soon after, coalesced.
+  const refetchSummary = summary.refetch;
+  const pending = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const onActivity = useCallback(() => {
+    if (pending.current) return;
+    pending.current = setTimeout(() => {
+      pending.current = undefined;
+      void refetchSummary();
+    }, LIVE_SUMMARY_SETTLE_MS);
+  }, [refetchSummary]);
+  useEffect(() => () => clearTimeout(pending.current), []);
+  const channelIds = useMemo(
+    () => listed.map((channel) => channel.channelId),
+    [listed],
+  );
+  const live = useProjectRoomLiveIndex(
+    requestScope ?? { apiBase: '', authorityKey: '' },
+    project.slug,
+    channelIds,
+    active,
+    onActivity,
+  );
+  const workingChannels = useMemo(
+    () =>
+      new Set(
+        [...live]
+          .filter(([, room]) => workingProjectRoomAgents(room.agents).length)
+          .map(([id]) => id),
+      ),
+    [live],
+  );
   const running = useMemo(() => {
     const lanes = projectLiveLanes({
       sessions,
@@ -118,7 +154,7 @@ export function useProjectConversationIndex(
   );
   return {
     channels: {
-      entries: channelEntries(project.slug, listed, states),
+      entries: channelEntries(project.slug, listed, states, workingChannels),
       isPending: channels.list.isPending && !channels.unsupported,
       isError:
         channels.list.isError &&

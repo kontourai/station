@@ -83,8 +83,10 @@ import {
   toolRequestRuleGrant,
   toolRequestServerGrant,
   toolRequestSessionGrant,
+  toolRequestStrictSessionGrant,
 } from '@kontourai/station-shared/tool-request-preview';
 import { NATIVE_SESSION_RESUMED_METADATA_KEY } from '@kontourai/station-shared/usage-fold';
+import { claudeToolSearchEnv } from '../../runtime/agents/claude-tool-search.js';
 import {
   delegatedApprovalDenial,
   type PreToolPolicyDecision,
@@ -245,6 +247,7 @@ import {
   claudeExitDetailWithStderr,
   createClaudeEngineProcess,
 } from './claude-code-spawn.js';
+import { claudeInstructionFilesSettings } from './claude-instruction-files.js';
 import {
   type ClaudeToolServerSkip,
   resolveClaudeMcpServers,
@@ -319,6 +322,12 @@ type PendingRequest = {
    */
   sessionGrant: ToolRequestSessionGrant;
   /**
+   * The request is an escalation (`toolRequestStrictSessionGrant` gives no
+   * tool grant): a session answer to it also covers the tool's later
+   * escalations, where one given on a plain call covers plain calls only.
+   */
+  escalation: boolean;
+  /**
    * Whether the request offered the server-wide Station browser grant: the
    * same `toolRequestServerGrant` computation the surfaces offer from.
    */
@@ -335,6 +344,20 @@ type PendingRequest = {
 
 /** The command Station resolves on PATH for this engine. */
 const CLAUDE_CLI_COMMAND = 'claude';
+/**
+ * #2540: the oldest Claude Code whose hook reporting (`includeHookEvents`)
+ * Station has checked: a settings hook, `async` and `asyncRewake` alike,
+ * reports `hook_started` before the turn's `result` and `hook_response` when
+ * it ends, and an SDK callback hook reports nothing. An older or unreported
+ * version is not parked early.
+ */
+const CLAUDE_HOOK_REPORTING_VERIFIED_VERSION = '2.1.322';
+/** #2540: tools that change the engine's session-scoped wakeups. */
+const CLAUDE_WAKEUP_SCHEDULING_TOOLS: ReadonlySet<string> = new Set([
+  'CronCreate',
+  'CronDelete',
+  'ScheduleWakeup',
+]);
 /** #2494: id of the confined-credential readiness entry (macOS only). */
 const CLAUDE_CONFINED_CREDENTIAL_PREREQUISITE_ID = 'claude-confined-credential';
 
@@ -817,6 +840,28 @@ type ClaudeSessionRecord = {
   onTaskSettled?: (taskId: string) => void;
   /** Mirrors `ClaudeMessageState.childWork` (#2457). */
   childWork?: ClaudeChildWorkState;
+  /** Mirrors `ClaudeMessageState.housekeepingTasks` (#2540). */
+  housekeepingTasks?: Set<string>;
+  /** Mirrors `ClaudeMessageState.mcpServersStationOnly` (#2540). */
+  mcpServersStationOnly?: boolean;
+  /** Mirrors `ClaudeMessageState.foreignHookObserved` (#2540). */
+  foreignHookObserved?: boolean;
+  /** Mirrors `ClaudeMessageState.claudeCodeVersion` (#2540). */
+  claudeCodeVersion?: string;
+  /**
+   * How many session-scoped wakeups (CronCreate, ScheduleWakeup, a loop) the
+   * engine reported scheduled when it last stopped (its Stop hook's
+   * `session_crons`). They live in this process, so a finished-session park
+   * would drop them. Absent until a Stop hook reports the field.
+   */
+  scheduledWakeups?: number;
+  /**
+   * The engine called a scheduling tool (CronCreate, CronDelete,
+   * ScheduleWakeup) since a Stop hook last reported `session_crons`: how many
+   * wakeups it holds is unknown, so it is treated as holding one. A turn that
+   * ends through StopFailure runs no Stop hook and leaves this set.
+   */
+  scheduledWakeupsUnknown?: boolean;
   lastSessionState: 'idle' | 'running' | 'requires_action';
   streamTask: Promise<void>;
   /** The engine's live permission mode, as Station last sent it or the
@@ -858,6 +903,15 @@ type ClaudeSessionRecord = {
    * `approvedTools`) so the grant covers the whole tool for this session.
    */
   approvedTools: Set<string>;
+  /**
+   * Owner decision (2026-11-16): tools a person allowed for the session when
+   * answering an ESCALATION of them (a safety check, a path outside the
+   * session's folders, a rule- or hook-forced ask). Only these grants answer
+   * a later escalation; one given on a plain call (`approvedTools` alone)
+   * never does, so an ordinary "allow all" cannot silently cover the risky
+   * case.
+   */
+  approvedToolEscalations: Set<string>;
   /**
    * Server-wide session grants from an `acceptForSession` answer carrying
    * `sessionGrantScope: 'server'`: the MCP server ids whose every later
@@ -952,13 +1006,19 @@ function claudeSpawnConfigHome(
   appHomeEnv: Record<string, string> | undefined,
   connectionEnv: Record<string, string> | undefined,
   augmentedEnv: Record<string, string | undefined> | undefined,
+  /**
+   * Where a relative value is resolved. The engine resolves it against the cwd
+   * it is spawned in; callers that key bindings by this path keep resolving
+   * against Station's own cwd, as they always have.
+   */
+  base: string = process.cwd(),
 ): string {
   const configured =
     appHomeEnv?.[CLAUDE_CONFIG_DIR_ENV_KEY] ??
     connectionEnv?.[CLAUDE_CONFIG_DIR_ENV_KEY] ??
     (augmentedEnv ?? process.env)[CLAUDE_CONFIG_DIR_ENV_KEY];
   return configured?.trim()
-    ? nodePath.resolve(configured.trim())
+    ? nodePath.resolve(base, configured.trim())
     : nodePath.join(homedir(), '.claude');
 }
 
@@ -1240,6 +1300,12 @@ export interface ClaudeAdapterOptions {
    */
   logNetworkDecision?: (details: Record<string, unknown>) => void;
   logger?: ClaudeAdapterLogger;
+  /**
+   * The engine's managed settings folder, read to keep a managed choice of
+   * project instruction files. Defaults to the platform's fixed folder
+   * (`claudeManagedSettingsRoot`).
+   */
+  managedSettingsRoot?: string;
 }
 
 /**
@@ -1572,6 +1638,8 @@ async function evaluateClaudePreToolPolicy(
     toolName: string,
     toolInput: unknown,
   ) => void,
+  /** The engine runs at `bypassPermissions` for this call. */
+  fullAccess = false,
 ) {
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -1586,6 +1654,7 @@ async function evaluateClaudePreToolPolicy(
         {
           interaction: 'external',
           identity: externalPreToolPolicyIdentity(input.tool_name),
+          ...(fullAccess ? { fullAccess } : {}),
         },
       ),
       new Promise<PreToolPolicyDecision>((resolve) => {
@@ -1696,6 +1765,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     engineId: engineId('claude'),
     abortSettlement: 'await',
     workloadScope: 'engine-process' as const,
+    // #2540: with `earlyParkRefusal`, see there for what this rests on.
+    openEngineWork: 'complete' as const,
     // `respondToRequest` forwards only the offered Bash prefix rules.
     sessionGrantScopes: ['rule'] as const,
     recovery: {
@@ -2652,6 +2723,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         : {}),
       pendingRequests: new Map(),
       approvedTools: new Set(),
+      approvedToolEscalations: new Set(),
       serverGrants: new Set(),
       stationBrowserVerified: false,
       stationBrowserDelivered:
@@ -3730,6 +3802,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       scope === undefined
     ) {
       record.approvedTools.add(pending.toolName);
+      if (pending.escalation)
+        record.approvedToolEscalations.add(pending.toolName);
     }
     // Owner decision: the typed `sessionGrantScope: 'server'` widens the
     // answer to the Station browser server, only where the request offered it
@@ -3760,7 +3834,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             // Full access is the server's recorded decision alone: an
             // engine-suggested switch into it is never forwarded, even under
             // a tool grant that forwards every other suggestion.
-            sessionGrantPermissionUpdates(grant, pending.suggestions).filter(
+            sessionGrantPermissionUpdates(
+              // A tool grant widened onto an escalation (owner decision
+              // 2026-11-16) is Station's own: it forwards none of the
+              // engine's suggestions, so a full-access or plan-mode session
+              // is never switched to acceptEdits by it.
+              grant === 'tool' && pending.escalation ? 'none' : grant,
+              pending.suggestions,
+            ).filter(
               (update) =>
                 !(
                   update.type === 'setMode' &&
@@ -3964,6 +4045,60 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       if (!task.unresolvedPublished) return true;
     }
     return false;
+  }
+
+  /**
+   * #2540: why this engine must not be parked seconds after a finished turn,
+   * beyond the open tasks {@link hasOpenEngineWork} reports. Consulted only
+   * by the finished-session park; the idle, recovery and relaunch parks never
+   * read it, so a stale answer here can cost memory but never recovery.
+   *
+   * What it rests on (the `openEngineWork: 'complete'` claim):
+   * - every task the engine registers is a task frame: agents, shells,
+   *   monitors and workflows in `activeTasks`, housekeeping ones
+   *   (`skip_transcript`) in `housekeepingTasks`;
+   * - its own scheduled wakeups are known from the last Stop hook's
+   *   `session_crons`, and become unknown again at any scheduling-tool call;
+   * - its only MCP servers are Station's in-process (`sdk`) ones, whose state
+   *   lives in Station, not in a server process the engine started;
+   * - every hook it runs is reported (`includeHookEvents`, on a CLI at least
+   *   {@link CLAUDE_HOOK_REPORTING_VERIFIED_VERSION}), Station's own hooks
+   *   being SDK callbacks that report none; any reported hook therefore is
+   *   foreign and refuses for the rest of the engine's life.
+   * Not seen: a hook that is configured but has not fired in this engine (it
+   * has nothing running to lose; one that fires only after idling, such as
+   * an idle `Notification`, does not fire once parked, as after the idle
+   * park), and a process a command leaves running after its tool call
+   * returned without making it a background task.
+   */
+  earlyParkRefusal(threadId: string): string | undefined {
+    const record = this.sessions.get(threadId);
+    if (!record) return 'no live engine';
+    const version = parseClaudeCodeVersion(record.claudeCodeVersion);
+    // The shared parser drops a prerelease suffix, so `2.1.322-beta` would read
+    // as the verified release. A prerelease sorts before its release, so one
+    // at or below the verified version is treated as unverified.
+    const prerelease = /^\s*v?\d+\.\d+\.\d+-/.test(
+      record.claudeCodeVersion ?? '',
+    );
+    const order = version
+      ? compareClaudeCodeVersions(
+          version,
+          CLAUDE_HOOK_REPORTING_VERIFIED_VERSION,
+        )
+      : -1;
+    if (!version || order < 0 || (prerelease && order <= 0))
+      return 'its hook reporting is unverified for this Claude Code version';
+    if (record.foreignHookObserved)
+      return 'a hook Station did not install has run';
+    if (record.mcpServersStationOnly !== true)
+      return 'an MCP server other than Station’s own, or unreported servers';
+    if (record.scheduledWakeupsUnknown || record.scheduledWakeups === undefined)
+      return 'its scheduled wakeups are unknown';
+    if (record.scheduledWakeups > 0) return 'a scheduled wakeup';
+    if ((record.housekeepingTasks?.size ?? 0) > 0)
+      return 'a housekeeping task is running';
+    return undefined;
   }
 
   async stopAll(): Promise<void> {
@@ -4511,6 +4646,23 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     artifactsEnv: ClaudeArtifactsSpawnEnv = claudeArtifactsSpawnEnv(false),
   ): Options {
     const modelOptions = claudeAppliedModelOptions(input.modelOptions);
+    // AGENTS.md beside CLAUDE.md, unless the user chose otherwise in the
+    // config home this spawn reads (claude-instruction-files.ts).
+    const instructionFiles = claudeInstructionFilesSettings(
+      // A relative CLAUDE_CONFIG_DIR is resolved by the engine against the cwd
+      // it is spawned in (the SDK's default is this process's cwd).
+      claudeSpawnConfigHome(
+        appHomeEnv,
+        connectionEnv,
+        augmentedEnv,
+        input.cwd ?? process.cwd(),
+      ),
+      { managedRoot: this.options.managedSettingsRoot },
+    );
+    if (!instructionFiles.settings)
+      (this.options.logger ?? console).debug?.(
+        `[claude] AGENTS.md loading left to the engine's setting: ${instructionFiles.reason}`,
+      );
     // #2947: the approval guardian's allows, by the engine's tool-use id,
     // from the PreToolUse hook to `canUseTool`. The hook states no opinion,
     // so the guardian's verdict is carried here and answers the engine's
@@ -4582,6 +4734,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         : [CLAUDE_ARTIFACT_TOOL_NAME]),
     ];
     const resumeSessionId = claudeResumeSessionId(input.resumeCursor);
+    const toolSearchEnv = claudeToolSearchEnv(input.agent?.toolServerLoading);
     return {
       cwd: input.cwd,
       ...(disallowedTools.length ? { disallowedTools } : {}),
@@ -4600,6 +4753,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ? { title: newSessionTitle(input.threadId) }
         : {}),
       includePartialMessages: true,
+      // #2540: report every hook the engine runs, so one Station did not
+      // install keeps the engine from the finished-session park
+      // (`earlyParkRefusal`). Station's own hooks are SDK callbacks and
+      // report nothing.
+      includeHookEvents: true,
       // station#1877 follow-up: ask the SDK to summarise what a subagent is
       // doing, so `task_progress.summary` carries a live status line instead
       // of nothing. Without it a five-minute background agent reports its
@@ -4713,12 +4871,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ...(augmentedEnv ?? process.env),
         ...connectionEnv,
         ...appHomeEnv,
-        ...(input.agent?.toolServerLoading
-          ? {
-              ENABLE_TOOL_SEARCH:
-                input.agent.toolServerLoading === 'always' ? 'false' : 'true',
-            }
-          : {}),
+        // The same rule decides whether Station's instructions say its
+        // tools load on demand (`session-agent-resolution.ts`).
+        ...(toolSearchEnv ? { ENABLE_TOOL_SEARCH: toolSearchEnv } : {}),
         // After every caller/ambient layer: the Station setting owns this
         // key (see `claudeArtifactsSpawnEnv`).
         ...artifactsEnv,
@@ -4871,11 +5026,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         const sessionGrant = toolRequestSessionGrant(request);
         const serverGrant = toolRequestServerGrant(request);
         const ruleGrant = toolRequestRuleGrant(request);
+        // A plain call is answered by any tool grant; an escalation only by a
+        // grant a person gave on an escalation of the same tool.
+        const escalation = toolRequestStrictSessionGrant(request) !== 'tool';
         if (
           !inputRequest &&
           !explicitAsk &&
-          record.approvedTools.has(toolName) &&
-          sessionGrant === 'tool'
+          sessionGrant === 'tool' &&
+          (escalation
+            ? record.approvedToolEscalations.has(toolName)
+            : record.approvedTools.has(toolName))
         ) {
           return { behavior: 'allow', updatedInput: toolInput };
         }
@@ -4972,6 +5132,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             toolName,
             ...(options.agentID ? { agentId: options.agentID } : {}),
             sessionGrant,
+            escalation,
             serverGrant,
             ...(ruleGrant ? { ruleGrant } : {}),
             eventId,
@@ -4989,6 +5150,28 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         });
       },
       hooks: {
+        // #2540: the wakeups the engine has scheduled for itself, which the
+        // finished-session park must not drop (`earlyParkRefusal`). Reported
+        // on each stop; an engine that omits the field leaves it unknown.
+        Stop: [
+          {
+            hooks: [
+              async (hookInput) => {
+                if (
+                  hookInput.hook_event_name === 'Stop' &&
+                  Array.isArray(hookInput.session_crons)
+                ) {
+                  const record = this.sessions.get(input.threadId);
+                  if (record) {
+                    record.scheduledWakeups = hookInput.session_crons.length;
+                    record.scheduledWakeupsUnknown = false;
+                  }
+                }
+                return { continue: true };
+              },
+            ],
+          },
+        ],
         // #4828: a completed WebFetch or WebSearch (in a subagent too) marks
         // this conversation as having read content written by others, before
         // the engine's next PreToolUse. The SDK awaits a synchronous hook's
@@ -5002,6 +5185,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                 const ledger =
                   this.options.untrustedContentLedger ??
                   sharedUntrustedContentLedger;
+                // #2540: a schedule changed; only the next Stop says how.
+                if (CLAUDE_WAKEUP_SCHEDULING_TOOLS.has(hookInput.tool_name)) {
+                  const record = this.sessions.get(input.threadId);
+                  if (record) record.scheduledWakeupsUnknown = true;
+                }
                 if (CLAUDE_NATIVE_WEB_READ_TOOLS.has(hookInput.tool_name))
                   markNativeWebRead([input.threadId], {
                     ledger,
@@ -5086,6 +5274,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                         this.options.preToolPolicyTimeoutMs ??
                           DEFAULT_PRE_TOOL_POLICY_TIMEOUT_MS,
                         rememberPolicyAllow,
+                        // Read per call: a mid-chat switch changes it.
+                        this.sessions.get(input.threadId)
+                          ?.currentPermissionMode === 'bypassPermissions',
                       );
                     },
                   ],
@@ -5165,7 +5356,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       effort: modelOptions.effort,
       settings:
         modelOptions.fastMode !== undefined ||
-        modelOptions.autoMode !== undefined
+        modelOptions.autoMode !== undefined ||
+        instructionFiles.settings
           ? {
               ...(modelOptions.fastMode !== undefined
                 ? { fastMode: modelOptions.fastMode }
@@ -5173,6 +5365,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
               ...(modelOptions.autoMode === false
                 ? { disableAutoMode: 'disable' as const }
                 : {}),
+              ...instructionFiles.settings,
             }
           : undefined,
     };

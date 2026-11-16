@@ -138,9 +138,10 @@ Future-scheduled principal writes are refused; expiry is settled when the feed
 is next accessed. These records do not enter the owner feed or shared
 notification stream and do not trigger push. The authenticated person reads,
 marks read, and dismisses their own entries through the
-[person notification routes](../reference/api.md#person-notifications). A
-per-person notification preference, account-bound Device push, producers, and
-the corresponding inbox UI remain future work.
+[person notification routes](../reference/api.md#person-notifications). The
+first producer is a Project room mention (#4799), shown under **For you** on
+the Notifications page. A per-person notification preference, account-bound
+Device push, other producers and a full inbox view remain future work.
 
 The router consumes `NOTIFICATION_DELIVERED`. It also handles content changes to
 previously seen, delivered, unread enveloped records on `NOTIFICATION_UPDATED`;
@@ -172,7 +173,14 @@ of its chats and turns, not per turn. Hiding or unloading a document reports
 not qualify as live.
 
 A live focused document suppresses `info`/`done` on the person's other surfaces
-and can defer `attention`/`failed`. Default escalation is three minutes. It is
+and can defer `attention`/`failed`. For an `info`/`done` record that names a
+session, such as a finished turn, a document counts as focused only while it
+shows that session. Its report lists the open chat's ids (`viewingSessionIds`,
+sent as `[]` when no chat is on screen). A document showing another chat
+neither quiets the other surfaces nor skips its own alert. A client that does
+not send the field keeps the device-wide rule. A host built before the field
+answers 400, and the client then reports without it
+([notification delivery](../design/notification-delivery.md#finished-alerts-one-per-completion-episode)). Default escalation is three minutes. It is
 one in-memory recheck of the current record, audience, registrations, focus and
 preferences—not a delivery guarantee or general retry queue. Quiet hours, mute,
 minimum urgency, silent interrupt, current focus, read/dismiss state or expiry

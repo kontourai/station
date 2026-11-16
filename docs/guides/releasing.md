@@ -332,18 +332,25 @@ One merge-group build peaked at seven concurrent jobs when measured on
 2026-11-13. Measured across all workflows from 06:46Z to 17:30Z on 2026-11-14,
 two concurrent builds peaked at eleven jobs, one of them on a macOS runner,
 inside the twelve-runner reserve; the reserve stays a planning bound. PR source
-computation is bounded separately at eight slots (five shard, two statics and
+computation is bounded separately at nine slots (five shard, three statics and
 one for the release-bot PR; see [testing](testing.md)). Eleven merge-group jobs,
-the Free qualification peak of four and those eight already total 23 before unbounded per-PR
+the Free qualification peak of four and those nine already total 24 before unbounded per-PR
 lanes, so the PR slots bound how many PR source jobs can wait for a runner
 ahead of a merge-group job, not a share of the twenty. GitHub has no priority
-between them. The slot count was sized from the wait for a slot alone: it
-does not model the pool, and a job that used to be superseded while waiting
-for a slot can now start. From 00:00Z to 03:00Z on 2026-11-14, before the
+between them. The slot counts were sized from the wait for a slot alone: they
+do not model the pool, and a job that used to be superseded while waiting
+for a slot can now start. The third statics slot followed a 2026-11-15
+measurement in which a PR waited 70 minutes for one of two statics slots while
+seven of the twenty runners were idle. A statics job takes about 13 minutes, so one slot clears
+about four and a half an hour. The slots are separate queues, not a pool: with PR numbers spread
+evenly the busiest slot (four of the ten digits) fills at about eleven PR pushes an hour, against
+about nine with two slots, and a PR can still wait in its own slot while another is idle. From 00:00Z to 03:00Z on 2026-11-14, before the
 heavy platform lanes left pull-request events, all twenty hosted runners were
 busy a quarter of the time and merge-group jobs waited a median of three
-minutes (p90 about fifteen) for a runner. If that wait rises after this
-change, lower the shard slot count before anything else. Background callers share the native FIFO
+minutes (p90 about fifteen) for a runner. If that wait rises, first return statics to
+two slots (digits 7 and 9 back to `odd`, 8 back to `even`, in `ci.yml`, its pin in
+`scripts/actionlint-gate.mjs` and the job-graph test's slot table), then lower the
+shard slot count. Background callers share the native FIFO
 group described above; integration uses source-specific groups and release
 qualification has its own group. The class input is validated before fanout.
 These groups do not reserve slots across other repositories.

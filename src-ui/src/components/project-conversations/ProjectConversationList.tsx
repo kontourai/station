@@ -54,7 +54,7 @@ function suffix(row: Row) {
     : row.unread.count
       ? `, ${countText(row.unread.count)} unread`
       : ', unread';
-  return `${row.kind === 'task' ? ', Task room' : ''}${row.working ? ', agent working' : ''}${unread}`;
+  return `${row.kind === 'task' ? ', Task room' : ''}${row.working ? ', agent working' : ''}${unread}${row.unread?.unread && row.unread.mentioned ? ', mentions you' : ''}`;
 }
 
 /** The server caps room counts at 99, meaning "99 or more". */
@@ -166,6 +166,12 @@ export function ProjectConversationList({
         <span className="conversation-list__label" title={row.label}>
           {row.label}
         </span>
+        {row.kind === 'channel' && row.working ? (
+          <span className="conversation-list__working" aria-hidden="true" />
+        ) : null}
+        {row.unread?.unread && row.unread.mentioned ? (
+          <span className="conversation-list__mention" aria-hidden="true" />
+        ) : null}
         {row.unread?.unread && row.unread.count ? (
           <span
             className="conversation-list__count"
@@ -326,6 +332,7 @@ function rowFor(
       name: channel.name,
       kind: 'channel',
       unread: entry.unread,
+      working: entry.working,
       current:
         current?.kind === 'channel' &&
         (current.channelId === null

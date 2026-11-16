@@ -1345,8 +1345,8 @@ describe('#3429: a continued attached conversation opens in the dock', () => {
     expect(f.engines.claude.turns).toEqual([]);
   });
 
-  // #3429: the "Continue here?" dialog said Station was not responding when
-  // the engine simply was not set up. The refusal is certain and says why.
+  // #3429: the client said Station was not responding when the engine
+  // simply was not set up. The refusal is certain and says why.
   test('an engine that is not ready is refused with its reason, and nothing is created', async () => {
     const f = await fixture({ engineAgent: true });
     f.engines.claude.prerequisites = [

@@ -1,0 +1,7 @@
+{
+  "revision": "572666760da6daef16a0af319c75c969e10b25e3",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Only chat.css composer-menu group/separator/danger-tone rules and a ChatWorkspacePaneComposerDraft test mock changed; no module ownership or interface claim affected.","inputs":["docs/architecture/module-map.md","src-ui/src/components/chat-dock/__tests__/ChatWorkspacePaneComposerDraft.test.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}

@@ -596,7 +596,14 @@ jobs:
     permissions:
       contents: read
     concurrency:
-      # Two repository-wide PR statics slots, with no pending replacement.
+      # Three repository-wide PR statics slots, with no pending replacement,
+      # keyed by the PR number's last digit so every run of one PR shares one:
+      #   last digit | 0, 2, 4, 6 | 1, 3, 5 | 7, 8, 9
+      #   slot       | even       | odd     | third
+      # Measured 2026-11-15, two slots left one PR waiting 70 minutes for
+      # statics while shard slots and runners were free. The odd/even names
+      # are kept, now as plain labels, so runs created under the parity
+      # mapping share those slots while both run; only digits 7, 8 and 9 moved.
       # Obsolete heads are cancelled by the trusted supersession workflow.
       # Metadata-only edits never enter this source-job group. The release-bot
       # PR uses its one ci-pr-release-bot slot, shared with its shards.
@@ -604,11 +611,10 @@ jobs:
         ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.ref == 'changeset-release/main' &&
         github.event.pull_request.head.repo.full_name == github.repository &&
         github.event.pull_request.user.login == 'station-automation[bot]' && 'ci-pr-release-bot' ||
-        github.event_name == 'pull_request_target' && format('ci-pr-statics-{0}', (endsWith(format('{0}',
-        github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '3') ||
-        endsWith(format('{0}', github.event.pull_request.number), '5') || endsWith(format('{0}',
-        github.event.pull_request.number), '7') || endsWith(format('{0}', github.event.pull_request.number), '9')) &&
-        'odd' || 'even') || format('ci-fast-statics-{0}-{1}-{2}-{3}', github.event_name,
+        github.event_name == 'pull_request_target' && format('ci-pr-statics-{0}',
+        (endsWith(format('{0}', github.event.pull_request.number), '7') || endsWith(format('{0}', github.event.pull_request.number), '8') || endsWith(format('{0}', github.event.pull_request.number), '9')) && 'third' ||
+        (endsWith(format('{0}', github.event.pull_request.number), '1') || endsWith(format('{0}', github.event.pull_request.number), '3') || endsWith(format('{0}', github.event.pull_request.number), '5')) && 'odd' ||
+        'even') || format('ci-fast-statics-{0}-{1}-{2}-{3}', github.event_name,
         github.event.pull_request.number || github.ref, github.event.pull_request.head.sha || github.sha,
         github.event.pull_request.base.sha) }}
       queue: max

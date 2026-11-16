@@ -1,0 +1,7 @@
+{
+  "revision": "836320321ae4a24029f1a096df86c853444760d3",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-reviewed after the boundary fix: ChatDock opens the Terminal via useShowSurface(..., { region: 'bottom' }) instead of reading the region model, and the composer menu uses fieldset groups and data-tone; no claim in this document depends on those internals.","inputs":["docs/architecture/module-map.md","src-ui/src/components/chat-dock/__tests__/ChatWorkspacePaneComposerDraft.test.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}

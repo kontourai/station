@@ -10,6 +10,7 @@ import { AttentionSection } from '../components/attention/AttentionSection';
 import { ACKNOWLEDGE_ATTENTION_ACTION } from '../components/attention/notificationRowActions';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { NotificationSection } from '../components/notifications/NotificationSection';
+import { PersonMentionsSection } from '../components/notifications/PersonMentionsSection';
 import { PageFrameActions } from '../components/page-frame';
 import {
   describeReadFailure,
@@ -248,6 +249,8 @@ export function NotificationsPage() {
             navigate('/settings', { view: 'notifications' })
           }
         />
+        {/* The reader's own mentions (#4799), whatever else is pending. */}
+        <PersonMentionsSection />
         <SkeletonList count={4} label="Loading notifications" />
         <RecentAppMessages />
       </div>
@@ -310,13 +313,21 @@ export function NotificationsPage() {
              right now" on evidence that does not support it. An unreadable
              source keeps the sectioned layout, which says what it could not
              read. */
-          <Empty
-            variant="prominent"
-            label="All caught up"
-            description="Nothing needs your attention right now."
+          // The person's own mentions decide whether this is truly empty.
+          <PersonMentionsSection
+            loading={<SkeletonList count={4} label="Loading notifications" />}
+            empty={
+              <Empty
+                variant="prominent"
+                label="All caught up"
+                description="Nothing needs your attention right now."
+              />
+            }
           />
         ) : (
           <>
+            {/* The reader's own mentions (#4799), above their inbox. */}
+            <PersonMentionsSection />
             <NotificationHistoryFilterBar
               categories={categories}
               filters={filters}
@@ -332,10 +343,7 @@ export function NotificationsPage() {
               unavailableSources={inbox.unavailableSources}
             />
             {approvalTarget && !exactApproval && !exactApprovalNotification && (
-              <p role="status">
-                That approval request isn’t available, and Station won’t open a
-                different one in its place.
-              </p>
+              <p role="status">That approval request is no longer available.</p>
             )}
             {pairingTarget && !exactPairing && (
               <p role="status">That pairing request is no longer available.</p>

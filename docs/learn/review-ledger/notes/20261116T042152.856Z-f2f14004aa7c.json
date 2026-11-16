@@ -1,0 +1,7 @@
+{
+  "revision": "da3f9ba9df04737bc6151d7943da623e60540231",
+
+  "notes": [
+    {"path":"docs/guides/desktop-build.md","note":"Startup-cost section now states that neither the desktop sidecar nor station start gives the server a compile cache, and that the sidecar removes an inherited NODE_COMPILE_CACHE and passes --max-semi-space-size=16 (build_sidecar_command in src-desktop/src/lib.rs, pinned by sidecar_launch_targets_command_station_with_loopback_handshake). Measured figures are the three-round sidecar A/B medians on one 64 GB Mac. Dropped the stale schema-ordering and native-cache-path sentences. Children's cache, prune and link checks unchanged (station-compile-cache.ts).","inputs":["docs/guides/desktop-build.md","src-desktop/src/lib.rs"]}
+  ]
+}

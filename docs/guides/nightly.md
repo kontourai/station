@@ -635,7 +635,7 @@ checks their GitHub sizes and digests. Then it replaces three more assets:
 the two installers again under fixed names,
 `station-nightly-macos-aarch64.dmg` and
 `station-nightly-windows-x86_64-setup.exe` (so
-`releases/download/nightly-desktop/<name>` is always the newest build), and
+`releases/download/nightly-desktop/<name>` normally serves the newest build), and
 `SHA256SUMS`, which lists this build's seven downloads under both names. It
 replaces `latest.json` last and reads every asset back. It refuses version
 regression. Previous versioned downloads are not overwritten, so an upload
@@ -645,7 +645,52 @@ is a delete then an upload, not a transaction: a download in between can
 miss a fixed name, or pair it with the other build's `SHA256SUMS`, which then
 fails the check. Interrupted provider writes remain unresolved until readback
 verifies them. The older `station-nightly-desktop-*` assets on the release
-come from builds before versioned names, and are not updated.
+come from builds before versioned names, and are not updated. Nothing current
+reads them: `latest.json` names the versioned downloads.
+
+GitHub refuses uploads to a release that holds 1,000 assets, and each cohort
+adds five. After the publication is read back and the provider claims are
+recorded, a retention step in the same job
+([`scripts/retain-nightly-desktop-assets.mjs`](../../scripts/retain-nightly-desktop-assets.mjs),
+planning in [`scripts/lib/publish-nightly-desktop.mjs`](../../scripts/lib/publish-nightly-desktop.mjs))
+keeps the versioned downloads of the newest 30 cohorts, ordered by parsed
+Nightly version. Thirty cohorts is a floor, not a time span: about two weeks
+at two cohorts a day, but every publishing run, including a manual dispatch
+or a re-run, can remove up to 25 more assets. It always keeps the cohort just
+published, every cohort the live `latest.json` names as its version or in a
+download URL, and every asset whose name is not exactly one of the five
+versioned shapes with a canonical version: the fixed names, `SHA256SUMS`,
+`latest.json` and the legacy assets. A cohort with any upload that is not
+complete is kept whole, indefinitely, because it may be an upload in
+progress; this includes two stale `starter` uploads from 2026-09-17
+(`0.1.11-nightly.2451.1` and `.2451.2`), which GitHub's asset listing shows
+but the release object hides. Older cohorts are removed whole, oldest first,
+at most 25 assets (five cohorts) per run; a larger backlog is worked off over
+later runs. It plans nothing from a listing that is truncated, duplicated,
+longer than 1,000 assets or changed between its reads; when the live
+`latest.json` names a version older than this cohort or this cohort's five
+downloads are not all uploaded; or when a `latest.json` download URL is not
+exactly one versioned asset of this release (a query, fragment, encoded or
+dot segment, or other name refuses the plan). Each asset is re-read by ID
+and must keep its exact name and download URL before it is deleted. Each
+GitHub request is bounded to 15 seconds and no request starts after three
+minutes, within the step's 5-minute timeout.
+
+The step always prints its plan: how many assets, how many it would delete,
+and the window it keeps. It deletes only when `vars.STATION_NIGHTLY_DESKTOP_PRUNE`
+is exactly `enabled`; any other value, or none, reports only. The job runs in
+the `native-release` environment, so a variable of that name at the
+environment, repository or organization level controls deletion, and an
+environment-level one takes precedence over the repository's (which takes
+precedence over the organization's). The owner switch is the repository
+variable
+(`gh variable set STATION_NIGHTLY_DESKTOP_PRUNE --repo kontourai/station --body enabled`),
+with no variable of that name in the environment. Deletion is permanent: once
+enabled, builds cited as evidence elsewhere, such as ADR 0015's
+`0.1.11-nightly.2463.2` downloads and the `0.1.11-nightly.2475.3` Windows
+installer above, stop being downloadable; the citations remain as records.
+A failure is a `::warning` and does not change the job's outcome or the
+published cohort; a cohort left partly deleted is finished by the next run.
 
 The final receipt records separate macOS and Windows claims for this shared
 publication. Android retains its separate provider outcome. A build or release

@@ -1,7 +1,16 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import type { PublicStationHandshake } from '@kontourai/station-contracts/environment-security';
+import {
+  PUBLIC_STATION_HANDSHAKE_PATH,
+  type PublicStationHandshake,
+} from '@kontourai/station-contracts/environment-security';
 import { expect, type Locator, type Page, type Route } from '@playwright/test';
 import { execFileSyncBounded } from '../scripts/lib/bounded-capture.mjs';
 import { buildLongSessionTurns } from './fixtures/long-session';
@@ -17,11 +26,35 @@ import { routeCoreUpdateCheck } from './helpers/core-update-route';
 import { resolveE2EApiBase } from './helpers/e2e-target';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import {
+  type AppErrorObservation,
+  type AppErrorSurfaceCounts,
+  type ControlBox,
+  type ControlMovement,
+  type ControlNameDiff,
+  createFailedRequestLog,
+  formatControlChangeTable,
+  type GalleryFault,
+  isChunkPath,
+  READ_APP_ERROR_SURFACES,
+  readGalleryFaults,
+} from './helpers/gallery-app-error-state';
+import {
+  assertGalleryAssetScopeCapacity,
   createGalleryAssetDiagnostics,
   inventoryGalleryAssets,
   readGalleryLifecycle,
   retainGalleryAssetDiagnostics,
 } from './helpers/gallery-asset-diagnostics';
+import {
+  createDocumentTracker,
+  observeGalleryRequests,
+} from './helpers/gallery-document-tracker';
+import {
+  captureScreens,
+  MAX_SECOND_CAPTURES,
+  readSettleWindow,
+  type SecondCaptureRecord,
+} from './helpers/gallery-screen-attempt';
 import {
   auditGalleryScreen,
   type GalleryUiAudit,
@@ -36,6 +69,7 @@ import {
   installProjectConversationsFixture,
   installProjectRoomFixture,
   installTaskRoomFixture,
+  LIVE_ROOM_SCENES,
   NAVIGATION_THREAD_ROOT,
   type ProjectRoomScene,
   type TaskRoomScene,
@@ -299,6 +333,26 @@ function newProjectOverlay(page: Page) {
  * screen that's actually fine a moment later. */
 async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
   await expect(newProjectOverlay(page)).toHaveCount(0, { timeout: timeoutMs });
+}
+
+/** How long a full navigation may wait for the app shell past the splash. */
+const APP_SHELL_READY_TIMEOUT_MS = 20_000;
+
+/**
+ * Navigates and waits past the "Warming up" splash for the real app shell.
+ * A screen's first navigation and any later full navigation in its own
+ * `afterGoto` use this, so each gets the same budget (run 43671004780 failed
+ * a child-chat reopen that waited 5 s with the splash still up).
+ */
+async function gotoAppShell(page: Page, url: string) {
+  await page.goto(url, { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(
+    () =>
+      !!document.querySelector('.app') &&
+      !document.body.textContent?.includes('Warming up'),
+    undefined,
+    { timeout: APP_SHELL_READY_TIMEOUT_MS },
+  );
 }
 
 /**
@@ -1367,23 +1421,16 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
           page.getByText('Couldn’t refresh the inbox.', { exact: true }),
         ).toBeVisible();
         const inbox = page.getByRole('complementary', { name: 'Inbox chats' });
-        await inbox
-          .getByRole('button', { name: 'Inbox actions', exact: true })
-          .click();
-        await page
-          .getByRole('menuitem', { name: 'Refresh inbox', exact: true })
-          .click();
-        await inbox
-          .getByRole('button', { name: 'Inbox actions', exact: true })
-          .click();
-        const refreshing = page.getByRole('menuitem', {
-          name: 'Refreshing…',
+        // The failed read's Retry is the inbox's refresh (#5029).
+        await inbox.getByRole('button', { name: 'Retry', exact: true }).click();
+        const refreshing = inbox.getByRole('button', {
+          name: 'Retrying…',
           exact: true,
         });
         await expect(refreshing).toBeVisible();
         await expect(refreshing).toBeDisabled();
         await expect.poll(() => inventoryReads).toBe(1);
-        // Each attempt reaches the real disabled menu item and must fail
+        // Each attempt reaches the real disabled Retry and must fail
         // actionability for that reason, without issuing another read.
         for (let i = 0; i < 5; i++) {
           await expect(refreshing.click({ timeout: 200 })).rejects.toThrow(
@@ -1395,10 +1442,10 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
         await expect(
           page.getByText('Couldn’t refresh the inbox.', { exact: true }),
         ).toBeHidden();
-        await expect(
-          page.getByRole('menuitem', { name: 'Refresh inbox', exact: true }),
-        ).toBeEnabled();
-        await page.keyboard.press('Escape');
+        // A healthy list offers no refresh control at all.
+        await expect(inbox.getByRole('button', { name: /^Retry/ })).toHaveCount(
+          0,
+        );
         const row = page
           .locator('.chat-dock-inbox [data-testid="inbox-row"]')
           .filter({ hasText: 'Mismatch demo chat' });
@@ -1595,7 +1642,10 @@ function overlayDockProjectMismatchHooks(
           await expect(
             page
               .getByRole('complementary', { name: 'Inbox chats' })
-              .getByRole('button', { name: 'Inbox actions', exact: true }),
+              .getByRole('button', {
+                name: 'Browse all conversations',
+                exact: true,
+              }),
           ).toBeVisible();
           await expect(
             page.getByText('Couldn’t refresh the inbox.', { exact: true }),
@@ -1870,6 +1920,11 @@ interface Screen {
    * be captured as the wrong tile).
    */
   afterGoto?: (page: Page) => Promise<void>;
+  /**
+   * Optional checks after the audit has passed its error-surface check (a
+   * post-shot interaction the photo must not show).
+   */
+  afterAudit?: (page: Page) => Promise<void>;
   /** Release screen fixtures after capture and interaction checks, even on failure. */
   cleanup?: () => Promise<void>;
   /**
@@ -2591,9 +2646,12 @@ function inventoryDrilldownScreens(): Screen[] {
  * The Station switcher with a desktop's worth of saved Stations: the active
  * one, two that answer and two whose connections are refused, at 390 and 1440
  * in both themes, plus the inline forget confirmation. Every extra Station is
- * routed here, because the gallery answers the public handshake on any
- * origin. Extra profiles join the gallery's own seed only on this screen's
- * URL, and only once, since init scripts outlive the screen.
+ * routed here. The switcher calls a Station Online only when its public
+ * handshake answers as a Station, so the two that answer serve the gallery's
+ * handshake on that path; an empty 200 there reads as "Not confirmed".
+ * (Playwright adds the CORS headers a cross-origin read needs to a fulfilled
+ * response that has none.) Extra profiles join the gallery's own seed only on
+ * this screen's URL, and only once, since init scripts outlive the screen.
  */
 function stationSwitcherScreens(): Screen[] {
   const online = 'https://online.gallery.test';
@@ -2616,7 +2674,11 @@ function stationSwitcherScreens(): Screen[] {
       path: '/?gallery=station-switcher',
       viewport,
       beforeGoto: async (page) => {
-        const answer = (route: Route) => route.fulfill({ status: 200 });
+        const answer = (route: Route) =>
+          new URL(route.request().url()).pathname ===
+          PUBLIC_STATION_HANDSHAKE_PATH
+            ? fulfillGalleryStationHandshake(route)
+            : route.fulfill({ status: 200 });
         const refuse = (route: Route) => route.abort('connectionrefused');
         await page.route(`${online}/**`, answer);
         await page.route(`${offline}/**`, refuse);
@@ -2686,6 +2748,17 @@ function stationSwitcherScreens(): Screen[] {
         await expect(
           menu.getByRole('menuitem', { name: 'Forget 2 unreachable' }),
         ).toBeVisible();
+        // A Station that would fail if chosen is drawn greyed out. Its row is
+        // `aria-disabled`, not `disabled`, so the shared disabled-row style
+        // does not reach it and only its own rule keeps it apart from a row
+        // that can be chosen.
+        const rowColour = (name: RegExp) =>
+          menu
+            .getByRole('menuitemradio', { name })
+            .evaluate((row) => getComputedStyle(row).color);
+        expect(await rowColour(/^Laptop — Unreachable/)).not.toBe(
+          await rowColour(/^Media server — Online/),
+        );
         if (armed) {
           await menu
             .getByRole('menuitemradio', { name: /^Old dev instance/ })
@@ -3509,6 +3582,9 @@ const ROOM_SCENES = [
   { scene: 'edited', room: 'project' },
   { scene: 'deleted', room: 'project' },
   { scene: 'attachment', room: 'project' },
+  { scene: 'live-mention', room: 'project' },
+  { scene: 'agent-working', room: 'project' },
+  { scene: 'agent-outcome', room: 'project' },
   { scene: 'thread', room: 'task' },
   { scene: 'working', room: 'task' },
 ] as const satisfies readonly (
@@ -3576,6 +3652,10 @@ function roomConversationScreens(): Screen[] {
                 (route) =>
                   fulfillGalleryStationHandshake(route, false, {
                     projectRoomMessageActions: true,
+                    // The shared live stream, typing and members (#4798).
+                    ...(LIVE_ROOM_SCENES.includes(scene)
+                      ? { projectRoomLive: true }
+                      : {}),
                   }),
               );
               fixture = await installProjectRoomFixture(page, {
@@ -3690,6 +3770,42 @@ function roomConversationScreens(): Screen[] {
             if (scene === 'mention') {
               await composer.click();
               await composer.pressSequentially('@');
+            }
+            if (scene === 'live-mention') {
+              // The reader's own mention stands out; someone is typing.
+              await expect(
+                conversation.locator('.room-mention--self'),
+              ).toHaveText('@Maya Chen');
+              await expect(
+                roomRegion.getByText('Jonas Berg is typing…'),
+              ).toBeVisible();
+              // A narrowed search, so the list leaves the room above it in view.
+              await composer.click();
+              await composer.pressSequentially('@Pri');
+              await expect(
+                roomRegion.getByRole('option', { name: /Priya Natarajan/ }),
+              ).toBeVisible();
+              if (viewport.width === MOBILE.width)
+                await expectTouchTarget(
+                  roomRegion.getByRole('option', { name: /Priya Natarajan/ }),
+                  'Mention option',
+                );
+            }
+            if (scene === 'agent-working') {
+              await expect(
+                conversation.getByText('Working on it…'),
+              ).toBeVisible();
+              await expect(
+                conversation.getByText('Scout is working…'),
+              ).toBeVisible();
+            }
+            if (scene === 'agent-outcome') {
+              await expect(
+                conversation.getByText('Couldn’t finish'),
+              ).toBeVisible();
+              await expect(
+                conversation.getByText('Stopped', { exact: true }),
+              ).toBeVisible();
             }
             if (scene === 'keyboard') {
               await composer.click();
@@ -4331,7 +4447,7 @@ function channelNavigationScreens(): Screen[] {
                   }
                 } else {
                   await expect(
-                    room.getByText('Both numbers are fixed in the draft now.'),
+                    room.getByText('Both fixes are in the branch now.'),
                   ).toBeVisible();
                   await expect(
                     room.getByRole('heading', { name: 'Thread' }),
@@ -4586,10 +4702,12 @@ function childChatScreens(): Screen[] {
           await expect(
             dock.getByText('The review is ready.', { exact: true }),
           ).toBeVisible();
-          await page.goto(reopen.toString());
+          // A full navigation: the same splash wait and breadcrumb budget as
+          // this screen's first load, not the 5 s default.
+          await gotoAppShell(page, reopen.toString());
           await expect(
             dock.getByRole('navigation', { name: 'Chat breadcrumb' }),
-          ).toBeVisible();
+          ).toBeVisible({ timeout: 20000 });
           // Real pointer actions prove both controls survive header clipping,
           // including a long ancestor title at desktop and phone widths.
           for (const name of [
@@ -4709,8 +4827,108 @@ function childChatScreens(): Screen[] {
   );
 }
 
+/**
+ * #4799: the reader's own mentions on the attention page, from their private
+ * feed in the exact record shape `GET /api/me/notifications` serves.
+ */
+function personMentionScreens(): Screen[] {
+  const mention = (
+    id: string,
+    title: string,
+    body: string,
+    createdAt: string,
+    read: boolean,
+  ) => ({
+    id,
+    source: 'project-room',
+    category: 'room-mention',
+    title,
+    body,
+    priority: 'normal',
+    status: 'delivered',
+    scheduledAt: null,
+    deliveredAt: createdAt,
+    metadata: {
+      envelope: {
+        v: 1,
+        source: { kind: 'system', subsystem: 'project-room' },
+        audience: {
+          kind: 'principal',
+          principalId: 'human:local:operator',
+          projectId: 'gallery-project',
+        },
+        urgency: 'attention',
+        target: {
+          kind: 'path',
+          path: `/projects/gallery-onboarding?section=room&message=${id}`,
+        },
+        interrupt: 'default',
+        ...(read ? { readAt: createdAt, readBy: 'web:gallery' } : {}),
+      },
+    },
+    createdAt,
+    updatedAt: createdAt,
+  });
+  const feed = [
+    mention(
+      'c1000000-0000-4000-8000-000000000001',
+      'Priya Natarajan mentioned you in #general',
+      '@Maya Chen can you sign off on the copy today? @Jonas Berg has the numbers.',
+      new Date(Date.now() - 5 * 60_000).toISOString(),
+      false,
+    ),
+    mention(
+      'c1000000-0000-4000-8000-000000000002',
+      'Jonas Berg mentioned you in #design',
+      'Updated both screens, @Maya Chen. Ready when you are.',
+      new Date(Date.now() - 95 * 60_000).toISOString(),
+      true,
+    ),
+  ];
+  return (['dark', 'light'] as const).flatMap((theme) =>
+    [DESKTOP, MOBILE].map((viewport): Screen => {
+      const width = viewport.width === DESKTOP.width ? 'desktop' : 'mobile';
+      let restore: (() => Promise<void>) | undefined;
+      return {
+        name: `notifications-for-you-${theme}-${width}`,
+        title: `For you mentions — ${theme}, ${viewport.width}px`,
+        path: '/notifications',
+        viewport,
+        captureTheme: theme,
+        async beforeGoto(page) {
+          restore = await withRoute(page, '**/api/me/notifications', (route) =>
+            route.request().method() === 'GET'
+              ? route.fulfill({ json: { success: true, data: feed } })
+              : rejectUnexpectedFixtureRequest(route),
+          );
+        },
+        async afterGoto(page) {
+          const section = page.getByRole('region', { name: 'For you' });
+          await expect(section).toBeVisible();
+          await expect(
+            section.getByRole('button', {
+              // The visually hidden ", unread" is its own box, so the
+              // accessible name may carry a space before its comma.
+              name: /Priya Natarajan mentioned you in #general\s*, unread/,
+            }),
+          ).toBeVisible();
+          if (viewport.width === MOBILE.width)
+            await expectTouchTarget(
+              section.getByRole('button').first(),
+              'Mention row',
+            );
+        },
+        async cleanup() {
+          await restore?.();
+        },
+      };
+    }),
+  );
+}
+
 const SCREENS: Screen[] = [
   ...roomConversationScreens(),
+  ...personMentionScreens(),
   ...channelNavigationScreens(),
   ...appsLibraryScreens(),
   ...appsLibraryScreens(true),
@@ -6345,6 +6563,7 @@ const SCREENS: Screen[] = [
     path: '/?dock=open&chat=gallery-mismatch-conversation',
     viewport,
     ...overlayDockProjectMismatchHooks(true),
+    afterAudit: verifyConversationRecovery,
   })),
   ...[DESKTOP, { width: 412, height: 915 }].map(
     (viewport): Screen => ({
@@ -6687,6 +6906,61 @@ interface Shot {
    * which that judge fails rather than reading as "no findings".
    */
   uiAudit?: GalleryUiAudit | { error: string };
+  /** 2 when an app error surface earned this screen its single second capture. */
+  attempts?: 1 | 2;
+  /** The final attempt's app error surface, when that is why the screen failed. */
+  appError?: AppErrorObservation;
+  /**
+   * Report only. Between the controls read just before the screenshot and
+   * those read after the audit: which names changed, and how far
+   * same-identity controls moved.
+   */
+  controlsAfterPhoto?: ControlNameDiff;
+  controlMovement?: ControlMovement;
+}
+
+/** Visible controls, as the capture records them for a screen. */
+async function readVisibleControls(page: Page) {
+  return page
+    .locator('button, [role="button"], input[type="submit"]')
+    .evaluateAll((elements) =>
+      elements
+        .filter((element) => {
+          const rect = element.getBoundingClientRect();
+          const style = getComputedStyle(element);
+          return (
+            rect.width > 0 &&
+            rect.height > 0 &&
+            rect.top < innerHeight &&
+            rect.bottom > 0 &&
+            rect.left < innerWidth &&
+            rect.right > 0 &&
+            style.visibility !== 'hidden' &&
+            style.display !== 'none'
+          );
+        })
+        .slice(0, 100)
+        .map((element) => {
+          const rect = element.getBoundingClientRect();
+          return {
+            label: (
+              element.getAttribute('aria-label') ||
+              element.textContent ||
+              element.getAttribute('value') ||
+              ''
+            )
+              .trim()
+              .slice(0, 160),
+            disabled:
+              element.matches(':disabled') ||
+              element.getAttribute('aria-disabled') === 'true',
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+          };
+        }),
+    ) as Promise<ControlBox[]>;
 }
 
 function escapeHtml(value: string): string {
@@ -6856,24 +7130,125 @@ test('build gallery — capture key screens', async ({ page }) => {
   }
 
   // Keep the gallery's timeout proportional to its declared coverage instead
-  // of raising the shared Playwright default used by smaller specs.
-  test.setTimeout(Math.max(90_000, selectedScreens.length * 7_000));
+  // of raising the shared Playwright default used by smaller specs: 7 s a
+  // screen, the run's bounded second captures, and an investigation's settle
+  // window when one is set (0 by default).
+  const settleWindowMs = readSettleWindow(process.env);
+  test.setTimeout(
+    Math.max(
+      90_000,
+      selectedScreens.length * (7_000 + settleWindowMs) +
+        MAX_SECOND_CAPTURES * (7_000 + settleWindowMs),
+    ),
+  );
+
+  // Test-only; refused on GitHub Actions and on a full capture (see
+  // readGalleryFaults).
+  const faults = readGalleryFaults(
+    process.env,
+    requestedScreens,
+    SCREENS.map((screen) => screen.name),
+  );
+  if (faults.length > 0)
+    console.log(
+      `Gallery fault injection is ACTIVE for this targeted capture: ${JSON.stringify(faults)}`,
+    );
 
   mkdirSync(join(GALLERY_DIR, GALLERY_DIAGNOSTICS), { recursive: true });
   const checkoutStart = readGalleryCheckout();
+  // Every declared screen gets its own bucket, even in a targeted capture.
+  assertGalleryAssetScopeCapacity(SCREENS.length);
+  const origin = new URL(
+    process.env.PW_BASE_URL ?? test.info().project.use.baseURL ?? '',
+  ).origin;
+  const documents = createDocumentTracker();
   const assets = createGalleryAssetDiagnostics(
-    new URL(process.env.PW_BASE_URL ?? test.info().project.use.baseURL ?? '')
-      .origin,
+    origin,
     selectedScreens.map((screen) => screen.name),
+    Date.now,
+    documents,
   );
-  const onRequest = assets.request;
-  const onResponse = assets.response;
-  const onFinished = assets.finished;
-  const onFailed = assets.failed;
-  page.on('request', onRequest);
-  page.on('response', onResponse);
-  page.on('requestfinished', onFinished);
-  page.on('requestfailed', onFailed);
+  const failedRequests = createFailedRequestLog(origin, documents);
+  const stopObserving = observeGalleryRequests(page, {
+    documents,
+    failedRequests,
+    assets,
+  });
+  const secondCaptures: SecondCaptureRecord[] = [];
+  // The attempt the fault injection acts on, and the photo it may wait for.
+  let faultAttempt: {
+    screen: string;
+    attempt: number;
+    screenshotWritten: Promise<void>;
+    release: () => void;
+  } | null = null;
+  const faultsFired: Array<{
+    screen: string;
+    attempt: number;
+    kind: GalleryFault['kind'];
+    path?: string;
+  }> = [];
+  const chunkFaults = faults.filter(
+    (fault): fault is Extract<GalleryFault, { kind: 'chunk' }> =>
+      fault.kind === 'chunk',
+  );
+  // Test-only: a worker-cached chunk would never reach the network, and a
+  // poisoned one must not outlive its screen.
+  const evictFaultedChunks = () =>
+    page
+      .evaluate(
+        async (chunks) => {
+          if (typeof caches === 'undefined') return;
+          for (const name of await caches.keys()) {
+            const cache = await caches.open(name);
+            for (const request of await cache.keys()) {
+              const { pathname } = new URL(request.url);
+              if (
+                chunks.some((chunk) => pathname.startsWith(`/assets/${chunk}-`))
+              )
+                await cache.delete(request);
+            }
+          }
+        },
+        chunkFaults.map((fault) => fault.chunk),
+      )
+      .catch(() => {});
+  if (chunkFaults.length > 0)
+    // The context, not the page: chunks are served through the app's service
+    // worker, whose own fetches page.route never sees.
+    await page.context().route(
+      (url) =>
+        chunkFaults.some((fault) => isChunkPath(url.pathname, fault.chunk)),
+      async (route) => {
+        const pathname = new URL(route.request().url()).pathname;
+        const active = faultAttempt;
+        const fault = chunkFaults.find(
+          (candidate) =>
+            active !== null &&
+            candidate.screen === active.screen &&
+            candidate.attempts.includes(active.attempt) &&
+            isChunkPath(pathname, candidate.chunk),
+        );
+        // Every request for the chunk in the attempt: a route chunk is also
+        // preloaded, and failing only the first left the import to succeed.
+        if (!active || !fault) return route.fallback();
+        if (fault.when === 'after-screenshot') await active.screenshotWritten;
+        faultsFired.push({
+          screen: active.screen,
+          attempt: active.attempt,
+          kind: fault.kind,
+          path: pathname,
+        });
+        if (fault.mode === 'not-found') return route.fulfill({ status: 404 });
+        if (fault.mode === 'poison')
+          return route.fulfill({
+            status: 200,
+            contentType: 'text/javascript',
+            body: 'throw new Error("Gallery fault injection: a chunk that throws when evaluated");',
+          });
+        await route.abort('aborted');
+      },
+    );
   const emittedBefore = process.env.STATION_E2E_UI_DIR
     ? inventoryGalleryAssets(process.env.STATION_E2E_UI_DIR)
     : null;
@@ -7034,146 +7409,243 @@ test('build gallery — capture key screens', async ({ page }) => {
     }),
   );
 
+  // The screen being captured's diagnostics, set by its attempts' ports and
+  // read when its result is recorded.
+  let layout: Shot['layout'];
+  let rasterDiagnostic: Shot['rasterDiagnostic'];
+  let uiAudit: Shot['uiAudit'];
+  const screenFault = (
+    screen: Screen,
+    kind: GalleryFault['kind'],
+    attempt: number,
+  ) =>
+    faults.find(
+      (fault) =>
+        fault.screen === screen.name &&
+        fault.kind === kind &&
+        fault.attempts.includes(attempt),
+    );
   try {
-    for (const screen of selectedScreens) {
-      assets.screen(screen.name);
-      browserErrors.length = 0;
-      const file = `${screen.name}.png`;
-      let layout: Shot['layout'];
-      let rasterDiagnostic: Shot['rasterDiagnostic'];
-      let uiAudit: Shot['uiAudit'];
-      try {
-        await page.setViewportSize(screen.viewport);
-        await page.emulateMedia({
-          reducedMotion: screen.reducedMotion ? 'reduce' : 'no-preference',
+    // gallery-screen-attempt.ts owns the loop over screens, the run's
+    // second-capture budget, the order of the error-surface checks and the
+    // retry rule. Every attempt is a fresh navigation on the same instance;
+    // `beforeGoto` and `cleanup` run for each.
+    await captureScreens(page, selectedScreens, {
+      failedRequests,
+      screenStarted: (screen) => assets.screen(screen.name),
+      screenFinished: (screen) => assets.screenFinished(screen.name),
+      ports: (screen, attempt) => {
+        const file = `${screen.name}.png`;
+        browserErrors.length = 0;
+        layout = undefined;
+        rasterDiagnostic = undefined;
+        uiAudit = undefined;
+        let release = () => {};
+        const screenshotWritten = new Promise<void>((resolve) => {
+          release = resolve;
         });
-        if (screen.beforeGoto) {
-          await screen.beforeGoto(page);
-        }
-        // Delivery is live-only. Observe this document's general-event stream
-        // before navigation so the POST cannot beat its subscription.
-        const notificationStream = [
-          'motion-reduced-notification',
-          'overlay-toast',
-          'overlay-toast-action',
-        ].includes(screen.name)
-          ? page.waitForResponse(
-              (response) => {
-                const url = new URL(response.url());
-                return (
-                  response.status() === 200 &&
-                  (url.pathname === '/events' ||
-                    (url.pathname === '/api/orchestration/events' &&
-                      url.searchParams.get('includeGeneral') === '1'))
+        faultAttempt = {
+          screen: screen.name,
+          attempt,
+          screenshotWritten,
+          release,
+        };
+        const faulted = chunkFaults.some(
+          (fault) => fault.screen === screen.name,
+        );
+        return {
+          capture: async (photo) => {
+            if (faulted) await evictFaultedChunks();
+            await page.setViewportSize(screen.viewport);
+            await page.emulateMedia({
+              reducedMotion: screen.reducedMotion ? 'reduce' : 'no-preference',
+            });
+            if (screen.beforeGoto) {
+              await screen.beforeGoto(page);
+            }
+            // Delivery is live-only. Observe this document's general-event stream
+            // before navigation so the POST cannot beat its subscription.
+            const notificationStream = [
+              'motion-reduced-notification',
+              'overlay-toast',
+              'overlay-toast-action',
+            ].includes(screen.name)
+              ? page.waitForResponse(
+                  (response) => {
+                    const url = new URL(response.url());
+                    return (
+                      response.status() === 200 &&
+                      (url.pathname === '/events' ||
+                        (url.pathname === '/api/orchestration/events' &&
+                          url.searchParams.get('includeGeneral') === '1'))
+                    );
+                  },
+                  { timeout: 10_000 },
+                )
+              : null;
+            // #1650: the ORDER of everything below lives in
+            // `runScreenshotCaptureSequence` so it is a unit a test can execute —
+            // a passing gallery run compares pixels and can never report a step
+            // having moved to the wrong side of another one. Each step's own
+            // reason stays here, next to the mechanic it performs. The web-font
+            // settle is the one step that module performs itself, against the page
+            // passed here, so the STEP MAP cannot wire in a settle that reads
+            // nothing. That the object passed here is the real page is checked by
+            // `typecheck:e2e` (the structural assignment on this line) and by
+            // reading the diff, like the other six steps.
+            await runScreenshotCaptureSequence(page, {
+              reachScreen: async () => {
+                await gotoAppShell(page, screen.path);
+                // Route-only captures must not inherit a drawer opened by an
+                // earlier scenario. Surface stress cases opt in through their URL.
+                const requestedState = new URL(
+                  screen.path,
+                  'http://gallery.invalid',
                 );
+                if (requestedState.searchParams.get('surface') !== 'activity') {
+                  const hideActivity = page.getByRole('button', {
+                    name: 'Hide Activity',
+                    exact: true,
+                  });
+                  if (await hideActivity.count()) await hideActivity.click();
+                }
+                if (requestedState.searchParams.get('dock') !== 'open') {
+                  const collapseChat = page.getByRole('button', {
+                    name: 'Collapse chat',
+                    exact: true,
+                  });
+                  if (await collapseChat.count()) await collapseChat.click();
+                }
+                if (screen.waitFor) {
+                  await page.waitForSelector(screen.waitFor, {
+                    timeout: 10_000,
+                  });
+                }
+                // Let async panels settle so the shot reflects loaded data.
+                await page.waitForTimeout(1200);
               },
-              { timeout: 10_000 },
-            )
-          : null;
-        // #1650: the ORDER of everything below lives in
-        // `runScreenshotCaptureSequence` so it is a unit a test can execute —
-        // a passing gallery run compares pixels and can never report a step
-        // having moved to the wrong side of another one. Each step's own
-        // reason stays here, next to the mechanic it performs. The web-font
-        // settle is the one step that module performs itself, against the page
-        // passed here, so the STEP MAP cannot wire in a settle that reads
-        // nothing. That the object passed here is the real page is checked by
-        // `typecheck:e2e` (the structural assignment on this line) and by
-        // reading the diff, like the other six steps.
-        await runScreenshotCaptureSequence(page, {
-          reachScreen: async () => {
-            await page.goto(screen.path, { waitUntil: 'domcontentloaded' });
-            // Wait past the "Warming up" splash for the real app shell.
-            await page.waitForFunction(
-              () =>
-                !!document.querySelector('.app') &&
-                !document.body.textContent?.includes('Warming up'),
-              undefined,
-              { timeout: 20_000 },
-            );
-            // Route-only captures must not inherit a drawer opened by an
-            // earlier scenario. Surface stress cases opt in through their URL.
-            const requestedState = new URL(
-              screen.path,
-              'http://gallery.invalid',
-            );
-            if (requestedState.searchParams.get('surface') !== 'activity') {
-              const hideActivity = page.getByRole('button', {
-                name: 'Hide Activity',
-                exact: true,
-              });
-              if (await hideActivity.count()) await hideActivity.click();
-            }
-            if (requestedState.searchParams.get('dock') !== 'open') {
-              const collapseChat = page.getByRole('button', {
-                name: 'Collapse chat',
-                exact: true,
-              });
-              if (await collapseChat.count()) await collapseChat.click();
-            }
-            if (screen.waitFor) {
-              await page.waitForSelector(screen.waitFor, { timeout: 10_000 });
-            }
-            // Let async panels settle so the shot reflects loaded data.
-            await page.waitForTimeout(1200);
+              assertNoLoadingSkeleton: screen.expectSkeleton
+                ? null
+                : () => assertNoLoadingSkeleton(page),
+              // Called as a method on `screen`, not as a bare extracted function:
+              // no declared hook uses `this` today, and this keeps that from being
+              // a precondition of the refactor rather than a property of the file.
+              afterGoto: screen.afterGoto
+                ? async () => {
+                    await notificationStream;
+                    await screen.afterGoto?.(page);
+                  }
+                : null,
+              // The identity-mismatch tile deliberately overrides the global
+              // healthy handshake and waits for its own deterministic blocked
+              // state. Every other screen must prove the gallery-wide route has
+              // reached the fixed healthy posture before capture rather than
+              // racing the opening probe.
+              assertConnectionChrome:
+                screen.name === 'overlay-connection-banner'
+                  ? null
+                  : () => assertGalleryConnectionChrome(page),
+              hideVolatileChrome: () => hideVolatileChrome(page),
+              screenshot: async () => {
+                if (screenFault(screen, 'fail-step', attempt))
+                  throw new Error(
+                    'Gallery fault injection: an ordinary capture-step failure (fail-step).',
+                  );
+                // Lazy brand marks can settle after the data skeleton disappears.
+                // A pending or failed mark is an incomplete reference image.
+                await expect(
+                  page.locator('.brand-icon[data-brand-key]').filter({
+                    hasNot: page.locator('svg, img, .brand-icon__glyph'),
+                  }),
+                ).toHaveCount(0, { timeout: 15_000 });
+                if (screen.name === 'settings-info-tip') {
+                  layout = await page.evaluate(() => {
+                    const main =
+                      document.querySelector<HTMLElement>('.app__main');
+                    if (!main)
+                      throw new Error('Gallery app main column is missing');
+                    return {
+                      appMainScrollTop: main.scrollTop,
+                      appMainScrollHeight: main.scrollHeight,
+                      appMainClientHeight: main.clientHeight,
+                      documentScrollY: window.scrollY,
+                    };
+                  });
+                }
+                if (screen.name !== 'settings-info-tip') {
+                  await page.mouse.move(0, 0);
+                }
+                if (screen.captureTheme) {
+                  await page.evaluate(
+                    (theme) =>
+                      document.documentElement.setAttribute(
+                        'data-theme',
+                        theme,
+                      ),
+                    screen.captureTheme,
+                  );
+                  await expect(page.locator('html')).toHaveAttribute(
+                    'data-theme',
+                    screen.captureTheme,
+                  );
+                }
+                await photo();
+                if (screen.name === 'overlay-dock-project-mismatch') {
+                  const before = await statusRasterState(page);
+                  const retiredCount = await page
+                    .getByRole('button', {
+                      name: 'Status unavailable — resync this conversation',
+                      exact: true,
+                    })
+                    .locator('..')
+                    .evaluate((host) => {
+                      const finished = host
+                        .getAnimations({ subtree: true })
+                        .filter((animation) => {
+                          const timing = animation.effect?.getComputedTiming();
+                          return (
+                            animation.playState === 'finished' &&
+                            timing?.iterations !== Infinity &&
+                            (timing?.fill === 'both' ||
+                              timing?.fill === 'forwards')
+                          );
+                        });
+                      for (const animation of finished) animation.cancel();
+                      return finished.length;
+                    });
+                  await page.evaluate(
+                    () =>
+                      new Promise<void>((resolveFrame) =>
+                        requestAnimationFrame(() =>
+                          requestAnimationFrame(() => resolveFrame()),
+                        ),
+                      ),
+                  );
+                  const after = await statusRasterState(page);
+                  const diagnosticFile = `${GALLERY_DIAGNOSTICS}/${screen.name}.retired-effects-diagnostic.png`;
+                  await page.screenshot({
+                    path: join(GALLERY_DIR, diagnosticFile),
+                    fullPage: true,
+                    animations: 'disabled',
+                  });
+                  rasterDiagnostic = {
+                    before,
+                    after,
+                    retiredCount,
+                    file: diagnosticFile,
+                    sha256: createHash('sha256')
+                      .update(readFileSync(join(GALLERY_DIR, diagnosticFile)))
+                      .digest('hex'),
+                  };
+                }
+              },
+            });
           },
-          assertNoLoadingSkeleton: screen.expectSkeleton
-            ? null
-            : () => assertNoLoadingSkeleton(page),
-          // Called as a method on `screen`, not as a bare extracted function:
-          // no declared hook uses `this` today, and this keeps that from being
-          // a precondition of the refactor rather than a property of the file.
-          afterGoto: screen.afterGoto
-            ? async () => {
-                await notificationStream;
-                await screen.afterGoto?.(page);
-              }
-            : null,
-          // The identity-mismatch tile deliberately overrides the global
-          // healthy handshake and waits for its own deterministic blocked
-          // state. Every other screen must prove the gallery-wide route has
-          // reached the fixed healthy posture before capture rather than
-          // racing the opening probe.
-          assertConnectionChrome:
-            screen.name === 'overlay-connection-banner'
-              ? null
-              : () => assertGalleryConnectionChrome(page),
-          hideVolatileChrome: () => hideVolatileChrome(page),
+          readSurfaces: async () =>
+            (await page.evaluate(
+              READ_APP_ERROR_SURFACES,
+            )) as AppErrorSurfaceCounts,
           screenshot: async () => {
-            // Lazy brand marks can settle after the data skeleton disappears.
-            // A pending or failed mark is an incomplete reference image.
-            await expect(
-              page.locator('.brand-icon[data-brand-key]').filter({
-                hasNot: page.locator('svg, img, .brand-icon__glyph'),
-              }),
-            ).toHaveCount(0, { timeout: 15_000 });
-            if (screen.name === 'settings-info-tip') {
-              layout = await page.evaluate(() => {
-                const main = document.querySelector<HTMLElement>('.app__main');
-                if (!main)
-                  throw new Error('Gallery app main column is missing');
-                return {
-                  appMainScrollTop: main.scrollTop,
-                  appMainScrollHeight: main.scrollHeight,
-                  appMainClientHeight: main.clientHeight,
-                  documentScrollY: window.scrollY,
-                };
-              });
-            }
-            if (screen.name !== 'settings-info-tip') {
-              await page.mouse.move(0, 0);
-            }
-            if (screen.captureTheme) {
-              await page.evaluate(
-                (theme) =>
-                  document.documentElement.setAttribute('data-theme', theme),
-                screen.captureTheme,
-              );
-              await expect(page.locator('html')).toHaveAttribute(
-                'data-theme',
-                screen.captureTheme,
-              );
-            }
             await page.screenshot({
               path: join(GALLERY_DIR, file),
               fullPage: true,
@@ -7183,159 +7655,123 @@ test('build gallery — capture key screens', async ({ page }) => {
               // in-flight transition from being mid-frame at capture time.
               animations: 'disabled',
             });
-            if (screen.name === 'overlay-dock-project-mismatch') {
-              const before = await statusRasterState(page);
-              const retiredCount = await page
-                .getByRole('button', {
-                  name: 'Status unavailable — resync this conversation',
-                  exact: true,
-                })
-                .locator('..')
-                .evaluate((host) => {
-                  const finished = host
-                    .getAnimations({ subtree: true })
-                    .filter((animation) => {
-                      const timing = animation.effect?.getComputedTiming();
-                      return (
-                        animation.playState === 'finished' &&
-                        timing?.iterations !== Infinity &&
-                        (timing?.fill === 'both' || timing?.fill === 'forwards')
-                      );
-                    });
-                  for (const animation of finished) animation.cancel();
-                  return finished.length;
-                });
-              await page.evaluate(
-                () =>
-                  new Promise<void>((resolveFrame) =>
-                    requestAnimationFrame(() =>
-                      requestAnimationFrame(() => resolveFrame()),
-                    ),
-                  ),
-              );
-              const after = await statusRasterState(page);
-              const diagnosticFile = `${GALLERY_DIAGNOSTICS}/${screen.name}.retired-effects-diagnostic.png`;
-              await page.screenshot({
-                path: join(GALLERY_DIR, diagnosticFile),
-                fullPage: true,
-                animations: 'disabled',
-              });
-              rasterDiagnostic = {
-                before,
-                after,
-                retiredCount,
-                file: diagnosticFile,
-                sha256: createHash('sha256')
-                  .update(readFileSync(join(GALLERY_DIR, diagnosticFile)))
-                  .digest('hex'),
+            faultAttempt?.release();
+            const move = screenFault(screen, 'move-after-photo', attempt);
+            if (move && move.kind === 'move-after-photo')
+              await page.evaluate((delayMs) => {
+                setTimeout(() => {
+                  const block = document.createElement('div');
+                  block.style.height = '80px';
+                  document.querySelector('.app')?.before(block);
+                }, delayMs);
+              }, move.delayMs);
+          },
+          readControls: () => readVisibleControls(page),
+          // Audit the photographed state, before any post-shot interaction.
+          audit: async () => {
+            try {
+              uiAudit = await auditGalleryScreen(page, screen.name);
+            } catch (error) {
+              uiAudit = {
+                error: error instanceof Error ? error.message : String(error),
               };
             }
+            return uiAudit;
           },
-        });
-        const controls = await page
-          .locator('button, [role="button"], input[type="submit"]')
-          .evaluateAll((elements) =>
-            elements
-              .filter((element) => {
-                const rect = element.getBoundingClientRect();
-                const style = getComputedStyle(element);
-                return (
-                  rect.width > 0 &&
-                  rect.height > 0 &&
-                  rect.top < innerHeight &&
-                  rect.bottom > 0 &&
-                  rect.left < innerWidth &&
-                  rect.right > 0 &&
-                  style.visibility !== 'hidden' &&
-                  style.display !== 'none'
-                );
-              })
-              .slice(0, 100)
-              .map((element) => ({
-                label: (
-                  element.getAttribute('aria-label') ||
-                  element.textContent ||
-                  element.getAttribute('value') ||
-                  ''
-                )
-                  .trim()
-                  .slice(0, 160),
-                disabled:
-                  element.matches(':disabled') ||
-                  element.getAttribute('aria-disabled') === 'true',
-              })),
+          // Capture whatever rendered so the broken state is still inspectable.
+          fallbackScreenshot: async () => {
+            await hideVolatileChrome(page);
+            await page.screenshot({
+              path: join(GALLERY_DIR, file),
+              animations: 'disabled',
+            });
+          },
+          cleanup: async () => {
+            faultAttempt?.release();
+            faultAttempt = null;
+            try {
+              await screen.cleanup?.();
+            } finally {
+              if (faulted) await evictFaultedChunks();
+            }
+            if (screenFault(screen, 'fail-cleanup', attempt))
+              throw new Error(
+                'Gallery fault injection: the screen cleanup threw (fail-cleanup).',
+              );
+          },
+          now: () => performance.now(),
+          wait: (ms) => page.waitForTimeout(ms),
+          settleWindowMs,
+          evidence: () => {
+            const { records, omitted } = failedRequests.snapshot();
+            return {
+              failedRequests: records,
+              omitted,
+              consoleErrors: [...browserErrors],
+            };
+          },
+        };
+      },
+      keepFirstImage: (screen) => {
+        try {
+          mkdirSync(join(GALLERY_DIR, 'transients'), { recursive: true });
+          const kept = `transients/${screen.name}.attempt-1.png`;
+          copyFileSync(
+            join(GALLERY_DIR, `${screen.name}.png`),
+            join(GALLERY_DIR, kept),
           );
-        // Audit the photographed state, before any post-shot interaction.
-        try {
-          uiAudit = await auditGalleryScreen(page, screen.name);
-        } catch (error) {
-          uiAudit = {
-            error: error instanceof Error ? error.message : String(error),
-          };
-        }
-        if (screen.name === 'telemetry-feedback-mobile') {
-          const extensionFailure = page
-            .getByTestId('toast-card')
-            .filter({ hasText: 'Extensions unavailable' });
-          if (await extensionFailure.count())
-            throw new Error(
-              `Extension registry failed during capture. Browser errors: ${JSON.stringify(browserErrors)}`,
-            );
-        }
-        if (
-          screen.name === 'desktop-conversation-resync' ||
-          screen.name === 'mobile-conversation-resync'
-        ) {
-          await verifyConversationRecovery(page);
-        }
-        shots.push({
-          screen,
-          file,
-          ok: true,
-          browserErrors: browserErrors.length ? [...browserErrors] : undefined,
-          controls,
-          layout,
-          rasterDiagnostic,
-          uiAudit,
-          sha256: createHash('sha256')
-            .update(readFileSync(join(GALLERY_DIR, file)))
-            .digest('hex'),
-        });
-      } catch (error) {
-        // Capture whatever rendered so the broken state is still inspectable.
-        try {
-          await hideVolatileChrome(page);
-          await page.screenshot({
-            path: join(GALLERY_DIR, file),
-            animations: 'disabled',
-          });
+          return kept;
         } catch {
-          /* nothing renderable */
+          return null;
         }
-        shots.push({
-          screen,
-          file,
-          ok: false,
-          // Preserve the already bounded per-screen console/page errors when
-          // a render assertion fails; the fallback PNG alone cannot explain
-          // a lazy-boundary failure. Failure and capture counts stay intact.
-          error: [
-            error instanceof Error ? error.message : String(error),
-            ...(browserErrors.length
-              ? [`Browser errors: ${JSON.stringify(browserErrors)}`]
-              : []),
-          ].join('\n'),
-        });
-      } finally {
-        await screen.cleanup?.();
-        assets.screenFinished(screen.name);
-      }
-    }
+      },
+      log: (line) => process.stdout.write(`${line}\n`),
+      screenCaptured: (screen, result) => {
+        const file = `${screen.name}.png`;
+        if (result.record) secondCaptures.push(result.record);
+        const { final } = result;
+        const shot: Shot = final.ok
+          ? {
+              screen,
+              file,
+              ok: true,
+              browserErrors: browserErrors.length
+                ? [...browserErrors]
+                : undefined,
+              controls: final.atPhoto.map(({ label, disabled }) => ({
+                label,
+                disabled,
+              })),
+              layout,
+              rasterDiagnostic,
+              uiAudit: final.audit,
+              controlsAfterPhoto: final.controlsAfterPhoto,
+              controlMovement: final.controlMovement,
+              sha256: createHash('sha256')
+                .update(readFileSync(join(GALLERY_DIR, file)))
+                .digest('hex'),
+            }
+          : {
+              screen,
+              file,
+              ok: false,
+              // An app error surface leads with its identity; the already
+              // bounded console/page errors stay as the last line, which
+              // attribution sets aside.
+              error: [
+                ...result.errorLines,
+                ...(browserErrors.length
+                  ? [`Browser errors: ${JSON.stringify(browserErrors)}`]
+                  : []),
+              ].join('\n'),
+              ...(final.appError ? { appError: final.appError } : {}),
+            };
+        shot.attempts = result.attempts;
+        shots.push(shot);
+      },
+    });
   } finally {
-    page.off('request', onRequest);
-    page.off('response', onResponse);
-    page.off('requestfinished', onFinished);
-    page.off('requestfailed', onFailed);
+    stopObserving();
     try {
       const network = await assets.finish();
       const checkoutEnd = readGalleryCheckout();
@@ -7404,6 +7840,14 @@ test('build gallery — capture key screens', async ({ page }) => {
           // (scripts/screenshot-diff.mjs) can never mistake a partial
           // gallery for full coverage.
           selection: requestedScreens,
+          // Every screen whose first attempt ended on an app error surface,
+          // and how its single second capture went; `second: "passed"` is a
+          // transient. Counted, never hidden.
+          secondCaptures,
+          // Only when an investigation widened the control record's window.
+          ...(settleWindowMs > 0 ? { settleWindowMs } : {}),
+          faultInjection:
+            faults.length > 0 ? { faults, fired: faultsFired } : null,
           screens: shots.map(
             ({
               file,
@@ -7416,6 +7860,10 @@ test('build gallery — capture key screens', async ({ page }) => {
               layout,
               rasterDiagnostic,
               uiAudit,
+              attempts,
+              appError,
+              controlsAfterPhoto,
+              controlMovement,
             }) => ({
               file,
               ok,
@@ -7428,6 +7876,10 @@ test('build gallery — capture key screens', async ({ page }) => {
               layout,
               rasterDiagnostic,
               uiAudit,
+              attempts: attempts ?? 1,
+              appError,
+              controlsAfterPhoto,
+              controlMovement,
             }),
           ),
         },
@@ -7435,6 +7887,22 @@ test('build gallery — capture key screens', async ({ page }) => {
         2,
       )}\n`,
     );
+    for (const line of formatControlChangeTable(
+      shots.map(({ screen, controlsAfterPhoto, controlMovement }) => ({
+        name: screen.name,
+        controlsAfterPhoto,
+        controlMovement,
+      })),
+      settleWindowMs,
+    ))
+      console.log(line);
+    if (secondCaptures.length > 0) {
+      const count = (second: SecondCaptureRecord['second']) =>
+        secondCaptures.filter((record) => record.second === second).length;
+      console.log(
+        `Gallery app error surfaces with a failed chunk request: ${secondCaptures.length} screen(s); ${count('passed')} passed a second capture (transient), ${secondCaptures.length - count('passed') - count('budget-exhausted')} failed it, ${count('budget-exhausted')} not captured again (budget of ${MAX_SECOND_CAPTURES}).`,
+      );
+    }
   }
 
   const ok = shots.filter((shot) => shot.ok).length;

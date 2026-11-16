@@ -50,6 +50,11 @@ import {
   FileConversationAcknowledgementStore,
   ownerDevicePredicate,
 } from '../../services/orchestration/conversation-acknowledgement-store.js';
+import type { CoordinatorWakeDelivery } from '../../services/orchestration/coordinator-session.js';
+import {
+  createFileFinishedAlertEpisodeStore,
+  FinishedAlertEpisodes,
+} from '../../services/orchestration/finished-alert-episodes.js';
 import { UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION } from '../../services/orchestration/session-owner-attribution.js';
 import { createTaskLeadReader } from '../../services/orchestration/task-question-wake.js';
 import type { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
@@ -77,6 +82,7 @@ import {
   TaskFollowUpWake,
   type TaskFollowUpWakePorts,
 } from '../../services/work-item-providers/task-follow-up-wake.js';
+import { stationSetupRequirementProbeOutcomes } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
 import { isExternalEngineBoundAgent } from '../agents/agent-engine-classification.js';
@@ -353,41 +359,99 @@ const BUILTIN_STATION_AGENT_SLUG = 'station';
  * Agent the person authored on Station's own engine still projects, because
  * they did ask for it.
  */
+type StationSetupRequirement = {
+  agentSlug: string;
+  agentName: string;
+  reason: string;
+};
+
+/**
+ * One owner's setup-requirement probe. It answers exactly as
+ * {@link readStationSetupRequirement}, and additionally remembers the last
+ * failure it reported (#4995): `/api/attention` polls this every few seconds,
+ * so a probe that cannot answer for the same reason on every poll used to
+ * write the same warning ~240 times a morning. It now warns once per change
+ * of failure identity (the error message) and logs once when reads recover.
+ * The state lives in this closure, owned by whoever composed the probe — the
+ * runtime support services — never in module scope.
+ */
+export function createStationSetupRequirementProbe(
+  context: ConfigureRuntimeRoutesContext,
+): () => Promise<StationSetupRequirement | null> {
+  let reportedFailure: string | undefined;
+  return async () => {
+    let requirement: StationSetupRequirement | null;
+    try {
+      requirement = await deriveStationSetupRequirement(context);
+    } catch (error) {
+      const failure = errorMessage(error);
+      stationSetupRequirementProbeOutcomes.add(1, { outcome: 'failed' });
+      if (failure !== reportedFailure) {
+        reportedFailure = failure;
+        // A read that could not answer is not a claim that setup is
+        // incomplete.
+        context.logger.warn('Station setup requirement probe failed', {
+          error: failure,
+        });
+      }
+      return null;
+    }
+    stationSetupRequirementProbeOutcomes.add(1, {
+      outcome: requirement ? 'blocked' : 'ready',
+    });
+    if (reportedFailure !== undefined) {
+      context.logger.info('Station setup requirement probe recovered', {
+        previousError: reportedFailure,
+      });
+      reportedFailure = undefined;
+    }
+    return requirement;
+  };
+}
+
+/**
+ * A single, stateless probe read. Long-lived callers compose
+ * {@link createStationSetupRequirementProbe} instead so a repeating failure is
+ * reported once.
+ */
 export async function readStationSetupRequirement(
   context: ConfigureRuntimeRoutesContext,
-): Promise<{ agentSlug: string; agentName: string; reason: string } | null> {
-  try {
-    const agents = await context.agentService.listAgents();
-    // Review L4: the subject has to be DETERMINISTIC — the item's id embeds
-    // this slug, and its first-observed timestamp is keyed by it, so a subject
-    // that varied with store order would re-mint the row. And taking
-    // `agents[0]` unconditionally silenced the notice whenever the agent that
-    // happened to sort first was external-engine bound, even with a blocked
-    // Station-engine agent right behind it. The first Station-engine
-    // candidate by slug, never the optional built-in Agent (#4388).
-    const candidates = [...agents]
-      .filter((agent) => agent.slug !== BUILTIN_STATION_AGENT_SLUG)
-      .sort((left, right) => left.slug.localeCompare(right.slug));
-    const readAvailability = createStationEngineAvailabilityReader(context);
-    for (const metadata of candidates) {
-      const spec = await context.agentService.getAgent(metadata.slug);
-      if (isExternalEngineBoundAgent(spec)) continue;
-      const reason = readAvailability(spec);
-      if (!reason) return null;
-      return {
-        agentSlug: metadata.slug,
-        agentName: metadata.name ?? spec.name ?? metadata.slug,
-        reason,
-      };
-    }
-    return null;
-  } catch (error) {
-    // A read that could not answer is not a claim that setup is incomplete.
-    context.logger.warn('Station setup requirement probe failed', {
-      error: errorMessage(error),
-    });
-    return null;
+): Promise<StationSetupRequirement | null> {
+  return createStationSetupRequirementProbe(context)();
+}
+
+async function deriveStationSetupRequirement(
+  context: ConfigureRuntimeRoutesContext,
+): Promise<StationSetupRequirement | null> {
+  const agents = await context.agentService.listAgents();
+  // Review L4: the subject has to be DETERMINISTIC — the item's id embeds
+  // this slug, and its first-observed timestamp is keyed by it, so a subject
+  // that varied with store order would re-mint the row. And taking
+  // `agents[0]` unconditionally silenced the notice whenever the agent that
+  // happened to sort first was external-engine bound, even with a blocked
+  // Station-engine agent right behind it. The first Station-engine
+  // candidate by slug, never the optional built-in Agent (#4388).
+  const candidates = [...agents]
+    .filter((agent) => agent.slug !== BUILTIN_STATION_AGENT_SLUG)
+    .sort((left, right) => left.slug.localeCompare(right.slug));
+  const readAvailability = createStationEngineAvailabilityReader(context);
+  for (const metadata of candidates) {
+    // #4995: the listing includes registry-default Agents (`claude`,
+    // `muse`, …) that never have an `agent.json`. Each is an engine
+    // connection, so it is external-engine bound and would be skipped below
+    // anyway; reading its absent file instead failed the whole probe. Skipping
+    // an absent spec keeps the order — and so the chosen subject — unchanged.
+    const spec = await context.agentService.findAgent(metadata.slug);
+    if (!spec || isExternalEngineBoundAgent(spec)) continue;
+    const reason = readAvailability(spec);
+    if (!reason) return null;
+    return {
+      agentSlug: metadata.slug,
+      agentName: metadata.name ?? spec.name ?? metadata.slug,
+      reason,
+    };
   }
+  return null;
 }
 
 /**
@@ -420,7 +484,16 @@ export function configureRuntimeSupportServices(
   options: {
     webPushEnabled?: boolean;
     threadInbox?: () =>
-      | Pick<ThreadInboxDelivery, 'submit' | 'entry'>
+      | Pick<ThreadInboxDelivery, 'submit' | 'entry' | 'hasWaitingFollowUp'>
+      | undefined;
+    /**
+     * The coordinator wake, once composed (absent on a hosted Station). A
+     * restart that finds a finish already written hands its record here
+     * instead of re-emitting NOTIFICATION_DELIVERED (see
+     * `onReplayedDelivery` in turn-completion-notifications.ts).
+     */
+    coordinatorWakes?: () =>
+      | Pick<CoordinatorWakeDelivery, 'observeNotification'>
       | undefined;
     /**
      * #2064 (D4): paused Survey/Flow gate review sessions for the attention
@@ -488,6 +561,16 @@ export function configureRuntimeSupportServices(
     getNotificationProviders(),
     context.logger,
   );
+  // Why a session's "finished" alert (and its phone card's Done) must wait:
+  // the service's facts plus a follow-up waiting in the conversation's inbox,
+  // which the service does not own (finished-alert-hold.ts).
+  const readFinishedAlertHold = (threadId: string): string[] => {
+    const reasons: string[] =
+      context.orchestrationService.readFinishedAlertHold(threadId);
+    if (options.threadInbox?.()?.hasWaitingFollowUp(threadId))
+      reasons.push('queued-follow-up');
+    return reasons;
+  };
   wireApprovalInboxNotifications(
     context.eventBus,
     approvalInboxProvider,
@@ -499,11 +582,24 @@ export function configureRuntimeSupportServices(
   // Whether it interrupts a surface (Web Push, native alert, desktop feed)
   // is the delivery router's focus/liveness decision below, not a check on
   // whether the owner holds any open `/events` stream.
+  // One record of each thread's completion episode: the listener below
+  // writes it, the phone card reads it, so both send one "finished" per
+  // episode, after confirmation (finished-alert-episodes.ts).
+  const finishedAlertEpisodes = new FinishedAlertEpisodes();
   wireTurnCompletionNotifications(
     context.eventBus,
     context.orchestrationService,
     notificationService,
     context.logger,
+    {
+      readFinishedAlertHold,
+      onReplayedDelivery: (notification) =>
+        options.coordinatorWakes?.()?.observeNotification(notification),
+      episodes: finishedAlertEpisodes,
+      episodeStore: createFileFinishedAlertEpisodeStore(
+        context.configLoader.getProjectHomeDir(),
+      ),
+    },
   );
   // station#3525 fix round FIX 1: the corrective half — see that function's
   // own docblock. Must be wired alongside `wireTurnCompletionNotifications`
@@ -897,8 +993,14 @@ export function configureRuntimeSupportServices(
         ),
       deviceHasOwnerStanding: (deviceId) =>
         context.environmentSecurityService.deviceHasOwnerStanding(deviceId),
-      listSessionReadModel: (authority) =>
-        context.orchestrationService.listSessionReadModel(authority),
+      finishedAlertHeld: (threadId) =>
+        finishedAlertEpisodes.isPending(threadId),
+      finishedAlertRelease: (threadId) =>
+        finishedAlertEpisodes.releaseFor(threadId),
+      isDelegatedChildSession: (threadId) =>
+        context.orchestrationService.isDelegatedChildSession(threadId),
+      listSessionReadModel: (authority, options) =>
+        context.orchestrationService.listSessionReadModel(authority, options),
       listProjectionEvents: (threadIds) => {
         const byThread = new Map<string, CanonicalRuntimeEvent[]>();
         const persisted =
@@ -920,6 +1022,10 @@ export function configureRuntimeSupportServices(
         ),
     }),
   });
+
+  // A held finish that settles, or a finish released after its window,
+  // changes the card without a lifecycle event of its own.
+  finishedAlertEpisodes.subscribe(() => agentActivityPublisher.requestFlush());
 
   const attentionProjection = new AttentionProjectionService(
     notificationService,
@@ -949,7 +1055,7 @@ export function configureRuntimeSupportServices(
     // row says "Needs: No enabled LLM provider connection is configured" is
     // reading a fact nobody projected, not a quiet Station; the two reading
     // different app configs (review H2) is that same disagreement inverted.
-    memoizeStationSetupRequirement(() => readStationSetupRequirement(context)),
+    memoizeStationSetupRequirement(createStationSetupRequirementProbe(context)),
     // #2064 (D4): the inbox widens to carry every item meaning "a human must
     // decide". Both sources are the SAME ones `/review-queue` reads, so the
     // bell's count and the Review page cannot disagree about what is pending.

@@ -1,0 +1,7 @@
+{
+  "revision": "a99d98613c4e1cf6760fd15243ccf1bf426c4b94",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Added that authority tools (skills, Agents, configuration, plugins, integrations, SSH hosts) ask a person on every call, guardian allow on Station's engine excepted; checked the station-control tool list and approval statements against pre-tool-policy.ts.","inputs":["docs/guides/self-configuring-agent.md","src-server/runtime/agents/pre-tool-policy.ts"]}
+  ]
+}

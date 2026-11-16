@@ -1,0 +1,13 @@
+{
+  "revision": "15d1df3bc49207263bdced8d75ab7d26443b44f0",
+
+  "notes": [
+    {"path":"docs/design/outside-agent-mcp-r2b-evidence.md","note":"Reviewed the oauth-store.ts change (request IDs now oar_-prefixed, grant IDs oag_-prefixed, same 32 random bytes; tickets, nonces, family, event, client IDs and tokens unchanged) against each citing document. The R2b, R3 and R4a evidence records state no request or grant ID format; their dated receipts and the R4a 47-character audience claim, which concerns oat_/ort_/oac_ tokens, remain accurate. The design and reference documents were updated in the same change.","inputs":["src-server/services/outside-agent/oauth-store.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp-r3-evidence.md","note":"Reviewed the oauth-store.ts change (request IDs now oar_-prefixed, grant IDs oag_-prefixed, same 32 random bytes; tickets, nonces, family, event, client IDs and tokens unchanged) against each citing document. The R2b, R3 and R4a evidence records state no request or grant ID format; their dated receipts and the R4a 47-character audience claim, which concerns oat_/ort_/oac_ tokens, remain accurate. The design and reference documents were updated in the same change.","inputs":["src-server/services/outside-agent/oauth-store.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp-r4a-evidence.md","note":"Reviewed the oauth-store.ts change (request IDs now oar_-prefixed, grant IDs oag_-prefixed, same 32 random bytes; tickets, nonces, family, event, client IDs and tokens unchanged) against each citing document. The R2b, R3 and R4a evidence records state no request or grant ID format; their dated receipts and the R4a 47-character audience claim, which concerns oat_/ort_/oac_ tokens, remain accurate. The design and reference documents were updated in the same change.","inputs":["src-server/services/outside-agent/oauth-store.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Reviewed the oauth-store.ts change (request IDs now oar_-prefixed, grant IDs oag_-prefixed, same 32 random bytes; tickets, nonces, family, event, client IDs and tokens unchanged) against each citing document. The R2b, R3 and R4a evidence records state no request or grant ID format; their dated receipts and the R4a 47-character audience claim, which concerns oat_/ort_/oac_ tokens, remain accurate. The design and reference documents were updated in the same change.","inputs":["src-server/services/outside-agent/oauth-store.ts"]}
+  ]
+}

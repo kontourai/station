@@ -83,7 +83,7 @@ that server's authentication requirements; some permit anonymous access or
 host-managed credentials. Blank fields alone do not establish readiness. A
 refused check retains its reason so you can correct the settings and retry.
 
-**Test Connection** first requests the model catalog. If no usable catalog is
+**Test connection** first requests the model catalog. If no usable catalog is
 available, it can send one minimal chat request using the connection's default
 model; that request may be billable. A successful catalog check alone does not
 prove chat, tool calling, images, or other model features. See the
@@ -162,11 +162,13 @@ provider's dated breakdown and active/group/model/surface annotations.
 Unavailable fields remain **Not reported**. An unavailable quota percentage does
 not discard readable account/credit details.
 
-**Data captured** shows the reading's source, credential storage kind, storage policy, unmapped non-null
-field paths and deliberate exclusions. Only field names leave the server for
-unmapped values. This bounded shape audit excludes null/empty fields, value
-validation, credential stores and other endpoints; “none in this response” does
-not establish complete provider coverage. The full quota response remains a live projection. **Allowance history** retains
+**Data captured** lists the reading's source, **Stored in** (secure store or
+credential file), **History**, **Fields Station didn't recognize**,
+**Excluded fields** and **Complete** (No when the response was too large to
+check). Only field names leave the server for unrecognized values, and the panel
+ends with “Values and credentials are never shown.” This bounded check excludes
+null/empty fields, value validation, credential stores and other endpoints;
+**None** does not establish complete provider coverage. The full quota response remains a live projection. **Allowance history** retains
 only window labels, percentages, durations, reset times and observation timestamps.
 It saves a 30-day window of the latest observation per UTC hour, at most 720 observations
 and 32 windows per observation, under this Station's `analytics/engine-allowance/`.
@@ -325,8 +327,8 @@ Project access administration still requires Project IAM. See the
 
 Choose **Manage Stations**, then **Connect a Station**; a phone with no saved
 Station also offers **Enter Station address** on its welcome screen, beside
-**Enter a pairing code**, with **Find nearby Stations** under **More connection
-options**. Enter its address, a pairing code,
+**Enter a pairing code**, with **Find nearby Stations** and **Manage Stations**
+under **More ways to connect**. Enter its address, a pairing code,
 or scan a QR code. Return in the address field continues. Without a controlling
 Station there is no peer option to weigh, so the destination goes straight to
 its one Device request instead of a second **Request selected access** step.
@@ -398,6 +400,11 @@ request does not revoke an already approved receiver grant. After confirmed
 cancellation, **Choose another Station** returns to destination selection.
 A saved peer
 credential establishes permission, not observed reachability or Project readiness.
+Reachability is observed separately: this Station keeps each paired
+Station's last public-handshake answer (probed with no credential, refreshed
+in the background while its list is being read, every few seconds while the
+**Runs on** list is open), so that list greys out one that is recovering, unreachable or answering as a
+different Station, and delegation to it fails at once with that reason.
 
 Tap the Station chip (its dot and name, in every state) on a phone, or the
 connection name on desktop, to
@@ -1002,6 +1009,37 @@ installed on your machine and the Claude Code bundled with the Claude Agent SDK:
 The Engine's readiness detail names the executable Station will launch and whichever versions it
 was able to read.
 
+A Claude session loads the repository's `AGENTS.md` files as well as its `CLAUDE.md` files.
+On its own, Claude Code loads `AGENTS.md` only in a project that has no `CLAUDE.md`. For each
+session, Station sets Claude Code's `instructionFiles` option for its built-in `agents-md`
+plugin to `claude-md-and-agents-md`
+([source](../../src-server/providers/adapters/claude-instruction-files.ts)). Claude Code then
+loads each `AGENTS.md` wherever it would load a `CLAUDE.md`, at the root and in nested folders,
+in the same way. It does not load an `AGENTS.md` twice when a `CLAUDE.md` imports it
+(`@AGENTS.md`) or links to it. Station reads no instruction file itself.
+
+Station sets the option only for the session, as a `--settings` value, and never writes your
+settings. It leaves the option out when any settings file it can read already sets
+`instructionFiles`, or its older name `projectInstructions`, under
+`pluginConfigs["agents-md@builtin"].options`. It reads `settings.json` in the session's Claude
+configuration directory, resolving a relative `CLAUDE_CONFIG_DIR` against the session's working
+folder as Claude Code does. It also reads this machine's `managed-settings.json` and the drop-ins
+in `managed-settings.d` that Claude Code reads (files whose names end in `.json` and do not start
+with a dot), in Claude Code's managed settings folder
+(`/Library/Application Support/ClaudeCode` on macOS, `/etc/claude-code` on Linux,
+`C:\Program Files\ClaudeCode` on Windows). It also leaves the option out when it cannot read
+one of those files as a regular JSON file of at most 1 MiB, or when `managed-settings.d` holds
+more than 256 such drop-ins. Then Claude Code's own setting applies.
+
+Managed settings that your organization delivers by MDM (a macOS configuration profile or the
+Windows policy registry) or from the server are not files Station can read. An
+`instructionFiles` value set there still takes precedence over the session's option. A
+`projectInstructions` value set only there does not, because Claude Code reads that older name
+only while `instructionFiles` is unset or at its default. Claude Code reports that older name as
+honoured only for now and asks for `instructionFiles` in its place, so set `instructionFiles` to
+keep a managed choice. A Claude Code version without the option ignores it and loads `CLAUDE.md`
+alone.
+
 ### Engines from the public registry
 
 Below Station's own engines, **Add engine** lists the engines in the
@@ -1480,7 +1518,10 @@ receive the connection's `env`; they use the selected profile's config home
 over the process environment. Changing `configHome` does not migrate existing
 history. Ordinary resumes resolve the current connection/profile environment,
 so changing it can make an older transcript unavailable. Adopted sessions with
-a recorded source-home binding follow that binding instead. Saving silently
+a recorded source-home binding follow that binding instead. Station also lists
+Codex conversations found in the connection's config home and in each
+profile's home, not only in `CODEX_HOME`, and continues one in the home it was
+found in ([conversations started outside Station](../user/getting-started.md#see-conversations-started-outside-station)). Saving silently
 drops invalid `env` entries, including values containing
 NUL or longer than 32,768 JavaScript string code units. It retains at most the
 first 64 valid entries. These rules are also applied when spawning from
@@ -1537,7 +1578,9 @@ one an Agent pins, the one credential recovery is trying, or else the
 connection's active profile. The overlay reaches Claude Code, Codex and Muse
 session starts and Codex quota reads for that profile. Muse has no connection
 `env` layer, and its profile's config-home key is `XDG_CONFIG_HOME`. It is not applied to model
-discovery, adopted sessions and source-home resumes, login readiness checks,
+discovery, adopted sessions and source-home resumes (except a Codex
+conversation found in a profile's own home, which continues with that
+profile's overlay), login readiness checks,
 login/enrolment into the profile, or the per-profile usage read
 (`GET /api/connections/agent/<engine>/credential-usage`), which reads the
 profile home directly.
@@ -1614,6 +1657,38 @@ Omitting `allowancePreference` from a policy update preserves the saved
 preference; send `"allowancePreference": null` to clear it. The existing SDK
 `useSetCredentialRecoveryAutomaticPolicyMutation` accepts the same optional
 field. This policy remains opt-in and automatic recovery remains off by default.
+
+### Continue a usage-limited conversation on another account
+
+With automatic recovery off, a Codex conversation stopped by a usage limit
+still offers **Continue on <label>** on its usage-limit banner, one per
+enrolled profile that automatic recovery could select (same routing, not the
+active profile). The first takes the banner's free button slot; the rest sit in
+its actions menu. Choosing one runs the same stage, restart and replay as
+automatic recovery, with the click in place of the `automatic` opt-in, and
+switches the connection's active profile like any profile application: every
+chat that starts or restarts on that connection without its own pinned profile
+uses it, including other people's chats and restored ones. The button's
+tooltip and the resuming line say so.
+Station does not know whether that account is limited too; if it is, the
+replay stops on its own usage limit. An `allowancePreference` does not rank or
+exclude these choices. A profile that no longer qualifies leaves the stop
+waiting. So does a failure before the replay reaches the engine's send (for
+example the chosen account is signed out and its session cannot start):
+Station rolls the account back, restarts the session on the connection's
+account and keeps the reset. If that session cannot restart either, Station
+closes it and retires the stop ("the session has ended") rather than promising
+a resume; an automatic attempt that ends this way says the same. A failure after the send was called stops as
+"may not have gone through" and does not resume on its own, so the turn is
+never sent twice. Nothing is offered while automatic recovery is paused (see
+above).
+
+Claude Code offers no account here: its adapter declares profile application
+`unsupported`, because `CLAUDE_CONFIG_DIR` does not isolate the macOS Keychain
+sign-in, so Station cannot show a profile switch changed accounts. The offer
+needs the `access:manage` pairing scope, like the profile routes, and a hosted
+Station never makes it. Routes:
+[usage-limit recovery](../reference/session-api.md#usage-limit-recovery-sessionsthreadidusage-limit).
 
 The overlay is not secret. It is visible to the engine and to every tool it
 runs (an agent can read these variables, for example from a shell), and to

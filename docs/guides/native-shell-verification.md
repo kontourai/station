@@ -571,23 +571,30 @@ the key-approval and grant-lifecycle lanes are explicit opt-ins. Harness
 availability is source evidence, not an executed platform result. Record the
 exact binary, revision, host and completed lane result when running it.
 
-The desktop sidecar starts Node with a home-scoped compile cache. The first
+The desktop sidecar starts the server without a compile cache and removes
+any inherited `NODE_COMPILE_CACHE`
+([desktop build](desktop-build.md#startup-cost-and-linux-graphics)). The first
 [server bootstrap import](../../src-server/runtime/bootstrap/server-compile-cache.ts)
 loads `.env`, then removes `NODE_COMPILE_CACHE` from the server environment
-after Node has consumed its startup setting, so dotenv cannot restore it for
-generic child launchers.
+after Node has consumed any startup setting, so dotenv cannot restore it for
+generic child launchers. The server gives the home's cache directory only to
+the built-in station-control and station-knowledge children.
 Targeted child environment scrubs remain in place. The process supervisor keeps
 the setting when launching replacement Station server generations; each enters
 through the same server bootstrap. The
 [process regression](../../src-server/runtime/bootstrap/__tests__/server-compile-cache.process.test.ts)
 checks Node's active cache across two starts and executes real stdio MCP,
-Strands, Flow Agents, Veritas and login-shell child paths. Its first-import
+Strands, Flow Agents, Veritas and login-shell child paths. Through the real
+stdio transport, the built-in station-control environment carries the home's
+cache and a third-party server's does not. Its first-import
 ordering assertion is a source-only wiring guard, separate from packaged-shell
 startup evidence. A second regression builds the real server entry and runs it
 from a working directory whose `.env` contains the cache setting. It verifies
 that dotenv loaded, reaches a deliberate invalid-port refusal, and observes a
-real child without that variable, both with and without a startup cache.
-External ESM dependencies evaluate before the bundled bootstrap. The regression
+real child without that variable, both with and without a startup cache. It
+then runs the built station-control bundle: its cache is on disk while it still
+runs, before a signal ends it, and its own environment no longer carries the
+setting. External ESM dependencies evaluate before the bundled bootstrap. The regression
 observes no Node child-process launches during evaluation of the installed
 dependency graph; this evidence is specific to those dependency versions.
 

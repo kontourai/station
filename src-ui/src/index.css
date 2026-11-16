@@ -1,7 +1,5 @@
 @import url("./fonts.css");
 @import url("./tokens.css");
-@import url("./styles/control-recipes.css");
-@import url("./styles/layout-recipes.css");
 @import url("@kontourai/station-sdk/action-control.css");
 /* Console Kit token contract (roadmap), now consumed from the
    published @kontourai/ui@1.1.0 package (was the local console-kit mirror).
@@ -21,6 +19,8 @@
 @import url("@kontourai/ui/fonts.css");
 @import url("@kontourai/ui/tokens");
 @import url("@kontourai/ui/react/styles.css");
+@import url("./styles/control-recipes.css");
+@import url("./styles/layout-recipes.css");
 
 /* A development build installs alongside a real one — same name, same window,
    one letter of difference in the application id. Retinting the brand token is
