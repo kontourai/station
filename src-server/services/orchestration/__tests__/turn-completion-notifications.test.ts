@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { turnCompletionNotificationOps } from '../../../telemetry/metrics.js';
 import { agentActivityPhaseFor } from '../../notifications/agent-activity-card.js';
 import { isCardAlerted } from '../../notifications/delivery/card-alerted-categories.js';
 import { NotificationService } from '../../notifications/notification-service.js';
@@ -2103,6 +2104,86 @@ describe('wireTurnCompletionNotifications: durable finish lifecycle', () => {
     expect(rows()).toEqual([]);
   });
 
+  test('when the writing step cannot be saved, nothing is written or announced and the finish stays held', async () => {
+    let refuse = true;
+    const station = await boot({
+      crashBeforeSave: (next) =>
+        refuse && next.some((row) => row.state === 'writing'),
+    });
+    station.emit({ method: 'turn.started' });
+    station.emit({ eventId: 'terminal-1', finishReason: 'stop' });
+    await station.elapse();
+    expect(await station.finished()).toEqual([]);
+    expect(station.episodes.isPending('thread-1')).toBe(true);
+    expect(station.episodes.releaseFor('thread-1')).toBeUndefined();
+    expect(rows()).toEqual([
+      expect.objectContaining({ state: 'held', turnId: 'turn-1' }),
+    ]);
+    expect(station.timers.pending()).toEqual([FINISHED_ALERT_RECHECK_MS]);
+    // The store recovers: the recheck opens the window, and it is sent.
+    refuse = false;
+    await station.elapse();
+    await station.elapse();
+    expect(await station.finished()).toHaveLength(1);
+  });
+
+  test('a failure accepted while a finish waits on its write retry ends that finish', async () => {
+    const station = await boot();
+    vi.spyOn(station.notifications, 'scheduleEnveloped').mockRejectedValueOnce(
+      new Error('ENOSPC'),
+    );
+    station.emit({ method: 'turn.started' });
+    station.emit({ eventId: 'terminal-1', finishReason: 'stop' });
+    await station.elapse();
+    expect(rows()).toEqual([expect.objectContaining({ state: 'writing' })]);
+    // No turn.started first: the failure reaches the waiting row directly.
+    station.emit({ method: 'turn.aborted', reason: 'error' });
+    await station.notifications.drainAsyncDispatch();
+    expect(station.timers.pending()).toEqual([]);
+    expect(rows()).toEqual([]);
+    await station.elapse();
+    expect(await station.finished()).toEqual([]);
+  });
+
+  test("a new turn leaves a restart's not-yet-looked-up finish to its lookup, so its record is never rewritten", async () => {
+    const first = await boot({
+      coordinator: false,
+      crashBeforeSave: (next) => next.some((row) => row.state === 'released'),
+    });
+    first.emit({ method: 'turn.started' });
+    first.emit({ eventId: 'terminal-1', finishReason: 'stop' });
+    await first.elapse();
+    const [record] = await first.finished();
+    await first.notifications.markRead(record!.id, 'device:laptop');
+    const before = await first.notifications.get(record!.id);
+    await stop();
+
+    const lookup = vi
+      .spyOn(NotificationService.prototype, 'findByDedupeTag')
+      .mockRejectedValueOnce(new Error('store locked'));
+    const second = await boot();
+    await second.notifications.drainAsyncDispatch();
+    // A provider turn opens and closes without a result while the lookup
+    // waits on its retry.
+    const provider = { trigger: 'provider' };
+    second.emit({
+      method: 'turn.started',
+      turnId: 'turn-2',
+      metadata: provider,
+    });
+    second.emit({
+      eventId: 'terminal-2',
+      turnId: 'turn-2',
+      finishReason: 'other',
+      metadata: { ...provider, closedWithoutResult: 'session-ended' },
+    });
+    await second.elapse();
+    await second.elapse();
+    expect(await second.notifications.get(record!.id)).toEqual(before);
+    expect(coordinatorItems()).toEqual([`finished:${tag}`]);
+    lookup.mockRestore();
+  });
+
   test('a restart whose record lookup fails retries it with backoff instead of leaving the card in Running', async () => {
     const first = await boot({
       coordinator: false,
@@ -2257,6 +2338,10 @@ describe('wireTurnCompletionNotifications: durable finish lifecycle', () => {
         `finished-alert episodes full (${FINISHED_ALERT_EPISODES_MAX}); finish for thread-new not held`,
         { threadId: 'thread-new' },
       );
+      expect(turnCompletionNotificationOps.add).toHaveBeenCalledWith(1, {
+        outcome: 'done',
+        result: 'overflow',
+      });
       expect(station.episodes.isPending('thread-new')).toBe(false);
       expect(await station.finished()).toEqual([]);
       const saved = rows();

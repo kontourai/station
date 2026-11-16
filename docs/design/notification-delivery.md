@@ -136,7 +136,9 @@ it moves through three states, at most one row of each per thread:
   is retried after 10 s, doubling to at most 10 min, with each failure
   logged.
 - `released`: the record exists. The row is saved before the card hears of
-  the release and is kept for the card's two-minute alert window.
+  the release and is kept for the card's two-minute alert window. If that
+  save fails, the card is still told (the record exists), and a restart
+  reads the row as `writing`, finds the record and does not write it again.
 
 A restart replays the rows by state. A `released` row inside the window
 restores the card's release. A `held` row is read again with no turn open and
@@ -156,7 +158,11 @@ before anything is written:
   is replayed.
 
 A newer finish on a thread replaces an older one whose write failed, so an
-old turn never shadows the new one. A terminal for a turn the thread has moved
+old turn never shadows the new one. A new turn takes a finish waiting on a
+write retry back as held with that turn open, and a failure or stop ends it.
+A finish a restart has not looked up yet is left to its lookup, so its record
+is never rewritten. A lookup that fails retries with the same backoff, and a
+dedupe tag another producer owns ends the finish without a record. A terminal for a turn the thread has moved
 past is already rejected by the turn anchor. The file holds at most 2,000
 rows. A new held finish is admitted only below that, after released rows give
 way (past the window first, then oldest first). When every row is held or

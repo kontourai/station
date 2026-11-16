@@ -591,6 +591,11 @@ export function wireTurnCompletionNotifications(
     attempts: number;
     nextAttemptAt?: number;
     cancelRetry?: Cancel;
+    /**
+     * Replayed from a restart and not yet looked up: the record may already
+     * exist, so it must go through `replayWriting`, never a plain write.
+     */
+    needsLookup?: true;
   }
   const writingFinishes = new Map<string, WritingFinish>();
   /** Written, kept for the card's alert window (oldest first). */
@@ -873,6 +878,7 @@ export function wireTurnCompletionNotifications(
       return;
     }
     if (writingFinishes.get(threadId) !== writing) return;
+    delete writing.needsLookup;
     if (!found) {
       await attemptWrite(threadId, writing);
       return;
@@ -1102,7 +1108,11 @@ export function wireTurnCompletionNotifications(
             // episode as held with this turn open: its alert must not go
             // out while the new turn runs; the turn's end decides.
             const waiting = writingFinishes.get(event.threadId);
-            if (waiting && !heldFinishes.has(event.threadId)) {
+            if (
+              waiting &&
+              !waiting.needsLookup &&
+              !heldFinishes.has(event.threadId)
+            ) {
               waiting.cancelRetry?.();
               writingFinishes.delete(event.threadId);
               heldFinishes.set(event.threadId, {
@@ -1371,6 +1381,7 @@ export function wireTurnCompletionNotifications(
       if (row.state === 'writing')
         writingFinishes.set(row.threadId, {
           ...finish,
+          needsLookup: true,
           attempts: row.attempts,
           ...(row.nextAttemptAt !== undefined
             ? { nextAttemptAt: row.nextAttemptAt }
