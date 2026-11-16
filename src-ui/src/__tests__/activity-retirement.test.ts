@@ -91,18 +91,25 @@ describe('Activity retirement', () => {
         truncated: true,
       },
     ]);
+    expect(result.map((message) => message.role)).toEqual([
+      'user',
+      'assistant',
+      'system',
+      'assistant',
+    ]);
     expect(result[0]).toMatchObject({ role: 'user', content: 'Inspect' });
+    // The call, its truncation note and the unkeyed result are one turn.
     expect(result[1]?.contentParts?.[0]).toMatchObject({
       type: 'tool-invocation',
       toolName: 'Read',
       input: 'file.ts',
     });
-    expect(result[1]?.contentParts?.at(-1)?.content).toContain(
+    expect(result[1]?.contentParts?.[1]?.content).toContain(
       'Tool input truncated',
     );
-    expect(result[2]?.content).toContain('Tool error');
-    expect(result[3]?.content).toContain('3 blocks');
-    expect(result[4]?.content).toContain('truncated');
+    expect(result[1]?.contentParts?.[2]?.content).toContain('Tool error');
+    expect(result[2]?.content).toContain('3 blocks');
+    expect(result[3]?.content).toContain('truncated');
   });
 });
 
@@ -121,7 +128,7 @@ test('duplicate retired panes close their emptied dock after migration', () => {
   expect(migrated.right.visible).toBe(false);
 });
 
-test('engine calls join their own results across page boundaries without extra assistant bubbles', () => {
+test('engine calls join their own results across page boundaries in one assistant turn', () => {
   const messages = childTranscriptMessages([
     {
       message: 0,
@@ -151,14 +158,15 @@ test('engine calls join their own results across page boundaries without extra a
       text: 'export const ok = true;',
     },
   ]);
-  expect(messages).toHaveLength(2);
+  expect(messages).toHaveLength(1);
+  expect(messages[0].contentParts).toHaveLength(2);
   expect(messages[0].contentParts?.[0]).toMatchObject({
     toolCallId: 'a',
     input: { file_path: 'one.ts' },
     state: 'output-available',
     output: 'export const ok = true;',
   });
-  expect(messages[1].contentParts?.[0]).toMatchObject({
+  expect(messages[0].contentParts?.[1]).toMatchObject({
     toolCallId: 'b',
     state: 'output-error',
     errorText: 'no access',
@@ -173,11 +181,14 @@ test.each([undefined, ''])(
       { message: 1, kind: 'tool-result', toolCallId: 'a', text },
       { message: 2, kind: 'tool-result', text },
     ]);
-    expect(messages).toHaveLength(2);
+    expect(messages).toHaveLength(1);
     expect(messages[0].contentParts?.[0]).toMatchObject({
       state: 'output-available',
       output: 'Text output unavailable.',
     });
-    expect(messages[1].content).toBe('Tool result\n\nText output unavailable.');
+    expect(messages[0].contentParts?.[1]).toMatchObject({
+      type: 'text',
+      content: 'Tool result\n\nText output unavailable.',
+    });
   },
 );
