@@ -39,6 +39,7 @@ import {
   projectLiveLabel,
   projectLiveLanesBySlug,
 } from '../../views/project-page/project-live-work-model';
+import { DisclosureToggle } from '../DisclosureToggle';
 import { HomeGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import { Skeleton } from '../state';
@@ -154,6 +155,10 @@ function ProjectSidebarImpl() {
     () => projects.map((project) => project.slug),
     [projects],
   );
+  const archivedCount = projects.filter(
+    (project) => project.lifecycle?.state === 'archived',
+  ).length;
+  const [showArchived, setShowArchived] = useState(false);
   // archive#3315: server-owned order. The list arrives pre-sorted by the
   // persisted positions; a commit sends the full desired slug order back.
   // #481: the reorder captures the host authority at call time, so the
@@ -411,6 +416,15 @@ function ProjectSidebarImpl() {
               : null}
             {projects.map((project, index) => {
               const isActive = selectedProject === project.slug;
+              // #5069: an archived Project leaves the list unless it is open
+              // or the person shows archived ones. The row keeps its index,
+              // so a reorder still sends the whole order.
+              if (
+                project.lifecycle?.state === 'archived' &&
+                !isActive &&
+                !showArchived
+              )
+                return null;
               const liveLanes = liveLanesByProject.get(project.slug) ?? [];
               return (
                 <ProjectSidebarRow
@@ -431,6 +445,15 @@ function ProjectSidebarImpl() {
                 />
               );
             })}
+            {archivedCount > 0 && !effectiveCollapsed && (
+              <DisclosureToggle
+                className="sidebar__archived-toggle"
+                expanded={showArchived}
+                onToggle={() => setShowArchived((shown) => !shown)}
+              >
+                Archived ({archivedCount})
+              </DisclosureToggle>
+            )}
             {/* A keyboard reorder is otherwise silent: the rows swap with no
               announcement and no visible change a screen reader can report.
               Keyboard-only — a pointer drag already shows what it did. */}

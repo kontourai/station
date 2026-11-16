@@ -640,6 +640,35 @@ const CONSUMED_FLAGS: Record<
   // POST /scheduler/jobs accepts a job `target` (an automation that runs in
   // a conversation). The scheduler routes answer 404 to every hosted request,
   // whatever the body, because scheduler storage has no tenant binding.
+  projectSchedules: async ({ hosted }) => {
+    const addJob = vi.fn(async () => "Job 'digest' created");
+    const routes = createSchedulerRoutes(
+      { addJob } as never,
+      { error: vi.fn(), info: vi.fn(), debug: vi.fn() } as never,
+      {
+        readAuthorityForRequest: () =>
+          ({ mode: hosted ? 'hosted' : 'personal' }) as never,
+        // Runtime composition passes it only where a Project runner exists.
+        ...(hosted ? {} : { projectJobs: true }),
+      },
+    );
+    const response = await routes.request('/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'digest',
+        schedule: { kind: 'every', everyMs: 3_600_000 },
+        prompt: 'Summarize',
+        projectId: 'project-a',
+      }),
+    });
+    return (
+      response.status === 200 &&
+      addJob.mock.calls.length === 1 &&
+      ((addJob.mock.calls[0] as unknown[])[0] as { projectId?: unknown })
+        .projectId === 'project-a'
+    );
+  },
   scheduledConversationTarget: async ({ hosted }) => {
     const addJob = vi.fn(async () => "Job 'digest' created");
     const routes = createSchedulerRoutes(
@@ -826,6 +855,7 @@ describe('consumed capability flags match what their routes serve', () => {
     projectRoomLive: { personal: true, hosted: true },
     readMarkers: { personal: true, hosted: true },
     scheduledConversationTarget: { personal: true, hosted: false },
+    projectSchedules: { personal: true, hosted: false },
     sessionEventWindow: { personal: true, hosted: true },
     remoteSessionHistory: { personal: true, hosted: false },
     sessionInventoryInputRead: { personal: true, hosted: false },

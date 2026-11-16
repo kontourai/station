@@ -120,6 +120,13 @@ export function registerScheduleTools(registry: StationControlToolRegistry) {
       ),
       prompt: z.string().min(1).describe('What the job runs each time.'),
       agent: z.string().min(1).optional().describe('Agent slug to run it.'),
+      projectId: z
+        .string()
+        .min(1)
+        .optional()
+        .describe(
+          'A Project id (not its slug). Each run then starts a new Task in that Project with the Task brief, instead of a turn in this chat; it does not run while the Project is paused or archived.',
+        ),
       rationale: z
         .string()
         .min(1)
