@@ -754,23 +754,23 @@ related selection. Hosted shard planning instead retains the other mapped
 related paths and concrete explicit targets, including selections over 32,
 while preserving every unresolved lane obligation. This produces earlier
 failures without declaring global coverage complete.
-A third derivation covers native files that a scripts test names by a literal
+A third derivation covers native files that a test names by a literal
 repository path (#4891). A change under `src-desktop/**` only names the deferred
 `verify-local` lane, yet many suites assert on the text of Rust, Kotlin, Swift,
 plist, manifest and Tauri configuration files they read through a cwd-relative
 literal such as `readFileSync('src-desktop/src/lib.rs')`, which the path-read
-scan refuses by design. In a test under `scripts/__tests__`, a string literal
-whose whole value is a path to an existing file under `src-desktop/`,
-`tests/ios-runtime-smoke/` or `scripts/templates/` that is not a JS or TS module
+scan refuses by design. In a test under `packages`, `scripts`, `src-server` or
+`src-ui`, a string literal whose whole value is a path to an existing file under `src-desktop/`,
+`tests/ios-runtime-smoke/`, `scripts/templates/` or `deployment/`, or to a
+`Dockerfile` or `docker-compose` file, that is not a JS or TS module
 and not in a generated tree selects that test when the file changes. The
 `verify-local` deferral is still reported; the edge only adds tests. A literal
 in a fixture string or an error message counts too, so some selections are more
 than a read. It does not see a path built from several segments
 (`join('src-desktop', 'src', 'lib.rs')`), a template literal with a
-substitution, a literal inside a longer string, or a test outside
-`scripts/__tests__` (several `src-ui` and `src-server` tests also name
-`src-desktop/src/lib.rs`). Paths outside those three roots, such as `Dockerfile`,
-already escalate and are not part of this derivation.
+substitution, a literal inside a longer string, or a suite under `tests/`, which
+a pull-request shard cannot run. For a path that also escalates, such as
+`Dockerfile`, the escalation is still reported and the named tests run beside it.
 A fourth kind is derived per diff, from its base content: when a `package.json`
 dependency section or a `pnpm-lock.yaml` importer's resolved version changes
 for a sibling `@kontourai/*` package that is not a workspace package, the

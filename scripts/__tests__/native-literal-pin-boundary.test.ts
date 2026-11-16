@@ -151,6 +151,9 @@ describe('the literal rule, on a fixture tree', () => {
       'src-desktop/',
       'tests/ios-runtime-smoke/',
       'scripts/templates/',
+      'Dockerfile',
+      'docker-compose',
+      'deployment/',
     ]);
   });
 });
@@ -300,6 +303,9 @@ describe('completeness, discovered independently of the derivation', () => {
     'src-desktop/',
     'tests/ios-runtime-smoke/',
     'scripts/templates/',
+    'Dockerfile',
+    'docker-compose',
+    'deployment/',
   ];
   const generated =
     /(^|\/)(target|node_modules|binaries)\/|^src-desktop\/gen\/schemas\//;
@@ -311,9 +317,15 @@ describe('completeness, discovered independently of the derivation', () => {
     }
   };
 
-  it('selects every scripts test that names a native file for that file', () => {
+  it('selects every test that names a native file for that file', () => {
     const pairs: [string, string][] = [];
-    for (const test of listSuiteFiles(ROOT, ['scripts/__tests__']))
+    // `tests/` suites cannot run in a pull-request shard, so no edge names them.
+    for (const test of listSuiteFiles(ROOT, [
+      'packages',
+      'scripts',
+      'src-server',
+      'src-ui',
+    ]))
       for (const literal of new Set(
         literalsIn(readFileSync(join(ROOT, test), 'utf8')),
       ))

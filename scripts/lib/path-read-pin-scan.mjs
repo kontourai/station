@@ -1198,23 +1198,30 @@ function isDirectory(absolute) {
 }
 
 /**
- * Roots whose non-module files a scripts test names by a literal repository
+ * Roots whose non-module files a test names by a literal repository
  * path. The path-read scan above refuses these on purpose: a cwd-relative
  * literal is not anchored to this module, so it cannot be told from
- * `resolve('a/b')`. These roots are native or template trees whose changes
- * otherwise run no test in a pull request (`src-desktop/**` only names the
- * deferred `verify-local` lane). A root is added only when it holds such
- * pairs and its changes are not already escalated: `Dockerfile` and
- * `deployment/` are named by tests too but already select `ci-fast`.
+ * `resolve('a/b')`. These are native, template and container files whose
+ * changes otherwise run no test in a pull request: `src-desktop/**` only
+ * names the deferred `verify-local` lane, and `Dockerfile` and `deployment/`
+ * escalate to `ci-fast`, which a pull request defers as well. A root is added
+ * only when it holds such pairs. Each is a path prefix.
  */
 export const NATIVE_LITERAL_ROOTS = Object.freeze([
   'src-desktop/',
   'tests/ios-runtime-smoke/',
   'scripts/templates/',
+  'Dockerfile',
+  'docker-compose',
+  'deployment/',
 ]);
 
-/** Where the literal scan looks for tests. Narrow on purpose. */
-const NATIVE_LITERAL_TEST_ROOTS = Object.freeze(['scripts/__tests__']);
+/**
+ * Where the literal scan looks for tests: every suite root the path-read scan
+ * covers. Besides the scripts tests, `src-ui` and `src-server` suites name
+ * `src-desktop/src/lib.rs` and the Android manifest the same way.
+ */
+const NATIVE_LITERAL_TEST_ROOTS = PIN_SCAN_ROOTS;
 
 const MODULE_EXTENSION = /\.[cm]?[jt]sx?$/;
 
@@ -1233,7 +1240,7 @@ function wholeLiteralValues(source) {
 }
 
 /**
- * Pins by literal: a string literal in a scripts test whose WHOLE value is a
+ * Pins by literal: a string literal in a test whose WHOLE value is a
  * repository-relative path to an existing file under one of `roots`, that is
  * not a JS/TS module (the import graph already sees those) and not under a
  * generated or vendored location. A literal in a fixture string or an error

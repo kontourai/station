@@ -2239,12 +2239,12 @@ export function pathReadPinEdges({ root = process.cwd(), entries } = {}) {
 }
 
 /**
- * Reason recorded on every derived native-literal edge.
+ * Reason recorded on every derived native-literal edge. Exported so the
+ * local selection can tell a test only these edges selected from the rest.
  */
-const NATIVE_LITERAL_PIN_REASON =
-  'a scripts test names this native file by a literal repository path and ' +
-  'asserts on its text, outside the import graph; the native boundary only ' +
-  'defers to verify-local (#4891)';
+export const NATIVE_LITERAL_PIN_REASON =
+  'a test names this file by a literal repository path, outside the import ' +
+  'graph, and a pull request otherwise runs nothing for it (#4891)';
 
 const nativeLiteralPinEdgeCache = new Map();
 
