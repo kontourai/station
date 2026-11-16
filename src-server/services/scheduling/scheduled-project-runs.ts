@@ -69,12 +69,12 @@ export interface ScheduledProjectRunsPorts {
  * The Task title a run creates. Stable for the run: a retried attempt finds
  * the same Task by its run key, and the Task store refuses a changed title.
  */
-export function scheduledProjectTaskTitle(jobName: string): string {
+function scheduledProjectTaskTitle(jobName: string): string {
   return `Scheduled: ${jobName}`;
 }
 
 /** The summary a finished run leaves on its Task. */
-export function scheduledProjectRunSummary(input: {
+function scheduledProjectRunSummary(input: {
   jobName: string;
   outcome: ScheduledConversationRunOutcome;
   at: Date;
