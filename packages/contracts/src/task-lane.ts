@@ -544,7 +544,7 @@ export function deriveTaskLane(input: TaskLaneInput): TaskLaneDerivation {
       statusGlyph: 'pr-merged',
       factTime: first.observedAt,
       nextAction: { kind: 'mark-done', label: 'Mark done' },
-      certainty: runMissing ? 'partial' : 'observed',
+      certainty: 'observed',
     };
   }
   if (open.length) {

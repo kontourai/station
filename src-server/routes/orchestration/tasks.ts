@@ -812,12 +812,12 @@ export function createTaskRoutes(
       observedAt: new Date().toISOString(),
       tasks: {},
     };
-    // Hosted: a tenant's request never reads through this host's own forge
-    // logins.
-    if (hostedRequest(c.req.raw)) return c.json({ success: true, data: empty });
     const projectId = c.req.query('projectId')?.trim();
     if (!projectId)
       return c.json({ success: false, error: 'projectId is required' }, 400);
+    // Hosted: a tenant's request never reads through this host's own forge
+    // logins.
+    if (hostedRequest(c.req.raw)) return c.json({ success: true, data: empty });
     const service = serviceForRequest(c.req.raw);
     if (!service) return c.json({ success: true, data: empty });
     const authority = options.readAuthorityForRequest?.(c.req.raw);

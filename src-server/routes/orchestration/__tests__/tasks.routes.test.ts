@@ -2515,6 +2515,8 @@ describe('Task routes', () => {
       const response = await app.request('/pull-request-facts?projectId=x');
       expect(response.status).toBe(200);
       expect((await readJson<any>(response)).data.tasks).toEqual({});
+      // Validation comes first, hosted or not.
+      expect((await app.request('/pull-request-facts')).status).toBe(400);
       expect(service.listTasks).not.toHaveBeenCalled();
       expect(providers).not.toHaveBeenCalled();
     });
