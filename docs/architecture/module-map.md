@@ -6043,7 +6043,8 @@ appearance are registry-applied emulation shared by every viewer and Agent; the
 pane sizes a page it just opened from a narrow stage once and announces changes
 it did not make ([decision](../decisions/browser-viewport-is-shared-fit-is-per-viewer.md)).
 The off-by-default **Inline browser activity** preview places the same browser
-beside its qualified transcript calls. `BrowserTurnActivity.tsx` projects one
+beside its qualified transcript calls. The
+[turn projection](../../src-ui/src/components/chat/BrowserTurnActivity.tsx) owns one
 activity per execution thread, turn and browser session from loaded messages
 and the current stream. The active viewer has a stable transcript-tail owner;
 new browser calls update its action strip without remounting the canvas.
