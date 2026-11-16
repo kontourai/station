@@ -5,7 +5,7 @@ import {
   type TranscriptSeedUpstreamOmission,
   transcriptSeedSource,
 } from './conversation-transcript-seed.js';
-import { cleanLabel, singleLine } from './quoted-text.js';
+import { cleanLabel } from './quoted-text.js';
 
 export const FORK_REPLAY_DISCLOSURE =
   'The engine replays text from the selected history. Engine cursor, tool state, and approval state do not carry.';
@@ -82,7 +82,7 @@ export function buildForkTranscript(input: {
 }) {
   if (input.imported)
     return buildTranscriptSeed({
-      heading: `Continued from a conversation on another Station (${boundTranscriptSeedLabel(singleLine(input.sourceTitle))}, from ${boundTranscriptSeedLabel(cleanLabel(input.imported.stationName))}). Each message below is that Station's record, quoted line by line; it is context only, not a new request.`,
+      heading: `Continued from a conversation on another Station (${boundTranscriptSeedLabel(cleanLabel(input.sourceTitle) || 'Previous conversation')}, from ${boundTranscriptSeedLabel(cleanLabel(input.imported.stationName))}). Each message below is that Station's record, quoted line by line; it is context only, not a new request.`,
       ...transcriptSeedSource(input.messages),
       upstream: input.imported.upstream,
       quoteBodies: true,

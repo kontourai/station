@@ -22,7 +22,7 @@ import {
 import { transcriptSeedSource } from './conversation-transcript-seed.js';
 import type { EventStore } from './event-store.js';
 import type { SessionReadScope } from './orchestration-service.js';
-import { cleanLabel, singleLine } from './quoted-text.js';
+import { cleanLabel } from './quoted-text.js';
 
 const FORK_CONTEXT_MAX_BYTES = 2 * 1024 * 1024;
 const nativeForkId = z.string().min(1).max(512);
@@ -368,7 +368,7 @@ export function createConversationForkContext(
     ...identity,
     protocolVersion: 1 as const,
     title: imported
-      ? `${singleLine(sourceTitle) || 'Previous conversation'} (from ${cleanLabel(imported.stationName)})`
+      ? `${cleanLabel(sourceTitle) || 'Previous conversation'} (from ${cleanLabel(imported.stationName)})`
       : `Fork of ${sourceTitle}`,
     copiedMessagesJson: JSON.stringify(copied),
     seedPinJson: JSON.stringify(seedPin),

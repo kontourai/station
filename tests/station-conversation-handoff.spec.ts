@@ -61,12 +61,15 @@ test('a conversation continues on a paired Station with its history, and a retry
     panel.getByRole('button', { name: /^Agent: .*\. Change Agent$/ }),
   );
   await agentTrigger.click();
-  const dialog = page.getByRole('dialog', { name: 'Switch agent' });
-  await expect(dialog).toBeVisible();
-  await dialog
+  const picker = page.getByRole('dialog', { name: 'Switch agent' });
+  await expect(picker).toBeVisible();
+  await picker
     .getByRole('radiogroup', { name: 'Station' })
     .getByRole('radio', { name: 'Receiver' })
     .check();
+  // Choosing another Station makes it a move, and the dialog says so.
+  const dialog = page.getByRole('dialog', { name: 'Continue elsewhere' });
+  await expect(dialog).toBeVisible();
   const project = dialog.getByLabel('Project on Receiver');
   await expect(project).toBeEnabled();
   await project.selectOption({ label: 'Receiver work' });

@@ -7,6 +7,10 @@ import {
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
 import { describe, expect, test } from 'vitest';
 import {
+  boundLabelKeepingTail,
+  cleanLabel,
+} from '../../orchestration/quoted-text.js';
+import {
   boundCarriedMessages,
   conversationImportRequestSchema,
   encodedTextBytes,
@@ -152,5 +156,49 @@ describe('the history a paired-Station handoff carries', () => {
     expect(message!.importedFrom!.endsWith(', via Studio Mac')).toBe(true);
     expect(message!.importedFrom!.startsWith('…')).toBe(true);
     expect([...message!.importedFrom!].length).toBeLessThanOrEqual(120);
+  });
+
+  test.each([
+    ['ARABIC LETTER MARK', '\u061C'],
+    ['a tag character', String.fromCodePoint(0xe0041)],
+    ['SOFT HYPHEN', '\u00AD'],
+    ['COMBINING GRAPHEME JOINER', '\u034F'],
+    ['MONGOLIAN VOWEL SEPARATOR', '\u180E'],
+    ['INTERLINEAR ANNOTATION ANCHOR', '\uFFF9'],
+    ['INTERLINEAR ANNOTATION TERMINATOR', '\uFFFB'],
+    ['HANGUL CHOSEONG FILLER', '\u115F'],
+    ['HANGUL FILLER', '\u3164'],
+    ['RIGHT-TO-LEFT OVERRIDE', '\u202E'],
+    ['ZERO WIDTH SPACE', '\u200B'],
+  ])('a label is cleaned of %s', (_name, character) => {
+    expect(cleanLabel(`La${character}ptop`)).toBe('Laptop');
+    expect(cleanLabel(`${character}${character}`)).toBe('');
+  });
+
+  test.each([
+    ['emoji ZWJ sequences', '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}'],
+    ['regional-indicator flags', '\u{1F1EB}\u{1F1F7}'],
+    ['combining marks', 'e\u0301'],
+  ])('a bounded label never splits %s', (_name, grapheme) => {
+    const segments = (text: string) => [
+      ...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(
+        text,
+      ),
+    ];
+    const label = `${grapheme.repeat(60)}, via Studio Mac`;
+    for (let max = 20; max < 60; max++) {
+      const bounded = boundLabelKeepingTail(
+        label,
+        (candidate) => [...candidate].length <= max,
+      );
+      expect(bounded.endsWith(', via Studio Mac')).toBe(true);
+      const kept = segments(bounded.slice(1))
+        .map((segment) => segment.segment)
+        .filter((segment) => segment.length > 1 || !/[ ,a-zA-Z]/.test(segment));
+      expect(
+        kept.every((segment) => segment === grapheme),
+        `max ${max}`,
+      ).toBe(true);
+    }
   });
 });

@@ -543,7 +543,8 @@ and **Edit**. If delivery is uncertain, use **Check** before sending a
 changed copy. Station keeps the original pending message.
 
 To move a chat you already have to a paired Station, open the Agent picker in
-**Run setup** and choose that Station in **Switch agent**. Pick its engine and
+**Run setup** and choose that Station; the dialog becomes **Continue
+elsewhere**. Pick its engine and
 one of its Projects, then **Continue on <Station>**. A new chat opens there,
 and its Agent gets this chat's messages as context. The new chat shows messages
 from the handoff on; this chat keeps the earlier ones. Its first message is your

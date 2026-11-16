@@ -302,6 +302,13 @@ export function ConversationHandoffDialog({
     onContinuedOnStation && !executionPreset && !restoredIntent,
   );
   const currentAgent = agents.find((agent) => agent.slug === currentAgentId);
+  // With another Station chosen the chat moves there, it does not switch Agent.
+  const dialogTitle =
+    stationOffered && where !== 'current'
+      ? 'Continue elsewhere'
+      : executionPreset
+        ? 'Switch engine'
+        : 'Switch agent';
   const selectedContext = projectSlug ?? GLOBAL_CONTEXT;
   const selection = useNewChatSelectionModel({
     agents,
@@ -732,13 +739,13 @@ export function ConversationHandoffDialog({
   return (
     <ResponsiveDialogSurface
       layer="dialog"
-      ariaLabel={executionPreset ? 'Switch engine' : 'Switch agent'}
+      ariaLabel={dialogTitle}
       panelClassName="conversation-handoff-dialog"
       overlayClassName="conversation-handoff-dialog__overlay"
       onClose={closeLocked ? () => {} : onClose}
     >
       <div className="conversation-handoff-dialog__header">
-        <h3>{executionPreset ? 'Switch engine' : 'Switch agent'}</h3>
+        <h3>{dialogTitle}</h3>
         <ResponsiveDialogCloseButton
           label={
             executionPreset ? 'Cancel engine change' : 'Cancel agent handoff'
@@ -770,6 +777,8 @@ export function ConversationHandoffDialog({
             )}
             message={message}
             draft={composerHasDraft}
+            composerText={initialMessage}
+            composerQuotes={draftQuotes}
             prepareDraft={retained ? undefined : prepareDraft}
             catchUpMessage={catchUpMessage}
             blockedReason={

@@ -26,7 +26,7 @@ import {
   useExecutionStationCatalog,
   useExecutionStations,
 } from '../../hooks/useExecutionStationCatalog';
-import type { DraftQuote } from '../../utils/answer-quotes';
+import { type DraftQuote, parseDraftQuote } from '../../utils/answer-quotes';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import type { SelectableModel } from '../../utils/modelCapabilities';
 import { Button } from '../Button';
@@ -67,6 +67,9 @@ export interface PendingStationHandoff {
   expectedDefinitionFingerprint?: string;
   modelId?: string;
   message: string;
+  /** The raw composer draft and quotes `message` was prepared from. */
+  draft?: string;
+  quotes?: DraftQuote[];
 }
 
 function stationStorageKey(apiBase: string, conversationId: string): string {
@@ -101,6 +104,11 @@ export function readPendingStationHandoff(
         parsed.expectedDefinitionFingerprint,
       ),
       modelId: optional(parsed.modelId),
+      ...(typeof parsed.draft === 'string' ? { draft: parsed.draft } : {}),
+      ...(Array.isArray(parsed.quotes) &&
+      parsed.quotes.every((quote) => parseDraftQuote(quote))
+        ? { quotes: parsed.quotes as DraftQuote[] }
+        : {}),
     };
   } catch {
     return null;
@@ -162,6 +170,8 @@ export function ConversationStationHandoff({
   sourceProject,
   message,
   draft,
+  composerText,
+  composerQuotes,
   prepareDraft,
   catchUpMessage,
   blockedReason,
@@ -176,6 +186,9 @@ export function ConversationStationHandoff({
   /** The first turn on the paired Station (the draft or the catch-up request). */
   message: string;
   draft: boolean;
+  /** The composer's raw draft and quotes, to tell whether a retried request still owns them. */
+  composerText: string;
+  composerQuotes: readonly DraftQuote[];
   /**
    * The composer's send preparation (mentions, quotes, size checks), run as
    * the Agent handoff runs it so a draft leaves the same way. Absent for a
@@ -255,14 +268,47 @@ export function ConversationStationHandoff({
       !reason,
   );
 
+  // One start at a time: a second click while the draft is being prepared
+  // must not prepare, send or open the chat twice (the Agent path's rule).
+  const starting = useRef(false);
   const run = async () => {
-    if (!ready || !target.connection || state === 'pending') return;
-    const connection = target.connection;
+    if (!ready || !target.connection || state === 'pending' || starting.current)
+      return;
+    starting.current = true;
+    try {
+      await start(target.connection);
+    } finally {
+      starting.current = false;
+    }
+  };
+  const start = async (connection: StationConnection) => {
+    setState('pending');
+    setFeedback(undefined);
     let firstMessage = message;
+    let firstDraft: string | undefined;
     let sentQuotes: readonly DraftQuote[] = [];
     let clearsComposer = false;
-    if (!retained.current && draft && prepareDraft) {
-      const prepared = await prepareDraft();
+    const earlier = retained.current;
+    if (earlier) {
+      // A retry resends the request exactly; it clears the composer only if
+      // the composer still holds the draft and quotes it was prepared from.
+      sentQuotes = earlier.quotes ?? [];
+      clearsComposer =
+        earlier.draft !== undefined &&
+        composerText.trim() === earlier.draft.trim() &&
+        JSON.stringify(composerQuotes) === JSON.stringify(sentQuotes);
+    } else if (draft && prepareDraft) {
+      let prepared: Awaited<ReturnType<typeof prepareDraft>>;
+      try {
+        prepared = await prepareDraft();
+      } catch {
+        // Nothing was sent and the draft stays in the composer.
+        setState('error');
+        setFeedback(
+          "Your draft couldn't be prepared, so nothing was sent. Try again.",
+        );
+        return;
+      }
       if (!prepared || 'refused' in prepared) {
         setState('error');
         setFeedback(
@@ -273,13 +319,16 @@ export function ConversationStationHandoff({
         return;
       }
       firstMessage = prepared.text.trim() || catchUpMessage;
+      firstDraft = prepared.draft;
       sentQuotes = prepared.quotes;
       clearsComposer = true;
     }
-    const intent: PendingStationHandoff = retained.current ?? {
+    const intent: PendingStationHandoff = earlier ?? {
       idempotencyKey: idempotencyKey.current,
       environmentId,
       message: firstMessage,
+      ...(firstDraft !== undefined ? { draft: firstDraft } : {}),
+      ...(sentQuotes.length > 0 ? { quotes: [...sentQuotes] } : {}),
       ...(projectSlug ? { projectSlug } : {}),
       ...(executionAgentId ? { executionAgentId } : {}),
       ...(model?.expectedDefinitionFingerprint
@@ -300,8 +349,6 @@ export function ConversationStationHandoff({
       return;
     }
     retained.current = intent;
-    setState('pending');
-    setFeedback(undefined);
     try {
       const receipt = await handoffConversationToStation(
         apiBase,

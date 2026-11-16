@@ -908,4 +908,45 @@ describe('a conversation imported from a paired Station', () => {
     );
     expect(blank.status).toBe(400);
   });
+
+  test("cleans the sender's conversation title before it names the import", async () => {
+    const f = await imported(
+      {},
+      importBody({
+        source: {
+          conversationId: 'source-conversation',
+          title: '\u202EPl\u001b[31man\u200B\u061C',
+          agent: 'codex',
+        },
+      }),
+    );
+    const open = await f.service.resolveConversationOpen(
+      f.conversationId,
+      authority,
+    );
+    expect(open?.conversation.title).toBe('Plan (from Laptop)');
+    await f.execute('codex', FIRST_MESSAGE);
+    await vi.waitFor(() => expect(f.codex.turns).toHaveLength(1));
+    const heading = (f.codex.turns[0]?.ambientContext ?? '')
+      .split('\n')
+      .find((line) => line.startsWith('Continued from a conversation'));
+    expect(heading).toContain('(Plan, from Laptop)');
+  });
+
+  test('refuses an origin made only of invisible characters', async () => {
+    const f = await fixture();
+    const response = await f.importConversation(
+      importBody({
+        messages: [
+          {
+            id: 'u1',
+            role: 'user',
+            text: 'hello',
+            importedFrom: `\u3164\u115F${String.fromCodePoint(0xe0041)}\u00AD`,
+          },
+        ],
+      }),
+    );
+    expect(response.status).toBe(400);
+  });
 });

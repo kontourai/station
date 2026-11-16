@@ -393,4 +393,161 @@ describe('continuing a chat on a paired Station', () => {
       }),
     );
   });
+
+  const draftQuote = {
+    version: 1 as const,
+    origin: 'http://station.test',
+    sessionId: 'session-a',
+    turnId: 't',
+    messageId: 'm',
+    revision: 'c'.repeat(64),
+    excerpt: 'quoted answer',
+  };
+  const prepared = {
+    text: '> quoted answer\n\ncarry on',
+    draft: 'carry on',
+    quotes: [draftQuote],
+  };
+
+  test('a double click prepares and hands off once', async () => {
+    let release!: (value: typeof prepared) => void;
+    const prepareDraft = vi.fn(
+      () =>
+        new Promise<typeof prepared>((resolve) => {
+          release = resolve;
+        }),
+    );
+    handoffConversationToStation.mockResolvedValue(receipt);
+    const { onContinuedOnStation } = renderDialog(vi.fn(), {
+      initialMessage: 'carry on',
+      draftQuotes: [draftQuote],
+      prepareDraft,
+    });
+    await chooseReceiver();
+    const button = screen.getByRole('button', { name: 'Continue on Receiver' });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    release(prepared);
+    await waitFor(() => expect(onContinuedOnStation).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(prepareDraft).toHaveBeenCalledTimes(1);
+    expect(handoffConversationToStation).toHaveBeenCalledTimes(1);
+    expect(onContinuedOnStation).toHaveBeenCalledTimes(1);
+  });
+
+  test('a draft preparation that throws ends in a closable error, and nothing is sent', async () => {
+    const prepareDraft = vi.fn(async () => {
+      throw new Error('mention lookup failed');
+    });
+    renderDialog(vi.fn(), { initialMessage: 'carry on', prepareDraft });
+    await chooseReceiver();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Continue on Receiver' }),
+    );
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      "Your draft couldn't be prepared, so nothing was sent. Try again.",
+    );
+    expect(handoffConversationToStation).not.toHaveBeenCalled();
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Continue on Receiver',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Cancel agent handoff',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+  });
+
+  test('a retry after an unconfirmed answer still clears the draft it sent', async () => {
+    handoffConversationToStation
+      .mockRejectedValueOnce(
+        Object.assign(new Error('lost'), { outcome: 'indeterminate' }),
+      )
+      .mockResolvedValueOnce(receipt);
+    const prepareDraft = vi.fn(async () => prepared);
+    const { onContinuedOnStation } = renderDialog(vi.fn(), {
+      initialMessage: 'carry on',
+      draftQuotes: [draftQuote],
+      prepareDraft,
+    });
+    await chooseReceiver();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Continue on Receiver' }),
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Retry safely' }),
+    );
+    await waitFor(() => expect(onContinuedOnStation).toHaveBeenCalledOnce());
+    expect(prepareDraft).toHaveBeenCalledOnce();
+    expect(onContinuedOnStation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: prepared.text,
+        clearsComposer: true,
+        sentQuotes: [draftQuote],
+      }),
+    );
+  });
+
+  test.each([
+    ['the same draft is still in the composer', 'carry on', true],
+    ['a newer draft replaced it', 'something new', false],
+  ])(
+    'a reload-and-retry clears the composer only when %s',
+    async (_name, composer, clears) => {
+      handoffConversationToStation.mockRejectedValueOnce(
+        Object.assign(new Error('lost'), { outcome: 'indeterminate' }),
+      );
+      const first = renderDialog(vi.fn(), {
+        initialMessage: 'carry on',
+        draftQuotes: [draftQuote],
+        prepareDraft: vi.fn(async () => prepared),
+      });
+      await chooseReceiver();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Continue on Receiver' }),
+      );
+      await screen.findByRole('button', { name: 'Retry safely' });
+      first.unmount();
+
+      handoffConversationToStation.mockResolvedValueOnce(receipt);
+      const { onContinuedOnStation } = renderDialog(vi.fn(), {
+        initialMessage: composer,
+        draftQuotes: clears ? [draftQuote] : [],
+        prepareDraft: vi.fn(async () => prepared),
+      });
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Retry safely' }),
+      );
+      await waitFor(() => expect(onContinuedOnStation).toHaveBeenCalledOnce());
+      expect(onContinuedOnStation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: prepared.text,
+          clearsComposer: clears,
+          // What the earlier request sent, whether or not the composer clears.
+          sentQuotes: [draftQuote],
+        }),
+      );
+    },
+  );
+
+  test('the dialog says what it does once another Station is chosen', async () => {
+    renderDialog();
+    expect(screen.getByRole('dialog', { name: 'Switch agent' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Switch agent' })).toBeTruthy();
+    await chooseReceiver();
+    expect(
+      screen.getByRole('dialog', { name: 'Continue elsewhere' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { name: 'Continue elsewhere' }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('radio', { name: 'This Station' }));
+    expect(screen.getByRole('dialog', { name: 'Switch agent' })).toBeTruthy();
+  });
 });

@@ -74,6 +74,7 @@ import {
 } from '../../services/orchestration/conversation-fork-context.js';
 import { readConversationContextSeedPin } from '../../services/orchestration/conversation-handoff-module.js';
 import type { ConversationForkProvenance } from '../../services/orchestration/event-store.js';
+import { cleanLabel } from '../../services/orchestration/quoted-text.js';
 import {
   conversationImportRequestSchema,
   importedConversationMessages,
@@ -1741,7 +1742,7 @@ export function createConversationRoutes(
         targetAgent,
         ownerUserId: authority.userId,
         createdAt: new Date().toISOString(),
-        sourceTitle: body.source.title.trim() || 'Previous conversation',
+        sourceTitle: cleanLabel(body.source.title) || 'Previous conversation',
         messages: importedConversationMessages(body),
         imported: {
           stationName: sender.stationName,
