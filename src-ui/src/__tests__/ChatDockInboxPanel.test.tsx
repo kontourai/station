@@ -1166,17 +1166,17 @@ describe('ChatDockInboxPanel exit presentation (#3309)', () => {
       .getByRole('button', { name: /^active title/ })
       .closest('.inbox-row__open') as HTMLElement;
     const lines = Array.from(row.children).map((child) => child.className);
-    expect(lines.slice(0, 3)).toEqual([
+    // Two lines on a hover row: what, then state and where.
+    expect(lines.slice(0, 2)).toEqual([
       'inbox-row__headline',
-      expect.stringContaining('inbox-row__status'),
-      'inbox-row__meta',
+      'inbox-row__state',
     ]);
     const headline = row.querySelector('.inbox-row__headline')!;
     expect(headline.querySelector('.inbox-row__title')?.textContent).toBe(
       'active title',
     );
     expect(headline.querySelector('.inbox-row__time')?.textContent).toBe('1m');
-    expect(row.querySelector('.inbox-row__meta .inbox-row__time')).toBeNull();
+    expect(row.querySelector('.inbox-row__state .inbox-row__time')).toBeNull();
     expect(row.querySelector('.inbox-row__agent')?.textContent).toBe(
       'active agent',
     );
