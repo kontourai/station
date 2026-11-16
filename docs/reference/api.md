@@ -908,8 +908,9 @@ request for 150 seconds (longer than the board's 120-second refresh); a write
 to the repository through Station clears it. Each fact's `observedAt` is when
 the forge was read, which for a shared answer is earlier than the request.
 Known limit: a change made outside Station (on the forge, or by an agent's own
-`gh`) can take up to that 150 seconds plus the client's 60-second stale time
-to show. The read moves no Task (close-on-merge is separate) and is
+`gh`) can take up to about two board refreshes (roughly 240 seconds) to show,
+because a refresh inside the 150-second cache window is answered from the
+cache. The read moves no Task (close-on-merge is separate) and is
 `Cache-Control: private, no-store`. `projectId` is required (`400` without
 it, before anything else). A hosted request answers `tasks: {}`. A requester whose
 standing changed during the reads gets `404` with `code:

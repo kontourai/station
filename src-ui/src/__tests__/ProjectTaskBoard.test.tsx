@@ -103,9 +103,11 @@ function Harness({
   onAction = vi.fn(),
   onOpenTask = vi.fn(),
   readPullRequests = true,
+  pendingTaskIds,
 }: {
   tasks: TaskRecord[];
   readPullRequests?: boolean;
+  pendingTaskIds?: ReadonlySet<string>;
   onAction?: (...args: unknown[]) => void;
   onOpenTask?: (taskId: string) => void;
 }) {
@@ -124,6 +126,7 @@ function Harness({
       presentations={model.presentations}
       tasks={new Map(tasks.map((t) => [t.id, t]))}
       settled={model.pullRequests.settled}
+      pendingTaskIds={pendingTaskIds}
       onAction={onAction}
       onOpenTask={onOpenTask}
     />
@@ -410,6 +413,27 @@ describe('ProjectTaskBoard', () => {
       ],
     });
     rerender(<Harness tasks={tasks} />);
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Approve Work moving' }),
+    );
+  });
+
+  test('an action that goes busy keeps focus remembered: the moved card gets it back', async () => {
+    given({ tasks: movingTask, sessions: runningRun });
+    const { rerender } = render(<Harness tasks={movingTask} />);
+    const action = screen.getByRole('button', { name: 'Open run Work moving' });
+    act(() => action.focus());
+    rerender(
+      <Harness tasks={movingTask} pendingTaskIds={new Set(['moving'])} />,
+    );
+    expect(action.matches(':disabled')).toBe(true);
+    // Browsers blur a control when it becomes disabled, with no
+    // relatedTarget, while it is still in the page; jsdom does not.
+    fireEvent.focusOut(action);
+    await act(async () => {});
+    given({ tasks: movingTask, sessions: owedRun });
+    rerender(<Harness tasks={movingTask} />);
+    expect(cardTitles('Needs you')).toEqual(['Work moving']);
     expect(document.activeElement).toBe(
       screen.getByRole('button', { name: 'Approve Work moving' }),
     );

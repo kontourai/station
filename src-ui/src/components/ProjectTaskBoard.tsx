@@ -143,9 +143,15 @@ export function ProjectTaskBoard({
     // the reader moved focus away (to another control, or by clicking blank
     // space, which leaves no relatedTarget): forget it, so a later move of
     // the card never pulls focus back. Only a control that vanished (its
-    // card moved lanes) is restored.
+    // card moved lanes) is restored. A control that went busy (disabled
+    // while its action runs) loses focus without the reader choosing to
+    // leave, so it stays remembered.
     queueMicrotask(() => {
-      if (left.isConnected && focused.current?.element === left)
+      if (
+        left.isConnected &&
+        !left.matches(':disabled') &&
+        focused.current?.element === left
+      )
         focused.current = null;
     });
   };
