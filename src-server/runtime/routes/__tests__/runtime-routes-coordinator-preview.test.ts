@@ -125,8 +125,6 @@ describe('configureRuntimeRoutes: coordinator-session preview', () => {
       warn() {},
       error() {},
     } as never);
-    if (options.previewEnabled)
-      await registry.setEnabled('coordinator-session', true);
     const bus = new EventBus();
     const app = new Hono();
     const context = deepStub({
@@ -213,6 +211,10 @@ describe('configureRuntimeRoutes: coordinator-session preview', () => {
       }),
     });
     Reflect.set(context as object, 'buildRuntimeContext', () => context);
+    // After `registry.bind` (in the context above) offers the preview, and
+    // before composing: the replay that composition queues reads it enabled.
+    if (options.previewEnabled)
+      await registry.setEnabled('coordinator-session', true);
     const result = configureRuntimeRoutes(
       context as unknown as Parameters<typeof configureRuntimeRoutes>[0],
     );
