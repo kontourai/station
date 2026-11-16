@@ -9,6 +9,7 @@ import { useApprovalAnswering } from '../conversation/useApprovalAnswering';
 import { describeReadFailure, ErrorState, SkeletonBlock } from '../state';
 import { useExactRequestDecision } from './RequestInspectionDialog';
 import './ExactRequestInline.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 
 type CapturedAuthority = NonNullable<
   ReturnType<typeof useHostRequestAuthorityScope>
@@ -86,6 +87,7 @@ function ExactRequestDecisionRow({
   quiet?: ReactNode;
   open?: ReactNode;
 }) {
+  useDecisionSurface('exact-request-decision');
   const answer = useApprovalAnswering(authority.apiBase);
   const decision = useExactRequestDecision(reference, authority, answer);
   // An accepted decision opens its conversation, as every approval action in

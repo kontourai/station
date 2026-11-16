@@ -335,6 +335,20 @@ type PendingRequest = {
 
 /** The command Station resolves on PATH for this engine. */
 const CLAUDE_CLI_COMMAND = 'claude';
+/**
+ * #2540: the oldest Claude Code whose hook reporting (`includeHookEvents`)
+ * Station has checked: a settings hook, `async` and `asyncRewake` alike,
+ * reports `hook_started` before the turn's `result` and `hook_response` when
+ * it ends, and an SDK callback hook reports nothing. An older or unreported
+ * version is not parked early.
+ */
+const CLAUDE_HOOK_REPORTING_VERIFIED_VERSION = '2.1.322';
+/** #2540: tools that change the engine's session-scoped wakeups. */
+const CLAUDE_WAKEUP_SCHEDULING_TOOLS: ReadonlySet<string> = new Set([
+  'CronCreate',
+  'CronDelete',
+  'ScheduleWakeup',
+]);
 /** #2494: id of the confined-credential readiness entry (macOS only). */
 const CLAUDE_CONFINED_CREDENTIAL_PREREQUISITE_ID = 'claude-confined-credential';
 
@@ -817,6 +831,28 @@ type ClaudeSessionRecord = {
   onTaskSettled?: (taskId: string) => void;
   /** Mirrors `ClaudeMessageState.childWork` (#2457). */
   childWork?: ClaudeChildWorkState;
+  /** Mirrors `ClaudeMessageState.housekeepingTasks` (#2540). */
+  housekeepingTasks?: Set<string>;
+  /** Mirrors `ClaudeMessageState.mcpServersStationOnly` (#2540). */
+  mcpServersStationOnly?: boolean;
+  /** Mirrors `ClaudeMessageState.foreignHookObserved` (#2540). */
+  foreignHookObserved?: boolean;
+  /** Mirrors `ClaudeMessageState.claudeCodeVersion` (#2540). */
+  claudeCodeVersion?: string;
+  /**
+   * How many session-scoped wakeups (CronCreate, ScheduleWakeup, a loop) the
+   * engine reported scheduled when it last stopped (its Stop hook's
+   * `session_crons`). They live in this process, so a finished-session park
+   * would drop them. Absent until a Stop hook reports the field.
+   */
+  scheduledWakeups?: number;
+  /**
+   * The engine called a scheduling tool (CronCreate, CronDelete,
+   * ScheduleWakeup) since a Stop hook last reported `session_crons`: how many
+   * wakeups it holds is unknown, so it is treated as holding one. A turn that
+   * ends through StopFailure runs no Stop hook and leaves this set.
+   */
+  scheduledWakeupsUnknown?: boolean;
   lastSessionState: 'idle' | 'running' | 'requires_action';
   streamTask: Promise<void>;
   /** The engine's live permission mode, as Station last sent it or the
@@ -1696,6 +1732,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     engineId: engineId('claude'),
     abortSettlement: 'await',
     workloadScope: 'engine-process' as const,
+    // #2540: with `earlyParkRefusal`, see there for what this rests on.
+    openEngineWork: 'complete' as const,
     // `respondToRequest` forwards only the offered Bash prefix rules.
     sessionGrantScopes: ['rule'] as const,
     recovery: {
@@ -3966,6 +4004,60 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     return false;
   }
 
+  /**
+   * #2540: why this engine must not be parked seconds after a finished turn,
+   * beyond the open tasks {@link hasOpenEngineWork} reports. Consulted only
+   * by the finished-session park; the idle, recovery and relaunch parks never
+   * read it, so a stale answer here can cost memory but never recovery.
+   *
+   * What it rests on (the `openEngineWork: 'complete'` claim):
+   * - every task the engine registers is a task frame: agents, shells,
+   *   monitors and workflows in `activeTasks`, housekeeping ones
+   *   (`skip_transcript`) in `housekeepingTasks`;
+   * - its own scheduled wakeups are known from the last Stop hook's
+   *   `session_crons`, and become unknown again at any scheduling-tool call;
+   * - its only MCP servers are Station's in-process (`sdk`) ones, whose state
+   *   lives in Station, not in a server process the engine started;
+   * - every hook it runs is reported (`includeHookEvents`, on a CLI at least
+   *   {@link CLAUDE_HOOK_REPORTING_VERIFIED_VERSION}), Station's own hooks
+   *   being SDK callbacks that report none; any reported hook therefore is
+   *   foreign and refuses for the rest of the engine's life.
+   * Not seen: a hook that is configured but has not fired in this engine (it
+   * has nothing running to lose; one that fires only after idling, such as
+   * an idle `Notification`, does not fire once parked, as after the idle
+   * park), and a process a command leaves running after its tool call
+   * returned without making it a background task.
+   */
+  earlyParkRefusal(threadId: string): string | undefined {
+    const record = this.sessions.get(threadId);
+    if (!record) return 'no live engine';
+    const version = parseClaudeCodeVersion(record.claudeCodeVersion);
+    // The shared parser drops a prerelease suffix, so `2.1.322-beta` would read
+    // as the verified release. A prerelease sorts before its release, so one
+    // at or below the verified version is treated as unverified.
+    const prerelease = /^\s*v?\d+\.\d+\.\d+-/.test(
+      record.claudeCodeVersion ?? '',
+    );
+    const order = version
+      ? compareClaudeCodeVersions(
+          version,
+          CLAUDE_HOOK_REPORTING_VERIFIED_VERSION,
+        )
+      : -1;
+    if (!version || order < 0 || (prerelease && order <= 0))
+      return 'its hook reporting is unverified for this Claude Code version';
+    if (record.foreignHookObserved)
+      return 'a hook Station did not install has run';
+    if (record.mcpServersStationOnly !== true)
+      return 'an MCP server other than Station’s own, or unreported servers';
+    if (record.scheduledWakeupsUnknown || record.scheduledWakeups === undefined)
+      return 'its scheduled wakeups are unknown';
+    if (record.scheduledWakeups > 0) return 'a scheduled wakeup';
+    if ((record.housekeepingTasks?.size ?? 0) > 0)
+      return 'a housekeeping task is running';
+    return undefined;
+  }
+
   async stopAll(): Promise<void> {
     try {
       await Promise.all(
@@ -4600,6 +4692,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ? { title: newSessionTitle(input.threadId) }
         : {}),
       includePartialMessages: true,
+      // #2540: report every hook the engine runs, so one Station did not
+      // install keeps the engine from the finished-session park
+      // (`earlyParkRefusal`). Station's own hooks are SDK callbacks and
+      // report nothing.
+      includeHookEvents: true,
       // station#1877 follow-up: ask the SDK to summarise what a subagent is
       // doing, so `task_progress.summary` carries a live status line instead
       // of nothing. Without it a five-minute background agent reports its
@@ -4989,6 +5086,28 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         });
       },
       hooks: {
+        // #2540: the wakeups the engine has scheduled for itself, which the
+        // finished-session park must not drop (`earlyParkRefusal`). Reported
+        // on each stop; an engine that omits the field leaves it unknown.
+        Stop: [
+          {
+            hooks: [
+              async (hookInput) => {
+                if (
+                  hookInput.hook_event_name === 'Stop' &&
+                  Array.isArray(hookInput.session_crons)
+                ) {
+                  const record = this.sessions.get(input.threadId);
+                  if (record) {
+                    record.scheduledWakeups = hookInput.session_crons.length;
+                    record.scheduledWakeupsUnknown = false;
+                  }
+                }
+                return { continue: true };
+              },
+            ],
+          },
+        ],
         // #4828: a completed WebFetch or WebSearch (in a subagent too) marks
         // this conversation as having read content written by others, before
         // the engine's next PreToolUse. The SDK awaits a synchronous hook's
@@ -5002,6 +5121,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                 const ledger =
                   this.options.untrustedContentLedger ??
                   sharedUntrustedContentLedger;
+                // #2540: a schedule changed; only the next Stop says how.
+                if (CLAUDE_WAKEUP_SCHEDULING_TOOLS.has(hookInput.tool_name)) {
+                  const record = this.sessions.get(input.threadId);
+                  if (record) record.scheduledWakeupsUnknown = true;
+                }
                 if (CLAUDE_NATIVE_WEB_READ_TOOLS.has(hookInput.tool_name))
                   markNativeWebRead([input.threadId], {
                     ledger,

@@ -518,7 +518,7 @@ export function ChatDockHeader({
   }
 
   return (
-    <div className="chat-dock__header">
+    <div className="chat-dock__header" data-surface="chat-header">
       <div className="chat-dock__title">
         {slots?.start !== undefined ? inboxToggle : null}
         {leading}

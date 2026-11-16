@@ -39,7 +39,9 @@ decomposes what reached it, and the
    separately.
 5. Samples the instance's process tree, sends `hi` to the Claude agent in the
    fixture repository, creates more idle sessions the same way, runs the
-   control request, then runs `station stop` and looks for survivors.
+   optional [delegated run](#delegated-run-optional-report-only) when asked,
+   runs the control request, then runs `station stop` and looks for
+   survivors.
 
 Every turn is answered by the stub (`ok`). No real model is called.
 
@@ -257,6 +259,40 @@ not measured.
 **Sizes.** Sizes are UTF-8 bytes and Unicode code points. No tokenizer is
 applied, so the results contain no token counts or estimates.
 
+### Delegated run (optional, report-only)
+
+`--delegated-run` adds one step after the idle-session sample. It writes a
+`delegatedRun` section to `result.json`, which is never a budget and never
+recorded in the baseline. The step runs three rounds. Each round delegates a
+new stub-answered task as the operator (`POST /api/orchestration/delegations`),
+the way an agent's delegation starts a child Session. It waits for that task's
+engine to be [parked early](../architecture/module-map.md#conversationsessionlineage),
+then sends the task two stub-answered follow-ups through
+`POST /api/orchestration/delegations/:taskId/continue`. The first restarts the
+released engine in place from its resume cursor; the second reaches it warm.
+Each round needs a new task because the operator's follow-up is a person's
+turn, which keeps that engine for the ordinary idle park afterwards.
+
+- `engineProcessesBefore`: Claude engine processes in the tree, counted by
+  executable name, before the first task.
+- `engineProcessesAtFinish`, `engineReleasedAfterMs`: for the first task, the
+  count when its turn completed, and how long after that the count fell back
+  to what it was before the task. `null` when that did not happen within
+  `--delegated-release-max-ms` (default 90 s).
+- `finishedMemoryBytes`: the tree's memory after the first task's engine was
+  released, settled as for the other memory metrics. Compare it with
+  `idleSessionsMemoryBytes`.
+- `releasedFollowUpMs`, `warmFollowUpMs`: the medians, over the rounds, of
+  the first and second follow-up, each timed from the request to its reply,
+  polled every 50 ms. A round whose engine was not released records no
+  released follow-up.
+- `rounds`: each round's `enginesAtFinish`, `releasedAfterMs`,
+  `releasedFollowUpMs` (`null` when its engine was not released) and
+  `warmFollowUpMs`.
+
+A failed step is written as `delegatedRun.status: not_measured` with its
+reason. It does not fail the run.
+
 ## Budgets and baseline
 
 A budget fails only when `value > baseline × (1 + ratio) + floor`. Shrinking
@@ -313,8 +349,9 @@ Each run writes `result.json` (metrics, per-process detail, request breakdown,
 verdicts) and `requests.json` (every request the stub received) under
 `.kontourai/station-weight/<sha>/<run-id>/`. Diff two results to compare
 revisions. `--out=<dir>`, `--baseline=<file>`, `--settle-ms`,
-`--settle-max-ms`, `--cpu-window-ms`, `--sessions`, `--stop-grace-ms` and
-`--ready-launches` override the defaults.
+`--settle-max-ms`, `--cpu-window-ms`, `--sessions`, `--stop-grace-ms`,
+`--ready-launches` and `--delegated-release-max-ms` override the defaults.
+`--delegated-run` adds the [delegated run](#delegated-run-optional-report-only).
 
 ## Gaps
 

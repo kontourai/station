@@ -427,7 +427,10 @@ at their existing routes. Developer joins that chooser, before Settings, when
 enabled. Settings stays reachable from the profile menu, Customize, its keyboard
 shortcut and the command palette. The Appearance page owns the mode (System, the
 default, which follows the device, or Light or Dark), density, motion, the
-color theme, its flavor and its accent; Settings' Appearance topic keeps the mode
+color theme, its flavor and its accent, and the signed-in person's own
+[custom appearance](../decisions/custom-appearance.md) (a palette and CSS
+stored per person on the Station, which agents may only propose); Settings'
+Appearance topic keeps the mode
 toggle, the phone-only haptics row, the terminal screen reader mode row, and
 Theme and Accent color rows that link to the page. The footer replaces its
 command-palette chip and duplicate notification bell; the header bell and
