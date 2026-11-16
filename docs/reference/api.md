@@ -1543,7 +1543,10 @@ hosted Station withdraws:
 
 Reads need the chat's read access (`orchestration:read`). Writes need the
 operator in person (`access:manage`); Station's internal principal (an agent's
-tool call) and a delegation credential are answered 404. See
+tool call) and a delegation credential are answered 404. A paused pull request,
+or one whose chat's agent stopped with feedback waiting, also appears in
+`GET /api/attention` as a `pull-request-feedback` item for readers of that
+chat, with `viewerMayChange` derived from the same writer rule. See
 [the decision](../decisions/pull-request-agent-feedback.md).
 
 

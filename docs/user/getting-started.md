@@ -770,10 +770,11 @@ a scope, it follows the project whose page you are on and shows all work anywher
 else. The control shows **This project: <name>** on its page and **All work**
 elsewhere. **Always <name> · <Station>** pins a project across navigation. An
 explicit choice such as **All work** stays selected as you navigate. If work needs
-you outside the filter, choose **Show all** from the notice. On a computer the
-scope picker sits beside search; **Browse all conversations** is at the end of
-the list. Each row leads with its title and time, then its status, then the
-agent and project.
+you outside the filter, choose **Show all** from the notice; on a computer, a
+count badge on the scope picker does the same. On a computer the scope picker
+sits beside search, **Browse all conversations** is at the end of the list,
+and each row is two lines: its title and time, then the agent's icon, its
+status and its project. Hover the icon to read the agent's name.
 
 To clear your inbox, hover a conversation on desktop and choose **× Dismiss
 from inbox**. On mobile, tap **⋯** or hold a row to open its actions and

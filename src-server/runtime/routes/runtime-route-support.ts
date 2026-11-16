@@ -501,10 +501,13 @@ export function configureRuntimeSupportServices(
     coordinatorWakes?: () =>
       | Pick<CoordinatorWakeDelivery, 'observeNotification'>
       | undefined;
-    /** Pull request agent feedback: its tick, shutdown and #4508 overlap. */
+    /**
+     * Pull request agent feedback: its tick, shutdown, #4508 overlap, its
+     * Needs-you items, and the notification service its notices go to.
+     */
     pullRequestFeedback?: Pick<
       PullRequestFeedbackRuntime,
-      'tick' | 'close' | 'owns'
+      'tick' | 'close' | 'owns' | 'attentionSources' | 'bindNotifier'
     >;
     /**
      * #2064 (D4): paused Survey/Flow gate review sessions for the attention
@@ -551,6 +554,8 @@ export function configureRuntimeSupportServices(
         }),
     },
   );
+  // Composed before this service exists; its notices go here from now on.
+  options.pullRequestFeedback?.bindNotifier(notificationService);
   // #5072: the local Project a session recorded at its start, the same
   // record station-control callers resolve, so a Project's notification
   // level reaches its turn and approval notifications.
@@ -1119,6 +1124,7 @@ export function configureRuntimeSupportServices(
           'Temporarily hide attention items until a chosen time. New source activity resurfaces immediately.',
       }),
     },
+    { pullRequestFeedback: options.pullRequestFeedback },
   );
   return {
     schedulerService,

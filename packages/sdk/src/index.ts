@@ -86,6 +86,7 @@ export type {
   NeedsInputAttentionItem,
   PluginLifecycleProposalAttentionItem,
   ProposedChangeAttentionItem,
+  PullRequestFeedbackAttentionItem,
   ReviewPendingAttentionItem,
   SessionFailedAttentionItem,
   SetupIncompleteAttentionItem,
