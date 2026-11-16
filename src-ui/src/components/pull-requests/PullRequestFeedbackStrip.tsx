@@ -171,6 +171,10 @@ function ReadableOwner({
       })
     : undefined;
   const last = data.last?.state === 'sent' ? data.last : undefined;
+  // Two rows at every width (the strip lives in a narrow side pane): the
+  // status and the gear, then where it goes and what went last. A row the
+  // pane cannot hold shortens the chat's title rather than wrapping, so no
+  // separator is left dangling at a line's end or start.
   return (
     <>
       {chip && (
@@ -179,37 +183,38 @@ function ReadableOwner({
           <PullRequestChip {...chip} />
         </>
       )}
-      <Separator />
-      {here ? (
-        <span className="pr-feedback-strip__owner">this chat</span>
-      ) : (
-        <Button
-          variant="link"
-          size="sm"
-          className="pr-feedback-strip__owner"
-          title={`Open “${owner.title}”`}
-          onClick={() =>
-            void openChatsStore.openConversation(owner.conversationId)
-          }
-        >
-          {owner.title}
-        </Button>
-      )}
-      {last && (
-        // No leading dot: on a narrow pane this group wraps to its own line.
-        <span className="pr-feedback-strip__last">
-          <span>
-            Sent {describePullRequestFeedbackCategories(last.categories)}
-          </span>
-          <Separator />
-          <RelativeTime iso={last.at} now={now} />
-        </span>
-      )}
       {/* An __actions row: the shared touch floor sizes it on phones. */}
       <span className="pr-feedback-strip__actions pr-feedback-strip__gear">
         <IconButton aria-label="Agent feedback settings" onClick={onSettings}>
           <SettingsGlyph />
         </IconButton>
+      </span>
+      <span className="pr-feedback-strip__detail">
+        {here ? (
+          <span className="pr-feedback-strip__owner">this chat</span>
+        ) : (
+          <Button
+            variant="link"
+            size="sm"
+            className="pr-feedback-strip__owner"
+            title={`Open “${owner.title}”`}
+            onClick={() =>
+              void openChatsStore.openConversation(owner.conversationId)
+            }
+          >
+            {owner.title}
+          </Button>
+        )}
+        {last && (
+          <span className="pr-feedback-strip__last">
+            <Separator />
+            <span>
+              Sent {describePullRequestFeedbackCategories(last.categories)}
+            </span>
+            <Separator />
+            <RelativeTime iso={last.at} now={now} />
+          </span>
+        )}
       </span>
     </>
   );

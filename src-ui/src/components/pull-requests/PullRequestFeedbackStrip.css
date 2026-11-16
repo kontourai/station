@@ -1,6 +1,6 @@
-/* One quiet line under the pull request's head: whether its agent gets
-   feedback, from which chat, and what went last. It wraps on a narrow
-   pane; the owner's title gives way first. */
+/* Quiet lines under the pull request's head: whether its agent gets
+   feedback, then (when a chat the reader may read gets it) which chat and
+   what went last on a row of its own. The chat's title gives way first. */
 .pr-feedback-strip {
   /* The panel is a scrolling flex column: never squeeze a wrapped line. */
   flex: none;
@@ -24,8 +24,16 @@
   padding: 0;
   font-size: inherit;
 }
-.pr-feedback-strip__owner {
+.pr-feedback-strip__detail {
+  flex: 1 0 100%;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
   min-width: 0;
+}
+.pr-feedback-strip__owner {
+  flex: 0 1 auto;
+  min-width: 6ch;
   /* The strip sits in a narrow side pane at every viewport width. */
   max-width: 22ch;
   overflow: hidden;
@@ -33,6 +41,7 @@
   white-space: nowrap;
 }
 .pr-feedback-strip__last {
+  flex: none;
   display: inline-flex;
   margin-inline-start: var(--k-space-2);
   align-items: center;
