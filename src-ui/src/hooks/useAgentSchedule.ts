@@ -2,7 +2,11 @@ import type {
   AgentJobProposal,
   ConversationAgentSchedule,
 } from '@kontourai/station-contracts/agent-schedule';
-import { getJson, mutateJson } from '@kontourai/station-sdk';
+import {
+  getJson,
+  mutateJson,
+  orchestrationQueries,
+} from '@kontourai/station-sdk';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
@@ -97,11 +101,25 @@ export function useAgentSchedule(
     if (!enabled || due === undefined) return;
     const wait = due - Date.now() + SETTLE_MS;
     if (wait > MAX_TIMER_MS) return;
-    const timer = setTimeout(() => void query.refetch(), Math.max(0, wait));
+    const timer = setTimeout(
+      () => {
+        void query.refetch();
+        void client.invalidateQueries({
+          queryKey: orchestrationQueries.sessions(scope).queryKey,
+        });
+      },
+      Math.max(0, wait),
+    );
     return () => clearTimeout(timer);
-  }, [enabled, due, query.refetch]);
+  }, [enabled, due, query.refetch, client, scope]);
 
-  const settle = () => client.invalidateQueries({ queryKey: key });
+  const settle = () =>
+    Promise.all([
+      client.invalidateQueries({ queryKey: key }),
+      client.invalidateQueries({
+        queryKey: orchestrationQueries.sessions(scope).queryKey,
+      }),
+    ]);
   const cancelWakeUp = useMutation({
     mutationFn: async (wakeUpId: string) =>
       readData(

@@ -120,7 +120,7 @@ test('a saved collector change reports restart activation and cannot retain init
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reply(status)));
   mount();
   await screen.findByText(
-    'Saved collector settings require a Station restart; exports from the previous configuration are fenced.',
+    'Restart Station to apply the new collector settings.',
   );
   expect(
     screen.queryByText(/Exporter initialized; downstream delivery unverified/),
@@ -152,9 +152,7 @@ test('the operator checks a connection through the SDK and refreshes process cou
   fireEvent.click(
     screen.getAllByRole('button', { name: 'Check connection' })[0],
   );
-  await screen.findByText(
-    'Receiver source authority and storage query passed.',
-  );
+  await screen.findByText('Connection and storage check passed.');
   expect(
     fetch.mock.calls.some(
       ([url, init]) =>
@@ -193,11 +191,11 @@ test.each([403, 404, 503])(
     expect(screen.queryByText(/Receiver acknowledged/)).toBeNull();
     if (code === 404)
       expect(screen.getByRole('alert').textContent).toContain(
-        'does not provide delivery status yet',
+        "doesn't report delivery status yet",
       );
     else
       expect(screen.getByRole('alert').textContent).toContain(
-        'Delivery status is unavailable',
+        'Delivery status unavailable.',
       );
   },
 );
@@ -250,9 +248,7 @@ test('same-origin authority replacement discards pending probe and cached succes
       }),
     );
   });
-  expect(
-    screen.queryByText('Receiver source authority and storage query passed.'),
-  ).toBeNull();
+  expect(screen.queryByText('Connection and storage check passed.')).toBeNull();
   expect(screen.queryByText(/Receiver acknowledged/)).toBeNull();
 });
 
@@ -262,7 +258,7 @@ test('missing Station authority sends no status or connection request', () => {
   vi.stubGlobal('fetch', fetch);
   mount();
   expect(
-    screen.getByText('Connect to this Station to see its delivery status.'),
+    screen.getByText('Connect to this Station to see delivery status.'),
   ).toBeTruthy();
   expect(fetch).not.toHaveBeenCalled();
 });
@@ -333,6 +329,6 @@ test('#4521: a managed policy explains OTel and a refused connection check in it
   fireEvent.click(productCheck!);
   await waitFor(() => expect(screen.getAllByText(denial)).toHaveLength(2));
   expect(
-    screen.queryByText('An operator must check this connection.'),
+    screen.queryByText('Only the Station operator can check this connection.'),
   ).toBeNull();
 });

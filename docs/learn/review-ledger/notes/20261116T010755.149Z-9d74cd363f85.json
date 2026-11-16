@@ -1,0 +1,7 @@
+{
+  "revision": "b874f58bf7d818e014de42f96836d8e312f96fdf",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"connections.md gained one sentence on listing Codex conversations from configured and profile homes; machine relationship claims do not depend on it.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

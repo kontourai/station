@@ -21,6 +21,7 @@ import {
   type TaskStatus,
   type TaskWorkspaceBinding,
 } from '@kontourai/station-contracts';
+import type { IPullRequestProvider } from '@kontourai/station-contracts/pull-request-provider';
 import {
   SESSION_INVENTORY_CURRENT_GROUP_IDS,
   type SessionInventoryRow,
@@ -41,6 +42,7 @@ import {
   readTaskProposal,
   taskProposalBrief,
 } from '@kontourai/station-contracts/task-graph';
+import type { TaskPullRequestFactsProjection } from '@kontourai/station-contracts/task-lane';
 import type { TaskMemoryAttention } from '@kontourai/station-contracts/task-memory';
 import {
   isHostedSessionReadAuthority,
@@ -89,6 +91,7 @@ import {
   TaskReferenceRejectedError,
   TaskWorkItemTakenError,
 } from '../../services/projects/task-graph-service.js';
+import { readTaskPullRequestFacts } from '../../services/projects/task-pull-request-facts.js';
 import {
   createTaskGateEvaluationReferenceReadAdapter,
   createTaskToolResultReferenceReadAdapter,
@@ -448,6 +451,12 @@ export function createTaskRoutes(
     proposalBriefRefusal?: (
       text: string,
     ) => Promise<RevisionEvidenceAdmissionRefusal | null>;
+    /**
+     * The pull request providers the Task board reads kept pull requests
+     * from (`GET /api/tasks/pull-request-facts`). Personal mode only: the
+     * reads use this host's own forge logins.
+     */
+    pullRequestProviders?: () => IPullRequestProvider[];
     /** Exact-identity tracker reads (#4003). Personal mode only. */
     workItemObserver?: WorkItemObserver;
     /**
@@ -768,14 +777,17 @@ export function createTaskRoutes(
       // The count is an attention hint; the Tasks list never fails on it.
       counts = undefined;
     }
+    // #4507: the same worktree projection the Task view reads, so a list
+    // row's branch is the Task's own and not its creation-time binding.
+    const projectedTasks = service.projectTaskWorktrees(currentTasks);
     const data: Array<
       TaskRecord & Partial<TaskMemoryAttention> & TaskWorkChatPresentation
     > = counts
-      ? currentTasks.map((task) => {
+      ? projectedTasks.map((task) => {
           const openQuestionCount = counts.get(task.id) ?? 0;
           return openQuestionCount > 0 ? { ...task, openQuestionCount } : task;
         })
-      : currentTasks;
+      : projectedTasks;
     return c.json({
       success: true,
       data: workChats
@@ -785,6 +797,51 @@ export function createTaskRoutes(
           }))
         : data,
     });
+  });
+
+  /**
+   * Derived Task lanes: the provider's current facts for every pull request
+   * kept on a Project's live Tasks, for the board to derive lanes from. A
+   * read only: it never moves a Task (close-on-merge is its own
+   * reconciliation). Registered before `/:taskId` so it is never read as a
+   * Task id.
+   */
+  app.get('/pull-request-facts', async (c) => {
+    c.header('Cache-Control', 'private, no-store');
+    const empty: TaskPullRequestFactsProjection = {
+      observedAt: new Date().toISOString(),
+      tasks: {},
+    };
+    const projectId = c.req.query('projectId')?.trim();
+    if (!projectId)
+      return c.json({ success: false, error: 'projectId is required' }, 400);
+    // Hosted: a tenant's request never reads through this host's own forge
+    // logins.
+    if (hostedRequest(c.req.raw)) return c.json({ success: true, data: empty });
+    const service = serviceForRequest(c.req.raw);
+    if (!service) return c.json({ success: true, data: empty });
+    const authority = options.readAuthorityForRequest?.(c.req.raw);
+    const data = await readTaskPullRequestFacts({
+      tasks: service.listTasks(projectId),
+      listKept: (taskIds) =>
+        service.listKeptDeclaredPullRequestsForTasks(taskIds),
+      canRead: (sessionId) =>
+        Boolean(authority && options.canReadSession?.(sessionId, authority)),
+      providers: options.pullRequestProviders ?? (() => []),
+    });
+    // The provider reads take time; the requester may have lost the
+    // standing it started with. Still a non-disclosing 404, with a code so a
+    // client can tell it from a Station that has no such route.
+    if (options.isRequestPrincipalCurrent?.(c.req.raw) === false)
+      return c.json(
+        {
+          success: false,
+          code: 'request_principal_changed',
+          error: 'Task not found',
+        },
+        404,
+      );
+    return c.json({ success: true, data });
   });
 
   app.post('/', validate(taskCreateSchema), async (c) => {

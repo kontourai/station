@@ -1,0 +1,13 @@
+{
+  "revision": "b874f58bf7d818e014de42f96836d8e312f96fdf",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Discovery now scans the default Codex home plus configured homes (connection configHome, legacy app home, credential-profile homes), dedupes native ids to the earliest home, and resolves affinity for any home the latest discovery listed; STATION_EXTERNAL_CODEX_SOURCE_ROOT stays exclusive. getting-started, session-api, env-vars and connections describe this; other citing documents make no claim about which Codex homes are read.","inputs":["src-server/providers/sessions/codex-rollout-session-source.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Discovery now scans the default Codex home plus configured homes (connection configHome, legacy app home, credential-profile homes), dedupes native ids to the earliest home, and resolves affinity for any home the latest discovery listed; STATION_EXTERNAL_CODEX_SOURCE_ROOT stays exclusive. getting-started, session-api, env-vars and connections describe this; other citing documents make no claim about which Codex homes are read.","inputs":["src-server/providers/sessions/codex-rollout-session-source.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Discovery now scans the default Codex home plus configured homes (connection configHome, legacy app home, credential-profile homes), dedupes native ids to the earliest home, and resolves affinity for any home the latest discovery listed; STATION_EXTERNAL_CODEX_SOURCE_ROOT stays exclusive. getting-started, session-api, env-vars and connections describe this; other citing documents make no claim about which Codex homes are read.","inputs":["src-server/providers/sessions/codex-rollout-session-source.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Discovery now scans the default Codex home plus configured homes (connection configHome, legacy app home, credential-profile homes), dedupes native ids to the earliest home, and resolves affinity for any home the latest discovery listed; STATION_EXTERNAL_CODEX_SOURCE_ROOT stays exclusive. getting-started, session-api, env-vars and connections describe this; other citing documents make no claim about which Codex homes are read.","inputs":["src-server/providers/sessions/codex-rollout-session-source.ts"]}
+  ]
+}

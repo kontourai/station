@@ -332,7 +332,19 @@
 
     "src-server/services/orchestration/post-tool-inbox.ts",
 
-    "src-server/services/orchestration/attachment-blob-store.ts"
+    "src-server/services/orchestration/attachment-blob-store.ts",
+
+    "src-server/services/peers/peer-readiness-service.ts",
+
+    "src-ui/src/components/chat/IndexedTranscriptTurnRail.tsx",
+
+    "src-ui/src/components/chat/useTranscriptTurnDirectory.ts",
+
+    "src-ui/src/components/chat-dock/ChatDockInboxPanel.css",
+
+    "src-ui/src/components/chat/__tests__/BackgroundTaskNoticeCard.test.tsx",
+
+    "tests/chat-settings-and-task-notices.spec.ts"
   ],
 
   "checks": [

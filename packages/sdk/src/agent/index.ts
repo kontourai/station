@@ -106,6 +106,7 @@ export {
   type RespondToRequestInput,
   type RespondToRequestResult,
   respondToRequest,
+  SessionDetailWindowUnsupportedError,
 } from '../client/orchestration';
 export { sendExecutionMessage } from '../client/send-execution-message';
 export {

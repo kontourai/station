@@ -6,7 +6,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { join, sep } from 'node:path';
+import { join, sep, win32 } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
@@ -221,5 +221,29 @@ describe('isCanonicalPathWithin and isCanonicalPathStrictlyWithin', () => {
     expect(isCanonicalPathWithin(sep, root)).toBe(true);
     expect(isCanonicalPathStrictlyWithin(sep, root)).toBe(true);
     expect(isCanonicalPathStrictlyWithin(sep, sep)).toBe(false);
+  });
+});
+
+describe('containment under Windows path semantics', () => {
+  const root = 'C:\\Users\\u\\.station\\app-homes';
+
+  test('a home on another drive is not inside the root', () => {
+    // relative() answers an absolute 'D:\\codex' across drives.
+    expect(isCanonicalPathWithin(root, 'D:\\codex', win32)).toBe(false);
+    expect(isCanonicalPathStrictlyWithin(root, 'D:\\codex', win32)).toBe(false);
+  });
+
+  test('a home below the root on the same drive is inside', () => {
+    expect(
+      isCanonicalPathStrictlyWithin(root, `${root}\\profile-a`, win32),
+    ).toBe(true);
+    expect(isCanonicalPathStrictlyWithin(root, root, win32)).toBe(false);
+    expect(
+      isCanonicalPathStrictlyWithin(
+        root,
+        'C:\\Users\\u\\.station\\app-homes-2',
+        win32,
+      ),
+    ).toBe(false);
   });
 });

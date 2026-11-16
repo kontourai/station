@@ -26,6 +26,9 @@ import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { posix, win32 } from 'node:path';
 
+/** A core cannot start until an operator repairs its home or machine policy. */
+export const CORE_STARTUP_REFUSED_EXIT_CODE = 78;
+
 export const SUPERVISOR_PROTOCOL = Object.freeze({ major: 1, minor: 3 });
 
 export interface ProtocolVersion {

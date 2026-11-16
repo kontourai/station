@@ -1,0 +1,7 @@
+{
+  "revision": "b874f58bf7d818e014de42f96836d8e312f96fdf",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Checked the observation/continuation paragraph: per-home affinity and resolveSourceHome over the latest discovery's homes (continuation waits for first discovery after restart), exclusive STATION_EXTERNAL_CODEX_SOURCE_ROOT, and the ACP list source declaring externalSessionContinuation unsupported because session/load resumes.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

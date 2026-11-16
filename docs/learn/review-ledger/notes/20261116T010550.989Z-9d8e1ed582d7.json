@@ -1,0 +1,7 @@
+{
+  "revision": "b874f58bf7d818e014de42f96836d8e312f96fdf",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"With STATION_EXTERNAL_ACP_SESSIONS=1 and an advertised sessionCapabilities.list, a successful probe also runs one bounded session/list on its existing process before cleanup; it never fails the probe and excludes the probe's own session ids. Off by default, so probe lifecycle, deadlines, status and probe-session claims are otherwise unchanged; acp.md documents the listing.","inputs":["src-server/services/acp/acp-probe.ts"]}
+  ]
+}

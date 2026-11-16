@@ -1,0 +1,11 @@
+{
+  "revision": "940be3079c4399a864e8e2ec18ab76ffc8a99af8",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"contracts.md gained a compatibility paragraph for FocusReport.viewingSessionIds and a corrected provider-turn notification sentence. Citing documents (glossary, integrating-station, packages/contracts AGENTS.md) route readers to the reference and make no claim about presence or completion notifications.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"contracts.md gained a compatibility paragraph for FocusReport.viewingSessionIds and a corrected provider-turn notification sentence. Citing documents (glossary, integrating-station, packages/contracts AGENTS.md) route readers to the reference and make no claim about presence or completion notifications.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"contracts.md gained a compatibility paragraph for FocusReport.viewingSessionIds and a corrected provider-turn notification sentence. Citing documents (glossary, integrating-station, packages/contracts AGENTS.md) route readers to the reference and make no claim about presence or completion notifications.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

@@ -2333,6 +2333,19 @@ describe('thread inbox (#3568)', () => {
       { clientTurnId: 'via-session', conversationId: THREAD },
     ]);
     expect(world.inbox.mustQueue('later-session')).toBe(true);
+    // The finished-alert hold asks by session id too, independent of busy.
+    expect(world.inbox.hasWaitingFollowUp('later-session')).toBe(true);
+  });
+
+  test('a waiting follow-up is reported until it is placed', async () => {
+    const world = boot(path());
+    const firstTurn = await runningFirstTurn(world);
+    expect(world.inbox.hasWaitingFollowUp(THREAD)).toBe(false);
+    queueFollowUp(world);
+    expect(world.inbox.hasWaitingFollowUp(THREAD)).toBe(true);
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
+    await settle(world);
+    expect(world.inbox.hasWaitingFollowUp(THREAD)).toBe(false);
   });
 
   test('the lookup answers queued only to the sender, and only while it waits', async () => {
