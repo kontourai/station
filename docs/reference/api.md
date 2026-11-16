@@ -168,6 +168,14 @@ preview returns 404 with `code:feature_preview_disabled` and a Settings link.
 
 State is personal and durable across devices. Settlement changes neither
 provider execution nor history, and is separate from dismissal and deletion.
+The host clears it whether or not the preview is on: a person's own message
+through `/api/orchestration/chat`, a steer or a queued inbox message clears that
+person's record, and a `request.opened`, a failed turn or a `session.stop-settled`
+clears everyone's for that conversation. An engine-opened turn that finishes
+normally keeps it. Station Control's `settle_conversation` and
+`station conversation settle|reopen` call the same PUT. See the
+[reopen owner](../../src-server/services/orchestration/conversation-resolution-reopen.ts)
+and its [tests](../../src-server/services/orchestration/__tests__/conversation-resolution-reopen.test.ts).
 See the [route owner](../../src-server/routes/chat/conversation-work-state.ts),
 [route tests](../../src-server/routes/chat/__tests__/conversation-work-state.test.ts)
 and [SDK helpers](sdk.md#personal-conversation-resolution-and-turn-directory).

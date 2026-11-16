@@ -123,7 +123,10 @@ import {
   requestMayBeAnAgent,
 } from '../../security/coding-authority.js';
 import { managedEngineRefusalBody } from '../../security/managed-engine-limits.js';
-import { personTypedRequest } from '../../security/person-authorship.js';
+import {
+  personCredentialRequest,
+  personTypedRequest,
+} from '../../security/person-authorship.js';
 import {
   getRuntimeAuthenticatedRequestPrincipal,
   resolveClientOriginForRequest,
@@ -2293,6 +2296,12 @@ export function createOrchestrationRoutes(
     /** Revalidates protected point-read publication at its response boundary. */
     isRequestPrincipalCurrent?: (request: Request) => boolean;
     /**
+     * Clears the sending person's own settled record for `conversationId`
+     * (Open and Settled inbox). Called only for a send or steer the route
+     * classified as person-authored, once it is admitted or queued.
+     */
+    reopenSettledConversation?: (c: Context, conversationId: string) => void;
+    /**
      * #3075: the request's read-marker person key (`readMarkerPersonKey`),
      * `undefined` for a caller that is not a person. A `/events` subscriber
      * receives `read-markers:changed` only for its own key.
@@ -3141,6 +3150,22 @@ export function createOrchestrationRoutes(
         // Only the join wait a same-key retry may spend; never the send.
         joinWaitSignal: c.req.raw.signal,
       } as ForegroundMessageRequest;
+      // A person's message reopens the conversation they settled, for them
+      // only. Not a delegation, an automatic background send or an
+      // agent-attributed one; any client a person drives counts, the CLI
+      // included (`personCredentialRequest`).
+      const reopenForSender = () => {
+        if (
+          body.conversationId &&
+          route.composer === true &&
+          !claimedDelegation &&
+          !delegation &&
+          body.automaticBackground !== true &&
+          ownerAttribution === undefined &&
+          personCredentialRequest(c.req.raw, deps.resolveInboundDeviceKind?.(c))
+        )
+          deps.reopenSettledConversation?.(c, body.conversationId);
+      };
       const inputDigest = foregroundTurnSubmissionDigest(foregroundRequest);
       if (body.conversationId && body.clientTurnId) {
         const conversationId = body.conversationId;
@@ -3272,6 +3297,7 @@ export function createOrchestrationRoutes(
             },
           });
           settleStage(submitted.outcome === 'queued');
+          if (submitted.outcome === 'queued') reopenForSender();
           return queuedFollowUpResponse(c, submitted, followUp);
         };
         if (inbox.mustQueue(followUp.conversationId)) {
@@ -3299,6 +3325,7 @@ export function createOrchestrationRoutes(
           clientTurnId: body.clientTurnId,
           forwarded: resolvedTarget.environment.kind !== 'current',
         });
+      reopenForSender();
       const data = await runForegroundCreateClaim(
         deps.delegationAttemptClaimStore?.createRequests,
         foregroundRequest,
@@ -3896,6 +3923,12 @@ export function createOrchestrationRoutes(
         return c.json({ success: false, code: INBOX_KEY_CONFLICT_CODE }, 409);
       if (result.outcome === 'capacity')
         return c.json({ success: false, code: 'conversation_inbox_full' }, 409);
+      // A person's queued message reopens the conversation they settled.
+      if (
+        actor.ownerAttribution === undefined &&
+        personCredentialRequest(c.req.raw, deps.resolveInboundDeviceKind?.(c))
+      )
+        deps.reopenSettledConversation?.(c, conversationId);
       return c.json({ success: true, data: result.entry }, 202);
     },
   );
@@ -7411,6 +7444,11 @@ export function createOrchestrationRoutes(
             ? ([{ personAuthored: true }] as const)
             : ([] as const)),
         );
+        if (
+          command.type === 'steerTurn' &&
+          personCredentialRequest(c.req.raw, deps.resolveInboundDeviceKind?.(c))
+        )
+          deps.reopenSettledConversation?.(c, command.threadId);
         if (actionOperation && command.type === 'adoptSession') {
           const targetSessionId =
             typeof result.result === 'object' &&

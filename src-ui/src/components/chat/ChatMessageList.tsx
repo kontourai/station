@@ -150,6 +150,8 @@ interface ChatMessageListProps {
   ) => React.ReactNode | null;
   emptyState?: React.ReactNode;
   historyNotice?: React.ReactNode;
+  /** The transcript's last line once no turn streams (a settled note). */
+  transcriptFooter?: React.ReactNode;
   hasOlderMessages?: boolean;
   historyLoading?: boolean;
   suppressActivity?: boolean;
@@ -337,6 +339,7 @@ function ChatMessageListComponent({
   renderAfterMessage,
   emptyState,
   historyNotice,
+  transcriptFooter,
   hasOlderMessages,
   historyLoading,
   suppressActivity,
@@ -2396,6 +2399,9 @@ function ChatMessageListComponent({
                   )}
               </>
             )}
+            {transcriptRows.length > 0 && !isStreaming
+              ? transcriptFooter
+              : null}
             {/* Mounted while empty too: its live region must exist before the
             first request arrives (#2344). */}
             {!activeSession.replay && (
