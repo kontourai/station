@@ -20,18 +20,18 @@ import './PullRequestFeedbackDialog.css';
 const SWITCHES: Array<{
   key: keyof PullRequestFeedbackSwitches;
   label: string;
-  description: string;
+  description: (chat: string | undefined) => string;
 }> = [
   {
     key: 'fixFailingChecks',
     label: 'Fix failing checks automatically',
-    description:
-      "Sends failing checks and merge conflicts to this chat's agent.",
+    description: (chat) =>
+      `Sends failing checks and merge conflicts to ${chat ? `the agent in “${chat}”` : "this chat's agent"}.`,
   },
   {
     key: 'addressReviewComments',
     label: 'Address review comments automatically',
-    description: 'Sends unresolved review threads and change requests.',
+    description: () => 'Sends unresolved review threads and change requests.',
   },
 ];
 
@@ -48,7 +48,13 @@ export function PullRequestFeedbackDialog({
   onWrite,
   onSendAgain,
   onClose,
+  chatTitle,
 }: {
+  /**
+   * The chat these switches belong to, when it is not the one open (the
+   * pull request panel's gear for another chat's feedback).
+   */
+  chatTitle?: string;
   reference: string;
   view: PullRequestFeedbackView | undefined;
   pending: boolean;
@@ -145,7 +151,7 @@ export function PullRequestFeedbackDialog({
                     id={descriptionId}
                     className="pr-feedback-dialog__description"
                   >
-                    {entry.description}
+                    {entry.description(chatTitle)}
                   </span>
                 </div>
                 <Toggle

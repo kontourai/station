@@ -22,8 +22,10 @@ import './PullRequestFeedbackStrip.css';
 
 /**
  * Everything the strip reads, started where the pull request panel starts
- * its own read: the strip then appears with the review instead of pushing
- * it down a moment later.
+ * its own read, so both are in flight together. They still settle apart:
+ * when the feedback answers after the review, the line appears under the
+ * header a moment later and moves what is below it. Holding the review for
+ * a secondary line was judged worse than that shift.
  */
 export function usePullRequestFeedbackStrip(
   identity: PullRequestLinkIdentity,
@@ -102,6 +104,10 @@ export function PullRequestFeedbackStrip({
       {open && (
         <PullRequestFeedbackDialog
           reference={reference}
+          {...(data.owner?.readable &&
+          data.owner.conversationId !== activeConversationId
+            ? { chatTitle: data.owner.title }
+            : {})}
           view={view}
           pending={chat.pending !== null}
           error={chat.error?.key === key ? chat.error.text : undefined}

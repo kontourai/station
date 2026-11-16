@@ -292,6 +292,13 @@ describe('the agent feedback strip', () => {
       ).toBe('true'),
     );
     expect(state.conversationReads).toContain('chat-owner');
+    // Opened from another chat, the switches name the chat they belong to.
+    expect(
+      within(dialog).getByText(
+        'Sends failing checks and merge conflicts to the agent in “Fix the parser”.',
+      ),
+    ).toBeTruthy();
+    expect(within(dialog).queryByText(/this chat's agent/)).toBeNull();
   });
 
   test('an owner the reader may not read is only "another chat": no title, status or settings', async () => {
