@@ -1085,8 +1085,8 @@ function BrowserSessionPane({
   });
   const openNew = useMutation({
     // A blank page, or the closed session's last address ("Reopen …").
-    mutationFn: (url: string = 'about:blank') =>
-      api.create({ projectSlug, url }),
+    mutationFn: (url?: string) =>
+      api.create({ projectSlug, url: url ?? 'about:blank' }),
     onSuccess: (next) => {
       sizeToOpeningPane.add(next.browserSessionId);
       onAttach(next.browserSessionId);
@@ -1616,6 +1616,7 @@ function BrowserSessionPane({
                 </Button>
               }
               secondary={openBlank}
+              overflowLabel="More browser session actions"
             />
           ) : (
             openBlank
