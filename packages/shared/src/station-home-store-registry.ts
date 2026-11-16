@@ -102,6 +102,9 @@ export const STATION_HOME_ROOTS: Readonly<
   // Versioned, pinned downloads are re-acquirable; trials retain older pins.
   'media-tools': 'external',
   'notifications.json': 'state',
+  // #5052: dedupe memory of notifications retention removed; it travels
+  // with notifications.json so a pruned dismissal is not delivered again.
+  'notification-tombstones.json': 'state',
   'principal-notifications.json': 'state',
   // Reviewed commands and started-effect receipts must survive maintenance.
   'operator-setup': 'state',
