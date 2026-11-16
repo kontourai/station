@@ -123,16 +123,24 @@ export function PullRequestFeedbackDialog({
             <Button
               size="sm"
               pending={pending}
-              onClick={() =>
+              onClick={() => {
+                // The owner's switches when this reader may see them; when the
+                // owner is hidden the read reports them off, so moving would
+                // switch feedback off. Move with both on instead.
+                const known =
+                  !!view && !view.ownedHere && !!owner.conversationId;
                 onWrite(
                   {
-                    fixFailingChecks: view?.settings.fixFailingChecks ?? true,
-                    addressReviewComments:
-                      view?.settings.addressReviewComments ?? true,
+                    fixFailingChecks: known
+                      ? view.settings.fixFailingChecks
+                      : true,
+                    addressReviewComments: known
+                      ? view.settings.addressReviewComments
+                      : true,
                   },
                   true,
-                )
-              }
+                );
+              }}
             >
               Move here
             </Button>
