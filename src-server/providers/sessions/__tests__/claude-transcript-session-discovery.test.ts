@@ -2,6 +2,7 @@ import {
   appendFileSync,
   mkdirSync,
   mkdtempSync,
+  renameSync,
   rmSync,
   utimesSync,
   writeFileSync,
@@ -30,6 +31,20 @@ vi.mock('../../../utils/logger.js', async (importOriginal) => {
           warnings.push({ message, context });
         },
       };
+    },
+  };
+});
+
+// Counts head scans so cache reuse is observable; behavior is unchanged.
+const headScans = vi.hoisted(() => ({ count: 0 }));
+vi.mock('../transcript-file-io.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../transcript-file-io.js')>();
+  return {
+    ...actual,
+    scanLeadingLines: (...args: Parameters<typeof actual.scanLeadingLines>) => {
+      headScans.count += 1;
+      return actual.scanLeadingLines(...args);
     },
   };
 });
@@ -164,6 +179,7 @@ function jsonl(records: unknown[]): string {
 
 beforeEach(() => {
   warnings.length = 0;
+  headScans.count = 0;
 });
 
 afterEach(() => {
@@ -418,10 +434,12 @@ describe('Claude transcript discovery of Claude Code 2.1 transcripts', () => {
     expect(discovered).toEqual({ outcome: 'rejected_candidate', sessions: [] });
   });
 
+  // Folder names list in the reverse of the expected visit order, so a pass
+  // that keeps readdir order fails these tests.
   test('visits the newest project folders first when the traversal bound is reached', async () => {
     const { root } = configHome();
     const projects = join(root, 'projects');
-    const stale = join(projects, '-workspace-stale');
+    const stale = join(projects, '-workspace-aa-stale');
     mkdirSync(stale);
     for (let index = 0; index < 20; index += 1) {
       const id = `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`;
@@ -432,7 +450,7 @@ describe('Claude transcript discovery of Claude Code 2.1 transcripts', () => {
       utimesSync(join(stale, `${id}.jsonl`), 10, 10);
     }
     utimesSync(stale, 10, 10);
-    const fresh = join(projects, '-workspace-fresh');
+    const fresh = join(projects, '-workspace-zz-fresh');
     mkdirSync(fresh);
     writeFileSync(
       join(fresh, `${SESSION}.jsonl`),
@@ -440,6 +458,8 @@ describe('Claude transcript discovery of Claude Code 2.1 transcripts', () => {
     );
     utimesSync(join(projects, '-workspace-example-project'), 5, 5);
 
+    // Charges: root (1) + three folder lstats (4), the fresh folder (5) and
+    // its transcript (6), the stale folder (7) and one transcript (8).
     const discovered = await new ClaudeTranscriptSessionSource({
       configDir: root,
       maxTraversalEntries: 8,
@@ -449,6 +469,112 @@ describe('Claude transcript discovery of Claude Code 2.1 transcripts', () => {
     expect(discovered.sessions.map((session) => session.sessionId)).toContain(
       SESSION,
     );
+  });
+
+  test('ranks a folder by the newest transcript the previous pass saw in it', async () => {
+    const { root } = configHome();
+    const projects = join(root, 'projects');
+    utimesSync(join(projects, '-workspace-example-project'), 1, 1);
+    // A long-running session: its folder was last touched when the session
+    // began, but its transcript keeps being appended to.
+    const active = join(projects, '-workspace-zz-active');
+    mkdirSync(active);
+    writeFileSync(
+      join(active, `${SESSION}.jsonl`),
+      jsonl([aiTitle(), enqueue(), dequeue(), user()]),
+    );
+    utimesSync(join(active, `${SESSION}.jsonl`), 300, 300);
+    utimesSync(active, 100, 100);
+    const other = join(projects, '-workspace-aa-other');
+    mkdirSync(other);
+    utimesSync(other, 50, 50);
+    // Root (1) + three folder lstats (4), one folder (5) and its transcript
+    // (6); the next folder passes the bound.
+    const source = new ClaudeTranscriptSessionSource({
+      configDir: root,
+      maxTraversalEntries: 6,
+    });
+    expect(
+      (await source.discover()).sessions.map((session) => session.sessionId),
+    ).toEqual([SESSION]);
+
+    // A newer session is created elsewhere, so that folder's own mtime now
+    // beats the active folder's.
+    const newer = '00000000-0000-4000-8000-0000000000aa';
+    writeFileSync(
+      join(other, `${newer}.jsonl`),
+      jsonl([enqueue(newer), dequeue(newer), user({ sessionId: newer })]),
+    );
+    utimesSync(join(other, `${newer}.jsonl`), 250, 250);
+    utimesSync(other, 200, 200);
+
+    const discovered = await source.discover();
+    expect(discovered.outcome).toBe('candidate_limit');
+    expect(discovered.sessions.map((session) => session.sessionId)).toEqual([
+      SESSION,
+    ]);
+  });
+
+  test('charges no traversal budget for entries skipped by name or type', async () => {
+    const { root, project } = configHome();
+    writeFileSync(
+      join(project, `${SESSION}.jsonl`),
+      jsonl([aiTitle(), enqueue(), dequeue(), user()]),
+    );
+    const addSkipped = (from: number, to: number) => {
+      for (let index = from; index < to; index += 1) {
+        const id = `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`;
+        mkdirSync(join(project, id));
+        writeFileSync(join(project, `${id}.meta.json`), '{}');
+      }
+    };
+    // 14 skipped entries: session folders and non-transcript files.
+    addSkipped(0, 7);
+    // Root (1) + folder lstat (2) + folder (3) + transcript (4).
+    const options = { configDir: root, maxTraversalEntries: 4 };
+    const withinBound = await new ClaudeTranscriptSessionSource(
+      options,
+    ).discover();
+    expect(withinBound.outcome).toBe('ok');
+    expect(withinBound.sessions).toHaveLength(1);
+
+    // 20 skipped entries pass the skipped-entry bound (4 x 4 = 16): refused.
+    addSkipped(7, 10);
+    const pastSkipBound = await new ClaudeTranscriptSessionSource(
+      options,
+    ).discover();
+    expect(pastSkipBound.outcome).toBe('candidate_limit');
+  });
+
+  test('reuses a cached head result until the transcript is replaced', async () => {
+    const { root, project } = configHome();
+    const transcript = join(project, `${SESSION}.jsonl`);
+    writeFileSync(transcript, jsonl([aiTitle(), enqueue(), dequeue(), user()]));
+    const source = new ClaudeTranscriptSessionSource({ configDir: root });
+
+    expect((await source.discover()).sessions).toHaveLength(1);
+    expect(headScans.count).toBe(1);
+
+    // An unchanged or appended-to transcript keeps its head: no re-scan.
+    await source.discover();
+    appendFileSync(transcript, jsonl([attachment()]));
+    const appended = await source.discover();
+    expect(appended.sessions.map((session) => session.cwd)).toEqual([CWD]);
+    expect(headScans.count).toBe(1);
+
+    // A transcript replaced by rename is a new file (new inode): re-scanned.
+    const replacement = join(project, 'replacement.tmp');
+    const moved = { ...user(), cwd: '/workspace/moved-project' };
+    writeFileSync(
+      replacement,
+      jsonl([aiTitle(), enqueue(), dequeue(), moved, attachment()]),
+    );
+    renameSync(replacement, transcript);
+    const replaced = await source.discover();
+    expect(headScans.count).toBe(2);
+    expect(replaced.sessions.map((session) => session.cwd)).toEqual([
+      '/workspace/moved-project',
+    ]);
   });
 
   test('re-reads a refused head once the transcript grows its identity record', async () => {

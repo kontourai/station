@@ -73,6 +73,8 @@ const PROMPT_SOURCE = 'claude-transcript';
  * delta reads (a handful of lines) yield-free.
  */
 const DEFAULT_READ_YIELD_EVERY_LINES = 256;
+/** Project folders `discover()` lists between event-loop yields. */
+const DISCOVERY_YIELD_EVERY_FOLDERS = 64;
 /** `runtime.warning` code for a transcript record skipped by `maxLineBytes`. */
 
 const EPOCH = '1970-01-01T00:00:00.000Z';
@@ -86,6 +88,7 @@ interface ClaudeTranscriptSessionSourceOptions {
   maxBytes?: number;
   maxLineBytes?: number;
   maxEvents?: number;
+  /** Directories opened plus entries lstat'ed in one discovery pass. */
   maxTraversalEntries?: number;
   /** Leading records discovery reads looking for the session's identity. */
   maxLeadingRecords?: number;
@@ -112,6 +115,9 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
   private readonly maxLineBytes: number;
   private readonly maxEvents: number;
   private readonly maxTraversalEntries: number;
+  private readonly maxSkippedEntries: number;
+  /** Newest transcript mtime per project folder, from the previous pass. */
+  private newestTranscriptByFolder = new Map<string, number>();
   private readonly maxLeadingRecords: number;
   private readonly maxLeadingBytes: number;
   /** The no-session outcome last warned about, so a steady state logs once. */
@@ -138,7 +144,8 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
     this.maxLineBytes = options.maxLineBytes ?? DEFAULT_MAX_LINE_BYTES;
     this.maxEvents = options.maxEvents ?? DEFAULT_MAX_EVENTS;
     this.maxTraversalEntries =
-      options.maxTraversalEntries ?? this.maxCandidates * 8;
+      options.maxTraversalEntries ?? this.maxCandidates * 32;
+    this.maxSkippedEntries = this.maxTraversalEntries * 4;
     this.maxLeadingRecords =
       options.maxLeadingRecords ?? DEFAULT_MAX_LEADING_RECORDS;
     this.maxLeadingBytes = options.maxLeadingBytes ?? DEFAULT_MAX_LEADING_BYTES;
@@ -169,22 +176,27 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
     // session's sibling directory (`<session>/subagents/agent-*.jsonl`,
     // `<session>/tool-results/`) holds sidechain transcripts that repeat the
     // parent's sessionId, so discovery never descends below a project folder.
-    // Project folders are visited newest first so the traversal bound drops
-    // the stalest folders rather than whichever ones readdir lists last.
+    //
+    // The traversal bound charges each directory opened and each entry
+    // lstat'ed. Entries rejected by name or dirent type cost no syscall and
+    // count against a separate, larger bound. Either bound, once passed,
+    // stops the traversal as `candidate_limit`.
     const candidates: Array<{ path: string; modifiedAt: number }> = [];
     let rejected = false;
     let candidatesTruncated = false;
-    let visitedEntries = 0;
+    let chargedEntries = 0;
+    let skippedEntries = 0;
+    const charge = (): boolean => {
+      chargedEntries += 1;
+      if (chargedEntries > this.maxTraversalEntries) candidatesTruncated = true;
+      return !candidatesTruncated;
+    };
     const listDirectory = (
       directory: string,
       accept: (path: string, stat: import('node:fs').Stats) => void,
       wanted: (entry: import('node:fs').Dirent) => boolean,
     ): void => {
-      visitedEntries += 1;
-      if (visitedEntries > this.maxTraversalEntries) {
-        candidatesTruncated = true;
-        return;
-      }
+      if (!charge()) return;
       let directoryHandle: import('node:fs').Dir;
       try {
         directoryHandle = opendirSync(directory);
@@ -198,12 +210,15 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
           entry;
           entry = directoryHandle.readSync()
         ) {
-          visitedEntries += 1;
-          if (visitedEntries > this.maxTraversalEntries) {
-            candidatesTruncated = true;
-            return;
+          if (!wanted(entry)) {
+            skippedEntries += 1;
+            if (skippedEntries > this.maxSkippedEntries) {
+              candidatesTruncated = true;
+              return;
+            }
+            continue;
           }
-          if (!wanted(entry)) continue;
+          if (!charge()) return;
           const candidate = join(directory, entry.name);
           let stat: import('node:fs').Stats;
           try {
@@ -216,12 +231,7 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
             rejected = true;
             continue;
           }
-          const canonical = this.canonicalInside(root, candidate);
-          if (!canonical) {
-            rejected = true;
-            continue;
-          }
-          accept(canonical, stat);
+          accept(candidate, stat);
         }
       } finally {
         directoryHandle.closeSync();
@@ -230,42 +240,73 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
     // A dirent of unknown type (some filesystems) is lstat'ed to find out.
     const typeUnknown = (entry: import('node:fs').Dirent) =>
       !entry.isFile() && !entry.isDirectory() && !entry.isSymbolicLink();
-    const projectDirectories: Array<{ path: string; modifiedAt: number }> = [];
+    // A folder's own mtime moves when a session file is created in it, not
+    // when one is appended to, so a folder ranks by the newer of that and the
+    // newest transcript the previous pass saw in it. Only when the bound is
+    // reached does this order decide which folders go unvisited.
+    const previousNewest = this.newestTranscriptByFolder;
+    this.newestTranscriptByFolder = new Map();
+    const projectDirectories: Array<{ path: string; rank: number }> = [];
     listDirectory(
       root,
       (path, stat) => {
-        if (stat.isDirectory())
-          projectDirectories.push({ path, modifiedAt: stat.mtimeMs });
+        if (!stat.isDirectory()) return;
+        const canonical = this.canonicalInside(root, path);
+        if (!canonical) {
+          rejected = true;
+          return;
+        }
+        const seen = previousNewest.get(canonical);
+        if (seen !== undefined)
+          this.newestTranscriptByFolder.set(canonical, seen);
+        projectDirectories.push({
+          path: canonical,
+          rank: Math.max(stat.mtimeMs, seen ?? 0),
+        });
       },
       (entry) =>
         entry.isDirectory() || entry.isSymbolicLink() || typeUnknown(entry),
     );
     projectDirectories.sort(
       (left, right) =>
-        right.modifiedAt - left.modifiedAt ||
-        left.path.localeCompare(right.path),
+        right.rank - left.rank || left.path.localeCompare(right.path),
     );
+    let foldersListed = 0;
     for (const project of projectDirectories) {
       if (candidatesTruncated) break;
+      // A whole large home is a few tens of milliseconds of synchronous
+      // directory work; yield between slices of it (archive#1997).
+      foldersListed += 1;
+      if (foldersListed % DISCOVERY_YIELD_EVERY_FOLDERS === 0)
+        await this.yieldFn();
+      let newest: number | undefined;
       listDirectory(
         project.path,
         (path, stat) => {
-          if (stat.isFile())
-            candidates.push({ path, modifiedAt: stat.mtimeMs });
+          if (!stat.isFile()) return;
+          candidates.push({ path, modifiedAt: stat.mtimeMs });
+          newest = Math.max(newest ?? 0, stat.mtimeMs);
         },
         (entry) => entry.name.endsWith('.jsonl') && !entry.isDirectory(),
       );
+      if (newest !== undefined)
+        this.newestTranscriptByFolder.set(project.path, newest);
     }
     const candidateLimit =
       candidatesTruncated || candidates.length > this.maxCandidates;
-    const files = candidates
+    // Only the selected files are canonicalized; their folder already is.
+    const files: string[] = [];
+    for (const candidate of candidates
       .sort(
         (left, right) =>
           right.modifiedAt - left.modifiedAt ||
           left.path.localeCompare(right.path),
       )
-      .slice(0, this.maxCandidates)
-      .map((candidate) => candidate.path);
+      .slice(0, this.maxCandidates)) {
+      const canonical = this.canonicalInside(root, candidate.path);
+      if (canonical) files.push(canonical);
+      else rejected = true;
+    }
 
     const sessions: AttachedSessionDescriptor[] = [];
     let outcome: AttachedSessionSourceOutcome = candidateLimit

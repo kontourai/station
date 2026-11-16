@@ -1396,9 +1396,13 @@ supported turn boundaries, user messages, assistant text, public reasoning
 summaries, tool activity, cumulative token snapshots, and compaction markers.
 Claude transcript discovery
 ([`claude-transcript-session-source.ts`](../../src-server/providers/sessions/claude-transcript-session-source.ts))
-lists `projects/<project>/<session>.jsonl` under the Claude config home,
-visiting project folders newest first within its traversal bound and keeping
-the 128 most recently modified transcripts. It does not descend into a
+lists `projects/<project>/<session>.jsonl` under the Claude config home and
+keeps the 128 most recently modified transcripts. Its traversal bound (4,096
+by default) charges each folder opened and each entry statted; entries skipped
+by name cost no system call and count against a separate bound four times as
+large. Passing either bound ends the pass as `candidate_limit`. Within the
+bound, project folders are visited in order of the newer of their own
+modification time and the newest transcript the previous pass saw in them. It does not descend into a
 session's own folder: the `subagents/` transcripts there repeat the parent's
 session ID and are part of that session. Current Claude Code starts a
 transcript with title, owner and queue records that carry no working
@@ -1412,9 +1416,9 @@ or a sidechain record in a session's place refuse the file. A file's result
 is reused until it is replaced, shrinks, or, for a refusal, changes size.
 When a pass finds transcripts but accepts none, the source logs one warning
 naming the outcome, and logs again only when that outcome changes or after a
-pass accepts a session. Folder ordering approximates recency: a long-running
-session in a folder untouched since it began can fall outside the traversal
-bound on a large home.
+pass accepts a session. On a home larger than the bound, a folder the
+previous pass did not reach is ranked by its own modification time only, so a
+long-running session in it can stay outside the bound.
 Every discovered transcript enters the shared follower
 ([`AttachedSessionFollowService`](../../src-server/services/orchestration/attached-session-follow-service.ts)),
 which attributes it with `resolveAttachedSessionProject`: first a Project whose
