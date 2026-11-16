@@ -840,6 +840,8 @@ row that holds the message, each merge taking the next `readSeq`. A message
 past the next sequence is first backfilled from history (`after` the last
 sequence the cache reflects); an `update` whose activity range does not start
 where the cache is, a `resync`, or any (re)connection re-reads the room once.
+A hook that joins a connection already open starts from where the room stands
+on it, so a gap after that is still backfilled.
 Acknowledged sends, reactions, edits and deletes merge their returned message
 while the stream is connected. The hook also returns `lastSeq` (the live
 sequence), `typing` (other people), `agents` (the room's newest Agent request
@@ -848,7 +850,8 @@ sends at most one typing signal every three seconds and stops after four idle
 seconds, on send, and on unmount. Presence joins once and lasts while the
 stream is open. `useProjectRoomLiveIndex(scope, slug, channelIds, enabled,
 onActivity?)` reads typing and Agent activity for many channels over the same
-connection, for a sidebar, and calls `onActivity(channelId)` on each change.
+connection, for a sidebar, and calls `onActivity(channelId)` on each change
+and each time the connection announces the channel.
 `useProjectRoomMembers` lists the people a message may mention, with current
 names. Without the flag the hook keeps the per-room `/events` stream.
 
