@@ -320,6 +320,31 @@ describe('OpenCodeSessionSource', () => {
     ]);
   });
 
+  // Review item 1: OpenCode dates events by the settled message's
+  // `time_created`, so a step that keeps streaming into one unsettled message
+  // looked silent. The source reports the newest row write it can see.
+  test('reports the newest write of a step still streaming into an unsettled message', async () => {
+    const dataDir = join(fixtureRoot(), 'opencode');
+    const store = writer(dataDir);
+    store.session('ses_main', '/workspace/project');
+    const user = store.user('ses_main', ['Long task']);
+    const running = store.assistant('ses_main', user, { completed: false });
+    const part = store.text('ses_main', running, 'partial');
+
+    const source = new OpenCodeSessionSource({ dataDir });
+    const session = (await source.discover()).sessions[0]!;
+    const before = await source.read(session);
+    expect(before.outcome).toBe('incomplete_tail');
+
+    const streamed = store.updatePart(part, {
+      type: 'text',
+      text: 'partial answer, still streaming',
+    });
+    const after = await source.read(session, before.cursor);
+    expect(after.events).toEqual([]);
+    expect(after.sourceWriteAt).toBe(new Date(streamed).toISOString());
+  });
+
   test('a prompt queued during a reply does not settle the reply early', async () => {
     const dataDir = join(fixtureRoot(), 'opencode');
     const store = writer(dataDir);

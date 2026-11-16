@@ -47,6 +47,7 @@ import {
   isWithinRepositoryPath,
   type RepositoryLookup,
 } from './attached-session-repository.js';
+import { ATTACHED_SOURCE_CLOCK_SKEW_MS } from './attached-source-activity.js';
 import type { EventBus } from './event-bus.js';
 import type { EventStore } from './event-store.js';
 import { EventStoreIngressError } from './event-store.js';
@@ -878,6 +879,8 @@ export class AttachedSessionFollowService {
         descriptor,
         snapshot,
         read.cursor,
+        false,
+        read.sourceWriteAt,
       ))
     ) {
       this.rejectFollow(source, descriptor);
@@ -1033,6 +1036,7 @@ export class AttachedSessionFollowService {
     snapshot: PollSessionSnapshot,
     cursor?: AttachedSessionCursor,
     hasNewEvents = false,
+    sourceWriteAt?: string,
   ): Promise<boolean> {
     const completedBoundary =
       source.continuationBoundary === 'completed-turn'
@@ -1042,17 +1046,29 @@ export class AttachedSessionFollowService {
             descriptor.threadId,
           )
         : undefined;
-    const attached = {
-      kind: source.kind,
-      ...(completedBoundary ? { completedBoundary } : {}),
-      externalSessionId: descriptor.sessionId,
-      ...(descriptor.affinity
-        ? { affinity: snapshotSessionSourceAffinity(descriptor.affinity) }
-        : {}),
+    const observedAt = Date.now();
+    const attachedFor = (previous: ProviderSession | undefined) => {
+      const lastWriteAt = nextSourceWriteAt(
+        sameAttachedSourceSubject(previous, source, descriptor)
+          ? previous?.attachedSource?.lastWriteAt
+          : undefined,
+        sourceWriteAt,
+        observedAt,
+      );
+      return {
+        kind: source.kind,
+        ...(completedBoundary ? { completedBoundary } : {}),
+        externalSessionId: descriptor.sessionId,
+        ...(descriptor.affinity
+          ? { affinity: snapshotSessionSourceAffinity(descriptor.affinity) }
+          : {}),
+        ...(lastWriteAt ? { lastWriteAt } : {}),
+      };
     };
     const candidateFor = (
       previous: ProviderSession | undefined,
     ): ProviderSession => {
+      const attached = attachedFor(previous);
       const sameSourceSubject = sameAttachedSourceSubject(
         previous,
         source,
@@ -1468,6 +1484,35 @@ function attachedSessionPersistenceFields(session: ProviderSession): unknown[] {
     session.tenantExecutionContext,
     session.createdAt,
   ];
+}
+
+/** A source write within this of the recorded one is not worth a row write. */
+const SOURCE_WRITE_STEP_MS = 30_000;
+
+/**
+ * The attachment's recorded last source write after this read: the source's
+ * report when it is at least {@link SOURCE_WRITE_STEP_MS} newer than the
+ * recorded one, else the recorded one. A report dated past the read (beyond
+ * the clock-skew allowance) is not evidence and is not recorded.
+ */
+function nextSourceWriteAt(
+  recorded: string | undefined,
+  reported: string | undefined,
+  observedAt: number,
+): string | undefined {
+  const reportedMs = reported === undefined ? NaN : Date.parse(reported);
+  if (
+    !Number.isFinite(reportedMs) ||
+    reportedMs > observedAt + ATTACHED_SOURCE_CLOCK_SKEW_MS
+  )
+    return recorded;
+  const recordedMs = recorded === undefined ? NaN : Date.parse(recorded);
+  if (
+    Number.isFinite(recordedMs) &&
+    reportedMs - recordedMs < SOURCE_WRITE_STEP_MS
+  )
+    return recorded;
+  return new Date(reportedMs).toISOString();
 }
 
 function sameAttachedSessionPersistence(

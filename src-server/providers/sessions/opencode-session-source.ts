@@ -147,6 +147,8 @@ interface MessageInfo {
 interface MessageRow {
   id: string;
   time: number;
+  /** `time_updated`: OpenCode rewrites the row as the message progresses. */
+  updated?: number;
   bytes: number;
   /** Projected fields; null when the row is not valid JSON or is oversized. */
   info: MessageInfo | null;
@@ -481,6 +483,7 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
         session,
         cursor,
         isLegacyUsageVersion(row?.version),
+        isCount(row?.time_updated) ? row.time_updated : undefined,
       );
     });
     if (!result.ok || !result.value) return rejected();
@@ -505,6 +508,7 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     session: AttachedSessionDescriptor,
     cursor: DecodedCursor,
     legacyVersion: boolean,
+    sessionUpdated?: number,
   ): Promise<{ read: AttachedSessionReadResult; drained: boolean }> {
     const after = cursor.state.after;
     // Only the fields this source maps are projected out of the writer's
@@ -513,7 +517,7 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     const messageRows = db
       .prepare(
         `WITH m AS (
-           SELECT id, time_created AS time,
+           SELECT id, time_created AS time, time_updated AS updated,
              CASE WHEN json_valid(data) THEN json_object(
                'role', data->>'$.role',
                'completed', data->'$.time.completed',
@@ -528,7 +532,7 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
            WHERE session_id = ?
              AND (time_created > ? OR (time_created = ? AND id > ?))
            ORDER BY time_created ASC, id ASC LIMIT ?)
-         SELECT id, time, octet_length(slim) AS bytes,
+         SELECT id, time, updated, octet_length(slim) AS bytes,
            CASE WHEN octet_length(slim) <= ? THEN slim END AS data FROM m`,
       )
       .all(
@@ -572,6 +576,16 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     let bytesUsed = 0;
     // Reached the end of what is settled: no page bound stopped the read.
     let drained = messageRows.length <= this.maxMessages;
+    // The newest row write seen: the session row, each message read, and
+    // the parts of a message still being written.
+    let newestWrite: number | undefined = sessionUpdated;
+    for (const row of messageRows)
+      if (row?.updated !== undefined)
+        newestWrite = Math.max(newestWrite ?? 0, row.updated);
+    const written = () =>
+      newestWrite !== undefined
+        ? { sourceWriteAt: millisTimestamp(newestWrite) }
+        : {};
     const window = messageRows.slice(0, this.maxMessages);
     for (const [index, message] of window.entries()) {
       // A full page is a few hundred parts parsed on the main thread; yield
@@ -619,6 +633,15 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
         legacyVersion,
       );
       if (mapped.kind === 'unsettled') {
+        // The held message is still being written: its parts stream into
+        // their own rows without moving the message or the session.
+        const newestPart = db
+          .prepare(
+            'SELECT max(time_updated) AS t FROM part WHERE message_id = ? AND session_id = ?',
+          )
+          .get(message.id, session.sessionId) as { t?: unknown } | undefined;
+        if (isCount(newestPart?.t))
+          newestWrite = Math.max(newestWrite ?? 0, newestPart.t);
         outcome = mergeOutcome(outcome, 'incomplete_tail');
         drained = true;
         break;
@@ -663,7 +686,12 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
       }
     }
     return {
-      read: { outcome, events, cursor: encodeCursor(offset, state) },
+      read: {
+        outcome,
+        events,
+        cursor: encodeCursor(offset, state),
+        ...written(),
+      },
       drained,
     };
   }
@@ -1542,6 +1570,7 @@ function messageRow(row: Record<string, unknown>): MessageRow | null {
   return {
     id,
     time,
+    ...(isCount(row.updated) ? { updated: row.updated } : {}),
     bytes,
     oversized: isCount(row.bytes) && typeof row.data !== 'string',
     info: projected

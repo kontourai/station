@@ -5,7 +5,7 @@ export { TRANSCRIPT_LINE_SKIPPED_CODE } from '@kontourai/station-contracts/provi
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, opendirSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import type { ProviderSessionSourceAffinity } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { isRecord } from '../../utils/is-record.js';
@@ -62,6 +62,14 @@ const PROMPT_SOURCE = 'claude-transcript';
  * delta reads (a handful of lines) yield-free.
  */
 const DEFAULT_READ_YIELD_EVERY_LINES = 256;
+/**
+ * Subagent transcripts (`<session>/subagents/*.jsonl`) are read for their
+ * newest write only while the session's own transcript was written within
+ * this long, so a poll does not stat every old session's subagents.
+ */
+const SUBAGENT_WRITE_HORIZON_MS = 2 * 60 * 60_000;
+/** Past this many entries the subagents directory is not read at all. */
+const MAX_SUBAGENT_ENTRIES = 512;
 /** `runtime.warning` code for a transcript record skipped by `maxLineBytes`. */
 
 const EPOCH = '1970-01-01T00:00:00.000Z';
@@ -260,6 +268,76 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
   async read(
     session: AttachedSessionDescriptor,
     previousCursor: AttachedSessionCursor = 0,
+  ): Promise<AttachedSessionReadResult> {
+    const result = await this.readTranscript(session, previousCursor);
+    if (
+      result.outcome === 'unknown_source' ||
+      result.outcome === 'rejected_candidate'
+    )
+      return result;
+    const sourceWriteAt = this.newestWrite(session);
+    return sourceWriteAt ? { ...result, sourceWriteAt } : result;
+  }
+
+  /**
+   * The newest write to the session: its transcript, and while that was
+   * written recently, its subagents' own transcripts, which a running
+   * subagent writes while the session's transcript stays silent. A
+   * subagents directory past its entry bound is not read.
+   */
+  private newestWrite(session: AttachedSessionDescriptor): string | undefined {
+    const file = this.handles.get(session.sourceHandle);
+    const home = this.resolveSourceHome(session.affinity);
+    const root = home ? this.canonicalProjectsRoot(home) : null;
+    const canonical =
+      file && root ? this.canonicalRegularFile(root, file) : null;
+    if (!canonical || !root) return undefined;
+    let newest: number;
+    try {
+      newest = lstatSync(canonical).mtimeMs;
+    } catch {
+      return undefined;
+    }
+    if (Date.now() - newest <= SUBAGENT_WRITE_HORIZON_MS) {
+      const subagents = join(
+        dirname(canonical),
+        basename(canonical, '.jsonl'),
+        'subagents',
+      );
+      newest = Math.max(newest, this.newestSubagentWrite(root, subagents));
+    }
+    return new Date(newest).toISOString();
+  }
+
+  private newestSubagentWrite(root: string, directory: string): number {
+    let newest = 0;
+    try {
+      const stat = lstatSync(directory);
+      if (!stat.isDirectory() || stat.isSymbolicLink()) return 0;
+      if (!this.canonicalInside(root, directory)) return 0;
+      const dir = opendirSync(directory);
+      try {
+        let entries = 0;
+        for (let entry = dir.readSync(); entry; entry = dir.readSync()) {
+          if (++entries > MAX_SUBAGENT_ENTRIES) return 0;
+          if (!entry.isFile() || !entry.name.endsWith('.jsonl')) continue;
+          newest = Math.max(
+            newest,
+            lstatSync(join(directory, entry.name)).mtimeMs,
+          );
+        }
+      } finally {
+        dir.closeSync();
+      }
+    } catch {
+      return 0;
+    }
+    return newest;
+  }
+
+  private async readTranscript(
+    session: AttachedSessionDescriptor,
+    previousCursor: AttachedSessionCursor,
   ): Promise<AttachedSessionReadResult> {
     const file = this.handles.get(session.sourceHandle);
     if (!file || session.provider !== this.provider) {

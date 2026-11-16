@@ -34,6 +34,55 @@ afterEach(() => {
 });
 
 describe('ClaudeTranscriptSessionSource', () => {
+  // Review item 1: a subagent writes its own transcript beside the session's
+  // (`<session>/subagents/*.jsonl`) while the main transcript stays silent,
+  // so the source reports the newest of those writes, not just its own.
+  test("reports the newest write of the transcript and its subagents' transcripts", async () => {
+    const root = fixtureDir();
+    const directory = join(root, 'projects', 'encoded-project');
+    mkdirSync(directory, { recursive: true });
+    const transcript = join(directory, 'session-a.jsonl');
+    writeFileSync(
+      transcript,
+      record({
+        type: 'user',
+        uuid: 'user-1',
+        sessionId: 'session-a',
+        cwd: '/workspace/project',
+        timestamp: '2026-07-22T00:00:00.000Z',
+        message: { role: 'user', content: 'delegate this' },
+      }),
+    );
+    const now = Date.now();
+    const mainWrite = new Date(now - 10 * 60_000);
+    utimesSync(transcript, mainWrite, mainWrite);
+    const source = new ClaudeTranscriptSessionSource({ configDir: root });
+    const [session] = (await source.discover()).sessions;
+    const alone = await source.read(session!);
+    expect(alone.sourceWriteAt).toBe(mainWrite.toISOString());
+
+    const subagents = join(directory, 'session-a', 'subagents');
+    mkdirSync(subagents, { recursive: true });
+    const sidechain = join(subagents, 'agent-a1.jsonl');
+    writeFileSync(sidechain, record({ type: 'assistant', isSidechain: true }));
+    const subagentWrite = new Date(now - 60_000);
+    utimesSync(sidechain, subagentWrite, subagentWrite);
+    // A metadata file beside it is not a transcript write.
+    const meta = join(subagents, 'agent-a1.meta.json');
+    writeFileSync(meta, '{}');
+    const later = new Date(now);
+    utimesSync(meta, later, later);
+
+    const withSubagent = await source.read(session!, alone.cursor);
+    expect(withSubagent.sourceWriteAt).toBe(subagentWrite.toISOString());
+
+    // A session whose own transcript is hours old is not scanned.
+    const old = new Date(now - 3 * 60 * 60_000);
+    utimesSync(transcript, old, old);
+    const stale = await source.read(session!, withSubagent.cursor);
+    expect(stale.sourceWriteAt).toBe(old.toISOString());
+  });
+
   test('an isolated history root does not scan the authenticated CLI home', async () => {
     const authenticatedHome = fixtureDir();
     const isolatedHistory = fixtureDir();

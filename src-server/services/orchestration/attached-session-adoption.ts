@@ -319,17 +319,33 @@ export class AttachedSessionAdoption {
         idempotencyKey,
         // #3386: a different choice of where to continue is a different intent.
         target ?? null,
-        // An override must not join an in-flight request refused without it.
-        continueWhileSourceActive,
+        // The override is not part of the intent: a retry without it joins
+        // the continuation an overriding request already started.
       ]);
       const inFlight = this.adoptionIntents.get(intentScope);
       if (inFlight) {
-        const settled = await inFlight;
-        this.deps.persistReceipt(receipt);
-        return {
-          receipt,
-          result: { ...settled.result, alreadyAdopted: true },
-        };
+        let settled:
+          | OrchestrationCommandDispatchResult<AdoptedSessionResult>
+          | undefined;
+        try {
+          settled = await inFlight;
+        } catch (error) {
+          // Refused only because the source is running: that does not
+          // answer a request that says to continue anyway, which then
+          // starts its own attempt below.
+          if (
+            !continueWhileSourceActive ||
+            !(error instanceof AdoptionSourceActiveError)
+          )
+            throw error;
+        }
+        if (settled) {
+          this.deps.persistReceipt(receipt);
+          return {
+            receipt,
+            result: { ...settled.result, alreadyAdopted: true },
+          };
+        }
       }
       const intent = this.performAttachedSessionAdoption(
         sourceThreadId,
@@ -445,18 +461,6 @@ export class AttachedSessionAdoption {
         },
       };
     }
-    // Re-checked here, from the same events the read model folds, so a
-    // client that read the source as idle (or skipped the read) cannot fork
-    // a source that is still running without saying so. After the
-    // existing-child join, so a retry of a continuation already made returns
-    // it rather than being refused.
-    if (
-      !continueWhileSourceActive &&
-      this.readSourceActivity(context.source).state === 'active'
-    )
-      throw new AdoptionSourceActiveError(
-        engineDisplayLabel(context.source.provider) ?? context.source.provider,
-      );
     const contendingReservation = this.deps.adoptionLedger
       ?.reservations()
       .find((item) => item.sourceThreadId === sourceThreadId);
@@ -476,6 +480,19 @@ export class AttachedSessionAdoption {
     ) {
       throw new Error('This attached session is already being continued.');
     }
+    // Re-checked here, from the same events the read model folds, so a
+    // client that read the source as idle (or skipped the read) cannot fork
+    // a source that is still running without saying so. After both joins
+    // (an existing continuation, a reservation of the same intent), so a
+    // retry of a continuation already made or being made returns it rather
+    // than being refused; before reserving, so a refusal creates nothing.
+    if (
+      !continueWhileSourceActive &&
+      this.readSourceActivity(context.source).state === 'active'
+    )
+      throw new AdoptionSourceActiveError(
+        engineDisplayLabel(context.source.provider) ?? context.source.provider,
+      );
     context.tenantExecutionContext =
       tenantExecutionContext ?? sourceTenantExecutionContext;
     context.reservation.idempotencyKey = idempotencyKey;
@@ -540,6 +557,7 @@ export class AttachedSessionAdoption {
     return deriveAttachedSourceActivity(
       withoutCompletedTurnRecovery(events),
       this.deps.now?.() ?? Date.now(),
+      source.attachedSource?.lastWriteAt,
     );
   }
 

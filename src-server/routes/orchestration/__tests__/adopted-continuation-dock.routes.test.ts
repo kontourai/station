@@ -215,8 +215,12 @@ class AdoptingEngine implements ProviderAdapterShape {
     } as CanonicalRuntimeEvent);
   }
 
+  /** When set, an adoption waits on it after it is recorded. */
+  adoptionGate?: Promise<void>;
+
   async adoptSession(input: ProviderSessionAdoptInput) {
     this.adoptions.push(input);
+    if (this.adoptionGate) await this.adoptionGate;
     this.starts.push({ threadId: input.threadId, cwd: input.cwd });
     this.publishStart(input);
     const now = new Date().toISOString();
@@ -1419,6 +1423,15 @@ describe('#3429: a continued attached conversation opens in the dock', () => {
     expect(read.body.data.session.attachedSourceActivity).toMatchObject({
       state: 'active',
     });
+    // Review item 4: the sessions read model (what list surfaces read) carries
+    // it too, so a list surface needs no second read.
+    const list = await f.request('/api/orchestration/sessions/read-model');
+    expect(list.status, list.text).toBe(200);
+    expect(
+      (list.body.data as Array<Record<string, any>>).find(
+        (row) => row.threadId === source,
+      )?.attachedSourceActivity,
+    ).toMatchObject({ state: 'active' });
 
     const refused = await f.request('/api/orchestration/commands', {
       type: 'adoptSession',
@@ -1455,6 +1468,72 @@ describe('#3429: a continued attached conversation opens in the dock', () => {
       continueWhileSourceActive: true,
     });
     expect(continued.status, continued.text).toBe(200);
+    expect(f.engines.claude.adoptions).toHaveLength(1);
+  });
+
+  // Review item 2: a retry of the same intent (same key) must join the
+  // continuation the override already started, not be refused as running.
+  // Driven through `dispatchWithReceipt`, the seam Starter Work's owner
+  // calls, which has no route-level operation join in front of it.
+  test('a same-key retry without the override joins the continuation the override started', async () => {
+    const f = await fixture({ engineAgent: true });
+    const source = f.attached('claude');
+    f.store.appendEvent({
+      eventId: `${source}:turn-2`,
+      provider: 'claude',
+      threadId: source,
+      turnId: 'source-turn-2',
+      createdAt: new Date(Date.now() - 30_000).toISOString(),
+      method: 'turn.started',
+      prompt: 'keep going',
+    } as never);
+    const key = '3f2b9c1e-8d4a-4b6f-9e2c-1a7d5b3c9e01';
+    let release!: () => void;
+    f.engines.claude.adoptionGate = new Promise((resolve) => {
+      release = resolve;
+    });
+    const dispatch = (override: boolean) =>
+      (f.service as any).dispatchWithReceipt(
+        {
+          type: 'adoptSession',
+          sourceThreadId: source,
+          idempotencyKey: key,
+          ...(override ? { continueWhileSourceActive: true } : {}),
+        },
+        { userId: 'operator' },
+      ) as Promise<{ result: { threadId: string; alreadyAdopted?: boolean } }>;
+    const overriding = dispatch(true);
+    await vi.waitFor(() => expect(f.engines.claude.adoptions).toHaveLength(1));
+    const retry = dispatch(false);
+    // Let the retry reach its decision while the override is still held.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    release();
+    const [first, second] = await Promise.allSettled([overriding, retry]);
+    expect(first.status).toBe('fulfilled');
+    expect(second).toMatchObject({
+      status: 'fulfilled',
+      value: {
+        result: {
+          threadId: (first as PromiseFulfilledResult<any>).value.result
+            .threadId,
+          alreadyAdopted: true,
+        },
+      },
+    });
+    expect(f.engines.claude.adoptions).toHaveLength(1);
+
+    // Review item 6: once it exists, the same intent still returns it while
+    // the source keeps running, without the override.
+    const later = await f.request('/api/orchestration/commands', {
+      type: 'adoptSession',
+      sourceThreadId: source,
+      idempotencyKey: key,
+    });
+    expect(later.status, later.text).toBe(200);
+    expect(later.body.data).toMatchObject({
+      threadId: (first as PromiseFulfilledResult<any>).value.result.threadId,
+      alreadyAdopted: true,
+    });
     expect(f.engines.claude.adoptions).toHaveLength(1);
   });
 

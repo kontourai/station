@@ -2,7 +2,10 @@ import { ATTACHED_SOURCE_ACTIVE_WINDOW_MS } from '@kontourai/station-contracts/o
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { describe, expect, test } from 'vitest';
-import { deriveAttachedSourceActivity } from '../attached-source-activity.js';
+import {
+  ATTACHED_SOURCE_CLOCK_SKEW_MS,
+  deriveAttachedSourceActivity,
+} from '../attached-source-activity.js';
 import { buildOrchestrationSessionSummary } from '../orchestration-session-state.js';
 
 const NOW = Date.parse('2026-11-15T12:00:00.000Z');
@@ -84,6 +87,61 @@ describe('deriveAttachedSourceActivity', () => {
         NOW,
       ).state,
     ).toBe('active');
+  });
+
+  // Review item 1: a source can be written without producing an event (an
+  // OpenCode step still streaming, a Claude subagent's own transcript).
+  test("the source's own newer write keeps an open turn active", () => {
+    expect(
+      deriveAttachedSourceActivity([started(at(20 * 60_000))], NOW, at(30_000)),
+    ).toEqual({ state: 'active', lastWriteAt: at(30_000) });
+  });
+
+  test("an older source write does not hide a newer event's time", () => {
+    expect(
+      deriveAttachedSourceActivity([started(at(10_000))], NOW, at(20 * 60_000)),
+    ).toEqual({ state: 'active', lastWriteAt: at(10_000) });
+  });
+
+  test("the source's write time does not open a turn that ended", () => {
+    expect(
+      deriveAttachedSourceActivity(
+        [started(at(60_000)), completed(at(50_000))],
+        NOW,
+        at(1_000),
+      ).state,
+    ).toBe('idle');
+  });
+
+  // Review item 5: a record dated an hour ahead used to read active until
+  // five minutes past its own time. A write later than the read (beyond the
+  // skew allowance) is not evidence of recent activity.
+  test('a write dated past the skew allowance is not counted', () => {
+    const future = new Date(NOW + 60 * 60_000).toISOString();
+    expect(deriveAttachedSourceActivity([started(future)], NOW)).toEqual({
+      state: 'quiet',
+    });
+    expect(
+      deriveAttachedSourceActivity([started(at(20 * 60_000))], NOW, future),
+    ).toEqual({ state: 'quiet', lastWriteAt: at(20 * 60_000) });
+  });
+
+  test('a write within the skew allowance counts as now', () => {
+    const skewed = new Date(NOW + ATTACHED_SOURCE_CLOCK_SKEW_MS).toISOString();
+    expect(deriveAttachedSourceActivity([started(skewed)], NOW)).toEqual({
+      state: 'active',
+      lastWriteAt: skewed,
+    });
+    const past = new Date(
+      NOW + ATTACHED_SOURCE_CLOCK_SKEW_MS + 1,
+    ).toISOString();
+    expect(deriveAttachedSourceActivity([started(past)], NOW).state).toBe(
+      'quiet',
+    );
+  });
+
+  test('the clock-skew allowance is one minute', () => {
+    expect(ATTACHED_SOURCE_CLOCK_SKEW_MS).toBe(60_000);
   });
 
   test('no events is idle with no write time', () => {

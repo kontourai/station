@@ -838,6 +838,7 @@ export function buildOrchestrationSessionSummary(options: {
           attachedSourceActivity: deriveAttachedSourceActivity(
             events,
             options.now ?? Date.now(),
+            base.attachedSource?.lastWriteAt,
           ),
         }
       : {}),
