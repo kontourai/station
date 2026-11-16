@@ -716,6 +716,11 @@ test('the composer’s Open terminal places this Project’s Terminal in the bot
   openForeignChatInPulseBoundDock();
   // Bind the dock to the chat's own Project, so the Terminal is this chat's.
   act(() => deviceSettingsStore.set('chatDockProjectSlug', 'other'));
+  // The region shells are mounted, as in the app (`RegionShells` registers).
+  let unregister: (() => void) | undefined;
+  act(() => {
+    unregister = regionModel!.registerRegionSurfaceHost();
+  });
   await act(async () => {});
   const open = await screen.findByRole('button', { name: 'Open terminal' });
   expect((open as HTMLButtonElement).disabled).toBe(false);
@@ -723,6 +728,7 @@ test('the composer’s Open terminal places this Project’s Terminal in the bot
   await act(async () => {});
   expect(regionModel!.readRegions().bottom.panes).toContain('coding:terminal');
   expect(regionModel!.readRegions().bottom.visible).toBe(true);
+  act(() => unregister?.());
 });
 
 test('a dock bound to another Project refuses Open terminal and names that Project', async () => {

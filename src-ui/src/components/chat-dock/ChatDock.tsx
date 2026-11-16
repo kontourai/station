@@ -74,7 +74,6 @@ import {
 } from '../../contexts/open-chats-store';
 import { usePublishOpenerSelection } from '../../contexts/PaneRelationsContext';
 import { useProjects } from '../../contexts/ProjectsContext';
-import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import { useToast } from '../../contexts/ToastContext';
 import { UnsavedGuardOwnerContext } from '../../contexts/UnsavedGuardOwnerContext';
 import { useDismissPhoneLayer } from '../../contexts/useDismissPhoneLayer';
@@ -173,10 +172,7 @@ import type {
 import { MarkdownLinkContext } from '../chat/MarkdownLinkContext';
 import { pendingMessageCount } from '../chat/pendingMessages';
 import { ShareIntakeController } from '../chat/ShareIntakeController';
-import {
-  consumeProjectShellRequest,
-  requestProjectShell,
-} from '../coding-layout/terminalShellRequest';
+import { requestProjectShell } from '../coding-layout/terminalShellRequest';
 import { LazyBoundary } from '../LazyBoundary';
 import { GLOBAL_CONTEXT } from '../modals/new-chat-modal-utils';
 import { SkillShortcutRegistrar } from '../SkillShortcutRegistrar';
@@ -651,7 +647,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const agentsLoaded = useAgentsLoaded();
   const { projects, isConfirmedLoaded: projectsConfirmed } = useProjects();
   const { showToast, dismissToast } = useToast();
-  const regionModel = useRegionModelOptional();
   // station#3687 seams 3/5: an inbox click that opened nothing says so.
   const showInboxOpenFailure = useCallback(
     (message: string) => void showToast(message),
@@ -2034,18 +2029,13 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   );
   const openDockTerminal = () => {
     // Asked for by name, so the pane opens a shell rather than its chooser
-    // (or adopts the Project's existing one).
+    // (or adopts the Project's existing one). Opened through
+    // `useShowSurface` (a Chat renderer does not read region state), in the
+    // bottom dock beside Chat.
     if (terminalPaneProjectSlug) requestProjectShell(terminalPaneProjectSlug);
-    const outcome = regionModel?.openSurfaceInRegion('coding:terminal', {
-      region: 'bottom',
-      focusExisting: true,
-    });
-    if (outcome && !outcome.ok) {
-      if (terminalPaneProjectSlug)
-        consumeProjectShellRequest(terminalPaneProjectSlug);
-      showToast('Couldn’t open a terminal here.');
-    }
+    showSurface('coding:terminal', undefined, { region: 'bottom' });
   };
+
   const codingLayoutAction =
     hostConversation &&
     !scopedProjectSlug &&
@@ -2077,7 +2067,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
           commandLauncherShortcut,
           onOpenDelegation: openDelegationLauncher,
           onOpenCommandLauncher: openCommandLauncher,
-          ...(regionModel && !isMobile
+          ...(!isMobile
             ? {
                 onOpenTerminal: openDockTerminal,
                 terminalDisabledReason: !sessionDisplayCwd
