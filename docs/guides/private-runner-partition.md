@@ -30,9 +30,11 @@ Both listeners retain GitHub's default `self-hosted`, `Linux`, and `X64`
 labels. Keep the existing native Windows listener and its `kontour-windows` /
 `native` routing unchanged.
 
-Ordinary Linux CI is hosted. Container smoke remains an exception: its
-[workflow](../../.github/workflows/container-smoke.yml) requests the heavy
-Linux/docker/Playwright fleet labels. Remaining native Windows
+All automatic Linux CI is hosted, including
+[container smoke](../../.github/workflows/container-smoke.yml) since the heavy
+Linux listener went offline. Only the dispatch-only tools in `ci-extended.yml`
+and `recover-terminal-capacity-owner.yml` still request the heavy Linux fleet
+labels. Remaining native Windows
 jobs request the hardware labels (`kontour-windows`, `native`) and still
 take a physical-host lease. If a Linux job is reintroduced on this host, route
 only `ci.yml`'s `fast-checks` to `fast-feedback` and every other leased Linux

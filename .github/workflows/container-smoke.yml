@@ -45,49 +45,35 @@ jobs:
     # runs on 2026-09-01 alone, each the only run for its commit, including
     # the first two carrying the #917 fix).
     # Without cancel the group still keeps at most one pending run, so the
-    # latest main is verified next; main-health ignores `cancelled` runs.
+    # latest main is verified next. Main: Health ignores a run superseded in
+    # this group and reports one GitHub cancelled for lack of a runner.
     concurrency:
       group: container-smoke-${{ github.ref }}
       cancel-in-progress: false
-    # The fleet listener provides docker + playwright. (Run 33228038600's
-    # device-pairing timeout, once blamed on the github-hosted environment
-    # here, was actually the anonymous-browser premise gap fixed in #917 —
-    # the runner move neither caused nor fixed it.)
-    runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, docker, playwright]
-    # Budget = the longest capacity wait below (45 min) + the smoke itself
-    # (~20-25 min) + margin. Raising the wait without raising this only moves
-    # the failure from the reserve step to the job timeout.
-    timeout-minutes: 80
+    # GitHub-hosted: the self-hosted heavy Linux listener this job used to
+    # require has been offline since at least 2026-11-14, so every run queued
+    # until a newer landing superseded it and none ever reached a runner. The
+    # hosted image ships Docker and Compose; Chromium is installed below.
+    # There is no shared physical host left to lease, so the capacity
+    # reservation and the per-host Docker client isolation went with it.
+    # (Run 33228038600's device-pairing timeout, once blamed on the hosted
+    # environment, was the anonymous-browser premise gap fixed in #917.)
+    runs-on: ubuntu-22.04
+    # The smoke took 20-25 minutes on the fleet host; the hosted runner is
+    # slower to build the image. A red past this bound is a timed_out run,
+    # which Main: Health reports.
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: kontourai/.github/actions/runner-preflight@1d267a33147d1ce5925ffd1f9aa0ef2063d0d7ef
-        with:
-          require-docker: "true"
-      - name: Reserve physical host capacity
-        uses: kontourai/.github/actions/physical-host-capacity@563effe7ec559c6f4fcc6c80b3532acb71d86373
-        with:
-          coordination-root: /mnt/e/kontour-runner-capacity
-          host-id: desktop-win
-          capacity-units: "10"
-          lease-weight: "9"
-          # Weight 9 of 10 is admitted only once every other desktop-win
-          # lease has drained. The 45-minute wait was sized for a post-merge
-          # Windows floor (weight 5, 45-minute budget) that no longer exists
-          # (run 33589882367: a 600s wait timed out behind it). The remaining
-          # desktop-win tenants are all dispatch-only, so a wait here now
-          # means an operator dispatched one of them.
-          timeout-seconds: "2700"
-          owner-lifetime-seconds: "7800"
-      - id: isolate-docker
-        name: Isolate Docker client state
-        # Persistent WSL hosts may also use Docker Desktop interactively. Keep
-        # CI independent from its credential helper and Windows logon state.
+      - name: Report runner capacity
+        # Disk is the hosted runner's tightest resource for an image build;
+        # print it so a disk-full failure is diagnosable from the log alone.
         run: |
-          umask 077
-          docker_config="$(mktemp -d "$RUNNER_TEMP/station-docker-config.XXXXXX")"
-          echo "DOCKER_CONFIG=$docker_config" >> "$GITHUB_ENV"
+          df -h / "$RUNNER_TEMP"
+          docker version --format 'docker {{.Server.Version}}'
+          docker compose version
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
@@ -118,14 +104,3 @@ jobs:
           path: test-results/
           if-no-files-found: ignore
           retention-days: 7
-      - name: Remove isolated Docker client state
-        # Only when the isolate step ran: if the capacity reservation failed,
-        # DOCKER_CONFIG was never set and the refusal below reported
-        # `Refusing unexpected DOCKER_CONFIG:` as the job's last error,
-        # burying the real one (the same run above).
-        if: always() && steps.isolate-docker.outcome == 'success'
-        run: |
-          case "$DOCKER_CONFIG" in
-            "$RUNNER_TEMP"/station-docker-config.*) rm -rf -- "$DOCKER_CONFIG" ;;
-            *) echo "Refusing unexpected DOCKER_CONFIG: $DOCKER_CONFIG" >&2; exit 1 ;;
-          esac
