@@ -3924,8 +3924,8 @@ in the service's memory and clear when their stream closes. Structured person
 mentions (#4799) are validated against the access adapter's member directory and
 told once per newly named person through the notification service's principal
 feed (`project-room-mention-notifications.ts`). The stream also carries each room's
-newest Agent request records and every one still working (up to 50), never their
-Sessions (#4800). The [SDK](../reference/sdk.md#shared-project-room)
+newest Agent request records and its newest 50 still working (unsettled with no
+recorded failure), never their Sessions (#4800). The [SDK](../reference/sdk.md#shared-project-room)
 retains exact send intents and retires protected content when authority changes.
 
 [ProjectRoomAgentModule](../../src-server/services/projects/project-room-agent-module.ts)

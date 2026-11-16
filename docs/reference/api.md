@@ -1279,9 +1279,11 @@ or ends the stream. Frames are named by kind and carry `key`, the channel id:
   here. A typing signal lapses after six seconds unless renewed, and both are
   cleared the moment the `client` stream that registered them closes. Presence
   no longer needs renewing while that stream is open.
-- `agents { requests }`: the room's newest 20 Agent requests and its newest
-  50 still working (reserved or started), so newer settled requests never
-  hide one that is running; at most 70, each as its record holds it: `requestId`, `agentId`, `actor`, `state`,
+- `agents { requests }`: the room's newest 20 Agent requests, plus its newest
+  50 still working: reserved or started with no recorded failure. Newer
+  settled or failed requests never take those 50 places; with more than 50
+  working, the oldest are left out. At most 70, each as its record holds it:
+  `requestId`, `agentId`, `actor`, `state`,
   `replyTo?`, `publishedMessageId?`, times and an unsettled `failure?`. No
   Session, correlation id, prompt text or Agent output crosses this frame.
 

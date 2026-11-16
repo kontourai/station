@@ -842,8 +842,10 @@ sequence the stream delivered); an `update` whose activity range does not start
 where the cache is, a `resync`, or any (re)connection re-reads the room once.
 The hook takes the stream's position only after that read succeeds; while it
 has failed, the next frame re-reads the room instead of trusting the frames
-in between. A history read that started before a merge keeps the merged rows,
-in the cache and in the result its caller awaits.
+in between. A history read that started before a merge keeps the merged rows
+in the cache and in the result its caller awaits. The hook remembers its last
+500 merged rows; a read that outlives a forgotten one is read again, up to
+three times, and otherwise fails with the cache left as it was.
 A hook that joins a connection already open starts from where the room stands
 on it, so a gap after that is still backfilled.
 Acknowledged sends, reactions, edits and deletes merge their returned message
