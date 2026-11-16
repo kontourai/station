@@ -190,13 +190,14 @@ function closedTrigger() {
       painted += node.textContent;
   return {
     labelWidth: box.width,
+    // Painted means on the label's one line and inside its visible width;
+    // a name squeezed to nothing there still counts, as a stub.
     agent:
       agentBox &&
-      agentBox.width > 0 &&
       agentBox.top < box.bottom &&
       agentBox.bottom > box.top &&
       agentBox.left < box.right
-        ? { width: agentBox.width }
+        ? { width: Math.min(agentBox.right, box.right) - agentBox.left }
         : null,
     painted,
   };
