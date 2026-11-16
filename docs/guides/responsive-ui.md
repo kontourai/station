@@ -286,7 +286,10 @@ dock body (full screen on a phone). New-chat and running-chat controls share
 [ComposerRunControl](../../src-ui/src/components/ComposerRunControl.tsx): one
 Agent/model trigger opens Run setup, containing the existing
 [ComposerChoice](../../src-ui/src/components/ComposerChoice.tsx) controls. Long
-trigger labels truncate; the sheet owns the full choices. Attach, mic and Start
+trigger labels truncate; the sheet owns the full choices. On desktop a picker
+opened from Run setup takes the panel's place (`yieldToChildPopover` on
+`ResponsiveDialogSurface`) and is clamped inside the composer column
+(`data-popover-boundary`); phones keep stacked sheets. Attach, mic and Start
 share the phone action row. Targets remain at least 44px; picker menus are edge
 sheets on phones with their own
 scrolling list. Creation controls remain outside the scrolling lists. The mobile Inbox presents

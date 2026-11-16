@@ -997,6 +997,13 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   takes its confirmation); the pick is the new chat's own and rides its first
   send. In the dock's New chat draft the picker opens on the popover layer, as
   on Home.
+  On desktop a picker opened from Run setup (approval, model) replaces the
+  panel rather than stacking on it: Run setup hides, the picker opens at the Run
+  setup trigger and stays inside the composer's column, Escape returns to Run
+  setup and a click outside closes both. The approval picker's first line says
+  the mode in effect as the engine confirmed it, or that the engine has not
+  confirmed one yet; its list and the chip both call the broadest mode
+  **Full access**.
   The running chip shows engine-confirmed values or a pending/restart state. Personal defaults
   apply to new interactive chats; saving a future default is explicit.
 - New-chat and running-chat selectors use `ComposerChoice` for the caption,
