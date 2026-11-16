@@ -676,7 +676,10 @@ are on `main` unchanged, and is not a no-op on `main` unless regenerating is
 empty too. The PR then keeps its checks and its merge-queue place. A new,
 removed or edited note, a manifest or lockfile change that alters the output,
 a release that already landed, a conflict, a timeout or any unreadable state
-regenerates as before; a dispatch never skips. Squashing the kept head onto
+regenerates as before; a dispatch never skips. The version script runs in its
+own process group, which the probe kills and waits out; if it cannot confirm
+the group is gone, the job fails rather than let the action commit a checkout
+something may still write to. Squashing the kept head onto
 the probed `main` gives the bytes a regeneration would have pushed. When the
 merge queue builds it behind other entries, it is squashed onto that later
 base instead, as a regenerated head would be; a note one of those entries adds
