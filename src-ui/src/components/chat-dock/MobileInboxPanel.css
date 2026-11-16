@@ -87,7 +87,8 @@
   padding-left: calc(var(--k-space-3) + var(--k-space-6) + var(--k-space-2));
   padding-right: calc(var(--k-space-3) + 44px);
 }
-.mobile-inbox .inbox-row__meta {
+.mobile-inbox .inbox-row__meta,
+.mobile-inbox .inbox-row__headline {
   display: contents;
 }
 .mobile-inbox .inbox-row__meta-text {

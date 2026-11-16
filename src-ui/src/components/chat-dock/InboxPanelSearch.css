@@ -1,16 +1,27 @@
+/* The search field is the box: one border, the toolbar's height. The input
+   inside it carries no second box or floor of its own. */
 .chat-dock-inbox__search {
   box-sizing: border-box;
   min-width: 0;
-  min-height: 44px;
-  margin: var(--k-space-2) var(--k-space-3);
-  padding: var(--k-space-2);
+  min-height: 36px;
+  padding: 0 var(--k-space-2);
   border: var(--k-border-thin) solid var(--k-line);
   border-radius: var(--k-radius-control);
   background: var(--k-bg);
   color: var(--k-text);
   font: inherit;
 }
-.chat-dock-inbox__search:focus-visible {
+.chat-dock-inbox[data-coarse-pointer] .chat-dock-inbox__search {
+  min-height: 44px;
+}
+.chat-dock-inbox .chat-dock-inbox__search input {
+  min-height: 0;
+  padding-block: var(--k-space-1);
+}
+.chat-dock-inbox__search:focus-within {
   outline: 2px solid var(--k-focus-ring);
-  outline-offset: var(--k-space-1);
+  outline-offset: calc(-1 * var(--k-border-thin));
+}
+.chat-dock-inbox .chat-dock-inbox__search input:focus-visible {
+  outline: none;
 }

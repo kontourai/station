@@ -231,9 +231,54 @@
   min-width: 0;
   min-height: 44px;
 }
-.chat-dock-inbox__scope > button {
+.chat-dock-inbox__scope > button,
+.chat-dock-inbox__hidden-attention {
   min-height: 44px;
   color: var(--k-action);
+}
+
+/* In the toolbar, beside search: a compact picker that yields to search. */
+.chat-dock-inbox__scope--inline {
+  flex: 0 1 auto;
+  max-width: 38%;
+  padding: 0;
+  border: 0;
+}
+.chat-dock-inbox__scope--inline select {
+  width: 100%;
+  min-height: 36px;
+  text-overflow: ellipsis;
+}
+.chat-dock-inbox[data-coarse-pointer] .chat-dock-inbox__scope--inline select {
+  min-height: 44px;
+}
+
+/* Shown only while the scope hides work that needs the person. */
+.chat-dock-inbox__hidden-attention {
+  display: block;
+  width: 100%;
+  padding: var(--k-space-1) var(--k-space-3);
+  border: 0;
+  border-block-end: var(--k-border-thin) solid var(--k-line);
+  background: transparent;
+  font: inherit;
+  font-size: var(--k-text-sm);
+  text-align: start;
+  cursor: pointer;
+}
+
+/* The way to every conversation, at the end of the list. */
+.chat-dock-inbox__browse {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  margin-block-start: var(--k-space-3);
+  gap: var(--k-space-2);
+  color: var(--k-text-muted);
+}
+.chat-dock-inbox__browse svg {
+  inline-size: 14px;
+  block-size: 14px;
 }
 
 .chat-dock-inbox__toolbar {
@@ -278,6 +323,10 @@
   block-size: 16px;
 }
 .chat-dock-inbox__toolbar > button {
+  min-inline-size: 36px;
+  min-block-size: 36px;
+}
+.chat-dock-inbox[data-coarse-pointer] .chat-dock-inbox__toolbar > button {
   min-inline-size: 44px;
   min-block-size: 44px;
 }

@@ -969,6 +969,20 @@ export function InboxRow({
           </>
         ) : (
           <>
+            {/* What, then its state, then who and where:
+                the title leads, with the time beside it in the slot the
+                hover actions take over. */}
+            <span className="inbox-row__headline">
+              <InboxRowTitle title={item.title} />
+              {/* Never a fabricated duration: an item with no real
+                  timestamp shows no time. */}
+              {hasTime && (
+                <span className="inbox-row__time">
+                  {relativeTime(item.updatedAt, now)}
+                </span>
+              )}
+            </span>
+            <InboxRowStatusLine id={statusId} status={status} now={now} />
             <span className="inbox-row__meta">
               {/* Decorative, deliberately: the agent is stated in words
                   beside it, and this icon sits INSIDE a button that carries
@@ -998,16 +1012,7 @@ export function InboxRow({
                   </>
                 )}
               </span>
-              {/* Never a fabricated duration: an item with no real
-                  timestamp shows no time. */}
-              {hasTime && (
-                <span className="inbox-row__time">
-                  {relativeTime(item.updatedAt, now)}
-                </span>
-              )}
             </span>
-            <InboxRowTitle title={item.title} />
-            <InboxRowStatusLine id={statusId} status={status} now={now} />
             {actionsInDetails && (
               <span className="inbox-row__project-context">
                 {/* One project mark: its own icon when it has one, else the
