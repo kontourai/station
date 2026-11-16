@@ -374,4 +374,48 @@ describe('readTaskPullRequestFacts', () => {
     expect(getPullRequest).toHaveBeenCalledTimes(1);
     expect(facts.tasks.b?.pullRequests[0]?.status.state).toBe('current');
   });
+  test('carries the head and, once per pull request, the feedback the reader may see', async () => {
+    const HEAD = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678';
+    const feedbackFor = vi.fn((identity: { ref: string }) =>
+      identity.ref === '7'
+        ? { state: 'sent' as const, headSha: HEAD, at: NOW.toISOString() }
+        : undefined,
+    );
+    const facts = await read(
+      [task('a'), task('b')],
+      [keep('a', '7'), keep('b', '7'), keep('b', '8')],
+      [provider(async (ref) => pullRequest(ref, { headSha: HEAD }))],
+      { feedbackFor },
+    );
+    const [seven] = facts.tasks.a!.pullRequests;
+    expect(seven).toMatchObject({
+      status: { state: 'current', headSha: HEAD },
+      feedback: { state: 'sent', headSha: HEAD },
+    });
+    expect(facts.tasks.b!.pullRequests[1]).not.toHaveProperty('feedback');
+    // Two Tasks keep #7: asked once.
+    expect(feedbackFor).toHaveBeenCalledTimes(2);
+  });
+
+  test('a pull request that could not be read carries no feedback', async () => {
+    const feedbackFor = vi.fn(() => ({
+      state: 'watching' as const,
+      headSha: 'a'.repeat(40),
+    }));
+    const facts = await read(
+      [task('a')],
+      [keep('a', '7')],
+      [
+        provider(async () => {
+          throw new Error('gh failed');
+        }),
+      ],
+      { feedbackFor },
+    );
+    expect(facts.tasks.a!.pullRequests[0]).toMatchObject({
+      status: { state: 'unavailable' },
+    });
+    expect(facts.tasks.a!.pullRequests[0]).not.toHaveProperty('feedback');
+    expect(feedbackFor).not.toHaveBeenCalled();
+  });
 });

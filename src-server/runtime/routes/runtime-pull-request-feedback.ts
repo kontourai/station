@@ -8,12 +8,16 @@
  * Not composed on a hosted Station (no host forge login to read with, and
  * no conversation inbox), so every route there answers 404.
  */
-import type { ConversationPullRequestLink } from '@kontourai/station-contracts/conversation-pull-request-links';
+import type {
+  ConversationPullRequestLink,
+  PullRequestLinkIdentity,
+} from '@kontourai/station-contracts/conversation-pull-request-links';
 import { pullRequestFeedbackKey } from '@kontourai/station-contracts/pull-request-feedback';
 import type { IPullRequestProvider } from '@kontourai/station-contracts/pull-request-provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { isSessionLifecycleStateStopped } from '@kontourai/station-contracts/session-lifecycle';
 import type { TaskKeptDeclaredPullRequest } from '@kontourai/station-contracts/task-graph';
+import type { TaskPullRequestFeedbackFact } from '@kontourai/station-contracts/task-lane';
 import { parseGitHubWorkItemRef } from '@kontourai/station-contracts/work-item-provider';
 import type {
   createPullRequestFeedbackRoutes,
@@ -40,6 +44,7 @@ import {
   PullRequestFeedbackStoreHolder,
   pullRequestFeedbackStorePath,
 } from '../../services/pull-requests/pull-request-feedback-store.js';
+import { pullRequestFeedbackTaskFact } from '../../services/pull-requests/pull-request-feedback-task-fact.js';
 
 /**
  * A person, not Station acting for an agent (its internal principal) and
@@ -116,6 +121,15 @@ export interface PullRequestFeedbackRuntime {
     conversationId: string;
     clientTurnId: string;
   }): { reasonCode: string; reason: string } | undefined;
+  /**
+   * A kept pull request's feedback for the Task board, as this request may
+   * see it: undefined while the preview is off or unless it may read the
+   * chat that gets it.
+   */
+  factFor(
+    identity: PullRequestLinkIdentity,
+    request: Request,
+  ): TaskPullRequestFeedbackFact | undefined;
   /** The scheduler tick: started, never awaited. */
   tick(input: { now: number; signal: AbortSignal }): void;
   /** #4508: whether this feature sends this kind of follow-up for the item. */
@@ -206,7 +220,21 @@ export function createFeedbackSessionReaders(deps: {
     ).at(-1);
     return last ? Date.parse(last.createdAt) : undefined;
   };
-  return { conversationOf, lineage, session, turnWindows, lastTurnAt };
+  /** The send key of the current Session's turn, while it has not ended. */
+  const openTurnKey = (conversationId: string) => {
+    const last = turnEvents(
+      orchestration.currentConversationSessionId(conversationId),
+    ).at(-1);
+    return last?.method === 'turn.started' ? last.clientTurnId : undefined;
+  };
+  return {
+    conversationOf,
+    lineage,
+    session,
+    turnWindows,
+    lastTurnAt,
+    openTurnKey,
+  };
 }
 
 /**
@@ -254,12 +282,18 @@ export function composePullRequestFeedbackRuntime(
   const holder = new PullRequestFeedbackStoreHolder(() =>
     pullRequestFeedbackStorePath(deps.homeDir),
   );
-  const { conversationOf, lineage, session, turnWindows, lastTurnAt } =
-    createFeedbackSessionReaders({
-      eventStore,
-      orchestration: deps.orchestration,
-      inbox,
-    });
+  const {
+    conversationOf,
+    lineage,
+    session,
+    turnWindows,
+    lastTurnAt,
+    openTurnKey,
+  } = createFeedbackSessionReaders({
+    eventStore,
+    orchestration: deps.orchestration,
+    inbox,
+  });
   /** What a person linked to the chat (any Session of it) or kept on its Task. */
   const linkedNow = (conversationId: string) => {
     const ids = lineage(conversationId);
@@ -329,6 +363,18 @@ export function composePullRequestFeedbackRuntime(
       { ...deps.access, enabled, isPerson: requestIsPerson },
     ],
     placementRefusal: (input) => delivery.placementRefusal(input),
+    factFor: (identity, request) => {
+      const store = enabled() ? holder.forRead() : undefined;
+      if (!store || !deps.access.current(request)) return undefined;
+      return pullRequestFeedbackTaskFact({
+        view: ownership.byPullRequest(identity, {
+          canRead: (conversationId) =>
+            deps.access.canRead(request, conversationId),
+        }),
+        store,
+        openTurnKey,
+      });
+    },
     tick: (input) => poller.tick(input),
     owns: (itemRef, kind) => {
       if (!enabled()) return false;

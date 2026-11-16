@@ -5873,6 +5873,7 @@ export function configureRuntimeRoutes(
     createTaskRoutes(context.taskGraphService, {
       pullRequestProviders: () =>
         listProviders('pullRequest').map((entry) => entry.provider),
+      pullRequestFeedbackFor: (...a) => pullRequestFeedback?.factFor(...a),
       logger: context.logger,
       workChatConversations: taskInboxProjection,
       onRoomSystemLine: async ({
