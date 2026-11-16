@@ -1,5 +1,4 @@
 import { authenticatedFetch } from '@kontourai/station-sdk';
-import { StatusBadge } from '@kontourai/ui/react';
 import { type ReactNode, useCallback, useRef, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useOpenBrowserSessionInRegion } from '../../contexts/useOpenInRegion';
@@ -166,9 +165,7 @@ export function InlineBrowserActivity({
       {active && host && session?.title && session.title !== host && (
         <span>{host}</span>
       )}
-      {active ? (
-        <StatusBadge status="Working" tone="active" />
-      ) : (
+      {!active && (
         <span>
           {toolCount} {toolCount === 1 ? 'action' : 'actions'}
         </span>
@@ -228,6 +225,7 @@ export function InlineBrowserActivity({
           {session && !floating && visible && control && (
             <LiveSurfaceViewerControls
               label="Browser activity controls"
+              className="inline-browser-activity__toolbar"
               actionClassName="inline-browser-activity__control"
               status={DRIVER_TEXT[control.tone]}
               tone={control.tone}
@@ -339,7 +337,9 @@ export function InlineBrowserActivity({
           })}
         </div>
       )}
-      <div className="inline-browser-activity__steps">{children}</div>
+      {children && (
+        <div className="inline-browser-activity__steps">{children}</div>
+      )}
     </section>
   );
 }

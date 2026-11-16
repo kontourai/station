@@ -35,7 +35,7 @@ export default function BrowserActivityContent({
       ? `${group.awaitingApprovalCount} awaiting approval`
       : null,
   ].filter(Boolean);
-  const children = active ? (
+  const children = !run.calls.length ? null : active ? (
     run.calls.map(({ index }) => renderRow(index))
   ) : (
     <>

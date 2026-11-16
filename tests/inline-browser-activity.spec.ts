@@ -437,7 +437,7 @@ for (const width of [390, 1440]) {
         colorScheme,
       );
       const activity = page.locator('.inline-browser-activity');
-      await expect(activity).toContainText('Working');
+      await expect(activity).toHaveAttribute('data-active', 'true');
       await expectPaintedPage(page);
       const originalCanvas = await activity.locator('canvas').elementHandle();
       await activity
@@ -470,6 +470,16 @@ for (const width of [390, 1440]) {
         activity.locator('.inline-browser-activity__chip'),
       ).toHaveCount(3);
       await expectPaintedPage(page);
+      const activeStep = activity.locator('[aria-current="step"]');
+      await expect(activeStep).toContainText('Clicking on the page');
+      const stepBox = await activeStep.boundingBox();
+      const cardBox = await activity.boundingBox();
+      expect(stepBox).not.toBeNull();
+      expect(cardBox).not.toBeNull();
+      expect(stepBox!.x).toBeGreaterThanOrEqual(cardBox!.x);
+      expect(stepBox!.x + stepBox!.width).toBeLessThanOrEqual(
+        cardBox!.x + cardBox!.width,
+      );
       if (width === 390)
         await activity
           .getByRole('button', { name: 'More controls', exact: true })
@@ -592,7 +602,10 @@ test('a mixed tool run and pending permission stay available', async ({
   page,
 }) => {
   await setup(page, true);
-  await expect(page.locator('.inline-browser-activity')).toContainText('Live');
+  await expect(page.locator('.inline-browser-activity')).toHaveAttribute(
+    'data-active',
+    'true',
+  );
   await emitMockOrchestrationEvent(page, 'orchestration:event', {
     event: {
       ...base,
