@@ -480,7 +480,7 @@ export function ConversationStationHandoff({
           onToggle={() => setDisclosureOpen((open) => !open)}
           controls={disclosureId}
         >
-          What carries over
+          Details
         </DisclosureToggle>
       </div>
       {disclosureOpen && (
@@ -488,7 +488,9 @@ export function ConversationStationHandoff({
           id={disclosureId}
           className="conversation-handoff-dialog__disclosure"
         >
-          <dt>Carried</dt>
+          <dt>First message</dt>
+          <dd>{draft ? 'Your draft from the composer' : message}</dd>
+          <dt>Keeps</dt>
           <dd>
             Message text as the Agent's context, newest first, up to{' '}
             {PEER_CONVERSATION_HANDOFF_MAX_MESSAGES} messages

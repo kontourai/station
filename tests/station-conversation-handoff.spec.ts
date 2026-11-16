@@ -61,9 +61,7 @@ test('a conversation continues on a paired Station with its history, and a retry
     panel.getByRole('button', { name: /^Agent: .*\. Change Agent$/ }),
   );
   await agentTrigger.click();
-  const dialog = page.getByRole('dialog', {
-    name: 'Continue with another agent',
-  });
+  const dialog = page.getByRole('dialog', { name: 'Switch agent' });
   await expect(dialog).toBeVisible();
   await dialog
     .getByRole('radiogroup', { name: 'Station' })
@@ -77,7 +75,7 @@ test('a conversation continues on a paired Station with its history, and a retry
     exact: true,
   });
   await expect(submit).toBeEnabled();
-  await dialog.getByRole('button', { name: 'What carries over' }).click();
+  await dialog.getByRole('button', { name: 'Details' }).click();
   await expect(dialog).toContainText('Files · Tool output · Attachments');
   await shoot(page, testInfo, 'picker');
 
