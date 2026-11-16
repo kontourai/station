@@ -416,7 +416,7 @@ export class OpenCodeV2FixtureWriter {
    * Records the 1.x to 2.x migration's state the way OpenCode's
    * `V1Migration.run` does (`KVTable`, JSON value).
    */
-  migrationState(phase: 'sessions' | 'completed'): void {
+  migrationState(phase: 'sessions' | 'completed'): number {
     this.db.exec(OPENCODE_V2_KV_SCHEMA);
     const now = this.tick();
     this.db
@@ -425,6 +425,7 @@ export class OpenCodeV2FixtureWriter {
          VALUES ('migration.v1-v2', ?, ?, ?)`,
       )
       .run(JSON.stringify({ phase }), now, now);
+    return now;
   }
 
   touch(sessionId: string): void {

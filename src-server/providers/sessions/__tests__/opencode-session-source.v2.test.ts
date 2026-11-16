@@ -679,7 +679,7 @@ describe('OpenCodeSessionSource on an OpenCode 2.x store', () => {
     ).toEqual(['ses_live', 'ses_next_only']);
   });
 
-  test('lists nothing from an opencode-next.db a completed OpenCode migration imported, so a session deleted in 2.x stays gone', async () => {
+  test('after a completed OpenCode migration lists only next-store sessions created since, so one deleted in 2.x stays gone', async () => {
     const dataDir = join(fixtureRoot(), 'opencode');
     const store = writer(dataDir);
     store.session('ses_live', '/workspace/project');
@@ -700,7 +700,7 @@ describe('OpenCodeSessionSource on an OpenCode 2.x store', () => {
         .sort(),
     ).toEqual(['ses_deleted_in_2x', 'ses_live']);
 
-    store.migrationState('completed');
+    const completedAt = store.migrationState('completed');
     const warn = vi.fn();
     const source = new OpenCodeSessionSource({ dataDir, warn });
     const discovery = await source.discover();
@@ -709,6 +709,54 @@ describe('OpenCodeSessionSource on an OpenCode 2.x store', () => {
     expect(discovery.sessions.map((session) => session.sessionId)).toEqual([
       'ses_live',
     ]);
+
+    // OpenCode never imports the file again once the migration completed,
+    // so a pinned 1.x next-channel build's later session is listed from it.
+    next.advanceTo(completedAt);
+    next.session('ses_after_migration', '/workspace/project');
+    const later = next.user('ses_after_migration', ['Written after']);
+    next.assistant('ses_after_migration', later, { finish: 'stop' });
+    const after = await source.discover();
+    expect(warn).not.toHaveBeenCalled();
+    expect(after.sessions.map((session) => session.sessionId).sort()).toEqual([
+      'ses_after_migration',
+      'ses_live',
+    ]);
+  });
+
+  test('answers a drained read from its cache whatever key order the cursor comes back in', async () => {
+    const dataDir = join(fixtureRoot(), 'opencode');
+    const store = writer(dataDir);
+    store.session('ses_main', '/workspace/project');
+    writeTurn(store, 'ses_main', 'Hello');
+    const source = new OpenCodeSessionSource({ dataDir });
+    const session = (await source.discover()).sessions[0]!;
+    const first = await source.read(session);
+    expect(first.outcome).toBe('ok');
+    const reorder = (value: unknown): unknown =>
+      Array.isArray(value)
+        ? value.map(reorder)
+        : value && typeof value === 'object'
+          ? Object.fromEntries(
+              Object.entries(value as Record<string, unknown>)
+                .reverse()
+                .map(([key, item]) => [key, reorder(item)]),
+            )
+          : value;
+    const reordered = reorder(first.cursor) as AttachedSessionCursor;
+    expect(JSON.stringify(reordered)).not.toBe(JSON.stringify(first.cursor));
+    expect(reordered).toEqual(first.cursor);
+
+    const prepare = vi.spyOn(DatabaseSync.prototype, 'prepare');
+    const transcriptQueries = () =>
+      prepare.mock.calls.filter(([sql]) =>
+        /\bFROM session_message\b|\bsession_v2 WHERE id\b/u.test(String(sql)),
+      ).length;
+    expect(await source.read(session, reordered)).toMatchObject({
+      outcome: 'ok',
+      events: [],
+    });
+    expect(transcriptQueries()).toBe(0);
   });
 
   test('warns once when a running compaction has held a session past the bound', async () => {

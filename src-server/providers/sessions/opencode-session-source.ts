@@ -455,8 +455,12 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     // read last, so beside a 2.x store:
     // - once that migration has completed (`migration.v1-v2` in `kv`), a file
     //   of the shape it imports (`isNextDatabase`: project, session and
-    //   session_message) is skipped whole: each of its sessions is in the
-    //   2.x store, or was deleted there;
+    //   session_message) contributes only sessions created after the
+    //   completion was recorded: every earlier one is in the 2.x store or was
+    //   deleted there. OpenCode never imports the file again (and records
+    //   completion even when no file existed yet), so a later session, from
+    //   a pinned 1.x next-channel build or a file created afterwards, is the
+    //   next store's own;
     // - a file of that shape no layout here reads is skipped too, silently;
     // - otherwise it is read by its own layout, without any session the 2.x
     //   store holds in any state (archived, a child, never prompted), whose
@@ -471,20 +475,28 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
       ),
     ];
     const v2Stores: DatabaseRegistration[] = [];
-    let v2MigrationCompleted = false;
+    /** When a 2.x store recorded its migration completed (epoch ms). */
+    let v2MigrationCompletedAt: number | undefined;
     for (const database of ordered) {
       const besideV2 =
         database.fileName === NEXT_DATABASE && v2Stores.length > 0;
+      // Sessions created at or before this were imported (or deleted since).
+      let importedThrough: number | undefined;
       if (besideV2) {
         const shape = this.nextStoreShape(database);
-        if (shape.importShape && (!shape.readable || v2MigrationCompleted)) {
-          continue;
-        }
+        if (shape.importShape && !shape.readable) continue;
+        if (shape.importShape) importedThrough = v2MigrationCompletedAt;
       }
       const result = await this.withDatabase(database, (db, layout) => {
         if (layout.kind === 'v2') {
           v2Stores.push(database);
-          if (migrationCompleted(db)) v2MigrationCompleted = true;
+          const completedAt = migrationCompletedAt(db);
+          if (completedAt !== undefined) {
+            v2MigrationCompletedAt = Math.max(
+              v2MigrationCompletedAt ?? completedAt,
+              completedAt,
+            );
+          }
         }
         // `time_updated` has no index upstream, so this is one scan of the
         // session table (about 12 ms warm on a 61k-session store). The
@@ -524,6 +536,12 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
       // Every database contributes its newest; the merged list is capped below.
       for (const row of result.value) {
         if (held.has(String(row.id))) continue;
+        if (
+          importedThrough !== undefined &&
+          !(Number(row.time_created) > importedThrough)
+        ) {
+          continue;
+        }
         const registration = this.registrationFor(
           database,
           sourceHome.affinity,
@@ -1086,20 +1104,25 @@ function closeQuietly(db: DatabaseSync): void {
 type SchemaVerdict = { layout: StoreLayout } | { mismatch: string };
 
 /**
- * Whether OpenCode's 1.x-to-2.x migration has completed in this 2.x store:
- * the one `kv` row OpenCode keeps its state in (`migration.v1-v2`), read by
- * its exact key. A store without the table or row has not.
+ * When OpenCode's 1.x-to-2.x migration recorded itself completed in this 2.x
+ * store (the `time_updated` of the one `kv` row OpenCode keeps its state in,
+ * `migration.v1-v2`, read by its exact key; epoch ms), or undefined when it
+ * has not: no table, no row, another phase, or an unusable time.
  */
-function migrationCompleted(db: DatabaseSync): boolean {
+function migrationCompletedAt(db: DatabaseSync): number | undefined {
   try {
     const row = db
-      .prepare("SELECT value FROM kv WHERE key = 'migration.v1-v2'")
+      .prepare(
+        "SELECT value, time_updated FROM kv WHERE key = 'migration.v1-v2'",
+      )
       .get();
     const state =
       typeof row?.value === 'string' ? parseRecord(row.value) : null;
-    return state?.phase === 'completed';
+    return state?.phase === 'completed' && isCount(row?.time_updated)
+      ? row.time_updated
+      : undefined;
   } catch {
-    return false;
+    return undefined;
   }
 }
 

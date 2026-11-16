@@ -1211,9 +1211,10 @@ Station looks in four places:
   1.x and OpenCode 2.x databases. Beside an OpenCode 2.x database, an
   `opencode-next.db` is read only for sessions OpenCode 2.x does not hold: a
   session it copied is shown as OpenCode 2.x has it, archived or deleted
-  there included. Once OpenCode's upgrade has finished copying the file, or
-  when the file is in the OpenCode preview format Station cannot read, the
-  file is skipped. Station opens each database read-only and lists top-level
+  there included. Once OpenCode's upgrade has finished, only sessions
+  created in `opencode-next.db` after it are listed from that file, since
+  OpenCode copies it only once. A file in the OpenCode preview format, which
+  Station cannot read, is skipped. Station opens each database read-only and lists top-level
   OpenCode sessions you have sent a message in; subagent sessions and
   archived sessions are left out. A message appears once OpenCode has
   finished writing it. Later messages wait for an unfinished OpenCode
