@@ -297,12 +297,20 @@ test('an invalidation rebuilds every loaded page instead of keeping only the fir
   await act(async () => {
     await vi.advanceTimersByTimeAsync(2_100);
   });
+  // Older history loaded above: the first page is now an older one.
+  await act(async () => {
+    await observer.result.current.fetchPreviousPage();
+    await vi.advanceTimersByTimeAsync(1);
+  });
+  expect(messages()[0]).toBe(0);
   expect(messages().at(-1)).toBe(32);
   observer.rerender({ running: false });
   await act(async () => {
     await client.invalidateQueries();
     await vi.advanceTimersByTimeAsync(1);
   });
+  // Still from the oldest loaded message to the latest one, once each.
+  expect(messages()[0]).toBe(0);
   expect(messages().at(-1)).toBe(32);
   expect(new Set(messages()).size).toBe(messages().length);
   observer.unmount();
