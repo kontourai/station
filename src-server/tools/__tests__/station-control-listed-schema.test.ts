@@ -216,7 +216,7 @@ test('Station’s runtime still delivers the unlisted arguments through the tool
   const posted: { url: string; body: Record<string, unknown> }[] = [];
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input instanceof Request ? input.url : input);
       if (url === `${API_BASE}/.well-known/station/v1`)
         return Response.json({ environmentId: 'environment-current' });
