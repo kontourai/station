@@ -37,6 +37,7 @@ import { createLogger } from '../../utils/logger.js';
 import { JsonFileStore } from '../infra/json-store.js';
 import type { EventBus } from '../orchestration/event-bus.js';
 import type { ProjectMembershipService } from '../projects/project-membership-service.js';
+import { PULL_REQUEST_FEEDBACK_NOTIFICATION_SOURCE } from '../pull-requests/pull-request-feedback-attention.js';
 import { ON_ACTIVITY_CARD_METADATA_KEY } from './delivery/card-alerted-categories.js';
 
 const logger = createLogger({ name: 'notification-service' });
@@ -188,6 +189,7 @@ export const INTERNAL_NOTIFICATION_SOURCES: ReadonlySet<string> = new Set([
   'project-room',
   'scheduler',
   TURN_COMPLETION_NOTIFICATION_SOURCE,
+  PULL_REQUEST_FEEDBACK_NOTIFICATION_SOURCE,
 ]);
 
 /**
