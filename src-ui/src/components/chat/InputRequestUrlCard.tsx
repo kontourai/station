@@ -8,6 +8,7 @@ import { userFacingErrorMessage } from '../../utils/errorText';
 import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
 import './InputRequestCard.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 
 const PURPOSE_TITLE: Record<InputRequestUrl['body']['purpose'], string> = {
   'mcp-sign-in': 'wants you to sign in',
@@ -30,6 +31,7 @@ export function InputRequestUrlCard({
   request: InputRequestUrl;
   onRespond: (action: InputRequestUrlResponse['action']) => Promise<void>;
 }) {
+  useDecisionSurface('input-request-url-card');
   const [pending, setPending] = useState<InputRequestUrlResponse['action']>();
   const [done, setDone] = useState<InputRequestUrlResponse['action']>();
   const [error, setError] = useState<string>();

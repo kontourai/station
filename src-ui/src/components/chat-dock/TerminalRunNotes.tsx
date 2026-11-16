@@ -13,6 +13,7 @@ import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { Button } from '../Button';
 import { TerminalGlyph } from '../icons/Glyph';
 import './AgentScheduleNotes.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 
 function endedRun(run: TerminalRun): boolean {
   return run.state === 'exited' || run.state === 'failed';
@@ -112,6 +113,7 @@ export function TerminalRunNotes({
   });
 
   const runs = query.data ?? [];
+  useDecisionSurface('terminal-run-decision', runs.length > 0);
   if (runs.length === 0) return null;
   const busy = approve.isPending || decline.isPending;
   return (

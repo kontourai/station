@@ -3683,6 +3683,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     },
     {
       method: 'GET',
+      path: '/api/orchestration/session-reads/:sessionId/turn-directory',
+    },
+    {
+      method: 'GET',
       path: '/api/orchestration/session-reads/:sessionId/wait',
     },
     // #3413 part B work claims. The three POST leaves are agent-only at the
@@ -3833,6 +3837,15 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // no other principal's records, so none is more sensitive than the family.
     { method: 'GET', path: '/api/me/preferences' },
     { method: 'PATCH', path: '/api/me/preferences' },
+    // The person's own custom appearance: every leaf reads or writes only the
+    // request principal's document. Keep, save, dismiss and report also
+    // refuse a request that may be an agent's.
+    { method: 'GET', path: '/api/me/appearance' },
+    { method: 'PUT', path: '/api/me/appearance' },
+    { method: 'POST', path: '/api/me/appearance/proposal' },
+    { method: 'DELETE', path: '/api/me/appearance/proposal' },
+    { method: 'POST', path: '/api/me/appearance/proposal/keep' },
+    { method: 'POST', path: '/api/me/appearance/proposal/report' },
     { method: 'GET', path: '/api/me/notifications' },
     { method: 'POST', path: '/api/me/notifications/:id/read' },
     { method: 'DELETE', path: '/api/me/notifications/:id' },

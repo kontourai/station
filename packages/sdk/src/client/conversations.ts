@@ -376,18 +376,23 @@ export async function getConversationTurnDirectory(
   apiBase: string,
   conversationId: string,
   cursor?: string,
-  opts?: ClientRequestOptions,
+  opts?: ClientRequestOptions & { turnCountSnapshot?: number },
 ): Promise<ConversationTurnDirectory | null> {
-  const params = new URLSearchParams({ turnLimit: '25' });
+  const { turnCountSnapshot, ...requestOptions } = opts ?? {};
+  const params = new URLSearchParams({ turnLimit: '100' });
   if (cursor) params.set('cursor', cursor);
+  if (turnCountSnapshot !== undefined) params.set('includeCount', 'false');
   const response = await getJson(
-    `${apiBase}/api/orchestration/session-reads/${encodeURIComponent(conversationId)}/digest?${params}`,
-    opts,
+    `${apiBase}/api/orchestration/session-reads/${encodeURIComponent(conversationId)}/turn-directory?${params}`,
+    requestOptions,
   );
   if (response.status === 404) return null;
   const result =
     await readConversationEnvelope<ConversationTurnDirectory>(response);
   if (!response.ok || !result.success || !result.data)
     throw envelopeError(response, result, 'Could not read the turn directory');
-  return result.data;
+  const turnCount = result.data.session.turnCount ?? turnCountSnapshot;
+  if (turnCount === undefined)
+    throw new Error('Turn directory count was not supplied');
+  return { ...result.data, session: { ...result.data.session, turnCount } };
 }

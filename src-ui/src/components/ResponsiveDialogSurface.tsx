@@ -439,6 +439,8 @@ export function ResponsiveDialogSurface({
 
   const panelProps = {
     ref: panelRef,
+    // A stable custom-appearance hook (APPEARANCE_HOOKS).
+    'data-surface': 'dialog',
     className: `${panelClassName} responsive-surface-panel`.trim(),
     style: panelStyle,
     'aria-modal': true,

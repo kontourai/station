@@ -39,6 +39,7 @@ import {
 import { SettingsSection } from './SettingsSection';
 import { settingsRow } from './settings-catalog';
 import './PeopleSection.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 
 /**
  * Settings › People (#3557): everyone with a device tied to them, the Station
@@ -95,6 +96,7 @@ function matchesFilter(person: StationPerson, needle: string): boolean {
 }
 
 export function PeopleSection() {
+  useDecisionSurface('people-roles');
   const people = useStationPeopleQuery();
   const mintMutation = useMintStationPersonTokenMutation();
   // Held HERE, above the list query: a refetch that fails or is refused after

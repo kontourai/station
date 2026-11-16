@@ -1,0 +1,7 @@
+{
+  "revision": "b75d18d8bc3adf19b08dc192ff0116c7ed60970b",
+
+  "notes": [
+    {"path":"docs/pages/README.md","note":"Checked PAGES_GALLERY_SCREENS copy loop against the new picture/srcset usage; documented that every srcset capture must be listed, which product-docs-source-links.test.ts now enforces for srcset as well as src.","inputs":["docs/pages/README.md","scripts/build-github-pages.mjs"]}
+  ]
+}

@@ -324,3 +324,12 @@
   max-height: 12em;
   overflow-y: auto;
 }
+
+.subagent-card[data-status="completed"] {
+  background: var(--k-panel);
+}
+
+.subagent-card[data-status="completed"] .subagent-card__title,
+.subagent-group[data-finished] > .subagent-group__heading {
+  color: var(--k-text-muted);
+}
