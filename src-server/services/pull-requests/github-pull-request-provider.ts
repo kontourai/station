@@ -14,6 +14,7 @@ import type {
   PullRequestWriteAdmission,
 } from '@kontourai/station-contracts/pull-request-provider';
 import { execGitContextCommand } from '../../utils/git-exec.js';
+import { readGitHubFeedbackObservation } from './github-feedback-observation.js';
 import {
   readPullRequestReview,
   writePullRequestReview,
@@ -590,6 +591,15 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
       '--json',
       'number,url,title,body,state,author,headRefName,baseRefName,headRefOid,commits,reviews,comments,mergeable,mergeStateStatus',
     ]);
+  }
+  /** Agent feedback's one read per pull request (github-feedback-observation.ts). */
+  getFeedbackObservation(c: PullRequestRepositoryIdentityContext, ref: string) {
+    return readGitHubFeedbackObservation((args) => this.gh(args, c), {
+      provider: this.id,
+      host: c.host,
+      repository: c.repository,
+      ref,
+    });
   }
   openPullRequest(c: PullRequestRepositoryContext, input: any) {
     const host = this.getHost(c);
