@@ -72,6 +72,7 @@
     "./quote-source": "./src/client/quote-source.ts",
     "./pull-request-review": "./src/client/pull-request-review.ts",
     "./conversation-pull-request-links": "./src/client/conversation-pull-request-links.ts",
+    "./pull-request-feedback": "./src/client/pull-request-feedback.ts",
     "./input-reply": "./src/client/input-reply.ts",
     "./local-accounts": "./src/client/local-accounts.ts",
     "./authority-observation": "./src/client/authority-observation.ts",
