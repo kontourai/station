@@ -23,7 +23,10 @@ flag. Hosted Stations do not offer it, and GitLab reads as `unsupported`.
 1. **What fails.** `FAILURE`, `TIMED_OUT`, `STARTUP_FAILURE` and
    `ACTION_REQUIRED` count as failing. `CANCELLED` does not. A required check
    still running sends nothing about checks until it finishes; in a
-   repository that marks no check required, every check must finish first.
+   repository that marks no check required, every check must finish first,
+   except a check incomplete for an hour (waiting on an approval, queued
+   with no runner), which then stops holding the rest. While failures wait
+   on checks, the pull request's row says "Waiting on checks".
 2. **The agent's own replies.** A review thread whose newest comment is by
    the GitHub login Station reads with is left out only when that comment was
    written during one of the owning chat's turns. The same login outside a
@@ -55,7 +58,9 @@ flag. Hosted Stations do not offer it, and GitLab reads as `unsupported`.
    An agent can never turn its own feedback on: the routes refuse Station's
    internal principal and delegation credentials. Unlinking the pull request
    (or un-keeping it from the Task) releases the claim: every switch off and
-   anything waiting dropped; it can always be turned off from its chat.
+   anything waiting dropped, and a message already queued is refused at
+   placement (`pr_feedback_unlinked`); it can always be turned off from its
+   chat. Task follow-ups wake the lead again for an unlinked pull request.
 
 ## The message
 
@@ -80,10 +85,16 @@ Station sends new feedback after your next push.
 
 A backtick in forge text becomes a quote so it cannot close the code span;
 inside a code span `[`, `]` and `\` are literal, so they cannot end or forge
-the link. URLs must be https on the pull request's host, with `(`, `)` and
-spaces percent-encoded. Excerpts shrink (600, 300, 120 characters, then none)
-until everything fits in about 6,000 characters; what still does not fit
-stays waiting and goes in the next message, never marked sent.
+the link. URLs must be https on the pull request's host, with `(`, `)`, `\` and
+spaces percent-encoded; one longer than 300 characters is dropped and the
+item is named without a link. Quoted excerpts are inert markdown: bare URLs,
+`www.` hosts and emails become inline code and `[`, `]`, `<`, `>`, `!` and
+backticks are escaped, so a reviewer's text cannot become a live link, image
+or HTML in the person's chat. Each block shows as many items as fit on their
+own; excerpts then shrink (600, 300, 120 characters, then none) until
+everything fits in about 6,000 characters, and when a block still stays out
+the rest keep the largest excerpt that carries the same blocks. What does
+not fit stays waiting and goes in the next message, never marked sent.
 
 ## Implementation status
 
