@@ -29,6 +29,8 @@ let attention: AttentionProjection = { items: [], pendingCount: 0 };
 let sessions: OrchestrationSessionSummary[] = [];
 // The person's own feed (#4799), at the SDK boundary.
 let personFeed: Notification[] = [];
+let personFeedPending = false;
+let hostScope = true;
 const markPersonRead = vi.fn(async () => 'read');
 
 // Snooze is a Feature Preview; off unless a test turns it on.
@@ -98,12 +100,20 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
       mutate: acknowledgeAttentionItem,
     }),
     acknowledgeAttentionItem: sdkMocks.acknowledgeAttentionItem,
-    usePersonNotificationsQuery: () => ({
-      data: personFeed,
-      isError: false,
-      isSuccess: true,
-      refetch: vi.fn(),
-    }),
+    usePersonNotificationsQuery: () =>
+      personFeedPending
+        ? {
+            data: undefined,
+            isError: false,
+            isSuccess: false,
+            refetch: vi.fn(),
+          }
+        : {
+            data: personFeed,
+            isError: false,
+            isSuccess: true,
+            refetch: vi.fn(),
+          },
     useMarkPersonNotificationReadMutation: () => ({
       mutateAsync: markPersonRead,
     }),
@@ -114,11 +124,14 @@ const acknowledgeAttentionItem = sdkMocks.acknowledgeAttentionItem;
 
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
-  useHostRequestAuthorityScope: () => ({
-    apiBase: 'http://station.test',
-    authorityKey: 'host',
-    isCurrent: () => true,
-  }),
+  useHostRequestAuthorityScope: () =>
+    hostScope
+      ? {
+          apiBase: 'http://station.test',
+          authorityKey: 'host',
+          isCurrent: () => true,
+        }
+      : undefined,
 }));
 
 const navigate = vi.fn();
@@ -212,6 +225,8 @@ describe('NotificationsPage', () => {
     attention = { items: [], pendingCount: 0 };
     sessions = [];
     personFeed = [];
+    personFeedPending = false;
+    hostScope = true;
     markPersonRead.mockClear();
     clearActivity.mockReset();
     dismiss.mockReset();
@@ -602,6 +617,28 @@ describe('NotificationsPage', () => {
       } finally {
         open.mockRestore();
       }
+    },
+  );
+
+  // The cases above all used a settled person feed with a host scope, so none
+  // could see what an empty host inbox shows while the feed is still loading
+  // or when no host scope exists to read it. "All caught up" may be claimed
+  // only after a successful feed answered with no mentions.
+  test.each([
+    { name: 'person feed still loading', pending: true, scope: true },
+    { name: 'no host scope to read it', pending: false, scope: false },
+  ])(
+    'an empty host inbox with the $name never claims All caught up',
+    ({ pending, scope }) => {
+      personFeedPending = pending;
+      hostScope = scope;
+      renderPage();
+      expect(screen.queryByText('All caught up')).toBeNull();
+      expect(screen.queryByRole('region', { name: 'For you' })).toBeNull();
+      if (pending)
+        expect(
+          screen.getByRole('status', { name: 'Loading notifications' }),
+        ).toBeTruthy();
     },
   );
 

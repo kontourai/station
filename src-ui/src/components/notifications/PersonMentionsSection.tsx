@@ -32,12 +32,15 @@ function targetPath(notification: Notification) {
  */
 export function PersonMentionsSection({
   empty,
+  loading,
 }: {
   /**
    * The page's "nothing here" state, shown only once the feed has answered
    * with no mentions, so it never stands beside an unread one.
    */
   empty?: ReactNode;
+  /** Shown while the feed has not answered yet, in place of `empty`. */
+  loading?: ReactNode;
 } = {}) {
   const base = useHostRequestAuthorityScope();
   // A host scope is always current while this page shows it.
@@ -48,7 +51,8 @@ export function PersonMentionsSection({
   };
   const feed = usePersonNotificationsQuery(scope);
   const markRead = useMarkPersonNotificationReadMutation(scope);
-  if (!base) return empty ?? null;
+  // Without a host scope there is no feed to read: claim nothing.
+  if (!base) return null;
   if (feed.isError)
     return (
       <section className="person-mentions" aria-labelledby="person-mentions">
@@ -68,7 +72,8 @@ export function PersonMentionsSection({
       item.status === 'delivered' &&
       !!targetPath(item),
   );
-  if (!mentions.length) return feed.isSuccess ? (empty ?? null) : null;
+  if (!mentions.length)
+    return feed.isSuccess ? (empty ?? null) : (loading ?? null);
   const open = (item: Notification) => {
     const path = targetPath(item);
     if (!path) return;

@@ -315,6 +315,7 @@ export function NotificationsPage() {
              read. */
           // The person's own mentions decide whether this is truly empty.
           <PersonMentionsSection
+            loading={<SkeletonList count={4} label="Loading notifications" />}
             empty={
               <Empty
                 variant="prominent"
