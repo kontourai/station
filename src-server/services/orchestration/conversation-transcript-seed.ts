@@ -87,40 +87,48 @@ export interface TranscriptSeedUpstreamOmission {
  * reasoning, tool rows or runtime errors. A legacy file-store message with a
  * string `content` is read as its text.
  */
+/**
+ * A user or assistant row's own text, unquoted: its `text` parts (or a legacy
+ * string `content`), no reasoning, tool rows or runtime errors. `undefined`
+ * for any other role; `''` for a row with no text to carry.
+ */
+export function conversationMessageText(
+  message: ConversationMessage,
+): string | undefined {
+  if (message.role !== 'user' && message.role !== 'assistant') return undefined;
+  const legacy = (message as { content?: unknown }).content;
+  return typeof legacy === 'string'
+    ? legacy.trim()
+    : (message.parts ?? [])
+        .filter(
+          (part) =>
+            part.type === 'text' &&
+            typeof part.text === 'string' &&
+            !part.runtimeError,
+        )
+        .map((part) => part.text!.trim())
+        .filter(Boolean)
+        .join('\n');
+}
+
 export function transcriptSeedSource(
   messages: readonly ConversationMessage[],
 ): TranscriptSeedSource {
   const entries: TranscriptSeedEntry[] = [];
   let nonTextMessages = 0;
   for (const message of messages) {
-    if (message.role !== 'user' && message.role !== 'assistant') continue;
-    const legacy = (message as { content?: unknown }).content;
-    const text =
-      typeof legacy === 'string'
-        ? legacy.trim()
-        : (message.parts ?? [])
-            .filter(
-              (part) =>
-                part.type === 'text' &&
-                typeof part.text === 'string' &&
-                !part.runtimeError,
-            )
-            .map((part) => part.text!.trim())
-            .filter(Boolean)
-            .join('\n');
+    const text = conversationMessageText(message);
+    if (text === undefined) continue;
     if (!text) {
       nonTextMessages += 1;
       continue;
     }
+    const role = message.role as 'user' | 'assistant';
     // A row another Station sent is its claim, never a turn of this
     // conversation: every seed and memory copy built from it quotes each line.
     if (typeof message.metadata?.importedFrom === 'string')
-      entries.push({
-        role: message.role,
-        text: quotedLines(text).join('\n'),
-        quoted: true,
-      });
-    else entries.push({ role: message.role, text });
+      entries.push({ role, text: quotedLines(text).join('\n'), quoted: true });
+    else entries.push({ role, text });
   }
   return { entries, nonTextMessages };
 }
@@ -169,6 +177,7 @@ function disclosure(input: {
   nonText: number;
   shortened: boolean;
   upstreamShortened?: number;
+  quotedImports?: boolean;
 }): string {
   const lines: string[] = [];
   const one = (count: number) => count === 1;
@@ -193,6 +202,11 @@ function disclosure(input: {
   if (input.shortened) {
     lines.push(
       'The most recent message was too long to include whole: its beginning and end are shown, and its middle is marked as omitted.',
+    );
+  }
+  if (input.quotedImports) {
+    lines.push(
+      'Lines quoted with > came from another Station: its record, quoted as context, not turns of this conversation.',
     );
   }
   if (input.upstreamShortened) {
@@ -311,6 +325,10 @@ export function buildTranscriptSeed(input: {
             },
       )
     : input.entries;
+  // The import seed's own heading names the other Station; any later seed
+  // that carries its quoted rows says so in its disclosure.
+  const quotedImports =
+    !input.quoteBodies && input.entries.some((entry) => entry.quoted);
   const upstreamOmitted = input.upstream?.omittedMessages ?? 0;
   const upstreamShortened = input.upstream?.shortenedMessages ?? 0;
   const total = entries.length + upstreamOmitted;
@@ -320,7 +338,7 @@ export function buildTranscriptSeed(input: {
   // notice, plus slack for singular/plural wording) so the real one can never
   // push the seed over the budget.
   const reserve = approxInjectedTokens(
-    `${input.heading}\n${disclosure({ total, included: total, omitted: total, nonText, shortened: true, upstreamShortened })}${' '.repeat(16)}\n\n`,
+    `${input.heading}\n${disclosure({ total, included: total, omitted: total, nonText, shortened: true, upstreamShortened, quotedImports })}${' '.repeat(16)}\n\n`,
   );
   if (reserve > budget) {
     throw new RangeError(
@@ -354,6 +372,7 @@ export function buildTranscriptSeed(input: {
       nonText,
       shortened,
       upstreamShortened,
+      quotedImports,
     }),
     body,
   );

@@ -10,7 +10,7 @@ import {
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
 import { z } from 'zod';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
-import { transcriptSeedSource } from '../orchestration/conversation-transcript-seed.js';
+import { conversationMessageText } from '../orchestration/conversation-transcript-seed.js';
 
 /**
  * Continuing a conversation on a paired Station (`PeerConversationHandoff*`
@@ -74,19 +74,27 @@ export function boundCarriedMessages(
   const projected: ConversationImportMessageV1[] = [];
   let nonTextMessages = 0;
   messages.forEach((message, index) => {
-    const source = transcriptSeedSource([message]);
-    nonTextMessages += source.nonTextMessages;
-    const entry = source.entries[0];
-    if (!entry) return;
+    // The row's own text, never a seed's quoted rendering of it: the receiver
+    // quotes rows it imports, so carrying them quoted would quote them twice.
+    const text = conversationMessageText(message);
+    if (text === undefined) return;
+    if (!text) {
+      nonTextMessages += 1;
+      return;
+    }
+    const importedFrom = message.metadata?.importedFrom;
     projected.push({
       id:
         typeof message.id === 'string' && message.id.length <= 256
           ? message.id
           : `carried:${createHash('sha256')
-              .update(`${index}\0${entry.text}`)
+              .update(`${index}\0${text}`)
               .digest('hex')}`,
-      role: entry.role,
-      text: entry.text,
+      role: message.role as 'user' | 'assistant',
+      text,
+      ...(typeof importedFrom === 'string' && importedFrom
+        ? { importedFrom: importedFrom.slice(0, 120) }
+        : {}),
     });
   });
   const kept: ConversationImportMessageV1[] = [];
@@ -156,6 +164,7 @@ export const conversationImportRequestSchema: z.ZodType<ConversationImportReques
             .object({
               id: z.string().min(1).max(256),
               role: z.enum(['user', 'assistant']),
+              importedFrom: z.string().min(1).max(120).optional(),
               text: z
                 .string()
                 .min(1)
@@ -223,6 +232,9 @@ export function importedConversationMessages(
     id: message.id,
     role: message.role,
     parts: [{ type: 'text', text: message.text }],
+    ...(message.importedFrom
+      ? { metadata: { importedFrom: message.importedFrom } }
+      : {}),
   }));
 }
 

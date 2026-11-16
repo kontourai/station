@@ -117,4 +117,25 @@ describe('the history a paired-Station handoff carries', () => {
     expect(encodeImportRequest(request, size - 1)).toBeNull();
     expect(PEER_CONVERSATION_HANDOFF_MAX_REQUEST_BYTES).toBe(768 * 1024);
   });
+
+  test('re-exports rows another Station sent unquoted, keeping where they came from', () => {
+    const carried = boundCarriedMessages([
+      {
+        id: 'from-laptop',
+        role: 'user',
+        parts: [{ type: 'text', text: 'hello\nworld' }],
+        metadata: { importedFrom: 'Laptop' },
+      } as ConversationMessage,
+      text('own', 'mine'),
+    ]);
+    expect(carried.messages).toEqual([
+      {
+        id: 'from-laptop',
+        role: 'user',
+        text: 'hello\nworld',
+        importedFrom: 'Laptop',
+      },
+      { id: 'own', role: 'user', text: 'mine' },
+    ]);
+  });
 });

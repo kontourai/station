@@ -127,4 +127,28 @@ describe('read_conversation bounds hold on the serialized bytes', () => {
       Buffer.byteLength(JSON.stringify(page.messages), 'utf8'),
     ).toBeLessThanOrEqual(READ_CONVERSATION_PAGE_MAX_BYTES);
   });
+
+  test("says when a row is another Station's record, not this conversation's own", () => {
+    const page = readConversationPage(
+      [
+        {
+          id: 'imported',
+          role: 'user',
+          parts: [{ type: 'text', text: 'From the laptop.' }],
+          metadata: { importedFrom: 'Laptop' },
+        },
+        {
+          id: 'own',
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'Mine.' }],
+        },
+      ],
+      0,
+      10,
+    );
+    expect(page.messages.map((message) => message.importedFrom)).toEqual([
+      'Laptop',
+      undefined,
+    ]);
+  });
 });

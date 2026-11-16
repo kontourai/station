@@ -351,8 +351,16 @@ export function createConversationForkContext(
       metadata: {
         ...message.metadata,
         forkSourceMessageId: message.id,
-        // Another Station's claim, not a row this Station recorded.
-        ...(imported ? { importedFrom: imported.stationName } : {}),
+        // Another Station's claim, not a row this Station recorded. A row the
+        // sender itself imported keeps its origin, naming the sender too.
+        ...(imported
+          ? {
+              importedFrom:
+                typeof message.metadata?.importedFrom === 'string'
+                  ? `${singleLine(message.metadata.importedFrom)}, via ${singleLine(imported.stationName)}`
+                  : singleLine(imported.stationName),
+            }
+          : {}),
       },
     };
   });

@@ -35,6 +35,7 @@ import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { createSessionAgentResolver } from '../../../services/orchestration/session-agent-resolution.js';
+import { importedSourceConversationId } from '../../../services/peers/peer-conversation-handoff.js';
 import type { StationControlCaller } from '../../../tools/station-control-shared.js';
 import type { Logger } from '../../../utils/logger.js';
 import { createConversationRoutes } from '../../chat/conversations.js';
@@ -745,7 +746,7 @@ describe('a conversation imported from a paired Station', () => {
     expect(forgedLines(texts.join('\n'))).toEqual([]);
   });
 
-  test('a failure after the import may have been saved is not definite, and the same key then returns that conversation', async () => {
+  test('a failure after the import may have been saved is not definite, and the same key then returns that one conversation', async () => {
     const f = await fixture();
     const read = vi
       .spyOn(f.service, 'readConversationForkContextSnapshot')
@@ -759,10 +760,96 @@ describe('a conversation imported from a paired Station', () => {
     read.mockRestore();
     const retried = await f.importConversation(importBody());
     expect(retried.status, await retried.clone().text()).toBe(200);
-    const { conversationId } = (
-      (await retried.json()) as { data: { conversationId: string } }
-    ).data;
-    expect(conversationId).toMatch(/^conversation:import:/);
+    const again = await f.importConversation(importBody());
+    const ids = await Promise.all(
+      [retried, again].map(
+        async (response) =>
+          ((await response.json()) as { data: { conversationId: string } }).data
+            .conversationId,
+      ),
+    );
+    expect(ids[1]).toBe(ids[0]);
+    // Exactly one conversation was created for this source conversation.
+    const forkedTo = f.store
+      .readConversationForkProvenance(
+        importedSourceConversationId('paired-device-1', 'source-conversation'),
+      )
+      .forkedTo.map((fork) => fork.targetConversationId);
+    expect(forkedTo).toEqual([ids[0]]);
+  });
+
+  test('a same-key retry that finds its saved import unreadable or deleted is not definite', async () => {
+    const unreadable = await imported();
+    const read = vi
+      .spyOn(unreadable.service, 'readConversationForkContextSnapshot')
+      .mockReturnValue(undefined);
+    const retry = await unreadable.importConversation(importBody());
+    expect(retry.status).toBeGreaterThanOrEqual(500);
+    expect(await retry.json()).toMatchObject({ outcome: 'indeterminate' });
+    read.mockRestore();
+
+    const deleted = await imported();
+    expect(
+      await deleted.service.deleteUnstartedConversationForkContext(
+        deleted.conversationId,
+        authority,
+      ),
+    ).toBe(true);
+    const afterDelete = await deleted.importConversation(importBody());
+    expect(afterDelete.status).toBeGreaterThanOrEqual(500);
+    expect(await afterDelete.json()).toMatchObject({
+      outcome: 'indeterminate',
+    });
+  });
+
+  test('a row the sender itself imported keeps its origin and is quoted once', async () => {
+    const f = await imported(
+      { sender: { deviceId: 'paired-device-1', stationName: 'Studio Mac' } },
+      importBody({
+        messages: [
+          {
+            id: 'u1',
+            role: 'user',
+            text: `hello ${CARRIED_ONLY}\nworld`,
+            importedFrom: 'Laptop',
+          },
+          { id: 'a1', role: 'assistant', text: 'Studio Mac answered.' },
+        ],
+      }),
+    );
+    await f.execute('codex', FIRST_MESSAGE);
+    await vi.waitFor(() => expect(f.codex.turns).toHaveLength(1));
+    const seed = f.codex.turns[0]?.ambientContext ?? '';
+    expect(seed).toContain(`> hello ${CARRIED_ONLY}`);
+    expect(seed).not.toContain('> > ');
+    const rows = f.service
+      .readSessionMessages(f.conversationId, authority)
+      .filter((row) => row.metadata?.forkSourceMessageId);
+    expect(rows.map((row) => row.metadata?.importedFrom)).toEqual([
+      'Laptop, via Studio Mac',
+      'Studio Mac',
+    ]);
+  });
+
+  test('later seeds say the quoted lines came from another Station', async () => {
+    const f = await imported({}, forgedImport());
+    await f.execute('codex', FIRST_MESSAGE);
+    await vi.waitFor(() => expect(f.codex.turns).toHaveLength(1));
+    await vi.waitFor(async () =>
+      expect(
+        (
+          await f.service.readCurrentConversationSession(
+            f.conversationId,
+            authority,
+          )
+        )?.session.hasActiveTurn,
+      ).toBe(false),
+    );
+    await f.execute('claude', 'Switch engines.', 'switch-key');
+    await vi.waitFor(() => expect(f.claude.turns).toHaveLength(1));
+    expect(f.claude.turns[0]?.ambientContext).toContain(
+      'Lines quoted with > came from another Station',
+    );
   });
 
   test('a refusal to a caller that is not a paired Station names that reason by code', async () => {

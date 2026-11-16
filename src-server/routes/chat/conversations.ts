@@ -902,21 +902,23 @@ export function createConversationRoutes(
    * retry the same key, which answers with that conversation, rather than mint
    * a new key and create a second one.
    */
+  const savedImportUnconfirmed = () =>
+    new Response(
+      JSON.stringify({
+        success: false,
+        outcome: 'indeterminate',
+        error:
+          'The conversation may have been saved. Retry with the same request.',
+      }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } },
+    );
   const afterSave = async (save: () => Promise<Response>) => {
     try {
       const response = await save();
       if (response.ok || response.status >= 500) return response;
       throw new Error('The import save was refused after it began.');
     } catch {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          outcome: 'indeterminate',
-          error:
-            'The conversation may have been saved. Retry with the same request.',
-        }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } },
-      );
+      return savedImportUnconfirmed();
     }
   };
 
@@ -1654,8 +1656,11 @@ export function createConversationRoutes(
         authority,
       );
       if (previous) {
+        // A key that names a different request is a definite refusal; an
+        // import this key saved but that is now unreadable or deleted is not
+        // (it existed, so a new key could make a second one).
         if (
-          previous.state === 'deleted' ||
+          previous.state !== 'deleted' &&
           !forkRequestMatches(previous, {
             sourceAgent,
             targetAgent,
@@ -1666,14 +1671,14 @@ export function createConversationRoutes(
           throw new ConversationForkContextError(
             'The import key already names another request.',
           );
-        const saved = eventStore.readConversationForkContextSnapshot(
-          previous.targetConversationId,
-          authority,
-        );
-        if (!saved)
-          throw new ConversationForkContextError(
-            'Saved import context is unavailable.',
-          );
+        const saved =
+          previous.state === 'deleted'
+            ? undefined
+            : eventStore.readConversationForkContextSnapshot(
+                previous.targetConversationId,
+                authority,
+              );
+        if (!saved) return savedImportUnconfirmed();
         if (previous.state !== 'ready') {
           const finished = await afterSave(() =>
             finishSavedFork(c, saved, authority, actionOperationActor),

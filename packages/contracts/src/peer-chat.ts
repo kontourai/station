@@ -175,7 +175,13 @@ export interface PeerConversationHandoffRequestV1 {
 export interface ConversationImportMessageV1 {
   id: string;
   role: 'user' | 'assistant';
+  /** The row's own text, unquoted. */
   text: string;
+  /**
+   * Set when the sender itself imported this row: the Station it came from,
+   * as the sender records it. The receiver keeps it, naming the sender too.
+   */
+  importedFrom?: string;
 }
 
 /** Source Station to receiver: the bounded text history it carries. */

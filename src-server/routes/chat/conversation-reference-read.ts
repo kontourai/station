@@ -262,6 +262,9 @@ function compactMessage(
     ...(typeof timestamp === 'number' && Number.isFinite(timestamp)
       ? { createdAt: new Date(timestamp).toISOString() }
       : {}),
+    ...(typeof message.metadata?.importedFrom === 'string'
+      ? { importedFrom: clipSerialized(message.metadata.importedFrom, 256) }
+      : {}),
   };
 }
 

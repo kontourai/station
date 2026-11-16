@@ -1309,8 +1309,12 @@ on the host (`ui-bootstrap`):
   the sender's claim and carry `importedFrom`. Every seed built from them (the
   first turn, later Agent/engine handoffs, successor Sessions) and the target
   Agent's memory copy quote each line, including after a shortening cut, so
-  none can pose as a turn. Summary generation reads runtime events, which never
-  include them. Transcript views show them as ordinary user and assistant rows. Pairing a Station therefore
+  none can pose as a turn. Conversation summaries (`POST
+  /agents/:slug/conversations/:id/summary`) read the copied rows too and quote
+  them the same way; context-compaction summaries read runtime events, which
+  never include them. `read_conversation` returns `importedFrom` with each such
+  row. A row the sender itself imported keeps its origin ("Laptop, via Studio
+  Mac"). Transcript views show them as ordinary user and assistant rows. Pairing a Station therefore
   lets it author a conversation's earlier history on this one. Every other peer-family write (adding,
   replacing, enrolling or removing outbound peer credentials) stays
   operator-only.
