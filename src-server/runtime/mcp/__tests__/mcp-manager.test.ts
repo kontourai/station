@@ -458,6 +458,7 @@ describe('Station-owned MCP manager', () => {
   });
 
   test('#2377 slice D: the built-in station-control loads in-process, with no child, and a call outside a session turn is refused', async () => {
+    const integrationMetadata = new Map<string, { toolCount?: number }>();
     const tools = await loadAgentTools(
       'agent-one',
       { tools: { mcpServers: ['station-control'], available: ['*'] } } as any,
@@ -472,7 +473,7 @@ describe('Station-owned MCP manager', () => {
       } as any,
       new Map(),
       new Map(),
-      new Map(),
+      integrationMetadata as never,
       new Map(),
       new Map(),
       { debug: vi.fn(), info: vi.fn(), error: vi.fn() },
@@ -480,6 +481,10 @@ describe('Station-owned MCP manager', () => {
 
     // Nothing connected: no child process, so no credential in any env.
     expect(connectMCP).not.toHaveBeenCalled();
+    // Health still reports the integration and its tool count.
+    expect(integrationMetadata.get('station-control')?.toolCount).toBe(
+      tools.length,
+    );
     const listAgents = tools.find(
       (tool) => tool.name === 'stationControl_listAgents',
     );

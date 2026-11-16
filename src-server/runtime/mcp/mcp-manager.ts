@@ -552,19 +552,23 @@ export async function loadAgentTools(
         // station-control in-process as the calling session's verified,
         // `bound` caller. Nothing connects at load and no child process
         // holds a credential; each call finds its session from the turn.
-        tools.push(
-          ...(await createNativeStationControlTools(
-            agentSlug,
-            spec,
-            toolId,
-            toolDef,
-            toolNameMapping,
-            toolNameReverseMapping,
-            provenanceGeneration,
-            logger,
-          )),
+        const native = await createNativeStationControlTools(
+          agentSlug,
+          spec,
+          toolId,
+          toolDef,
+          toolNameMapping,
+          toolNameReverseMapping,
+          provenanceGeneration,
+          logger,
         );
+        tools.push(...native);
         mcpConnectionStatus.set(toolId, { connected: true });
+        integrationMetadata.set(toolId, {
+          type: 'mcp',
+          transport: toolDef.transport,
+          toolCount: native.length,
+        });
         continue;
       }
 
