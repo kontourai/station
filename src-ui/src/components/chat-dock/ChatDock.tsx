@@ -2201,6 +2201,15 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       (isPaneOpen || isCollapsedDragPreview),
     SESSION_CONTEXT_EXIT_MS,
   );
+  // The This chat card (or, too narrow for it, its chip) is where Background
+  // tasks, Chat inventory, the Copy commands and where the chat came from
+  // live; the More menu drops them only while one of the two is actually on
+  // screen. A card whose chunk has not loaded (or failed to) leaves them in
+  // the menu, so no command is ever reachable from nowhere.
+  const sessionContextOwnsRows =
+    !isMobile &&
+    (sessionContextCardShown ||
+      (sessionContextChipPresence.mounted && !sessionContextCardVisible));
   // The composer's context meter: for a chat the inbox lists as open (the
   // same gate the header meter had), never for an imported session.
   const contextMeterShown = Boolean(
@@ -3170,6 +3179,11 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
    * opening a surface that already exists. Rows a fact cannot fill are
    * omitted by the card rather than worded as a state nothing computes.
    */
+  // A string, so the memoised card compares it by value: the origin record is
+  // rebuilt on every session-list read.
+  const sessionOriginLabel = activeOrchestrationSession?.inputOrigin
+    ? delegatedTaskLabel(activeOrchestrationSession.inputOrigin)
+    : undefined;
   const sessionContextCardProps = useMemo(() => {
     if (!sessionContextAvailable) return null;
     const actions = () => sessionContextActionsRef.current;
@@ -3232,9 +3246,13 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
             },
           }
         : undefined,
+      origin: sessionOriginLabel,
+      copyActions,
       onPresentChange: setSessionContextCardPresent,
     };
   }, [
+    sessionOriginLabel,
+    copyActions,
     sessionContextAvailable,
     sessionContextProjectSlug,
     sessionProjectName,
@@ -3826,20 +3844,29 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     openProjectName: activeSession?.projectSlug
                       ? (sessionProjectName ?? activeSession.projectSlug)
                       : null,
-                    inputOriginLabel: activeOrchestrationSession?.inputOrigin
-                      ? delegatedTaskLabel(
-                          activeOrchestrationSession.inputOrigin,
-                        )
-                      : undefined,
+                    inputOriginLabel:
+                      !sessionContextAvailable &&
+                      activeOrchestrationSession?.inputOrigin
+                        ? delegatedTaskLabel(
+                            activeOrchestrationSession.inputOrigin,
+                          )
+                        : undefined,
                     onOpenProfile: () => navigate('/profile'),
                     onOpenAppSettings: () => navigate('/settings'),
                     // Mobile parity for the desktop More menu's clipboard rows —
                     // the sheet is a coarse device's only home for these IDs.
                     // The coordinator rows ride the same list: one-shot commands.
-                    copyActions: [...coordinatorActions, ...copyActions],
+                    // The This chat sheet holds the Copy commands, Chat
+                    // inventory and Background tasks while it is offered;
+                    // the coordinator rows stay here as one-shot commands.
+                    copyActions: sessionContextAvailable
+                      ? coordinatorActions
+                      : [...coordinatorActions, ...copyActions],
                     panelActions,
                     onOpenInventory:
-                      sessionInventoryControls && sessionInventoryReady
+                      !sessionContextAvailable &&
+                      sessionInventoryControls &&
+                      sessionInventoryReady
                         ? (trigger) => {
                             toggleSessionInventoryOccurrence({
                               full: true,
@@ -3881,7 +3908,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     // session is on screen the sheet would show the chat hidden
                     // behind it, so the row is omitted then too.
                     onOpenBackgroundTasks:
-                      activeSessionId && !importedSessionId
+                      !sessionContextAvailable &&
+                      activeSessionId &&
+                      !importedSessionId
                         ? showBackgroundTasks
                         : undefined,
                     backgroundTasksRunningCount,
@@ -4004,7 +4033,17 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       />
                     ) : null
                   }
-                  moreActions={importedSessionId ? [] : dockMoreActions}
+                  moreActions={
+                    importedSessionId
+                      ? []
+                      : sessionContextOwnsRows
+                        ? dockMoreActions.filter(
+                            (action) =>
+                              action.group !== 'copy' &&
+                              action.group !== 'about',
+                          )
+                        : dockMoreActions
+                  }
                   // #3309: the tab strip's controls fold into the header — one
                   // chrome bar, every reclaimed pixel is transcript space. Only
                   // while the pane is open; the collapsed bar stays minimal.
