@@ -48,7 +48,7 @@ const controls: Plugin = {
 };
 
 /** A phone composer with four chips and long engine names. */
-function composer(nextTurn: boolean) {
+function composer(nextTurn: boolean, model = 'claude-sonnet-4-5-20250929') {
   return `
     import React, {useRef} from 'react';
     import {createRoot} from 'react-dom/client';
@@ -61,7 +61,7 @@ function composer(nextTurn: boolean) {
           agentLabel="Release reviewer (work)" onOpenAgentHandoff={noop}
           executionEngineLabel="Claude Code (work)"
           agentEngineMove={{to:'OpenCode Zen gateway (work)', nextTurn:${nextTurn}}}
-          currentModel="claude-sonnet-4-5-20250929"
+          currentModel="${model}"
           executionMode="external"
           acpSessionModes={[{id:'build',name:'build'},{id:'plan',name:'plan'}]} acpCurrentModeId="build" onAcpSessionModeChange={noop}
           acpApproval={{control:'engine', engineName:'OpenCode Zen gateway (work)', engineId:'opencode'}}
@@ -151,7 +151,8 @@ test('a phone composer shows the next-turn destination in full beside four chips
 
 test('a phone composer keeps "Agent moved" visible ahead of a long engine name', async () => {
   const { browser, page, errors } = await scrollBrowserFixture(
-    composer(false),
+    // A model id too long for the row, so the label has to give way.
+    composer(false, 'opencode-zen-gateway-reasoning-model-preview-2026-11'),
     [controls],
   );
   try {
@@ -187,8 +188,8 @@ test('a phone composer keeps "Agent moved" visible ahead of a long engine name',
       unclipped,
       '.composer-run-control__model',
     );
-    expect(summary.text).toBe('Sonnet 4.5 20250929');
     expect(summary.width).toBeGreaterThan(48);
+    expect(summary.ownOverflow).toBeGreaterThan(0);
     // Not by position alone: the trigger's name and description say it too.
     const trigger = page.getByRole('button', { name: /; Agent moved$/ });
     expect(await trigger.count()).toBe(1);
