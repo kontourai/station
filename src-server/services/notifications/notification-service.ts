@@ -1182,7 +1182,7 @@ export class NotificationService {
     dedupeTag: string,
   ): Promise<{ notification: Notification; leased: boolean } | undefined> {
     const stored = (await this.read()).find(
-      (n) => (n.metadata as any)?.dedupeTag === dedupeTag,
+      (n) => n.metadata?.dedupeTag === dedupeTag,
     );
     return stored
       ? {
