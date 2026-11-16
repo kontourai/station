@@ -2076,7 +2076,7 @@ crowded and that nothing said what belonged in it. The rule:
 | Identity, one line: title, then agent and engine, muted. The engine is the one the chat's Session runs on, by the composer chip's rule ([chat composer §3.1](chat-composer.md#31-provider-and-model-picker)). When they do not all fit, the engine and then the agent step off the line (they wrap onto a clipped second line) before the title truncates; the title's tooltip names all three, and model and route are the context's tooltip. | Model and route: the composer's model picker names them. |
 | Inbox toggle at the far left, before the region tabs or Coding breadcrumb, with the working chats' count (the inbox's Running rows) as a badge and unread as a dot; both are in its name. While it shows a number, the More trigger shows its background-task count as a dot, not a second number. | "N chats working" dropdown: the working chats are the More menu's first rows (with their ⌘1–9 chords); the unread pill: the toggle. |
 | Icon-only New chat. The start composer owns its Project choice. | Future-project selector: removed from an active conversation’s header. The chat’s fixed project and branch remain in session context. |
-| One overflow (⋯). Where the region host offers its commands (`RegionMenu` in `RegionChromeSlots`), Chat folds the region's Move to …, Add pane… and Maximize/Restore size into it as a last group. | Region Move, "+" and maximize buttons: rows of that menu. The bar drops its own buttons only while a pane absorbs the rows; other panes keep them. |
+| One overflow (⋯), in groups divided by a rule (`groupDockMoreActions`, 2026-11-15): the working chats and Open chat…; this chat's commands and panels (New Task from this, Changed files and Task context as checked toggles, History, coordinator, Background tasks, Chat inventory, Browse turns, Chat settings); the Copy rows; where the chat came from (a disabled note); and, where the region host offers its commands (`RegionMenu` in `RegionChromeSlots`), the region's Move to …, Add pane… and Maximize/Restore size. Open in Coding is a composer "+" action, beside Open terminal ([chat composer §3](chat-composer.md#3-target-composer)). | Region Move, "+" and maximize buttons: rows of that menu. The bar drops its own buttons only while a pane absorbs the rows; other panes keep them. |
 | The region's ⋮⋮ grab (shown on hover or focus) and the show/hide chevron. | In a side region narrower than its 400px default, the grab and the agent avatar step aside and the spacing tightens, so the title keeps room beside the × (#4401); Move to … stays in the overflow. |
 | The "This chat" chip, only while the card is folded away. | — |
 | — | Context meter: an unboxed ring with its percentage inside, beside Send; on a phone, also the Actions sheet's Conversation stats row. |
@@ -2108,7 +2108,7 @@ pane, a region or a side panel of the Coding workbench, and it adds no
 server read beyond the pull request links Chat details already reads.
 
 - **Rows are facts the dock already holds.** Workspace (the session's
-  project and directory; opens Open in Coding under the More menu's own gate,
+  project and directory; opens Open in Coding under the composer menu's own gate,
   otherwise the project page), Branch (`gitStatus`: branch, changed-file
   count, ahead/behind; opens the Active work Changed files panel), Activity
   (the inbox row's status-ladder line for this chat from

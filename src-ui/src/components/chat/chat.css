@@ -2116,6 +2116,30 @@
   font-size: var(--k-text-sm);
   color: var(--text-muted);
 }
+.composer-actions-menu__group {
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.composer-actions-menu__separator {
+  width: 100%;
+  height: 0;
+  margin: var(--k-space-1) 0;
+  border: 0;
+  border-top: 1px solid var(--border-primary);
+}
+/* Reset discards what the agent remembers; it reads as the one row that costs. */
+.composer-actions-menu__item[data-tone="danger"] {
+  color: var(--error-text);
+}
+.composer-actions-menu__item[data-tone="danger"]:hover:not(:disabled),
+.composer-actions-menu__item[data-tone="danger"]:focus-visible {
+  background: color-mix(in srgb, var(--error-text) 12%, transparent);
+}
 
 .chat-controls {
   position: relative;

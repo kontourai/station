@@ -41,6 +41,8 @@ export interface ChatDockMobileOverflowActions {
    * identities, so the sheet is their only home. Absent: no rows.
    */
   copyActions?: DockMoreAction[];
+  /** Changed files / Task context: panel toggles, checked while shown. */
+  panelActions?: DockMoreAction[];
   onOpenProject: (() => void) | null;
   openProjectName: string | null;
   inputOriginLabel?: string;

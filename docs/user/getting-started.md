@@ -1056,7 +1056,15 @@ workspace changes, or you reconnect or re-pair with different access, Station
 refuses to send the stale reference until you remove it or return to its
 original scope.
 
-Use the conversation-reference button beside the composer actions to choose an
+The composer's **+** menu groups what you can do from the message box: add to
+the message (**Reference chat…**, **Commands**), work in the chat's project
+(**Open terminal** opens a shell in the bottom dock; **Open in Coding** moves
+the chat into the project's coding layout; **Delegate…**), and change the
+conversation (**Continue with another agent…**, **Reset agent context…**). An
+unavailable row says why. **Changed files** and **Task context** are in the
+chat header's **⋯** menu.
+
+Choose **+** then **Reference chat…** to choose an
 earlier conversation. The picker searches the 25 most recent conversations
 returned for your access and shows up to eight matches; it does not search
 older history. You can also drag a result into the composer, or drag a

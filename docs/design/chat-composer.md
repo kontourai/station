@@ -849,10 +849,22 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 
 1. **Input primary.** The textarea is the visually dominant element; everything else is
    secondary chrome.
-2. **One grouped secondary-actions affordance.** Delegate / Commands / Files /
-   Task-context collapse into a single "+" (or overflow) menu next to attach + mic;
+2. **One grouped secondary-actions affordance.** The composer's actions collapse into
+   a single "+" menu next to attach + mic, in three labelled groups divided by a rule
+   (2026-11-15): **Add to message** (Reference chat…, Commands); **Work in this
+   project** (Open terminal, which places the Project's Terminal in the bottom dock
+   region with a shell open, adopting a running one, even where the pane would
+   otherwise show its kind picker (`requestProjectShell`); Open in Coding, which switches to the chat's coding layout, where the same
+   chat shows; Delegate…); and **This conversation** (Continue with another agent…,
+   then Reset agent context… last, in the error tone). Open terminal is offered on a
+   desktop region host only, and is disabled with its reason as visible row text when
+   the chat has no working directory or the dock is bound to another Project (the
+   Terminal pane binds to the dock's Project). Panel toggles (Changed files, Task
+   context) are not composer actions: they are rows of the dock header's More menu
+   and of the phone's Actions sheet.
    Send stays a labeled primary button. Every item: real `button` role, accessible name,
    44px target (the ResponsiveDialogSurface/actions floor already owns this on mobile).
+   A disabled row states why in its own text, since a touch screen has no tooltip.
 3. **Model/connection selector is a value-only dialog button.** Its accessible name names Model and the active Provider/model;
    popover on the dialog-surface layer (no interception); shows model + connection with
    auth state; glossary vocabulary only. Default selection must prefer an

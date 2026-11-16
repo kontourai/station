@@ -14,6 +14,10 @@ import {
 import type { ReactNode } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { CodingTerminalPane } from '../CodingTerminalPane';
+import {
+  consumeProjectShellRequest,
+  requestProjectShell,
+} from '../terminalShellRequest';
 
 const { closeProjectTerminal, connections, server, adopt, scripts } =
   vi.hoisted(() => ({
@@ -384,6 +388,30 @@ test('with an agent kind as well, nothing opens by itself and "+" is the picker'
   expect(screen.queryByRole('tab')).toBeNull();
   fireEvent.click(empty);
   expect(screen.getByRole('dialog', { name: 'New terminal' })).toBeTruthy();
+});
+
+test('an explicit Open terminal opens a shell even where the pane would show its picker, into a mounted pane, once', async () => {
+  connections.data = [agentConnection];
+  renderPane([]);
+  await screen.findByRole('button', { name: '+ New Terminal' });
+  expect(screen.queryByRole('tab')).toBeNull();
+  // Asked for by name while the pane is already on screen.
+  act(() => requestProjectShell('project-a'));
+  expect(await screen.findByRole('tab', { name: 'Shell 1' })).toBeTruthy();
+  expect(screen.queryByRole('dialog', { name: 'New terminal' })).toBeNull();
+  // The request was taken: nothing waits to open a second shell.
+  expect(consumeProjectShellRequest('project-a')).toBe(false);
+  expect(screen.getAllByRole('tab')).toHaveLength(1);
+});
+
+test('a request for another Project leaves this pane alone', async () => {
+  connections.data = [agentConnection];
+  renderPane([]);
+  await screen.findByRole('button', { name: '+ New Terminal' });
+  act(() => requestProjectShell('project-b'));
+  await act(async () => undefined);
+  expect(screen.queryByRole('tab')).toBeNull();
+  expect(consumeProjectShellRequest('project-b')).toBe(true);
 });
 
 test('while the kinds are still unknown nothing opens by itself, and a shell follows once they are', async () => {
