@@ -1793,8 +1793,8 @@ export function ChatInputArea({
                 title={modelAccessibleLabel}
                 caption={
                   <>
-                    {/* The engine name gives way before the move hint, which
-                    wraps onto its own line rather than being cut. */}
+                    {/* The move hint has its own line below the engine name,
+                    so it needs no separator and is never cut. */}
                     <span className="chat-input__chip-caption-engine">
                       {executionEngineLabel ?? 'Engine & model'}
                     </span>
@@ -1803,8 +1803,8 @@ export function ChatInputArea({
                     {agentEngineMove && (
                       <span className="chat-input__engine-moved">
                         {agentEngineMove.nextTurn
-                          ? ` · Next turn on ${agentEngineMove.to}`
-                          : ` · Agent now on ${agentEngineMove.to}`}
+                          ? `Next turn on ${agentEngineMove.to}`
+                          : `Agent now on ${agentEngineMove.to}`}
                       </span>
                     )}
                     {currentExecutionAgentId ? (

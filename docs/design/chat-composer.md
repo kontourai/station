@@ -29,7 +29,8 @@ follows the model ("Opus · High") and truncates before it; with no effort
 requested the engine default applies and no level is named. Safety warnings stay
 on the marks, and the open panel repeats the mark on the choice that raised it. When the
 Agent now points at another engine, the trigger adds "· Agent moved" after the label at
-every width; the label gives way before it, and in narrow composers the label hides,
+every width; the label gives way before it (an Agent name shown for want of a mark is
+dropped from the label rather than cut to a stub), and in narrow composers the label hides,
 keeping marks, that hint and caret. The trigger's accessible name ends with "Agent moved"
 and its description gives the full sentence. On phones, More draft options groups Saved drafts
 and Clear message to preserve the toolbar targets. The full summary remains in the accessible name
@@ -893,8 +894,8 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   for that Session (conversation open, the Session's own `session.started`, or the
   receipt of the send that started it); otherwise the caption names only a native
   engine's product and claims no move. When the Agent now points elsewhere, the caption
-  adds "Agent now on …", which takes its own line and wraps rather than being cut when
-  the engine name and it do not fit together (the phone sheet), and the accessible name says
+  adds "Agent now on …" on its own line below the engine name, with no separator, wrapping
+  rather than being cut, and the accessible name says
   the conversation runs on its engine and the Agent now uses another. The closed Run
   setup trigger says "Agent moved" (see Run setup in the composer toolbar). Once the Session's
   engine binding has ended (`exited`, `closed`, `dead` or `error`), the caption says

@@ -1790,8 +1790,8 @@
 }
 
 /* The caption's parts: the engine name (and an override marker) shrink to an
-   ellipsis; the move hint is never cut. When both do not fit on one line (the
-   Run setup sheet on a phone), the hint takes its own line and wraps there. */
+   ellipsis on the first line; the move hint always takes the next line, where
+   it wraps rather than being cut. */
 .chat-input__chip-caption-engine {
   flex: 0 1 auto;
   min-width: 0;
@@ -1805,6 +1805,8 @@
 }
 
 .chat-input__engine-moved {
+  order: 1;
+  flex-basis: 100%;
   white-space: normal;
   overflow-wrap: anywhere;
 }

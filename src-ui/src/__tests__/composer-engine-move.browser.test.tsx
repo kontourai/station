@@ -180,12 +180,15 @@ test('a phone composer keeps "Agent moved" visible ahead of a long engine name',
     expect(hint.width).toBeGreaterThan(0);
     expect(hint.ownOverflow).toBeLessThanOrEqual(0);
     expect(hint).toMatchObject({ inViewport: true, clippedBy: null });
-    // The run summary beside it (Agent · model) is what gave way.
+    // Beside the hint, an Agent with no mark gives up its name entirely
+    // instead of leaving a one-letter stub, so the model stays readable.
+    expect(await page.locator('.composer-run-control__agent').count()).toBe(0);
     const summary = await page.evaluate(
       unclipped,
       '.composer-run-control__model',
     );
-    expect(summary.ownOverflow).toBeGreaterThan(0);
+    expect(summary.text).toBe('Sonnet 4.5 20250929');
+    expect(summary.width).toBeGreaterThan(48);
     // Not by position alone: the trigger's name and description say it too.
     const trigger = page.getByRole('button', { name: /; Agent moved$/ });
     expect(await trigger.count()).toBe(1);
@@ -217,11 +220,31 @@ test('a phone composer keeps "Agent moved" visible ahead of a long engine name',
     );
     expect(move).toMatchObject({
       found: true,
-      text: ' · Agent now on OpenCode Zen gateway (work)',
+      text: 'Agent now on OpenCode Zen gateway (work)',
       inViewport: true,
       clippedBy: null,
     });
     expect(move.ownOverflow).toBeLessThanOrEqual(0);
+    // It stands on its own line below the engine name, and that line starts
+    // with words, not a dangling separator.
+    const lines = await page.evaluate(() => {
+      const caption = document.querySelector(
+        '.composer-run-panel .chat-input__chip-caption:has(.chat-input__engine-moved)',
+      )!;
+      const engine = caption.querySelector('.chat-input__chip-caption-engine')!;
+      const moved = caption.querySelector('.chat-input__engine-moved')!;
+      const style = getComputedStyle(moved, '::before').content;
+      return {
+        below:
+          moved.getBoundingClientRect().top >=
+          engine.getBoundingClientRect().bottom - 0.5,
+        rendered:
+          (style === 'none' || style === 'normal' ? '' : style) +
+          (moved as HTMLElement).innerText,
+      };
+    });
+    expect(lines.below).toBe(true);
+    expect(lines.rendered.trimStart()).not.toMatch(/^[·•|-]/);
     const outside = await page.evaluate(() => {
       const panel = document.querySelector('.composer-run-panel')!;
       const box = panel.getBoundingClientRect();
