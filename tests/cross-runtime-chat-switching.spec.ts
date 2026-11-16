@@ -1060,12 +1060,9 @@ async function openConversationHistoryFromInbox(
   page: Page,
   chatList: ReturnType<Page['getByRole']>,
 ) {
+  // The end of the Inbox list, not a menu (#5029).
   await chatList
-    .getByRole('button', { name: 'Inbox actions', exact: true })
-    .click();
-  await page
-    .getByRole('menu', { name: 'Inbox actions', exact: true })
-    .getByRole('menuitem', { name: 'Browse all conversations', exact: true })
+    .getByRole('button', { name: 'Browse all conversations', exact: true })
     .click();
 }
 

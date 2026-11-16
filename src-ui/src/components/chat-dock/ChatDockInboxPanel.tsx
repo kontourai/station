@@ -188,7 +188,11 @@ function ChatDockInboxPanelImpl({
       </div>
       <InboxScopeHiddenAttention scope={scope} />
       <div className="chat-dock-inbox__scroll">
-        {sync?.failed && (
+        {/* A retry keeps the notice up, disabled, until its re-read settles:
+            starting it can clear one failed source (the stream reconnects)
+            before the list itself is current. Only a person's own resync
+            sets `refreshing`, and Retry is the only way to start one. */}
+        {(sync?.failed || sync?.refreshing) && (
           <ErrorState
             variant="compact"
             title="Couldn’t refresh the inbox."
