@@ -450,7 +450,8 @@ still loading its data says so after six seconds and offers **Back to** and
 
 Forget a Station on this device with the × beside it (Delete on a focused
 row) and confirm. With two or more unreachable, **Forget N unreachable**
-forgets them together after a confirmation that names each one. The current Station cannot be
+forgets them together after a confirmation that names each one. Forgetting leaves
+the menu open, with focus on the next Station (else the previous one). The current Station cannot be
 forgotten here. On the desktop app, Stations other channels or development
 instances left in the shared profile file can be forgotten like any other;
 only the app's own local Station is refused, and the × is not offered for it.
