@@ -48,8 +48,12 @@
   display: none;
 }
 
-/* Sized to the title bar's own controls, so the bar keeps its height and the
-   button clears the dock's resize handle along the top edge. */
+/* Sized to the title bar's own controls, and kept below the dock's 8px
+   resize handle along the top edge so no part of it starts a resize. */
+.chat-dock__header-action {
+  margin-top: 8px;
+}
+
 .chat-dock__header-action .button {
   min-height: 26px;
   height: 26px;

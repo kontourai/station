@@ -426,7 +426,10 @@ interface ChatInputAreaProps {
  * tall by default, and a floor taken from that would reserve two lines for a
  * draft nobody has typed, at the transcript's expense.
  */
-function sizeDraft(textarea: HTMLTextAreaElement, availableHeight: number) {
+function sizeDraft(
+  textarea: HTMLTextAreaElement,
+  availableHeight: number,
+): number | null {
   // Measure out of flow: collapsing the live draft lets the browser clamp
   // the pinned transcript while the composer is temporarily shorter (#3661).
   const mirror = textarea.cloneNode(false) as HTMLTextAreaElement;
@@ -450,6 +453,10 @@ function sizeDraft(textarea: HTMLTextAreaElement, availableHeight: number) {
   mirror.rows = 1;
   const contentHeight = mirror.scrollHeight;
   mirror.remove();
+  // Not laid out (the composer mounted hidden, e.g. behind a phone's inbox):
+  // a measurement of 0 would pin the draft at zero height until the next
+  // keystroke. Leave it alone and let the caller measure again once shown.
+  if (draftHeight === 0) return null;
   const maxHeight = Math.min(160, Math.max(88, availableHeight * 0.3));
   const height = Math.min(draftHeight, maxHeight);
   textarea.style.height = `${height}px`;
@@ -868,6 +875,8 @@ export function ChatInputArea({
   // read by the reservation.
   const draftFloorRef = useRef(0);
   const scheduleReserveRef = useRef<(() => void) | null>(null);
+  // The draft could not be measured yet (the composer was hidden).
+  const draftUnsizedRef = useRef(false);
 
   // Owns the observers and the dock-level reservation. It must not depend on
   // `input`: a keystroke would otherwise rebuild both observers and re-run
@@ -876,16 +885,20 @@ export function ChatInputArea({
     const textarea = textareaRef.current;
     const root = composerRootRef.current;
     if (!textarea || !root) return;
-    draftFloorRef.current = sizeDraft(
-      textarea,
-      visualViewport.height || dockHeight,
-    );
+    const sizeIfShown = () => {
+      const floor = sizeDraft(textarea, visualViewport.height || dockHeight);
+      draftUnsizedRef.current = floor === null;
+      if (floor !== null) draftFloorRef.current = floor;
+    };
+    sizeIfShown();
     const body = root.parentElement;
     // The composer reserves room for that floor plus every row that does not
     // shrink (chips, messages, controls). Without this the dock squeezed the
     // composer itself and the controls row painted over the draft; with it,
     // the banner and the transcript give way instead.
     const reserve = () => {
+      // Sized while hidden: measure the draft now that a resize says it shows.
+      if (draftUnsizedRef.current) sizeIfShown();
       const floor = draftFloorRef.current;
       // The composer's natural height with the draft at its floor: unsqueezed
       // (no shrink, no cap) so overlapping rows cannot hide height.
@@ -1067,10 +1080,9 @@ export function ChatInputArea({
     void queuedRetryText;
     const textarea = textareaRef.current;
     if (!textarea) return;
-    draftFloorRef.current = sizeDraft(
-      textarea,
-      visualViewport.height || dockHeight,
-    );
+    const floor = sizeDraft(textarea, visualViewport.height || dockHeight);
+    draftUnsizedRef.current = floor === null;
+    if (floor !== null) draftFloorRef.current = floor;
     scheduleReserveRef.current?.();
   }, [
     attachmentError,

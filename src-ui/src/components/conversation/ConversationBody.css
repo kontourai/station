@@ -29,13 +29,3 @@
   flex: none;
   padding: var(--k-space-3);
 }
-
-/* A record's composer keeps at least one visible line: the shared composer
-   lets its draft shrink to nothing when space is short, which here clipped
-   the placeholder mid-glyph on a phone. */
-.conversation-body--record
-  .chat-input
-  .chat-input__textarea-wrapper
-  > textarea {
-  min-height: calc(1.5em + 2 * var(--k-space-3));
-}
