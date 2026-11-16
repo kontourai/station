@@ -79,6 +79,24 @@ export const usageTelemetryOutcomes = meter.createCounter(
   'station.usage_telemetry.outcomes',
   { description: 'Usage telemetry delivery and drop outcomes' },
 );
+/**
+ * Full usage-telemetry batch delivery by publisher (`kontour`/`operator`),
+ * outcome (`acknowledged`/`rejected`/`retry_scheduled`), failure `code` (the
+ * closed request-failure vocabulary, absent when acknowledged) and
+ * `status_class` (`2xx`/`4xx`/`5xx`/`other`/`none`). #4994.
+ */
+export const usageTelemetryBatches = meter.createCounter(
+  'station.usage_telemetry.batches',
+  { description: 'Usage telemetry batch delivery outcomes by bounded class' },
+);
+/** Repeated identical usage-telemetry delivery warnings logged at debug instead. */
+export const usageTelemetrySuppressedWarnings = meter.createCounter(
+  'station.usage_telemetry.suppressed_warnings',
+  {
+    description:
+      'Usage telemetry delivery warnings suppressed as repeats, by publisher and code',
+  },
+);
 
 export const tokensInput = meter.createCounter('station.tokens.input', {
   description: 'Input tokens consumed',
