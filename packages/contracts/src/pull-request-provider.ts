@@ -131,7 +131,29 @@ export interface PullRequest {
   comments: number;
   nativeId: string;
   mergeability: 'mergeable' | 'conflicting' | 'unknown';
+  /** The forge's draft flag. Absent: the provider did not report it. */
+  draft?: boolean;
+  /**
+   * The forge's aggregate review requirement (GitHub `reviewDecision`;
+   * GitLab `not_approved`). Absent: not reported, or no review is required.
+   */
+  reviewDecision?: 'approved' | 'changes_requested' | 'review_required';
+  /**
+   * Whether the forge would merge this now, in its own words mapped to one
+   * vocabulary (GitHub `mergeStateStatus`, GitLab `detailed_merge_status`).
+   * `checks-failing` means some checks are failing; it does not say they
+   * are required. Absent: the provider did not report it.
+   */
+  mergeReadiness?: PullRequestMergeReadiness;
 }
+export type PullRequestMergeReadiness =
+  | 'clean'
+  | 'blocked'
+  | 'checks-failing'
+  | 'conflicting'
+  | 'behind'
+  | 'draft'
+  | 'unknown';
 /**
  * One open pull request's source branch and whether it merges cleanly: what
  * a conflict indicator needs, and nothing a review needs (#2937). A provider
