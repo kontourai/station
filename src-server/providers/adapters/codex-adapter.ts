@@ -70,7 +70,10 @@ import {
   connectionQuotaReads,
   providerOps,
 } from '../../telemetry/metrics.js';
-import { restrictedNetworkStationControlTools } from '../../tools/station-control-policy.js';
+import {
+  restrictedNetworkStationControlTools,
+  stationControlToolPolicy,
+} from '../../tools/station-control-policy.js';
 import {
   abortError,
   awaitSettlementWithin,
@@ -339,12 +342,20 @@ function selectedStationControlTools(
 }
 
 /**
- * The largest arguments Codex may hand a bound tool. Browser and device
- * tools take small inputs; the station-control catalog accepts what its HTTP
- * route accepts (`html_render` takes up to 256 KiB of HTML).
+ * The largest arguments Codex may hand a bound tool, by tool. Browser and
+ * device tools take small inputs, and their whole input lands in a durable
+ * approval event, so they keep 40,000 bytes in every Session. The rest of
+ * the station-control catalog accepts what its HTTP route accepts
+ * (`html_render` takes up to 256 KiB of HTML).
  */
 const BOUND_TOOL_ARGUMENT_MAX_BYTES = 40_000;
 const BOUND_CATALOG_ARGUMENT_MAX_BYTES = 1_048_576;
+
+function boundToolArgumentMaxBytes(name: string, catalog: boolean): number {
+  return catalog && !name.startsWith('browser_') && !name.startsWith('device_')
+    ? BOUND_CATALOG_ARGUMENT_MAX_BYTES
+    : BOUND_TOOL_ARGUMENT_MAX_BYTES;
+}
 
 function codexBoundToolResult(value: unknown) {
   if (
@@ -2180,16 +2191,28 @@ export class CodexAdapter implements ProviderAdapterShape {
     // thread's `dynamicTools` from `thread/start` across `thread/resume` and
     // `thread/fork` and accepts no new ones there, so a continuation takes
     // the catalog only when its own thread started with it (the cursor's
-    // `boundCatalog`); any other continuation, an adopted fork included,
-    // keeps the header-token server.
+    // `boundCatalog`); any other continuation keeps the header-token server.
     const boundControl = canonicalStationControl(input);
-    const boundCatalog =
+    const catalogEligible =
       this.options.boundToolsEnabled?.() === true &&
       !!this.options.createBoundTools &&
       !!boundControl &&
       !boundControl.coordinatorDerived &&
-      !adoption &&
+      !adoption;
+    const boundCatalog =
+      catalogEligible &&
       (resumeCursor ? resumeCursor.boundCatalog === true : true);
+    // An adopted lineage forks a source thread Station holds no cursor for;
+    // if it started with the catalog, the fork kept those `dynamicTools`.
+    // Serve them on the bound channel beside the header-token server rather
+    // than leave persisted copies the model would call and see fail.
+    const servesCatalog =
+      boundCatalog || (catalogEligible && !!resumeCursor?.sourceAffinity);
+    // A thread that holds the catalog but may not use it now (preview off,
+    // or its control server became coordinator-derived) gets the header
+    // server, and its persisted copies are refused with a pointer to it.
+    const catalogWithdrawn =
+      resumeCursor?.boundCatalog === true && !servesCatalog;
     const toolServers = await this.resolveAgentToolServers(input, boundCatalog);
     // station#2072: the connection env layer merges UNDER the app-home
     // home key — a source-affinity or credential-profile home always owns
@@ -2341,7 +2364,7 @@ export class CodexAdapter implements ProviderAdapterShape {
         ? restrictedNetworkStationControlTools(selectedControl)
         : selectedControl;
       const boundTools =
-        boundCatalog ||
+        servesCatalog ||
         (this.options.boundToolsEnabled?.() &&
           this.options.createBoundTools &&
           (includeBrowser || includeDevices))
@@ -2350,7 +2373,7 @@ export class CodexAdapter implements ProviderAdapterShape {
               tenantExecutionContext: input.tenantExecutionContext,
               includeBrowser,
               includeDevices,
-              ...(boundCatalog
+              ...(servesCatalog
                 ? {
                     stationControl:
                       boundControlTools === undefined
@@ -2377,7 +2400,7 @@ export class CodexAdapter implements ProviderAdapterShape {
         boundTools?.tools.filter((tool) => {
           if (tool.name.startsWith('browser_')) return true;
           if (control?.disabledTools?.includes(tool.name)) return false;
-          const selection = boundCatalog
+          const selection = servesCatalog
             ? boundControlTools
             : control?.allowedTools;
           return selection === undefined || selection.includes(tool.name);
@@ -2477,10 +2500,15 @@ export class CodexAdapter implements ProviderAdapterShape {
       }
 
       const codexThread = extractThread(result);
+      const offeredNames = new Set(offeredTools.map((tool) => tool.name));
+      if (!boundTools && catalogWithdrawn)
+        record.boundToolHandler = async () => {
+          throw new Error('bound-catalog-withdrawn');
+        };
       if (boundTools) {
         const channel = new CodexBoundToolChannel(
           codexThread.id,
-          new Set(offeredTools.map((tool) => tool.name)),
+          offeredNames,
           () =>
             record.activeTurnId &&
             !record.cancelledBoundTurns?.has(record.activeTurnId)
@@ -2503,11 +2531,15 @@ export class CodexAdapter implements ProviderAdapterShape {
             payload.tool.length > 256 ||
             payload.namespace != null ||
             Buffer.byteLength(JSON.stringify(payload.arguments) ?? '') >
-              (boundCatalog
-                ? BOUND_CATALOG_ARGUMENT_MAX_BYTES
-                : BOUND_TOOL_ARGUMENT_MAX_BYTES)
+              boundToolArgumentMaxBytes(payload.tool, servesCatalog)
           )
             throw new Error('bound-tool-refused');
+          if (
+            catalogWithdrawn &&
+            !offeredNames.has(payload.tool) &&
+            stationControlToolPolicy(payload.tool)
+          )
+            throw new Error('bound-catalog-withdrawn');
           const call = {
             threadId: payload.threadId,
             turnId: payload.turnId,
@@ -2642,7 +2674,9 @@ export class CodexAdapter implements ProviderAdapterShape {
         codexThreadId: codexThread.id,
         // What Codex persisted with the thread, not this start's mode: a
         // thread that started with the catalog keeps it on every resume.
-        ...((boundCatalog && !resumeCursor) || resumeCursor?.boundCatalog
+        ...((boundCatalog && !resumeCursor) ||
+        (resumeCursor?.boundCatalog &&
+          resumeCursor.codexThreadId === codexThread.id)
           ? { boundCatalog: true as const }
           : {}),
         ...(sourceAffinity

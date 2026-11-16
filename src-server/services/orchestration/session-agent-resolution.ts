@@ -365,7 +365,11 @@ function resolveStationInstructions(args: {
     toolSearch:
       provider === 'claude' &&
       stationEnablesClaudeToolSearch(spec.tools?.mcpLoading),
-    progressiveFamilies: options.progressiveToolsEnabled?.() === true,
+    // Family loading exists only on HTTP station-control. A `bound` session
+    // (Claude's in-process server, Codex's bound catalog) is served without
+    // disclosure, so it is never told to load families.
+    progressiveFamilies:
+      assurance !== 'bound' && options.progressiveToolsEnabled?.() === true,
   });
   if (!composed) return;
   const base = {

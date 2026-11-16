@@ -1014,7 +1014,10 @@ export class CodexAdapterTransport {
                   : error instanceof Error &&
                       error.message === 'bound-tool-session-restart-required'
                     ? 'Bound tool unavailable; restart the Session'
-                    : 'Bound tool refused';
+                    : error instanceof Error &&
+                        error.message === 'bound-catalog-withdrawn'
+                      ? 'This Station tool is not served on this channel in this Session; use the station-control MCP tool of the same name'
+                      : 'Bound tool refused';
               this.sendErrorResponse(record, request.id, message);
             }
           },

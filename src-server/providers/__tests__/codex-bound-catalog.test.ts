@@ -10,7 +10,9 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { createCodexBoundToolServer } from '../../runtime/mcp/station-control-in-process.js';
 import { revokeStationControlMcpToken } from '../../runtime/mcp/station-control-mcp-token.js';
+import { restrictedNetworkStationControlTools } from '../../tools/station-control-policy.js';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
+import { codexResumeCursor } from '../adapters/codex-adapter-events.js';
 import {
   emit,
   FakeCodexProcess,
@@ -34,8 +36,9 @@ afterEach(() => {
 });
 
 function harness(
-  previewOn: boolean,
+  previewOn: boolean | (() => boolean),
   result: unknown = { content: [{ type: 'text', text: '{"ok":true}' }] },
+  options: { decision?: 'allow' | 'defer' } = {},
 ) {
   const child = new FakeCodexProcess();
   const mint = vi.fn(() => ({
@@ -46,9 +49,13 @@ function harness(
   const calls: string[] = [];
   const adapter = new CodexAdapter({
     processFactory: () => child as never,
-    boundToolsEnabled: () => previewOn,
+    boundToolsEnabled:
+      typeof previewOn === 'function' ? previewOn : () => previewOn,
     boundToolsEpoch: () => 1,
-    resolveBoundToolPolicy: async () => async () => ({ behavior: 'allow' }),
+    resolveBoundToolPolicy: async () => async () => ({
+      behavior: options.decision ?? 'allow',
+    }),
+    resolveSourceHome: () => '/tmp',
     createBoundTools: async (input) => {
       created.push(input);
       const server = await createCodexBoundToolServer({
@@ -67,6 +74,15 @@ function harness(
     },
     mintStationControlMcpAuth: mint,
   });
+  const events: any[] = [];
+  const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+  void (async () => {
+    for (;;) {
+      const next = await iterator.next();
+      if (next.done) return;
+      events.push(next.value);
+    }
+  })();
   const requests = () =>
     child.stdin.lines
       .map((line) => JSON.parse(line))
@@ -79,7 +95,7 @@ function harness(
     await emit(child, { id: request.id, result });
     return request;
   };
-  return { child, adapter, mint, created, calls, answer };
+  return { child, adapter, mint, created, calls, answer, events };
 }
 
 async function start(
@@ -93,9 +109,9 @@ async function start(
     provider: 'codex',
     threadId,
     cwd: '/tmp',
-    agent: { toolServers: [control()] } as never,
+    agent: { toolServers: [control()] },
     ...extra,
-  });
+  } as never);
   await flushIo();
   await h.answer('initialize', { userAgent: 'test' });
   const method = extra.resumeCursor ? 'thread/resume' : 'thread/start';
@@ -352,4 +368,226 @@ test('an MCP-app result shows the model its structured content, as Codex MCP doe
     { type: 'inputText', text: JSON.stringify(inventory) },
   ]);
   await h.adapter.stopSession('catalog-structured');
+});
+
+async function openTurn(
+  h: ReturnType<typeof harness>,
+  threadId: string,
+  turnId: string,
+  extra: Record<string, unknown> = {},
+) {
+  const turn = h.adapter.sendTurn({ threadId, input: 'go', ...extra } as never);
+  await h.answer('turn/start', { turn: { id: turnId } });
+  await withTimeout(turn, 'turn');
+}
+
+async function callTool(
+  h: ReturnType<typeof harness>,
+  id: number,
+  params: Record<string, unknown>,
+) {
+  await emit(h.child, { id, method: 'item/tool/call', params });
+  return waitFor(() => repliesTo(h.child, id)[0], `reply ${id}`);
+}
+
+test('the argument cap is per tool: browser and device stay at 40,000 bytes, the catalog at 1 MiB', async () => {
+  const h = harness(true);
+  await start(h, 'catalog-cap', 'native-cap');
+  await openTurn(h, 'catalog-cap', 'turn-cap');
+  const call = { threadId: 'native-cap', turnId: 'turn-cap' };
+  const browser = await callTool(h, 95, {
+    ...call,
+    callId: 'big-browser',
+    tool: 'browser_status',
+    arguments: { pad: 'x'.repeat(40_000) },
+  });
+  expect(browser.error).toBeDefined();
+  const overhead = Buffer.byteLength(JSON.stringify({ html: '' }));
+  const over = await callTool(h, 96, {
+    ...call,
+    callId: 'over-cap',
+    tool: 'html_render',
+    arguments: { html: 'x'.repeat(1_048_576 - overhead + 1) },
+  });
+  expect(over.error).toBeDefined();
+  const at = await callTool(h, 97, {
+    ...call,
+    callId: 'at-cap',
+    tool: 'html_render',
+    arguments: { html: 'x'.repeat(1_048_576 - overhead) },
+  });
+  expect(at.result?.success).toBe(true);
+  // Neither refused input reached approval or execution.
+  expect(h.events.filter((e) => e.method === 'request.opened')).toEqual([]);
+  expect(h.calls).toEqual(['html_render']);
+  await h.adapter.stopSession('catalog-cap');
+});
+
+test('Ask mode: a deferred mutating catalog tool asks first, and a decline never runs it', async () => {
+  const h = harness(true, undefined, { decision: 'defer' });
+  const ask = { modelOptions: { approvalMode: 'ask' }, confinement: 'host' };
+  await start(h, 'catalog-ask', 'native-ask', {
+    agent: { slug: 'agent', toolServers: [control()] },
+    ...ask,
+  });
+  await openTurn(h, 'catalog-ask', 'turn-ask', ask);
+  await emit(h.child, {
+    id: 98,
+    method: 'item/tool/call',
+    params: {
+      threadId: 'native-ask',
+      turnId: 'turn-ask',
+      callId: 'update',
+      tool: 'update_agent',
+      arguments: { slug: 'other' },
+    },
+  });
+  const opened = await waitFor(
+    () => h.events.find((e) => e.method === 'request.opened'),
+    'approval',
+  );
+  expect(opened.payload.toolName).toBe('mcp__station-control__update_agent');
+  expect(h.calls).toEqual([]);
+  await h.adapter.respondToRequest('catalog-ask', opened.requestId, 'decline');
+  const reply = await waitFor(() => repliesTo(h.child, 98)[0], 'decline');
+  expect(reply.error).toBeDefined();
+  expect(h.calls).toEqual([]);
+  await h.adapter.stopSession('catalog-ask');
+});
+
+test('a restricted network narrows the catalog to the restricted allowlist', async () => {
+  const h = harness(true);
+  sessions.push('catalog-net');
+  const started = h.adapter.startSession({
+    provider: 'codex',
+    threadId: 'catalog-net',
+    cwd: '/tmp',
+    agent: { toolServers: [control()] },
+    confinementPlan: { network: { mode: 'restricted' } },
+  } as never);
+  // Codex cannot restrict its network, so this start is later refused; the
+  // offer it sent is what is checked here.
+  started.catch(() => {});
+  await flushIo();
+  await h.answer('initialize', { userAgent: 'test' });
+  const request = await h.answer('thread/start', {
+    thread: { id: 'native-net' },
+  });
+  await started.catch(() => {});
+  const names: string[] = request.params.dynamicTools.map(
+    (tool: { name: string }) => tool.name,
+  );
+  const allowed = new Set(restrictedNetworkStationControlTools());
+  expect(names).toContain('list_agents');
+  for (const name of ['delegate_task', 'device_list'])
+    expect(names).not.toContain(name);
+  for (const name of names.filter((n) => !n.startsWith('browser_')))
+    expect(allowed.has(name)).toBe(true);
+  expect(h.created[0]).toMatchObject({
+    stationControl: { allowedTools: [...allowed] },
+  });
+});
+
+test('the marker follows only the same native thread', async () => {
+  expect(
+    codexResumeCursor('native-1', {
+      codexThreadId: 'native-1',
+      boundCatalog: true,
+    }),
+  ).toMatchObject({ boundCatalog: true });
+  expect(
+    codexResumeCursor('native-2', {
+      codexThreadId: 'native-1',
+      boundCatalog: true,
+    }),
+  ).not.toHaveProperty('boundCatalog');
+  // A resume that Codex answers with another thread does not carry it.
+  const h = harness(true);
+  const { session } = await start(h, 'catalog-moved', 'native-other', {
+    resumeCursor: { codexThreadId: 'native-1', boundCatalog: true },
+  });
+  expect(session.resumeCursor).toMatchObject({ codexThreadId: 'native-other' });
+  expect(session.resumeCursor).not.toHaveProperty('boundCatalog');
+  await h.adapter.stopSession('catalog-moved');
+});
+
+test('a catalog thread resumed with the preview off uses the header server and points persisted calls at it', async () => {
+  const h = harness(false);
+  const { request, session } = await start(
+    h,
+    'catalog-off-resume',
+    'native-o',
+    {
+      resumeCursor: { codexThreadId: 'native-o', boundCatalog: true },
+    },
+  );
+  expect(h.mint).toHaveBeenCalledOnce();
+  expect(request.params.config).toMatchObject({
+    'mcp_servers.station-control.url':
+      'http://127.0.0.1:12345/mcp/station-control',
+  });
+  // The thread still holds the catalog, so a later resume may use it again.
+  expect(session.resumeCursor).toMatchObject({ boundCatalog: true });
+  await openTurn(h, 'catalog-off-resume', 'turn-o');
+  const reply = await callTool(h, 99, {
+    threadId: 'native-o',
+    turnId: 'turn-o',
+    callId: 'persisted',
+    tool: 'list_agents',
+    arguments: {},
+  });
+  expect(reply.error.message).toContain('station-control MCP tool');
+  expect(h.calls).toEqual([]);
+  await h.adapter.stopSession('catalog-off-resume');
+});
+
+test('a catalog thread whose control became coordinator-derived refuses persisted catalog calls with a pointer', async () => {
+  const h = harness(true);
+  const { request } = await start(h, 'catalog-coord-resume', 'native-cr', {
+    resumeCursor: { codexThreadId: 'native-cr', boundCatalog: true },
+    agent: {
+      toolServers: [
+        { ...control(), coordinatorDerived: true, coordinatorGeneration: 1 },
+      ],
+    },
+  });
+  expect(h.mint).toHaveBeenCalledOnce();
+  expect(JSON.stringify(request.params.config)).toContain('station-control');
+  expect(h.created[0]).not.toHaveProperty('stationControl');
+  await openTurn(h, 'catalog-coord-resume', 'turn-cr');
+  const reply = await callTool(h, 100, {
+    threadId: 'native-cr',
+    turnId: 'turn-cr',
+    callId: 'persisted',
+    tool: 'list_agents',
+    arguments: {},
+  });
+  expect(reply.error.message).toContain('station-control MCP tool');
+  expect(h.calls).toEqual([]);
+  await h.adapter.stopSession('catalog-coord-resume');
+});
+
+test('an adopted lineage keeps the header server and also serves persisted catalog copies on the bound channel', async () => {
+  const h = harness(true);
+  const { request, session } = await start(h, 'catalog-adopted', 'native-ad', {
+    resumeCursor: {
+      codexThreadId: 'native-ad',
+      sourceAffinity: { kind: 'codex-config-home', ref: 'a'.repeat(64) },
+    },
+  });
+  expect(h.mint).toHaveBeenCalledOnce();
+  expect(JSON.stringify(request.params.config)).toContain('station-control');
+  expect(h.created).toEqual([expect.objectContaining({ stationControl: {} })]);
+  expect(session.resumeCursor).not.toHaveProperty('boundCatalog');
+  await openTurn(h, 'catalog-adopted', 'turn-ad');
+  const reply = await callTool(h, 101, {
+    threadId: 'native-ad',
+    turnId: 'turn-ad',
+    callId: 'copy',
+    tool: 'list_agents',
+    arguments: {},
+  });
+  expect(reply.result?.success).toBe(true);
+  expect(h.calls).toEqual(['list_agents']);
+  await h.adapter.stopSession('catalog-adopted');
 });

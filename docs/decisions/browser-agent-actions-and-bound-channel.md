@@ -153,19 +153,35 @@ disclosure on this channel.
   `bound` caller either way.
 - **Approval.** Every call goes through Station's external pre-tool policy, as a
   Claude in-process call does, instead of Codex's own MCP approval prompt. The
-  argument limit is the HTTP route's 1 MiB (an `html_render` page can be
-  256 KiB). An MCP-app result's structured content is returned to the model as
+  argument limit is set per tool: the HTTP route's 1 MiB for catalog tools (an
+  `html_render` page can be 256 KiB), and 40,000 bytes for browser and device
+  tools in every Session, since their whole input is recorded in the approval
+  event. An MCP-app result's structured content is returned to the model as
   JSON text beside its summary.
 - **Resume.** Codex 0.167.0 persists a thread's `dynamicTools` from
   `thread/start` and restores them on `thread/resume` and `thread/fork`.
   Station records `boundCatalog` on the resume cursor of a thread that started
-  with the catalog. Only such a thread resumes without the header token; its
-  calls are still held to the current catalog. Any other resume (a thread
-  started with the preview off, or before this change), an adopted fork and a
-  coordinator-derived Station Control entry keep the header-token server at
-  `delegated-custody`, with browser and device tools on the bound channel as
-  before. Turning the preview off sends the next Session start back to the
-  header token; names Codex persisted for the thread are then refused.
+  with the catalog, and only while the resumed native thread is the same one.
+  Only such a thread resumes without the header token; its calls are still
+  held to the current catalog. Any other resume (a thread started with the
+  preview off, or before this change) and a coordinator-derived Station
+  Control entry keep the header-token server at `delegated-custody`, with
+  browser and device tools on the bound channel as before.
+- **Continuations that still hold the catalog.** A marked thread resumed with
+  the preview off, or after its Station Control became coordinator-derived,
+  gets the header-token server; Codex still shows the model its persisted
+  catalog copies, and Station refuses each with a message naming the
+  station-control MCP tool of the same name. Station does not keep serving
+  them: turning the preview off withdraws the bound channel's authority, and
+  coordinator-derived authority never rides it. The thread keeps its marker,
+  so a later resume with the preview on uses the catalog again. A resumed
+  adopted lineage (a fork of a thread Station holds no cursor for) gets the
+  header-token server and, with the preview on, the bound catalog too, so
+  persisted copies from a catalog source thread keep working. The model may
+  then see both copies of a tool; both run as this Session's caller, the bound
+  ones at `bound`. Station cannot tell whether such a source carried the
+  catalog: Codex's fork and resume responses do not list a thread's
+  `dynamicTools`. An adoption's first start carries no Agent tool servers.
 - **Station Knowledge** stays on its header-token server.
 - **Instructions.** The orchestration text for such a Session is composed at
   `bound`, so it names the tools the Session is offered (for example

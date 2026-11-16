@@ -1593,6 +1593,7 @@ describe('Station orchestration instructions (resolution receipt)', () => {
     options: {
       enabled?: () => boolean;
       codexBound?: () => boolean;
+      progressive?: () => boolean;
     } = {},
   ) {
     const { selfIntegration } = createRuntimeSelfIntegration();
@@ -1611,6 +1612,7 @@ describe('Station orchestration instructions (resolution receipt)', () => {
       resolveSkillDir: async () => null,
       stationInstructionsEnabled: options.enabled ?? (() => true),
       codexBoundToolsEnabled: options.codexBound,
+      progressiveToolsEnabled: options.progressive,
     });
   }
 
@@ -1788,6 +1790,24 @@ describe('Station orchestration instructions (resolution receipt)', () => {
     );
     expect(header.firstTurnText).not.toContain('list_delegation_targets');
     expect(header.firstTurnText).toContain('`list_agents`');
+  });
+
+  test('a bound session, served without disclosure, is never told to load tool families', async () => {
+    const families = 'list_tool_families';
+    const textFor = async (
+      provider: 'claude' | 'codex',
+      codexBound: boolean,
+    ) =>
+      receiptOf(
+        await resolverFor(
+          { prompt: '' },
+          { codexBound: () => codexBound, progressive: () => true },
+        )(baseInput({ provider })),
+      ).firstTurnText as string;
+    // The header channel is HTTP station-control, where families exist.
+    expect(await textFor('codex', false)).toContain(families);
+    expect(await textFor('codex', true)).not.toContain(families);
+    expect(await textFor('claude', false)).not.toContain(families);
   });
 
   test('no station-control means no receipt and no stationInstructions', async () => {
