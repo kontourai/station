@@ -2797,6 +2797,23 @@ export function createOrchestrationRoutes(
    * person's own (#4827); `/chat/delegated` and `/chat/background` share the
    * handler and never do.
    */
+  /**
+   * A person's own message reopens the conversation they settled (Open and
+   * Settled inbox), for them only. Any client a person drives counts, the
+   * CLI included (`personCredentialRequest`); a message sent for someone
+   * else (`agentAttributed`) does not.
+   */
+  const reopenForPersonMessage = (
+    c: Context,
+    conversationId: string,
+    agentAttributed = false,
+  ) => {
+    if (
+      !agentAttributed &&
+      personCredentialRequest(c.req.raw, deps.resolveInboundDeviceKind?.(c))
+    )
+      deps.reopenSettledConversation?.(c, conversationId);
+  };
   const handleForegroundMessage = async (
     c: Context,
     route: { composer?: true } = {},
@@ -3150,21 +3167,20 @@ export function createOrchestrationRoutes(
         // Only the join wait a same-key retry may spend; never the send.
         joinWaitSignal: c.req.raw.signal,
       } as ForegroundMessageRequest;
-      // A person's message reopens the conversation they settled, for them
-      // only. Not a delegation, an automatic background send or an
-      // agent-attributed one; any client a person drives counts, the CLI
-      // included (`personCredentialRequest`).
+      // Not a delegation or an automatic background send.
       const reopenForSender = () => {
         if (
           body.conversationId &&
           route.composer === true &&
           !claimedDelegation &&
           !delegation &&
-          body.automaticBackground !== true &&
-          ownerAttribution === undefined &&
-          personCredentialRequest(c.req.raw, deps.resolveInboundDeviceKind?.(c))
+          body.automaticBackground !== true
         )
-          deps.reopenSettledConversation?.(c, body.conversationId);
+          reopenForPersonMessage(
+            c,
+            body.conversationId,
+            ownerAttribution !== undefined,
+          );
       };
       const inputDigest = foregroundTurnSubmissionDigest(foregroundRequest);
       if (body.conversationId && body.clientTurnId) {
@@ -3923,12 +3939,11 @@ export function createOrchestrationRoutes(
         return c.json({ success: false, code: INBOX_KEY_CONFLICT_CODE }, 409);
       if (result.outcome === 'capacity')
         return c.json({ success: false, code: 'conversation_inbox_full' }, 409);
-      // A person's queued message reopens the conversation they settled.
-      if (
-        actor.ownerAttribution === undefined &&
-        personCredentialRequest(c.req.raw, deps.resolveInboundDeviceKind?.(c))
-      )
-        deps.reopenSettledConversation?.(c, conversationId);
+      reopenForPersonMessage(
+        c,
+        conversationId,
+        actor.ownerAttribution !== undefined,
+      );
       return c.json({ success: true, data: result.entry }, 202);
     },
   );
@@ -7444,11 +7459,8 @@ export function createOrchestrationRoutes(
             ? ([{ personAuthored: true }] as const)
             : ([] as const)),
         );
-        if (
-          command.type === 'steerTurn' &&
-          personCredentialRequest(c.req.raw, deps.resolveInboundDeviceKind?.(c))
-        )
-          deps.reopenSettledConversation?.(c, command.threadId);
+        if (command.type === 'steerTurn')
+          reopenForPersonMessage(c, command.threadId);
         if (actionOperation && command.type === 'adoptSession') {
           const targetSessionId =
             typeof result.result === 'object' &&

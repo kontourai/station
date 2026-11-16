@@ -18,9 +18,7 @@ import { resolveTurnCompletionOutcome } from './turn-completion-notifications.js
  * notification stays quiet (as `isInboxDismissed` treats a dismissal). A
  * person's own message reopens only their record, at the send route.
  */
-export function reopensSettledConversation(
-  event: CanonicalRuntimeEvent,
-): boolean {
+function reopensSettledConversation(event: CanonicalRuntimeEvent): boolean {
   if (event.method === 'request.opened') return true;
   if (event.method === 'session.stop-settled') return true;
   return (
