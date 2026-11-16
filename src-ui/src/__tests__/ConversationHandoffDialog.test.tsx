@@ -1722,3 +1722,39 @@ describe('handoff third-round fixes', () => {
     expect(view.onAccepted.mock.calls[0][0].sentQuotes).toEqual([]);
   });
 });
+
+test('a request already made is not blocked by its own turn: Retry safely stays available', async () => {
+  vi.clearAllMocks();
+  handoffExecutionMessage.mockReset();
+  sessionStorage.clear();
+  useNewChatSelectionModel.mockReturnValue({
+    agentConnections: connections,
+    selectedProjectConfig: { agents: ['claude', 'codex', 'offline'] },
+    modelsForAgent: () => [{ id: 'gpt-5', name: 'GPT-5' }],
+    defaultEffectiveModelForAgent: () => ({ id: 'gpt-5' }),
+  });
+  handoffExecutionMessage
+    .mockRejectedValueOnce(new TypeError('response lost'))
+    .mockResolvedValueOnce(receipt());
+  const first = renderDialog();
+  fireEvent.click(screen.getByRole('radio', { name: /Codex reviewer/ }));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
+  );
+  await waitFor(() => screen.getByRole('button', { name: 'Check status' }));
+  first.unmount();
+  // The dispatch marked the chat as sending, so the chat now reads busy.
+  const view = renderDialog('claude', undefined, undefined, undefined, {
+    blockedReason: 'Wait for the current turn to finish.',
+  });
+  const retry = screen.getByRole('button', {
+    name: 'Retry safely',
+  }) as HTMLButtonElement;
+  expect(retry.disabled).toBe(false);
+  expect(screen.queryByText('Wait for the current turn to finish.')).toBeNull();
+  fireEvent.click(retry);
+  await waitFor(() => expect(view.onAccepted).toHaveBeenCalledOnce());
+  expect(handoffExecutionMessage.mock.calls[1][2].idempotencyKey).toBe(
+    handoffExecutionMessage.mock.calls[0][2].idempotencyKey,
+  );
+});

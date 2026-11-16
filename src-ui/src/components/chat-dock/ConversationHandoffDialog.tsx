@@ -411,8 +411,15 @@ export function ConversationHandoffDialog({
   // never offers an action it would refuse. An uncertain request whose
   // retained target no longer resolves here cannot be retried as-is either;
   // say so rather than leave "Retry safely" greyed out without a reason.
+  // A request already made (an uncertain one being retried or checked) is
+  // not a new turn: its own dispatch is what makes the chat read busy, and a
+  // same-key retry only ever answers with that request's receipt.
+  const effectiveBlockedReason =
+    state === 'indeterminate' || retainedIntent.current
+      ? undefined
+      : blockedReason;
   const preconditionReason =
-    blockedReason ??
+    effectiveBlockedReason ??
     (attachments.length > 0
       ? `Send or remove attachments before ${changeLabel}.`
       : state === 'indeterminate' && !retryEligible
@@ -465,7 +472,7 @@ export function ConversationHandoffDialog({
 
   const runHandoff = async () => {
     if (!targetId || state === 'pending' || starting.current) return;
-    if (blockedReason) {
+    if (blockedReason && !retainedIntent.current) {
       setState('error');
       setFeedback(blockedReason);
       return;
