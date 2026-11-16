@@ -5,7 +5,13 @@ import {
   STATION_ENVELOPE_HEADER_VALUE,
 } from '@kontourai/station-contracts/http';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import type React from 'react';
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -332,6 +338,10 @@ describe('continuing a chat on a paired Station', () => {
       'peer_conversation_handoff_pairing_required',
       'Receiver is connected with a device sign-in. Pair it as a Station in Connections to continue chats there.',
     ],
+    [
+      'conversation_import_deleted',
+      'That chat was removed on Receiver. Try again to send a fresh copy.',
+    ],
   ])('the refusal %s says why', async (code, message) => {
     const real = await vi.importActual<
       typeof import('@kontourai/station-sdk/client')
@@ -549,5 +559,29 @@ describe('continuing a chat on a paired Station', () => {
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('radio', { name: 'This Station' }));
     expect(screen.getByRole('dialog', { name: 'Switch agent' })).toBeTruthy();
+  });
+
+  test('two starts before any render still hand off once (the starting guard)', async () => {
+    handoffConversationToStation.mockResolvedValue(receipt);
+    const prepareDraft = vi.fn(async () => prepared);
+    const { onContinuedOnStation } = renderDialog(vi.fn(), {
+      initialMessage: 'carry on',
+      draftQuotes: [draftQuote],
+      prepareDraft,
+    });
+    await chooseReceiver();
+    const button = screen.getByRole('button', {
+      name: 'Continue on Receiver',
+    }) as HTMLButtonElement;
+    // Both clicks land before React renders the pending state.
+    act(() => {
+      button.click();
+      button.click();
+    });
+    await waitFor(() => expect(onContinuedOnStation).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(prepareDraft).toHaveBeenCalledTimes(1);
+    expect(handoffConversationToStation).toHaveBeenCalledTimes(1);
+    expect(onContinuedOnStation).toHaveBeenCalledTimes(1);
   });
 });

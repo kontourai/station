@@ -65,27 +65,44 @@ const ESCAPE_SEQUENCE =
   // biome-ignore lint/suspicious/noControlCharactersInRegex: removing terminal escapes is the point.
   /\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007\u001b]*(?:\u0007|\u001b\\)?|[@-Z\\-_])/gu;
 /**
- * Characters that render as nothing or steer rendering: controls (Cc, after
- * line breaks and tabs became spaces), format characters (Cf: bidi
- * overrides and isolates, zero-width joiners and spaces, the Arabic letter
- * mark, soft hyphen, tags, interlinear annotations) and every other default
- * ignorable code point (fillers, variation selectors, CGJ).
+ * What a label must not carry. The goal is to stop line injection, terminal
+ * escapes and visual reordering, not to strip the joiners scripts and emoji
+ * need: controls (Cc, after line breaks became spaces), bidi embedding,
+ * override and isolate controls, the Arabic letter mark, soft hyphen,
+ * zero-width spaces and invisible operators, the BOM, interlinear annotation
+ * marks, Hangul and Mongolian fillers and the combining grapheme joiner.
+ * ZWJ/ZWNJ, variation selectors and the LRM/RLM weak marks stay: they cannot
+ * reorder runs the way overrides do. Tag characters are handled below.
  */
-const INVISIBLE_OR_CONTROL = /[\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}]/gu;
+const UNSAFE_IN_LABEL =
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: removing controls is the point.
+  /[\p{Cc}\u202A-\u202E\u2066-\u2069\u061C\u00AD\u200B\u2060-\u2064\uFEFF\uFFF9-\uFFFB\u115F\u1160\u3164\uFFA0\u180E]|\u034F/gu;
+/**
+ * An emoji tag sequence (a flag such as Scotland's) keeps its tag
+ * characters; any other tag character is dropped.
+ */
+const TAG_SEQUENCE_OR_TAG =
+  /(\u{1F3F4}[\u{E0020}-\u{E007E}]+\u{E007F})|[\u{E0000}-\u{E007F}]/gu;
+/** Kept marks that are not a name on their own. */
+const ONLY_JOINERS_OR_MARKS = /^(?:[\s\u200C-\u200F]|[\uFE00-\uFE0F])*$/u;
 
 /**
  * A short label someone else supplied (another Station's name, origin chain
- * or conversation title), with terminal escapes and invisible or control
- * characters removed and collapsed to one line. May be `''`, including for a
- * label made only of such characters: a caller refuses or replaces that.
+ * or conversation title), with terminal escapes and unsafe invisible
+ * characters removed and collapsed to one line. `''` when nothing visible is
+ * left, including a label of only joiners or marks: a caller refuses or
+ * replaces that.
  */
 export function cleanLabel(text: string): string {
-  return singleLine(
-    singleLine(text.replace(ESCAPE_SEQUENCE, '')).replace(
-      INVISIBLE_OR_CONTROL,
-      '',
-    ),
+  const cleaned = singleLine(
+    singleLine(text.replace(ESCAPE_SEQUENCE, ''))
+      .replace(UNSAFE_IN_LABEL, '')
+      .replace(
+        TAG_SEQUENCE_OR_TAG,
+        (_tag, sequence?: string) => sequence ?? '',
+      ),
   );
+  return ONLY_JOINERS_OR_MARKS.test(cleaned) ? '' : cleaned;
 }
 
 /**

@@ -39,7 +39,11 @@ import {
 import { Empty } from '../state';
 import '../chat/ConversationHandoff.css';
 import type { PreparedOutgoingText } from '../../hooks/useChatInput';
-import { type DraftQuote, parseDraftQuote } from '../../utils/answer-quotes';
+import {
+  type DraftQuote,
+  draftQuoteKeys,
+  parseDraftQuote,
+} from '../../utils/answer-quotes';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import {
   type ContinuedOnStation,
@@ -236,9 +240,6 @@ export function handoffStatusFeedback(
 }
 
 const NO_QUOTES: readonly DraftQuote[] = [];
-function quoteKeys(quotes: readonly DraftQuote[]): string {
-  return JSON.stringify(quotes);
-}
 
 /**
  * Station's reason for a refused handoff, in words the person can act on
@@ -392,7 +393,7 @@ export function ConversationHandoffDialog({
     retained &&
       composerHasDraft &&
       (initialMessage.trim() !== (retained.draft ?? retained.message).trim() ||
-        quoteKeys(draftQuotes) !== quoteKeys(retained.quotes ?? [])),
+        draftQuoteKeys(draftQuotes) !== draftQuoteKeys(retained.quotes ?? [])),
   );
   const message = retained?.message ?? (composerDraft || catchUpMessage);
   const sentQuotes = useRef<readonly DraftQuote[]>(

@@ -9,6 +9,7 @@ import {
   STATION_ENVELOPE_HEADER_VALUE,
 } from '@kontourai/station-contracts/http';
 import {
+  CONVERSATION_IMPORT_DELETED_CODE,
   type ConversationImportRequestV1,
   PAIRED_STATION_REQUIRED_CODE,
   PEER_CHAT_PRE_EFFECT_CODES,
@@ -309,6 +310,10 @@ export function createPeerChatRoutes(deps: {
         response.status === 403 &&
         replyRecord.code === PAIRED_STATION_REQUIRED_CODE;
       const access = response.status === 401 || response.status === 403;
+      // An import deleted there before it started is its own, definite case:
+      // nothing remains, so a new request sends a fresh copy.
+      const deleted =
+        !access && replyRecord.code === CONVERSATION_IMPORT_DELETED_CODE;
       return c.json(
         {
           success: false,
@@ -316,12 +321,16 @@ export function createPeerChatRoutes(deps: {
             ? PEER_CONVERSATION_HANDOFF_PAIRING_CODE
             : access
               ? PEER_CONVERSATION_HANDOFF_ACCESS_CODE
-              : PEER_CONVERSATION_HANDOFF_REFUSAL_CODE,
+              : deleted
+                ? CONVERSATION_IMPORT_DELETED_CODE
+                : PEER_CONVERSATION_HANDOFF_REFUSAL_CODE,
           error: pairingRequired
             ? 'The paired Station takes chats only from a Station paired with it as a Station.'
             : access
               ? "The paired Station didn't let this Station continue chats there."
-              : 'The paired Station refused this chat.',
+              : deleted
+                ? 'That chat was removed on the paired Station. Try again to send a fresh copy.'
+                : 'The paired Station refused this chat.',
         },
         424,
       );

@@ -1323,9 +1323,12 @@ on the host (`ui-bootstrap`):
   never include them. `read_conversation` returns `importedFrom` with each such
   row. A row the sender itself imported keeps its origin ("Laptop, via Studio
   Mac"): only the last hop is verified (this Station's own pairing record);
-  earlier hops are the sender's claim. Origins are cleaned of control, escape,
-  bidi and zero-width characters, a blank one is refused, and any length bound
-  cuts the earlier hops, never the verified last one. Transcript views show
+  earlier hops are the sender's claim. Origins and titles are cleaned of
+  controls, terminal escapes, bidi embedding/override/isolate controls and
+  invisible fillers; joiners, variation selectors, weak direction marks and
+  emoji tag sequences stay, so real names in any script survive. A label left
+  blank, or holding only joiners or marks, is refused, and any length bound cuts
+  whole graphemes from the earlier hops, never the verified last one. Transcript views show
   them as ordinary user and assistant rows. Pairing a Station therefore
   lets it author a conversation's earlier history on this one. Every other peer-family write (adding,
   replacing, enrolling or removing outbound peer credentials) stays

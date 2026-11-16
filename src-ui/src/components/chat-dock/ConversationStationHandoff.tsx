@@ -1,4 +1,5 @@
 import {
+  CONVERSATION_IMPORT_DELETED_CODE,
   PEER_CONVERSATION_HANDOFF_ACCESS_CODE,
   PEER_CONVERSATION_HANDOFF_MAX_MESSAGES,
   PEER_CONVERSATION_HANDOFF_PAIRING_CODE,
@@ -26,7 +27,11 @@ import {
   useExecutionStationCatalog,
   useExecutionStations,
 } from '../../hooks/useExecutionStationCatalog';
-import { type DraftQuote, parseDraftQuote } from '../../utils/answer-quotes';
+import {
+  type DraftQuote,
+  draftQuoteKeys,
+  parseDraftQuote,
+} from '../../utils/answer-quotes';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import type { SelectableModel } from '../../utils/modelCapabilities';
 import { Button } from '../Button';
@@ -296,7 +301,7 @@ export function ConversationStationHandoff({
       clearsComposer =
         earlier.draft !== undefined &&
         composerText.trim() === earlier.draft.trim() &&
-        JSON.stringify(composerQuotes) === JSON.stringify(sentQuotes);
+        draftQuoteKeys(composerQuotes) === draftQuoteKeys(sentQuotes);
     } else if (draft && prepareDraft) {
       let prepared: Awaited<ReturnType<typeof prepareDraft>>;
       try {
@@ -407,13 +412,15 @@ export function ConversationStationHandoff({
         setState('error');
         const code = (error as { code?: unknown }).code;
         setFeedback(
-          code === PEER_CONVERSATION_HANDOFF_PAIRING_CODE
-            ? `${stationName} is connected with a device sign-in. Pair it as a Station in Connections to continue chats there.`
-            : code === PEER_CONVERSATION_HANDOFF_ACCESS_CODE
-              ? `${stationName} didn't let this Station continue chats there. Check the pairing's access in Connections.`
-              : code === PEER_CONVERSATION_HANDOFF_REFUSAL_CODE
-                ? `${stationName} didn't take this chat. Check that it has this Agent and the chosen project.`
-                : userFacingErrorMessage(error),
+          code === CONVERSATION_IMPORT_DELETED_CODE
+            ? `That chat was removed on ${stationName}. Try again to send a fresh copy.`
+            : code === PEER_CONVERSATION_HANDOFF_PAIRING_CODE
+              ? `${stationName} is connected with a device sign-in. Pair it as a Station in Connections to continue chats there.`
+              : code === PEER_CONVERSATION_HANDOFF_ACCESS_CODE
+                ? `${stationName} didn't let this Station continue chats there. Check the pairing's access in Connections.`
+                : code === PEER_CONVERSATION_HANDOFF_REFUSAL_CODE
+                  ? `${stationName} didn't take this chat. Check that it has this Agent and the chosen project.`
+                  : userFacingErrorMessage(error),
         );
       } else {
         setState('indeterminate');

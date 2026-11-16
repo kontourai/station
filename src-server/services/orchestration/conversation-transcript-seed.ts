@@ -145,10 +145,14 @@ export function boundTranscriptSeedLabel(
   const ellipsis = '…';
   let bytes = Buffer.byteLength(ellipsis, 'utf8');
   let kept = '';
-  for (const char of text) {
-    const size = Buffer.byteLength(char, 'utf8');
+  // Whole graphemes only: a cut never splits a flag, an emoji sequence or a
+  // letter from its combining marks.
+  for (const { segment } of new Intl.Segmenter(undefined, {
+    granularity: 'grapheme',
+  }).segment(text)) {
+    const size = Buffer.byteLength(segment, 'utf8');
     if (bytes + size > maxBytes) break;
-    kept += char;
+    kept += segment;
     bytes += size;
   }
   return `${kept}${ellipsis}`;

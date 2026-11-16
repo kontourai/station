@@ -421,4 +421,31 @@ describe('continuing a conversation on a paired Station (source side)', () => {
     expect(response.status).toBe(424);
     expect(await response.json()).toMatchObject({ success: false, code });
   });
+
+  test('a deleted import is named as such, not as a missing Agent', async () => {
+    const { call } = fixture({
+      importReply: () =>
+        Response.json(
+          {
+            success: false,
+            code: 'conversation_import_deleted',
+            error: 'deleted',
+          },
+          {
+            status: 409,
+            headers: {
+              [STATION_ENVELOPE_HEADER]: STATION_ENVELOPE_HEADER_VALUE,
+            },
+          },
+        ),
+    });
+    const response = await call();
+    expect(response.status).toBe(424);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({
+      success: false,
+      code: 'conversation_import_deleted',
+    });
+    expect(body.outcome).toBeUndefined();
+  });
 });

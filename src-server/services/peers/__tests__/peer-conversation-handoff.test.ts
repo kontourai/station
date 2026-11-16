@@ -6,6 +6,7 @@ import {
 } from '@kontourai/station-contracts/peer-chat';
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
 import { describe, expect, test } from 'vitest';
+import { boundTranscriptSeedLabel } from '../../orchestration/conversation-transcript-seed.js';
 import {
   boundLabelKeepingTail,
   cleanLabel,
@@ -160,19 +161,55 @@ describe('the history a paired-Station handoff carries', () => {
 
   test.each([
     ['ARABIC LETTER MARK', '\u061C'],
-    ['a tag character', String.fromCodePoint(0xe0041)],
+    ['a stray tag character', String.fromCodePoint(0xe0041)],
     ['SOFT HYPHEN', '\u00AD'],
     ['COMBINING GRAPHEME JOINER', '\u034F'],
     ['MONGOLIAN VOWEL SEPARATOR', '\u180E'],
     ['INTERLINEAR ANNOTATION ANCHOR', '\uFFF9'],
     ['INTERLINEAR ANNOTATION TERMINATOR', '\uFFFB'],
     ['HANGUL CHOSEONG FILLER', '\u115F'],
+    ['HANGUL JUNGSEONG FILLER', '\u1160'],
     ['HANGUL FILLER', '\u3164'],
+    ['HALFWIDTH HANGUL FILLER', '\uFFA0'],
+    ['LEFT-TO-RIGHT EMBEDDING', '\u202A'],
     ['RIGHT-TO-LEFT OVERRIDE', '\u202E'],
+    ['LEFT-TO-RIGHT ISOLATE', '\u2066'],
+    ['POP DIRECTIONAL ISOLATE', '\u2069'],
     ['ZERO WIDTH SPACE', '\u200B'],
+    ['ESCAPE (a control character)', '\u001b'],
+    ['BELL (a control character)', '\u0007'],
   ])('a label is cleaned of %s', (_name, character) => {
     expect(cleanLabel(`La${character}ptop`)).toBe('Laptop');
     expect(cleanLabel(`${character}${character}`)).toBe('');
+  });
+
+  test.each([
+    ['Persian with a zero-width non-joiner', 'می\u200Cخواهم'],
+    ['Devanagari with a zero-width joiner', 'क्\u200Dष'],
+    ['an emoji ZWJ family', '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}'],
+    ['an emoji presentation selector', '\u2764\uFE0F'],
+    ['a keycap', '1\uFE0F\u20E3'],
+    [
+      'the Scotland flag (an emoji tag sequence)',
+      '\u{1F3F4}\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F}',
+    ],
+    ['Hebrew with a right-to-left mark', 'שלום\u200F 2'],
+  ])('a real name keeps its joiners and marks: %s', (_name, label) => {
+    expect(cleanLabel(label)).toBe(label);
+  });
+
+  test('refuses a label made only of joiners, selectors or weak marks', () => {
+    expect(cleanLabel('\u200D\u200C\uFE0F\u200E\u200F ')).toBe('');
+  });
+
+  test('bounds a seed label on grapheme boundaries', () => {
+    const family = '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}';
+    for (let maxBytes = 30; maxBytes < 80; maxBytes++) {
+      const bounded = boundTranscriptSeedLabel(family.repeat(20), maxBytes);
+      expect(Buffer.byteLength(bounded)).toBeLessThanOrEqual(maxBytes);
+      expect(bounded.endsWith('…')).toBe(true);
+      expect(bounded.slice(0, -1).replaceAll(family, '')).toBe('');
+    }
   });
 
   test.each([
