@@ -42,3 +42,8 @@ export function stationControlRequestRun(
 export function forgetStationControlRequestRun(id: string): void {
   runs.delete(id);
 }
+
+/** Test-only: how many runs are live. */
+export function __countStationControlRequestRunsForTests(): number {
+  return runs.size;
+}
