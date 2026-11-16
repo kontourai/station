@@ -5002,10 +5002,9 @@ export async function refreshPeerDelegationActivity(
   remote?: RemoteStationForwarder,
 ): Promise<void> {
   const readAuthority = readAuthorityForInput(input);
+  // Only the peer delegation records, not every readable Session (#5051).
   const records = (
-    await orchestrationService.listSessionReadModel(readAuthority, {
-      purpose: 'peer-delegation-refresh',
-    })
+    await orchestrationService.listPeerDelegationActivity(readAuthority)
   )
     .filter(
       (session) =>
