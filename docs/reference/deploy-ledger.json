@@ -1,5 +1,48 @@
 [
   {
+    "timestampUtc": "2026-11-16T03:26:30Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.20261116.43796408425",
+    "sha": "0f46969f18aa5080844d57fba8af1a079533cac4",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/43796408425",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.20261116.43796408425 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "95a6c1253416050823e2a34089882e3261253cb8",
+      "groups": {
+        "feat": [
+          "[#5005](https://github.com/kontourai/station/pull/5005) feat(claude): load AGENTS.md beside CLAUDE.md in Claude sessions",
+          "[#5008](https://github.com/kontourai/station/pull/5008) feat(appearance): person-scoped custom palette and CSS that agents propose and people keep",
+          "[#5018](https://github.com/kontourai/station/pull/5018) feat(orchestration): measure who reads the session read model and what each read costs"
+        ],
+        "fix": [
+          "[#5020](https://github.com/kontourai/station/pull/5020) fix(qualification): repair two stale main-qualification tests and the dev-home seed target check",
+          "[#5022](https://github.com/kontourai/station/pull/5022) fix(scripts): say how Biome ended when the a11y ratchet cannot measure",
+          "[#5015](https://github.com/kontourai/station/pull/5015) fix(ui): let Run setup use the composer row's free room",
+          "[#5013](https://github.com/kontourai/station/pull/5013) fix(connect): keep a greyed-out Station forgettable from the keyboard and repair the switcher gallery screens"
+        ],
+        "ci": [
+          "[#5021](https://github.com/kontourai/station/pull/5021) ci(fast-checks): give pull-request statics a third slot"
+        ],
+        "docs": [
+          "[#4984](https://github.com/kontourai/station/pull/4984) docs(pages): rebuild the home around channels, agents and Tasks with real screens (#4801)"
+        ],
+        "other": [
+          "[#5007](https://github.com/kontourai/station/pull/5007) perf(sessions): release a finished delegated run's engine soon after its turn settles",
+          "[#5009](https://github.com/kontourai/station/pull/5009) perf(mcp): compile-cache the built-in station-control and station-knowledge children"
+        ]
+      },
+      "note": null,
+      "commitCount": 11
+    }
+  },
+  {
     "timestampUtc": "2026-11-15T23:26:59Z",
     "channel": "nightly-npm",
     "version": "0.11.0-nightly.20261115.43773362126",
