@@ -2,6 +2,8 @@
    feedback, from which chat, and what went last. It wraps on a narrow
    pane; the owner's title gives way first. */
 .pr-feedback-strip {
+  /* The panel is a scrolling flex column: never squeeze a wrapped line. */
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   align-items: center;

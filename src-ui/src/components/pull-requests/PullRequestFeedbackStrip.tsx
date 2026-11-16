@@ -4,7 +4,6 @@ import {
   type PullRequestFeedbackByPullRequest,
   pullRequestFeedbackKey,
 } from '@kontourai/station-contracts/pull-request-feedback';
-import { StatusBadge } from '@kontourai/ui/react';
 import { useState } from 'react';
 import { openChatsStore } from '../../contexts/open-chats-store';
 import { useCoarseNow } from '../../hooks/useCoarseNow';
@@ -12,7 +11,8 @@ import { Button } from '../Button';
 import { IconButton } from '../IconButton';
 import { SettingsGlyph } from '../icons/Glyph';
 import { PullRequestFeedbackDialog } from './PullRequestFeedbackDialog';
-import { pullRequestFeedbackBadge } from './pull-request-feedback-presentation';
+import { PullRequestChip } from './pull-request-chips';
+import { pullRequestFeedbackChip } from './pull-request-feedback-presentation';
 import { RelativeTime } from './RelativeTime';
 import {
   usePullRequestFeedback,
@@ -146,8 +146,9 @@ function ReadableOwner({
   now: number;
   onSettings: () => void;
 }) {
-  const badge = data.status
-    ? pullRequestFeedbackBadge({
+  // The pull request rows' own chip, so the panel and the rows agree.
+  const chip = data.status
+    ? pullRequestFeedbackChip({
         identity: data.identity,
         ownedHere: true,
         owner: null,
@@ -163,10 +164,10 @@ function ReadableOwner({
   const last = data.last?.state === 'sent' ? data.last : undefined;
   return (
     <>
-      {badge && (
+      {chip && (
         <>
           <Separator />
-          <StatusBadge status={badge.label} tone={badge.tone} />
+          <PullRequestChip {...chip} />
         </>
       )}
       <Separator />
