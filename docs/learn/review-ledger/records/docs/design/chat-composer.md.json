@@ -338,7 +338,11 @@
 
     "src-ui/src/components/chat/useTranscriptTurnDirectory.ts",
 
-    "src-ui/src/components/chat-dock/ChatDockInboxPanel.css"
+    "src-ui/src/components/chat-dock/ChatDockInboxPanel.css",
+
+    "src-ui/src/components/chat/__tests__/BackgroundTaskNoticeCard.test.tsx",
+
+    "tests/chat-settings-and-task-notices.spec.ts"
   ],
 
   "checks": [
