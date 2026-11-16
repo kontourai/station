@@ -1,0 +1,125 @@
+{
+  "revision": "52486bf231fec43880606e69c118f2ed71099b02",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Delta-review round on #5007: parking section rewritten against the narrowed sources. The idle park's hasOpenEngineWork sentence is main's again, and the page states that the same check guards the recovery replay and full-access relaunch (isParkableIdleSession). The finished-session park's conditions are now listed: an unattended newest sent turn; no person turn, which counts every steer as well as unrecognised-origin turns and skips provider-triggered ones; and openEngineWork 'complete' with no earlyParkRefusal. Claude refuses on housekeeping tasks, non-sdk or unreported MCP servers, and reported or unknown wakeups, re-read under the lock. The ACP terminal veto is removed. Each claim is covered by finished-session-parking.test.ts and claude-adapter-early-park.test.ts, fault-injected (D1-D11).","inputs":["docs/architecture/module-map.md","src-server/providers/adapters/claude-adapter-events.ts","src-server/providers/adapters/claude-adapter.ts","src-server/services/orchestration/event-store.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"STATION_IDLE_SESSION_PARK_AFTER_MS row: the idle-park veto list is main's again (open request, running child work, an unended task, no resumable engine). The early-park sentence now names its actual conditions (a delegation, Automation or Task dispatch turn; no person send; Claude with only Station's own MCP servers, no scheduled wakeup and no housekeeping task running), checked against parkFinishedSession and ClaudeAdapter.earlyParkRefusal.","inputs":["docs/reference/env-vars.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Adds the optional earlyParkRefusal method and revises the openEngineWork comment. The citing pages (agent smoke confidence, contracts) make no claim about these adapter members; they remain accurate.","inputs":["src-server/providers/adapter-shape.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Adds the optional earlyParkRefusal method and revises the openEngineWork comment. The citing pages (agent smoke confidence, contracts) make no claim about these adapter members; they remain accurate.","inputs":["src-server/providers/adapter-shape.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Records whether init reported only sdk MCP servers, and tracks skip_transcript tasks until a terminal task_updated or any task_notification. They are still published as nothing. Citing pages re-read for task, child-work and init claims; only the module map describes the new state, with its own note.","inputs":["src-server/providers/adapters/claude-adapter-events.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Records whether init reported only sdk MCP servers, and tracks skip_transcript tasks until a terminal task_updated or any task_notification. They are still published as nothing. Citing pages re-read for task, child-work and init claims; only the module map describes the new state, with its own note.","inputs":["src-server/providers/adapters/claude-adapter-events.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Records whether init reported only sdk MCP servers, and tracks skip_transcript tasks until a terminal task_updated or any task_notification. They are still published as nothing. Citing pages re-read for task, child-work and init claims; only the module map describes the new state, with its own note.","inputs":["src-server/providers/adapters/claude-adapter-events.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Records whether init reported only sdk MCP servers, and tracks skip_transcript tasks until a terminal task_updated or any task_notification. They are still published as nothing. Citing pages re-read for task, child-work and init claims; only the module map describes the new state, with its own note.","inputs":["src-server/providers/adapters/claude-adapter-events.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Records whether init reported only sdk MCP servers, and tracks skip_transcript tasks until a terminal task_updated or any task_notification. They are still published as nothing. Citing pages re-read for task, child-work and init claims; only the module map describes the new state, with its own note.","inputs":["src-server/providers/adapters/claude-adapter-events.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"hasOpenEngineWork is main's again. The new earlyParkRefusal reads the housekeeping, MCP and wakeup state, and its comment documents the assumptions. Citing pages re-read for hook, engine-option and open-work claims; none describe the early park except the module map, which has its own note.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"hasOpenEngineWork is main's again. The new earlyParkRefusal reads the housekeeping, MCP and wakeup state, and its comment documents the assumptions. Citing pages re-read for hook, engine-option and open-work claims; none describe the early park except the module map, which has its own note.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"hasOpenEngineWork is main's again. The new earlyParkRefusal reads the housekeeping, MCP and wakeup state, and its comment documents the assumptions. Citing pages re-read for hook, engine-option and open-work claims; none describe the early park except the module map, which has its own note.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/design/agent-interaction-capabilities.md","note":"hasOpenEngineWork is main's again. The new earlyParkRefusal reads the housekeeping, MCP and wakeup state, and its comment documents the assumptions. Citing pages re-read for hook, engine-option and open-work claims; none describe the early park except the module map, which has its own note.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"hasOpenEngineWork is main's again. The new earlyParkRefusal reads the housekeeping, MCP and wakeup state, and its comment documents the assumptions. Citing pages re-read for hook, engine-option and open-work claims; none describe the early park except the module map, which has its own note.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"hasOpenEngineWork is main's again. The new earlyParkRefusal reads the housekeeping, MCP and wakeup state, and its comment documents the assumptions. Citing pages re-read for hook, engine-option and open-work claims; none describe the early park except the module map, which has its own note.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"hasOpenEngineWork is main's again. The new earlyParkRefusal reads the housekeeping, MCP and wakeup state, and its comment documents the assumptions. Citing pages re-read for hook, engine-option and open-work claims; none describe the early park except the module map, which has its own note.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/development.md","note":"hasOpenEngineWork is main's again. The new earlyParkRefusal reads the housekeeping, MCP and wakeup state, and its comment documents the assumptions. Citing pages re-read for hook, engine-option and open-work claims; none describe the early park except the module map, which has its own note.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"hasOpenEngineWork is main's again. The new earlyParkRefusal reads the housekeeping, MCP and wakeup state, and its comment documents the assumptions. Citing pages re-read for hook, engine-option and open-work claims; none describe the early park except the module map, which has its own note.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"hasOpenEngineWork is main's again. The new earlyParkRefusal reads the housekeeping, MCP and wakeup state, and its comment documents the assumptions. Citing pages re-read for hook, engine-option and open-work claims; none describe the early park except the module map, which has its own note.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"hasOpenEngineWork is main's again. The new earlyParkRefusal reads the housekeeping, MCP and wakeup state, and its comment documents the assumptions. Citing pages re-read for hook, engine-option and open-work claims; none describe the early park except the module map, which has its own note.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"hasOpenEngineWork is main's again. The new earlyParkRefusal reads the housekeeping, MCP and wakeup state, and its comment documents the assumptions. Citing pages re-read for hook, engine-option and open-work claims; none describe the early park except the module map, which has its own note.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"hasPersonTurn now counts every non-provider-triggered steer as a person's. Read-only; no schema or write change. Citing pages' event-store claims remain accurate.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"hasPersonTurn now counts every non-provider-triggered steer as a person's. Read-only; no schema or write change. Citing pages' event-store claims remain accurate.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"hasPersonTurn now counts every non-provider-triggered steer as a person's. Read-only; no schema or write change. Citing pages' event-store claims remain accurate.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/placement.md","note":"hasPersonTurn now counts every non-provider-triggered steer as a person's. Read-only; no schema or write change. Citing pages' event-store claims remain accurate.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"hasPersonTurn now counts every non-provider-triggered steer as a person's. Read-only; no schema or write change. Citing pages' event-store claims remain accurate.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"hasPersonTurn now counts every non-provider-triggered steer as a person's. Read-only; no schema or write change. Citing pages' event-store claims remain accurate.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"hasPersonTurn now counts every non-provider-triggered steer as a person's. Read-only; no schema or write change. Citing pages' event-store claims remain accurate.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/config.md","note":"hasPersonTurn now counts every non-provider-triggered steer as a person's. Read-only; no schema or write change. Citing pages' event-store claims remain accurate.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"hasPersonTurn now counts every non-provider-triggered steer as a person's. Read-only; no schema or write change. Citing pages' event-store claims remain accurate.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/README.md","note":"hasPersonTurn now counts every non-provider-triggered steer as a person's. Read-only; no schema or write change. Citing pages' event-store claims remain accurate.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"parkFinishedSession now requires earlyParkRefusal and passes it into parkIdleSession, which re-reads it under the lifecycle lock; no other park reads it. Citing pages re-read for parking claims; only the module map and env-var reference describe it, with their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture.md","note":"parkFinishedSession now requires earlyParkRefusal and passes it into parkIdleSession, which re-reads it under the lifecycle lock; no other park reads it. Citing pages re-read for parking claims; only the module map and env-var reference describe it, with their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"parkFinishedSession now requires earlyParkRefusal and passes it into parkIdleSession, which re-reads it under the lifecycle lock; no other park reads it. Citing pages re-read for parking claims; only the module map and env-var reference describe it, with their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"parkFinishedSession now requires earlyParkRefusal and passes it into parkIdleSession, which re-reads it under the lifecycle lock; no other park reads it. Citing pages re-read for parking claims; only the module map and env-var reference describe it, with their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"parkFinishedSession now requires earlyParkRefusal and passes it into parkIdleSession, which re-reads it under the lifecycle lock; no other park reads it. Citing pages re-read for parking claims; only the module map and env-var reference describe it, with their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"parkFinishedSession now requires earlyParkRefusal and passes it into parkIdleSession, which re-reads it under the lifecycle lock; no other park reads it. Citing pages re-read for parking claims; only the module map and env-var reference describe it, with their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"parkFinishedSession now requires earlyParkRefusal and passes it into parkIdleSession, which re-reads it under the lifecycle lock; no other park reads it. Citing pages re-read for parking claims; only the module map and env-var reference describe it, with their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"parkFinishedSession now requires earlyParkRefusal and passes it into parkIdleSession, which re-reads it under the lifecycle lock; no other park reads it. Citing pages re-read for parking claims; only the module map and env-var reference describe it, with their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"parkFinishedSession now requires earlyParkRefusal and passes it into parkIdleSession, which re-reads it under the lifecycle lock; no other park reads it. Citing pages re-read for parking claims; only the module map and env-var reference describe it, with their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"parkFinishedSession now requires earlyParkRefusal and passes it into parkIdleSession, which re-reads it under the lifecycle lock; no other park reads it. Citing pages re-read for parking claims; only the module map and env-var reference describe it, with their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"parkFinishedSession now requires earlyParkRefusal and passes it into parkIdleSession, which re-reads it under the lifecycle lock; no other park reads it. Citing pages re-read for parking claims; only the module map and env-var reference describe it, with their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"parkFinishedSession now requires earlyParkRefusal and passes it into parkIdleSession, which re-reads it under the lifecycle lock; no other park reads it. Citing pages re-read for parking claims; only the module map and env-var reference describe it, with their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"parkFinishedSession now requires earlyParkRefusal and passes it into parkIdleSession, which re-reads it under the lifecycle lock; no other park reads it. Citing pages re-read for parking claims; only the module map and env-var reference describe it, with their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"parkFinishedSession now requires earlyParkRefusal and passes it into parkIdleSession, which re-reads it under the lifecycle lock; no other park reads it. Citing pages re-read for parking claims; only the module map and env-var reference describe it, with their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"parkFinishedSession now requires earlyParkRefusal and passes it into parkIdleSession, which re-reads it under the lifecycle lock; no other park reads it. Citing pages re-read for parking claims; only the module map and env-var reference describe it, with their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"parkFinishedSession now requires earlyParkRefusal and passes it into parkIdleSession, which re-reads it under the lifecycle lock; no other park reads it. Citing pages re-read for parking claims; only the module map and env-var reference describe it, with their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"parkFinishedSession now requires earlyParkRefusal and passes it into parkIdleSession, which re-reads it under the lifecycle lock; no other park reads it. Citing pages re-read for parking claims; only the module map and env-var reference describe it, with their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"parkFinishedSession now requires earlyParkRefusal and passes it into parkIdleSession, which re-reads it under the lifecycle lock; no other park reads it. Citing pages re-read for parking claims; only the module map and env-var reference describe it, with their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"parkFinishedSession now requires earlyParkRefusal and passes it into parkIdleSession, which re-reads it under the lifecycle lock; no other park reads it. Citing pages re-read for parking claims; only the module map and env-var reference describe it, with their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"parkFinishedSession now requires earlyParkRefusal and passes it into parkIdleSession, which re-reads it under the lifecycle lock; no other park reads it. Citing pages re-read for parking claims; only the module map and env-var reference describe it, with their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"parkFinishedSession now requires earlyParkRefusal and passes it into parkIdleSession, which re-reads it under the lifecycle lock; no other park reads it. Citing pages re-read for parking claims; only the module map and env-var reference describe it, with their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"parkFinishedSession now requires earlyParkRefusal and passes it into parkIdleSession, which re-reads it under the lifecycle lock; no other park reads it. Citing pages re-read for parking claims; only the module map and env-var reference describe it, with their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"parkFinishedSession now requires earlyParkRefusal and passes it into parkIdleSession, which re-reads it under the lifecycle lock; no other park reads it. Citing pages re-read for parking claims; only the module map and env-var reference describe it, with their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"parkFinishedSession now requires earlyParkRefusal and passes it into parkIdleSession, which re-reads it under the lifecycle lock; no other park reads it. Citing pages re-read for parking claims; only the module map and env-var reference describe it, with their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"parkFinishedSession now requires earlyParkRefusal and passes it into parkIdleSession, which re-reads it under the lifecycle lock; no other park reads it. Citing pages re-read for parking claims; only the module map and env-var reference describe it, with their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"parkFinishedSession now requires earlyParkRefusal and passes it into parkIdleSession, which re-reads it under the lifecycle lock; no other park reads it. Citing pages re-read for parking claims; only the module map and env-var reference describe it, with their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"parkFinishedSession now requires earlyParkRefusal and passes it into parkIdleSession, which re-reads it under the lifecycle lock; no other park reads it. Citing pages re-read for parking claims; only the module map and env-var reference describe it, with their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"parkFinishedSession now requires earlyParkRefusal and passes it into parkIdleSession, which re-reads it under the lifecycle lock; no other park reads it. Citing pages re-read for parking claims; only the module map and env-var reference describe it, with their own notes.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Regenerated by docs:mcp:generate from the revised module map and env-var reference; no hand edits.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}

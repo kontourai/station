@@ -13,6 +13,7 @@ import {
 } from '../ResponsiveDialogSurface';
 import { describeReadFailure, ErrorState, SkeletonList } from '../state';
 import './RequestInspectionDialog.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 
 type CapturedAuthority = NonNullable<
   ReturnType<typeof useHostRequestAuthorityScope>
@@ -266,6 +267,7 @@ export function RequestInspectionDialog({
   openHref?: string;
   onClose: () => void;
 }) {
+  useDecisionSurface('request-inspection-dialog');
   const answer = useApprovalAnswering(authority.apiBase);
   const {
     attempted,

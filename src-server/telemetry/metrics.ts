@@ -1183,6 +1183,47 @@ export const sessionOwnerCacheOps = meter.createCounter(
   },
 );
 
+// ── Session read model readers (#4992) ──
+/**
+ * Every `listSessionReadModel` call. `purpose` is the caller's declared
+ * reason (`session-read-model-purpose.ts`, a closed vocabulary; anything
+ * else records `invalid`) and `scope` is `all` or `threads` (a `threadIds`
+ * read). No session, user or thread identity is ever a dimension.
+ */
+export const sessionReadModelReads = meter.createCounter(
+  'station.orchestration.session_read_model.reads',
+  {
+    description:
+      'Session read model reads by declared caller purpose and scope (all | threads)',
+  },
+);
+/**
+ * Wall time of one read, by `purpose` and `phase`: `total` includes the
+ * awaited adapter session sync; `build` is the synchronous fold after it,
+ * which holds the main thread.
+ */
+export const sessionReadModelDuration = meter.createHistogram(
+  'station.orchestration.session_read_model.duration',
+  {
+    description:
+      'Session read model read duration by caller purpose and phase (total | build)',
+    unit: 'ms',
+  },
+);
+/**
+ * Threads per read, by `purpose` and `outcome`: `considered` (readable
+ * threads the read built), `projection_refolded` / `projection_reused`
+ * (projection facts folded again or served from the event store's per-thread
+ * cache), and `count_refreshed` / `count_reused` (the same for event counts).
+ */
+export const sessionReadModelThreads = meter.createHistogram(
+  'station.orchestration.session_read_model.threads',
+  {
+    description:
+      'Threads per session read model read by caller purpose and outcome (considered | projection_refolded | projection_reused | count_refreshed | count_reused)',
+  },
+);
+
 // ── Coalesced event fan-out (archive#1093 Part B) ──
 /**
  * Per-dispatch coalesce ratio (events-in vs work-out) for a

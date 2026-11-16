@@ -98,7 +98,9 @@ export function createConversationWorkSearchRoutes(deps: {
     if (!current())
       return c.json({ success: false, error: 'Search unavailable' }, 503);
     try {
-      const sessions = await deps.sessions.listSessionReadModel(readAuthority);
+      const sessions = await deps.sessions.listSessionReadModel(readAuthority, {
+        purpose: 'work-search',
+      });
       const candidates = new Map<string, Candidate>();
       for (const session of sessions) {
         const id =

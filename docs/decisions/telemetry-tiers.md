@@ -348,8 +348,9 @@ rejects the new revision, and this foundation has no legacy wire fallback.
 
 DNT itself never changes saved choices. While it is active, the disclosure
 leads with the fact that nothing is sent and that Full still needs confirmation
-after DNT is removed. It offers visible **Off**, **Lite**, and **Full** radio
-choices and a save action named **Save operator choice as** the selected tier.
+after DNT is removed. It offers visible **Don't share**, **Anonymous usage counts**, and **Detailed
+usage to help improve Station** radio choices and a save action named **Save your
+choice:** followed by the selected choice's name.
 Saving writes only that operator tier, without a disclosure acknowledgement.
 Saving Lite preserves a saved-Lite user's choice. Saving Full leaves Full
 pending: removing DNT shows the unacknowledged dialog again, and no Full event

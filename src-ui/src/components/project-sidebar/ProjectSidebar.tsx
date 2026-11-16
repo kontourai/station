@@ -309,6 +309,7 @@ function ProjectSidebarImpl() {
       >
         <nav
           id="mobile-navigation"
+          data-surface="sidebar"
           data-escape-owner={isMobile && mobileOpen ? '' : undefined}
           ref={navigationRef}
           className={buildSidebarClassName({

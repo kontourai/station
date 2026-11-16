@@ -1,0 +1,7 @@
+{
+  "revision": "37962ff8c9604e8e2f804c0938d999bb61aaebc8",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Baseline change is 12 screen entries merged via screenshot:baseline --allow-partial from a complete hosted Nightly: Gallery artifact (run 43696467191, main 89dc051aa7). Manifest schemaVersion 2, per-screen RGBA sha256 and reference-image layout are unchanged; the guide's baseline, partial-merge and hosted-artifact refresh claims still match scripts/screenshot-diff.mjs.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json"]}
+  ]
+}

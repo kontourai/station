@@ -6,6 +6,8 @@ import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_ENV,
 } from '../../utils/internal-api-token.js';
+import { resolveHomeDir } from '../../utils/paths.js';
+import { withStationCompileCache } from './station-compile-cache.js';
 
 export function builtinStationControlServerPath(): string {
   return resolve(import.meta.dirname || process.cwd(), 'station-control.js');
@@ -146,6 +148,10 @@ export function isBuiltinStationControl(
  * pooled, caller-less child), and no child inherits one: a stale
  * `STATION_CONTROL_CALLER_TOKEN` in the parent environment is stripped
  * along with the internal token and tenant.
+ *
+ * The same exact-binary gate hands the built-in station-control and
+ * station-knowledge bundles the home's Node compile cache
+ * (`withStationCompileCache`).
  */
 export function withStationControlRuntimeEnv(
   toolId: string,
@@ -163,13 +169,18 @@ export function withStationControlRuntimeEnv(
     delete runtimeEnv.STATION_INTERNAL_TENANT;
   }
   if (!builtinStationApiServerId(toolId, toolDef)) return runtimeEnv;
-  return {
-    ...runtimeEnv,
-    [INTERNAL_API_TOKEN_ENV]: getInternalApiToken(),
-    ...(tenantExecutionContext
-      ? { STATION_INTERNAL_TENANT: tenantExecutionContext.tenantId }
-      : {}),
-  };
+  // The built-in bundle gets the home's compile cache and removes the setting
+  // at its own start; a third-party server never receives it.
+  return withStationCompileCache(
+    {
+      ...runtimeEnv,
+      [INTERNAL_API_TOKEN_ENV]: getInternalApiToken(),
+      ...(tenantExecutionContext
+        ? { STATION_INTERNAL_TENANT: tenantExecutionContext.tenantId }
+        : {}),
+    },
+    { resolveHome: resolveHomeDir },
+  );
 }
 
 /**

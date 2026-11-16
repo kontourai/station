@@ -1,0 +1,11 @@
+{
+  "revision": "43660d5ef7556001fd6758ba126de07a241d3f43",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Only the station-switcher screens changed: their two answering Stations now serve the gallery handshake on the public handshake path, and the screens assert a greyed-out row's colour differs from a selectable row's. Checked the citing pages (motion, testing, usage telemetry): none describes these screens or how a screen's routes answer, and their capture, freeze, selection and telemetry claims are untouched.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Only the station-switcher screens changed: their two answering Stations now serve the gallery handshake on the public handshake path, and the screens assert a greyed-out row's colour differs from a selectable row's. Checked the citing pages (motion, testing, usage telemetry): none describes these screens or how a screen's routes answer, and their capture, freeze, selection and telemetry claims are untouched.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Only the station-switcher screens changed: their two answering Stations now serve the gallery handshake on the public handshake path, and the screens assert a greyed-out row's colour differs from a selectable row's. Checked the citing pages (motion, testing, usage telemetry): none describes these screens or how a screen's routes answer, and their capture, freeze, selection and telemetry claims are untouched.","inputs":["tests/screenshots.spec.ts"]}
+  ]
+}

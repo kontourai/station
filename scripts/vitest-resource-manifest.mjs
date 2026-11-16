@@ -1906,6 +1906,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/supervisor/src/__tests__/crash-restart.test.ts',
   'packages/supervisor/src/__tests__/build-root.test.ts',
   'packages/supervisor/src/__tests__/listener-handle.test.ts',
+  // A real supervisor child forks a fixture core that records its Node flags.
+  'packages/supervisor/src/__tests__/core-node-flags.test.ts',
   // Fixture core generations relay workload requests to a fixture workload
   // host child that runs command children; one test SIGKILLs that host.
   'packages/supervisor/src/__tests__/workloads.test.ts',

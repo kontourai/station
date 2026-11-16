@@ -1,0 +1,83 @@
+{
+  "revision": "8c99ea19eed30faf4034c05e624469d1d05591e7",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Rewrote the PR source FIFO paragraph against ci.yml: statics now use three buckets by the PR number's last digit (0, 2, 4, 6 even; 1, 3, 5 odd; 7, 8, 9 third), matching the fast-checks-statics group and the actionlint-gate pin; added the transition note (odd/even names kept, so the repository ceiling stays three and only PRs ending 7, 8 or 9 can briefly hold an old bucket and third); PR computation slot total is now nine (five shard, three statics, one release-bot). Shard, release-bot and supersession prose unchanged and still matches ci.yml.","inputs":["docs/guides/testing.md",".github/workflows/ci.yml","scripts/__tests__/ci-fast-checks-job-graph.test.ts","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/releasing.md","note":"Updated the capacity paragraph: PR computation is nine slots (five shard, three statics, one release-bot), so 11 merge-group jobs + 4 Free qualification + 9 = 24; recorded the 2026-11-15 statics wait measurement (70-minute wait, 13 of 20 runners busy) and the sampled ~13-minute statics duration (median 12.7 over 13 successful PR statics jobs) giving about fourteen pushes an hour; the rollback lever on rising merge-group runner wait is now to return statics to two parity slots first, then lower the shard slot count.","inputs":["docs/guides/releasing.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]},
+
+    {"path":".veritas/README.md","note":"Only the fast-checks-statics concurrency group and its comment changed (three last-digit slots, odd/even names kept). Checked every citing page for statics slot, parity or PR FIFO claims: none outside testing.md and releasing.md state the statics slot count; job names, if conditions, timeouts and required checks are unchanged.","inputs":[".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Only the fast-checks-statics concurrency group and its comment changed (three last-digit slots, odd/even names kept). Checked every citing page for statics slot, parity or PR FIFO claims: none outside testing.md and releasing.md state the statics slot count; job names, if conditions, timeouts and required checks are unchanged.","inputs":[".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Only the fast-checks-statics concurrency group and its comment changed (three last-digit slots, odd/even names kept). Checked every citing page for statics slot, parity or PR FIFO claims: none outside testing.md and releasing.md state the statics slot count; job names, if conditions, timeouts and required checks are unchanged.","inputs":[".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Only the fast-checks-statics concurrency group and its comment changed (three last-digit slots, odd/even names kept). Checked every citing page for statics slot, parity or PR FIFO claims: none outside testing.md and releasing.md state the statics slot count; job names, if conditions, timeouts and required checks are unchanged.","inputs":[".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/development.md","note":"Only the fast-checks-statics concurrency group and its comment changed (three last-digit slots, odd/even names kept). Checked every citing page for statics slot, parity or PR FIFO claims: none outside testing.md and releasing.md state the statics slot count; job names, if conditions, timeouts and required checks are unchanged.","inputs":[".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Only the fast-checks-statics concurrency group and its comment changed (three last-digit slots, odd/even names kept). Checked every citing page for statics slot, parity or PR FIFO claims: none outside testing.md and releasing.md state the statics slot count; job names, if conditions, timeouts and required checks are unchanged.","inputs":[".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Only the fast-checks-statics concurrency group and its comment changed (three last-digit slots, odd/even names kept). Checked every citing page for statics slot, parity or PR FIFO claims: none outside testing.md and releasing.md state the statics slot count; job names, if conditions, timeouts and required checks are unchanged.","inputs":[".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Only the fast-checks-statics concurrency group and its comment changed (three last-digit slots, odd/even names kept). Checked every citing page for statics slot, parity or PR FIFO claims: none outside testing.md and releasing.md state the statics slot count; job names, if conditions, timeouts and required checks are unchanged.","inputs":[".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/releasing.md","note":"Only the fast-checks-statics concurrency group and its comment changed (three last-digit slots, odd/even names kept). Checked every citing page for statics slot, parity or PR FIFO claims: none outside testing.md and releasing.md state the statics slot count; job names, if conditions, timeouts and required checks are unchanged.","inputs":[".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Only the fast-checks-statics concurrency group and its comment changed (three last-digit slots, odd/even names kept). Checked every citing page for statics slot, parity or PR FIFO claims: none outside testing.md and releasing.md state the statics slot count; job names, if conditions, timeouts and required checks are unchanged.","inputs":[".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/testing.md","note":"Only the fast-checks-statics concurrency group and its comment changed (three last-digit slots, odd/even names kept). Checked every citing page for statics slot, parity or PR FIFO claims: none outside testing.md and releasing.md state the statics slot count; job names, if conditions, timeouts and required checks are unchanged.","inputs":[".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Only the fast-checks-statics concurrency group and its comment changed (three last-digit slots, odd/even names kept). Checked every citing page for statics slot, parity or PR FIFO claims: none outside testing.md and releasing.md state the statics slot count; job names, if conditions, timeouts and required checks are unchanged.","inputs":[".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Only the fast-checks-statics concurrency group and its comment changed (three last-digit slots, odd/even names kept). Checked every citing page for statics slot, parity or PR FIFO claims: none outside testing.md and releasing.md state the statics slot count; job names, if conditions, timeouts and required checks are unchanged.","inputs":[".github/workflows/ci.yml"]},
+
+    {"path":"docs/reference/interactive-workspace-performance.md","note":"Only the fast-checks-statics concurrency group and its comment changed (three last-digit slots, odd/even names kept). Checked every citing page for statics slot, parity or PR FIFO claims: none outside testing.md and releasing.md state the statics slot count; job names, if conditions, timeouts and required checks are unchanged.","inputs":[".github/workflows/ci.yml"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Only the fast-checks-statics concurrency group and its comment changed (three last-digit slots, odd/even names kept). Checked every citing page for statics slot, parity or PR FIFO claims: none outside testing.md and releasing.md state the statics slot count; job names, if conditions, timeouts and required checks are unchanged.","inputs":[".github/workflows/ci.yml"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Only the PR_SOURCE_FIFO_GROUPS exact-string pin for fast-checks-statics changed to the three-slot expression; the gate's checks and refusal paths are unchanged, and no citing page states the pinned statics expression.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Only the PR_SOURCE_FIFO_GROUPS exact-string pin for fast-checks-statics changed to the three-slot expression; the gate's checks and refusal paths are unchanged, and no citing page states the pinned statics expression.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Only the PR_SOURCE_FIFO_GROUPS exact-string pin for fast-checks-statics changed to the three-slot expression; the gate's checks and refusal paths are unchanged, and no citing page states the pinned statics expression.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Only the PR_SOURCE_FIFO_GROUPS exact-string pin for fast-checks-statics changed to the three-slot expression; the gate's checks and refusal paths are unchanged, and no citing page states the pinned statics expression.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Only the PR_SOURCE_FIFO_GROUPS exact-string pin for fast-checks-statics changed to the three-slot expression; the gate's checks and refusal paths are unchanged, and no citing page states the pinned statics expression.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Only the PR_SOURCE_FIFO_GROUPS exact-string pin for fast-checks-statics changed to the three-slot expression; the gate's checks and refusal paths are unchanged, and no citing page states the pinned statics expression.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/releasing.md","note":"Only the PR_SOURCE_FIFO_GROUPS exact-string pin for fast-checks-statics changed to the three-slot expression; the gate's checks and refusal paths are unchanged, and no citing page states the pinned statics expression.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Only the PR_SOURCE_FIFO_GROUPS exact-string pin for fast-checks-statics changed to the three-slot expression; the gate's checks and refusal paths are unchanged, and no citing page states the pinned statics expression.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"Only the PR_SOURCE_FIFO_GROUPS exact-string pin for fast-checks-statics changed to the three-slot expression; the gate's checks and refusal paths are unchanged, and no citing page states the pinned statics expression.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Only the PR_SOURCE_FIFO_GROUPS exact-string pin for fast-checks-statics changed to the three-slot expression; the gate's checks and refusal paths are unchanged, and no citing page states the pinned statics expression.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Only the PR_SOURCE_FIFO_GROUPS exact-string pin for fast-checks-statics changed to the three-slot expression; the gate's checks and refusal paths are unchanged, and no citing page states the pinned statics expression.","inputs":["scripts/actionlint-gate.mjs"]},
+
+    {"path":".veritas/README.md","note":"Ceiling tests now pin three literal statics groups, a literal digit-to-slot map (4/3/3), per-PR invariance across heads and matrix values, and that digits 0-6 keep their parity names; no citing page describes these test cases.","inputs":["scripts/__tests__/ci-fast-checks-job-graph.test.ts"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Ceiling tests now pin three literal statics groups, a literal digit-to-slot map (4/3/3), per-PR invariance across heads and matrix values, and that digits 0-6 keep their parity names; no citing page describes these test cases.","inputs":["scripts/__tests__/ci-fast-checks-job-graph.test.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Ceiling tests now pin three literal statics groups, a literal digit-to-slot map (4/3/3), per-PR invariance across heads and matrix values, and that digits 0-6 keep their parity names; no citing page describes these test cases.","inputs":["scripts/__tests__/ci-fast-checks-job-graph.test.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Ceiling tests now pin three literal statics groups, a literal digit-to-slot map (4/3/3), per-PR invariance across heads and matrix values, and that digits 0-6 keep their parity names; no citing page describes these test cases.","inputs":["scripts/__tests__/ci-fast-checks-job-graph.test.ts"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Ceiling tests now pin three literal statics groups, a literal digit-to-slot map (4/3/3), per-PR invariance across heads and matrix values, and that digits 0-6 keep their parity names; no citing page describes these test cases.","inputs":["scripts/__tests__/ci-fast-checks-job-graph.test.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Only the PR source FIFO paragraph changed (statics slot count, digit mapping, transition, nine slots); citing pages (AGENTS routes, operations context, code-quality) cite testing.md for other topics and state no statics slot count.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Only the PR source FIFO paragraph changed (statics slot count, digit mapping, transition, nine slots); citing pages (AGENTS routes, operations context, code-quality) cite testing.md for other topics and state no statics slot count.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Only the PR source FIFO paragraph changed (statics slot count, digit mapping, transition, nine slots); citing pages (AGENTS routes, operations context, code-quality) cite testing.md for other topics and state no statics slot count.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Only the PR source FIFO paragraph changed (statics slot count, digit mapping, transition, nine slots); citing pages (AGENTS routes, operations context, code-quality) cite testing.md for other topics and state no statics slot count.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Only the PR source FIFO paragraph changed (statics slot count, digit mapping, transition, nine slots); citing pages (AGENTS routes, operations context, code-quality) cite testing.md for other topics and state no statics slot count.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Only the PR source FIFO paragraph changed (statics slot count, digit mapping, transition, nine slots); citing pages (AGENTS routes, operations context, code-quality) cite testing.md for other topics and state no statics slot count.","inputs":["docs/guides/testing.md"]}
+  ]
+}
