@@ -299,6 +299,62 @@ describe('#3251: CLI service entry points that compose shared modules', () => {
   });
 });
 
+describe('#4935, #4999: a new Station home root and the dev-home seed', () => {
+  // The seed suite imports the registry, but `packages/shared/` escalates,
+  // which drops related discovery: both pull requests added a root and
+  // reached main with this suite failing on 2026-11-16.
+  const SEED = 'scripts/__tests__/seed-dev-home.test.ts';
+
+  // The hosted shard plan keeps every mapped target; the local profile drops
+  // them all past 32, and #4935's diff selects more than that.
+  test.each(['4935', '4999'])(
+    'the hosted plan for the #%s diff runs the seed suite despite escalating',
+    (incident) => {
+      const result = select(incidents[incident].paths, undefined, true);
+      expect(
+        result.selection.lanes.map((lane: { id: string }) => lane.id),
+      ).toContain('ci-fast');
+      expect(executed(result)).toContain(SEED);
+    },
+  );
+
+  test('a registry change alone runs it', () => {
+    const result = select([
+      'packages/shared/src/station-home-store-registry.ts',
+    ]);
+    expect(executed(result)).toContain(SEED);
+  });
+});
+
+describe('#4752: suites that boot the server and assert its exit status', () => {
+  // #4752 changed the startup-refused status from 1 to 78 and updated one of
+  // these suites; the other two failed first in main qualification. Each
+  // boots `src-server/index.ts` as a child process, outside the import graph.
+  const REFUSAL_SUITES = [
+    'src-server/__tests__/managed-approval-ceiling.process.test.ts',
+    'src-server/__tests__/managed-policy-startup.process.test.ts',
+    'src-server/__tests__/managed-remote-clients.process.test.ts',
+  ];
+
+  test('the hosted plan for the incident diff runs every suite that asserts the refusal status', () => {
+    expect(executed(select(incidents['4752'].paths, undefined, true))).toEqual(
+      expect.arrayContaining(REFUSAL_SUITES),
+    );
+  });
+
+  test.each([
+    'src-server/index.ts',
+    'packages/supervisor/src/protocol.ts',
+    'src-server/runtime/bootstrap/managed-policy-boot.ts',
+    'src-server/security/managed-approval-ceiling.ts',
+    'src-server/security/managed-network-exposure.ts',
+  ])('a change to %s alone runs them', (path) => {
+    expect(executed(select([path]))).toEqual(
+      expect.arrayContaining(REFUSAL_SUITES),
+    );
+  });
+});
+
 describe('#3114: security gates and the native platform boundary', () => {
   const AUTHORITY_OBSERVATION =
     'src-server/routes/system/__tests__/authority-observation.routes.test.ts';
