@@ -43,6 +43,7 @@ const [log, name, release, code] = process.argv.slice(2);
 appendFileSync(log, name + ' start\\n');
 const until = Date.now() + 20_000;
 while (release && !existsSync(release) && Date.now() < until)
+  // real-time: the child polls for the parent's release file, bounded by the 20 s deadline above.
   await new Promise((done) => setTimeout(done, 25));
 appendFileSync(log, name + ' end\\n');
 process.exit(Number(code || 0));
@@ -465,6 +466,7 @@ if (!(await holdHeavyCheckSlotForProcess(name))) process.exit(1);
 appendFileSync(log, name + ' start\\n');
 const until = Date.now() + 20_000;
 while (release && !existsSync(release) && Date.now() < until)
+  // real-time: the child polls for the parent's release file, bounded by the 20 s deadline above.
   await new Promise((done) => setTimeout(done, 25));
 appendFileSync(log, name + ' end\\n');
 `;
