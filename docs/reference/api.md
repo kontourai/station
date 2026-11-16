@@ -5970,8 +5970,12 @@ code when unplaced (`not-in-scope` after two polls in a row miss it,
 `holder-gone` once a found holder has left the scope, `holder-unavailable`
 when the host has no `setsid`(1) or `sleep`(1))
 (an unplaced holder means that scope's OOM count will be unknown after the
-engine dies). The session read's measured scope carries
-`lastOomKillAt` too. A save refuses a total below the slice's current usage
+engine dies). A scope also carries `lastOomKillProcesses`, its three
+largest processes when Station saw the latest kill, and, while its working
+set is at or above `STATION_WORKLOAD_PRESSURE_PERCENT` of its limit,
+`pressure` (`since`, `thresholdPercent`, `workingSetBytes`, `memoryMaxBytes`,
+`limitEvents` and `largestProcesses`). The session read's measured scope carries
+`lastOomKillAt`, `lastOomKillProcesses` and `pressure` too. A save refuses a total below the slice's current usage
 (400 `workload_settings_invalid`), because the total binds running engines at
 once.
 
