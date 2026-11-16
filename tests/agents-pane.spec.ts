@@ -448,9 +448,19 @@ test.describe('Agents pane child work (#2459)', () => {
     // Another chat's tool call: All lists it, under that chat.
     await tool('session-other', 'call-release', 'Build the release candidate');
 
-    await page.getByRole('button', { name: 'More dock actions' }).click();
-    await page.getByRole('menuitem', { name: /Background tasks/ }).click();
+    // Under load the dock menu can re-render while it opens (its row
+    // detaches mid-click); reopen it until the pane is on screen. The pane,
+    // not the menu, is what this journey checks.
     const pane = page.locator('.agents-pane');
+    await expect(async () => {
+      if (await pane.isVisible()) return;
+      await page.keyboard.press('Escape');
+      await page.getByRole('button', { name: 'More dock actions' }).click();
+      await page
+        .getByRole('menuitem', { name: /Background tasks/ })
+        .click({ timeout: 3_000 });
+      await expect(pane).toBeVisible({ timeout: 3_000 });
+    }).toPass({ timeout: 30_000 });
     // The side dock at the owner's pane width, whatever it opened at.
     const setPaneWidth = (px: number) =>
       page.locator('.agents-pane').evaluate((node, width) => {
