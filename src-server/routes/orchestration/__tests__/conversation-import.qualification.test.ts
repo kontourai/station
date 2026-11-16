@@ -778,7 +778,7 @@ describe('a conversation imported from a paired Station', () => {
     expect(forkedTo).toEqual([ids[0]]);
   });
 
-  test('a same-key retry that finds its saved import unreadable or deleted is not definite', async () => {
+  test('a same-key retry that finds its saved import unreadable is not definite; one deleted before it started is', async () => {
     const unreadable = await imported();
     const read = vi
       .spyOn(unreadable.service, 'readConversationForkContextSnapshot')
@@ -795,11 +795,16 @@ describe('a conversation imported from a paired Station', () => {
         authority,
       ),
     ).toBe(true);
+    // Deletion is possible only before its first turn and clears the saved
+    // context, so nothing remains to duplicate: a definite, coded answer.
     const afterDelete = await deleted.importConversation(importBody());
-    expect(afterDelete.status).toBeGreaterThanOrEqual(500);
-    expect(await afterDelete.json()).toMatchObject({
-      outcome: 'indeterminate',
+    expect(afterDelete.status).toBe(409);
+    const body = (await afterDelete.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({
+      success: false,
+      code: 'conversation_import_deleted',
     });
+    expect(body.outcome).toBeUndefined();
   });
 
   test('a row the sender itself imported keeps its origin and is quoted once', async () => {
@@ -857,5 +862,50 @@ describe('a conversation imported from a paired Station', () => {
     expect(
       await (await f.importConversation(importBody())).json(),
     ).toMatchObject({ success: false, code: 'paired_station_required' });
+  });
+
+  test('cleans control, escape, bidi and zero-width characters from origins, and refuses one blank after cleaning', async () => {
+    const f = await imported(
+      {
+        sender: {
+          deviceId: 'paired-device-1',
+          stationName: 'Studio\u202E Mac\u200B',
+        },
+      },
+      importBody({
+        messages: [
+          {
+            id: 'u1',
+            role: 'user',
+            text: 'hello',
+            importedFrom: '\u202ELap\u001b[31mtop\u0007\u2066\u0085',
+          },
+          { id: 'a1', role: 'assistant', text: 'answer' },
+        ],
+      }),
+    );
+    await f.execute('codex', FIRST_MESSAGE);
+    await vi.waitFor(() => expect(f.codex.turns).toHaveLength(1));
+    const rows = f.service
+      .readSessionMessages(f.conversationId, authority)
+      .filter((row) => row.metadata?.forkSourceMessageId);
+    expect(rows.map((row) => row.metadata?.importedFrom)).toEqual([
+      'Laptop, via Studio Mac',
+      'Studio Mac',
+    ]);
+    const blank = await f.importConversation(
+      importBody({
+        idempotencyKey: 'blank-origin',
+        messages: [
+          {
+            id: 'u1',
+            role: 'user',
+            text: 'hello',
+            importedFrom: '\u200B\u202E\u001b[0m ',
+          },
+        ],
+      }),
+    );
+    expect(blank.status).toBe(400);
   });
 });

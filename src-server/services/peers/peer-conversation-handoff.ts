@@ -11,6 +11,10 @@ import type { ConversationMessage } from '@kontourai/station-shared/conversation
 import { z } from 'zod';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import { conversationMessageText } from '../orchestration/conversation-transcript-seed.js';
+import {
+  boundLabelKeepingTail,
+  cleanLabel,
+} from '../orchestration/quoted-text.js';
 
 /**
  * Continuing a conversation on a paired Station (`PeerConversationHandoff*`
@@ -82,7 +86,14 @@ export function boundCarriedMessages(
       nonTextMessages += 1;
       return;
     }
-    const importedFrom = message.metadata?.importedFrom;
+    // Earlier hops are the sender's claim; any cut keeps the verified last.
+    const importedFrom =
+      typeof message.metadata?.importedFrom === 'string'
+        ? boundLabelKeepingTail(
+            cleanLabel(message.metadata.importedFrom),
+            (label) => [...label].length <= 120,
+          )
+        : undefined;
     projected.push({
       id:
         typeof message.id === 'string' && message.id.length <= 256
@@ -92,9 +103,7 @@ export function boundCarriedMessages(
               .digest('hex')}`,
       role: message.role as 'user' | 'assistant',
       text,
-      ...(typeof importedFrom === 'string' && importedFrom
-        ? { importedFrom: importedFrom.slice(0, 120) }
-        : {}),
+      ...(importedFrom && importedFrom !== '…' ? { importedFrom } : {}),
     });
   });
   const kept: ConversationImportMessageV1[] = [];
@@ -164,7 +173,15 @@ export const conversationImportRequestSchema: z.ZodType<ConversationImportReques
             .object({
               id: z.string().min(1).max(256),
               role: z.enum(['user', 'assistant']),
-              importedFrom: z.string().min(1).max(120).optional(),
+              importedFrom: z
+                .string()
+                .max(120)
+                .transform(cleanLabel)
+                .refine(
+                  (label) => label.length > 0,
+                  'An origin must name something once cleaned.',
+                )
+                .optional(),
               text: z
                 .string()
                 .min(1)

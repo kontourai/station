@@ -138,4 +138,19 @@ describe('the history a paired-Station handoff carries', () => {
       { id: 'own', role: 'user', text: 'mine' },
     ]);
   });
+
+  test('bounds a long origin chain by keeping its last, verified hop', () => {
+    const chain = `${'A'.repeat(115)}, via Studio Mac`;
+    const [message] = boundCarriedMessages([
+      {
+        id: 'chained',
+        role: 'user',
+        parts: [{ type: 'text', text: 'hello' }],
+        metadata: { importedFrom: chain },
+      } as ConversationMessage,
+    ]).messages;
+    expect(message!.importedFrom!.endsWith(', via Studio Mac')).toBe(true);
+    expect(message!.importedFrom!.startsWith('…')).toBe(true);
+    expect([...message!.importedFrom!].length).toBeLessThanOrEqual(120);
+  });
 });

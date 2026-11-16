@@ -1314,7 +1314,11 @@ on the host (`ui-bootstrap`):
   them the same way; context-compaction summaries read runtime events, which
   never include them. `read_conversation` returns `importedFrom` with each such
   row. A row the sender itself imported keeps its origin ("Laptop, via Studio
-  Mac"). Transcript views show them as ordinary user and assistant rows. Pairing a Station therefore
+  Mac"): only the last hop is verified (this Station's own pairing record);
+  earlier hops are the sender's claim. Origins are cleaned of control, escape,
+  bidi and zero-width characters, a blank one is refused, and any length bound
+  cuts the earlier hops, never the verified last one. Transcript views show
+  them as ordinary user and assistant rows. Pairing a Station therefore
   lets it author a conversation's earlier history on this one. Every other peer-family write (adding,
   replacing, enrolling or removing outbound peer credentials) stays
   operator-only.

@@ -151,4 +151,22 @@ describe('read_conversation bounds hold on the serialized bytes', () => {
       undefined,
     ]);
   });
+
+  test('bounds a long origin by keeping its last, verified hop', () => {
+    const page = readConversationPage(
+      [
+        {
+          id: 'chained',
+          role: 'user',
+          parts: [{ type: 'text', text: 'hi' }],
+          metadata: { importedFrom: `${'B'.repeat(400)}, via Studio Mac` },
+        },
+      ],
+      0,
+      1,
+    );
+    const origin = page.messages[0]!.importedFrom!;
+    expect(origin.endsWith(', via Studio Mac')).toBe(true);
+    expect(Buffer.byteLength(JSON.stringify(origin))).toBeLessThanOrEqual(256);
+  });
 });

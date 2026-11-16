@@ -1656,9 +1656,9 @@ export function createConversationRoutes(
         authority,
       );
       if (previous) {
-        // A key that names a different request is a definite refusal; an
-        // import this key saved but that is now unreadable or deleted is not
-        // (it existed, so a new key could make a second one).
+        // A key that names a different request, or an import deleted before
+        // it started, is a definite refusal; one saved but now unreadable is
+        // not (it may exist, so a new key could make a second one).
         if (
           previous.state !== 'deleted' &&
           !forkRequestMatches(previous, {
@@ -1671,13 +1671,22 @@ export function createConversationRoutes(
           throw new ConversationForkContextError(
             'The import key already names another request.',
           );
-        const saved =
-          previous.state === 'deleted'
-            ? undefined
-            : eventStore.readConversationForkContextSnapshot(
-                previous.targetConversationId,
-                authority,
-              );
+        // Deletion happens only before its first turn and clears the saved
+        // context: nothing remains to duplicate, so a new key is safe.
+        if (previous.state === 'deleted')
+          return c.json(
+            {
+              success: false,
+              code: 'conversation_import_deleted',
+              error:
+                'This continued conversation was deleted before it started. Start the handoff again.',
+            },
+            409,
+          );
+        const saved = eventStore.readConversationForkContextSnapshot(
+          previous.targetConversationId,
+          authority,
+        );
         if (!saved) return savedImportUnconfirmed();
         if (previous.state !== 'ready') {
           const finished = await afterSave(() =>
