@@ -551,7 +551,7 @@ describe('the start menus wire the Station choice to the start', () => {
     expect(setMenu).toHaveBeenCalledWith(null);
   });
 
-  test('an SSH Station whose connection is in error is greyed with a reason', () => {
+  test('an SSH Station whose last connection failed stays choosable, saying it reconnects', () => {
     reads.ssh = {
       isSuccess: true,
       isError: false,
@@ -564,9 +564,17 @@ describe('the start menus wire the Station choice to the start', () => {
     };
     const { start } = renderMenus(undefined, false, []);
     const row = screen.getByRole('button', { name: /build-box/ });
-    expect((row as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText('Connection failed')).toBeTruthy();
+    // Its error phase lasts until something reconnects it, and launching
+    // work there does: greying it out would leave no way to choose it.
+    expect((row as HTMLButtonElement).disabled).toBe(false);
+    expect(row.classList.contains('start-menu__station--unavailable')).toBe(
+      false,
+    );
+    expect(
+      screen.getByText('Disconnected · reconnects when used'),
+    ).toBeTruthy();
+    expect(row.getAttribute('aria-describedby')).toBeTruthy();
     fireEvent.click(row);
-    expect(start.setExecutionEnvironment).not.toHaveBeenCalled();
+    expect(start.setExecutionEnvironment).toHaveBeenCalled();
   });
 });
