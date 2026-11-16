@@ -401,7 +401,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         screen.getByRole('button', {
           name:
             host === 'desktop'
-              ? '1 need you outside this filter — show all work'
+              ? 'Show all work: 1 outside this filter need you'
               : '1 need you outside this filter · Show all',
         }),
       );
