@@ -181,7 +181,10 @@ disclosure on this channel.
   then see both copies of a tool; both run as this Session's caller, the bound
   ones at `bound`. Station cannot tell whether such a source carried the
   catalog: Codex's fork and resume responses do not list a thread's
-  `dynamicTools`. An adoption's first start carries no Agent tool servers.
+  `dynamicTools`. An adoption's first start carries no Agent tool servers,
+  so during that first Session any catalog copies inherited from the source
+  are refused; only its later resumes serve them. Saved browser and device
+  copies have no MCP twin, so they are refused without the pointer.
 - **Station Knowledge** stays on its header-token server.
 - **Instructions.** The orchestration text for such a Session is composed at
   `bound`, so it names the tools the Session is offered (for example
