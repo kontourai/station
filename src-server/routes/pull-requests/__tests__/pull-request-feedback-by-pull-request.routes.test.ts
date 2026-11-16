@@ -199,6 +199,24 @@ describe('pull request feedback by pull request', () => {
     });
   });
 
+  it('a send about an earlier push is not the last send: the head moved on', async () => {
+    const t = setup();
+    sent(t.store, OLD_HEAD, ['lint'], '2026-11-10T11:00:00.000Z');
+    t.store.writeObservation(PR_KEY, {
+      observation: observation(HEAD),
+      observedAt: '2026-11-10T12:00:00.000Z',
+      unchangedSince: '2026-11-10T12:00:00.000Z',
+      digest: 'd',
+    });
+    const { body } = await t.get();
+    expect(body.data).toMatchObject({
+      owner: { readable: true },
+      status: { state: 'watching' },
+    });
+    expect(body.data).not.toHaveProperty('last');
+    expect(body.data).not.toHaveProperty('sentChecks');
+  });
+
   it('a reader who may not read the owning chat gets exactly { readable: false }', async () => {
     const t = setup();
     t.state.reads.clear();

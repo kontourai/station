@@ -267,7 +267,10 @@ export interface PullRequestFeedbackByPullRequest {
     | { readable: true; conversationId: string; title: string };
   status?: PullRequestFeedbackStatus;
   settings?: PullRequestFeedbackSettings;
-  /** The newest delivery. */
+  /**
+   * The newest message sent about the head Station last observed. Absent
+   * when the newest send was about an earlier push.
+   */
   last?: PullRequestFeedbackDelivery;
   /** Failing checks the agent was sent on the head Station last observed. */
   sentChecks?: {

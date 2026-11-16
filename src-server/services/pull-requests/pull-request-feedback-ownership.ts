@@ -297,6 +297,8 @@ export class PullRequestFeedbackOwnership {
   byPullRequest(
     identity: PullRequestLinkIdentity,
     viewer: Pick<PullRequestFeedbackViewer, 'canRead'>,
+    /** false: without `sentChecks` (the Task board reads only the rest). */
+    options: { sentChecks?: boolean } = {},
   ): PullRequestFeedbackByPullRequest {
     const exact = identityOf(identity);
     const store = this.ports.readStore();
@@ -306,8 +308,12 @@ export class PullRequestFeedbackOwnership {
     const title = this.readableTitle(claim.conversationId, viewer);
     if (title === undefined)
       return { identity: exact, owner: { readable: false } };
-    const last = this.history(store, claim)[0];
-    const sentChecks = this.sentChecks(store, claim.prKey);
+    const head = store.observation(claim.prKey)?.observation.headSha;
+    const last = head ? this.lastSentOnHead(store, claim, head) : undefined;
+    const sentChecks =
+      options.sentChecks === false
+        ? undefined
+        : this.sentChecks(store, claim.prKey);
     return {
       identity: exact,
       owner: { readable: true, conversationId: claim.conversationId, title },
@@ -316,6 +322,33 @@ export class PullRequestFeedbackOwnership {
       ...(last ? { last } : {}),
       ...(sentChecks ? { sentChecks } : {}),
     };
+  }
+
+  /**
+   * The newest message sent about this head. A send about an earlier push
+   * says nothing about the one on screen, so it is not "the last send".
+   */
+  private lastSentOnHead(
+    store: PullRequestFeedbackStore,
+    claim: PullRequestFeedbackClaim,
+    headSha: string,
+  ): PullRequestFeedbackDelivery | undefined {
+    for (const batch of store.batchesForConversation(
+      claim.conversationId,
+      HISTORY_LIMIT * 2,
+    )) {
+      if (batch.state !== 'sent') continue;
+      const entry = batch.summary.find((part) => part.prKey === claim.prKey);
+      if (!entry || entry.headSha !== headSha) continue;
+      return {
+        id: batch.key,
+        at: batch.settledAt ?? batch.createdAt,
+        headSha,
+        categories: entry.categories,
+        state: 'sent',
+      };
+    }
+    return undefined;
   }
 
   /**
