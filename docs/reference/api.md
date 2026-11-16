@@ -899,7 +899,9 @@ readiness?, mergeability, sourceBranch, headSha?}` or `{state: "unavailable" |
 "unsupported", reason}`. A current fact carries `feedback: {state, headSha,
 at?}` (`watching`, `waiting-on-checks`, `sent`, `fixing` or `paused`) only
 while the `pull-request-agent-feedback` preview is on and the requester may
-read the chat that gets that pull request's feedback. `readiness` is `clean`, `blocked`, `checks-not-passing`,
+read the chat that gets that pull request's feedback. It is per Task:
+`fixing` only when that chat is the Task's own run and its open turn is a
+failing-checks feedback message. `readiness` is `clean`, `blocked`, `checks-not-passing`,
 `conflicting`, `behind`, `draft` or `unknown`; absent means the provider did
 not report it. On GitHub `checks-not-passing` is `UNSTABLE`: some checks are
 failing or still pending, none of them required. A failing required check is
@@ -1529,8 +1531,9 @@ hosted Station withdraws:
   request's switches. A pull request another chat owns answers 409
   `pull_request_feedback_owned_elsewhere` with `details.owner`, whose
   `conversationId` and `title` are present only when the requester may read
-  that chat (the GET's `owner` follows the same rule); `move: true` takes
-  it. A pull request not linked or kept on this chat answers 409
+  that chat (the GET's `owner` follows the same rule, and to such a
+  requester the GET also reports that pull request's switches off and status
+  `off`); `move: true` takes it. A pull request not linked or kept on this chat answers 409
   `pull_request_not_linked`.
 - `DELETE` on the same path, body `{ identity }`, turns every switch off.
 - `POST …/send-again`, body `{ identity }`, lifts a pause for one round; 409
@@ -1540,8 +1543,9 @@ hosted Station withdraws:
   (`PullRequestFeedbackByPullRequest`): `owner` is `null` when no chat gets
   it, `{ readable: false }` (and nothing else) when the requester may not
   read the owning chat, else `{ readable: true, conversationId, title }` with
-  `status`, `settings`, the newest delivery (`last`) and `sentChecks`, the
-  failing checks sent about the head Station last observed. 400 for a
+  `status`, `settings`, the newest message sent about the head Station last
+  observed (`last`, absent when the newest send was about an earlier push)
+  and `sentChecks`, the failing checks sent about that head. 400 for a
   malformed identity.
 
 Reads need the chat's read access (`orchestration:read`). Writes need the
