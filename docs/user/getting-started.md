@@ -775,7 +775,7 @@ when the conversation's work is done, or **Reopen** to bring it back. Closed
 Tasks follow their existing close-on-merge setting; standalone linked PRs do
 not settle a conversation automatically. Settlement syncs across your devices
 and is separate from dismissal or deletion. **Working** holds running and
-monitoring chats; **Needs attention** takes priority whenever input is owed.
+monitoring chats and armed check-backs, which show **Waiting**; **Needs attention** takes priority whenever input is owed.
 Drafts appear as a pencil on the chat row in its current status. Collapse a
 shelf to move it below expanded work. Shelf menus let you move sections up or
 down, with that order saved on this device. **Settled** is last by default.
@@ -1059,7 +1059,15 @@ workspace changes, or you reconnect or re-pair with different access, Station
 refuses to send the stale reference until you remove it or return to its
 original scope.
 
-Use the conversation-reference button beside the composer actions to choose an
+The composer's **+** menu groups what you can do from the message box: add to
+the message (**Reference chat…**, **Commands**), work in the chat's project
+(**Open terminal** opens a shell in the bottom dock; **Open in Coding** moves
+the chat into the project's coding layout; **Delegate…**), and change the
+conversation (**Continue with another agent…**, **Reset agent context…**). An
+unavailable row says why. **Changed files** and **Task context** are in the
+chat header's **⋯** menu.
+
+Choose **+** then **Reference chat…** to choose an
 earlier conversation. The picker searches the 25 most recent conversations
 returned for your access and shows up to eight matches; it does not search
 older history. You can also drag a result into the composer, or drag a
@@ -1092,8 +1100,8 @@ shows the message with those values applied. **Start chat** opens a new chat
 and sends that message. This does not attach the skill to the Agent or install
 its dependencies; the Agent's configured tools and permissions still apply.
 
-To add skills, choose **Browse Registry Skills** and inspect the available
-catalog before installing. **Import .md** accepts standalone Markdown skill
+To add skills, choose **Browse Registry Skills** (**Browse Registry** while the
+library is empty) and inspect the available catalog before installing. **Import .md** accepts standalone Markdown skill
 files and reports the outcome of each file. Open an imported skill from its
 result to review and use it. Import does not copy a repository's
 scripts or supporting files. Load plugin packages through Registry.

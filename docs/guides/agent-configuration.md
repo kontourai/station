@@ -52,7 +52,8 @@ proposal in the Board. **Build with chat** offers context in a new projectless
 chat without sending it; see [Personal Boards](../user/personal-boards.md).
 
 Station Control publishes native MCP titles, behavioral annotations and
-`ai.kontour/tool-group` hints. These catalog hints do not grant access or change
+`ai.kontour/tool-group` hints. Each tool's group is stated, not inferred from
+its name; device and browser tools are grouped as Devices and Browser. These catalog hints do not grant access or change
 approval rules. MCP has no standard category field; grouping does not require
 separate servers.
 
@@ -146,8 +147,10 @@ the harness configuration; existing Agents keep their previous behavior until
 you change this switch. Turning it off replaces the configured MCP list; the harness keeps its built-in tools. Claude
 also offers **Harness default**, **On demand**, and **Always available** loading.
 On demand uses Claude's native tool search and requires a compatible model and
-endpoint; it is not a Station search proxy. Other engines keep their own loading
-behavior.
+endpoint; it is not a Station search proxy. Only On demand also adds Station's
+line telling Claude to load the Station tools it names with ToolSearch; under
+Harness default, Claude Code decides whether to defer tools. Other engines keep
+their own loading behavior.
 
 `tools` selects MCP connections and exposed tools. Station applies its runtime
 filter; Claude applies SDK exclusions plus a pre-tool refusal, and Codex receives

@@ -3683,6 +3683,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     },
     {
       method: 'GET',
+      path: '/api/orchestration/session-reads/:sessionId/turn-directory',
+    },
+    {
+      method: 'GET',
       path: '/api/orchestration/session-reads/:sessionId/wait',
     },
     // #3413 part B work claims. The three POST leaves are agent-only at the

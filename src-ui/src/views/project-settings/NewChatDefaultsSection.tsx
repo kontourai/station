@@ -99,7 +99,6 @@ export function NewChatDefaultsSection({
     <PageSection
       id="section-new-chat"
       className="project-settings__section"
-      eyebrow="New chat default"
       title="New chats"
       description="Start from project defaults or your last chat. Agent approval settings take precedence; composer choices override defaults."
     >
