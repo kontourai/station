@@ -198,8 +198,8 @@ export function createOrchestrationRequestPrincipalResolver(
     // #2377 slice B (decision 2): a station-control tool call acts for the
     // owner Station recorded for its session, at every assurance level, not
     // for the operator the internal token's home-possession used to name. A
-    // caller-less internal request (a pooled child, a bare copy of the token)
-    // acts for no one. Station's own server code, and a composition with no
+    // caller-less internal request (a bare copy of the token; the guard
+    // refuses it first since #2377 slice D) acts for no one. Station's own server code, and a composition with no
     // authority guard, keep the internal principal's resolution below.
     if (runtimePrincipal?.kind === 'internal') {
       const agent = stationControlRequestAuthority(c.req.raw);

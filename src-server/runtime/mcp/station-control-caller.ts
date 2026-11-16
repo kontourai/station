@@ -363,7 +363,8 @@ export function resolveStationControlCallerForRequest(
  *
  * Use {@link resolveStationControlCallerForRequest} for WHO: an
  * agent-originated request with a `null` caller is an agent Station cannot
- * attribute to a session (a pooled child), and must be treated as such.
+ * attribute to a session (a stray child or a copied token), and must be
+ * treated as such.
  */
 export function isAgentOriginatedRequest(request: Request): boolean {
   return (
