@@ -2439,7 +2439,9 @@ describe.skipIf(!chromiumIsInstalled(resolve('.')))(
               ),
             ].filter(shown).length,
             browserLines: lines(
-              bar.querySelector('.coding-workbench__open-browser')!,
+              [...bar.querySelectorAll('button')].find(
+                (button) => button.textContent === 'Open Browser',
+              )!,
             ),
             // The parent yields first: the child keeps more of the bar.
             childReadable:
