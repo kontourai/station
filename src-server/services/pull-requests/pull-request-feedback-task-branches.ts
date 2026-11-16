@@ -36,7 +36,7 @@ import type { FeedbackSessionState } from './pull-request-feedback-delivery.js';
 import type { PullRequestFeedbackStore } from './pull-request-feedback-store.js';
 
 const MINUTE = 60_000;
-export const MAX_READS_PER_TICK = 3;
+const MAX_READS_PER_TICK = 3;
 /** After the lead's turn ends. */
 const NUDGED_INTERVAL_MS = 10 * MINUTE;
 /** The sweep, for a Task whose lead has not finished a turn since. */

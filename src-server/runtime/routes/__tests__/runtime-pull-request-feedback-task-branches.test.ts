@@ -14,7 +14,6 @@ import {
   pullRequestFeedbackKey,
 } from '@kontourai/station-contracts/pull-request-feedback';
 import type { IPullRequestProvider } from '@kontourai/station-contracts/pull-request-provider';
-import { Hono } from 'hono';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
@@ -22,7 +21,6 @@ import {
   createInboxHarness,
   OWNER,
 } from '../../../routes/orchestration/__tests__/helpers/thread-inbox-harness.js';
-import { createPullRequestFeedbackRoutes } from '../../../routes/pull-requests/pull-request-feedback.js';
 import {
   PullRequestFeedbackStore,
   pullRequestFeedbackStorePath,
