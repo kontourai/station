@@ -24,14 +24,19 @@ status/resync action stay above the box when present.
 Run setup is a quiet ghost pill with overlapping Agent and engine marks, a
 secondary-weight model label, and the shared caret. The Agent mark names the
 Agent, so the label spends its text on the model; without an Agent mark it reads
-Agent · model and the Agent name truncates first. A requested reasoning effort
+Agent · model and the Agent name truncates first, but never below about eight
+characters: where that and the model do not both fit, the name is left out of the
+label rather than cut to a stub (the accessible name keeps it). A requested reasoning effort
 follows the model ("Opus · High") and truncates before it; with no effort
 requested the engine default applies and no level is named. Safety warnings stay
 on the marks, and the open panel repeats the mark on the choice that raised it. When the
-Agent now points at another engine, the trigger adds "· Agent moved" after the label at
-every width; the label gives way before it (an Agent name shown for want of a mark is
-dropped from the label rather than cut to a stub), and in narrow composers the label hides,
-keeping marks, that hint and caret. The trigger's accessible name ends with "Agent moved"
+Agent now points at another engine (and its Session has not ended; see 3.1), the trigger
+adds "· Agent moved" at every width, 8px after the label and with a plain space after
+the dot. The label gives way before it, and in narrow composers the label hides,
+keeping marks, the hint without its dot, and caret. Showing the hint on the trigger at
+every width is a decision of #4971: before #4897 a wide composer said "Agent now on …"
+in the Engine chip's caption and a narrow one "Agent moved", and from #4897 the closed
+row said neither. The trigger's accessible name ends with "Agent moved"
 and its description gives the full sentence. On phones, More draft options groups Saved drafts
 and Clear message to preserve the toolbar targets. The full summary remains in the accessible name
 and hover title, and the touch target stays at least 44px. The existing setup

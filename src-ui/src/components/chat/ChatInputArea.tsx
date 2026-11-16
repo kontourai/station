@@ -1164,9 +1164,9 @@ export function ChatInputArea({
       {/* Destination notices and conversation status stay above the draft. */}
       <div className="chat-input__meta">
         {agentEngineMove?.nextTurn && (
-          // A narrow composer's chip cannot hold a destination name, so the
-          // one fact that changes what the next send does gets its own line
-          // there; a wide composer says it in the chip caption.
+          // The closed Run setup trigger has no room for a destination name,
+          // so the one fact that changes what the next send does gets its own
+          // line at every width (the open panel's caption repeats it).
           <p className="chat-input__next-turn-notice">
             Next turn starts on{' '}
             <span className="chat-input__next-turn-destination">

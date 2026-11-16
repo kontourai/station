@@ -498,7 +498,9 @@ show what **Start** will use:
   add a warning glyph to the combined button; open Run setup to see the same
   glyph on the choice that raised it. When the conversation's Agent now points
   at another engine, the button adds **Agent moved**; Run setup's Engine &
-  model choice names where.
+  model choice names where. If the conversation's engine session has already
+  ended, a **Next turn starts on …** line above the message box says where the
+  next turn goes instead.
   In the model picker, while a reply you sent is still running, the other
   engines and **Use Agent defaults** are shown but unavailable until it
   finishes. When Station reports that the conversation can't be changed right

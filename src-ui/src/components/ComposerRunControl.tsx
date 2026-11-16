@@ -146,9 +146,7 @@ export function ComposerRunControl({
               <span className="composer-run-control__label">
                 {/* The Agent's own mark names it; the scarce text goes to the
                     Model. The accessible name keeps the full label. */}
-                {/* Beside a notice the Agent name would be cut to a stub, so
-                    it gives way entirely; the accessible name keeps it. */}
-                {!icon && !notice && (
+                {!icon && (
                   <span className="composer-run-control__agent">
                     {label.slice(0, separator)}
                     {' · '}
@@ -190,7 +188,10 @@ export function ComposerRunControl({
           notice={
             notice && (
               <span className="composer-run-control__notice" aria-hidden="true">
-                {'· '}
+                {/* The separator collapses with the label it follows. */}
+                <span className="composer-run-control__notice-separator">
+                  {'· '}
+                </span>
                 {notice}
               </span>
             )

@@ -47,8 +47,14 @@ const controls: Plugin = {
   },
 };
 
-/** A phone composer with four chips and long engine names. */
-function composer(nextTurn: boolean, model = 'claude-sonnet-4-5-20250929') {
+/** A phone composer whose Agent (no mark) now points at another engine. */
+function composer(
+  nextTurn: boolean,
+  {
+    model = 'claude-sonnet-4-5-20250929',
+    to = 'OpenCode Zen gateway (work)',
+  } = {},
+) {
   return `
     import React, {useRef} from 'react';
     import {createRoot} from 'react-dom/client';
@@ -60,7 +66,7 @@ function composer(nextTurn: boolean, model = 'claude-sonnet-4-5-20250929') {
         <ChatInputArea agentSlug="reviewer" sessionId="fixture" input="" textareaRef={textareaRef} attachments={[]} disabled={false} turnInFlight={false} modelSupportsAttachments={false} fontSize={14} dockHeight={700} apiBase="http://station.test" canModelSelect={true} availableModels={[]} modelQuery={null} commandQuery={null} slashCommands={[]}
           agentLabel="Release reviewer (work)" onOpenAgentHandoff={noop}
           executionEngineLabel="Claude Code (work)"
-          agentEngineMove={{to:'OpenCode Zen gateway (work)', nextTurn:${nextTurn}}}
+          agentEngineMove={{to:'${to}', nextTurn:${nextTurn}}}
           currentModel="${model}"
           executionMode="external"
           acpSessionModes={[{id:'build',name:'build'},{id:'plan',name:'plan'}]} acpCurrentModeId="build" onAcpSessionModeChange={noop}
@@ -110,7 +116,7 @@ function unclipped(selector: string) {
   };
 }
 
-test('a phone composer shows the next-turn destination in full beside four chips', async () => {
+test('a phone composer shows the next-turn destination in full above its Run setup trigger', async () => {
   const { browser, page, errors } = await scrollBrowserFixture(composer(true), [
     controls,
   ]);
@@ -149,47 +155,111 @@ test('a phone composer shows the next-turn destination in full beside four chips
   }
 });
 
-test('a phone composer keeps "Agent moved" visible ahead of a long engine name', async () => {
-  const { browser, page, errors } = await scrollBrowserFixture(
+/** Mount `composer`, with the app's design tokens, until Run setup is ready. */
+async function mounted(source: string) {
+  const fixture = await scrollBrowserFixture(source, [controls]);
+  // Design tokens: the row and the Run setup sheet at their real widths.
+  await fixture.page.addStyleTag({
+    content: resolveCssImports(resolve('src-ui/src/index.css')),
+  });
+  await fixture.page.waitForSelector('textarea');
+  await fixture.page.waitForFunction(
+    () =>
+      document.querySelectorAll('.chat-input__settings > .composer-run-control')
+        .length === 1 &&
+      document.querySelectorAll('.composer-run-panel__choices > *').length >= 4,
+  );
+  return fixture;
+}
+
+/** The closed trigger's label, Agent name and hint as painted. */
+function closedTrigger() {
+  const trigger = document.querySelector('.composer-run-control')!;
+  const label = trigger.querySelector('.chat-input__chip-stack')!;
+  const box = label.getBoundingClientRect();
+  const agent = trigger.querySelector('.composer-run-control__agent');
+  const agentBox = agent?.getBoundingClientRect();
+  const notice = trigger.querySelector('.composer-run-control__notice')!;
+  // What a person reads: each of the hint's parts that has a painted box.
+  let painted = '';
+  for (const node of notice.childNodes)
+    if (
+      node.nodeType === Node.TEXT_NODE ||
+      (node as Element).getBoundingClientRect().width > 0
+    )
+      painted += node.textContent;
+  return {
+    labelWidth: box.width,
+    agent:
+      agentBox &&
+      agentBox.width > 0 &&
+      agentBox.top < box.bottom &&
+      agentBox.bottom > box.top &&
+      agentBox.left < box.right
+        ? { width: agentBox.width }
+        : null,
+    painted,
+  };
+}
+
+test('a phone composer\'s Run setup trigger keeps "Agent moved" whole while its label gives way', async () => {
+  const { browser, page, errors } = await mounted(
     // A model id too long for the row, so the label has to give way.
-    composer(false, 'opencode-zen-gateway-reasoning-model-preview-2026-11'),
-    [controls],
+    composer(false, {
+      model: 'opencode-zen-gateway-reasoning-model-preview-2026-11',
+    }),
   );
   try {
-    // Design tokens: the row and the Run setup sheet at their real widths.
-    await page.addStyleTag({
-      content: resolveCssImports(resolve('src-ui/src/index.css')),
-    });
-    await page.waitForSelector('textarea');
-    await page.waitForFunction(
-      () =>
-        document.querySelectorAll(
-          '.chat-input__settings > .composer-run-control',
-        ).length === 1 &&
-        document.querySelectorAll('.composer-run-panel__choices > *').length >=
-          4,
-    );
     expect(errors).toEqual([]);
     expect(await page.locator('.chat-input__next-turn-notice').count()).toBe(0);
-    // With Run setup closed, its trigger on the row says the Agent moved.
-    const hint = await page.evaluate(
-      unclipped,
-      '.composer-run-control__notice',
-    );
-    expect(hint).toMatchObject({ found: true, text: '· Agent moved' });
-    expect(hint.display).not.toBe('none');
-    expect(hint.width).toBeGreaterThan(0);
-    expect(hint.ownOverflow).toBeLessThanOrEqual(0);
-    expect(hint).toMatchObject({ inViewport: true, clippedBy: null });
-    // Beside the hint, an Agent with no mark gives up its name entirely
-    // instead of leaving a one-letter stub, so the model stays readable.
-    expect(await page.locator('.composer-run-control__agent').count()).toBe(0);
-    const summary = await page.evaluate(
-      unclipped,
-      '.composer-run-control__model',
-    );
-    expect(summary.width).toBeGreaterThan(48);
-    expect(summary.ownOverflow).toBeGreaterThan(0);
+    // With Run setup closed, its trigger says the Agent moved, at every phone
+    // width: where the label collapses to marks (320, 360) and where it shows.
+    for (const width of [320, 360, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      const hint = await page.evaluate(
+        unclipped,
+        '.composer-run-control__notice',
+      );
+      expect(hint, `${width}px`).toMatchObject({
+        found: true,
+        text: '· Agent moved',
+      });
+      expect(hint.display, `${width}px`).not.toBe('none');
+      expect(hint.width, `${width}px`).toBeGreaterThan(0);
+      expect(hint.ownOverflow, `${width}px`).toBeLessThanOrEqual(0);
+      expect(hint, `${width}px`).toMatchObject({
+        inViewport: true,
+        clippedBy: null,
+      });
+      const row = await page.evaluate(closedTrigger);
+      if (width < 390) {
+        // The label has collapsed, so the hint follows the marks alone and
+        // does not open with a separator.
+        expect(row.labelWidth, `${width}px`).toBe(0);
+        expect(row.painted, `${width}px`).toBe('Agent moved');
+      } else {
+        expect(row.labelWidth, `${width}px`).toBeGreaterThan(0);
+        expect(row.painted, `${width}px`).toBe('· Agent moved');
+        // The label is what gave way: the model reads ahead of an ellipsis.
+        const model = await page.evaluate(
+          unclipped,
+          '.composer-run-control__model',
+        );
+        expect(model.width).toBeGreaterThan(48);
+        expect(model.ownOverflow).toBeGreaterThan(0);
+      }
+      // An Agent with no mark shows its name only where it can be read:
+      // never a one-letter stub.
+      if (row.agent)
+        expect(row.agent.width, `${width}px`).toBeGreaterThanOrEqual(40);
+    }
+    // A wide composer keeps the Agent name beside the hint.
+    await page.setViewportSize({ width: 1280, height: 844 });
+    const wide = await page.evaluate(closedTrigger);
+    expect(wide.painted).toBe('· Agent moved');
+    expect(wide.agent?.width).toBeGreaterThanOrEqual(80);
+    await page.setViewportSize({ width: 390, height: 844 });
+
     // Not by position alone: the trigger's name and description say it too.
     const trigger = page.getByRole('button', { name: /; Agent moved$/ });
     expect(await trigger.count()).toBe(1);
@@ -204,7 +274,7 @@ test('a phone composer keeps "Agent moved" visible ahead of a long engine name',
     );
 
     // Opened, the sheet holds the four real controls and names where the
-    // Agent moved, with nothing wider than the sheet.
+    // Agent moved, with nothing wider than the sheet and nothing clipped.
     await trigger.click();
     const sheet = page.getByRole('dialog', { name: 'Run setup' });
     await sheet.waitFor();
@@ -215,56 +285,102 @@ test('a phone composer keeps "Agent moved" visible ahead of a long engine name',
       /^Approval: /,
     ])
       expect(await sheet.getByRole('button', { name }).isVisible()).toBe(true);
-    const move = await page.evaluate(
-      unclipped,
-      '.composer-run-panel .chat-input__engine-moved',
-    );
-    expect(move).toMatchObject({
-      found: true,
-      text: 'Agent now on OpenCode Zen gateway (work)',
-      inViewport: true,
-      clippedBy: null,
-    });
-    expect(move.ownOverflow).toBeLessThanOrEqual(0);
-    // It stands on its own line below the engine name, and that line starts
-    // with words, not a dangling separator.
-    const lines = await page.evaluate(() => {
-      const caption = document.querySelector(
-        '.composer-run-panel .chat-input__chip-caption:has(.chat-input__engine-moved)',
-      )!;
-      const engine = caption.querySelector('.chat-input__chip-caption-engine')!;
-      const moved = caption.querySelector('.chat-input__engine-moved')!;
-      // A generated separator counts too: `content` reads back quoted.
-      const before = getComputedStyle(moved, '::before').content;
-      const style = before.replace(/^"(.*)"$/, '$1');
-      return {
-        below:
-          moved.getBoundingClientRect().top >=
-          engine.getBoundingClientRect().bottom - 0.5,
-        rendered:
-          (style === 'none' || style === 'normal' ? '' : style) +
-          (moved as HTMLElement).innerText,
-      };
-    });
-    expect(lines.below).toBe(true);
-    expect(lines.rendered.trimStart()).not.toMatch(/^[·•|-]/);
-    const outside = await page.evaluate(() => {
-      const panel = document.querySelector('.composer-run-panel')!;
-      const box = panel.getBoundingClientRect();
-      return [
-        ...(box.left < 0 || box.right > window.innerWidth ? [panel] : []),
-        ...[...panel.querySelectorAll('*')].filter((element) => {
-          const rect = element.getBoundingClientRect();
-          return (
-            rect.width > 0 &&
-            (rect.left < box.left - 0.5 || rect.right > box.right + 0.5)
-          );
-        }),
-      ].map((element) => element.className);
-    });
-    expect(outside).toEqual([]);
+    for (const width of [390, 320]) {
+      await page.setViewportSize({ width, height: 844 });
+      const move = await page.evaluate(
+        unclipped,
+        '.composer-run-panel .chat-input__engine-moved',
+      );
+      expect(move, `${width}px`).toMatchObject({
+        found: true,
+        text: 'Agent now on OpenCode Zen gateway (work)',
+        inViewport: true,
+        clippedBy: null,
+      });
+      expect(move.ownOverflow, `${width}px`).toBeLessThanOrEqual(0);
+      expect(await page.evaluate(moveLine), `${width}px`).toEqual({
+        below: true,
+        separator: false,
+      });
+      expect(await page.evaluate(sheetFaults), `${width}px`).toEqual([]);
+    }
     expect(errors).toEqual([]);
   } finally {
     await browser.close();
   }
 });
+
+test('the Run setup sheet puts even a short move on its own line', async () => {
+  // "Agent now on Codex" would fit beside the engine name.
+  const { browser, page, errors } = await mounted(
+    composer(false, { to: 'Codex' }),
+  );
+  try {
+    await page.getByTestId('run-setup-trigger').click();
+    await page.getByRole('dialog', { name: 'Run setup' }).waitFor();
+    expect(
+      await page
+        .locator('.composer-run-panel .chat-input__engine-moved')
+        .innerText(),
+    ).toMatch(/^Agent now on Codex$/i);
+    expect(await page.evaluate(moveLine)).toEqual({
+      below: true,
+      separator: false,
+    });
+    expect(await page.evaluate(sheetFaults)).toEqual([]);
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});
+
+/** Whether the sheet's move line sits below the engine name, and whether its
+ * painted text (a generated `::before` included) opens with a separator. */
+function moveLine() {
+  const caption = document.querySelector(
+    '.composer-run-panel .chat-input__chip-caption:has(.chat-input__engine-moved)',
+  )!;
+  const engine = caption.querySelector('.chat-input__chip-caption-engine')!;
+  const moved = caption.querySelector('.chat-input__engine-moved')!;
+  // `content` reads back quoted.
+  const before = getComputedStyle(moved, '::before').content;
+  const generated =
+    before === 'none' || before === 'normal'
+      ? ''
+      : before.replace(/^"(.*)"$/, '$1');
+  const text = (generated + (moved as HTMLElement).innerText).trimStart();
+  return {
+    below:
+      moved.getBoundingClientRect().top >=
+      engine.getBoundingClientRect().bottom - 0.5,
+    separator: /^[·•|-]/.test(text),
+  };
+}
+
+/** Anything in the sheet painted outside it, and any choice whose text
+ * reaches into its border. */
+function sheetFaults() {
+  const panel = document.querySelector('.composer-run-panel')!;
+  const box = panel.getBoundingClientRect();
+  const faults: string[] = [];
+  if (box.left < 0 || box.right > window.innerWidth) faults.push('sheet');
+  for (const element of panel.querySelectorAll('*')) {
+    const rect = element.getBoundingClientRect();
+    if (
+      rect.width > 0 &&
+      (rect.left < box.left - 0.5 || rect.right > box.right + 0.5)
+    )
+      faults.push(`wider: ${element.className}`);
+  }
+  for (const choice of panel.querySelectorAll('.composer-choice')) {
+    const outer = choice.getBoundingClientRect();
+    const top = outer.top + choice.clientTop;
+    const bottom = top + choice.clientHeight;
+    const text = choice
+      .querySelector('.chat-input__chip-stack')!
+      .getBoundingClientRect();
+    if (text.top < top + 1 || text.bottom > bottom - 1)
+      faults.push(`clipped: ${choice.className}`);
+  }
+  return faults;
+}
