@@ -9590,6 +9590,7 @@ describe('ClaudeAdapter', () => {
         // A supplied title skips the engine's own session-naming request.
         title: 'Station conversation thread-no-system-prompt-baseline',
         includePartialMessages: true,
+        includeHookEvents: true,
         // station#1877: asks the SDK to summarise what a subagent is doing.
         // task_progress.summary is documented as carrying the model-generated
         // status only when this is on, so without it a background subagent
@@ -9614,7 +9615,10 @@ describe('ClaudeAdapter', () => {
         settings: undefined,
         // #4828: every session marks the conversation on a native web read;
         // with no Agent there is no PreToolUse policy.
-        hooks: { PostToolUse: [{ hooks: [expect.any(Function)] }] },
+        hooks: {
+          Stop: [{ hooks: [expect.any(Function)] }],
+          PostToolUse: [{ hooks: [expect.any(Function)] }],
+        },
       });
     });
 

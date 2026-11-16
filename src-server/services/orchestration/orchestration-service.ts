@@ -440,6 +440,10 @@ import {
   type ExecutionWorkspaceBinding,
   readExecutionWorkspaceBinding,
 } from './execution-workspace-binding.js';
+import {
+  FinishedSessionParking,
+  finishedSessionParkAfterMs,
+} from './finished-session-parking.js';
 import { FlowPolicySidecar } from './flow-policy-sidecar.js';
 import {
   type ForegroundInvocationAdmission,
@@ -1088,6 +1092,14 @@ interface OrchestrationServiceOptions {
    * {@link IDLE_SESSION_PARK_AFTER_MS}.
    */
   idleSessionParkAfterMs?: number;
+  /**
+   * How soon after an unattended turn (a delegated child's, an Automation
+   * run's, a Task wake's) settles its at-rest engine is parked, when nothing
+   * has happened on the Session since. `0` leaves such Sessions to the idle
+   * park; `idleSessionParkAfterMs: 0` turns both off. Default
+   * `FINISHED_SESSION_PARK_AFTER_MS` (finished-session-parking.ts).
+   */
+  finishedSessionParkAfterMs?: number;
   /**
    * The `chat-host-images` Feature Preview: host images a settled reply
    * names are copied into the attachment store, and agents are told how to
@@ -2747,6 +2759,8 @@ export class OrchestrationService {
    */
   private readonly lastEngineActivityAt = new Map<string, number>();
   private idleSweepTimer: ReturnType<typeof setInterval> | undefined;
+  /** Parks a finished-by-design Session soon after its unattended turn. */
+  private readonly finishedSessionParking: FinishedSessionParking;
   /**
    * archive#1745: whether this process's startup attachment pass has FINISHED
    * — not whether it succeeded.
@@ -2845,6 +2859,21 @@ export class OrchestrationService {
 
   constructor(private readonly options: OrchestrationServiceOptions) {
     this.nativeForkStoredReadVerifier = options.nativeForkStoredReadVerifier;
+    this.finishedSessionParking = new FinishedSessionParking({
+      afterMs: finishedSessionParkAfterMs({
+        idleSessionParkAfterMs:
+          options.idleSessionParkAfterMs ?? IDLE_SESSION_PARK_AFTER_MS,
+        finishedSessionParkAfterMs: options.finishedSessionParkAfterMs,
+      }),
+      latestTurnDispatchOrigin: (threadId) =>
+        options.eventStore?.latestSentTurnDispatchOrigin(threadId),
+      hasPersonTurn: (threadId) =>
+        options.eventStore?.hasPersonTurn(threadId) ?? true,
+      isDelegatedChild: (threadId) =>
+        this.sessionDispatchFacts(threadId).delegatedChild,
+      park: (threadId, afterMs) => this.parkFinishedSession(threadId, afterMs),
+      logger: options.logger,
+    });
     // All delete paths converge here, including Draft discard and attached alias cleanup.
     this.stopSessionDeletionNotifications = options.eventStore?.observeCommits({
       threadDeleting: (threadId) => {
@@ -4644,6 +4673,7 @@ export class OrchestrationService {
     this.eventConsumptionStopped = true;
     if (this.idleSweepTimer) clearInterval(this.idleSweepTimer);
     this.idleSweepTimer = undefined;
+    this.finishedSessionParking.dispose();
     this.adapterRegistryUnsubscribe?.();
     this.adapterRegistryUnsubscribe = undefined;
     this.storeClosingUnsubscribe?.();
@@ -4782,6 +4812,7 @@ export class OrchestrationService {
     this.hostImages.close();
     if (this.idleSweepTimer) clearInterval(this.idleSweepTimer);
     this.idleSweepTimer = undefined;
+    this.finishedSessionParking.dispose();
     this.transcriptSearchStopped = true;
     this.sessionAuthz.stopTranscriptReads();
     const transcriptRetirement = this.isolatedTranscriptSearch?.close();
@@ -13835,6 +13866,7 @@ export class OrchestrationService {
             this.lastEngineActivityAt.delete(normalized.threadId);
           } else {
             this.noteEngineActivity(normalized);
+            this.finishedSessionParking.observeEngineEvent(normalized);
           }
           this.flowPolicy.applyPostHocToolPolicies(adapter, normalized);
           this.flowPolicy.spoolCommandEvidence(normalized);
@@ -16323,6 +16355,7 @@ export class OrchestrationService {
         event.turnId,
         event.invocationId,
       );
+      this.finishedSessionParking.observeTurnSettled(event.threadId);
     }
     // Adapter-agnostic activity telemetry: adapters stay metric-free (the
     // sessionStateDuration precedent), so provider activity notifications
@@ -16469,11 +16502,58 @@ export class OrchestrationService {
     await this.parkIdleSession(threadId, adapter, Date.now(), 0);
   }
 
+  /**
+   * A finished-by-design Session's early park (`FinishedSessionParking`):
+   * the idle park with `afterMs` as its threshold, so every refusal the
+   * sweep honours (open request, running or engine-reported work, an active
+   * turn, no resume cursor, activity inside the grace) still holds. A turn
+   * or transition that holds the Session's lock wins; the sweep retries.
+   */
+  private async parkFinishedSession(
+    threadId: string,
+    afterMs: number,
+  ): Promise<boolean> {
+    const adapter = this.sessionAdapters.get(threadId);
+    if (!adapter || this.eventConsumptionStopped) return false;
+    // Seconds after a turn, only an engine that accounts for everything it
+    // still holds can be told apart from one serving a quiet background
+    // process. Its refusal reaches no other park.
+    if (
+      adapter.metadata.openEngineWork !== 'complete' ||
+      !adapter.hasOpenEngineWork ||
+      !adapter.earlyParkRefusal
+    )
+      return false;
+    const refusedEarly = () => {
+      const reason = adapter.earlyParkRefusal?.(threadId);
+      if (reason !== undefined)
+        this.options.logger.debug('Finished session engine kept', {
+          threadId,
+          reason,
+        });
+      return reason !== undefined;
+    };
+    try {
+      return await this.parkIdleSession(
+        threadId,
+        adapter,
+        Date.now(),
+        afterMs,
+        refusedEarly,
+      );
+    } catch (error) {
+      if (error instanceof SessionLifecycleClaimRefusedError) return false;
+      throw error;
+    }
+  }
+
   private parkIdleSession(
     threadId: string,
     adapter: ProviderAdapterShape,
     now: number,
     parkAfterMs: number,
+    /** The finished-session park's own refusal, re-read under the lock. */
+    refusedEarly?: () => boolean,
   ): Promise<boolean> {
     // Serialized with turn starts: a send that arrives first wins, and the
     // park re-checks everything under the lock before touching the engine.
@@ -16482,7 +16562,8 @@ export class OrchestrationService {
       async () => {
         if (
           this.sessionAdapters.get(threadId) !== adapter ||
-          !this.isParkableIdleSession(threadId, now, parkAfterMs)
+          !this.isParkableIdleSession(threadId, now, parkAfterMs) ||
+          refusedEarly?.()
         )
           return false;
         const exited = new Promise<void>((resolve) =>

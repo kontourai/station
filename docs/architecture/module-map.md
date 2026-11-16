@@ -2285,7 +2285,61 @@ implements `hasOpenEngineWork` also vetoes the park while its engine still runs 
 task it never reported an end for, whatever the child-work record says.
 Parking stops the process but absorbs its exit, so the session stays dormant
 rather than ending: the next turn restarts it in place. No worktree, claim or
-room effect fires.
+room effect fires. The same check guards the recovery replay into a failed
+Claude turn and the relaunch for full access, so nothing below reaches them.
+
+A Session that is finished by design does not wait for that threshold.
+[`FinishedSessionParking`](../../src-server/services/orchestration/finished-session-parking.ts)
+watches every turn terminal the service commits. It parks the engine
+`finishedSessionParkAfterMs` (15 seconds) after the turn settled when all of
+these hold:
+
+- The Session's newest turn a send produced was unattended: `dispatchOrigin`
+  `delegation`, `automation` or `task-dispatch`, or `unknown` in a Session
+  started as a delegated child whose context Station derived or attested (a
+  delegator's `continue_task` follow-up records no origin). A turn the engine
+  opened on its own (`metadata.trigger` `provider`) does not decide.
+- No person has, or may have, sent into it. Counted as a person's: a turn
+  start placed `interactive` or marked person-typed, every steer (a steer
+  inherits its turn's origin, so a person's steer from an unmarked surface
+  reads as the turn's) except a child's result Station steered in (Station's
+  internal actor with the server-stamped `delegation-result` sender), and a
+  turn start with no origin this build recognises (history from before the
+  field). Engine-opened turns do not count.
+- The engine's adapter declares `openEngineWork: 'complete'` and its
+  `earlyParkRefusal` gives no reason. Only Claude declares it. Claude runs
+  with `includeHookEvents`, and Station's own hooks are SDK callbacks that
+  report no hook events, so any reported hook is one Station did not install
+  (user, project, local, plugin or managed): from then on that engine refuses,
+  since an `async` or `asyncRewake` hook can outlive the turn. It also
+  refuses on a Claude Code older than the one this was checked against, or
+  one whose `init` reported no version. It refuses
+  while it has a housekeeping task running (`skip_transcript`, such as a
+  post-turn memory save), while its last `init` reported any MCP server that
+  is not one of Station's in-process (`sdk`) servers or reported none, and
+  while its scheduled wakeups (CronCreate, ScheduleWakeup, a loop) are
+  non-zero or unknown. They are unknown before any Stop hook reported
+  `session_crons` and after any scheduling-tool call until one does again;
+  a turn that ends through StopFailure runs none. The refusal is read again
+  under the lifecycle lock. Codex, whose background command processes nothing
+  tracks, and ACP engines, whose own tools can run processes Station never
+  sees, do not declare it, and neither does any engine until it can.
+
+So a delegated child, a dedicated Automation run or a Task dispatch nobody
+typed in qualifies when it runs on Claude with only Station's own MCP servers
+and hooks, scheduled nothing, and has no housekeeping running. Not seen: a
+hook that is configured but has not fired in that engine (nothing of it is
+running; one that fires only after idling, such as an idle `Notification`,
+does not fire once parked, as after the idle park), and a process a command
+leaves running after its tool call returned without making it a background
+task. The park is the idle park
+with that grace as its threshold, so every refusal above still applies under
+the lifecycle lock. An engine event after the settle restarts the grace. A
+delegator's follow-up or a queued inbox entry starts a turn, which the park
+never stops, and that turn's own settle decides again. A refused park is left
+to the sweep, which never reads `earlyParkRefusal`. Everything else, a
+person's chat included, keeps the ordinary threshold.
+`idleSessionParkAfterMs: 0` turns both parks off.
 `isSessionLifecycleStateAtRest` answers "is this session doing anything";
 `sessionLifecycleOutcome` is the one lifecycle-to-outcome mapping.
 
@@ -2394,8 +2448,9 @@ anything else as `unknown`. Who passes what:
   then a person's entry is `interactive`; a delegated child's result
   (server-stamped `delegation-result` sender, also delivered through
   `delegationResultStartPort`) is `delegation` when the parent Session is
-  itself unattended (bound to a Task, or a delegated child whose start
-  carries Station's provenance stamp), and otherwise takes the parent's own
+  itself unattended (bound to a Task, or a delegated child whose first
+  start carries Station's provenance stamp; an in-place restart after a park
+  does not repeat the stamp), and otherwise takes the parent's own
   newest non-result turn's origin (`readSessionDispatchFacts`), so a
   person's chat stays `interactive`; Station's other entries (a
   Task question wake, a check-back) are
