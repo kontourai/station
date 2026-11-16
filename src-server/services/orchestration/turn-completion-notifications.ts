@@ -744,8 +744,9 @@ export function wireTurnCompletionNotifications(
   };
 
   /**
-   * The record is written (or was decided not to need one): the row becomes
-   * `released` and is saved before the card hears of it. A failed save is
+   * This producer's record exists (written now, or found delivered on a
+   * restart): the row becomes `released` and is saved before the card hears
+   * of it. A failed save is
    * logged and the card is still told, since the record exists; a restart
    * then reads the row as `writing`, finds the record and does not write it
    * again.
@@ -768,6 +769,21 @@ export function wireTurnCompletionNotifications(
     persistEpisodes();
     // A newer finish already held on this thread owns the card's entry.
     if (!heldFinishes.has(threadId)) episodes.recordRelease(threadId, release);
+  };
+
+  /**
+   * The finish ends without a record of this producer's behind it (a refused
+   * or ambiguous replay, a tag another producer owns, a session no one may
+   * read): only that row goes, with no release, so the card reads Done
+   * without an "Agent finished". A newer held finish on the thread keeps the
+   * card held, and an earlier legitimate release is left as it is.
+   */
+  const endUnreleased = (threadId: string, writing: WritingFinish): void => {
+    if (writingFinishes.get(threadId) !== writing) return;
+    writing.cancelRetry?.();
+    writingFinishes.delete(threadId);
+    persistEpisodes();
+    if (!heldFinishes.has(threadId)) episodes.setHeld(threadId, false);
   };
 
   const attemptWrite = async (
@@ -799,13 +815,19 @@ export function wireTurnCompletionNotifications(
           outcome: writing.outcome,
           result: 'skipped_tag_conflict',
         });
-        releaseWritten(threadId, writing);
+        endUnreleased(threadId, writing);
         return;
       }
       retryLater(threadId, writing, error, attemptWrite);
       return;
     }
     turnCompletionNotificationOps.add(1, { outcome: writing.outcome, result });
+    // No record was written (no one may read the session, or it is an
+    // external transcript): nothing to announce.
+    if (result !== 'scheduled') {
+      endUnreleased(threadId, writing);
+      return;
+    }
     releaseWritten(threadId, writing);
   };
 
@@ -848,13 +870,17 @@ export function wireTurnCompletionNotifications(
    * A restart found this finish saved as `writing`: the process may have
    * stopped after its record was written. The record decides:
    *
-   * - none: it was never written, so it is written now;
+   * - none: it was never written, or the person cleared it; the two look
+   *   the same, so nothing is written, pushed or announced
+   *   (`replay_ambiguous`);
    * - this producer's own record for this turn, still `delivered` and not
    *   held by an action: handed to `onReplayedDelivery` if the thread still
    *   has a reader. It is never rewritten (a rewrite resets its read state)
    *   and NOTIFICATION_DELIVERED is not emitted again (that pushes phones);
-   * - dismissed, actioned, expired, leased, or not this producer's: the
-   *   person's decision or the other owner stands, and nothing is replayed.
+   * - dismissed, actioned, expired, snoozed (`pending`), leased, readerless,
+   *   or not this producer's: the person's decision or the other owner
+   *   stands; nothing is replayed and the card gets no release. A snoozed
+   *   record is delivered by the service when the snooze ends.
    */
   const replayWriting = async (
     threadId: string,
@@ -880,7 +906,15 @@ export function wireTurnCompletionNotifications(
     if (writingFinishes.get(threadId) !== writing) return;
     delete writing.needsLookup;
     if (!found) {
-      await attemptWrite(threadId, writing);
+      logger.warn(
+        'turn-completion: replay_ambiguous: a saved finish has no record, and a cleared one looks the same; not replayed',
+        { threadId, turnId: writing.turnId },
+      );
+      turnCompletionNotificationOps.add(1, {
+        outcome: writing.outcome,
+        result: 'replay_ambiguous',
+      });
+      endUnreleased(threadId, writing);
       return;
     }
     const { notification, leased } = found;
@@ -890,19 +924,26 @@ export function wireTurnCompletionNotifications(
         'turn-completion: a saved finish names a record this producer did not write; not replayed',
         { threadId, turnId: writing.turnId },
       );
-    let result = 'replay_skipped';
-    if (own && notification.status === 'delivered' && !leased && hasReader) {
-      result = 'replayed';
-      try {
-        options.onReplayedDelivery?.(notification);
-      } catch (error) {
-        logger.warn('turn-completion: a replayed finish was not handed on', {
-          threadId,
-          error: errorMessage(error),
-        });
-      }
+    if (!(own && notification.status === 'delivered' && !leased && hasReader)) {
+      turnCompletionNotificationOps.add(1, {
+        outcome: writing.outcome,
+        result: 'replay_skipped',
+      });
+      endUnreleased(threadId, writing);
+      return;
     }
-    turnCompletionNotificationOps.add(1, { outcome: writing.outcome, result });
+    try {
+      options.onReplayedDelivery?.(notification);
+    } catch (error) {
+      logger.warn('turn-completion: a replayed finish was not handed on', {
+        threadId,
+        error: errorMessage(error),
+      });
+    }
+    turnCompletionNotificationOps.add(1, {
+      outcome: writing.outcome,
+      result: 'replayed',
+    });
     releaseWritten(threadId, writing);
   };
 
