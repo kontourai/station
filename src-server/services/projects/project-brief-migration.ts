@@ -11,6 +11,8 @@
  * brief's limit, nothing is copied and the rules keep working as before, so
  * the person can shorten them and the next start copies them.
  *
+ * Runs lazily, the first time a Session starts in the Project while the
+ * `project-coordination` preview is on (`project-coordination-runtime.ts`).
  * `instructionsMigratedAt` records the copy. After it, the `rules` namespace
  * no longer injects (`KnowledgeService.getInjectContext`), so the same text
  * never reaches a Session twice.
@@ -22,10 +24,6 @@ export const LEGACY_RULES_NAMESPACE = 'rules';
 const LEGACY_RULES_FILENAME = 'project-rules.md';
 
 export interface ProjectBriefMigrationDeps {
-  listProjects(): readonly Pick<
-    ProjectConfig,
-    'slug' | 'instructions' | 'instructionsMigratedAt'
-  >[];
   listRulesDocuments(
     projectSlug: string,
   ): Promise<readonly { id: string; filename: string; createdAt?: string }[]>;
@@ -95,23 +93,4 @@ export async function migrateProjectRulesToBrief(
     });
     return 'failed';
   }
-}
-
-/** Migrate every Project that has not been migrated. Never throws. */
-export async function migrateAllProjectRulesToBrief(
-  deps: ProjectBriefMigrationDeps,
-): Promise<Record<string, ProjectBriefMigrationOutcome>> {
-  const outcomes: Record<string, ProjectBriefMigrationOutcome> = {};
-  let projects: ReturnType<ProjectBriefMigrationDeps['listProjects']>;
-  try {
-    projects = deps.listProjects();
-  } catch (error) {
-    deps.warn?.('Project rules migration could not list Projects', {
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return outcomes;
-  }
-  for (const project of projects)
-    outcomes[project.slug] = await migrateProjectRulesToBrief(project, deps);
-  return outcomes;
 }

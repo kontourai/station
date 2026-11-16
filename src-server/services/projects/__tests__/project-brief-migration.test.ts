@@ -12,7 +12,6 @@ function deps(
   saved: SaveBrief = vi.fn<SaveBrief>(),
 ): ProjectBriefMigrationDeps {
   return {
-    listProjects: () => [],
     listRulesDocuments: async () =>
       Object.keys(documents).map((filename, index) => ({
         id: `d${index}`,

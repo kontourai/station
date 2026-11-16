@@ -12,7 +12,10 @@
  */
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import type { FeaturePreviewSelector } from '../services/feature-previews/feature-preview-registry.js';
-import { migrateProjectRulesToBrief } from '../services/projects/project-brief-migration.js';
+import {
+  LEGACY_RULES_NAMESPACE,
+  migrateProjectRulesToBrief,
+} from '../services/projects/project-brief-migration.js';
 import { ProjectMemoryStore } from '../services/projects/project-memory-store.js';
 import {
   createProjectSessionContextSource,
@@ -67,12 +70,17 @@ export function composeProjectCoordinationRuntime(
     if (running) return running;
     const knowledge = deps.knowledge;
     const run = migrateProjectRulesToBrief(project, {
-      listProjects: () => [project],
       listRulesDocuments: async (projectSlug) =>
-        knowledge ? knowledge.listDocuments(projectSlug, 'rules') : [],
+        knowledge
+          ? knowledge.listDocuments(projectSlug, LEGACY_RULES_NAMESPACE)
+          : [],
       readRulesDocument: async (projectSlug, docId) =>
         knowledge
-          ? knowledge.getDocumentContent(projectSlug, docId, 'rules')
+          ? knowledge.getDocumentContent(
+              projectSlug,
+              docId,
+              LEGACY_RULES_NAMESPACE,
+            )
           : '',
       saveBrief: deps.saveProject,
       warn: deps.warn,
