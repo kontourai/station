@@ -3,9 +3,11 @@
  *
  * An Agent or engine picked "for next message" turns the composer's ordinary
  * Send into the handoff's first turn. ChatDockBody owns that routing: with a
- * target armed, Send hands the exact draft to the handoff and never reaches
- * the ordinary sender; a slash command stays local; with nothing armed, Send
- * is the ordinary send.
+ * target armed, every send out of the composer (Send, Enter and a busy-turn
+ * Queue) hands the prepared draft (mentions, quotes and checks applied) to the
+ * handoff and never reaches the ordinary sender; nothing goes while the
+ * handoff dispatches or is blocked; a slash command stays local; with nothing
+ * armed, Send is the ordinary send.
  */
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
@@ -16,9 +18,11 @@ import { describe, expect, test, vi } from 'vitest';
 const agentsMock = vi.hoisted(() => ({ current: [] as any[] }));
 const composerSeen = vi.hoisted(() => ({
   onSend: undefined as undefined | (() => Promise<void>),
+  onQueueFollowUp: undefined as undefined | (() => Promise<void>),
+  sendBlockedReason: undefined as string | undefined,
   nextMessageHandoff: undefined as
     | undefined
-    | { label: string; onUndo: () => void },
+    | { label: string; kind: string; onUndo: () => void },
 }));
 
 vi.mock('@kontourai/station-connect', () => ({
@@ -99,12 +103,18 @@ vi.mock('../hooks/useTTS', () => ({
 vi.mock('../components/chat/ChatInputArea', () => ({
   ChatInputArea: ({
     onSend,
+    onQueueFollowUp,
+    sendBlockedReason,
     nextMessageHandoff,
   }: {
     onSend: () => Promise<void>;
-    nextMessageHandoff?: { label: string; onUndo: () => void };
+    onQueueFollowUp?: () => Promise<void>;
+    sendBlockedReason?: string;
+    nextMessageHandoff?: { label: string; kind: string; onUndo: () => void };
   }) => {
     composerSeen.onSend = onSend;
+    composerSeen.onQueueFollowUp = onQueueFollowUp;
+    composerSeen.sendBlockedReason = sendBlockedReason;
     composerSeen.nextMessageHandoff = nextMessageHandoff;
     return <div data-testid="chat-input-area" />;
   },
@@ -168,22 +178,47 @@ const session = {
   messages: [],
 } as unknown as ChatSession;
 
+type Prepared = { text: string; draft: string; quotes: never[] };
+type Armed = {
+  label: string;
+  kind: 'agent' | 'engine';
+  pending: boolean;
+  blockedReason?: string;
+  onSend: ReturnType<typeof vi.fn>;
+  onUndo: ReturnType<typeof vi.fn>;
+};
+const armed = (overrides: Partial<Armed> = {}): Armed => ({
+  label: 'Codex · GPT-5',
+  kind: 'agent',
+  pending: false,
+  onSend: vi.fn(),
+  onUndo: vi.fn(),
+  ...overrides,
+});
+
 async function renderBody({
   input,
   nextMessageHandoff,
+  prepared,
 }: {
   input: string;
-  nextMessageHandoff?: {
-    label: string;
-    onSend: (message: string) => void;
-    onUndo: () => void;
-  };
+  nextMessageHandoff?: Armed;
+  prepared?: Prepared | null;
 }) {
   agentsMock.current = [
     { slug: agentId('station'), name: 'Station', available: true },
   ];
   composerSeen.onSend = undefined;
-  const chatInput = { ...buildChatInput(), input };
+  composerSeen.onQueueFollowUp = undefined;
+  const chatInput = {
+    ...buildChatInput(),
+    input,
+    prepareOutgoingText: vi.fn(async () =>
+      prepared === undefined
+        ? { text: input, draft: input, quotes: [] }
+        : prepared,
+    ),
+  };
   render(
     <QueryClientProvider
       client={
@@ -200,7 +235,7 @@ async function renderBody({
         modelSupportsAttachments={false}
         fileAttachmentsSupported={false}
         availableModels={[]}
-        nextMessageHandoff={nextMessageHandoff}
+        nextMessageHandoff={nextMessageHandoff as never}
         chatInput={chatInput as any}
         setShowStatsPanel={vi.fn()}
       />
@@ -211,28 +246,91 @@ async function renderBody({
 }
 
 describe('ChatDockBody next-message handoff', () => {
-  test('an armed target receives the exact draft and the ordinary sender does not', async () => {
-    const armed = { label: 'Codex · GPT-5', onSend: vi.fn(), onUndo: vi.fn() };
+  test('an armed target receives the prepared draft and the ordinary sender does not', async () => {
+    const target = armed();
+    const prepared = {
+      text: '> the quoted answer\n\nPick this up',
+      draft: 'Pick this up',
+      quotes: [] as never[],
+    };
     const chatInput = await renderBody({
-      input: 'Pick this up\nplease',
-      nextMessageHandoff: armed,
+      input: 'Pick this up',
+      nextMessageHandoff: target,
+      prepared,
     });
     expect(composerSeen.nextMessageHandoff?.label).toBe('Codex · GPT-5');
     await composerSeen.onSend?.();
-    expect(armed.onSend).toHaveBeenCalledWith('Pick this up\nplease');
+    expect(chatInput.prepareOutgoingText).toHaveBeenCalledOnce();
+    expect(target.onSend).toHaveBeenCalledWith(prepared);
     expect(chatInput.handleSend).not.toHaveBeenCalled();
     composerSeen.nextMessageHandoff?.onUndo();
-    expect(armed.onUndo).toHaveBeenCalledOnce();
+    expect(target.onUndo).toHaveBeenCalledOnce();
+  });
+
+  test('a send the preparation refuses goes nowhere', async () => {
+    const target = armed();
+    const chatInput = await renderBody({
+      input: 'too long',
+      nextMessageHandoff: target,
+      prepared: null,
+    });
+    await composerSeen.onSend?.();
+    expect(target.onSend).not.toHaveBeenCalled();
+    expect(chatInput.handleSend).not.toHaveBeenCalled();
+  });
+
+  test('a busy-turn Queue while armed is the handoff too, never a queued send to the current agent', async () => {
+    const target = armed();
+    const chatInput = await renderBody({
+      input: 'Queued text',
+      nextMessageHandoff: target,
+    });
+    await composerSeen.onQueueFollowUp?.();
+    expect(target.onSend).toHaveBeenCalledWith(
+      expect.objectContaining({ text: 'Queued text' }),
+    );
+    expect(chatInput.handleSend).not.toHaveBeenCalled();
+  });
+
+  test('while the armed send dispatches, a second Send or Queue sends nothing', async () => {
+    const target = armed({ pending: true });
+    const chatInput = await renderBody({
+      input: 'Same draft',
+      nextMessageHandoff: target,
+    });
+    expect(composerSeen.sendBlockedReason).toBe('Switching to Codex · GPT-5…');
+    await composerSeen.onSend?.();
+    await composerSeen.onQueueFollowUp?.();
+    expect(target.onSend).not.toHaveBeenCalled();
+    expect(chatInput.prepareOutgoingText).not.toHaveBeenCalled();
+    expect(chatInput.handleSend).not.toHaveBeenCalled();
+  });
+
+  test('a blocked handoff holds the send with its reason instead of sending to the current agent', async () => {
+    const target = armed({
+      blockedReason: 'Wait for the current turn to finish.',
+    });
+    const chatInput = await renderBody({
+      input: 'Later',
+      nextMessageHandoff: target,
+    });
+    expect(composerSeen.sendBlockedReason).toBe(
+      'Wait for the current turn to finish.',
+    );
+    await composerSeen.onQueueFollowUp?.();
+    await composerSeen.onSend?.();
+    expect(target.onSend).not.toHaveBeenCalled();
+    expect(chatInput.handleSend).not.toHaveBeenCalled();
   });
 
   test('a slash command stays local while a target is armed', async () => {
-    const armed = { label: 'Codex', onSend: vi.fn(), onUndo: vi.fn() };
+    const target = armed();
     const chatInput = await renderBody({
       input: '/model',
-      nextMessageHandoff: armed,
+      nextMessageHandoff: target,
     });
     await composerSeen.onSend?.();
-    expect(armed.onSend).not.toHaveBeenCalled();
+    expect(target.onSend).not.toHaveBeenCalled();
     expect(chatInput.handleSend).toHaveBeenCalledOnce();
   });
 

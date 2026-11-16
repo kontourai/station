@@ -4549,6 +4549,13 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                                         label:
                                           conversationBoundaryDialogs
                                             .armedHandoff.label,
+                                        kind: conversationBoundaryDialogs
+                                          .armedHandoff.executionPreset
+                                          ? 'engine'
+                                          : 'agent',
+                                        pending:
+                                          conversationBoundaryDialogs.armedHandoffPending,
+                                        blockedReason: handoffDisabledReason,
                                         onSend:
                                           conversationBoundaryDialogs.sendArmedHandoff,
                                         onUndo: () =>

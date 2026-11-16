@@ -460,23 +460,6 @@ export function AttachedSessionDetail({
   // "Worker task · <id>" in the list it was opened from.
   const title = sessionTitle(session);
 
-  // Continuing needs no message: the continuation opens with this history,
-  // and a typed draft (none is fine) is sent there afterwards by the host.
-  const startContinuation = ({ override = false } = {}) => {
-    if (
-      !continuationSupported ||
-      adoption.isPending ||
-      serverRejectedRetryRef.current
-    )
-      return;
-    confirmedDraft.current = currentDraft.current;
-    if (sourceActive && !override) {
-      setSourceActiveWarning(true);
-      return;
-    }
-    setSourceActiveWarning(false);
-    adoption.mutate({ intent: getSelectionIntent(), override });
-  };
   const continuationFeedback = (
     <>
       {adoption.error && !adoptionSourceActive && (
@@ -515,6 +498,33 @@ export function AttachedSessionDetail({
     adoption.isPending ||
     continued ||
     handoffPending;
+  // Continuing needs no message: the continuation opens with this history,
+  // and a typed draft (none is fine) is sent there afterwards by the host.
+  // Every entry (the action, Send, a draft handed over from Activity) comes
+  // through here, so each one gets the same guards the action shows.
+  const adoptionInFlight = useRef(false);
+  const startContinuation = ({ override = false } = {}) => {
+    if (
+      adoptionDisabled ||
+      composerDisabled ||
+      adoptionInFlight.current ||
+      serverRejectedRetryRef.current
+    )
+      return;
+    confirmedDraft.current = currentDraft.current;
+    // The source is still running: ask first, inline, instead of forking it.
+    if (sourceActive && !override) {
+      setSourceActiveWarning(true);
+      return;
+    }
+    setSourceActiveWarning(false);
+    adoptionInFlight.current = true;
+    adoption.mutate({ intent: getSelectionIntent(), override }, {
+      onSettled: () => {
+        adoptionInFlight.current = false;
+      },
+    });
+  };
   const requestSend = async ({ allowEmpty = false } = {}) => {
     if ((!allowEmpty && !draft.trim()) || composerDisabled) return;
     if (onContinueInChat) {
