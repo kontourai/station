@@ -130,7 +130,7 @@ describe('notification retention', () => {
   test('delivered, pending and leased records are never removed, however old', async () => {
     const delivered = stored('delivered', 400 * DAY_MS);
     const pending = stored('pending', 400 * DAY_MS);
-    const leased = {
+    const leased: Record<string, unknown> = {
       ...stored('delivered', 400 * DAY_MS),
       actionLease: {
         id: randomUUID(),
