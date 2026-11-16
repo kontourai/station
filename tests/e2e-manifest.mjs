@@ -1841,7 +1841,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'At a phone and a desktop width through the real dock: Chat Settings keeps Done inside the panel and hittable at any scroll position, its replay import is a styled button, and backgrounded-task settles arriving over the orchestration SSE seam use shared child-work disclosures with distinct outcomes, one title and an expandable result, without separate finished-task banners.',
+      'At a phone and a desktop width through the real dock: Chat Settings keeps Done inside the panel and hittable at any scroll position, its replay import is a styled button, and backgrounded-task settles arriving over the orchestration SSE seam use shared child-work disclosures with distinct outcomes and expandable results, a non-repeating successful command title, and no separate finished-task banners.',
     exceptions: [],
   },
   {
