@@ -1241,7 +1241,26 @@ describe('repository-wide PR source runner ceilings', () => {
     'ci-pr-shards-fourth',
     'ci-pr-shards-fifth',
   ];
-  test('25 simultaneous PRs expose exactly two statics and five shard slots, with no cancellation or pending replacement', () => {
+  // Three shared statics groups since the 2026-11-15 statics wait
+  // measurement, keyed by the PR number's last digit. Pinned as literals.
+  const STATICS_GROUPS = [
+    'ci-pr-statics-even',
+    'ci-pr-statics-odd',
+    'ci-pr-statics-third',
+  ];
+  const STATICS_SLOT_BY_DIGIT = [
+    'ci-pr-statics-even',
+    'ci-pr-statics-odd',
+    'ci-pr-statics-even',
+    'ci-pr-statics-odd',
+    'ci-pr-statics-even',
+    'ci-pr-statics-odd',
+    'ci-pr-statics-even',
+    'ci-pr-statics-third',
+    'ci-pr-statics-third',
+    'ci-pr-statics-third',
+  ];
+  test('25 simultaneous PRs expose exactly three statics and five shard slots, with no cancellation or pending replacement', () => {
     const statics = new Set();
     const shards = new Set();
     for (let pr = 3700; pr < 3725; pr++) {
@@ -1249,13 +1268,44 @@ describe('repository-wide PR source runner ceilings', () => {
       for (const shard of [1, 2, 3, 4])
         shards.add(sourceGroups(jobs['fast-checks-shard'], pr, shard));
     }
-    expect(statics.size).toBe(2);
+    expect(statics).toEqual(new Set(STATICS_GROUPS));
     expect(shards).toEqual(new Set(SHARD_GROUPS));
-    expect(new Set([...statics, ...shards]).size).toBe(7);
+    expect(new Set([...statics, ...shards]).size).toBe(8);
     for (const id of ['fast-checks-statics', 'fast-checks-shard']) {
       expect(jobs[id].concurrency?.queue).toBe('max');
       expect(jobs[id].concurrency?.['cancel-in-progress']).toBe(false);
     }
+  });
+  test('every last digit lands in exactly one shared statics group, split 4/3/3', () => {
+    const job = jobs['fast-checks-statics'];
+    const perGroup = new Map<unknown, number>();
+    for (let digit = 0; digit <= 9; digit++) {
+      // Several PR numbers, heads and matrix values per digit: every run of
+      // one PR must share one slot, so the group depends only on the digit.
+      const cell = new Set([
+        sourceGroups(job, 4940 + digit),
+        sourceGroups(job, 4940 + digit, 1, undefined, 'c'.repeat(40)),
+        sourceGroups(job, 4940 + digit, 3),
+        sourceGroups(job, 120 + digit),
+        sourceGroups(job, digit === 0 ? 10 : digit),
+      ]);
+      expect(cell.size, `digit ${digit}`).toBe(1);
+      const [group] = cell;
+      expect(group, `digit ${digit}`).toBe(STATICS_SLOT_BY_DIGIT[digit]);
+      perGroup.set(group, (perGroup.get(group) ?? 0) + 1);
+    }
+    expect(Object.fromEntries(perGroup)).toEqual({
+      'ci-pr-statics-even': 4,
+      'ci-pr-statics-odd': 3,
+      'ci-pr-statics-third': 3,
+    });
+    // Runs created under the parity mapping keep their slot names; only
+    // digits 7, 8 and 9 moved, so only those PRs can briefly hold two slots
+    // while a pre-change run is still live.
+    for (let digit = 0; digit <= 6; digit++)
+      expect(sourceGroups(job, 4940 + digit), `digit ${digit}`).toBe(
+        digit % 2 === 1 ? 'ci-pr-statics-odd' : 'ci-pr-statics-even',
+      );
   });
   test('every last digit and shard index lands in exactly one shared shard group, evenly', () => {
     const job = jobs['fast-checks-shard'];
@@ -1377,7 +1427,7 @@ describe('repository-wide PR source runner ceilings', () => {
             undefined,
             identity,
           ),
-        ).toBe(digit % 2 === 1 ? 'ci-pr-statics-odd' : 'ci-pr-statics-even');
+        ).toBe(STATICS_SLOT_BY_DIGIT[digit]);
       }
     },
   );
