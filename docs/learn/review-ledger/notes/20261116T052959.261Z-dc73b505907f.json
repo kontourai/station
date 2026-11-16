@@ -1,0 +1,19 @@
+{
+  "revision": "f3d72fc27529fa34c748f9bc28b4500e246dfddf",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"fetchRemoteSessionHistory now documents its { apiBase, requestScope, signal } options and its StationHttpError refusal with the route's code values, and says to show fixed copy rather than the server sentence. Checked against query-domains/sshEnvironments.ts and remote-session-history.test.ts.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Only change: registered src-ui/src/components/remote-session/RemoteSessionReader.tsx as a surface requiring body and failure. Checked the citing pages (module map, station-connection design, testing guide, src-ui AGENTS): they describe the manifest's role and the existing surfaces generally, which this addition matches; no claim enumerates every registered surface.","inputs":["scripts/conversation-surfaces.json"]},
+
+    {"path":"docs/design/station-connection.md","note":"Only change: registered src-ui/src/components/remote-session/RemoteSessionReader.tsx as a surface requiring body and failure. Checked the citing pages (module map, station-connection design, testing guide, src-ui AGENTS): they describe the manifest's role and the existing surfaces generally, which this addition matches; no claim enumerates every registered surface.","inputs":["scripts/conversation-surfaces.json"]},
+
+    {"path":"docs/guides/testing.md","note":"Only change: registered src-ui/src/components/remote-session/RemoteSessionReader.tsx as a surface requiring body and failure. Checked the citing pages (module map, station-connection design, testing guide, src-ui AGENTS): they describe the manifest's role and the existing surfaces generally, which this addition matches; no claim enumerates every registered surface.","inputs":["scripts/conversation-surfaces.json"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Only change: registered src-ui/src/components/remote-session/RemoteSessionReader.tsx as a surface requiring body and failure. Checked the citing pages (module map, station-connection design, testing guide, src-ui AGENTS): they describe the manifest's role and the existing surfaces generally, which this addition matches; no claim enumerates every registered surface.","inputs":["scripts/conversation-surfaces.json"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Only the remote session history paragraph changed (fetcher options and typed refusal); citing pages route to sdk.md generally.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Only the remote session history paragraph changed (fetcher options and typed refusal); citing pages route to sdk.md generally.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

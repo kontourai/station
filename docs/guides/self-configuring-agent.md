@@ -2,7 +2,11 @@
 
 Use `station-control` to let an Agent inspect Station's project records, refine
 existing skills, and delegate a bounded task. Tool availability and approval
-policy determine which changes it can actually make.
+policy determine which changes it can actually make. The tools that change who
+or what holds authority (configuration, Agents, plugins, integrations, skills
+and SSH hosts) ask a person on every call, at full access too, with no session
+option; on Station's own engine an approval guardian you enabled may still
+allow one ([delivery boundary](../conformance/tool-policy-delivery.md#built-in-tools-that-change-authority)).
 
 ## Goal
 
@@ -736,7 +740,13 @@ that could adopt it. See the
 3. Call `list_delegation_environments`, then `list_delegation_targets` to choose
    a ready worker with the capabilities the task needs, using a bound operator
    caller for saved-Environment discovery. Environment listing is
-   secret-free, read-only, and never reconnects; inspecting a selected saved SSH
+   secret-free, read-only, and never reconnects. It lists paired Stations
+   (`kind: "peer"`) beside SSH environments; a paired Station whose public
+   handshake is not `online`, or whose credential lacks
+   `orchestration:operate`, is `ready: false` with an `unavailableReason`.
+   Delegating to a paired Station that a fresh handshake probe finds
+   recovering, unreachable, or answering as a different Station fails at once
+   with that reason instead of timing out. Inspecting a selected saved SSH
    Station's targets may reconnect its verified binding, so only that second
    step remains approval-gated. Use `delegate_task` when the work needs a
    resumable task, lifecycle status, or explicit observation and interrupt
@@ -1030,6 +1040,12 @@ reset time shows, in its banner, a choice for that stop alone: **Resume at
 **Resume after usage limits** setting, and survives a restart. Resume at
 <reset> also snoozes the chat in the inbox until the reset. Every check the
 automatic resume runs before it sends still applies.
+
+A Codex conversation whose connection has another enrolled credential profile
+also offers **Continue on <label>**, which continues the stopped turn on that
+account now; see
+[the connections guide](connections.md#continue-a-usage-limited-conversation-on-another-account).
+Claude Code offers no other account.
 
 OpenCode and other ACP engines do not get an automatic resume. An OpenCode
 plan-quota error can report a reset only as display text with no time zone

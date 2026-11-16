@@ -1,0 +1,7 @@
+{
+  "revision": "fa31fa97e6e39924b12528f0d82e109c56b7dd7d",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Rechecked against the per-home Codex threads, per-home 128 budget with a 512 total default-first, and profile-overlay continuation.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

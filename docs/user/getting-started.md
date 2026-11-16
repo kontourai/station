@@ -496,7 +496,9 @@ show what **Start** will use:
   you have chosen a Model, the picker's reset button names the default it
   returns to, such as **Use project default** for a model-only choice or
   **Use Agent defaults** for an engine override. In an existing conversation,
-  changing or resetting the engine opens a handoff confirmation that keeps your draft.
+  changing or resetting the engine opens a short handoff picker that switches
+  now: your draft, or a catch-up request when there is none, is the first
+  message.
   Full access, a pending or refused approval change, and a conversation override
   add a warning glyph to the combined button; open Run setup to see the same
   glyph on the choice that raised it.
@@ -534,7 +536,9 @@ project** clears it. Home and New Chat use the same composer and pickers;
 **Runs on <Station>** sits below the message box.
 
 When another Station is available, **Runs on <Station>** opens **Where this work
-runs**. Choose the Station, then its **Engine & model**. With **Paired Station
+runs**. Choose the Station, then its **Engine & model**. A Station that
+cannot take work right now is greyed out with its reason, such as
+**Recovering · server down or restarting** or **Unreachable**. With **Paired Station
 chats** enabled in Settings → Advanced → Feature previews, choose a Project
 from that Station’s own list, or **start without a project**. **Start** opens a
 chat tab that reads and replies to the conversation on the chosen Station.
@@ -565,7 +569,7 @@ back yours. You can edit or delete your own messages (press ↑ in an empty
 composer to edit your last one); a deleted message leaves "Message deleted" so
 replies still make sense. Use **Bring an Agent** for an explicit request whose answer returns
 to the channel. Direct Agent conversations stay in the chat
-dock. **Tasks** separates current work, backlog and history; **Files & connections**
+dock. **Tasks** shows a board of what each Task needs now, or a list of current work, backlog and history; **Files & connections**
 holds the Project's context. To change where new Agent work starts, open the
 workspace controls under Files & connections. A local folder is execution
 configuration rather than the Project's identity.
@@ -1211,7 +1215,12 @@ Station looks in four places:
 - Claude Code transcripts under `projects` in `CLAUDE_CONFIG_DIR`, or
   `~/.claude` when that is not set.
 - Codex sessions under `sessions` in `CODEX_HOME`, or `~/.codex` when that is
-  not set.
+  not set, and in every other Codex home Station itself runs Codex in: the
+  Codex connection's config home, its Station app home, and each credential
+  profile's home. Continuing a conversation runs Codex in the home it was
+  found in, with that home's account and, for a profile, its settings. A
+  conversation copied by hand into two of them is listed once per copy,
+  since the copies can go on separately.
 - Grok Build sessions under `sessions` in `GROK_HOME`, or `~/.grok` when that
   is not set. A Grok session appears once it has a prompt. A subagent's own
   session is not listed separately, and neither is a Grok chat you started in
@@ -1241,12 +1250,26 @@ Station looks in four places:
   from an OpenCode 1.x database stops updating once OpenCode 2.x converts that
   database; its earlier messages stay in history.
 
+With `STATION_EXTERNAL_ACP_SESSIONS=1` set before Station starts, the inbox
+also lists the sessions an ACP engine you added under Connections reports
+itself, for an engine that offers a session list (Antigravity, Factory Droid,
+Hermes and Cursor do; Kiro does not). This is off by default. Station asks for
+the list when it checks the engine, about every five minutes, so it starts no
+extra engine process, and a new session can take that long to appear. Only
+the session's folder and Project are shown: ACP's one way to read a session's
+messages also resumes it inside the engine, so Station does not read them, and
+these sessions cannot be continued in Station. Grok and OpenCode sessions are
+read from their own stores as above, not from this list, and Station's own
+sessions and capability checks are left out.
+
 `STATION_EXTERNAL_CLAUDE_SOURCE_ROOT`, `STATION_EXTERNAL_CODEX_SOURCE_ROOT`,
 `STATION_EXTERNAL_GROK_SOURCE_ROOT` and `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT`
 point Station at a different folder (for OpenCode, the folder holding the
-database). Station checks every two seconds and reads the 128 most recently
-changed conversations from each place. Older ones stay in history once Station
-has read them, but new messages in them are not picked up until they are among
+database). With `STATION_EXTERNAL_CODEX_SOURCE_ROOT` set, that folder is the
+only Codex home Station reads. Station checks every two seconds and reads the
+128 most recently changed conversations from each place (each Codex home is
+its own place, up to 512 Codex conversations in all, the default home first). Older ones stay in history once Station has read
+them, but new messages in them are not picked up until they are among
 the 128 again. Conversations Station has not listed before appear only after it
 finishes restoring its own sessions at startup; if that restore fails, already
 listed conversations keep updating but new ones wait until Station restarts.
@@ -1296,9 +1319,9 @@ ones inside a Project, but no account can open them there.
 ## Continue an Attached Session
 
 Open an attached terminal Session from the **inbox**. It reads like any chat. To
-continue it in Station, type a message and press Send: Chat asks once,
-**Continue here?**, and **Continue and send** continues it there with your
-message. **Cancel** keeps your draft. Claude and Codex create independent child
+continue it in Station, press **Continue in Station** next to where it says it started;
+no message is needed. If you typed one, it is sent there once the
+continuation opens, and pressing Send continues the same way. Claude and Codex create independent child
 Sessions; the original terminal Session can keep running. OpenCode and Grok
 conversations are read only: the message box shows why it is unavailable.
 Codex continues from the latest completed turn Station has observed, so wait

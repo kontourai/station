@@ -44,6 +44,7 @@ import { useScopedProjectChatDefaultsQuery } from '../../contexts/ProjectsContex
 import { useWorkObservation } from '../../contexts/work-observation';
 import { BoundBrowserActivityProvider } from '../../float-over-chat/BoundBrowserActivityProvider';
 import { resyncOrchestrationEventStream } from '../../hooks/orchestration/ensureOrchestrationEventStream';
+import { useStreamCatchingUp } from '../../hooks/orchestration/heldDuringCatchUp';
 import { unansweredApprovalRequests } from '../../hooks/orchestration/pendingRequestRows';
 import {
   drainQueuedMessageOnTurnCompleted,
@@ -788,6 +789,7 @@ function LiveConversationBody({
     target?.focus();
     return Boolean(target && document.activeElement === target);
   }, [chatInput.textareaRef]);
+  const streamCatchingUp = useStreamCatchingUp(apiBase);
   // Live chat status shares the composer rail; replay keeps its recorded rows.
   const { pill: statusPill, statusInPill } = useChatStatusPill({
     activeSession,
@@ -799,6 +801,7 @@ function LiveConversationBody({
     resyncPending,
     onResync: resyncConversation,
     onRecoveryFocus: focusRecoveredComposer,
+    catchingUp: streamCatchingUp,
   });
   /*
    * One transitional state for the whole conversation, from the two things

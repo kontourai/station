@@ -625,18 +625,21 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
     await agentTrigger.focus();
     await page.keyboard.press('Enter');
     const dialog = page.getByRole('dialog', {
-      name: 'Continue with another agent',
+      name: 'Switch agent',
     });
     await expect(dialog).toBeVisible({ timeout: 10_000 });
     await dialog.getByRole('radio', { name: /Codex Runtime/ }).check();
-    await expect(dialog).toContainText('Conversation transcript');
-    await expect(dialog).toContainText('Provider-native cursor');
-    await expect(dialog).toContainText('Tool state');
-    await expect(dialog).toContainText('Session approvals');
-    await expect(dialog).toContainText('Queued requests');
-    await dialog
-      .getByLabel('First message to Codex Runtime')
-      .fill('Continue on Codex and retain the conversation context.');
+    // What carries over is under Details, not on the main path.
+    // What carries over is under Details, in plain words.
+    await expect(dialog).not.toContainText('Recent messages');
+    await dialog.getByRole('button', { name: 'Details' }).click();
+    await expect(dialog).toContainText(
+      'Recent messages, the workspace, and the agent and model you chose.',
+    );
+    await expect(dialog).toContainText('approvals given in this chat');
+    // No message to write: with an empty composer the handoff opens with
+    // its catch-up turn.
+    await expect(dialog.getByRole('textbox')).toHaveCount(0);
     await dialog
       .getByRole('button', { name: /Continue with Codex Runtime/ })
       .click();
@@ -645,7 +648,9 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
       .poll(() => handoffRequests.length, { timeout: 10_000 })
       .toBe(1);
     expect(handoffRequests[0]).toMatchObject({
-      message: 'Continue on Codex and retain the conversation context.',
+      // The dialog's catch-up turn (`HANDOFF_CATCH_UP_MESSAGE`), as sent.
+      message:
+        'You are taking over this conversation. Briefly summarize where things stand and what you would do next, then wait for my reply.',
       target: {
         environment: { kind: 'current' },
         agent: 'codex',

@@ -1,0 +1,7 @@
+{
+  "revision": "2ff9ffc7c0655c354ee3802324a02ef950bd0018",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed the finished-alert section against turn-completion-notifications.ts, finished-alert-episodes.ts, agent-activity-card.ts and agent-activity-publisher.ts: held/writing/released rows and their save order, write retry backoff, restart replay by record state (coordinator handoff without rewrite or re-delivery), newer finish replacing a failed one, the 2,000-row admission bound and overflow signal, the card's released-key alert, and the single-writer home limit. Not verified on physical devices.","inputs":["docs/design/notification-delivery.md","src-server/services/notifications/agent-activity-card.ts","src-server/services/orchestration/finished-alert-episodes.ts","src-server/services/orchestration/turn-completion-notifications.ts"]}
+  ]
+}

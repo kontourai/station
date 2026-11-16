@@ -1,0 +1,9 @@
+{
+  "revision": "332a602da2a61ebad4f58add4a26b52d05e5f073",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Only the outside-change staleness sentence changed; citing pages make no claim about facts staleness or cache timing.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Only the outside-change staleness sentence changed; citing pages make no claim about facts staleness or cache timing.","inputs":["docs/reference/api.md"]}
+  ]
+}

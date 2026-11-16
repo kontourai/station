@@ -1,0 +1,7 @@
+{
+  "revision": "d0b40f5acedf7081c71b42a863fa6af90716e240",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Final polish round: the handoff request contract is unchanged; the dialog now also recovers from a thrown draft preparation without sending.","inputs":["docs/reference/session-api.md","src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx"]}
+  ]
+}

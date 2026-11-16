@@ -67,6 +67,22 @@ for the current supported model services and engines and their setup details.
 - A **direct chat** is an immediate conversation and does not silently create a
   Task.
 
+A Project's **Tasks board** files each Task by what is true of it now, never
+by a stored status: **Needs you** (its run asks for an approval or answer, the
+Task has an open question, the run failed, its pull requests merged and the
+Task can be marked done, or someone marked it blocked or for review),
+**Running**, **In review** (an open pull request with changes requested,
+conflicts, checks not passing, a draft, a pending review, or an unknown
+state),
+**Ready to merge** (every open pull request clean at its provider) and
+**Idle**. Backlog, Done and Canceled are shelves below. A fact Station could
+not read claims nothing: a run it cannot see reads *Run status unavailable*
+and keeps the Task out of Ready to merge, and so does a pull request it could
+not read. A Task someone marked blocked stays in Needs you whatever its pull
+requests say.
+Each card shows one status line and one next action. The Project page's
+Tasks section switches between this board and a list.
+
 Example: “Explain this function” can be a direct chat. “Refactor this module,
 run its gates, and preserve the evidence” should be a Task. A Task can retain
 one Session across several turns and use another for a later attempt.

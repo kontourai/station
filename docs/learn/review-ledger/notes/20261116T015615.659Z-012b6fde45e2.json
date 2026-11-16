@@ -1,0 +1,7 @@
+{
+  "revision": "fa31fa97e6e39924b12528f0d82e109c56b7dd7d",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Adds credentialProfileEnvForHome (profile overlay for a real home path; no config read outside the app homes root; invalid overlay throws) and corrects the module header. Resolver/peek precedence unchanged.","inputs":["src-server/providers/app-home/credential-profile-env.ts"]}
+  ]
+}

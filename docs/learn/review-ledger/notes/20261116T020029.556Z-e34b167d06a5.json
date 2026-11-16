@@ -1,0 +1,7 @@
+{
+  "revision": "fa31fa97e6e39924b12528f0d82e109c56b7dd7d",
+
+  "notes": [
+    {"path":"docs/design/acp-chat-architecture.md","note":"acp.md changed only in the opt-in probe listing bounds and exclusions; chat-turn and adapter architecture claims are unaffected.","inputs":["docs/design/acp-chat-architecture.md","docs/guides/acp.md"]}
+  ]
+}

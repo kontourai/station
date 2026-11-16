@@ -1,0 +1,9 @@
+{
+  "revision": "8bbb2327a66560ec761b83d4d9e79b90289716e5",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Only change since the last review: PEER_READINESS_* constants and peerReadinessRefusesDispatch are no longer exported (no other caller; code-health unused-export finding). Behavior is identical and no document names them (grep).","inputs":["src-server/services/peers/peer-readiness-service.ts"]},
+
+    {"path":"docs/design/station-peer-pairing.md","note":"Only change since the last review: PEER_READINESS_* constants and peerReadinessRefusesDispatch are no longer exported (no other caller; code-health unused-export finding). Behavior is identical and no document names them (grep).","inputs":["src-server/services/peers/peer-readiness-service.ts"]}
+  ]
+}

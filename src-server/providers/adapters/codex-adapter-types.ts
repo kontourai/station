@@ -1,3 +1,4 @@
+import type { ApprovalMode } from '@kontourai/station-contracts/provider';
 import type {
   ProviderInterruptTurnResult,
   ProviderSession,
@@ -130,6 +131,11 @@ export interface CodexSessionRecord extends CodexUsageLimitState {
    * auto-accepts later calls without re-prompting. Dies with the session.
    */
   approvedTools: Set<string>;
+  /**
+   * The approval mode the latest turn ran at (`never` is full access), from
+   * the posture it was sent. Absent until a turn sends one.
+   */
+  appliedApprovalMode?: ApprovalMode;
   /**
    * #2880: replies written and not yet acknowledged, keyed by
    * `jsonRpcIdKey(rpcRequestId)` so the wire id's type is part of the match.

@@ -1,0 +1,7 @@
+{
+  "revision": "9a876cf566925e89fd48b92b6f99ff97393a85a7",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Third review round: added the bounded catalog wait (in-flight reads only, then the dialog with reason and Cancel, nothing sent) and that a closed source chat releases other pickers; checked against ConversationHandoffDialog, useConversationBoundaryDialogs and their tests and the rendered wait dialog.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ConversationHandoffDialog.test.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx","src-ui/src/hooks/useNewChatSelectionModel.ts"]}
+  ]
+}

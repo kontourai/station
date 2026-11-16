@@ -877,6 +877,48 @@ worktree was not removed (`policy`, `uncommitted`, `unpushed`,
 `session-running` or `failed`). See [Task dispatch](../design/task-dispatcher.md#workspace-isolation)
 (#4507).
 
+`GET /api/tasks?projectId=` carries the same `taskWorktree` (or
+`taskWorktreeUnknown: true` when the worktree record cannot be read and a
+worktree exists on disk) on each row, from one record read per list. A row's
+`workspaceBinding` stays as recorded at creation; a reader shows
+`taskWorktree` first. A worktree record left by an earlier Task with the same
+id is not projected.
+
+## Pull request facts for the Task board
+
+`GET /api/tasks/pull-request-facts?projectId=` answers
+`{observedAt, tasks: {[taskId]: {taskCreatedAt, pullRequests, partial?}}}`
+for the Project's live Tasks (not done or canceled). Each entry lists the
+pull requests kept on that Task whose declaring session the requester may
+read, each read from its provider at its exact identity:
+`status: {state: "current", pullRequestState, title, draft?, reviewDecision?,
+readiness?, mergeability, sourceBranch}` or `{state: "unavailable" |
+"unsupported", reason}`. `readiness` is `clean`, `blocked`, `checks-not-passing`,
+`conflicting`, `behind`, `draft` or `unknown`; absent means the provider did
+not report it. On GitHub `checks-not-passing` is `UNSTABLE`: some checks are
+failing or still pending, none of them required. A failing required check is
+`BLOCKED`, which the board words "Blocked by repository rules" (a known limit:
+it does not yet say which rule). Pull requests kept on the most recently
+updated Tasks are read first, at most 60 distinct ones, 4 at a time. The
+answer waits at most 8 seconds: a pull request past the bound, or not read by
+then, is listed `unavailable` and its Task is `partial`. Reads still pending
+at the deadline keep going in the background, so the next refresh finds them.
+GitHub reads ask for status fields only and share one `gh pr view` per pull
+request for 150 seconds (longer than the board's 120-second refresh); a write
+to the repository through Station clears it. Each fact's `observedAt` is when
+the forge was read, which for a shared answer is earlier than the request.
+Known limit: a change made outside Station (on the forge, or by an agent's own
+`gh`) can take up to about two board refreshes (roughly 240 seconds) to show,
+because a refresh inside the 150-second cache window is answered from the
+cache. The read moves no Task (close-on-merge is separate) and is
+`Cache-Control: private, no-store`. `projectId` is required (`400` without
+it, before anything else). A hosted request answers `tasks: {}`. A requester whose
+standing changed during the reads gets `404` with `code:
+"request_principal_changed"`, which a client can tell from a Station without
+this route (a plain `404`). The board derives its lanes
+from these facts with `deriveTaskLane`
+([`task-lane`](../../packages/contracts/src/task-lane.ts)).
+
 ## Start a Task from a tracker item
 
 `POST /api/tasks/from-work-item` takes `{projectId, workItemRef, agentId?,
@@ -5803,7 +5845,11 @@ scopes, recent outcomes and available slice measurements. A recent outcome's
 `result` is `oom-kill-in-scope` when the kernel killed any process in the
 scope (the engine or a command), with `oomKills`, its `oomKillsSource`
 (`close`, exact; or `last-poll` when the scope was already collected) and
-systemd's own `systemdResult`. Measurement failure
+systemd's own `systemdResult`. `cleanup` lists scopes whose cleanup failed
+and has not settled: `pending` ones (retried with backoff, with
+`nextAttemptAt`) and `abandoned` ones (no longer retried until shutdown, with
+`abandonedAt`), each with its `attempts`, `errorKind` (`bus_unavailable`,
+`command_failed` or `other`) and `lastError`. Measurement failure
 is separate from enforcement state; see
 [Linux service workload budgets](../guides/development.md#linux-service-workload-budgets)
 for platform scope and admission behavior.
@@ -5818,7 +5864,9 @@ under `/api/system/workload`:
   (`ready`, `unmanaged`, `unavailable` or `stopping`) with any reason, host
   memory, effective `limits`, the `sources` of the two memory budgets
   (`environment`, `settings` or `default`), saved `settings`, any
-  `settingsError`, and `applies` (`new-scopes` or `restart`).
+  `settingsError`, `applies` (`new-scopes` or `restart`), running `scopes`,
+  and `cleanup` (scopes whose cleanup has not settled, as above; absent from
+  older hosts).
 - `PUT /api/system/workload/settings` takes `{ memoryMiB, totalMemoryMiB }`
   (whole MiB, or `null` for the default) and returns the new status. While the
   `workload-budget-settings` Feature Preview is off it answers 404 with
@@ -6964,6 +7012,80 @@ retain their separate authority requirements. The operator exception covers
 only this read and GET/POST/DELETE of the existing profile device-code login
 leaf; it does not add `engine:login` to the operator's default scope set.
 See [profile sign-in](../guides/connections.md#sign-an-engine-profile-in-from-a-device).
+
+## Remote task engines
+
+```http
+GET    /remote-task-engines/connections
+POST   /remote-task-engines/connections
+GET    /remote-task-engines/connections/:id
+PATCH  /remote-task-engines/connections/:id
+DELETE /remote-task-engines/connections/:id
+POST   /remote-task-engines/connections/:id/acknowledgement
+DELETE /remote-task-engines/connections/:id/acknowledgement
+PUT    /remote-task-engines/connections/:id/credential
+DELETE /remote-task-engines/connections/:id/credential
+GET    /remote-task-engines/connections/:id/tasks?cursor=
+POST   /remote-task-engines/connections/:id/tasks
+GET    /remote-task-engines/connections/:id/tasks/:taskId
+POST   /remote-task-engines/connections/:id/tasks/:taskId/messages
+POST   /remote-task-engines/connections/:id/tasks/:taskId/cancel
+POST   /remote-task-engines/connections/:id/tasks/:taskId/sync
+GET    /remote-task-engines/connections/:id/tasks/:taskId/events?after=
+```
+
+These routes send work to cloud coding agents that run on the vendor's
+machines ([the decision](../decisions/remote-task-engines.md)). Shapes are in
+`@kontourai/station-contracts/remote-task-engine`. An answer is
+`{success: true, data}` or `{success: false, error, code}`.
+
+**Who may call.** Reads are `orchestration:read` and changes
+`orchestration:operate`. The credential leaf is `engine:login`. A request that
+may be an agent's is refused with 403 `remote-task-not-granted`.
+
+**Refusals.** Each one is decided before any request reaches the vendor:
+
+| Status and `code` | When |
+| --- | --- |
+| 404 `feature_preview_disabled` | The `remote-task-engines` preview is off. The answer also carries `previewId` and `settingsPath`. |
+| 403 `remote-task-policy-refused` | The managed policy does not name the vendor. |
+| 403 `remote-task-acknowledgement-required` | No current acknowledgement for the connection's vendor. |
+| 409 `remote-task-credential-missing` | No token is set. |
+| 405 `remote-task-capability-unsupported` | The vendor lacks the operation or option. |
+| 400 `remote-task-invalid` | A field or the polling settings are out of range, a token shorter than 16 characters, a repository segment of only dots, or a task id that is not the vendor's shape. |
+| 409 `remote-task-conflict` | A settings change on a connection that already has stored tasks. |
+
+**Vendor answers.**
+
+| Status and `code` | When |
+| --- | --- |
+| 429 `remote-task-rate-limited` | The vendor is limiting requests. The answer carries `Retry-After` and `retryAfterMs` when the vendor gave a wait. |
+| 502 `remote-task-vendor-refused` | The vendor refused. The answer carries `vendorStatus` and the vendor's own message, redacted of the token. |
+| 503 `remote-task-vendor-unavailable` | The vendor is unreachable or failed. |
+| 502 `remote-task-vendor-malformed` | The vendor's answer is larger than 4 MiB or lacks a field Station needs. |
+| 404 `remote-task-not-found` | No such connection or task. |
+| 500 `remote-task-store-failed` | Station could not read or save the task. |
+
+**Retained maintenance.** Removing a connection, clearing its token and
+withdrawing its acknowledgement work with the preview or the policy off.
+
+**Acknowledging.** The acknowledgement body is `{statement}`. It must be the
+connection view's `acknowledgementStatement` exactly.
+
+**Reading messages.** `events` returns `{events, task, tracking,
+firstSequence, missed}`: Station's stored messages after a Station sequence.
+Pass `after`, or the `Last-Event-ID` header, with the last `sequence` the
+client holds; a reconnecting client receives only what followed. Station keeps
+a task's newest 2,000 messages within 4 MiB and cuts a message at 16,000
+characters (`truncated: true`). `missed` is true when messages after `after`
+were dropped before the client read them, and `firstSequence` is the oldest
+kept. `sync` reads the vendor at once.
+
+**Polling.** Station polls a task only while a client has created, written
+to, synced or read it within the last 15 minutes, and stops once the task is
+finished, idle or waiting for the person. After a restart nothing polls until
+a client reads a task again. A task the vendor refused (not a rate limit or an
+outage) is not polled again on a read; a write, cancel or `sync` restarts it.
 
 ## Opt-in native Device proof binding management
 

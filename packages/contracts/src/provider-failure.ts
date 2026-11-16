@@ -19,6 +19,7 @@ import {
 import {
   APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
   CONVERSATION_CONTEXT_UNAVAILABLE_CODE,
+  CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
 } from './orchestration.js';
 import { PRINCIPAL_UNRESOLVED_CODE } from './principal.js';
@@ -181,6 +182,8 @@ export const PROVIDER_FAILURE_KINDS = {
   [SESSION_START_IN_FLIGHT_CODE]: 'busy',
   [RESOURCE_ENGINE_START_CAPACITY_CODE]: 'busy',
   [ADOPTION_CONTINUATION_IN_PROGRESS_CODE]: 'busy',
+  // The current Session still has a turn running; the handoff waits for it.
+  [CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE]: 'busy',
   [ADOPTION_ENGINE_NOT_READY_CODE]: 'unavailable',
   // A second consumer violates Station's internal queue-ownership invariant.
   async_event_queue_consumer_conflict: 'conflict',

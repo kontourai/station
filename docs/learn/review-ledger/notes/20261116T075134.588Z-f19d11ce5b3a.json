@@ -1,0 +1,9 @@
+{
+  "revision": "a67ca01f8bc06a4dd81ffa8aac82bf61f3635db1",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Checked the citing pages: provider-failure.ts only adds a busy (retryable) mapping for conversation_handoff_predecessor_busy; contracts.md now lists it, and no other claim about failure kinds or their retry semantics changes.","inputs":["packages/contracts/src/provider-failure.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the citing pages: provider-failure.ts only adds a busy (retryable) mapping for conversation_handoff_predecessor_busy; contracts.md now lists it, and no other claim about failure kinds or their retry semantics changes.","inputs":["packages/contracts/src/provider-failure.ts"]}
+  ]
+}

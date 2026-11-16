@@ -252,10 +252,16 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/infra/__tests__/workload-scope-holder.process.test.ts',
   // Fake systemd manager; one case starts and reaps a real short-lived process.
   'src-server/services/infra/__tests__/workload-budget.test.ts',
+  // Fake systemd manager; reaps one real short-lived process for a dead pid.
+  'src-server/services/infra/__tests__/workload-scope-cleanup.test.ts',
   'scripts/__tests__/run-biome.process.test.ts',
   'scripts/__tests__/component-style-hygiene.process.test.ts',
   // Runs the UI copy length gate as a node child against a disposable Git tree.
   'scripts/__tests__/ui-copy-length.process.test.ts',
+  // Runs the UI copy style gate as a node child against a disposable Git tree.
+  'scripts/__tests__/ui-copy-style.process.test.ts',
+  // Runs the UI CSS slop gate as a node child against a disposable Git tree.
+  'scripts/__tests__/ui-css-slop.process.test.ts',
   // Real second-process Task/share writers contend with the publication fence.
   'src-server/services/projects/project-room-agent-task-context.test.ts',
   // Reviewed setup launches real bounded commands and verifies durable outcomes.
@@ -413,6 +419,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #4516: boots the source Station with injected managed policies (refused
   // and accepted) and runs `station policy show` against it; private homes.
   'src-server/__tests__/managed-policy-startup.process.test.ts',
+  // Real supervisor handoff through the CLI's policy preflight, in a private home.
+  'packages/cli/src/__tests__/lifecycle-restart-policy.test.ts',
   // #4521: boots the source Station with every capability switch off and
   // drives its routes over HTTP; private homes, ephemeral ports.
   'src-server/__tests__/managed-capability-switches.process.test.ts',
