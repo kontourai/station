@@ -30,14 +30,27 @@ const fail = (message) => {
   throw new Error(message);
 };
 
-/** Flattens `gh api --paginate --slurp` pages of the run-attempt jobs listing. */
+/**
+ * Flattens `gh api --paginate --slurp` pages of the run-attempt jobs listing,
+ * refusing a listing that is not the whole attempt: every page must state the
+ * same `total_count`, and the jobs read must number exactly that many.
+ */
 export function jobsFromPages(pages) {
   if (!Array.isArray(pages) || pages.length < 1)
     fail('jobs listing must be a non-empty array of pages');
-  return pages.flatMap((page) => {
+  const totals = new Set(pages.map((page) => page?.total_count));
+  const [total] = totals;
+  if (totals.size !== 1 || !Number.isInteger(total) || total < 0)
+    fail('jobs listing pages do not state one total_count');
+  const jobs = pages.flatMap((page) => {
     if (!Array.isArray(page?.jobs)) fail('jobs listing page has no jobs array');
     return page.jobs;
   });
+  if (jobs.length !== total)
+    fail(
+      `jobs listing holds ${jobs.length} job(s) but states total_count ${total}`,
+    );
+  return jobs;
 }
 
 /** True when `name` is the verifier job's name, alone or under its caller's prefix. */

@@ -128,7 +128,7 @@ function harness() {
   // the arguments, so the test also sees which listing the step asked for.
   writeFileSync(
     join(bin, 'gh'),
-    '#!/usr/bin/env bash\nprintf \'%s\\n\' "$*" >> "$STUB_GH_ARGS"\ncat "$STUB_GH_PAGES"\n',
+    '#!/usr/bin/env bash\nprintf \'%s\\n\' "$*" >> "$STUB_GH_ARGS"\n[ "$STUB_GH_FAIL" = 1 ] && { echo \'gh: HTTP 503\' >&2; exit 1; }\ncat "$STUB_GH_PAGES"\n',
   );
   chmodSync(join(bin, 'gh'), 0o755);
   let scripts = 0;
@@ -156,13 +156,26 @@ function harness() {
     );
   };
 
-  /** Runs the confirm job's real decision step against a jobs listing. */
-  const confirm = (jobs: unknown[], firstResult: string) => {
+  /**
+   * Runs the confirm job's real decision step against a jobs listing: one
+   * complete page by default, or exactly `pages`, or a `gh` that fails.
+   */
+  const confirm = (
+    jobs: unknown[],
+    firstResult: string,
+    {
+      pages: rawPages,
+      ghFails = false,
+    }: { pages?: unknown; ghFails?: boolean } = {},
+  ) => {
     scripts += 1;
     const pages = join(dir, `pages-${scripts}.json`);
     const args = join(dir, `gh-args-${scripts}`);
     const output = join(dir, `output-${scripts}`);
-    writeFileSync(pages, JSON.stringify([{ total_count: jobs.length, jobs }]));
+    writeFileSync(
+      pages,
+      JSON.stringify(rawPages ?? [{ total_count: jobs.length, jobs }]),
+    );
     writeFileSync(args, '');
     writeFileSync(output, '');
     const step = (
@@ -178,6 +191,7 @@ function harness() {
       GITHUB_OUTPUT: output,
       STUB_GH_PAGES: pages,
       STUB_GH_ARGS: args,
+      STUB_GH_FAIL: ghFails ? '1' : '',
     });
     return {
       ...result,
@@ -247,11 +261,12 @@ type Shape = {
   /** How the second attempt ends if it runs. */
   retry?: 'success' | 'failure' | 'never-acquired';
   /**
-   * A human cancelled the whole run while the verifier waited for a runner:
-   * the verifier had already been admitted, and every later `if` sees
-   * cancelled().
+   * A person cancels the run: `during` a job (it ends `cancelled`) or
+   * `after` it ended. Every job admitted later sees cancelled().
    */
-  runCancelled?: boolean;
+  cancel?: { during: string } | { after: string };
+  /** The confirm job cannot read the listing. */
+  confirmFails?: 'api-unreachable' | 'listing-incomplete';
   /** The record job died before any durable write. */
   recordFails?: boolean;
 };
@@ -261,43 +276,65 @@ const resultOf = (attempt: string) =>
     ? 'cancelled'
     : attempt;
 
+type Done = { result: string; outputs: Record<string, string> };
+const UPSTREAM = [
+  'admit-cohort',
+  'create-promotion-fence',
+  'promote-android',
+  'promote-macos',
+  'deliver-ios',
+];
+
 /**
- * Walks the cohort's tail in job order: each job runs when its parsed `if`
- * is true over its own `needs`, and a job that never ran is `skipped` with no
- * outputs, as GitHub reports it.
+ * Walks the cohort's tail in `needs` order (a job is admitted only after
+ * every job it needs has ended): each job runs when its parsed `if` is true
+ * over its own `needs` and all its ancestors, a job that never ran is
+ * `skipped` with no outputs, as GitHub reports it, and each job gets a
+ * start/end tick so the test can see what was still running when.
  */
 function simulate(shape: Shape, h: ReturnType<typeof harness>) {
   const workflow = cohort();
-  const done: Record<
-    string,
-    { result: string; outputs: Record<string, string> }
-  > = {
-    'admit-cohort': { result: 'success', outputs: {} },
-    'create-promotion-fence': { result: 'success', outputs: {} },
-    'promote-android': { result: 'success', outputs: {} },
-    'promote-macos': { result: 'success', outputs: {} },
-    'deliver-ios': { result: 'success', outputs: {} },
+  const done: Record<string, Done> = Object.fromEntries(
+    UPSTREAM.map((id) => [id, { result: 'success', outputs: {} }]),
+  );
+  const ticks: Record<string, { start: number; end: number }> =
+    Object.fromEntries(UPSTREAM.map((id) => [id, { start: 0, end: 0 }]));
+  const ancestorsOf = (id: string): string[] => {
+    const direct = workflow.jobs[id]?.needs ?? [];
+    return [...new Set(direct.flatMap((need) => [need, ...ancestorsOf(need)]))];
   };
   const ran: string[] = [];
+  let cancelled = false;
   let recovery: ReturnType<
     ReturnType<typeof harness>['recoveryReceipt']
   > | null = null;
-  for (const id of tail(workflow)) {
-    const job = workflow.jobs[id];
-    expect(job, `job ${id}`).toBeDefined();
-    const needs = Object.fromEntries(
-      (job.needs ?? []).map((need) => {
-        expect(done[need], `${id} needs ${need} before it`).toBeDefined();
-        return [need, done[need]];
-      }),
+  const pending = tail(workflow);
+  while (pending.length > 0) {
+    const index = pending.findIndex((candidate) =>
+      (workflow.jobs[candidate].needs ?? []).every((need) => need in done),
     );
-    const cancelled =
-      Boolean(shape.runCancelled) && id !== 'protected-finalize';
-    if (!evaluateIf(job.if ?? '', { needs, cancelled })) {
+    expect(index, `a job in ${pending.join(', ')} can be admitted`).not.toBe(
+      -1,
+    );
+    const [id] = pending.splice(index, 1);
+    const job = workflow.jobs[id];
+    const needs = Object.fromEntries(
+      (job.needs ?? []).map((need) => [need, done[need]]),
+    );
+    const ancestors = Object.fromEntries(
+      ancestorsOf(id).map((ancestor) => [ancestor, done[ancestor]]),
+    );
+    const start = Math.max(
+      0,
+      ...(job.needs ?? []).map((need) => ticks[need].end),
+    );
+    if (!evaluateIf(job.if ?? '', { needs, ancestors, cancelled })) {
       done[id] = { result: 'skipped', outputs: {} };
+      ticks[id] = { start, end: start };
       continue;
     }
     ran.push(id);
+    ticks[id] = { start, end: start + 1 };
     if (id === 'protected-finalize') {
       done[id] = { result: resultOf(shape.first), outputs: {} };
     } else if (id === 'confirm-finalize-runner-loss') {
@@ -307,15 +344,26 @@ function simulate(shape: Shape, h: ReturnType<typeof harness>) {
           : shape.first === 'ran-then-cancelled'
             ? ranThen('cancelled')
             : ranThen(shape.first);
-      const decision = h.confirm(
-        [desktopPublisher, first],
-        done['protected-finalize'].result,
-      );
-      expect(decision.status, decision.stderr).toBe(0);
+      const firstResult = done['protected-finalize'].result;
+      const decision =
+        shape.confirmFails === 'api-unreachable'
+          ? h.confirm([desktopPublisher, first], firstResult, { ghFails: true })
+          : shape.confirmFails === 'listing-incomplete'
+            ? h.confirm([desktopPublisher, first], firstResult, {
+                pages: [{ total_count: 140, jobs: [desktopPublisher, first] }],
+              })
+            : h.confirm([desktopPublisher, first], firstResult);
       expect(decision.ghArgs).toContain(
         `repos/kontourai/station/actions/runs/${RUN_ID}/attempts/1/jobs`,
       );
-      done[id] = { result: 'success', outputs: decision.outputs };
+      if (shape.confirmFails) {
+        expect(decision.status, decision.stderr).toBe(1);
+        expect(decision.outputs).toEqual({});
+        done[id] = { result: 'failure', outputs: {} };
+      } else {
+        expect(decision.status, decision.stderr).toBe(0);
+        done[id] = { result: 'success', outputs: decision.outputs };
+      }
     } else if (id === 'protected-finalize-retry') {
       expect(
         shape.retry,
@@ -330,6 +378,12 @@ function simulate(shape: Shape, h: ReturnType<typeof harness>) {
     } else {
       done[id] = { result: 'success', outputs: {} };
     }
+    const cancel = shape.cancel ?? {};
+    if ('during' in cancel && cancel.during === id) {
+      done[id] = { result: 'cancelled', outputs: {} };
+      cancelled = true;
+    }
+    if ('after' in cancel && cancel.after === id) cancelled = true;
   }
   const finalizers = ['protected-finalize', 'protected-finalize-retry'].filter(
     (id) => done[id].result === 'success',
@@ -347,6 +401,7 @@ function simulate(shape: Shape, h: ReturnType<typeof harness>) {
   return {
     ran,
     done,
+    ticks,
     /** Which jobs left a final receipt; the artifact name is one per run. */
     finalReceipts: finalizers,
     ledgerWrites: writers.filter((id) => ran.includes(id)),
@@ -488,17 +543,145 @@ describe.skipIf(process.platform === 'win32')(
       expect(run.recovery).toBeNull();
     });
 
-    it('a run a human cancelled gets no second attempt and records nothing', () => {
-      const run = simulate(
-        { first: 'never-acquired', runCancelled: true },
-        harness(),
+    it('a person cancelling the run at any point stops the second attempt, records nothing and leaves the marker', () => {
+      const h = harness();
+      // While the first attempt waited for a runner: it ends cancelled with
+      // the run, and nothing after it is admitted but the receipt.
+      const waiting = simulate(
+        { first: 'never-acquired', cancel: { during: 'protected-finalize' } },
+        h,
       );
-      expect(run.ran).toEqual(['protected-finalize', 'record-native-recovery']);
-      expect(run.done['protected-finalize'].result).toBe('cancelled');
-      expect(run.done['confirm-finalize-runner-loss'].result).toBe('skipped');
-      expect(run.done['protected-finalize-retry'].result).toBe('skipped');
-      expect(run.ledgerWrites).toEqual([]);
-      expect(run.recovery?.completion.providerFinality).toBe('unconfirmed');
+      expect(waiting.ran).toEqual([
+        'protected-finalize',
+        'record-native-recovery',
+      ]);
+      // GitHub gave up on the runner, then the cancel landed before the
+      // confirm job was admitted.
+      const beforeConfirm = simulate(
+        { first: 'never-acquired', cancel: { after: 'protected-finalize' } },
+        h,
+      );
+      expect(beforeConfirm.done['confirm-finalize-runner-loss'].result).toBe(
+        'skipped',
+      );
+      // The confirm job read a lost runner, then the cancel landed before the
+      // second attempt was admitted: `always()` alone would start it.
+      const beforeRetry = simulate(
+        {
+          first: 'never-acquired',
+          retry: 'success',
+          cancel: { after: 'confirm-finalize-runner-loss' },
+        },
+        h,
+      );
+      expect(beforeRetry.done['confirm-finalize-runner-loss'].outputs).toEqual({
+        runner_lost: 'true',
+      });
+      // The second attempt was running when the cancel landed.
+      const duringRetry = simulate(
+        {
+          first: 'never-acquired',
+          retry: 'success',
+          cancel: { during: 'protected-finalize-retry' },
+        },
+        h,
+      );
+      expect(duringRetry.done['protected-finalize-retry'].result).toBe(
+        'cancelled',
+      );
+      for (const [label, run] of [
+        ['waiting', waiting],
+        ['before confirm', beforeConfirm],
+        ['before the second attempt', beforeRetry],
+      ] as const)
+        expect(run.done['protected-finalize-retry'].result, label).toBe(
+          'skipped',
+        );
+      for (const [label, run] of [
+        ['waiting', waiting],
+        ['before confirm', beforeConfirm],
+        ['before the second attempt', beforeRetry],
+        ['during the second attempt', duringRetry],
+      ] as const) {
+        expect(run.finalReceipts, label).toEqual([]);
+        // The ledger rows and the marker step live in these jobs only.
+        expect(run.ledgerWrites, label).toEqual([]);
+        expect(run.done['clear-promotion-fence'].result, label).toBe('skipped');
+        expect(run.recovery?.completion.providerFinality, label).toBe(
+          'unconfirmed',
+        );
+      }
+    });
+
+    it('the confirm job failing or the jobs API being unreachable is no second attempt', () => {
+      for (const confirmFails of [
+        'api-unreachable',
+        'listing-incomplete',
+      ] as const) {
+        const run = simulate(
+          { first: 'never-acquired', confirmFails },
+          harness(),
+        );
+        expect(
+          run.done['confirm-finalize-runner-loss'].result,
+          confirmFails,
+        ).toBe('failure');
+        expect(run.done['protected-finalize-retry'].result, confirmFails).toBe(
+          'skipped',
+        );
+        expect(run.ledgerWrites, confirmFails).toEqual([]);
+        expect(run.recovery?.completion.providerFinality, confirmFails).toBe(
+          'unconfirmed',
+        );
+      }
+    });
+
+    it('holds the promotion fence until the second attempt has ended', () => {
+      for (const retry of ['success', 'failure', 'never-acquired'] as const) {
+        const run = simulate({ first: 'never-acquired', retry }, harness());
+        expect(run.ran, retry).toContain('protected-finalize-retry');
+        expect(run.ran, retry).toContain('clear-promotion-fence');
+        expect(
+          run.ticks['clear-promotion-fence'].start,
+          `${retry}: the fence is cleared only after the second attempt`,
+        ).toBeGreaterThanOrEqual(run.ticks['protected-finalize-retry'].end);
+      }
+    });
+
+    it('records only when exactly one verifier attempt verified', () => {
+      const record = cohort().jobs['record-native-completion'];
+      const results = ['success', 'failure', 'cancelled', 'skipped'];
+      for (const first of results)
+        for (const second of results) {
+          const needs = {
+            'protected-finalize': { result: first, outputs: {} },
+            'protected-finalize-retry': { result: second, outputs: {} },
+            'deliver-ios': { result: 'success', outputs: {} },
+          };
+          const runs = evaluateIf(record.if ?? '', { needs });
+          const verified = [first, second].filter(
+            (r) => r === 'success',
+          ).length;
+          if (runs)
+            expect(verified, `record ran on ${first}/${second}`).toBe(1);
+          if (verified === 0)
+            expect(runs, `record ran on ${first}/${second}`).toBe(false);
+        }
+      // The two shapes the graph can reach with one verified attempt.
+      for (const [first, second] of [
+        ['success', 'skipped'],
+        ['cancelled', 'success'],
+      ])
+        expect(
+          evaluateIf(record.if ?? '', {
+            needs: {
+              'protected-finalize': { result: first, outputs: {} },
+              'protected-finalize-retry': { result: second, outputs: {} },
+              'deliver-ios': { result: 'failure', outputs: {} },
+            },
+          }),
+          `${first}/${second} with iOS failed`,
+        ).toBe(true);
     });
 
     it('reads only the exact job shape GitHub leaves for a runner it never assigned', () => {
@@ -550,6 +733,48 @@ describe.skipIf(process.platform === 'win32')(
         expect(run.stderr, label).toContain(message);
         expect(run.outputs, label).toEqual({});
       }
+      // A listing that is not the whole run attempt is not a decision either:
+      // the first of two pages (the verifier on the second), or a page whose
+      // job count disagrees with its total_count.
+      const filler = Array.from({ length: 99 }, (_, n) => ({
+        ...desktopPublisher,
+        id: n,
+        name: `3 · Publish native cohort / filler ${n}`,
+      }));
+      for (const [label, pages, message] of [
+        [
+          'the first page only',
+          [{ total_count: 101, jobs: [...filler, desktopPublisher] }],
+          'holds 100 job(s) but states total_count 101',
+        ],
+        [
+          'a count mismatch',
+          [{ total_count: 3, jobs: [desktopPublisher, neverAcquired] }],
+          'holds 2 job(s) but states total_count 3',
+        ],
+        [
+          'pages that disagree',
+          [
+            { total_count: 2, jobs: [desktopPublisher] },
+            { total_count: 3, jobs: [neverAcquired] },
+          ],
+          'do not state one total_count',
+        ],
+      ] as const) {
+        const run = h.confirm([], 'cancelled', { pages });
+        expect(run.status, label).toBe(1);
+        expect(run.stderr, label).toContain(message);
+        expect(run.outputs, label).toEqual({});
+      }
+      // Two complete pages are read whole.
+      const paged = h.confirm([], 'cancelled', {
+        pages: [
+          { total_count: 101, jobs: [...filler, desktopPublisher] },
+          { total_count: 101, jobs: [neverAcquired] },
+        ],
+      });
+      expect(paged.status, paged.stderr).toBe(0);
+      expect(paged.outputs).toEqual({ runner_lost: 'true' });
       // The second attempt's own name never reads as the first attempt.
       const retryName = `3 · Publish native cohort / ${cohort().jobs['protected-finalize-retry'].name}`;
       const run = decide(

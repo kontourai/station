@@ -367,16 +367,19 @@ as cancelled, but the ledger rows and marker are recorded. The
 incomplete-cohort receipt counts a verified second attempt as confirmed
 finality. A second runner loss is not retried again.
 
-If neither attempt ran, the cohort is public without a final receipt and
-without ledger rows. The next eligible Nightly treats the source as a failed
-delivery and rebuilds every platform under a new identity. To finalize the
-published cohort instead, re-run only that run's failed jobs:
+If no verifier attempt ever ran, the cohort is public without a final
+receipt and without ledger rows. The next eligible Nightly treats the source
+as a failed delivery and rebuilds every platform under a new identity. To
+finalize the published cohort instead, re-run only that run's failed jobs:
 
 ```sh
 gh run rerun <run-id> --failed --repo kontourai/station
 ```
 
-This is safe under the workflow's own rules only when all of these hold:
+This path is only for a run in which no verifier attempt ever got a runner.
+If either attempt ran and failed, `--failed` would re-run a real verification
+failure; do not use it. Even then it is safe under the workflow's own rules
+only when all of these hold:
 
 - No later Nightly has published. The verifier observes the live Play track,
   rolling tag and `latest.json`, so a newer cohort fails it closed.
@@ -388,11 +391,14 @@ This is safe under the workflow's own rules only when all of these hold:
   provider write, because the first attempt cleared the fence.
   `record-cli-ledger` and the record job's npm row both use `--if-absent`.
 
-Never use "Re-run all jobs". It re-stages and republishes the cohort. No run
-here has yet shown that `--failed` re-runs only the cancelled jobs inside the
-reusable cohort workflow and not the whole called workflow, which would
-recreate the fence and repeat the publishers. Until a run has shown that,
-letting the next Nightly rebuild is the conservative choice.
+Never use "Re-run all jobs". It re-stages and republishes the cohort. Run
+41720227898's attempt 2 (a `--failed` re-run on 2026-11-03) re-ran only the
+failed `Build and smoke darwin-x64` job of the reusable portable workflow and
+its dependents. Its `Plan the Nightly version`, `Create promotion fence` and
+`Verify providers and finalize` jobs were carried over with their original
+start times and runner ids, and the re-run jobs downloaded artifacts that
+attempt 1 had uploaded. That was observed for the portable workflow in that
+run. It has not yet been observed for the cohort workflow's publishers.
 
 macOS staging passes `--overlap-notarization`, so the two `notarytool submit
 --wait` waits run concurrently: the Nightly disk image encloses a signed but
