@@ -1613,8 +1613,9 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     }
   });
 
-  // The history read failing during a long load hides the skeleton but not
-  // the visible long-wait row; the announcement follows the row.
+  // The history read failing during a long load replaces the stage with the
+  // failure notice (its Retry is the exit); the announcement still names the
+  // longer wait, and no new-chat escape appears under the composer.
   test('a history failure during a long load still announces the longer wait', async () => {
     transcriptMock.enabled = true;
     transcriptMock.settled = false;
@@ -1631,10 +1632,8 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       }),
       onNewChat: vi.fn(),
     });
-    const row = document.querySelector('.session-history-controls');
-    expect(row?.textContent).toContain(
-      'Taking longer than usual. Waiting on Station.',
-    );
+    expect(document.querySelector('.session-history-controls')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Start new chat' })).toBeNull();
     await waitFor(() =>
       expect(
         screen.getByTestId('chat-dock-loading-announcement').textContent,
@@ -1701,18 +1700,12 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     expect(chatInputPropsMock.current?.sendBlockedReason).toBeUndefined();
   });
 
-  // Review L1. The resolving phase disables the composer for up to the SDK's
-  // 30s request timeout. Before this, the red banner it replaced at least
-  // offered "Start new chat" — so removing the banner removed the only way out
-  // of the wait. Retry is deliberately absent: it would re-ask a question the
-  // resolver is already asking.
   /**
-   * D3 (design round 2026-10): a reopened chat showed a "Loading
-   * conversation" skeleton, a "Start new chat" button and a live composer
-   * at once. One state at a time: the escape joins the skeleton only once a
-   * load has run past `loadingEscapeDelayMs`.
+   * D3 (design round 2026-10), revised 2026-11: a slow load is not a failed
+   * one, so it offers no "Start new chat" at any point. Past
+   * `loadingEscapeDelayMs` the stage adds only its quieter long-wait line.
    */
-  test('D3 while a conversation loads, the skeleton stands alone until the escape delay passes', () => {
+  test('D3 a slow load adds a long-wait line, never a new-chat escape', () => {
     vi.useFakeTimers();
     try {
       renderDock({
@@ -1733,18 +1726,19 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       expect(
         screen.queryByRole('button', { name: 'Start new chat' }),
       ).toBeNull();
+      expect(
+        document.querySelector('.conversation-loading__long')?.textContent,
+      ).toBe('');
       act(() => {
         vi.advanceTimersByTime(1_500);
       });
       expect(
-        screen.getByRole('button', { name: 'Start new chat' }),
-      ).toBeTruthy();
-      expect(
         document.querySelector('.conversation-loading__long')?.textContent,
       ).toContain('Taking longer than usual. Waiting on Station.');
       expect(
-        screen.getAllByRole('button', { name: 'Start new chat' }),
-      ).toHaveLength(1);
+        screen.queryByRole('button', { name: 'Start new chat' }),
+      ).toBeNull();
+      expect(document.querySelector('.session-history-controls')).toBeNull();
     } finally {
       vi.useRealTimers();
     }
@@ -1782,8 +1776,11 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     expect(stage()?.textContent).not.toContain('Taking longer');
   });
 
-  test('#1582 E3 a resolving conversation still offers a way out', async () => {
-    const onNewChat = vi.fn();
+  // Revised 2026-11 (owner): the resolving phase keeps Send disabled for up
+  // to the SDK's 30s request timeout, but the way through that wait is the
+  // draft, not abandoning the chat the user opened. Retry stays absent: it
+  // would re-ask a question the resolver is already asking.
+  test('#1582 E3 a resolving conversation keeps the draft open instead of offering a new chat', async () => {
     renderDock({
       orchestrationSession: buildOrchestrationSession({
         status: 'idle',
@@ -1794,23 +1791,18 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
         conversationOpenPending: true,
         messages: [],
       }),
-      onNewChat,
-      // Supplied so the Retry assertion below is a real one: without a handler
-      // the notice omits Retry anyway, and the absence proved nothing.
+      onNewChat: vi.fn(),
       onRetryConversationOpen: vi.fn(),
     });
-
-    const startNew = await screen.findByRole('button', {
-      name: 'Start new chat',
-    });
-    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
-    fireEvent.click(startNew);
-    expect(onNewChat).toHaveBeenCalled();
-    // The composer stays refused — the way out is a NEW chat, not a write into
-    // the one whose continuation is unproven.
     await waitFor(() =>
-      expect(chatInputPropsMock.current?.disabled).toBe(true),
+      expect(chatInputPropsMock.current?.loadingConversation).toBe(true),
     );
+    // Send stays refused while the continuation is unproven...
+    expect(chatInputPropsMock.current?.disabled).toBe(true);
+    // ...but the draft stays editable for the send that follows.
+    expect(chatInputPropsMock.current?.allowDraftWhileDisabled).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Start new chat' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
   // Delta-review L1. The two states are not exclusive: a reload whose

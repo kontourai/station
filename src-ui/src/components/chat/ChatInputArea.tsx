@@ -406,9 +406,10 @@ interface ChatInputAreaProps {
   /** A record may continue into a new owned chat instead of replying here. */
   submitAction?: { label: string; placeholder: string };
   /**
-   * The conversation's open read is still in flight: the composer is disabled
-   * and its placeholder names the wait. It occupies no new space, so the
-   * transcript above keeps its height.
+   * The conversation's open read is still in flight: Send is disabled and
+   * the placeholder names the wait. With `allowDraftWhileDisabled` the draft
+   * stays editable, so a slow open does not cost the user their typing. It
+   * occupies no new space, so the transcript above keeps its height.
    */
   loadingConversation?: boolean;
   onStartNewChat?: (
@@ -826,7 +827,9 @@ export function ChatInputArea({
       : workspaceRefused
         ? 'This conversation continues from its original workspace — start a new chat to work here'
         : loadingConversation
-          ? 'Loading chat…'
+          ? allowDraftWhileDisabled
+            ? 'Start typing — you can send once this chat opens…'
+            : 'Loading chat…'
           : allowDraftWhileDisabled
             ? turnInFlight
               ? 'Draft a follow-up while this turn finishes…'

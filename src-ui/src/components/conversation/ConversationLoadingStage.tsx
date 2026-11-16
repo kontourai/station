@@ -45,14 +45,11 @@ export function ConversationLoadingStage({
   step,
   long = false,
   stationName,
-  onNewChat,
 }: {
   step: ConversationLoadingStep;
-  /** The load has run past the escape delay. */
+  /** The load has run past `loadingEscapeDelayMs`. */
   long?: boolean;
   stationName?: string;
-  /** Offered only once `long`; absent when the caller may not start a chat. */
-  onNewChat?: () => void;
 }) {
   const text = conversationLoadingStepText(step);
   return (
@@ -68,22 +65,15 @@ export function ConversationLoadingStage({
       <p key={text} className="conversation-loading__step" aria-hidden="true">
         {text}
       </p>
-      {long ? (
-        <p className="conversation-loading__long">
-          <span aria-hidden="true">
-            {conversationLoadingLongText(stationName)}
-          </span>
-          {onNewChat ? (
-            <button
-              type="button"
-              className="conversation-loading__escape"
-              onClick={onNewChat}
-            >
-              Start new chat
-            </button>
-          ) : null}
-        </p>
-      ) : null}
+      {/* Always present, so the mark and step stay put when the long wait
+          begins; only its words fade in. */}
+      <p
+        key={long ? 'long' : 'waiting'}
+        className="conversation-loading__long"
+        aria-hidden="true"
+      >
+        {long ? conversationLoadingLongText(stationName) : null}
+      </p>
     </div>
   );
 }

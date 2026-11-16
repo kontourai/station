@@ -32,32 +32,15 @@
   animation: station-startup-stage var(--motion-slow) var(--ease-out) both;
 }
 
+/* The slot is always there, so the mark and step stay put when the long wait
+   begins; only its words fade in. */
 .conversation-loading__long {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-items: baseline;
-  gap: var(--k-space-1) var(--k-space-2);
+  min-height: 1.5em;
   margin: 0;
   font-size: var(--k-text-sm);
   color: var(--k-text-muted);
   opacity: 0.85;
   animation: station-startup-stage var(--motion-slow) var(--ease-out) both;
-}
-
-.conversation-loading__escape {
-  padding: 0;
-  border: none;
-  background: none;
-  font: inherit;
-  color: var(--accent-primary, var(--k-text));
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.conversation-loading__escape:hover {
-  text-decoration-thickness: 2px;
 }
 
 @keyframes conversation-loading-in {

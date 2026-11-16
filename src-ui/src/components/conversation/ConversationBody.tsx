@@ -154,13 +154,13 @@ import { LazyBoundary } from '../LazyBoundary';
 import { resolveNewChatAgentEnable } from '../modals/new-chat-agent-enable';
 import { SessionFailureAlert } from '../session-failure/SessionFailureAlert';
 import { ErrorState, SkeletonList } from '../state';
+import { ConversationComposer } from './ConversationComposer';
+import { useConversationConnection } from './ConversationConnectionContext';
 import {
   ConversationLoadingStage,
   type ConversationLoadingStep,
   conversationLoadingLongText,
 } from './ConversationLoadingStage';
-import { ConversationComposer } from './ConversationComposer';
-import { useConversationConnection } from './ConversationConnectionContext';
 import { ConversationStopControl } from './ConversationStopControl';
 import {
   RecordConversationBody,
@@ -351,10 +351,11 @@ export interface ConversationBodyProps {
   /** Re-resolves the exact durable conversation identity, never an Agent guess. */
   onRetryConversationOpen?: () => void | Promise<void>;
   /**
-   * #3239: how long a load runs before the "Start new
-   * chat" escape joins the skeleton. One state at a time: a load that is
-   * going to land shows a skeleton and nothing else; the escape is for a
-   * load that has stopped looking like one. Tests set it to 0.
+   * #3239: how long a load runs before the loading stage adds its quieter
+   * "Taking longer than usual" line. A load that lands in the ordinary second
+   * or two shows only its step. (The name predates the stage: it once
+   * timed a "Start new chat" escape, which a slow load no longer offers.)
+   * Tests set it to 0.
    */
   loadingEscapeDelayMs?: number;
   onForkFromTurn?: (source: ForkTurnSource) => void;
@@ -891,8 +892,8 @@ function LiveConversationBody({
     conversationLoading,
     transcriptDisplayed,
   ]);
-  // D3: the escape joins the skeleton only once a load has run long; a load
-  // that lands in the ordinary second or two shows one state, the skeleton.
+  // D3: the long-wait line joins the stage only once a load has run long; a load
+  // that lands in the ordinary second or two shows only its step.
   const [loadingLong, setLoadingLong] = useState(false);
   useEffect(() => {
     if (!conversationLoading) {
@@ -2003,14 +2004,6 @@ function LiveConversationBody({
                 step={loadingStep}
                 long={showLoadingLongRow}
                 stationName={station?.stationName}
-                onNewChat={
-                  onNewChat
-                    ? () =>
-                        void Promise.resolve(onNewChat()).catch(
-                          surfaceRecoveryFailure,
-                        )
-                    : undefined
-                }
               />
             ) : (
               <ChatEmptyState
@@ -2713,36 +2706,12 @@ function LiveConversationBody({
         {announcedLoading}
       </div>
       {/*
-        The way out of a wait the loading stage is not showing (a history
-        failure replaced it, or rows are already on screen while the open
-        read resolves); over an empty transcript the stage carries the long
-        wait and its escape itself. `.session-history-controls` is this pane's
-        existing control row (archive#3386 already widened it past "buttons
-        only"), reused rather than given a class of its own — the entry
-        stylesheet is at its budget ceiling to the byte.
-
-        `!recoveryOpen` because the recovery notice below carries its
-        own "Start new chat": a reload whose point-read lands `unavailable`
-        BEFORE the transcript's first read satisfies both conditions at once,
-        and rendered the control twice (#1607).
+        A slow load offers no "Start new chat": the user opened THIS chat, the
+        inbox and new-chat controls stay reachable throughout, and the draft
+        stays editable (`allowDraftWhileDisabled`). The exits belong to a load
+        that actually failed: the recovery notice below (Retry + Start new
+        chat) and the history-failure notice (Retry).
       */}
-      {showLoadingLongRow && !showLoadingSkeleton ? (
-        <div className="session-history-controls">
-          {/* Announced by the persistent region above, not by this span. */}
-          <span>{loadingLongMessage}</span>
-          {onNewChat ? (
-            <button
-              type="button"
-              className="button button--secondary"
-              onClick={() =>
-                void Promise.resolve(onNewChat()).catch(surfaceRecoveryFailure)
-              }
-            >
-              Start new chat
-            </button>
-          ) : null}
-        </div>
-      ) : null}
       {recoveryOpen ? (
         <LazyBoundary
           load={loadConversationOpenRecoveryNotice}
@@ -2952,10 +2921,13 @@ function LiveConversationBody({
               !callerMayContinue ||
               workspaceRefusedWithoutNewChat
             }
-            // A busy wait keeps the draft open for a later send; a caller
-            // the server refused a send has no later send to draft for.
+            // A busy wait, or an open read still in flight, keeps the draft
+            // open for a later send; a caller the server refused a send has
+            // no later send to draft for. Send itself stays disabled.
             allowDraftWhileDisabled={
-              busyWaitBlocksSend && !!agent && callerMayContinue
+              (busyWaitBlocksSend || resolvingOpen) &&
+              !!agent &&
+              callerMayContinue
             }
             sendRefused={!callerMayContinue || workspaceRefusedWithoutNewChat}
             turnInFlight={turnInFlight}

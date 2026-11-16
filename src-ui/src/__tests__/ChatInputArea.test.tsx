@@ -283,6 +283,31 @@ describe('ChatInputArea', () => {
     expect(textarea.placeholder).toBe('Loading chat…');
   });
 
+  test('a conversation still opening keeps its draft editable but unsendable', () => {
+    const onInputChange = vi.fn();
+    const onSend = vi.fn(async () => {});
+    renderChatInputArea({
+      disabled: true,
+      loadingConversation: true,
+      allowDraftWhileDisabled: true,
+      onInputChange,
+      onSend,
+    });
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    expect(textarea.disabled).toBe(false);
+    expect(textarea.placeholder).toBe(
+      'Start typing — you can send once this chat opens…',
+    );
+    fireEvent.change(textarea, { target: { value: 'typed while opening' } });
+    expect(onInputChange).toHaveBeenCalledWith('typed while opening');
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(onSend).not.toHaveBeenCalled();
+    expect(
+      (screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
   test('a composer whose sending the server refused invites no typing', () => {
     renderChatInputArea({
       disabled: true,
