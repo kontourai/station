@@ -1137,13 +1137,20 @@ is a real finding: raise the fixture envelope only with a matching
 the context Station itself puts in front of every engine session: the
 `tools/list` of each built-in MCP server (name, description and input schema)
 and Station's injected text (orchestration instructions, workload budget,
-chat-image line). `agent-context-budget.test.ts` beside it recomputes each
+chat-image line). station-control is measured twice: `bound`, the listing
+Claude's in-process delivery receives, and `delegated-custody`, the subset Codex
+and ACP engines list. `codexBoundToolsJsonBytes` measures the `dynamicTools`
+Codex's bound browser and device channel offers at thread start, through the
+mapping the adapter sends. `agent-context-budget.test.ts` beside it recomputes each
 number from live source and fails when the file disagrees, so update the JSON
 to the measured values in the same change. When text shrinks, lower the
 number. `PR: Agent context budget` fails a pull request that raises any value
 above its merge base's, so only the pull request's own change counts; a branch
 that predates the file passes until it merges `main`. Cut the added text first; if the growth is worth it, a
-maintainer adds the `agent-context-increase` label. On a merge conflict in the
+maintainer adds the `agent-context-increase` label. The workflow counts a key
+the merge base lacks as growth, so a pull request that adds a measurement also
+needs that label: accepting new keys unlabeled would let a renamed key reset
+its baseline. On a merge conflict in the
 JSON, rerun the test and take its measured values.
 
 ### Latest E2E screenshot evidence
