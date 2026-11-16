@@ -272,10 +272,12 @@ describe('session detail scroll structure (station#3305)', () => {
   /**
    * #3552: an external conversation reads as the ordinary chat. One scroll
    * region (the chat's message log) holds the conversation; the name, the
-   * connection status and the composer stay pinned around it, and nothing
-   * else sits outside it to be clipped.
+   * connection status, the one Continue in Station action and the composer
+   * stay pinned around it, and nothing else sits outside it to be clipped.
+   * The action is pinned on purpose: the view opens at the latest message,
+   * where an action at the top of the scroll region would never be seen.
    */
-  test('read-only detail: the conversation scrolls in the chat log, with only its header, status and composer pinned', async () => {
+  test('read-only detail: the conversation scrolls in the chat log, with only its header, status, Continue action and composer pinned', async () => {
     await withClient(
       <AttachedSessionDetail
         apiBase="http://station.test"
@@ -305,8 +307,21 @@ describe('session detail scroll structure (station#3305)', () => {
     expect([...detail.children].map((child) => child.className)).toEqual([
       'sessions-detail__chat-header',
       'sessions-detail__connection-state',
+      'sessions-detail__continue-bar',
       'conversation-body conversation-body--record',
     ]);
+    // The pinned bar holds only its bounded action row (no transcript or
+    // other growable content that would be clipped outside the log).
+    const bar = detail.querySelector<HTMLElement>(
+      '.sessions-detail__continue-bar',
+    )!;
+    expect(bar.contains(log)).toBe(false);
+    expect([...bar.children].map((child) => child.className)).toEqual([
+      'sessions-detail__continue-row',
+    ]);
+    expect(
+      within(bar).getByRole('button', { name: 'Continue in Station' }),
+    ).toBeTruthy();
   });
 
   test('mutable detail: context and diagnostics scroll; the composer is pinned outside the scroll region', async () => {

@@ -1827,40 +1827,6 @@
   font-weight: 600;
 }
 
-/* An Agent or engine picked for the next send, with its undo beside it. */
-.chat-input__next-turn-notice.chat-input__handoff-chip {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0 var(--k-space-2);
-}
-
-.chat-input__handoff-undo {
-  padding: 0 var(--k-space-1);
-  border: 0;
-  border-radius: var(--k-radius-sm);
-  background: transparent;
-  color: var(--k-action);
-  font: inherit;
-  cursor: pointer;
-}
-
-.chat-input__handoff-undo:hover {
-  text-decoration: underline;
-}
-
-.chat-input__handoff-undo:focus-visible {
-  outline: var(--k-focus-ring-width, 2px) solid var(--k-focus);
-  outline-offset: 1px;
-}
-
-@media (pointer: coarse) {
-  .chat-input__handoff-undo {
-    min-width: 44px;
-    min-height: 44px;
-  }
-}
-
 .chat-error-details {
   margin: 8px 0 0;
   text-align: left;
@@ -3527,10 +3493,6 @@
 
   .chat-input__next-turn-notice {
     display: block;
-  }
-
-  .chat-input__next-turn-notice.chat-input__handoff-chip {
-    display: flex;
   }
 
   .chat-input__activity .chat-scroll-to-bottom,

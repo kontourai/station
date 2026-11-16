@@ -397,12 +397,6 @@ interface ChatInputAreaProps {
   agentHandoffTriggerRef?: React.RefObject<HTMLButtonElement | null>;
   agentHandoffDisabled?: boolean;
   agentHandoffDisabledReason?: string;
-  /** The Agent or engine the next send hands off to, with its undo. */
-  nextMessageHandoff?: {
-    label: string;
-    kind: 'agent' | 'engine';
-    onUndo: () => void;
-  };
   workspaceRefused?: boolean;
   /**
    * The server refused this caller a send here: the disabled composer shows
@@ -585,7 +579,6 @@ export function ChatInputArea({
   agentHandoffTriggerRef,
   agentHandoffDisabled = false,
   agentHandoffDisabledReason,
-  nextMessageHandoff,
   workspaceRefused = false,
   sendRefused = false,
   submitAction,
@@ -1168,24 +1161,6 @@ export function ChatInputArea({
             <span className="chat-input__next-turn-destination">
               {agentEngineMove.to}
             </span>
-          </p>
-        )}
-        {nextMessageHandoff && (
-          <p className="chat-input__next-turn-notice chat-input__handoff-chip">
-            <span>
-              Next message →{' '}
-              <span className="chat-input__next-turn-destination">
-                {nextMessageHandoff.label}
-              </span>
-            </span>
-            <button
-              type="button"
-              className="chat-input__handoff-undo"
-              onClick={nextMessageHandoff.onUndo}
-              aria-label={`Undo: keep the current ${nextMessageHandoff.kind} instead of ${nextMessageHandoff.label}`}
-            >
-              Undo
-            </button>
           </p>
         )}
         <div className="chat-input__activity" ref={activityRef}>

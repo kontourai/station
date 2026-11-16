@@ -490,10 +490,9 @@ show what **Start** will use:
   you have chosen a Model, the picker's reset button names the default it
   returns to, such as **Use project default** for a model-only choice or
   **Use Agent defaults** for an engine override. In an existing conversation,
-  changing or resetting the engine opens a short handoff picker: switch now
-  (your draft, or a catch-up request when there is none, is the first message)
-  or **Use for next message**, which shows "Next message → …" above the
-  composer with **Undo**.
+  changing or resetting the engine opens a short handoff picker that switches
+  now: your draft, or a catch-up request when there is none, is the first
+  message.
   Full access, a pending or refused approval change, and a conversation override
   add a warning glyph to the combined button; open Run setup for details.
   In the model picker, while a reply you sent is still running, the other

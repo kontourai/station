@@ -6,10 +6,8 @@ import {
   useOrchestrationSessionsQuery,
 } from '@kontourai/station-sdk';
 import type { RefObject } from 'react';
-import {
-  activeChatsStore,
-  useActiveChatActions,
-} from '../../contexts/ActiveChatsContext';
+import type { useActiveChatActions } from '../../contexts/ActiveChatsContext';
+import { activeChatsStore } from '../../contexts/ActiveChatsContext';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
@@ -89,38 +87,28 @@ export function ConversationBoundaryDialogs({
     handoffSession,
     handoffDisabledReason,
     handoffReturnFocusRef,
-    setArmedHandoff,
     contextResetSource,
     setContextResetSource,
     contextBoundarySessionId,
     setContextBoundaryStored,
     hasLocalDeferredMessages,
   } = dialogs;
-  const { clearInput, clearDraft } = useActiveChatActions();
   const handoffIsActive = handoffSession?.id === activeSession?.id;
   return (
     <>
       {handoffSource && handoffSession?.conversationId && (
         <ConversationHandoffDialog
+          // A new dialog per open: request state never crosses chats.
+          key={`${handoffSource.id}\0${handoffSource.nonce}`}
           apiBase={apiBase}
           conversationId={handoffSession.conversationId}
           sessionId={handoffSession.id}
           currentAgentId={handoffSession.agentSlug}
           executionPreset={handoffSource.executionPreset}
-          autoSubmit={handoffSource.autoSubmit}
-          // An armed send keeps running when the person opens another chat;
-          // anything it needs them for waits until they return to its own.
-          suspended={Boolean(handoffSource.autoSubmit) && !handoffIsActive}
           prepareDraft={
             handoffIsActive ? chatInput.prepareOutgoingText : undefined
           }
-          draftHasQuotes={handoffIsActive && chatInput.quotes.length > 0}
-          onArm={(armed) => {
-            setArmedHandoff(armed);
-            setHandoffSource(null);
-            // The next step is typing the message the choice applies to.
-            requestAnimationFrame(() => chatInput.textareaRef.current?.focus());
-          }}
+          draftQuotes={handoffIsActive ? chatInput.quotes : undefined}
           projectSlug={handoffSession.projectSlug}
           agents={agents}
           projects={projects}
@@ -155,7 +143,12 @@ export function ConversationBoundaryDialogs({
           }}
           onClose={() => {
             setHandoffSource(null);
-            requestAnimationFrame(() => handoffReturnFocusRef.current?.focus());
+            // The engine picker has no trigger to return to: the composer.
+            requestAnimationFrame(() =>
+              (
+                handoffReturnFocusRef.current ?? chatInput.textareaRef.current
+              )?.focus(),
+            );
           }}
           onAccepted={({
             receipt,
@@ -176,25 +169,7 @@ export function ConversationBoundaryDialogs({
                 ),
               ),
             );
-            setArmedHandoff(null);
-            const armedDraft = handoffSource.armedDraft;
-            if (armedDraft) {
-              // The armed send came from its own chat's composer: clear that
-              // chat's draft (it was sent), wherever the person is now, and
-              // leave the screen where they put it.
-              if (clearsComposer) {
-                const now =
-                  activeChatsStore.getSnapshot()[armedDraft.sessionId];
-                if ((now?.input ?? '') === armedDraft.draft) {
-                  clearInput(armedDraft.sessionId);
-                  clearDraft(armedDraft.sessionId);
-                }
-                chatDraftsStore.consumeQuotes(
-                  armedDraft.sessionId,
-                  armedDraft.quotes,
-                );
-              }
-            } else if (handoffIsActive) {
+            if (handoffIsActive) {
               if (clearsComposer) {
                 chatInput.handleClearInput();
                 chatInput.handleClearAttachments();
@@ -206,10 +181,11 @@ export function ConversationBoundaryDialogs({
             invalidate(orchestrationQueries.sessions().queryKey);
             invalidate(conversationQueries.inventory().queryKey);
             setHandoffSource(null);
-            if (!armedDraft)
-              requestAnimationFrame(() =>
-                handoffReturnFocusRef.current?.focus(),
-              );
+            requestAnimationFrame(() =>
+              (
+                handoffReturnFocusRef.current ?? chatInput.textareaRef.current
+              )?.focus(),
+            );
             showToast(
               `Continuing with ${target?.name ?? `deleted Agent “${targetId}”`}`,
               'success',

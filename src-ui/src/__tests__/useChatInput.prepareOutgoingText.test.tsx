@@ -56,6 +56,7 @@ vi.mock('../hooks/useActiveChatSessions', () => ({
 }));
 
 import { CHAT_INPUT_MAX_CHARS } from '@shared/chat-input-limits';
+import { mentionToken } from '../components/chat/composer-mentions';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
 import { useChatInput } from '../hooks/useChatInput';
@@ -78,6 +79,13 @@ function renderChatInput() {
         conversationId: CHAT,
         availableModels: [],
         attachmentCapabilities: { images: true, files: true },
+        workingDirectory: '/work/app',
+        mentionAuthority: 'station-authority',
+        mentionRequestScope: {
+          apiBase: 'http://station.test',
+          authorityKey: 'station-authority',
+          isCurrent: () => true,
+        },
       }),
     { wrapper },
   );
@@ -148,5 +156,27 @@ describe('prepareOutgoingText', () => {
       );
     });
     expect(prepared).toBeNull();
+  });
+
+  test('a file mention is expanded to its workspace path; the raw draft is kept', async () => {
+    const token = mentionToken({
+      label: 'notes.md',
+      path: 'docs/notes.md',
+      workspace: '/work/app',
+      authority: 'station-authority',
+      type: 'file',
+    });
+    const { result } = renderChatInput();
+    let prepared: Awaited<
+      ReturnType<typeof result.current.prepareOutgoingText>
+    > = null;
+    await act(async () => {
+      prepared = await result.current.prepareOutgoingText(
+        `Read ${token} please`,
+      );
+    });
+    expect(prepared!.text).toBe('Read @"/work/app/docs/notes.md" please');
+    expect(prepared!.draft).toBe(`Read ${token} please`);
+    expect(send).not.toHaveBeenCalled();
   });
 });
