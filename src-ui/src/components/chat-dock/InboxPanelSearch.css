@@ -18,10 +18,3 @@
   min-height: 0;
   padding-block: var(--k-space-1);
 }
-.chat-dock-inbox__search:focus-within {
-  outline: 2px solid var(--k-focus-ring);
-  outline-offset: calc(-1 * var(--k-border-thin));
-}
-.chat-dock-inbox .chat-dock-inbox__search input:focus-visible {
-  outline: none;
-}
