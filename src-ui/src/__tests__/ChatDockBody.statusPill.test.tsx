@@ -17,9 +17,38 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+
+const scheduled = vi.hoisted(() => ({ enabled: false }));
+vi.mock('../hooks/useAgentSchedule', () => ({
+  useAgentSchedule: () => ({
+    schedule: {
+      wakeUps: scheduled.enabled
+        ? [
+            {
+              id: 'wake',
+              dueAt: '2026-11-15T23:00:00Z',
+              state: 'pending',
+              note: 'Check results',
+            },
+          ]
+        : [],
+      jobProposals: [],
+      automationProposals: [],
+    },
+    loaded: true,
+    cancelWakeUp: {},
+    approveWakeUp: {},
+    declineWakeUp: {},
+    declineProposal: {},
+    approveProposal: {},
+    confirmAutomationProposal: {},
+    declineAutomationProposal: {},
+  }),
+}));
 
 const revealRequest = vi.hoisted(() => vi.fn());
 vi.mock('../components/status/approvalReveal', async (importOriginal) => {
@@ -226,10 +255,21 @@ function renderDock(session: ChatSession) {
 }
 
 afterEach(() => {
+  scheduled.enabled = false;
   vi.useRealTimers();
 });
 
 const pill = () => document.querySelector('[data-chat-status-pill]');
+
+test('the conversation body places armed check-backs in the composer activity slot', async () => {
+  scheduled.enabled = true;
+  renderDock(buildSession({ conversationId: 'scheduled-conversation' }));
+  expect(
+    await within(await screen.findByTestId('chat-input-area')).findByText(
+      /Checking back at/,
+    ),
+  ).toBeTruthy();
+});
 
 describe('ChatDockBody composer status pill', () => {
   test('a pending approval is the pill, and no inline approval row repeats it', async () => {

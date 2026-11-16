@@ -48,6 +48,7 @@ import { isPeerDelegationRecord } from './work-item-open-policy';
 
 export interface HomeWorkItem {
   receivedAgentMessage?: true;
+  nextWakeUpAt?: string;
   id: string;
   /** Durable conversation identity when this row represents one. */
   conversationId?: string;
@@ -480,6 +481,7 @@ function buildSessionWorkItem(
     model: session.reportedModel ?? session.effectiveModel ?? session.model,
     ...(cwdLabel ? { cwdLabel } : {}),
     turnProgress: activeTurnProgress(session),
+    nextWakeUpAt: session.nextWakeUpAt,
     // #2312 review: a Draft's own clocks move without anyone touching it — a
     // stop (idle reaper, shutdown) rewrites `updatedAt`, engine housekeeping
     // bumps `lastEventAt` — and would keep an abandoned Draft out of the
@@ -732,6 +734,7 @@ function mergeHomeWorkItems(
       ...(chat ? { chatSessionId: chat.chatSessionId } : {}),
       updatedAt: Math.max(existing.updatedAt, item.updatedAt),
       lifecycleLabel: mergedLifecycleLabel,
+      nextWakeUpAt: orchestration?.nextWakeUpAt,
       activeReason:
         mergedLifecycleLabel === 'Running'
           ? (orchestration?.activeReason ?? chat?.activeReason)

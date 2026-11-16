@@ -1,3 +1,6 @@
+import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { EventStore } from '../../../services/orchestration/event-store.js';
 /**
  * #3427: the person-facing Session reads at their own route seam, for what
  * the runtime-composition suites cannot reach with the operator credential:
@@ -13,12 +16,14 @@
 import type { AddressInfo } from 'node:net';
 import { serve } from '@hono/node-server';
 import {
+  type ConversationTurnDirectory,
   getSessionDigest,
   listSessionActivity,
   waitForSession,
 } from '@kontourai/station-sdk/client';
 import { Hono } from 'hono';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { readJson } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { configureRuntimePublicRoutes } from '../../../runtime/routes/runtime-routes.js';
 import { bindStationControlRequestAuthority } from '../../../security/station-control-request-authority.js';
@@ -65,10 +70,6 @@ const dispatchScope = {
 /** As in production: only the deployment account (Dana) is held to memberships. */
 const personMayView = (userId: string, projectId: string) =>
   userId !== DANA || ['p-viewable', 'p-also-viewable'].includes(projectId);
-const preview = {
-  select: <T>(branches: { enabled: () => T; disabled: () => T }) =>
-    branches.enabled(),
-};
 
 const OPERATOR = 'operator-principal';
 /** Only a deployment account (Dana) is held to her memberships. */
@@ -79,6 +80,8 @@ function app(
   principalId: string = DANA,
   mount = '/r',
   root = new Hono(),
+  previewEnabled = true,
+  directoryStore?: Pick<EventStore, 'readTurnDirectoryFacts'>,
 ) {
   root.use(`${mount}/*`, async (c, next) => {
     if (internal)
@@ -101,6 +104,19 @@ function app(
     conversationTitle: () => undefined,
     listSessionsNamingParents: () => ({ sessions: [], truncated: false }),
     listThreadIdsStartedIn: () => SESSIONS,
+    readTurnDirectoryFacts: (
+      ids: readonly string[],
+      options: {
+        turnLimit: number;
+        beforeGlobalSequence?: number;
+        includeCount?: boolean;
+      },
+    ) =>
+      directoryStore?.readTurnDirectoryFacts(ids, options) ?? {
+        turns: [],
+        totalTurns: 0,
+        hasMore: false,
+      },
     readTurnDigestFacts: () => ({
       turns: [],
       totalTurns: 0,
@@ -122,7 +138,10 @@ function app(
         ({ viewable: 'p-viewable', hidden: 'p-hidden' })[slug],
       personMayView,
       personViewsEveryProject,
-      preview,
+      preview: {
+        select: (branches) =>
+          previewEnabled ? branches.enabled() : branches.disabled(),
+      },
     }),
   );
   const scope = personSessionScope({
@@ -143,7 +162,10 @@ function app(
         subscribe: () => () => {},
       }),
       personSeesSession: scope.seesSession,
-      preview,
+      preview: {
+        select: (branches) =>
+          previewEnabled ? branches.enabled() : branches.disabled(),
+      },
     }),
   );
   return root;
@@ -236,6 +258,100 @@ describe('the leaves refuse every internal request themselves', () => {
       ]);
     }
   });
+});
+
+const makeDirectoryTemp = trackTempDirs();
+
+test('the turn directory pages an entire long conversation with one total count and one metadata statement per page', async () => {
+  const store = new EventStore(
+    join(makeDirectoryTemp('turn-directory-'), 'events.sqlite'),
+  );
+  try {
+    for (let index = 0; index < 205; index++) {
+      const turnId = `turn-${index}`;
+      const base = {
+        provider: 'codex' as const,
+        threadId: 'in-viewable',
+        turnId,
+        createdAt: new Date(index * 1000).toISOString(),
+      };
+      store.appendEvent({
+        ...base,
+        eventId: `${turnId}-start`,
+        method: 'turn.started',
+        prompt: `Request ${index}`,
+      });
+      store.appendEvent({
+        ...base,
+        eventId: `${turnId}-tool`,
+        method: 'tool.started',
+        itemId: `${turnId}-item`,
+        toolCallId: `${turnId}-call`,
+        toolName: 'shell',
+      });
+      store.appendEvent({
+        ...base,
+        eventId: `${turnId}-end`,
+        method: 'turn.completed',
+        finishReason: 'stop',
+      });
+    }
+    const routes = app(undefined, DANA, '/r', new Hono(), false, store);
+    const prepared = vi.spyOn(DatabaseSync.prototype, 'prepare');
+    try {
+      const turns: string[] = [];
+      let cursor: string | null = null;
+      do {
+        const response = await routes.request(
+          `/r/in-viewable/turn-directory?turnLimit=100${cursor ? `&cursor=${cursor}&includeCount=false` : ''}`,
+        );
+        expect(response.status).toBe(200);
+        const { data: page } = await readJson<{
+          data: {
+            session: { turnCount?: number };
+            turns: ConversationTurnDirectory['turns'];
+            nextCursor: string | null;
+          };
+        }>(response);
+        expect(page.session.turnCount).toBe(cursor ? undefined : 205);
+        expect(page.turns.length).toBeLessThanOrEqual(100);
+        expect(page.turns[0]).toMatchObject({
+          request: `Request ${204 - turns.length}`,
+          outcome: 'completed',
+        });
+        turns.push(
+          ...page.turns.map((turn: { turnId: string }) => turn.turnId),
+        );
+        cursor = page.nextCursor;
+      } while (cursor);
+      expect(turns).toEqual(
+        Array.from({ length: 205 }, (_, index) => `turn-${204 - index}`),
+      );
+      expect(prepared).toHaveBeenCalledTimes(4);
+    } finally {
+      prepared.mockRestore();
+    }
+  } finally {
+    store.close();
+  }
+});
+
+test('turn navigation remains available without the CLI preview and preserves person and Project authorization', async () => {
+  const routes = app(undefined, DANA, '/r', new Hono(), false);
+  const allowed = await routes.request('/r/in-viewable/turn-directory');
+  expect(allowed.status).toBe(200);
+  expect(await allowed.json()).toHaveProperty('data', {
+    session: { conversationId: 'in-viewable', turnCount: 0 },
+    turns: [],
+    nextCursor: null,
+  });
+  expect((await routes.request('/r/in-viewable/digest')).status).toBe(404);
+  expect((await routes.request('/r/in-hidden/turn-directory')).status).toBe(
+    404,
+  );
+  expect(
+    (await app('caller-less').request('/r/in-viewable/turn-directory')).status,
+  ).toBe(403);
 });
 
 describe('the SDK fetchers read the real routes and the real handshake', () => {

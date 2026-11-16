@@ -16,7 +16,8 @@ import type { WorkAttentionKind, WorkFacts } from './work-facts';
  * Pure and `now`-injected. Two inputs, with different jobs:
  *
  * - THE ITEM decides the rung's family and therefore the lane. That is a
- *   switch on `lifecycleLabel` (plus `controlMode`), and nothing else: the
+ *   switch on `lifecycleLabel` and `controlMode`, plus the item's armed
+ *   `nextWakeUpAt` when a settled turn is waiting to resume: the
  *   label is already the product's one answer to "what state is this in".
  *   In particular "an owed decision outranks running" is decided where the
  *   label is: the shared attention fold (`sessionAttentionDisposition`)
@@ -34,7 +35,7 @@ import type { WorkAttentionKind, WorkFacts } from './work-facts';
  *  blocked, interrupted                          (Needs you)
  *  failed, stopped                               (finished)
  *  elsewhere                                     (Idle)
- *  N sub-agents, owned cleanup, no progress, running (Running)
+ *  N sub-agents, owned cleanup, no progress, running, scheduled (Running)
  *  draft                                         (Drafts)
  *  done                                          (finished)
  *  idle                                          (Idle)
@@ -67,6 +68,7 @@ export type WorkStatusRung =
   | 'stopped'
   | 'unanswerable'
   | 'childWork'
+  | 'scheduled'
   | 'quiet'
   | 'running'
   | 'draft'
@@ -155,6 +157,17 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
       reason: `${item.agentLabel} · Replies unavailable here`,
     };
   }
+  if (
+    item.nextWakeUpAt &&
+    parseEpochMs(item.nextWakeUpAt) !== undefined &&
+    (item.lifecycleLabel === 'Completed' || item.lifecycleLabel === 'Recent')
+  )
+    return {
+      rung: 'scheduled',
+      lane: 'running',
+      tone: 'neutral',
+      word: SESSION_STATUS_WORDS.scheduled,
+    };
   switch (item.lifecycleLabel) {
     case 'Needs attention': {
       // With no recorded kind (no facts, an older server)
