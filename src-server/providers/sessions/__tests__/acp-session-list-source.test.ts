@@ -1,4 +1,4 @@
-import { mkdirSync, realpathSync } from 'node:fs';
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -299,6 +299,33 @@ describe('AcpSessionListSource', () => {
         { cwd: userFolder },
       ),
     ).toEqual(['user-session']);
+  });
+
+  test('a probe whose session ids cannot be remembered logs it and still succeeds', async () => {
+    vi.stubEnv(ACP_SESSION_LISTING_ENV, '1');
+    // Station home's runtime folder is a file: the ledger cannot be written.
+    writeFileSync(join(dir, 'runtime'), 'not a folder');
+    const warn = vi.fn();
+    const double = capturedProcess('antigravity-1.5.8');
+    const probe = new ACPProbe(
+      {
+        id: 'antigravity',
+        name: 'Antigravity',
+        command: 'agy',
+        cwd: dir,
+        enabled: true,
+      },
+      { warn, debug: vi.fn() },
+      dir,
+      () => double.process as unknown as ACPProcess,
+    );
+    await expect(probe.probe('request')).resolves.toBe(true);
+    expect(probe.getSessionListing()?.outcome).toBe('ok');
+    expect(warn).toHaveBeenCalledWith(
+      'ACPProbe could not remember its probe session',
+      expect.objectContaining({ id: 'antigravity' }),
+    );
+    await probe.dispose();
   });
 
   test('keeps out engines with their own source, disabled connections and Station-owned sessions', async () => {

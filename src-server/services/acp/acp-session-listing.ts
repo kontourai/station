@@ -1,11 +1,16 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
+  chmodSync,
+  closeSync,
+  constants,
   mkdirSync,
+  openSync,
   readFileSync,
   realpathSync,
   renameSync,
+  rmSync,
   statSync,
-  writeFileSync,
+  writeSync,
 } from 'node:fs';
 import { basename, dirname, isAbsolute, join } from 'node:path';
 import type { InitializeResult } from './acp-process.js';
@@ -269,7 +274,8 @@ export function hasDedicatedSessionSource(connection: {
 
 /** At most this many probe session ids are remembered per connection. */
 export const MAX_REMEMBERED_PROBE_SESSIONS = 256;
-const PROBE_SESSION_LEDGER_MAX_BYTES = 64 * 1024;
+/** One cap for both sides: the writer trims to it, the reader refuses past it. */
+export const PROBE_SESSION_LEDGER_MAX_BYTES = 64 * 1024;
 
 /**
  * Where a connection's probe session ids are remembered across Station
@@ -302,19 +308,49 @@ export function readProbeSessionIds(path: string): string[] {
   }
 }
 
-/** Replaces the remembered ids atomically (owner-only file and folder). */
+/**
+ * Replaces the remembered ids atomically. Keeps the newest ids that fit
+ * {@link PROBE_SESSION_LEDGER_MAX_BYTES}, dropping the oldest, so the reader
+ * never discards the whole file for size. The folder is made owner-only even
+ * when it existed, and the temporary file is created exclusively without
+ * following a link.
+ */
 export function writeProbeSessionIds(
   path: string,
   ids: readonly string[],
 ): void {
-  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  const temporary = `${path}.${process.pid}.tmp`;
-  writeFileSync(
+  let kept = ids.slice(-MAX_REMEMBERED_PROBE_SESSIONS);
+  let content = JSON.stringify(kept);
+  while (
+    kept.length > 0 &&
+    Buffer.byteLength(content, 'utf8') > PROBE_SESSION_LEDGER_MAX_BYTES
+  ) {
+    kept = kept.slice(1);
+    content = JSON.stringify(kept);
+  }
+  const folder = dirname(path);
+  mkdirSync(folder, { recursive: true, mode: 0o700 });
+  chmodSync(folder, 0o700);
+  const temporary = `${path}.${randomUUID()}.tmp`;
+  const descriptor = openSync(
     temporary,
-    JSON.stringify(ids.slice(-MAX_REMEMBERED_PROBE_SESSIONS)),
-    { mode: 0o600 },
+    constants.O_WRONLY |
+      constants.O_CREAT |
+      constants.O_EXCL |
+      (constants.O_NOFOLLOW ?? 0),
+    0o600,
   );
-  renameSync(temporary, path);
+  try {
+    try {
+      writeSync(descriptor, content);
+    } finally {
+      closeSync(descriptor);
+    }
+    renameSync(temporary, path);
+  } catch (error) {
+    rmSync(temporary, { force: true });
+    throw error;
+  }
 }
 
 /** A folder compared as given and as its real path, for agents that report either. */

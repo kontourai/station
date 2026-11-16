@@ -1,16 +1,32 @@
+import {
+  chmodSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   ACP_SESSION_LISTING_BOUNDS,
   advertisesSessionListing,
   hasDedicatedSessionSource,
+  MAX_REMEMBERED_PROBE_SESSIONS,
+  PROBE_SESSION_LEDGER_MAX_BYTES,
   parseAcpSessionListPage,
+  probeSessionLedgerPath,
   readAcpSessionListing,
+  readProbeSessionIds,
+  writeProbeSessionIds,
 } from '../acp-session-listing.js';
 import { answerFromFrame, capturedAgent } from './acp-session-list-frames.js';
 
 afterEach(() => {
   vi.useRealTimers();
 });
+
+const makeTempDir = trackTempDirs();
 
 describe('ACP session listing', () => {
   test('reads which captured agents advertise session/list', () => {
@@ -213,5 +229,67 @@ describe('ACP session listing', () => {
     expect(
       hasDedicatedSessionSource({ id: 'antigravity', command: 'agy' }),
     ).toBe(false);
+  });
+
+  describe('remembered probe session ids', () => {
+    const ledger = () =>
+      probeSessionLedgerPath(makeTempDir('station-probe-ids-'), 'agy');
+
+    test('are owner-only even when the folder already existed more open', () => {
+      const path = ledger();
+      const folder = join(path, '..');
+      mkdirSync(folder, { recursive: true, mode: 0o755 });
+      chmodSync(folder, 0o755);
+      writeProbeSessionIds(path, ['a']);
+      expect(statSync(folder).mode & 0o777).toBe(0o700);
+      expect(statSync(path).mode & 0o777).toBe(0o600);
+      expect(readProbeSessionIds(path)).toEqual(['a']);
+    });
+
+    test('keep the newest ids within the byte cap the reader accepts', () => {
+      const path = ledger();
+      // 256 ids of 256 bytes encode past the reader's cap.
+      const ids = Array.from(
+        { length: MAX_REMEMBERED_PROBE_SESSIONS },
+        (_, i) => `${String(i).padStart(3, '0')}${'x'.repeat(253)}`,
+      );
+      writeProbeSessionIds(path, ids);
+      expect(statSync(path).size).toBeLessThanOrEqual(
+        PROBE_SESSION_LEDGER_MAX_BYTES,
+      );
+      const read = readProbeSessionIds(path);
+      expect(read.length).toBeGreaterThan(0);
+      expect(read.at(-1)).toBe(ids.at(-1));
+      expect(ids.slice(-read.length)).toEqual(read);
+    });
+
+    test('keep at most 256 ids, dropping the oldest', () => {
+      const path = ledger();
+      const ids = (n: number) => Array.from({ length: n }, (_, i) => `id-${i}`);
+      writeProbeSessionIds(path, ids(MAX_REMEMBERED_PROBE_SESSIONS));
+      expect(readProbeSessionIds(path)).toEqual(
+        ids(MAX_REMEMBERED_PROBE_SESSIONS),
+      );
+      writeProbeSessionIds(path, ids(MAX_REMEMBERED_PROBE_SESSIONS + 1));
+      expect(readProbeSessionIds(path)).toEqual(
+        ids(MAX_REMEMBERED_PROBE_SESSIONS + 1).slice(1),
+      );
+    });
+
+    test('read corrupt, non-array or oversized content as none', () => {
+      const path = ledger();
+      writeProbeSessionIds(path, ['seed']);
+      for (const content of [
+        '{not json',
+        '{"ids":["a"]}',
+        JSON.stringify(['x'.repeat(PROBE_SESSION_LEDGER_MAX_BYTES)]),
+      ]) {
+        writeFileSync(path, content);
+        expect(readProbeSessionIds(path)).toEqual([]);
+      }
+      writeFileSync(path, JSON.stringify(['ok', 7, '', 'x'.repeat(300)]));
+      expect(readProbeSessionIds(path)).toEqual(['ok']);
+      expect(readFileSync(path, 'utf8')).toContain('ok');
+    });
   });
 });
