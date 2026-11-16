@@ -334,7 +334,7 @@ describe('pull request feedback detection', () => {
   it('a pull request already being read is not read again by the tick', async () => {
     const t = setup();
     t.claim(pr('1'), 'chat-a');
-    let release: (() => void) | undefined;
+    const pending: Array<() => void> = [];
     const observed = normalizeGitHubFeedbackObservation(
       recorded,
       pr('1'),
@@ -344,17 +344,23 @@ describe('pull request feedback detection', () => {
       '1',
       () =>
         new Promise((resolve) => {
-          release = () => resolve({ state: 'observed', observation: observed });
+          pending.push(() =>
+            resolve({ state: 'observed', observation: observed }),
+          );
         }),
     );
     t.setClock(NOW);
     const refreshing = t.poller.refresh('chat-a');
-    await vi.waitFor(() => expect(release).toBeDefined());
+    await vi.waitFor(() => expect(pending).toHaveLength(1));
     // The tick finds the same pull request due while the refresh reads it.
     const ticking = t.poll(NOW);
-    release!();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    for (const release of pending.splice(0)) release();
+    for (const release of pending.splice(0)) release();
     await refreshing;
-    expect(await ticking).toEqual({ outcome: 'polled', read: 0 });
+    const summary = await ticking;
+    for (const release of pending.splice(0)) release();
+    expect(summary).toEqual({ outcome: 'polled', read: 0 });
     expect(t.reads).toEqual(['github.com#1']);
   });
 
