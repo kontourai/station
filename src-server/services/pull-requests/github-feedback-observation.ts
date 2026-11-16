@@ -90,9 +90,11 @@ export const GITHUB_FEEDBACK_QUERY = `query($owner: String!, $name: String!, $nu
 
 const NUMBER = /^[1-9]\d{0,9}$/;
 /**
- * Forge text is cut as it is read, so neither gh's output nor the stored
- * observation grows with whatever a reviewer or CI wrote: a message quotes
- * at most 600 characters of any of it.
+ * Forge text is cut once gh's answer is parsed, so the stored observation
+ * (and every message, which quotes at most 600 characters) does not grow
+ * with whatever a reviewer or CI wrote. gh's output itself is bounded only
+ * by what the query asks for: it leaves out check summaries, and the
+ * transport's maxBuffer covers the rest.
  */
 const BODY_CHARS = 1000;
 const EXCERPT_CHARS = 600;
@@ -146,7 +148,8 @@ function normalizeCheck(node: any): PullRequestFeedbackCheck | undefined {
     const job = text(node.name);
     if (!job) return undefined;
     const workflow = text(node.checkSuite?.workflowRun?.workflow?.name);
-    // The title only: a summary can run to 64 KB, times a hundred checks.
+    // The title only: the query leaves out summaries, which can run to
+    // 64 KB each, times a hundred checks.
     const excerpt = capped(text(node.title)?.trim(), EXCERPT_CHARS);
     return {
       name: capped(

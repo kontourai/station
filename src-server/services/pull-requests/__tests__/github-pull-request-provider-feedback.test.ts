@@ -204,4 +204,25 @@ describe('GitHub feedback observation', () => {
     ).toMatchObject({ state: 'unavailable', cause: 'error' });
     expect(calls).toEqual([]);
   });
+
+  it('cuts forge text as it is read: comment and review bodies, check titles and descriptions', async () => {
+    const long = JSON.parse(recorded);
+    const pull = long.data.repository.pullRequest;
+    pull.reviewThreads.nodes[0].comments.nodes[0].body = 'c'.repeat(5000);
+    pull.latestReviews.nodes[0].body = 'r'.repeat(5000);
+    const contexts =
+      pull.commits.nodes[0].commit.statusCheckRollup.contexts.nodes;
+    contexts[0].title = 't'.repeat(5000);
+    contexts[0].name = 'n'.repeat(5000);
+    contexts.at(-1).description = 'd'.repeat(5000);
+    const { github } = provider(async () => ({ stdout: JSON.stringify(long) }));
+    const result = await github.getFeedbackObservation(CONTEXT, '42');
+    if (result.state !== 'observed') throw new Error('not observed');
+    const observation = result.observation;
+    expect(observation.threads[0]!.comments[0]!.body.length).toBe(1000);
+    expect(observation.reviews[0]!.body.length).toBe(1000);
+    expect(observation.checks[0]!.excerpt!.length).toBe(600);
+    expect(observation.checks[0]!.name.length).toBe(300);
+    expect(observation.checks.at(-1)!.excerpt!.length).toBe(600);
+  });
 });
