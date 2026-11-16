@@ -47,7 +47,7 @@ describe('JsonFileStore', () => {
 
       // An unnamed store records nothing, so no path can become an attribute.
       record.mockClear();
-      new JsonFileStore(join(dir, 'unnamed.json'), [], {
+      new JsonFileStore(join(dir, 'unnamed.json'), [] as number[], {
         durableAtomicWrite: true,
       }).write([1]);
       expect(record).not.toHaveBeenCalled();
