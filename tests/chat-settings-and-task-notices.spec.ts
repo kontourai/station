@@ -191,9 +191,14 @@ async function openChatSettings(page: Page): Promise<Locator> {
     name: 'Chat actions',
     exact: true,
   });
-  if (await phoneActions.isVisible()) await phoneActions.click();
-  else await page.getByRole('button', { name: 'More dock actions' }).click();
-  await page.getByRole('menuitem', { name: 'Chat settings' }).click();
+  // A phone's Chat actions sheet has the row; a desktop bar has the gear.
+  if (await phoneActions.isVisible()) {
+    await phoneActions.click();
+    await page.getByRole('menuitem', { name: 'Chat settings' }).click();
+  } else
+    await page
+      .getByRole('button', { name: 'Chat settings', exact: true })
+      .click();
   const dialog = page.getByRole('dialog', { name: 'Chat settings' });
   await expect(dialog).toBeVisible();
   await dialog.evaluate((element) =>

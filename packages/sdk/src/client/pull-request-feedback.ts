@@ -118,3 +118,21 @@ export async function sendPullRequestFeedbackAgain(
     ),
   );
 }
+
+/**
+ * Turn every switch off for a pull request this chat owns. Found by the
+ * pull request, not through the chat's links, so one unlinked since can
+ * still be turned off.
+ */
+export async function turnOffPullRequestFeedback(
+  apiBase: string,
+  conversationId: string,
+  identity: PullRequestLinkIdentity,
+  options?: ClientRequestOptions,
+): Promise<PullRequestFeedbackView> {
+  return read<PullRequestFeedbackView>(
+    await mutateJson(path(apiBase, conversationId), 'DELETE', options, {
+      identity,
+    }),
+  );
+}

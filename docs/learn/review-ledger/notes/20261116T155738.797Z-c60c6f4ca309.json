@@ -1,0 +1,7 @@
+{
+  "revision": "91a4f80a1ba9f52424440fc5f85302f19ca63f19",
+
+  "notes": [
+    {"path":"docs/guides/desktop-build.md","note":"Boot-import paragraph now says the guard denies whole packages (the package and every subpath; @kontourai/veritas replaces @kontourai/veritas/engine in BOOT_DENIED_STATIC_IMPORTS), matching deniedBy in scripts/lib/server-static-imports.mjs and its tests.","inputs":["docs/guides/desktop-build.md","scripts/lib/server-static-imports.mjs"]}
+  ]
+}
