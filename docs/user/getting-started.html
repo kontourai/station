@@ -87,7 +87,7 @@
 <div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable table"><table><thead><tr><th>Path</th><th>Platforms</th><th>Use it when</th></tr></thead><tbody><tr><td>Run from source</td><td>macOS, Linux</td><td>You want the current <code>main</code> branch and are comfortable with a Node.js checkout. Follow the <a href="https://github.com/kontourai/station/blob/main/docs/guides/development.md#local-runtime">developer guide</a>.</td></tr>
 <tr><td>Nightly server install</td><td>macOS, Linux, Windows (x64)</td><td>You want the newest signed <code>main</code> build as a local server you open in a browser. Use the one-line <a href="#install-nightly">Nightly install</a>.</td></tr>
 <tr><td>Nightly desktop build</td><td>macOS (Apple silicon), Windows (x64)</td><td>You want a native app for testing. Download it from the <a href="https://github.com/kontourai/station/releases/tag/nightly-desktop">Nightly desktop pre-release</a>; see <a href="#nightly-desktop-downloads">Nightly desktop downloads</a>.</td></tr></tbody></table></div>
-<p>When a signed stable or beta portable ring is available, <a href="#install-or-upgrade">Install Or Upgrade</a> is the macOS/Linux installer path. The remaining sections cover that install and the first-run UI.</p>
+<p>When a signed Stable portable release is available, <a href="#install-or-upgrade">Install Or Upgrade</a> is the macOS/Linux installer path. The remaining sections cover that install and the first-run UI.</p>
 <h2 id="install-nightly">Install Nightly</h2>
 <p>Nightly is built from <code>main</code> and published as signed prebuilt server archives. On macOS or Linux:</p>
 <pre><code>
@@ -137,7 +137,7 @@ $env:STATION_CHANNEL = 'nightly'; irm https://raw.githubusercontent.com/kontoura
 sh -c 'set -eu; file=$(mktemp &quot;${TMPDIR:-/tmp}/station-install.XXXXXX&quot;); trap '\''rm -f &quot;$file&quot;'\'' EXIT HUP INT TERM; curl -fsSL https://raw.githubusercontent.com/kontourai/station/main/install.sh &gt;&quot;$file&quot;; chmod 600 &quot;$file&quot;; GH_TOKEN=$(gh auth token) sh &quot;$file&quot;'
 </code></pre>
 <p>For an available signed release, the installer verifies its GitHub OIDC attestation and SHA-256 receipt before it builds and starts Station. The stable channel installs under <code>~/.station/installs/stable</code>, writes runtime data to <code>~/.station/instances/stable</code>, and owns the <code>station</code> launcher in <code>~/.local/bin</code>. Open <code>http://localhost:18000</code> after the command completes.</p>
-<p>When a signed beta ring is available, export <code>STATION_CHANNEL=beta</code> before running the same installer command. Preview is a release provenance name; the local runtime is the <strong>beta</strong> channel. It uses a separate <code>~/.station/installs/beta</code> install root, <code>~/.station/instances/beta</code> runtime, <code>station-beta</code> launcher, and <code>http://localhost:28000</code> UI. Do not use the retired <code>STATION_CHANNEL=preview</code>; the installer refuses it. The exact channel identity, launcher, and port mapping are verified by the release installer.</p>
+<p>Stable and Nightly are the supported distribution channels. The installer refuses the retired <code>STATION_CHANNEL=beta</code> and <code>STATION_CHANNEL=preview</code> values. An operator accepting a release candidate can pin <code>STATION_VERSION=vX.Y.Z-rc.N</code>; it installs with Stable identity and the base product version. Follow the <a href="https://github.com/kontourai/station/blob/main/docs/guides/release-rings.md#publish-a-release-candidate">release-candidate procedure</a> for acceptance and manual candidate replacement.</p>
 <p>An operator can instead supply <code>STATION_INSTALL_PUBLIC_MANIFEST_URL</code> for a signed platform-v2 prebuilt archive. That macOS/Linux path uses bundled Node.js without building Station on the host; it may download a pinned Node.js to verify the first install. It requires a published manifest for the requested channel. See the <a href="https://github.com/kontourai/station/blob/main/docs/guides/release-channel-ports.md#prebuilt-archives-and-source-releases">archive install guide</a> for this separate path and its upgrade and service limits.</p>
 <h2 id="choose-a-model-connection-or-engine">Choose A Model Connection Or Engine</h2>
 <p>Two kinds of connection can power an agent. A <strong>Model connection</strong> is a local or hosted model service that Station's own engine runs inference on. An <strong>Engine</strong> is an installed agent CLI, or a custom engine you connected, that runs its own agent loop.</p>
@@ -388,7 +388,11 @@ station start
 <pre><code>
 STATION_CHANNEL=stable &quot;${STATION_ROOT:-$HOME/.station}/installs/stable/current/install.sh&quot; uninstall
 </code></pre>
-<p>Use <code>STATION_CHANNEL=beta &quot;${STATION_ROOT:-$HOME/.station}/installs/beta/current/install.sh&quot; uninstall</code> for beta. Add <code>--purge-data</code> only when you also intend to delete that channel's home (<code>~/.station/instances/stable</code> or <code>~/.station/instances/beta</code>). The installer accepts purge only for a data root it created and marked; it preserves an unmarked pre-existing directory for manual review.</p>
+<p>For Nightly, use that install's retained installer:</p>
+<pre><code>
+STATION_CHANNEL=nightly &quot;${STATION_ROOT:-$HOME/.station}/installs/nightly/current/install.sh&quot; uninstall
+</code></pre>
+<p>Add <code>--purge-data</code> only when you also intend to delete the selected channel's home (<code>~/.station/instances/stable</code> or <code>~/.station/instances/nightly</code>). The installer accepts purge only for a data root it created and marked; it preserves an unmarked pre-existing directory for manual review.</p>
 <h2 id="next">Next</h2>
 <ul>
 <li>Read <a href="concepts.html">Station concepts</a>.
