@@ -903,6 +903,8 @@ describe.skipIf(!posix)('station-weight gate exit status', () => {
     sourceRevision: 'abc',
     startedAt: '2026-01-01T00:00:00.000Z',
     host: HOST,
+    // Both instruction files reached the first request; the gate requires it.
+    repoRules: { claudeMd: true, agentsMd: true },
     metrics: Object.fromEntries(
       Object.entries({ serverReadyMs: 5000, ...REQUEST, ...HOST_VALUES }).map(
         ([id, value]) => [id, metric(value)],
