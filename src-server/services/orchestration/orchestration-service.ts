@@ -562,6 +562,11 @@ import {
   type SessionQueryModule,
 } from './session-query-module.js';
 import {
+  SessionReadModelMeasurement,
+  type SessionReadModelMeasurementSnapshot,
+} from './session-read-model-measurement.js';
+import type { SessionReadModelReadOptions } from './session-read-model-purpose.js';
+import {
   SessionRecoveryCoordinator,
   type UsageLimitRecoveryActionResult,
 } from './session-recovery-coordinator.js';
@@ -2438,6 +2443,8 @@ export class OrchestrationService {
    * it).
    */
   private readonly turnProgress: TurnProgressTracker;
+  /** Who reads the session read model and what each read costs (#4992). */
+  private readonly readModelMeasurement = new SessionReadModelMeasurement();
   /** Current running child work plus durable terminal outcomes. */
   /**
    * #2457: a child's running → terminal fold is the background-task settle
@@ -3537,7 +3544,8 @@ export class OrchestrationService {
         this.readSessionMessages(threadId, authority),
       readSessionSeedMessages: (threadId, authority) =>
         this.readSessionSeedMessages(threadId, authority),
-      listSessionReadModel: (authority) => this.listSessionReadModel(authority),
+      listSessionReadModel: (authority, options) =>
+        this.listSessionReadModel(authority, options),
       canReadSession: (threadId, authority) =>
         this.sessionAuthz.canReadSession(threadId, authority),
     });
@@ -5202,29 +5210,30 @@ export class OrchestrationService {
   }
 
   /**
-   * The paired Stations this Station recorded as hosting `taskId`
-   * (`recordPeerDelegationActivityDispatch` writes one record per
-   * environment and task) among the records `authority` may read. Empty
-   * when no such record names the task.
+   * Whether this Station recorded the paired Station `environmentId` as
+   * hosting `taskId` (`recordPeerDelegationActivityDispatch` writes one record
+   * per environment and task), among the records `authority` may read.
+   *
+   * The record's thread id is derived from the pair, so this reads that one
+   * thread instead of folding every readable Session (#4992). It is the same
+   * read model with the same readability and ephemeral checks, narrowed.
    */
-  async peerDelegationHostingEnvironmentIds(
+  async peerDelegationHostsTask(
     taskId: string,
+    environmentId: string,
     authority: SessionReadScope,
-  ): Promise<string[]> {
+  ): Promise<boolean> {
     // Read with the caller's own authority: a record the caller cannot read
     // names no host for it.
-    const sessions = await this.listSessionReadModel(authority);
-    return [
-      ...new Set(
-        sessions.flatMap((session) =>
-          session.delegation?.environmentKind === 'peer' &&
-          session.delegation.taskId === taskId &&
-          session.delegation.environmentId
-            ? [session.delegation.environmentId]
-            : [],
-        ),
-      ),
-    ];
+    const [record] = await this.listSessionReadModel(authority, {
+      purpose: 'peer-delegation-host',
+      threadIds: [peerDelegationActivityThreadId(environmentId, taskId)],
+    });
+    return (
+      record?.delegation?.environmentKind === 'peer' &&
+      record.delegation.taskId === taskId &&
+      record.delegation.environmentId === environmentId
+    );
   }
 
   /** Advance a peer Activity record only from an observed peer lifecycle. */
@@ -5275,14 +5284,56 @@ export class OrchestrationService {
    * `options.threadIds` narrows the read to those sessions (station#3413: the
    * digest of ONE Session must not fold the whole inventory). Each is still
    * held to the same readability and ephemeral checks as the full read.
+   *
+   * `options.purpose` names the caller for the read's telemetry (#4992) and
+   * never changes the result.
    */
   async listSessionReadModel(
     authority: SessionReadScope,
-    options?: { threadIds?: readonly string[] },
+    options: SessionReadModelReadOptions,
   ): Promise<OrchestrationSessionSummary[]> {
-    const only = options?.threadIds ? new Set(options.threadIds) : undefined;
+    const startedAt = performance.now();
     this.initialize();
     await this.listSessions(INTERNAL_SESSION_READ_SCOPE);
+    const buildStartedAt = performance.now();
+    const sample: {
+      projection?: { refreshed: number; reused: number };
+      count?: { refreshed: number; reused: number };
+      threadsConsidered: number;
+    } = { threadsConsidered: 0 };
+    try {
+      return this.buildSessionReadModel(authority, options, sample);
+    } finally {
+      const endedAt = performance.now();
+      this.readModelMeasurement.record({
+        purpose: options.purpose,
+        scope: options.threadIds ? 'threads' : 'all',
+        totalMs: endedAt - startedAt,
+        buildMs: endedAt - buildStartedAt,
+        ...sample,
+      });
+    }
+  }
+
+  /**
+   * Per-purpose totals of {@link listSessionReadModel} reads since this
+   * process's first read: the diagnostics bundle's view of the same numbers
+   * the `station.orchestration.session_read_model.*` metrics carry.
+   */
+  sessionReadModelMeasurement(): SessionReadModelMeasurementSnapshot {
+    return this.readModelMeasurement.snapshot();
+  }
+
+  private buildSessionReadModel(
+    authority: SessionReadScope,
+    options: SessionReadModelReadOptions,
+    sample: {
+      projection?: { refreshed: number; reused: number };
+      count?: { refreshed: number; reused: number };
+      threadsConsidered: number;
+    },
+  ): OrchestrationSessionSummary[] {
+    const only = options.threadIds ? new Set(options.threadIds) : undefined;
     this.evictCollidingAttachedAliases();
 
     const persistedSessions = this.options.eventStore?.readSessions() ?? [];
@@ -5305,6 +5356,7 @@ export class OrchestrationService {
         this.sessionAuthz.canReadSession(threadId, authority),
     );
     const readableThreadSet = new Set(readableThreadIds);
+    sample.threadsConsidered = readableThreadIds.length;
     // archive#4466: batched over every readable thread in a fixed number of
     // SQL round trips instead of one `listSessionProjectionEvents` +
     // `countEventsByThread` pair per thread — this route is polled on the
@@ -5315,11 +5367,16 @@ export class OrchestrationService {
     const ownedWorkByThread =
       eventStore?.ownedSessionActivities(readableThreadIds);
     const eventsByThread =
-      eventStore?.listSessionProjectionEventsForThreads(readableThreadIds) ??
-      new Map<string, PersistedRuntimeEvent[]>();
+      eventStore?.listSessionProjectionEventsForThreads(
+        readableThreadIds,
+        (outcome) => {
+          sample.projection = outcome;
+        },
+      ) ?? new Map<string, PersistedRuntimeEvent[]>();
     const eventCountByThread =
-      eventStore?.countEventsByThreads(readableThreadIds) ??
-      new Map<string, number>();
+      eventStore?.countEventsByThreads(readableThreadIds, (outcome) => {
+        sample.count = outcome;
+      }) ?? new Map<string, number>();
     const openRequestIdsByThread =
       eventStore?.listOpenRequestIdsByThreads(readableThreadIds);
     // #1536 B4: batched beside the two reads above, never per row — a
@@ -5430,7 +5487,9 @@ export class OrchestrationService {
   async listLoadedSessionReadModel(
     authority: SessionReadScope,
   ): Promise<OrchestrationSessionSummary[]> {
-    const sessions = await this.listSessionReadModel(authority);
+    const sessions = await this.listSessionReadModel(authority, {
+      purpose: 'loaded-session-list',
+    });
     return sessions.filter((session) => session.isLoaded);
   }
 
@@ -5533,7 +5592,9 @@ export class OrchestrationService {
   ): Promise<SessionBoardItem[]> {
     this.initialize();
     const startedAt = performance.now();
-    const sessions = await this.listSessionReadModel(authority);
+    const sessions = await this.listSessionReadModel(authority, {
+      purpose: 'project-session-board',
+    });
     const runsBySessionId = new Map(
       (await this.listAgentRuns(authority)).map((run) => [run.sessionId, run]),
     );

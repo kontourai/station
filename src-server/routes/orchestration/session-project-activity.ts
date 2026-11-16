@@ -511,7 +511,10 @@ function createSessionActivityCore(deps: SessionProjectActivityDeps) {
     const threadIds = candidates();
     const sessions = await deps.orchestrationService.listSessionReadModel(
       readAuthorityFor(c),
-      threadIds === undefined ? undefined : { threadIds },
+      {
+        purpose: 'project-activity',
+        ...(threadIds === undefined ? {} : { threadIds }),
+      },
     );
     const minutes = parseBoundedInteger(
       c.req.query('activeWithinMinutes'),
@@ -569,6 +572,7 @@ function createSessionActivityCore(deps: SessionProjectActivityDeps) {
       candidates.length === 0
         ? []
         : await deps.orchestrationService.listSessionReadModel(authority, {
+            purpose: 'session-digest',
             threadIds: candidates.map((child) => child.threadId),
           });
     const children: Array<DigestDelegatedChild & { startedAt: string }> = [];
@@ -641,7 +645,7 @@ function createSessionActivityCore(deps: SessionProjectActivityDeps) {
       return undefined;
     const [summary] = await deps.orchestrationService.listSessionReadModel(
       authority,
-      { threadIds: [subjectId] },
+      { purpose: 'session-digest', threadIds: [subjectId] },
     );
     if (!summary || isRemote(summary)) return undefined;
     return { conversationId, lineage, subjectId, summary, authority };

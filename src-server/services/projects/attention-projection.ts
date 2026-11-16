@@ -345,8 +345,10 @@ export class AttentionProjectionService {
     // Fetched once up front (archive#1284) so the past-resuming filter below
     // can check an orchestration-kind approval notification's backing
     // session without a second listSessionReadModel() round-trip.
-    const sessions =
-      await this.orchestrationService.listSessionReadModel(readAuthority);
+    const sessions = await this.orchestrationService.listSessionReadModel(
+      readAuthority,
+      { purpose: 'attention' },
+    );
     const sessionsById = new Map(
       sessions.map((session) => [session.threadId, session]),
     );

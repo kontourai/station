@@ -624,6 +624,19 @@ const MAX_SESSION_WORK_ITEM_ASSOCIATION_ROW_BYTES = 8 * 1024;
 const MAX_SESSION_ACTIVITY_TOOL_NAME_BYTES = 256;
 
 /** Descriptor-only row for the Session Outputs owner. No event payload crosses it. */
+/**
+ * What one batched session-projection read did with the per-thread cache
+ * (#4992), reported to an optional observer so a caller can measure it
+ * without reaching into the cache. A read inside a transaction, or with
+ * caches disabled, refreshes every requested thread.
+ */
+export interface SessionProjectionCacheOutcome {
+  /** Threads read from the database again. */
+  refreshed: number;
+  /** Threads served from the cache. */
+  reused: number;
+}
+
 export interface DeclaredOutputDescriptorRow {
   declarationId: string;
   eventId: string;
@@ -10595,11 +10608,18 @@ export class EventStore {
    */
   listSessionProjectionEventsForThreads(
     threadIds: readonly string[],
+    observe?: (outcome: SessionProjectionCacheOutcome) => void,
   ): Map<string, PersistedRuntimeEvent[]> {
     const uniqueThreadIds = [...new Set(threadIds)];
-    if (uniqueThreadIds.length === 0) return new Map();
+    if (uniqueThreadIds.length === 0) {
+      observe?.({ refreshed: 0, reused: 0 });
+      return new Map();
+    }
     const marks = this.sessionProjectionCacheMarks(uniqueThreadIds);
-    if (!marks) return this.foldSessionProjectionEvents(uniqueThreadIds);
+    if (!marks) {
+      observe?.({ refreshed: uniqueThreadIds.length, reused: 0 });
+      return this.foldSessionProjectionEvents(uniqueThreadIds);
+    }
     // #4992: the read model folds every readable thread on each list, and it
     // is listed several times a second while any session streams. Only the
     // threads whose mark moved are folded again.
@@ -10607,6 +10627,10 @@ export class EventStore {
       (threadId) =>
         this.cachedSessionProjection(threadId, marks)?.events === undefined,
     );
+    observe?.({
+      refreshed: stale.length,
+      reused: uniqueThreadIds.length - stale.length,
+    });
     let folded = new Map<string, PersistedRuntimeEvent[]>();
     if (stale.length > 0) {
       this.deferAttachmentHydration = true;
@@ -12320,11 +12344,20 @@ export class EventStore {
    * callers read a missing entry as zero — the same answer
    * `countEventsByThread` gives a threadless id.
    */
-  countEventsByThreads(threadIds: readonly string[]): Map<string, number> {
+  countEventsByThreads(
+    threadIds: readonly string[],
+    observe?: (outcome: SessionProjectionCacheOutcome) => void,
+  ): Map<string, number> {
     const uniqueThreadIds = [...new Set(threadIds)];
-    if (uniqueThreadIds.length === 0) return new Map();
+    if (uniqueThreadIds.length === 0) {
+      observe?.({ refreshed: 0, reused: 0 });
+      return new Map();
+    }
     const marks = this.sessionProjectionCacheMarks(uniqueThreadIds);
-    if (!marks) return this.queryEventCountsByThreads(uniqueThreadIds);
+    if (!marks) {
+      observe?.({ refreshed: uniqueThreadIds.length, reused: 0 });
+      return this.queryEventCountsByThreads(uniqueThreadIds);
+    }
     // #4992: a count only moves with the thread's mark, so only threads whose
     // mark moved are counted again. A thread without a mark has no events.
     const counts = new Map<string, number>();
@@ -12335,6 +12368,8 @@ export class EventStore {
       if (cached === undefined) stale.push(threadId);
       else counts.set(threadId, cached);
     }
+    // A thread without a mark has no events and needs no query: neither.
+    observe?.({ refreshed: stale.length, reused: counts.size });
     const counted = this.queryEventCountsByThreads(stale);
     for (const threadId of stale) {
       const eventCount = counted.get(threadId) ?? 0;
