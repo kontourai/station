@@ -1339,7 +1339,9 @@ export function ChatInputArea({
               />
             </React.Suspense>
           )}
-          {commandQuery !== null && (
+          {/* A command runs on select, so a draft-only composer (busy wait,
+              conversation still opening) opens no selector. */}
+          {commandQuery !== null && !disabled && (
             <React.Suspense fallback={null}>
               <SlashCommandSelector
                 query={commandQuery}

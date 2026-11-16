@@ -2,8 +2,7 @@ import './ConversationLoadingStage.css';
 
 /**
  * The step a conversation's first load is on, each one named only by the read
- * that is actually in flight (see `conversationLoadingStep` in
- * ConversationBody): the open point-read, the transcript's first read, or a
+ * that is actually in flight (ConversationBody's `loadingStep`): the open point-read, the transcript's first read, or a
  * catch-up refetch.
  */
 export type ConversationLoadingStep =
@@ -16,7 +15,7 @@ const STEP_TEXT: Record<ConversationLoadingStep, string> = {
   opening: 'Opening conversation',
   reading: 'Loading messages',
   'catching-up': 'Catching up',
-  rendering: 'Loading messages',
+  rendering: 'Preparing messages',
 };
 
 export function conversationLoadingStepText(

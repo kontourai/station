@@ -50,7 +50,9 @@ vi.mock('../components/ModelSelector', () => ({
 }));
 
 vi.mock('../components/chat/SlashCommandSelector', () => ({
-  SlashCommandSelector: () => null,
+  // A marker, so a test can tell whether the selector (which runs a command
+  // on select) was offered at all.
+  SlashCommandSelector: () => <div data-testid="slash-command-selector" />,
 }));
 
 vi.mock('@kontourai/station-sdk/coding-file-mentions-query', () => ({
@@ -306,6 +308,24 @@ describe('ChatInputArea', () => {
       (screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
+  });
+
+  // A command runs on select, so a composer that only drafts must not offer
+  // the selector: Enter there would dispatch before the open read answers.
+  test('a draft-only composer opens no slash-command selector', async () => {
+    // The live composer first, so the lazy chunk is loaded and the absence
+    // below cannot be a selector that simply has not resolved yet.
+    renderChatInputArea({ commandQuery: 'comp' });
+    expect(await screen.findByTestId('slash-command-selector')).toBeTruthy();
+    cleanup();
+    renderChatInputArea({
+      disabled: true,
+      loadingConversation: true,
+      allowDraftWhileDisabled: true,
+      commandQuery: 'comp',
+    });
+    await act(async () => {});
+    expect(screen.queryByTestId('slash-command-selector')).toBeNull();
   });
 
   test('a composer whose sending the server refused invites no typing', () => {

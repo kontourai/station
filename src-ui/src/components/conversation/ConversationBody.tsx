@@ -160,6 +160,7 @@ import {
   ConversationLoadingStage,
   type ConversationLoadingStep,
   conversationLoadingLongText,
+  conversationLoadingStepText,
 } from './ConversationLoadingStage';
 import { ConversationStopControl } from './ConversationStopControl';
 import {
@@ -875,6 +876,9 @@ function LiveConversationBody({
     if (!hasConversation) return;
     preloadMarkdownRenderer();
     void preloadToolCallBatch().catch(() => undefined);
+    // The list chunk too: rows that land before it would otherwise swap the
+    // filler's stage for the pending one, replaying its entrance.
+    void loadChatMessageList().catch(() => undefined);
   }, [hasConversation]);
   // Loading-phase boundaries for the opt-in transcript layout tracer.
   useEffect(() => {
@@ -911,16 +915,11 @@ function LiveConversationBody({
    * The wait is BOUNDED but not short: both reads go through the SDK client,
    * whose `DEFAULT_CLIENT_REQUEST_TIMEOUT_MS` is 30_000, so a resolution that
    * never lands settles into the read-only verdict in at most ~30s rather than
-   * hanging. That is long enough that the composer being disabled with no way
-   * out would be its own defect, so the control row below keeps "Start new
-   * chat" reachable for the whole window (#1607). Retry deliberately does
-   * not appear: retrying a read that is still in flight is what the resolver is
-   * already doing.
-   *
-   * The ROW is what scopes that control to the wait, so the button carries no
-   * second copy of the condition. It had one, and an injection that made it
-   * unconditional stayed green — a guard nothing can reach reads as a
-   * guarantee and is not one.
+   * hanging. Through that window the draft stays editable (Send waits) and
+   * the inbox and new-chat controls stay reachable; a slow load offers no
+   * "Start new chat" of its own (owner decision, 2026-11; it replaced #1607's
+   * row). Retry deliberately does not appear: retrying a read that is still
+   * in flight is what the resolver is already doing.
    */
   const forkableTranscript =
     !activeSession.replay || activeSession.replay.mode === 'timeline';
@@ -1109,11 +1108,14 @@ function LiveConversationBody({
    * row).
    */
   const showLoadingLongRow =
-    conversationLoading && loadingLong && !recoveryOpen;
+    conversationLoading &&
+    loadingLong &&
+    !recoveryOpen &&
+    !historyFailureNotice;
   const loadingAnnouncement = showLoadingLongRow
     ? loadingLongMessage
     : showLoadingSkeleton
-      ? loadingLabel
+      ? conversationLoadingStepText(loadingStep)
       : '';
   const [announcedLoading, setAnnouncedLoading] = useState('');
   useEffect(() => {
@@ -2687,8 +2689,9 @@ function LiveConversationBody({
         seeds the pending phase on every reload of a chat with a conversation
         id, so this is the ordinary path (#1582 E3/B6).
 
-        With messages on screen the wait is shown by the disabled composer,
-        whose placeholder reads "Loading chat…" (`loadingConversation`); with
+        With messages on screen the wait is shown by the draft-only composer,
+        whose placeholder (or, with a draft, its send-blocked reason) names it
+        (`loadingConversation`); with
         an empty transcript the filler above shows it. Either way it is
         announced by this one persistent, visually hidden region (see
         `loadingAnnouncement`). An in-flow block under the newest message used
@@ -2729,11 +2732,18 @@ function LiveConversationBody({
             onRetry: onRetryConversationOpen
               ? () => void onRetryConversationOpen()
               : undefined,
+            // The draft typed while the chat was opening goes with it, so a
+            // read-only verdict does not strand that text in a dead composer.
             onStartNew: onNewChat
               ? () =>
-                  void Promise.resolve(onNewChat()).catch(
-                    surfaceRecoveryFailure,
-                  )
+                  void Promise.resolve(
+                    onNewChat(
+                      chatInput.input.trim() ? chatInput.input : undefined,
+                      chatInput.attachments.length > 0
+                        ? chatInput.attachments
+                        : undefined,
+                    ),
+                  ).catch(surfaceRecoveryFailure)
               : undefined,
           }}
           pending={
@@ -2749,8 +2759,8 @@ function LiveConversationBody({
         terminal turn event (turnHandlers), a child change (snapshotHandlers),
         or a reload (hydrate seeds pending). Miss the terminal — a backgrounded
         phone across a long turn — and the composer sits draft-only with Send
-        dead: `recoveryOpen` owns Retry + Start new, `resolvingOpen` owns
-        Start new, `busy` owned nothing. When this tab itself sees no turn in
+        dead: `recoveryOpen` owns Retry + Start new, `resolvingOpen` keeps
+        the draft open until the read answers, `busy` owned nothing. When this tab itself sees no turn in
         flight, the wait may be that stale one, so offer the same re-resolve
         the recovery notice owns. A genuine wait (turn in flight) keeps the
         current draft-only behavior below.
@@ -3043,14 +3053,20 @@ function LiveConversationBody({
                     CALLER_CANNOT_SEND_REASON
                   : workspaceRefusedWithoutNewChat
                     ? WORKSPACE_REFUSED_WITHOUT_NEW_CHAT_REASON
-                    : recoveryOpen || resolvingOpen || busyWaitBlocksSend
-                      ? // The banner above already says this; repeating the SENTENCE
-                        // under the composer is what made one ordinary reload read as
-                        // three separate problems. `undefined` leaves the composer
-                        // quietly disabled. An `unverified` check (#2424) is the same:
-                        // its notice says what failed and carries the Retry.
-                        undefined
-                      : chatInput.sendBlockedReason
+                    : resolvingOpen &&
+                        (chatInput.input.trim() ||
+                          chatInput.attachments.length > 0)
+                      ? // A draft hides the placeholder that named the wait,
+                        // so Send says why it is not live yet.
+                        'You can send once this chat opens.'
+                      : recoveryOpen || resolvingOpen || busyWaitBlocksSend
+                        ? // The banner above already says this; repeating the SENTENCE
+                          // under the composer is what made one ordinary reload read as
+                          // three separate problems. `undefined` leaves the composer
+                          // quietly disabled. An `unverified` check (#2424) is the same:
+                          // its notice says what failed and carries the Retry.
+                          undefined
+                        : chatInput.sendBlockedReason
             }
             onRetryAttachmentStage={chatInput.retryAttachmentStage}
             onCancelAttachmentStage={chatInput.cancelAttachmentStage}

@@ -21,6 +21,10 @@
   animation: conversation-loading-breathe 2.4s ease-in-out infinite;
 }
 
+:root[data-startup-mark="dev"] .conversation-loading__mark {
+  content: url("/favicon-dev.png");
+}
+
 :root[data-startup-mark="nightly"] .conversation-loading__mark {
   content: url("/favicon-nightly.png");
 }

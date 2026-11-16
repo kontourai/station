@@ -310,15 +310,17 @@ function renderDock({
   onNewChat,
   onRetryConversationOpen,
   loadingEscapeDelayMs = 0,
+  chatInputOverrides = {},
 }: {
   orchestrationSession?: any;
   session?: ChatSession;
   events?: any[];
   read?: 'pending' | 'error' | 'present' | 'absent';
   onRetryOrchestrationSessions?: () => void;
-  onNewChat?: (input?: string) => void;
+  onNewChat?: (input?: string, attachments?: unknown[]) => void;
   onRetryConversationOpen?: () => void;
   loadingEscapeDelayMs?: number;
+  chatInputOverrides?: Record<string, unknown>;
 } = {}) {
   const resolvedRead = read ?? (orchestrationSession ? 'present' : 'absent');
   transcriptMock.events = events;
@@ -346,7 +348,7 @@ function renderDock({
         modelSupportsAttachments={false}
         fileAttachmentsSupported={false}
         availableModels={[]}
-        chatInput={buildChatInput() as any}
+        chatInput={{ ...buildChatInput(), ...chatInputOverrides } as any}
         setShowStatsPanel={vi.fn()}
       />
     </QueryClientProvider>
@@ -1469,7 +1471,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     );
     const announcement = screen.getByTestId('chat-dock-loading-announcement');
     expect(announcement.textContent, 'the wait is announced').toBe(
-      'Loading chat',
+      'Opening conversation',
     );
     expect(announcement.getAttribute('role')).toBe('status');
     // ...and not drawn: no visible panel under the rows.
@@ -1524,7 +1526,9 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
         loadingEscapeDelayMs: 60_000,
       });
       announcer = screen.getByTestId('chat-dock-loading-announcement');
-      await waitFor(() => expect(announcer!.textContent).toBe('Loading chat'));
+      await waitFor(() =>
+        expect(announcer!.textContent).toBe('Opening conversation'),
+      );
       // Flush the observer's queued records.
       for (const record of observer.takeRecords()) {
         if (record.target === announcer)
@@ -1540,7 +1544,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     expect(
       insertedText.map((node) => node.textContent),
       'text added to the already-mounted region',
-    ).toContain('Loading chat');
+    ).toContain('Opening conversation');
   });
 
   test('the loading announcement says the wait once, adds the long-wait words, then goes quiet', () => {
@@ -1561,7 +1565,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
         loadingEscapeDelayMs: 1_500,
       });
       const announcer = screen.getByTestId('chat-dock-loading-announcement');
-      expect(announcer.textContent).toBe('Loading chat');
+      expect(announcer.textContent).toBe('Opening conversation');
 
       // A re-render with nothing new to say writes nothing into the region.
       const writes: MutationRecord[] = [];
@@ -1614,9 +1618,10 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
   });
 
   // The history read failing during a long load replaces the stage with the
-  // failure notice (its Retry is the exit); the announcement still names the
-  // longer wait, and no new-chat escape appears under the composer.
-  test('a history failure during a long load still announces the longer wait', async () => {
+  // failure notice (its Retry is the exit, and it announces itself as an
+  // alert). The loading announcer goes quiet rather than calling a failure a
+  // long wait, and no new-chat escape appears under the composer.
+  test('a history failure during a long load is not announced as a long wait', async () => {
     transcriptMock.enabled = true;
     transcriptMock.settled = false;
     transcriptMock.error = new Error('history read failed');
@@ -1634,10 +1639,11 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     });
     expect(document.querySelector('.session-history-controls')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Start new chat' })).toBeNull();
+    await screen.findByRole('button', { name: 'Retry' });
     await waitFor(() =>
       expect(
         screen.getByTestId('chat-dock-loading-announcement').textContent,
-      ).toBe('Taking longer than usual. Waiting on Station.'),
+      ).toBe(''),
     );
   });
 
@@ -1803,6 +1809,54 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     expect(chatInputPropsMock.current?.allowDraftWhileDisabled).toBe(true);
     expect(screen.queryByRole('button', { name: 'Start new chat' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  // A draft hides the placeholder that named the wait, so while the open read
+  // is pending Send says why it is not live; with no draft it stays quiet.
+  test('a draft typed while the chat opens is told when it can send', async () => {
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'idle',
+        lifecycleState: 'idle',
+      }),
+      session: buildSession({
+        conversationId: 'cool',
+        conversationOpenPending: true,
+        messages: [],
+      }),
+      chatInputOverrides: { input: 'typed while opening' },
+    });
+    await waitFor(() =>
+      expect(chatInputPropsMock.current?.loadingConversation).toBe(true),
+    );
+    expect(chatInputPropsMock.current?.disabled).toBe(true);
+    expect(chatInputPropsMock.current?.sendBlockedReason).toBe(
+      'You can send once this chat opens.',
+    );
+  });
+
+  // A draft typed while the chat opened must not be stranded when the open
+  // fails: the recovery notice's Start new chat carries it.
+  test('a failed open carries the draft into Start new chat', async () => {
+    const onNewChat = vi.fn();
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'idle',
+        lifecycleState: 'idle',
+      }),
+      session: buildSession({
+        conversationId: 'cool',
+        conversationOpenFailed: true,
+        messages: [],
+      }),
+      onNewChat,
+      onRetryConversationOpen: vi.fn(),
+      chatInputOverrides: { input: 'typed while opening' },
+    });
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Start new chat' }),
+    );
+    expect(onNewChat).toHaveBeenCalledWith('typed while opening', undefined);
   });
 
   // Delta-review L1. The two states are not exclusive: a reload whose
