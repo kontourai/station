@@ -284,9 +284,6 @@ export function ConversationHandoffDialog({
     ? agents.find((agent) => agent.slug === executionAgentId)
     : target;
   const retainedIntent = useRef<PendingHandoffIntent | null>(restoredIntent);
-  // A dispatch of the retained request has begun (here, or before a reload:
-  // a restored request was saved just before its dispatch).
-  const dispatchStarted = useRef(Boolean(restoredIntent));
   const targetName = target?.name ?? `deleted Agent “${targetId}”`;
   // Only models this client can start are offered; a catalog entry marked
   // unavailable is not a choice here. A restored request is the exception:
@@ -364,14 +361,12 @@ export function ConversationHandoffDialog({
   // never offers an action it would refuse. An uncertain request whose
   // retained target no longer resolves here cannot be retried as-is either;
   // say so rather than leave "Retry safely" greyed out without a reason.
-  // A request already made (an uncertain one being retried or checked) is
-  // not a new turn: its own dispatch is what makes the chat read busy, and a
-  // same-key retry only ever answers with that request's receipt. "Made"
-  // means its dispatch began; a send the queue fence refused never did.
+  // An uncertain request (being retried or checked) is not a new turn: its
+  // own dispatch is what makes the chat read busy, and a same-key retry only
+  // ever answers with that request's receipt. Only that state is exempt; a
+  // send the queue fence refused was never made and is guarded like any.
   const effectiveBlockedReason =
-    state === 'indeterminate' || dispatchStarted.current
-      ? undefined
-      : blockedReason;
+    state === 'indeterminate' ? undefined : blockedReason;
   const preconditionReason =
     effectiveBlockedReason ??
     (attachments.length > 0
@@ -417,7 +412,7 @@ export function ConversationHandoffDialog({
 
   const runHandoff = async () => {
     if (!targetId || state === 'pending' || starting.current) return;
-    if (blockedReason && !dispatchStarted.current) {
+    if (blockedReason && state !== 'indeterminate') {
       setState('error');
       setFeedback(blockedReason);
       return;
@@ -499,7 +494,6 @@ export function ConversationHandoffDialog({
       const fenced = await outboundDispatch.fenceConversationHandoff(
         { conversationId, sessionId },
         async () => {
-          dispatchStarted.current = true;
           onDispatchStarted({ message: intent.message, clientTurnId });
           const result = await handoffExecutionMessage(
             apiBase,
@@ -568,7 +562,6 @@ export function ConversationHandoffDialog({
       } else {
         clearPendingIntent(apiBase, conversationId);
         retainedIntent.current = null;
-        dispatchStarted.current = false;
         onDefiniteFailure(clientTurnId);
         setState('error');
         setFeedback(

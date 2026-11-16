@@ -1460,3 +1460,51 @@ test('a send the queue fence refused was never made: the busy guard applies to i
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(handoffExecutionMessage).not.toHaveBeenCalled();
 });
+
+test('after the queue fence refuses a send, the next Continue sends the current draft under no stale request', async () => {
+  vi.clearAllMocks();
+  handoffExecutionMessage.mockReset();
+  handoffExecutionMessage.mockResolvedValueOnce(receipt());
+  sessionStorage.clear();
+  useNewChatSelectionModel.mockReturnValue({
+    agentConnections: connections,
+    selectedProjectConfig: { agents: ['claude', 'codex', 'offline'] },
+    modelsForAgent: () => [{ id: 'gpt-5', name: 'GPT-5' }],
+    defaultEffectiveModelForAgent: () => ({ id: 'gpt-5' }),
+  });
+  fenceConversationHandoff.mockImplementationOnce(
+    async () => ({ status: 'blocked' }) as never,
+  );
+  const props = {
+    apiBase: 'http://station.test',
+    conversationId: 'conversation-a',
+    sessionId: 'session-a',
+    currentAgentId: 'claude',
+    projectSlug: 'project-a',
+    agents: [claude, codex, unavailable] as never,
+    projects: [{ slug: 'project-a', name: 'Project A' }] as never,
+    initialMessage: 'old draft',
+    attachments: [],
+    onAccepted: vi.fn(),
+    onDispatchStarted: vi.fn(),
+    onDefiniteFailure: vi.fn(),
+    onClose: vi.fn(),
+  };
+  const view = render(<ConversationHandoffDialog {...props} />);
+  fireEvent.click(screen.getByRole('radio', { name: /Codex reviewer/ }));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
+  );
+  await waitFor(() =>
+    expect(screen.getByRole('alert').textContent).toContain('queued messages'),
+  );
+  // The person sends the queued message, then rewrites the draft.
+  view.rerender(
+    <ConversationHandoffDialog {...props} initialMessage="new draft" />,
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
+  );
+  await waitFor(() => expect(props.onAccepted).toHaveBeenCalledOnce());
+  expect(handoffExecutionMessage.mock.calls[0][2].message).toBe('new draft');
+});
