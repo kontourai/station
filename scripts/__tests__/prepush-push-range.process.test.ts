@@ -376,6 +376,70 @@ describe.skipIf(process.platform === 'win32')(
     );
 
     it(
+      'passes an export in a file an entry-point source names',
+      () => {
+        const f = fixture();
+        const head = f.commit(
+          {
+            'scripts/tool.mjs': 'export const toolOption = 1;\n',
+            'package.json': `${JSON.stringify({ name: 'fixture', version: '1.0.0', type: 'module', main: 'src/index.ts', scripts: { tool: 'node scripts/tool.mjs' } })}\n`,
+          },
+          'feat: an entry script',
+        );
+        const result = f.push();
+        expect(result.status, result.output).toBe(0);
+        expect(f.remoteHas('feat')).toBe(head);
+      },
+      TIMEOUT,
+    );
+
+    it(
+      'passes exports of a module another file imports whole',
+      () => {
+        const f = fixture();
+        const head = f.commit(
+          {
+            'src/whole.ts': 'export const wholeOne = 1;\n',
+            'src/globbed.ts': 'export const globbedOne = 1;\n',
+            'src/index.ts':
+              "import * as whole from './whole';\nimport { used } from './a';\nimport { helper } from './b';\nconst all = import.meta.glob('./glob*.ts');\nconsole.log(whole, all, used(), helper());\n",
+          },
+          'feat: namespace and glob imports',
+        );
+        const result = f.push();
+        expect(result.status, result.output).toBe(0);
+        expect(f.remoteHas('feat')).toBe(head);
+      },
+      TIMEOUT,
+    );
+
+    it(
+      'passes a type-only export used in its own file, and refuses a value used only there',
+      () => {
+        const f = fixture();
+        f.commit(
+          {
+            'src/shapes.ts':
+              'export type Shape = { side: number };\nexport function area(shape: Shape) {\n  return shape.side ** 2;\n}\nexport const unit = area({ side: 1 });\n',
+            'src/index.ts':
+              "import { used } from './a';\nimport { helper } from './b';\nimport { unit } from './shapes';\nconsole.log(used(), helper(), unit);\n",
+          },
+          'feat: a type used in its own file',
+        );
+        const result = f.push();
+        // `area` is used only inside shapes.ts; the analyzer still reports a
+        // value export used only in its own file, so this refuses on it alone.
+        expect(result.status).not.toBe(0);
+        expect(result.output).toContain(
+          '  src/shapes.ts: export area is not named in any other file',
+        );
+        expect(result.output).not.toContain('export Shape is not named');
+        expect(result.output).not.toContain('export unit is not named');
+      },
+      TIMEOUT,
+    );
+
+    it(
       'passes re-exports and default exports',
       () => {
         const f = fixture();
