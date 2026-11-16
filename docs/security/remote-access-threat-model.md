@@ -441,7 +441,12 @@ The voice listener still accepts its direct-loopback business path without
 the remote first-frame credential check. Browser-shaped upgrades
 must present an allowed Station Origin, while non-browser local clients have
 no Origin requirement. This retained local path is distinct from protected HTTP
-authorization and is not a paired-Device scope boundary.
+authorization and is not a paired-Device scope boundary. Since #2377 slice D a
+session on that credential-free path is offered no Station tools: Station's own
+tools act only for a person, so a voice client that holds a credential presents
+it (a loopback client asks with `?authenticate=1`) and its session's tools act
+for the person that credential resolves to; a credential that verifies but
+resolves to no one is refused.
 
 The public handshake is deliberately minimal and contains no credential,
 hostname, username, home directory, workspace, endpoint, process identity, or
