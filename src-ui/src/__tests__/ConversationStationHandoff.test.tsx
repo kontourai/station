@@ -6,6 +6,7 @@ import {
 } from '@kontourai/station-contracts/http';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type React from 'react';
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   ConversationHandoffDialog,
@@ -123,7 +124,10 @@ const receipt = {
   idempotent: false,
 };
 
-function renderDialog(onContinuedOnStation = vi.fn()) {
+function renderDialog(
+  onContinuedOnStation = vi.fn(),
+  extra: Partial<React.ComponentProps<typeof ConversationHandoffDialog>> = {},
+) {
   const view = render(
     <QueryClientProvider client={new QueryClient()}>
       <ConversationHandoffDialog
@@ -145,6 +149,7 @@ function renderDialog(onContinuedOnStation = vi.fn()) {
         onDefiniteFailure={vi.fn()}
         onClose={vi.fn()}
         onContinuedOnStation={onContinuedOnStation}
+        {...extra}
       />
     </QueryClientProvider>,
   );
@@ -360,5 +365,32 @@ describe('continuing a chat on a paired Station', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  test("a typed draft leaves through the composer's send preparation and is cleared with its quotes", async () => {
+    handoffConversationToStation.mockResolvedValueOnce(receipt);
+    const quote = { id: 'q1', text: 'quoted' } as never;
+    const prepareDraft = vi.fn(async () => ({
+      text: 'Prepared: carry on @mention-expanded',
+      draft: 'carry on',
+      quotes: [quote],
+    }));
+    const { onContinuedOnStation } = renderDialog(vi.fn(), {
+      initialMessage: 'carry on',
+      prepareDraft,
+    });
+    await chooseReceiver();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Continue on Receiver' }),
+    );
+    await waitFor(() => expect(onContinuedOnStation).toHaveBeenCalledTimes(1));
+    expect(prepareDraft).toHaveBeenCalledTimes(1);
+    expect(onContinuedOnStation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Prepared: carry on @mention-expanded',
+        clearsComposer: true,
+        sentQuotes: [quote],
+      }),
+    );
   });
 });
