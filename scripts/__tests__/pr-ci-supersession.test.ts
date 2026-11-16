@@ -46,9 +46,15 @@ async function exercise({
   refusalStatus = 409,
   headChangesDuringJobs = false,
   badJob = undefined as Record<string, unknown> | undefined,
+  forceRefusals = [] as number[],
+  forceRefusalStatus = 409,
+  terminalAtForceRefusal = false,
+  attemptChangesAtForceRefusal = false,
+  statusAtForceRefusal = undefined as string | undefined,
 } = {}) {
   const cancelled: number[] = [];
   const forced: number[] = [];
+  const forceRefused: number[] = [];
   let reads = 0;
   let jobsRead = false;
   const server = createServer((req, res) => {
@@ -125,7 +131,17 @@ async function exercise({
       res.end();
     } else if (/\/actions\/runs\/\d+\/force-cancel$/.test(url.pathname)) {
       expect(req.method).toBe('POST');
-      forced.push(Number(url.pathname.split('/').at(-2)));
+      const runId = Number(url.pathname.split('/').at(-2));
+      // With terminalAtForceRefusal the stalled normal cancellation finishes
+      // as GitHub refuses (runs 43793311034 and 43764828590 read cancelled
+      // within a second of their refusals).
+      if (forceRefusals.includes(runId)) {
+        forceRefused.push(runId);
+        res.writeHead(forceRefusalStatus);
+        res.end('{"message":"Cannot force cancel this workflow run."}');
+        return;
+      }
+      forced.push(runId);
       res.writeHead(202);
       res.end();
     } else if (/\/actions\/runs\/\d+$/.test(url.pathname)) {
@@ -142,11 +158,18 @@ async function exercise({
           ...item,
           ...(completed ||
           (cancelled.includes(item.id) && !cancellationStalls) ||
+          (terminalAtForceRefusal && forceRefused.includes(item.id)) ||
           (forced.includes(item.id) && !forceStalls)
             ? { status: 'completed', conclusion: 'cancelled' }
             : {}),
           ...(attemptChangesAfterCancel && cancelled.includes(item.id)
             ? { run_attempt: 2 }
+            : {}),
+          ...(attemptChangesAtForceRefusal && forceRefused.includes(item.id)
+            ? { run_attempt: 2 }
+            : {}),
+          ...(statusAtForceRefusal && forceRefused.includes(item.id)
+            ? { status: statusAtForceRefusal }
             : {}),
         }),
       );
@@ -185,11 +208,13 @@ async function exercise({
     );
   }
   lastStdout = stdout;
+  lastForceRefused = forceRefused;
   return { code, cancelled, forced };
 }
 // The previous exercise's stdout, kept out of the result so the many exact
 // `{ code, cancelled, forced }` assertions stay as they are.
 let lastStdout = '';
+let lastForceRefused: number[] = [];
 
 describe('obsolete PR CI cancellation through the GitHub API', () => {
   it.each(['in_progress', 'queued', 'pending'])(
@@ -364,6 +389,76 @@ describe('obsolete PR CI cancellation through the GitHub API', () => {
     expect(lastStdout).toContain(
       '::warning::Force cancellation of obsolete run 1 is not terminal',
     );
+  });
+
+  // Runs 43793311034 and 43764828590: the normal cancellation finished
+  // between the last read and the force-cancel, which GitHub then refused.
+  const twoStalled = () => [
+    run(1, { status: 'pending' }),
+    run(9, { status: 'pending', path: '.github/workflows/build-ios.yml' }),
+  ];
+
+  it('treats a force-cancel refused because the run became terminal as settled', async () => {
+    const result = await exercise({
+      runs: twoStalled(),
+      cancellationStalls: true,
+      forceRefusals: [1],
+      terminalAtForceRefusal: true,
+    });
+    expect(lastForceRefused).toEqual([1]);
+    expect(result).toEqual({ code: 0, cancelled: [1, 9], forced: [9] });
+    expect(lastStdout).toContain('Obsolete run 1 is terminal: cancelled');
+    expect(lastStdout).not.toContain('::warning::');
+  });
+
+  it('warns and continues when a force-cancel is refused while the run stays live', async () => {
+    const result = await exercise({
+      runs: twoStalled(),
+      cancellationStalls: true,
+      forceRefusals: [1],
+    });
+    expect(lastForceRefused).toEqual([1]);
+    expect(result).toEqual({ code: 0, cancelled: [1, 9], forced: [9] });
+    expect(lastStdout).toContain(
+      '::warning::GitHub refused force cancellation of obsolete run 1 (HTTP 409)',
+    );
+    expect(lastStdout).toContain('1 obsolete run(s) not yet terminal');
+  });
+
+  it('says nothing about a refused force-cancel once the run is a new attempt', async () => {
+    const result = await exercise({
+      runs: twoStalled(),
+      cancellationStalls: true,
+      forceRefusals: [1],
+      attemptChangesAtForceRefusal: true,
+    });
+    expect(lastForceRefused).toEqual([1]);
+    expect(result).toEqual({ code: 0, cancelled: [1, 9], forced: [9] });
+    expect(lastStdout).not.toContain('Obsolete run 1 is terminal');
+    expect(lastStdout).not.toContain('::warning::');
+  });
+
+  it('fails when a refused force-cancel leaves the run in an unknown state', async () => {
+    const result = await exercise({
+      runs: twoStalled(),
+      cancellationStalls: true,
+      forceRefusals: [1],
+      statusAtForceRefusal: 'unheard-of',
+    });
+    expect(lastForceRefused).toEqual([1]);
+    expect(result).toEqual({ code: 1, cancelled: [1], forced: [] });
+  });
+
+  it('still fails when a force-cancel fails for another reason', async () => {
+    const result = await exercise({
+      runs: twoStalled(),
+      cancellationStalls: true,
+      forceRefusals: [1],
+      forceRefusalStatus: 500,
+      terminalAtForceRefusal: true,
+    });
+    expect(lastForceRefused).toEqual([1]);
+    expect(result).toEqual({ code: 1, cancelled: [1], forced: [] });
   });
 
   it('refuses cancellation when the live-head read fails', async () => {
