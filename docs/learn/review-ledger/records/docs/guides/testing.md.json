@@ -294,7 +294,9 @@
 
     "tests/helpers/gallery-app-error-state.ts",
 
-    "tests/helpers/gallery-document-tracker.ts"
+    "tests/helpers/gallery-document-tracker.ts",
+
+    "tests/helpers/gallery-screen-attempt.ts"
   ],
 
   "checks": [
