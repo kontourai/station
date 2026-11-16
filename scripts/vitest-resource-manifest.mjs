@@ -331,8 +331,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/ci-merge-group-verdict.test.ts',
   // Runs the source-policy publisher CLI as one short Node child against a loopback Actions API.
   'scripts/__tests__/source-verification-policy.test.ts',
-  // Runs the signer diagnostic CLI against a loopback Actions API.
-  'scripts/__tests__/pr-conflict-signer-diagnostic.test.ts',
   // #3101: runs the conflict-deferral CLI against a loopback GitHub API.
   'scripts/__tests__/pr-source-admission.test.ts',
   // Executes repair publication against real temporary checkouts and a loopback API.
