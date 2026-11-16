@@ -1,0 +1,7 @@
+{
+  "revision": "77f6762f686170dca00f6794f93e2bbf2abe07fe",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Checked the PR-CI supersession claims against scripts/pr-ci-supersession.mjs after a force-cancel HTTP 409 became non-fatal: one force-cancel only after revalidating PR and run identity with no assigned runner; a run that does not settle (assigned runner, 409 refusal while still live, force-cancel not terminal) is a warning and the pass continues; a 409 after which the run reads completed is settled; other API failures stay fatal. Merge-group and merged-close paths still never force-cancel. No wording change needed.","inputs":["docs/guides/testing.md","scripts/__tests__/pr-ci-supersession.test.ts","scripts/pr-ci-supersession.mjs"]}
+  ]
+}
