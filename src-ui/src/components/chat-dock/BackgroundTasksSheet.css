@@ -133,22 +133,19 @@
 }
 
 .background-tasks-sheet__list {
-  /* The rows lay out by the list's own width, not the window's: the same
-     list sits in a 380px side pane and a wide dock. */
-  container: work-list / inline-size;
-  /* The glyph slot's width, which actions under the text indent past. */
-  --work-row-glyph: 20px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-/* Actions sit on their own line under the text, so a narrow list never
-   shrinks the title to nothing or draws a button over it. A wide list
-   puts them back beside the row (below). */
+/* The row wraps: its text keeps at least --work-row-text-min, and when the
+   actions do not fit beside that they move to their own line below, so a
+   narrow pane never shrinks the title to nothing or draws a button over
+   the text. No at-rule: the wrap follows the row's own width. */
 .background-tasks-sheet__row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  --work-row-text-min: 22rem;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
 }
 
@@ -164,8 +161,7 @@
 }
 
 .background-tasks-sheet__row-main {
-  grid-column: 1;
-  grid-row: 1;
+  flex: 1 1 var(--work-row-text-min);
   min-width: 0;
   min-height: 44px;
   display: flex;
@@ -190,7 +186,6 @@
 .background-tasks-sheet__glyph {
   display: inline-flex;
   flex-shrink: 0;
-  min-width: var(--work-row-glyph, 20px);
   align-items: center;
   justify-content: center;
   color: var(--text-secondary);
@@ -220,7 +215,12 @@
 }
 
 .background-tasks-sheet__detail {
-  grid-column: 1 / -1;
+  /* Its own line, after the actions. */
+  flex: 1 0 100%;
+  order: 1;
+  box-sizing: border-box;
+  /* Less its inline margins (--space-3 each, half of --k-space-3). */
+  max-width: calc(100% - var(--k-space-3));
   margin: 0 var(--space-3) var(--space-2);
   padding: var(--space-2);
   overflow-wrap: anywhere;
@@ -255,36 +255,12 @@
 
 .background-tasks-sheet__task-footer {
   display: flex;
+  flex: 0 0 auto;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
-  grid-column: 1;
-  grid-row: 2;
-  /* Under the text column: the row's inline padding (--space-3, half of
-     --k-space-3) plus the glyph and its gap (--space-2, --k-space-1). */
-  margin: 0 calc(var(--k-space-3) / 2) var(--k-space-1)
-    calc(var(--k-space-3) / 2 + var(--work-row-glyph, 20px) + var(--k-space-1));
-}
-
-.background-tasks-sheet__detail {
-  grid-row: 3;
-}
-
-@container work-list (min-width: 560px) {
-  .background-tasks-sheet__row {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  .background-tasks-sheet__task-footer {
-    grid-column: 2;
-    grid-row: 1;
-    justify-content: flex-end;
-    margin: 0 var(--k-space-2) 0 0;
-  }
-
-  .background-tasks-sheet__detail {
-    grid-row: 2;
-  }
+  justify-content: flex-end;
+  margin-inline: auto var(--k-space-2);
 }
 
 .background-tasks-sheet__usage {

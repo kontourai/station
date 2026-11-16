@@ -989,10 +989,10 @@ when the window opened; finished tool calls of a closed chat are dropped as
 before. The global finished bound trims only delegates, because the
 registry already bounds engine subagents. Section headings count agents,
 commands and tools by name. `TaskRow` and `ChildWorkRow` share one
-sentence-case status pill (`WorkStatusPill`) with one tone per status. Row
-actions sit under the text when the list is narrower than 560px (a
-`work-list` container query) and beside the row when it is wider, which
-qualifies the 2026-10-14 “actions beside each row” wording above.
+sentence-case status pill (`WorkStatusPill`) with one tone per status. A row's
+text keeps at least 22rem; actions that do not fit beside it wrap to their
+own line below (flex wrap, no at-rule), which qualifies the 2026-10-14
+“actions beside each row” wording above.
 
 **Implemented by #1969 (the Device pane), 2026-09-14.** A captured
 simulator or emulator screen as a dock tab (`device`, `exposure: 'catalog'`,
