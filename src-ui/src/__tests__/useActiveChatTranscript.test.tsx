@@ -65,6 +65,7 @@ vi.mock('@kontourai/station-sdk', async () => ({
   SESSION_EVENT_WINDOW_UNSUPPORTED_RETRY_MS: 60_000,
 }));
 
+import { AuthorityPersistenceContext } from '../contexts/AuthorityPersistenceContext';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { handleOrchestrationEvent } from '../hooks/orchestration/eventHandlers';
 import {
@@ -72,6 +73,7 @@ import {
   recordSequencedLiveEvent,
   resetSequencedLiveEventsForTests,
 } from '../hooks/orchestration/sequencedLiveEvents';
+import { clearTranscriptWindowCache } from '../hooks/orchestration/transcriptWindowCache';
 import { handleTurnStartedEvent } from '../hooks/orchestration/turnHandlers';
 import { useActiveChatTranscript } from '../hooks/orchestration/useActiveChatTranscript';
 import { buildOutgoingUserMessage } from '../hooks/useActiveChatSessions.helpers';
@@ -1437,6 +1439,100 @@ describe('useActiveChatTranscript', () => {
     rerender({ session: { ...session, currentSessionId: 'later-child' } });
     expect(result.current.settled).toBe(true);
     expect(fetchConversationWindow).toHaveBeenCalledTimes(1);
+  });
+
+  describe('reopen cache', () => {
+    const NS_A = 'v1|env=a|principal=human:a|grant=operator';
+    const NS_B = 'v1|env=a|principal=human:b|grant=operator';
+    const page = (prompt: string, watermark = 1) => ({
+      protocolVersion: 1,
+      watermark,
+      hasMore: false,
+      events: [
+        event(`e${watermark}`, 'turn.started', { turnId: 'turn-1', prompt }),
+      ],
+    });
+    const chat = (id: string): ChatSession => ({
+      ...baseSession,
+      id,
+      conversationId: id,
+    });
+    function renderReader(initial: ChatSession, namespace: { value: string }) {
+      return renderHook(
+        ({ session }) =>
+          useActiveChatTranscript('http://station.test', session),
+        {
+          initialProps: { session: initial },
+          wrapper: ({ children }) =>
+            createElement(
+              AuthorityPersistenceContext.Provider,
+              {
+                value: {
+                  status: 'verified',
+                  namespace: namespace.value,
+                  observation: null,
+                } as never,
+              },
+              children,
+            ),
+        },
+      );
+    }
+    afterEach(() => clearTranscriptWindowCache());
+
+    test('switching back paints the cached rows settled, then revalidates in place', async () => {
+      const namespace = { value: NS_A };
+      fetchConversationWindow.mockImplementation(async (id: string) =>
+        id === 'reopen-a' ? page('first answer question') : page('other'),
+      );
+      const view = renderReader(chat('reopen-a'), namespace);
+      await waitFor(() => expect(view.result.current.settled).toBe(true));
+      view.rerender({ session: chat('reopen-b') });
+      await waitFor(() =>
+        expect(
+          view.result.current.messages.map((message) => message.content),
+        ).toContain('other'),
+      );
+      // The revalidating read is held open: whatever paints is the cache.
+      let answer: (value: ReturnType<typeof page>) => void = () => {};
+      fetchConversationWindow.mockImplementation(
+        () => new Promise((resolve) => (answer = resolve)),
+      );
+      view.rerender({ session: chat('reopen-a') });
+      expect(view.result.current.settled).toBe(true);
+      expect(view.result.current.catchingUp).toBe(false);
+      expect(view.result.current.revalidating).toBe(true);
+      expect(
+        view.result.current.messages.map((message) => message.content),
+      ).toContain('first answer question');
+      // The revalidating read is the normal one, for the same conversation.
+      await waitFor(() =>
+        expect(
+          fetchConversationWindow.mock.calls.map((call) => call[0]),
+        ).toEqual(['reopen-a', 'reopen-b', 'reopen-a']),
+      );
+      await act(async () => answer(page('revalidated question', 2)));
+      await waitFor(() => expect(view.result.current.revalidating).toBe(false));
+      expect(
+        view.result.current.messages.map((message) => message.content),
+      ).toContain('revalidated question');
+      expect(view.result.current.settled).toBe(true);
+    });
+
+    test('another authority never paints a cached window for the same conversation id', async () => {
+      const namespace = { value: NS_A };
+      fetchConversationWindow.mockResolvedValue(page('authority A only'));
+      const view = renderReader(chat('shared-id'), namespace);
+      await waitFor(() => expect(view.result.current.settled).toBe(true));
+      view.rerender({ session: chat('elsewhere') });
+      await waitFor(() => expect(view.result.current.settled).toBe(true));
+      fetchConversationWindow.mockImplementation(() => new Promise(() => {}));
+      namespace.value = NS_B;
+      view.rerender({ session: chat('shared-id') });
+      expect(view.result.current.settled).toBe(false);
+      expect(view.result.current.revalidating).toBe(false);
+      expect(view.result.current.messages).toEqual([]);
+    });
   });
 
   test('falls back once to a legacy single-session endpoint when an older channel lacks conversation reads', async () => {

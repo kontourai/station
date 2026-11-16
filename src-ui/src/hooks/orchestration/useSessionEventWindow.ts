@@ -24,6 +24,13 @@ import {
   publishHistoryForCapture,
   removeHistoryForCapture,
 } from './replay/capture-tap';
+import {
+  readTranscriptWindow,
+  type TranscriptWindowSnapshot,
+  transcriptWindowCacheGeneration,
+  transcriptWindowCacheKey,
+  writeTranscriptWindow,
+} from './transcriptWindowCache';
 
 function eventKey(item: OrchestrationSequencedEvent): string {
   return item.event.eventId || `sequence:${item.sequence}`;
@@ -79,6 +86,12 @@ interface SessionEventWindowReader {
    * reader is pointed at a different thread.
    */
   settled: boolean;
+  /**
+   * The rows on screen were painted from this client's recent copy of the
+   * window and a read for the current one is still in flight. `settled` is
+   * already true: there is a reading, it may just be a little old.
+   */
+  revalidating: boolean;
   catchingUp: boolean;
   error?: Error;
 }
@@ -238,6 +251,63 @@ function lowest(...values: (number | undefined)[]): number | undefined {
   return defined.length ? Math.min(...defined) : undefined;
 }
 
+/** The cacheable state of one newest-page read, as `reload` would hold it. */
+function snapshotOfNewestPage(
+  page: OrchestrationConversationEventWindow,
+): TranscriptWindowSnapshot {
+  const partial = new Set<string>();
+  notePartialTurnStarts(page, partial, new Set());
+  return {
+    events: page.events,
+    ...(page.nextCursor ? { cursor: page.nextCursor } : {}),
+    watermark: page.watermark,
+    ...(page.currentSessionId
+      ? { currentSessionId: page.currentSessionId }
+      : {}),
+    ...(page.sessionLineage ? { sessionLineage: page.sessionLineage } : {}),
+    handoffs: page.handoffs ?? [],
+    contextBoundaries: page.contextBoundaries ?? [],
+    ...(page.memoryContinuation
+      ? { memoryContinuation: page.memoryContinuation }
+      : {}),
+    partialTurnStartEventIds: [...partial],
+  };
+}
+
+/**
+ * Read one conversation's newest window into the reopen cache, the same read
+ * a reader's first `reload` makes. For the host Station's own conversations
+ * only: the key carries no remote Station namespace.
+ */
+export async function prefetchTranscriptWindow(input: {
+  cacheKey: string;
+  apiBase: string;
+  conversationId: string;
+  requestScope?: ApiRequestScope;
+  signal: AbortSignal;
+}): Promise<boolean> {
+  const capability = input.requestScope
+    ? true
+    : await fetchSessionEventWindowCapability(input.apiBase);
+  if (capability !== true || input.signal.aborted) return false;
+  const readGeneration = transcriptWindowCacheGeneration();
+  const page = await readConversationWindow(
+    input.conversationId,
+    input.apiBase,
+    { turnLimit: 10 },
+    {
+      signal: input.signal,
+      ...(input.requestScope ? { requestScope: input.requestScope } : {}),
+    },
+  );
+  if (input.signal.aborted) return false;
+  return writeTranscriptWindow(
+    input.cacheKey,
+    snapshotOfNewestPage(page),
+    readGeneration,
+  );
+}
+
 /** REST-only bounded session history. Live content remains app-wide SSE state. */
 export function useSessionEventWindow(
   apiBase: string,
@@ -282,6 +352,25 @@ export function useSessionEventWindow(
         station?.runtimeKey,
       ])
     : undefined;
+  const cacheKey = threadId
+    ? transcriptWindowCacheKey({
+        namespace,
+        ...(station ? { stationNamespace: station.authorityNamespace } : {}),
+        apiBase,
+        ...(requestScope?.authorityKey
+          ? { authorityKey: requestScope.authorityKey }
+          : {}),
+        conversationId: threadId,
+      })
+    : undefined;
+  const cacheKeyRef = useRef(cacheKey);
+  cacheKeyRef.current = cacheKey;
+  // The cache key and cache generation the held window was read under. The
+  // reopen copy is written only under that same key: a window read before
+  // the authority changed must never be stored as the new authority's.
+  const windowStampRef = useRef<
+    { key: string | undefined; generation: number } | undefined
+  >(undefined);
   const [events, setEvents] = useState<OrchestrationSequencedEvent[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string>();
   const [sessionLineage, setSessionLineage] =
@@ -298,6 +387,8 @@ export function useSessionEventWindow(
     useState<OrchestrationConversationEventWindow['memoryContinuation']>();
   const [loading, setLoading] = useState(false);
   const [settled, setSettled] = useState(false);
+  const [revalidating, setRevalidating] = useState(false);
+  const revalidatingRef = useRef(false);
   const [settledRevision, setSettledRevision] = useState<number | undefined>();
   const [upgradeRequired, setUpgradeRequired] = useState(false);
   const [error, setError] = useState<Error>();
@@ -347,6 +438,10 @@ export function useSessionEventWindow(
     }
     const requestGeneration = generation.current;
     const requestSerial = ++requestSerialRef.current;
+    const stamp = {
+      key: cacheKeyRef.current,
+      generation: transcriptWindowCacheGeneration(),
+    };
     unsettledReloadRef.current = requestSerial;
     reloadOwedRef.current = false;
     const read = observation?.read(
@@ -364,7 +459,8 @@ export function useSessionEventWindow(
     const controller = new AbortController();
     requestControllerRef.current = controller;
     setLoading(true);
-    setSettled(false);
+    // A cached paint is already a reading; the read replaces it in place.
+    if (!revalidatingRef.current) setSettled(false);
     setMemoryContinuation(undefined);
     let fill: { cursor: string; floor: number } | undefined;
     try {
@@ -428,6 +524,12 @@ export function useSessionEventWindow(
       setHandoffs(page.handoffs ?? []);
       setContextBoundaries(page.contextBoundaries ?? []);
       setMemoryContinuation(page.memoryContinuation);
+      // Held pages merge with the new one, so a key change since leaves a
+      // mixed window that belongs under neither key.
+      windowStampRef.current =
+        olderLoadedRef.current && windowStampRef.current?.key !== stamp.key
+          ? undefined
+          : stamp;
       const next = page.events;
       if (namespace && (!bound || station?.binding.affinity.kind === 'host')) {
         void saveOfflineReading(
@@ -517,6 +619,8 @@ export function useSessionEventWindow(
         requestSerial === requestSerialRef.current
       ) {
         unsettledReloadRef.current = undefined;
+        revalidatingRef.current = false;
+        setRevalidating(false);
         setLoading(false);
         // A failed or upgrade-refused read is still a reading: the caller now
         // knows something, and `error`/`upgradeRequired` say what. Only a read
@@ -584,6 +688,8 @@ export function useSessionEventWindow(
         setSessionLineage(page.sessionLineage);
         setHandoffs(page.handoffs ?? []);
         setContextBoundaries(page.contextBoundaries ?? []);
+        if (windowStampRef.current?.key !== cacheKeyRef.current)
+          windowStampRef.current = undefined;
         read?.observed(page.watermark);
         setError(undefined);
         // A cursor pins the head it was minted at, which a later reload may
@@ -754,6 +860,29 @@ export function useSessionEventWindow(
     // A new thread has not been read yet, whatever the previous one reported.
     setSettled(false);
     setSettledRevision(undefined);
+    revalidatingRef.current = false;
+    setRevalidating(false);
+    windowStampRef.current = undefined;
+    // A window this client read recently paints at once, as a settled
+    // reading; the read below revalidates and replaces it in place.
+    const cached = readTranscriptWindow(cacheKeyRef.current);
+    if (threadId && cached) {
+      setEvents([...cached.events]);
+      setCurrentSessionId(cached.currentSessionId);
+      setSessionLineage(cached.sessionLineage);
+      setHandoffs([...cached.handoffs]);
+      setContextBoundaries([...cached.contextBoundaries]);
+      setCursor(cached.cursor);
+      setWatermark(cached.watermark);
+      watermarkRef.current = cached.watermark;
+      setMemoryContinuation(cached.memoryContinuation);
+      partialRef.current = new Set(cached.partialTurnStartEventIds);
+      setPartialTurnStartEventIds(new Set(cached.partialTurnStartEventIds));
+      setSettled(true);
+      setSettledRevision(reconcileRevisionRef.current);
+      revalidatingRef.current = true;
+      setRevalidating(true);
+    }
     if (threadId) void reload();
     return () => {
       generation.current += 1;
@@ -822,6 +951,55 @@ export function useSessionEventWindow(
     },
     [apiBase, threadId, bound, station],
   );
+  // Keep the reopen copy at what a settled, current read holds. A reader
+  // still owing a gap fill holds a window the cache could not reproduce.
+  useEffect(() => {
+    if (
+      !currentReader ||
+      !settled ||
+      loading ||
+      revalidating ||
+      error ||
+      upgradeRequired ||
+      events.length === 0 ||
+      heldGapsRef.current.length > 0
+    )
+      return;
+    const stamp = windowStampRef.current;
+    if (!stamp || stamp.key !== cacheKey) return;
+    writeTranscriptWindow(
+      cacheKey,
+      {
+        events,
+        ...(cursor ? { cursor } : {}),
+        watermark,
+        ...(currentSessionId ? { currentSessionId } : {}),
+        ...(sessionLineage ? { sessionLineage } : {}),
+        handoffs,
+        contextBoundaries,
+        ...(memoryContinuation ? { memoryContinuation } : {}),
+        partialTurnStartEventIds: [...partialTurnStartEventIds],
+      },
+      stamp.generation,
+    );
+  }, [
+    cacheKey,
+    currentReader,
+    settled,
+    loading,
+    revalidating,
+    error,
+    upgradeRequired,
+    events,
+    cursor,
+    watermark,
+    currentSessionId,
+    sessionLineage,
+    handoffs,
+    contextBoundaries,
+    memoryContinuation,
+    partialTurnStartEventIds,
+  ]);
   return {
     events: currentReader ? events : [],
     partialTurnStartEventIds: currentReader
@@ -840,6 +1018,7 @@ export function useSessionEventWindow(
     upgradeRequired: currentReader && upgradeRequired,
     loading: currentReader ? loading : Boolean(threadId),
     settled: currentReader && settled,
+    revalidating: currentReader && revalidating,
     // station#2530 review 2: catching up means a NEWER revision's fetch is
     // genuinely outstanding — `settledRevision`/`settled` have not caught up
     // to this render's `reconcileRevision` yet. `error` alone is

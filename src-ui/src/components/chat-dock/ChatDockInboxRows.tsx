@@ -16,6 +16,7 @@ import { activeChatsStore } from '../../contexts/active-chats-store';
 import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import { useConversationOnScreen } from '../../contexts/conversation-on-screen-store';
 import { useSessionWorkClaims } from '../../contexts/WorkClaimsContext';
+import { useTranscriptWindowPrefetch } from '../../hooks/orchestration/useTranscriptWindowPrefetch';
 import { useContextMenuGesture } from '../../hooks/useContextMenuGesture';
 import { useDocumentFocused } from '../../hooks/useDocumentFocused';
 import { useInboxSwipe } from '../../hooks/useInboxSwipe';
@@ -596,6 +597,10 @@ export function InboxRow({
   const referenceable = useReferenceableConversations();
   const discardThreadId = onDraftDiscarded ? draftDiscardThreadId(item) : null;
   const hover = useInboxRowHoverCard();
+  // Only this Station's own conversations: a remote row reads elsewhere.
+  const prefetch = useTranscriptWindowPrefetch(
+    item.environmentId || facts?.station ? undefined : item.conversationId,
+  );
   const hoverCardId = useId();
   const statusId = useId();
   const [ownDetailsOpen, setOwnDetailsOpen] = useState(false);
@@ -874,10 +879,22 @@ export function InboxRow({
           swipe.close();
         }
       }}
-      onPointerEnter={tooltip ? hover.onPointerEnter : undefined}
-      onPointerLeave={tooltip ? hover.onPointerLeave : undefined}
-      onFocus={tooltip ? hover.onFocus : undefined}
-      onBlur={tooltip ? hover.onBlur : undefined}
+      onPointerEnter={(event) => {
+        prefetch.onPointerEnter(event);
+        if (tooltip) hover.onPointerEnter(event);
+      }}
+      onPointerLeave={() => {
+        prefetch.onPointerLeave();
+        if (tooltip) hover.onPointerLeave();
+      }}
+      onFocus={(event) => {
+        prefetch.onFocus();
+        if (tooltip) hover.onFocus(event);
+      }}
+      onBlur={(event) => {
+        prefetch.onBlur();
+        if (tooltip) hover.onBlur(event);
+      }}
     >
       {canSwipe && (
         <div
