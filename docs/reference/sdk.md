@@ -4794,7 +4794,9 @@ content, while retaining the observed HTTP status (usually 200).
   404 (one older than this read) resolves to `null`, and the board then
   claims nothing about pull requests; a 404 with `request_principal_changed`
   (lost standing) is an error. Only the board enables it; the list view
-  claims nothing about pull requests.
+  claims nothing about pull requests. `useMergePullRequestMutation`
+  invalidates every Project's facts query, so a merge through Station moves
+  its card on the next read.
 - `useTasksQuery` accepts `TaskDestinationQueryConfig` for a scoped Keep
   destination picker. `TaskDestinationRequestError` identifies a rejected
   destination read; both are exported from the SDK root and query barrel.

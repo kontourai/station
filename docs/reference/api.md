@@ -899,13 +899,19 @@ not report it. On GitHub `checks-not-passing` is `UNSTABLE`: some checks are
 failing or still pending, none of them required. A failing required check is
 `BLOCKED`, which the board words "Blocked by repository rules" (a known limit:
 it does not yet say which rule). Pull requests kept on the most recently
-updated Tasks are read first, at most 60 distinct ones, 4 at a time, within 8
-seconds; anything past the bound or the deadline is listed `unavailable` and
-its Task is `partial`. GitHub reads ask for status fields only and share one
-in-flight `gh pr view` per pull request for 60 seconds, cleared by a write to
-the repository through Station. The read moves no Task (close-on-merge is
-separate) and is `Cache-Control: private, no-store`. `projectId` is required
-(`400` without it). A hosted request answers `tasks: {}`. A requester whose
+updated Tasks are read first, at most 60 distinct ones, 4 at a time. The
+answer waits at most 8 seconds: a pull request past the bound, or not read by
+then, is listed `unavailable` and its Task is `partial`. Reads still pending
+at the deadline keep going in the background, so the next refresh finds them.
+GitHub reads ask for status fields only and share one `gh pr view` per pull
+request for 150 seconds (longer than the board's 120-second refresh); a write
+to the repository through Station clears it. Each fact's `observedAt` is when
+the forge was read, which for a shared answer is earlier than the request.
+Known limit: a change made outside Station (on the forge, or by an agent's own
+`gh`) can take up to that 150 seconds plus the client's 60-second stale time
+to show. The read moves no Task (close-on-merge is separate) and is
+`Cache-Control: private, no-store`. `projectId` is required (`400` without
+it, before anything else). A hosted request answers `tasks: {}`. A requester whose
 standing changed during the reads gets `404` with `code:
 "request_principal_changed"`, which a client can tell from a Station without
 this route (a plain `404`). The board derives its lanes
