@@ -725,6 +725,7 @@ async function main(): Promise<number> {
   const version = await new Promise<string>((resolve) => {
     const child = spawn(codex, ['--version'], {
       stdio: ['ignore', 'pipe', 'ignore'],
+      windowsHide: true,
     });
     let text = '';
     child.stdout.on('data', (chunk) => (text += chunk));
