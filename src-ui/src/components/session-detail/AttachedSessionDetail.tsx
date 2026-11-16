@@ -18,6 +18,7 @@ import { useMutation } from '@tanstack/react-query';
 import {
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -252,6 +253,17 @@ export function AttachedSessionDetail({
   // opens this same warning when the read here was stale.
   const sourceActive = session.attachedSourceActivity?.state === 'active';
   const [sourceActiveWarning, setSourceActiveWarning] = useState(false);
+  // The caution replaces the button that had focus, and its dismissal puts
+  // that button back, so focus follows each swap rather than falling to the
+  // page. Set beside the state change; applied once the swap has rendered.
+  const focusAfterSwap = useRef<'caution' | 'continue' | null>(null);
+  const continueActionRef = useRef<HTMLButtonElement>(null);
+  const continueAnywayRef = useRef<HTMLButtonElement>(null);
+  const sourceActiveNoteId = useId();
+  const showSourceActiveWarning = useCallback(() => {
+    focusAfterSwap.current = 'caution';
+    setSourceActiveWarning(true);
+  }, []);
   const adoption = useMutation({
     mutationFn: async ({ override }: { intent: number; override: boolean }) => {
       setServerFailureReason(null);
@@ -379,7 +391,7 @@ export function AttachedSessionDetail({
         error instanceof AdoptSessionError &&
         error.code === ADOPTION_SOURCE_ACTIVE_CODE
       ) {
-        setSourceActiveWarning(true);
+        showSourceActiveWarning();
         return;
       }
       // Keep the diagnostic available to native/browser developer consoles;
@@ -514,7 +526,7 @@ export function AttachedSessionDetail({
     confirmedDraft.current = currentDraft.current;
     // The source is still running: ask first, inline, instead of forking it.
     if (sourceActive && !override) {
-      setSourceActiveWarning(true);
+      showSourceActiveWarning();
       return;
     }
     setSourceActiveWarning(false);
@@ -582,6 +594,18 @@ export function AttachedSessionDetail({
     setDraft,
     handoffScope,
   ]);
+
+  const cautionShown = sourceActiveWarning && !adoption.isPending;
+  useEffect(() => {
+    const target = focusAfterSwap.current;
+    if (target === 'caution' && cautionShown) {
+      focusAfterSwap.current = null;
+      continueAnywayRef.current?.focus();
+    } else if (target === 'continue' && !cautionShown) {
+      focusAfterSwap.current = null;
+      continueActionRef.current?.focus();
+    }
+  }, [cautionShown]);
 
   return (
     <section
@@ -663,13 +687,19 @@ export function AttachedSessionDetail({
               className="sessions-detail__continue-row sessions-detail__source-active"
               data-testid="attached-source-active"
             >
-              <p className="sessions-detail__source-active-text">
+              <p
+                id={sourceActiveNoteId}
+                role="status"
+                className="sessions-detail__source-active-text"
+              >
                 Still running in {displayProvider(session)} — continuing now
                 forks it
               </p>
               <Button
+                ref={continueAnywayRef}
                 variant="primary"
                 size="sm"
+                aria-describedby={sourceActiveNoteId}
                 disabled={adoptionDisabled || composerDisabled}
                 onClick={() => startContinuation({ override: true })}
               >
@@ -678,14 +708,18 @@ export function AttachedSessionDetail({
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => setSourceActiveWarning(false)}
+                onClick={() => {
+                  focusAfterSwap.current = 'continue';
+                  setSourceActiveWarning(false);
+                }}
               >
-                Wait
+                Not now
               </Button>
             </div>
           ) : (
             <div className="sessions-detail__continue-row">
               <Button
+                ref={continueActionRef}
                 variant="primary"
                 size="sm"
                 disabled={adoptionDisabled || composerDisabled}

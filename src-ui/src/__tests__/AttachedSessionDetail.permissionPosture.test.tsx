@@ -1321,7 +1321,7 @@ describe('a source still running in its own harness', () => {
     expect(screen.queryByTestId('attached-source-active')).toBeNull();
   });
 
-  test('an active source warns inline; Wait continues nothing and Continue anyway sends the override', async () => {
+  test('an active source warns inline; Not now continues nothing and Continue anyway sends the override', async () => {
     window.localStorage.clear();
     adoptOrchestrationSession.mockReset();
     adoptOrchestrationSession.mockResolvedValue({ threadId: 'continued' });
@@ -1343,7 +1343,7 @@ describe('a source still running in its own harness', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(adoptOrchestrationSession).not.toHaveBeenCalled();
 
-    fireEvent.click(within(warning).getByRole('button', { name: 'Wait' }));
+    fireEvent.click(within(warning).getByRole('button', { name: 'Not now' }));
     expect(screen.queryByTestId('attached-source-active')).toBeNull();
     expect(adoptOrchestrationSession).not.toHaveBeenCalled();
 
@@ -1367,6 +1367,54 @@ describe('a source still running in its own harness', () => {
         'carry on',
       ),
     );
+  });
+
+  // Review item 3: the caution replaces the button that had focus, so focus
+  // moves to its first action and comes back to Continue when dismissed; the
+  // caution is announced, including when a stale read is refused.
+  test('focus moves into the caution and back, and the caution is announced', async () => {
+    window.localStorage.clear();
+    adoptOrchestrationSession.mockReset();
+    await renderAttached({
+      presentation: 'chat',
+      session: { attachedSourceActivity: { state: 'active' } },
+    });
+    continueButton().focus();
+    fireEvent.click(continueButton());
+    const warning = await screen.findByTestId('attached-source-active');
+    const status = within(warning).getByRole('status');
+    expect(status.textContent).toContain('Still running in Claude Code');
+    const anyway = within(warning).getByRole('button', {
+      name: 'Continue anyway',
+    });
+    await waitFor(() => expect(document.activeElement).toBe(anyway));
+    expect(anyway.getAttribute('aria-describedby')).toBe(status.id);
+
+    fireEvent.click(within(warning).getByRole('button', { name: 'Not now' }));
+    await waitFor(() => expect(document.activeElement).toBe(continueButton()));
+  });
+
+  test('a refusal of a stale read is announced and takes focus', async () => {
+    window.localStorage.clear();
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    adoptOrchestrationSession.mockReset();
+    adoptOrchestrationSession.mockRejectedValueOnce(sourceActiveRefusal());
+    try {
+      await renderAttached({
+        presentation: 'chat',
+        session: { attachedSourceActivity: { state: 'idle' } },
+      });
+      fireEvent.click(continueButton());
+      const warning = await screen.findByTestId('attached-source-active');
+      expect(within(warning).getByRole('status')).toBeTruthy();
+      await waitFor(() =>
+        expect(document.activeElement).toBe(
+          within(warning).getByRole('button', { name: 'Continue anyway' }),
+        ),
+      );
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 
   test("Station's own re-check opens the same warning when this read said idle", async () => {
