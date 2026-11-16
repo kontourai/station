@@ -339,6 +339,61 @@ git push origin refs/tags/nightly-recovery-lock
 and removes the tag explicitly when done; without it, the next Nightly plans
 normally.
 
+### When the verifier gets no runner
+
+`protected-finalize` runs on `macos-15` after the providers have published. It
+needs macOS for its tools, not for trust: it reads the updater archive's
+`Info.plist` with `/usr/bin/plutil` and records `sw_vers` in the receipt.
+The trust comes from the protected environment, the hosted runner and the
+workflow identity the final receipt is attested under. On the Free plan a
+hosted macOS job can wait in a queue and then be cancelled by GitHub with
+zero steps and the annotation "The job was not acquired by Runner of type
+hosted even after multiple attempts". From 2026-11-02 to 2026-11-16 this
+happened to at least 24 macOS jobs in Nightly and iOS build runs, all
+between 13:00Z and 21:40Z on weekdays. Two of them were this verifier (runs
+42242672641 and 43863134706).
+
+When that happens, `confirm-finalize-runner-loss` reads the run attempt's
+jobs API (`scripts/nightly-finalize-runner-loss.mjs`). It reports
+`runner_lost=true` only when the verifier concluded `cancelled` with runner
+id `0`, no runner name and no steps. In that case
+`protected-finalize-retry` runs the same job once more on the same image. A
+verifier that ran and failed, timed out or succeeded is never retried, and a
+human-cancelled run skips both jobs. Both attempts upload the one
+`nightly-cohort-final-<run>` artifact name. `record-native-completion` runs
+only when exactly one attempt verified: the first one, or the second after
+the first never started. The run stays red because the first attempt shows
+as cancelled, but the ledger rows and marker are recorded. The
+incomplete-cohort receipt counts a verified second attempt as confirmed
+finality. A second runner loss is not retried again.
+
+If neither attempt ran, the cohort is public without a final receipt and
+without ledger rows. The next eligible Nightly treats the source as a failed
+delivery and rebuilds every platform under a new identity. To finalize the
+published cohort instead, re-run only that run's failed jobs:
+
+```sh
+gh run rerun <run-id> --failed --repo kontourai/station
+```
+
+This is safe under the workflow's own rules only when all of these hold:
+
+- No later Nightly has published. The verifier observes the live Play track,
+  rolling tag and `latest.json`, so a newer cohort fails it closed.
+- It is less than 24 hours after the staged attestations were made. The
+  verifier refuses older attestation timestamps.
+- Only the cancelled verifier jobs and their dependents re-run. The fence
+  job and the publishers succeeded, so they are not re-run. If one were re-run
+  without the fence job, it would fail its live fence check before any
+  provider write, because the first attempt cleared the fence.
+  `record-cli-ledger` and the record job's npm row both use `--if-absent`.
+
+Never use "Re-run all jobs". It re-stages and republishes the cohort. No run
+here has yet shown that `--failed` re-runs only the cancelled jobs inside the
+reusable cohort workflow and not the whole called workflow, which would
+recreate the fence and repeat the publishers. Until a run has shown that,
+letting the next Nightly rebuild is the conservative choice.
+
 macOS staging passes `--overlap-notarization`, so the two `notarytool submit
 --wait` waits run concurrently: the Nightly disk image encloses a signed but
 not-yet-stapled application, whose own ticket Gatekeeper resolves online, while
