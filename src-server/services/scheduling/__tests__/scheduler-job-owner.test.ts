@@ -42,7 +42,8 @@ function ledgerWithOlderJob(): SchedulerLedger {
 
 function views(ledger: SchedulerLedger) {
   const read = ledger.listViews();
-  if (read.kind !== 'available') throw new Error(`ledger read failed: ${read.kind}`);
+  if (read.kind !== 'available')
+    throw new Error(`ledger read failed: ${read.kind}`);
   return read.value;
 }
 
