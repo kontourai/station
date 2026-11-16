@@ -20,6 +20,7 @@ import type { StationControlDispatchScope } from '../../runtime/mcp/station-cont
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import {
+  PROJECT_MEMORY_FULL_MESSAGE,
   ProjectMemoryLimitError,
   type ProjectMemoryStore,
 } from '../../services/projects/project-memory-store.js';
@@ -208,7 +209,11 @@ export function createProjectMemoryToolRoutes(
     } catch (error) {
       if (error instanceof ProjectMemoryLimitError)
         return c.json(
-          { success: false, code: error.code, error: error.message },
+          {
+            success: false,
+            code: error.code,
+            error: PROJECT_MEMORY_FULL_MESSAGE,
+          },
           409,
           NO_STORE,
         );

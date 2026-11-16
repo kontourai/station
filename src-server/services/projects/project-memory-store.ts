@@ -35,12 +35,13 @@ import {
 const NOTE_SUFFIX = '.md';
 const HEADER_FENCE = '---';
 
+/** The fixed refusal a full memory answers; routes send this, never `error.message`. */
+export const PROJECT_MEMORY_FULL_MESSAGE = `This Project's memory holds ${PROJECT_MEMORY_MAX_NOTES} notes. Forget one before saving another.`;
+
 export class ProjectMemoryLimitError extends Error {
   readonly code = 'project_memory_full';
   constructor() {
-    super(
-      `This Project's memory holds ${PROJECT_MEMORY_MAX_NOTES} notes. Forget one before saving another.`,
-    );
+    super(PROJECT_MEMORY_FULL_MESSAGE);
   }
 }
 

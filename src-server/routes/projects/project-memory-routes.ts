@@ -20,6 +20,7 @@ import {
 import { type Context, Hono } from 'hono';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import {
+  PROJECT_MEMORY_FULL_MESSAGE,
   ProjectMemoryLimitError,
   type ProjectMemoryStore,
 } from '../../services/projects/project-memory-store.js';
@@ -150,7 +151,11 @@ export function createProjectMemoryRoutes(deps: ProjectMemoryRouteDeps) {
     } catch (error) {
       if (error instanceof ProjectMemoryLimitError)
         return c.json(
-          { success: false, code: error.code, error: error.message },
+          {
+            success: false,
+            code: error.code,
+            error: PROJECT_MEMORY_FULL_MESSAGE,
+          },
           409,
         );
       throw error;
