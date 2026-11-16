@@ -976,6 +976,24 @@ alone does not prove a returned result. These rules qualify the dated
 “complete list” wording above; transcript cards can still represent loaded
 spawns beyond the live registry's bounded history.
 
+**Agents pane layout and scope amendment (2026-11-16).** The scopes are
+**This chat** and **All chats**, the glossary's word for a conversation.
+All chats is a superset of every chat's own scope: besides the session read
+model's delegates and the child-work registry, it lists every chat's
+tool-call and delegated-task cards from the background-tasks store, grouped
+by chat. The current chat's group leads, each group shows the chat's project
+when the open chat or its session row records one, and a group's title opens
+that chat. Collapsed groups are a per-device convenience. The store holds
+what this window has seen, so the pane notes that tool calls are listed from
+when the window opened; finished tool calls of a closed chat are dropped as
+before. The global finished bound trims only delegates, because the
+registry already bounds engine subagents. Section headings count agents,
+commands and tools by name. `TaskRow` and `ChildWorkRow` share one
+sentence-case status pill (`WorkStatusPill`) with one tone per status. Row
+actions sit under the text when the list is narrower than 560px (a
+`work-list` container query) and beside the row when it is wider, which
+qualifies the 2026-10-14 “actions beside each row” wording above.
+
 **Implemented by #1969 (the Device pane), 2026-09-14.** A captured
 simulator or emulator screen as a dock tab (`device`, `exposure: 'catalog'`,
 no chord, dock regions only, `right` by default because a device screen is
