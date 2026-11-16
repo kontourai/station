@@ -284,6 +284,25 @@ describe('agent feedback on a linked pull request', () => {
     ).toBe('false');
   });
 
+  test('held for checks still running: the row says it is waiting on checks', async () => {
+    sdk.view = view({ status: { state: 'held', reason: 'checks-running' } });
+    renderLinks();
+    expect(await screen.findByText('Waiting on checks')).toBeTruthy();
+    expect(
+      screen.getByText('Failing checks wait for the rest to finish'),
+    ).toBeTruthy();
+  });
+
+  test('a closed pull request says Station checks again if it reopens', async () => {
+    sdk.view = view({ status: { state: 'closed' } });
+    renderLinks();
+    expect(
+      await screen.findByText(
+        'Pull request closed; Station checks again if it reopens',
+      ),
+    ).toBeTruthy();
+  });
+
   test('with the preview off nothing is read and nothing is offered', async () => {
     flags.preview = false;
     sdk.view = view();

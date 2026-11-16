@@ -14,7 +14,9 @@ export function pullRequestFeedbackChip(
     case 'watching':
       return { label: 'Auto-fix on', tone: 'success' };
     case 'held':
-      return { label: 'Held', tone: 'pending' };
+      return view.status.reason === 'checks-running'
+        ? { label: 'Waiting on checks', tone: 'pending' }
+        : { label: 'Held', tone: 'pending' };
     case 'paused':
       return { label: 'Paused', tone: 'failure' };
     case 'unavailable':
@@ -96,7 +98,9 @@ export function pullRequestFeedbackLine(
     case 'off':
       return null;
     case 'closed':
-      return { text: 'Pull request closed; feedback stopped' };
+      return {
+        text: 'Pull request closed; Station checks again if it reopens',
+      };
     case 'unavailable':
       return {
         text:
@@ -104,7 +108,9 @@ export function pullRequestFeedbackLine(
             ? 'Sign in to GitHub on this Station to get feedback'
             : status.cause === 'unsupported'
               ? 'Feedback is not available for this forge yet'
-              : 'Station could not read this pull request',
+              : status.cause === 'too-large'
+                ? 'Feedback is too large to send; open the pull request'
+                : 'Station could not read this pull request',
       };
     case 'paused':
       return {
@@ -114,6 +120,8 @@ export function pullRequestFeedbackLine(
             : `Paused after 3 rounds on ${short(status.headSha)}`,
       };
     case 'held': {
+      if (status.reason === 'checks-running')
+        return { text: 'Failing checks wait for the rest to finish' };
       const reason = {
         'agent-busy': 'until the agent finishes',
         'agent-waiting': 'while the agent waits on you',
