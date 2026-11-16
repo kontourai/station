@@ -21,12 +21,12 @@
  *    count) is a finding, unless its file is one the analyzer counts as
  *    used whole (see `newUnnamedExports`).
  *
- * It is a heuristic for one recurring case, not a smaller copy of the gate.
- * A name another module mentions by coincidence passes here; an export whose
- * last caller was removed is never collected. Known false-refusal risk: an
- * `export const` line inside a template literal (code generators) is read as
- * a declaration; today every such name in this repo is also named by the
- * generated output, so none refuses. CI's statics job judges all of these
+ * It is a heuristic for one recurring case, not a smaller copy of the gate,
+ * and it never refuses a push. A name another module mentions by coincidence
+ * passes here; an export whose
+ * last caller was removed is never collected, and an `export const` line
+ * inside a template literal (a code generator) is collected. That is why it
+ * only ever warns: CI's statics job is the judge
  * (`node scripts/code-health-gate.mjs --base=<merge base>`).
  */
 import { spawnSync } from 'node:child_process';
@@ -138,19 +138,57 @@ function diffCaptureBytes(env = process.env) {
   return raw && /^[1-9][0-9]*$/.test(raw) ? Number(raw) : CAPTURE_MAX_BYTES;
 }
 
+/**
+ * Unquote a path as Git prints it in a patch header: C-style quotes for
+ * characters `core.quotePath=false` still escapes, and a trailing tab Git
+ * appends to a name that contains a space.
+ */
+function headerPath(text) {
+  const raw = text.replace(/\t$/, '');
+  if (!raw.startsWith('"')) return raw;
+  const bytes = [];
+  for (let i = 1; i < raw.length - 1; i += 1) {
+    const ch = raw[i];
+    if (ch !== '\\') {
+      bytes.push(...Buffer.from(ch, 'utf8'));
+      continue;
+    }
+    const next = raw[i + 1];
+    if (/[0-7]/.test(next)) {
+      bytes.push(Number.parseInt(raw.slice(i + 1, i + 4), 8));
+      i += 3;
+      continue;
+    }
+    bytes.push(
+      { n: 10, t: 9, r: 13, '"': 34, '\\': 92, a: 7, b: 8, f: 12, v: 11 }[
+        next
+      ] ?? next.charCodeAt(0),
+    );
+    i += 1;
+  }
+  return Buffer.from(bytes).toString('utf8');
+}
+
+/**
+ * Added lines per file in `base..sha` for files that pass `keep`, with the
+ * path each renamed file had at `base`. Renames are followed, so a moved
+ * file contributes only the lines its move changed.
+ */
 function addedLines(base, sha, keep) {
   // Only the sources this check reads: an unfiltered diff against an old base
   // reached 116 MB, past any capture bound.
+  const pathspecs = ['--', ...[...SOURCE_EXTENSIONS].map((ext) => `*${ext}`)];
   const diff = git(
     [
+      '-c',
+      'core.quotePath=false',
       'diff',
-      '--no-renames',
+      '-M',
       '--no-color',
-      '--diff-filter=AM',
+      '--diff-filter=AMR',
       '-U0',
       `${base}..${sha}`,
-      '--',
-      ...[...SOURCE_EXTENSIONS].map((ext) => `*${ext}`),
+      ...pathspecs,
     ],
     { maxBuffer: diffCaptureBytes() },
   );
@@ -165,7 +203,7 @@ function addedLines(base, sha, keep) {
     throw new Error(
       `git diff ${base.slice(0, 12)}..${sha.slice(0, 12)} did not complete (${
         diff.error?.code === 'ENOBUFS'
-          ? 'its output passed the capture bound; the range is very large, which usually means the local origin/main is stale'
+          ? 'its output passed the capture bound; the range is very large'
           : (diff.error?.message ??
             (diff.signal
               ? `signal ${diff.signal}`
@@ -174,13 +212,21 @@ function addedLines(base, sha, keep) {
     );
   const files = new Map();
   let current = null;
+  let renamedFrom = null;
   for (const line of diff.stdout.split('\n')) {
-    if (line.startsWith('+++ ')) {
-      const path = line.startsWith('+++ b/') ? line.slice(6) : null;
+    if (line.startsWith('diff --git ')) {
+      current = null;
+      renamedFrom = null;
+    } else if (line.startsWith('rename from ')) {
+      renamedFrom = headerPath(line.slice('rename from '.length));
+    } else if (line.startsWith('+++ ')) {
+      const header = headerPath(line.slice(4));
+      const path = header.startsWith('b/') ? header.slice(2) : null;
       current = path && keep(path) ? path : null;
-      if (current) files.set(current, []);
-    } else if (current && line.startsWith('+') && !line.startsWith('+++'))
-      files.get(current).push(line.slice(1));
+      if (current)
+        files.set(current, { from: renamedFrom ?? current, lines: [] });
+    } else if (current && line.startsWith('+'))
+      files.get(current).lines.push(line.slice(1));
   }
   return files;
 }
@@ -388,11 +434,11 @@ export function newUnnamedExports({ base, sha }) {
   const config = configText.status === 0 ? JSON.parse(configText.stdout) : {};
   const added = addedLines(base, sha, (path) => reportable(path, config));
   const candidates = [];
-  for (const [path, lines] of added) {
+  for (const [path, { from, lines }] of added) {
     if (path.includes('/__tests__/') || path.startsWith('__tests__/')) continue;
     if (!lines.some((line) => /\bexport\b/.test(line))) continue;
     const inherited = new Set(
-      exportedNames(blobAt(base, path).split('\n')).map((entry) => entry.name),
+      exportedNames(blobAt(base, from).split('\n')).map((entry) => entry.name),
     );
     const seen = new Set();
     for (const entry of exportedNames(lines))
