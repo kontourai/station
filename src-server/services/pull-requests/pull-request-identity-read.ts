@@ -12,7 +12,12 @@ interface PullRequestIdentityQuery {
 }
 
 type PullRequestIdentityRead =
-  | { kind: 'current'; pullRequest: PullRequest }
+  | {
+      kind: 'current';
+      pullRequest: PullRequest;
+      /** When the forge was read, when the provider reports it (cached). */
+      observedAt?: string;
+    }
   | { kind: 'unsupported' }
   /** `thrown`: the provider call failed outright, rather than answering no. */
   | { kind: 'unavailable'; thrown: boolean; reason?: string };
@@ -26,20 +31,36 @@ type PullRequestIdentityRead =
 export async function readPullRequestByIdentity(
   providers: () => IPullRequestProvider[],
   identity: PullRequestIdentityQuery,
+  /**
+   * `status`: the narrow, shared read a status surface needs, where the
+   * provider offers one (`getPullRequestStatusByIdentity`); otherwise the
+   * full read.
+   */
+  options: { status?: true } = {},
 ): Promise<PullRequestIdentityRead> {
   const provider = providers().find(
     (candidate) =>
       candidate.id === identity.provider &&
       candidate.canServeHost(identity.host),
   );
-  if (!provider?.getPullRequestByIdentity) return { kind: 'unsupported' };
+  const read =
+    (options.status &&
+      provider?.getPullRequestStatusByIdentity?.bind(provider)) ||
+    provider?.getPullRequestByIdentity?.bind(provider);
+  if (!read) return { kind: 'unsupported' };
   try {
-    const result = await provider.getPullRequestByIdentity(
+    const result = await read(
       { host: identity.host, repository: identity.repository },
       identity.ref,
     );
     return result.available && result.data
-      ? { kind: 'current', pullRequest: result.data }
+      ? {
+          kind: 'current',
+          pullRequest: result.data,
+          ...('observedAt' in result && typeof result.observedAt === 'string'
+            ? { observedAt: result.observedAt }
+            : {}),
+        }
       : {
           kind: 'unavailable',
           thrown: false,
