@@ -982,37 +982,53 @@ export function InboxRow({
                 </span>
               )}
             </span>
-            <InboxRowStatusLine id={statusId} status={status} now={now} />
-            <span className="inbox-row__meta">
-              {/* Decorative, deliberately: the agent is stated in words
-                  beside it, and this icon sits INSIDE a button that carries
-                  an explicit `aria-label`. Passing no `accessibleLabel` is
-                  what makes `BrandIcon` render `aria-hidden` rather than
-                  `role="img"`, so the row gains a picture and not a second
-                  announcement or a tab stop. An unresolved agent renders no
-                  icon at all, never a stand-in. */}
-              <IdentityMarks
-                identity={identity}
-                size={actionsInDetails ? 20 : 16}
-              />
-              <span className="inbox-row__meta-text">
-                <span className="inbox-row__agent">{agentText}</span>
-                {!actionsInDetails && (
-                  <>
-                    {' '}
-                    ·{' '}
-                    <ProjectAccentSwatch
-                      accent={projectAccent}
-                      icon={projectIcon}
-                      fallback={remoteProject ? 'initials' : 'dot'}
-                      name={contextLabel}
-                    />
-                    <span className="inbox-row__project">{contextLabel}</span>
-                    {hasUnsentDraft && <DraftMarker />}
-                  </>
-                )}
+            {actionsInDetails ? (
+              <>
+                <InboxRowStatusLine id={statusId} status={status} now={now} />
+                <span className="inbox-row__meta">
+                  {/* Decorative, deliberately: the agent is stated in words
+                      beside it, and this icon sits INSIDE a button that carries
+                      an explicit `aria-label`. Passing no `accessibleLabel` is
+                      what makes `BrandIcon` render `aria-hidden` rather than
+                      `role="img"`, so the row gains a picture and not a second
+                      announcement or a tab stop. An unresolved agent renders no
+                      icon at all, never a stand-in. */}
+                  <IdentityMarks identity={identity} size={20} />
+                  <span className="inbox-row__meta-text">
+                    <span className="inbox-row__agent">{agentText}</span>
+                  </span>
+                </span>
+              </>
+            ) : (
+              // Two lines on a hover row: what (above), then state and where.
+              // The agent is its mark here, named in the mark's tooltip and the
+              // hover card; a row with no mark keeps the agent in words, so
+              // no row is left unattributed.
+              <span className="inbox-row__state">
+                <IdentityMarks
+                  identity={identity}
+                  size={16}
+                  fallbackTitle={agentText}
+                />
+                <InboxRowStatusLine id={statusId} status={status} now={now} />
+                <span className="inbox-row__context">
+                  {identity.marks.length === 0 && (
+                    <>
+                      <span className="inbox-row__agent">{agentText}</span>
+                      {' · '}
+                    </>
+                  )}
+                  <ProjectAccentSwatch
+                    accent={projectAccent}
+                    icon={projectIcon}
+                    fallback={remoteProject ? 'initials' : 'dot'}
+                    name={contextLabel}
+                  />
+                  <span className="inbox-row__project">{contextLabel}</span>
+                  {hasUnsentDraft && <DraftMarker />}
+                </span>
               </span>
-            </span>
+            )}
             {actionsInDetails && (
               <span className="inbox-row__project-context">
                 {/* One project mark: its own icon when it has one, else the
