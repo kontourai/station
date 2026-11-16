@@ -325,7 +325,9 @@ function failingCandidate(
           ...excerpt(check.excerpt, excerptChars),
         ]),
         ...(failing.length > shown.length
-          ? [`- (${failing.length - shown.length} more failing; see the pull request)`]
+          ? [
+              `- (${failing.length - shown.length} more failing; see the pull request)`,
+            ]
           : []),
       ];
     },
