@@ -38,7 +38,11 @@ export function useHeldDuringCatchUp<T>(
     const timer = setTimeout(() => setExpired(true), maxHoldMs);
     return () => clearTimeout(timer);
   }, [catchingUp, maxHoldMs]);
-  const holding = catchingUp && !expired;
+  // Only a REconnect holds: the first connection also replays before it is
+  // caught up, and holding then would hide what is already waiting.
+  const settledOnce = useRef(false);
+  if (!catchingUp) settledOnce.current = true;
+  const holding = catchingUp && !expired && settledOnce.current;
   const held = useRef(value);
   if (!holding) held.current = value;
   return holding ? held.current : value;

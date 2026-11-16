@@ -126,9 +126,10 @@ export function ApprovalSheetProvider({
         .then((outcome) => {
           if (outcome === 'already-settled') settledElsewhere(request, false);
         })
-        // Unknown stays listed: a failed check never hides a request, and
-        // the next opening asks again.
-        .catch(() => checked.current.delete(key));
+        // Unknown stays listed: a failed check never hides a request. It is
+        // not retried until the next opening (the key is cleared on close),
+        // so a failing Station is not asked again on every render.
+        .catch(() => undefined);
     }
   }, [open, mobile, catchingUp, requests, onCheck, settledElsewhere]);
 

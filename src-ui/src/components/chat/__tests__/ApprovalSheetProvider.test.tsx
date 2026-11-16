@@ -422,6 +422,53 @@ describe('the conversation approval sheet', () => {
     ).toBeTruthy();
   });
 
+  // The first connection also replays before it is caught up; holding then
+  // hid what was already waiting (the pill and the sheet showed nothing).
+  test('the first connection does not hold: requests show while it catches up', async () => {
+    const tree = (requests: PendingApprovalRequest[]) => (
+      <ApprovalSheetProvider
+        requests={requests}
+        catchingUp
+        onApprove={vi.fn(async () => 'answered' as const)}
+      >
+        <span>Conversation</span>
+      </ApprovalSheetProvider>
+    );
+    // The view mounts empty, then the first replay brings the requests in.
+    const mounted = render(tree([]));
+    mounted.rerender(tree([request('first-load-a'), request('first-load-b')]));
+    // Well inside the hold's 5 s cap: a held list would still be empty here.
+    expect(
+      await screen.findByRole(
+        'dialog',
+        { name: 'Needs approval (2)' },
+        { timeout: 1_000 },
+      ),
+    ).toBeTruthy();
+  });
+
+  test('a failed check is not retried on every render, only on the next opening', async () => {
+    const check = vi.fn(async () => {
+      throw new Error('offline');
+    });
+    const tree = (requests: PendingApprovalRequest[]) => (
+      <ApprovalSheetProvider
+        requests={requests}
+        onApprove={vi.fn(async () => 'answered' as const)}
+        onCheck={check}
+      >
+        <span>Conversation</span>
+      </ApprovalSheetProvider>
+    );
+    const first = request('retry-once');
+    const mounted = render(tree([first]));
+    await screen.findByRole('dialog');
+    await waitFor(() => expect(check).toHaveBeenCalledTimes(1));
+    for (let i = 0; i < 3; i++) mounted.rerender(tree([first]));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(check).toHaveBeenCalledTimes(1);
+  });
+
   test('leaves both decisions available after a transport failure with safe recovery copy', async () => {
     const approve = vi.fn(async () => {
       throw Object.assign(new Error('Station host could not be resolved.'), {
