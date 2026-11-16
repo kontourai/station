@@ -227,7 +227,7 @@ export function servesFollowUpAttachments(
 }
 
 /** Hosted Stations have no host forge login and no conversation inbox. */
-export function servesPullRequestFeedback(
+function servesPullRequestFeedback(
   deployment: StationCapabilityDeployment,
 ): boolean {
   return !deployment.hosted;

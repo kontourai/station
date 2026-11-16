@@ -922,6 +922,7 @@ describe('pull request agent feedback reaches the owning conversation', () => {
             'Or visit https://evil.example/ or www.evil.example now.',
             '<https://evil.example/auto> and [ref][1]',
             '_https://evil.example/under_ foo_www.evil.example HTTPS://EVIL.example/up',
+            '&#119;ww.evil.example www&#46;evil.example https&#58;//evil.example a&#64;evil.example 1@.w e.co@.wa',
             '',
             '[1]: https://evil.example/ref',
           ].join('\n'),

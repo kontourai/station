@@ -107,7 +107,7 @@ const NAME = /^[A-Za-z0-9._-]{1,100}$/;
 const HOST = /^[a-z0-9.-]{1,253}(?::\d{1,5})?$/;
 
 /** The gh argv for one read; refuses an identity that is not plainly one. */
-export function githubFeedbackArgs(
+function githubFeedbackArgs(
   identity: Pick<PullRequestLinkIdentity, 'host' | 'repository' | 'ref'>,
 ): string[] {
   const host = identity.host.toLowerCase();
@@ -316,7 +316,7 @@ export function normalizeGitHubFeedbackObservation(
 }
 
 /** Why gh failed, from its stderr: sign-in, rate limit, or anything else. */
-export function classifyGitHubFeedbackFailure(error: unknown): {
+function classifyGitHubFeedbackFailure(error: unknown): {
   cause: 'credentials' | 'rate-limited' | 'error';
   reason: string;
 } {

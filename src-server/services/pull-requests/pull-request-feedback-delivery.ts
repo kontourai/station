@@ -53,10 +53,10 @@ import type {
   StoredDelivery,
 } from './pull-request-feedback-store.js';
 
-export const PULL_REQUEST_FEEDBACK_KEY_PREFIX = 'prf-';
-export const MAX_ROUNDS_PER_HEAD = 3;
-export const MAX_SENT_PER_DAY = 10;
-export const REPEATED_FAILURE_HEADS = 3;
+const PULL_REQUEST_FEEDBACK_KEY_PREFIX = 'prf-';
+const MAX_ROUNDS_PER_HEAD = 3;
+const MAX_SENT_PER_DAY = 10;
+const REPEATED_FAILURE_HEADS = 3;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ITEMS_SHOWN = 8;
 const EXCERPT_CHARS = 600;
@@ -124,7 +124,7 @@ const digest = (parts: readonly string[], length = 40) =>
 const short = (sha: string) => (SHA.test(sha) ? sha.slice(0, 7) : 'unknown');
 
 /** A URL longer than this is left out: the item is named without a link. */
-export const URL_CHARS = 300;
+const URL_CHARS = 300;
 
 /**
  * A URL on the pull request's own host over https, or nothing. Parentheses,
@@ -185,7 +185,7 @@ const isFailing = (check: PullRequestFeedbackCheck) =>
  * a little too much only puts more text in code.
  */
 const AUTOLINKABLE =
-  /(?:[a-z][a-z0-9+.-]*:\/\/|www\.)[^\s<>`]*|[\w.+-]+@[\w-]+(?:\.[\w-]+)+/gi;
+  /(?:[a-z][a-z0-9+.-]*:\/\/|www\.)[^\s<>`]*|[\w.+-]+@[\w.-]*\.[\w.-]*/gi;
 
 /**
  * Forge text made inert as markdown while staying readable: a quoted line is
@@ -194,12 +194,14 @@ const AUTOLINKABLE =
  * live link, image or tag in the person's chat. Bare URLs, `www.` hosts and
  * emails become inline code (GFM finds autolinks in text after escapes are
  * resolved, so escaping alone does not stop them); everywhere else the
- * characters that open syntax (`\\`, `[`, `<`, backtick) are backslash-escaped,
- * which renders them as written: `]`, `>` and `!` open nothing without them.
+ * characters that open syntax (`\\`, `[`, `<`, backtick, and `&`, whose
+ * character references would otherwise decode into an autolinkable URL or
+ * email) are backslash-escaped, which renders them as written: `]`, `>` and
+ * `!` open nothing without them.
  */
-export function inertMarkdown(text: string): string {
+function inertMarkdown(text: string): string {
   const escapeSyntax = (part: string) =>
-    part.replace(/[\\[<`]/g, (character) => `\\${character}`);
+    part.replace(/[\\[<`&]/g, (character) => `\\${character}`);
   let out = '';
   let last = 0;
   for (const match of text.matchAll(AUTOLINKABLE)) {
@@ -255,7 +257,7 @@ function ownReply(
 }
 
 /** A check incomplete this long no longer holds the rest (nothing required). */
-export const STUCK_CHECK_MS = 60 * 60 * 1000;
+const STUCK_CHECK_MS = 60 * 60 * 1000;
 
 /**
  * Whether the head's check result is not in yet. A required check still
@@ -266,7 +268,7 @@ export const STUCK_CHECK_MS = 60 * 60 * 1000;
  * longer hold it. `incompleteSince` is when each check was first seen
  * incomplete on this head.
  */
-export function checksStillRunning(
+function checksStillRunning(
   observation: PullRequestFeedbackObservation,
   incompleteSince: Readonly<Record<string, string>> | undefined,
   now: number,
@@ -595,7 +597,7 @@ export function composeFeedbackMessage(
 }
 
 /** The inbox key: one per set of deliveries and their attempt. */
-export function pullRequestFeedbackKey(
+function pullRequestFeedbackKey(
   conversationId: string,
   sections: readonly PullRequestSection[],
 ): string {

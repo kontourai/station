@@ -32,7 +32,7 @@ import {
 /** Deliveries kept per pull request; the oldest settled go past it. */
 const MAX_DELIVERIES_PER_PULL_REQUEST = 200;
 /** A closed pull request's claim and history are kept this long. */
-export const CLOSED_CLAIM_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
+const CLOSED_CLAIM_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
 
 export function pullRequestFeedbackStorePath(homeDir: string): string {
   return join(homeDir, 'pull-request-feedback', 'pull-request-feedback.sqlite');
