@@ -1,0 +1,23 @@
+{
+  "revision": "f95561c03c42d81595392b610f566653c6f68fdc",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"#2376 slice 2: codex-bound-browser-device-tools row now says new Codex Sessions with Station Control also get it on the bound channel instead of a header token, about 110 KB per thread (budget 113,759 bytes with browser tools). Matches the preview description in station-runtime.ts.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"#2376 slice 2: browser-access paragraph now says the Codex preview also moves a new Codex Session's Station Control to the bound channel; checked against CodexAdapter.","inputs":["docs/guides/agent-configuration.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#2376 slice 2: added that with the preview on a non-coordinator-derived Codex Session is told the bound catalog, else delegated-custody; checked against session-agent-resolution.ts and stationControlAssuranceFor.","inputs":["docs/guides/self-configuring-agent.md"]},
+
+    {"path":"docs/guides/testing.md","note":"#2376 slice 2: budget paragraph: codexBoundToolsJsonBytes now measures browser tools plus the station-control catalog at bound; delegated-custody listing is ACP and Codex without the bound channel. Checked against agent-context-budget.test.ts.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#2376 slice 2: stationControlAssuranceFor line (Codex bound when its channel carries the catalog) and the bound-channel paragraph (catalog at bound, no header mint, boundCatalog cursor) checked against station-orchestration-instructions.ts, station-control-in-process.ts and codex-adapter.ts.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"#2376 slice 2: added that under the preview a new Codex Session's Control tools ride dynamicTools with no header token, full catalog per thread, no family loading; checked against CodexAdapter and the budget.","inputs":["docs/guides/agent-efficiency.md"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#2376 slice 2: verified-caller list corrected: Codex uses a header token since #4372 (not a URL token), and Codex's bound channel is now a station-control caller; checked against codex-mcp-passthrough.ts and createCodexBoundToolServer.","inputs":["docs/conformance/tool-policy-delivery.md"]},
+
+    {"path":"docs/reference/session-api.md","note":"#2376 slice 2: delegate_task parent paragraph now names Codex's bound dynamicTools channel as a session-bound station-control path; checked against createCodexBoundToolServer caller resolution.","inputs":["docs/reference/session-api.md"]},
+
+    {"path":"docs/design/agent-engine-unification.md","note":"#2376 slice 2: MCP tool servers row notes the bound dynamicTools channel for Codex built-in Control under the preview with no header credential; checked against CodexAdapter.","inputs":["docs/design/agent-engine-unification.md"]}
+  ]
+}
