@@ -846,6 +846,8 @@ in between. A history read that started before a merge keeps the merged rows
 in the cache and in the result its caller awaits. The hook remembers its last
 500 merged rows; a read that outlives a forgotten one is read again, up to
 three times, and otherwise fails with the cache left as it was.
+The newest window always reads as far as its cached rows reach, so a window
+that merges or a re-read widened stays that wide on every later read.
 A hook that joins a connection already open starts from where the room stands
 on it, so a gap after that is still backfilled.
 Acknowledged sends, reactions, edits and deletes merge their returned message
