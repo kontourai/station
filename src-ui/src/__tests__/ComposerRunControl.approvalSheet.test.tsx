@@ -109,7 +109,8 @@ test('the sheet says what is in effect, in the same words as the list', async ()
     screen.getByText(
       (_, element) =>
         element?.className === 'composer-mode-sheet__status' &&
-        element.textContent === 'In effect: Full access, confirmed by Claude Code',
+        element.textContent ===
+          'In effect: Full access, confirmed by Claude Code',
     ),
   ).toBeTruthy();
   expect(screen.getByRole('radio', { name: /^Full access/ })).toBeTruthy();

@@ -1429,3 +1429,75 @@ it('renders the answer rung for an input request after server projection', () =>
   );
   expect(statusText()).toBe('Needs input');
 });
+
+describe('a collapsed inbox section that holds the open chat', () => {
+  const idle = (threadId: string, title: string) =>
+    rowFor({
+      threadId,
+      displayTitle: title,
+      lifecycleState: 'idle',
+      hasActiveTurn: false,
+      conversationActivity: undefined,
+    }).item;
+
+  it('still shows that one row under its header, and only that row', () => {
+    const open = idle('T-open', 'The chat on screen');
+    const other = idle('T-other', 'Another chat');
+    const activeId = open.orchestrationThreadId ?? open.chatSessionId ?? '';
+    expect(activeId).not.toBe('');
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <InboxGroupList
+          groups={[{ id: 'open', label: 'Open', items: [other, open] }]}
+          idPrefix="test"
+          activeChatSessionId={activeId}
+          openChatIds={new Set()}
+          now={NOW}
+          chrome="touch"
+          collapsible={{ sections: { open: false }, onToggle: vi.fn() }}
+          onActivate={vi.fn()}
+          onSnoozeWake={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    const section = screen.getByRole('region', { name: /^Open/ });
+    expect(
+      within(section)
+        .getByRole('button', { name: /^Open/ })
+        .getAttribute('aria-expanded'),
+    ).toBe('false');
+    const rows = within(section).getAllByTestId('inbox-row');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].textContent).toContain('The chat on screen');
+  });
+
+  it('stacks collapsed sections from the top when none is expanded', () => {
+    const { container } = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <InboxGroupList
+          groups={[
+            { id: 'open', label: 'Open', items: [idle('T-a', 'A')] },
+            { id: 'external', label: 'Third-party', items: [idle('T-b', 'B')] },
+          ]}
+          idPrefix="test"
+          activeChatSessionId={null}
+          openChatIds={new Set()}
+          now={NOW}
+          chrome="touch"
+          collapsible={{
+            sections: { open: false, external: false },
+            onToggle: vi.fn(),
+          }}
+          onActivate={vi.fn()}
+          onSnoozeWake={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    expect(container.querySelectorAll('.chat-dock-inbox__group')).toHaveLength(
+      2,
+    );
+    expect(
+      container.querySelector('.chat-dock-inbox__group--shelf-start'),
+    ).toBeNull();
+  });
+});

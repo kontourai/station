@@ -282,6 +282,12 @@ function regionMoveTargets(
 }
 
 /** The maximize control's name, one wording for the button and the row. */
+function regionMaximizeTip(isDockMaximized: boolean, region: string): string {
+  return isDockMaximized
+    ? `Restore the ${region} region's size`
+    : `Expand the ${region} region to the workspace`;
+}
+
 function maximizeLabel(isDockMaximized: boolean): string {
   return isDockMaximized
     ? 'Restore dock region size'
@@ -894,8 +900,13 @@ export function RegionChromeBar({
             type="button"
             className="chat-dock__maximize-btn"
             onClick={() => applyDockSnap(isDockMaximized ? 'half' : 'full')}
+            // The side and bottom bars both carry this button; the tip
+            // names which region it sizes.
             title={withShortcutHint(
-              maximizeLabel(isDockMaximized),
+              regionMaximizeTip(
+                isDockMaximized,
+                regionLabel(chrome.effectiveDockSlotPlacement),
+              ),
               'dock.maximize',
               () => maximizeShortcut,
             )}

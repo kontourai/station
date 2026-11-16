@@ -9442,8 +9442,11 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 .composer-mode-sheet__option {
   min-height: 56px;
   justify-content: flex-start;
-  /* Glyph and radio mark sit on the title's line, not the middle of a
-     wrapped description. */
+}
+/* Glyph and radio mark sit on the title's line, not the middle of a wrapped
+   description. Compounded: chat.css loads after this file and its
+   `.composer-actions-menu__item` centres every row. */
+.composer-actions-menu__item.composer-mode-sheet__option {
   align-items: flex-start;
   padding-block: var(--k-space-2);
 }
