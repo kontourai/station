@@ -14,6 +14,7 @@ import {
   pullRequestFeedbackKey,
 } from '@kontourai/station-contracts/pull-request-feedback';
 import type { IPullRequestProvider } from '@kontourai/station-contracts/pull-request-provider';
+import { Hono } from 'hono';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
@@ -21,6 +22,7 @@ import {
   createInboxHarness,
   OWNER,
 } from '../../../routes/orchestration/__tests__/helpers/thread-inbox-harness.js';
+import { createPullRequestFeedbackRoutes } from '../../../routes/pull-requests/pull-request-feedback.js';
 import {
   PullRequestFeedbackStore,
   pullRequestFeedbackStorePath,
@@ -212,6 +214,23 @@ describe('the composed Task-branch auto-claim', () => {
     });
     // The Task already has its derived link: not listed again.
     expect(t.reads.byHead).toBe(1);
+  });
+
+  it('Remove from this chat releases the claim and keeps the pull request out', async () => {
+    const t = await setup();
+    await t.tickUntil(Date.now(), () => expect(t.reads.feedback).toBe(1));
+    // What the DELETE route calls once its writer rule passes.
+    const ports = t.runtime.routeArgs[4]!;
+    expect(ports.taskBranches.dismiss(CONVERSATION, PR)).toBe(true);
+    ports.dismissed(CONVERSATION);
+    expect(t.runtime.derivedLinks(CONVERSATION)).toEqual([]);
+    await vi.waitFor(() =>
+      expect(t.store.claim(PR_KEY)?.settings).toEqual({
+        fixFailingChecks: false,
+        addressReviewComments: false,
+        reviewEachHead: false,
+      }),
+    );
   });
 
   it('shows no derived links while the preview is off', async () => {
