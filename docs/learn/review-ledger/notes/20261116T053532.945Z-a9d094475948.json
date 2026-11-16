@@ -1,0 +1,7 @@
+{
+  "revision": "6ab7ba4e6d27e3458909f88c91c4a689f765c730",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Re-reviewed after moving the cross-runtime journey and gallery capture off the removed Inbox ⋯ menu (Browse button; notice Retry/Retrying…) and keeping the failed-refresh notice up during a retry (ChatDockInboxPanel.tsx); Browse at the end of the list and the scope/search wording remain accurate.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDockInboxPanel.tsx","tests/cross-runtime-chat-switching.spec.ts"]}
+  ]
+}

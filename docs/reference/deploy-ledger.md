@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-16T12:18:53Z | nightly-npm | 0.12.0-nightly.20261116.43863134706 | `d25dc08` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/43863134706) |
 | 2026-11-16T03:26:30Z | nightly-npm | 0.11.0-nightly.20261116.43796408425 | `0f46969` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/43796408425) |
 | 2026-11-15T23:26:59Z | nightly-npm | 0.11.0-nightly.20261115.43773362126 | `95a6c12` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/43773362126) |
 | 2026-11-15T12:33:49Z | nightly-desktop | 0.1.11-nightly.20261115 | `89dc051` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/43709226198) |
@@ -488,6 +489,46 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-16T12:18:53Z · nightly-npm · 0.12.0-nightly.20261116.43863134706
+
+- Ship SHA: `d25dc082385145dcdf133590bd49d12e02f4198f`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.12.0-nightly.20261116.43863134706 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `0f46969` ([full sha](https://github.com/kontourai/station/commit/0f46969f18aa5080844d57fba8af1a079533cac4)):
+
+**Features**
+
+- [#5039](https://github.com/kontourai/station/pull/5039) feat(chat): message-free, compact Agent/engine handoff and one-click Continue in Station
+- [#5035](https://github.com/kontourai/station/pull/5035) feat(environments): open remote sessions read-only; owner-only remote reads
+- [#5002](https://github.com/kontourai/station/pull/5002) feat(peers): grey out and refuse paired Stations that are not ready
+- [#5030](https://github.com/kontourai/station/pull/5030) feat(sessions): discover Codex sessions across configured homes; opt-in ACP session listing
+- [#4935](https://github.com/kontourai/station/pull/4935) feat(remote-tasks): drive cloud coding agents through one remote task engine abstraction
+- [#5027](https://github.com/kontourai/station/pull/5027) feat(chat-dock): regroup composer + and dock ⋯ menus; open terminal from the composer
+
+**Fixes**
+
+- [#5014](https://github.com/kontourai/station/pull/5014) fix(workload): back off and abandon failing scope cleanup
+- [#5036](https://github.com/kontourai/station/pull/5036) fix(nightly): read the rolling desktop release past the 1 MiB capture default
+- [#5038](https://github.com/kontourai/station/pull/5038) fix(ci): keep the supersession pass going when a force-cancel is refused
+- [#5016](https://github.com/kontourai/station/pull/5016) fix(logging): rotate the stdout log file and rate-limit repeated warnings
+- [#4890](https://github.com/kontourai/station/pull/4890) fix(ui): plain Task, monitoring, scheduler, settings and Skills copy
+- [#5024](https://github.com/kontourai/station/pull/5024) fix(sessions): discover current Claude Code transcripts and stop following subagent sidechains
+- [#5023](https://github.com/kontourai/station/pull/5023) fix(inbox): unify waiting, turn navigation, and shared controls
+- [#5025](https://github.com/kontourai/station/pull/5025) fix(opencode): read OpenCode 2.x session stores
+- [#5017](https://github.com/kontourai/station/pull/5017) fix(telemetry): drop permanently refused usage batches and back off retries
+
+**Other**
+
+- [#5032](https://github.com/kontourai/station/pull/5032) perf(desktop): drop the server compile cache and cap new space in the sidecar
+- [#5034](https://github.com/kontourai/station/pull/5034) chore(ui): ratchet UI copy style and CSS slop, and document the copy standard
+- [#4097](https://github.com/kontourai/station/pull/4097) chore: version packages
+- [#5026](https://github.com/kontourai/station/pull/5026) perf(tools): leaner Station tool listings, budgeted for every engine, with stated families
+- [#5031](https://github.com/kontourai/station/pull/5031) test(ios): follow the smoke test's renamed tap and select its text pins on a Swift change
 
 ## 2026-11-16T03:26:30Z · nightly-npm · 0.11.0-nightly.20261116.43796408425
 

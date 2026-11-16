@@ -7,9 +7,8 @@ import {
 import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useRowFocusPreservation } from '../../hooks/useRowFocusPreservation';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
-import { ActionOverflowMenu } from '../ActionOverflowMenu';
 import { Button } from '../Button';
-import { MessageGlyph, RefreshGlyph } from '../icons/Glyph';
+import { MessageGlyph } from '../icons/Glyph';
 import { ReadStatusNote } from '../inbox-row/ReadStatusNote';
 import { NewChatAction } from '../NewChatAction';
 import { Empty, ErrorState, FilteredEmpty } from '../state';
@@ -19,7 +18,10 @@ import {
   InboxGroupList,
   type InboxGroupListProps,
 } from './ChatDockInboxRows';
-import { InboxScopeFilter } from './InboxScopeFilter';
+import {
+  InboxScopeFilter,
+  InboxScopeHiddenAttention,
+} from './InboxScopeFilter';
 import {
   type InboxPanelControllerOptions,
   useInboxPanelController,
@@ -50,7 +52,8 @@ export interface ChatDockInboxPanelProps {
   /**
    * The inbox's own freshness: whether its last read failed (the rows are the
    * last known list, not the current one), whether a read is running, and the
-   * explicit resync. Omitted renders no refresh control.
+   * explicit resync, offered as the failed read's Retry. Omitted renders no
+   * refresh control.
    */
   sync?: {
     failed: boolean;
@@ -178,40 +181,27 @@ function ChatDockInboxPanelImpl({
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
+        <InboxScopeFilter scope={scope} inline />
         {onNewChat && <NewChatAction iconOnly onClick={onNewChat} />}
-        <ActionOverflowMenu
-          label="Inbox actions"
-          actions={[
-            {
-              key: 'browse',
-              label: 'Browse all conversations',
-              glyph: <MessageGlyph />,
-              onSelect: onOpenHistory,
-            },
-            ...(sync
-              ? [
-                  {
-                    key: 'refresh',
-                    label: sync.refreshing ? 'Refreshing…' : 'Refresh inbox',
-                    glyph: <RefreshGlyph />,
-                    disabled: sync.refreshing,
-                    onSelect: sync.onRefresh,
-                  },
-                ]
-              : []),
-          ]}
-        />
       </div>
-      <InboxScopeFilter scope={scope} />
+      <InboxScopeHiddenAttention scope={scope} />
       <div className="chat-dock-inbox__scroll">
-        {sync?.failed && (
+        {/* A retry keeps the notice up, disabled, until its re-read settles:
+            starting it can clear one failed source (the stream reconnects)
+            before the list itself is current. Only a person's own resync
+            sets `refreshing`, and Retry is the only way to start one. */}
+        {(sync?.failed || sync?.refreshing) && (
           <ErrorState
             variant="compact"
             title="Couldn’t refresh the inbox."
             description="Showing the last known list."
             action={
-              <Button variant="secondary" onClick={sync.onRefresh}>
-                Retry
+              <Button
+                variant="secondary"
+                disabled={sync.refreshing}
+                onClick={sync.onRefresh}
+              >
+                {sync.refreshing ? 'Retrying…' : 'Retry'}
               </Button>
             }
           />
@@ -260,6 +250,17 @@ function ChatDockInboxPanelImpl({
             {...controller.rowActions}
           />
         )}
+        {/* Every conversation, past the loaded and scoped list: a way out at
+            the end of the list rather than a menu of one at the top. A
+            failed read keeps its own Retry above. */}
+        <Button
+          variant="ghost"
+          className="chat-dock-inbox__browse"
+          onClick={onOpenHistory}
+        >
+          <MessageGlyph />
+          Browse all conversations
+        </Button>
       </div>
       {controller.notice}
     </aside>

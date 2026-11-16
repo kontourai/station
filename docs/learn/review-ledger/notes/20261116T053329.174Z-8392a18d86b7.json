@@ -1,0 +1,7 @@
+{
+  "revision": "6ab7ba4e6d27e3458909f88c91c4a689f765c730",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Re-reviewed after moving the cross-runtime journey and gallery capture off the removed Inbox ⋯ menu (Browse button; notice Retry/Retrying…) and keeping the failed-refresh notice up during a retry (ChatDockInboxPanel.tsx); no claim in this document names the menu or the refresh control.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]}
+  ]
+}

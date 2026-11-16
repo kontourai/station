@@ -17,6 +17,7 @@ import {
   type ProjectRoomEditInput,
   type ProjectRoomHistory,
   type ProjectRoomIdentity,
+  type ProjectRoomMention,
   type ProjectRoomMessage,
   type ProjectRoomNote,
   type ProjectRoomNoteInput,
@@ -210,6 +211,8 @@ interface StoredRevision {
   revision: number;
   kind: 'edit' | 'delete';
   text?: string;
+  /** The edited text's structured mentions (#4799). */
+  mentions?: ProjectRoomMention[];
   actor: ProjectRoomActor;
   intentId: string;
   createdAt: string;
@@ -228,8 +231,16 @@ type StoredChannel = Omit<ProjectRoomChannel, 'isDefault'> & {
   scope: ProjectMembershipScope;
 };
 export class ProjectRoomStore {
-  private listeners = new Map<string, Set<() => void>>();
-  subscribe(roomId: string, callback: () => void) {
+  private listeners = new Map<
+    string,
+    Set<(changed: readonly string[]) => void>
+  >();
+  /**
+   * Wakes `callback` after each commit to `roomId`, with the messages whose
+   * reactions, edit or delete it wrote (#4798). Only this process's commits
+   * wake it; another writer's change is seen through `checkpoint`.
+   */
+  subscribe(roomId: string, callback: (changed: readonly string[]) => void) {
     let listeners = this.listeners.get(roomId);
     if (!listeners) {
       listeners = new Set();
@@ -359,13 +370,17 @@ export class ProjectRoomStore {
       this.db.exec('COMMIT');
     } catch (error) {
       this.pendingRoom = undefined;
+      this.pendingChanges.clear();
       this.db.exec('ROLLBACK');
       throw error;
     }
     const roomId = this.pendingRoom;
     this.pendingRoom = undefined;
+    const changed = [...this.pendingChanges];
+    this.pendingChanges.clear();
     if (roomId)
-      for (const callback of this.listeners.get(roomId) ?? []) callback();
+      for (const callback of this.listeners.get(roomId) ?? [])
+        callback(changed);
     return result;
   }
 
@@ -448,6 +463,10 @@ export class ProjectRoomStore {
         corrupt();
       return { ...channel, scope };
     });
+  }
+  /** A named channel's name, for text that names where something happened. */
+  channelName(scope: ProjectMembershipScope, roomId: string) {
+    return this.lookupChannel(scope, roomId)?.name;
   }
   private lookupChannel(
     scope: ProjectMembershipScope,
@@ -613,6 +632,7 @@ export class ProjectRoomStore {
       ...(value.attachments === undefined
         ? {}
         : { attachments: value.attachments }),
+      ...(value.mentions === undefined ? {} : { mentions: value.mentions }),
     });
     if (
       value.roomId !== row.room_id ||
@@ -665,6 +685,7 @@ export class ProjectRoomStore {
         'revision',
         'kind',
         'text',
+        'mentions',
         'actor',
         'intentId',
         'createdAt',
@@ -681,13 +702,18 @@ export class ProjectRoomStore {
         !isProjectRoomUuid(v.intentId) ||
         v.intentId !== row.intent_id ||
         !date(v.createdAt) ||
-        edit !== (v.text !== undefined)
+        edit !== (v.text !== undefined) ||
+        (!edit && v.mentions !== undefined)
       )
         corrupt();
       this.assertActor(v.actor as ProjectRoomActor);
       if (author(v.actor as ProjectRoomActor) !== row.author) corrupt();
       const edited = edit
-        ? parseProjectRoomEditInput({ intentId: v.intentId, text: v.text })
+        ? parseProjectRoomEditInput({
+            intentId: v.intentId,
+            text: v.text,
+            ...(v.mentions === undefined ? {} : { mentions: v.mentions }),
+          })
         : undefined;
       const input =
         edited ?? parseProjectRoomDeleteInput({ intentId: v.intentId });
@@ -703,6 +729,7 @@ export class ProjectRoomStore {
         revision: Number(v.revision),
         kind: edited ? 'edit' : 'delete',
         ...(edited ? { text: edited.text } : {}),
+        ...(edited?.mentions ? { mentions: edited.mentions } : {}),
         actor: {
           id: actor.id,
           displayName: actor.displayName,
@@ -788,25 +815,32 @@ export class ProjectRoomStore {
     const message = this.storedMessage(row);
     const latest = this.latestRevision(message.roomId, message.messageId);
     if (latest?.kind === 'delete') {
-      const { attachments: _, text: __, ...rest } = message;
+      const { attachments: _, text: __, mentions: ___, ...rest } = message;
       return { ...rest, text: '', deletedAt: latest.createdAt };
     }
     const reactions = this.reactions(message.roomId, message.messageId);
+    // An edit replaces the text and with it the mentions it names.
+    const { mentions: original, ...unmentioned } = message;
+    const mentions = latest ? latest.mentions : original;
     return {
-      ...message,
+      ...unmentioned,
       ...(latest ? { text: latest.text!, editedAt: latest.createdAt } : {}),
+      ...(mentions ? { mentions } : {}),
       ...(reactions.length ? { reactions } : {}),
     };
   }
   /** Counts a reaction, edit or delete for the stream; `seq` stays put. */
-  private touch(roomId: string) {
+  private touch(roomId: string, messageId: string) {
     this.db
       .prepare(
         'INSERT INTO project_room_activity VALUES (?, 1) ON CONFLICT(room_id) DO UPDATE SET revision=revision+1',
       )
       .run(roomId);
     this.pendingRoom = roomId;
+    this.pendingChanges.add(messageId);
   }
+  /** Messages whose reactions, edit or delete the open transaction wrote. */
+  private pendingChanges = new Set<string>();
   /** People edit and delete only their own messages; nobody edits an Agent's. */
   private assertOwnMessage(actor: ProjectRoomActor, row: Row) {
     const message = this.storedMessage(row);
@@ -978,7 +1012,7 @@ export class ProjectRoomStore {
           )
           .run(roomId, messageId, value.emoji, author(actor));
       }
-      this.touch(roomId);
+      this.touch(roomId, messageId);
       return this.project(row);
     });
   }
@@ -1036,6 +1070,9 @@ export class ProjectRoomStore {
         revision: (latest?.revision ?? 0) + 1,
         kind,
         ...(kind === 'edit' ? { text: input.text } : {}),
+        ...(kind === 'edit' && input.mentions
+          ? { mentions: input.mentions }
+          : {}),
         actor: { ...actor },
         intentId: value.intentId,
         createdAt: new Date().toISOString(),
@@ -1060,7 +1097,7 @@ export class ProjectRoomStore {
             'DELETE FROM project_room_reactions WHERE room_id=? AND message_id=?',
           )
           .run(roomId, messageId);
-      this.touch(roomId);
+      this.touch(roomId, messageId);
       return this.project(row);
     });
   }
@@ -1165,6 +1202,103 @@ export class ProjectRoomStore {
     return this.latestRevision(roomId, message.messageId)?.kind === 'delete'
       ? null
       : { roomId, author: { ...message.actor } };
+  }
+  /**
+   * Wakes the readers of the room holding this request: something about it
+   * that lives outside this store changed (a recorded failure, #4800).
+   */
+  announceRequest(requestId: string) {
+    const roomId = this.db
+      .prepare('SELECT room_id FROM project_room_requests WHERE request_id=?')
+      .get(requestId)?.room_id;
+    if (typeof roomId !== 'string') return;
+    for (const callback of this.listeners.get(roomId) ?? []) callback([]);
+  }
+  /**
+   * Messages of `roomId` as history serves them, for live deltas (#4798).
+   * The caller has admitted the reader to this room; an id that is not one of
+   * its messages is skipped.
+   */
+  projectedMessages(roomId: string, messageIds: readonly string[]) {
+    return this.transaction(() => {
+      const query = this.db.prepare(
+        'SELECT * FROM project_room_messages WHERE room_id=? AND message_id=?',
+      );
+      return messageIds.flatMap((id) => {
+        const row = query.get(roomId, id);
+        return row ? [this.project(row)] : [];
+      });
+    }, true);
+  }
+  /**
+   * The room's newest `limit` Agent requests and its newest `working`
+   * requests still working, newest first (#4800). Still working means
+   * unsettled (reserved or started) and not among the ids `failed` reports:
+   * a failed request never takes the place of one that is running, and newer
+   * settled requests never push one out. What a room reader sees of each is
+   * its lifecycle, never its Session.
+   */
+  recentRequests(
+    roomId: string,
+    limit: number,
+    working: number,
+    failed: (requestIds: readonly string[]) => { has(id: string): boolean },
+  ): ProjectRoomAgentRequest[] {
+    return this.transaction(() => {
+      // Every unsettled request, newest first, asked about in one batch (a
+      // room holds at most LIMITS.requestsPerRoom requests).
+      const unsettled = this.db
+        .prepare(
+          `SELECT rowid AS position, request_id FROM project_room_requests WHERE room_id=? AND json_extract(record, '$.state') IN ('reserved', 'started') ORDER BY rowid DESC LIMIT ?`,
+        )
+        .all(roomId, LIMITS.requestsPerRoom + 1) as Array<{
+        position: number;
+        request_id: string;
+      }>;
+      // More than a room may ever hold: the store is not what it wrote.
+      if (unsettled.length > LIMITS.requestsPerRoom) corrupt();
+      const refused = unsettled.length
+        ? failed(unsettled.map((row) => row.request_id))
+        : new Set<string>();
+      const running = unsettled
+        .filter((row) => !refused.has(row.request_id))
+        .slice(0, working)
+        .map((row) => row.position);
+      return this.db
+        .prepare(
+          `SELECT * FROM project_room_requests WHERE room_id=? AND (
+            rowid IN (SELECT rowid FROM project_room_requests WHERE room_id=? ORDER BY rowid DESC LIMIT ?)
+            OR rowid IN (SELECT value FROM json_each(?))
+          ) ORDER BY rowid DESC`,
+        )
+        .all(roomId, roomId, limit, JSON.stringify(running))
+        .map((row) => this.storedRequest(row));
+    }, true);
+  }
+  /**
+   * Whether a standing message after `after` names `actorId` in its
+   * structured mentions (#4799), looking at most `limit` messages ahead.
+   */
+  mentionedAfter(
+    roomId: string,
+    after: number,
+    actorId: string,
+    limit: number,
+  ): boolean {
+    return this.transaction(() => {
+      const rows = this.db
+        .prepare(
+          'SELECT * FROM project_room_messages WHERE room_id=? AND seq>? ORDER BY seq LIMIT ?',
+        )
+        .all(roomId, after, limit);
+      return rows.some((row) => {
+        const message = this.project(row);
+        return (
+          message.actor.id !== actorId &&
+          !!message.mentions?.some((mention) => mention.actorId === actorId)
+        );
+      });
+    }, true);
   }
   history(
     scope: ProjectMembershipScope,
@@ -1327,6 +1461,7 @@ export class ProjectRoomStore {
           payload,
           JSON.stringify(request),
         );
+      this.pendingRoom = roomId;
       return request;
     });
   }
@@ -1379,6 +1514,8 @@ export class ProjectRoomStore {
           'UPDATE project_room_requests SET record=? WHERE request_id=? AND room_id=?',
         )
         .run(JSON.stringify(next), id, current.roomId);
+      // A request's lifecycle is room activity readers show (#4800).
+      this.pendingRoom = current.roomId;
       return next;
     });
   }

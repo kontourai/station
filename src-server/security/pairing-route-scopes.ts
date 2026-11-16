@@ -5018,6 +5018,12 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'PUT', path: '/api/projects/:slug/room/note' },
     { method: 'POST', path: '/api/projects/:slug/room/presence' },
     { method: 'GET', path: '/api/projects/:slug/room/events' },
+    // #4798, #4799: typing composes the room's discuss tier like presence;
+    // the member directory and the multiplexed stream are reads, each channel
+    // admitted by its own room read.
+    { method: 'POST', path: '/api/projects/:slug/room/typing' },
+    { method: 'GET', path: '/api/projects/:slug/room/members' },
+    { method: 'GET', path: '/api/projects/:slug/rooms/live' },
     // Reactions, edits and deletes (#4796, #4797) compose the room's discuss
     // tier; the room refuses edits and deletes of anyone else's message.
     // Files (#4812): upload is discuss, a read is the room's view tier. Unlike
@@ -5070,6 +5076,11 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       path: '/api/projects/:slug/channels/:channelId/presence',
     },
     { method: 'GET', path: '/api/projects/:slug/channels/:channelId/events' },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/typing',
+    },
+    { method: 'GET', path: '/api/projects/:slug/channels/:channelId/members' },
     {
       method: 'POST',
       path: '/api/projects/:slug/channels/:channelId/messages/:messageId/reactions',

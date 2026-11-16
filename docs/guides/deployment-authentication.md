@@ -536,7 +536,8 @@ streamed chunk. The audited administration endpoints below and the scoped
 are additional Project mutations admitted here. Admins and Owners may author
 constrained agents and request permitted tool sources; only Owners change
 Project tool policy. Exact Project Room leaves separately admit discussion,
-presence, note edits, channel create/rename/topic/archive (`edit`) and explicit
+presence, typing (`discuss`), the member directory and the one live stream for
+a Project's channels (`view`, #4798), note edits, channel create/rename/topic/archive (`edit`) and explicit
 Agent requests under their current membership actions and transport permission;
 each channel serves the same per-room leaves under `/channels/:channelId`. A Room Agent request also requires Project
 `view`, host execution permission and a verified Project execution root; its Task

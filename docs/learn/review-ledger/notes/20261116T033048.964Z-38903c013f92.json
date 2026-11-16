@@ -1,0 +1,7 @@
+{
+  "revision": "92b391b81dbf4ca101c22dc7dee4134074cfcd9e",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"InboxRow.css change adds a headline flex line only; row enter animation and swipe-follow rules untouched.","inputs":["docs/design/motion.md","src-ui/src/components/inbox-row/InboxRow.css"]}
+  ]
+}
