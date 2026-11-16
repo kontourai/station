@@ -145,24 +145,35 @@ restores the card's release. A `held` row is read again with no turn open and
 sent once nothing holds it. A `writing` row is looked up by its dedupe tag
 before anything is written:
 
-- No record: it was never written, so it is written now. A record the
-  person cleared between the write and the stop looks the same and is
-  written again (an accepted residual).
+- No record: it was either never written or cleared by the person, and the
+  saved state cannot tell the two apart. The replay is dropped and logged as
+  `replay_ambiguous`: no notification is written, no phone is pushed, the
+  coordinator is not woken, and the card gets no release. Without a record of
+  what the person cleared, this recovery is not exactly-once.
 - This producer's own record for that turn, still delivered and not leased,
   with a reader for the thread: it is handed to the coordinator wake, whose
   durable item dedupe drops a repeat. It is not rewritten, which would reset
   its read state, and `NOTIFICATION_DELIVERED` is not emitted again, which
   would push the phones again. A read record is still handed on: the person
   reading it is not the coordinator seeing it.
-- Dismissed, actioned, expired, leased, or another producer's record: nothing
-  is replayed.
+- Dismissed, actioned, expired, snoozed (`pending`), leased or readerless,
+  or another producer's record: the person's decision or the other owner
+  stands. Nothing is replayed and the card gets no release, so it reads Done
+  without an "Agent finished". A snoozed record is delivered by the
+  notification service when the snooze ends.
+
+Only that finish's own row ends: a newer held finish on the thread keeps the
+card held, and an earlier release is kept. A live write ends the same way,
+with no card release, when the session has lost its reader or is an external
+transcript before the record is written.
 
 A newer finish on a thread replaces an older one whose write failed, so an
 old turn never shadows the new one. A new turn takes a finish waiting on a
 write retry back as held with that turn open, and a failure or stop ends it.
 A finish a restart has not looked up yet is left to its lookup, so its record
 is never rewritten. A lookup that fails retries with the same backoff, and a
-dedupe tag another producer owns ends the finish without a record. A terminal for a turn the thread has moved
+dedupe tag another producer owns ends the finish without a record or a card
+release. A terminal for a turn the thread has moved
 past is already rejected by the turn anchor. The file holds at most 2,000
 rows. A new held finish is admitted only below that, after released rows give
 way (past the window first, then oldest first). When every row is held or
