@@ -36,7 +36,7 @@ function setup() {
     join(tempDir('pr-feedback-routes-'), 'pull-request-feedback.sqlite'),
   );
   closers.push(() => store.close());
-  const state = { enabled: true, person: true };
+  const state = { enabled: true, person: true, mayContinue: true };
   const ownership = new PullRequestFeedbackOwnership({
     store: () => store,
     readStore: () => store,
@@ -68,6 +68,7 @@ function setup() {
         operator: () => 'owner',
         readerOf: () => () => true,
         isPerson: () => state.person,
+        mayContinue: () => state.mayContinue,
       },
     ),
   );
@@ -145,6 +146,34 @@ describe('pull request feedback routes', () => {
       },
     );
     expect(response.status).toBe(409);
+  });
+
+  it('send again, like every write, needs a person who may continue the chat (one rule with viewerMayChange)', async () => {
+    const t = setup();
+    expect((await t.put('chat-a', t.on)).status).toBe(200);
+    const prKey = t.store.allClaims()[0]!.prKey;
+    t.store.setCondition(prKey, {
+      state: 'paused',
+      reason: 'round-limit',
+      cap: 'head',
+      headSha: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
+      at: '2026-11-16T09:00:00.000Z',
+    });
+    const sendAgain = () =>
+      t.app.request(
+        '/api/pull-request-feedback/conversations/chat-a/send-again',
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ identity: PR }),
+        },
+      );
+    t.state.mayContinue = false;
+    expect((await sendAgain()).status).toBe(404);
+    expect(t.store.claim(prKey)?.condition).toMatchObject({ state: 'paused' });
+    t.state.mayContinue = true;
+    expect((await sendAgain()).status).toBe(200);
+    expect(t.store.claim(prKey)?.condition).toBeUndefined();
   });
 
   it('answers 404 while the preview is off', async () => {

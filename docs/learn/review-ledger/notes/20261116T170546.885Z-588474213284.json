@@ -1,0 +1,7 @@
+{
+  "revision": "22ececbcc1ea5d9435524629f8ba1679660bedd4",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.webm","note":"attention.ts only adds the pull-request-feedback item's viewerMayChange option; the request inspection flow shown in this capture is unchanged, so no recapture is needed.","inputs":["docs/learn/media/inspect-request.webm","src-server/routes/orchestration/attention.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "7e7e51117b960cae861a45545c9e7d1aeaefd641",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Hover inbox rows are now two lines (title/time; agent mark, status, project — project yields first; agent in mark tooltip and hover card, words when unmarked) and the desktop hidden-attention notice is a badge on the scope picker; the phone row's second line (engine mark, engine name, project) is the touch branch and unchanged.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]}
+  ]
+}
