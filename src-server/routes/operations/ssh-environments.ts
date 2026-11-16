@@ -1,7 +1,12 @@
 import { type Context, Hono } from 'hono';
+import { servesRemoteSessionReads } from '../../capabilities/station-capability-flags.js';
+import { isHostedTenantExecutionRequired } from '../../runtime/bootstrap/hosted-tenant-mode.js';
 import { requestMayBeAnAgent } from '../../security/coding-authority.js';
 import type { PairingScopeContextStore } from '../../security/pairing-route-scopes.js';
-import { getBudgetPrincipal } from '../../security/runtime-request-security.js';
+import {
+  getBudgetPrincipal,
+  isBoundRuntimeOwner,
+} from '../../security/runtime-request-security.js';
 import type { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
 import { SSH_PROBE_MAX_SECONDS } from '../../services/ssh/openssh-reachability.js';
 import {
@@ -44,6 +49,25 @@ export interface RemoteStationReadAuthority {
   current: (request: Request) => boolean;
   /** The request is the Station's bound owner, the person the bearer serves. */
   owner: (request: Request) => boolean;
+}
+
+/**
+ * The production composition of {@link RemoteStationReadAuthority}: the same
+ * caller standing the paired Station chat relay requires over the same
+ * Station-wide peer bearer, and no remote reads at all on a hosted Station.
+ * `current` is the runtime's own principal-currentness predicate.
+ */
+export function runtimeRemoteStationReadAuthority(
+  current: (request: Request) => boolean,
+  environment: NodeJS.ProcessEnv = process.env,
+): RemoteStationReadAuthority {
+  return {
+    hosted: !servesRemoteSessionReads({
+      hosted: isHostedTenantExecutionRequired(environment),
+    }),
+    current,
+    owner: isBoundRuntimeOwner,
+  };
 }
 
 /** Profile ids and thread ids are opaque, single path segments. */

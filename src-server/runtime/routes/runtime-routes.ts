@@ -391,10 +391,7 @@ import type { HonoServerConfig } from '@voltagent/server-hono';
 import type { Context } from 'hono';
 import { setCookie } from 'hono/cookie';
 import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
-import {
-  servesCoordinatorSession,
-  servesRemoteSessionReads,
-} from '../../capabilities/station-capability-flags.js';
+import { servesCoordinatorSession } from '../../capabilities/station-capability-flags.js';
 import {
   loadOrCreateAgentRegistry,
   replacePluginEngineConnections,
@@ -530,7 +527,10 @@ import {
   createSchedulerReadProjection,
   createSchedulerRoutes,
 } from '../../routes/operations/scheduler.js';
-import { createSshEnvironmentRoutes } from '../../routes/operations/ssh-environments.js';
+import {
+  createSshEnvironmentRoutes,
+  runtimeRemoteStationReadAuthority,
+} from '../../routes/operations/ssh-environments.js';
 import { createTelemetryRoutes } from '../../routes/operations/telemetry-events.js';
 import { createUsageTelemetryDisclosureRoutes } from '../../routes/operations/usage-telemetry-disclosure.js';
 import { createVoiceRoutes } from '../../routes/operations/voice.js';
@@ -10704,15 +10704,7 @@ export function configureRuntimeRoutes(
       peerCredentialStore,
       undefined,
       undefined,
-      // The same caller standing the paired Station chat relay requires over
-      // the same Station-wide peer bearer (createPeerChatRoutes below).
-      {
-        hosted: !servesRemoteSessionReads({
-          hosted: isHostedTenantExecutionRequired(),
-        }),
-        current: isRequestPrincipalCurrent,
-        owner: isBoundRuntimeOwner,
-      },
+      runtimeRemoteStationReadAuthority(isRequestPrincipalCurrent),
     ),
   );
   // station#1123 slice 2: outbound peer-credential admin routes. Gated to

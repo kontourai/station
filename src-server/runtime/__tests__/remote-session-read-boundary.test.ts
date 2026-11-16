@@ -8,17 +8,18 @@
 import { pairingScopePresetString } from '@kontourai/station-contracts/environment-security';
 import { describe, expect, test, vi } from 'vitest';
 import { peerChatRuntime } from '../../__test-utils__/peer-chat-runtime.js';
-import { createSshEnvironmentRoutes } from '../../routes/operations/ssh-environments.js';
 import {
-  isBoundRuntimeOwner,
-  isRuntimeRequestPrincipalCurrent,
-} from '../../security/runtime-request-security.js';
+  createSshEnvironmentRoutes,
+  runtimeRemoteStationReadAuthority,
+} from '../../routes/operations/ssh-environments.js';
+import { isRuntimeRequestPrincipalCurrent } from '../../security/runtime-request-security.js';
+import { HOSTED_TENANT_REGISTRY_FILE_ENV } from '../bootstrap/hosted-tenant-mode.js';
 
 const ENV_ID = '22222222-2222-4222-8222-222222222222';
 const THREAD = 'external:claude:0123456789abcdef0123456789abcdef';
 const HISTORY = `/api/environments/ssh/sessions/${ENV_ID}/${encodeURIComponent(THREAD)}/history`;
 
-async function world() {
+async function world(environment: NodeJS.ProcessEnv = {}) {
   const source = await peerChatRuntime();
   const fetchHistory = vi.fn(async () => ({
     protocolVersion: 1 as const,
@@ -42,12 +43,11 @@ async function world() {
       { get: () => ({ credential: 'peer-bearer-for-test' }) } as never,
       undefined,
       fetchHistory,
-      {
-        hosted: false,
-        current: (request) =>
-          isRuntimeRequestPrincipalCurrent(request, source.security),
-        owner: isBoundRuntimeOwner,
-      },
+      // The factory runtime-routes.ts composes the mount with.
+      runtimeRemoteStationReadAuthority(
+        (request) => isRuntimeRequestPrincipalCurrent(request, source.security),
+        environment,
+      ),
     ),
   );
   return { source, fetchHistory };
@@ -108,6 +108,15 @@ describe('remote session reads at the real auth boundary', () => {
     );
     const response = await source.call(HISTORY, owner.credential);
     expect(response.status).not.toBe(200);
+    expect(fetchHistory).not.toHaveBeenCalled();
+  });
+
+  test('the runtime composition serves no remote read on a hosted Station', async () => {
+    const { source, fetchHistory } = await world({
+      [HOSTED_TENANT_REGISTRY_FILE_ENV]: '/hosted/tenants.json',
+    });
+    const owner = source.pair(pairingScopePresetString('standard'));
+    expect((await source.call(HISTORY, owner.credential)).status).toBe(404);
     expect(fetchHistory).not.toHaveBeenCalled();
   });
 });
