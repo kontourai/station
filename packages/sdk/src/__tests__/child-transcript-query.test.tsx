@@ -403,9 +403,7 @@ test('an invalidation with no older history loaded keeps every polled message an
   client.clear();
 });
 
-test('a transcript rewritten shorter while idle reads its latest messages after an invalidation', async () => {
-  vi.useFakeTimers();
-  let length = 70;
+function serveTranscript(lengthOf: () => number) {
   read.mockImplementation(
     async (
       _apiBase: string,
@@ -413,6 +411,7 @@ test('a transcript rewritten shorter while idle reads its latest messages after 
       _child: string,
       page: { offset?: number; limit?: number; tail?: boolean },
     ) => {
+      const length = lengthOf();
       const limit = page.limit ?? 30;
       // The server's shape: a read from past the end starts at the end.
       const offset = page.tail
@@ -428,12 +427,53 @@ test('a transcript rewritten shorter while idle reads its latest messages after 
       };
     },
   );
+}
+
+// 20: shorter than the first page's start. 40: exactly its start, so the
+// server's read comes back empty at the offset it was asked for.
+test.each([20, 40])(
+  'a transcript rewritten to %i messages while idle reads its latest messages after an invalidation',
+  async (shrunk) => {
+    vi.useFakeTimers();
+    let length = 70;
+    serveTranscript(() => length);
+    const { client, observer, messages } = mountTail(false);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(messages()[0]).toBe(40);
+    length = shrunk;
+    await act(async () => {
+      await client.invalidateQueries();
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    const firstShown = Math.max(0, shrunk - 30);
+    expect(messages()).toEqual(
+      Array.from({ length: shrunk - firstShown }, (_, i) => firstShown + i),
+    );
+    observer.unmount();
+    client.clear();
+  },
+);
+
+test('with older history loaded, a transcript rewritten shorter while idle reads its latest messages after an invalidation', async () => {
+  vi.useFakeTimers();
+  let length = 70;
+  serveTranscript(() => length);
   const { client, observer, messages } = mountTail(false);
   await act(async () => {
     await vi.advanceTimersByTimeAsync(1);
   });
-  expect(messages()[0]).toBe(40);
-  length = 20;
+  await act(async () => {
+    await observer.result.current.fetchPreviousPage();
+    await vi.advanceTimersByTimeAsync(1);
+  });
+  // The first page is now an older one, read before message 40.
+  expect(messages()[0]).toBe(10);
+  length = 5;
   await act(async () => {
     await client.invalidateQueries();
     await vi.advanceTimersByTimeAsync(1);
@@ -441,7 +481,7 @@ test('a transcript rewritten shorter while idle reads its latest messages after 
   await act(async () => {
     await vi.advanceTimersByTimeAsync(1);
   });
-  expect(messages()).toEqual(Array.from({ length: 20 }, (_, i) => i));
+  expect(messages()).toEqual([0, 1, 2, 3, 4]);
   observer.unmount();
   client.clear();
 });

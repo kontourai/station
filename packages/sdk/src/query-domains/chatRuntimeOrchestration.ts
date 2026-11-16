@@ -908,9 +908,11 @@ export function useChildWorkTranscriptTailQuery(
   const firstParam = history.data?.pageParams[0];
   useEffect(() => {
     // A server reads from past the end as from the end. A first page that
-    // starts before the offset its param asked for means the transcript was
-    // rewritten shorter while it sat loaded: start again from its latest
-    // messages rather than show the empty range past the new end.
+    // starts before the offset its param asked for, or comes back empty from
+    // a nonzero one (rewritten to exactly that length), means the transcript
+    // was rewritten shorter while it sat loaded: start again from its latest
+    // messages rather than show the empty range past the new end. A first
+    // page asked from a nonzero offset was only ever recorded non-empty.
     const asked =
       firstParam?.kind === 'range'
         ? firstParam.offset
@@ -920,7 +922,8 @@ export function useChildWorkTranscriptTailQuery(
     if (
       asked !== undefined &&
       first?.offset !== undefined &&
-      first.offset < asked
+      (first.offset < asked ||
+        (asked > 0 && first.endOffset === first.offset))
     ) {
       void client.resetQueries({ queryKey: key, exact: true });
       return;
