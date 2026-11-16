@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 import { test } from './helpers/fixture-audit';
 import {
   dismissSetupLauncher,
@@ -43,6 +43,46 @@ function summary(threadId: string, extra: Record<string, unknown> = {}) {
     updatedAt: '2026-09-24T10:00:00.000Z',
     ...extra,
   };
+}
+
+type Box = { x: number; y: number; width: number; height: number };
+const overlaps = (a: Box, b: Box) =>
+  a.x < b.x + b.width &&
+  b.x < a.x + a.width &&
+  a.y < b.y + b.height &&
+  b.y < a.y + a.height;
+
+/**
+ * A row's actions never cover its text, and its title is not crushed: every
+ * text line's box is clear of every action's box, and the title keeps room
+ * for more than a couple of letters.
+ */
+async function expectActionsClearOfText(row: Locator) {
+  const texts = row.locator(
+    '.child-work-row__title, .child-work-row__meta, .child-work-row__model, .child-work-activity, .child-work-row__provenance, .work-status-pill, .background-tasks-sheet__title, .background-tasks-sheet__meta',
+  );
+  const actions = row.locator(
+    '.child-work-row__actions button, .background-tasks-sheet__task-footer button',
+  );
+  const textBoxes = (await texts.evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const rect = node.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    }),
+  )) as Box[];
+  const actionBoxes = (await actions.evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const rect = node.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    }),
+  )) as Box[];
+  for (const action of actionBoxes)
+    for (const text of textBoxes) expect(overlaps(action, text)).toBe(false);
+  const title = await row
+    .locator('.child-work-row__title, .background-tasks-sheet__title')
+    .first()
+    .boundingBox();
+  expect(title?.width ?? 0).toBeGreaterThan(120);
 }
 
 async function emit(page: Page, event: Record<string, unknown>) {
@@ -167,10 +207,13 @@ test.describe('Agents pane child work (#2459)', () => {
       .click();
 
     const scopeChat = page.getByRole('button', {
-      name: 'This conversation',
+      name: 'This chat',
       exact: true,
     });
-    const scopeAll = page.getByRole('button', { name: 'All', exact: true });
+    const scopeAll = page.getByRole('button', {
+      name: 'All chats',
+      exact: true,
+    });
     await expect(scopeChat).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByText('Investigate flaky test')).toBeVisible();
     // Claude's subagent keeps exactly one Stop, with no duplicate. Since
@@ -203,7 +246,7 @@ test.describe('Agents pane child work (#2459)', () => {
       prompt: 'Nightly audit',
     });
     await expect(page.getByText('Nightly audit')).toBeVisible();
-    await expect(page.getByText('Started from the CLI')).toBeVisible();
+    await expect(page.getByText(/^Recorded origin: CLI/)).toBeVisible();
     const delegateRow = page
       .getByRole('listitem')
       .filter({ hasText: 'Nightly audit' });
@@ -282,16 +325,9 @@ test.describe('Agents pane child work (#2459)', () => {
     await expect(page.getByRole('button', { name: 'Stop' })).toHaveCount(2);
 
     const childRow = runningRow('Investigate flaky test');
-    const main = await childRow.locator('.child-work-row__main').boundingBox();
-    const stop = await childRow
-      .getByRole('button', { name: 'Stop' })
-      .boundingBox();
-    expect(main).not.toBeNull();
-    expect(stop).not.toBeNull();
-    expect(stop!.y).toBeLessThan(main!.y + main!.height);
-    expect(stop!.x).toBeGreaterThanOrEqual(main!.x + main!.width - 1);
+    await expectActionsClearOfText(childRow);
     await childRow.screenshot({
-      path: testInfo.outputPath('agents-row-inline-actions.png'),
+      path: testInfo.outputPath('agents-row-actions.png'),
     });
 
     // The scope is remembered on this device.
@@ -301,9 +337,160 @@ test.describe('Agents pane child work (#2459)', () => {
     await page.getByRole('button', { name: 'More dock actions' }).click();
     await page.getByRole('menuitem', { name: /Background tasks/ }).click();
     await expect(
-      page.getByRole('button', { name: 'All', exact: true }),
+      page.getByRole('button', { name: 'All chats', exact: true }),
     ).toHaveAttribute('aria-pressed', 'true');
   });
+  /**
+   * The owner's 2026-11-16 screenshot: a ~380px Agents pane with many
+   * running Claude subagents, where the title collapsed to one letter and
+   * "Open chat" / "Stop" sat on the model and elapsed time. Seeded with long
+   * titles, models, latest tools and tool calls from two chats, then laid
+   * out at 380px and 600px in dark theme.
+   */
+  test('running rows keep their text clear of actions at 380px and 600px, and All groups by chat', async ({
+    page,
+  }, testInfo) => {
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await seedActiveChats(page, [
+      {
+        sessionId: SESSION_ID,
+        conversationId: CONVERSATION_ID,
+        agentSlug: 'dev-agent',
+        model: 'claude-sonnet',
+        provider: 'claude',
+        projectSlug: 'dev',
+        projectName: 'station',
+        title: 'Is this machine getting overwhelmed?',
+        orchestrationSessionStarted: true,
+        ephemeralMessages: [],
+        inputHistory: [],
+      },
+      {
+        sessionId: 'session-2',
+        conversationId: 'conv-2',
+        agentSlug: 'dev-agent',
+        model: 'claude-sonnet',
+        provider: 'claude',
+        projectSlug: 'dev',
+        projectName: 'station',
+        title: 'Release prep',
+        orchestrationSessionStarted: true,
+        ephemeralMessages: [],
+        inputHistory: [],
+      },
+    ]);
+    await page.goto(`/?chat=${encodeURIComponent(CONVERSATION_ID)}`);
+    await dismissSetupLauncher(page);
+    await openChatRegion(page);
+    await waitForMockOrchestrationSse(page);
+
+    const subagent = (childId: string, title: string, kindLabel: string) => ({
+      producer: 'engine-subagent',
+      reporterThreadId: SESSION_ID,
+      childId,
+      status: 'running',
+      title,
+      kindLabel,
+      startedAt: '2026-09-24T09:52:00.000Z',
+      model: { id: 'claude-opus-5-5', source: 'subagent-reply' },
+      latestTool: 'Read',
+      progress: 'Reading src-server/services/orchestration/event-store.ts',
+      controls: { stop: 'provider-task-stop' },
+      transcript: {
+        kind: 'claude-subagent',
+        sessionId: SESSION_ID,
+        agentId: childId,
+      },
+    });
+    await emit(page, {
+      provider: 'claude',
+      threadId: SESSION_ID,
+      method: 'child-work.updated',
+      delta: {
+        kind: 'snapshot',
+        producer: 'engine-subagent',
+        reporterThreadId: SESSION_ID,
+        running: [
+          subagent(
+            'sub-1',
+            'Inventory event-row readers for retention and replay',
+            'Explore',
+          ),
+          subagent(
+            'sub-2',
+            'Reproduce the overwhelmed-server report under load',
+            'general-purpose',
+          ),
+          subagent(
+            'sub-3',
+            'Profile the station process tree and its child engines',
+            'general-purpose',
+          ),
+        ],
+      },
+    });
+    const tool = (threadId: string, toolCallId: string, description: string) =>
+      emit(page, {
+        provider: 'claude',
+        threadId,
+        method: 'tool.started',
+        turnId: 'turn-1',
+        itemId: toolCallId,
+        toolCallId,
+        toolName: 'Bash',
+        arguments: { description, command: 'npm run gate:for -- src-ui' },
+      });
+    await tool(SESSION_ID, 'call-gate', 'Run gate:for on paths to edit');
+    await tool(
+      SESSION_ID,
+      'call-telemetry',
+      'Run telemetry tests after change',
+    );
+    await tool('session-2', 'call-release', 'Build the release candidate');
+
+    await page.getByRole('button', { name: 'More dock actions' }).click();
+    await page.getByRole('menuitem', { name: /Background tasks/ }).click();
+    const pane = page.locator('.agents-pane');
+    await expect(
+      page.getByRole('heading', { name: 'Running · 3 agents · 2 tools' }),
+    ).toBeVisible();
+
+    for (const width of [380, 600]) {
+      // The pane at the owner's width, whatever the dock region measures.
+      await pane.evaluate((node, px) => {
+        (node as HTMLElement).style.width = `${px}px`;
+        (node as HTMLElement).style.maxWidth = `${px}px`;
+      }, width);
+      for (const title of [
+        'Inventory event-row readers for retention and replay',
+        'Reproduce the overwhelmed-server report under load',
+        'Run gate:for on paths to edit',
+      ])
+        await expectActionsClearOfText(
+          page.getByRole('listitem').filter({ hasText: title }),
+        );
+      await pane.screenshot({
+        path: testInfo.outputPath(`agents-pane-chat-${width}-dark.png`),
+      });
+    }
+
+    await page.getByRole('button', { name: 'All chats', exact: true }).click();
+    await expect(page.locator('.agents-pane__group-title')).toHaveText([
+      'Is this machine getting overwhelmed?',
+      'Release prep',
+    ]);
+    await expect(page.getByText('Build the release candidate')).toBeVisible();
+    for (const width of [380, 600]) {
+      await pane.evaluate((node, px) => {
+        (node as HTMLElement).style.width = `${px}px`;
+        (node as HTMLElement).style.maxWidth = `${px}px`;
+      }, width);
+      await pane.screenshot({
+        path: testInfo.outputPath(`agents-pane-all-${width}-dark.png`),
+      });
+    }
+  });
+
   /**
    * #2510: a phone has no side region and no desktop More menu, so the
    * header's ⋯ sheet carries the Background tasks row, and on a bottom-only
@@ -357,7 +544,7 @@ test.describe('Agents pane child work (#2459)', () => {
       await expect(sheet.getByText('Investigate flaky test')).toBeVisible();
       // Bottom-only: the sheet, never the Agents pane's scope controls.
       await expect(
-        page.getByRole('button', { name: 'This conversation', exact: true }),
+        page.getByRole('button', { name: 'This chat', exact: true }),
       ).toHaveCount(0);
       await page.screenshot({
         path: testInfo.outputPath('mobile-background-tasks-390.png'),
