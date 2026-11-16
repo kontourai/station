@@ -142,7 +142,9 @@ describe('NovaVoiceSessionAdapter', () => {
     expect(harness.authGateRemote).toEqual([true]);
   });
 
-  it('a loopback client without a credential connects credential-free', async () => {
+  // The local UI holds no readable credential: its HttpOnly device cookie
+  // rides the loopback upgrade, so the client asks for no auth frame.
+  it('a loopback client with no readable credential connects without an auth frame (its cookie authenticates)', async () => {
     const harness = createHarness();
     void harness.adapter.start();
     await flush();

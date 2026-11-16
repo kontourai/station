@@ -270,10 +270,11 @@ export class NovaVoiceSessionAdapter
         pageHref,
       );
       // #2377 slice D: a voice session's Station tools act for the person
-      // who signed in, so the credential is presented whenever this client
-      // holds one, loopback included (which asks for the handshake with a
-      // flag, never the credential, in its URL). Without a credential a
-      // loopback session still speaks, with no Station tools.
+      // who signed in. A client holding a bearer credential presents it in
+      // the auth frame, loopback included (asking with a flag, never the
+      // credential, in its URL). The local UI's own credential is its
+      // HttpOnly device cookie, which the browser carries on the loopback
+      // upgrade itself; the voice server reads it there.
       const authenticate =
         remote ||
         this.dependencies.credentialProvider.getCredential() !== undefined;

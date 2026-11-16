@@ -270,7 +270,11 @@ export function startNativeStationControlSession(
   } = {},
 ): void {
   const prior = sessions.get(sessionId);
-  if (prior) void closeSession(prior);
+  if (prior) {
+    // A replaced registration retires its credential, not only its client.
+    revokeSessionInProcessStationControl(sessionId);
+    void closeSession(prior);
+  }
   sessions.set(sessionId, { active: true, ...options });
 }
 

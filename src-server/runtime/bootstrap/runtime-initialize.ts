@@ -1407,6 +1407,9 @@ export async function initializeRuntime(
           resolvePrincipal: (credential: string) =>
             credentialPrincipal(credential, deps.environmentSecurityService)
               ?.id,
+          // The local UI's HttpOnly device cookie, read on a loopback upgrade.
+          recognizesDeviceCredential: (credential: string) =>
+            deps.environmentSecurityService.identifyDevice(credential) !== null,
         }),
     limiter: new RuntimeAuthFailureLimiter(),
     browserOrigins: stationOriginPolicy({ port, host }),

@@ -12,6 +12,7 @@
  * model would) and the Station route the tool reaches, which records who the
  * guard said called.
  */
+import { randomBytes } from 'node:crypto';
 import { EventEmitter, once } from 'node:events';
 import type { AddressInfo } from 'node:net';
 import { serve } from '@hono/node-server';
@@ -20,7 +21,10 @@ import { afterAll, afterEach, beforeAll, expect, test, vi } from 'vitest';
 import { WebSocket, type WebSocketServer } from 'ws';
 import { attachVoiceWebSocket } from '../../routes/operations/voice.js';
 import { credentialPrincipal } from '../../runtime/bootstrap/orchestration-request-principal.js';
-import { configureRuntimeHttp } from '../../runtime/bootstrap/runtime-http.js';
+import {
+  configureRuntimeHttp,
+  deviceSessionCookieName,
+} from '../../runtime/bootstrap/runtime-http.js';
 import {
   createStationControlCallerRecordResolver,
   resolveStationControlCallerForRequest,
@@ -53,6 +57,11 @@ import {
 
 const OPERATOR_CREDENTIAL = 'test-only-voice-operator-credential';
 const ACCOUNT_DEVICE_CREDENTIAL = 'test-only-voice-account-device';
+// A UI-bootstrap device credential in the issued format (32 random bytes,
+// base64url), carried in the local UI's HttpOnly cookie under its real name.
+const UI_DEVICE_CREDENTIAL = randomBytes(32).toString('base64url');
+const UI_COOKIE = `${deviceSessionCookieName(false, 'environment-test')}=${UI_DEVICE_CREDENTIAL}`;
+const STATION_ORIGIN = 'http://127.0.0.1:5173';
 const FORMAT: S2SAudioFormat = {
   mediaType: 'audio/pcm',
   sampleRateHertz: 16000,
@@ -185,8 +194,12 @@ beforeAll(async () => {
               subject: 'someone',
             },
           } as never)
-        : null,
-    credentialLocality: () => undefined,
+        : credential === UI_DEVICE_CREDENTIAL
+          ? ({ id: 'device-ui', name: 'Station UI' } as never)
+          : null,
+    // A UI-bootstrap device is minted with home-possession locality.
+    credentialLocality: (credential: string) =>
+      credential === UI_DEVICE_CREDENTIAL ? 'home-possession' : undefined,
     credentialHasOwnerStanding: () => false,
   };
   const listener = attachVoiceWebSocket(
@@ -194,13 +207,17 @@ beforeAll(async () => {
     { createSession, getActiveCount: () => 0 } as never,
     '127.0.0.1',
     {
-      // Both credentials verify; only one resolves to a person.
+      // These credentials verify; the account device resolves to no one.
       verifyCredential: (credential) =>
         credential === OPERATOR_CREDENTIAL ||
-        credential === ACCOUNT_DEVICE_CREDENTIAL,
+        credential === ACCOUNT_DEVICE_CREDENTIAL ||
+        credential === UI_DEVICE_CREDENTIAL,
       resolvePrincipal: (credential) =>
         credentialPrincipal(credential, security as never)?.id,
-      browserOrigins: { admits: () => true },
+      recognizesDeviceCredential: (credential) =>
+        security.identifyDevice(credential) !== null,
+      // Only Station's own UI origin may open a browser-shaped upgrade.
+      browserOrigins: { admits: async (origin) => origin === STATION_ORIGIN },
     },
   );
   if (!listener) throw new Error('voice listener was not created');
@@ -226,9 +243,10 @@ afterAll(async () => {
 });
 
 /** Connect, authenticate when given a credential, and wait for the session. */
-async function connect(credential?: string) {
+async function connect(credential?: string, headers?: Record<string, string>) {
   const ws = new WebSocket(
     credential ? `${voiceUrl}?authenticate=1` : voiceUrl,
+    headers ? { headers } : undefined,
   );
   await once(ws, 'open');
   if (credential) {
@@ -280,9 +298,54 @@ test('a credential-free loopback session keeps speech and is offered no Station 
   ws.close();
 });
 
-test('a credential that verifies but resolves to no person is refused', async () => {
-  const { closed } = await connect(ACCOUNT_DEVICE_CREDENTIAL);
+test('a credential that verifies but names no person keeps speech with no Station tools', async () => {
+  const { ws, provider, closed } = await connect(ACCOUNT_DEVICE_CREDENTIAL);
+  expect(closed).toBeUndefined();
+  const names = provider!.config?.tools?.map((tool) => tool.name) ?? [];
+  expect(names).not.toContain('stationControl_updateConfig');
+  expect(names).toContain('weather_today');
+  ws.close();
+});
+
+test('a credential that fails verification is refused', async () => {
+  const { closed } = await connect('test-only-not-a-credential');
   expect(closed).toBe(4401);
   expect(createSession).not.toHaveBeenCalled();
-  expect(seen).toEqual([]);
+});
+
+// The local UI's credential is an HttpOnly cookie its page cannot read, so a
+// loopback upgrade carrying it authenticates with it, no auth frame needed.
+test('a loopback upgrade carrying the UI device cookie gets Station tools as that person', async () => {
+  const { ws, provider } = await connect(undefined, {
+    cookie: `other-app=1; ${UI_COOKIE}`,
+    origin: STATION_ORIGIN,
+  });
+  expect(provider!.config?.tools?.map((tool) => tool.name)).toContain(
+    'stationControl_updateConfig',
+  );
+  provider!.emit('toolUse', {
+    toolName: 'stationControl_updateConfig',
+    toolUseId: 'tu-cookie',
+    parameters: { updates: { theme: 'dark' } },
+  });
+  await vi.waitFor(() => expect(provider!.results).toHaveLength(1));
+  expect(seen).toHaveLength(1);
+  expect(seen[0]).toMatchObject({
+    kind: 'caller',
+    boundOperator: true,
+    caller: { principal: { id: LOCAL_OPERATOR_PRINCIPAL_ID } },
+  });
+  ws.close();
+});
+
+test('another site’s page cannot ride the cookie: its upgrade is refused by the Origin check', async () => {
+  const ws = new WebSocket(voiceUrl, {
+    headers: { cookie: UI_COOKIE, origin: 'https://attacker.example' },
+  });
+  const [, response] = (await once(ws, 'unexpected-response')) as [
+    unknown,
+    { statusCode: number },
+  ];
+  expect(response.statusCode).toBe(403);
+  expect(createSession).not.toHaveBeenCalled();
 });

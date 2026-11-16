@@ -811,23 +811,30 @@ export class VoiceSessionService {
         ...config,
       };
 
-      const session = new VoiceSession(
-        id,
-        ws,
-        this.opts.providerFactory,
-        tools,
-        hooks,
-        agentSlug,
-        spec !== undefined,
-        fullConfig,
-        this.opts.voiceTurnRuns,
-        (sessionId, reason) => {
-          void this.destroySession(sessionId, reason).catch(() => undefined);
-        },
-        (key, attempt, onSettled) =>
-          this.terminalCleanup.submit(key, attempt, onSettled),
-        stationControl,
-      );
+      let session: VoiceSession;
+      try {
+        session = new VoiceSession(
+          id,
+          ws,
+          this.opts.providerFactory,
+          tools,
+          hooks,
+          agentSlug,
+          spec !== undefined,
+          fullConfig,
+          this.opts.voiceTurnRuns,
+          (sessionId, reason) => {
+            void this.destroySession(sessionId, reason).catch(() => undefined);
+          },
+          (key, attempt, onSettled) =>
+            this.terminalCleanup.submit(key, attempt, onSettled),
+          stationControl,
+        );
+      } catch (error) {
+        // The provider factory threw: the person's Station tools end here.
+        void stationControl?.close();
+        throw error;
+      }
       this.sessions.set(id, session);
       observeVoiceMetric(() => voiceOps.add(1, { op: 'ws.connect' }));
 

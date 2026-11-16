@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import type { RawData, WebSocket, WebSocketServer } from 'ws';
+import { parseDeviceSessionCookie } from '../../runtime/bootstrap/runtime-http.js';
 import { startWebSocketListener } from '../../runtime/bootstrap/websocket-listener.js';
 import {
   type ExternalSurfaceCapabilityRule,
@@ -91,10 +92,20 @@ export interface VoiceWebSocketAuthOptions {
   /**
    * #2377 slice D: the person an authenticated credential resolves to, by
    * the same rules as an HTTP request (`credentialPrincipal`). That person
-   * is the caller of the voice session's Station tools. When set, a
-   * credential that verifies but resolves to no one is refused.
+   * is the caller of the voice session's Station tools. A credential that
+   * verifies but resolves to no one (an account-bound device or token) keeps
+   * speech with no Station tools; only one that fails verification is
+   * refused.
    */
   resolvePrincipal?: (credential: string) => string | undefined;
+  /**
+   * #2377 slice D: whether a candidate from the device session cookie is a
+   * device credential this Station issued (the HTTP boundary's
+   * `parseDeviceSessionCookie` recognizer). Set: a loopback upgrade carrying
+   * the local UI's HttpOnly cookie authenticates with it, after the upgrade's
+   * Origin check.
+   */
+  recognizesDeviceCredential?: (credential: string) => boolean;
   authTimeoutMs?: number;
   maxAuthFrameBytes?: number;
   maxAuthFailures?: number;
@@ -272,17 +283,12 @@ function authenticateRemoteVoiceSession(
     }
 
     // #2377 slice D: the person this credential is, as an HTTP request with
-    // it would resolve. A credential that names no one is refused.
+    // it would resolve. A verified credential that names no one keeps
+    // speech, with no Station tools.
     const principalId =
       decoded.ok && auth.resolvePrincipal
         ? auth.resolvePrincipal(decoded.credential)
         : undefined;
-    if (auth.resolvePrincipal && !principalId) {
-      auditVoiceFailure(auth, peerClass, 'principal_unresolved');
-      limiter.recordFailure(limiterKey);
-      closeBeforeAuthentication(...WEBSOCKET_AUTH_CLOSE.required);
-      return;
-    }
     settled = true;
     clearAuthTimeout();
     ws.off('message', onAuthMessage);
@@ -340,6 +346,38 @@ export function attachVoiceWebSocket(
   boundVoiceWsPorts.add(port);
   wss.once('close', () => boundVoiceWsPorts.delete(port));
 
+  /**
+   * #2377 slice D: a loopback upgrade only (never a remote one): only there
+   * has `verifyClient` already held a browser-shaped upgrade to an allowed
+   * Station Origin, which is what stops another site's page from riding the
+   * browser's ambient cookie into a voice session. A cookie that fails
+   * verification is not used (the session is credential-free).
+   */
+  const acceptLoopbackCookieSession = async (
+    ws: WebSocket,
+    url: URL,
+    cookie: string | undefined,
+    loopbackAuth: VoiceWebSocketAuthOptions,
+  ): Promise<void> => {
+    const credential = loopbackAuth.recognizesDeviceCredential
+      ? parseDeviceSessionCookie(
+          cookie,
+          loopbackAuth.recognizesDeviceCredential,
+        )
+      : undefined;
+    let principalId: string | undefined;
+    try {
+      principalId =
+        credential && (await loopbackAuth.verifyCredential(credential))
+          ? loopbackAuth.resolvePrincipal?.(credential)
+          : undefined;
+    } catch {
+      principalId = undefined;
+    }
+    if (ws.readyState !== ws.OPEN) return;
+    acceptVoiceSession(ws, url, voiceService, principalId);
+  };
+
   wss.on('connection', (ws, req) => {
     const url = new URL(req.url ?? '/', `http://localhost:${port}`);
     const capability = auth?.resolveCapability
@@ -368,15 +406,19 @@ export function attachVoiceWebSocket(
       return;
     }
 
-    // A loopback client without a credential keeps speech with no Station
-    // tools; one that asks to authenticate goes through the same handshake
-    // as a remote client, so its person can be its tools' caller.
+    // A loopback client that asks to authenticate goes through the same
+    // handshake as a remote client, so its person can be its tools' caller.
+    // Otherwise a loopback upgrade carrying the local UI's device session
+    // cookie (HttpOnly, so the page cannot present it itself) authenticates
+    // with it; one with neither keeps speech with no Station tools.
     if (
       !auth ||
       (peerClass === 'loopback' &&
         url.searchParams.get(VOICE_AUTHENTICATE_QUERY) !== '1')
     ) {
-      acceptVoiceSession(ws, url, voiceService);
+      if (auth && peerClass === 'loopback')
+        void acceptLoopbackCookieSession(ws, url, req.headers.cookie, auth);
+      else acceptVoiceSession(ws, url, voiceService);
       return;
     }
     const releaseAdmission = unauthenticatedConnections.reserve(limiterKey);
