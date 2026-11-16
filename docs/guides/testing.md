@@ -904,7 +904,8 @@ PR's shards never share a bucket and every plan's first shard spreads across all
 five; larger plans retain every shard. The release-bot PR (head
 `changeset-release/main` from this repository, opened by
 `station-automation[bot]`) is re-pushed whenever a main push changes what it
-releases ([releasing](releasing.md#release-procedure)), so its shard and
+releases, and also on a conflict, unreadable state, a dirty checkout or a probe
+timeout, where it fails open ([releasing](releasing.md#release-procedure)), so its shard and
 statics jobs share one dedicated `ci-pr-release-bot` slot and never enter the
 shared buckets; supersession cancels its older heads as for any PR. A job holds
 its bucket while it waits for a runner. Waiting jobs consume no runner. `pull_request_target` reads these

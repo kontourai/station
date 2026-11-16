@@ -541,6 +541,9 @@ jobs:
         id: version-current
         if: github.event_name == 'push' && steps.version-operation.outputs.version-pr == 'true'
         continue-on-error: true
+        # The probe bounds the version script at 3 minutes; this bounds the
+        # step, so a hang fails the step (and regenerates) instead of the job.
+        timeout-minutes: 6
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/version-pr-current.mjs

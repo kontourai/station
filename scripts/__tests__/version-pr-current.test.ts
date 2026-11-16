@@ -8,6 +8,7 @@ import {
   decideVersionPrCurrent,
   probeVersionPrCurrent,
   selectVersionPr,
+  VERSION_TIMEOUT_MS,
 } from '../version-pr-current.mjs';
 import { runWorkflowShell } from './fixtures/workflow-shell.js';
 
@@ -39,7 +40,7 @@ function versionPull(sha: string, overrides: Record<string, unknown> = {}) {
     number: 5041,
     state: 'open',
     draft: false,
-    user: { login: 'station-automation[bot]', type: 'Bot' },
+    user: { login: 'station-automation[bot]', id: 335214120, type: 'Bot' },
     head: {
       ref: 'changeset-release/main',
       sha,
@@ -82,7 +83,10 @@ const note = (pkg: string, summary: string) =>
  * A two-package workspace on `main` with pending notes, and the version PR
  * head the action writes: one `changeset version` commit on that main.
  */
-function fixtureRepo(notes: Record<string, string> = { 'fix-a': 'Fix a.' }) {
+function fixtureRepo(
+  notes: Record<string, string> = { 'fix-a': 'Fix a.' },
+  privateNotes: string[] = [],
+) {
   const root = makeTempDir('station-version-pr-current-');
   git(root, 'init', '-q', '-b', 'main');
   write(
@@ -90,7 +94,17 @@ function fixtureRepo(notes: Record<string, string> = { 'fix-a': 'Fix a.' }) {
     'package.json',
     `${JSON.stringify({ name: 'root', private: true }, null, 2)}\n`,
   );
-  write(root, 'pnpm-workspace.yaml', 'packages: [packages/a, packages/b]\n');
+  write(
+    root,
+    'pnpm-workspace.yaml',
+    'packages: [packages/a, packages/b, packages/p]\n',
+  );
+  write(
+    root,
+    'packages/p/package.json',
+    `${JSON.stringify({ name: '@fixture/p', version: '1.0.0', private: true }, null, 2)}\n`,
+  );
+  write(root, '.gitignore', 'node_modules/\n*.log\n');
   write(root, 'packages/a/package.json', manifest('@fixture/a', '1.0.0'));
   write(
     root,
@@ -100,7 +114,7 @@ function fixtureRepo(notes: Record<string, string> = { 'fix-a': 'Fix a.' }) {
   write(
     root,
     '.changeset/config.json',
-    `${JSON.stringify({ changelog, commit: false, access: 'public', baseBranch: 'main', updateInternalDependencies: 'patch', fixed: [], linked: [], ignore: [] }, null, 2)}\n`,
+    `${JSON.stringify({ changelog, commit: false, access: 'public', baseBranch: 'main', updateInternalDependencies: 'patch', fixed: [], linked: [], ignore: [], privatePackages: { version: false, tag: false } }, null, 2)}\n`,
   );
   write(root, 'src/app.txt', 'one\n');
   git(root, 'add', '-A');
@@ -110,6 +124,17 @@ function fixtureRepo(notes: Record<string, string> = { 'fix-a': 'Fix a.' }) {
     git(root, 'add', '-A');
     git(root, 'commit', '-q', '-m', `feat: ${id}`);
   }
+  // Notes naming only a private package stay pending through a release, as
+  // the five on main did after #4097 landed.
+  for (const id of privateNotes) {
+    write(root, `.changeset/${id}.md`, note('@fixture/p', `Private ${id}.`));
+    git(root, 'add', '-A');
+    git(root, 'commit', '-q', '-m', `feat: ${id}`);
+  }
+  // Ignored state the action's checkout carries (node_modules, build logs)
+  // must survive the probe and the clean step.
+  write(root, 'node_modules/keep/index.js', 'kept\n');
+  write(root, 'build.log', 'kept\n');
   git(root, 'checkout', '-q', '-b', 'changeset-release/main');
   execFileSyncBounded(process.execPath, [changesetBin, 'version'], {
     cwd: root,
@@ -158,8 +183,13 @@ describe('version PR currency probe on real git and changesets', () => {
       reason: 'merging the open PR yields exactly the regenerated release',
       number: 5041,
     });
-    // The probe ran `changeset version` in the checkout; it must leave no trace.
+    // The probe ran `changeset version` in the checkout; it must leave no trace
+    // and must not delete ignored state such as node_modules.
     expect(git(root, 'status', '--porcelain')).toBe('');
+    expect(readFileSync(join(root, 'node_modules/keep/index.js'), 'utf8')).toBe(
+      'kept\n',
+    );
+    expect(readFileSync(join(root, 'build.log'), 'utf8')).toBe('kept\n');
     expect(git(root, 'rev-parse', 'HEAD')).toBe(before);
   });
 
@@ -192,8 +222,75 @@ describe('version PR currency probe on real git and changesets', () => {
     const decision = await probe(root, [versionPull(head)]);
     expect(decision).toMatchObject({
       current: false,
-      reason: 'regenerating would change what the PR releases',
+      reason: 'notes the PR consumes are no longer pending on main',
     });
+  });
+
+  // Replays 2026-11-16 08:20Z: a push run on pre-merge main wrote head
+  // 43340e93 (the whole #4097 version commit) after #4097 had landed as
+  // 7575e1a4, where only private-package notes remained and regenerating
+  // produced an empty commit. Merging that head into the new main is a no-op,
+  // so tree equality alone would keep a PR listing released notes.
+  test('regenerates a head whose release already landed on main', async () => {
+    const { root, head } = fixtureRepo({ 'fix-a': 'Fix a.' }, ['priv']);
+    git(root, 'merge', '-q', '--squash', head);
+    git(root, 'commit', '-q', '-m', 'chore: version packages (#4097)');
+    expect(git(root, 'ls-files', '.changeset/')).toContain('priv.md');
+    expect(git(root, 'merge-tree', '--write-tree', 'HEAD', head)).toBe(
+      git(root, 'rev-parse', 'HEAD^{tree}'),
+    );
+    const decision = await probe(root, [versionPull(head)]);
+    expect(decision).toMatchObject({
+      current: false,
+      reason: 'notes the PR consumes are no longer pending on main',
+    });
+    expect(git(root, 'status', '--porcelain')).toBe('');
+  });
+
+  test('regenerates and restores the checkout when the version script hangs', async () => {
+    const { root, head } = fixtureRepo();
+    onMain(root, { 'src/app.txt': 'two\n' });
+    const started = Date.now();
+    const decision = await probe(root, [versionPull(head)], {
+      versionTimeoutMs: 1_500,
+      versionCommand: [
+        process.execPath,
+        '-e',
+        "require('node:fs').writeFileSync('stray.txt','x');setInterval(()=>{},1000)",
+      ],
+    });
+    expect(decision).toEqual({
+      current: false,
+      reason: 'unreadable state: version command timed out after 1500 ms',
+    });
+    expect(Date.now() - started).toBeLessThan(30_000);
+    expect(git(root, 'status', '--porcelain')).toBe('');
+  });
+
+  test('gives the version script no GitHub token', async () => {
+    const { root, head } = fixtureRepo();
+    const seen = join(makeTempDir('station-version-pr-token-'), 'seen');
+    const saved = {
+      GH_TOKEN: process.env.GH_TOKEN,
+      GITHUB_TOKEN: process.env.GITHUB_TOKEN,
+    };
+    process.env.GH_TOKEN = 'probe-secret';
+    process.env.GITHUB_TOKEN = 'probe-secret';
+    try {
+      await probe(root, [versionPull(head)], {
+        versionCommand: [
+          process.execPath,
+          '-e',
+          `require('node:fs').writeFileSync(${JSON.stringify(seen)}, 'ran:' + (process.env.GH_TOKEN ?? '') + (process.env.GITHUB_TOKEN ?? ''))`,
+        ],
+      });
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+    expect(readFileSync(seen, 'utf8')).toBe('ran:');
   });
 
   test('regenerates when a consumed note is edited in place', async () => {
@@ -277,13 +374,20 @@ describe('version PR currency probe on real git and changesets', () => {
 describe('version PR selection and decision', () => {
   const sha = 'a'.repeat(40);
   const tree = 'b'.repeat(40);
-  const head = { sha, parents: ['c'.repeat(40)], parentOnMain: true };
+  const mainTree = 'f'.repeat(40);
+  const head = {
+    sha,
+    parents: ['c'.repeat(40)],
+    parentOnMain: true,
+    empty: false,
+    consumedNotesPending: true,
+  };
   const decide = (overrides: Record<string, unknown> = {}) =>
     decideVersionPrCurrent({
       pulls: [versionPull(sha)],
       repository: REPO,
       head,
-      merge: { clean: true, tree },
+      merge: { clean: true, tree, mainTree },
       regeneratedTree: tree,
       ...overrides,
     });
@@ -294,6 +398,32 @@ describe('version PR selection and decision', () => {
     expect(decide({ merge: { clean: false } }).current).toBe(false);
     expect(decide({ regeneratedTree: undefined }).current).toBe(false);
     expect(decide({ merge: { clean: true, tree: '' } }).current).toBe(false);
+  });
+
+  test('a kept head must still be a pending release on this main', () => {
+    // Released notes: the head consumes notes main no longer holds.
+    expect(
+      decide({ head: { ...head, consumedNotesPending: false } }),
+    ).toMatchObject({
+      current: false,
+      reason: 'notes the PR consumes are no longer pending on main',
+    });
+    // The reverse: regenerating is empty but the kept head is not, so its
+    // merge is a no-op on main.
+    const noop = { clean: true, tree: mainTree, mainTree };
+    expect(decide({ merge: noop, regeneratedTree: mainTree })).toMatchObject({
+      current: false,
+      reason: 'PR head adds nothing to main',
+    });
+    // An empty head kept while regenerating is also empty is current.
+    expect(
+      decide({
+        head: { ...head, empty: true },
+        merge: noop,
+        regeneratedTree: mainTree,
+      }).current,
+    ).toBe(true);
+    expect(decide({ head: { ...head, empty: undefined } }).current).toBe(false);
   });
 
   test.each([
@@ -313,7 +443,31 @@ describe('version PR selection and decision', () => {
     ],
     [
       'another author on the branch',
-      { user: { login: 'someone', type: 'User' } },
+      { user: { login: 'someone', id: 1, type: 'User' } },
+    ],
+    [
+      'a login that only starts with the App name',
+      {
+        user: {
+          login: 'station-automation[bot]-x',
+          id: 335214120,
+          type: 'Bot',
+        },
+      },
+    ],
+    [
+      'the App name without the bot suffix',
+      { user: { login: 'station-automation', id: 335214120, type: 'Bot' } },
+    ],
+    [
+      'the bot login on a non-bot account',
+      {
+        user: { login: 'station-automation[bot]', id: 335214120, type: 'User' },
+      },
+    ],
+    [
+      'the bot login with another id',
+      { user: { login: 'station-automation[bot]', id: 7, type: 'Bot' } },
     ],
     [
       'another head branch',
@@ -424,13 +578,36 @@ describe('publish workflow wiring', () => {
     }
   });
 
-  test('the clean-checkout bytes remove what a probe left behind', () => {
+  test('the clean-checkout bytes remove what a probe left behind and keep ignored state', () => {
     const { root } = fixtureRepo();
     write(root, 'src/app.txt', 'dirty\n');
     write(root, 'stray.txt', 'stray\n');
     const result = runWorkflowShell(clean!.run!, root, {}, 10_000);
     expect(result.status).toBe(0);
     expect(git(root, 'status', '--porcelain')).toBe('');
+    // node_modules must survive: the action runs the version script next.
+    expect(readFileSync(join(root, 'node_modules/keep/index.js'), 'utf8')).toBe(
+      'kept\n',
+    );
+    expect(readFileSync(join(root, 'build.log'), 'utf8')).toBe('kept\n');
+  });
+
+  test('a hung probe fails its own step, not the job, and regenerates', () => {
+    const job = (
+      workflow.jobs.publish as unknown as { 'timeout-minutes': number }
+    )['timeout-minutes'];
+    const stepLimit = (probeStep as unknown as { 'timeout-minutes': number })[
+      'timeout-minutes'
+    ];
+    // Above the probe's 3-minute child bound, below the job's 60.
+    expect(stepLimit).toBe(6);
+    expect(stepLimit * 60_000).toBeGreaterThan(VERSION_TIMEOUT_MS);
+    expect(stepLimit).toBeLessThan(job);
+    expect(VERSION_TIMEOUT_MS).toBe(180_000);
+    // A timed-out step leaves no `current` output, so the action runs.
+    expect(
+      evaluate(action.if!, { steps: { 'version-current': { outputs: {} } } }),
+    ).toBe(true);
   });
 
   test('the run report names a left-alone version PR instead of a failure', () => {

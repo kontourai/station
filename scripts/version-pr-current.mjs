@@ -25,6 +25,12 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 export const VERSION_BRANCH = 'changeset-release/main';
 export const VERSION_BASE = 'main';
 export const VERSION_PR_AUTHOR = 'station-automation[bot]';
+// The App's bot user (GET /users/station-automation%5Bbot%5D). Login, type and
+// id together identify it; a look-alike login matches none of the others.
+export const VERSION_PR_AUTHOR_ID = 335214120;
+// `version-packages` took 24 s in run 43942898848; a hung one must not run
+// to the job limit, which would fail the job instead of regenerating.
+export const VERSION_TIMEOUT_MS = 180_000;
 
 const OBJECT_ID = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
 
@@ -45,7 +51,11 @@ export function selectVersionPr(pulls, repository) {
     return { reason: 'PR head is not a branch of this repository' };
   if (pr.base?.ref !== VERSION_BASE)
     return { reason: `PR base is not ${VERSION_BASE}` };
-  if (pr.user?.login !== VERSION_PR_AUTHOR)
+  if (
+    pr.user?.login !== VERSION_PR_AUTHOR ||
+    pr.user?.type !== 'Bot' ||
+    pr.user?.id !== VERSION_PR_AUTHOR_ID
+  )
     return { reason: `PR author is not ${VERSION_PR_AUTHOR}` };
   if (typeof pr.head.sha !== 'string' || !OBJECT_ID.test(pr.head.sha))
     return { reason: 'PR head sha is unreadable' };
@@ -89,6 +99,17 @@ export function decideVersionPrCurrent({
     return regenerate('merge result is unreadable');
   if (typeof regeneratedTree !== 'string' || !OBJECT_ID.test(regeneratedTree))
     return regenerate('regenerated tree is unreadable');
+  // Tree equality alone cannot tell "nothing left to release" from "the head
+  // already contains what main now has": a head written on a main from before
+  // the previous version PR landed merges into the new main as a no-op, while
+  // its diff and body still list released notes. The kept head must still be
+  // a pending release on this main.
+  if (head.consumedNotesPending !== true)
+    return regenerate('notes the PR consumes are no longer pending on main');
+  if (typeof head.empty !== 'boolean')
+    return regenerate('PR head diff is unreadable');
+  if (!head.empty && merge.tree === merge.mainTree)
+    return regenerate('PR head adds nothing to main');
   if (merge.tree !== regeneratedTree)
     return regenerate('regenerating would change what the PR releases');
   return {
@@ -124,7 +145,31 @@ function readHead(cwd, sha) {
   const parentOnMain =
     parents.length === 1 &&
     git(cwd, ['merge-base', '--is-ancestor', parents[0], 'HEAD']).status === 0;
-  return { sha, parents, parentOnMain };
+  if (!parentOnMain) return { sha, parents, parentOnMain };
+  const [parent] = parents;
+  const empty = git(cwd, ['diff', '--quiet', parent, sha]).status === 0;
+  // Every note the head's commit deletes must still be on main, unchanged.
+  const consumed = gitOut(cwd, [
+    'diff',
+    '--name-only',
+    '--no-renames',
+    '--diff-filter=D',
+    parent,
+    sha,
+    '--',
+    '.changeset/',
+  ])
+    .split('\n')
+    .filter(Boolean);
+  const blob = (rev, path) => {
+    const result = git(cwd, ['rev-parse', '--verify', '-q', `${rev}:${path}`]);
+    return result.status === 0 ? result.stdout.trim() : undefined;
+  };
+  const consumedNotesPending = consumed.every((path) => {
+    const before = blob(parent, path);
+    return before !== undefined && before === blob('HEAD', path);
+  });
+  return { sha, parents, parentOnMain, empty, consumedNotesPending };
 }
 
 function mergeTree(cwd, sha) {
@@ -133,12 +178,26 @@ function mergeTree(cwd, sha) {
   if (result.status === 1) return { clean: false };
   if (result.status !== 0)
     throw new Error(`git merge-tree failed: ${result.stderr.trim()}`);
-  return { clean: true, tree: result.stdout.split('\n')[0].trim() };
+  return {
+    clean: true,
+    tree: result.stdout.split('\n')[0].trim(),
+    mainTree: gitOut(cwd, ['rev-parse', 'HEAD^{tree}']),
+  };
 }
 
-function regeneratedTree(cwd, versionCommand) {
+function regeneratedTree(cwd, versionCommand, timeoutMs) {
   const [command, ...args] = versionCommand;
-  const run = spawnSyncBounded(command, args, { cwd, stdio: 'inherit' });
+  // The token is for this probe's own PR read; the version script gets none.
+  const { GH_TOKEN: _gh, GITHUB_TOKEN: _github, ...env } = process.env;
+  const run = spawnSyncBounded(command, args, {
+    cwd,
+    env,
+    stdio: 'inherit',
+    timeout: timeoutMs,
+    killSignal: 'SIGKILL',
+  });
+  if (run.error?.code === 'ETIMEDOUT')
+    throw new Error(`version command timed out after ${timeoutMs} ms`);
   if (run.error) throw run.error;
   if (run.status !== 0)
     throw new Error(`version command exited ${run.status ?? run.signal}`);
@@ -199,6 +258,7 @@ export async function probeVersionPrCurrent({
   repository,
   listPulls,
   versionCommand = ['npm', 'run', 'version-packages'],
+  versionTimeoutMs = VERSION_TIMEOUT_MS,
 }) {
   try {
     if (eventName !== 'push' || ref !== `refs/heads/${VERSION_BASE}`)
@@ -215,7 +275,7 @@ export async function probeVersionPrCurrent({
     const merge = head.sha ? mergeTree(cwd, head.sha) : undefined;
     let tree;
     try {
-      tree = regeneratedTree(cwd, versionCommand);
+      tree = regeneratedTree(cwd, versionCommand, versionTimeoutMs);
     } finally {
       restore(cwd);
     }
