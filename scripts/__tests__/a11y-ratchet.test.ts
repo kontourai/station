@@ -206,8 +206,9 @@ describe('assertMeasurable', () => {
 
   it('names the signal and keeps the tail of a killed run', () => {
     const output = `${Array.from({ length: 30 }, (_, i) => `line ${i}`).join('\n')}\n`;
-    expect(() => assertMeasurable(output, { status: null, signal: 'SIGKILL' }))
-      .toThrowError(/killed by SIGKILL[\s\S]*line 29$/);
+    expect(() =>
+      assertMeasurable(output, { status: null, signal: 'SIGKILL' }),
+    ).toThrowError(/killed by SIGKILL[\s\S]*line 29$/);
     expect(() =>
       assertMeasurable(output, { status: null, signal: 'SIGKILL' }),
     ).not.toThrowError(/line 9\b/);
@@ -223,8 +224,8 @@ describe('assertMeasurable', () => {
   });
 
   it('says when the run wrote nothing', () => {
-    expect(() => assertMeasurable('', { status: 2, signal: null })).toThrowError(
-      /exited with status 2[\s\S]*It wrote no output\./,
-    );
+    expect(() =>
+      assertMeasurable('', { status: 2, signal: null }),
+    ).toThrowError(/exited with status 2[\s\S]*It wrote no output\./);
   });
 });
