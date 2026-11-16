@@ -1448,6 +1448,196 @@ test('stages a current-host attachment before dispatching only its opaque refere
   expect(JSON.stringify(dispatched[0])).not.toContain('c3RhZ2UgbWU=');
 });
 
+/**
+ * The staging fixture for an upload whose PUT is held until the test settles
+ * it, so Send can be pressed while the file is still uploading.
+ */
+async function routeHeldStaging(page: Page) {
+  await page.route(
+    '**/api/orchestration/conversations/staged-attachment-thread/inbox',
+    async (route) => {
+      if (route.request().method() !== 'GET')
+        return rejectUnexpectedFixtureRequest(route);
+      await route.fulfill(json({ success: true, data: { entries: [] } }));
+    },
+  );
+  await page.route(
+    '**/api/orchestration/conversations/staged-attachment-thread/event-window**',
+    (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: false,
+          error: 'This dispatch fixture does not emit provider events',
+        }),
+      }),
+  );
+  // The accepted send opens the conversation, which reads these.
+  await page.route(
+    /\/api\/(?:orchestration\/agent-schedule\/staged-attachment-thread|orchestration\/sessions\/staged-attachment-thread\/checkpoints|terminal\/runs)(?:\?.*)?$/u,
+    async (route) => {
+      if (route.request().method() !== 'GET')
+        return rejectUnexpectedFixtureRequest(route);
+      const path = new URL(route.request().url()).pathname;
+      const data = path.endsWith('/checkpoints')
+        ? []
+        : path.endsWith('/terminal/runs')
+          ? { runs: [] }
+          : { wakeUps: [], jobProposals: [], jobs: [] };
+      await route.fulfill(json({ success: true, data }));
+    },
+  );
+  const stageId = 'stage_22222222-2222-4222-8222-222222222222';
+  let prepared: Record<string, unknown> | undefined;
+  let settleUpload: (ok: boolean) => void = () => undefined;
+  const uploadSettled = new Promise<boolean>((resolve) => {
+    settleUpload = resolve;
+  });
+  const dispatched: unknown[] = [];
+  await page.route(
+    /\/api\/orchestration\/attachment-staging(?:\/.*)?$/u,
+    async (route) => {
+      const request = route.request();
+      const path = new URL(request.url()).pathname;
+      if (path.endsWith('/capability'))
+        return route.fulfill(
+          json({ state: 'supported', version: 1, maxConcurrentUploads: 3 }),
+        );
+      if (path.endsWith('/prepare')) {
+        prepared = request.postDataJSON() as Record<string, unknown>;
+        return route.fulfill(
+          json({
+            ...prepared,
+            stageId,
+            uploadGrant: 'b'.repeat(43),
+            expiresAt: '2030-01-01T00:00:00.000Z',
+          }),
+        );
+      }
+      if (path.endsWith(`/${stageId}`) && request.method() === 'PUT') {
+        if (!(await uploadSettled))
+          return route.fulfill({
+            status: 500,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: 'upload failed' }),
+          });
+        return route.fulfill(
+          json({
+            ...prepared,
+            stageId,
+            source: 'current-composer',
+            digest: `sha256-${'b'.repeat(64)}`,
+            expiresAt: '2030-01-01T00:00:00.000Z',
+          }),
+        );
+      }
+      return route.abort();
+    },
+  );
+  await page.route('**/api/orchestration/chat', async (route) => {
+    dispatched.push(route.request().postDataJSON());
+    return route.fulfill(
+      json(
+        foregroundMessageReceiptEnvelope({
+          conversationId: 'staged-attachment-thread',
+          agent: 'agent:claude',
+        }),
+      ),
+    );
+  });
+  return { stageId, dispatched, settleUpload };
+}
+
+for (const [width, height] of [
+  [390, 844],
+  [1440, 900],
+] as const) {
+  for (const colorScheme of ['light', 'dark'] as const) {
+    test(`Send during an upload waits and sends with the file (${width}px ${colorScheme})`, async ({
+      page,
+    }, testInfo) => {
+      test.setTimeout(30_000);
+      await page.setViewportSize({ width, height });
+      await page.emulateMedia({ colorScheme });
+      await mockChatShell(page);
+      const { stageId, dispatched, settleUpload } =
+        await routeHeldStaging(page);
+
+      const textarea = await openComposer(page);
+      await closeRunSetup(page);
+      await textarea.fill('Send it when the upload lands');
+      await page.locator('#chat-dock .attachment-input').setInputFiles({
+        name: 'held-notes.txt',
+        mimeType: 'text/plain',
+        buffer: Buffer.from('held upload'),
+      });
+
+      const strip = page.getByRole('list', { name: 'Attached files' });
+      await expect(
+        strip.getByText(/^(Uploading|Waiting to upload)/),
+      ).toBeVisible();
+      const send = page.getByRole('button', { name: 'Send', exact: true });
+      // Uploading is progress, not a block: Send works and nothing is red.
+      await expect(send).toBeEnabled();
+      await send.click();
+      const waiting = page.getByText('Sends when uploads finish');
+      await expect(waiting).toBeVisible();
+      await expect(send).toBeDisabled();
+      await expect(page.locator('.chat-input__attachment-error')).toHaveCount(
+        0,
+      );
+      await page.screenshot({
+        path: testInfo.outputPath(`upload-wait-${width}-${colorScheme}.png`),
+      });
+      expect(dispatched).toHaveLength(0);
+
+      settleUpload(true);
+      await expect(() => expect(dispatched).toHaveLength(1)).toPass({
+        timeout: 10_000,
+      });
+      expect(dispatched[0]).toMatchObject({
+        message: 'Send it when the upload lands',
+        attachmentRefs: [{ stageId, name: 'held-notes.txt' }],
+      });
+      await expect(waiting).toBeHidden();
+    });
+  }
+}
+
+test('a failed upload under a waiting send shows its error and sends nothing', async ({
+  page,
+}) => {
+  test.setTimeout(30_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockChatShell(page);
+  const { dispatched, settleUpload } = await routeHeldStaging(page);
+
+  const textarea = await openComposer(page);
+  await closeRunSetup(page);
+  await textarea.fill('This upload will fail');
+  await page.locator('#chat-dock .attachment-input').setInputFiles({
+    name: 'failing-notes.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('failing upload'),
+  });
+  const strip = page.getByRole('list', { name: 'Attached files' });
+  await expect(strip.getByText(/^(Uploading|Waiting to upload)/)).toBeVisible();
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByText('Sends when uploads finish')).toBeVisible();
+
+  settleUpload(false);
+  await expect(
+    strip.getByRole('button', {
+      name: /^(Retry|Upload again) failing-notes\.txt$/,
+    }),
+  ).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('.chat-input__attachment-error')).toBeVisible();
+  await expect(page.getByText('Sends when uploads finish')).toBeHidden();
+  expect(dispatched).toHaveLength(0);
+  await expect(textarea).toHaveValue('This upload will fail');
+});
+
 // archive#3344. The whole paste path against the STATION engine — the one an
 // unbound Station agent uses, and the one whose composer used to refuse every
 // image because no signal it read said yes. Three claims, each of which failed
