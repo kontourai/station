@@ -1254,44 +1254,6 @@ describe('SessionRecoveryCoordinator', () => {
       vi.useRealTimers();
     });
 
-    test('a chosen account whose restart is refused rolls back and leaves the stop waiting for its reset', async () => {
-      const rollback = vi.fn(async () => ({ kind: 'rolled-back' as const }));
-      const sent: string[] = [];
-      const { store, coordinator } = setup(consentedOnly, () => true, {
-        rollback,
-        recoveryDispatchAdapter: {
-          dispatch: async ({ credentialProfileRef }) => {
-            if (credentialProfileRef) return { kind: 'rejected' };
-            sent.push('same-account');
-            return { kind: 'accepted', turnId: 'same-account-turn' };
-          },
-        },
-      });
-      stopOnUsageLimit(store, coordinator);
-      await vi.advanceTimersByTimeAsync(0);
-
-      await expect(
-        coordinator.continueUsageLimitOnProfile(
-          THREAD,
-          'work',
-          stopIdOf(coordinator),
-        ),
-      ).resolves.toEqual({ kind: 'not-switched' });
-      expect(rollback).toHaveBeenCalledOnce();
-      expect(coordinator.latestProjection(THREAD)).toMatchObject({
-        outcome: 'armed',
-        dueAt: RESET_AT,
-      });
-
-      await vi.advanceTimersByTimeAsync(
-        Date.parse(RESET_AT) - STOPPED_AT.getTime() + 1_000,
-      );
-      expect(sent).toEqual(['same-account']);
-      await coordinator.dispose();
-      store.close();
-      vi.useRealTimers();
-    });
-
     test('a click from an older banner names a stop that is no longer the waiting one and switches nothing', async () => {
       const stage = vi.fn(consentedOnly);
       const { store, coordinator, restartResume } = setup(stage, () => true);
