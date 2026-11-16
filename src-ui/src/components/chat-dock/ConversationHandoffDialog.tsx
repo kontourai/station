@@ -3,9 +3,7 @@ import {
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
 import {
-  CONVERSATION_HANDOFF_CARRIED_FIELDS,
-  CONVERSATION_HANDOFF_DISCLOSURE_LABELS,
-  CONVERSATION_HANDOFF_RESET_FIELDS,
+  CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
   type ConversationHandoffEffectStatus,
 } from '@kontourai/station-contracts/orchestration';
 import {
@@ -40,6 +38,8 @@ import {
 } from '../ResponsiveDialogSurface';
 import { Empty } from '../state';
 import '../chat/ConversationHandoff.css';
+import type { PreparedOutgoingText } from '../../hooks/useChatInput';
+import { type DraftQuote, parseDraftQuote } from '../../utils/answer-quotes';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import {
   type ContinuedOnStation,
@@ -54,6 +54,13 @@ export interface AcceptedConversationHandoff {
   targetId: string;
   connectionId?: string;
   message: string;
+  /**
+   * Whether the accepted request was the composer's current draft. A retried
+   * earlier request leaves a newer draft in place.
+   */
+  clearsComposer: boolean;
+  /** The quotes the sent message carried, to consume from the draft. */
+  sentQuotes: readonly DraftQuote[];
 }
 
 /**
@@ -65,29 +72,9 @@ export interface AcceptedConversationHandoff {
  */
 export const HANDOFF_CATCH_UP_MESSAGE =
   'You are taking over this conversation. Briefly summarize where things stand and what you would do next, then wait for my reply.';
-
-/**
- * A target chosen in the picker for the conversation's next composer send:
- * nothing is sent when it is chosen, and the composer's next message becomes
- * the handoff's first turn through this dialog's dispatch.
- */
-export interface ArmedConversationHandoff {
-  conversationId: string;
-  targetId: string;
-  executionPreset?: { executionAgentId?: string; modelId?: string };
-  modelId?: string;
-  modelOptions?: Record<string, unknown>;
-  /** "Codex reviewer · GPT-5" — what the composer chip names. */
-  label: string;
-}
-
-/** A send from the composer while a target is armed. */
-export interface ConversationHandoffAutoSubmit {
-  message: string;
-  targetId: string;
-  modelId?: string;
-  modelOptions?: Record<string, unknown>;
-}
+/** The same request for an engine switch, where the Agent stays the same. */
+export const ENGINE_SWITCH_CATCH_UP_MESSAGE =
+  'This conversation now runs on a different engine. Briefly summarize where things stand and what you would do next, then wait for my reply.';
 
 interface ConversationHandoffDialogProps {
   apiBase: string;
@@ -102,12 +89,20 @@ interface ConversationHandoffDialogProps {
   attachments: FileAttachment[];
   blockedReason?: string;
   /**
-   * Dispatch at mount with this exact message and target, rendering nothing
-   * unless the dispatch needs the person (a refusal, or an outcome to check).
+   * The composer's send preparation (mentions, quotes, size and Station
+   * checks). The dialog's own Continue runs it so a typed draft leaves the
+   * same way an ordinary send would.
    */
-  autoSubmit?: ConversationHandoffAutoSubmit;
-  /** Choose the target for the next composer message instead of sending now. */
-  onArm?: (armed: ArmedConversationHandoff) => void;
+  prepareDraft?: () => Promise<
+    PreparedOutgoingText | { refused: string } | null
+  >;
+  /**
+   * The client turn id this chat is busy with, if any. A busy chat refuses a
+   * new handoff; only this request's own dispatch (`handoff:<key>`) does not.
+   */
+  busyTurnId?: string;
+  /** The composer's quotes, which are part of its draft. */
+  draftQuotes?: readonly DraftQuote[];
   onAccepted: (result: AcceptedConversationHandoff) => void;
   /**
    * Offer paired Stations as well: the chat's history moves to a new chat
@@ -128,6 +123,12 @@ interface PendingHandoffIntent {
   modelId?: string;
   modelOptions?: Record<string, unknown>;
   message: string;
+  /**
+   * The raw composer draft and quotes `message` was prepared from (mentions
+   * expanded, quotes composed in), so a later draft is compared like for like.
+   */
+  draft?: string;
+  quotes?: readonly DraftQuote[];
 }
 
 function pendingStorageKey(apiBase: string, conversationId: string): string {
@@ -170,6 +171,13 @@ function readPendingIntent(
           typeof parsed.modelOptions === 'object' &&
           !Array.isArray(parsed.modelOptions)
             ? { modelOptions: parsed.modelOptions }
+            : {}),
+          ...(typeof parsed.draft === 'string' ? { draft: parsed.draft } : {}),
+          // Each quote is checked: an element that does not parse drops the
+          // whole list, so a damaged record never consumes the wrong quote.
+          ...(Array.isArray(parsed.quotes) &&
+          parsed.quotes.every((quote) => parseDraftQuote(quote))
+            ? { quotes: parsed.quotes as DraftQuote[] }
             : {}),
         }
       : null;
@@ -227,6 +235,37 @@ export function handoffStatusFeedback(
   }
 }
 
+const NO_QUOTES: readonly DraftQuote[] = [];
+function quoteKeys(quotes: readonly DraftQuote[]): string {
+  return JSON.stringify(quotes);
+}
+
+/**
+ * Station's reason for a refused handoff, in words the person can act on
+ * where Station says which refusal it is.
+ */
+function handoffRefusalFeedback(error: unknown): string {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { code?: unknown }).code ===
+      CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE
+  )
+    return 'The current agent is still working. Wait for it to finish, then try again.';
+  return error instanceof Error ? userFacingErrorMessage(error) : String(error);
+}
+
+/**
+ * What a handoff keeps and resets, in plain words. Each sentence covers its
+ * contract field list (`CONVERSATION_HANDOFF_CARRIED_FIELDS` and
+ * `..._RESET_FIELDS`); a test pins those lists so a change there revisits
+ * these.
+ */
+export const HANDOFF_KEEPS_SUMMARY =
+  'Recent messages, the workspace, and the agent and model you chose.';
+export const HANDOFF_STARTS_FRESH_SUMMARY =
+  "The previous engine's own session and tools, approvals given in this chat, and anything queued or still running.";
+
 export function ConversationHandoffDialog({
   apiBase,
   conversationId,
@@ -239,8 +278,9 @@ export function ConversationHandoffDialog({
   initialMessage,
   attachments,
   blockedReason,
-  autoSubmit,
-  onArm,
+  prepareDraft,
+  draftQuotes = NO_QUOTES,
+  busyTurnId,
   onAccepted,
   onContinuedOnStation,
   onDispatchStarted,
@@ -259,7 +299,7 @@ export function ConversationHandoffDialog({
     restoredStation?.environmentId ?? 'current',
   );
   const stationOffered = Boolean(
-    onContinuedOnStation && !executionPreset && !autoSubmit && !restoredIntent,
+    onContinuedOnStation && !executionPreset && !restoredIntent,
   );
   const currentAgent = agents.find((agent) => agent.slug === currentAgentId);
   const selectedContext = projectSlug ?? GLOBAL_CONTEXT;
@@ -290,9 +330,7 @@ export function ConversationHandoffDialog({
     ],
   );
   const [targetId, setTargetId] = useState<string | undefined>(
-    restoredIntent?.targetId ??
-      autoSubmit?.targetId ??
-      (executionPreset ? currentAgentId : undefined),
+    restoredIntent?.targetId ?? (executionPreset ? currentAgentId : undefined),
   );
   const target = agents.find((candidate) => candidate.slug === targetId);
   const executionAgentId = restoredIntent
@@ -320,22 +358,40 @@ export function ConversationHandoffDialog({
     ? selection.defaultEffectiveModelForAgent(executionTarget).id
     : undefined;
   const [modelId, setModelId] = useState<string | undefined>(
-    restoredIntent?.modelId ?? autoSubmit?.modelId ?? executionPreset?.modelId,
+    restoredIntent?.modelId ?? executionPreset?.modelId,
   );
   const [modelOptions, setModelOptions] = useState<Record<string, unknown>>(
-    restoredIntent?.modelOptions ?? autoSubmit?.modelOptions ?? {},
+    restoredIntent?.modelOptions ?? {},
   );
   const [disclosureOpen, setDisclosureOpen] = useState(false);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const modelTriggerRef = useRef<HTMLButtonElement>(null);
-  // No field edits this: the composer's draft (or the armed send's exact
-  // text) is the first turn, and an empty draft means the catch-up request.
-  const draft = (
-    restoredIntent?.message ??
-    autoSubmit?.message ??
-    initialMessage
-  ).trim();
-  const message = draft || HANDOFF_CATCH_UP_MESSAGE;
+  // No field edits this: the composer's draft is the first turn, and an empty draft means the catch-up request.
+  // A retained uncertain request is retried exactly as it was sent; a newer
+  // draft is not part of it and stays in the composer.
+  const composerDraft = initialMessage.trim();
+  const composerHasDraft = Boolean(composerDraft) || draftQuotes.length > 0;
+  const catchUpMessage = executionPreset
+    ? ENGINE_SWITCH_CATCH_UP_MESSAGE
+    : HANDOFF_CATCH_UP_MESSAGE;
+  // The request this dialog holds (restored after a reload, or made in this
+  // open and left uncertain). Read each render: every change to it comes
+  // with a state change.
+  const retained = retainedIntent.current;
+  // Like for like: the composer's raw draft and quotes against the raw draft
+  // and quotes the retained request was prepared from (an older request
+  // without them is compared by its sent text).
+  const displacesDraft = Boolean(
+    retained &&
+      composerHasDraft &&
+      (initialMessage.trim() !== (retained.draft ?? retained.message).trim() ||
+        quoteKeys(draftQuotes) !== quoteKeys(retained.quotes ?? [])),
+  );
+  const message = retained?.message ?? (composerDraft || catchUpMessage);
+  const sentQuotes = useRef<readonly DraftQuote[]>(
+    restoredIntent?.quotes ?? NO_QUOTES,
+  );
+  const starting = useRef(false);
   const [state, setState] = useState<
     'idle' | 'pending' | 'indeterminate' | 'error'
   >(restoredIntent ? 'indeterminate' : 'idle');
@@ -366,9 +422,20 @@ export function ConversationHandoffDialog({
   // never offers an action it would refuse. An uncertain request whose
   // retained target no longer resolves here cannot be retried as-is either;
   // say so rather than leave "Retry safely" greyed out without a reason.
+  // An uncertain request is not a new turn: its own dispatch is what makes
+  // the chat read busy, and a same-key retry only ever answers with that
+  // request's receipt. A send the queue fence refused was never made, and a
+  // chat busy with any other turn is guarded like any.
+  // A retry resends the stored request as it was made: the chat being busy
+  // with that very request, or holding attachments it never carried, does
+  // not block it.
+  const ownTurnBusy = Boolean(
+    retained && busyTurnId === `handoff:${idempotencyKey.current}`,
+  );
+  const effectiveBlockedReason = ownTurnBusy ? undefined : blockedReason;
   const preconditionReason =
-    blockedReason ??
-    (attachments.length > 0
+    effectiveBlockedReason ??
+    (attachments.length > 0 && !retained
       ? `Send or remove attachments before ${changeLabel}.`
       : state === 'indeterminate' && !retryEligible
         ? 'This request’s agent, engine or model isn’t available here. Restore that setup to retry.'
@@ -410,21 +477,66 @@ export function ConversationHandoffDialog({
   ]);
 
   const runHandoff = async () => {
-    if (!targetId || state === 'pending') return;
-    if (blockedReason) {
+    if (!targetId || state === 'pending' || starting.current) return;
+    if (effectiveBlockedReason) {
       setState('error');
-      setFeedback(blockedReason);
+      setFeedback(effectiveBlockedReason);
       return;
     }
-    if (attachments.length > 0) {
+    if (attachments.length > 0 && !retainedIntent.current) {
       setState('error');
       setFeedback(`Send or remove attachments before ${changeLabel}.`);
       return;
     }
+    let firstMessage = message;
+    let firstDraft = initialMessage;
+    if (!retainedIntent.current) {
+      // A new request names a target this client can still start: the
+      // catalog can change while the picker is open.
+      if (
+        !target ||
+        !executionTarget ||
+        (!executionPreset &&
+          !candidates.some((candidate) => candidate.slug === targetId)) ||
+        (modelId && !targetModels.some((model) => model.id === modelId))
+      ) {
+        setState('error');
+        setFeedback(
+          `${executionPreset ? (engineLabel ?? 'That engine') : targetName} isn’t available anymore. Choose again.`,
+        );
+        return;
+      }
+      if (prepareDraft) {
+        // Mentions can take a moment to read: show the request as going.
+        starting.current = true;
+        setState('pending');
+        setFeedback(undefined);
+        let prepared: Awaited<ReturnType<typeof prepareDraft>>;
+        try {
+          prepared = await prepareDraft();
+        } finally {
+          starting.current = false;
+        }
+        if (!prepared || 'refused' in prepared) {
+          setState('error');
+          setFeedback(
+            prepared
+              ? prepared.refused
+              : 'Your draft changed while it was being prepared. Try again.',
+          );
+          return;
+        }
+        firstMessage = prepared.text.trim() || catchUpMessage;
+        firstDraft = prepared.draft;
+        sentQuotes.current = prepared.quotes;
+      }
+    }
     const intent: PendingHandoffIntent = retainedIntent.current ?? {
       idempotencyKey: idempotencyKey.current,
       targetId,
-      message,
+      message: firstMessage,
+      draft: firstDraft,
+      ...(sentQuotes.current.length > 0 ? { quotes: sentQuotes.current } : {}),
       ...(executionAgentId
         ? {
             executionAgentId,
@@ -502,12 +614,16 @@ export function ConversationHandoffDialog({
             receipt: result.handoff,
             target,
             targetId,
-            message,
+            message: intent.message,
+            clearsComposer: !displacesDraft,
+            sentQuotes: sentQuotes.current,
           });
         },
       );
       if (fenced.status === 'blocked') {
+        // Nothing was sent: no request is retained to retry or check.
         clearPendingIntent(apiBase, conversationId);
+        retainedIntent.current = null;
         setState('error');
         setFeedback(
           `Send or discard this chat’s queued messages before ${changeLabel}.`,
@@ -524,11 +640,7 @@ export function ConversationHandoffDialog({
         retainedIntent.current = null;
         onDefiniteFailure(clientTurnId);
         setState('error');
-        setFeedback(
-          error instanceof Error
-            ? userFacingErrorMessage(error)
-            : String(error),
-        );
+        setFeedback(handoffRefusalFeedback(error));
       }
     }
   };
@@ -552,6 +664,8 @@ export function ConversationHandoffDialog({
           target,
           targetId: result.marker.targetAgentId,
           message,
+          clearsComposer: !displacesDraft,
+          sentQuotes: sentQuotes.current,
           receipt: {
             predecessorSessionId: result.marker.predecessorSessionId,
             sessionId: result.marker.sessionId,
@@ -603,43 +717,20 @@ export function ConversationHandoffDialog({
     }
   };
 
-  // An armed send dispatches once, at mount. A retained uncertain request
-  // takes precedence: it opens as its recovery instead of sending again.
-  const autoSubmitted = useRef(false);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once at mount; runHandoff reads this render's choice, which is the armed one.
-  useEffect(() => {
-    if (!autoSubmit || restoredIntent || autoSubmitted.current) return;
-    autoSubmitted.current = true;
-    void runHandoff();
-  }, []);
-
   const targetModel = targetModels.find((model) => model.id === modelId);
-  const choiceLabel = [
-    executionPreset ? (engineLabel ?? 'Default engine') : targetName,
-    targetModel?.name,
-  ]
-    .filter(Boolean)
-    .join(' · ');
-  // The armed send stays out of sight while it dispatches: the composer shows
-  // the message as sending. It surfaces only when the person must act.
-  if (autoSubmit && (state === 'idle' || state === 'pending') && !feedback)
-    return null;
-  const canArm = onArm && !autoSubmit && !restoredIntent && state !== 'pending';
   const primaryDisabled =
     state === 'pending' || !retryEligible || Boolean(preconditionReason);
 
   return (
     <ResponsiveDialogSurface
       layer="dialog"
-      ariaLabel={
-        executionPreset ? 'Change chat engine' : 'Continue with another agent'
-      }
+      ariaLabel={executionPreset ? 'Switch engine' : 'Switch agent'}
       panelClassName="conversation-handoff-dialog"
       overlayClassName="conversation-handoff-dialog__overlay"
       onClose={closeLocked ? () => {} : onClose}
     >
       <div className="conversation-handoff-dialog__header">
-        <h3>{executionPreset ? 'Change engine' : 'Continue with…'}</h3>
+        <h3>{executionPreset ? 'Switch engine' : 'Switch agent'}</h3>
         <ResponsiveDialogCloseButton
           label={
             executionPreset ? 'Cancel engine change' : 'Cancel agent handoff'
@@ -670,7 +761,9 @@ export function ConversationHandoffDialog({
               (project) => project.slug === projectSlug,
             )}
             message={message}
-            draft={Boolean(draft)}
+            draft={composerHasDraft}
+            prepareDraft={retained ? undefined : prepareDraft}
+            catchUpMessage={catchUpMessage}
             blockedReason={
               blockedReason ??
               (attachments.length > 0
@@ -790,16 +883,20 @@ export function ConversationHandoffDialog({
           )}
           <div className="conversation-handoff-dialog__note">
             <span>
-              {draft
-                ? 'Your draft is sent as the first message.'
-                : 'Starts with a short catch-up turn.'}
+              {displacesDraft
+                ? 'Retries the earlier request. Your new draft stays in the composer.'
+                : retained
+                  ? 'Retries the earlier request.'
+                  : composerHasDraft
+                    ? 'Your draft is sent as the first message.'
+                    : 'Starts with a short catch-up turn.'}
             </span>
             <DisclosureToggle
               expanded={disclosureOpen}
               onToggle={() => setDisclosureOpen((open) => !open)}
               controls={disclosureId}
             >
-              What carries over
+              Details
             </DisclosureToggle>
           </div>
           {disclosureOpen && (
@@ -807,18 +904,16 @@ export function ConversationHandoffDialog({
               id={disclosureId}
               className="conversation-handoff-dialog__disclosure"
             >
-              <dt>Carried</dt>
+              <dt>First message</dt>
               <dd>
-                {CONVERSATION_HANDOFF_CARRIED_FIELDS.map(
-                  (field) => CONVERSATION_HANDOFF_DISCLOSURE_LABELS[field],
-                ).join(' · ')}
+                {retained || !composerHasDraft
+                  ? message
+                  : 'Your draft from the composer'}
               </dd>
-              <dt>Reset</dt>
-              <dd>
-                {CONVERSATION_HANDOFF_RESET_FIELDS.map(
-                  (field) => CONVERSATION_HANDOFF_DISCLOSURE_LABELS[field],
-                ).join(' · ')}
-              </dd>
+              <dt>Keeps</dt>
+              <dd>{HANDOFF_KEEPS_SUMMARY}</dd>
+              <dt>Starts fresh</dt>
+              <dd>{HANDOFF_STARTS_FRESH_SUMMARY}</dd>
             </dl>
           )}
           {preconditionReason && (
@@ -838,29 +933,6 @@ export function ConversationHandoffDialog({
           {/* The shared action row owns phone wrapping, tap targets and the
               safe area; this class keeps only the desktop alignment. */}
           <ResponsiveSurfaceActions className="conversation-handoff-dialog__actions">
-            {canArm && (
-              <Button
-                disabled={primaryDisabled}
-                aria-describedby={
-                  preconditionReason ? preconditionId : undefined
-                }
-                onClick={() => {
-                  if (!targetId) return;
-                  onArm({
-                    conversationId,
-                    targetId,
-                    ...(executionPreset ? { executionPreset } : {}),
-                    ...(modelId ? { modelId } : {}),
-                    ...(Object.keys(modelOptions).length > 0
-                      ? { modelOptions }
-                      : {}),
-                    label: choiceLabel,
-                  });
-                }}
-              >
-                Use for next message
-              </Button>
-            )}
             {state === 'indeterminate' && (
               <Button onClick={() => void observe()}>Check status</Button>
             )}

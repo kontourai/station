@@ -327,15 +327,6 @@ export interface ConversationBodyProps {
   secondaryActions?: ComposerActionsMenuProps;
   onOpenAgentHandoff?: () => void;
   agentHandoffTriggerRef?: React.RefObject<HTMLButtonElement | null>;
-  /**
-   * An Agent or engine picked for the next message: Send hands the draft to
-   * `onSend` (the handoff dispatch) instead of the ordinary sender.
-   */
-  nextMessageHandoff?: {
-    label: string;
-    onSend: (message: string) => void;
-    onUndo: () => void;
-  };
   onOpenBackgroundTasks?: () => void;
   /**
    * station#1827: opens the new-chat flow — wired to the terminal-session
@@ -584,7 +575,6 @@ function LiveConversationBody({
   secondaryActions: dockSecondaryActions,
   onOpenAgentHandoff,
   agentHandoffTriggerRef,
-  nextMessageHandoff,
   onOpenBackgroundTasks,
   onNewChat: onNewChatProp,
   onRetryConversationOpen,
@@ -1134,12 +1124,6 @@ function LiveConversationBody({
   });
 
   const handleSendWithContext = useCallback((): Promise<void> => {
-    // A slash command stays local; any other draft is the handoff's first
-    // turn. The handoff carries no ambient context, as before.
-    if (nextMessageHandoff && !chatInput.input.trimStart().startsWith('/')) {
-      nextMessageHandoff.onSend(chatInput.input);
-      return Promise.resolve();
-    }
     // Ambient context travels OUT-OF-BAND (#685): the server composes it into
     // the model-facing input only, so the transcript keeps the typed text.
     // `ambientContextForSend` keeps the `[`-prefix and slash-command
@@ -1150,7 +1134,7 @@ function LiveConversationBody({
       chatInput.input,
     );
     return chatInput.handleSend(undefined, undefined, { ambientContext });
-  }, [getComposedContext, chatInput, nextMessageHandoff]);
+  }, [getComposedContext, chatInput]);
   const handleQueueFollowUp = useCallback((): Promise<void> => {
     const ambientContext = ambientContextForSend(
       getComposedContext(),
@@ -3006,7 +2990,6 @@ function LiveConversationBody({
                 : (onOpenAgentHandoff ?? secondaryActions?.onOpenHandoff)
             }
             agentHandoffTriggerRef={agentHandoffTriggerRef}
-            nextMessageHandoff={nextMessageHandoff}
             agentHandoffDisabled={secondaryActions?.handoffDisabled}
             agentHandoffDisabledReason={secondaryActions?.handoffDisabledReason}
             executionMode={activeSession.executionMode}

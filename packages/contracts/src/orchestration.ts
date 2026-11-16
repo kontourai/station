@@ -1558,6 +1558,14 @@ export const CONVERSATION_HANDOFF_CARRIED_FIELDS = Object.freeze([
   'targetAgentModel',
 ] as const);
 
+/**
+ * The machine code on a handoff refused because the conversation's current
+ * Session still has a turn running or has not settled, so a client can say
+ * what to do instead of showing the server's sentence.
+ */
+export const CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE =
+  'conversation_handoff_predecessor_busy';
+
 export const CONVERSATION_HANDOFF_RESET_FIELDS = Object.freeze([
   'providerNativeCursor',
   'toolState',

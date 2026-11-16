@@ -2286,6 +2286,18 @@ button:hover {
   min-width: 0;
 }
 
+/* An imported conversation's one action (Continue in Station), beside its
+   origin in the title bar. Empty until the conversation places it. */
+.chat-dock__header-action {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.chat-dock__header-action:empty {
+  display: none;
+}
+
 .chat-dock__title {
   position: relative;
   display: flex;

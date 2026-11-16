@@ -3,6 +3,7 @@ import { useClientBootstrapReadiness } from '../../contexts/AuthorityPersistence
 import { usePublishConversationOnScreen } from '../../contexts/conversation-on-screen-store';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { RequiredSlotHost } from '../../workspace-panes/RequiredSlotHost';
+import { ConversationHeaderActionSlot } from '../conversation/ConversationHeaderActionSlot';
 import { SessionReaderBindingProvider } from '../conversation/SessionReaderBinding';
 import { ChildChatNavigation } from './ChildChatNavigation';
 import type {
@@ -1731,6 +1732,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const importedTitle = importedSession
     ? sessionTitle(importedSession)
     : 'Chat';
+  const [importedActionSlot, setImportedActionSlot] =
+    useState<HTMLElement | null>(null);
   const importedOrigin = importedSession
     ? `Started in ${displayProvider(importedSession)}`
     : 'Started in another app';
@@ -3907,18 +3910,26 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         </div>
                       </div>
                     ) : importedSessionId ? (
-                      <ChatDockActiveIdentity
-                        session={{
-                          id: importedSessionId,
-                          title: importedTitle,
-                          agentName: importedSession
-                            ? displayProvider(importedSession)
-                            : 'Chat',
-                        }}
-                        originLabel={importedOrigin}
-                        originProvider={importedSession?.provider}
-                        onClose={() => setImportedSessionId(null)}
-                      />
+                      <>
+                        <ChatDockActiveIdentity
+                          session={{
+                            id: importedSessionId,
+                            title: importedTitle,
+                            agentName: importedSession
+                              ? displayProvider(importedSession)
+                              : 'Chat',
+                          }}
+                          originLabel={importedOrigin}
+                          originProvider={importedSession?.provider}
+                          onClose={() => setImportedSessionId(null)}
+                        />
+                        {/* The imported conversation's Continue sits beside
+                            its origin, here in the title bar. */}
+                        <span
+                          className="chat-dock__header-action"
+                          ref={setImportedActionSlot}
+                        />
+                      </>
                     ) : activeSession ? (
                       <ChatDockActiveIdentity
                         // D3: a reopened chat's tab is titled "New chat" until its
@@ -4472,25 +4483,36 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                           {workspaceShown &&
                           !showNewChatModal &&
                           importedSessionId ? (
-                            <LazyBoundary
-                              key={importedSessionId}
-                              load={loadImportedConversationPane}
-                              componentProps={{
-                                threadId: importedSessionId,
-                                apiBase,
-                                chatFontSize,
-                                originLabel: importedOrigin,
-                                showOrigin: isMobile,
-                                onContinueInDock: (
-                                  id: string,
-                                  isCurrent: () => boolean,
-                                ) =>
-                                  openConversationForDock(id, isCurrent, true),
-                              }}
-                              pending={
-                                <SkeletonBlock count={1} label="Opening chat" />
-                              }
-                            />
+                            <ConversationHeaderActionSlot.Provider
+                              value={importedActionSlot}
+                            >
+                              <LazyBoundary
+                                key={importedSessionId}
+                                load={loadImportedConversationPane}
+                                componentProps={{
+                                  threadId: importedSessionId,
+                                  apiBase,
+                                  chatFontSize,
+                                  originLabel: importedOrigin,
+                                  showOrigin: isMobile,
+                                  onContinueInDock: (
+                                    id: string,
+                                    isCurrent: () => boolean,
+                                  ) =>
+                                    openConversationForDock(
+                                      id,
+                                      isCurrent,
+                                      true,
+                                    ),
+                                }}
+                                pending={
+                                  <SkeletonBlock
+                                    count={1}
+                                    label="Opening chat"
+                                  />
+                                }
+                              />
+                            </ConversationHeaderActionSlot.Provider>
                           ) : null}
                           {/* The chat the draft opened over stays mounted under it,
                       hidden and inert, so its form answers, reply text and
@@ -4593,21 +4615,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                                   )
                                 }
                                 agentHandoffTriggerRef={composerAgentTriggerRef}
-                                nextMessageHandoff={
-                                  conversationBoundaryDialogs.armedHandoff
-                                    ? {
-                                        label:
-                                          conversationBoundaryDialogs
-                                            .armedHandoff.label,
-                                        onSend:
-                                          conversationBoundaryDialogs.sendArmedHandoff,
-                                        onUndo: () =>
-                                          conversationBoundaryDialogs.setArmedHandoff(
-                                            null,
-                                          ),
-                                      }
-                                    : undefined
-                                }
                                 isHistoryOpen={isHistoryOpen}
                                 onCloseHistory={closeHistory}
                                 onToggleStatsPanel={setShowStatsPanel}

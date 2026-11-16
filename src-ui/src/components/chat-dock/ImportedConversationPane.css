@@ -25,3 +25,12 @@
   align-items: center;
   gap: 6px;
 }
+
+.imported-conversation-pane__origin-action {
+  display: inline-flex;
+  margin-left: auto;
+}
+
+.imported-conversation-pane__origin-action:empty {
+  display: none;
+}

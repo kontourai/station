@@ -149,6 +149,7 @@ function buildChatInput(): Parameters<typeof ChatDockBody>[0]['chatInput'] {
     quotes: [],
     quotedDraftText: '',
     removeQuote: vi.fn(),
+    prepareOutgoingText: vi.fn(async () => null),
     input: '',
     attachments: [],
     attachmentError: null,

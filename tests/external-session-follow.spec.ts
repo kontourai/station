@@ -498,10 +498,7 @@ test('opens an attached session in the normal mobile chat without adopting befor
   );
   const detail = page.getByTestId('session-detail');
   await expect(detail).toContainText('Started in Claude Code · Read only');
-  const composer = detail.getByPlaceholder(
-    'Continue in Station from this history…',
-    { exact: true },
-  );
+  const composer = detail.getByPlaceholder('Message…', { exact: true });
   await expect(composer).toBeVisible();
   await composer.fill('UI audit draft — do not send.');
   expect(fixture.commands).toEqual([]);

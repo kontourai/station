@@ -16,6 +16,7 @@ import {
 import { useMutation } from '@tanstack/react-query';
 import {
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -23,6 +24,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import { navigationStore } from '../../contexts/navigation-store';
 import { useToast } from '../../contexts/ToastContext';
@@ -43,6 +45,7 @@ import { sessionProjectKeys } from '../../views/sessions/sessions-lane-model';
 import { Button } from '../Button';
 import { ConversationBody } from '../conversation/ConversationBody';
 import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
+import { ConversationHeaderActionSlot } from '../conversation/ConversationHeaderActionSlot';
 
 function hasCanonicalEventId(
   event: OrchestrationEvent,
@@ -206,6 +209,7 @@ export function AttachedSessionDetail({
     continuationStore.current = browserAttachedSessionContinuationStore();
   }
   const inheritedConnection = useOptionalConversationConnection();
+  const actionSlot = useContext(ConversationHeaderActionSlot);
   const connection = inheritedConnection ?? { apiBase };
   const [localDraft, setLocalDraft] = useState('');
   const savedDraft = useSyncExternalStore(chatDraftsStore.subscribe, () =>
@@ -430,18 +434,6 @@ export function AttachedSessionDetail({
   // "Worker task · <id>" in the list it was opened from.
   const title = sessionTitle(session);
 
-  // Continuing needs no message: the continuation opens with this history,
-  // and a typed draft (none is fine) is sent there afterwards by the host.
-  const startContinuation = () => {
-    if (
-      !continuationSupported ||
-      adoption.isPending ||
-      serverRejectedRetryRef.current
-    )
-      return;
-    confirmedDraft.current = currentDraft.current;
-    adoption.mutate(getSelectionIntent());
-  };
   const continuationFeedback = (
     <>
       {adoption.error && (
@@ -480,6 +472,27 @@ export function AttachedSessionDetail({
     adoption.isPending ||
     continued ||
     handoffPending;
+  // Continuing needs no message: the continuation opens with this history,
+  // and a typed draft (none is fine) is sent there afterwards by the host.
+  // Every entry (the action, Send, a draft handed over from Activity) comes
+  // through here, so each one gets the same guards the action shows.
+  const adoptionInFlight = useRef(false);
+  const startContinuation = () => {
+    if (
+      adoptionDisabled ||
+      composerDisabled ||
+      adoptionInFlight.current ||
+      serverRejectedRetryRef.current
+    )
+      return;
+    adoptionInFlight.current = true;
+    confirmedDraft.current = currentDraft.current;
+    adoption.mutate(getSelectionIntent(), {
+      onSettled: () => {
+        adoptionInFlight.current = false;
+      },
+    });
+  };
   const requestSend = async ({ allowEmpty = false } = {}) => {
     if ((!allowEmpty && !draft.trim()) || composerDisabled) return;
     if (onContinueInChat) {
@@ -535,6 +548,67 @@ export function AttachedSessionDetail({
     handoffScope,
   ]);
 
+  // Why continuing is unavailable, said once, beside the action it explains.
+  const continueBlockedReason = !continuationSupported
+    ? continuationSupport.reason
+    : connection.station &&
+        connection.station.capabilities.continue.state !== 'allowed'
+      ? connection.station.capabilities.continue.reason ===
+        'permission-required'
+        ? "You don't have permission to continue this conversation."
+        : "This Station can't continue this conversation right now."
+      : undefined;
+  const continueReasonId = `${session.threadId}-continue-reason`;
+  const continueAction = continued ? null : (
+    <Button
+      variant="secondary"
+      size="sm"
+      className="sessions-detail__continue-action"
+      disabled={adoptionDisabled || composerDisabled}
+      aria-describedby={continueBlockedReason ? continueReasonId : undefined}
+      onClick={() => void requestSend({ allowEmpty: true })}
+    >
+      {adoption.isPending || openingContinuation || handoffPending
+        ? 'Continuing…'
+        : 'Continue in Station'}
+    </Button>
+  );
+  const continuationNotice =
+    !continued &&
+    (continueBlockedReason || outsideProjects || adoption.error) ? (
+      <div
+        className="sessions-detail__continue-notice"
+        data-testid="attached-continue-notice"
+      >
+        {continueBlockedReason && (
+          <p id={continueReasonId} className="sessions-detail__continue-note">
+            {continueBlockedReason}
+          </p>
+        )}
+        {outsideProjects && !continueBlockedReason && (
+          <p
+            className="sessions-detail__continue-note"
+            data-testid="attached-continuation-no-project"
+          >
+            {noProjectExplanation}
+            {addProjectForFolder && (
+              <>
+                {' '}
+                <Button
+                  variant="link"
+                  disabled={adoption.isPending}
+                  onClick={addProjectForFolder}
+                >
+                  Add a project instead
+                </Button>
+              </>
+            )}
+          </p>
+        )}
+        {continuationFeedback}
+      </div>
+    ) : null;
+
   return (
     <section
       className="sessions-detail sessions-detail--read-only sessions-detail--chat"
@@ -550,6 +624,7 @@ export function AttachedSessionDetail({
               {session.model && <span> · {session.model}</span>}
             </p>
           </div>
+          {!continued && continueAction}
           <details className="sessions-detail__details">
             <summary>Details</summary>
             <div className="sessions-detail__details-body">
@@ -605,46 +680,21 @@ export function AttachedSessionDetail({
         ))
       )}
 
-      {!continued && (
+      {!showHeader && !actionSlot && !continued && (
         <div
-          className="sessions-detail__continue-bar"
+          className="sessions-detail__origin-row"
           data-testid="attached-continue-bar"
         >
-          <div className="sessions-detail__continue-row">
-            <Button
-              variant="primary"
-              size="sm"
-              disabled={adoptionDisabled || composerDisabled}
-              onClick={() => void requestSend({ allowEmpty: true })}
-            >
-              {adoption.isPending || openingContinuation || handoffPending
-                ? 'Continuing…'
-                : 'Continue in Station'}
-            </Button>
-            {outsideProjects && (
-              <span
-                className="sessions-detail__continue-note"
-                data-testid="attached-continuation-no-project"
-              >
-                {noProjectExplanation}
-                {addProjectForFolder && (
-                  <>
-                    {' '}
-                    <Button
-                      variant="link"
-                      disabled={adoption.isPending}
-                      onClick={addProjectForFolder}
-                    >
-                      Add a project instead
-                    </Button>
-                  </>
-                )}
-              </span>
-            )}
-          </div>
-          {continuationFeedback}
+          <span className="sessions-detail__origin-label">
+            Started in {displayProvider(session)}
+          </span>
+          {continueAction}
         </div>
       )}
+      {actionSlot && !showHeader && continueAction
+        ? createPortal(continueAction, actionSlot)
+        : null}
+      {continuationNotice}
 
       <ConversationBody
         density="record"
@@ -666,16 +716,12 @@ export function AttachedSessionDetail({
           retry: onLoadOlder ?? onRetryCapabilityRecovery,
         }}
         composer={{
-          submitAction: {
-            label: 'Send and continue',
-            placeholder: 'Continue in Station from this history…',
-          },
+          // Sending continues the conversation in Station, so the action
+          // reads as the ordinary Send.
+          submitAction: { label: 'Send', placeholder: 'Message…' },
           input: draft,
           onInputChange: setDraft,
           disabled: composerDisabled,
-          reason: continuationSupported
-            ? undefined
-            : continuationSupport.reason,
           onSubmit: () => requestSend(),
           textareaRef: composerRef,
         }}
