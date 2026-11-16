@@ -163,7 +163,11 @@ describe('repeat summaries at real server shutdown', () => {
     const beforeStop = readDurableLog(durableDirectory);
     expect(beforeStop).not.toContain('Suppressed');
 
-    expect(owned.child.kill('SIGTERM')).toBe(true);
+    // The owned-process helper types a launch that never spawned as
+    // `{ pid: undefined }`; this server started, so a missing `kill` is a bug.
+    const child = owned.child;
+    if (!('kill' in child)) throw new Error('Station server never spawned');
+    expect(child.kill('SIGTERM')).toBe(true);
     await waitFor(() => exited, 'graceful exit', 60_000);
     expect(exitStatus).toBe(0);
 
