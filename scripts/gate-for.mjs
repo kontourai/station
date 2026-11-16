@@ -12,10 +12,6 @@
 // question BEFORE writing anything. The output is a report plus matching
 // Veritas guidance. It runs no evidence checks and exits 2 when the edit scope
 // or required governance context cannot be read.
-import {
-  decideCodeHealthScope,
-  readCodeHealthAnalyzer,
-} from './check-prepush-code-health.mjs';
 import { decideOrchestrationTransferScope } from './check-prepush-orchestration-transfer.mjs';
 import { decideSdkBarrelScope } from './check-prepush-sdk-barrel.mjs';
 import { decideStaticGateScope } from './check-prepush-static-gates.mjs';
@@ -65,7 +61,7 @@ export const EVERY_PUSH_CHECKS = Object.freeze([
   }),
   Object.freeze({
     command: 'node scripts/check-prepush-push-range.mjs',
-    note: 'git diff --check and the raw-mkdtemp test ratchet on the pushed commit (~1s)',
+    note: 'on the pushed commit: git diff --check, raw-mkdtemp test ratchet, new exports no other file names (~1-2s)',
   }),
   Object.freeze({
     command: 'node scripts/check-prepush-docs-freshness.mjs',
@@ -76,6 +72,17 @@ export const EVERY_PUSH_CHECKS = Object.freeze([
     note: 'commit subjects in the push range',
   }),
 ]);
+
+/**
+ * CI's exact unused-export verdict. The hook checks only the narrow case (a
+ * new export no other file names); this is the full fallow audit CI's
+ * statics job runs, 25-50s, against the same base.
+ */
+export const CODE_HEALTH_VERDICT = Object.freeze({
+  command:
+    'node scripts/code-health-gate.mjs --base=$(git merge-base origin/main HEAD)',
+  note: "CI's full unused-export verdict; the hook checks only new exports no other file names",
+});
 
 /** The verification ladder, cheapest first; `command` is null off-host. */
 export const LANE_LADDER = Object.freeze([
@@ -114,19 +121,10 @@ export const LANE_LADDER = Object.freeze([
  *
  * @returns {{ name: string, runs: boolean, reason: string, command: string }[]}
  */
-export function gateScopes({
-  changedPaths,
-  baseSha,
-  codeHealthAnalyzer = readCodeHealthAnalyzer(),
-}) {
+export function gateScopes({ changedPaths, baseSha }) {
   const statics = decideStaticGateScope({ baseSha, changedPaths });
   const barrel = decideSdkBarrelScope({ baseSha, changedPaths });
   const transfer = decideOrchestrationTransferScope({ baseSha, changedPaths });
-  const codeHealth = decideCodeHealthScope({
-    baseSha,
-    changedPaths,
-    analyzer: codeHealthAnalyzer,
-  });
   return [
     {
       name: 'orchestration transfer budgets',
@@ -146,12 +144,6 @@ export function gateScopes({
       command:
         'node scripts/heavy-check-slot.mjs pre-push:sdk-barrel scripts/check-prepush-sdk-barrel.mjs',
     },
-    {
-      name: 'code health (unused exports and types)',
-      decision: codeHealth,
-      command:
-        'node scripts/heavy-check-slot.mjs pre-push:code-health scripts/check-prepush-code-health.mjs',
-    },
   ].map(({ name, decision, command }) => ({
     name,
     runs: decision.run,
@@ -169,6 +161,7 @@ export function gatePlan({ changedPaths, baseSha }) {
     fixtureCommands: fixturePolicyCommands(changedPaths),
     conversationBoundaryCommands: conversationBoundaryCommands(changedPaths),
     gallery: galleryCoverage({ changedPaths }),
+    codeHealth: CODE_HEALTH_VERDICT,
     ladder: LANE_LADDER,
   };
 }
@@ -198,6 +191,11 @@ export function gateReport({ changedPaths, baseSha }) {
       'Fixture and test-effectiveness route:',
       ...plan.fixtureCommands.map((command) => `  ${command}`),
     );
+  lines.push(
+    '',
+    `Code health (not run by the hook):  ${plan.codeHealth.command}`,
+    `          ${plan.codeHealth.note}`,
+  );
   if (plan.gallery) lines.push('', ...formatGalleryCoverage(plan.gallery));
   if (plan.conversationBoundaryCommands.length)
     lines.push(

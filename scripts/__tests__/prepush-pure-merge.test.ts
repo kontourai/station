@@ -25,7 +25,6 @@ const EXPENSIVE = [
   'scripts/check-prepush-orchestration-transfer.mjs',
   'scripts/check-prepush-static-gates.mjs',
   'scripts/check-prepush-sdk-barrel.mjs',
-  'scripts/check-prepush-code-health.mjs',
 ];
 
 const makeTempDir = trackTempDirs();

@@ -4,7 +4,6 @@ import {
   mkdirSync,
   readFileSync,
   realpathSync,
-  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -15,9 +14,8 @@ import { SCOPE_SENTINELS } from '../test-temp-dir-ratchet.mjs';
 
 /**
  * The real pre-push hook, run by a real `git push` to a local bare remote.
- * The push-range checks (whitespace, test temp dirs), the main-conflict
- * warning and the code-health step are the real scripts, including one real
- * fallow audit per push. Only the unrelated gates (lint, governance proof,
+ * The push-range checks (whitespace, test temp dirs, new unnamed exports)
+ * and the main-conflict warning are the real scripts. Only the unrelated gates (lint, governance proof,
  * docs freshness, transfer, static gates, SDK barrel, commit subjects) are
  * recorders. Each
  * refusal is asserted on the push's exit status AND on the remote ref never
@@ -38,11 +36,6 @@ const HARNESS_SCRIPTS = [
   'diff-whitespace-gate.mjs',
   'test-temp-dir-ratchet.mjs',
   'heavy-check-slot.mjs',
-  'check-prepush-code-health.mjs',
-  'code-health-gate.mjs',
-  'run-fallow-audit.mjs',
-  'code-health-inventory.mjs',
-  'fallow-review-status.mjs',
 ];
 const RECORDED_GATES = [
   'scripts/check-prepush-docs-freshness.mjs',
@@ -95,7 +88,7 @@ function fixture() {
   git(['remote', 'add', 'origin', remote]);
 
   // The hook and the scripts it runs, untracked so they are never part of a
-  // pushed range. Fallow resolves from the repository's own install.
+  // pushed range.
   mkdirSync(join(repo, '.githooks'));
   writeFileSync(
     join(repo, '.githooks', 'pre-push'),
@@ -117,11 +110,6 @@ function fixture() {
     mkdirSync(join(repo, shared, '..'), { recursive: true });
     writeFileSync(join(repo, shared), readFileSync(join(REPO_ROOT, shared)));
   }
-  mkdirSync(join(repo, 'node_modules'));
-  symlinkSync(
-    join(REPO_ROOT, 'node_modules', 'fallow'),
-    join(repo, 'node_modules', 'fallow'),
-  );
   for (const gate of RECORDED_GATES)
     writeFileSync(
       join(repo, gate),
@@ -129,15 +117,9 @@ function fixture() {
     );
   writeFileSync(
     join(repo, '.git', 'info', 'exclude'),
-    [
-      '.githooks/',
-      '/scripts/*.mjs',
-      '/scripts/lib/',
-      '/packages/shared/',
-      '/node_modules',
-      '.kontourai/',
-      '.fallow/',
-    ].join('\n'),
+    ['.githooks/', '/scripts/*.mjs', '/scripts/lib/', '/packages/shared/'].join(
+      '\n',
+    ),
   );
   mkdirSync(bin);
   const record = `require('node:fs').appendFileSync(${JSON.stringify(report)}, gate + '\\n');`;
@@ -172,7 +154,7 @@ if (args[0] === 'scripts/commit-message-gate.mjs') {
         rules: { 'unused-exports': 'warn', 'unused-types': 'warn' },
         overrides: [
           {
-            files: ['**/*.test.ts'],
+            files: ['**/*.test.ts', 'packages/sdk/src/**'],
             rules: { 'unused-exports': 'off', 'unused-types': 'off' },
           },
         ],
@@ -192,24 +174,6 @@ if (args[0] === 'scripts/commit-message-gate.mjs') {
     },
     'chore: root',
   );
-  // The code-health gate reads its allowances from the base revision; these
-  // are fallow's own baseline files for the root commit.
-  mkdirSync(join(repo, 'fallow-baselines'));
-  for (const kind of ['dead-code', 'health', 'dupes'])
-    spawnSync(
-      process.execPath,
-      [
-        join(REPO_ROOT, 'node_modules/fallow/bin/fallow'),
-        kind,
-        '--quiet',
-        '--format',
-        'json',
-        '--save-baseline',
-        `fallow-baselines/${kind}.json`,
-      ],
-      { cwd: repo, env, windowsHide: true, timeout: 30_000 },
-    );
-  commit({}, 'chore: record fallow baselines');
   git(['push', '-q', 'origin', 'main']);
   git(['checkout', '-q', '-b', 'feat']);
   git(['fetch', '-q', 'origin']);
@@ -273,10 +237,7 @@ describe.skipIf(process.platform === 'win32')(
         expect(result.output).toContain('[diff-whitespace] OK');
         expect(result.output).toContain('OK: 3 raw mkdtemp calls');
         expect(result.output).toContain(
-          'Code health: checking — 1 changed file(s) can carry an unused export or type: src/b.ts',
-        );
-        expect(result.output).toContain(
-          'Code health: no new unused export or type.',
+          'New exports: 0 new export name(s), each named in another module.',
         );
         expect(result.output).not.toContain('WARNING');
         // The other gates still ran, after the new cheap step.
@@ -334,28 +295,128 @@ describe.skipIf(process.platform === 'win32')(
     );
 
     it(
-      'refuses a pushed commit that introduces an unused export, naming it',
+      'refuses a pushed commit that adds an export no other file names',
       () => {
         const f = fixture();
         f.commit(
           {
             'src/b.ts':
-              "import { alsoUsed } from './a';\nexport function helper() {\n  return alsoUsed();\n}\nexport function newlyUnused() {\n  return 4;\n}\n",
+              "import { alsoUsed } from './a';\nexport function helper() {\n  return alsoUsed();\n}\nexport function newlyUnused() {\n  return 4;\n}\nconst local = 1;\nexport { local as renamedLocal };\n",
           },
-          'feat: add an export nothing calls',
+          'feat: add exports nothing names',
         );
         const result = f.push();
         expect(result.status).not.toBe(0);
+        expect(f.remoteHas('feat')).toBe('');
         expect(result.output).toContain(
-          'FAIL: this push introduces 1 unused export(s) or type(s)',
+          'FAIL: 2 new export(s) that no other file names',
         );
-        expect(result.output).toMatch(
-          /src\/b\.ts:5 {2}unused export newlyUnused/,
+        expect(result.output).toContain(
+          '  src/b.ts: export newlyUnused is not named in any other file',
+        );
+        expect(result.output).toContain(
+          '  src/b.ts: export renamedLocal is not named in any other file',
+        );
+        expect(result.output).toContain(
+          'Drop the `export`, or use it from where it is needed.',
+        );
+        expect(result.output).toContain(
+          'This checks only a new export that nothing else names.',
         );
         expect(result.output).toMatch(
           /node scripts\/code-health-gate\.mjs --base=[0-9a-f]{40}/,
         );
-        expect(f.remoteHas('feat')).toBe('');
+        expect(result.gates).not.toContain(RECORDED_GATES[0]);
+      },
+      TIMEOUT,
+    );
+
+    it(
+      'passes a new export that another file names',
+      () => {
+        const f = fixture();
+        const head = f.commit(
+          {
+            'src/b.ts':
+              "import { alsoUsed } from './a';\nexport function helper() {\n  return alsoUsed();\n}\nexport function nowUsed() {\n  return 4;\n}\n",
+            'src/index.ts':
+              "import { used } from './a';\nimport { helper, nowUsed } from './b';\nconsole.log(used(), helper(), nowUsed());\n",
+          },
+          'feat: add a used export',
+        );
+        const result = f.push();
+        expect(result.status, result.output).toBe(0);
+        expect(f.remoteHas('feat')).toBe(head);
+        expect(result.output).toContain(
+          'New exports: 1 new export name(s), each named in another module.',
+        );
+      },
+      TIMEOUT,
+    );
+
+    it(
+      'passes new exports in locations the code-health gate exempts',
+      () => {
+        const f = fixture();
+        const head = f.commit(
+          {
+            'src/c.test.ts':
+              "import { used } from './a';\nexport const testOnly = used();\n",
+            'packages/sdk/src/api.ts': 'export const publicApi = 1;\n',
+            'src/__tests__/helper.ts': 'export const helperOnly = 1;\n',
+          },
+          'test: exempt exports',
+        );
+        const result = f.push();
+        expect(result.status, result.output).toBe(0);
+        expect(f.remoteHas('feat')).toBe(head);
+        expect(result.output).not.toContain('is not named in any other file');
+      },
+      TIMEOUT,
+    );
+
+    it(
+      'passes re-exports and default exports',
+      () => {
+        const f = fixture();
+        const head = f.commit(
+          {
+            'src/barrel.ts':
+              "export { used } from './a';\nexport * from './b';\nexport { alsoUsed as renamedAgain } from './a';\n",
+            'src/defaulted.ts':
+              'export default function () {\n  return 7;\n}\n',
+          },
+          'feat: re-export and default',
+        );
+        const result = f.push();
+        expect(result.status, result.output).toBe(0);
+        expect(f.remoteHas('feat')).toBe(head);
+        expect(result.output).not.toContain('is not named in any other file');
+      },
+      TIMEOUT,
+    );
+
+    it(
+      'passes a new export that a later commit in the same push uses',
+      () => {
+        const f = fixture();
+        f.commit(
+          {
+            'src/b.ts':
+              "import { alsoUsed } from './a';\nexport function helper() {\n  return alsoUsed();\n}\nexport function usedLater() {\n  return 4;\n}\n",
+          },
+          'feat: add the export first',
+        );
+        const head = f.commit(
+          {
+            'src/index.ts':
+              "import { used } from './a';\nimport { helper, usedLater } from './b';\nconsole.log(used(), helper(), usedLater());\n",
+          },
+          'feat: then use it',
+        );
+        const result = f.push();
+        expect(result.status, result.output).toBe(0);
+        expect(f.remoteHas('feat')).toBe(head);
       },
       TIMEOUT,
     );
@@ -375,26 +436,6 @@ describe.skipIf(process.platform === 'win32')(
         expect(result.status, result.output).toBe(0);
         expect(f.remoteHas('feat')).toBe(head);
         expect(result.output).toContain('OK: 3 raw mkdtemp calls');
-      },
-      TIMEOUT,
-    );
-
-    it(
-      'skips code health when the push changes only files it cannot report in',
-      () => {
-        const f = fixture();
-        f.commit(
-          {
-            'docs/notes.md': 'more notes\n',
-            'src/a.test.ts': "import { used } from './a';\nused();\nused();\n",
-          },
-          'test: exercise used twice',
-        );
-        const result = f.push();
-        expect(result.status, result.output).toBe(0);
-        expect(result.output).toContain(
-          'Code health: skipped — none of the 2 changed path(s) is a file fallow can report an unused export or type in.',
-        );
       },
       TIMEOUT,
     );
@@ -429,7 +470,7 @@ describe.skipIf(process.platform === 'win32')(
     );
 
     it(
-      'is silent about main when origin/main is unknown, and says code health was not checked',
+      'is silent about main when origin/main is unknown',
       () => {
         const f = fixture();
         f.commit(
@@ -444,7 +485,6 @@ describe.skipIf(process.platform === 'win32')(
         expect(result.status, result.output).toBe(0);
         expect(result.output).not.toContain('merge cleanly');
         expect(result.output).not.toContain('could not check');
-        expect(result.output).toContain('Code health: NOT CHECKED');
       },
       TIMEOUT,
     );

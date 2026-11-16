@@ -689,9 +689,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // stubbed gate commands, as bounded single-shot children.
   'scripts/__tests__/prepush-pure-merge.test.ts',
   // Runs the real pre-push hook through `git push` against small real Git
-  // graphs, with the real push-range, main-conflict and code-health steps
-  // (one real fallow audit per push) and the other gates stubbed. Bounded
-  // single-shot children.
+  // graphs, with the real push-range and main-conflict steps and the other
+  // gates stubbed. Bounded single-shot children.
   'scripts/__tests__/prepush-push-range.process.test.ts',
   // Runs the real pre-push hook through `git push` over the freshness
   // suite's fixture ledger, with the real docs-freshness decision script,

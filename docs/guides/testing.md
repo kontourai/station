@@ -1099,7 +1099,7 @@ clearing package caches leaves those installed dependency trees in place.
 ref only adds clean merges of `origin/main` on top of the tip the remote
 already holds, `.githooks/pre-push` skips the push-range checks, documentation
 freshness (which otherwise warns, and refuses once the branch records
-reviews), transfer gate, static gates, SDK barrel and code health; the main-conflict warning,
+reviews), transfer gate, static gates and SDK barrel; the main-conflict warning,
 biome, the governance proof and the commit-subject gate still run. `scripts/prepush-pure-merge.mjs` owns the rule:
 the remote ref is the record of the last push the hook accepted, each merge's
 second parent must be on `main` as the remote itself reports it (`git
@@ -2075,7 +2075,7 @@ slot and then runs the script as the slot holder. These entry points use it:
 | `npm run docs:learn:build`, `npm run docs:learn:check` | `docs:learn:build`, `docs:learn:check` |
 | `npm run typecheck` (its lanes run under this slot) | `typecheck` |
 | Each `scripts/tsc-slot.mjs` compile run on its own (`npm run typecheck:<lane>`) | `typecheck <tsconfig>`, taken before its typecheck slot |
-| Pre-push transfer budgets, static gates, SDK barrel, code health | `pre-push:transfer-budgets`, `pre-push:static-gates`, `pre-push:sdk-barrel`, `pre-push:code-health` |
+| Pre-push transfer budgets, static gates, SDK barrel | `pre-push:transfer-budgets`, `pre-push:static-gates`, `pre-push:sdk-barrel` |
 | A verification-coordinator lane that executes (`ci:fast`, `verify:static`, `test-changed`, …) | `verification:<lane>` |
 | Each `full:regression` phase, requested or submitted | `verification:full-regression:<phase>` |
 

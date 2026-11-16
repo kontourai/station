@@ -37,14 +37,12 @@ fi
 # zero-OID line and skipped every check.
 has_updates=0
 push_ref_lines=()
-pushed_shas=()
 while read -r _local_ref local_sha _remote_ref _remote_sha; do
   if [[ "$local_sha" =~ ^0+$ ]]; then
     continue
   fi
   has_updates=1
   push_ref_lines+=("${_local_ref} ${local_sha} ${_remote_ref} ${_remote_sha}")
-  pushed_shas+=("$local_sha")
 done
 if [[ "$has_updates" -eq 0 ]]; then
   exit 0
@@ -107,13 +105,16 @@ if printf '%s\n' "${push_ref_lines[@]}" | node scripts/prepush-pure-merge.mjs "$
 fi
 
 if [[ "$pure_merge_of_main" -eq 1 ]]; then
-  echo "[station pre-push] skipped for a pure merge of main: push-range whitespace and test temp dirs, documentation review freshness, transfer budgets, static gates, SDK barrel, code health"
+  echo "[station pre-push] skipped for a pure merge of main: push-range whitespace and test temp dirs, documentation review freshness, transfer budgets, static gates, SDK barrel"
 else
-# ~1s. The merge queue's `git diff --check` and the raw-mkdtemp test ratchet
-# (#2421), judged on the pushed commit itself rather than the working tree.
-# Between them they failed up to 19 of 87 failed pull-request CI runs
-# (2026-11-13 to 15), each a whole CI round trip for a one-second check.
-echo "[station pre-push] push range: whitespace, test temp dirs"
+# ~1-2s, no heavy-check slot. Three checks judged on the pushed commit itself,
+# never the working tree: the merge queue's `git diff --check`, the raw-mkdtemp
+# test ratchet (#2421), and a new export that no other file names (the shape
+# of every unused-export blocker CI's code-health gate raised, 16 of 87 failed
+# pull-request runs from 2026-11-13 to 15). The full code-health gate is not
+# run here: a fallow audit costs 25-50s and queues for a host-wide slot, which
+# on a busy host turned a push into minutes. CI still runs it.
+echo "[station pre-push] push range: whitespace, test temp dirs, new unnamed exports"
 printf '%s\n' "${push_ref_lines[@]}" | node scripts/check-prepush-push-range.mjs
 
 # ~6-8s. Recorded documentation reviews whose cited sources this branch
@@ -164,14 +165,6 @@ node scripts/heavy-check-slot.mjs pre-push:static-gates scripts/check-prepush-st
 # gated next.
 echo "[station pre-push] SDK public barrel"
 node scripts/heavy-check-slot.mjs pre-push:sdk-barrel scripts/check-prepush-sdk-barrel.mjs
-
-# 25-50s, and only when this push changes a file the code-health analyzer can
-# report an unused export or type in. CI's statics job runs the same gate
-# (scripts/code-health-gate.mjs) against the merge base; it refused 16 of 87
-# failed pull-request runs (2026-11-13 to 15). The analyzer reads the working
-# tree, so it judges only a push of the checked-out commit.
-echo "[station pre-push] code health (unused exports and types)"
-STATION_PREPUSH_PUSHED_SHAS="${pushed_shas[*]}" node scripts/heavy-check-slot.mjs pre-push:code-health scripts/check-prepush-code-health.mjs
 
 # Required hosted fast-checks-statics owns repository-wide Veritas readiness
 # and every typecheck lane through FAST_STATIC_COMMANDS in run-ci-fast.mjs.
