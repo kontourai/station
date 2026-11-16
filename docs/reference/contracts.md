@@ -1097,6 +1097,7 @@ non-retryable.
 | `continuation_workspace_unbound` | `input_unsupported` | `false` |
 | `continuation_workspace_worktree_gone` | `input_unsupported` | `false` |
 | `continuation_workspace_worktree_moved` | `input_unsupported` | `false` |
+| `conversation_handoff_predecessor_busy` | `busy` | `true` |
 | `conversation-context-unavailable` | `conflict` | `false` |
 | `engine-credential-profile-unsupported` | `input_unsupported` | `false` |
 | `engine-decision-not-sent` | `warning` | `false` |
