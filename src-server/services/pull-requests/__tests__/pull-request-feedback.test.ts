@@ -1012,4 +1012,45 @@ describe('pull request agent feedback reaches the owning conversation', () => {
       '- [`lint`](https://github.com/acme/widgets/actions/runs/1/job/2?a=%5Cb): failure',
     );
   });
+
+  it('(y) a block too long to fit even without excerpts shows fewer items and still goes', async () => {
+    const t = await setup();
+    t.claim({ ...BOTH, fixFailingChecks: false });
+    const longUrl = (n: number) =>
+      `https://github.com/acme/widgets/pull/42?r=${n}&${'u'.repeat(240)}`;
+    t.observe({
+      ...failingOnly(),
+      threads: Array.from({ length: 8 }, (_, i) => ({
+        ...thread(`PRRT_wide_${i}`, `${'p'.repeat(290)}-${i}`, {
+          id: String(9600 + i),
+          author: 'alice',
+          body: 'Short.',
+          createdAt: '2026-11-10T10:00:00Z',
+        }),
+        comments: [
+          {
+            id: String(9600 + i),
+            author: 'alice',
+            body: 'Short.',
+            url: longUrl(i),
+            createdAt: '2026-11-10T10:00:00Z',
+          },
+        ],
+      })),
+      reviews: Array.from({ length: 8 }, (_, i) => ({
+        id: String(7200 + i),
+        author: 'alice',
+        state: 'CHANGES_REQUESTED',
+        body: 'Fix it.',
+        url: longUrl(100 + i),
+      })),
+    });
+    const delivery = t.use(new PullRequestFeedbackDelivery(t.ports()));
+    await t.deliverPlaced(delivery);
+    const [message] = t.feedbackPrompts();
+    expect(message!.length).toBeLessThanOrEqual(6000);
+    expect(message).toContain('Unresolved review threads (8):');
+    expect(message).toMatch(/- \(\d more threads\)/);
+    expect(t.store.claim(PR_KEY)?.condition).toBeUndefined();
+  });
 });
