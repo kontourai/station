@@ -1,7 +1,10 @@
 import { existsSync, realpathSync } from 'node:fs';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
-import { appHomeProfileDir } from '../app-home-profiles.js';
+import {
+  appHomeProfileDir,
+  ensureAppHomeProfile,
+} from '../app-home-profiles.js';
 import {
   CredentialProfileEnvUnavailableError,
   configuredEngineHomes,
@@ -299,5 +302,60 @@ describe('credentialProfileEnvForHome', () => {
         realpathSync(home),
       ),
     ).rejects.toBeInstanceOf(CredentialProfileEnvUnavailableError);
+  });
+
+  test("a home under the app homes that is no current profile's (a deleted profile) refuses; the legacy home does not", async () => {
+    const homeDir = await tempHome();
+    const deletedHome = (
+      await ensureCredentialProfileAppHome('codex', 'deleted', { homeDir })
+    ).dir;
+    const legacyHome = (await ensureAppHomeProfile('codex', { homeDir })).dir;
+    const options = {
+      engine: 'codex' as const,
+      homeDir,
+      // The profile was deleted; its directory stays behind.
+      loadConnectionSettings: async () => ({
+        credentialRecovery: { profiles: [{ ref: 'other' }] },
+      }),
+    };
+    await expect(
+      credentialProfileEnvForHome(options, realpathSync(deletedHome)),
+    ).rejects.toBeInstanceOf(CredentialProfileEnvUnavailableError);
+    await expect(
+      credentialProfileEnvForHome(options, realpathSync(legacyHome)),
+    ).resolves.toBeUndefined();
+  });
+
+  test('refusing an invalid overlay logs the profile storage id and variable names only', async () => {
+    const homeDir = await tempHome();
+    const home = (
+      await ensureCredentialProfileAppHome('codex', 'broken-ref', { homeDir })
+    ).dir;
+    const warn = vi.fn();
+    await expect(
+      credentialProfileEnvForHome(
+        {
+          engine: 'codex',
+          homeDir,
+          warn,
+          loadConnectionSettings: async () => ({
+            credentialRecovery: {
+              profiles: [
+                { ref: 'broken-ref', env: { OPENAI_API_KEY: 'value-canary' } },
+              ],
+            },
+          }),
+        },
+        realpathSync(home),
+      ),
+    ).rejects.toBeInstanceOf(CredentialProfileEnvUnavailableError);
+    expect(warn).toHaveBeenCalledTimes(1);
+    const message = String(warn.mock.calls[0]?.[0]);
+    expect(message).toContain(
+      credentialProfileStorageId('codex', 'broken-ref'),
+    );
+    expect(message).toContain('OPENAI_API_KEY');
+    expect(message).not.toContain('value-canary');
+    expect(message).not.toContain('broken-ref');
   });
 });

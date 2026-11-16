@@ -1093,6 +1093,10 @@ export class StationRuntime {
           engine: 'codex',
           loadConnectionSettings: async () =>
             (await this.configLoader.loadAppConfig()).agentConnections?.codex,
+          warn: (message) =>
+            (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(
+              message,
+            ),
         },
         sourceHome,
       ),

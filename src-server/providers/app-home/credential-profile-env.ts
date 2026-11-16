@@ -29,6 +29,7 @@ import {
 } from '../../services/connections/connection-env.js';
 import { errorMessage } from '../../utils/error-message.js';
 import {
+  appHomeProfileDir,
   appHomesRootDir,
   CredentialProfileEnvironmentError,
   claudeAppHomeEnv,
@@ -225,15 +226,18 @@ export async function configuredEngineHomes(
  * The env overlay of the credential profile whose home is `canonicalHome`
  * (a real path), for running a session discovered in that home: the same
  * overlay a profile spawn applies, so the profile's credentials meet the
- * profile's endpoint. `undefined` for a home that is no profile's (the
- * default home, a connection config home, the legacy app home); a home
- * outside Station's app homes is answered without reading configuration.
- * Throws {@link CredentialProfileEnvUnavailableError} for an invalid overlay.
+ * profile's endpoint. `undefined` for a home outside Station's app homes
+ * (the default home, a connection config home: answered without reading
+ * configuration) and for the legacy app home. Throws
+ * {@link CredentialProfileEnvUnavailableError} for an invalid overlay, and for
+ * any other app home no current profile owns: a deleted profile's home keeps
+ * its credentials, and running it without its overlay would send them to
+ * the ambient endpoint.
  */
 export async function credentialProfileEnvForHome(
   options: Pick<
     CredentialProfileAppHomeEnvOptions,
-    'loadConnectionSettings' | 'homeDir'
+    'loadConnectionSettings' | 'homeDir' | 'warn'
   > & { engine: CredentialProfileAppHomeEngine },
   canonicalHome: string,
 ): Promise<Record<string, string> | undefined> {
@@ -245,6 +249,18 @@ export async function credentialProfileEnvForHome(
   }
   const inside = relative(root, canonicalHome);
   if (!inside || inside === '..' || inside.startsWith(`..${sep}`))
+    return undefined;
+  const realOrNull = (path: string) => {
+    try {
+      return realpathSync(path);
+    } catch {
+      return null;
+    }
+  };
+  if (
+    realOrNull(appHomeProfileDir(options.engine, options.homeDir)) ===
+    canonicalHome
+  )
     return undefined;
   const settings = await options.loadConnectionSettings();
   const homeOptions = options.homeDir ? { homeDir: options.homeDir } : {};
@@ -265,13 +281,26 @@ export async function credentialProfileEnvForHome(
     } catch {
       continue;
     }
-    if (dir === canonicalHome)
+    if (dir !== canonicalHome) continue;
+    try {
       return credentialProfileOverlayEnv(
         settings?.credentialRecovery,
         profile.ref,
       );
+    } catch (error) {
+      // Server-side diagnostic: the storage id hash and offending variable
+      // names, never the raw ref or a value.
+      const names =
+        error instanceof CredentialProfileEnvUnavailableError
+          ? (error.invalidVariableNames ?? [])
+          : [];
+      options.warn?.(
+        `Credential profile ${credentialProfileStorageId(options.engine, profile.ref)} (${options.engine}): refusing to continue a session in its home: the saved env overlay is invalid${names.length > 0 ? ` (${names.join(', ')})` : ''}`,
+      );
+      throw error;
+    }
   }
-  return undefined;
+  throw new CredentialProfileEnvUnavailableError();
 }
 
 export interface CredentialProfileAppHomeEnvOptions {
