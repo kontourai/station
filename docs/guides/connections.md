@@ -1622,8 +1622,10 @@ its actions menu. Choosing one runs the same stage, restart and replay as
 automatic recovery, with the click in place of the `automatic` opt-in, and
 switches the connection's active profile like any profile application.
 Station does not know whether that account is limited too; if it is, the
-replay stops on its own usage limit. A profile that no longer qualifies leaves
-the stop waiting for its reset.
+replay stops on its own usage limit. An `allowancePreference` does not rank or
+exclude these choices. A profile that no longer qualifies leaves the stop
+waiting for its reset, and nothing is offered while automatic recovery is
+paused (see above).
 
 Claude Code offers no account here: its adapter declares profile application
 `unsupported`, because `CLAUDE_CONFIG_DIR` does not isolate the macOS Keychain

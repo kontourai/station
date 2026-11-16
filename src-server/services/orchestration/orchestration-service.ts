@@ -6079,6 +6079,8 @@ export class OrchestrationService {
     if (
       !list ||
       !this.credentialRecovery ||
+      // Blocked admission: no profile can be staged until it reconciles.
+      this.credentialRecovery.admission() !== undefined ||
       this.options.requireTenantExecutionContext?.() === true
     )
       return [];

@@ -702,6 +702,9 @@ describe('UsageLimitBanner (#3157)', () => {
         "Couldn't switch accounts. This conversation is still waiting.",
       );
       expect(button('Resume now')).not.toBeNull();
+      // Another action on the stop drops the stale switch message.
+      fireEvent.click(button('Resume now') as HTMLElement);
+      await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
     });
 
     test('a stop that is not waiting never asks which accounts it could continue on', async () => {

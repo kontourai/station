@@ -282,8 +282,9 @@ export interface UsageLimitContinueOnProfile {
 /**
  * The enrolled credential profiles a usage-limit stop still waiting may be
  * continued on ("Continue on <label>"), in enrollment order. Each passes the
- * same selection rules as automatic credential recovery except the
- * `automatic` opt-in, which the person's click replaces. Station does not know
+ * same selector as automatic credential recovery except the `automatic`
+ * opt-in, which the person's click replaces; the automatic path's optional
+ * allowance ranking and exclusion are not applied. Station does not know
  * whether these accounts are themselves limited. Empty when the engine cannot
  * switch profiles (Claude Code today), none qualifies, the stop is not
  * waiting, or the Station is hosted.

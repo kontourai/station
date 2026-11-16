@@ -988,6 +988,50 @@ describe('SessionRecoveryCoordinator', () => {
       vi.useRealTimers();
     });
 
+    test('while credential recovery admission is blocked it switches nothing and the reset timer survives', async () => {
+      const stage = vi.fn<TestCredentialRecoveryAdapter['stage']>(
+        async (input) =>
+          input.consentedProfileRef
+            ? { candidateProfileRef: 'work', capability: 'restart_resume' }
+            : undefined,
+      );
+      const { store, coordinator, restartResume, sendTurn } = setup(
+        stage,
+        () => true,
+      );
+      stopOnUsageLimit(store, coordinator);
+      await vi.advanceTimersByTimeAsync(0);
+      const internals = coordinator as unknown as {
+        credentialRecovery: { admission: () => string | undefined };
+      };
+      vi.spyOn(internals.credentialRecovery, 'admission').mockReturnValue(
+        'scan-unavailable',
+      );
+      stage.mockClear();
+
+      await expect(
+        coordinator.continueUsageLimitOnProfile(THREAD, 'work'),
+      ).resolves.toEqual({ kind: 'not-switched' });
+      expect(stage).not.toHaveBeenCalled();
+      expect(coordinator.latestProjection(THREAD)).toMatchObject({
+        outcome: 'armed',
+        dueAt: RESET_AT,
+      });
+
+      // Admission recovers before the reset: the original reset timer fires.
+      vi.mocked(internals.credentialRecovery.admission).mockReturnValue(
+        undefined,
+      );
+      await vi.advanceTimersByTimeAsync(
+        Date.parse(RESET_AT) - STOPPED_AT.getTime() + 1_000,
+      );
+      expect(sendTurn).toHaveBeenCalledOnce();
+      expect(restartResume).not.toHaveBeenCalled();
+      await coordinator.dispose();
+      store.close();
+      vi.useRealTimers();
+    });
+
     test('a newer turn retires the stop instead of switching accounts', async () => {
       const stage = vi.fn<TestCredentialRecoveryAdapter['stage']>(
         async (input) =>

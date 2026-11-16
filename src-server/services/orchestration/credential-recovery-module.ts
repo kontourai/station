@@ -48,7 +48,8 @@ export interface CredentialProfileRecoveryAdapter {
     recoveryFingerprint: string;
     /**
      * A person chose this profile for this stop ("Continue on <label>"); it
-     * replaces only the `automatic` opt-in, never the other selection rules.
+     * replaces the `automatic` opt-in, never the selector's other rules. The
+     * automatic path's allowance ranking and exclusion do not apply.
      */
     consentedProfileRef?: string;
   }): Promise<CredentialProfileStageOutcome>;

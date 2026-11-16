@@ -186,6 +186,8 @@ function UsageLimitBannerFor({
       setNotice(null);
       return;
     }
+    // A stop no longer waiting cannot still be "not switched".
+    setNotSwitched(false);
     if (!wasEngaged.current || recovery?.usageLimit !== true) return;
     // `resumed` is not an ending: the dispatch is in flight and can still end
     // failed, indeterminate or canceled. Reads stop being forced, but the next
@@ -294,7 +296,10 @@ function UsageLimitBannerFor({
           ? 'Your limit may not have reset yet.'
           : undefined
       }
-      onClick={() => resume.mutate()}
+      onClick={() => {
+        setNotSwitched(false);
+        resume.mutate();
+      }}
     >
       Resume now
     </Button>
@@ -307,12 +312,13 @@ function UsageLimitBannerFor({
         pending={resumeAtReset.isPending}
         pendingLabel="Saving…"
         disabled={busy}
-        onClick={() =>
+        onClick={() => {
+          setNotSwitched(false);
           resumeAtReset.mutate(undefined, {
             onSuccess: () =>
               writeSnooze(snoozeId, dueMs, Date.now(), namespace),
-          })
-        }
+          });
+        }}
       >
         Resume at {resetLabel}
       </Button>
@@ -324,11 +330,12 @@ function UsageLimitBannerFor({
         pending={hold.isPending}
         pendingLabel="Saving…"
         disabled={busy}
-        onClick={() =>
+        onClick={() => {
+          setNotSwitched(false);
           hold.mutate(undefined, {
             onSuccess: () => clearSnooze(snoozeId, Date.now(), namespace),
-          })
-        }
+          });
+        }}
       >
         Don't resume
       </Button>

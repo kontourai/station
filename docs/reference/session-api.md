@@ -2047,7 +2047,8 @@ in [contracts](contracts.md)). These routes serve the chat banner:
   (`UsageLimitContinueOnOptions`): the enrolled credential profiles
   (`ref`, optional `label`) a waiting stop may continue on, in enrollment
   order. It is empty for an engine that cannot apply a profile (Claude Code),
-  a stop that is not waiting, or a hosted Station.
+  a stop that is not waiting, a hosted Station, or while credential-recovery
+  admission is blocked.
   `POST /sessions/:threadId/usage-limit/continue-on` with `{ "profileRef" }`
   ("Continue on <label>") stages that profile and replays the stopped turn
   under it, through the same protocol as automatic credential recovery, with

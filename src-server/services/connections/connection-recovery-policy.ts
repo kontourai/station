@@ -63,7 +63,9 @@ export function selectCredentialRecoveryCandidate(input: {
   profiles?: readonly { ref: string; env?: unknown }[];
   /**
    * A person chose this candidate for this stop ("Continue on <label>"). It
-   * stands in for the `automatic` opt-in only; every other rule still holds.
+   * stands in for the `automatic` opt-in only; every rule in this selector
+   * still holds. (Allowance ranking and exclusion live in ConnectionService's
+   * automatic path, which a person's choice does not use.)
    */
   consented?: true;
 }): CredentialRecoveryCandidateSelection {

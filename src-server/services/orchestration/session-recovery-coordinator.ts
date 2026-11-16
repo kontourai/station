@@ -738,7 +738,9 @@ export class SessionRecoveryCoordinator {
    * other enrolled credential profile now, through the same stage, restart
    * and replay protocol as automatic credential recovery, with their click in
    * place of the `automatic` opt-in. The pre-dispatch checks apply first. A
-   * profile that no longer qualifies leaves the stop waiting as it was.
+   * profile that no longer qualifies leaves the stop waiting as it was. While
+   * credential recovery admission is blocked it does nothing: deferring would
+   * replace the reset timer with an admission retry that runs unconsented.
    */
   async continueUsageLimitOnProfile(
     threadId: string,
@@ -761,6 +763,10 @@ export class SessionRecoveryCoordinator {
         result = this.retireWaiting(current, 'canceled', obstacle)
           ? { kind: 'retired', reason: obstacle }
           : { kind: 'not-waiting' };
+        return;
+      }
+      if (this.credentialRecovery?.admission()) {
+        result = { kind: 'not-switched' };
         return;
       }
       const source = this.findSourceEvent(current);
