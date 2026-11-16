@@ -247,6 +247,12 @@ async function boot(options: {
   retargetsGrantedJob?: () => boolean;
   /** Who a person's request resolves to; default the operator. */
   requestUserId?: () => string;
+  /**
+   * How the auth boundary classifies a person's credential; default the
+   * operator's own credential. A paired device (another person's, or one
+   * without owner standing) is a `device-credential`.
+   */
+  credentialAuthority?: 'operator-credential' | 'device-credential';
 }): Promise<World> {
   const store = createSqliteAgentScheduleStore(new DatabaseSync(':memory:'));
   const pictureDb = new DatabaseSync(':memory:');
@@ -348,7 +354,8 @@ async function boot(options: {
         options.diagnosticGrantStore
           ? 'orchestration:read orchestration:operate access:manage'
           : 'orchestration:read orchestration:operate',
-      resolveCredentialAuthority: () => 'operator-credential',
+      resolveCredentialAuthority: () =>
+        options.credentialAuthority ?? 'operator-credential',
       now: () => Date.now(),
       maxFailures: 1_000,
       windowMs: 60_000,
@@ -3265,8 +3272,13 @@ describe('legacy scheduler diagnostics privacy', () => {
 describe('acting on an untargeted job is admitted against its owner', () => {
   const makeTempDir = trackTempDirs();
   const turns: string[] = [];
+  const runOwners: Array<string | undefined> = [];
 
-  async function ownedWorld(owner: string, requestUserId?: () => string) {
+  async function ownedWorld(
+    owner: string,
+    requestUserId?: () => string,
+    credentialAuthority?: 'operator-credential' | 'device-credential',
+  ) {
     const scheduler = new SchedulerService({
       logger: quietLogger(),
       builtin: {
@@ -3276,6 +3288,8 @@ describe('acting on an untargeted job is admitted against its owner', () => {
         turnAdapter: {
           invoke: async (input) => {
             turns.push(input.prompt);
+            // Who the run's Station tools act for (`createdBy`).
+            runOwners.push(input.receipt.job.createdBy?.userId);
             return { kind: 'completed', output: '' };
           },
         },
@@ -3286,6 +3300,7 @@ describe('acting on an untargeted job is admitted against its owner', () => {
       scheduler,
       retargetsGrantedJob: () => false,
       ...(requestUserId ? { requestUserId } : {}),
+      ...(credentialAuthority ? { credentialAuthority } : {}),
     });
     await scheduler.addJob({
       name: 'owned-job',
@@ -3305,12 +3320,116 @@ describe('acting on an untargeted job is admitted against its owner', () => {
 
   afterEach(() => {
     turns.length = 0;
+    runOwners.length = 0;
   });
 
-  test('another person (a second local account) cannot update or run it', async () => {
+  test.each([
+    ['DELETE', '/scheduler/jobs/owned-job'],
+    ['PUT', '/scheduler/jobs/owned-job/enable'],
+    ['PUT', '/scheduler/jobs/owned-job/disable'],
+  ])('another person cannot %s %s', async (method, path) => {
     const world = await ownedWorld(
       'human:local:person-a',
       () => 'human:local:person-b',
+      'device-credential',
+    );
+    try {
+      const response = await personRequest(
+        method,
+        path,
+        undefined,
+        world.at.baseUrl,
+      );
+      expect([response.status, response.body.code]).toEqual([
+        404,
+        'automation_not_found',
+      ]);
+      const [job] = await world.scheduler.listJobs();
+      expect(job?.name).toBe('owned-job');
+      expect(job?.enabled).toBe(true);
+    } finally {
+      await world.close();
+    }
+  });
+
+  // Owner decision 2026-11-16: the operator in person may manage any owned
+  // untargeted job; its runs still act as the job's owner.
+  test('the operator in person may edit, disable and delete a job a device owns', async () => {
+    const world = await ownedWorld('device:local:phone');
+    try {
+      const edited = await personRequest(
+        'PUT',
+        '/scheduler/jobs/owned-job',
+        { prompt: 'Revised by the operator' },
+        world.at.baseUrl,
+      );
+      expect(edited.status).toBe(200);
+      const disabled = await personRequest(
+        'PUT',
+        '/scheduler/jobs/owned-job/disable',
+        undefined,
+        world.at.baseUrl,
+      );
+      expect(disabled.status).toBe(200);
+      expect((await world.scheduler.listJobs())[0]).toMatchObject({
+        prompt: 'Revised by the operator',
+        enabled: false,
+        // Editing never changes who it runs as.
+        createdBy: { userId: 'device:local:phone' },
+      });
+      const deleted = await personRequest(
+        'DELETE',
+        '/scheduler/jobs/owned-job',
+        undefined,
+        world.at.baseUrl,
+      );
+      expect(deleted.status).toBe(200);
+      expect(await world.scheduler.listJobs()).toEqual([]);
+    } finally {
+      await world.close();
+    }
+  });
+
+  test('a run the operator triggers still acts as the device that owns the job', async () => {
+    const world = await ownedWorld('device:local:phone');
+    try {
+      const ran = await personRequest(
+        'POST',
+        '/scheduler/jobs/owned-job/run',
+        undefined,
+        world.at.baseUrl,
+      );
+      expect(ran.status).toBe(200);
+      await vi.waitFor(() => expect(runOwners).toEqual(['device:local:phone']));
+    } finally {
+      await world.close();
+    }
+  });
+
+  test('an agent acting for the operator gets no override on a job a device owns', async () => {
+    const world = await ownedWorld('device:local:phone');
+    try {
+      const edited = await agent(
+        'bound',
+        nextSession(),
+        'PUT',
+        '/scheduler/jobs/owned-job',
+        { prompt: 'Injected' },
+        world.at,
+      );
+      expect(edited.status).toBe(403);
+      expect((await world.scheduler.listJobs())[0]?.prompt).toBe('Original');
+    } finally {
+      await world.close();
+    }
+  });
+
+  test('another person (a second local account) cannot update or run it', async () => {
+    // Person B signs in on their own device: a device credential.
+    const world = await ownedWorld(
+      'human:local:person-a',
+      () => 'human:local:person-b',
+      'device-credential',
     );
     try {
       const edited = await personRequest(
@@ -3342,6 +3461,7 @@ describe('acting on an untargeted job is admitted against its owner', () => {
     const world = await ownedWorld(
       LOCAL_OPERATOR_PRINCIPAL_ID,
       () => 'device:local:phone',
+      'device-credential',
     );
     try {
       const edited = await personRequest(

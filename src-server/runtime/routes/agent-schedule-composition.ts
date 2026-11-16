@@ -33,7 +33,10 @@ import type {
   AutomationProposalOperator,
   AutomationProposalRoutesDeps,
 } from '../../routes/orchestration/automation-proposals.js';
-import { requestMayBeAnAgent } from '../../security/coding-authority.js';
+import {
+  isOperatorAtHostNotAgent,
+  requestMayBeAnAgent,
+} from '../../security/coding-authority.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import {
   type AutomationProposalStore,
@@ -323,10 +326,15 @@ function admitAutomationJobFor(
         code: 'automation_target_person_required',
         error: 'Sign in again to change this automation.',
       };
+    // #2377 slice D, owner decision 2026-11-16: the operator in person (the
+    // operator credential or home-possession, never an agent, never an owner
+    // device) may manage ANY owned untargeted job. Its runs still act as the
+    // job's recorded owner, never as the operator.
     const allowed =
       conversationId !== undefined
         ? requester.mayMutate(conversationId)
-        : requester.userId === job.createdBy?.userId;
+        : requester.userId === job.createdBy?.userId ||
+          (!job.target && isOperatorAtHostNotAgent(c.req.raw));
     return allowed
       ? { ok: true }
       : {
