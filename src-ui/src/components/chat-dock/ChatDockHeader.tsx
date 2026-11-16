@@ -11,6 +11,7 @@ import type { DockMode } from '../../types';
 import { isSessionWorkActive } from '../../utils/execution';
 import { useRegionChromeSlots } from '../../workspace-panes/RegionChromeSlots';
 import { requestTurnBrowser } from '../chat/transcript-turn-browser-events';
+import { SettingsGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import { NewChatAction } from '../NewChatAction';
 import {
@@ -164,8 +165,9 @@ interface ChatDockHeaderProps {
    */
   sessionContextChip?: React.ReactNode;
   /**
-   * The session context card carries the background-task count while it is
-   * beside the transcript, so the More trigger does not repeat it.
+   * The session context card is beside the transcript and carries the
+   * background-task count and Background tasks, so the More menu repeats
+   * neither (the count on its trigger nor the row).
    */
   backgroundTasksBadgeHidden?: boolean;
 }
@@ -260,7 +262,7 @@ export function ChatDockHeader({
       : []),
     // The active chat's own rows lead its group; the dock's follow.
     ...(moreActions ?? []),
-    ...(workspaceControls
+    ...(workspaceControls && !backgroundTasksBadgeHidden
       ? [
           {
             key: 'background-tasks',
@@ -278,6 +280,8 @@ export function ChatDockHeader({
           },
         ]
       : []),
+    // The full inventory reader: the card's footer link opens the compact
+    // view beside the transcript, so this row stays even while the card shows.
     ...(inventory
       ? [
           {
@@ -320,16 +324,6 @@ export function ChatDockHeader({
             label: 'Browse turns',
             haspopup: 'dialog' as const,
             onSelect: () => requestTurnBrowser(inventory.chatStoreId),
-          },
-        ]
-      : []),
-    ...(chatControls
-      ? [
-          {
-            key: 'chat-settings',
-            label: 'Chat settings',
-            onSelect: () =>
-              chatControls.setShowChatSettings((previous) => !previous),
           },
         ]
       : []),
@@ -464,6 +458,21 @@ export function ChatDockHeader({
             }}
           />
         )}
+      {/* Chat settings is a verb about the chat on screen and used often
+          enough to keep its own icon beside the menu (it was a row of it). */}
+      {chatControls ? (
+        <button
+          type="button"
+          className="chat-dock__icon-btn chat-dock__settings-btn"
+          aria-label="Chat settings"
+          title="Chat settings"
+          onClick={() =>
+            chatControls.setShowChatSettings((previous) => !previous)
+          }
+        >
+          <SettingsGlyph />
+        </button>
+      ) : null}
       {/* The working chats are rows of this menu, so choosing one may hand
           focus on to that chat's composer (`useWorkingChatFocus`). */}
       <span className="chat-dock__more" data-working-chat-origin="">
