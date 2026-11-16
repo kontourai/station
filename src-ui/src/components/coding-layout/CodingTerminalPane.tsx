@@ -16,6 +16,10 @@ import {
 import { Button } from '../Button';
 import { ErrorState, SkeletonBlock } from '../state';
 import { CodingTerminalPanel } from './CodingTerminalPanel';
+import {
+  consumeProjectShellRequest,
+  useProjectShellRequest,
+} from './terminalShellRequest';
 import './CodingLayout.css';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import { NewTerminalModal } from './NewTerminalModal';
@@ -499,15 +503,23 @@ export function CodingTerminalPane({
   // rather than adding one. Closing the last tab leaves it closed.
   const shellOpened = useRef(false);
   const open = placement === 'pane' ? true : terminalOpen;
+  // An explicit "Open terminal" (`requestProjectShell`) has already chosen a
+  // shell, so it opens one even where the pane would show its chooser, and
+  // even into a pane that is already mounted — but still adopts a session
+  // this binding already has rather than adding one.
+  const shellRequested = useProjectShellRequest(projectSlug);
   useEffect(() => {
-    if (shellOpened.current || !open || !shellIsTheOnlyKind || !listed) return;
+    if (!open || !listed) return;
+    const requested = shellRequested && consumeProjectShellRequest(projectSlug);
+    if (!requested && (shellOpened.current || !shellIsTheOnlyKind)) return;
     shellOpened.current = true;
     // "The reader closed the last terminal" is remembered in the browser
     // tab's session storage, keyed by Project, so a remount — a reload, a
     // crossing of the layout's fold — does not open a shell they just
     // closed, while another Project's empty panel still opens one. Opening
     // one again forgets it.
-    if (tabs.length > 0 || readClosedLastTerminal(projectSlug)) return;
+    if (tabs.length > 0) return;
+    if (!requested && readClosedLastTerminal(projectSlug)) return;
     // The server opens it, or answers with the shell another view or device
     // opened at the same moment: one shell, not two. A host without that
     // answer gets a local tab, which opens its shell through the socket.
@@ -554,6 +566,7 @@ export function CodingTerminalPane({
     queryClient,
     sessionsKey,
     shellIsTheOnlyKind,
+    shellRequested,
     tabs.length,
   ]);
 

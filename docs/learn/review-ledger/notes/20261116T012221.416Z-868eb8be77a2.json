@@ -1,0 +1,7 @@
+{
+  "revision": "fc213e17fcbb3b28883d2086f1fe277eb87a1fb2",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"fc213e17fc reads a 1.x-layout opencode-next.db beside a 2.x store with duplicate sessions kept from the 2.x copy, and warns once on a compaction held past 15 minutes. Re-read the external transcript import and source-home lines citing the source: ordering, observation-only source root and no continuation are unchanged. No prose change needed.","inputs":["src-server/providers/sessions/opencode-session-source.ts"]}
+  ]
+}

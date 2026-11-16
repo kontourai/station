@@ -397,6 +397,6 @@
 .appearance-custom__problems {
   margin: 0;
   padding-left: 1.25em;
-  color: var(--error-text);
+  color: var(--k-negative);
   font-size: var(--k-text-sm);
 }

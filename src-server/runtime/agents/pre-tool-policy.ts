@@ -4,12 +4,14 @@ import {
   mcpToolApprovalKey,
   resolveAuthoredToolApproval,
 } from '@kontourai/station-shared/mcp-tool-selection';
+import { toolRequestChangesAuthority } from '@kontourai/station-shared/tool-request-preview';
 import type { AgentPolicyService } from '../../services/agents/agent-policy-service.js';
 import type { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
 import {
   type GuardianDenialLedger,
   sharedGuardianDenialLedger,
 } from '../../services/approvals/guardian-conversation.js';
+import { recordPersonApprovedExternalTool } from '../../services/plugins/mediated-untrusted-content-gate.js';
 import {
   isPersistenceRelevantTool,
   untrustedPersistenceTarget,
@@ -90,6 +92,11 @@ export type StagedPreToolPolicyEvaluator = (
     /** True only when managed hooks can actually ask a current requester. */
     hasInteractiveApproval?: boolean;
     identity?: PreToolPolicyToolIdentity;
+    /**
+     * The engine is running at full access (Claude `bypassPermissions`):
+     * an untrusted-content ask is not raised. Refusals still apply.
+     */
+    fullAccess?: boolean;
   },
 ) => Promise<PreToolPolicyDecision>;
 
@@ -558,18 +565,18 @@ export function createStagedPreToolPolicyEvaluator(
     // A required question. An enforce-mode guardian may still refuse it, but
     // nothing below (a tool grant, a guardian allow, an unattended opt-in)
     // can answer it instead of a person.
-    const requiredAsk = async (): Promise<PreToolPolicyDecision> => {
-      const review = await reviewWithGuardian(deps, tool, invocation, options);
+    const requiredAsk = async (
+      reviewed?: GuardianOutcome,
+      noChannelPredicate = 'requires a person to approve this call.',
+    ): Promise<PreToolPolicyDecision> => {
+      const review =
+        reviewed ?? (await reviewWithGuardian(deps, tool, invocation, options));
       if (review.kind === 'decided' && review.decision.behavior === 'deny')
         return review.decision;
       if (invocation.delegation?.denyApprovals)
         return delegatedApprovalDenial(tool.toolName, options.interaction);
       if (options.interaction === 'managed' && !options.hasInteractiveApproval)
-        return deny(
-          'no_approval_channel',
-          tool.toolName,
-          'requires a person to approve this call.',
-        );
+        return deny('no_approval_channel', tool.toolName, noChannelPredicate);
       return { behavior: 'ask', required: true };
     };
 
@@ -610,6 +617,39 @@ export function createStagedPreToolPolicyEvaluator(
       );
     }
 
+    // Owner decision (2026-11-16): a built-in tool that changes who or what
+    // holds authority asks a person on every call, full access included.
+    // Matched on the name the engine called and, on the Station engine, on
+    // the loader's provenance, so neither naming form slips past.
+    const provenance =
+      tool.mcp?.provenance ??
+      deps.toolNameMapping.get(tool.toolName)?.provenance;
+    if (
+      toolRequestChangesAuthority(tool.toolName) ||
+      (provenance !== undefined &&
+        toolRequestChangesAuthority(
+          `${provenance.integrationId}_${provenance.originalToolName}`,
+        ))
+    ) {
+      // No pattern, session grant or full access answers it. On Station's
+      // own engine (voice and other unattended runs included) an approval
+      // guardian the operator enabled still may, as it may any mutation
+      // there (archive#2016: one approval mechanism on every surface). An
+      // external engine at full access would run a guardian-allowed call
+      // unasked, so there a person is always asked.
+      const review = await reviewWithGuardian(deps, tool, invocation, options);
+      if (
+        options.interaction === 'managed' &&
+        review.kind === 'decided' &&
+        review.decision.behavior === 'allow'
+      )
+        return review.decision;
+      return requiredAsk(
+        review,
+        'changes who or what holds authority in Station, so a person must approve it, but this run has no approval channel to ask (unattended runs — scheduled jobs, /invoke, CLI — have no one to consent).',
+      );
+    }
+
     const untrusted = await deps.untrustedContentPermission?.(tool, invocation);
     if (untrusted === 'deny') {
       deps.logger.warn('Untrusted-content permission refused tool execution', {
@@ -623,7 +663,23 @@ export function createStagedPreToolPolicyEvaluator(
         "was refused: this turn read content written by others, and this tool is set to refuse after that. Change it in the tool's untrusted-content permission.",
       );
     }
-    if (untrusted === 'ask') return requiredAsk();
+    // Owner decision (2026-11-16): under full access the person has already
+    // said not to be asked, so the untrusted-content ASK is not raised (a
+    // browser snapshot otherwise made every later browser call prompt). A
+    // configured refusal above and the persistence protection still apply.
+    if (untrusted === 'ask') {
+      if (!options.fullAccess) return requiredAsk();
+      // The Station seam that carries this call (station-control, the OAuth
+      // proxy) passes an untrusted `ask` only on a person's recorded
+      // approval. Full access is that person's standing answer, recorded only
+      // by them or a device holding `approval:full-access`, so it is recorded
+      // here as the prompt's answer would have been.
+      if (options.interaction === 'external' && invocation.conversationId)
+        recordPersonApprovedExternalTool(
+          invocation.conversationId,
+          tool.toolName,
+        );
+    }
 
     const approvalName = options.identity?.delegationToolName ?? tool.toolName;
     const mapping = deps.toolNameMapping.get(approvalName);

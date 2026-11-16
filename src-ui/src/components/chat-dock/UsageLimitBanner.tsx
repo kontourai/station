@@ -23,6 +23,14 @@ const NOTICE_MS = 10_000;
 const SETTLE_MS = 1_500;
 const MAX_TIMER_MS = 2 ** 31 - 1 - SETTLE_MS;
 
+/**
+ * "Continue on" changes the connection's active account: every chat that
+ * starts or restarts on it without its own pinned profile uses it, including
+ * other people's and restored chats.
+ */
+const SWITCH_DISCLOSURE =
+  'Chats that start or restart on this connection use this account, for everyone.';
+
 const RETIRED_COPY: Record<ConnectionRecoveryOutcomeReason, string> = {
   'auto-resume-off': 'Auto-resume is off.',
   superseded: 'Auto-resume canceled: a newer message was sent.',
@@ -124,13 +132,27 @@ function UsageLimitBannerFor({
   const { namespace } = useAuthorityPersistence();
   const [engaged, setEngaged] = useState(false);
   const enabled = active || engaged;
-  const { recovery, refetch, resume, resumeAtReset, hold } =
-    useUsageLimitRecovery({
-      apiBase,
-      scope,
-      threadId,
-      enabled,
-    });
+  const {
+    recovery,
+    refetch,
+    resume,
+    resumeAtReset,
+    hold,
+    continueOnProfiles,
+    continueOnStopId,
+    continueOn,
+  } = useUsageLimitRecovery({
+    apiBase,
+    scope,
+    threadId,
+    enabled,
+  });
+  const [notSwitched, setNotSwitched] = useState(false);
+  /**
+   * The account a switch went to. A switch resumes its own stop, so it is
+   * cleared as soon as any stop waits again: a later stop never reports it.
+   */
+  const [switched, setSwitched] = useState<{ label: string } | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [notice, setNotice] = useState<string | null>(null);
   const wasEngaged = useRef(false);
@@ -176,8 +198,12 @@ function UsageLimitBannerFor({
       wasEngaged.current = true;
       setEngaged(true);
       setNotice(null);
+      // A switch resumes its own stop, so a stop waiting again is a new one.
+      setSwitched(null);
       return;
     }
+    // A stop no longer waiting cannot still be "not switched".
+    setNotSwitched(false);
     if (!wasEngaged.current || recovery?.usageLimit !== true) return;
     // `resumed` is not an ending: the dispatch is in flight and can still end
     // failed, indeterminate or canceled. Reads stop being forced, but the next
@@ -226,7 +252,9 @@ function UsageLimitBannerFor({
           data-testid="usage-limit-banner"
         >
           <p className="usage-limit-banner__body" role="status">
-            Resuming this conversation…
+            {switched
+              ? `Resuming on ${switched.label}, now this connection’s account for everyone.`
+              : 'Resuming this conversation…'}
           </p>
         </section>
       );
@@ -252,8 +280,35 @@ function UsageLimitBannerFor({
       : dueKnown
         ? null
         : 'Reset time unknown. Resume when your limit is back.';
-  const failed = resume.isError || resumeAtReset.isError || hold.isError;
-  const busy = resume.isPending || resumeAtReset.isPending || hold.isPending;
+  const failed =
+    resume.isError ||
+    resumeAtReset.isError ||
+    hold.isError ||
+    continueOn.isError;
+  const busy =
+    resume.isPending ||
+    resumeAtReset.isPending ||
+    hold.isPending ||
+    continueOn.isPending;
+  const continueOnActions = continueOnProfiles.map((profile) => ({
+    key: `continue-on:${profile.ref}`,
+    label: `Continue on ${profile.label || profile.ref}`,
+    ref: profile.ref,
+    account: profile.label || profile.ref,
+  }));
+  const continueOnProfile = (profileRef: string, label: string) => {
+    if (!continueOnStopId) return;
+    setNotSwitched(false);
+    continueOn.mutate(
+      { profileRef, stopId: continueOnStopId },
+      {
+        onSuccess: ({ result }) => {
+          setNotSwitched(result?.kind === 'not-switched');
+          if (result?.kind === 'resumed') setSwitched({ label });
+        },
+      },
+    );
+  };
   const resumeNowButton = (
     <Button
       variant={canChoose && !autoOn ? 'secondary' : 'primary'}
@@ -266,7 +321,10 @@ function UsageLimitBannerFor({
           ? 'Your limit may not have reset yet.'
           : undefined
       }
-      onClick={() => resume.mutate()}
+      onClick={() => {
+        setNotSwitched(false);
+        resume.mutate();
+      }}
     >
       Resume now
     </Button>
@@ -279,12 +337,13 @@ function UsageLimitBannerFor({
         pending={resumeAtReset.isPending}
         pendingLabel="Saving…"
         disabled={busy}
-        onClick={() =>
+        onClick={() => {
+          setNotSwitched(false);
           resumeAtReset.mutate(undefined, {
             onSuccess: () =>
               writeSnooze(snoozeId, dueMs, Date.now(), namespace),
-          })
-        }
+          });
+        }}
       >
         Resume at {resetLabel}
       </Button>
@@ -296,15 +355,44 @@ function UsageLimitBannerFor({
         pending={hold.isPending}
         pendingLabel="Saving…"
         disabled={busy}
-        onClick={() =>
+        onClick={() => {
+          setNotSwitched(false);
           hold.mutate(undefined, {
             onSuccess: () => clearSnooze(snoozeId, Date.now(), namespace),
-          })
-        }
+          });
+        }}
       >
         Don't resume
       </Button>
     ) : undefined;
+
+  const secondary = resumeAtButton ? resumeNowButton : dontResumeButton;
+  // "Continue on <label>" takes the free labelled slot when there is one;
+  // otherwise, and for any further account, it waits behind the menu.
+  const [firstContinueOn, ...moreContinueOn] = continueOnActions;
+  const continueOnButton =
+    !secondary && firstContinueOn ? (
+      <Button
+        size="sm"
+        pending={continueOn.isPending}
+        pendingLabel="Switching…"
+        disabled={busy}
+        title={SWITCH_DISCLOSURE}
+        onClick={() =>
+          continueOnProfile(firstContinueOn.ref, firstContinueOn.account)
+        }
+      >
+        {firstContinueOn.label}
+      </Button>
+    ) : undefined;
+  const overflow = (continueOnButton ? moreContinueOn : continueOnActions).map(
+    ({ key, label, ref, account }) => ({
+      key,
+      label,
+      disabled: busy,
+      onSelect: () => continueOnProfile(ref, account),
+    }),
+  );
 
   return (
     <section
@@ -344,13 +432,18 @@ function UsageLimitBannerFor({
         <p className="usage-limit-banner__error" role="alert">
           That didn't go through. Try again.
         </p>
+      ) : notSwitched ? (
+        <p className="usage-limit-banner__error" role="alert">
+          Couldn't switch accounts, so nothing changed.
+        </p>
       ) : null}
       {/* Two actions at most: the choice this stop offers, and Resume now. */}
       <ActionRow
         className="usage-limit-banner__actions"
         overflowLabel="More usage limit actions"
         primary={resumeAtButton ?? resumeNowButton}
-        secondary={resumeAtButton ? resumeNowButton : dontResumeButton}
+        secondary={secondary ?? continueOnButton}
+        overflow={overflow}
       />
     </section>
   );

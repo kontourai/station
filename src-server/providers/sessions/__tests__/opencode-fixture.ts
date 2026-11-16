@@ -135,6 +135,11 @@ export class OpenCodeFixtureWriter {
     return this.clock;
   }
 
+  /** Moves the writer's clock forward to `time` (epoch ms), never back. */
+  advanceTo(time: number): void {
+    this.clock = Math.max(this.clock, time);
+  }
+
   /** Ascending, prefix-typed ids like `Identifier.ascending`. */
   nextId(prefix: 'msg' | 'prt'): string {
     this.counter += 1;

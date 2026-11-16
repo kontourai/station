@@ -781,10 +781,12 @@ export const STATION_CONTROL_TOOL_POLICY = {
   },
   // Decision 2: the saved SSH environments are the operator's Station-wide
   // configuration (the same view `get_ssh_environment` gives), so listing
-  // them is an operator-wide read. No other entry reaches the leaf.
+  // them is an operator-wide read. No other entry reaches the leaf. The
+  // paired-Station list (secret-free summaries with readiness) is the same
+  // operator-wide configuration, read at the same bound-operator tier.
   list_delegation_environments: {
     ...OPERATOR_READ,
-    routes: [get('/api/environments/ssh')],
+    routes: [get('/api/environments/ssh'), get('/api/environments/peers')],
   },
   list_delegation_targets: {
     // Decision 1: discovery may reconnect a saved SSH environment. Since

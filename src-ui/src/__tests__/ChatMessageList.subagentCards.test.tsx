@@ -1147,7 +1147,7 @@ describe('subagent transcript cards', () => {
     expect(within(cards[1]).getByText('second')).toBeTruthy();
   });
 
-  test('completion notices merge into represented cards while a child without a loaded spawn keeps its notice', async () => {
+  test('completion summaries retain child identity when their spawn is outside the loaded window', async () => {
     activeChatsStore.initChat(THREAD, {
       agentSlug: 'station',
       agentName: 'Station',
@@ -1174,6 +1174,11 @@ describe('subagent transcript cards', () => {
     const notices =
       activeChatsStore.getSnapshot()[THREAD].ephemeralMessages ?? [];
     expect(notices).toHaveLength(2);
+    expect(notices[1].backgroundTaskNotice?.child).toMatchObject({
+      childId: 'unanchored',
+      status: 'completed',
+      result: { summary: 'Other result' },
+    });
     windowEvents.current = [...spawningTurn(), ...settles('Review complete')];
     renderTranscript({ ...chatSession(), messages: notices });
     await findCard();

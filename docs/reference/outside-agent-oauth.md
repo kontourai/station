@@ -159,7 +159,10 @@ setup belongs to R6; these inert endpoints are not an end-user integration examp
 The negative outside-token audience middleware is live in release builds even
 while `/mcp` itself remains compiled off. It matches only complete 47-character
 outside artifacts (`oat_`/`ort_`/`oac_` plus 43 base64url characters), avoiding
-prefix collisions with 43-character Station credentials. Present invalid
+prefix collisions with 43-character Station credentials. Authorization request
+IDs (`oar_`) and grant IDs (`oag_`) have the same 47-character shape but are opaque
+identifiers, not tokens, so the middleware does not match them. Their prefix
+keeps the host CLI from reading an ID that starts with `--` as a flag. Present invalid
 bearers on the isolated router receive `error="invalid_token"` in the 401
 challenge; anonymous requests retain the resource-metadata challenge without
 that error. Session termination returns HTTP 404 / JSON-RPC `-32001` for a pending

@@ -79,7 +79,7 @@ function HealthChecksSection({ event }: { event: MonitoringEvent }) {
 
   return (
     <details className="log-details">
-      <summary>Health Checks</summary>
+      <summary>Health checks</summary>
       <div className="health-checks-list">
         {Object.entries(checks).map(([key, value]) => (
           <div key={key} className="health-check-item">
@@ -282,7 +282,7 @@ function UsageStatsSection({ event }: { event: MonitoringEvent }) {
         )}
         {event[K.OUTPUT_TOKENS] !== undefined && (
           <>
-            <div className="usage-stat-label">Output Tokens:</div>
+            <div className="usage-stat-label">Output tokens:</div>
             <div className="usage-stat-value">
               {(event[K.OUTPUT_TOKENS] as number).toLocaleString()}
             </div>

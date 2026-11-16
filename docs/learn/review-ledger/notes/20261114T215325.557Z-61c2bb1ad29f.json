@@ -1,0 +1,9 @@
+{
+  "revision": "9764670af5e38efab687910dd2e11a17db6efba6",
+
+  "notes": [
+    {"path":"docs/design/survey-flow-review.md","note":"Reviewed this branch's delta to runtime-routes.ts after merging main: it mounts the /remote-task-engines routes behind the remote-task-engines preview, passes the managed policy to the remote task service, and builds its tracker; no Flow route, mount order or guard changes. This document describes the project Flow review routes, which this change does not touch, so its claims stand.","inputs":["docs/design/survey-flow-review.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed this branch's delta to pairing-route-scopes.ts after merging main: it adds /remote-task-engines to the scoped prefixes (reads need orchestration:read, changes orchestration:operate) and its credential leaf to engine:login; the home:transfer scope and its routes are unchanged, so this guide's claims stand.","inputs":["docs/guides/home-transfer-controller.md","src-server/security/pairing-route-scopes.ts"]}
+  ]
+}

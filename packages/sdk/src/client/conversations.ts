@@ -106,7 +106,8 @@ export async function searchConversationMessages(
     // A non-2xx keeps its status; an unreadable 2xx is a protocol failure
     // with no failure status to carry (#2708, as `readEnvelopeOrThrow`).
     if (!response.ok) throw envelopeError(response, undefined, unreadable);
-    throw new Error(unreadable);
+    // The cause keeps why the body was unreadable (a byte ceiling, say).
+    throw Object.assign(new Error(unreadable), { cause: error });
   }
   if (!response.ok || !result.success) {
     // #2708: a 2xx `success:false` is a refusal too, and keeps its observed
@@ -375,18 +376,23 @@ export async function getConversationTurnDirectory(
   apiBase: string,
   conversationId: string,
   cursor?: string,
-  opts?: ClientRequestOptions,
+  opts?: ClientRequestOptions & { turnCountSnapshot?: number },
 ): Promise<ConversationTurnDirectory | null> {
-  const params = new URLSearchParams({ turnLimit: '25' });
+  const { turnCountSnapshot, ...requestOptions } = opts ?? {};
+  const params = new URLSearchParams({ turnLimit: '100' });
   if (cursor) params.set('cursor', cursor);
+  if (turnCountSnapshot !== undefined) params.set('includeCount', 'false');
   const response = await getJson(
-    `${apiBase}/api/orchestration/session-reads/${encodeURIComponent(conversationId)}/digest?${params}`,
-    opts,
+    `${apiBase}/api/orchestration/session-reads/${encodeURIComponent(conversationId)}/turn-directory?${params}`,
+    requestOptions,
   );
   if (response.status === 404) return null;
   const result =
     await readConversationEnvelope<ConversationTurnDirectory>(response);
   if (!response.ok || !result.success || !result.data)
     throw envelopeError(response, result, 'Could not read the turn directory');
-  return result.data;
+  const turnCount = result.data.session.turnCount ?? turnCountSnapshot;
+  if (turnCount === undefined)
+    throw new Error('Turn directory count was not supplied');
+  return { ...result.data, session: { ...result.data.session, turnCount } };
 }

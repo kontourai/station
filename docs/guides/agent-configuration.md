@@ -52,7 +52,8 @@ proposal in the Board. **Build with chat** offers context in a new projectless
 chat without sending it; see [Personal Boards](../user/personal-boards.md).
 
 Station Control publishes native MCP titles, behavioral annotations and
-`ai.kontour/tool-group` hints. These catalog hints do not grant access or change
+`ai.kontour/tool-group` hints. Each tool's group is stated, not inferred from
+its name; device and browser tools are grouped as Devices and Browser. These catalog hints do not grant access or change
 approval rules. MCP has no standard category field; grouping does not require
 separate servers.
 
@@ -146,8 +147,10 @@ the harness configuration; existing Agents keep their previous behavior until
 you change this switch. Turning it off replaces the configured MCP list; the harness keeps its built-in tools. Claude
 also offers **Harness default**, **On demand**, and **Always available** loading.
 On demand uses Claude's native tool search and requires a compatible model and
-endpoint; it is not a Station search proxy. Other engines keep their own loading
-behavior.
+endpoint; it is not a Station search proxy. Only On demand also adds Station's
+line telling Claude to load the Station tools it names with ToolSearch; under
+Harness default, Claude Code decides whether to defer tools. Other engines keep
+their own loading behavior.
 
 `tools` selects MCP connections and exposed tools. Station applies its runtime
 filter; Claude applies SDK exclusions plus a pre-tool refusal, and Codex receives
@@ -404,6 +407,26 @@ plan exit, a question, or a sandbox network-host ask. A guardian deny in
 approvals is denied an escalation at once, guardian allow or not. With the
 guardian enabled, a headless run on these engines that reaches an escalation
 waits on an approval request where it used to run on the guardian's allow.
+
+### A person's session answer, full access, and authority tools
+
+A person's own **Allow … for this session** is offered on every tool
+approval, including the escalations listed above (owner decision,
+2026-11-16). It covers what it was given on: an answer to a plain call
+covers later plain calls of that tool, and only an answer to an escalation
+also covers the tool's later escalations. A pattern and a guardian allow keep
+the limits above.
+
+Full access means no prompts: the untrusted-content ask is not raised at full
+access on Claude Code, Codex, OpenCode or a Station-governed ACP session; a
+tool set to refuse after untrusted content still refuses.
+
+The station-control tools that change who or what holds authority (Station
+configuration, creating or updating Agents, plugins, deleting integrations,
+skills and SSH hosts) ask a person on every call on every engine, at full
+access too, and offer no session option. On Station's own engine an approval
+guardian you enabled may still allow one, as it may any mutation there
+([delivery boundary](../conformance/tool-policy-delivery.md#built-in-tools-that-change-authority)).
 
 ### Unattended runs
 

@@ -83,8 +83,10 @@ import {
   toolRequestRuleGrant,
   toolRequestServerGrant,
   toolRequestSessionGrant,
+  toolRequestStrictSessionGrant,
 } from '@kontourai/station-shared/tool-request-preview';
 import { NATIVE_SESSION_RESUMED_METADATA_KEY } from '@kontourai/station-shared/usage-fold';
+import { claudeToolSearchEnv } from '../../runtime/agents/claude-tool-search.js';
 import {
   delegatedApprovalDenial,
   type PreToolPolicyDecision,
@@ -319,6 +321,12 @@ type PendingRequest = {
    * whether the approval surfaces offer it.
    */
   sessionGrant: ToolRequestSessionGrant;
+  /**
+   * The request is an escalation (`toolRequestStrictSessionGrant` gives no
+   * tool grant): a session answer to it also covers the tool's later
+   * escalations, where one given on a plain call covers plain calls only.
+   */
+  escalation: boolean;
   /**
    * Whether the request offered the server-wide Station browser grant: the
    * same `toolRequestServerGrant` computation the surfaces offer from.
@@ -895,6 +903,15 @@ type ClaudeSessionRecord = {
    * `approvedTools`) so the grant covers the whole tool for this session.
    */
   approvedTools: Set<string>;
+  /**
+   * Owner decision (2026-11-16): tools a person allowed for the session when
+   * answering an ESCALATION of them (a safety check, a path outside the
+   * session's folders, a rule- or hook-forced ask). Only these grants answer
+   * a later escalation; one given on a plain call (`approvedTools` alone)
+   * never does, so an ordinary "allow all" cannot silently cover the risky
+   * case.
+   */
+  approvedToolEscalations: Set<string>;
   /**
    * Server-wide session grants from an `acceptForSession` answer carrying
    * `sessionGrantScope: 'server'`: the MCP server ids whose every later
@@ -1621,6 +1638,8 @@ async function evaluateClaudePreToolPolicy(
     toolName: string,
     toolInput: unknown,
   ) => void,
+  /** The engine runs at `bypassPermissions` for this call. */
+  fullAccess = false,
 ) {
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -1635,6 +1654,7 @@ async function evaluateClaudePreToolPolicy(
         {
           interaction: 'external',
           identity: externalPreToolPolicyIdentity(input.tool_name),
+          ...(fullAccess ? { fullAccess } : {}),
         },
       ),
       new Promise<PreToolPolicyDecision>((resolve) => {
@@ -2703,6 +2723,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         : {}),
       pendingRequests: new Map(),
       approvedTools: new Set(),
+      approvedToolEscalations: new Set(),
       serverGrants: new Set(),
       stationBrowserVerified: false,
       stationBrowserDelivered:
@@ -3781,6 +3802,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       scope === undefined
     ) {
       record.approvedTools.add(pending.toolName);
+      if (pending.escalation)
+        record.approvedToolEscalations.add(pending.toolName);
     }
     // Owner decision: the typed `sessionGrantScope: 'server'` widens the
     // answer to the Station browser server, only where the request offered it
@@ -3811,7 +3834,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             // Full access is the server's recorded decision alone: an
             // engine-suggested switch into it is never forwarded, even under
             // a tool grant that forwards every other suggestion.
-            sessionGrantPermissionUpdates(grant, pending.suggestions).filter(
+            sessionGrantPermissionUpdates(
+              // A tool grant widened onto an escalation (owner decision
+              // 2026-11-16) is Station's own: it forwards none of the
+              // engine's suggestions, so a full-access or plan-mode session
+              // is never switched to acceptEdits by it.
+              grant === 'tool' && pending.escalation ? 'none' : grant,
+              pending.suggestions,
+            ).filter(
               (update) =>
                 !(
                   update.type === 'setMode' &&
@@ -4704,6 +4734,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         : [CLAUDE_ARTIFACT_TOOL_NAME]),
     ];
     const resumeSessionId = claudeResumeSessionId(input.resumeCursor);
+    const toolSearchEnv = claudeToolSearchEnv(input.agent?.toolServerLoading);
     return {
       cwd: input.cwd,
       ...(disallowedTools.length ? { disallowedTools } : {}),
@@ -4840,12 +4871,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ...(augmentedEnv ?? process.env),
         ...connectionEnv,
         ...appHomeEnv,
-        ...(input.agent?.toolServerLoading
-          ? {
-              ENABLE_TOOL_SEARCH:
-                input.agent.toolServerLoading === 'always' ? 'false' : 'true',
-            }
-          : {}),
+        // The same rule decides whether Station's instructions say its
+        // tools load on demand (`session-agent-resolution.ts`).
+        ...(toolSearchEnv ? { ENABLE_TOOL_SEARCH: toolSearchEnv } : {}),
         // After every caller/ambient layer: the Station setting owns this
         // key (see `claudeArtifactsSpawnEnv`).
         ...artifactsEnv,
@@ -4998,11 +5026,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         const sessionGrant = toolRequestSessionGrant(request);
         const serverGrant = toolRequestServerGrant(request);
         const ruleGrant = toolRequestRuleGrant(request);
+        // A plain call is answered by any tool grant; an escalation only by a
+        // grant a person gave on an escalation of the same tool.
+        const escalation = toolRequestStrictSessionGrant(request) !== 'tool';
         if (
           !inputRequest &&
           !explicitAsk &&
-          record.approvedTools.has(toolName) &&
-          sessionGrant === 'tool'
+          sessionGrant === 'tool' &&
+          (escalation
+            ? record.approvedToolEscalations.has(toolName)
+            : record.approvedTools.has(toolName))
         ) {
           return { behavior: 'allow', updatedInput: toolInput };
         }
@@ -5099,6 +5132,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             toolName,
             ...(options.agentID ? { agentId: options.agentID } : {}),
             sessionGrant,
+            escalation,
             serverGrant,
             ...(ruleGrant ? { ruleGrant } : {}),
             eventId,
@@ -5240,6 +5274,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                         this.options.preToolPolicyTimeoutMs ??
                           DEFAULT_PRE_TOOL_POLICY_TIMEOUT_MS,
                         rememberPolicyAllow,
+                        // Read per call: a mid-chat switch changes it.
+                        this.sessions.get(input.threadId)
+                          ?.currentPermissionMode === 'bypassPermissions',
                       );
                     },
                   ],

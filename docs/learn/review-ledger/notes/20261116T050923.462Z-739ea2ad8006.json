@@ -1,0 +1,7 @@
+{
+  "revision": "c6775beaa2f5024da07fae8b330aa2d193febaac",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Added the request sheet's open-time check, catch-up hold (5 s cap), Allow all (N) / Allow all for this session, and button-borne in-flight state. Re-checked the Needs approval / Needs answer pill wording: unchanged.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/components/conversation/ConversationBody.tsx"]}
+  ]
+}

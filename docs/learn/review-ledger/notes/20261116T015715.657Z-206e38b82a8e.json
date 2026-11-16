@@ -1,0 +1,7 @@
+{
+  "revision": "fa31fa97e6e39924b12528f0d82e109c56b7dd7d",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Rechecked the listing paragraph: background-only 2s floor, oversized page refused unread, managed-folder and remembered-id probe session exclusion, against acp-session-listing.ts and acp-probe.ts.","inputs":["docs/guides/acp.md"]}
+  ]
+}

@@ -177,6 +177,35 @@ test('safety is a corner badge and the model has its own untruncated label segme
   ).toBe('Mini');
 });
 
+test('a choice that opens its own dialog can close Run setup behind it', () => {
+  const openHandoff = vi.fn();
+  const keep = vi.fn();
+  render(
+    <ComposerRunControl label="Writer" icon={null}>
+      <ComposerChoice
+        aria-label="Agent: Writer"
+        caption="Agent"
+        value="Writer"
+        closesRunSetup
+        onClick={openHandoff}
+      />
+      <ComposerChoice
+        aria-label="Model: Sonnet"
+        caption="Model"
+        value="Sonnet"
+        onClick={keep}
+      />
+    </ComposerRunControl>,
+  );
+  fireEvent.click(screen.getByTestId('run-setup-trigger'));
+  fireEvent.click(screen.getByRole('button', { name: 'Model: Sonnet' }));
+  // An ordinary choice leaves the panel open.
+  expect(screen.getByRole('dialog', { name: 'Run setup' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Agent: Writer' }));
+  expect(openHandoff).toHaveBeenCalledOnce();
+  expect(screen.queryByRole('dialog', { name: 'Run setup' })).toBeNull();
+});
+
 test('spends visible text on the Model when the Agent mark names the Agent', () => {
   render(
     <ComposerRunControl

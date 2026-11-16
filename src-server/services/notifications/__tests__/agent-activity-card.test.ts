@@ -79,6 +79,13 @@ describe('agentActivityPhaseFor', () => {
     [{ lifecycleState: 'needs_input' }, 'waiting_for_input'],
     [{ lifecycleState: 'blocked' }, 'stale'],
     [{ lifecycleState: 'completed' }, 'completed'],
+    [{ lifecycleState: 'idle' }, 'completed'],
+    // A finish running work still holds reads Running, never Done.
+    [{ lifecycleState: 'idle', finishHeld: true }, 'running'],
+    [{ lifecycleState: 'completed', finishHeld: true }, 'running'],
+    // A failure or stop is never held.
+    [{ lifecycleState: 'failed', finishHeld: true }, 'failed'],
+    [{ lifecycleState: 'canceled', finishHeld: true }, null],
     [{ lifecycleState: 'failed' }, 'failed'],
     // A first send that did not take reads Failed, as on every other surface.
     [

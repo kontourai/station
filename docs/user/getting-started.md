@@ -493,7 +493,9 @@ show what **Start** will use:
   you have chosen a Model, the picker's reset button names the default it
   returns to, such as **Use project default** for a model-only choice or
   **Use Agent defaults** for an engine override. In an existing conversation,
-  changing or resetting the engine opens a handoff confirmation that keeps your draft.
+  changing or resetting the engine opens a short handoff picker that switches
+  now: your draft, or a catch-up request when there is none, is the first
+  message.
   Full access, a pending or refused approval change, and a conversation override
   add a warning glyph to the combined button; open Run setup to see the same
   glyph on the choice that raised it.
@@ -531,7 +533,9 @@ project** clears it. Home and New Chat use the same composer and pickers;
 **Runs on <Station>** sits below the message box.
 
 When another Station is available, **Runs on <Station>** opens **Where this work
-runs**. Choose the Station, then its **Engine & model**. With **Paired Station
+runs**. Choose the Station, then its **Engine & model**. A Station that
+cannot take work right now is greyed out with its reason, such as
+**Recovering · server down or restarting** or **Unreachable**. With **Paired Station
 chats** enabled in Settings → Advanced → Feature previews, choose a Project
 from that Station’s own list, or **start without a project**. **Start** opens a
 chat tab that reads and replies to the conversation on the chosen Station.
@@ -562,7 +566,7 @@ back yours. You can edit or delete your own messages (press ↑ in an empty
 composer to edit your last one); a deleted message leaves "Message deleted" so
 replies still make sense. Use **Bring an Agent** for an explicit request whose answer returns
 to the channel. Direct Agent conversations stay in the chat
-dock. **Tasks** separates current work, backlog and history; **Files & connections**
+dock. **Tasks** shows a board of what each Task needs now, or a list of current work, backlog and history; **Files & connections**
 holds the Project's context. To change where new Agent work starts, open the
 workspace controls under Files & connections. A local folder is execution
 configuration rather than the Project's identity.
@@ -772,7 +776,7 @@ when the conversation's work is done, or **Reopen** to bring it back. Closed
 Tasks follow their existing close-on-merge setting; standalone linked PRs do
 not settle a conversation automatically. Settlement syncs across your devices
 and is separate from dismissal or deletion. **Working** holds running and
-monitoring chats; **Needs attention** takes priority whenever input is owed.
+monitoring chats and armed check-backs, which show **Waiting**; **Needs attention** takes priority whenever input is owed.
 Drafts appear as a pencil on the chat row in its current status. Collapse a
 shelf to move it below expanded work. Shelf menus let you move sections up or
 down, with that order saved on this device. **Settled** is last by default.
@@ -1056,7 +1060,15 @@ workspace changes, or you reconnect or re-pair with different access, Station
 refuses to send the stale reference until you remove it or return to its
 original scope.
 
-Use the conversation-reference button beside the composer actions to choose an
+The composer's **+** menu groups what you can do from the message box: add to
+the message (**Reference chat…**, **Commands**), work in the chat's project
+(**Open terminal** opens a shell in the bottom dock; **Open in Coding** moves
+the chat into the project's coding layout; **Delegate…**), and change the
+conversation (**Continue with another agent…**, **Reset agent context…**). An
+unavailable row says why. **Changed files** and **Task context** are in the
+chat header's **⋯** menu.
+
+Choose **+** then **Reference chat…** to choose an
 earlier conversation. The picker searches the 25 most recent conversations
 returned for your access and shows up to eight matches; it does not search
 older history. You can also drag a result into the composer, or drag a
@@ -1089,8 +1101,8 @@ shows the message with those values applied. **Start chat** opens a new chat
 and sends that message. This does not attach the skill to the Agent or install
 its dependencies; the Agent's configured tools and permissions still apply.
 
-To add skills, choose **Browse Registry Skills** and inspect the available
-catalog before installing. **Import .md** accepts standalone Markdown skill
+To add skills, choose **Browse Registry Skills** (**Browse Registry** while the
+library is empty) and inspect the available catalog before installing. **Import .md** accepts standalone Markdown skill
 files and reports the outcome of each file. Open an imported skill from its
 result to review and use it. Import does not copy a repository's
 scripts or supporting files. Load plugin packages through Registry.
@@ -1200,29 +1212,61 @@ Station looks in four places:
 - Claude Code transcripts under `projects` in `CLAUDE_CONFIG_DIR`, or
   `~/.claude` when that is not set.
 - Codex sessions under `sessions` in `CODEX_HOME`, or `~/.codex` when that is
-  not set.
+  not set, and in every other Codex home Station itself runs Codex in: the
+  Codex connection's config home, its Station app home, and each credential
+  profile's home. Continuing a conversation runs Codex in the home it was
+  found in, with that home's account and, for a profile, its settings. A
+  conversation copied by hand into two of them is listed once per copy,
+  since the copies can go on separately.
 - Grok Build sessions under `sessions` in `GROK_HOME`, or `~/.grok` when that
   is not set. A Grok session appears once it has a prompt. A subagent's own
   session is not listed separately, and neither is a Grok chat you started in
   Station, which is already there.
 - OpenCode's session database, `opencode.db` or `opencode-<channel>.db` (for
   example `opencode-stable.db`), in `opencode` under `XDG_DATA_HOME`, or
-  `~/.local/share/opencode` when that is not set. Station opens it read-only
-  and lists top-level OpenCode sessions you have sent a message in; subagent
-  sessions and archived sessions are left out. A message appears once OpenCode
-  has finished writing it. Conversations Station itself runs through an
-  OpenCode connection are not listed a second time. Older OpenCode releases
-  kept sessions as JSON files under `storage`; Station does not read those,
-  and current OpenCode moves them into the database when it starts. If an
-  OpenCode update changes the database layout, Station stops reading it and
-  logs one warning instead of guessing.
+  `~/.local/share/opencode` when that is not set. Station reads both OpenCode
+  1.x and OpenCode 2.x databases. Beside an OpenCode 2.x database, an
+  `opencode-next.db` is read only for sessions OpenCode 2.x does not hold: a
+  session it copied is shown as OpenCode 2.x has it, archived or deleted
+  there included. Once OpenCode's upgrade has finished, only sessions
+  created in `opencode-next.db` after it are listed from that file, since
+  OpenCode copies it only once. A file in the OpenCode preview format, which
+  Station cannot read, is skipped. Station opens each database read-only and lists top-level
+  OpenCode sessions you have sent a message in; subagent sessions and
+  archived sessions are left out. A message appears once OpenCode has
+  finished writing it. Later messages wait for an unfinished OpenCode
+  compaction; if one is still unfinished after 15 minutes (OpenCode stopped
+  partway and the conversation was not reopened), Station logs one warning
+  naming the conversation, once per Station run. Conversations Station
+  itself runs through an OpenCode connection are not listed a second time.
+  Older OpenCode releases kept sessions as JSON files under `storage`;
+  Station does not read those, and current OpenCode moves them into the
+  database when it starts. If an OpenCode update changes the database
+  layout, Station stops reading it and
+  logs one warning instead of guessing. A conversation Station already listed
+  from an OpenCode 1.x database stops updating once OpenCode 2.x converts that
+  database; its earlier messages stay in history.
+
+With `STATION_EXTERNAL_ACP_SESSIONS=1` set before Station starts, the inbox
+also lists the sessions an ACP engine you added under Connections reports
+itself, for an engine that offers a session list (Antigravity, Factory Droid,
+Hermes and Cursor do; Kiro does not). This is off by default. Station asks for
+the list when it checks the engine, about every five minutes, so it starts no
+extra engine process, and a new session can take that long to appear. Only
+the session's folder and Project are shown: ACP's one way to read a session's
+messages also resumes it inside the engine, so Station does not read them, and
+these sessions cannot be continued in Station. Grok and OpenCode sessions are
+read from their own stores as above, not from this list, and Station's own
+sessions and capability checks are left out.
 
 `STATION_EXTERNAL_CLAUDE_SOURCE_ROOT`, `STATION_EXTERNAL_CODEX_SOURCE_ROOT`,
 `STATION_EXTERNAL_GROK_SOURCE_ROOT` and `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT`
 point Station at a different folder (for OpenCode, the folder holding the
-database). Station checks every two seconds and reads the 128 most recently
-changed conversations from each place. Older ones stay in history once Station
-has read them, but new messages in them are not picked up until they are among
+database). With `STATION_EXTERNAL_CODEX_SOURCE_ROOT` set, that folder is the
+only Codex home Station reads. Station checks every two seconds and reads the
+128 most recently changed conversations from each place (each Codex home is
+its own place, up to 512 Codex conversations in all, the default home first). Older ones stay in history once Station has read
+them, but new messages in them are not picked up until they are among
 the 128 again. Conversations Station has not listed before appear only after it
 finishes restoring its own sessions at startup; if that restore fails, already
 listed conversations keep updating but new ones wait until Station restarts.
@@ -1272,9 +1316,9 @@ ones inside a Project, but no account can open them there.
 ## Continue an Attached Session
 
 Open an attached terminal Session from the **inbox**. It reads like any chat. To
-continue it in Station, type a message and press Send: Chat asks once,
-**Continue here?**, and **Continue and send** continues it there with your
-message. **Cancel** keeps your draft. Claude and Codex create independent child
+continue it in Station, press **Continue in Station** next to where it says it started;
+no message is needed. If you typed one, it is sent there once the
+continuation opens, and pressing Send continues the same way. Claude and Codex create independent child
 Sessions; the original terminal Session can keep running. OpenCode and Grok
 conversations are read only: the message box shows why it is unavailable.
 Codex continues from the latest completed turn Station has observed, so wait

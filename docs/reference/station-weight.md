@@ -239,7 +239,8 @@ composition. That worker now starts on first use (see
 [ProjectTaskRoom](../architecture/module-map.md#projecttaskroom)). The
 Task and transcript search workers stay warm on purpose, so the first search
 does not pay their startup. The desktop app launches its server sidecar
-directly, not through the supervisor, so it does not get the flag.
+directly, not through the supervisor, and passes the same flag itself
+([desktop build](../guides/desktop-build.md#startup-cost-and-linux-graphics)).
 
 **Memory basis.** Memory is `phys_footprint` on macOS (from `footprint`,
 compressed pages included) and RSS elsewhere. macOS compresses idle pages out

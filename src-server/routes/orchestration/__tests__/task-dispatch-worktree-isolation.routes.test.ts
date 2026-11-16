@@ -589,6 +589,48 @@ describe('Task dispatch honours the Project worktree isolation (#4507)', () => {
     expect(readFileSync(storePath, 'utf8')).toBe('{"version": 2, "entries": {');
   });
 
+  test('the Tasks list carries the same worktree projection the Task view does', async () => {
+    installCurrentStation(workspace, 'worktree');
+    const { app } = compose();
+    const isolated = await createTask(app, 'Isolated Task');
+    const undispatched = await createTask(app, 'Not yet dispatched');
+    await dispatch(app, isolated);
+    const listed = async () =>
+      (await readJson(await app.request('/?projectId=project-alpha')))
+        .data as Array<Record<string, any>>;
+    const row = (rows: Array<Record<string, any>>, id: string) =>
+      rows.find((task) => task.id === id);
+
+    const opened = (await readJson(await app.request(`/${isolated}`))).data;
+    const rows = await listed();
+    expect(row(rows, isolated)?.taskWorktree?.branch).toMatch(
+      /^station\/task\/task-/,
+    );
+    expect(row(rows, isolated)?.taskWorktree).toEqual(opened.taskWorktree);
+    expect(row(rows, undispatched)).not.toHaveProperty('taskWorktree');
+    expect(row(rows, undispatched)).not.toHaveProperty('taskWorktreeUnknown');
+
+    // A record for an earlier incarnation of the id is not this Task's.
+    const storePath = join(home, 'task-worktrees.json');
+    const store = JSON.parse(readFileSync(storePath, 'utf8'));
+    const recorded = store.entries[isolated];
+    store.entries[isolated] = {
+      ...recorded,
+      taskCreatedAt: '2020-01-01T00:00:00.000Z',
+    };
+    writeFileSync(storePath, JSON.stringify(store));
+    expect(row(await listed(), isolated)).not.toHaveProperty('taskWorktree');
+
+    // An unreadable record store with the worktree on disk: unknown.
+    writeFileSync(storePath, '{"version": 2, "entries": {');
+    const unknown = row(await listed(), isolated);
+    expect(unknown?.taskWorktreeUnknown).toBe(true);
+    expect(unknown).not.toHaveProperty('taskWorktree');
+    expect(row(await listed(), undispatched)).not.toHaveProperty(
+      'taskWorktreeUnknown',
+    );
+  });
+
   test('a shared Project dispatches in its shared checkout, unchanged', async () => {
     installCurrentStation(workspace, undefined);
     const { app, graph, claude } = compose();

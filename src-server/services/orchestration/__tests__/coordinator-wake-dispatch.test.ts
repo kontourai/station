@@ -51,7 +51,10 @@ import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
 import { ACTIVE_TURN_FOLD_METHODS } from '../session-lifecycle-service.js';
 import { ThreadInboxDelivery } from '../thread-inbox.js';
-import { wireTurnCompletionNotifications } from '../turn-completion-notifications.js';
+import {
+  FINISHED_ALERT_CONFIRM_MS,
+  wireTurnCompletionNotifications,
+} from '../turn-completion-notifications.js';
 
 const makeTempDir = trackTempDirs();
 
@@ -88,6 +91,14 @@ interface World {
   /** The real coordinator routes, as the person (owner) calls them. */
   routes: Hono;
   setPreview(enabled: boolean): Promise<unknown>;
+  /**
+   * A finished turn's record (which the wake reads) is written only after
+   * its confirmation window. Waits for a window to be armed, at the real
+   * `FINISHED_ALERT_CONFIRM_MS`, and lets it run out.
+   */
+  passFinishWindow(what: string): Promise<void>;
+  /** Finish windows armed and not yet run. */
+  pendingFinishWindows(): number;
   dispose: () => Promise<void>;
 }
 
@@ -209,12 +220,27 @@ async function boot(adapters: ProviderAdapterShape[]): Promise<World> {
   });
   inbox.start();
   const notifications = new NotificationService(bus, tmp);
+  const finishWindows: Array<{
+    callback: () => void;
+    delayMs: number;
+    live: boolean;
+  }> = [];
   const unwireCompletions = wireTurnCompletionNotifications(
     bus,
     service,
     notifications,
     { warn: vi.fn() },
+    {
+      setTimer: (callback, delayMs) => {
+        const entry = { callback, delayMs, live: true };
+        finishWindows.push(entry);
+        return () => {
+          entry.live = false;
+        };
+      },
+    },
   );
+  const liveWindows = () => finishWindows.filter((entry) => entry.live);
   store.coordinatorStore().designate({
     conversationId: COORDINATOR,
     actor: { userId: OWNER },
@@ -263,6 +289,20 @@ async function boot(adapters: ProviderAdapterShape[]): Promise<World> {
     routes,
     setPreview: (enabled) =>
       previews.setEnabled('coordinator-session', enabled),
+    passFinishWindow: async (what) => {
+      const due = await waitFor(
+        liveWindows,
+        (windows) => windows.length > 0,
+        `${what}: its finish window`,
+      );
+      for (const entry of due) {
+        expect(entry.delayMs).toBe(FINISHED_ALERT_CONFIRM_MS);
+        entry.live = false;
+        entry.callback();
+      }
+      await notifications.drainAsyncDispatch();
+    },
+    pendingFinishWindows: () => liveWindows().length,
     dispose: async () => {
       wakes.unsubscribe();
       unwireCompletions();
@@ -376,6 +416,15 @@ describe('a worker finishing wakes the coordinator once', () => {
       'worker prompt',
     );
     workerProcess!.resolvePrompt('end_turn');
+    // Until the finish is confirmed there is no record, so no wake.
+    await waitFor(
+      () => world.pendingFinishWindows(),
+      (count) => count > 0,
+      'the worker finish window',
+    );
+    await quiet();
+    expect(prompts(coordinatorProcess)).toEqual([]);
+    await world.passFinishWindow('the worker finish');
 
     const [wake] = await waitFor(
       () => prompts(coordinatorProcess),
@@ -396,13 +445,15 @@ describe('a worker finishing wakes the coordinator once', () => {
       dispatchOrigin: 'unknown',
     });
 
-    // The wake turn ends: its own "finished" does not wake it again.
+    // The wake turn ends: its own "finished", once confirmed, does not wake
+    // it again.
     coordinatorProcess!.resolvePrompt('end_turn');
     await waitFor(
       () => methods(world, COORDINATOR),
       (seen) => seen.includes('turn.completed'),
       'the wake turn to end',
     );
+    await world.passFinishWindow('the wake turn');
     await quiet();
     await world.inbox.idle();
     expect(prompts(coordinatorProcess)).toHaveLength(1);
@@ -412,6 +463,7 @@ describe('a worker finishing wakes the coordinator once', () => {
     const { world, coordinatorProcess, prompts, finishWorkerTurn } =
       await acpWorld();
     await finishWorkerTurn('build it');
+    await world.passFinishWindow('the first worker finish');
     await waitFor(
       () => prompts(coordinatorProcess),
       (p) => p.length === 1,
@@ -420,6 +472,7 @@ describe('a worker finishing wakes the coordinator once', () => {
     // A second worker finishes while the first wake's turn still runs: its
     // wake waits in the coordinator's inbox.
     await finishWorkerTurn('build another');
+    await world.passFinishWindow('the second worker finish');
     await waitFor(
       () => world.inbox.list(COORDINATOR),
       (rows) => rows.some((row) => row.state === 'queued'),
@@ -445,6 +498,7 @@ describe('a worker finishing wakes the coordinator once', () => {
       (seen) => seen.includes('turn.completed'),
       'the first wake turn to end',
     );
+    await world.passFinishWindow('the wake turn');
     await quiet();
     await world.inbox.idle();
     expect(prompts(coordinatorProcess)).toHaveLength(1);
@@ -455,6 +509,7 @@ describe('a worker finishing wakes the coordinator once', () => {
       await acpWorld();
     await world.setPreview(false);
     await finishWorkerTurn('build it');
+    await world.passFinishWindow('the worker finish');
     await quiet();
     await world.inbox.idle();
     expect(prompts(coordinatorProcess)).toEqual([]);
@@ -464,6 +519,7 @@ describe('a worker finishing wakes the coordinator once', () => {
     // The choice is read when the next notification arrives, not at boot.
     await world.setPreview(true);
     await finishWorkerTurn('build another');
+    await world.passFinishWindow('the second worker finish');
     const [wake] = await waitFor(
       () => prompts(coordinatorProcess),
       (p) => p.length === 1,
@@ -476,12 +532,14 @@ describe('a worker finishing wakes the coordinator once', () => {
     const { world, coordinatorProcess, prompts, finishWorkerTurn } =
       await acpWorld();
     await finishWorkerTurn('build it');
+    await world.passFinishWindow('the first worker finish');
     await waitFor(
       () => prompts(coordinatorProcess),
       (p) => p.length === 1,
       'the first wake',
     );
     await finishWorkerTurn('build another');
+    await world.passFinishWindow('the second worker finish');
     const queued = await waitFor(
       () => world.inbox.list(COORDINATOR).find((row) => row.state === 'queued'),
       (row) => row !== undefined,
@@ -498,6 +556,7 @@ describe('a worker finishing wakes the coordinator once', () => {
       { reasonCode: 'coordinator_preview_disabled' },
     );
     await world.setPreview(true);
+    await world.passFinishWindow('the wake turn');
     await quiet();
     await world.inbox.idle();
     expect(prompts(coordinatorProcess)).toHaveLength(1);
@@ -565,6 +624,7 @@ describe('a worker finishing wakes the coordinator once', () => {
       { turnId: 'turn-1' },
       workerInvocation,
     );
+    await world.passFinishWindow('the worker finish');
 
     const [wake] = await waitFor(
       () => sends.get(COORDINATOR) ?? [],
@@ -587,6 +647,7 @@ describe('a worker finishing wakes the coordinator once', () => {
       { turnId: 'turn-1' },
       wakeInvocation,
     );
+    await world.passFinishWindow('the wake turn');
     await quiet();
     await world.inbox.idle();
     expect(sends.get(COORDINATOR)).toHaveLength(1);

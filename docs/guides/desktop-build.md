@@ -285,13 +285,22 @@ claims still use the registry's current atomic ownership check. The running
 sidecar supervisor checks child exit every two seconds; restart and shutdown
 messages wake it immediately, and startup retains its 150 ms exit check.
 
-The desktop sidecar enables Node 24's compile cache before loading the server,
-under `<STATION_HOME>/cache/node-compile`. Home schema preparation precedes
-that launch, since Node creates the directory before the server's home check.
-The server does not enable a cache after loading its bundle: that is too late
-to cache compilation of the entry point. `station start` does not give its
-supervisor or server a cache. Measured on the supervised server, a warm cache
-left it larger at rest and did not make startup measurably faster.
+Neither the desktop sidecar nor `station start` gives the server a compile
+cache; the sidecar removes any `NODE_COMPILE_CACHE` it inherits. Measured on
+the supervised server, a warm cache left it larger at rest and did not make
+startup measurably faster. Measured on the sidecar launch on one 64 GB Mac
+(three alternating rounds, medians after a 45-second settle), the cache added
+about 120 MiB to the idle server. Without the flag below, it started the
+server sooner in every round (0.5 to 1.9 s); with the flag, it was faster in one
+round of three. Memory at rest wins that trade. The server does not enable a cache after
+loading its bundle either: that is too late to cache compilation of the entry
+point.
+
+The sidecar starts Node with `--max-semi-space-size=16`, the young-generation
+cap the process supervisor gives each core it forks
+([server memory at rest](../reference/station-weight.md#server-memory-at-rest)).
+On the same measurement, the sidecar's idle process tree dropped from 663 MiB
+to 425 MiB with both changes.
 
 The server removes any inherited `NODE_COMPILE_CACHE` at boot, and
 child-process environments still scrub it. User and third-party Node
@@ -312,7 +321,7 @@ environment by design, and the rest were not measured as worth it.
 
 Node never prunes the cache. One minute after boot, the server removes any
 Node-version subdirectory that nothing has written to for 30 days, except the
-one its own process uses. It then removes the whole cache if that is still over
+one its own process uses when an operator started it with `NODE_COMPILE_CACHE`. It then removes the whole cache if that is still over
 256 MiB. A subdirectory that is only read ages too, and costs one cold start
 once it is removed. The prune never follows a link inside the cache: it ages
 only real directories, counts only regular files, and removing a link removes
@@ -327,8 +336,7 @@ home itself may be a link. If either component is a symbolic link or anything
 other than a directory, the server neither hands the cache to the built-in
 children nor prunes it, and logs that once for the home. Otherwise Node and
 the prune would write into, or delete from, the link's target, such as an
-operator's shared directory. The desktop sidecar sets its own server's cache
-path natively, and this check does not cover that.
+operator's shared directory.
 
 No pre-generated cache ships with the desktop build. Node names each cache
 subdirectory after the Node version, architecture, V8 flags and user id, and
