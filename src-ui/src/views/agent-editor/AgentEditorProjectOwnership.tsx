@@ -28,7 +28,7 @@ export function AgentEditorProjectOwnership({
             Project
           </label>
           <InfoTip label="Project">
-            A project-owned agent is available only inside its project.
+            An agent owned by a Project is available only inside that Project.
           </InfoTip>
         </div>
         <select

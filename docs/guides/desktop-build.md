@@ -287,12 +287,56 @@ messages wake it immediately, and startup retains its 150 ms exit check.
 
 The desktop sidecar enables Node 24's compile cache before loading the server,
 under `<STATION_HOME>/cache/node-compile`. Home schema preparation precedes
-that launch. Child-process environments scrub `NODE_COMPILE_CACHE`, including
-terminal PTYs and engine children, so user Node programs do not write into this
-server cache. The server does not enable a cache after loading its bundle:
-that is too late to cache compilation of the entry point. Node's
-`NODE_DISABLE_COMPILE_CACHE=1` opt-out remains supported; cache failure must
-not prevent startup.
+that launch, since Node creates the directory before the server's home check.
+The server does not enable a cache after loading its bundle: that is too late
+to cache compilation of the entry point. `station start` does not give its
+supervisor or server a cache. Measured on the supervised server, a warm cache
+left it larger at rest and did not make startup measurably faster.
+
+The server removes any inherited `NODE_COMPILE_CACHE` at boot, and
+child-process environments still scrub it. User and third-party Node
+programs, terminal PTYs and engine children never write into this cache.
+[`station-compile-cache.ts`](../../src-server/runtime/bootstrap/station-compile-cache.ts)
+gives the home's cache directory only to the built-in `station-control` and
+`station-knowledge` bundles, through the same exact-binary check that gates
+their API credential. That covers the pooled MCP children and the copies an
+engine starts from its MCP configuration. Measured, a warm cache starts those
+bundles faster and leaves them smaller. Each removes the setting from its own
+environment at startup and writes its cache straight away, because an engine
+may end it with a signal, after which Node writes nothing. A cold cache, the
+first start of a bundle in a home, holds its new entries in memory until that
+child exits. Every server build stamps its bundles with a build time, so a
+rebuild starts cold. `station-docs`, worker threads and the occasional helper
+children get no cache: the docs server's delivered definition carries no
+environment by design, and the rest were not measured as worth it.
+
+Node never prunes the cache. One minute after boot, the server removes any
+Node-version subdirectory that nothing has written to for 30 days, except the
+one its own process uses. It then removes the whole cache if that is still over
+256 MiB. A subdirectory that is only read ages too, and costs one cold start
+once it is removed. The prune never follows a link inside the cache: it ages
+only real directories, counts only regular files, and removing a link removes
+the link, not its target. These checks run before the prune, not atomically
+with it: something that can write inside the home could swap `cache` or
+`node-compile` for a link in between. The home is private to its user, so that
+needs access the user already has over the target.
+
+`cache` and `cache/node-compile` under the home must each be a real directory
+or not exist yet, and the cache must resolve inside the home's real path. The
+home itself may be a link. If either component is a symbolic link or anything
+other than a directory, the server neither hands the cache to the built-in
+children nor prunes it, and logs that once for the home. Otherwise Node and
+the prune would write into, or delete from, the link's target, such as an
+operator's shared directory. The desktop sidecar sets its own server's cache
+path natively, and this check does not cover that.
+
+No pre-generated cache ships with the desktop build. Node names each cache
+subdirectory after the Node version, architecture, V8 flags and user id, and
+keys each entry by the bundle's absolute path. A cache generated on the build
+machine would miss for other users, and Node's portable mode removes only the
+path dependency. Node's `NODE_DISABLE_COMPILE_CACHE=1` opt-out remains
+supported, and the server then gives the built-in children no cache either.
+Cache failure must not prevent startup.
 
 Server bundles are minified with function/class names retained. The esbuild
 `linked` source-map setting is equivalent to the previous `true`: both emit an

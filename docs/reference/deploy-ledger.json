@@ -1,5 +1,52 @@
 [
   {
+    "timestampUtc": "2026-11-15T23:26:59Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.20261115.43773362126",
+    "sha": "95a6c1253416050823e2a34089882e3261253cb8",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/43773362126",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.20261115.43773362126 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "89dc051aa7300c769d012c3aaae8bf84744a7eaa",
+      "groups": {
+        "feat": [
+          "[#5000](https://github.com/kontourai/station/pull/5000) feat(ui): mark full access in Run setup and name requested effort",
+          "[#4998](https://github.com/kontourai/station/pull/4998) feat(ui): show switching Stations on the launch screen, step by step",
+          "[#4997](https://github.com/kontourai/station/pull/4997) feat(tasks): retain independent review against the exact Task revision",
+          "[#4852](https://github.com/kontourai/station/pull/4852) feat(rooms): reactions, edits, deletes and files in Project channels (#4796, #4797, #4812)",
+          "[#4936](https://github.com/kontourai/station/pull/4936) feat(acp): engine depth — Gemini CLI built-in, reattach identity check, Goose run steer, Qwen Code subagents",
+          "[#4975](https://github.com/kontourai/station/pull/4975) feat(opencode): run OpenCode 2.x on its native server behind a Feature Preview, with ACP fallback"
+        ],
+        "fix": [
+          "[#4891](https://github.com/kontourai/station/pull/4891) fix(ui): one vocabulary and plain outcomes in setup, connections and accounts",
+          "[#5012](https://github.com/kontourai/station/pull/5012) fix(ci): list the server bundle ASCII guard among portable archive inputs",
+          "[#5001](https://github.com/kontourai/station/pull/5001) fix(orchestration): reuse each thread's session projection until its events move",
+          "[#5003](https://github.com/kontourai/station/pull/5003) fix(ui): collapse the hidden Send/Steer group on an empty phone draft",
+          "[#4895](https://github.com/kontourai/station/pull/4895) fix(android): route keyboard images into chat composers",
+          "[#4991](https://github.com/kontourai/station/pull/4991) fix(connect): stop the Station switcher calling a down Station Online",
+          "[#4990](https://github.com/kontourai/station/pull/4990) fix(ui): spend the run-setup chip's text on the model name",
+          "[#4989](https://github.com/kontourai/station/pull/4989) fix(ui): name the Station on Live work rows and drop the redundant Open label",
+          "[#4878](https://github.com/kontourai/station/pull/4878) fix(ui): plain shell, pane, search and chat-error copy"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5006](https://github.com/kontourai/station/pull/5006) perf(server): cap the core's young generation and retire idle room workers",
+          "[#4996](https://github.com/kontourai/station/pull/4996) perf(server): cut idle server memory by 70% (ciao source map, ASCII bundles)"
+        ]
+      },
+      "note": null,
+      "commitCount": 17
+    }
+  },
+  {
     "timestampUtc": "2026-11-15T12:33:49Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.20261115",

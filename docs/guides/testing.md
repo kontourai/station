@@ -871,9 +871,10 @@ producer is skipped. Ambiguous metadata remains non-passing. Missing or incomple
 source proof remains pending; failed or cancelled source proof remains non-passing. The required-context
 rollout is described in [releasing](releasing.md#qualification-cadence-and-evidence-reuse).
 
-PR source computation has repository-wide FIFO ceilings: at most two statics
-jobs and five affected-test shard jobs run across all PRs. Statics use two
-buckets by PR number parity. Shards use five shared buckets: the PR number's
+PR source computation has repository-wide FIFO ceilings: at most three statics
+jobs and five affected-test shard jobs run across all PRs. Statics use three
+buckets by the PR number's last digit (0, 2, 4 and 6 `even`; 1, 3 and 5 `odd`;
+7, 8 and 9 `third`), so every run of one PR waits in the same bucket. Shards use five shared buckets: the PR number's
 last digit mod 5 plus the shard index, mod 5 (the table is in `ci.yml`), so one
 PR's shards never share a bucket and every plan's first shard spreads across all
 five; larger plans retain every shard. The release-bot PR (head
@@ -883,7 +884,10 @@ statics jobs share one dedicated `ci-pr-release-bot` slot and never enter the
 shared buckets; supersession cancels its older heads as for any PR. A job holds
 its bucket while it waits for a runner. Waiting jobs consume no runner. `pull_request_target` reads these
 groups from the base branch, so a bucket change applies to PR runs created
-after it lands. Different-head
+after it lands. The three-bucket statics change kept the `odd` and `even`
+names, so runs created before it share those buckets and the ceiling stays
+three; until such a run finishes or is superseded, a PR ending in 7, 8 or 9 can
+hold its old bucket and `third` at once. Different-head
 supersession still cancels obsolete source runs, including native FIFO
 `pending` waiters, after rechecking the live PR head and run attempt. A normal
 cancellation request is followed to its observed state. If the same obsolete
@@ -897,7 +901,7 @@ next `PR: CI` event for the branch tries again. Ambiguous job metadata,
 changed identities and any other API failure still fail the controller;
 cancellation never becomes source PASS. Same-head
 duplicates wait rather than cancelling another run's proof. Merge-group, push and manual
-diagnostic jobs use separate source-specific groups. These eight PR computation
+diagnostic jobs use separate source-specific groups. These nine PR computation
 slots exclude planners, security checks, platform builds and status publishers;
 they are not a total repository or organization capacity reservation.
 

@@ -19,6 +19,25 @@ const { warnings } = vi.hoisted(() => ({ warnings: vi.fn<Logger['warn']>() }));
 vi.mock('../../../utils/logger.js', () => ({
   createLogger: (): Pick<Logger, 'warn'> => ({ warn: warnings }),
 }));
+const workers = vi.hoisted(() => ({
+  constructed: 0,
+  terminated: 0,
+}));
+// Count construction and termination while keeping the real worker and SQLite.
+vi.mock('node:worker_threads', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:worker_threads')>();
+  class CountedWorker extends actual.Worker {
+    constructor(...args: ConstructorParameters<typeof actual.Worker>) {
+      super(...args);
+      workers.constructed += 1;
+    }
+    override terminate() {
+      workers.terminated += 1;
+      return super.terminate();
+    }
+  }
+  return { ...actual, Worker: CountedWorker };
+});
 
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require('node:sqlite') as {
@@ -1190,6 +1209,68 @@ describe('project task room working state', () => {
       });
     } finally {
       await upgraded.close();
+    }
+  });
+
+  test('starts its worker on the first request and retires it once idle', async () => {
+    directory = makeTempDir('station-room-working-idle-');
+    const path = join(directory, 'orchestration.sqlite');
+    const constructed = workers.constructed;
+    const terminated = workers.terminated;
+    const working = createProjectTaskRoomWorkingState(path, {
+      idleRetireMs: 50,
+    });
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(workers.constructed, 'worker started before any request').toBe(
+        constructed,
+      );
+      expect(
+        await working.settle({
+          scope,
+          intentId: 'before-idle',
+          intentDigest: 'before-idle',
+          actorId: 'operator',
+          epoch: 1,
+          operations: [operation('before-idle-op', 'kept across retirement')],
+        }),
+      ).toMatchObject({ kind: 'committed' });
+      expect(workers.constructed).toBe(constructed + 1);
+      await vi.waitFor(() => expect(workers.terminated).toBe(terminated + 1), {
+        timeout: 2_000,
+      });
+      // The first request after retirement starts a fresh worker over the
+      // same durable state.
+      expect(await working.read({ scope })).toMatchObject({
+        kind: 'snapshot',
+        text: 'kept across retirement',
+      });
+      expect(workers.constructed).toBe(constructed + 2);
+      expect(warnings).not.toHaveBeenCalled();
+    } finally {
+      await working.close();
+    }
+  });
+
+  test('keeps a watched worker past the idle span and retires it after unwatch', async () => {
+    directory = makeTempDir('station-room-working-watch-idle-');
+    const path = join(directory, 'orchestration.sqlite');
+    const terminated = workers.terminated;
+    const working = createProjectTaskRoomWorkingState(path, {
+      idleRetireMs: 20,
+    });
+    try {
+      const unwatch = working.watch(() => {});
+      expect((await working.read({ scope })).kind).not.toBe('unavailable');
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(workers.terminated, 'retired while watched').toBe(terminated);
+      unwatch();
+      await vi.waitFor(() => expect(workers.terminated).toBe(terminated + 1), {
+        timeout: 2_000,
+      });
+      expect((await working.read({ scope })).kind).not.toBe('unavailable');
+    } finally {
+      await working.close();
     }
   });
 

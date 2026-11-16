@@ -58,7 +58,7 @@ test('fresh Station completes real Work', async ({
       readData<RunSummary[]>('/api/runs?source=schedule'),
     ).resolves.toEqual([]);
 
-    await page.getByRole('button', { name: 'Continue Without Setup' }).click();
+    await page.getByRole('button', { name: 'Dismiss setup reminder' }).click();
     const disclosure = page.getByTestId('first-run-disclosure');
     await expect(disclosure).toBeVisible({ timeout: 20_000 });
     await disclosure
@@ -103,7 +103,7 @@ test('fresh Station completes real Work', async ({
     await page.getByLabel('Base URL').fill(ollama.origin);
     await page.getByRole('button', { name: 'Create', exact: true }).click();
     await expect(page).toHaveURL(/\/connections\/models\/[^/?]+(?:\?|$)/);
-    await page.getByRole('button', { name: 'Test Connection' }).click();
+    await page.getByRole('button', { name: 'Test connection' }).click();
     await expect(page.getByText('Connection healthy')).toBeVisible();
 
     await expect
@@ -117,7 +117,7 @@ test('fresh Station completes real Work', async ({
       .toBe(true);
 
     await page.goto(baseURL);
-    await page.getByRole('button', { name: 'Personalize Station' }).click();
+    await page.getByRole('button', { name: 'Open setup' }).click();
     const resumedEngines = page.getByTestId('first-run-engines');
     await expect(resumedEngines).toBeVisible({ timeout: 20_000 });
     await resumedEngines.getByRole('button', { name: 'Continue' }).click();

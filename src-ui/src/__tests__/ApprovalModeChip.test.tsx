@@ -5,6 +5,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeAll, describe, expect, test, vi } from 'vitest';
 import { ApprovalModeChip } from '../components/badges/ApprovalModeChip';
 import { ManagedPolicyContext } from '../contexts/ManagedPolicyContext';
+import { mountedDecisionSurfaces } from '../lib/custom-appearance/decision-surfaces';
 
 /**
  * The chip's picker is a `ComposerModeSheet` (a `ResponsiveDialogSurface`) now
@@ -368,6 +369,8 @@ describe('ApprovalModeChip', () => {
     // explicit confirm step.
     expect(onChange).not.toHaveBeenCalled();
     expect(screen.queryByRole('radiogroup')).toBeNull();
+    // Custom CSS is held off while the full-access confirm is on screen.
+    expect(mountedDecisionSurfaces()).toContain('approval-mode');
     const confirmButton = screen.getByRole('button', {
       name: 'Enable full access',
     });

@@ -81,6 +81,7 @@ import { RowMenu, type RowMenuItem } from '../notifications/RowMenu';
 import { SkeletonList } from '../state';
 import { ExactRequestInline } from './ExactRequestInline';
 import './AttentionCard.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { useProposedChangeDecision } from '../review/proposedChangeDecision';
 import {
   ACKNOWLEDGE_ATTENTION_ACTION,
@@ -409,6 +410,7 @@ function ExactRequestAction({
  * `HostDevicePairingPanel`'s copy for the same statuses).
  */
 function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
+  useDecisionSurface('device-pairing-review');
   const confirmMutation = useConfirmDevicePairingRequestMutation();
   const denyMutation = useDenyDevicePairingRequestMutation();
   const busy = confirmMutation.isPending || denyMutation.isPending;
@@ -662,6 +664,7 @@ function ProposedChangeActions({
 }: {
   item: ProposedChangeAttentionItem;
 }) {
+  useDecisionSurface('proposed-change');
   const decision = useProposedChangeDecision(INBOX_DECISION_SURFACE);
   return (
     <>
@@ -730,6 +733,7 @@ function ApprovalActions({
   const mutation = useNotificationActionMutation();
   const dismissMutation = useDismissNotificationMutation();
   const livePending = isApprovalLivePending(item);
+  useDecisionSurface('attention-approval-actions', livePending);
   // archive#3779: measured — this does NOT delete. `DELETE /notifications/:id`
   // sets `status: 'dismissed'` and keeps the record; what differs from the bulk
   // acknowledge is the subject and terminality, not destruction.
@@ -870,6 +874,7 @@ function PeerRequestDecisionActions({
 }: {
   reference: AttentionPeerRequestReference;
 }) {
+  useDecisionSurface('peer-request-decision');
   const scope = useHostRequestAuthorityScope();
   const answer = useApprovalAnswering(scope?.apiBase ?? '');
   const queryClient = useQueryClient();
@@ -1205,6 +1210,7 @@ function AcceptExceptionDialog({
   onCancel: () => void;
   onSubmit: (input: { reason: string; authority: string }) => void;
 }) {
+  useDecisionSurface('gate-exception');
   const [reason, setReason] = useState('');
   const [authority, setAuthority] = useState('');
   const reasonId = useId();
