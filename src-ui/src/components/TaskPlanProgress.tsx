@@ -10,11 +10,6 @@ import {
 import type { WorkStatus } from '../views/home/work-status';
 import './TaskPlanProgress.css';
 
-/** Tasks whose Session may still be revising its plan. */
-const LIVE_TASK_STATUSES: ReadonlySet<TaskRecord['status']> = new Set([
-  'in_progress',
-  'blocked',
-]);
 /** Closed Tasks keep their record; their cards skip the per-Session read. */
 const CLOSED_TASK_STATUSES: ReadonlySet<TaskRecord['status']> = new Set([
   'done',
@@ -54,13 +49,18 @@ function usePlanProgress(
   );
 }
 
-/** A Task's dispatched Session; closed Tasks skip the read. */
+/**
+ * A Task's dispatched Session; closed Tasks skip the read. `live` is the
+ * Task's derived lane being Running (its run is moving), not its stored
+ * status: a stored "in progress" says nothing about whether a run is.
+ */
 export function useTaskPlanProgress(
   task: Pick<TaskRecord, 'sessionId' | 'status'>,
+  { live }: { live: boolean },
 ): TaskPlanProgress | null {
   return usePlanProgress(task.sessionId?.trim() ?? '', {
     enabled: !CLOSED_TASK_STATUSES.has(task.status),
-    live: LIVE_TASK_STATUSES.has(task.status),
+    live,
   });
 }
 
@@ -123,10 +123,12 @@ export function TaskPlanProgressLine({
 /** For a surface whose accessible name comes from its content (a link). */
 export function TaskPlanProgressForTask({
   task,
+  live,
 }: {
   task: Pick<TaskRecord, 'sessionId' | 'status'>;
+  live: boolean;
 }) {
-  const progress = useTaskPlanProgress(task);
+  const progress = useTaskPlanProgress(task, { live });
   return progress ? <TaskPlanProgressLine progress={progress} /> : null;
 }
 

@@ -1,244 +1,319 @@
 /** @vitest-environment jsdom */
+import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
-import { fireEvent, render, screen, within } from '@testing-library/react';
-import { beforeEach, expect, test, vi } from 'vitest';
+import type {
+  TaskPullRequestFact,
+  TaskPullRequestFactsProjection,
+} from '@kontourai/station-contracts/task-lane';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-const { useOrchestrationSessionActivityQuery } = vi.hoisted(() => ({
+const sdk = vi.hoisted(() => ({
   useOrchestrationSessionActivityQuery: vi.fn(),
+  useOrchestrationSessionsQuery: vi.fn(),
+  useTaskPullRequestFactsQuery: vi.fn(),
 }));
-vi.mock('@kontourai/station-sdk', () => ({
-  useOrchestrationSessionActivityQuery,
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  ...sdk,
 }));
 
 import { ProjectTaskBoard } from '../components/ProjectTaskBoard';
+import { useTaskBoardModel } from '../views/project-page/useTaskBoardModel';
 
-beforeEach(() => {
-  useOrchestrationSessionActivityQuery.mockReset();
-  useOrchestrationSessionActivityQuery.mockReturnValue({ data: undefined });
-});
+const NOW = Date.parse('2026-11-15T12:00:00.000Z');
 
-function task(
-  id: string,
-  status: TaskRecord['status'],
-  sessionId?: string,
-): TaskRecord {
+function task(id: string, overrides: Partial<TaskRecord> = {}): TaskRecord {
   return {
     id,
     projectId: 'demo',
     title: `Work ${id}`,
     description: '',
-    status,
+    status: 'in_progress',
     priority: 'normal',
     createdBy: 'user',
-    createdAt: '2026-09-30T12:00:00Z',
-    updatedAt: '2026-09-30T12:00:00Z',
-    ...(sessionId ? { sessionId } : {}),
+    agentId: 'claude',
+    createdAt: '2026-11-01T00:00:00.000Z',
+    updatedAt: '2026-11-10T00:00:00.000Z',
+    ...overrides,
   };
 }
 
-/** A Session's latest-turn window carrying one plan.updated. */
-function planWindow(statuses: string[], lifecycleState: string = 'running') {
-  const common = {
-    provider: 'acp',
-    threadId: 'session-a',
-    createdAt: '2026-11-10T12:00:00Z',
-    turnId: 'turn-1',
-  };
+/** The read-model summary shape. */
+function session(
+  threadId: string,
+  overrides: Partial<OrchestrationSessionSummary> = {},
+): OrchestrationSessionSummary {
   return {
-    data: {
-      protocolVersion: 1,
-      session: { threadId: 'session-a', lifecycleState },
-      events: [
-        {
-          sequence: 1,
-          event: { ...common, eventId: 'e1', method: 'turn.started' },
-        },
-        {
-          sequence: 2,
-          event: {
-            ...common,
-            eventId: 'e2',
-            method: 'plan.updated',
-            entries: statuses.map((status, index) => ({
-              content: `Step ${index + 1}`,
-              status,
-            })),
-          },
-        },
-      ],
-      hasMore: false,
-      watermark: 2,
+    threadId,
+    provider: 'claude',
+    status: 'ready',
+    controlMode: 'station-owned',
+    answerability: { answerable: true },
+    isLoaded: true,
+    isPersisted: true,
+    eventCount: 4,
+    createdAt: '2026-11-15T10:00:00.000Z',
+    updatedAt: '2026-11-15T11:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function pr(
+  ref: string,
+  status: Partial<
+    Extract<TaskPullRequestFact['status'], { state: 'current' }>
+  > = {},
+): TaskPullRequestFact {
+  return {
+    provider: 'github',
+    host: 'github.com',
+    repository: { owner: 'acme', name: 'app' },
+    ref,
+    url: `https://github.com/acme/app/pull/${ref}`,
+    observedAt: '2026-11-15T11:30:00.000Z',
+    status: {
+      state: 'current',
+      pullRequestState: 'OPEN',
+      mergeability: 'mergeable',
+      ...status,
     },
   };
 }
 
-test('keeps every recorded work state visible and selects the exact task without starting work', () => {
-  const statuses: TaskRecord['status'][] = [
-    'todo',
-    'ready',
-    'triage',
-    'in_progress',
-    'blocked',
-    'review',
-    'verification',
-    'done',
-    'canceled',
-  ];
-  const tasks: TaskRecord[] = statuses.map((status, index) => ({
-    id: `task-${index}`,
-    projectId: 'demo',
-    title: `Work ${index}`,
-    description: index === 4 ? 'Waiting for a product decision' : '',
-    status,
-    priority: 'normal',
-    createdBy: 'user',
-    createdAt: '2026-09-30T12:00:00Z',
-    updatedAt: '2026-09-30T12:00:00Z',
-  }));
-  const select = vi.fn();
-  render(
-    <ProjectTaskBoard
-      tasks={tasks}
-      selectedTaskId="task-4"
-      onSelect={select}
-    />,
-  );
-  expect(
-    within(screen.getByRole('region', { name: 'To do' })).getAllByRole(
-      'button',
+function facts(
+  tasks: TaskRecord[],
+  byTask: Record<string, TaskPullRequestFact[]>,
+): TaskPullRequestFactsProjection {
+  return {
+    observedAt: '2026-11-15T11:30:00.000Z',
+    tasks: Object.fromEntries(
+      tasks
+        .filter((t) => t.status !== 'done' && t.status !== 'canceled')
+        .map((t) => [
+          t.id,
+          { taskCreatedAt: t.createdAt, pullRequests: byTask[t.id] ?? [] },
+        ]),
     ),
-  ).toHaveLength(3);
-  expect(
-    within(screen.getByRole('region', { name: 'In review' })).getAllByRole(
-      'button',
-    ),
-  ).toHaveLength(2);
-  const blocked = within(
-    screen.getByRole('region', { name: 'Blocked' }),
-  ).getByRole('button');
-  expect(blocked.getAttribute('aria-pressed')).toBe('true');
-  expect(blocked.textContent).toContain('Waiting for a product decision');
-  expect(screen.getAllByRole('button')).toHaveLength(9);
-  fireEvent.click(
-    within(screen.getByRole('region', { name: 'Done' })).getByRole('button'),
-  );
-  expect(select).toHaveBeenCalledExactlyOnceWith('task-7');
-});
+  };
+}
 
-test('names the dispatched Session agent-reported plan progress on the card', () => {
-  useOrchestrationSessionActivityQuery.mockImplementation((threadId: string) =>
-    threadId === 'session-a'
-      ? planWindow([
-          'completed',
-          'completed',
-          'completed',
-          'in_progress',
-          'pending',
-        ])
-      : { data: undefined },
-  );
-  render(
-    <ProjectTaskBoard
-      tasks={[task('a', 'in_progress', 'session-a'), task('b', 'todo')]}
-      selectedTaskId=""
-      onSelect={vi.fn()}
-    />,
-  );
-  expect(
-    screen.getByRole('button', {
-      name: 'Work a, In progress, Agent-reported plan: 3 of 5 steps done',
-    }).textContent,
-  ).toContain('Agent plan 3/5');
-  // No Session, no plan: nothing at all rather than a 0% bar.
-  const plain = screen.getByRole('button', { name: 'Work b, To do' });
-  expect(plain.querySelector('.task-plan-progress')).toBeNull();
-  expect(useOrchestrationSessionActivityQuery).toHaveBeenCalledWith(
-    'session-a',
-    undefined,
-    expect.objectContaining({ enabled: true, refetchInterval: 5_000 }),
-  );
-  expect(useOrchestrationSessionActivityQuery).toHaveBeenCalledWith(
-    '',
-    undefined,
-    expect.objectContaining({ enabled: false }),
-  );
-});
-
-test('a finished 5/5 plan never moves the Task or changes its status', () => {
-  useOrchestrationSessionActivityQuery.mockReturnValue(
-    planWindow(Array(5).fill('completed'), 'idle'),
-  );
-  const select = vi.fn();
-  render(
-    <ProjectTaskBoard
-      tasks={[task('a', 'in_progress', 'session-a')]}
-      selectedTaskId=""
-      onSelect={select}
-    />,
-  );
-  const card = within(
-    screen.getByRole('region', { name: 'In progress' }),
-  ).getByRole('button', {
-    name: 'Work a, In progress, Agent-reported plan: 5 of 5 steps done',
+function Harness({
+  tasks,
+  onAction = vi.fn(),
+  onOpenTask = vi.fn(),
+}: {
+  tasks: TaskRecord[];
+  onAction?: (...args: unknown[]) => void;
+  onOpenTask?: (taskId: string) => void;
+}) {
+  const model = useTaskBoardModel({
+    projectSlug: 'demo',
+    tasks,
+    tasksSettled: true,
   });
-  expect(card.textContent).toContain('In progress');
-  expect(
-    within(screen.getByRole('region', { name: 'Done' })).queryAllByRole(
-      'button',
-    ),
-  ).toHaveLength(0);
-  expect(select).not.toHaveBeenCalled();
+  if (model.status === 'loading') return <p>loading</p>;
+  return (
+    <ProjectTaskBoard
+      partition={model.partition}
+      derivations={model.derivations}
+      tasks={new Map(tasks.map((t) => [t.id, t]))}
+      sessionsById={model.sessionsById}
+      agents={[]}
+      onAction={onAction}
+      onOpenTask={onOpenTask}
+    />
+  );
+}
+
+function given({
+  sessions = [],
+  pullRequests = {},
+  tasks,
+}: {
+  sessions?: OrchestrationSessionSummary[];
+  pullRequests?: Record<string, TaskPullRequestFact[]>;
+  tasks: TaskRecord[];
+}) {
+  sdk.useOrchestrationSessionsQuery.mockReturnValue({
+    data: sessions,
+    isError: false,
+    refetch: vi.fn(),
+  });
+  sdk.useTaskPullRequestFactsQuery.mockReturnValue({
+    data: facts(tasks, pullRequests),
+    isError: false,
+    refetch: vi.fn(),
+  });
+}
+
+const lane = (name: string) =>
+  screen.getByRole('region', { name: new RegExp(`^${name}`) });
+const cardTitles = (name: string) =>
+  within(lane(name))
+    .queryAllByRole('article')
+    .map((card) => within(card).getByRole('link').textContent);
+
+beforeEach(() => {
+  vi.spyOn(Date, 'now').mockReturnValue(NOW);
+  sdk.useOrchestrationSessionActivityQuery.mockReset();
+  sdk.useOrchestrationSessionActivityQuery.mockReturnValue({ data: undefined });
 });
 
-test('names a stopped or waiting plan in text, not color alone', () => {
-  useOrchestrationSessionActivityQuery.mockImplementation((threadId: string) =>
-    threadId === 'session-failed'
-      ? planWindow(['completed', 'in_progress', 'pending'], 'failed')
-      : planWindow(['completed', 'pending'], 'needs_input'),
-  );
-  render(
-    <ProjectTaskBoard
-      tasks={[
-        task('f', 'in_progress', 'session-failed'),
-        task('w', 'blocked', 'session-waiting'),
-      ]}
-      selectedTaskId=""
-      onSelect={vi.fn()}
-    />,
-  );
-  expect(
-    screen.getByRole('button', {
-      name: 'Work f, In progress, Agent-reported plan: 1 of 3 steps done, stopped',
-    }).textContent,
-  ).toContain('Agent plan 1/3 · Stopped');
-  expect(
-    screen.getByRole('button', {
-      name: 'Work w, Blocked, Agent-reported plan: 1 of 2 steps done, waiting',
-    }).textContent,
-  ).toContain('Agent plan 1/2 · Waiting');
-});
+/** One Task per live lane, plus one on each shelf. */
+const MIXED = [
+  task('approve', { sessionId: 'run-approve' }),
+  task('running', { sessionId: 'run-running' }),
+  task('review', { sessionId: 'run-review' }),
+  task('ready', { sessionId: 'run-ready' }),
+  task('fresh', { status: 'ready' }),
+  task('backlog', { status: 'todo' }),
+  task('shipped', { status: 'done' }),
+];
+const MIXED_SESSIONS = [
+  session('run-approve', {
+    lifecycleState: 'review_pending',
+    pendingReview: true,
+  }),
+  session('run-running', { lifecycleState: 'running', hasActiveTurn: true }),
+  session('run-review', { lifecycleState: 'completed' }),
+  session('run-ready', { lifecycleState: 'completed' }),
+];
+const MIXED_PRS = {
+  review: [pr('41', { readiness: 'checks-failing' })],
+  ready: [pr('42', { readiness: 'clean' })],
+};
 
-test('shows nothing for an empty plan and skips the read for closed Tasks', () => {
-  useOrchestrationSessionActivityQuery.mockReturnValue(planWindow([]));
-  render(
-    <ProjectTaskBoard
-      tasks={[task('e', 'review', 'session-a'), task('d', 'done', 'session-d')]}
-      selectedTaskId=""
-      onSelect={vi.fn()}
-    />,
-  );
-  expect(
-    screen.getByRole('button', { name: 'Work e, In review' }),
-  ).toBeTruthy();
-  expect(document.querySelector('.task-plan-progress')).toBeNull();
-  expect(useOrchestrationSessionActivityQuery).toHaveBeenCalledWith(
-    'session-d',
-    undefined,
-    expect.objectContaining({ enabled: false }),
-  );
-  expect(useOrchestrationSessionActivityQuery).toHaveBeenCalledWith(
-    'session-a',
-    undefined,
-    expect.objectContaining({ enabled: true, refetchInterval: undefined }),
-  );
+describe('ProjectTaskBoard', () => {
+  test('files each Task in its derived lane, with all five lanes shown', () => {
+    given({ tasks: MIXED, sessions: MIXED_SESSIONS, pullRequests: MIXED_PRS });
+    render(<Harness tasks={MIXED} />);
+
+    expect(cardTitles('Needs you')).toEqual(['Work approve']);
+    expect(cardTitles('Running')).toEqual(['Work running']);
+    expect(cardTitles('In review')).toEqual(['Work review']);
+    expect(cardTitles('Ready to merge')).toEqual(['Work ready']);
+    expect(cardTitles('Idle')).toEqual(['Work fresh']);
+    // The shelves hold intent, not lanes.
+    const shelves = [
+      ...document.querySelectorAll<HTMLDetailsElement>('details[data-shelf]'),
+    ].map((shelf) => [
+      shelf.dataset.shelf,
+      within(shelf).queryAllByRole('article').length,
+    ]);
+    expect(shelves).toEqual([
+      ['backlog', 1],
+      ['done', 1],
+    ]);
+  });
+
+  test('an empty lane says so, and still counts', () => {
+    const tasks = [task('fresh', { status: 'ready' })];
+    given({ tasks });
+    render(<Harness tasks={tasks} />);
+    const ready = lane('Ready to merge');
+    expect(within(ready).getByText('Nothing here')).toBeTruthy();
+    expect(within(ready).getByText('0')).toBeTruthy();
+  });
+
+  test('each card has one status slot, one status line and exactly one action, worded by its rung', () => {
+    given({ tasks: MIXED, sessions: MIXED_SESSIONS, pullRequests: MIXED_PRS });
+    render(<Harness tasks={MIXED} />);
+    const expected: Record<string, [line: string, action: string]> = {
+      'Work approve': ['Needs approval', 'Approve…'],
+      'Work running': ['Running', 'Open run'],
+      'Work review': ['Some checks failing · #41', 'Open PR'],
+      'Work ready': ['Ready to merge · #42', 'Merge…'],
+      'Work fresh': ['Not started', 'Start'],
+    };
+    for (const card of screen.getAllByRole('article')) {
+      const title = within(card).getByRole('link').textContent ?? '';
+      if (!(title in expected)) continue;
+      const [line, action] = expected[title] as [string, string];
+      expect(card.querySelectorAll('.task-card__status')).toHaveLength(1);
+      expect(card.querySelectorAll('.task-card__status-line')).toHaveLength(1);
+      expect(card.querySelector('.task-card__status-line')?.textContent).toBe(
+        line,
+      );
+      const buttons = within(card).getAllByRole('button');
+      expect(buttons.map((button) => button.textContent)).toEqual([action]);
+    }
+  });
+
+  test('the title is a link to the Task, and the action is its sibling', () => {
+    const onOpenTask = vi.fn();
+    const onAction = vi.fn();
+    given({ tasks: MIXED, sessions: MIXED_SESSIONS, pullRequests: MIXED_PRS });
+    render(
+      <Harness tasks={MIXED} onOpenTask={onOpenTask} onAction={onAction} />,
+    );
+    const title = screen.getByRole('link', { name: 'Work ready' });
+    expect(title.getAttribute('href')).toBe('/tasks/ready');
+    expect(title.querySelector('button')).toBeNull();
+    fireEvent.click(title);
+    expect(onOpenTask).toHaveBeenCalledWith('ready');
+    fireEvent.click(screen.getByRole('button', { name: 'Merge Work ready' }));
+    expect(onAction).toHaveBeenCalledWith(
+      'ready',
+      expect.objectContaining({ kind: 'open-pull-request', label: 'Merge…' }),
+    );
+  });
+
+  test('a card keeps its place when live data updates it; an arrival goes on top', () => {
+    const first = [
+      task('a', { status: 'ready', updatedAt: '2026-11-10T00:00:00.000Z' }),
+      task('b', { status: 'ready', updatedAt: '2026-11-09T00:00:00.000Z' }),
+    ];
+    given({ tasks: first });
+    const { rerender } = render(<Harness tasks={first} />);
+    expect(cardTitles('Idle')).toEqual(['Work a', 'Work b']);
+
+    const next = [
+      first[0] as TaskRecord,
+      task('b', { status: 'ready', updatedAt: '2026-11-15T00:00:00.000Z' }),
+      task('c', { status: 'ready', updatedAt: '2026-11-01T00:00:00.000Z' }),
+    ];
+    given({ tasks: next });
+    rerender(<Harness tasks={next} />);
+    expect(cardTitles('Idle')).toEqual(['Work c', 'Work a', 'Work b']);
+  });
+
+  test('focus follows a card that moves to another lane', () => {
+    const tasks = [task('moving', { sessionId: 'run-m' })];
+    given({
+      tasks,
+      sessions: [
+        session('run-m', { lifecycleState: 'running', hasActiveTurn: true }),
+      ],
+    });
+    const { rerender } = render(<Harness tasks={tasks} />);
+    const before = screen.getByRole('link', { name: 'Work moving' });
+    act(() => before.focus());
+    expect(cardTitles('Running')).toEqual(['Work moving']);
+
+    given({
+      tasks,
+      sessions: [
+        session('run-m', {
+          lifecycleState: 'review_pending',
+          pendingReview: true,
+        }),
+      ],
+    });
+    rerender(<Harness tasks={tasks} />);
+    expect(cardTitles('Needs you')).toEqual(['Work moving']);
+    const after = screen.getByRole('link', { name: 'Work moving' });
+    expect(after).not.toBe(before);
+    expect(document.activeElement).toBe(after);
+  });
+
+  test('a run that cannot be read is "Run status unavailable", never Stopped', () => {
+    const tasks = [task('lost', { sessionId: 'run-gone' })];
+    given({ tasks, sessions: [] });
+    render(<Harness tasks={tasks} />);
+    const card = within(lane('Idle')).getByRole('article');
+    expect(card.querySelector('.task-card__status-line')?.textContent).toBe(
+      'Run status unavailable',
+    );
+  });
 });
