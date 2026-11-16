@@ -85,6 +85,7 @@ import {
   toolRequestSessionGrant,
 } from '@kontourai/station-shared/tool-request-preview';
 import { NATIVE_SESSION_RESUMED_METADATA_KEY } from '@kontourai/station-shared/usage-fold';
+import { claudeToolSearchEnv } from '../../runtime/agents/claude-tool-search.js';
 import {
   delegatedApprovalDenial,
   type PreToolPolicyDecision,
@@ -4582,6 +4583,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         : [CLAUDE_ARTIFACT_TOOL_NAME]),
     ];
     const resumeSessionId = claudeResumeSessionId(input.resumeCursor);
+    const toolSearchEnv = claudeToolSearchEnv(input.agent?.toolServerLoading);
     return {
       cwd: input.cwd,
       ...(disallowedTools.length ? { disallowedTools } : {}),
@@ -4713,12 +4715,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ...(augmentedEnv ?? process.env),
         ...connectionEnv,
         ...appHomeEnv,
-        ...(input.agent?.toolServerLoading
-          ? {
-              ENABLE_TOOL_SEARCH:
-                input.agent.toolServerLoading === 'always' ? 'false' : 'true',
-            }
-          : {}),
+        // The same rule decides whether Station's instructions say its
+        // tools load on demand (`session-agent-resolution.ts`).
+        ...(toolSearchEnv ? { ENABLE_TOOL_SEARCH: toolSearchEnv } : {}),
         // After every caller/ambient layer: the Station setting owns this
         // key (see `claudeArtifactsSpawnEnv`).
         ...artifactsEnv,

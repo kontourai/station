@@ -9713,6 +9713,33 @@ describe('ClaudeAdapter', () => {
       expect(mockQuery).not.toHaveBeenCalled();
     });
 
+    test.each([
+      [undefined, 'from-the-harness'],
+      ['on-demand', 'true'],
+      ['always', 'false'],
+    ] as const)(
+      'mcpLoading %s leaves ENABLE_TOOL_SEARCH at %s (unset keeps the harness value)',
+      async (loading, expected) => {
+        vi.stubEnv('ENABLE_TOOL_SEARCH', 'from-the-harness');
+        try {
+          mockQuery.mockReturnValue(createMockQuery([]));
+          const adapter = new ClaudeAdapter();
+          await adapter.startSession({
+            provider: 'claude',
+            threadId: `tool-search-${loading ?? 'harness'}`,
+            agent: {
+              slug: 'my-agent',
+              ...(loading ? { toolServerLoading: loading } : {}),
+            },
+          });
+          const { options } = mockQuery.mock.calls[0][0];
+          expect(options.env.ENABLE_TOOL_SEARCH).toBe(expected);
+        } finally {
+          vi.unstubAllEnvs();
+        }
+      },
+    );
+
     test('adds selected tools without suppressing harness discovery and denies an unselected or newly published MCP call', async () => {
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter();
