@@ -1463,6 +1463,9 @@ export interface PeerReportedPendingRequest {
   callerCanRespond?: boolean;
 }
 
+/** Every peer delegation Activity record's thread id starts with this. */
+const PEER_DELEGATION_THREAD_PREFIX = 'peer-delegation:';
+
 function peerDelegationActivityThreadId(
   environmentId: string,
   taskId: string,
@@ -1472,7 +1475,7 @@ function peerDelegationActivityThreadId(
     .update(`${environmentId}\0${taskId}`)
     .digest('hex')
     .slice(0, 32);
-  return `peer-delegation:${digest}`;
+  return `${PEER_DELEGATION_THREAD_PREFIX}${digest}`;
 }
 
 function peerDelegationLifecyclePath(
@@ -5280,6 +5283,35 @@ export class OrchestrationService {
       record.delegation.taskId === taskId &&
       record.delegation.environmentId === environmentId
     );
+  }
+
+  /**
+   * The peer delegation Activity records `authority` may read, in read-model
+   * order (oldest first): what the peer-delegation refresh reconciles.
+   *
+   * Every such record is written by `recordPeerDelegationActivityDispatch`
+   * under a `peer-delegation:` thread id, so this reads only those threads
+   * instead of folding every readable Session (#5051). It is the same read
+   * model with the same readability and ephemeral checks, narrowed: a record
+   * the caller cannot read is not returned.
+   */
+  async listPeerDelegationActivity(
+    authority: SessionReadScope,
+  ): Promise<OrchestrationSessionSummary[]> {
+    this.initialize();
+    const threadIds = new Set<string>(
+      this.options.eventStore?.listSessionIdsByThreadPrefix(
+        PEER_DELEGATION_THREAD_PREFIX,
+      ) ?? [],
+    );
+    for (const threadId of this.sessionReadModel.keys()) {
+      if (threadId.startsWith(PEER_DELEGATION_THREAD_PREFIX))
+        threadIds.add(threadId);
+    }
+    return this.listSessionReadModel(authority, {
+      purpose: 'peer-delegation-refresh',
+      threadIds: [...threadIds],
+    });
   }
 
   /** Advance a peer Activity record only from an observed peer lifecycle. */
@@ -13636,7 +13668,7 @@ export class OrchestrationService {
   }
 
   private isPeerDelegationActivityRecord(threadId: string): boolean {
-    if (!threadId.startsWith('peer-delegation:')) return false;
+    if (!threadId.startsWith(PEER_DELEGATION_THREAD_PREFIX)) return false;
     return Boolean(
       this.sessionReadModel.get(threadId) ??
         this.options.eventStore?.readSessionByThread(threadId),
