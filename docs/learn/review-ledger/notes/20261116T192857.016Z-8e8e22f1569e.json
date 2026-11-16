@@ -1,0 +1,51 @@
+{
+  "revision": "391fae106a7ba33922b0205fb05c1acea1735df8",
+
+  "notes": [
+    {"path":"AGENTS.md","note":"Checked gate:for guidance: the code-health command it prints is unchanged; only its note now says the gate waits for the heavy-check slot. Root instructions still hold.","inputs":["AGENTS.md","scripts/gate-for.mjs"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the heavy-check slot references: the runner still holds a slot then runs its script; holdHeavyCheckSlotForProcess factors that acquisition out for self-slotted gates (#5080). Claims hold.","inputs":["docs/architecture/module-map.md","docs/guides/development.md","scripts/lib/heavy-check-slots.mjs"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Checked against #5080: the change slots the code-health gate and fallow runners (self-acquired heavy-check slot, fallow npm scripts via heavy-check-slot.mjs) and moves fallow run directories to a disk-backed cache; this page's claims about the changed sources still hold.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Checked package.json scripts claims: only the fallow, fallow:dead-code and fallow:audit scripts changed (now via heavy-check-slot.mjs); install scripts and package-manager claims unchanged.","inputs":["docs/design/pnpm-workspace-installation.md","package.json#/scripts"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"Checked against #5080: the change slots the code-health gate and fallow runners (self-acquired heavy-check slot, fallow npm scripts via heavy-check-slot.mjs) and moves fallow run directories to a disk-backed cache; this page's claims about the changed sources still hold.","inputs":["docs/design/process-supervisor.md","docs/guides/development.md"]},
+
+    {"path":"docs/guides/code-hygiene.md","note":"Checked against #5080: the change slots the code-health gate and fallow runners (self-acquired heavy-check slot, fallow npm scripts via heavy-check-slot.mjs) and moves fallow run directories to a disk-backed cache; this page's claims about the changed sources still hold.","inputs":["docs/guides/code-hygiene.md","package.json#/scripts","scripts/gate-for.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Added that the code-health gate waits for a host heavy-check slot however it is started (#5080); checked the fallow:ceiling/fallow:baseline commands it documents are unchanged in name and behaviour apart from queueing.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md","package.json#/scripts","scripts/fallow-baseline.mjs","scripts/fallow-ceiling.mjs"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Checked package.json scripts claims: only the fallow scripts gained the heavy-check-slot wrapper; dependency scripts unchanged.","inputs":["docs/guides/dependency-security.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/development.md","note":"Added a Verification paragraph: test:focused, test:changed, typecheck, the code-health gate and fallow audits share one host heavy-check slot (#5080). Checked package.json script claims still hold.","inputs":["docs/guides/development.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/native-model-channel-lab.md","note":"Checked: the lab command still acquires the normal host-wide heavy-check slot through heavy-check-slot.mjs, now via the shared holdHeavyCheckSlotForProcess helper; behaviour unchanged.","inputs":["docs/guides/native-model-channel-lab.md","scripts/lib/heavy-check-slots.mjs"]},
+
+    {"path":"docs/guides/repository-knowledge-graph.md","note":"Checked package.json scripts claims: unaffected by the fallow script wrapping.","inputs":["docs/guides/repository-knowledge-graph.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Checked fallow-baselines/ description against code-health-gate.mjs: it still reads baselines from the base revision; only slot acquisition was added.","inputs":["docs/guides/repository-layout.md","scripts/code-health-gate.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"Added the code-health gate and fallow entry points to the heavy-check slot table, the self-slotting rationale, the measured docs:review:record exemption (41 s, 1.1 cores, 1.1 GiB peak), and the disk-backed fallow cache location and STATION_FALLOW_CACHE_DIR override (#5080). Checked against the scripts and tests.","inputs":["docs/guides/testing.md","docs/guides/development.md","package.json#/scripts","scripts/heavy-check-slot.mjs","scripts/lib/heavy-check-slots.mjs","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/guides/ui-copy.md","note":"Checked package.json scripts claims: unaffected by the fallow script wrapping.","inputs":["docs/guides/ui-copy.md","package.json#/scripts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Added STATION_FALLOW_CACHE_DIR with its XDG/~/.cache defaults, checked against scripts/lib/fallow-base-cache.mjs resolveFallowCacheRoot.","inputs":["docs/reference/env-vars.md"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"Checked package.json scripts claims: verification scripts unchanged; only fallow scripts gained the slot wrapper.","inputs":["docs/reference/verification-receipts.md","package.json#/scripts"]},
+
+    {"path":"packages/shared/README.md","note":"Checked against #5080: the change slots the code-health gate and fallow runners (self-acquired heavy-check slot, fallow npm scripts via heavy-check-slot.mjs) and moves fallow run directories to a disk-backed cache; this page's claims about the changed sources still hold.","inputs":["packages/shared/README.md","docs/guides/development.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Added guidance: a new heavy check queues for the heavy-check slot (runner wrapper or holdHeavyCheckSlotForProcess at entry) and keeps scratch data off os.tmpdir() (#5080). Checked the code-health-gate command reference still holds.","inputs":["scripts/AGENTS.md","docs/guides/code-quality.md","docs/guides/testing.md","scripts/code-health-gate.mjs","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/CLAUDE.md","note":"Imports scripts/AGENTS.md, which gained the heavy-check slot guidance; the import is unchanged.","inputs":["scripts/CLAUDE.md","scripts/AGENTS.md"]},
+
+    {"path":"src-desktop/AGENTS.md","note":"Checked gate:for references: commands unchanged; only the code-health note mentions the slot.","inputs":["src-desktop/AGENTS.md","scripts/gate-for.mjs"]},
+
+    {"path":"src-server/AGENTS.md","note":"Checked against #5080: the change slots the code-health gate and fallow runners (self-acquired heavy-check slot, fallow npm scripts via heavy-check-slot.mjs) and moves fallow run directories to a disk-backed cache; this page's claims about the changed sources still hold.","inputs":["src-server/AGENTS.md","docs/guides/development.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Checked against #5080: the change slots the code-health gate and fallow runners (self-acquired heavy-check slot, fallow npm scripts via heavy-check-slot.mjs) and moves fallow run directories to a disk-backed cache; this page's claims about the changed sources still hold.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Checked against #5080: the change slots the code-health gate and fallow runners (self-acquired heavy-check slot, fallow npm scripts via heavy-check-slot.mjs) and moves fallow run directories to a disk-backed cache; this page's claims about the changed sources still hold.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

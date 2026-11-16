@@ -76,12 +76,13 @@ export const EVERY_PUSH_CHECKS = Object.freeze([
 /**
  * CI's exact unused-export verdict. The hook checks only the narrow case (a
  * new export no other file names); this is the full fallow audit CI's
- * statics job runs, 25-50s, against the same base.
+ * statics job runs, 25-50s, against the same base. The gate queues for the
+ * host-wide heavy-check slot itself (#5080), so the command needs no wrapper.
  */
 export const CODE_HEALTH_VERDICT = Object.freeze({
   command:
     'node scripts/code-health-gate.mjs --base=$(git merge-base origin/main HEAD)',
-  note: "CI's full unused-export verdict; the hook checks only new exports no other file names",
+  note: "CI's full unused-export verdict; the hook checks only new exports no other file names. It waits for the host-wide heavy-check slot",
 });
 
 /** The verification ladder, cheapest first; `command` is null off-host. */
