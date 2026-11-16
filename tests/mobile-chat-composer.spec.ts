@@ -1301,37 +1301,47 @@ test('keeps mobile attachment selection reviewable without moving the draft', as
       buffer: Buffer.from('# Accessibility'),
     },
   ]);
-  await expect(
-    page.getByRole('button', { name: 'Review 5 attachments' }),
-  ).toBeVisible();
+  const strip = page
+    .locator('#chat-dock')
+    .getByRole('list', { name: 'Attached files' });
+  await expect(strip.getByRole('listitem')).toHaveCount(5);
+  await expect(strip).toContainText('mobile-context.md');
   await expect(textarea).toHaveValue('Review the attached notes');
 
-  const reviewAttachments = page.getByRole('button', {
-    name: 'Review 5 attachments',
+  // With files attached, the paperclip still opens the picker (to add more);
+  // the strip is where they are reviewed, so there is no panel to open.
+  const chooser = page.waitForEvent('filechooser');
+  await attach.click();
+  await chooser;
+  await expect(page.locator('.attachment-menu')).toHaveCount(0);
+
+  // The image's thumbnail opens the transcript's previewer, at touch size.
+  const thumbnail = strip.getByRole('button', {
+    name: 'Preview mobile-photo.png',
   });
-  await reviewAttachments.click();
-  const menu = page.locator('.attachment-menu');
-  await expect(menu).toBeVisible();
-  await setVisualViewport(page, 360);
-  await expect(menu).toContainText('mobile-context.md');
-  await expect(menu).toContainText('mobile-photo.png');
-  const menuBox = await menu.boundingBox();
-  expect(menuBox?.x ?? -1).toBeGreaterThanOrEqual(0);
-  expect((menuBox?.x ?? 0) + (menuBox?.width ?? 0)).toBeLessThanOrEqual(390);
-  expect((menuBox?.y ?? 0) + (menuBox?.height ?? 0)).toBeLessThanOrEqual(360);
-  const listBox = await menu.locator('.attachment-menu__list').boundingBox();
-  expect((listBox?.y ?? 0) + (listBox?.height ?? 0)).toBeLessThanOrEqual(360);
-  for (const label of ['Add more', 'Clear all']) {
-    const box = await menu.getByRole('button', { name: label }).boundingBox();
-    expect(box?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
-  }
+  const thumbBox = await thumbnail.boundingBox();
+  expect(thumbBox?.width ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+  expect(thumbBox?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+  await thumbnail.click();
+  const preview = page.getByRole('dialog', { name: 'Preview' });
+  await expect(preview).toBeVisible();
+  await preview.getByRole('button', { name: 'Close preview' }).click();
+  await expect(preview).toBeHidden();
 
-  await setVisualViewport(page, 844);
-  await textarea.click({ position: { x: 8, y: 8 } });
-  await expect(menu).toBeHidden();
-  await expect(textarea).toHaveValue('Review the attached notes');
-  await reviewAttachments.click();
-  await menu.getByRole('button', { name: 'Clear all' }).click();
+  // Each chip removes its own file; the draft stays.
+  for (const name of [
+    'mobile-context.md',
+    'mobile-photo.png',
+    'requirements.md',
+    'review-notes.md',
+    'accessibility.md',
+  ]) {
+    const remove = strip.getByRole('button', { name: `Remove ${name}` });
+    const box = await remove.boundingBox();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+    await remove.click();
+  }
+  await expect(strip).toHaveCount(0);
   await expect(attach).toBeVisible();
   await expect(textarea).toHaveValue('Review the attached notes');
 });

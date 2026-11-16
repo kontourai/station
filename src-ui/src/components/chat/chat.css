@@ -1311,6 +1311,23 @@
   border-radius: 4px;
 }
 
+.composer-attachments__thumb-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: zoom-in;
+}
+
+.composer-attachments__thumb-button:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
 .composer-attachments__glyph {
   display: inline-flex;
   flex: 0 0 auto;
@@ -1443,8 +1460,9 @@
   .composer-attachments__chip {
     min-height: 44px;
   }
-  .composer-attachments__remove {
-    width: 44px;
+  .composer-attachments__remove,
+  .composer-attachments__thumb-button {
+    min-width: 44px;
     height: 44px;
   }
   .composer-attachments__action {
@@ -1685,14 +1703,16 @@
 
 /* The fix sits at the end of its reason, wrapping as one unit, without its
    touch target inflating the text's line height. */
-.chat-input__attachment-error:has(.chat-input__blocked-action) {
+.chat-input__attachment-error:has(.chat-input__blocked-action),
+.chat-input__upload-wait:has(.chat-input__blocked-action) {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   column-gap: var(--space-2);
 }
 
-.chat-input__attachment-error .chat-input__blocked-action {
+.chat-input__attachment-error .chat-input__blocked-action,
+.chat-input__upload-wait .chat-input__blocked-action {
   padding: 0 var(--space-1);
   border: 0;
   background: transparent;
