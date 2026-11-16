@@ -60,13 +60,15 @@ import type {
   WorkflowProcessProjectionEntry,
   WorkflowProcessProjectionEnvelope,
 } from '@kontourai/console-server';
-import { translateWorkflowProcessProjectionEnvelope } from '@kontourai/console-server';
 import {
   deriveConsoleProcessBlockedReason,
   mapWorkflowStatusToConsoleProcessStatus,
 } from '@kontourai/flow-agents/console-contract';
 import type { WorkflowTaskSummary } from '@kontourai/station-contracts/workflow';
-import { loadBuildCurrentOperatingState } from '../../capabilities/console-server-operating-state.js';
+import {
+  loadBuildCurrentOperatingState,
+  loadTranslateWorkflowProcessProjectionEnvelope,
+} from '../../capabilities/console-server-operating-state.js';
 import {
   critiquesFromTrustBundle,
   filterCritiquesForSlug,
@@ -161,6 +163,8 @@ export class OperatingStateService {
       processes: entries,
     };
 
+    const translateWorkflowProcessProjectionEnvelope =
+      loadTranslateWorkflowProcessProjectionEnvelope();
     const { events, warnings } = translateWorkflowProcessProjectionEnvelope(
       envelope,
       { scopeLabel: `${STATION_OPERATING_STATE_SCOPE_KIND} ${scopeId}` },

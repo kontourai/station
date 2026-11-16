@@ -2862,7 +2862,10 @@ the inspector does not start its own timeout. It distinguishes a `TimeoutError` 
 from other aborts. Built-in adapters declaring awaited abort settlement get a separate
 bounded cleanup wait; arbitrary asynchronous work is not forcibly stopped. The
 launchable-model refresh supplies a signal, while ordinary runtime inventory calls can
-omit one. Command/prerequisite inclusion and discovery policy are explicit inputs.
+omit one. Command, model-catalog and prerequisite inclusion and discovery policy are
+explicit inputs. The boot-time built-in agent binding excludes model discovery and
+commands, because either can start an engine's program and readiness comes from
+prerequisites alone.
 Public connection identity is mapped at the composition Seam from the Adapter's
 canonical EngineId. Partial results state whether facts came from live observation,
 built-in fallback, or neither. Adapter failure cannot throw through the total Interface
