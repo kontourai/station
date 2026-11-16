@@ -766,7 +766,10 @@ scan refuses by design. In a test under `packages`, `scripts`, `src-server` or
 and not in a generated tree selects that test when the file changes. The
 `verify-local` deferral is still reported; the edge only adds tests. A literal
 in a fixture string or an error message counts too, so some selections are more
-than a read. It does not see a path built from several segments
+than a read. In local unsharded feedback, which runs an escalated diff's explicit
+targets only up to 32 of them, a test that only this derivation selected is the
+first to be left out, so these edges cannot push a diff past that bound; the
+hosted shard plan keeps every one. It does not see a path built from several segments
 (`join('src-desktop', 'src', 'lib.rs')`), a template literal with a
 substitution, a literal inside a longer string, or a suite under `tests/`, which
 a pull-request shard cannot run. For a path that also escalates, such as
