@@ -368,8 +368,13 @@ The resolver validates its profile and exact-source reuse without waiting on
 an occupancy snapshot. `release-pipeline.mjs observe` remains available as a
 single diagnostic inventory of configured repositories; its output explicitly
 reports observed headroom, not admission. An API error fails the observation,
-with no retry loop or work allocation. Native staging uses two platform build
-slots and one macOS slot by ordering iOS after macOS and Windows after Android.
+with no retry loop or work allocation. Native staging starts its four platform
+builds together once the cohort plan exists; none reads another's output, and
+the desktop manifest is the only join. A Nightly therefore holds two macOS
+runners at once (the macOS and iOS builds) out of `STATION_HOSTED_MACOS_SLOTS`,
+which post-landing iOS builds also use. GitHub has cancelled macOS jobs it
+could not place on busy weekdays; such a cancellation fails staging, so nothing
+publishes, and the run is recovered like any other staging failure.
 
 `STATION_NIGHTLY_INTERVAL_HOURS` defaults to 6 and accepts integers 1–168.
 Admission under the Nightly delivery lock rechecks this interval, the
