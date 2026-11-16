@@ -1772,6 +1772,9 @@ describe('wireTurnCompletionNotifications: durable finish lifecycle', () => {
   let coordinatorDb: DatabaseSync;
   let coordinatorStore: ReturnType<typeof createSqliteCoordinatorStore>;
   let holding: (threadId: string) => boolean;
+  /** The session's reader and attachment, as the write reads them. */
+  let recipient: typeof owner | undefined;
+  let external: boolean;
   const clock = { now: 0 };
   const services: NotificationService[] = [];
   const unwires: Array<() => void> = [];
@@ -1787,6 +1790,8 @@ describe('wireTurnCompletionNotifications: durable finish lifecycle', () => {
       now: Date.parse('2026-11-15T15:00:00Z'),
     });
     holding = () => false;
+    recipient = owner;
+    external = false;
     clock.now = Date.parse('2026-11-15T16:00:00Z');
   });
   afterEach(async () => {
@@ -1854,9 +1859,9 @@ describe('wireTurnCompletionNotifications: durable finish lifecycle', () => {
       wireTurnCompletionNotifications(
         bus,
         {
-          isReadOnlyAttachedSession: () => false,
+          isReadOnlyAttachedSession: () => external,
           isEphemeralSession: () => false,
-          resolveSessionPresenceSubject: () => owner,
+          resolveSessionPresenceSubject: () => recipient,
           readFinishedAlertHold: (threadId) =>
             holding(threadId) ? ['child-agent'] : [],
         },
@@ -1945,12 +1950,20 @@ describe('wireTurnCompletionNotifications: durable finish lifecycle', () => {
         ),
       ).toEqual([]);
       expect(await second.finished()).toHaveLength(1);
-      expect(second.episodes.releaseFor('thread-1')?.key).toBe(
-        'event:terminal-1',
-      );
-      expect(rows()).toEqual([
-        expect.objectContaining({ state: 'released', turnId: 'turn-1' }),
-      ]);
+      if (variant === 'dismissed') {
+        // Nothing is replayed, and the card gets no fresh release: it reads
+        // Done without an "Agent finished".
+        expect(second.episodes.releaseFor('thread-1')).toBeUndefined();
+        expect(second.episodes.isPending('thread-1')).toBe(false);
+        expect(rows()).toEqual([]);
+      } else {
+        expect(second.episodes.releaseFor('thread-1')?.key).toBe(
+          'event:terminal-1',
+        );
+        expect(rows()).toEqual([
+          expect.objectContaining({ state: 'released', turnId: 'turn-1' }),
+        ]);
+      }
       expect(second.warn).not.toHaveBeenCalled();
     },
   );
@@ -1992,7 +2005,78 @@ describe('wireTurnCompletionNotifications: durable finish lifecycle', () => {
       'turn-completion: a saved finish names a record this producer did not write; not replayed',
       expect.anything(),
     );
+    // Another producer's record is no reason to announce this finish.
+    expect(station.episodes.releaseFor('thread-1')).toBeUndefined();
+    expect(station.episodes.isPending('thread-1')).toBe(false);
+    expect(rows()).toEqual([]);
   });
+
+  test('a restart that finds no record for a writing finish drops it as ambiguous: nothing is written, pushed or announced', async () => {
+    // The producer's own bytes: the write failed, so the row is `writing`
+    // and no record exists. A restart cannot tell this from a record the
+    // person cleared, so it must not recreate one.
+    const first = await boot({ coordinator: false });
+    vi.spyOn(first.notifications, 'scheduleEnveloped').mockRejectedValueOnce(
+      new Error('ENOSPC'),
+    );
+    first.emit({ method: 'turn.started' });
+    first.emit({ eventId: 'terminal-1', finishReason: 'stop' });
+    await first.elapse();
+    expect(await first.finished()).toEqual([]);
+    expect(rows()).toEqual([
+      expect.objectContaining({ state: 'writing', attempts: 1 }),
+    ]);
+    await stop();
+
+    const second = await boot();
+    await second.elapse();
+    await second.elapse();
+    expect(await second.finished()).toEqual([]);
+    expect(
+      second.frames.filter(
+        (event) =>
+          event === SERVER_EVENTS.NOTIFICATION_DELIVERED ||
+          event === SERVER_EVENTS.NOTIFICATION_UPDATED,
+      ),
+    ).toEqual([]);
+    expect(coordinatorItems()).toEqual([]);
+    expect(second.episodes.releaseFor('thread-1')).toBeUndefined();
+    expect(second.episodes.isPending('thread-1')).toBe(false);
+    expect(rows()).toEqual([]);
+    expect(second.warn).toHaveBeenCalledWith(
+      'turn-completion: replay_ambiguous: a saved finish has no record, and a cleared one looks the same; not replayed',
+      expect.objectContaining({ threadId: 'thread-1', turnId: 'turn-1' }),
+    );
+  });
+
+  test.each(['skipped_no_recipient', 'skipped_external'] as const)(
+    'a finish whose session loses its reader before the write ends quietly (%s)',
+    async (result) => {
+      const station = await boot();
+      const write = vi.spyOn(station.notifications, 'scheduleEnveloped');
+      station.emit({ method: 'turn.started' });
+      station.emit({ eventId: 'terminal-1', finishReason: 'stop' });
+      await station.notifications.drainAsyncDispatch();
+      // Accepted and held: the confirmation window is open.
+      expect(station.episodes.isPending('thread-1')).toBe(true);
+      expect(rows()).toEqual([expect.objectContaining({ state: 'held' })]);
+      if (result === 'skipped_no_recipient') recipient = undefined;
+      else external = true;
+      vi.mocked(turnCompletionNotificationOps.add).mockClear();
+      await station.elapse();
+      expect(write).not.toHaveBeenCalled();
+      expect(await station.finished()).toEqual([]);
+      expect(
+        vi
+          .mocked(turnCompletionNotificationOps.add)
+          .mock.calls.filter(([, labels]) => labels?.result === result),
+      ).toEqual([[1, { outcome: 'done', result }]]);
+      // No record, so no fresh release: the card is neither Running nor alerting.
+      expect(station.episodes.releaseFor('thread-1')).toBeUndefined();
+      expect(station.episodes.isPending('thread-1')).toBe(false);
+      expect(rows()).toEqual([]);
+    },
+  );
 
   test('a failed write keeps the finish pending on the card, is saved as writing, and is retried with backoff until written', async () => {
     const station = await boot();
@@ -2230,9 +2314,9 @@ describe('wireTurnCompletionNotifications: durable finish lifecycle', () => {
     );
     expect(station.timers.pending()).toEqual([]);
     expect(station.episodes.isPending('thread-1')).toBe(false);
-    expect(rows()).toEqual([
-      expect.objectContaining({ state: 'released', turnId: 'turn-1' }),
-    ]);
+    // Not this producer's record: no fresh release for the card either.
+    expect(station.episodes.releaseFor('thread-1')).toBeUndefined();
+    expect(rows()).toEqual([]);
   });
 
   test('a release is restored by a restart inside the card window and forgotten after it', async () => {

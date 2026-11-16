@@ -1920,6 +1920,8 @@ describe('one "Agent finished" per completion episode', () => {
       sendFloor,
       holds,
       delegated,
+      notifications,
+      producerWarn,
       push,
       runFor,
       alerts,
@@ -2085,6 +2087,30 @@ describe('one "Agent finished" per completion episode', () => {
     expect(await w.records()).toHaveLength(1);
     expect(w.lastPhase()).toBe('completed');
     expect(w.alerts()).toEqual(['Agent finished']);
+    await w.dispose();
+  });
+
+  test('a finish whose tag another producer already owns reads Done on the card without an "Agent finished"', async () => {
+    const w = await episodeWorld();
+    w.h.sessions.set('s1', sessionEvents('s1', 'running', START));
+    await w.notifications.schedule('scheduler', {
+      category: 'turn-completed',
+      title: 'Not this producer',
+      body: 'A colliding record',
+      dedupeTag: 'turn-completion:s1:turn-2',
+    } as never);
+    await w.push('s1', { method: 'turn.completed', turnId: 'turn-2' });
+    await w.runFor(
+      FINISHED_ALERT_CONFIRM_MS + NATIVE_PUSH_MIN_SEND_INTERVAL_MS * 2,
+    );
+    expect(w.producerWarn).toHaveBeenCalledWith(
+      'turn-completion: a finished alert cannot be written; its tag belongs to another producer',
+      expect.anything(),
+    );
+    w.producerWarn.mockClear();
+    expect(w.lastPhase()).toBe('completed');
+    expect(w.alerts()).toEqual([]);
+    expect(await w.records()).toEqual([]);
     await w.dispose();
   });
 
