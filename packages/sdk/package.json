@@ -1,6 +1,6 @@
 {
   "name": "@kontourai/station-sdk",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "SDK for Station plug-in UI and headless Agent development",
   "type": "module",
   "main": "./src/index.ts",
@@ -125,8 +125,8 @@
     "@kontourai/console-core": "^0.4.0",
     "@kontourai/flow": "6.0.0",
     "@kontourai/flow-agents": "11.0.0",
-    "@kontourai/station-contracts": "^0.13.0",
-    "@kontourai/station-shared": "^0.13.0",
+    "@kontourai/station-contracts": "^0.14.0",
+    "@kontourai/station-shared": "^0.14.0",
     "@kontourai/surface": "^6.3.0",
     "@kontourai/thread": "0.7.0",
     "@kontourai/ui": "^1.19.0",

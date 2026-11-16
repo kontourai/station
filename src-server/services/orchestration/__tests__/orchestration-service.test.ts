@@ -37,7 +37,10 @@ import {
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { ConnectionRecoveryIntent } from '@kontourai/station-contracts/connection-recovery';
 import type { OrchestrationCommand } from '@kontourai/station-contracts/orchestration';
-import { PENDING_TURN_INTERRUPT_TTL_MS } from '@kontourai/station-contracts/orchestration';
+import {
+  CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
+  PENDING_TURN_INTERRUPT_TTL_MS,
+} from '@kontourai/station-contracts/orchestration';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import type { ProjectTaskRoomGrant } from '@kontourai/station-contracts/project-task-room';
 import {
@@ -131,6 +134,7 @@ import { createLogger } from '../../../utils/logger.js';
 import { LOG_BINDING_KEYS } from '../../../utils/logger-correlation.js';
 import { AgentPolicyService } from '../../agents/agent-policy-service.js';
 import { ApprovalRegistry } from '../../approvals/approval-registry.js';
+import { isSessionUntouched } from '../recovery-dispatch-adapter.js';
 import { stationWorkflowActorKey } from '../../evidence/orchestration-workflow-sidecar.js';
 import { buildSyntheticTrustBundle } from '../../evidence/trust-bundle.js';
 import { VeritasReadinessService } from '../../evidence/veritas-readiness-service.js';
@@ -1755,7 +1759,19 @@ describe('OrchestrationService', () => {
 
     // Client B connects afterwards with no cursor: the snapshot rows carry
     // the same activity, running tool included, with no further events.
+    const schedule = eventStore.agentScheduleStore();
+    const wake = schedule.insertWakeUp({
+      conversationId: root, sessionId: child, actor: { userId: 'owner-user', attribution: 'unattributed-agent' },
+      caller: { assurance: 'bound', sessionId: child }, note: 'Check the result',
+      dueAtMs: Date.parse('2026-09-22T09:10:00.000Z'), state: 'pending', now: Date.parse('2026-09-22T09:00:00.000Z'),
+    });
+    if (typeof wake === 'string') throw new Error(wake);
     const snapshot = await service.listSessionReadModel();
+    for (const threadId of [root, child]) {
+      expect(snapshot.find((session) => session.threadId === threadId)?.nextWakeUpAt).toBe('2026-09-22T09:10:00.000Z');
+    }
+    schedule.settleWakeUp(wake.id, 'canceled', Date.parse('2026-09-22T09:01:00.000Z'));
+    expect((await service.listSessionReadModel()).find((session) => session.threadId === child)?.nextWakeUpAt).toBeUndefined();
     for (const threadId of [root, child])
       expect(
         snapshot.find((session) => session.threadId === threadId)
@@ -3207,6 +3223,159 @@ describe('OrchestrationService', () => {
     } finally {
       unsubscribe();
       await parkService.shutdown();
+    }
+  });
+
+  // A finished turn's alert (and phone card Done) waits for work that will
+  // produce more: a subagent always, a command only while not backgrounded,
+  // the engine's own open-work flag only when the child-work record cannot
+  // classify it. Read from the service's real child-work projection and
+  // adapter, the facts the idle park reads.
+  test('readFinishedAlertHold reads child work, engine work and delegation ownership', async () => {
+    const holdService = new OrchestrationService({
+      adapterRegistry: createRegistry([claude]),
+      eventBus,
+      eventStore,
+      flowRunService,
+      listProjects: () => configuredProjects,
+      workflowSidecarService,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    const threadId = 'held-finish-conversation';
+    const reporter = {
+      producer: 'engine-subagent' as const,
+      reporterThreadId: threadId,
+    };
+    const snapshot = async (running: Record<string, unknown>[]) => {
+      claude.events.push({
+        eventId: `child-work-${randomUUID()}`,
+        provider: 'claude',
+        threadId,
+        method: 'child-work.updated',
+        delta: { kind: 'snapshot', ...reporter, running },
+        createdAt: new Date().toISOString(),
+      } as unknown as CanonicalRuntimeEvent);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    };
+    const withOpenWork = claude as FakeAdapter & {
+      hasOpenEngineWork?: (threadId: string) => boolean;
+    };
+    try {
+      const started = await holdService.sessionCommands.execute(
+        {
+          type: 'start-session',
+          input: {
+            threadId,
+            provider: 'claude',
+            metadata: { userId: 'owner-user' },
+          },
+        },
+        { userId: 'owner-user' },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      expect(holdService.readFinishedAlertHold(threadId)).toEqual([]);
+
+      await snapshot([
+        { ...reporter, childId: 'agent-1', status: 'running', workKind: 'agent' },
+      ]);
+      expect(holdService.readFinishedAlertHold(threadId)).toEqual([
+        'child-agent',
+      ]);
+
+      // A dev server left running: backgrounded, so it does not hold, even
+      // though the engine counts it as open work.
+      withOpenWork.hasOpenEngineWork = (id) => id === threadId;
+      await snapshot([
+        {
+          ...reporter,
+          childId: 'bash-1',
+          status: 'running',
+          workKind: 'command',
+          backgrounded: true,
+        },
+      ]);
+      expect(holdService.readFinishedAlertHold(threadId)).toEqual([]);
+
+      // A command the turn did not background still holds.
+      await snapshot([
+        {
+          ...reporter,
+          childId: 'bash-2',
+          status: 'running',
+          workKind: 'command',
+          backgrounded: false,
+        },
+      ]);
+      expect(holdService.readFinishedAlertHold(threadId)).toEqual([
+        'foreground-command',
+      ]);
+
+      // Nothing the record lists explains the engine's open work: it holds.
+      await snapshot([]);
+      expect(holdService.readFinishedAlertHold(threadId)).toEqual([
+        'engine-work',
+      ]);
+      withOpenWork.hasOpenEngineWork = undefined;
+      expect(holdService.readFinishedAlertHold(threadId)).toEqual([]);
+
+      // Claude says it is about to open a turn of its own after a
+      // background child settled: that pending follow-up holds.
+      claude.events.push({
+        eventId: `follow-up-${randomUUID()}`,
+        provider: 'claude',
+        threadId,
+        method: 'extension.notification',
+        namespace: 'claude-code',
+        type: 'provider/follow-up-pending',
+        payload: { pending: true },
+        createdAt: new Date().toISOString(),
+      } as unknown as CanonicalRuntimeEvent);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(holdService.readFinishedAlertHold(threadId)).toEqual([
+        'follow-up-pending',
+      ]);
+      // The provider's turn opens: the fact is spent.
+      claude.events.push({
+        eventId: `follow-up-turn-${randomUUID()}`,
+        provider: 'claude',
+        threadId,
+        method: 'turn.started',
+        turnId: 'provider-turn-1',
+        createdAt: new Date().toISOString(),
+      } as CanonicalRuntimeEvent);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(holdService.readFinishedAlertHold(threadId)).toEqual([]);
+
+      // A Station-delegated child session this one started, still starting:
+      // its result comes back here, so it holds.
+      claude.events.push({
+        eventId: `held-finish-started-${randomUUID()}`,
+        provider: 'claude',
+        threadId,
+        method: 'session.started',
+        sessionId: threadId,
+        createdAt: new Date().toISOString(),
+      } as CanonicalRuntimeEvent);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      eventStore.reserveOwnershipStart('held-finish-owned-child', {
+        stationDelegationProvenance: 'caller-derived',
+        delegation: { parentSessionId: threadId },
+      });
+      expect(holdService.readFinishedAlertHold(threadId)).toEqual([
+        'owned-session',
+      ]);
+
+      expect(holdService.isDelegatedChildSession(threadId)).toBe(false);
+      eventStore.delegationResultStore().arm({
+        childConversationId: threadId,
+        taskId: threadId,
+        parentConversationId: 'delegating-parent',
+        actor: { userId: 'owner-user', attribution: 'verified-bound' },
+      });
+      expect(holdService.isDelegatedChildSession(threadId)).toBe(true);
+    } finally {
+      withOpenWork.hasOpenEngineWork = undefined;
+      await holdService.shutdown();
     }
   });
 
@@ -4789,6 +4958,23 @@ describe('OrchestrationService', () => {
         eventStore.latestEventByMethod('handoff-conversation', 'session.started')?.payload,
       ).toMatchObject({ metadata: { userId: 'owner-user' } });
       expect(handoffService.sessionRecordedOwnerId('handoff-conversation')).toBe('owner-user');
+      // While the root is still running, a handoff is refused with a code a
+      // client can branch on (and nothing is reserved).
+      await expect(
+        handoffService.prepareConversationHandoff(
+          'handoff-conversation',
+          INTERNAL_SESSION_READ_SCOPE,
+          {
+            agentId: 'agent-b',
+            environmentId: 'environment-a',
+            connectionId: 'claude',
+            idempotencyKey: 'handoff-while-running',
+            messageDigest: 'message-running',
+          },
+        ),
+      ).rejects.toMatchObject({
+        code: CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
+      });
       eventStore.appendEvent({
         eventId: 'handoff-root-complete',
         provider: 'claude',
@@ -5954,9 +6140,22 @@ describe('OrchestrationService', () => {
       // The credential-replay shape bypasses dispatch and ends in a DIRECT
       // adapter.sendTurn — so the restart seam itself must refuse: no
       // respawn, no teardown of the live engine, no replay.
-      await expect(restart('portable-credential-restart')).rejects.toThrow(
+      const refused = await restart('portable-credential-restart').catch(
+        (error: unknown) => error,
+      );
+      expect(String(refused)).toContain(
         'This portable task cannot continue without a current execution offer',
       );
+      // Refused before anything stopped: recovery must not restore it.
+      expect(isSessionUntouched(refused)).toBe(true);
+      // So is a restart for a Session Station does not know.
+      const unknown = await restart('no-such-credential-session').catch(
+        (error: unknown) => error,
+      );
+      expect(String(unknown)).toContain(
+        'Credential profile recovery session is unavailable.',
+      );
+      expect(isSessionUntouched(unknown)).toBe(true);
       expect(claude.startSession.mock.calls.length).toBe(startsBefore);
       expect(claude.stopSession).not.toHaveBeenCalled();
       // Legacy control: an unmarked session restarts.
@@ -13018,11 +13217,14 @@ describe('OrchestrationService', () => {
       eventStore,
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
+    // No confirmation window: this test is about the stop suppression, and
+    // the finished push it expects is otherwise held for five seconds.
     wireTurnCompletionNotifications(
       notificationBus,
       restartService,
       notificationService,
       logger,
+      { confirmMs: 0 },
     );
     wireInternalStopRedispatchFailureNotifications(
       notificationBus,
@@ -13126,8 +13328,12 @@ describe('OrchestrationService', () => {
             event.payload.turnId === 'turn-2',
         ),
     );
-    await notificationService.drainAsyncDispatch();
-    const notifications = await notificationService.list();
+    let notifications = await notificationService.list();
+    for (let attempt = 0; attempt < 100 && notifications.length === 0; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      await notificationService.drainAsyncDispatch();
+      notifications = await notificationService.list();
+    }
     expect(notifications).toHaveLength(1);
     expect(notifications[0]).toEqual(
       expect.objectContaining({

@@ -1,0 +1,19 @@
+{
+  "revision": "7d561c4a94012d1dd057f65eda0865f9e4b7bd91",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"#4995 changes only the setup-requirement probe's logging (once per failure identity, recovery logged) and skips listed Agents with no agent.json; the attention item, its subject choice and the Web Push/support-service composition these pages describe are unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"#4995 changes only the setup-requirement probe's logging (once per failure identity, recovery logged) and skips listed Agents with no agent.json; the attention item, its subject choice and the Web Push/support-service composition these pages describe are unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"#4995 changes only the setup-requirement probe's logging (once per failure identity, recovery logged) and skips listed Agents with no agent.json; the attention item, its subject choice and the Web Push/support-service composition these pages describe are unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/automations.md","note":"#4995 changes only the setup-requirement probe's logging (once per failure identity, recovery logged) and skips listed Agents with no agent.json; the attention item, its subject choice and the Web Push/support-service composition these pages describe are unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"#4995 changes only the setup-requirement probe's logging (once per failure identity, recovery logged) and skips listed Agents with no agent.json; the attention item, its subject choice and the Web Push/support-service composition these pages describe are unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"#4995 changes only the setup-requirement probe's logging (once per failure identity, recovery logged) and skips listed Agents with no agent.json; the attention item, its subject choice and the Web Push/support-service composition these pages describe are unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"#4995 changes only the setup-requirement probe's logging (once per failure identity, recovery logged) and skips listed Agents with no agent.json; the attention item, its subject choice and the Web Push/support-service composition these pages describe are unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]}
+  ]
+}

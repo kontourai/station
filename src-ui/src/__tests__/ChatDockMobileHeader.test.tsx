@@ -106,6 +106,7 @@ function renderHeader(
     onOpenBackgroundTasks?: ReturnType<typeof vi.fn<() => void>>;
     backgroundTasksRunningCount?: number;
     copyActions?: DockMoreAction[];
+    panelActions?: DockMoreAction[];
     conversationStats?: {
       liveUsage?: { contextTokens?: number; contextWindowTokens?: number };
       onOpen: () => void;
@@ -181,6 +182,7 @@ function renderHeader(
           onOpenBackgroundTasks: overrides.onOpenBackgroundTasks,
           backgroundTasksRunningCount: overrides.backgroundTasksRunningCount,
           copyActions: overrides.copyActions,
+          panelActions: overrides.panelActions,
           conversationStats: overrides.conversationStats && {
             agentSlug: 'codex',
             conversationId: 'c-1',
@@ -292,6 +294,38 @@ describe('mobile conversation focus', () => {
     const trigger = screen.getByRole('button', { name: 'Chat actions' });
     expect(trigger.getAttribute('aria-describedby')).toBeNull();
     expect(trigger.querySelector('.chat-dock__mobile-activity-dot')).toBeNull();
+  });
+
+  test('the sheet carries the panel toggles the composer menu no longer holds', async () => {
+    const onFiles = vi.fn();
+    renderHeader({
+      panelActions: [
+        {
+          key: 'panel-files',
+          label: 'Changed files',
+          checked: true,
+          onSelect: onFiles,
+        },
+        {
+          key: 'panel-context',
+          label: 'Task context',
+          checked: false,
+          onSelect: vi.fn(),
+        },
+      ],
+    });
+    await openActions();
+    const files = screen.getByRole('menuitemcheckbox', {
+      name: 'Changed files',
+    });
+    expect(files.getAttribute('aria-checked')).toBe('true');
+    expect(
+      screen
+        .getByRole('menuitemcheckbox', { name: 'Task context' })
+        .getAttribute('aria-checked'),
+    ).toBe('false');
+    fireEvent.click(files);
+    expect(onFiles).toHaveBeenCalledOnce();
   });
 
   test('keeps New chat callable from the actions sheet', async () => {

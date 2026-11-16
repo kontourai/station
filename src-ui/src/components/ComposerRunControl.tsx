@@ -7,12 +7,16 @@ import {
   isValidElement,
   type ReactNode,
   useCallback,
+  useEffect,
   useId,
   useRef,
   useState,
 } from 'react';
 import { ComposerChoice } from './ComposerChoice';
-import { ComposerChoiceSummary } from './ComposerChoiceSummary';
+import {
+  ComposerChoiceSummary,
+  ComposerRunSetupClose,
+} from './ComposerChoiceSummary';
 import { AgentIcon } from './icons/AgentIcon';
 import {
   BrandIcon,
@@ -35,6 +39,7 @@ export function ComposerRunControl({
   engineId,
   children,
   loadingLabel,
+  closeHandle,
 }: {
   label: string;
   /** The requested reasoning effort, shown after the model; absent when the engine default applies. */
@@ -43,6 +48,11 @@ export function ComposerRunControl({
   engineId?: EngineId | null;
   children: ReactNode;
   loadingLabel?: string;
+  /**
+   * Receives the panel's close, for a picker rendered outside the panel whose
+   * choice opens a dialog that should replace it (an engine switch on a phone).
+   */
+  closeHandle?: { current: (() => void) | null };
 }) {
   const agent =
     isValidElement<React.ComponentProps<typeof AgentIcon>>(icon) &&
@@ -67,6 +77,14 @@ export function ComposerRunControl({
   const shownEffort = separator < 0 ? undefined : effort;
   const contentId = useId();
   const [open, setOpen] = useState(false);
+  const close = useCallback(() => setOpen(false), []);
+  useEffect(() => {
+    if (!closeHandle) return;
+    closeHandle.current = close;
+    return () => {
+      closeHandle.current = null;
+    };
+  }, [closeHandle, close]);
   const trigger = useRef<HTMLButtonElement>(null);
   const [summaries, setSummaries] = useState<
     Record<string, { label: string; safety?: string; changed?: boolean }>
@@ -202,9 +220,11 @@ export function ComposerRunControl({
           onClose={() => setOpen(false)}
         />
         <ComposerChoiceSummary.Provider value={publish}>
-          <div id={contentId} className="composer-run-panel__choices">
-            {children}
-          </div>
+          <ComposerRunSetupClose.Provider value={close}>
+            <div id={contentId} className="composer-run-panel__choices">
+              {children}
+            </div>
+          </ComposerRunSetupClose.Provider>
         </ComposerChoiceSummary.Provider>
       </ResponsiveDialogSurface>
     </>

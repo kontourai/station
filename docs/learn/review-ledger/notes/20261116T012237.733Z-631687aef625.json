@@ -1,0 +1,7 @@
+{
+  "revision": "26c578e7ceddf5db56c4d27bdeefd256ea35a1c9",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Delta-review round: handoff request contract unchanged; the dialog now stores the raw draft beside the sent message in its browser-retained intent and waits for its catalog before a fresh armed request.","inputs":["docs/reference/session-api.md","src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx"]}
+  ]
+}

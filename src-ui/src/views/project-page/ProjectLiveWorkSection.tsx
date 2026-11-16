@@ -4,9 +4,9 @@ import { useCommandProjectTaskRoomLiveMutation } from '@kontourai/station-sdk/pr
 import { type ReactNode, useMemo } from 'react';
 import { AgentIcon } from '../../components/icons/AgentIcon';
 import { useAgents } from '../../contexts/AgentsContext';
-import { openChatsStore } from '../../contexts/open-chats-store';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { useActiveStationName } from '../../hooks/useActiveStationName';
+import { openSessionFromSummary } from '../../utils/openSession';
 import { relativeTime } from '../../utils/relativeTime';
 import {
   type SessionIconAgent,
@@ -19,11 +19,7 @@ import {
   ProjectTaskRoomProvider,
   useProjectTaskRoomContext,
 } from '../../workspace-panes/ProjectTaskRoomContext';
-import {
-  focusChatEventDetailForAction,
-  isPeerDelegationRecord,
-  resolveConversationOpenAction,
-} from '../home/work-item-open-policy';
+import { isPeerDelegationRecord } from '../home/work-item-open-policy';
 import {
   type SessionLane,
   type SessionLaneId,
@@ -157,19 +153,7 @@ export function ProjectLiveWorkSection({ slug }: { slug: string }) {
    * one rule, reused rather than re-decided here.
    */
   function open(session: OrchestrationSessionSummary) {
-    const detail = focusChatEventDetailForAction(
-      resolveConversationOpenAction({
-        threadId: session.threadId,
-        conversationId: session.conversationId,
-        agentSlug: session.assignedAgentSlug,
-        controlMode: session.controlMode,
-        projectSlug: session.projectSlug,
-        model: session.model,
-        delegationEnvironmentKind: session.delegation?.environmentKind,
-      }),
-    );
-    if (detail) openChatsStore.focus(detail);
-    else showSurface('chat', { session: session.threadId });
+    openSessionFromSummary(session, showSurface);
   }
 
   function renderLane(lane: SessionLane) {

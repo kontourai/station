@@ -1,0 +1,67 @@
+{
+  "revision": "fa31fa97e6e39924b12528f0d82e109c56b7dd7d",
+
+  "notes": [
+    {"path":"deploy/public-ingress/README.md","note":"Review fixes: the Codex adapter's resolveSourceHome now uses resolveSourceHomeWithRefresh, and a new resolveSourceHomeEnv closure maps a profile home to its overlay via credentialProfileEnvForHome. Citing documents' deployment, auth, plugin, task and other runtime claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/architecture.md","note":"Review fixes: the Codex adapter's resolveSourceHome now uses resolveSourceHomeWithRefresh, and a new resolveSourceHomeEnv closure maps a profile home to its overlay via credentialProfileEnvForHome. Citing documents' deployment, auth, plugin, task and other runtime claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Review fixes: the Codex adapter's resolveSourceHome now uses resolveSourceHomeWithRefresh, and a new resolveSourceHomeEnv closure maps a profile home to its overlay via credentialProfileEnvForHome. Citing documents' deployment, auth, plugin, task and other runtime claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Review fixes: the Codex adapter's resolveSourceHome now uses resolveSourceHomeWithRefresh, and a new resolveSourceHomeEnv closure maps a profile home to its overlay via credentialProfileEnvForHome. Citing documents' deployment, auth, plugin, task and other runtime claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Review fixes: the Codex adapter's resolveSourceHome now uses resolveSourceHomeWithRefresh, and a new resolveSourceHomeEnv closure maps a profile home to its overlay via credentialProfileEnvForHome. Citing documents' deployment, auth, plugin, task and other runtime claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/hosted-execution-isolation.md","note":"Review fixes: the Codex adapter's resolveSourceHome now uses resolveSourceHomeWithRefresh, and a new resolveSourceHomeEnv closure maps a profile home to its overlay via credentialProfileEnvForHome. Citing documents' deployment, auth, plugin, task and other runtime claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Review fixes: the Codex adapter's resolveSourceHome now uses resolveSourceHomeWithRefresh, and a new resolveSourceHomeEnv closure maps a profile home to its overlay via credentialProfileEnvForHome. Citing documents' deployment, auth, plugin, task and other runtime claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Review fixes: the Codex adapter's resolveSourceHome now uses resolveSourceHomeWithRefresh, and a new resolveSourceHomeEnv closure maps a profile home to its overlay via credentialProfileEnvForHome. Citing documents' deployment, auth, plugin, task and other runtime claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"Review fixes: the Codex adapter's resolveSourceHome now uses resolveSourceHomeWithRefresh, and a new resolveSourceHomeEnv closure maps a profile home to its overlay via credentialProfileEnvForHome. Citing documents' deployment, auth, plugin, task and other runtime claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/principals.md","note":"Review fixes: the Codex adapter's resolveSourceHome now uses resolveSourceHomeWithRefresh, and a new resolveSourceHomeEnv closure maps a profile home to its overlay via credentialProfileEnvForHome. Citing documents' deployment, auth, plugin, task and other runtime claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Review fixes: the Codex adapter's resolveSourceHome now uses resolveSourceHomeWithRefresh, and a new resolveSourceHomeEnv closure maps a profile home to its overlay via credentialProfileEnvForHome. Citing documents' deployment, auth, plugin, task and other runtime claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/registry-trust-policy.md","note":"Review fixes: the Codex adapter's resolveSourceHome now uses resolveSourceHomeWithRefresh, and a new resolveSourceHomeEnv closure maps a profile home to its overlay via credentialProfileEnvForHome. Citing documents' deployment, auth, plugin, task and other runtime claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Review fixes: the Codex adapter's resolveSourceHome now uses resolveSourceHomeWithRefresh, and a new resolveSourceHomeEnv closure maps a profile home to its overlay via credentialProfileEnvForHome. Citing documents' deployment, auth, plugin, task and other runtime claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Review fixes: the Codex adapter's resolveSourceHome now uses resolveSourceHomeWithRefresh, and a new resolveSourceHomeEnv closure maps a profile home to its overlay via credentialProfileEnvForHome. Citing documents' deployment, auth, plugin, task and other runtime claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Review fixes: the Codex adapter's resolveSourceHome now uses resolveSourceHomeWithRefresh, and a new resolveSourceHomeEnv closure maps a profile home to its overlay via credentialProfileEnvForHome. Citing documents' deployment, auth, plugin, task and other runtime claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Review fixes: the Codex adapter's resolveSourceHome now uses resolveSourceHomeWithRefresh, and a new resolveSourceHomeEnv closure maps a profile home to its overlay via credentialProfileEnvForHome. Citing documents' deployment, auth, plugin, task and other runtime claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Review fixes: the Codex adapter's resolveSourceHome now uses resolveSourceHomeWithRefresh, and a new resolveSourceHomeEnv closure maps a profile home to its overlay via credentialProfileEnvForHome. Citing documents' deployment, auth, plugin, task and other runtime claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/discord-gateway.md","note":"Review fixes: the Codex adapter's resolveSourceHome now uses resolveSourceHomeWithRefresh, and a new resolveSourceHomeEnv closure maps a profile home to its overlay via credentialProfileEnvForHome. Citing documents' deployment, auth, plugin, task and other runtime claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Review fixes: the Codex adapter's resolveSourceHome now uses resolveSourceHomeWithRefresh, and a new resolveSourceHomeEnv closure maps a profile home to its overlay via credentialProfileEnvForHome. Citing documents' deployment, auth, plugin, task and other runtime claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Review fixes: the Codex adapter's resolveSourceHome now uses resolveSourceHomeWithRefresh, and a new resolveSourceHomeEnv closure maps a profile home to its overlay via credentialProfileEnvForHome. Citing documents' deployment, auth, plugin, task and other runtime claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Review fixes: the Codex adapter's resolveSourceHome now uses resolveSourceHomeWithRefresh, and a new resolveSourceHomeEnv closure maps a profile home to its overlay via credentialProfileEnvForHome. Citing documents' deployment, auth, plugin, task and other runtime claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Review fixes: the Codex adapter's resolveSourceHome now uses resolveSourceHomeWithRefresh, and a new resolveSourceHomeEnv closure maps a profile home to its overlay via credentialProfileEnvForHome. Citing documents' deployment, auth, plugin, task and other runtime claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Review fixes: the Codex adapter's resolveSourceHome now uses resolveSourceHomeWithRefresh, and a new resolveSourceHomeEnv closure maps a profile home to its overlay via credentialProfileEnvForHome. Citing documents' deployment, auth, plugin, task and other runtime claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Review fixes: the Codex adapter's resolveSourceHome now uses resolveSourceHomeWithRefresh, and a new resolveSourceHomeEnv closure maps a profile home to its overlay via credentialProfileEnvForHome. Citing documents' deployment, auth, plugin, task and other runtime claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Review fixes: the Codex adapter's resolveSourceHome now uses resolveSourceHomeWithRefresh, and a new resolveSourceHomeEnv closure maps a profile home to its overlay via credentialProfileEnvForHome. Citing documents' deployment, auth, plugin, task and other runtime claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Review fixes: the Codex adapter's resolveSourceHome now uses resolveSourceHomeWithRefresh, and a new resolveSourceHomeEnv closure maps a profile home to its overlay via credentialProfileEnvForHome. Citing documents' deployment, auth, plugin, task and other runtime claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Review fixes: the Codex adapter's resolveSourceHome now uses resolveSourceHomeWithRefresh, and a new resolveSourceHomeEnv closure maps a profile home to its overlay via credentialProfileEnvForHome. Citing documents' deployment, auth, plugin, task and other runtime claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Review fixes: the Codex adapter's resolveSourceHome now uses resolveSourceHomeWithRefresh, and a new resolveSourceHomeEnv closure maps a profile home to its overlay via credentialProfileEnvForHome. Citing documents' deployment, auth, plugin, task and other runtime claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Review fixes: the Codex adapter's resolveSourceHome now uses resolveSourceHomeWithRefresh, and a new resolveSourceHomeEnv closure maps a profile home to its overlay via credentialProfileEnvForHome. Citing documents' deployment, auth, plugin, task and other runtime claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Review fixes: the Codex adapter's resolveSourceHome now uses resolveSourceHomeWithRefresh, and a new resolveSourceHomeEnv closure maps a profile home to its overlay via credentialProfileEnvForHome. Citing documents' deployment, auth, plugin, task and other runtime claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]},
+
+    {"path":"examples/fieldwork-review/README.md","note":"Review fixes: the Codex adapter's resolveSourceHome now uses resolveSourceHomeWithRefresh, and a new resolveSourceHomeEnv closure maps a profile home to its overlay via credentialProfileEnvForHome. Citing documents' deployment, auth, plugin, task and other runtime claims are unaffected.","inputs":["src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}

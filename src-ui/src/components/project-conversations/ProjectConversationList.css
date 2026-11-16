@@ -254,3 +254,40 @@
   width: 44px;
   height: 44px;
 }
+
+/* An Agent working in this channel (#4800): three soft beats as the mark
+   appears, then a steady dot for as long as the request runs. The row's
+   name says "agent working" whatever the motion. */
+.conversation-list__working {
+  flex: 0 0 auto;
+  inline-size: var(--k-space-2);
+  block-size: var(--k-space-2);
+  border-radius: 50%;
+  background: var(--k-active);
+  animation: conversation-list-working var(--motion-status-pulse)
+    var(--ease-standard) 3;
+}
+/* Each beat starts and ends at the resting dot, so it settles without a jump. */
+@keyframes conversation-list-working {
+  50% {
+    opacity: 0.35;
+  }
+}
+/* An unread message names the reader (#4799): an "@" in the caution ink,
+   before the count, so it reads apart from plain unread. */
+.conversation-list__mention::before {
+  content: "@";
+}
+.conversation-list__mention {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  min-width: calc(var(--k-space-4) + 2px);
+  block-size: calc(var(--k-space-4) + 2px);
+  border-radius: 999px;
+  background: var(--k-caution);
+  color: var(--k-bg);
+  font-size: var(--k-text-sm);
+  font-weight: 700;
+  line-height: 1;
+}

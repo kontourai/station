@@ -1,0 +1,7 @@
+{
+  "revision": "64a3df258afe319d0973ed79375fb03d8ea93533",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Re-read the monitor-task path paragraph against runtime-route-support.ts: onActionableMonitor still calls createTaskIdempotent with the job/fingerprint key and dispatches with fullAccessGrant null. Removed the stale 'around line 440' pointer (it was at 683 on main). The notification-delivery.md link it cites is unchanged in meaning, and the finished-alert composition added there does not touch automation claims.","inputs":["docs/design/automations.md","docs/design/notification-delivery.md"]}
+  ]
+}

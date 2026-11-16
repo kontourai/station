@@ -104,7 +104,8 @@ export async function downloadInsightEvents(
       written: false,
       rows: 0,
       reason:
-        'No exportable rows came back. If the panel shows tool calls, they were recorded without a user id and this endpoint cannot return them (station#3130).',
+        // Tool calls recorded without a user id can't be exported (archive#3130).
+        "Nothing to export. Tool calls recorded without a user can't be exported yet.",
     };
   }
   if (
@@ -115,7 +116,7 @@ export async function downloadInsightEvents(
     return {
       written: false,
       rows: events.length,
-      reason: `Only ${events.length} of about ${expectedToolCalls} tool calls are readable through this endpoint; the rest were recorded without a user id (station#3130).`,
+      reason: `Only ${events.length} of about ${expectedToolCalls} tool calls can be exported. The rest were recorded without a user.`,
     };
   }
 
@@ -171,7 +172,7 @@ function UsageTab() {
     return (
       <Empty
         label="Insights history unavailable"
-        description="This Station has no readable monitoring history for this scan. No activity total can be confirmed."
+        description="Station can’t read monitoring history for this period, so totals are unknown."
       />
     );
 
@@ -327,7 +328,7 @@ function UsageTab() {
           )}
         </div>
         <div>
-          <div className="insights-section-label">Agent Usage</div>
+          <div className="insights-section-label">Agent usage</div>
           {agents.length === 0 ? (
             <Empty variant="compact" label="No agent usage yet" />
           ) : (
@@ -493,7 +494,7 @@ function FeedbackTab() {
       {/* Right: Behavior summary */}
       <div>
         <div className="feedback-behaviors-header">
-          <div className="insights-section-label">Learned Behaviors</div>
+          <div className="insights-section-label">Learned behaviors</div>
           <div className="feedback-actions">
             <button
               type="button"

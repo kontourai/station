@@ -494,6 +494,82 @@
       "src-ui/src/views/project-page/ProjectRoom.tsx",
       "src-ui/src/components/room/RoomAttachmentList.tsx"
     ],
+    "room-live-mention-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomMessageText.tsx",
+      "src-ui/src/components/room/roomMentions.ts"
+    ],
+    "room-live-mention-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomMessageText.tsx",
+      "src-ui/src/components/room/roomMentions.ts"
+    ],
+    "room-live-mention-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomMessageText.tsx",
+      "src-ui/src/components/room/roomMentions.ts"
+    ],
+    "room-live-mention-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomMessageText.tsx",
+      "src-ui/src/components/room/roomMentions.ts"
+    ],
+    "room-agent-working-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomAgentActivity.tsx",
+      "src-ui/src/components/room/RoomThreadSummary.tsx"
+    ],
+    "room-agent-working-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomAgentActivity.tsx",
+      "src-ui/src/components/room/RoomThreadSummary.tsx"
+    ],
+    "room-agent-working-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomAgentActivity.tsx",
+      "src-ui/src/components/room/RoomThreadSummary.tsx"
+    ],
+    "room-agent-working-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomAgentActivity.tsx",
+      "src-ui/src/components/room/RoomThreadSummary.tsx"
+    ],
+    "room-agent-outcome-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomAgentActivity.tsx"
+    ],
+    "room-agent-outcome-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomAgentActivity.tsx"
+    ],
+    "room-agent-outcome-light-desktop": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomAgentActivity.tsx"
+    ],
+    "room-agent-outcome-light-mobile": [
+      "src-ui/src/views/project-page/ProjectRoom.tsx",
+      "src-ui/src/components/room/RoomAgentActivity.tsx"
+    ],
+    "notifications-for-you-dark-desktop": [
+      "src-ui/src/pages/NotificationsPage.tsx",
+      "src-ui/src/components/notifications/PersonMentionsSection.tsx",
+      "src-ui/src/components/notifications/PersonMentionsSection.css"
+    ],
+    "notifications-for-you-dark-mobile": [
+      "src-ui/src/pages/NotificationsPage.tsx",
+      "src-ui/src/components/notifications/PersonMentionsSection.tsx",
+      "src-ui/src/components/notifications/PersonMentionsSection.css"
+    ],
+    "notifications-for-you-light-desktop": [
+      "src-ui/src/pages/NotificationsPage.tsx",
+      "src-ui/src/components/notifications/PersonMentionsSection.tsx",
+      "src-ui/src/components/notifications/PersonMentionsSection.css"
+    ],
+    "notifications-for-you-light-mobile": [
+      "src-ui/src/pages/NotificationsPage.tsx",
+      "src-ui/src/components/notifications/PersonMentionsSection.tsx",
+      "src-ui/src/components/notifications/PersonMentionsSection.css"
+    ],
     "room-keyboard-dark-desktop": [
       "src-ui/src/views/project-page/ProjectRoom.tsx"
     ],

@@ -8,7 +8,8 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { jsonFileStoreWriteBytes } from '../../../telemetry/metrics.js';
 import {
   JsonFileStore,
   JsonFileStoreCorruptionError,
@@ -24,6 +25,35 @@ describe('JsonFileStore', () => {
 
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("a named store records each write's primary and retained-previous bytes (#4995)", () => {
+    const record = vi.spyOn(jsonFileStoreWriteBytes, 'record');
+    try {
+      const path = join(dir, 'named.json');
+      const store = new JsonFileStore(path, [] as number[], {
+        durableAtomicWrite: true,
+        metricStore: 'notifications',
+      });
+      store.write([1]);
+      const first = readFileSync(path).byteLength;
+      store.write([1, 2, 3]);
+      const second = readFileSync(path).byteLength;
+      expect(record.mock.calls).toEqual([
+        [first, { store: 'notifications', artifact: 'primary' }],
+        [second, { store: 'notifications', artifact: 'primary' }],
+        [first, { store: 'notifications', artifact: 'previous' }],
+      ]);
+
+      // An unnamed store records nothing, so no path can become an attribute.
+      record.mockClear();
+      new JsonFileStore(join(dir, 'unnamed.json'), [] as number[], {
+        durableAtomicWrite: true,
+      }).write([1]);
+      expect(record).not.toHaveBeenCalled();
+    } finally {
+      record.mockRestore();
+    }
   });
 
   test('read returns fallback when file missing', () => {

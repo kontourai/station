@@ -6,8 +6,7 @@ import { useTaskUserInputReferencesQuery } from '@kontourai/station-sdk/task-use
 import { Button } from '../../components/Button';
 import { ErrorState, SkeletonList } from '../../components/state';
 
-const PINNED_INPUT_COPY =
-  'Explicitly pinned input from this Task’s work context. It was not inferred to support any answer.';
+const PINNED_INPUT_COPY = 'Pinned to this Task by a person.';
 const safeWrap = { minWidth: 0, overflowWrap: 'anywhere' } as const;
 
 function attachmentDescription(attachment: TaskUserInputAttachmentProjection) {

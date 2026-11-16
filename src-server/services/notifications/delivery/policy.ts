@@ -29,6 +29,12 @@
  *     a tab whose event stream dropped cannot show the toast, so it must
  *     not silence the phone. Focus never crosses principals: another
  *     person's device (or a device scripting "focused") cannot quiet yours.
+ *     For a `done` or `info` record that targets a session, focus is per
+ *     session: a surface counts as focused only while it shows that
+ *     session (`viewingSessionIds`). A focused surface showing another chat
+ *     neither quiets the person's other surfaces nor skips its own alert.
+ *     A surface that does not report what it shows counts as focused on
+ *     everything, which is the device-level rule older clients had.
  *  3. Nothing focused: every channel on every audience surface, once.
  * In-app is planned for every surface and never suppressed.
  */
@@ -54,6 +60,11 @@ export interface FocusEntry {
   reportedAt: number;
   /** Who reported it; focus only ever quiets that principal's surfaces. */
   principalId: string;
+  /**
+   * The sessions the focused surface shows (#2585 `viewingSessionIds`).
+   * Absent: the surface did not say, and its focus is not session-scoped.
+   */
+  viewingSessionIds?: readonly string[];
 }
 
 export interface PlanSurface {
@@ -134,11 +145,33 @@ function isFocused(entry: FocusEntry | undefined, now: number): boolean {
   );
 }
 
-/** Principals with a surface that is focused AND can show the in-app toast. */
+/**
+ * Whether a focused surface is watching what this notification is about.
+ * Only a `done` or `info` record that names a session is scoped: the person
+ * looking at another chat, or at no chat, has not seen it finish, so their
+ * other surfaces still get it. Attention and failed keep surface-wide
+ * focus (they are deferred, never dropped). A surface that did not report
+ * what it shows (an older client) counts as watching, as before.
+ */
+function watchesNotification(
+  entry: FocusEntry,
+  env: NotificationEnvelopeV1,
+): boolean {
+  if (env.urgency !== 'done' && env.urgency !== 'info') return true;
+  if (env.target?.kind !== 'session') return true;
+  if (entry.viewingSessionIds === undefined) return true;
+  return entry.viewingSessionIds.includes(env.target.sessionId);
+}
+
+/**
+ * Principals with a surface that is focused AND can show the in-app toast,
+ * and (for a session-scoped record) is watching that session.
+ */
 function focusedPrincipals(input: PlanInput): Map<string, Set<SurfaceId>> {
   const result = new Map<string, Set<SurfaceId>>();
   for (const [surface, entry] of input.focus) {
     if (!isFocused(entry, input.now) || !input.liveInApp.has(surface)) continue;
+    if (!watchesNotification(entry, input.env)) continue;
     const surfaces = result.get(entry.principalId) ?? new Set<SurfaceId>();
     surfaces.add(surface);
     result.set(entry.principalId, surfaces);

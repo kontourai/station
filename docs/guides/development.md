@@ -568,6 +568,20 @@ scopes whose owner PID and birth fingerprint are no longer live. This work does
 not make running turns survive server restarts; the
 [process supervisor proposal](../design/process-supervisor.md) owns that design.
 
+A scope whose cleanup fails (systemctl cannot inspect, kill or stop it) stays
+tracked and is retried with jittered exponential backoff from 2 seconds up to
+5 minutes. After 10 failed attempts Station abandons it and stops retrying.
+When systemctl cannot reach the user manager's bus at all (`Failed to connect
+to user scope bus`), every attempt waits the full 5 minutes and the scope is
+abandoned after 3. Each scope logs one warning on its first failure and one
+when abandoned; the attempts between are debug lines. Shutdown still tries
+every scope once more, abandoned ones included, and reports any that do not
+settle. `GET /api/system/workload` and the resource-posture route list pending
+and abandoned scopes under `cleanup` (at most 256 abandoned are kept, with a
+count of any dropped). Attempts are counted by
+`station.workload.scope_cleanup.attempts`, and the backlog is observed by
+`station.workload.scope_cleanup.backlog`.
+
 The [process fixture](../../src-server/services/infra/__tests__/workload-resources.process.test.ts)
 exercises the manager from a disposable service, including real OOMs and PTY
 behavior when the native dependency is available. It is not a live provider,

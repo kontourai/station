@@ -874,6 +874,8 @@
 
     "packages/sdk/src/__tests__/terminal-view/controller.test.ts",
 
+    "packages/sdk/src/query-domains/peerCredentials.ts",
+
     "packages/sdk/src/query-domains/taskCodeReview.ts",
 
     "packages/sdk/src/__tests__/task-code-review-hooks.test.tsx"

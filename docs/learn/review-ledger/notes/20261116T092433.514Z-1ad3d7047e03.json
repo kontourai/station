@@ -1,0 +1,9 @@
+{
+  "revision": "50a76d913659bd77600e5660d0901e7f914bba5e",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Links the SDK reference as a route only; the added newest-window sentence changes no claim in this row.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Routes SDK work to the SDK reference; the added newest-window sentence is documented there, consistent with this instruction.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

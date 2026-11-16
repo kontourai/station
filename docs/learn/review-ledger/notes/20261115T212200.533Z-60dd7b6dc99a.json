@@ -1,0 +1,7 @@
+{
+  "revision": "13582b43e54d8b76254c58603d3de8f80755f7de",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"#4995 regenerated the metric catalog with two new logging counters; abstraction-review only claims the generated catalog prevents declaration drift, which still holds.","inputs":["docs/reference/metrics.md"]}
+  ]
+}

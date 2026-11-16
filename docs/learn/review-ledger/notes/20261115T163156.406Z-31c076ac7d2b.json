@@ -1,0 +1,7 @@
+{
+  "revision": "81fca05fb00375b2193d7c39f0097cebdba7a257",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Updated the external continuation paragraph (one Continue in Station action, no confirmation, inline No project note, draft optional) and the engine-handoff paragraph (compact picker, catch-up turn when no draft, Use for next message arming with Next message chip and Undo); checked against ConversationHandoffDialog, ConversationBody routing and AttachedSessionDetail.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatInputArea.test.tsx","src-ui/src/__tests__/ConversationHandoffDialog.test.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockContentArea.tsx","src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/chat.css","src-ui/src/components/conversation/ConversationBody.tsx"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "538a5534200d882f242dca071e4b6d54891f70bd",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Re-checked the claims citing approvalHandlers.test.ts: the toast now offers the whole-tool session option on escalations (read, sensitive or plan-mode edit, rule-forced Bash), matching the session-answer paragraph; no other claim depends on that test.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/hooks/orchestration/__tests__/approvalHandlers.test.ts"]}
+  ]
+}

@@ -652,7 +652,9 @@ export function JobFormModal({
             {agentRunnabilityKnown && !jobAgentRunnability.runnable && (
               <span className="schedule__field-error">
                 {needsAgentSetup
-                  ? 'Scheduled jobs need an agent using a model connection (Station engine). AI app agents cannot run scheduled jobs.'
+                  ? anyEngine
+                    ? 'Scheduled jobs need an agent that is set up and ready.'
+                    : "Scheduled jobs need an agent that runs on Station's engine."
                   : jobAgentRunnability.reason}
               </span>
             )}
@@ -691,7 +693,7 @@ export function JobFormModal({
         {!targeted && form.monitorType === 'github-pull-request' && (
           <>
             <div className="schedule__field">
-              <span className="schedule__field-label">Monitor Agent</span>
+              <span className="schedule__field-label">Monitor agent</span>
               <AgentPicker
                 value={form.monitorAgentId}
                 catalogErrorId={
@@ -789,8 +791,8 @@ export function JobFormModal({
               placeholder="project-id"
             />
             <span className="schedule__field-hint">
-              When set, an actionable revision adopts one deterministic project
-              Task instead of starting a scheduler turn.
+              A pull request that needs changes opens or continues one Task in
+              this Project.
             </span>
           </label>
         )}
