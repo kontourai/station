@@ -342,14 +342,17 @@ describe('#4752: suites that boot the server and assert its exit status', () => 
     );
   });
 
-  test.each(['src-server/index.ts', 'packages/supervisor/src/protocol.ts'])(
-    'a change to %s alone runs them',
-    (path) => {
-      expect(executed(select([path]))).toEqual(
-        expect.arrayContaining(REFUSAL_SUITES),
-      );
-    },
-  );
+  test.each([
+    'src-server/index.ts',
+    'packages/supervisor/src/protocol.ts',
+    'src-server/runtime/bootstrap/managed-policy-boot.ts',
+    'src-server/security/managed-approval-ceiling.ts',
+    'src-server/security/managed-network-exposure.ts',
+  ])('a change to %s alone runs them', (path) => {
+    expect(executed(select([path]))).toEqual(
+      expect.arrayContaining(REFUSAL_SUITES),
+    );
+  });
 });
 
 describe('#3114: security gates and the native platform boundary', () => {
