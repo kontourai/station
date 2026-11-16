@@ -359,9 +359,10 @@ describe('#5010: an escalated diff runs the suites near its escalated files', ()
   ];
 
   // Real related discovery (a Vitest child). Its timeout derives from this
-  // deadline (less a 30 s reserve), so a loaded host waits up to 210 s
-  // instead of failing at the 60 s floor, inside the test's own 300 s.
-  const PLAN_TEST_TIMEOUT_MS = 300_000;
+  // deadline (less a 30 s reserve), so a loaded host waits up to 510 s
+  // instead of failing at the 60 s floor, inside the test's own 600 s. On a
+  // host at load 50, the #5010 discovery alone took over 190 s.
+  const PLAN_TEST_TIMEOUT_MS = 600_000;
   const makeTempDir = trackTempDirs();
   const hostedPlan = (paths: readonly string[], planRoot = root) =>
     planChangedVerificationShards('HEAD', {
