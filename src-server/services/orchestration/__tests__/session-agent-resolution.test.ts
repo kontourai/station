@@ -1794,10 +1794,7 @@ describe('Station orchestration instructions (resolution receipt)', () => {
 
   test('a bound session, served without disclosure, is never told to load tool families', async () => {
     const families = 'list_tool_families';
-    const textFor = async (
-      provider: 'claude' | 'codex',
-      codexBound: boolean,
-    ) =>
+    const textFor = async (provider: 'claude' | 'codex', codexBound: boolean) =>
       receiptOf(
         await resolverFor(
           { prompt: '' },
