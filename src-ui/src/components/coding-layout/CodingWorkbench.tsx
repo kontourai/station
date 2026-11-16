@@ -1423,6 +1423,7 @@ export function CodingWorkbench({
             <Button
               variant="ghost"
               size="sm"
+              className="coding-workbench__open-browser"
               disabled={
                 !hostOpen || browserPreviewAvailability.state !== 'available'
               }

@@ -69,22 +69,26 @@ export function useChatDockOverlays({
     SurfaceIntentRecord & { workingSessionId?: string }
   >();
   const consumeIntent = regionModel?.consumeSurfaceIntent;
+  // A child opened over a record reader of its parent, because the working
+  // chat could not be matched when the request arrived (it was still
+  // loading, say). Leaving the child re-checks, so the way back lands on the
+  // working chat rather than the record reader.
+  const childParentRecord = useRef(false);
+  const childCovered = useRef(false);
   useEffect(() => {
     if (!incoming?.session) return;
     onReaderIntent();
     setMobileInboxOpen(false);
     const hostSession = hostSessionRef?.current;
-    const reusesWorkingParent = Boolean(
+    const opensChild = Boolean(
       (incoming.childId || incoming.childSessionId) &&
         !incoming.messageAnchor &&
-        !incoming.focus &&
-        hostSession &&
-        [
-          hostSession.id,
-          hostSession.conversationId,
-          hostSession.currentSessionId,
-        ].includes(incoming.session),
+        !incoming.focus,
     );
+    const reusesWorkingParent = Boolean(
+      opensChild && hostSession && isHostSession(hostSession, incoming.session),
+    );
+    childParentRecord.current = opensChild && !reusesWorkingParent;
     setImportedSessionId(reusesWorkingParent ? null : incoming.session);
     setReaderSurfaceIntent({
       ...incoming,
@@ -106,12 +110,28 @@ export function useChatDockOverlays({
       ),
     [],
   );
+  const onChildCoveredChange = useCallback(
+    (covered: boolean) => {
+      const left = childCovered.current && !covered;
+      childCovered.current = covered;
+      if (!left || !childParentRecord.current) return;
+      childParentRecord.current = false;
+      const hostSession = hostSessionRef?.current;
+      setImportedSessionId((current) =>
+        current && hostSession && isHostSession(hostSession, current)
+          ? null
+          : current,
+      );
+    },
+    [hostSessionRef],
+  );
   // An imported conversation occupies the same reading surface as an owned chat.
   const onOpenInboxSession = useCallback(
     (threadId: string) => {
       onReaderIntent();
       setMobileInboxOpen(false);
       setReaderSurfaceIntent(undefined);
+      childParentRecord.current = false;
       setImportedSessionId(threadId);
     },
     [onReaderIntent],
@@ -243,6 +263,7 @@ export function useChatDockOverlays({
     importedSessionId,
     readerSurfaceIntent,
     consumeChildIntent,
+    onChildCoveredChange,
     setImportedSessionId,
     onOpenInboxSession,
     newChatRequestEpoch,
@@ -277,4 +298,14 @@ export function useChatDockOverlays({
     backgroundTasksTriggerRef,
     restoreComposerMenuFocus,
   };
+}
+
+/** The bound working chat answers to its tab, conversation or session id. */
+function isHostSession(
+  host: Pick<ChatSession, 'id' | 'conversationId' | 'currentSessionId'>,
+  threadId: string,
+): boolean {
+  return [host.id, host.conversationId, host.currentSessionId].includes(
+    threadId,
+  );
 }

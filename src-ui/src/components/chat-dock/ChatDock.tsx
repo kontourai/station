@@ -1020,6 +1020,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     importedSessionId,
     readerSurfaceIntent,
     consumeChildIntent,
+    onChildCoveredChange,
     setImportedSessionId,
     onOpenInboxSession,
     newChatRequestEpoch,
@@ -1064,6 +1065,13 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   });
   const mobileInboxShown = isMobile && mobileInboxOpen;
   const [isChildReaderOpen, setIsChildReaderOpen] = useState(false);
+  const childCoveredChange = useCallback(
+    (covered: boolean) => {
+      setIsChildReaderOpen(covered);
+      onChildCoveredChange(covered);
+    },
+    [onChildCoveredChange],
+  );
   const readerCovered =
     mobileInboxShown || showNewChatModal || isChildReaderOpen;
   useEffect(() => {
@@ -3597,7 +3605,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       title={presentationTitle}
       initialChild={initialChildChat}
       controllerRef={childChatController}
-      onCoveredChange={setIsChildReaderOpen}
+      onCoveredChange={childCoveredChange}
       onBeforeChildOpen={cancelReaderOpen}
       onInitialChildConsumed={consumeInitialChild}
     >

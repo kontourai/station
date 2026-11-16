@@ -1,6 +1,10 @@
 import type { ChildWorkTranscriptEntry } from '@kontourai/station-contracts/child-work';
 import type { ChatMessage } from '../../types';
 
+type ContentPart = NonNullable<ChatMessage['contentParts']>[number];
+
+const TEXT_CUT = '\n\n[Text truncated by the engine transcript reader]';
+
 /** Bounded JSON arguments use the same structured input as live chat rows. */
 function transcriptToolInput(input: string | undefined): unknown {
   if (input === undefined) return undefined;
@@ -12,7 +16,14 @@ function transcriptToolInput(input: string | undefined): unknown {
   }
 }
 
-/** Join only engine-issued call identities; legacy unkeyed results remain readable. */
+/**
+ * The child's transcript as chat rows. An engine writes one transcript
+ * message per tool call and per tool result, so each run of assistant work
+ * between two user messages becomes one assistant row, the way a live turn
+ * is one row: its calls then group into the same tool batch the main chat
+ * shows. Only engine-issued call identities join a result to its call;
+ * legacy unkeyed results stay readable as text.
+ */
 export function childTranscriptMessages(
   entries: readonly ChildWorkTranscriptEntry[],
 ): ChatMessage[] {
@@ -28,88 +39,98 @@ export function childTranscriptMessages(
       entry.kind === 'tool-call' && entry.toolCallId ? [entry.toolCallId] : [],
     ),
   );
-  return entries.flatMap((entry, index): ChatMessage[] => {
-    if (
-      entry.kind === 'tool-result' &&
-      entry.toolCallId &&
-      calls.has(entry.toolCallId)
-    )
-      return [];
-    return [message(entry, index)];
-  });
-  function message(
-    entry: ChildWorkTranscriptEntry,
-    index: number,
-  ): ChatMessage {
+  const messages: ChatMessage[] = [];
+  let turn: { id: string; parts: ContentPart[] } | null = null;
+  const closeTurn = () => {
+    if (!turn) return;
+    messages.push({
+      id: turn.id,
+      role: 'assistant',
+      content: turn.parts
+        .flatMap((part) => (part.type === 'text' ? [part.content ?? ''] : []))
+        .join('\n\n'),
+      contentParts: turn.parts,
+    });
+    turn = null;
+  };
+  const turnParts = (id: string) => {
+    turn ??= { id, parts: [] };
+    return turn.parts;
+  };
+  entries.forEach((entry, index) => {
     const id = `child:${entry.message}:${index}`;
-    const cut = entry.truncated
-      ? '\n\n[Text truncated by the engine transcript reader]'
-      : '';
+    const cut = entry.truncated ? TEXT_CUT : '';
     switch (entry.kind) {
       case 'text':
-        return { id, role: entry.role, content: entry.text + cut };
+        if (entry.role === 'user') {
+          closeTurn();
+          messages.push({ id, role: 'user', content: entry.text + cut });
+        } else turnParts(id).push({ type: 'text', content: entry.text + cut });
+        return;
       case 'tool-call': {
         const result = entry.toolCallId
           ? results.get(entry.toolCallId)
           : undefined;
-        return {
-          id,
-          role: 'assistant',
-          content: '',
-          contentParts: [
-            {
-              type: 'tool-invocation',
-              toolCallId: entry.toolCallId ?? id,
-              toolName: entry.name,
-              input: transcriptToolInput(entry.input),
-              state: result
-                ? result.isError
-                  ? 'output-error'
-                  : 'output-available'
-                : 'input-available',
-              ...(result
-                ? {
-                    output:
-                      (result.text || 'Text output unavailable.') +
-                      (result.truncated
-                        ? '\n\n[Text truncated by the engine transcript reader]'
-                        : ''),
-                    isError: result.isError === true,
-                    ...(result.isError
-                      ? { errorText: result.text ?? 'Tool failed' }
-                      : {}),
-                  }
-                : {}),
-            },
-            ...(entry.truncated
-              ? [
-                  {
-                    type: 'text',
-                    content: '[Tool input truncated by transcript reader]',
-                  },
-                ]
-              : []),
-          ],
-        };
+        turnParts(id).push(
+          {
+            type: 'tool-invocation',
+            toolCallId: entry.toolCallId ?? id,
+            toolName: entry.name,
+            input: transcriptToolInput(entry.input),
+            state: result
+              ? result.isError
+                ? 'output-error'
+                : 'output-available'
+              : 'input-available',
+            ...(result
+              ? {
+                  output:
+                    (result.text || 'Text output unavailable.') +
+                    (result.truncated ? TEXT_CUT : ''),
+                  isError: result.isError === true,
+                  ...(result.isError
+                    ? { errorText: result.text ?? 'Tool failed' }
+                    : {}),
+                }
+              : {}),
+          },
+          ...(entry.truncated
+            ? [
+                {
+                  type: 'text',
+                  content: '[Tool input truncated by transcript reader]',
+                },
+              ]
+            : []),
+        );
+        return;
       }
       case 'tool-result':
-        return {
-          id,
-          role: 'assistant',
+        // A keyed result is drawn on its call's row.
+        if (entry.toolCallId && calls.has(entry.toolCallId)) return;
+        turnParts(id).push({
+          type: 'text',
           content: `${entry.isError ? 'Tool error' : 'Tool result'}\n\n${entry.text || 'Text output unavailable.'}${cut}`,
-        };
+        });
+        return;
       case 'omitted':
-        return {
+        closeTurn();
+        messages.push({
           id,
           role: 'system',
           content: `${entry.count} blocks were omitted from this transcript message.`,
-        };
+        });
+        return;
       case 'too-large':
-        return {
+        closeTurn();
+        messages.push({
           id,
           role: 'system',
           content: 'An entry too large to show was left out.',
-        };
+        });
+        return;
     }
-  }
+  });
+  closeTurn();
+  return messages;
 }

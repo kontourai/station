@@ -995,3 +995,23 @@
   margin-inline-start: 0;
   padding-inline: var(--k-space-2);
 }
+
+/* A label, not a paragraph: it never wraps to a second line of the bar. */
+.coding-workbench__open-browser {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* A subagent's chat brings its own crumbs (parent / child) into the bar's
+   leading slot, and the parent crumb there is the way back. The bar's own
+   conversation crumb would name the parent a second time. */
+.coding-workbench__bar:has(.child-chat-trail)
+  .coding-workbench__crumb:not(:first-child) {
+  display: none;
+}
+.coding-workbench__bar-leading .child-chat-trail::before {
+  content: "/";
+  flex: none;
+  margin-inline-start: var(--k-space-2);
+  color: var(--k-text-muted);
+}

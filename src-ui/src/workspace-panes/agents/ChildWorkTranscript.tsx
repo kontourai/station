@@ -1,4 +1,8 @@
-import { agentId } from '@kontourai/station-contracts/agent-identity';
+import {
+  agentId,
+  parseEngineId,
+} from '@kontourai/station-contracts/agent-identity';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import {
   StationHttpError,
   useChildWorkTranscriptQuery,
@@ -21,6 +25,13 @@ import './ChildWorkTranscript.css';
 
 /** A reporting child's transcript re-reads at most this often. */
 const TRANSCRIPT_REFRESH_THROTTLE_MS = 2_000;
+
+/**
+ * The server pages a transcript oldest first, so a chat that opens on its
+ * latest message reads every page. Past this many pages the reader stops
+ * and offers the rest by request instead of reading without end.
+ */
+export const CHILD_TRANSCRIPT_AUTO_PAGES = 20;
 
 function failureText(error: unknown): string {
   if (error instanceof StationHttpError && error.status === 503)
@@ -82,6 +93,18 @@ export function ChildWorkTranscript({
     [],
   );
   const entries = transcript.data?.pages.flatMap((page) => page.entries) ?? [];
+  const pageCount = transcript.data?.pages.length ?? 0;
+  const { hasNextPage, isFetchingNextPage, isFetchNextPageError } = transcript;
+  const { fetchNextPage } = transcript;
+  // The server pages oldest first. Later pages load on their own, so the
+  // reader opens on the latest message as the main chat does, with no
+  // button at the foot of the transcript.
+  const autoPage = hasNextPage && pageCount < CHILD_TRANSCRIPT_AUTO_PAGES;
+  useEffect(() => {
+    if (autoPage && !isFetchingNextPage && !isFetchNextPageError)
+      void fetchNextPage();
+  }, [autoPage, isFetchingNextPage, isFetchNextPageError, fetchNextPage]);
+  const engine = parseEngineId(engineId);
   const session: ChatSession = {
     id: JSON.stringify([
       'child-record',
@@ -90,7 +113,9 @@ export function ChildWorkTranscript({
       childId,
     ]),
     agentSlug: agentId(engineId ?? 'record'),
-    agentName: title,
+    // Each reply is the engine's, as in the main chat; the breadcrumb
+    // already names this subagent, so its rows do not repeat the title.
+    agentName: (engine && engineDisplayLabel(engine)) || title,
     title,
     source: 'manual',
     messages: childTranscriptMessages(entries),
@@ -135,36 +160,22 @@ export function ChildWorkTranscript({
         showToolDetails
         suppressStreamingRow
       />
-      {transcript.hasNextPage && (
+      {hasNextPage && !autoPage && (
         <Button
           size="sm"
           className="tap-target"
-          pending={transcript.isFetchingNextPage}
-          onClick={() => void transcript.fetchNextPage()}
+          pending={isFetchingNextPage}
+          onClick={() => void fetchNextPage()}
         >
-          Load more
+          Show later messages
         </Button>
       )}
-      {running && !transcript.isPending && (
-        <Button
-          size="sm"
-          className="tap-target"
-          pending={transcript.isRefetching}
-          onClick={() => void refetch()}
-        >
-          Refresh
-        </Button>
-      )}
-      {transcript.isFetchNextPageError && (
+      {isFetchNextPageError && (
         <ErrorState
           variant="compact"
-          title={
-            entries.length > 0
-              ? 'Could not refresh the transcript'
-              : 'Could not read the transcript'
-          }
+          title="Could not load later messages"
           description={failureText(transcript.error)}
-          action={<Button onClick={() => void refetch()}>Retry</Button>}
+          action={<Button onClick={() => void fetchNextPage()}>Retry</Button>}
         />
       )}
     </section>

@@ -25,6 +25,7 @@ import {
   resolveCssImports,
 } from '../../../tests/helpers/css-cascade-fixture';
 import { SubagentTranscriptCard } from '../components/chat/SubagentTranscriptCard';
+import { ChatDockActiveIdentity } from '../components/chat-dock/ChatDockActiveIdentity';
 import { ChatDockHeader } from '../components/chat-dock/ChatDockHeader';
 import { ChildChatNavigation } from '../components/chat-dock/ChildChatNavigation';
 import type { ChildChatController } from '../components/chat-dock/ChildChatNavigationContext';
@@ -62,6 +63,8 @@ const history = vi.hoisted(() => ({
   ] as ChildWorkTranscriptEntry[],
   error: undefined as Error | undefined,
   refetch: vi.fn(),
+  hasNextPage: false,
+  fetchNextPage: vi.fn(),
   sessions: [] as { threadId: string; childWork: { asChild: ChildWorkItem } }[],
 }));
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
@@ -77,7 +80,10 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
     isError: Boolean(history.error),
     error: history.error,
     refetch: history.refetch,
-    hasNextPage: false,
+    hasNextPage: history.hasNextPage,
+    fetchNextPage: history.fetchNextPage,
+    isFetchingNextPage: false,
+    isFetchNextPageError: false,
   })),
 }));
 vi.mock('../components/conversation/ConversationReader', () => ({
@@ -95,6 +101,8 @@ afterEach(() => {
   history.entries = initialEntries;
   history.error = undefined;
   history.refetch.mockClear();
+  history.hasNextPage = false;
+  history.fetchNextPage.mockClear();
 });
 const connection = { apiBase: 'https://station.test' };
 const item: ChildWorkItem = {
@@ -161,7 +169,10 @@ test('the real child card opens the normal message renderer in the chat pane and
     name: 'Conversation transcript',
   });
   expect(within(transcript).getByText('Inspect the child files')).toBeTruthy();
-  expect(transcript.textContent).toContain('Review files');
+  // Replies are the engine's, as in the main chat; the breadcrumb names the
+  // child, so its rows do not repeat the child's title.
+  expect(transcript.textContent).toContain('Codex');
+  expect(transcript.textContent).not.toContain('Review files');
   expect(
     await within(transcript).findByRole('heading', { name: 'Child answer' }),
   ).toBeTruthy();
@@ -463,4 +474,212 @@ test('an initially running delegate reader consumes its live terminal state', as
       screen.getByRole('status', { name: 'Delegate state' }).textContent,
     ).toBe('settled'),
   );
+});
+
+/**
+ * The exact shape the Claude transcript reader writes
+ * (`claudeTranscriptEntries`): the prompt as a user string, each tool call
+ * in its own assistant message, each result in its own user message, keyed
+ * by the engine's call id.
+ */
+const claudeChildEntries: ChildWorkTranscriptEntry[] = [
+  {
+    kind: 'text',
+    message: 0,
+    role: 'user',
+    text: 'Inventory every reader of event rows before retention changes.',
+  },
+  {
+    kind: 'tool-call',
+    message: 1,
+    toolCallId: 'toolu_01',
+    name: 'Grep',
+    input: JSON.stringify({ pattern: 'projectRuntimeEvents', path: 'src' }),
+  },
+  {
+    kind: 'tool-result',
+    message: 2,
+    toolCallId: 'toolu_01',
+    text: 'src-server/runtime/events.ts',
+  },
+  {
+    kind: 'tool-call',
+    message: 3,
+    toolCallId: 'toolu_02',
+    name: 'Read',
+    input: JSON.stringify({ file_path: 'src-server/runtime/events.ts' }),
+  },
+  {
+    kind: 'tool-result',
+    message: 4,
+    toolCallId: 'toolu_02',
+    text: 'export function readEvents() {}',
+  },
+  {
+    kind: 'text',
+    message: 5,
+    role: 'assistant',
+    text: 'Two readers depend on event rows.',
+  },
+];
+
+test('a subagent transcript reads as one chat turn: its prompt, then one batch of tool calls and the answer', async () => {
+  history.entries = claudeChildEntries;
+  render(tree());
+  fireEvent.click(screen.getByRole('button', { name: 'Open nested' }));
+  const transcript = await screen.findByRole('log', {
+    name: 'Conversation transcript',
+  });
+  await within(transcript).findByText('Two readers depend on event rows.');
+  expect(
+    within(transcript).getByText(
+      'Inventory every reader of event rows before retention changes.',
+    ),
+  ).toBeTruthy();
+  // One reply row for the whole run, not one card per tool call.
+  expect(
+    transcript.querySelectorAll('[data-message-role="assistant"]').length,
+  ).toBe(1);
+  expect(transcript.textContent).not.toContain('Nested review');
+  expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Refresh' })).toBeNull();
+});
+
+test('later transcript pages load on their own instead of behind a button at the foot', async () => {
+  history.hasNextPage = true;
+  render(tree());
+  fireEvent.click(screen.getByRole('button', { name: 'Open nested' }));
+  await screen.findByRole('heading', { name: 'Child answer' });
+  await waitFor(() => expect(history.fetchNextPage).toHaveBeenCalled());
+  expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
+});
+
+test('the breadcrumb is one trail: the parent crumb goes back and one separator joins it to the child', async () => {
+  render(tree());
+  fireEvent.click(screen.getByRole('button', { name: 'Open nested' }));
+  const trail = await screen.findByRole('navigation', {
+    name: 'Chat breadcrumb',
+  });
+  expect(trail.textContent).toBe('‹Parent chat/Nested review');
+  expect(trail.textContent).not.toContain('›');
+  fireEvent.click(within(trail).getByRole('button', { name: 'Parent chat' }));
+  expect(
+    screen.queryByRole('navigation', { name: 'Chat breadcrumb' }),
+  ).toBeNull();
+});
+
+test('in the Coding bar a subagent chat names its parent once and Open Browser keeps one line', async () => {
+  // The Coding workbench's bar (`CodingWorkbench`): its own crumbs, then the
+  // slot the chat's toolbar renders into, then Open Browser.
+  const bar = document.createElement('div');
+  bar.className = 'coding-workbench__bar';
+  bar.innerHTML = `<nav class="coding-workbench__nav"><ol class="coding-workbench__crumbs"><li class="coding-workbench__crumb"><button type="button" class="coding-workbench__crumb-link">Inbox</button></li><li class="coding-workbench__crumb"><span class="coding-workbench__crumb-current" aria-current="page">Is this machine getting overwhelmed? Seems like station process/server is slow</span></li></ol></nav><div class="coding-workbench__bar-leading"></div><span class="coding-workbench__bar-spacer"></span><div class="coding-workbench__bar-trailing"></div><button type="button" class="button button--ghost button--sm coding-workbench__open-browser">Open Browser</button>`;
+  document.body.append(bar);
+  const leading = bar.querySelector<HTMLElement>(
+    '.coding-workbench__bar-leading',
+  )!;
+  const trailing = bar.querySelector<HTMLElement>(
+    '.coding-workbench__bar-trailing',
+  )!;
+  try {
+    render(
+      <KeyboardShortcutsProvider>
+        <QueryClientProvider client={new QueryClient()}>
+          <PreviewProvider>
+            <ConversationConnectionProvider value={connection}>
+              <RegionChromeSlotsContext.Provider
+                value={{ leading, trailing, namesPane: true }}
+              >
+                <ChildChatNavigation
+                  rootKey="parent"
+                  title="Is this machine getting overwhelmed? Seems like station process/server is slow"
+                  dockOutlet
+                >
+                  <ChatDockHeader
+                    chatIdentity={
+                      <ChatDockActiveIdentity
+                        session={{ id: 'parent', title: 'Parent' }}
+                        onClose={() => {}}
+                      />
+                    }
+                    regionVisible
+                  />
+                  <Nested />
+                </ChildChatNavigation>
+              </RegionChromeSlotsContext.Provider>
+            </ConversationConnectionProvider>
+          </PreviewProvider>
+        </QueryClientProvider>
+      </KeyboardShortcutsProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Open nested' }));
+    await screen.findByRole('navigation', { name: 'Chat breadcrumb' });
+    const graph = createUiModuleGraph();
+    const stylesheets = [
+      ...graph.closure(
+        [
+          'src-ui/src/components/coding-layout/CodingWorkbench.tsx',
+          'src-ui/src/components/chat-dock/ChatDockHeader.tsx',
+          'src-ui/src/components/chat-dock/ChildChatNavigation.tsx',
+        ],
+        { followDynamic: false },
+      ),
+    ].filter((path) => path.endsWith('.css'));
+    const styles = ['src-ui/src/index.css', ...stylesheets]
+      .map((path) => resolveCssImports(resolve(path)))
+      .join('\n');
+    assertNoImportsSurvive(styles);
+    const output = resolve('test-results/child-chat-coding-bar');
+    mkdirSync(output, { recursive: true });
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage({
+        viewport: { width: 620, height: 120 },
+      });
+      await page.setContent(
+        `<!doctype html><html data-theme="dark"><head><style>${styles}</style></head><body style="margin:0">${bar.outerHTML}</body></html>`,
+      );
+      const facts = await page.evaluate(() => {
+        const bar = document.querySelector('.coding-workbench__bar')!;
+        const shown = (element: Element) =>
+          getComputedStyle(element).display !== 'none' &&
+          element.getClientRects().length > 0;
+        const parentNames = [
+          ...bar.querySelectorAll(
+            '.coding-workbench__crumb-current, .child-chat-trail__label',
+          ),
+        ].filter(shown).length;
+        const browserButton = bar.querySelector(
+          '.coding-workbench__open-browser',
+        )!;
+        const range = document.createRange();
+        range.selectNodeContents(browserButton);
+        const lineTops = new Set(
+          [...range.getClientRects()].map((rect) => Math.round(rect.top)),
+        );
+        const child = bar.querySelector('.child-chat-trail [aria-current]')!;
+        return {
+          parentNames,
+          browserLines: lineTops.size,
+          childWhole: child.scrollWidth <= child.clientWidth,
+          separators: [...bar.querySelectorAll('.child-chat-trail__separator')]
+            .filter(shown)
+            .map((separator) => separator.textContent),
+          back: shown(bar.querySelector('.child-chat-trail__back')!),
+        };
+      });
+      await page.screenshot({ path: `${output}/coding-bar-620-dark.png` });
+      expect(facts).toEqual({
+        parentNames: 1,
+        browserLines: 1,
+        childWhole: true,
+        separators: ['/'],
+        back: false,
+      });
+    } finally {
+      await browser.close();
+    }
+  } finally {
+    bar.remove();
+  }
 });

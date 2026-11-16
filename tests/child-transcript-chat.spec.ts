@@ -109,15 +109,48 @@ async function seed(page: import('@playwright/test').Page) {
                     role: 'user',
                     text: 'Read the child files',
                   },
+                  // The Claude reader's shape: one message per call and
+                  // per result, keyed by the engine's call id.
+                  {
+                    kind: 'tool-call',
+                    message: 1,
+                    toolCallId: 'toolu_01',
+                    name: 'Grep',
+                    input: JSON.stringify({
+                      pattern: 'projectRuntimeEvents',
+                      path: 'src-server',
+                    }),
+                  },
+                  {
+                    kind: 'tool-result',
+                    message: 2,
+                    toolCallId: 'toolu_01',
+                    text: 'src-server/runtime/events.ts',
+                  },
+                  {
+                    kind: 'tool-call',
+                    message: 3,
+                    toolCallId: 'toolu_02',
+                    name: 'Read',
+                    input: JSON.stringify({
+                      file_path: 'src-server/runtime/events.ts',
+                    }),
+                  },
+                  {
+                    kind: 'tool-result',
+                    message: 4,
+                    toolCallId: 'toolu_02',
+                    text: 'export function readEvents() {}',
+                  },
                   {
                     kind: 'text',
-                    message: 1,
+                    message: 5,
                     role: 'assistant',
                     text: '## Child review\n\nThe files are ready.',
                   },
                   {
                     kind: 'tool-result',
-                    message: 2,
+                    message: 6,
                     text: '',
                   },
                 ],
@@ -136,6 +169,8 @@ async function seed(page: import('@playwright/test').Page) {
 }
 for (const viewport of [
   { width: 1440, height: 1000 },
+  // A Coding-layout chat column of about 620px.
+  { width: 1060, height: 900 },
   { width: 412, height: 915 },
   { width: 390, height: 844 },
 ]) {
@@ -178,10 +213,38 @@ for (const viewport of [
       ).toBeVisible();
       await expect(childLog).toContainText('Read the child files');
       await expect(childLog).toContainText('Text output unavailable.');
+      // One reply row, not one card per tool call, and no paging buttons
+      // at the foot of the transcript.
+      await expect(
+        childLog.locator('[data-message-role="assistant"]'),
+      ).toHaveCount(1);
+      await expect(page.getByRole('button', { name: 'Load more' })).toHaveCount(
+        0,
+      );
+      await expect(page.getByRole('button', { name: 'Refresh' })).toHaveCount(
+        0,
+      );
+      await expect(trail).not.toContainText('›');
       await page.screenshot({
         path: testInfo.outputPath(`child-chat-${viewport.width}-${theme}.png`),
       });
-      for (const name of ['Back to parent chat', parentTitle]) {
+      // A phone bar names the child and goes back by ‹; a wider bar is one
+      // trail whose parent crumb is the way back.
+      const phone = viewport.width < 600;
+      await expect(
+        trail.getByRole('button', { name: 'Back to parent chat' }),
+      ).toBeVisible({ visible: phone });
+      await expect(
+        trail.getByRole('button', { name: parentTitle, exact: true }),
+      ).toBeVisible({ visible: !phone });
+      // The parent's title yields first: the child's short title is shown
+      // whole, not cut to an ellipsis.
+      expect(
+        await trail
+          .locator('[aria-current="page"]')
+          .evaluate((crumb) => crumb.scrollWidth <= crumb.clientWidth),
+      ).toBe(true);
+      for (const name of phone ? ['Back to parent chat'] : [parentTitle]) {
         const control = trail.getByRole('button', { name, exact: true });
         const box = (await control.boundingBox())!;
         expect(box.width).toBeGreaterThanOrEqual(44);
@@ -200,6 +263,10 @@ for (const viewport of [
         await control.click();
         await expect(trail).toHaveCount(0);
         await expect(log).toContainText('Parent answer with a child review.');
+        // Back lands on the working chat, not a record reader of it.
+        await expect(page.locator('.imported-conversation-pane')).toHaveCount(
+          0,
+        );
         if (name === 'Back to parent chat') {
           await page.goto(childUrl);
           await expect(trail).toBeVisible();
