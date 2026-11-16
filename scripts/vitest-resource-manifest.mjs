@@ -1939,6 +1939,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/supervisor/src/__tests__/protocol.test.ts',
   // Forks two children that pass a raw listening handle through this worker.
   'packages/supervisor/src/__tests__/handle-guard.test.ts',
+  // Boots the real server entrypoint as a child with an oversized STATION_LOG_FILE.
+  'src-server/__tests__/stdout-log-file-rotation.process.test.ts',
 ]);
 
 export const DOGFOOD_RECONCILE_PREFIX =

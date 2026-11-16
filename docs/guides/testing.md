@@ -791,6 +791,9 @@ so a pull request stays scoped and the merge queue stays advisory.
 It also sets `STATION_PUBLIC_AGENT_REGISTRY=off`, so a runtime a test builds
 never downloads the public agent registry; tests of that source construct it
 with an injected `fetch`.
+It sets `STATION_LOG_REPEAT_LIMIT=0`, so the logger writes every repeated
+warning a test asserts on; the limiter's own tests turn it back on with
+`configureLogRepeatLimit` ([logger](../../src-server/utils/logger.ts)).
 The subset uses the same resource groups and worker limits as `test:full`:
 ordinary files use four workers, process-heavy files use two, and exclusive
 or shared-output groups run serially. Groups run in sequence. Deferred lanes
