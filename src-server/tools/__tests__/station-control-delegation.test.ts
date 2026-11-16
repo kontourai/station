@@ -6608,7 +6608,11 @@ describe('#5077 task event cursors are bounded by the per-thread high water', ()
     await expect(
       observeDelegatedTaskEvents(
         { taskId: TASK_ID, readAuthority: authority },
-        olderHost({ eventCount: 2, nextSequence: 2, sequences: [1, 2] }) as never,
+        olderHost({
+          eventCount: 2,
+          nextSequence: 2,
+          sequences: [1, 2],
+        }) as never,
       ),
     ).resolves.toMatchObject({ nextCursor: 'station-task-events:v1:2' });
     await expect(
@@ -6624,7 +6628,11 @@ describe('#5077 task event cursors are bounded by the per-thread high water', ()
     await expect(
       observeDelegatedTaskEvents(
         { taskId: TASK_ID, readAuthority: authority },
-        olderHost({ eventCount: 2, nextSequence: 3, sequences: [1, 3] }) as never,
+        olderHost({
+          eventCount: 2,
+          nextSequence: 3,
+          sequences: [1, 3],
+        }) as never,
       ),
     ).rejects.toThrow('The selected Station returned invalid task event state');
     // The same page with a high water is a valid gapped page.
