@@ -3,13 +3,26 @@ import type {
   ReviewGitTarget,
   ReviewGitTargetInput,
 } from '@kontourai/station-contracts/review-evidence';
-import { classifyNodes } from '@kontourai/veritas/engine';
+import type { classifyNodes } from '@kontourai/veritas/engine';
 import { execGit } from '../../utils/git-exec.js';
 import { ownRepositoryGitArgs } from '../projects/git-read-repository.js';
 import {
   type GitReviewRangeInspection,
   inspectGitReviewRange,
 } from './git-review-workspace-source.js';
+
+let veritasEngine:
+  | Promise<typeof import('@kontourai/veritas/engine')>
+  | undefined;
+function loadVeritasEngine() {
+  veritasEngine ??= import('@kontourai/veritas/engine').catch(
+    (error: unknown) => {
+      veritasEngine = undefined;
+      throw error;
+    },
+  );
+  return veritasEngine;
+}
 
 const POLICY_INPUTS = [
   '.veritas/repo-map.json',
@@ -138,6 +151,9 @@ export class ReviewLensRouter {
     const paths = routingPaths(changes);
     let classified: ReturnType<typeof classifyNodes>;
     try {
+      // Loaded on first plan, not at boot (scripts/lib/server-static-imports.mjs);
+      // a failed load is refused like a failed classification.
+      const { classifyNodes } = await loadVeritasEngine();
       classified = classifyNodes(paths, repoMap, input.repositoryRoot);
     } catch {
       return humanRequired(

@@ -3,18 +3,14 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { homedir, platform } from 'node:os';
 import nodePath from 'node:path';
-import {
-  deleteSession,
-  forkSession,
-  listSessions,
-  type McpServerConfig,
-  type Options,
-  type PermissionMode,
-  type PermissionResult,
-  type PermissionUpdate,
-  type Query,
-  query,
-  type SDKMessage,
+import type {
+  McpServerConfig,
+  Options,
+  PermissionMode,
+  PermissionResult,
+  PermissionUpdate,
+  Query,
+  SDKMessage,
 } from '@anthropic-ai/claude-agent-sdk';
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages/messages';
 import {
@@ -341,6 +337,25 @@ type PendingRequest = {
   inputRequest?: InputRequestForm;
   eventId: string;
 };
+
+type ClaudeAgentSdk = typeof import('@anthropic-ai/claude-agent-sdk');
+let claudeAgentSdk: Promise<ClaudeAgentSdk> | undefined;
+/**
+ * The Agent SDK is loaded on first use, not at boot: loading it costs tens
+ * of MiB of memory, and an idle server never calls it. A failed load rejects where the SDK call would have
+ * thrown, and is not memoized here, so a later caller loads again.
+ * scripts/lib/server-static-imports.mjs fails the build if a static value
+ * import of it returns.
+ */
+function loadClaudeAgentSdk(): Promise<ClaudeAgentSdk> {
+  claudeAgentSdk ??= import('@anthropic-ai/claude-agent-sdk').catch(
+    (error: unknown) => {
+      claudeAgentSdk = undefined;
+      throw error;
+    },
+  );
+  return claudeAgentSdk;
+}
 
 /** The command Station resolves on PATH for this engine. */
 const CLAUDE_CLI_COMMAND = 'claude';
@@ -1889,11 +1904,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       const usageAccountKey = resolvedHome
         ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
         : undefined;
+      const sdk = await loadClaudeAgentSdk();
       // #2494: a plan that engages Seatbelt confines this start, or (for a
       // reason a check derives) runs it at Auto with nothing engaged. Every
       // other start takes the same synchronous path as before.
       if (!isClaudeSpawnWrapMechanism(input.confinementPlan?.mechanism))
         return this.startTrackedSession(
+          sdk,
           input,
           input.persistSession === true,
           skillsReport,
@@ -1917,6 +1934,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         usageAccountKey,
       });
       const session = await this.startTrackedSession(
+        sdk,
         seatbelt.input,
         seatbelt.input.persistSession === true,
         skillsReport,
@@ -2331,7 +2349,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       };
     }
     await hooks?.onProviderChildCreationStarted?.();
-    const fork = await forkSession(input.sourceSessionId, {
+    const sdk = await loadClaudeAgentSdk();
+    const fork = await sdk.forkSession(input.sourceSessionId, {
       dir: input.cwd,
       title: adoptionTitle(input.threadId),
     });
@@ -2383,6 +2402,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       );
       if (!adoptionFallback)
         return this.startTrackedSession(
+          sdk,
           { ...input, resumeCursor, persistSession: true },
           true,
           skillsReport,
@@ -2399,6 +2419,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           artifactsEnv,
         );
       const session = await this.startTrackedSession(
+        sdk,
         { ...input, resumeCursor, persistSession: true },
         true,
         skillsReport,
@@ -2421,7 +2442,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // the reservation marker) and owns cleanup. Deleting here too would
       // make its subsequent SDK deletion fail as "session not found".
       if (!hooks)
-        await deleteSession(fork.sessionId, { dir: input.cwd }).catch(() => {});
+        await sdk
+          .deleteSession(fork.sessionId, { dir: input.cwd })
+          .catch(() => {});
       throw error;
     }
   }
@@ -2463,6 +2486,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       recovery.createdAt
     ) {
       const earliest = Date.parse(recovery.createdAt);
+      const { listSessions } = await loadClaudeAgentSdk();
       const candidates = (await listSessions({ dir: cwd })).filter(
         (session) =>
           session.customTitle === adoptionTitle(recovery.adoptionKey!) &&
@@ -2484,6 +2508,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     }
     if (typeof cursor === 'string') {
       if (recovery?.adoptionKey) {
+        const { deleteSession } = await loadClaudeAgentSdk();
         await deleteSession(cursor, { dir: cwd });
         return;
       }
@@ -2492,11 +2517,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // `deleteSession` call resolves (archive#896, decision 5) — Station owns the
       // profile dir, so an orphaned transcript there is not a discard
       // failure. Profile GC is a wave-2 follow-up, not implemented here.
-      await deleteSession(cursor, { dir: cwd }).catch((error) => {
-        (this.options.logger ?? console).warn?.(
-          `Claude discardSession: deleteSession failed for cursor '${cursor}' (possibly an app-home-profile session whose transcript lives under a different config root): ${errorMessage(error)}`,
-        );
-      });
+      // The load joins the chain so a failed load is warned like a failed
+      // deletion, not thrown.
+      await loadClaudeAgentSdk()
+        .then(({ deleteSession }) => deleteSession(cursor, { dir: cwd }))
+        .catch((error) => {
+          (this.options.logger ?? console).warn?.(
+            `Claude discardSession: deleteSession failed for cursor '${cursor}' (possibly an app-home-profile session whose transcript lives under a different config root): ${errorMessage(error)}`,
+          );
+        });
     }
   }
 
@@ -2516,6 +2545,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   }
 
   private startTrackedSession(
+    sdk: ClaudeAgentSdk,
     input: ProviderSessionStartInput,
     persistSession: boolean,
     skillsReport?: CapabilityDeliveryChannelReport,
@@ -2629,7 +2659,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       seatbeltSpawn?.wrap,
       input.threadId,
     );
-    let sdkQuery: ReturnType<typeof query>;
+    let sdkQuery: Query;
     // After station-control, so the browser server reuses its credential.
     let builtinServers: Record<string, McpServerConfig> | undefined;
     try {
@@ -2639,7 +2669,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       ]);
       // After station-control, so the browser server reuses its credential.
       builtinServers = this.resolveStationBrowser(input);
-      sdkQuery = query({
+      sdkQuery = sdk.query({
         prompt: promptQueue,
         options: this.buildOptions(
           input,
@@ -4330,8 +4360,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     signal.addEventListener('abort', abortProbe, { once: true });
     const promptQueue = new AsyncUserMessageQueue();
     const engineProcess = createClaudeEngineProcess();
-    let sdkQuery: ReturnType<typeof query> | undefined;
+    let sdkQuery: Query | undefined;
     try {
+      const { query } = await loadClaudeAgentSdk();
       sdkQuery = query({
         prompt: promptQueue,
         options: {
