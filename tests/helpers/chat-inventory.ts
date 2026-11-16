@@ -23,18 +23,10 @@ export function phoneChatInventoryControls(page: Page) {
 }
 
 /**
- * Desktop: the This chat card's footer link while the card is beside the
- * transcript; otherwise the More dock actions row (the menu carries it only
- * while the card is not shown).
+ * Desktop: the full reader is a row of More dock actions (the This chat
+ * card's footer link opens the compact view beside the transcript instead).
  */
 export async function openDesktopChatInventory(page: Page) {
-  const card = page.locator('#chat-dock aside.session-context-card');
-  if (await card.isVisible()) {
-    await card
-      .getByRole('button', { name: 'Chat inventory', exact: true })
-      .click();
-    return;
-  }
   await page
     .locator('#chat-dock')
     .getByRole('button', { name: /^More dock actions/ })

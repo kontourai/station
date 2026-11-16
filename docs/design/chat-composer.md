@@ -1427,8 +1427,7 @@ and terminal undo retain their keys.
 Customize → Appearance offers Comfortable, Wide and Full answer widths.
 The compact context ring places its percentage inside the ring beside Send;
 Agent, model, Mode and Approval remain choices inside Run setup. Basis stays
-answer-scoped. Browse turns is a conversation overflow action; Chat inventory is the This
-chat card's footer, and an overflow row only while the card is not shown.
+answer-scoped. Chat inventory and Browse turns are conversation overflow actions.
 
 The dev UI proxy uses the production unavailable envelope during API restarts.
 The access screen retries temporary unavailability while visible, preserving

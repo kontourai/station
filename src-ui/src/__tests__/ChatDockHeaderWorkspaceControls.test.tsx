@@ -678,9 +678,6 @@ describe('ChatDockHeader More menu groups', () => {
       within(menu).queryByRole('menuitem', { name: /Background tasks/ }),
     ).toBeNull();
     expect(
-      within(menu).queryByRole('menuitem', { name: /Chat inventory/ }),
-    ).toBeNull();
-    expect(
       within(menu).queryByRole('menuitem', { name: 'Chat settings' }),
     ).toBeNull();
     // Chat settings is the bar's gear instead, one press.

@@ -166,8 +166,8 @@ interface ChatDockHeaderProps {
   sessionContextChip?: React.ReactNode;
   /**
    * The session context card is beside the transcript and carries the
-   * background-task count, Background tasks and Chat inventory, so the More
-   * menu repeats none of them (neither the count on its trigger nor the rows).
+   * background-task count and Background tasks, so the More menu repeats
+   * neither (the count on its trigger nor the row).
    */
   backgroundTasksBadgeHidden?: boolean;
 }
@@ -280,7 +280,9 @@ export function ChatDockHeader({
           },
         ]
       : []),
-    ...(inventory && !backgroundTasksBadgeHidden
+    // The full inventory reader: the card's footer link opens the compact
+    // view beside the transcript, so this row stays even while the card shows.
+    ...(inventory
       ? [
           {
             key: 'session-inventory',
