@@ -107,6 +107,8 @@ interface CodexRolloutSessionSourceOptions {
   listConfiguredHomes?: () => Promise<readonly string[]>;
   maxHomes?: number;
   maxCandidates?: number;
+  /** Total rollouts one discovery reads across every home (at most 512). */
+  maxTotalCandidates?: number;
   maxBytes?: number;
   maxLineBytes?: number;
   maxEvents?: number;
@@ -137,6 +139,7 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
    */
   private knownHomes: readonly string[];
   private readonly maxCandidates: number;
+  private readonly maxTotalCandidates: number;
   private readonly maxBytes: number;
   private readonly maxLineBytes: number;
   private readonly maxEvents: number;
@@ -169,6 +172,11 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
       'maxCandidates',
       options.maxCandidates ?? DEFAULT_MAX_CANDIDATES,
       MAX_CANDIDATES_CEILING,
+    );
+    this.maxTotalCandidates = boundedInteger(
+      'maxTotalCandidates',
+      options.maxTotalCandidates ?? MAX_TOTAL_CANDIDATES,
+      MAX_TOTAL_CANDIDATES,
     );
     this.maxBytes = boundedInteger(
       'maxBytes',
@@ -225,11 +233,16 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
     let candidateLimitSeen = homeLimitSeen;
     let rejected = false;
     for (const [index, home] of homes.entries()) {
+      // Full: the remaining homes are not walked, and may hold more.
+      if (candidates.length >= this.maxTotalCandidates) {
+        candidateLimitSeen = true;
+        break;
+      }
       const scan = this.scanHome(home.root);
       candidateLimitSeen ||= scan.limitSeen;
       rejected ||= scan.rejected;
       for (const candidate of scan.candidates.sort(compareCandidates)) {
-        if (candidates.length >= MAX_TOTAL_CANDIDATES) {
+        if (candidates.length >= this.maxTotalCandidates) {
           candidateLimitSeen = true;
           break;
         }

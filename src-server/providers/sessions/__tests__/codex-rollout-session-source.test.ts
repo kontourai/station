@@ -939,6 +939,49 @@ describe('CodexRolloutSessionSource', () => {
     expect(ids.filter((id) => id.startsWith('p'))).toHaveLength(2);
   });
 
+  test('the total candidate ceiling holds at max, refuses max+1, and stops walking homes once full', async () => {
+    const homes = [fixtureRoot(), fixtureRoot(), fixtureRoot()];
+    for (const [index, home] of homes.entries())
+      for (const name of index === 2 ? ['c1'] : [`h${index}a`, `h${index}b`])
+        writeFileSync(rolloutPath(home, `${name}.jsonl`), line(meta(name)));
+    const scanHome = vi.spyOn(
+      CodexRolloutSessionSource.prototype as unknown as {
+        scanHome: (root: string) => unknown;
+      },
+      'scanHome',
+    );
+    const at = (configured: string[]) =>
+      new CodexRolloutSessionSource({
+        homeDir: homes[0],
+        maxCandidates: 2,
+        maxTotalCandidates: 4,
+        listConfiguredHomes: async () => configured,
+      }).discover();
+
+    const exactlyFull = await at([homes[1]!]);
+    expect(exactlyFull.outcome).toBe('ok');
+    expect(exactlyFull.sessions).toHaveLength(4);
+
+    scanHome.mockClear();
+    const oneMore = await at([homes[1]!, homes[2]!]);
+    expect(oneMore.outcome).toBe('candidate_limit');
+    expect(oneMore.sessions.map((s) => s.sessionId).sort()).toEqual([
+      'h0a',
+      'h0b',
+      'h1a',
+      'h1b',
+    ]);
+    // The third home is not walked once the total is full.
+    expect(scanHome).toHaveBeenCalledTimes(2);
+    expect(
+      () =>
+        new CodexRolloutSessionSource({
+          homeDir: homes[0],
+          maxTotalCandidates: 513,
+        }),
+    ).toThrow(/maxTotalCandidates/);
+  });
+
   test('a failing or oversized home list keeps the default home and reports the limit', async () => {
     const defaultHome = fixtureRoot();
     writeFileSync(rolloutPath(defaultHome), line(meta('default')));
