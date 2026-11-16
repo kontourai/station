@@ -52,7 +52,13 @@
 
     "scripts/__tests__/conversation-boundary-gate.test.ts",
 
-    "src-ui/src/components/conversation/conversation-transport.ts"
+    "src-ui/src/components/conversation/conversation-transport.ts",
+
+    "scripts/ui-copy-style.mjs",
+
+    "scripts/ui-css-slop.mjs",
+
+    "docs/guides/ui-copy.md"
   ],
 
   "checks": [

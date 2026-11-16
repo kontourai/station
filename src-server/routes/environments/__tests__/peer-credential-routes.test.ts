@@ -6,6 +6,7 @@ import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { PeerCredentialStore } from '../../../services/peers/peer-credential-store.js';
 import { PeerEnrollmentService } from '../../../services/peers/peer-enrollment-service.js';
+import { PeerReadinessService } from '../../../services/peers/peer-readiness-service.js';
 import { getInternalApiToken } from '../../../utils/internal-api-token.js';
 import { createPeerCredentialRoutes } from '../peer-credential-routes.js';
 
@@ -41,6 +42,90 @@ afterAll(() => {
 });
 
 describe('peer credential routes (station#1123 slice 2)', () => {
+  test('the list answers without waiting on probes, then carries each peer\u2019s readiness, probed without its credential', async () => {
+    const homeDir = makeTempDir('station-peer-route-ready-');
+    const store = new PeerCredentialStore(homeDir);
+    const secret = 'readiness-route-secret-0123456789abcdef';
+    for (const id of ['env-up', 'env-restarting'])
+      await store.upsert({
+        environmentId: id,
+        apiBase: `https://${id}.example.test`,
+        scope: 'orchestration:read orchestration:operate',
+        credential: secret,
+        label: id,
+      });
+    const probes: Array<{ url: string; authorization: string | null }> = [];
+    let answer!: () => void;
+    const answered = new Promise<void>((resolve) => {
+      answer = resolve;
+    });
+    const readiness = new PeerReadinessService({
+      now: () => 1_234,
+      fetch: async (input, init) => {
+        const url = String(input);
+        probes.push({
+          url,
+          authorization: new Headers(init?.headers).get('authorization'),
+        });
+        // The peers do not answer until the test lets them.
+        await answered;
+        return url.startsWith('https://env-up.')
+          ? new Response(
+              JSON.stringify({ schemaVersion: 1, environmentId: 'env-up' }),
+              { status: 200 },
+            )
+          : new Response(
+              JSON.stringify({ ready: false, status: 'unavailable' }),
+              { status: 503 },
+            );
+      },
+    });
+    const app = createPeerCredentialRoutes(
+      store,
+      undefined,
+      undefined,
+      undefined,
+      readiness,
+    );
+    // The first read answers while both probes are still waiting: never
+    // probed means no readiness yet, not a wait on the network.
+    const first = (await (await app.request('/')).json()) as {
+      data: Array<{ environmentId: string; readiness?: unknown }>;
+    };
+    expect(first.data.map((peer) => peer.readiness)).toEqual([
+      undefined,
+      undefined,
+    ]);
+    expect(probes).toHaveLength(2);
+    answer();
+    await vi.waitFor(async () => {
+      const again = (await (await app.request('/')).json()) as {
+        data: Array<{ readiness?: unknown }>;
+      };
+      expect(again.data.every((peer) => peer.readiness)).toBe(true);
+    });
+    const response = await app.request('/');
+    expect(response.status).toBe(200);
+    const raw = await response.text();
+    expect(raw).not.toContain(secret);
+    const body = JSON.parse(raw) as {
+      data: Array<{ environmentId: string; readiness: unknown }>;
+    };
+    expect(
+      Object.fromEntries(
+        body.data.map((peer) => [peer.environmentId, peer.readiness]),
+      ),
+    ).toEqual({
+      'env-up': { status: 'online', checkedAt: 1_234 },
+      'env-restarting': { status: 'recovering', checkedAt: 1_234 },
+    });
+    expect(probes.map((probe) => probe.url).sort()).toEqual([
+      'https://env-restarting.example.test/.well-known/station/v1',
+      'https://env-up.example.test/.well-known/station/v1',
+    ]);
+    expect(probes.every((probe) => probe.authorization === null)).toBe(true);
+  });
+
   test('the list wire shape from a REAL store carries no credential material (#790)', async () => {
     // The mocked-store tests above prove the route passes `list()` through;
     // this proves the composed wire shape — real store, real routes — never

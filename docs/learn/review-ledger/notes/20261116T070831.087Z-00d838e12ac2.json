@@ -1,0 +1,7 @@
+{
+  "revision": "a99d98613c4e1cf6760fd15243ccf1bf426c4b94",
+
+  "notes": [
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Cites agent-configuration.md for Agent identity surfaces only; the guardian sentence added there makes no identity claim.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/guides/agent-configuration.md"]}
+  ]
+}

@@ -1902,6 +1902,61 @@ supplies the peer credential store. A missing credential or remote authenticatio
 rejection is reported as `authenticationRequired`; loopback arrival does not
 bypass the remote Station's authentication.
 
+Opening one of those rows reads its history through the same tunnel and
+bearer (`GET /api/environments/ssh/sessions/:environmentId/:threadId/history`,
+[route](../../src-server/routes/operations/ssh-environments.ts)). This
+includes external Claude, Codex, OpenCode and Grok sessions. The remote
+Station discovered those on its own host with its own follower, so no
+transcript path, source handle or provider home crosses the tunnel: the remote
+answers its ordinary bounded `window-v1` session read, and the remote Station
+authorizes it. The relay never dials an environment that is not already
+connected. It refuses a page that names a different session, carries more
+than 2,000 events, or whose response passes 262,144 bytes. The byte limit
+covers a remote that ignores `view=window-v1` and sends its whole detail. A
+current remote's window answers at most 64,000 bytes. These pages are
+refused, not truncated. It caps a page at the remote route's own 20-turn and
+512-character cursor bounds. The list asks the remote for its newest 200
+sessions (`limit=200`) and is capped at 8,388,608 bytes, which holds 200
+summaries at the largest measured size. An older remote that ignores `limit`
+sends every session. The cap would hold about 2,000 typical ones, but the
+list's 2-second fetch deadline usually expires first on a remote that large,
+so such a remote mostly reads as unavailable. One Home list read fans out to
+at most 16 connected environments at once, and there is no server-side
+single-flight across overlapping reads. The accepted worst case is therefore
+16 × 8 MiB (128 MiB) of buffered remote answers per read in flight. A remote's
+search answer is capped at
+262,144 bytes. Past either cap the answer is not parsed. The existing status
+then reports the remote as unavailable (list) or unreachable (search), even
+though it did answer, and this Station logs the refusal by environment id
+alone. Only the page's own top-level fields cross. The
+session summary and each event are relayed as the remote's authorized read
+returned them: the events are the transcript, and the summary has the same
+shape, working folder included, that the list already relays to this caller.
+The environment name on the result comes from this Station's profile, never
+from the remote's answer. A remote 401 is reported as `authentication_required`
+with a 409, never as a 401 from this Station, which a client would read as its
+own credential being refused. The read is view-only: this Station offers no
+continuation of a remote session.
+
+The remote Station authorizes the outbound peer bearer, and that bearer is
+Station-wide: it does not say which local caller asked. So every read of
+another Station through this one admits only the person that bearer stands
+for: the list, the history read, and the remote part of message search
+(`GET /api/conversations/search`). This is the same rule the paired Station
+chat relay applies over the same credential. One
+[read authority](../../src-server/security/remote-station-read-authority.ts)
+decides all three. The caller
+must be the bound owner, the request principal must still be current, and the
+request must not be one an agent could have sent (an agent tool origin or the
+internal token). Any other paired device, including an operate-scoped device
+bound to another person, gets 403 and nothing is sent to the remote. A Station
+whose runtime composed no read authority fails closed the same way. A hosted
+Station has no tenant binding for the bearer, so it serves neither read
+(404) and searches no remote Station. Its handshake withdraws
+`remoteSessionHistory` to match. A refused caller's message search still
+returns their local results. The remote part is withheld entirely: no remote
+Station is named and no bearer is sent.
+
 Separately, disclosing that read to a caller of this Station is gated at
 `orchestration:operate` here — deliberately stricter than the
 `orchestration:read` the rest of the `/api/environments/ssh` family uses for

@@ -1,0 +1,7 @@
+{
+  "revision": "a99d98613c4e1cf6760fd15243ccf1bf426c4b94",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Checked the config claims citing pre-tool-policy.ts (autoApprove, askBeforeUse, unattendedAutoApprove, guardian): authored patterns and unattended opt-ins still behave as described for every tool except the authority tools, which the delivery boundary documents.","inputs":["docs/reference/config.md","src-server/runtime/agents/pre-tool-policy.ts"]}
+  ]
+}

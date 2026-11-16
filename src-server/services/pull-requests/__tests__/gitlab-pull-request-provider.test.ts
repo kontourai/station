@@ -236,6 +236,36 @@ describe('GitLabPullRequestProvider', () => {
       ).toBe(expected);
     },
   );
+  test.each([
+    ['mergeable', { mergeReadiness: 'clean' }],
+    ['conflict', { mergeReadiness: 'conflicting' }],
+    ['need_rebase', { mergeReadiness: 'behind' }],
+    ['draft_status', { mergeReadiness: 'draft', draft: true }],
+    [
+      'not_approved',
+      { mergeReadiness: 'blocked', reviewDecision: 'review_required' },
+    ],
+    ['ci_must_pass', { mergeReadiness: 'blocked' }],
+    ['ci_still_running', { mergeReadiness: 'unknown' }],
+  ])(
+    'maps detailed_merge_status %s for the Task board',
+    (detailed_merge_status, expected) => {
+      expect(
+        normalizeGitLabMergeRequest(
+          { ...mergeRequest, detailed_merge_status },
+          'gitlab.com',
+        ),
+      ).toMatchObject(expected);
+    },
+  );
+  test('leaves readiness absent when GitLab sends no detailed status', () => {
+    const normalized = normalizeGitLabMergeRequest(
+      { ...mergeRequest, detailed_merge_status: undefined },
+      'gitlab.com',
+    );
+    expect(normalized).not.toHaveProperty('mergeReadiness');
+    expect(normalized).not.toHaveProperty('reviewDecision');
+  });
   test('reports a missing glab binary by name', async () => {
     const provider = new GitLabPullRequestProvider(
       vi.fn().mockRejectedValue(new Error('ENOENT')),

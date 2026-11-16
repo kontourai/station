@@ -18,13 +18,20 @@ import type {
   TaskWorkspaceBinding,
 } from '@kontourai/station-contracts';
 import type { TaskWorkChatPresentation } from '@kontourai/station-contracts/task-graph';
+import type { TaskPullRequestFactsProjection } from '@kontourai/station-contracts/task-lane';
 import type { TaskMemoryAttention } from '@kontourai/station-contracts/task-memory';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getTaskAnswerSupportCards,
   type TaskAnswerSupportStandingWithCard,
 } from '../client/answer-support';
-import { getJson, readEnvelopeOrThrow } from '../client/http';
+import {
+  envelopeErrorCode,
+  envelopeErrorMessage,
+  getJson,
+  readEnvelopeOrThrow,
+  readJsonBody,
+} from '../client/http';
 import {
   type AttachTaskUserInputReferenceInput,
   attachTaskUserInputReference as attachTaskUserInputReferenceClient,
@@ -151,6 +158,51 @@ export async function fetchTasks(
 export type TaskListRecord = TaskRecord &
   Partial<TaskMemoryAttention> &
   TaskWorkChatPresentation;
+
+/**
+ * Derived Task lanes: the provider's current facts for each pull request kept
+ * on a Project's live Tasks (`GET /api/tasks/pull-request-facts`). `null`
+ * when the host answers a plain 404: a Station older than this read, whose
+ * board then claims nothing about pull requests. A 404 carrying
+ * `request_principal_changed` is lost standing, and is thrown as an error.
+ */
+export async function fetchTaskPullRequestFacts(
+  projectId: string,
+  apiBase?: string,
+): Promise<TaskPullRequestFactsProjection | null> {
+  const resolvedApiBase = await resolveApiBase(apiBase);
+  const response = await authenticatedFetch(
+    `${resolvedApiBase}/api/tasks/pull-request-facts?${new URLSearchParams({ projectId })}`,
+  );
+  if (response.status === 404) {
+    const body = await readJsonBody(response);
+    if (envelopeErrorCode(body) !== 'request_principal_changed') return null;
+    throw new Error(envelopeErrorMessage(body, 'Request failed with HTTP 404'));
+  }
+  return readApiResult<TaskPullRequestFactsProjection>(response);
+}
+
+/**
+ * The board's pull request facts. Provider reads are slow and rate-limited,
+ * so it refreshes every two minutes and on focus, never retries a failure,
+ * and keeps the last answer when a refresh fails.
+ */
+export function useTaskPullRequestFactsQuery(
+  projectId: string | undefined,
+  config: { enabled?: boolean } = {},
+) {
+  return useApiQuery(
+    taskQueries.pullRequestFacts(projectId ?? '').queryKey,
+    () => fetchTaskPullRequestFacts(projectId ?? ''),
+    {
+      enabled: Boolean(projectId) && (config.enabled ?? true),
+      staleTime: taskQueries.pullRequestFacts(projectId ?? '').staleTime,
+      refetchInterval: 120_000,
+      refetchOnWindowFocus: true,
+      retry: false,
+    },
+  );
+}
 
 export async function fetchTask(
   taskId: string,

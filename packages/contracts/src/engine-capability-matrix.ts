@@ -1318,6 +1318,14 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
   acp: {
     engineId: toEngineId('acp'),
     durability: ACP_ENGINE_DURABILITY,
+    // `AcpSessionListSource` lists sessions an ACP agent ran outside Station,
+    // read-only and without history. Nothing shows that resuming one keeps
+    // its conversation, so continuing one is not offered.
+    externalSessionContinuation: {
+      state: 'unsupported',
+      reason:
+        'Station lists these sessions read-only and has no evidence that resuming one keeps its history.',
+    },
     systemPrompt: { state: 'unsupported' },
     // archive#895 wave C: `acp-adapter.ts` already builds an ordinary
     // `{type:'text', text: input.input}` prompt content block on every

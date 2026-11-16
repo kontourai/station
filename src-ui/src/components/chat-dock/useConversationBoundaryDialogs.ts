@@ -50,7 +50,13 @@ export function useConversationBoundaryDialogs({
     id: string;
     agentSlug: string;
     executionPreset?: { executionAgentId?: string; modelId?: string };
+    /**
+     * Each open is a new dialog: the dialog is keyed by this, so one chat's
+     * request state can never carry into another's picker.
+     */
+    nonce: number;
   } | null>(null);
+  const nextNonce = useRef(0);
   const [forkSource, setForkSource] = useState<{
     id: string;
     agentSlug: string;
@@ -204,6 +210,7 @@ export function useConversationBoundaryDialogs({
       setHandoffSource({
         id: activeSession.conversationId,
         agentSlug: activeSession.agentSlug,
+        nonce: ++nextNonce.current,
       });
     },
     [activeSession],
@@ -212,9 +219,13 @@ export function useConversationBoundaryDialogs({
   const openExecutionHandoff = useCallback(
     (model?: SelectableModel) => {
       if (!activeSession?.conversationId) return;
+      // The engine picker owns no button to return to; the dialog returns
+      // focus to the composer instead.
+      handoffReturnFocusRef.current = null;
       setHandoffSource({
         id: activeSession.conversationId,
         agentSlug: activeSession.agentSlug,
+        nonce: ++nextNonce.current,
         executionPreset: {
           executionAgentId: model?.executionAgentId,
           modelId: model?.id,
@@ -231,6 +242,12 @@ export function useConversationBoundaryDialogs({
           session.id === handoffSource.id,
       )
     : undefined;
+  // The source chat was deleted or closed: its dialog has nothing to render
+  // into, so the held source is dropped.
+  const sourceGone = Boolean(handoffSource && !handoffSession);
+  useEffect(() => {
+    if (sourceGone) setHandoffSource(null);
+  }, [sourceGone]);
 
   return {
     handoffReturnFocusRef,

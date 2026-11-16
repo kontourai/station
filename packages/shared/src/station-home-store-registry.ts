@@ -86,6 +86,9 @@ export const STATION_HOME_ROOTS: Readonly<
   engines: 'external',
   environments: 'state',
   feedback: 'state',
+  // Finished alerts held, being written or recently released; a restart
+  // replays them so none is lost or sent twice.
+  'finished-alert-episodes.json': 'state',
   imports: 'state',
   integrations: 'state',
   kits: 'state',

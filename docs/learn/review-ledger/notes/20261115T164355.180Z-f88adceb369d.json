@@ -1,0 +1,7 @@
+{
+  "revision": "940be3079c4399a864e8e2ec18ab76ffc8a99af8",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"notification-delivery.md gained the 'Finished alerts: one per completion episode' section and the held-finish card phase. automations.md cites it for notification delivery generally; its automation claims are unaffected.","inputs":["docs/design/notification-delivery.md"]}
+  ]
+}

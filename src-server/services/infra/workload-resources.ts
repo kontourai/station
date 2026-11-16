@@ -5,6 +5,9 @@ import { availableParallelism, totalmem } from 'node:os';
 import type {
   WorkloadBudgetStatus,
   WorkloadHolderUnplacedReason,
+  WorkloadScopeCleanupErrorKind,
+  WorkloadScopeCleanupFailure,
+  WorkloadScopeCleanupStatus,
 } from '@kontourai/station-contracts/system-status';
 import {
   type ChildWorkloadLaunch,
@@ -20,6 +23,10 @@ import {
   probeExactProcessIdentity,
   probeExactProcessIdentityAsync,
 } from '@kontourai/station-shared/process-identity';
+import {
+  workloadScopeCleanupAttempts,
+  workloadScopeCleanupBacklog,
+} from '../../telemetry/metrics.js';
 import { createLogger } from '../../utils/logger.js';
 import {
   type ResolvedWorkloadMemoryBudget,
@@ -57,6 +64,8 @@ interface ActiveWorkload {
   pid?: number;
   birth?: string | null;
   closing?: Promise<void>;
+  /** Set once a cleanup attempt fails; cleared only by the scope settling. */
+  cleanup?: CleanupRetry;
   observed?: (outcome: ChildWorkloadOutcome | undefined) => void;
   /** The scope's cgroup path, resolved once the scope exists. */
   controlGroup?: string;
@@ -129,6 +138,193 @@ const recent: Array<{
   memoryPeakBytes?: number;
   cpuUsageNSec?: number;
 }> = [];
+
+/** What asked for a cleanup attempt. */
+type CleanupTrigger = 'monitor' | 'close' | 'shutdown';
+
+interface CleanupRetry {
+  attempts: number;
+  errorKind: WorkloadScopeCleanupErrorKind;
+  lastError: string;
+  firstFailedAt: string;
+  /** Epoch ms before which the monitor leaves the scope alone. */
+  nextAttemptAt: number;
+  abandonedAt?: string;
+}
+
+/** First retry delay; each further failure doubles it, up to the cap. */
+const CLEANUP_RETRY_BASE_MS = 2_000;
+const CLEANUP_RETRY_CAP_MS = 5 * 60_000;
+/** Failed attempts before a scope is abandoned. */
+const CLEANUP_MAX_ATTEMPTS = 10;
+/**
+ * An unreachable user bus does not heal within seconds, and every scope
+ * fails the same way: such a scope waits the full cap between its attempts
+ * and is abandoned sooner.
+ */
+const CLEANUP_BUS_MAX_ATTEMPTS = 3;
+/** Abandoned scopes kept for status and the shutdown pass. */
+const ABANDONED_LIMIT = 256;
+
+/**
+ * Scopes whose cleanup failed CLEANUP_MAX_ATTEMPTS times (see
+ * recordCleanupFailure), out of `active`: the monitor no longer retries
+ * them and they do not count toward the 256 active scopes. Shutdown and an
+ * explicit close still try them once.
+ */
+const abandoned = new Map<string, ActiveWorkload>();
+let abandonedDropped = 0;
+let clock = { now: () => Date.now(), random: () => Math.random() };
+let backlogGaugeRegistered = false;
+/** Tests drive monitor passes themselves. */
+let monitorEnabled = true;
+
+/** Classifies a failed cleanup attempt by whether a prompt retry can help. */
+export function classifyCleanupError(
+  error: unknown,
+): WorkloadScopeCleanupErrorKind {
+  const text = error instanceof Error ? error.message : String(error);
+  // systemd 253+ says "Failed to connect to user scope bus via local
+  // transport: …"; older releases "Failed to connect to bus: …".
+  if (/Failed to connect to (?:[\w-]+ scope )?bus\b/i.test(text))
+    return 'bus_unavailable';
+  const code = (error as { code?: unknown } | null)?.code;
+  if (typeof code === 'number' || /^Command failed:/.test(text))
+    return 'command_failed';
+  return 'other';
+}
+
+/** A failure's last non-empty line (systemctl's own stderr), truncated. */
+function cleanupErrorSummary(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error);
+  const line =
+    text
+      .split('\n')
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .at(-1) ?? '';
+  return line.length > 300 ? `${line.slice(0, 299)}…` : line;
+}
+
+/**
+ * The wait before the next attempt: exponential from CLEANUP_RETRY_BASE_MS
+ * (the cap at once for an unreachable bus), with jitter down to half so
+ * scopes that failed together do not retry together.
+ */
+function cleanupRetryDelay(
+  attempts: number,
+  errorKind: WorkloadScopeCleanupErrorKind,
+): number {
+  const ceiling =
+    errorKind === 'bus_unavailable'
+      ? CLEANUP_RETRY_CAP_MS
+      : Math.min(
+          CLEANUP_RETRY_CAP_MS,
+          CLEANUP_RETRY_BASE_MS * 2 ** Math.min(attempts - 1, 30),
+        );
+  return Math.round(ceiling * (0.5 + 0.5 * clock.random()));
+}
+
+/**
+ * Records a failed attempt and schedules the next, or abandons the scope.
+ * Each scope warns at most twice: on its first failure and when abandoned.
+ * Every other failure is a debug line and a metric.
+ */
+function recordCleanupFailure(
+  entry: ActiveWorkload,
+  error: unknown,
+  trigger: CleanupTrigger,
+): void {
+  const errorKind = classifyCleanupError(error);
+  const previous = entry.cleanup;
+  const attempts = (previous?.attempts ?? 0) + 1;
+  const now = clock.now();
+  const at = new Date(now).toISOString();
+  const wasAbandoned = previous?.abandonedAt !== undefined;
+  const limit =
+    errorKind === 'bus_unavailable'
+      ? CLEANUP_BUS_MAX_ATTEMPTS
+      : CLEANUP_MAX_ATTEMPTS;
+  const abandon = wasAbandoned || attempts >= limit;
+  const delay = abandon ? undefined : cleanupRetryDelay(attempts, errorKind);
+  const lastError = cleanupErrorSummary(error);
+  entry.cleanup = {
+    attempts,
+    errorKind,
+    lastError,
+    firstFailedAt: previous?.firstFailedAt ?? at,
+    nextAttemptAt: delay === undefined ? Number.POSITIVE_INFINITY : now + delay,
+    ...(abandon ? { abandonedAt: previous?.abandonedAt ?? at } : {}),
+  };
+  workloadScopeCleanupAttempts.add(1, {
+    outcome: abandon ? 'abandoned' : 'retry_scheduled',
+    error_kind: errorKind,
+    trigger,
+  });
+  const context = { unit: entry.unit, attempts, errorKind };
+  if (abandon && !wasAbandoned) {
+    active.delete(entry.unit);
+    abandoned.set(entry.unit, entry);
+    if (abandoned.size > ABANDONED_LIMIT) {
+      const oldest = abandoned.keys().next().value;
+      if (oldest !== undefined) abandoned.delete(oldest);
+      abandonedDropped += 1;
+    }
+    logger.warn(
+      'Workload scope cleanup abandoned; Station stops retrying it until shutdown',
+      { ...context, lastError },
+    );
+  } else if (attempts === 1)
+    logger.warn('Workload scope cleanup did not settle', {
+      ...context,
+      retryInMs: delay,
+      error,
+    });
+  else
+    logger.debug('Workload scope cleanup did not settle again', {
+      ...context,
+      ...(delay === undefined ? {} : { retryInMs: delay }),
+      lastError,
+    });
+}
+
+function cleanupFailure(entry: ActiveWorkload): WorkloadScopeCleanupFailure {
+  const retry = entry.cleanup as CleanupRetry;
+  return {
+    unit: entry.unit,
+    ...(entry.sessionId ? { sessionId: entry.sessionId } : {}),
+    attempts: retry.attempts,
+    errorKind: retry.errorKind,
+    lastError: retry.lastError,
+    firstFailedAt: retry.firstFailedAt,
+    ...(retry.abandonedAt
+      ? { abandonedAt: retry.abandonedAt }
+      : Number.isFinite(retry.nextAttemptAt)
+        ? { nextAttemptAt: new Date(retry.nextAttemptAt).toISOString() }
+        : {}),
+  };
+}
+
+function pendingCleanup(): ActiveWorkload[] {
+  return [...active.values()].filter((entry) => entry.cleanup);
+}
+
+function cleanupStatus(): WorkloadScopeCleanupStatus {
+  return {
+    pending: pendingCleanup().map(cleanupFailure),
+    abandoned: [...abandoned.values()].map(cleanupFailure),
+    abandonedDropped,
+  };
+}
+
+function registerCleanupBacklogGauge(): void {
+  if (backlogGaugeRegistered) return;
+  backlogGaugeRegistered = true;
+  workloadScopeCleanupBacklog.addCallback((observer) => {
+    observer.observe(pendingCleanup().length, { state: 'pending' });
+    observer.observe(abandoned.size, { state: 'abandoned' });
+  });
+}
 
 function positiveInteger(
   env: NodeJS.ProcessEnv,
@@ -470,7 +666,9 @@ async function leaderAlive(entry: ActiveWorkload): Promise<boolean> {
 async function pollOomKills(): Promise<void> {
   await Promise.allSettled(
     [...active.values()].map(async (entry) => {
-      if (entry.closing || entry.pid === undefined) return;
+      // A scope whose cleanup failed is being torn down: polling it would
+      // spawn systemctl for it every second.
+      if (entry.closing || entry.cleanup || entry.pid === undefined) return;
       const controlGroup = await resolveControlGroup(entry);
       if (!controlGroup) return;
       await observeHolder(entry, controlGroup);
@@ -518,25 +716,36 @@ async function pollOomKills(): Promise<void> {
   );
 }
 
+/**
+ * One monitor pass. A scope whose cleanup failed is retried only once its
+ * backoff has passed (see recordCleanupFailure).
+ */
+async function monitorPass(): Promise<void> {
+  await pollOomKills();
+  const now = clock.now();
+  // MCP transports report close only after inherited stdio pipes close.
+  // Observe leader identity independently so retained pipes cannot hide exit.
+  await Promise.allSettled(
+    [...active.values()].map(async (entry) => {
+      if (entry.pid === undefined || entry.closing) return;
+      if (entry.cleanup && now < entry.cleanup.nextAttemptAt) return;
+      const owner = await probeExactProcessIdentityAsync(entry.pid);
+      if (
+        owner.state === 'dead' ||
+        (owner.state === 'exact' &&
+          entry.birth &&
+          owner.identity.start !== entry.birth)
+      )
+        await closeScope(entry, 'monitor');
+    }),
+  );
+}
+
 function monitorLeaders(): void {
-  if (monitor || state !== 'ready' || active.size === 0) return;
+  if (!monitorEnabled || monitor || state !== 'ready' || active.size === 0)
+    return;
   monitor = setTimeout(async () => {
-    await pollOomKills();
-    // MCP transports report close only after inherited stdio pipes close.
-    // Observe leader identity independently so retained pipes cannot hide exit.
-    await Promise.allSettled(
-      [...active.values()].map(async (entry) => {
-        if (entry.pid === undefined || entry.closing) return;
-        const owner = await probeExactProcessIdentityAsync(entry.pid);
-        if (
-          owner.state === 'dead' ||
-          (owner.state === 'exact' &&
-            entry.birth &&
-            owner.identity.start !== entry.birth)
-        )
-          await closeScope(entry);
-      }),
-    );
+    await monitorPass();
     monitor = undefined;
     monitorLeaders();
   }, 1000);
@@ -727,6 +936,7 @@ function installScopeLauncher(
   owner: string,
   version: number,
 ): void {
+  registerCleanupBacklogGauge();
   installChildWorkloadLauncher((command, args, env) => {
     if (state !== 'ready' || !limits || !slice || !serviceUnit)
       throw new Error(
@@ -807,7 +1017,7 @@ function installScopeLauncher(
         entry.birth = lookupProcessBirthFingerprint(pid);
         monitorLeaders();
       },
-      close: () => closeScope(entry),
+      close: () => closeScope(entry, 'close'),
       watchOomKills(listener) {
         entry.oomListeners.add(listener);
         monitorLeaders();
@@ -817,7 +1027,15 @@ function installScopeLauncher(
   });
 }
 
-async function closeScope(entry: ActiveWorkload): Promise<void> {
+/**
+ * Stops a scope and records its outcome. A failure rejects, keeps the scope
+ * for a later attempt and schedules it (recordCleanupFailure); an explicit
+ * close or shutdown attempts at once, whatever the backoff.
+ */
+async function closeScope(
+  entry: ActiveWorkload,
+  trigger: CleanupTrigger,
+): Promise<void> {
   if (entry.pid === undefined) {
     entry.observed?.(undefined);
     active.delete(entry.unit);
@@ -941,15 +1159,23 @@ async function closeScope(entry: ActiveWorkload): Promise<void> {
     };
     recent.push(outcome);
     if (recent.length > 64) recent.shift();
-    logger.info('Workload scope settled', outcome);
+    const failedAttempts = entry.cleanup?.attempts;
+    logger.info('Workload scope settled', {
+      ...outcome,
+      ...(failedAttempts ? { failedCleanupAttempts: failedAttempts } : {}),
+    });
+    entry.cleanup = undefined;
     active.delete(entry.unit);
+    abandoned.delete(entry.unit);
+    workloadScopeCleanupAttempts.add(1, {
+      outcome: 'settled',
+      error_kind: 'none',
+      trigger,
+    });
   })().catch((error: unknown) => {
     entry.observed?.(undefined);
     entry.closing = undefined;
-    logger.warn('Workload scope cleanup did not settle', {
-      unit: entry.unit,
-      error,
-    });
+    recordCleanupFailure(entry, error, trigger);
     throw error;
   });
   return entry.closing;
@@ -960,8 +1186,11 @@ export async function stopWorkloadResources(): Promise<void> {
   state = 'stopping';
   clearTimeout(monitor);
   monitor = undefined;
+  // Every scope is tried once more, abandoned ones included.
   const results = await Promise.allSettled(
-    [...active.values()].map(closeScope),
+    [...active.values(), ...abandoned.values()].map((entry) =>
+      closeScope(entry, 'shutdown'),
+    ),
   );
   if (results.some((result) => result.status === 'rejected'))
     throw new Error('Some workload scopes did not confirm cleanup.');
@@ -1007,6 +1236,7 @@ export async function inspectWorkloadResources() {
       ...(sessionId ? { sessionId } : {}),
     })),
     recent: [...recent],
+    cleanup: cleanupStatus(),
     memory,
     pressure,
     measurementError,
@@ -1101,6 +1331,7 @@ export function workloadBudgetStatus(): WorkloadBudgetStatus {
         ...(entry.holderState ? { holder: entry.holderState } : {}),
         ...(entry.holderReason ? { holderReason: entry.holderReason } : {}),
       })),
+    cleanup: cleanupStatus(),
   };
 }
 
@@ -1273,8 +1504,11 @@ export const __workloadTestHooks = {
     holderBinaries?: HolderBinaries | null;
     /** Stands in for the host's physical memory (default: this host's). */
     hostMemoryBytes?: number;
+    /** No monitor timer: the test runs each pass with monitorPass(). */
+    manualMonitor?: boolean;
   }): Promise<void> {
     manager.run = options.run;
+    monitorEnabled = !options.manualMonitor;
     cgroupRoot = options.cgroupRoot;
     procRoot = options.procRoot ?? '/proc';
     holderBinaries =
@@ -1305,6 +1539,11 @@ export const __workloadTestHooks = {
     );
   },
   pollOomKills,
+  monitorPass,
+  /** Replaces the clock and jitter source cleanup backoff reads. */
+  setClock(value: { now: () => number; random?: () => number }): void {
+    clock = { now: value.now, random: value.random ?? (() => Math.random()) };
+  },
   /**
    * Replaces the recorded start time of a running scope's leader, as if its
    * pid now belonged to a different process (pid reuse).
@@ -1328,6 +1567,11 @@ export const __workloadTestHooks = {
     settingsError = undefined;
     savedSettings = {};
     active.clear();
+    abandoned.clear();
+    abandonedDropped = 0;
+    clock = { now: () => Date.now(), random: () => Math.random() };
+    backlogGaugeRegistered = false;
+    monitorEnabled = true;
     clearTimeout(monitor);
     monitor = undefined;
     installChildWorkloadLauncher(undefined as never);

@@ -1,0 +1,27 @@
+{
+  "path": "docs/guides/ui-copy.md",
+
+  "kind": "policy",
+
+  "state": "source-reviewed",
+
+  "summary": "UI copy rules 1-7 with audit examples, the load-bearing exceptions, and what each UI ratchet enforces. Checked against scripts/ui-copy-length.mjs, scripts/ui-copy-style.mjs, scripts/ui-css-slop.mjs, scripts/component-style-hygiene.mjs, scripts/noun-consistency-gate.mjs and package scripts.",
+
+  "limits": "Normative contributor policy. The gate rows were checked against the scripts and their tests; the rule examples are illustrations, and passing the ratchets does not prove copy meets the rules.",
+
+  "sources": [
+    "scripts/ui-copy-length.mjs",
+
+    "scripts/ui-copy-style.mjs",
+
+    "scripts/ui-css-slop.mjs",
+
+    "scripts/component-style-hygiene.mjs",
+
+    "scripts/noun-consistency-gate.mjs",
+
+    "package.json#/scripts"
+  ],
+
+  "checks": []
+}

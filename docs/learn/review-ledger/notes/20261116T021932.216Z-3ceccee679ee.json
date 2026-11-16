@@ -1,0 +1,7 @@
+{
+  "revision": "9a876cf566925e89fd48b92b6f99ff97393a85a7",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"Third review round for the handoff UX lane: the dock now passes a separate context-reset reason to the composer actions menu; no claim this document makes about ChatDock is affected.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

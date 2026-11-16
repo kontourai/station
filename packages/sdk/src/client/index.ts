@@ -38,6 +38,7 @@ export {
 export * from './attachment-staging';
 export * from './automations';
 export * from './board';
+export { StationResponseTooLargeError } from './bounded-response.js';
 export { ChatHttpError } from './chatHttpError';
 export { setClientOriginResolver } from './client-origin.js';
 export * from './cloud-move';

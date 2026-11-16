@@ -48,6 +48,8 @@ interface Call {
   url: string;
 }
 let calls: Call[];
+/** Request bodies of the "Continue on" POSTs, in order. */
+let continueOnBodies: unknown[];
 /** What each route answers next; a function is consulted per request. */
 let answers: {
   read: () => unknown;
@@ -55,6 +57,10 @@ let answers: {
   cancel: () => unknown;
   hold: () => unknown;
   'resume-at-reset': () => unknown;
+  /** GET `/continue-on`: the accounts offered (`{ profiles }`). */
+  'continue-on-read': () => unknown;
+  'continue-on': () => unknown;
+  continueOnReadStatus?: number;
   status?: number;
 };
 
@@ -70,7 +76,13 @@ beforeEach(() => {
   // Only the clock is fixed: real timers keep running for the query.
   vi.useFakeTimers({ toFake: ['Date'], now: NOW });
   calls = [];
+  continueOnBodies = [];
   answers = {
+    'continue-on-read': () => ({ profiles: [] }),
+    'continue-on': () => ({
+      result: { kind: 'resumed' },
+      recovery: projection({ outcome: 'resumed', attempts: 1 }),
+    }),
     read: () => ({ recovery: projection() }),
     resume: () => ({
       result: { kind: 'resumed' },
@@ -98,6 +110,15 @@ beforeEach(() => {
       const url = String(input instanceof Request ? input.url : input);
       const method = init?.method ?? 'GET';
       calls.push({ method, url });
+      if (url.endsWith('/continue-on')) {
+        if (method === 'GET')
+          return envelope(
+            answers['continue-on-read'](),
+            answers.continueOnReadStatus ?? 200,
+          );
+        continueOnBodies.push(JSON.parse(String(init?.body)));
+        return envelope(answers['continue-on'](), answers.status ?? 200);
+      }
       const leaf = url.endsWith('/resume')
         ? 'resume'
         : url.endsWith('/cancel')
@@ -151,6 +172,11 @@ function renderBanner(props: { active?: boolean; eventCount?: number } = {}) {
 const banner = () => screen.findByTestId('usage-limit-banner');
 const button = (name: string) => screen.queryByRole('button', { name });
 const posts = () => calls.filter((call) => call.method === 'POST');
+/** Reads of the recovery projection itself, not of the account list. */
+const projectionReads = () =>
+  calls.filter(
+    (call) => call.method === 'GET' && !call.url.endsWith('/continue-on'),
+  );
 
 describe('UsageLimitBanner (#3157)', () => {
   test('shows blocked automatic recovery instead of promising automatic resume', async () => {
@@ -529,22 +555,24 @@ describe('UsageLimitBanner (#3157)', () => {
   test('a resumed stop is read once after the hold clears, not on every summary update', async () => {
     const { rerenderWith } = renderBanner();
     await banner();
-    expect(calls.filter((call) => call.method === 'GET')).toHaveLength(1);
+    expect(projectionReads()).toHaveLength(1);
     // The resume went out; the replayed turn starts, so the hold clears. A
     // resumed turn never moves past `resumed`, however many updates follow.
     answers.read = () => ({
       recovery: projection({ outcome: 'resumed', attempts: 1 }),
     });
     rerenderWith({ active: false, eventCount: 2 });
-    await waitFor(() =>
-      expect(calls.filter((call) => call.method === 'GET')).toHaveLength(2),
-    );
+    await waitFor(() => expect(projectionReads()).toHaveLength(2));
     for (let count = 3; count <= 33; count += 1)
       rerenderWith({ active: false, eventCount: count });
     // real-time: negative assertion; no further read may start
     await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(calls.filter((call) => call.method === 'GET')).toHaveLength(2);
+    expect(projectionReads()).toHaveLength(2);
     expect(screen.queryByTestId('usage-limit-banner')).toBeNull();
+    // The account list is read for the waiting stop at most once, not per update.
+    expect(
+      calls.filter((call) => call.url.endsWith('/continue-on')).length,
+    ).toBeLessThanOrEqual(1);
   });
 
   test('a resume that reads back resumed and later ends failed still says so', async () => {
@@ -567,5 +595,190 @@ describe('UsageLimitBanner (#3157)', () => {
       ),
     );
     expect(button('Resume now')).toBeNull();
+  });
+
+  describe('Continue on <label>', () => {
+    const work = {
+      stopId: 'stop-1',
+      profiles: [{ ref: 'work', label: 'Work' }],
+    };
+
+    test('a stop with no known reset offers the other account beside Resume now, and continuing on it posts that account', async () => {
+      answers.read = () => ({
+        recovery: projection({
+          decision: 'manual',
+          outcome: 'manual',
+          dueAt: undefined,
+        }),
+      });
+      answers['continue-on-read'] = () => work;
+      renderBanner();
+      await banner();
+      const continueOn = await screen.findByRole('button', {
+        name: 'Continue on Work',
+      });
+      expect(button('Resume now')).not.toBeNull();
+      expect(calls).toContainEqual({
+        method: 'GET',
+        url: `${API}/api/orchestration/sessions/${THREAD}/usage-limit/continue-on`,
+      });
+
+      // The account is the connection's, not this chat's alone.
+      expect(continueOn.getAttribute('title')).toBe(
+        'Chats that start or restart on this connection use this account, for everyone.',
+      );
+
+      fireEvent.click(continueOn);
+
+      expect(
+        await screen.findByText(
+          'Resuming on Work, now this connection’s account for everyone.',
+        ),
+      ).not.toBeNull();
+      expect(continueOnBodies).toEqual([
+        { profileRef: 'work', stopId: 'stop-1' },
+      ]);
+      expect(posts().map((call) => call.url)).toEqual([
+        `${API}/api/orchestration/sessions/${THREAD}/usage-limit/continue-on`,
+      ]);
+    });
+
+    test('a later stop that resumes on the same account never reports the earlier switch', async () => {
+      const manual = () => ({
+        recovery: projection({
+          decision: 'manual',
+          outcome: 'manual',
+          dueAt: undefined,
+        }),
+      });
+      answers.read = manual;
+      answers['continue-on-read'] = () => work;
+      const { rerenderWith } = renderBanner();
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Continue on Work' }),
+      );
+      expect(
+        await screen.findByText(
+          'Resuming on Work, now this connection’s account for everyone.',
+        ),
+      ).not.toBeNull();
+
+      // A new stop in the same conversation, then a plain Resume now.
+      answers.read = manual;
+      answers['continue-on-read'] = () => ({ ...work, stopId: 'stop-2' });
+      rerenderWith({ eventCount: 5 });
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Resume now' }),
+      );
+
+      expect(
+        await screen.findByText('Resuming this conversation…'),
+      ).not.toBeNull();
+      expect(screen.queryByText(/Resuming on Work/)).toBeNull();
+    });
+
+    test('when both labelled slots are taken, the account waits behind the actions menu', async () => {
+      answers.read = () => ({
+        recovery: projection({
+          autoResume: false,
+          dueAt: new Date(Date.now() + 3_600_000).toISOString(),
+        }),
+      });
+      answers['continue-on-read'] = () => work;
+      renderBanner();
+      await banner();
+      await waitFor(() =>
+        expect(calls.some((call) => call.url.endsWith('/continue-on'))).toBe(
+          true,
+        ),
+      );
+      expect(button('Resume at 10:00 PM')).not.toBeNull();
+      expect(button('Resume now')).not.toBeNull();
+      expect(button('Continue on Work')).toBeNull();
+      fireEvent.click(
+        await screen.findByRole('button', {
+          name: 'More usage limit actions',
+        }),
+      );
+      fireEvent.click(
+        await screen.findByRole('menuitem', { name: 'Continue on Work' }),
+      );
+      await waitFor(() =>
+        expect(continueOnBodies).toEqual([
+          { profileRef: 'work', stopId: 'stop-1' },
+        ]),
+      );
+    });
+
+    test('a device refused the account list is offered no account, and the banner still works', async () => {
+      answers.continueOnReadStatus = 403;
+      answers['continue-on-read'] = () => work;
+      renderBanner();
+      await banner();
+      await waitFor(() =>
+        expect(calls.some((call) => call.url.endsWith('/continue-on'))).toBe(
+          true,
+        ),
+      );
+      expect(button('Continue on Work')).toBeNull();
+      expect(button('Resume now')).not.toBeNull();
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    test('an account that could not be switched to says so and leaves the stop waiting', async () => {
+      answers.read = () => ({
+        recovery: projection({
+          decision: 'manual',
+          outcome: 'manual',
+          dueAt: undefined,
+        }),
+      });
+      answers['continue-on-read'] = () => work;
+      answers['continue-on'] = () => ({
+        result: { kind: 'not-switched' },
+        recovery: projection({
+          decision: 'manual',
+          outcome: 'manual',
+          dueAt: undefined,
+        }),
+      });
+      renderBanner();
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Continue on Work' }),
+      );
+      expect((await screen.findByRole('alert')).textContent).toBe(
+        "Couldn't switch accounts, so nothing changed.",
+      );
+      expect(button('Resume now')).not.toBeNull();
+      // Another action on the stop drops the stale switch message, even when
+      // the stop reads back still waiting.
+      answers.resume = () => ({
+        result: { kind: 'not-waiting' },
+        recovery: projection({
+          decision: 'manual',
+          outcome: 'manual',
+          dueAt: undefined,
+        }),
+      });
+      fireEvent.click(button('Resume now') as HTMLElement);
+      await waitFor(() =>
+        expect(posts().some((call) => call.url.endsWith('/resume'))).toBe(true),
+      );
+      await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+    });
+
+    test('a stop that is not waiting never asks which accounts it could continue on', async () => {
+      answers.read = () => ({
+        recovery: projection({ outcome: 'resumed', attempts: 1 }),
+      });
+      answers['continue-on-read'] = () => work;
+      renderBanner();
+      expect(
+        await screen.findByText('Resuming this conversation…'),
+      ).not.toBeNull();
+      expect(calls.some((call) => call.url.endsWith('/continue-on'))).toBe(
+        false,
+      );
+    });
   });
 });

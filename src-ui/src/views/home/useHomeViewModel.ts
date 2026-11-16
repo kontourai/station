@@ -34,6 +34,7 @@ import { useWorkFacts } from './useWorkFacts';
 import type { WorkFactsById } from './work-facts';
 import {
   focusChatEventDetailForAction,
+  openRemoteSessionReader,
   resolveWorkItemOpenAction,
 } from './work-item-open-policy';
 
@@ -209,8 +210,12 @@ function createContinueWork(
       onNavigate({ type: 'task', taskId: task.id });
       return;
     }
-    if (task.kind === 'remote-session') return;
     const action = resolveWorkItemOpenAction(task);
+    if (action.kind === 'remote') {
+      openRemoteSessionReader(action);
+      return;
+    }
+    if (task.kind === 'remote-session') return;
     if (action.kind === 'navigate') {
       showActivitySession(action.threadId);
       return;

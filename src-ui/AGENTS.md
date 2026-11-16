@@ -72,10 +72,12 @@ Layout, touch targets and dialogs: [responsive UI](../docs/guides/responsive-ui.
 
 ## Product copy
 
-- State each fact once per surface. Show status as a badge or pill, not a sentence. Offer one primary action.
-- Put explanation in a Details disclosure or tooltip. Skip reassurance tails and mechanism explanations unless the user needs them to decide.
-- Aim for at most 100 characters per description.
-- `npm run ui-copy-length:ratchet` fails when a file gains copy over 140 characters or over two sentences. Regenerate its baseline with `node scripts/ui-copy-length.mjs --update` only to absorb shrinkage or a reviewed exception.
+Writing UI copy follows the [UI copy guide](../docs/guides/ui-copy.md) and the [glossary's user-facing labels](../docs/glossary.md#user-facing-labels):
+
+- Outcome first, in the user's nouns, plus at most one next action. State each fact once; show status as a badge, not a sentence. Aim for at most 100 characters per description.
+- No internal vocabulary (authority, receipt, durable, reconcile, legacy, …) or issue numbers. No defensive negations: say what is true, and put detail in a Details disclosure.
+- Don't repeat what is on screen: no restating subtitles or hints, no `title` equal to the visible text. Sentence case, `…`, no filler.
+- Run `npm run ui-copy-length:ratchet` and `npm run ui-copy-style:ratchet` (`npm run ui-css-slop:ratchet` for CSS). Fix a failure by rewriting; regenerate a baseline with `--update` only for shrinkage or a reviewed exception.
 
 ## Design system
 

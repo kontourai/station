@@ -1,0 +1,15 @@
+{
+  "revision": "7d561c4a94012d1dd057f65eda0865f9e4b7bd91",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"#4995 adds a bounded orphaned mutation-lock temporary sweep after startup migrations; it never fails startup and changes no configuration, provider seeding, skill discovery or agent behaviour these pages describe.","inputs":["src-server/runtime/bootstrap/runtime-startup.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#4995 adds a bounded orphaned mutation-lock temporary sweep after startup migrations; it never fails startup and changes no configuration, provider seeding, skill discovery or agent behaviour these pages describe.","inputs":["src-server/runtime/bootstrap/runtime-startup.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#4995 adds a bounded orphaned mutation-lock temporary sweep after startup migrations; it never fails startup and changes no configuration, provider seeding, skill discovery or agent behaviour these pages describe.","inputs":["src-server/runtime/bootstrap/runtime-startup.ts"]},
+
+    {"path":"docs/reference/config.md","note":"#4995 adds a bounded orphaned mutation-lock temporary sweep after startup migrations; it never fails startup and changes no configuration, provider seeding, skill discovery or agent behaviour these pages describe.","inputs":["src-server/runtime/bootstrap/runtime-startup.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"#4995 adds a bounded orphaned mutation-lock temporary sweep after startup migrations; it never fails startup and changes no configuration, provider seeding, skill discovery or agent behaviour these pages describe.","inputs":["src-server/runtime/bootstrap/runtime-startup.ts"]}
+  ]
+}

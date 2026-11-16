@@ -44,7 +44,10 @@ import {
   sessionTitle,
 } from '../../utils/sessionDisplay';
 import { chatWaitsOnUser } from '../../utils/waiting-approvals';
-import { isPeerDelegationRecord } from './work-item-open-policy';
+import {
+  isPeerDelegationRecord,
+  remoteWorkItemId,
+} from './work-item-open-policy';
 
 export interface HomeWorkItem {
   receivedAgentMessage?: true;
@@ -557,20 +560,6 @@ export function buildOrchestrationItems(
   return sessions.map((session) =>
     buildSessionWorkItem(session, agents, session.threadId, resolveModelLabel),
   );
-}
-
-/**
- * archive#1097: every remote item's `id` is namespaced
- * (`remote:<environmentId>:<threadId>`) — distinct from every local id
- * shape (`task:*` durable Tasks aside, a local chat/session id is a bare
- * conversationId/threadId, never `remote:`-prefixed) — so a remote item can
- * never alias a local item's stable identity in
- * `home-lane-model.ts`'s `withStableIds`, and therefore can never inherit
- * or disturb a local row's position in the active lane ( ordering
- * invariant, extended to this new source).
- */
-function remoteWorkItemId(environmentId: string, threadId: string): string {
-  return `remote:${environmentId}:${threadId}`;
 }
 
 function buildRemoteSessionItems(

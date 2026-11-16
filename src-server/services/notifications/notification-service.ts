@@ -302,6 +302,7 @@ export class NotificationService {
         onCorruption: 'throw',
         durableAtomicWrite: true,
         maxReadBytes: PRINCIPAL_FEED_MAX_BYTES,
+        metricStore: 'principal-notifications',
       },
     );
     this.projectMembership = options.projectMembership;
@@ -315,6 +316,9 @@ export class NotificationService {
         // would silently erase it (and every other notification).
         onCorruption: 'throw',
         durableAtomicWrite: true,
+        // #4995: the feed has no retention, so every change rewrites it
+        // and its `.previous` copy whole; this makes that cost visible.
+        metricStore: 'notifications',
       });
     this.beforeActionDispatch = options.beforeActionDispatch;
     this.onAsyncDispatchError = options.onAsyncDispatchError;
@@ -1173,6 +1177,25 @@ export class NotificationService {
   async get(id: string): Promise<Notification | undefined> {
     const notification = (await this.read()).find((n) => n.id === id);
     return notification ? toPublicNotification(notification) : undefined;
+  }
+
+  /**
+   * Server-internal: the stored record holding `dedupeTag`, by the same
+   * unscoped lookup a dedupe schedule makes. No route exposes it; the caller
+   * checks the record's identity itself. `leased` says an action holds it.
+   */
+  async findByDedupeTag(
+    dedupeTag: string,
+  ): Promise<{ notification: Notification; leased: boolean } | undefined> {
+    const stored = (await this.read()).find(
+      (n) => n.metadata?.dedupeTag === dedupeTag,
+    );
+    return stored
+      ? {
+          notification: toPublicNotification(stored),
+          leased: stored.actionLease !== undefined,
+        }
+      : undefined;
   }
 
   async list(opts?: {

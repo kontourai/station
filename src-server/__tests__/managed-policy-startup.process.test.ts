@@ -149,7 +149,7 @@ async function expectRefusal(
   const { owned, capture } = startServer(isolatedEnv(root, policyPath));
   const result = await bounded(owned.completion, 'refused boot', 90_000);
   const { stdout, stderr } = capture.finish();
-  expect(result.status).toBe(1);
+  expect(result.status).toBe(78);
   // It never listened.
   expect(stdout.text).not.toContain(readyPrefix);
   const markerLine = stderr.text
@@ -217,6 +217,24 @@ async function bootWithGrant(
 }
 
 describe('managed policy at real server startup', () => {
+  test('a home-reset refusal exits with the same terminal startup code', async () => {
+    const root = fixtureRoot();
+    const policyPath = join(root, 'policy.json');
+    writeFileSync(
+      policyPath,
+      JSON.stringify({ schemaVersion: 1, organization: 'Acme' }),
+    );
+    const env = isolatedEnv(root, policyPath);
+    mkdirSync(env.STATION_HOME, { recursive: true });
+    writeFileSync(join(env.STATION_HOME, 'legacy-data.json'), '{}');
+    const { owned, capture } = startServer(env);
+    const result = await bounded(owned.completion, 'home refusal', 90_000);
+    const { stdout, stderr } = capture.finish();
+    expect(result.status, stderr.text).toBe(78);
+    expect(stderr.text).toContain('STATION_HOME_RESET_REQUIRED:');
+    expect(stdout.text).not.toContain(readyPrefix);
+  }, 120_000);
+
   test.each([
     {
       name: 'invalid JSON',
