@@ -212,7 +212,15 @@ export type PullRequestFeedbackStatus =
   | {
       state: 'paused';
       reason: 'round-limit' | 'repeated-failure';
+      /**
+       * round-limit only: `head` after the rounds one head allows, `day`
+       * after the messages a pull request allows in 24 hours. Absent on a
+       * pause recorded before the distinction.
+       */
+      cap?: 'head' | 'day';
       headSha: string;
+      /** When it paused; absent on a pause recorded before it was kept. */
+      at?: string;
     }
   | { state: 'unavailable'; cause: PullRequestFeedbackUnavailableCause }
   | { state: 'closed' };

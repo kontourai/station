@@ -11,6 +11,7 @@ import {
   pullRequestFeedbackOwnerOf,
   readPullRequestFeedbackCapability,
   sendPullRequestFeedbackAgain,
+  turnOffPullRequestFeedback,
   writePullRequestFeedback,
 } from '@kontourai/station-sdk/pull-request-feedback';
 import { useQuery } from '@tanstack/react-query';
@@ -135,12 +136,21 @@ export function usePullRequestFeedback(conversationId: string) {
       move = false,
     ) =>
       run(identity, () =>
-        writePullRequestFeedback(
-          scope!.apiBase,
-          conversationId,
-          { identity: identityOf(identity), settings, move },
-          { requestScope: scope! },
-        ),
+        // The last switch off is turning feedback off: the one path the
+        // Needs-you item's Turn off auto-fix also takes.
+        !move && !settings.fixFailingChecks && !settings.addressReviewComments
+          ? turnOffPullRequestFeedback(
+              scope!.apiBase,
+              conversationId,
+              identityOf(identity),
+              { requestScope: scope! },
+            )
+          : writePullRequestFeedback(
+              scope!.apiBase,
+              conversationId,
+              { identity: identityOf(identity), settings, move },
+              { requestScope: scope! },
+            ),
       ),
     sendAgain: (identity: PullRequestLinkIdentity) =>
       run(identity, () =>
