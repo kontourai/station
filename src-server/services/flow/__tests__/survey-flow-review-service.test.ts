@@ -268,7 +268,7 @@ describe('SurveyFlowReviewService', () => {
     );
   });
 
-  it('continues through the Flow Agents adapter it loads on first use', async () => {
+  it('continues through the real Flow Agents adapter and reuses it', async () => {
     const root = await fixture();
     const service = new SurveyFlowReviewService(
       new FileStationSurveyReviewSessionStore({
