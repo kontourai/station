@@ -169,7 +169,9 @@ transcript-adoption path in that original wave. Current Codex adoption and resum
 carrying source affinity resolve the recorded source home and refuse an unavailable
 home; that `CODEX_HOME` overrides profile and connection settings. When the
 source home is a credential profile's own home, that profile's env overlay is
-applied with it (an invalid overlay refuses the continuation). The legacy
+applied with it. An invalid overlay refuses the continuation, as does an app
+home that is neither the legacy app home nor a current profile's (a deleted
+profile keeps its directory and credentials). The legacy
 toggle-boundary caveat below applies to cursors without that affinity.
 
 **Import-from-global rules (claude):** an explicit, dedicated user action —

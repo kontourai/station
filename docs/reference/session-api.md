@@ -1653,7 +1653,7 @@ the connection's config home, the legacy app home and every credential-profile
 home), unless `STATION_EXTERNAL_CODEX_SOURCE_ROOT` is set. Each home has its
 own source affinity and thread ids, so continuation resumes in the home the
 rollout was found in, with a credential profile's env overlay applied
-(`credentialProfileEnvForHome`; an invalid overlay refuses the continuation).
+(`credentialProfileEnvForHome`; an invalid overlay refuses the continuation, and so does an app home no current profile owns, such as a deleted profile's).
 A native session id present in two homes is two threads, one per home. Each
 home reads its own newest 128 rollouts, up to 512 in all, default home first.
 An affinity resolves only for a currently configured home; on a miss the home
