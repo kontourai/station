@@ -690,7 +690,7 @@ describe('Home and the dock start the same way', () => {
       }),
     );
     fireEvent.click(
-      await screen.findByRole('radio', { name: /^Never ask \(full access\)/ }),
+      await screen.findByRole('radio', { name: /^Full access/ }),
     );
     fireEvent.click(
       await screen.findByRole('button', { name: 'Enable full access' }),

@@ -110,9 +110,7 @@ describe('ApprovalModeChip', () => {
       />,
     );
     expect(chipValue()).toBe('Full access');
-    expect(trigger().getAttribute('title')).toContain(
-      'Never ask (full access)',
-    );
+    expect(trigger().getAttribute('title')).toContain('Full access');
     expect(trigger().getAttribute('aria-label')).toContain('Full access');
   });
   test('renders nothing for an engine whose adapter has no approval knob', () => {
@@ -158,8 +156,12 @@ describe('ApprovalModeChip', () => {
       /^Approval mode: Ask first\. Station approvals partly apply\./,
     );
     await openSheet();
-    expect(screen.getByText(/Station approvals partly apply/)).toBeTruthy();
-    expect(screen.getByText(/own approval flow/)).toBeTruthy();
+    // The sheet explains the boundary in plain words; the label stays on
+    // the chip.
+    expect(
+      screen.getByText(/Station auto-approves what your rules allow/),
+    ).toBeTruthy();
+    expect(screen.getByText(/this engine's own approvals/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Close mode picker' }));
 
     rerender(
@@ -181,7 +183,9 @@ describe('ApprovalModeChip', () => {
       'Approval: Ask first. Station approvals do not apply.',
     );
     await openSheet();
-    expect(screen.getByText(/Station approvals do not apply/)).toBeTruthy();
+    expect(
+      screen.getByText(/handles its own approvals; Station's rules aren't used/),
+    ).toBeTruthy();
   });
 
   test('a native approval boundary is not repeated on the chip', () => {
@@ -228,7 +232,7 @@ describe('ApprovalModeChip', () => {
     );
     expect(chipValue()).toBe('Full access (agent default)');
     expect(trigger().getAttribute('aria-label')).toMatch(
-      /^Approval mode: Full access \(agent default\) — Never ask \(full access\)\./,
+      /^Approval mode: Full access \(agent default\)\./,
     );
   });
 
@@ -288,7 +292,7 @@ describe('ApprovalModeChip', () => {
 
     await openSheet();
     expect(
-      option(/Never ask \(full access\)/).getAttribute('aria-checked'),
+      option(/^Full access/).getAttribute('aria-checked'),
     ).toBe('true');
   });
 
@@ -363,7 +367,7 @@ describe('ApprovalModeChip', () => {
     );
 
     await openSheet();
-    fireEvent.click(option(/Never ask \(full access\)/));
+    fireEvent.click(option(/^Full access/));
 
     // Picking 'never' does not apply it yet — the option list is replaced by an
     // explicit confirm step.
@@ -391,7 +395,7 @@ describe('ApprovalModeChip', () => {
     );
 
     await openSheet();
-    fireEvent.click(option(/Never ask \(full access\)/));
+    fireEvent.click(option(/^Full access/));
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
     expect(onChange).not.toHaveBeenCalled();
@@ -411,7 +415,7 @@ describe('ApprovalModeChip', () => {
     );
 
     await openSheet();
-    fireEvent.click(option(/Never ask \(full access\)/));
+    fireEvent.click(option(/^Full access/));
     fireEvent.keyDown(document, { key: 'Escape' });
 
     expect(onChange).not.toHaveBeenCalled();
@@ -447,7 +451,7 @@ describe('ApprovalModeChip', () => {
     );
 
     await openSheet();
-    fireEvent.click(option(/Never ask \(full access\)/));
+    fireEvent.click(option(/^Full access/));
 
     expect(onChange).not.toHaveBeenCalled();
     expect(
@@ -541,7 +545,7 @@ describe('ApprovalModeChip', () => {
     );
 
     const chip = screen.getByRole('button', {
-      name: /^Approval mode: Never ask \(full access\)\./,
+      name: /^Approval mode: Full access\./,
     });
     expect(chip.className).not.toContain('chat-input__approval-chip--pending');
     expect(chipValue()).toBe('Full access');
@@ -743,7 +747,7 @@ describe('ApprovalModeChip', () => {
 
     const chip = screen.getByRole('button', { name: /^Approval mode:/ });
     expect(chip.getAttribute('aria-label')).toContain(
-      'Approval mode: Never ask (full access).',
+      'Approval mode: Full access.',
     );
     const pill = chip.querySelector('.chat-input__approval-chip-label');
     expect(pill?.textContent).toBe('Full access');

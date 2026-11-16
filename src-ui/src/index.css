@@ -1205,6 +1205,12 @@ button:hover {
   z-index: var(--layer-system) !important;
 }
 
+/* A popover opened from inside this one stands in for it
+   (`yieldToChildPopover`): one surface shows at a time. */
+.responsive-surface-overlay[data-yielded] > .responsive-surface-panel {
+  visibility: hidden;
+}
+
 /* station#753: one open transition for every dialog/sheet that renders
    through `ResponsiveDialogSurface` (NewChatModal, the ACP setup dialog, the
    model picker, confirm/prompt modals, …) — a single declaration at the
@@ -9436,6 +9442,10 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 .composer-mode-sheet__option {
   min-height: 56px;
   justify-content: flex-start;
+  /* Glyph and radio mark sit on the title's line, not the middle of a
+     wrapped description. */
+  align-items: flex-start;
+  padding-block: var(--k-space-2);
 }
 
 /* The notes above the list start where a row's content does: the list's
@@ -9477,9 +9487,12 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .composer-mode-sheet__option-glyph {
   flex: 0 0 auto;
+  display: grid;
+  place-items: center;
   width: 24px;
-  text-align: center;
+  height: var(--composer-mode-sheet-title-line, 24px);
   font-size: var(--text-lg);
+  line-height: 1;
 }
 
 .composer-mode-sheet__option-body {
@@ -9490,6 +9503,10 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   min-width: 0;
 }
 
+.composer-mode-sheet__option-body strong {
+  line-height: var(--composer-mode-sheet-title-line, 24px);
+}
+
 .composer-mode-sheet__option-body small {
   color: var(--text-muted);
   font-size: var(--k-text-sm);
@@ -9498,6 +9515,8 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .composer-mode-sheet__option-mark {
   flex: 0 0 auto;
+  /* Centred on the 24px title line. */
+  margin-block-start: 2px;
   width: 20px;
   height: 20px;
   border: 2px solid var(--border-secondary);
@@ -9532,6 +9551,24 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   color: var(--text-muted);
   font-size: var(--k-text-sm);
   line-height: 1.4;
+}
+
+/* What is running now: the one note a reader needs before choosing. */
+.composer-mode-sheet__status {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--k-text-sm);
+  line-height: 1.4;
+}
+
+/* The shared Checkbox, on a row tall enough to hit comfortably. */
+.composer-mode-sheet__save-default {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+}
+.composer-mode-sheet__save-default .cb__label {
+  font-size: var(--k-text-sm);
 }
 
 /* #3290: the read-only approval explanation of an engine-decided engine. */
