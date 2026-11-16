@@ -473,6 +473,8 @@ export function RoomConversation({
   const readerInputAt = useRef(-Infinity);
   const pressedAt = useRef(-Infinity);
   const readerAnchor = useRef<ChatScrollAnchor | null>(null);
+  /** The focused row is the list's anchor until the reader scrolls. */
+  const focusHold = useRef<string | undefined>(undefined);
   // Where the list last scrolled itself. A scroll event landing there is
   // the list's own correction, never the reader moving.
   const programmaticTop = useRef<number | undefined>(undefined);
@@ -635,7 +637,13 @@ export function RoomConversation({
       element.scrollHeight - element.scrollTop - element.clientHeight;
     // Momentum keeps scrolling after the gesture's input window; any scroll
     // that is not the list's own correction moves the reader's saved place.
-    if (reader || (!programmatic && !following.current)) {
+    // A notification's row stays the anchor until the reader moves: a
+    // scroll the browser makes as rows come and go is not the reader's.
+    if (reader) focusHold.current = undefined;
+    if (
+      (reader || (!programmatic && !following.current)) &&
+      !focusHold.current
+    ) {
       setAnchorVersion((version) => version + 1);
       captureReader();
     }
@@ -649,30 +657,41 @@ export function RoomConversation({
 
   // A row a notification opened (#4799): once it is loaded, bring it to the
   // middle of the view, stop following the end, and mark it for a moment.
+  // It counts as done only once the scroll has happened: a render that
+  // briefly drops the row (a reconciling re-read) cancels the pending frame,
+  // and the next time the row is loaded the scroll is tried again.
   const [flashId, setFlashId] = useState<string>();
   const focusedOnce = useRef<string | undefined>(undefined);
   const focusLoaded = !!focusId && rows.some((row) => row.id === focusId);
   useEffect(() => {
     if (!focusId || !focusLoaded || focusedOnce.current === focusId) return;
-    focusedOnce.current = focusId;
     setFollowing(false);
     setFlashId(focusId);
     const frame = requestAnimationFrame(() => {
       const element = scroller.current?.querySelector<HTMLElement>(
         `[data-chat-message-key="${CSS.escape(focusId)}"]`,
       );
-      element?.scrollIntoView?.({ block: 'center' });
-      if (scroller.current) {
-        noteProgrammatic(scroller.current);
-        readerAnchor.current = captureChatScrollAnchor(scroller.current);
-      }
+      if (!element || !scroller.current) return;
+      element.scrollIntoView?.({ block: 'center' });
+      noteProgrammatic(scroller.current);
+      // Anchor on the row itself, so the list keeps it in place.
+      readerAnchor.current = {
+        key: focusId,
+        offset:
+          element.getBoundingClientRect().top -
+          scroller.current.getBoundingClientRect().top,
+      };
+      focusHold.current = focusId;
+      focusedOnce.current = focusId;
     });
-    const clear = window.setTimeout(() => setFlashId(undefined), 2400);
-    return () => {
-      cancelAnimationFrame(frame);
-      window.clearTimeout(clear);
-    };
+    return () => cancelAnimationFrame(frame);
   }, [focusId, focusLoaded, setFollowing, noteProgrammatic]);
+  // The mark is a moment: it clears on its own timer, whatever re-renders.
+  useEffect(() => {
+    if (!flashId) return;
+    const clear = window.setTimeout(() => setFlashId(undefined), 2400);
+    return () => window.clearTimeout(clear);
+  }, [flashId]);
 
   const renderRow = (row: RoomConversationRow, index: number) => {
     const placement = placements[index];
