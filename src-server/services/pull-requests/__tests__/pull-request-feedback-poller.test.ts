@@ -53,7 +53,12 @@ function setup() {
   );
   closers.push(() => store.close());
   const reads: string[] = [];
-  const answers = new Map<string, () => PullRequestFeedbackObservationResult>();
+  const answers = new Map<
+    string,
+    () =>
+      | PullRequestFeedbackObservationResult
+      | Promise<PullRequestFeedbackObservationResult>
+  >();
   const provider = {
     id: 'github',
     canServeHost: () => true,
@@ -90,7 +95,7 @@ function setup() {
   let clock = NOW;
   const links: { list?: PullRequestLinkIdentity[] } = {};
   const poller = new PullRequestFeedbackPoller({
-    linked: async () => links.list ?? [pr('1'), pr('2')],
+    linked: () => links.list ?? [pr('1'), pr('2')],
     enabled: () => state.enabled,
     store: () => store,
     providers: () => [provider],
@@ -324,5 +329,89 @@ describe('pull request feedback detection', () => {
     await t.poll(NOW);
     expect(t.reads).toEqual(['github.com#1']);
     expect(t.store.observation(key)?.observation.headSha).toBe('newer');
+  });
+
+  it('a pull request already being read is not read again by the tick', async () => {
+    const t = setup();
+    t.claim(pr('1'), 'chat-a');
+    let release: (() => void) | undefined;
+    const observed = normalizeGitHubFeedbackObservation(
+      recorded,
+      pr('1'),
+      new Date(NOW).toISOString(),
+    )!;
+    t.answers.set(
+      '1',
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve({ state: 'observed', observation: observed });
+        }),
+    );
+    t.setClock(NOW);
+    const refreshing = t.poller.refresh('chat-a');
+    await vi.waitFor(() => expect(release).toBeDefined());
+    // The tick finds the same pull request due while the refresh reads it.
+    expect(await t.poll(NOW)).toEqual({ outcome: 'polled', read: 0 });
+    release!();
+    await refreshing;
+    expect(t.reads).toEqual(['github.com#1']);
+  });
+
+  it('the turn-end refresh leaves a closed pull request to its six-hourly re-read', async () => {
+    const t = setup();
+    t.claim(pr('1'), 'chat-a');
+    t.store.setCondition(pullRequestFeedbackKey(pr('1')), {
+      state: 'closed',
+      at: new Date(NOW).toISOString(),
+    });
+    t.setClock(NOW);
+    await t.poller.refresh('chat-a');
+    expect(t.reads).toEqual([]);
+  });
+
+  it('an off claim is pruned 14 days after it was turned off, not before', async () => {
+    const t = setup();
+    const old = pullRequestFeedbackKey(pr('1'));
+    const recent = pullRequestFeedbackKey(pr('2'));
+    t.claim(pr('1'), 'chat-a');
+    t.claim(pr('2'), 'chat-b');
+    t.store.releaseClaim(
+      old,
+      new Date(NOW - 15 * 24 * 60 * MINUTE).toISOString(),
+    );
+    t.store.releaseClaim(
+      recent,
+      new Date(NOW - 13 * 24 * 60 * MINUTE).toISOString(),
+    );
+    await t.poll(NOW);
+    expect(t.store.claim(old)).toBeUndefined();
+    expect(t.store.claim(recent)).toBeDefined();
+  });
+
+  it('records when each check was first seen incomplete on a head, and starts again on a new head', async () => {
+    const t = setup();
+    t.claim(pr('1'), 'chat-a');
+    const key = pullRequestFeedbackKey(pr('1'));
+    await t.poll(NOW);
+    const first = t.store.observation(key)?.incompleteSince;
+    expect(first).toEqual({ 'ci / e2e': new Date(NOW).toISOString() });
+    t.store.setNextDueAt(key, 0);
+    await t.poll(NOW + 30 * MINUTE);
+    expect(t.store.observation(key)?.incompleteSince).toEqual(first);
+    const moved = structuredClone(recorded);
+    moved.data.repository.pullRequest.headRefOid = 'f'.repeat(40);
+    t.answers.set('1', () => ({
+      state: 'observed',
+      observation: normalizeGitHubFeedbackObservation(
+        moved,
+        pr('1'),
+        new Date(NOW).toISOString(),
+      )!,
+    }));
+    t.store.setNextDueAt(key, 0);
+    await t.poll(NOW + 40 * MINUTE);
+    expect(t.store.observation(key)?.incompleteSince).toEqual({
+      'ci / e2e': new Date(NOW + 40 * MINUTE).toISOString(),
+    });
   });
 });

@@ -91,7 +91,7 @@ export interface PullRequestFeedbackDeliveryPorts {
    * claim no longer among them is released: unlinking stops its feedback.
    * Absent: every claim counts as linked.
    */
-  linked?(conversationId: string): Promise<readonly PullRequestLinkIdentity[]>;
+  linked?(conversationId: string): readonly PullRequestLinkIdentity[];
   inbox():
     | {
         submit: StationFramedTurnSubmit;
@@ -123,9 +123,14 @@ const digest = (parts: readonly string[], length = 40) =>
 
 const short = (sha: string) => (SHA.test(sha) ? sha.slice(0, 7) : 'unknown');
 
+/** A URL longer than this is left out: the item is named without a link. */
+export const URL_CHARS = 300;
+
 /**
- * A URL on the pull request's own host over https, or nothing. Parentheses
- * and spaces are percent-encoded so the URL cannot end a markdown link early.
+ * A URL on the pull request's own host over https, or nothing. Parentheses,
+ * backslashes and spaces are percent-encoded so the URL cannot end a
+ * markdown link early, and one longer than `URL_CHARS` is dropped so a
+ * block can always fit the message.
  */
 function safeUrl(value: string | undefined, host: string): string | undefined {
   if (!value) return undefined;
@@ -133,11 +138,13 @@ function safeUrl(value: string | undefined, host: string): string | undefined {
     const url = new URL(value);
     if (url.protocol !== 'https:' || url.host.toLowerCase() !== host)
       return undefined;
-    return url
+    const encoded = url
       .toString()
       .replace(/\(/g, '%28')
       .replace(/\)/g, '%29')
+      .replace(/\\/g, '%5C')
       .replace(/ /g, '%20');
+    return encoded.length > URL_CHARS ? undefined : encoded;
   } catch {
     return undefined;
   }
@@ -172,10 +179,38 @@ const isFailing = (check: PullRequestFeedbackCheck) =>
   check.conclusion !== null &&
   FAILING_CHECK_CONCLUSIONS.has(check.conclusion);
 
+/** A bare URL, `www.` host or email: GFM would turn each into a link. */
+const AUTOLINKABLE =
+  /\b(?:[a-z][a-z0-9+.-]*:\/\/|www\.)[^\s<>`]*|[\w.+-]+@[\w-]+(?:\.[\w-]+)+/gi;
+
+/**
+ * Forge text made inert as markdown while staying readable: a quoted line is
+ * still rendered, so a review body's `[click](https://evil.example/)`,
+ * `![image](…)`, `<https://…>`, HTML or a bare URL would otherwise become a
+ * live link, image or tag in the person's chat. Bare URLs, `www.` hosts and
+ * emails become inline code (GFM finds autolinks in text after escapes are
+ * resolved, so escaping alone does not stop them); everywhere else the
+ * syntax characters are backslash-escaped, which renders them as written.
+ */
+export function inertMarkdown(text: string): string {
+  const escape = (part: string) =>
+    part.replace(/[\\[\]<>!`]/g, (character) => `\\${character}`);
+  let out = '';
+  let last = 0;
+  for (const match of text.matchAll(AUTOLINKABLE)) {
+    out += escape(text.slice(last, match.index));
+    out += `\`${match[0].replace(/`/g, "'")}\``;
+    last = match.index + match[0].length;
+  }
+  return out + escape(text.slice(last));
+}
+
 /** Quoted excerpt lines under an item, or none when `max` is 0. */
 const excerpt = (text: string | undefined, max: number) =>
   max > 0 && text?.trim()
-    ? quotedLines(text, max, '…').map((line) => `  ${line}`)
+    ? quotedLines(text, max, '…').map((line) =>
+        line === '>' ? '  >' : `  > ${inertMarkdown(line.slice(2))}`,
+      )
     : [];
 
 /** One piece of feedback for one pull request, ready to record and render. */
@@ -183,8 +218,11 @@ export interface Candidate {
   category: PullRequestFeedbackCategory;
   signature: string;
   summary: DeliverySummary;
-  /** The block's lines; `excerptChars` bounds each quoted excerpt (0: none). */
-  render: (host: string, excerptChars: number) => string[];
+  /**
+   * The block's lines: `excerptChars` bounds each quoted excerpt (0: none),
+   * `maxItems` how many items are written out (the rest are counted).
+   */
+  render: (host: string, excerptChars: number, maxItems: number) => string[];
 }
 
 interface ReviewItem {
@@ -211,19 +249,50 @@ function ownReply(
   );
 }
 
+/** A check incomplete this long no longer holds the rest (nothing required). */
+export const STUCK_CHECK_MS = 60 * 60 * 1000;
+
+/**
+ * Whether the head's check result is not in yet. A required check still
+ * running holds it. A repository that marks nothing required waits for
+ * every check, so the first failure does not spend a round while the rest
+ * run, except checks incomplete for `STUCK_CHECK_MS` (waiting on an
+ * approval, queued with no runner): once only those remain, they no
+ * longer hold it. `incompleteSince` is when each check was first seen
+ * incomplete on this head.
+ */
+export function checksStillRunning(
+  observation: PullRequestFeedbackObservation,
+  incompleteSince: Readonly<Record<string, string>> | undefined,
+  now: number,
+): boolean {
+  const incomplete = observation.checks.filter((check) => !check.completed);
+  if (observation.checks.some((check) => check.required))
+    return incomplete.some((check) => check.required);
+  return incomplete.some((check) => {
+    const since = Date.parse(incompleteSince?.[check.name] ?? '');
+    return !(Number.isFinite(since) && now - since >= STUCK_CHECK_MS);
+  });
+}
+
+/** Whether failing checks are held back by checks still running. */
+export function failingChecksHeld(
+  observation: PullRequestFeedbackObservation,
+  incompleteSince: Readonly<Record<string, string>> | undefined,
+  now: number,
+): boolean {
+  return (
+    observation.checks.some(isFailing) &&
+    checksStillRunning(observation, incompleteSince, now)
+  );
+}
+
 function failingCandidate(
   observation: PullRequestFeedbackObservation,
+  incompleteSince: Readonly<Record<string, string>> | undefined,
+  now: number,
 ): Candidate | 'pending' | undefined {
-  // The head's result is not in while a required check runs. A repository
-  // that marks nothing required waits for every check, so the first
-  // failure does not spend a round while the rest still run.
-  const marked = observation.checks.some((check) => check.required);
-  if (
-    observation.checks.some(
-      (check) => !check.completed && (check.required || !marked),
-    )
-  )
-    return 'pending';
+  if (checksStillRunning(observation, incompleteSince, now)) return 'pending';
   // One line per check name: a workflow run again on the same head reports
   // the same check once per run.
   const failing = [
@@ -242,8 +311,8 @@ function failingCandidate(
       ...failing.map((check) => `${check.name}\u0001${check.conclusion}`),
     ]),
     summary: { count: failing.length, failing: names },
-    render: (host, excerptChars) => {
-      const shown = failing.slice(0, ITEMS_SHOWN);
+    render: (host, excerptChars, maxItems) => {
+      const shown = failing.slice(0, maxItems);
       return [
         `Failing checks (${failing.length}):`,
         ...shown.flatMap((check) => [
@@ -296,7 +365,7 @@ function reviewCandidate(
     category: 'review-threads',
     signature: digest(fresh.map((item) => item.key).sort()),
     summary: { count: fresh.length, items: fresh.map((item) => item.key) },
-    render: (host, excerptChars) => {
+    render: (host, excerptChars, maxItems) => {
       const lines: string[] = [];
       const notes = [
         ...(resolved ? [`${resolved} resolved omitted`] : []),
@@ -308,7 +377,7 @@ function reviewCandidate(
         lines.push(
           `Unresolved review threads (${threads.length}${notes.length ? `; ${notes.join('; ')}` : ''}):`,
         );
-        for (const { thread } of threads.slice(0, ITEMS_SHOWN)) {
+        for (const { thread } of threads.slice(0, maxItems)) {
           const newest = thread!.comments.at(-1);
           const first = thread!.comments[0];
           const author = first?.author ?? newest?.author ?? '';
@@ -327,12 +396,14 @@ function reviewCandidate(
               `  (${thread!.totalComments - 1} earlier ${thread!.totalComments === 2 ? 'comment' : 'comments'} in the thread)`,
             );
         }
-        if (threads.length > ITEMS_SHOWN)
-          lines.push(`- (${threads.length - ITEMS_SHOWN} more threads)`);
+        if (threads.length > maxItems)
+          lines.push(`- (${threads.length - maxItems} more threads)`);
       }
       if (reviews.length) {
         lines.push(`Changes requested (${reviews.length}):`);
-        for (const { review } of reviews.slice(0, ITEMS_SHOWN)) {
+        if (reviews.length > maxItems)
+          lines.push(`- (${reviews.length - maxItems} more not listed)`);
+        for (const { review } of reviews.slice(0, maxItems)) {
           lines.push(
             `- ${loginOf(review!.author)} requested changes${review!.url && safeUrl(review!.url, host) ? `: ${linked('review', safeUrl(review!.url, host))}` : ''}`,
           );
@@ -406,35 +477,53 @@ function sectionHeader(observation: PullRequestFeedbackObservation): string {
 
 /** Excerpt bounds tried in turn until every block fits the message. */
 const EXCERPT_STEPS = [EXCERPT_CHARS, 300, 120, 0] as const;
+/** Items written out per block, fewest last: every block fits on its own. */
+const ITEM_STEPS = [ITEMS_SHOWN, 4, 2, 1] as const;
 /** Kept for the opening, footer and overflow lines. */
 const FRAME_RESERVE = 600;
+const BLOCK_BUDGET = MESSAGE_CHARS - FRAME_RESERVE;
 
 export interface FeedbackMessageSection {
   observation: PullRequestFeedbackObservation;
   blocks: ReadonlyArray<{
     id: string;
     count: number;
-    render: (host: string, excerptChars: number) => string[];
+    render: (host: string, excerptChars: number, maxItems: number) => string[];
   }>;
 }
 
 /**
  * The message: a fixed opening that frames forge text as data, then each
- * pull request's blocks, within about `MESSAGE_CHARS`. Excerpts shrink
- * (600, 300, 120, then none) until every block fits; a block that still
- * does not fit is left out and reported in `rendered` as not sent, so its
- * feedback stays pending for the next message instead of being marked sent.
+ * pull request's blocks, within about `MESSAGE_CHARS`. Each block first
+ * gets the most items it can show and still fit on its own with no
+ * excerpts; then excerpts shrink (600, 300, 120, none) until every block
+ * fits. When some block fits at none, the largest excerpt that carries the
+ * same blocks is used. A block left out is reported as not `rendered`, so
+ * its feedback stays pending for the next message instead of being marked
+ * sent.
  */
 export function composeFeedbackMessage(
   sections: readonly FeedbackMessageSection[],
 ): { message: string; rendered: ReadonlySet<string> } {
   const single = sections.length === 1;
-  let chosen: { lines: string[]; rendered: Set<string>; omitted: number } = {
-    lines: [],
-    rendered: new Set(),
-    omitted: 0,
-  };
-  for (const excerptChars of EXCERPT_STEPS) {
+  const headerOf = (section: FeedbackMessageSection) =>
+    single ? [] : [`Pull request ${sectionHeader(section.observation)}:`];
+  const itemsFor = new Map<string, number>();
+  for (const section of sections) {
+    const host = section.observation.identity.host.toLowerCase();
+    for (const block of section.blocks) {
+      const items =
+        ITEM_STEPS.find(
+          (n) =>
+            [...headerOf(section), ...block.render(host, 0, n)].join('\n')
+              .length +
+              2 <=
+            BLOCK_BUDGET,
+        ) ?? 1;
+      itemsFor.set(block.id, items);
+    }
+  }
+  const attempt = (excerptChars: number) => {
     const lines: string[] = [];
     const rendered = new Set<string>();
     let length = FRAME_RESERVE;
@@ -443,10 +532,11 @@ export function composeFeedbackMessage(
       const host = section.observation.identity.host.toLowerCase();
       let headed = single;
       for (const block of section.blocks) {
-        const head = headed
-          ? []
-          : [`Pull request ${sectionHeader(section.observation)}:`];
-        const text = [...head, ...block.render(host, excerptChars)].join('\n');
+        const head = headed ? [] : headerOf(section);
+        const text = [
+          ...head,
+          ...block.render(host, excerptChars, itemsFor.get(block.id) ?? 1),
+        ].join('\n');
         if (length + text.length + 2 > MESSAGE_CHARS) {
           omitted += 1;
           continue;
@@ -457,9 +547,18 @@ export function composeFeedbackMessage(
         headed = true;
       }
     }
-    chosen = { lines, rendered, omitted };
-    if (!omitted) break;
-  }
+    return { lines, rendered, omitted };
+  };
+  const attempts = EXCERPT_STEPS.map(attempt);
+  const sameBlocks = (a: ReadonlySet<string>, b: ReadonlySet<string>) =>
+    a.size === b.size && [...a].every((id) => b.has(id));
+  const fewest = attempts.at(-1)!;
+  const chosen =
+    attempts.find((candidate) => !candidate.omitted) ??
+    attempts.find((candidate) =>
+      sameBlocks(candidate.rendered, fewest.rendered),
+    ) ??
+    fewest;
   const items = sections
     .flatMap((section) => section.blocks)
     .filter((block) => chosen.rendered.has(block.id))
@@ -517,8 +616,8 @@ export class PullRequestFeedbackDelivery {
   /**
    * The inbox's placement re-check for a queued feedback message: the
    * preview is on, every pull request in it is still owned by this
-   * conversation at the same generation, still open on the same head, and
-   * the agent is not waiting on a person.
+   * conversation at the same generation and still linked to it, still open
+   * on the same head, and the agent is not waiting on a person.
    */
   placementRefusal(input: {
     conversationId: string;
@@ -547,6 +646,17 @@ export class PullRequestFeedbackDelivery {
             reasonCode: 'pr_feedback_owner_changed',
             reason:
               'Feedback for this pull request goes elsewhere now. Nothing was sent.',
+          };
+        if (
+          this.ports.linked &&
+          !this.ports
+            .linked(batch.conversationId)
+            .some((link) => feedbackIdentityKey(link) === entry.prKey)
+        )
+          return {
+            reasonCode: 'pr_feedback_unlinked',
+            reason:
+              'The pull request was unlinked from this chat. Nothing was sent.',
           };
         const observation = store.observation(entry.prKey)?.observation;
         if (
@@ -583,6 +693,28 @@ export class PullRequestFeedbackDelivery {
       .finally(() => this.running.delete(conversationId));
     this.running.set(conversationId, run);
     return run;
+  }
+
+  /**
+   * A message still open for a previous owner of a pull request this
+   * conversation now owns. It is never resubmitted there: the inbox's own
+   * answer settles it if it has one; otherwise (never accepted, or lost) it
+   * settles refused as moved, so its feedback is this owner's to send. One
+   * the inbox still holds is refused at placement (the generation moved).
+   */
+  private settleElsewhere(
+    store: PullRequestFeedbackStore,
+    batch: StoredBatch,
+  ): void {
+    const now = new Date(this.now()).toISOString();
+    const entry = this.ports.inbox()?.entry(batch.conversationId, batch.key);
+    if (entry?.state === 'sent') store.settleBatch(batch.key, 'sent', now);
+    else if (entry?.state === 'refused')
+      store.settleBatch(batch.key, 'refused', now, entry.reasonCode);
+    else if (entry?.state === 'cancelled')
+      store.settleBatch(batch.key, 'cancelled', now);
+    else if (!entry)
+      store.settleBatch(batch.key, 'refused', now, 'pr_feedback_owner_changed');
   }
 
   /** Settle the conversation's open message from the inbox's own record. */
@@ -663,9 +795,7 @@ export class PullRequestFeedbackDelivery {
     const turnWindows = () =>
       (windows ??= this.ports.turnWindows(conversationId));
     const linked = this.ports.linked
-      ? new Set(
-          (await this.ports.linked(conversationId)).map(feedbackIdentityKey),
-        )
+      ? new Set(this.ports.linked(conversationId).map(feedbackIdentityKey))
       : undefined;
     const sections: PullRequestSection[] = [];
     for (const claim of store.claimsForConversation(conversationId)) {
@@ -681,14 +811,16 @@ export class PullRequestFeedbackDelivery {
       for (const key of store.openBatchKeysFor(claim.prKey)) {
         const other = store.batch(key);
         if (other && other.conversationId !== conversationId)
-          this.reconcile(store, other);
+          this.settleElsewhere(store, other);
       }
-      const observation = store.observation(claim.prKey)?.observation;
+      const stored = store.observation(claim.prKey);
+      const observation = stored?.observation;
       if (observation?.state !== 'OPEN') continue;
       const section = this.sectionFor(
         store,
         claim,
         observation,
+        stored?.incompleteSince,
         turnWindows,
         nowIso,
         now,
@@ -743,8 +875,16 @@ export class PullRequestFeedbackDelivery {
         ),
       }))
       .filter((section) => section.parts.length);
-    if (!sent.length)
+    if (!sent.length) {
+      // Unreachable while every block fits on its own (one item, no
+      // excerpt); said on the claims rather than held in silence.
+      for (const section of permitted)
+        store.setCondition(section.claim.prKey, {
+          state: 'unavailable',
+          cause: 'too-large',
+        });
       return { kind: 'held', reason: 'too-large', deliveries: count };
+    }
     const batch: StoredBatch = {
       key: pullRequestFeedbackKey(conversationId, sent),
       conversationId,
@@ -793,12 +933,13 @@ export class PullRequestFeedbackDelivery {
     store: PullRequestFeedbackStore,
     claim: PullRequestFeedbackClaim,
     observation: PullRequestFeedbackObservation,
+    incompleteSince: Readonly<Record<string, string>> | undefined,
     turnWindows: () => ReadonlyArray<{ start: number; end?: number }>,
     nowIso: string,
     now: number,
   ): PullRequestSection | undefined {
     const failing = claim.settings.fixFailingChecks
-      ? failingCandidate(observation)
+      ? failingCandidate(observation, incompleteSince, now)
       : undefined;
     const candidates: Candidate[] = [];
     if (failing && failing !== 'pending') candidates.push(failing);

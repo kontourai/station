@@ -128,6 +128,8 @@ export interface StoredObservation {
   /** When what the forge showed last changed. */
   unchangedSince: string;
   digest: string;
+  /** Per check name, when it was first seen incomplete on this head. */
+  incompleteSince?: Record<string, string>;
 }
 
 const SCHEMA = [
@@ -282,6 +284,12 @@ export class PullRequestFeedbackStore {
       db.exec('PRAGMA journal_mode = WAL');
       db.exec('PRAGMA busy_timeout = 5000');
       for (const statement of SCHEMA) db.exec(statement);
+      const columns = db
+        .prepare('PRAGMA table_info(observations)')
+        .all()
+        .map((row) => row.name);
+      if (!columns.includes('incomplete_since'))
+        db.exec('ALTER TABLE observations ADD COLUMN incomplete_since TEXT');
     } catch (error) {
       db.close();
       throw error;
@@ -434,17 +442,21 @@ export class PullRequestFeedbackStore {
       observedAt: str(row, 'observed_at'),
       unchangedSince: str(row, 'unchanged_since'),
       digest: str(row, 'digest'),
+      ...(optStr(row, 'incomplete_since')
+        ? { incompleteSince: JSON.parse(optStr(row, 'incomplete_since')!) }
+        : {}),
     };
   }
 
   writeObservation(prKey: string, value: StoredObservation): void {
     this.db
       .prepare(
-        `INSERT INTO observations (pr_key, observation, observed_at, unchanged_since, digest)
-         VALUES (?, ?, ?, ?, ?)
+        `INSERT INTO observations (pr_key, observation, observed_at, unchanged_since, digest, incomplete_since)
+         VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT (pr_key) DO UPDATE SET observation = excluded.observation,
            observed_at = excluded.observed_at,
-           unchanged_since = excluded.unchanged_since, digest = excluded.digest`,
+           unchanged_since = excluded.unchanged_since, digest = excluded.digest,
+           incomplete_since = excluded.incomplete_since`,
       )
       .run(
         prKey,
@@ -452,6 +464,7 @@ export class PullRequestFeedbackStore {
         value.observedAt,
         value.unchangedSince,
         value.digest,
+        value.incompleteSince ? JSON.stringify(value.incompleteSince) : null,
       );
   }
 

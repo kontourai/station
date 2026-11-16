@@ -24,7 +24,10 @@ import {
   pullRequestFeedbackKey,
   pullRequestFeedbackSends,
 } from '@kontourai/station-contracts/pull-request-feedback';
-import type { FeedbackSessionState } from './pull-request-feedback-delivery.js';
+import {
+  type FeedbackSessionState,
+  failingChecksHeld,
+} from './pull-request-feedback-delivery.js';
 import type {
   PullRequestFeedbackClaim,
   PullRequestFeedbackStore,
@@ -293,7 +296,20 @@ export class PullRequestFeedbackOwnership {
     const waiting = store
       .pendingDeliveries(claim.conversationId)
       .some((delivery) => delivery.prKey === claim.prKey);
-    if (!waiting) return { state: 'watching' };
+    if (!waiting) {
+      const stored = store.observation(claim.prKey);
+      if (
+        claim.settings.fixFailingChecks &&
+        stored?.observation.state === 'OPEN' &&
+        failingChecksHeld(
+          stored.observation,
+          stored.incompleteSince,
+          this.now(),
+        )
+      )
+        return { state: 'held', reason: 'checks-running' };
+      return { state: 'watching' };
+    }
     if (!this.ports.mayContinue(claim.conversationId, claim.enabledBy))
       return { state: 'held', reason: 'owner-changed' };
     if (session.state === 'awaiting')

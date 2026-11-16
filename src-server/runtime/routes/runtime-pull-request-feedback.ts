@@ -261,7 +261,7 @@ export function composePullRequestFeedbackRuntime(
       inbox,
     });
   /** What a person linked to the chat (any Session of it) or kept on its Task. */
-  const linkedIdentities = async (conversationId: string) => {
+  const linkedNow = (conversationId: string) => {
     const ids = lineage(conversationId);
     const explicit: ConversationPullRequestLink[] = ids.flatMap((id) =>
       deps.links.list(id),
@@ -274,8 +274,11 @@ export function composePullRequestFeedbackRuntime(
       ),
     ];
   };
+  const linkedIdentities = async (conversationId: string) =>
+    linkedNow(conversationId);
+
   const delivery = new PullRequestFeedbackDelivery({
-    linked: linkedIdentities,
+    linked: linkedNow,
     store: () => holder.forRead(),
     enabled,
     session,
@@ -289,7 +292,7 @@ export function composePullRequestFeedbackRuntime(
     logger: deps.logger,
   });
   const poller = new PullRequestFeedbackPoller({
-    linked: linkedIdentities,
+    linked: linkedNow,
     enabled,
     store: () => holder.forRead(),
     providers: deps.providers,
@@ -339,7 +342,15 @@ export function composePullRequestFeedbackRuntime(
           ref: String(parsed.number),
         }),
       );
-      return !!claim && pullRequestFeedbackSendsKind(claim, kind);
+      // Not while the pull request is no longer linked to the claim's chat:
+      // that feedback will never be sent, so the Task's lead is woken.
+      return (
+        !!claim &&
+        pullRequestFeedbackSendsKind(claim, kind) &&
+        linkedNow(claim.conversationId).some(
+          (link) => pullRequestFeedbackKey(link) === claim.prKey,
+        )
+      );
     },
     close: async () => {
       unsubscribe();

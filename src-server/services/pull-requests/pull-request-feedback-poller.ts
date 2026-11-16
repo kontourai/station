@@ -66,7 +66,7 @@ export interface PullRequestFeedbackPollerPorts {
   lastTurnAt(conversationId: string): number | undefined;
   delivery(): PullRequestFeedbackDelivery | undefined;
   /** As the delivery's: a claim no longer linked is released, not read. */
-  linked?(conversationId: string): Promise<readonly PullRequestLinkIdentity[]>;
+  linked?(conversationId: string): readonly PullRequestLinkIdentity[];
   readonly logger: {
     warn(message: string, meta?: Record<string, unknown>): void;
   };
@@ -143,9 +143,7 @@ export class PullRequestFeedbackPoller {
     let keys = cache.get(claim.conversationId);
     if (!keys) {
       keys = new Set(
-        (await this.ports.linked(claim.conversationId)).map(
-          pullRequestFeedbackKey,
-        ),
+        this.ports.linked(claim.conversationId).map(pullRequestFeedbackKey),
       );
       cache.set(claim.conversationId, keys);
     }
@@ -238,7 +236,9 @@ export class PullRequestFeedbackPoller {
       }
       const linked = new Map<string, Set<string>>();
       for (const claim of store.claimsForConversation(conversationId)) {
-        if (!this.polled(claim)) continue;
+        // A closed pull request is only read on its six-hourly re-read.
+        if (claim.condition?.state === 'closed' || !this.polled(claim))
+          continue;
         if (!(await this.stillLinked(store, claim, linked, now))) continue;
         const last = store.observation(claim.prKey);
         if (last && now - Date.parse(last.observedAt) < TURN_END_DEBOUNCE_MS)
@@ -345,10 +345,22 @@ export class PullRequestFeedbackPoller {
           : now - Date.parse(unchangedSince) >= QUIET_AFTER_MS
             ? QUIET_INTERVAL_MS
             : DEFAULT_INTERVAL_MS;
+    // When each check was first seen incomplete on this head, so a check
+    // that never finishes stops holding the rest (`checksStillRunning`).
+    const priorSince =
+      prior?.observation.headSha === observation.headSha
+        ? (prior.incompleteSince ?? {})
+        : {};
+    const incompleteSince = Object.fromEntries(
+      observation.checks
+        .filter((check) => !check.completed)
+        .map((check) => [check.name, priorSince[check.name] ?? observedAt]),
+    );
     store.writeObservation(claim.prKey, {
       observation,
       observedAt,
       unchangedSince,
+      ...(Object.keys(incompleteSince).length ? { incompleteSince } : {}),
       digest,
     });
     markDue(now + interval);

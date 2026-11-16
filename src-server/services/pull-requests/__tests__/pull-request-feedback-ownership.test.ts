@@ -119,7 +119,8 @@ describe('pull request feedback ownership', () => {
         identity: PR,
         state: 'OPEN',
         headSha: 'a1b2c3d4e5f6',
-      } as PullRequestFeedbackObservation,
+        checks: [],
+      } as unknown as PullRequestFeedbackObservation,
       observedAt: '2026-11-10T12:00:00.000Z',
       unchangedSince: '2026-11-10T12:00:00.000Z',
       digest: 'x',
@@ -279,6 +280,55 @@ describe('pull request feedback ownership', () => {
         viewer: viewer(),
       }),
     ).toEqual({ kind: 'not-linked' });
+  });
+});
+
+describe('a held-for-checks status', () => {
+  it('says the failures wait on checks still running', async () => {
+    const { ownership, store, viewer } = setup();
+    await ownership.write({
+      conversationId: 'chat-a',
+      identity: PR,
+      settings: ON,
+      viewer: viewer(),
+    });
+    const observation = {
+      identity: PR,
+      state: 'OPEN',
+      headSha: 'a1b2c3d4e5f6',
+      checks: [
+        {
+          name: 'lint',
+          conclusion: 'FAILURE',
+          completed: true,
+          required: false,
+        },
+        { name: 'e2e', conclusion: null, completed: false, required: false },
+      ],
+    } as unknown as PullRequestFeedbackObservation;
+    store.writeObservation(pullRequestFeedbackKey(PR), {
+      observation,
+      observedAt: '2026-11-10T12:00:00.000Z',
+      unchangedSince: '2026-11-10T12:00:00.000Z',
+      digest: 'x',
+      incompleteSince: { e2e: new Date().toISOString() },
+    });
+    expect(
+      (await ownership.view('chat-a', viewer())).pullRequests[0]?.status,
+    ).toEqual({ state: 'held', reason: 'checks-running' });
+    // Once the check finished, nothing is held.
+    store.writeObservation(pullRequestFeedbackKey(PR), {
+      observation: {
+        ...observation,
+        checks: [observation.checks[0]!],
+      },
+      observedAt: '2026-11-10T12:10:00.000Z',
+      unchangedSince: '2026-11-10T12:10:00.000Z',
+      digest: 'y',
+    });
+    expect(
+      (await ownership.view('chat-a', viewer())).pullRequests[0]?.status,
+    ).toEqual({ state: 'watching' });
   });
 });
 

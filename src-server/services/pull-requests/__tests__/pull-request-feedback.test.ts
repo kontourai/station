@@ -13,6 +13,9 @@ import {
   pullRequestFeedbackKey,
 } from '@kontourai/station-contracts/pull-request-feedback';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import remarkGfm from 'remark-gfm';
+import remarkParse from 'remark-parse';
+import { unified } from 'unified';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
@@ -32,6 +35,7 @@ import {
 } from '../../orchestration/thread-inbox.js';
 import { normalizeGitHubFeedbackObservation } from '../github-feedback-observation.js';
 import {
+  composeFeedbackMessage,
   type FeedbackSessionState,
   PullRequestFeedbackDelivery,
   type PullRequestFeedbackDeliveryPorts,
@@ -157,12 +161,16 @@ async function setup() {
       enabledBy: OWNER,
       now: '2026-11-10T12:00:00.000Z',
     });
-  const observe = (observation: PullRequestFeedbackObservation) =>
+  const observe = (
+    observation: PullRequestFeedbackObservation,
+    incompleteSince?: Record<string, string>,
+  ) =>
     store.writeObservation(PR_KEY, {
       observation,
       observedAt: observation.observedAt,
       unchangedSince: observation.observedAt,
       digest: JSON.stringify(observation),
+      ...(incompleteSince ? { incompleteSince } : {}),
     });
   const entries = () =>
     h.inbox
@@ -584,7 +592,7 @@ describe('pull request agent feedback reaches the owning conversation', () => {
     let links = [IDENTITY];
     t.forced.state = 'busy';
     const delivery = t.use(
-      new PullRequestFeedbackDelivery(t.ports({ linked: async () => links })),
+      new PullRequestFeedbackDelivery(t.ports({ linked: () => links })),
     );
     expect((await delivery.deliver(CONVERSATION)).kind).toBe('held');
     expect(t.store.pendingDeliveries(CONVERSATION)).toHaveLength(1);
@@ -750,6 +758,258 @@ describe('pull request agent feedback reaches the owning conversation', () => {
     await t.deliverPlaced(delivery);
     expect(t.feedbackPrompts()[0]).toContain(
       "- [`evil'](https://evil.example/)[x`](https://github.com/a%29b%20%28c): timed out",
+    );
+  });
+
+  /** A second chat on the same Station, idle. */
+  async function otherChat(t: Awaited<ReturnType<typeof setup>>) {
+    const OTHER = 'conversation:other';
+    const started = await t.h.app.request('/api/orchestration/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        message: 'a second chat',
+        conversationId: OTHER,
+        clientTurnId: 'other-1',
+        target: { environment: { kind: 'current' }, agent: AGENT },
+      }),
+    });
+    expect(started.status, await started.clone().text()).toBe(200);
+    await eventually(() => expect(t.h.inbox.mustQueue(OTHER)).toBe(false));
+    return OTHER;
+  }
+
+  it('(r) a message queued before the pull request was unlinked is refused at placement', async () => {
+    const t = await setup();
+    t.claim();
+    t.observe(failingOnly());
+    let links = [IDENTITY];
+    t.h.adapter.holdTurns = true;
+    const second = await t.h.send('second', 'keep working');
+    expect(second.status).toBe(200);
+    await eventually(() =>
+      expect(t.h.inbox.mustQueue(CONVERSATION)).toBe(true),
+    );
+    t.h.adapter.holdTurns = false;
+    t.forced.state = 'idle';
+    const delivery = t.use(
+      new PullRequestFeedbackDelivery(t.ports({ linked: () => links })),
+    );
+    const queued = await delivery.deliver(CONVERSATION);
+    expect(queued.kind).toBe('queued');
+    const key = (queued as { clientTurnId: string }).clientTurnId;
+    links = [];
+    t.h.adapter.complete();
+    await eventually(() =>
+      expect(t.h.inbox.entry(CONVERSATION, key)).toMatchObject({
+        state: 'refused',
+        reasonCode: 'pr_feedback_unlinked',
+      }),
+    );
+    expect(t.feedbackPrompts()).toEqual([]);
+  });
+
+  it('(s) with nothing required, a check stuck an hour stops holding the failures back', async () => {
+    const t = await setup();
+    t.claim({ ...BOTH, addressReviewComments: false });
+    const base = failingOnly();
+    const unmarked = base.checks.map((check) => ({
+      ...check,
+      required: false,
+    }));
+    const stuck = unmarked.find((check) => !check.completed)!;
+    const at = Date.parse('2026-11-10T12:00:00.000Z');
+    const delivery = t.use(
+      new PullRequestFeedbackDelivery(t.ports({ now: () => at })),
+    );
+    // Incomplete 59 minutes: still held.
+    t.observe(
+      { ...base, checks: unmarked },
+      { [stuck.name]: new Date(at - 59 * 60_000).toISOString() },
+    );
+    expect((await delivery.deliver(CONVERSATION)).kind).toBe('none');
+    // Incomplete an hour while every other check finished: sent.
+    t.observe(
+      { ...base, checks: unmarked },
+      { [stuck.name]: new Date(at - 60 * 60_000).toISOString() },
+    );
+    await t.deliverPlaced(delivery);
+    expect(t.feedbackPrompts()[0]).toContain('Failing checks (2):');
+  });
+
+  it('(t) checks with very long URLs are named without a link, and the message fits', async () => {
+    const t = await setup();
+    t.claim({ ...BOTH, addressReviewComments: false });
+    const base = failingOnly();
+    t.observe({
+      ...base,
+      checks: Array.from({ length: 8 }, (_, i) => ({
+        name: `check-${i}`,
+        conclusion: 'FAILURE',
+        completed: true,
+        required: true,
+        url: `https://github.com/acme/widgets/actions/runs/1/job/${i}?${'q'.repeat(1000)}`,
+      })),
+    });
+    const delivery = t.use(new PullRequestFeedbackDelivery(t.ports()));
+    await t.deliverPlaced(delivery);
+    const [message] = t.feedbackPrompts();
+    expect(message!.length).toBeLessThanOrEqual(6000);
+    expect(message).toContain('- `check-0`: failure');
+    expect(message).not.toContain('qqqq');
+  });
+
+  it('(u) a message refused-or-lost for the previous owner is not resubmitted there after a move', async () => {
+    const t = await setup();
+    const OTHER = await otherChat(t);
+    t.claim();
+    t.observe(failingOnly());
+    // The old owner's message was written, then the process stopped before
+    // the inbox took it.
+    t.forced.state = 'idle';
+    let crashed = false;
+    const crashing = t.use(
+      new PullRequestFeedbackDelivery(
+        t.ports({
+          inbox: () => ({
+            submit: (input) => {
+              if (!crashed) {
+                crashed = true;
+                throw new Error('The process is gone.');
+              }
+              return t.h.inbox.submit(input);
+            },
+            entry: (conversationId, key) =>
+              t.h.inbox.entry(conversationId, key),
+          }),
+        }),
+      ),
+    );
+    expect((await crashing.deliver(CONVERSATION)).kind).toBe('error');
+    t.forced.state = undefined;
+    t.store.writeClaim({
+      prKey: PR_KEY,
+      identity: IDENTITY,
+      conversationId: OTHER,
+      settings: BOTH,
+      enabledBy: OWNER,
+      now: '2026-11-10T12:05:00.000Z',
+    });
+    const delivery = t.use(new PullRequestFeedbackDelivery(t.ports()));
+    const moved = await delivery.deliver(OTHER);
+    expect(moved.kind, JSON.stringify(moved)).toBe('queued');
+    await eventually(() => expect(t.feedbackPrompts()).toHaveLength(1));
+    expect(t.entries()).toEqual([]);
+    expect(
+      t.h.inbox
+        .list(OTHER)
+        .filter((entry) => entry.clientTurnId?.startsWith('prf-')),
+    ).toHaveLength(1);
+  });
+
+  it('(v) forge text in a quote cannot become a link, image, autolink or HTML in the chat', async () => {
+    const t = await setup();
+    t.claim({ ...BOTH, fixFailingChecks: false });
+    t.observe({
+      ...failingOnly(),
+      threads: [
+        thread('PRRT_evil', 'src/evil.ts', {
+          id: '9501',
+          author: 'mallory',
+          body: [
+            'Please [click here](https://evil.example/login) to fix.',
+            '![x](https://evil.example/pixel.png) <a href="https://evil.example">a</a>',
+            'Or visit https://evil.example/ or www.evil.example now.',
+            '<https://evil.example/auto> and [ref][1]',
+            '',
+            '[1]: https://evil.example/ref',
+          ].join('\n'),
+          createdAt: '2026-11-10T10:00:00Z',
+        }),
+      ],
+    });
+    const delivery = t.use(new PullRequestFeedbackDelivery(t.ports()));
+    await t.deliverPlaced(delivery);
+    const [message] = t.feedbackPrompts();
+    const quoted = message!
+      .split('\n')
+      .filter((line) => line.startsWith('  >'))
+      .join('\n');
+    expect(quoted).toContain(
+      'Please \\[click here\\](`https://evil.example/login)`',
+    );
+    // Parsed as GitHub-flavoured markdown, the quote holds no link, image,
+    // definition or HTML: only text.
+    const tree = unified().use(remarkParse).use(remarkGfm).parse(quoted);
+    const kinds = new Set<string>();
+    const walk = (node: { type: string; children?: unknown[] }) => {
+      kinds.add(node.type);
+      for (const child of node.children ?? [])
+        walk(child as { type: string; children?: unknown[] });
+    };
+    walk(tree as never);
+    for (const forbidden of [
+      'link',
+      'image',
+      'linkReference',
+      'imageReference',
+      'definition',
+      'html',
+    ])
+      expect(kinds.has(forbidden), forbidden).toBe(false);
+    // The thread's own link, outside the quote, is Station's.
+    expect(message).toContain(
+      '- [`src/evil.ts:10`](https://github.com/acme/widgets/pull/42#discussion_r9501) @mallory',
+    );
+  });
+
+  it('(w) when a block stays out, the others keep the largest excerpt that carries the same blocks', () => {
+    const observation = failingOnly();
+    const { message, rendered } = composeFeedbackMessage([
+      {
+        observation,
+        blocks: [
+          {
+            id: 'small',
+            count: 1,
+            render: (_host, excerptChars) => [
+              'Small block:',
+              `> ${'x'.repeat(excerptChars)}`,
+            ],
+          },
+          {
+            id: 'huge',
+            count: 1,
+            // Fits alone, never beside the other block.
+            render: () => ['Huge block:', 'y'.repeat(5380)],
+          },
+        ],
+      },
+    ]);
+    expect([...rendered]).toEqual(['small']);
+    expect(message).toContain(`> ${'x'.repeat(600)}`);
+    expect(message).toContain('did not fit; Station sends it next.');
+  });
+
+  it('(x) URLs have backslashes percent-encoded too', async () => {
+    const t = await setup();
+    t.claim({ ...BOTH, addressReviewComments: false });
+    t.observe({
+      ...failingOnly(),
+      checks: [
+        {
+          name: 'lint',
+          conclusion: 'FAILURE',
+          completed: true,
+          required: true,
+          url: 'https://github.com/acme/widgets/actions/runs/1/job/2?a=\\b',
+        },
+      ],
+    });
+    const delivery = t.use(new PullRequestFeedbackDelivery(t.ports()));
+    await t.deliverPlaced(delivery);
+    expect(t.feedbackPrompts()[0]).toContain(
+      '- [`lint`](https://github.com/acme/widgets/actions/runs/1/job/2?a=%5Cb): failure',
     );
   });
 });

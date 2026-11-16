@@ -180,6 +180,8 @@ export type PullRequestFeedbackUnavailableCause =
   | 'not-found'
   /** This forge has no feedback read (GitLab, for now). */
   | 'unsupported'
+  /** The feedback could not fit one message, even cut down. */
+  | 'too-large'
   | 'error';
 
 export type PullRequestFeedbackObservationResult =
@@ -203,7 +205,9 @@ export type PullRequestFeedbackStatus =
         /** The conversation's agent has stopped. */
         | 'agent-stopped'
         /** The person who turned it on may no longer send to this chat. */
-        | 'owner-changed';
+        | 'owner-changed'
+        /** Failing checks wait for the head's other checks to finish. */
+        | 'checks-running';
     }
   | {
       state: 'paused';
