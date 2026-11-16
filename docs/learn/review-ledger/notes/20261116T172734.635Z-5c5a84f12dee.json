@@ -1,0 +1,7 @@
+{
+  "revision": "b723ed81529944af9b790bfbd456ffdea9b8bfa9",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Repeated warnings paragraph now states graceful shutdown writes pending summaries (#5054); logger seam and limiter claims, env vars and the suppressed_records counter are unchanged.","inputs":["docs/reference/config.md","src-server/utils/logger.ts"]}
+  ]
+}
