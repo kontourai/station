@@ -1513,6 +1513,29 @@ retained identity reservations only while the Task remains absent under the
 output lock. This module contract has no current mounted cascade caller and
 does not establish a joint transaction with TaskGraph.
 
+### Pull request agent feedback
+
+Behind the `pull-request-agent-feedback` Feature Preview (every route answers
+404 while it is off) and the `pullRequestFeedback` capability flag, which a
+hosted Station withdraws:
+
+- `GET /api/pull-request-feedback/conversations/:conversationId` lists each
+  pull request linked to or kept on the chat with its owner, switches, status
+  and newest 20 deliveries (`ConversationPullRequestFeedback`).
+- `PUT` on the same path, body `{ identity, settings, move? }`, sets a pull
+  request's switches. A pull request another chat owns answers 409
+  `pull_request_feedback_owned_elsewhere` with `details.owner`; `move: true`
+  takes it. A pull request not linked or kept on this chat answers 409
+  `pull_request_not_linked`.
+- `DELETE` on the same path, body `{ identity }`, turns every switch off.
+- `POST …/send-again`, body `{ identity }`, lifts a pause for one round; 409
+  `pull_request_feedback_not_paused` otherwise.
+
+Reads need the chat's read access (`orchestration:read`). Writes need the
+operator in person (`access:manage`); Station's internal principal (an agent's
+tool call) and a delegation credential are answered 404. See
+[the decision](../decisions/pull-request-agent-feedback.md).
+
 
 ## Table of Contents
 

@@ -159,6 +159,11 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // its bytes in the attachment blob store. Hosted deployments withdraw it:
   // they build no thread inbox (servesFollowUpAttachments).
   followUpAttachments: true,
+  // Pull request agent feedback: /api/pull-request-feedback
+  // (src-server/routes/pull-requests/pull-request-feedback.ts). A static
+  // fact; the off `pull-request-agent-feedback` preview answers 404. Hosted
+  // deployments withdraw it: see servesPullRequestFeedback.
+  pullRequestFeedback: true,
 };
 
 /** Deployment facts that decide whether a build-supported route can serve. */
@@ -231,6 +236,13 @@ export function servesFollowUpAttachments(
   return !deployment.hosted;
 }
 
+/** Hosted Stations have no host forge login and no conversation inbox. */
+function servesPullRequestFeedback(
+  deployment: StationCapabilityDeployment,
+): boolean {
+  return !deployment.hosted;
+}
+
 /**
  * Reads of another Station's sessions present this Station's Station-wide
  * outbound peer bearer, which no hosted tenant binds, so a hosted Station
@@ -261,6 +273,7 @@ const DEPLOYMENT_SERVED_FLAGS: Readonly<
   scheduledConversationTarget: servesScheduledConversationTarget,
   coordinatorSession: servesCoordinatorSession,
   followUpAttachments: servesFollowUpAttachments,
+  pullRequestFeedback: servesPullRequestFeedback,
   remoteSessionHistory: servesRemoteSessionReads,
 };
 

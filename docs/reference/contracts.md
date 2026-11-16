@@ -1998,6 +1998,16 @@ an explicit unsupported/unavailable reason. `PullRequest.headSha` and
 `baseSha` are optional because a provider that omits exact revisions must not
 be presented as current by inference.
 
+`pull-request-feedback` defines pull request agent feedback: a person's
+switches, the forge observation (checks with their required flag, review
+threads with resolved and outdated state, latest reviews), the status and
+delivery history a chat reads, and pure helpers (the canonical lowercase
+identity key, the settings parser, the failing-conclusion set). Its
+`review-findings` category and `reviewEachHead` setting are reserved for a
+later per-head review. `IPullRequestProvider.getFeedbackObservation` is
+optional; a provider without it reads as `unsupported`. See
+[Pull request agent feedback](../decisions/pull-request-agent-feedback.md).
+
 `TaskRecord.closeOnMerge` is optional and absent means off. It is a person's
 opt-in to move a Task to `done` when every pull request kept on it is merged;
 a Task store that carries it is refused by Station builds that predate it.

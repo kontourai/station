@@ -1,0 +1,23 @@
+{
+  "revision": "60fd22348d954097ebd393bab0a1dc3b74813efd",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Added one optional StationCapabilityFlags key, pullRequestFeedback. No existing field or pairing scope changed; citing pages' claims hold.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Added one optional StationCapabilityFlags key, pullRequestFeedback. No existing field or pairing scope changed; citing pages' claims hold.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Added one optional StationCapabilityFlags key, pullRequestFeedback. No existing field or pairing scope changed; citing pages' claims hold.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/design/station-peer-pairing.md","note":"Added one optional StationCapabilityFlags key, pullRequestFeedback. No existing field or pairing scope changed; citing pages' claims hold.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Added one optional StationCapabilityFlags key, pullRequestFeedback. No existing field or pairing scope changed; citing pages' claims hold.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Added one optional StationCapabilityFlags key, pullRequestFeedback. No existing field or pairing scope changed; citing pages' claims hold.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Added one optional StationCapabilityFlags key, pullRequestFeedback. No existing field or pairing scope changed; citing pages' claims hold.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Added one optional StationCapabilityFlags key, pullRequestFeedback. No existing field or pairing scope changed; citing pages' claims hold.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Added one optional StationCapabilityFlags key, pullRequestFeedback. No existing field or pairing scope changed; citing pages' claims hold.","inputs":["packages/contracts/src/environment-security.ts"]}
+  ]
+}

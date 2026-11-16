@@ -1,0 +1,15 @@
+{
+  "revision": "60fd22348d954097ebd393bab0a1dc3b74813efd",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Added the ./pull-request-feedback subpath only; listed in the contracts README and reference. No existing export changed.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Added the ./pull-request-feedback subpath only; listed in the contracts README and reference. No existing export changed.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/reference/contracts.md","note":"Added the ./pull-request-feedback subpath only; listed in the contracts README and reference. No existing export changed.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Added the ./pull-request-feedback subpath only; listed in the contracts README and reference. No existing export changed.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"packages/contracts/README.md","note":"Added the ./pull-request-feedback subpath only; listed in the contracts README and reference. No existing export changed.","inputs":["packages/contracts/package.json#/exports"]}
+  ]
+}
