@@ -1394,6 +1394,41 @@ describe('a source still running in its own harness', () => {
     await waitFor(() => expect(document.activeElement).toBe(continueButton()));
   });
 
+  // Delta review item 5: Continue anyway removes the caution that had focus;
+  // when that request then fails, focus lands on the retry, not the page.
+  test('a failed Continue anyway leaves focus on Continue in Station', async () => {
+    window.localStorage.clear();
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    adoptOrchestrationSession.mockReset();
+    adoptOrchestrationSession.mockRejectedValueOnce(
+      new AdoptSessionError({
+        failureClass: 'certain-response',
+        message: 'Station rejected the continuation request (HTTP 500).',
+        retryable: true,
+        status: 500,
+      }),
+    );
+    try {
+      await renderAttached({
+        presentation: 'chat',
+        session: { attachedSourceActivity: { state: 'active' } },
+      });
+      fireEvent.click(continueButton());
+      const warning = await screen.findByTestId('attached-source-active');
+      const anyway = within(warning).getByRole('button', {
+        name: 'Continue anyway',
+      });
+      await waitFor(() => expect(document.activeElement).toBe(anyway));
+      fireEvent.click(anyway);
+      await screen.findByRole('alert');
+      await waitFor(() =>
+        expect(document.activeElement).toBe(continueButton()),
+      );
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
   test('a refusal of a stale read is announced and takes focus', async () => {
     window.localStorage.clear();
     vi.spyOn(console, 'error').mockImplementation(() => undefined);

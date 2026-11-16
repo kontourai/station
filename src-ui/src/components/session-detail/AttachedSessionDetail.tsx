@@ -257,6 +257,9 @@ export function AttachedSessionDetail({
   // that button back, so focus follows each swap rather than falling to the
   // page. Set beside the state change; applied once the swap has rendered.
   const focusAfterSwap = useRef<'caution' | 'continue' | null>(null);
+  // Continue anyway removes the caution that had focus; if that request then
+  // fails, focus goes to the retry rather than the page.
+  const focusContinueOnFailure = useRef(false);
   const continueActionRef = useRef<HTMLButtonElement>(null);
   const continueAnywayRef = useRef<HTMLButtonElement>(null);
   const sourceActiveNoteId = useId();
@@ -530,6 +533,7 @@ export function AttachedSessionDetail({
       return;
     }
     setSourceActiveWarning(false);
+    focusContinueOnFailure.current = override;
     adoptionInFlight.current = true;
     adoption.mutate(
       { intent: getSelectionIntent(), override },
@@ -606,6 +610,12 @@ export function AttachedSessionDetail({
       continueActionRef.current?.focus();
     }
   }, [cautionShown]);
+  const adoptionFailed = adoption.isError;
+  useEffect(() => {
+    if (!adoptionFailed || !focusContinueOnFailure.current) return;
+    focusContinueOnFailure.current = false;
+    continueActionRef.current?.focus();
+  }, [adoptionFailed]);
 
   return (
     <section
