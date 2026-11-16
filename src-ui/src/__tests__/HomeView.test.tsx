@@ -957,12 +957,12 @@ describe('HomeView', () => {
     eventCount: 3,
   });
   test.each([
-    ['gpt-5.3-codex', 'Codex · gpt-5.3-codex'],
-    ['gpt-5.4', 'Codex · gpt-5.4'],
-    ['Model not reported', 'Codex'],
+    ['gpt-5.3-codex', 'gpt-5.3-codex', 'Codex · gpt-5.3-codex'],
+    ['gpt-5.4', 'gpt-5.4', 'Codex · gpt-5.4'],
+    ['Model not reported', 'Codex', 'Codex'],
   ])(
     'the compact start composer names the default selection (%s) on Run setup',
-    (modelLabel, expected) => {
+    (modelLabel, expected, accessibleName) => {
       fixtures.defaultModelLabel = modelLabel;
       fixtures.sessions = [workSession()];
       renderHomeView({ continuation: null, onNavigate: vi.fn() });
@@ -977,7 +977,7 @@ describe('HomeView', () => {
         within(form)
           .getByTestId('run-setup-trigger')
           .getAttribute('aria-label'),
-      ).toContain(expected);
+      ).toContain(accessibleName);
     },
   );
 

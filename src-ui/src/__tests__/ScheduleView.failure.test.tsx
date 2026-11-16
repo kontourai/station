@@ -442,9 +442,9 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
     schedulerHooks.runs = [run];
     window.history.replaceState({}, '', `/schedule?run=${run.runId}`);
     render(<ScheduleView />);
-    expect(screen.getByText('Scheduled check receipt')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Scheduled run' })).toBeTruthy();
     expect(
-      screen.getByText('The owning job was removed; its durable run remains.'),
+      screen.getByText('The job was removed, but this run was kept.'),
     ).toBeTruthy();
     await waitFor(() =>
       expect(document.querySelector('.schedule__log--focused')).toBeTruthy(),
@@ -459,13 +459,7 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
       '/schedule?run=schedule:built-in:station-starter-check:missing-run',
     );
     render(<ScheduleView />);
-    expect(
-      screen.getByText(/That scheduled run isn’t available/i),
-    ).toBeTruthy();
-    // The promise this message exists for: no substitution (archive#3965).
-    expect(
-      screen.getByText(/won’t open a different one in its place/i),
-    ).toBeTruthy();
+    expect(screen.getByText('That run is no longer available.')).toBeTruthy();
     expect(document.querySelector('.schedule__log--focused')).toBeNull();
   });
 
@@ -484,9 +478,7 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
 
     render(<ScheduleView />);
 
-    expect(
-      screen.getByText(/That scheduled run isn’t available/i),
-    ).toBeTruthy();
+    expect(screen.getByText(/That run is no longer available/i)).toBeTruthy();
     expect(screen.getByText('nightly-digest')).toBeTruthy();
     expect(document.querySelector('.schedule__log--focused')).toBeNull();
   });

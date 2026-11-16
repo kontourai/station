@@ -52,15 +52,15 @@ export const FIRST_RUN_TOUR_STEPS: readonly FirstRunTourStep[] = [
     // where a decision is now made — it carries Approve/Reject itself (#2064)
     // — so the step teaches the surface that still holds the whole claim.
     id: 'decisions',
-    title: 'Decisions are part of the record',
-    body: 'Work that needs your approval stops here, and the decision you make is kept with the run that asked for it — so later you can see not just what happened, but who let it.',
+    title: 'Approve or reject work',
+    body: 'Approvals stop here. Your decision is saved with the run.',
     view: { type: 'notifications' },
     anchor: 'notifications',
   },
   {
     id: 'schedule',
-    title: 'Unattended work is held to the same standard',
-    body: 'A scheduled job produces the same evidence as work you start yourself, because nobody is watching it — which is exactly when a receipt matters most.',
+    title: 'Scheduled work',
+    body: 'Scheduled runs keep the same record as runs you start.',
     view: { type: 'schedule' },
     anchor: 'schedule',
   },

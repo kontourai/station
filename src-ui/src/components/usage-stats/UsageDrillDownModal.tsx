@@ -114,8 +114,8 @@ export function UsageDrillDownModal({
               icon={<InboxGlyph />}
               label={
                 cacheInclusivity === 'disjoint'
-                  ? 'Input Tokens (uncached)'
-                  : 'Input Tokens'
+                  ? 'Input tokens (uncached)'
+                  : 'Input tokens'
               }
               value={
                 inputMeasured
@@ -126,27 +126,27 @@ export function UsageDrillDownModal({
             {modelStats.cacheReadTokens !== undefined && (
               <StatCard
                 icon={<InboxGlyph />}
-                label="Cache Read Tokens"
+                label="Cache read tokens"
                 value={modelStats.cacheReadTokens.toLocaleString()}
               />
             )}
             {modelStats.cacheWriteTokens !== undefined && (
               <StatCard
                 icon={<InboxGlyph />}
-                label="Cache Write Tokens"
+                label="Cache write tokens"
                 value={modelStats.cacheWriteTokens.toLocaleString()}
               />
             )}
             {promptTotal !== undefined && (
               <StatCard
                 icon={<InboxGlyph />}
-                label="Prompt Total"
+                label="Prompt total"
                 value={promptTotal.toLocaleString()}
               />
             )}
             <StatCard
               icon={<OutboxGlyph />}
-              label="Output Tokens"
+              label="Output tokens"
               value={
                 outputMeasured
                   ? modelStats.outputTokens.toLocaleString()
@@ -162,7 +162,7 @@ export function UsageDrillDownModal({
 
           {agentsUsingModel.length > 0 && (
             <div className="drill-down-section">
-              <h4>Agents Using This Model</h4>
+              <h4>Agents using this model</h4>
               <div className="drill-down-list">
                 {agentsUsingModel.map((entry) => (
                   <div key={entry.agentId} className="drill-down-list-item">
@@ -179,7 +179,7 @@ export function UsageDrillDownModal({
           )}
 
           <div className="drill-down-section">
-            <h4>Model Details</h4>
+            <h4>Model details</h4>
             <div className="drill-down-details">
               <div>
                 <strong>Model ID:</strong> {id}
@@ -302,7 +302,7 @@ export function UsageDrillDownModal({
 
           {modelBreakdown.length > 0 && (
             <div className="drill-down-section">
-              <h4>Models Used</h4>
+              <h4>Models used</h4>
               <div className="drill-down-list">
                 {modelBreakdown.map((entry) => (
                   <div key={entry.modelId} className="drill-down-list-item">
@@ -319,7 +319,7 @@ export function UsageDrillDownModal({
           )}
 
           <div className="drill-down-section">
-            <h4>Agent Details</h4>
+            <h4>Agent details</h4>
             <div className="drill-down-details">
               <div>
                 <strong>Agent ID:</strong> {id}

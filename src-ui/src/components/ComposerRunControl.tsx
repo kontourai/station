@@ -34,6 +34,7 @@ import './ComposerRunControl.css';
 /** One setup entry point for replies and every start surface. Picker owners stay mounted. */
 export function ComposerRunControl({
   label,
+  effort,
   icon,
   engineId,
   children,
@@ -41,6 +42,8 @@ export function ComposerRunControl({
   closeHandle,
 }: {
   label: string;
+  /** The requested reasoning effort, shown after the model; absent when the engine default applies. */
+  effort?: string;
   icon: ReactNode;
   engineId?: EngineId | null;
   children: ReactNode;
@@ -70,6 +73,8 @@ export function ComposerRunControl({
       ? cloneElement(icon, { fallbackGlyph: true })
       : icon || <AgentGlyph />;
   const separator = label.lastIndexOf(' · ');
+  // Effort qualifies a Model, so it is shown only beside one.
+  const shownEffort = separator < 0 ? undefined : effort;
   const contentId = useId();
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
@@ -127,7 +132,7 @@ export function ComposerRunControl({
   const changed = choices.some((choice) => choice.changed);
   const summary = [
     ...new Set([
-      label,
+      shownEffort ? `${label} · ${shownEffort}` : label,
       ...details,
       ...safety,
       ...(changed ? ['changed for this conversation'] : []),
@@ -149,13 +154,23 @@ export function ComposerRunControl({
               label
             ) : (
               <span className="composer-run-control__label">
-                <span className="composer-run-control__agent">
-                  {label.slice(0, separator)}
-                  {' · '}
-                </span>
+                {/* The Agent's own mark names it; the scarce text goes to the
+                    Model. The accessible name keeps the full label. */}
+                {!icon && (
+                  <span className="composer-run-control__agent">
+                    {label.slice(0, separator)}
+                    {' · '}
+                  </span>
+                )}
                 <span className="composer-run-control__model">
                   {label.slice(separator + 3)}
                 </span>
+                {shownEffort && (
+                  <span className="composer-run-control__effort">
+                    {' · '}
+                    {shownEffort}
+                  </span>
+                )}
               </span>
             )
           }

@@ -51,6 +51,20 @@ interface ProjectLine {
   text: string;
   /** The 1-based sequence of the message this replies to. */
   replyTo?: number;
+  /** Projected reactions, in first-reacted order (#4796). */
+  reactions?: { emoji: string; actors: RoomActor[] }[];
+  /** The latest edit's time; `text` is the edited text (#4797). */
+  editedAt?: string;
+  /** A tombstone: the history withholds its text (#4797). */
+  deletedAt?: string;
+  /** Files on the message (#4812). */
+  attachments?: {
+    id: string;
+    kind: 'image' | 'file';
+    name: string;
+    mimeType: string;
+    size: number;
+  }[];
 }
 
 const SHORT: ProjectLine[] = [
@@ -202,18 +216,58 @@ export type ProjectRoomScene =
   /** The short room with the composer focused and, on a phone, a keyboard. */
   | 'keyboard'
   | 'channels'
+  /** Reaction pills; the phone opens a message's actions (#4796). */
+  | 'reactions'
+  /** The quick picker, open on a message (#4796). */
+  | 'reaction-picker'
+  /** Edited messages and the composer editing your last one (#4797). */
+  | 'edited'
+  /** A deleted message whose reply still reads (#4797). */
+  | 'deleted'
+  /** An image and a file in a channel, and one staged to send (#4812). */
+  | 'attachment'
   /**
    * #4794/#4795: the channel list, a channel and a thread. `#general` holds
-   * the short history plus two replies to Scout's message (its thread).
+   * a bug triage with SHORT's shape (two Jonas lines, Scout, Maya) plus two
+   * replies to Scout's message (its thread).
    */
   | 'navigation';
 
-/** Replies to Scout's plan check (sequence 3): the navigation scene's thread. */
-const THREAD_REPLIES: ProjectLine[] = [
+/** Ids of the attachment scene's files. */
+const SHARED_IMAGE_ID = '6a1f2e3d-4c5b-4a69-8877-665544332211';
+const SHARED_FILE_ID = '6a1f2e3d-4c5b-4a69-8877-665544332212';
+
+/**
+ * The navigation scene's `#general`. The Pages home publishes its thread
+ * capture (#4801), so it carries no pricing-like text. Sequence 3 is Scout's
+ * diagnosis, the thread root; the six messages keep the read-marker fixture's
+ * latest version (6).
+ */
+const NAVIGATION_HISTORY: ProjectLine[] = [
+  {
+    actor: JONAS,
+    at: at(1, 14, 2),
+    text: 'Morning! Two reports of the Safari sign-in loop came in overnight.',
+  },
+  {
+    actor: JONAS,
+    at: at(1, 14, 3),
+    text: 'Both are on the latest build, right after the login redirect.',
+  },
+  {
+    actor: SCOUT,
+    at: at(1, 14, 6),
+    text: 'I traced it in `auth/redirect.ts`. Two things differ on Safari:\n\n- The **return URL** loses its query string after sign-in.\n- The **session cookie** is set after the redirect, so the first load sees none.',
+  },
+  {
+    actor: VIEWER,
+    at: at(1, 14, 11),
+    text: 'Good catch. Jonas, can you take both before the release?',
+  },
   {
     actor: PRIYA,
     at: at(1, 14, 20),
-    text: 'Both numbers are fixed in the draft now.',
+    text: 'Both fixes are in the branch now.',
     replyTo: 3,
   },
   {
@@ -227,11 +281,106 @@ const THREAD_REPLIES: ProjectLine[] = [
 function projectLines(scene: ProjectRoomScene): ProjectLine[] {
   if (scene === 'empty') return [];
   if (scene === 'long' || scene === 'new-messages') return longHistory();
-  if (scene === 'navigation') return [...SHORT, ...THREAD_REPLIES];
+  if (scene === 'navigation') return NAVIGATION_HISTORY;
+  const [first, second, third, fourth] = SHORT as [
+    ProjectLine,
+    ProjectLine,
+    ProjectLine,
+    ProjectLine,
+  ];
+  if (scene === 'reactions' || scene === 'reaction-picker')
+    return [
+      {
+        ...first,
+        reactions: [
+          { emoji: '👍', actors: [PRIYA, VIEWER] },
+          { emoji: '🎉', actors: [PRIYA] },
+        ],
+      },
+      second,
+      {
+        ...third,
+        reactions: [
+          { emoji: '👀', actors: [JONAS] },
+          { emoji: '🙏', actors: [VIEWER, PRIYA, JONAS] },
+        ],
+      },
+      { ...fourth, reactions: [{ emoji: '✅', actors: [JONAS] }] },
+    ];
+  if (scene === 'edited')
+    return [
+      first,
+      {
+        ...second,
+        text: 'I kept the three tiers and moved the FAQ under the comparison table.',
+        editedAt: at(1, 14, 5),
+      },
+      third,
+      {
+        ...fourth,
+        text: 'Good catch. Jonas, can you update both numbers before we ship?',
+        editedAt: at(1, 14, 12),
+      },
+    ];
+  if (scene === 'deleted')
+    // The deleted message and the reply to it end the history, so a phone
+    // that follows the newest message shows both.
+    return [
+      first,
+      second,
+      third,
+      fourth,
+      {
+        actor: JONAS,
+        at: at(1, 14, 14),
+        text: '',
+        deletedAt: at(1, 14, 15),
+      },
+      {
+        actor: PRIYA,
+        at: at(1, 14, 16),
+        text: 'Which FAQ do you mean, the billing one?',
+        replyTo: 5,
+      },
+    ];
+  if (scene === 'attachment')
+    // The files end the history, so a phone shows the image and the file.
+    return [
+      first,
+      fourth,
+      {
+        actor: JONAS,
+        at: at(1, 14, 13),
+        text: 'Here is the new pricing table on a phone.',
+        attachments: [
+          {
+            id: SHARED_IMAGE_ID,
+            kind: 'image',
+            name: 'pricing-table.png',
+            mimeType: 'image/png',
+            size: IMAGE_PNG.length,
+          },
+        ],
+      },
+      {
+        actor: PRIYA,
+        at: at(1, 14, 15),
+        text: '',
+        attachments: [
+          {
+            id: SHARED_FILE_ID,
+            kind: 'file',
+            name: 'plan-limits.pdf',
+            mimeType: 'application/pdf',
+            size: 48213,
+          },
+        ],
+      },
+    ];
   return SHORT;
 }
 
-/** The navigation scene's thread root: Scout's plan check. */
+/** The navigation scene's thread root: Scout's Safari diagnosis. */
 export const NAVIGATION_THREAD_ROOT = uuid(3, 'c1');
 /** `#design` room id, for routes and read markers. */
 export const GALLERY_DESIGN_ROOM_ID = DESIGN_ID;
@@ -287,11 +436,15 @@ function projectMessage(line: ProjectLine, seq: number, roomId = ROOM_ID) {
     intentId: uuid(seq, roomId === ROOM_ID ? 'b1' : 'b2'),
     text: line.text,
     ...(line.replyTo ? { replyTo: uuid(line.replyTo, 'c1') } : {}),
+    ...(line.attachments ? { attachments: line.attachments } : {}),
     roomId,
     messageId: uuid(seq, roomId === ROOM_ID ? 'c1' : 'c2'),
     seq,
     actor: line.actor,
     createdAt: line.at,
+    ...(line.editedAt ? { editedAt: line.editedAt } : {}),
+    ...(line.deletedAt ? { deletedAt: line.deletedAt } : {}),
+    ...(line.reactions ? { reactions: line.reactions } : {}),
   };
 }
 
@@ -416,6 +569,25 @@ export async function installProjectRoomFixture(
                 last < Math.min(all.length, after + limit) ? last : null,
             },
           },
+        });
+      },
+    ],
+    [
+      `${address}/attachments/*`,
+      (route) => {
+        if (route.request().method() !== 'GET')
+          return rejectUnexpectedFixtureRequest(route);
+        const id = new URL(route.request().url()).pathname.split('/').at(-1);
+        const file = read()
+          .flatMap((message) =>
+            'attachments' in message ? (message.attachments ?? []) : [],
+          )
+          .find((attachment) => attachment.id === id);
+        if (!file) return rejectUnexpectedFixtureRequest(route);
+        return route.fulfill({
+          status: 200,
+          headers: { 'Content-Type': 'application/octet-stream' },
+          body: file.kind === 'image' ? IMAGE_PNG : Buffer.from('%PDF-1.7\n'),
         });
       },
     ],
@@ -599,7 +771,7 @@ export async function installProjectConversationsFixture(
       sessionId: runningSession,
     }),
     task(2, 'Draft the release notes for 2.4', at(2, 15, 10)),
-    task(3, 'Audit the pricing page copy', at(2, 14, 0), { status: 'review' }),
+    task(3, 'Check the onboarding copy', at(2, 14, 0), { status: 'review' }),
     // No room was ever opened for this Task: the summary answers unavailable.
     task(4, 'Rename the onboarding checklist', at(2, 13, 0)),
   ];

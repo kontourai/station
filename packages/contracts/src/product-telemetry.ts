@@ -331,6 +331,8 @@ export interface TelemetryOutboxEntry {
     | 'overflow'
     | 'expired'
     | 'transport'
+    /** #4994: the receiver refused the batch with a permanent 4xx. */
+    | 'rejected'
     | 'invalid';
   payload:
     | StationDailyPing

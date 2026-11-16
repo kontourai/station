@@ -349,6 +349,12 @@ export {
   useTerminalProcessQuery,
 } from './query-domains/chatRuntime';
 export {
+  type CustomAppearanceAction,
+  customAppearanceKey,
+  useCustomAppearanceMutation,
+  useCustomAppearanceQuery,
+} from './query-domains/customAppearance';
+export {
   fetchPairedDevices,
   pairedDeviceQueries,
   usePairedDevicesQuery,
@@ -797,6 +803,11 @@ export {
   verifyBedrockConnection,
   verifyManagedRuntimeConnection,
 } from './query-domains/systemRuntime';
+export {
+  taskCodeReviewQueryKey,
+  useRequestTaskCodeReviewMutation,
+  useTaskCodeReviewQuery,
+} from './query-domains/taskCodeReview';
 export {
   type CreateTaskReferenceInput,
   type CreateTaskUserInputReferenceInput,

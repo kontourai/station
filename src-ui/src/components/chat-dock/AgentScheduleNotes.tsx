@@ -20,6 +20,7 @@ import { DisclosureToggle } from '../DisclosureToggle';
 import { CalendarGlyph, TimeGlyph } from '../icons/Glyph';
 import { scheduleText } from './agentScheduleText';
 import './AgentScheduleNotes.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 
 const wakeUpKey = (wakeUp: AgentWakeUp) => wakeUp.id;
 const proposalKey = (proposal: AgentJobProposal) => proposal.id;
@@ -253,6 +254,7 @@ function CheckBackApprovalCard({
   onApprove: () => void;
   onDecline: () => void;
 }) {
+  useDecisionSurface('check-back-approval');
   const at = clockTime(Date.parse(wakeUp.dueAt), now);
   return (
     <section
@@ -322,6 +324,7 @@ function JobProposalCard({
   onApprove: () => void;
   onDecline: () => void;
 }) {
+  useDecisionSurface('job-proposal');
   const { job } = proposal;
   const cron = job.schedule.kind === 'cron' ? job.schedule : null;
   const preview = usePreviewSchedule(cron?.expr ?? null, cron?.timezone);
@@ -433,6 +436,7 @@ function AutomationProposalCard({
   onConfirm: (enable: boolean) => void;
   onDecline: () => void;
 }) {
+  useDecisionSurface('automation-proposal');
   const [enable, setEnable] = useState(false);
   const [instructionsOpen, setInstructionsOpen] = useState(false);
   const instructionsId = useId();

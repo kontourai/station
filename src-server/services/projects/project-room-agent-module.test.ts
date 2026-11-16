@@ -358,6 +358,35 @@ describe('Project Room explicit agent participation', () => {
     expect(f.launches).toBe(launches);
     expect(f.preparations).toBe(preparations);
   });
+  it('never forwards a message’s files: the launch context carries no file id, name or bytes (#4812)', async () => {
+    const f = fixture();
+    const file = {
+      id: randomUUID(),
+      kind: 'image' as const,
+      name: 'PRIVATE_FILE_CANARY.png',
+      mimeType: 'image/png' as const,
+      size: 8,
+    };
+    const source = f.room.store.append(
+      f.authority.scope,
+      f.authority.requester,
+      { intentId: randomUUID(), text: 'shared caption', attachments: [file] },
+      f.authority.assertCurrent,
+    );
+    await f.module.request(f.authority, f.input);
+    expect(f.launches).toBe(1);
+    expect(JSON.parse(f.captures[0]!.split('\n')[1]!)).toEqual([
+      {
+        actor: source.actor,
+        text: source.text,
+        messageId: source.messageId,
+        seq: source.seq,
+      },
+    ]);
+    expect(f.captures[0]).not.toContain(file.id);
+    expect(f.captures[0]).not.toContain(file.name);
+  });
+
   it('includes a fitting note and history unchanged', async () => {
     const f = fixture();
     const source = f.room.store.append(

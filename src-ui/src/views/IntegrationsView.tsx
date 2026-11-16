@@ -306,8 +306,7 @@ export function IntegrationsView({
     <>
       <SplitPaneLayout
         label="connections / tools"
-        title="Tool Servers"
-        subtitle="MCP server connections"
+        title="Tool servers"
         items={items}
         loading={isLoading}
         error={integrationsError}
@@ -331,7 +330,7 @@ export function IntegrationsView({
         searchValue={search}
         listFilteredEmptyNoun="tool servers"
         collectionEmpty={integrations.length === 0}
-        searchPlaceholder="Search tool servers..."
+        searchPlaceholder="Search tool servers…"
         /* The Connections section frame owns this section's single add action
            (design P3: exactly one add entry per section). This view used to
            add two more beside it — a `+ Add Tool Server` list button and a
@@ -339,7 +338,7 @@ export function IntegrationsView({
            differently-styled ways to add the same thing on one screen. The
            Registry keeps its own sidebar entry. */
         listEmptyTitle="No tool servers yet"
-        listEmptyDescription="Add an MCP server connection or install one from the registry."
+        listEmptyDescription="Add a tool server or install one from the Registry."
         emptyIcon={<SettingsGlyph />}
         emptyDescription="Select a tool server to edit, or add a new one."
       >

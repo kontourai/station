@@ -1,0 +1,25 @@
+{
+  "revision": "e5109ff5e3f0f8250ccfb93033964b1a16c1260a",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"#4852 fix round 8 (live repair inbox removed; repair is offline only; every staging write owns its file and removes it on failure): the release, refusal and repair bullets now describe a scan of bindings/ only, lstat-checked levels (a linked bindings/ pauses uploads, a linked home ancestor is fine), offline repair (stop every process, fix or remove under bindings/, start), that live edits are unsupported and undetectable, and that a leftover repair/ is ignored; the bound now counts a failed write like a crash. Checked against scanReferences, storeDirectory, ProjectRoomAttachments and publishThroughOwnedFile and the round-8 tests.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/config.md","note":"#4852 fix round 8 (live repair inbox removed; repair is offline only; every staging write owns its file and removes it on failure): the Project channel store sentence drops pending repairs and says repair is done with Station stopped. Checked against task-room-attachments.ts. The blob store change is failure cleanup only; retention, eviction and the Task-room sentences are unchanged.","inputs":["docs/reference/config.md","src-server/services/orchestration/attachment-blob-store.ts","src-server/services/projects/task-room-attachments.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#4852 fix round 8 (live repair inbox removed; repair is offline only; every staging write owns its file and removes it on failure): the ProjectRoom paragraph drops repair/ from the scan and the refusal, states offline-only repair and the ignored repair/, and says a failed write removes only its own staging file. Checked against task-room-attachments.ts and owned-staging-file.ts.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"#4852 fix round 8 (live repair inbox removed; repair is offline only; every staging write owns its file and removes it on failure): attachment-blob-store.ts now writes a blob's .part staging file through publishThroughOwnedFile, which removes it when the write or rename fails. Same-directory rename, dedup, read and retention, which this design relies on, are unchanged; prose unchanged.","inputs":["docs/design/chat-composer.md","src-server/services/orchestration/attachment-blob-store.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"#4852 fix round 8 (live repair inbox removed; repair is offline only; every staging write owns its file and removes it on failure): task-room-attachments.ts removed the Project-room repair path and now stages binding records through publishThroughOwnedFile. The Task asset store claims here (bindings, authority, signature check, retention, #4947) are unaffected; prose unchanged.","inputs":["docs/design/task-room-agent-requests.md","src-server/services/projects/task-room-attachments.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"#4852 fix round 8 (live repair inbox removed; repair is offline only; every staging write owns its file and removes it on failure): api.md changed only the Project room files section; this page cites the terminal socket transport section, which is unchanged. Prose unchanged.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#4852 fix round 8 (live repair inbox removed; repair is offline only; every staging write owns its file and removes it on failure): api.md changed only the Project room files section; this guide cites the S3 sources section and the reference as a whole. Prose unchanged.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"#4852 fix round 8 (live repair inbox removed; repair is offline only; every staging write owns its file and removes it on failure): config.md changed only the Project channel store sentence. This page cites config.md for unrelated current limits; prose unchanged.","inputs":["docs/architecture/abstraction-review.md","docs/reference/config.md"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"#4852 fix round 8 (live repair inbox removed; repair is offline only; every staging write owns its file and removes it on failure): config.md changed only the Project channel store sentence. This page cites the telemetry destinations section, which is unchanged; prose unchanged.","inputs":["docs/design/settings-architecture.md","docs/reference/config.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"#4852 fix round 8 (live repair inbox removed; repair is offline only; every staging write owns its file and removes it on failure): station-docs-content.ts was regenerated from the module map and docs:mcp:check passes. This page describes the bundle and its tools, which are unchanged; prose unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

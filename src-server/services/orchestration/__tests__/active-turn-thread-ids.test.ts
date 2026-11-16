@@ -93,7 +93,9 @@ test('lists every session with an active turn, ephemeral ones included', async (
     turnId: 'finished:t1',
   });
   const readModel = (
-    await service.listSessionReadModel(INTERNAL_SESSION_READ_SCOPE)
+    await service.listSessionReadModel(INTERNAL_SESSION_READ_SCOPE, {
+      purpose: 'session-list',
+    })
   ).map((session) => session.threadId);
   // The control: the read model does not list the ephemeral session.
   expect(readModel).not.toContain('webhook');

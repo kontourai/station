@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import type { SavedConnection } from '@kontourai/station-connect';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { OPEN_CONNECTIONS_MODAL_EVENT } from '../../lib/connectionModalEvents';
 import { MobileWelcomeBoundary } from '../MobileWelcomeBoundary';
@@ -71,8 +77,8 @@ describe('fresh phone connection entry', () => {
         </MobileWelcomeBoundary>,
       );
       expect(applicationMounted).not.toHaveBeenCalled();
-      expect(screen.getByRole('heading', { level: 1 }).textContent).toContain(
-        'Your work',
+      expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
+        'Connect to your Station',
       );
       fireEvent.click(
         screen.getByRole('button', { name: 'Scan pairing QR code' }),
@@ -91,7 +97,7 @@ describe('fresh phone connection entry', () => {
     // Top level, not three levels down behind the connection manager.
     ['Enter Station address', 'connect-station'],
     ['Find nearby Stations', 'discover'],
-    ['Open connection manager', 'list'],
+    ['Manage Stations', 'list'],
   ])('opens the existing %s fallback directly', (label, mode) => {
     const onOpen = vi.fn();
     window.addEventListener(OPEN_CONNECTIONS_MODAL_EVENT, onOpen);
@@ -101,15 +107,18 @@ describe('fresh phone connection entry', () => {
           <div>Workspace</div>
         </MobileWelcomeBoundary>,
       );
-      if (mode === 'list')
-        fireEvent.click(screen.getByText('Other ways to connect'));
-      if (mode === 'discover') {
-        // A third option sits behind the row's overflow (two-action cap).
+      // One group, no nested disclosure: the two direct routes are buttons,
+      // and the rest sit in that group's overflow (two-action cap, #3045).
+      const group = screen.getByRole('group', {
+        name: 'Other ways to connect',
+      });
+      if (mode === 'discover' || mode === 'list') {
         fireEvent.click(
-          screen.getByRole('button', { name: 'More connection options' }),
+          within(group).getByRole('button', { name: 'More ways to connect' }),
         );
         fireEvent.click(screen.getByRole('menuitem', { name: label }));
-      } else fireEvent.click(screen.getByRole('button', { name: label }));
+      } else
+        fireEvent.click(within(group).getByRole('button', { name: label }));
       expect((onOpen.mock.calls[0][0] as CustomEvent).detail).toEqual({ mode });
     } finally {
       window.removeEventListener(OPEN_CONNECTIONS_MODAL_EVENT, onOpen);

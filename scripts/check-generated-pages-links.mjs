@@ -1,9 +1,15 @@
-import { access, readdir, readFile } from 'node:fs/promises';
+import { access, readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const HREF = /\shref=["']([^"']+)["']/g;
 const EXTERNAL_TARGET = /^(?:[a-z][a-z\d+.-]*:|\/\/|#)/i;
+
+function hasElementId(html, id) {
+  for (const match of html.matchAll(/\sid=["']([^"']*)["']/g))
+    if (match[1] === id) return true;
+  return false;
+}
 
 export async function findGeneratedHtmlFiles({ root = process.cwd() } = {}) {
   const repositoryRoot = path.resolve(root);
@@ -58,7 +64,27 @@ export async function findBrokenGeneratedPageLinks({
         await access(resolved);
       } catch {
         failures.push({ file, href, reason: 'missing generated target' });
+        continue;
       }
+
+      // A fragment on another page must name an element there: the file
+      // existing is not enough when a section is renamed or removed.
+      const fragment = href.includes('#')
+        ? decodeURIComponent(href.slice(href.indexOf('#') + 1))
+        : '';
+      if (!fragment) continue;
+      const targetFile = (await stat(resolved)).isDirectory()
+        ? path.join(resolved, 'index.html')
+        : resolved;
+      let target = '';
+      try {
+        target = await readFile(targetFile, 'utf8');
+      } catch {
+        failures.push({ file, href, reason: 'missing generated target' });
+        continue;
+      }
+      if (!hasElementId(target, fragment))
+        failures.push({ file, href, reason: 'missing fragment target' });
     }
   }
 

@@ -31,11 +31,16 @@ vi.mock('../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => undefined,
 }));
 
+import { APPEARANCE_HOOKS } from '@kontourai/station-contracts/custom-appearance';
 import {
   ChatDockHeader,
   type ChatDockWorkspaceControls as WorkspaceControls,
 } from '../components/chat-dock/ChatDockHeader';
 import { RegionChromeSlotsContext } from '../workspace-panes/RegionChromeSlots';
+
+/** A custom-appearance hook selector, from the contract (APPEARANCE_HOOKS). */
+const appearanceHook = (id: string) =>
+  APPEARANCE_HOOKS.find((hook) => hook.id === id)!.selector;
 
 function workspaceControls(
   overrides: Partial<WorkspaceControls> = {},
@@ -99,6 +104,14 @@ describe('header inbox toggle (from #1064 AC1/AC2)', () => {
     expect(row.getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(row);
     expect(controls.onToggleInbox).toHaveBeenCalledTimes(1);
+  });
+
+  test('renders the chat-header custom-appearance hook', async () => {
+    renderHeader({ workspaceControls: workspaceControls() });
+    const toggle = await screen.findByRole('button', { name: 'Hide inbox' });
+    expect(
+      document.querySelector(appearanceHook('chat-header'))?.contains(toggle),
+    ).toBe(true);
   });
 
   test('collapsed state renders "Show inbox" unchecked', async () => {

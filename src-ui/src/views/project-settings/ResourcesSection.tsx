@@ -152,9 +152,8 @@ function PointAtCheckoutForm({
         }}
       />
       <p className="editor-hint">
-        Acquire or reuse a copy, then explicitly record it for this resource
-        below. Station rechecks the current resource identity before binding;
-        selecting a copy does not change the primary resource.
+        Get or reuse a copy, then record it below. This doesn’t change the
+        Project’s primary source.
       </p>
       <form
         className="resources-section__repair"
@@ -187,8 +186,7 @@ function PointAtCheckoutForm({
           </button>
         </div>
         <span className="editor-hint">
-          Station checks the directory before it records anything. It is never
-          re-pointed for you.
+          Station checks the folder before saving it.
         </span>
         {refusal && (
           <ErrorState
@@ -224,9 +222,8 @@ function EditWorkingDirectoryPrompt() {
   return (
     <div className="resources-section__repair">
       <span className="editor-hint">
-        That path comes from this project's working directory, so it is edited
-        in the Workspace section on this page. Station re-points nothing for
-        you.
+        That path is this Project’s working directory. Change it in the
+        Workspace section.
       </span>
       <a
         className="editor-btn"
@@ -606,9 +603,8 @@ function PrimarySelection({
         No single resource is this project's primary
       </div>
       <p className="resources-section__body">
-        {primary.reason} Until then, anything that asks this project where to
-        work — a chat, a knowledge scan, a task — has no resource to be pointed
-        at.
+        {primary.reason} Until one is chosen, chats, knowledge scans and Tasks
+        in this Project have no folder to work in.
       </p>
     </div>
   );
@@ -645,7 +641,6 @@ export function ResourcesSection({
           <PageSection
             id={embedded ? undefined : 'section-resources'}
             className="project-settings__section resources-section"
-            eyebrow="Project code"
             title={embedded ? 'Repositories' : 'Resources'}
             description="Where this Station finds this project's code."
           >

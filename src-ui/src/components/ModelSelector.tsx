@@ -136,7 +136,7 @@ export function ModelSelector({
     ? selectedModel?.name || value
     : defaultModelInfo
       ? `${defaultModelInfo.name} (default)`
-      : placeholder || 'Select a model...';
+      : placeholder || 'Select a model…';
 
   const filteredModels = useMemo(() => {
     let filtered = [...models];
@@ -215,7 +215,7 @@ export function ModelSelector({
             setSearch('');
           }, 200);
         }}
-        placeholder={placeholder || 'Select a model...'}
+        placeholder={placeholder || 'Select a model…'}
         className="editor-input"
         style={{ width: '100%' }}
       />

@@ -18,6 +18,7 @@ import {
   useDeviceToolchainStatus,
 } from './deviceToolchainApi';
 import './DeviceSetupWizard.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 
 /**
  * Three-step device setup (#1970, D11): the device hub, simulator/emulator
@@ -228,6 +229,7 @@ export default function DeviceSetupWizard({
   requestScope: ApiRequestScope;
   onClose: () => void;
 }) {
+  useDecisionSurface('device-agent-control');
   const [step, setStep] = useState(0);
   const status = useDeviceToolchainStatus(requestScope);
   const action = useDeviceToolchainAction(requestScope);

@@ -1,3 +1,4 @@
+import { resolve } from 'node:path';
 import type { ResolvedAgentToolServer } from '@kontourai/station-contracts/provider';
 import { describe, expect, test } from 'vitest';
 import {
@@ -5,6 +6,7 @@ import {
   builtinStationKnowledgeServerPath,
 } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { INTERNAL_API_TOKEN_ENV } from '../../utils/internal-api-token.js';
+import { resolveHomeDir } from '../../utils/paths.js';
 import { resolveClaudeMcpServers } from '../adapters/claude-mcp-passthrough.js';
 
 function toolServer(
@@ -135,7 +137,15 @@ describe('resolveClaudeMcpServers', () => {
         type: 'stdio',
         command: 'node',
         args: [builtinStationControlServerPath()],
-        env: { [INTERNAL_API_TOKEN_ENV]: expect.any(String) },
+        env: {
+          [INTERNAL_API_TOKEN_ENV]: expect.any(String),
+          // The home's compile cache rides the same exact-binary gate.
+          NODE_COMPILE_CACHE: resolve(
+            resolveHomeDir(),
+            'cache',
+            'node-compile',
+          ),
+        },
       });
     });
 

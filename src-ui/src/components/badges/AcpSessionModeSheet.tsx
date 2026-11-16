@@ -1,6 +1,7 @@
 import { Badge } from '@kontourai/ui/react';
 import type { RefObject } from 'react';
 import { useManagedApprovalCeiling } from '../../contexts/ManagedPolicyContext';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import type { AdvertisedAcpMode } from '../../utils/acpSessionMode';
 import { ManagedApprovalCeilingNote } from '../managed/ManagedApprovalCeilingNote';
 import {
@@ -23,6 +24,7 @@ export function AcpSessionModeSheet({
   onClose,
   onSelect,
 }: AcpSessionModeSheetProps) {
+  useDecisionSurface('acp-session-mode');
   const { acpModeAboveCeiling } = useManagedApprovalCeiling();
   return (
     <ResponsiveDialogSurface
