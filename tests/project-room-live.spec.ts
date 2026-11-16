@@ -329,6 +329,14 @@ test.describe
         const general = channels.get('general')!;
         const first = await operatorPost(general, 'Before the gap.');
         await expect(rowOf(operator.room, 'Before the gap.')).toBeVisible();
+        // The row can show from the room's own history read before its frame
+        // reaches the proxy; arm the drop only once that frame has passed, so
+        // the one dropped is the next message's.
+        await expect
+          .poll(() =>
+            trail.includes(`append ${general.slice(0, 8)} seq=${first.seq}`),
+          )
+          .toBe(true);
         const reads = backfills.length;
         dropNextAppend = true;
         await operatorPost(general, 'This frame is dropped.');

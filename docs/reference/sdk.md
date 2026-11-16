@@ -838,7 +838,7 @@ changes. Instead of re-reading history on each change, `useProjectRoom` merges
 an `append` into the newest window and an `update` into every window or kept
 row that holds the message, each merge taking the next `readSeq`. A message
 past the next sequence is first backfilled from history (`after` the last
-sequence the cache reflects); an `update` whose activity range does not start
+sequence the stream delivered); an `update` whose activity range does not start
 where the cache is, a `resync`, or any (re)connection re-reads the room once.
 A hook that joins a connection already open starts from where the room stands
 on it, so a gap after that is still backfilled.
