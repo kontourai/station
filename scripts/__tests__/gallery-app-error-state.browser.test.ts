@@ -14,6 +14,7 @@ import { enUSCatalog } from '../../src-ui/src/i18n/catalog.en-US';
 import {
   type AppErrorSurfaceCounts,
   createFailedRequestLog,
+  failedScreenReason,
   READ_APP_ERROR_SURFACES,
 } from '../../tests/helpers/gallery-app-error-state';
 import {
@@ -22,9 +23,12 @@ import {
 } from '../../tests/helpers/gallery-document-tracker';
 import {
   captureScreens,
+  failedScreenFields,
   MAX_SECOND_CAPTURES,
   type ScreenResult,
 } from '../../tests/helpers/gallery-screen-attempt';
+import { auditGalleryScreen } from '../../tests/helpers/gallery-ui-audit';
+import { judge } from '../gallery-ui-findings.mjs';
 
 // The Gallery's browser-side probes, run in a real Chromium against fixture
 // pages: the error-surface reader, and the capture loop wired as
@@ -73,6 +77,10 @@ beforeAll(async () => {
     createElement(ErrorState, { title: 'Project list unavailable' }),
   );
 });
+// A hard clip that hides what it holds (hit-target:unreachable), inside the
+// `#root` the hit-target audit measures.
+const clipped = (html: string) =>
+  `<div id="root"><div style="height:100px;overflow:hidden"><div style="height:500px"></div>${html}</div></div>`;
 const toast = (title: string) =>
   `<div data-testid="toast-card" class="toast-card"><strong>${title}. Station could not start the extension registry.</strong><button>Reload Station</button></div>`;
 
@@ -111,6 +119,8 @@ interface FixtureScreen {
   name: string;
   mode:
     | 'lazy'
+    /** `lazy`, with the error row inside a hard clip, as on the phone dock. */
+    | 'lazy-clipped'
     | 'route-push'
     | 'render-error'
     | 'cross-origin'
@@ -166,12 +176,14 @@ describe('the capture loop against a real page', { timeout: 60_000 }, () => {
     `<!doctype html><html><head><meta charset="utf-8"></head><body>
 <div class="app"><button>Send</button></div>
 <script type="module">
+  const mode = ${JSON.stringify(mode)};
   const fail = () => {
-    document.body.insertAdjacentHTML('afterbegin', ${JSON.stringify(lazyRow)});
+    document.body.insertAdjacentHTML('afterbegin', mode === 'lazy-clipped'
+      ? ${JSON.stringify(clipped(lazyRow))}
+      : ${JSON.stringify(lazyRow)});
     document.body.dataset.ready = '1';
   };
   const done = () => { document.body.dataset.ready = '1'; };
-  const mode = ${JSON.stringify(mode)};
   if (mode === 'render-error') fail();
   else if (mode === 'cross-origin') {
     const script = document.createElement('script');
@@ -199,7 +211,10 @@ describe('the capture loop against a real page', { timeout: 60_000 }, () => {
     );
 </script></body></html>`;
 
-  async function capture(screens: FixtureScreen[]) {
+  async function capture(
+    screens: FixtureScreen[],
+    audit: (page: Page, screen: string) => Promise<unknown> = async () => null,
+  ) {
     const context = await browser.newContext({
       viewport: { width: 800, height: 600 },
     });
@@ -210,7 +225,7 @@ describe('the capture loop against a real page', { timeout: 60_000 }, () => {
       documents,
       failedRequests,
     });
-    const results = new Map<string, ScreenResult<null>>();
+    const results = new Map<string, ScreenResult<unknown>>();
     const logs: string[] = [];
     const chunk = '**/assets/Lazy-abcdefgh.js';
     try {
@@ -240,7 +255,7 @@ describe('the capture loop against a real page', { timeout: 60_000 }, () => {
               await page.screenshot();
             },
             readControls: async () => [],
-            audit: async () => null,
+            audit: () => audit(page, screen.name),
             fallbackScreenshot: async () => {},
             cleanup: async () => {
               await page.unroute(chunk);
@@ -285,6 +300,51 @@ describe('the capture loop against a real page', { timeout: 60_000 }, () => {
       },
     });
     expect(logs[0]).toMatch(/^::warning title=Gallery transient app error::/);
+  });
+
+  it('fails a screen whose lazy chunk is lost on both captures as a chunk failure, with no layout findings', async () => {
+    // Positive control: the same clipped error row, audited, is exactly the
+    // hit-target signature hosted runs blamed on pull requests (#5028).
+    await open(clipped(lazyRow));
+    const rowAudit = await auditGalleryScreen(page, 'error-row');
+    expect(rowAudit.findings.map(({ identity }) => identity)).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^hit-target:unreachable:.*Retry/),
+        expect.stringMatching(/^hit-target:unreachable:.*Reload/),
+      ]),
+    );
+
+    const { results } = await capture(
+      [{ name: 'lost-chunk', mode: 'lazy-clipped', failChunk: [1, 2] }],
+      auditGalleryScreen,
+    );
+    const result = results.get('lost-chunk');
+    expect(result).toMatchObject({
+      attempts: 2,
+      final: { ok: false },
+      record: { second: 'app-error-surface' },
+    });
+    if (!result || result.final.ok) return;
+    // What the spec writes to capture.json for the screen, and logs.
+    const fields = failedScreenFields(result, []);
+    expect(
+      failedScreenReason('lost-chunk', fields.error, fields.appError),
+    ).toMatch(
+      /^lazy chunk unavailable: lost-chunk \(\/assets\/Lazy-abcdefgh\.js net::ERR_[A-Z_]+\)$/,
+    );
+    // What the findings judge and attribution read from it.
+    const verdict = judge(
+      { selection: null, screens: [{ name: 'lost-chunk', ...fields }] },
+      { screens: {} },
+    );
+    expect(verdict.failures).toEqual([
+      {
+        screen: 'lost-chunk',
+        identity: 'capture-failed',
+        detail:
+          'app-error-surface: lazy-boundary-row; failed chunk requests: /assets/Lazy-<hash>.js',
+      },
+    ]);
   });
 
   it(`shares one budget of ${MAX_SECOND_CAPTURES} second captures across the run`, async () => {
