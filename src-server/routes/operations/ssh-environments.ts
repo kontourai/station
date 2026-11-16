@@ -1,12 +1,10 @@
 import { type Context, Hono } from 'hono';
-import { servesRemoteSessionReads } from '../../capabilities/station-capability-flags.js';
-import { isHostedTenantExecutionRequired } from '../../runtime/bootstrap/hosted-tenant-mode.js';
-import { requestMayBeAnAgent } from '../../security/coding-authority.js';
 import type { PairingScopeContextStore } from '../../security/pairing-route-scopes.js';
 import {
-  getBudgetPrincipal,
-  isBoundRuntimeOwner,
-} from '../../security/runtime-request-security.js';
+  type RemoteStationReadAuthority,
+  remoteStationReadDecision,
+} from '../../security/remote-station-read-authority.js';
+import { getBudgetPrincipal } from '../../security/runtime-request-security.js';
 import type { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
 import { SSH_PROBE_MAX_SECONDS } from '../../services/ssh/openssh-reachability.js';
 import {
@@ -39,35 +37,6 @@ function errorStatus(message: string): 400 | 404 | 409 | 500 {
   if (/mismatch|incompatible/i.test(message)) return 409;
   if (/invalid|required|must|alias|path|port/i.test(message)) return 400;
   return 500;
-}
-
-/** The local caller standing that a remote read through this Station needs. */
-export interface RemoteStationReadAuthority {
-  /** A hosted deployment: no tenant binds the Station-wide peer bearer. */
-  hosted: boolean;
-  /** The request's principal is still the current one (not revoked). */
-  current: (request: Request) => boolean;
-  /** The request is the Station's bound owner, the person the bearer serves. */
-  owner: (request: Request) => boolean;
-}
-
-/**
- * The production composition of {@link RemoteStationReadAuthority}: the same
- * caller standing the paired Station chat relay requires over the same
- * Station-wide peer bearer, and no remote reads at all on a hosted Station.
- * `current` is the runtime's own principal-currentness predicate.
- */
-export function runtimeRemoteStationReadAuthority(
-  current: (request: Request) => boolean,
-  environment: NodeJS.ProcessEnv = process.env,
-): RemoteStationReadAuthority {
-  return {
-    hosted: !servesRemoteSessionReads({
-      hosted: isHostedTenantExecutionRequired(environment),
-    }),
-    current,
-    owner: isBoundRuntimeOwner,
-  };
 }
 
 /** Profile ids and thread ids are opaque, single path segments. */
@@ -143,28 +112,16 @@ export function createSshEnvironmentRoutes(
    * `remoteSessionHistory` to match).
    */
   const refuseRemoteRead = (c: Context): Response | undefined => {
-    if (!remoteReads)
-      return c.json({ success: false, error: 'Forbidden' }, 403);
-    if (remoteReads.hosted)
-      return c.json(
-        {
-          success: false,
-          error: 'This Station does not read other computers.',
-        },
-        404,
-      );
-    const request = c.req.raw;
-    let admitted = false;
-    try {
-      admitted =
-        !requestMayBeAnAgent(request) &&
-        remoteReads.current(request) === true &&
-        remoteReads.owner(request) === true;
-    } catch {
-      admitted = false;
-    }
-    return admitted
-      ? undefined
+    const decision = remoteStationReadDecision(remoteReads, c.req.raw);
+    if (decision === 'admitted') return undefined;
+    return decision === 'unavailable'
+      ? c.json(
+          {
+            success: false,
+            error: 'This Station does not read other computers.',
+          },
+          404,
+        )
       : c.json({ success: false, error: 'Forbidden' }, 403);
   };
 

@@ -17,6 +17,10 @@ import {
   StationResponseTooLargeError,
   searchConversationMessages,
 } from '@kontourai/station-sdk/client';
+import {
+  guardRemoteMessageSearch,
+  type RemoteStationReadAuthority,
+} from '../../security/remote-station-read-authority.js';
 import type { PeerCredentialStore } from '../peers/peer-credential-store.js';
 import type { SshEnvironmentService } from './ssh-environment-service.js';
 
@@ -117,7 +121,7 @@ interface RemoteMessageSearchResult {
   deferredInstanceCount: number;
 }
 
-type RemoteMessageSearchFetcher = (
+export type RemoteMessageSearchFetcher = (
   apiBase: string,
   query: string,
   options?: ClientRequestOptions,
@@ -300,6 +304,29 @@ export async function searchConnectedRemoteMessages(
     // status per unqueried saved profile on every settled keystroke.
     deferredInstanceCount: deferred.length,
   };
+}
+
+/**
+ * The message search runtime-routes.ts hands the conversation routes: the
+ * connected-Station search above, reached only by a caller the read
+ * authority admits. A caller it refuses gets no remote result, no remote
+ * Station named, and no bearer sent; the route's local results are its own.
+ */
+export function runtimeRemoteMessageSearch(
+  reads: RemoteStationReadAuthority,
+  service: Pick<SshEnvironmentService, 'list'>,
+  peerCredentials: Pick<PeerCredentialStore, 'get'>,
+  fetchMessages: RemoteMessageSearchFetcher = defaultMessageSearchFetcher,
+) {
+  return guardRemoteMessageSearch(reads, (query, signal) =>
+    searchConnectedRemoteMessages(
+      service,
+      query,
+      signal,
+      fetchMessages,
+      peerCredentials,
+    ),
+  );
 }
 
 /**
