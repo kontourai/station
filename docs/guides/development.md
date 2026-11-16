@@ -939,6 +939,10 @@ gh api repos/kontourai/station/rules/branches/main
   cover native inputs only; a change confined to the rest of `src-ui/` or
   the bundled packages gets its iOS build from the main push, and a red one
   opens a `Main pipeline red: PR: iOS build` tracker.
+- **Push once per fix round.** Every push restarts the PR's checks (a median
+  66 runner-minutes on 2026-11-16) and cancels the run in progress; one branch
+  pushed 8 heads a median 9 minutes apart and all 307 runner-minutes were
+  cancelled.
 - **Arm auto-merge; do not merge by hand.**
   `gh pr merge <n> --repo kontourai/station --auto`. Auto-merge is opt-in per
   PR: a green PR that nobody armed sits forever, which is the usual reason a

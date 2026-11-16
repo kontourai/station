@@ -1,0 +1,264 @@
+#!/usr/bin/env node
+/**
+ * Decides whether a push to main may leave the open version PR alone.
+ *
+ * Every regeneration force-pushes `changeset-release/main`, which restarts
+ * all of the PR's checks, cancels the run in progress and takes the PR out of
+ * the merge queue. Most pushes to main do not change what the PR releases.
+ * This probe runs the same version script the action would run, on the same
+ * checkout, and compares the tree it produces with the tree that merging the
+ * existing PR head into this main produces. Only when they are identical (and
+ * the merge is clean) does it report `current=true`: landing the existing PR
+ * then yields exactly the bytes a regeneration would have pushed, so nothing
+ * about the release (notes consumed, versions, dependency ranges, changelog
+ * commit references, lockfile) can differ.
+ *
+ * It fails open. Any unreadable or unexpected state is `current=false`, which
+ * leaves the action to regenerate exactly as before.
+ */
+import { appendFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { spawnSyncBounded } from './lib/bounded-capture.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
+
+export const VERSION_BRANCH = 'changeset-release/main';
+export const VERSION_BASE = 'main';
+export const VERSION_PR_AUTHOR = 'station-automation[bot]';
+
+const OBJECT_ID = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
+
+/**
+ * Picks the one open version PR from a GitHub REST `GET /pulls` listing, or
+ * explains why there is none it can trust.
+ */
+export function selectVersionPr(pulls, repository) {
+  if (!Array.isArray(pulls))
+    return { reason: 'pull request listing is not an array' };
+  if (pulls.length !== 1)
+    return { reason: `expected one open version PR, found ${pulls.length}` };
+  const [pr] = pulls;
+  if (pr?.state !== 'open') return { reason: 'version PR is not open' };
+  if (pr.head?.ref !== VERSION_BRANCH)
+    return { reason: `PR head branch is not ${VERSION_BRANCH}` };
+  if (pr.head?.repo?.full_name !== repository)
+    return { reason: 'PR head is not a branch of this repository' };
+  if (pr.base?.ref !== VERSION_BASE)
+    return { reason: `PR base is not ${VERSION_BASE}` };
+  if (pr.user?.login !== VERSION_PR_AUTHOR)
+    return { reason: `PR author is not ${VERSION_PR_AUTHOR}` };
+  if (typeof pr.head.sha !== 'string' || !OBJECT_ID.test(pr.head.sha))
+    return { reason: 'PR head sha is unreadable' };
+  if (!Number.isInteger(pr.number))
+    return { reason: 'PR number is unreadable' };
+  return { pr };
+}
+
+/**
+ * The decision, on already-gathered state. `head` describes the PR head
+ * commit as read from Git; `merge` is `git merge-tree --write-tree` of the
+ * checked-out main with that head; `regeneratedTree` is the tree the version
+ * script produced on the checked-out main.
+ */
+export function decideVersionPrCurrent({
+  pulls,
+  repository,
+  head,
+  merge,
+  regeneratedTree,
+}) {
+  const selected = selectVersionPr(pulls, repository);
+  if (!selected.pr) return { current: false, reason: selected.reason };
+  const { pr } = selected;
+  const regenerate = (reason) => ({
+    current: false,
+    reason,
+    number: pr.number,
+  });
+  if (head?.sha !== pr.head.sha)
+    return regenerate('local PR head differs from the listed PR head');
+  // One commit on top of a main ancestor is the shape the action writes; the
+  // review ledger's release-versioning contract reads exactly that unit.
+  if (!Array.isArray(head.parents) || head.parents.length !== 1)
+    return regenerate('PR head is not a single commit');
+  if (head.parentOnMain !== true)
+    return regenerate('PR head is not based on an ancestor of main');
+  if (merge?.clean !== true)
+    return regenerate('PR head does not merge cleanly into main');
+  if (typeof merge.tree !== 'string' || !OBJECT_ID.test(merge.tree))
+    return regenerate('merge result is unreadable');
+  if (typeof regeneratedTree !== 'string' || !OBJECT_ID.test(regeneratedTree))
+    return regenerate('regenerated tree is unreadable');
+  if (merge.tree !== regeneratedTree)
+    return regenerate('regenerating would change what the PR releases');
+  return {
+    current: true,
+    reason: 'merging the open PR yields exactly the regenerated release',
+    number: pr.number,
+  };
+}
+
+function git(cwd, args, env) {
+  const result = spawnSyncBounded('git', args, {
+    cwd,
+    encoding: 'utf8',
+    env: env ? { ...process.env, ...env } : process.env,
+  });
+  if (result.error) throw result.error;
+  return result;
+}
+
+function gitOut(cwd, args, env) {
+  const result = git(cwd, args, env);
+  if (result.status !== 0)
+    throw new Error(`git ${args[0]} failed: ${result.stderr.trim()}`);
+  return result.stdout.trim();
+}
+
+function readHead(cwd, sha) {
+  if (git(cwd, ['cat-file', '-e', `${sha}^{commit}`]).status !== 0)
+    return { sha: undefined };
+  const parents = gitOut(cwd, ['rev-list', '--parents', '-n', '1', sha])
+    .split(' ')
+    .slice(1);
+  const parentOnMain =
+    parents.length === 1 &&
+    git(cwd, ['merge-base', '--is-ancestor', parents[0], 'HEAD']).status === 0;
+  return { sha, parents, parentOnMain };
+}
+
+function mergeTree(cwd, sha) {
+  const result = git(cwd, ['merge-tree', '--write-tree', 'HEAD', sha]);
+  // 0 is a clean merge, 1 a conflicted one; anything else is an error.
+  if (result.status === 1) return { clean: false };
+  if (result.status !== 0)
+    throw new Error(`git merge-tree failed: ${result.stderr.trim()}`);
+  return { clean: true, tree: result.stdout.split('\n')[0].trim() };
+}
+
+function regeneratedTree(cwd, versionCommand) {
+  const [command, ...args] = versionCommand;
+  const run = spawnSyncBounded(command, args, { cwd, stdio: 'inherit' });
+  if (run.error) throw run.error;
+  if (run.status !== 0)
+    throw new Error(`version command exited ${run.status ?? run.signal}`);
+  // A throwaway index records the working tree as the action's commit would
+  // (tracked and untracked, ignored files excluded) without touching the
+  // checkout's own index.
+  const dir = mkdtempSync(join(tmpdir(), 'version-pr-current-'));
+  try {
+    const env = { GIT_INDEX_FILE: join(dir, 'index') };
+    gitOut(cwd, ['read-tree', 'HEAD'], env);
+    gitOut(cwd, ['add', '-A'], env);
+    return gitOut(cwd, ['write-tree'], env);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+function restore(cwd) {
+  gitOut(cwd, ['reset', '-q', '--hard', 'HEAD']);
+  gitOut(cwd, ['clean', '-fdq']);
+}
+
+export async function fetchOpenVersionPulls({
+  repository,
+  token,
+  apiUrl = 'https://api.github.com',
+  fetchImpl = fetch,
+}) {
+  const owner = repository.split('/')[0];
+  const query = new URLSearchParams({
+    state: 'open',
+    base: VERSION_BASE,
+    head: `${owner}:${VERSION_BRANCH}`,
+    per_page: '10',
+  });
+  const response = await fetchImpl(
+    `${apiUrl}/repos/${repository}/pulls?${query}`,
+    {
+      headers: {
+        accept: 'application/vnd.github+json',
+        authorization: `Bearer ${token}`,
+      },
+    },
+  );
+  if (!response.ok)
+    throw new Error(`listing version PRs returned HTTP ${response.status}`);
+  return response.json();
+}
+
+/**
+ * Gathers state and decides. Never throws: every failure is a regeneration.
+ * The checkout is restored before returning.
+ */
+export async function probeVersionPrCurrent({
+  cwd,
+  eventName,
+  ref,
+  repository,
+  listPulls,
+  versionCommand = ['npm', 'run', 'version-packages'],
+}) {
+  try {
+    if (eventName !== 'push' || ref !== `refs/heads/${VERSION_BASE}`)
+      return { current: false, reason: 'only a push to main may skip' };
+    if (gitOut(cwd, ['status', '--porcelain']) !== '')
+      return {
+        current: false,
+        reason: 'checkout is not clean before the probe',
+      };
+    const pulls = await listPulls();
+    const selected = selectVersionPr(pulls, repository);
+    if (!selected.pr) return { current: false, reason: selected.reason };
+    const head = readHead(cwd, selected.pr.head.sha);
+    const merge = head.sha ? mergeTree(cwd, head.sha) : undefined;
+    let tree;
+    try {
+      tree = regeneratedTree(cwd, versionCommand);
+    } finally {
+      restore(cwd);
+    }
+    return decideVersionPrCurrent({
+      pulls,
+      repository,
+      head,
+      merge,
+      regeneratedTree: tree,
+    });
+  } catch (error) {
+    return {
+      current: false,
+      reason: `unreadable state: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+if (invokedDirectly(import.meta.url)) {
+  const output = process.env.GITHUB_OUTPUT;
+  const repository = process.env.GITHUB_REPOSITORY ?? '';
+  const decision = await probeVersionPrCurrent({
+    cwd: process.cwd(),
+    eventName: process.env.GITHUB_EVENT_NAME,
+    ref: process.env.GITHUB_REF,
+    repository,
+    listPulls: () =>
+      fetchOpenVersionPulls({
+        repository,
+        token: process.env.GH_TOKEN ?? '',
+        apiUrl: process.env.GITHUB_API_URL,
+      }),
+  });
+  console.log(
+    `version PR ${decision.current ? 'is current; leaving it unchanged' : 'will be regenerated'}: ${decision.reason}`,
+  );
+  if (!output) {
+    console.error('Missing workflow output path');
+    process.exitCode = 1;
+  } else {
+    appendFileSync(
+      output,
+      `current=${decision.current}\npr-number=${decision.number ?? ''}\n`,
+    );
+  }
+}

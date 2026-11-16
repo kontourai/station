@@ -663,7 +663,19 @@ upstream's trailing whitespace, and the review ledger's
 [release-versioning contract](documentation-review-ledger.md#generated-release-records-and-removed-notes)
 accepts the version bumps and the changelog sections built from consumed notes.
 A record that cites a version value still needs a note.
-Mixed pushes and every other changed path still trigger maintenance. Manual
+Mixed pushes and every other changed path still trigger maintenance.
+Maintenance leaves the open version PR alone when regenerating would not change
+what it releases: [`version-pr-current.mjs`](../../scripts/version-pr-current.mjs)
+runs `npm run version-packages` on the pushed `main` and compares the tree with
+`git merge-tree` of that `main` and the PR head. Only an identical, clean merge
+of a single-commit head based on `main`, from the `station-automation[bot]`
+PR of this repository's `changeset-release/main`, skips the action, so the PR
+keeps its checks and its merge-queue place. A new, removed or edited note, a
+manifest or lockfile change that alters the output, a conflict, or any
+unreadable state regenerates as before; a dispatch never skips. The merge
+queue squashes the existing head, so the landed bytes are the ones a
+regeneration would have pushed. On 2026-11-16, 29 of the 36 regenerations
+would have been skipped. Manual
 package publication remains available and requires exact-source qualification.
 The separately authorized published
 pointer-repair break glass retains its existing inventory/provenance checks and

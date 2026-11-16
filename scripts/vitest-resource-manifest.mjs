@@ -1501,6 +1501,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/version-packages-lock.test.ts',
   // Executes the credential guard's real Bash bytes before a fixture action.
   'scripts/__tests__/version-pr-operation.test.ts',
+  // Runs real git and the installed `changeset version` in temporary
+  // repositories, plus the workflow's own Bash bytes.
+  'scripts/__tests__/version-pr-current.test.ts',
   // The room runtime intentionally hard-exits a child after durable history
   // commit and before recovery settlement, then reopens the same SQLite file.
   // That crash/reopen lifecycle must not overlap ordinary workers.

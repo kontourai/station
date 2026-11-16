@@ -903,7 +903,8 @@ last digit mod 5 plus the shard index, mod 5 (the table is in `ci.yml`), so one
 PR's shards never share a bucket and every plan's first shard spreads across all
 five; larger plans retain every shard. The release-bot PR (head
 `changeset-release/main` from this repository, opened by
-`station-automation[bot]`) is re-pushed on every main push, so its shard and
+`station-automation[bot]`) is re-pushed whenever a main push changes what it
+releases ([releasing](releasing.md#release-procedure)), so its shard and
 statics jobs share one dedicated `ci-pr-release-bot` slot and never enter the
 shared buckets; supersession cancels its older heads as for any PR. A job holds
 its bucket while it waits for a runner. Waiting jobs consume no runner. `pull_request_target` reads these

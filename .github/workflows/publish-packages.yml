@@ -529,8 +529,35 @@ jobs:
         run: |
           test -n "$VERSION_PR_TOKEN" || { echo '::error::Version PR installation token is missing'; exit 1; }
 
+      # Every regeneration force-pushes the version PR, which restarts all of
+      # its checks, cancels the run in progress and drops it from the merge
+      # queue. On 2026-11-16, 29 of 36 regenerations changed nothing the PR
+      # releases. The probe runs the version script itself and reports
+      # `current=true` only when merging the open PR into this main yields
+      # exactly the tree a regeneration would push. Any failure or doubt
+      # (continue-on-error, no output) regenerates as before. A dispatch never
+      # probes, so publishing is unaffected.
+      - name: Check whether the open version PR is already current
+        id: version-current
+        if: github.event_name == 'push' && steps.version-operation.outputs.version-pr == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/version-pr-current.mjs
+
+      # The probe restores the checkout itself; this proves it before the
+      # action commits every non-ignored file in the working tree.
+      - name: Require a clean checkout after the version probe
+        if: steps.version-current.outcome != 'skipped'
+        run: |
+          set -euo pipefail
+          git reset -q --hard HEAD
+          git clean -fdq
+          test -z "$(git status --porcelain)" || { echo '::error::The version probe left the checkout dirty'; exit 1; }
+
       - name: Create Release PR or Publish
         id: changesets
+        if: steps.version-current.outputs.current != 'true'
         # v2.1.1, NOT v1.x (station#3710): v1.9.0's API-commit path bundles
         # @changesets/ghcommit v2, whose commitChangesFromRepo walks
         # TREE+WORKDIR with isomorphic-git — over a working tree that at this
@@ -695,6 +722,8 @@ jobs:
           PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.published-packages }}
           HAS_CHANGESETS: ${{ steps.changesets.outputs.has-changesets }}
           PR_NUMBER: ${{ steps.changesets.outputs.pr-number }}
+          VERSION_PR_CURRENT: ${{ steps.version-current.outputs.current }}
+          CURRENT_PR_NUMBER: ${{ steps.version-current.outputs.pr-number }}
         run: |
           set -euo pipefail
           {
@@ -707,7 +736,9 @@ jobs:
             # Failure paths first, and they explain nothing. A red job's cause is
             # in the failing step's own log; guessing here is how a preflight
             # failure got reported as "merge the version PR".
-            if [ -z "${OUTCOME:-}" ]; then
+            if [ "${OUTCOME:-}" = "skipped" ] && [ "${VERSION_PR_CURRENT:-}" = "true" ]; then
+              echo "- outcome: version PR${CURRENT_PR_NUMBER:+ #$CURRENT_PR_NUMBER} left unchanged: merging it into this main already yields exactly what regenerating would push, so its checks keep running."
+            elif [ -z "${OUTCOME:-}" ]; then
               echo "- outcome: **the publish step never ran** — an earlier step failed or was cancelled. Read that step's log; nothing below this line is known."
             elif [ "$OUTCOME" = "failure" ] || [ "$OUTCOME" = "cancelled" ]; then
               if [ "$OUTCOME" = "failure" ]; then verb="failed"; else verb="was cancelled"; fi
