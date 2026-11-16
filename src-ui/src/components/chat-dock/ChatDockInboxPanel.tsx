@@ -1,3 +1,4 @@
+import { Input } from '@kontourai/ui/react';
 import { memo, useEffect, useRef } from 'react';
 import {
   useDeviceSettings,
@@ -8,7 +9,7 @@ import { useRowFocusPreservation } from '../../hooks/useRowFocusPreservation';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import { ActionOverflowMenu } from '../ActionOverflowMenu';
 import { Button } from '../Button';
-import { MessageGlyph, RefreshGlyph, SearchGlyph } from '../icons/Glyph';
+import { MessageGlyph, RefreshGlyph } from '../icons/Glyph';
 import { ReadStatusNote } from '../inbox-row/ReadStatusNote';
 import { NewChatAction } from '../NewChatAction';
 import { Empty, ErrorState, FilteredEmpty } from '../state';
@@ -169,17 +170,14 @@ function ChatDockInboxPanelImpl({
       aria-label="Inbox chats"
       tabIndex={-1}
     >
-      <div className="chat-dock-inbox__toolbar">
-        <label className="chat-dock-inbox__search">
-          <SearchGlyph />
-          <input
-            type="search"
-            aria-label="Search inbox"
-            placeholder="Search inbox"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-        </label>
+      <div className="filter-toolbar chat-dock-inbox__toolbar">
+        <Input
+          type="search"
+          aria-label="Search inbox"
+          placeholder="Search inbox"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
         {onNewChat && <NewChatAction iconOnly onClick={onNewChat} />}
         <ActionOverflowMenu
           label="Inbox actions"
@@ -289,5 +287,3 @@ function ChatDockInboxPanelImpl({
  * array, so it does not defeat the wrap.
  */
 export const ChatDockInboxPanel = memo(ChatDockInboxPanelImpl);
-
-import './InboxPanelSearch.css';

@@ -40,7 +40,7 @@ export interface StationInstructionCapabilities {
   devices: boolean;
   delegated: boolean;
   harness: 'claude' | 'codex' | 'acp' | 'muse' | 'other';
-  /** Claude and `toolServerLoading !== 'always'`. */
+  /** Claude, with Station turning its tool search on (`claude-tool-search.ts`). */
   toolSearch: boolean;
   /** HTTP progressive disclosure is on. */
   progressiveFamilies: boolean;
