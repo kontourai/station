@@ -205,14 +205,17 @@ describe('MessageBubble answer Basis chip', () => {
 
     const chip = await screen.findByRole('button', { name: CHIP });
     // In the answer's own footer, beside (never inside) the hover-revealed
-    // action row: no menu or dialog to open first (#926 amendment).
+    // action row: no menu or dialog to open first (#926 amendment). It ends
+    // the bar, so at rest it sits at the bubble's edge, not apart from it
+    // across the hidden row's reserved space.
     expect(chip.parentElement?.classList.contains('turn-footer__bar')).toBe(
       true,
     );
     expect(chip.closest('.turn-footer__actions')).toBeNull();
     expect(
-      chip.nextElementSibling?.classList.contains('turn-footer__actions'),
+      chip.previousElementSibling?.classList.contains('turn-footer__actions'),
     ).toBe(true);
+    expect(chip.nextElementSibling).toBeNull();
     expect(container.querySelector('.turn-footer__actions')).not.toBeNull();
     // The chip claims nothing it did not compute: no count, no standing.
     expect(chip.textContent).toBe('Basis');

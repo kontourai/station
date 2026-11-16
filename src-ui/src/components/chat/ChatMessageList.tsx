@@ -42,7 +42,6 @@ import { useOptionalConversationConnection } from '../conversation/ConversationC
 import { useApprovalAnswering } from '../conversation/useApprovalAnswering';
 import { AgentIcon } from '../icons/AgentIcon';
 import { LazyBoundary } from '../LazyBoundary';
-import { LoadingDots } from '../LoadingDots';
 import {
   REVEAL_APPROVAL_EVENT,
   type RevealApprovalDetail,
@@ -53,7 +52,7 @@ import {
   animateScrollToBottom,
   type ScrollToBottomAnimation,
 } from './animateScrollToBottom';
-import { ChatRunningBackgroundTasks } from './BackgroundTaskActivity';
+import { ChatBackgroundStrip } from './BackgroundTaskActivity';
 import {
   BrowserTurnActivityProvider,
   LiveBrowserTurnActivities,
@@ -221,32 +220,6 @@ const FALLBACK_AGENT = { name: 'AI' };
 // Stable empty style object — StreamingMessage is memoized, so a fresh `{}`
 // literal here would defeat that memo on every ChatMessageList render.
 const EMPTY_STYLE: React.CSSProperties = {};
-
-function backgroundTasksLabel(
-  tasks: NonNullable<ChatSession['backgroundTasks']>,
-): string {
-  const first = tasks[0];
-  const kinds = new Set(tasks.map((task) => task.workKind ?? 'agent'));
-  const noun =
-    kinds.size > 1
-      ? 'task'
-      : kinds.has('command')
-        ? 'command'
-        : kinds.has('monitor')
-          ? 'monitor'
-          : 'agent';
-  const description = first?.description || `background ${noun}`;
-  if (tasks.length === 1) {
-    return noun === 'agent'
-      ? `Background agent working — ${description}`
-      : noun === 'monitor'
-        ? `Monitor watching — ${description}`
-        : `Background command running — ${description}`;
-  }
-  return noun === 'agent'
-    ? `${tasks.length} background agents working — ${description}, …`
-    : `${tasks.length} background ${noun}s running — ${description}, …`;
-}
 
 // A resize below this delta is treated as jitter (sub-pixel layout rounding,
 // font-metric noise) rather than a genuine composer-height change, so it
@@ -752,18 +725,6 @@ function ChatMessageListComponent({
   const localBackgroundTasks = activeSession.backgroundTasks ?? [];
   const serverBackgroundCount =
     activeSession.conversationActivity?.runningChildWork?.count ?? 0;
-  const currentBackgroundLabel =
-    localBackgroundTasks.length > 0
-      ? backgroundTasksLabel(localBackgroundTasks)
-      : serverBackgroundCount === 1
-        ? 'Background task running'
-        : `${serverBackgroundCount} background tasks running`;
-  const backgroundBannerLabel = liveStatusUnavailable
-    ? `Last known: ${currentBackgroundLabel.charAt(0).toLowerCase()}${currentBackgroundLabel.slice(1)} (status unavailable)`
-    : currentBackgroundLabel;
-  // Animated dots claim the work is happening now; omit them for a
-  // last-known label.
-  const backgroundBannerDots = liveStatusUnavailable ? null : <LoadingDots />;
 
   // The dock supplies the bounded event-window projection. This component
   // owns only that projection's one scroll surface, so it cannot create a
@@ -2341,57 +2302,15 @@ function ChatMessageListComponent({
                 affordance so the chat never looks done while it isn't. */}
                 {!turnLive &&
                   (localBackgroundTasks.length > 0 ||
-                    serverBackgroundCount > 0) &&
-                  (onOpenBackgroundTasks && localBackgroundTasks.length > 0 ? (
-                    // archive#1301: a `<button>` cannot
-                    // also carry `role="status"` (an interactive element and a
-                    // live region are mutually exclusive ARIA roles) — a visually
-                    // hidden sibling carries the exact live-region semantics the
-                    // plain `<div>` below has, so the wording still auto-announces
-                    // as it changes, while the button itself stays the one
-                    // accessible interactive element (name via `aria-label`).
-                    <>
-                      <button
-                        type="button"
-                        className="background-tasks-banner"
-                        onClick={onOpenBackgroundTasks}
-                        aria-label={`${backgroundBannerLabel} — open background tasks`}
-                      >
-                        {backgroundBannerDots}
-                        <span
-                          className="background-tasks-banner__label"
-                          aria-hidden="true"
-                        >
-                          {backgroundBannerLabel}
-                        </span>
-                      </button>
-                      <span
-                        className="background-tasks-banner__sr-status"
-                        role="status"
-                      >
-                        {backgroundBannerLabel}
-                      </span>
-                    </>
-                  ) : (
-                    <div className="background-tasks-banner" role="status">
-                      {backgroundBannerDots}
-                      <span className="background-tasks-banner__label">
-                        {backgroundBannerLabel}
-                      </span>
-                    </div>
-                  ))}
-                {/* Each running task's latest activity and elapsed time, so
-                the transcript itself shows the work progressing. Outside the
-                live region: a ticking clock must not be re-announced. A
-                last-known banner shows no live lines. */}
-                {!turnLive &&
-                  !liveStatusUnavailable &&
-                  (localBackgroundTasks.length > 0 ||
                     serverBackgroundCount > 0) && (
-                    <ChatRunningBackgroundTasks
+                    <ChatBackgroundStrip
                       chatThreadId={activeSession.id}
                       source={apiBase}
                       cardedTaskIds={cardedTaskIds}
+                      localTasks={localBackgroundTasks}
+                      serverCount={serverBackgroundCount}
+                      liveStatusUnavailable={liveStatusUnavailable}
+                      onOpen={onOpenBackgroundTasks}
                     />
                   )}
               </>

@@ -74,6 +74,7 @@ vi.mock('../components/icons/UserIcon', () => ({
 }));
 
 import { ChatMessageList } from '../components/chat/ChatMessageList';
+import { backgroundTasksStore } from '../contexts/background-tasks-store';
 import type { ChatSession } from '../types';
 
 const SETTLED_ANSWER = 'The settled answer for turn-1.';
@@ -304,6 +305,59 @@ describe('station#3300 — settled turn stays settled on resume', () => {
       screen.getByText('Background command running — Watch until merged'),
     ).toBeTruthy();
     expect(screen.queryByText(/Background agent/)).toBeNull();
+  });
+
+  test('several background agents are counted with the running tools, which list inside the strip', () => {
+    backgroundTasksStore.reset();
+    for (const [id, description] of [
+      ['tool-a', 'Run gate:for on paths to edit'],
+      ['tool-b', 'Run telemetry tests after change'],
+    ])
+      backgroundTasksStore.ingest(
+        {
+          provider: 'claude',
+          threadId: 'stream-honesty-session',
+          createdAt: '2026-11-16T10:00:00.000Z',
+          method: 'tool.started',
+          toolCallId: id,
+          toolName: 'Bash',
+          arguments: { command: 'npm run gate:for', description },
+        } as never,
+        'http://localhost:3242',
+      );
+    try {
+      renderList(
+        managedSession({
+          orchestrationStatus: 'idle',
+          orchestrationTurnOpen: false,
+          status: 'idle',
+          backgroundTasks: [
+            { taskId: 'a-1', backgrounded: true, description: 'Inventory' },
+            { taskId: 'a-2', backgrounded: true, description: 'Review' },
+            { taskId: 'a-3', backgrounded: true, description: 'Audit' },
+          ],
+        }),
+        true,
+      );
+      // Counted, not "— Inventory, …": one name stood for three agents.
+      expect(screen.getByText('3 agents and 2 tools running')).toBeTruthy();
+      expect(screen.queryByText(/Inventory/)).toBeNull();
+      const strip = document.querySelector(
+        '.background-tasks-strip',
+      ) as HTMLElement;
+      const rows = strip.querySelectorAll('.background-tasks-banner__task');
+      // The running tools are rows of the strip's own card, each with its
+      // kind glyph, not loose lines after it.
+      expect(rows).toHaveLength(2);
+      for (const row of rows)
+        expect(
+          row.querySelector('.background-tasks-banner__task-glyph svg'),
+        ).toBeTruthy();
+      expect(strip.textContent).toContain('Run gate:for on paths to edit');
+      expect(strip.textContent).toContain('Run telemetry tests after change');
+    } finally {
+      backgroundTasksStore.reset();
+    }
   });
 
   test("#2304: the streaming row counts from the open turn's server start", () => {

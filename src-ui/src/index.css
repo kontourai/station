@@ -4043,16 +4043,23 @@ button:hover {
   }
 }
 
-/* Backgrounded provider tasks that outlive the assistant turn. */
+/* Backgrounded work that outlives the assistant turn: the strip's card holds
+   its count line and the running tasks the transcript does not card. */
+.background-tasks-strip {
+  margin: 8px 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--k-brand) 18%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--k-brand) 6%, transparent);
+}
+
 .background-tasks-banner {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 8px 0;
   padding: 8px 12px;
-  border: 1px solid color-mix(in srgb, var(--k-brand) 18%, transparent);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--k-brand) 6%, transparent);
+  border: 0;
+  background: transparent;
 }
 
 .background-tasks-banner__label {

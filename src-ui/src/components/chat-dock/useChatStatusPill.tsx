@@ -14,7 +14,9 @@ import type { ChatStreamStatus } from '../../hooks/orchestration/useChatStreamSt
 import { useStationOutlivesApp } from '../../hooks/useStationOutlivesApp';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import type { ChatSession } from '../../types';
+import { backgroundWorkCounts } from '../../utils/background-work-label';
 import { requestsWaitingOnUser } from '../../utils/waiting-approvals';
+import { useChatRunningToolCount } from '../chat/BackgroundTaskActivity';
 import { LazyBoundary } from '../LazyBoundary';
 import {
   claimApprovalThreads,
@@ -62,8 +64,11 @@ export function useChatStatusPill({
   onResync,
   onRecoveryFocus,
   catchingUp = false,
+  apiBase,
 }: {
   activeSession: ChatSession;
+  /** The Station whose live tool record counts this chat's running tools. */
+  apiBase?: string;
   /** The stream is replaying missed events (`useStreamCatchingUp`). */
   catchingUp?: boolean;
   streamStatus: ChatStreamStatus | undefined;
@@ -134,6 +139,8 @@ export function useChatStatusPill({
   ).length;
   const approvalCount = pendingApprovals.length - inputCount;
   const stationOutlivesApp = useStationOutlivesApp();
+  const runningToolCount = useChatRunningToolCount(activeSession.id, apiBase);
+  const localBackgroundTasks = activeSession.backgroundTasks;
   const input: ChatStatusInput = {
     observationUnavailable,
     resyncPending,
@@ -152,6 +159,15 @@ export function useChatStatusPill({
     sendAwaitingTurnStart: activeSession.sendAwaitingTurnStart,
     stationHasSend: activeSession.pendingSendStationHasIt,
     stationOutlivesApp,
+    // The same counts the chat's background strip names.
+    ...(localBackgroundTasks?.length
+      ? {
+          backgroundWork: backgroundWorkCounts(
+            localBackgroundTasks,
+            runningToolCount,
+          ),
+        }
+      : {}),
   };
   useEffect(() => {
     if (enabled) void loadChatStatusPillView().catch(() => undefined);

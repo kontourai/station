@@ -712,7 +712,9 @@ without the "Running" its highlight already says; the full label is its
 tooltip and what a screen reader hears. The batch fills the answer's column for its whole
 life, so its running calls changing never resize the card, and the elapsed time
 holds its column from the start, so its appearing never widens it. A call is shown running only inside
-the turn the server reports open. Reduced motion disables the highlight and
+the turn the server reports open, or, in a settled batch, while this Station's live tool record still
+holds it open (`tool.started` seen, no `tool.completed`, not closed by the turn's end): the record the
+Agents pane lists as running. A settled call with neither reads "no result". Reduced motion disables the highlight and
 makes pill size changes immediate.
 
 On a phone, a settled answer without anchored child work shows its tool work as one row. Every call from
@@ -729,9 +731,11 @@ own tool row or inside an activity summary. A Claude background shell command
 (`local_bash`, including one a Monitor launched) is child work of kind
 `command`/`monitor`, not a subagent: its card shows a terminal mark, the
 command line and its exit code, with no model, instructions or transcript.
-After the turn ends, the banner that says background work continues lists
+After the turn ends, a strip says background work continues. Its line counts
+the work by kind, as the status pill does ("9 agents and 3 tools running");
+only a single task is named. Inside the same card it lists
 each running task the loaded transcript does not already draw as a card, with
-the same activity line the Background tasks sheet and Agents pane show (latest
+a kind glyph and the same activity line the Background tasks sheet and Agents pane show (latest
 tool, progress, elapsed time), ticking live. A carded task appears once, as
 its card, which carries its own activity and elapsed time; with every running
 task carded, no list renders.
@@ -807,7 +811,10 @@ without the directory retain the explicitly labelled loaded-window map.
 - **Turn rail.** A 16px gutter over the transcript's right edge, inside its
   scrollbar, with one tick per indexed turn placed by its ordinal position. The loaded
   fallback places ticks by their positions among transcript rows. The rows on screen are drawn as a band, and their turns' ticks are
-  highlighted; both are written from the scroll handler, once per frame. Hover
+  highlighted; both are written from the scroll handler, once per frame. At rest
+  the ticks are faint, so a long chat's packed ticks do not read as a dashed
+  bar; pointing at or focusing the rail brings them up, and the current turn
+  and marked turns stay at full strength. Hover
   or keyboard focus previews a turn: its prompt and, when loaded, the start of its first
   reply. Escape dismisses the preview without moving focus or the pointer:
   while it shows, the preview carries `data-escape-owner`, so the app's

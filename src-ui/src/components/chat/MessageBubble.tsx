@@ -975,11 +975,13 @@ function MessageBubbleComponent({
     </>
   );
   // #926 amendment (owner, 2026-10): Basis stays visible at rest, beside
-  // the hover-revealed row rather than inside it.
+  // the hover-revealed row rather than inside it. It ends the bar: the hidden
+  // row keeps its space, so a chip placed before it sat apart from the
+  // bubble's edge with nothing beside it.
   const turnFooterBar = (
     <div className="turn-footer__bar">
-      {basisChip}
       <div className="turn-footer__actions">{footerActions}</div>
+      {basisChip}
     </div>
   );
   const metadataAfter = (
