@@ -88,7 +88,7 @@ export function useTaskBoardModel({
         // never treated as a run that ended.
         session =
           sessionsKnown && !sessionsFailed
-            ? (sessionsById.get(sessionId) ?? 'unreadable')
+            ? currentExecution(sessionsById, sessionId)
             : 'unreadable';
       }
       let pullRequests: TaskLaneInput['pullRequests'];
@@ -143,4 +143,24 @@ export function useTaskBoardModel({
       refetch: () => void factsQuery.refetch(),
     },
   };
+}
+
+/**
+ * The run a Task's session stands for now. `TaskRecord.sessionId` names the
+ * first execution of the Task's conversation; a continued conversation
+ * (after a failure, a restart, a follow-up) runs in a later execution child,
+ * which every summary of that conversation names as `currentSessionId`. The
+ * Task's state is that child's, never the first one's stale outcome. A named
+ * current child the list does not hold is unread. Without `currentSessionId`
+ * (an older host), the named session is the run.
+ */
+function currentExecution(
+  sessionsById: ReadonlyMap<string, OrchestrationSessionSummary>,
+  sessionId: string,
+): OrchestrationSessionSummary | 'unreadable' {
+  const named = sessionsById.get(sessionId);
+  if (!named) return 'unreadable';
+  const current = named.currentSessionId?.trim();
+  if (!current || current === sessionId) return named;
+  return sessionsById.get(current) ?? 'unreadable';
 }

@@ -127,7 +127,9 @@ export function ProjectTaskBoard({
           task={task}
           derivation={derivation}
           session={
-            task.sessionId ? sessionsById.get(task.sessionId) : undefined
+            derivation.evidence.sessionId
+              ? sessionsById.get(derivation.evidence.sessionId)
+              : undefined
           }
           agents={agents}
           projectBranch={projectBranch}

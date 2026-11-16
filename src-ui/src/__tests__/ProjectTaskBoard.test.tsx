@@ -307,6 +307,38 @@ describe('ProjectTaskBoard', () => {
     expect(document.activeElement).toBe(after);
   });
 
+  test('a continued run reads its conversation’s current execution, not the first one’s outcome', () => {
+    const tasks = [task('resumed', { sessionId: 'run-first' })];
+    given({
+      tasks,
+      sessions: [
+        // The first execution failed; the conversation then continued in a
+        // new child, which every summary of it names as current.
+        session('run-first', {
+          lifecycleState: 'failed',
+          currentSessionId: 'run-first:session:2',
+        }),
+        session('run-first:session:2', {
+          lifecycleState: 'running',
+          hasActiveTurn: true,
+          currentSessionId: 'run-first:session:2',
+        }),
+      ],
+    });
+    const onAction = vi.fn();
+    render(<Harness tasks={tasks} onAction={onAction} />);
+    expect(cardTitles('Running')).toEqual(['Work resumed']);
+    expect(cardTitles('Needs you')).toEqual([]);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Open run Work resumed' }),
+    );
+    expect(onAction).toHaveBeenCalledWith('resumed', {
+      kind: 'open-session',
+      sessionId: 'run-first:session:2',
+      label: 'Open run',
+    });
+  });
+
   test('a run that cannot be read is "Run status unavailable", never Stopped', () => {
     const tasks = [task('lost', { sessionId: 'run-gone' })];
     given({ tasks, sessions: [] });

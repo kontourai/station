@@ -182,6 +182,7 @@ export interface TaskLaneDerivation {
   evidence: {
     /** Every kept pull request fact, closed ones included, worst first. */
     pullRequests: TaskPullRequestFact[];
+    /** The run read: the Task's session or its conversation's current one. */
     sessionId?: string;
   };
   /** The instant of the fact the status line is about. */
@@ -200,9 +201,10 @@ export interface TaskLaneDerivation {
 export interface TaskLaneInput {
   task: TaskRecord & Partial<TaskMemoryAttention>;
   /**
-   * The summary for `task.sessionId`. `unreadable`: the Task names a run and
-   * its summary could not be read (the list failed, or it lacks that id).
-   * `undefined`: the Task names no run.
+   * The summary of the Task's run: `task.sessionId`'s, or the execution its
+   * conversation has since moved on to (`currentSessionId`). `unreadable`:
+   * the Task names a run and its summary could not be read. `undefined`: the
+   * Task names no run.
    */
   session: TaskSessionFact | 'unreadable' | undefined;
   /**
@@ -350,15 +352,18 @@ export function deriveTaskLane(input: TaskLaneInput): TaskLaneDerivation {
   const session =
     input.session && input.session !== 'unreadable' ? input.session : undefined;
   const sessionId = task.sessionId?.trim() || undefined;
+  // The run read: the Task's session, or the execution its conversation has
+  // moved on to (the caller resolves which).
+  const runId = session?.threadId ?? sessionId;
   const base = {
     taskId: task.id,
-    evidence: { pullRequests: facts, ...(sessionId ? { sessionId } : {}) },
+    evidence: { pullRequests: facts, ...(runId ? { sessionId: runId } : {}) },
     order: { priority: task.priority, updatedAt: task.updatedAt },
   };
   const glyph = pullRequestGlyph(facts) ?? 'dot';
   const openRun = (label: 'Open run' = 'Open run'): TaskNextAction =>
-    sessionId
-      ? { kind: 'open-session', sessionId, label }
+    runId
+      ? { kind: 'open-session', sessionId: runId, label }
       : { kind: 'open-task', label: 'Open Task' };
   const openTask: TaskNextAction = { kind: 'open-task', label: 'Open Task' };
   const start: TaskNextAction = task.agentId?.trim()
