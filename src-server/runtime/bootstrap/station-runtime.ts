@@ -9,6 +9,7 @@ import {
   getBrandingProvider,
   listProviders,
 } from '../../providers/registries/registry.js';
+import { AcpSessionListSource } from '../../providers/sessions/acp-session-list-source.js';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
 import { GrokSessionSource } from '../../providers/sessions/grok-session-source.js';
@@ -177,8 +178,10 @@ import { runMuseSchemaCommand } from '../../providers/adapters/muse-serve-schema
 import { OllamaAdapter } from '../../providers/adapters/ollama-adapter.js';
 import {
   type CredentialProfileAppHomeEnvOptions,
+  configuredEngineHomes,
   createCredentialProfileAppHomeEnvPeek,
   createCredentialProfileAppHomeEnvResolver,
+  credentialProfileEnvForHome,
 } from '../../providers/app-home/credential-profile-env.js';
 import { BedrockModelCatalog } from '../../providers/llm/bedrock-models.js';
 import { disposeRetainedPreparedPluginProviders } from '../../providers/registries/registry.js';
@@ -899,7 +902,17 @@ export class StationRuntime {
   private host?: string;
   private approvalRegistry: ApprovalRegistry;
   private readonly claudeTranscriptSource = new ClaudeTranscriptSessionSource();
-  private readonly codexRolloutSource = new CodexRolloutSessionSource();
+  // Discovery also reads the Codex homes Station points its own sessions at
+  // (connection config home, app home, credential profiles), so a session
+  // run under one of them is found and continues in that same home.
+  private readonly codexRolloutSource = new CodexRolloutSessionSource({
+    listConfiguredHomes: () =>
+      configuredEngineHomes({
+        engine: 'codex',
+        loadConnectionSettings: async () =>
+          (await this.configLoader.loadAppConfig()).agentConnections?.codex,
+      }),
+  });
   private readonly openCodeSessionSource = new OpenCodeSessionSource();
   private bedrockAdapter = new BedrockAdapter();
   // The Claude adapter's app-home settings and connection-launch resolver,
@@ -1071,7 +1084,22 @@ export class StationRuntime {
         this.orchestrationEventStore.recordNativeSessionRetired(sessionId),
     },
     resolveSourceHome: (affinity) =>
-      this.codexRolloutSource.resolveSourceHome(affinity),
+      this.codexRolloutSource.resolveSourceHomeWithRefresh(affinity),
+    // A session found in a credential-profile home runs with that profile's
+    // overlay too, as a profile spawn would (proxy URL, masked ambient keys).
+    resolveSourceHomeEnv: (sourceHome) =>
+      credentialProfileEnvForHome(
+        {
+          engine: 'codex',
+          loadConnectionSettings: async () =>
+            (await this.configLoader.loadAppConfig()).agentConnections?.codex,
+          warn: (message) =>
+            (this.logger?.warn as ((...a: unknown[]) => void) | undefined)?.(
+              message,
+            ),
+        },
+        sourceHome,
+      ),
     // App-home profile opt-in (archive#896 wave 2, agent-engine-unification.md
     // §6.1's overlay model, channel 2) — mirrors claudeAdapter's
     // getAppHomeEnv closure above; codex has no `getProvideSkills` analog
@@ -4453,6 +4481,11 @@ export class StationRuntime {
             this.codexRolloutSource,
             new GrokSessionSource({ logger: this.logger }),
             this.openCodeSessionSource,
+            // Opt-in (STATION_EXTERNAL_ACP_SESSIONS=1), list only: reads the
+            // session lists the ACP capability probes already fetched.
+            new AcpSessionListSource({
+              listings: () => this.acpBridge?.sessionListings() ?? [],
+            }),
           ],
           port: this.port,
           host: this.host,
