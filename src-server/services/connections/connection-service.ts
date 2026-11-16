@@ -222,6 +222,12 @@ class InventorySiblingAbort extends Error {
   }
 }
 
+/** What a runtime inventory read may start; both default to included. */
+interface RuntimeConnectionInspectionOptions {
+  includeModelCatalog?: boolean;
+  includeCommands?: boolean;
+}
+
 interface ModelCatalogCacheEntry {
   fingerprint: string;
   observedAt: string;
@@ -1271,19 +1277,29 @@ export class ConnectionService {
    * route too, so the reason travels with it rather than being lost one seam
    * away from where it is rendered.
    */
-  async listRuntimeConnectionInventory(): Promise<{
+  async listRuntimeConnectionInventory(
+    options: RuntimeConnectionInspectionOptions = {},
+  ): Promise<{
     connections: AgentConnectionView[];
     failures: ConnectionInventoryFailure[];
   }> {
     const inventoryPromise = this.listModelConnectionInventory();
     const connections = await this.listRuntimeConnectionsForModels(
       inventoryPromise.then((inventory) => inventory.connections),
+      options,
     );
     return { connections, failures: (await inventoryPromise).failures };
   }
 
-  async listRuntimeConnections(): Promise<AgentConnectionView[]> {
-    return (await this.listRuntimeConnectionInventory()).connections;
+  /**
+   * Every caller gets live model discovery and commands unless it opts out;
+   * the built-in agent binding opts out of both because it reads only
+   * status, capabilities and identity, and either can start an engine.
+   */
+  async listRuntimeConnections(
+    options: RuntimeConnectionInspectionOptions = {},
+  ): Promise<AgentConnectionView[]> {
+    return (await this.listRuntimeConnectionInventory(options)).connections;
   }
 
   /**
@@ -1437,6 +1453,7 @@ export class ConnectionService {
       signal?: AbortSignal;
       concurrency?: number;
       includeCommands?: boolean;
+      includeModelCatalog?: boolean;
       includePrerequisites?: boolean;
       disableHostDiscovery?: boolean;
       allowBuiltInOnDiscoveryFailure?: boolean;
@@ -1469,6 +1486,7 @@ export class ConnectionService {
       signal: options.signal,
       concurrency: options.concurrency,
       includeCommands: options.includeCommands,
+      includeModelCatalog: options.includeModelCatalog,
       includePrerequisites: options.includePrerequisites,
       disableHostDiscovery:
         options.disableHostDiscovery ??

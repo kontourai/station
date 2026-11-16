@@ -351,6 +351,16 @@ path dependency. Node's `NODE_DISABLE_COMPILE_CACHE=1` opt-out remains
 supported, and the server then gives the built-in children no cache either.
 Cache failure must not prevent startup.
 
+Every static import in `dist-server/command-station.js` is loaded when the
+server boots, whether or not its code runs. The Claude Agent SDK,
+`@kontourai/console-server` and `@kontourai/veritas/engine` are loaded on first
+use instead, because an idle server needs none of them and each costs memory
+once loaded. The server build fails if the bundle statically imports any of
+those packages, or any subpath of one, again
+([deny list](../../scripts/lib/server-static-imports.mjs)).
+The `@kontourai/flow-agents` root is still imported at boot because some
+synchronous callers need values only it exports.
+
 Server bundles are minified with function/class names retained. The esbuild
 `linked` source-map setting is equivalent to the previous `true`: both emit an
 external map and a `sourceMappingURL` comment. Normal server launches do not
