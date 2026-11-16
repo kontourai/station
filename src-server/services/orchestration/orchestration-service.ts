@@ -6137,16 +6137,14 @@ export class OrchestrationService {
       const result: UsageLimitRecoveryActionResult =
         !coordinator || !waiting || !continueOn
           ? { kind: 'not-waiting' }
-          : // A click from an older banner never acts on a newer stop.
-            options.stopId !== undefined && options.stopId !== continueOn.stopId
-            ? { kind: 'not-waiting' }
-            : offered
-              ? await coordinator.continueUsageLimitOnProfile(
-                  threadId,
-                  continueOn.profileRef,
-                  continueOn.stopId,
-                )
-              : { kind: 'not-switched' };
+          : offered
+            ? // The coordinator refuses a stop id that is not the waiting stop.
+              await coordinator.continueUsageLimitOnProfile(
+                threadId,
+                continueOn.profileRef,
+                continueOn.stopId,
+              )
+            : { kind: 'not-switched' };
       return { result, recovery: await this.readUsageLimitRecovery(threadId) };
     }
     const result: UsageLimitRecoveryActionResult = coordinator
