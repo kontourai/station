@@ -212,6 +212,18 @@ export async function getOrchestrationSession<
   return unwrapOrchestrationResponse<T>(response);
 }
 
+/**
+ * The Station answered a bounded session-detail read with something other
+ * than a `window-v1` page: an older host that ignores `view=window-v1`. Its
+ * own class so callers tell it apart without reading the message.
+ */
+export class SessionDetailWindowUnsupportedError extends Error {
+  constructor() {
+    super('Station does not support bounded session detail');
+    this.name = 'SessionDetailWindowUnsupportedError';
+  }
+}
+
 /** Bounded session detail using the existing newest-turn cursor protocol. */
 export async function getOrchestrationSessionDetailWindow(
   apiBase: string,
@@ -237,7 +249,7 @@ export async function getOrchestrationSessionDetailWindow(
     typeof window.hasMore !== 'boolean' ||
     !Number.isSafeInteger(window.watermark)
   )
-    throw new Error('Station does not support bounded session detail');
+    throw new SessionDetailWindowUnsupportedError();
   return window;
 }
 

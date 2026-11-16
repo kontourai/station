@@ -190,6 +190,7 @@ export function createSshEnvironmentRoutes(
         { ...(cursor !== undefined ? { cursor } : {}), turnLimit },
         fetchRemoteHistory,
         peerCredentials,
+        c.req.raw.signal,
       );
       return c.json({ success: true, data });
     } catch (error) {

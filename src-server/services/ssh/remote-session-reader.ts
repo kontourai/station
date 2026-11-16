@@ -12,6 +12,7 @@ import {
   type ClientRequestOptions,
   getOrchestrationSessionDetailWindow,
   listOrchestrationSessions,
+  SessionDetailWindowUnsupportedError,
   StationHttpError,
   StationRequestTimeoutError,
   StationResponseTooLargeError,
@@ -127,10 +128,25 @@ export type RemoteMessageSearchFetcher = (
   options?: ClientRequestOptions,
 ) => Promise<RemoteMessageSearchMatch[]>;
 
+/**
+ * Byte ceiling on one remote's session list: room for the 200 summaries this
+ * Station keeps from it (`MAX_REMOTE_SESSIONS_PER_ENVIRONMENT`). Past it the
+ * environment is unavailable for this read, never parsed.
+ */
+export const MAX_REMOTE_SESSION_LIST_RESPONSE_BYTES = 2_097_152;
+
+/**
+ * Byte ceiling on one remote's search answer. It keeps at most five short
+ * excerpts per remote, so a larger answer is not one this Station can use;
+ * that remote reads as unreachable for this search.
+ */
+export const MAX_REMOTE_MESSAGE_SEARCH_RESPONSE_BYTES = 262_144;
+
 const defaultFetcher: RemoteSessionsFetcher = (apiBase, options) =>
   listOrchestrationSessions<OrchestrationSessionSummary[]>(apiBase, {
     timeoutMs: REMOTE_SESSION_FETCH_TIMEOUT_MS,
     ...options,
+    maxResponseBytes: MAX_REMOTE_SESSION_LIST_RESPONSE_BYTES,
   });
 
 const defaultMessageSearchFetcher: RemoteMessageSearchFetcher = (
@@ -141,6 +157,7 @@ const defaultMessageSearchFetcher: RemoteMessageSearchFetcher = (
   searchConversationMessages(apiBase, query, {
     timeoutMs: REMOTE_MESSAGE_SEARCH_TIMEOUT_MS,
     ...options,
+    maxResponseBytes: MAX_REMOTE_MESSAGE_SEARCH_RESPONSE_BYTES,
   });
 
 interface ConnectedEnvironment {
@@ -533,6 +550,8 @@ export async function readConnectedRemoteSessionHistory(
   input: { cursor?: string; turnLimit: number },
   fetchHistory: RemoteSessionHistoryFetcher = defaultHistoryFetcher,
   peerCredentials?: Pick<PeerCredentialStore, 'get'>,
+  /** The caller's own request signal: a caller that leaves cancels the read. */
+  signal?: AbortSignal,
 ): Promise<RemoteSessionHistoryPage> {
   const environment = connectedEnvironments(service).find(
     (candidate) => candidate.id === environmentId,
@@ -556,8 +575,13 @@ export async function readConnectedRemoteSessionHistory(
         turnLimit: Math.min(input.turnLimit, MAX_REMOTE_SESSION_HISTORY_TURNS),
       },
       peer
-        ? { headers: { Authorization: `Bearer ${peer.credential}` } }
-        : undefined,
+        ? {
+            headers: { Authorization: `Bearer ${peer.credential}` },
+            ...(signal ? { signal } : {}),
+          }
+        : signal
+          ? { signal }
+          : undefined,
     );
   } catch (error) {
     if (error instanceof StationHttpError) {
@@ -573,10 +597,7 @@ export async function readConnectedRemoteSessionHistory(
     if (isResponseTooLarge(error)) {
       throw new RemoteSessionHistoryError('too_large');
     }
-    if (
-      error instanceof Error &&
-      /does not support bounded session detail/u.test(error.message)
-    ) {
+    if (error instanceof SessionDetailWindowUnsupportedError) {
       throw new RemoteSessionHistoryError('invalid_response');
     }
     throw new RemoteSessionHistoryError('unreachable');

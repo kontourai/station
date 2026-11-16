@@ -552,7 +552,11 @@ describe('remote session history (read-only, over a connected environment)', () 
       'http://127.0.0.1:45999',
       THREAD,
       { cursor: 'c0', turnLimit: 5 },
-      { headers: { Authorization: 'Bearer peer-bearer-for-test' } },
+      {
+        headers: { Authorization: 'Bearer peer-bearer-for-test' },
+        // A client that goes away cancels the remote read too.
+        signal: expect.any(AbortSignal),
+      },
     );
     expect(svc.connect).not.toHaveBeenCalled();
     expect(body.data.environmentId).toBe(ENV_ID);

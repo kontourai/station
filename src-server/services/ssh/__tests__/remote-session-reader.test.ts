@@ -924,3 +924,142 @@ describe('the relayed history page has a byte ceiling (security review M2)', () 
     ).toBe('too_large');
   });
 });
+
+describe('the list and search fetchers have byte ceilings too (delta review)', () => {
+  /** A valid envelope whose `data` is `build(pad)`, padded to exactly `bytes`. */
+  function envelopeOf(bytes: number, build: (pad: string) => unknown): string {
+    const text = (pad: string) =>
+      JSON.stringify({ success: true, data: build(pad) });
+    const body = text('x'.repeat(bytes - text('').length));
+    expect(Buffer.byteLength(body)).toBe(bytes);
+    return body;
+  }
+
+  async function serving<T>(
+    body: string,
+    run: (service: { list: () => never }) => Promise<T>,
+  ): Promise<T> {
+    const { createServer } = await import('node:http');
+    const server = createServer((_request, response) => {
+      response.setHeader('Content-Type', 'application/json');
+      response.end(body);
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, '127.0.0.1', resolve),
+    );
+    try {
+      const { port } = server.address() as { port: number };
+      return await run({
+        list: () =>
+          [
+            connectedView(
+              'env-1',
+              'Home media',
+              `http://127.0.0.1:${port}`,
+              'peer-env',
+            ),
+          ] as never,
+      });
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  }
+  const peers = { get: () => ({ credential: 'peer-bearer-for-test' }) as any };
+
+  test('a session list of exactly its ceiling is listed; one byte more is unavailable', async () => {
+    const { MAX_REMOTE_SESSION_LIST_RESPONSE_BYTES } = await import(
+      '../remote-session-reader.js'
+    );
+    expect(MAX_REMOTE_SESSION_LIST_RESPONSE_BYTES).toBe(2_097_152);
+    const list = (pad: string) => [{ threadId: 'thread-1', pad }];
+    const atCeiling = await serving(
+      envelopeOf(MAX_REMOTE_SESSION_LIST_RESPONSE_BYTES, list),
+      (service) => listConnectedRemoteSessions(service, undefined, peers),
+    );
+    expect(atCeiling.environments).toHaveLength(1);
+    const over = await serving(
+      envelopeOf(MAX_REMOTE_SESSION_LIST_RESPONSE_BYTES + 1, list),
+      (service) => listConnectedRemoteSessions(service, undefined, peers),
+    );
+    expect(over.environments).toEqual([]);
+    expect(over.unavailable).toEqual([
+      { environmentId: 'env-1', environmentName: 'Home media' },
+    ]);
+  });
+
+  test('a search answer of exactly its ceiling is used; one byte more relays nothing', async () => {
+    const { MAX_REMOTE_MESSAGE_SEARCH_RESPONSE_BYTES } = await import(
+      '../remote-session-reader.js'
+    );
+    expect(MAX_REMOTE_MESSAGE_SEARCH_RESPONSE_BYTES).toBe(262_144);
+    const matches = (pad: string) => [
+      {
+        conversationId: 'remote-conversation',
+        messageId: 'remote-message',
+        role: 'assistant',
+        excerpt: pad,
+      },
+    ];
+    const atCeiling = await serving(
+      envelopeOf(MAX_REMOTE_MESSAGE_SEARCH_RESPONSE_BYTES, matches),
+      (service) =>
+        searchConnectedRemoteMessages(
+          service,
+          'cobalt',
+          undefined,
+          undefined,
+          peers,
+        ),
+    );
+    expect(atCeiling.matches).toHaveLength(1);
+    const over = await serving(
+      envelopeOf(MAX_REMOTE_MESSAGE_SEARCH_RESPONSE_BYTES + 1, matches),
+      (service) =>
+        searchConnectedRemoteMessages(
+          service,
+          'cobalt',
+          undefined,
+          undefined,
+          peers,
+        ),
+    );
+    expect(over.matches).toEqual([]);
+    expect(over.instances).toEqual([
+      expect.objectContaining({ instanceId: 'env-1', status: 'unreachable' }),
+    ]);
+  });
+});
+
+describe('a legacy remote without the bounded window is classified structurally', () => {
+  test('a remote answering detail without window-v1 is invalid_response, by error type', async () => {
+    const { readConnectedRemoteSessionHistory, RemoteSessionHistoryError } =
+      await import('../remote-session-reader.js');
+    const { SessionDetailWindowUnsupportedError } = await import(
+      '@kontourai/station-sdk/client'
+    );
+    const read = (error: Error) =>
+      readConnectedRemoteSessionHistory(
+        {
+          list: () =>
+            [
+              connectedView('env-1', 'Box', 'http://127.0.0.1:1', 'peer'),
+            ] as any,
+        },
+        'env-1',
+        'external:claude:abc',
+        { turnLimit: 10 },
+        async () => {
+          throw error;
+        },
+        { get: () => ({ credential: 'peer-bearer-for-test' }) as any },
+      ).catch((caught: unknown) => caught);
+    const typed = await read(new SessionDetailWindowUnsupportedError());
+    expect(typed).toBeInstanceOf(RemoteSessionHistoryError);
+    expect((typed as { reason: string }).reason).toBe('invalid_response');
+    // The same words on an unrelated error are not that answer.
+    const lookalike = await read(
+      new Error('Station does not support bounded session detail'),
+    );
+    expect((lookalike as { reason: string }).reason).toBe('unreachable');
+  });
+});

@@ -1929,7 +1929,10 @@ the Station's bound owner gets `Forbidden`, and so does any agent request. The
 page is view-only and carries no continuation.
 
 A request made with `maxResponseBytes` whose body passes it rejects with
-`StationResponseTooLargeError`, from `@kontourai/station-sdk/client`. The
+`StationResponseTooLargeError`, from `@kontourai/station-sdk/client`.
+`getOrchestrationSessionDetailWindow` rejects with
+`SessionDetailWindowUnsupportedError` when the host answers without a
+`window-v1` page (an older host). The
 orchestration readers keep it as the `cause` of their unreadable-body error.
 
 ### `useAgentsQuery(config?)`
