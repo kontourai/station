@@ -198,6 +198,13 @@ export interface InitializeRuntimeDeps {
   stationInstructionsEnabled?: () => boolean;
   /** `codex-bound-browser-device-tools` Feature Preview, read per Session start. */
   codexBoundToolsEnabled?: () => boolean;
+  /**
+   * #2377 slice D: the station-control caller records for Station's own
+   * engine, read lazily per call (`StationAgentAdapter`).
+   */
+  stationControlCallerRecords?: () =>
+    | import('../mcp/station-control-caller.js').StationControlCallerRecordResolver
+    | undefined;
   attachedSessionSources?: AttachedSessionSource[];
   port: number;
   host?: string;
@@ -609,6 +616,9 @@ export async function initializeRuntime(
     isAgentRegistryReady: () => stationAgentsReady,
     approvalRegistry,
     eventBus,
+    ...(deps.stationControlCallerRecords
+      ? { stationControlCallerRecords: deps.stationControlCallerRecords }
+      : {}),
   });
   registerProviderAdapters(
     [

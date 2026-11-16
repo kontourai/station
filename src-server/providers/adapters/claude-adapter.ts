@@ -4518,12 +4518,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       );
     const { servers, skipped } = resolveClaudeMcpServers(
       toolServers,
-      {
-        ...this.options.getStationControlEnv?.(),
-        ...(tenantExecutionContext
-          ? { STATION_INTERNAL_TENANT: tenantExecutionContext.tenantId }
-          : {}),
-      },
+      this.options.getStationControlEnv?.(),
       {
         ...(this.options.createInProcessStationKnowledge
           ? {
@@ -4568,7 +4563,6 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                       ),
             }
           : {}),
-        ...(tenantExecutionContext ? { tenantExecutionContext } : {}),
       },
       oauthTokens,
     );

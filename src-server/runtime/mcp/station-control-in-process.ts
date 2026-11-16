@@ -482,3 +482,43 @@ export function claudeInProcessStationControlOptions(
       revokeInProcessSession(threadId),
   };
 }
+
+/**
+ * #2377 slice D (decision 4): Station's own engine gets the SAME per-session
+ * in-process station-control server Claude does — its own `sdk-in-process`
+ * token (assurance `bound`), every inbound message run as that session's
+ * verified caller — so its calls carry the session's owner and Project
+ * instead of reaching Station through a caller-less pooled child.
+ * `station-control-native-tools.ts` drives it; revoke with
+ * {@link revokeSessionInProcessStationControl}.
+ */
+export function createSessionInProcessStationControl(input: {
+  sessionId: string;
+  tenantExecutionContext?: TenantExecutionContext;
+  resolveRecord?: StationControlCallerRecordResolver;
+  /** Test seam: production serves the real `bound` registrations. */
+  createServer?: () => McpServer;
+}): InProcessStationControlServer {
+  return createInProcessServer({
+    sessionId: input.sessionId,
+    ...(input.tenantExecutionContext
+      ? { tenantExecutionContext: input.tenantExecutionContext }
+      : {}),
+    ...(input.resolveRecord ? { resolveRecord: input.resolveRecord } : {}),
+    createServer:
+      input.createServer ??
+      (() =>
+        createSelectedStationControlMcpServer(
+          undefined,
+          undefined,
+          'station-control',
+          'bound',
+        )),
+    token: 'fresh',
+  });
+}
+
+/** Revoke a session's in-process credential and forget its shared token. */
+export function revokeSessionInProcessStationControl(sessionId: string): void {
+  revokeInProcessSession(sessionId);
+}

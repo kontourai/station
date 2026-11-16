@@ -18,15 +18,16 @@ type ServerSelfGlobal = typeof globalThis & {
  * #2377 slice A: marks an internal request Station's OWN server code made to
  * its own API, as opposed to one a station-control tool made.
  *
- * Both carry the per-boot internal token, and that token is not a secret from
- * agents: every stdio station-control child receives it in its spawn env
- * (`withStationControlRuntimeEnv`), where a same-user process can read it.
+ * Both carry the per-boot internal token, and that token was not a secret from
+ * agents: stdio station-control children used to receive it in their spawn
+ * env, where a same-user process could read it (no child does since #2377
+ * slice D, but a copied token must still prove nothing).
  * Station's server also calls its own API with that token, from code no agent
  * drives directly — the execution-target dispatch a person's chat, a webhook,
  * a Discord message or a pane action runs in-process
  * (`executeExecutionTargetMessage` reading an Agent or a Connection back over
  * HTTP). The station-control authority guard must not refuse those, and it
- * cannot tell them from a pooled child by the internal token.
+ * cannot tell them from a copied token by the internal token alone.
  *
  * This value is minted in the server process's memory, only when the
  * authority guard is installed, and is never written to any environment,
