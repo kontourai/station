@@ -380,7 +380,7 @@ describe('GitHubPullRequestProvider', () => {
     ['CLEAN', 'clean'],
     ['HAS_HOOKS', 'clean'],
     ['BLOCKED', 'blocked'],
-    ['UNSTABLE', 'checks-failing'],
+    ['UNSTABLE', 'checks-not-passing'],
     ['DIRTY', 'conflicting'],
     ['BEHIND', 'behind'],
     ['DRAFT', 'draft'],

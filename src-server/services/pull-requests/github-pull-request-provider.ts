@@ -190,7 +190,7 @@ const githubMergeReadiness = (
     case 'BLOCKED':
       return 'blocked';
     case 'UNSTABLE':
-      return 'checks-failing';
+      return 'checks-not-passing';
     case 'DIRTY':
       return 'conflicting';
     case 'BEHIND':

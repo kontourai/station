@@ -17,8 +17,10 @@ import { type TaskMemoryAttention, taskAwaitsAnswer } from './task-memory.js';
  * it is computed at read time from durable facts, so it cannot go stale the
  * way a stored "in progress" does. The stored `TaskRecord.status` stays what a
  * person or agent intended (backlog, done, canceled, "marked blocked"); the
- * facts that move a Task between lanes are its run (`TaskRecord.sessionId`'s
- * summary) and the pull requests kept on it, as their provider reports them.
+ * facts that move a Task between lanes are its run and the pull requests kept
+ * on it, as their provider reports them. The run is `TaskRecord.sessionId`'s
+ * summary, or the later execution its conversation has moved on to
+ * (`currentSessionId`); the caller resolves which.
  *
  * Two rules hold the derivation honest:
  *
@@ -26,7 +28,9 @@ import { type TaskMemoryAttention, taskAwaitsAnswer } from './task-memory.js';
  *   request whose readiness is absent or unknown is never "Ready to merge";
  *   one whose state could not be read keeps every pull request rung that
  *   needs it ("Ready to merge", "PR merged") out of reach.
- * - A run that cannot be read is "Run status unavailable", never "Stopped".
+ * - A run that cannot be read is "Run status unavailable", never "Stopped",
+ *   and it keeps a Task out of "Ready to merge" and "PR merged": the run may
+ *   still be changing the pull request.
  *
  * Session words are the status ladder's own (`SESSION_STATUS_WORDS`); this
  * module defines no synonym for them.
@@ -125,7 +129,7 @@ export type TaskLaneRung =
   | 'merged'
   | 'changesRequested'
   | 'conflict'
-  | 'checksFailing'
+  | 'checksNotPassing'
   | 'draft'
   | 'awaitingReview'
   | 'repoBlocked'
@@ -224,7 +228,11 @@ type CurrentFact = TaskPullRequestFact & {
 
 const isCurrent = (fact: TaskPullRequestFact): fact is CurrentFact =>
   fact.status.state === 'current';
-const isOpen = (fact: CurrentFact) =>
+const OPEN = 'OPEN';
+const isOpen = (fact: CurrentFact) => fact.status.pullRequestState === OPEN;
+/** Read, but in a state this table does not name (GitLab `LOCKED`, …). */
+const isUnnamedState = (fact: CurrentFact) =>
+  fact.status.pullRequestState !== OPEN &&
   fact.status.pullRequestState !== MERGED &&
   fact.status.pullRequestState !== CLOSED;
 
@@ -235,7 +243,7 @@ const isOpen = (fact: CurrentFact) =>
 const OPEN_PULL_REQUEST_RUNGS = [
   'changesRequested',
   'conflict',
-  'checksFailing',
+  'checksNotPassing',
   'draft',
   'awaitingReview',
   'repoBlocked',
@@ -255,7 +263,7 @@ function openPullRequestRung(fact: CurrentFact): OpenPullRequestRung {
     status.readiness === 'conflicting'
   )
     return 'conflict';
-  if (status.readiness === 'checks-failing') return 'checksFailing';
+  if (status.readiness === 'checks-not-passing') return 'checksNotPassing';
   if (status.draft === true || status.readiness === 'draft') return 'draft';
   if (status.readiness === 'blocked')
     return status.reviewDecision === 'review_required'
@@ -271,7 +279,7 @@ function openPullRequestRung(fact: CurrentFact): OpenPullRequestRung {
 const OPEN_RUNG_WORDS: Record<OpenPullRequestRung, string> = {
   changesRequested: 'Changes requested',
   conflict: 'Conflicts with base',
-  checksFailing: 'Some checks failing',
+  checksNotPassing: 'Checks not passing',
   draft: 'Draft PR',
   awaitingReview: 'Waiting for review',
   repoBlocked: 'Blocked by repository rules',
@@ -283,7 +291,7 @@ const OPEN_RUNG_WORDS: Record<OpenPullRequestRung, string> = {
 const OPEN_RUNG_TONES: Record<OpenPullRequestRung, TaskLaneTone> = {
   changesRequested: 'caution',
   conflict: 'caution',
-  checksFailing: 'caution',
+  checksNotPassing: 'caution',
   draft: 'neutral',
   awaitingReview: 'neutral',
   repoBlocked: 'neutral',
@@ -303,7 +311,8 @@ const identityOf = (fact: TaskPullRequestFact): PullRequestLinkIdentity => ({
 /** Worst first: open by rung, then merged, unavailable, closed. */
 function evidenceOrder(facts: readonly TaskPullRequestFact[]) {
   const weight = (fact: TaskPullRequestFact) => {
-    if (!isCurrent(fact)) return OPEN_PULL_REQUEST_RUNGS.length + 1;
+    if (!isCurrent(fact) || isUnnamedState(fact))
+      return OPEN_PULL_REQUEST_RUNGS.length + 1;
     if (isOpen(fact))
       return OPEN_PULL_REQUEST_RUNGS.indexOf(openPullRequestRung(fact));
     return fact.status.pullRequestState === MERGED
@@ -470,9 +479,47 @@ export function deriveTaskLane(input: TaskLaneInput): TaskLaneDerivation {
       certainty: 'observed',
     };
 
+  // 4b. A person or agent marked the Task blocked: a recorded decision that
+  // no pull request state outranks (a clean PR does not unblock a Task).
+  if (task.status === 'blocked')
+    return {
+      ...base,
+      placement: lane('needs_you'),
+      rung: 'markedBlocked',
+      tone: 'attention',
+      word: 'Marked blocked',
+      statusGlyph: glyph,
+      factTime: task.updatedAt,
+      nextAction: openTask,
+      certainty: 'observed',
+    };
+
   // 5–15. Pull requests, as their provider reported them.
-  const current = facts.filter(isCurrent);
-  const unreadPullRequests = facts.filter((fact) => !isCurrent(fact));
+  const current = facts.filter(
+    (fact): fact is CurrentFact => isCurrent(fact) && !isUnnamedState(fact),
+  );
+  const unreadPullRequests = facts.filter(
+    (fact) => !isCurrent(fact) || isUnnamedState(fact),
+  );
+  // The run may still be changing a pull request it cannot be seen working
+  // on: with the run unread, a clean or merged PR is not a next step yet.
+  const runUnknownInReview = (fact: TaskPullRequestFact) => ({
+    ...base,
+    placement: lane('in_review'),
+    rung: 'runUnknown' as const,
+    tone: 'caution' as const,
+    word: 'Run status unavailable',
+    detail: pullRequestLabel(fact),
+    statusGlyph: glyph,
+    factTime: task.updatedAt,
+    nextAction: {
+      kind: 'open-pull-request' as const,
+      pullRequest: identityOf(fact),
+      ...(fact.url ? { url: fact.url } : {}),
+      label: 'Open PR' as const,
+    },
+    certainty: 'unknown' as const,
+  });
   const open = current.filter(isOpen);
   const merged = current.filter(
     (fact) => fact.status.pullRequestState === MERGED,
@@ -483,6 +530,7 @@ export function deriveTaskLane(input: TaskLaneInput): TaskLaneDerivation {
   // the work landed, and the Task is still open.
   if (merged.length && !open.length && !unreadPullRequests.length) {
     const first = merged[0] as CurrentFact;
+    if (runMissing) return runUnknownInReview(first);
     return {
       ...base,
       placement: lane('needs_you'),
@@ -508,6 +556,8 @@ export function deriveTaskLane(input: TaskLaneInput): TaskLaneDerivation {
     // 13. Ready only when every open pull request is clean and none could
     // not be read: an unread one may be open and not ready.
     const ready = worst.rung === 'readyToMerge';
+    if (ready && runMissing && !unreadPullRequests.length)
+      return runUnknownInReview(worst.fact);
     if (!ready || !unreadPullRequests.length) {
       return {
         ...base,
@@ -542,9 +592,10 @@ export function deriveTaskLane(input: TaskLaneInput): TaskLaneDerivation {
       tone: 'caution',
       word: 'PR status unavailable',
       detail: pullRequestLabel(unread),
-      ...(unread.status.state !== 'current'
-        ? { reason: unread.status.reason }
-        : {}),
+      reason:
+        unread.status.state !== 'current'
+          ? unread.status.reason
+          : `The provider reports it ${unread.status.pullRequestState}.`,
       statusGlyph: glyph,
       factTime: unread.observedAt,
       nextAction: {
@@ -557,19 +608,8 @@ export function deriveTaskLane(input: TaskLaneInput): TaskLaneDerivation {
     };
   }
 
-  // 16–17. A person or agent marked the Task; worded by who recorded it.
-  if (task.status === 'blocked')
-    return {
-      ...base,
-      placement: lane('needs_you'),
-      rung: 'markedBlocked',
-      tone: 'attention',
-      word: 'Marked blocked',
-      statusGlyph: glyph,
-      factTime: task.updatedAt,
-      nextAction: openTask,
-      certainty: 'observed',
-    };
+  // 17. A person or agent marked the Task for review; worded by who
+  // recorded it.
   if (task.status === 'review' || task.status === 'verification')
     return {
       ...base,
@@ -656,7 +696,8 @@ export function deriveTaskLane(input: TaskLaneInput): TaskLaneDerivation {
       statusGlyph: 'dot',
       factTime: task.updatedAt,
       nextAction: start,
-      certainty: 'observed',
+      // Its pull requests were not read: nothing here says it has none.
+      certainty: factsKnown ? 'observed' : 'partial',
     };
   // 22. Everything else is waiting to start.
   return {
@@ -668,7 +709,7 @@ export function deriveTaskLane(input: TaskLaneInput): TaskLaneDerivation {
     statusGlyph: glyph,
     factTime: task.updatedAt,
     nextAction: start,
-    certainty: 'observed',
+    certainty: factsKnown ? 'observed' : 'partial',
   };
 }
 

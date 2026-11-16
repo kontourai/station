@@ -893,7 +893,7 @@ pull requests kept on that Task whose declaring session the requester may
 read, each read from its provider at its exact identity:
 `status: {state: "current", pullRequestState, title, draft?, reviewDecision?,
 readiness?, mergeability, sourceBranch}` or `{state: "unavailable" |
-"unsupported", reason}`. `readiness` is `clean`, `blocked`, `checks-failing`,
+"unsupported", reason}`. `readiness` is `clean`, `blocked`, `checks-not-passing`,
 `conflicting`, `behind`, `draft` or `unknown`; absent means the provider did
 not report it. At most 40 Tasks (most recently updated first) and 5 pull
 requests per Task are read, 4 at a time, within 8 seconds; anything past a

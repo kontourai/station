@@ -141,15 +141,16 @@ export interface PullRequest {
   /**
    * Whether the forge would merge this now, in its own words mapped to one
    * vocabulary (GitHub `mergeStateStatus`, GitLab `detailed_merge_status`).
-   * `checks-failing` means some checks are failing; it does not say they
-   * are required. Absent: the provider did not report it.
+   * `checks-not-passing` means some checks are failing or still pending
+   * (GitHub `UNSTABLE`); it does not say they are required. A failing
+   * required check reads `blocked`. Absent: the provider did not report it.
    */
   mergeReadiness?: PullRequestMergeReadiness;
 }
 export type PullRequestMergeReadiness =
   | 'clean'
   | 'blocked'
-  | 'checks-failing'
+  | 'checks-not-passing'
   | 'conflicting'
   | 'behind'
   | 'draft'

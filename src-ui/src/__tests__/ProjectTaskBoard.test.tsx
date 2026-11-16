@@ -180,7 +180,7 @@ const MIXED_SESSIONS = [
   session('run-ready', { lifecycleState: 'completed' }),
 ];
 const MIXED_PRS = {
-  review: [pr('41', { readiness: 'checks-failing' })],
+  review: [pr('41', { readiness: 'checks-not-passing' })],
   ready: [pr('42', { readiness: 'clean' })],
 };
 
@@ -224,7 +224,7 @@ describe('ProjectTaskBoard', () => {
     const expected: Record<string, [line: string, action: string]> = {
       'Work approve': ['Needs approval', 'Approve…'],
       'Work running': ['Running', 'Open run'],
-      'Work review': ['Some checks failing · #41', 'Open PR'],
+      'Work review': ['Checks not passing · #41', 'Open PR'],
       'Work ready': ['Ready to merge · #42', 'Merge…'],
       'Work fresh': ['Not started', 'Start'],
     };

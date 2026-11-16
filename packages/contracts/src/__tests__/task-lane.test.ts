@@ -80,9 +80,17 @@ function unreadPr(ref: string): TaskPullRequestFact {
 function derive(
   input: Partial<TaskLaneInput> & { task?: TaskLaneInput['task'] },
 ) {
+  const named = input.task ?? task({ sessionId: 'run-a' });
   return deriveTaskLane({
-    task: input.task ?? task({ sessionId: 'run-a' }),
-    session: input.session,
+    task: named,
+    // A Task that names a run reads it as finished unless a case says
+    // otherwise; an unread run is its own case ('unreadable' or undefined).
+    session:
+      'session' in input
+        ? input.session
+        : named.sessionId
+          ? session({ threadId: named.sessionId, lifecycleState: 'completed' })
+          : undefined,
     pullRequests: input.pullRequests,
   });
 }
@@ -237,10 +245,10 @@ describe('the lane table, one row at a time', () => {
     ],
     [
       '8 checks failing',
-      { pullRequests: [pr('7', { readiness: 'checks-failing' })] },
+      { pullRequests: [pr('7', { readiness: 'checks-not-passing' })] },
       'lane:in_review',
-      'checksFailing',
-      'Some checks failing',
+      'checksNotPassing',
+      'Checks not passing',
       'Open PR',
     ],
     [
@@ -415,6 +423,80 @@ describe('precedence', () => {
   });
 });
 
+describe('a recorded decision and an unread run are never outranked by a PR', () => {
+  test('a Task marked blocked stays Marked blocked beside a clean PR', () => {
+    const derived = derive({
+      task: task({ status: 'blocked' }),
+      pullRequests: [pr('7', { readiness: 'clean' })],
+    });
+    expect([derived.placement, derived.rung]).toEqual([
+      { kind: 'lane', lane: 'needs_you' },
+      'markedBlocked',
+    ]);
+  });
+
+  test('marked for review still yields to an open PR', () => {
+    expect(
+      derive({
+        task: task({ status: 'review' }),
+        pullRequests: [pr('7', { readiness: 'behind' })],
+      }).rung,
+    ).toBe('behind');
+  });
+
+  test.each([
+    ['clean', [pr('7', { readiness: 'clean' })]],
+    ['merged', [pr('7', { pullRequestState: 'MERGED' })]],
+  ] as const)(
+    'an unread run with a %s PR is In review, not a next step',
+    (_kind, pullRequests) => {
+      const derived = derive({
+        session: 'unreadable',
+        pullRequests: [...pullRequests],
+      });
+      expect([
+        derived.placement,
+        derived.rung,
+        derived.word,
+        derived.detail,
+        derived.nextAction.label,
+        derived.certainty,
+      ]).toEqual([
+        { kind: 'lane', lane: 'in_review' },
+        'runUnknown',
+        'Run status unavailable',
+        '#7',
+        'Open PR',
+        'unknown',
+      ]);
+    },
+  );
+
+  test('a PR in a state the table does not name (GitLab LOCKED) is never ready', () => {
+    const derived = derive({
+      session: session({ lifecycleState: 'completed' }),
+      pullRequests: [
+        pr('7', { pullRequestState: 'LOCKED', readiness: 'clean' }),
+      ],
+    });
+    expect([derived.rung, derived.placement]).toEqual([
+      'prUnknown',
+      { kind: 'lane', lane: 'in_review' },
+    ]);
+  });
+
+  test('a Task whose PRs were not read never claims "observed"', () => {
+    for (const pullRequests of [undefined, 'unavailable'] as const) {
+      expect(
+        derive({ task: task({ status: 'todo' }), pullRequests }).certainty,
+      ).toBe('partial');
+      expect(
+        derive({ task: task({ status: 'ready' }), pullRequests }).certainty,
+      ).toBe('partial');
+    }
+  });
+});
+
 describe('pull request facts that were not observed claim nothing', () => {
   test.each([undefined, 'unknown'] as const)(
     'readiness %s is never Ready to merge',
@@ -457,10 +539,10 @@ describe('pull request facts that were not observed claim nothing', () => {
     const derived = derive({
       pullRequests: [
         pr('7', { readiness: 'behind' }),
-        pr('9', { readiness: 'checks-failing' }),
+        pr('9', { readiness: 'checks-not-passing' }),
       ],
     });
-    expect([derived.rung, derived.detail]).toEqual(['checksFailing', '#9']);
+    expect([derived.rung, derived.detail]).toEqual(['checksNotPassing', '#9']);
     expect(derived.evidence.pullRequests.map((fact) => fact.ref)).toEqual([
       '9',
       '7',
