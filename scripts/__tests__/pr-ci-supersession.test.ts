@@ -49,6 +49,8 @@ async function exercise({
   forceRefusals = [] as number[],
   forceRefusalStatus = 409,
   terminalAtForceRefusal = false,
+  attemptChangesAtForceRefusal = false,
+  statusAtForceRefusal = undefined as string | undefined,
 } = {}) {
   const cancelled: number[] = [];
   const forced: number[] = [];
@@ -130,9 +132,9 @@ async function exercise({
     } else if (/\/actions\/runs\/\d+\/force-cancel$/.test(url.pathname)) {
       expect(req.method).toBe('POST');
       const runId = Number(url.pathname.split('/').at(-2));
-      // GitHub refuses to force-cancel a run that is already terminal; with
-      // terminalAtForceRefusal the stalled normal cancellation finishes in
-      // the same instant (runs 43793311034 and 43764828590).
+      // With terminalAtForceRefusal the stalled normal cancellation finishes
+      // as GitHub refuses (runs 43793311034 and 43764828590 read cancelled
+      // within a second of their refusals).
       if (forceRefusals.includes(runId)) {
         forceRefused.push(runId);
         res.writeHead(forceRefusalStatus);
@@ -162,6 +164,12 @@ async function exercise({
             : {}),
           ...(attemptChangesAfterCancel && cancelled.includes(item.id)
             ? { run_attempt: 2 }
+            : {}),
+          ...(attemptChangesAtForceRefusal && forceRefused.includes(item.id)
+            ? { run_attempt: 2 }
+            : {}),
+          ...(statusAtForceRefusal && forceRefused.includes(item.id)
+            ? { status: statusAtForceRefusal }
             : {}),
         }),
       );
@@ -415,6 +423,30 @@ describe('obsolete PR CI cancellation through the GitHub API', () => {
       '::warning::GitHub refused force cancellation of obsolete run 1 (HTTP 409)',
     );
     expect(lastStdout).toContain('1 obsolete run(s) not yet terminal');
+  });
+
+  it('says nothing about a refused force-cancel once the run is a new attempt', async () => {
+    const result = await exercise({
+      runs: twoStalled(),
+      cancellationStalls: true,
+      forceRefusals: [1],
+      attemptChangesAtForceRefusal: true,
+    });
+    expect(lastForceRefused).toEqual([1]);
+    expect(result).toEqual({ code: 0, cancelled: [1, 9], forced: [9] });
+    expect(lastStdout).not.toContain('Obsolete run 1 is terminal');
+    expect(lastStdout).not.toContain('::warning::');
+  });
+
+  it('fails when a refused force-cancel leaves the run in an unknown state', async () => {
+    const result = await exercise({
+      runs: twoStalled(),
+      cancellationStalls: true,
+      forceRefusals: [1],
+      statusAtForceRefusal: 'unheard-of',
+    });
+    expect(lastForceRefused).toEqual([1]);
+    expect(result).toEqual({ code: 1, cancelled: [1], forced: [] });
   });
 
   it('still fails when a force-cancel fails for another reason', async () => {

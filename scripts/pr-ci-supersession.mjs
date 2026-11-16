@@ -480,14 +480,17 @@ async function settleObsoleteCancellation(run, pr, number, repository) {
     await github(forcePath, { method: 'POST', responseBody: 'none' });
   } catch (error) {
     if (error.message !== `GitHub POST ${forcePath}: HTTP 409`) throw error;
-    // GitHub refuses to force-cancel a run that is already terminal; the
-    // normal cancellation can finish between the read above and this POST.
+    // Observed when the normal cancellation finishes around this POST: the
+    // run reads cancelled within a second of the refusal. GitHub documents
+    // the status only as "Conflict", so the run's own state decides.
     live = await github(`actions/runs/${run.id}`);
     if (!sameObsoleteRun(live, run, pr, number, repository)) return;
     if (live.status === 'completed') {
       console.log(`Obsolete run ${run.id} is terminal: ${live.conclusion}`);
       return;
     }
+    if (!LIVE_RUN_STATES.has(live.status))
+      throw new Error(`Unknown cancellation state for obsolete run ${run.id}`);
     throw new CancellationNotSettled(
       `GitHub refused force cancellation of obsolete run ${run.id} (HTTP 409)`,
     );
