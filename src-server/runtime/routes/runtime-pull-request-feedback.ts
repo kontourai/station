@@ -352,10 +352,13 @@ export function composePullRequestFeedbackRuntime(
   // Assigned below; delivery settles notices after each run through it.
   let attentionSources: () => PullRequestFeedbackAttentionSource[] = () => [];
 
+  // Set before the store closes: a run finishing during shutdown would
+  // read no sources and expire every live notice.
+  let closing = false;
   const delivery = new PullRequestFeedbackDelivery({
     settleNotices: () => {
       const service = notifier;
-      if (!service) return;
+      if (!service || closing) return;
       settlePullRequestFeedbackNotices(service, attentionSources()).catch(
         (error) =>
           deps.logger.warn('Pull request feedback notices not settled', {
@@ -533,6 +536,7 @@ export function composePullRequestFeedbackRuntime(
       }
     },
     close: async () => {
+      closing = true;
       unsubscribe();
       await poller.close();
       holder.close();

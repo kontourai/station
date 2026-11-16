@@ -701,7 +701,13 @@ export class PullRequestFeedbackDelivery {
   private noticeStopped(
     conversationId: string,
     sections: readonly PullRequestSection[],
+    store: {
+      pendingDeliveries(
+        conversationId: string,
+      ): ReadonlyArray<{ prKey: string; createdAt: string }>;
+    },
   ): void {
+    const pending = store.pendingDeliveries(conversationId);
     let noticed = this.stoppedNoticed.get(conversationId);
     if (!noticed) {
       noticed = new Set();
@@ -716,9 +722,14 @@ export class PullRequestFeedbackDelivery {
         identity: section.claim.identity,
         reason: 'agent-stopped',
         headSha: section.observation.headSha,
-        // The oldest waiting feedback: one notice per stop, stable across
-        // restarts, as the attention item's own version.
-        at: section.parts.map(({ delivery }) => delivery.createdAt).sort()[0]!,
+        // The oldest waiting feedback for this pull request, read exactly
+        // as the attention item reads it (every pending delivery, not only
+        // this run's candidates), so the notice's tag and the item agree:
+        // one notice per stop, stable across restarts.
+        at:
+          pending.find((waiting) => waiting.prKey === section.claim.prKey)
+            ?.createdAt ??
+          section.parts.map(({ delivery }) => delivery.createdAt).sort()[0]!,
         waiting: section.parts.map(({ candidate }) => ({
           category: candidate.category,
           count: candidate.summary.count,
@@ -967,7 +978,7 @@ export class PullRequestFeedbackDelivery {
     }
     const session = this.ports.session(conversationId);
     if (session.state === 'stopped')
-      this.noticeStopped(conversationId, sections);
+      this.noticeStopped(conversationId, sections, store);
     else this.stoppedNoticed.delete(conversationId);
     if (session.state !== 'idle')
       return {

@@ -632,6 +632,57 @@ describe('pull request agent feedback reaches the owning conversation', () => {
     expect(t.entries()).toHaveLength(0);
   });
 
+  it('(k2b) a stopped notice is dated by the oldest feedback waiting on the pull request, as the attention item dates it', async () => {
+    const t = await setup();
+    t.claim();
+    t.observe(failingOnly());
+    t.forced.state = 'stopped';
+    const first = vi.fn();
+    const before = t.use(
+      new PullRequestFeedbackDelivery(t.ports({ notify: first })),
+    );
+    await before.deliver(CONVERSATION);
+    expect(first).toHaveBeenCalledTimes(1);
+    const oldest = t.store.pendingDeliveries(CONVERSATION)[0]!.createdAt;
+    // A new head whose required check still runs (so the old head's
+    // failures stay waiting) and a new review thread on it.
+    const next = '9'.repeat(40);
+    const base = failingOnly(next);
+    t.observe({
+      ...base,
+      checks: [
+        {
+          name: 'ci / unit-tests',
+          conclusion: null,
+          completed: false,
+          required: true,
+          url: 'https://github.com/acme/widgets/actions/runs/2/job/1',
+        },
+      ],
+      threads: [
+        thread('PRRT_new', 'src/new.ts', {
+          id: '9601',
+          author: 'alice',
+          body: 'Please rename this.',
+          createdAt: '2026-11-10T11:00:00Z',
+        }),
+      ],
+    });
+    // A restart forgets which stops were noticed.
+    const after = vi.fn();
+    const restarted = t.use(
+      new PullRequestFeedbackDelivery(t.ports({ notify: after })),
+    );
+    await restarted.deliver(CONVERSATION);
+    const pending = t.store.pendingDeliveries(CONVERSATION);
+    expect(pending.length).toBeGreaterThan(1);
+    expect(pending[0]!.createdAt).toBe(oldest);
+    // Told again only as the same notice: dated by the oldest waiting
+    // feedback, which is what the attention item and its tag use.
+    for (const call of after.mock.calls)
+      expect(call[0]).toMatchObject({ reason: 'agent-stopped', at: oldest });
+  });
+
   it('(k3) a 24-hour pause moving to a new head names what fails there, not on the old head', async () => {
     const t = await setup();
     t.claim();
