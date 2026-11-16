@@ -354,7 +354,7 @@ after a failed upload until the next build, can briefly find nothing):
 
 The release also carries the same builds under versioned names
 (`station-<version>-…`), and versioned downloads of earlier builds, which
-are not kept indefinitely. Its `SHA256SUMS` lists
+may be removed after about two weeks. Its `SHA256SUMS` lists
 the newest build's downloads under both names. Download it next to the
 installer and check it, for example
 `shasum -a 256 --ignore-missing -c SHA256SUMS` on macOS,

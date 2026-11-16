@@ -316,7 +316,7 @@ const VERSIONED_DOWNLOADS = Object.freeze([
 const DOWNLOAD_PREFIX = `https://github.com/${repository}/releases/download/nightly-desktop/`;
 
 /** `delete` only for the exact owner value; anything else reports. */
-export function nightlyDesktopPruneMode(value) {
+function nightlyDesktopPruneMode(value) {
   return value === 'enabled' ? 'delete' : 'report';
 }
 
