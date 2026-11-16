@@ -315,6 +315,39 @@ test('removes a Station after an inline confirmation, never the active one', asy
   expect(screen.queryByRole('menuitemradio', { name: /^Laptop/ })).toBeNull();
 });
 
+test('forgetting moves focus to the next row, else the previous, never the filter', async () => {
+  openMenu([station, laptop, ...extras]);
+  const names = () =>
+    screen
+      .getAllByRole('menuitemradio')
+      .map((item) => (item.getAttribute('aria-label') ?? '').split(' — ')[0]);
+  const before = names();
+  const index = before.indexOf('Media server');
+  expect(index).toBeGreaterThan(0);
+  expect(index).toBeLessThan(before.length - 1);
+  fireEvent.click(
+    screen.getByRole('menuitem', { name: 'Forget Media server' }),
+  );
+  fireEvent.click(
+    screen.getByRole('menuitem', { name: 'Forget Media server' }),
+  );
+  await act(async () => {});
+  // jsdom cannot show the menu closing on focus loss; the real-browser
+  // Gallery screens own that. This pins where focus is sent.
+  expect(document.activeElement).toBe(
+    screen.getAllByRole('menuitemradio')[index],
+  );
+  expect(names()).not.toContain('Media server');
+  // From the last row, the previous one.
+  const last = screen.getAllByRole('menuitemradio').at(-1) as HTMLElement;
+  const previous = screen.getAllByRole('menuitemradio').at(-2);
+  const lastName = (last.getAttribute('aria-label') ?? '').split(' — ')[0];
+  fireEvent.click(screen.getByRole('menuitem', { name: `Forget ${lastName}` }));
+  fireEvent.click(screen.getByRole('menuitem', { name: `Forget ${lastName}` }));
+  await act(async () => {});
+  expect(document.activeElement).toBe(previous);
+});
+
 test('Delete on a row arms its removal, and a refused removal keeps the row', async () => {
   const forget = vi.fn(async () => {
     throw new Error("This app's own Station cannot be forgotten.");

@@ -68,6 +68,13 @@ type ConnectionInspectionRequest = {
   signal?: AbortSignal;
   concurrency?: number;
   includeCommands?: boolean;
+  /**
+   * `false` skips each Adapter's live model discovery, which can start the
+   * engine's program (Claude's probe spawns Claude Code). The connection's
+   * `runtimeCatalog` is then its built-in fallback, unrecorded, and its
+   * status still comes from prerequisites alone.
+   */
+  includeModelCatalog?: boolean;
   includePrerequisites?: boolean;
   disableHostDiscovery?: boolean;
   allowBuiltInOnDiscoveryFailure?: boolean;
@@ -416,7 +423,11 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
     });
     let liveCatalog: ProviderAdapterModelCatalog | undefined;
     let liveDiscoveryFailed = false;
-    if (!hostDiscoveryDisabled && managedAllowed) {
+    const discoverModels =
+      !hostDiscoveryDisabled &&
+      managedAllowed &&
+      request.includeModelCatalog !== false;
+    if (discoverModels) {
       try {
         const discovery = adapter.listModelCatalog
           ? adapter.listModelCatalog({
@@ -459,7 +470,9 @@ class ConnectionInspectorImplementation implements ConnectionInspector {
         ? engineIdValue
         : undefined,
     );
-    recordRuntimeCatalogStatus({ adapter, catalog: runtimeCatalog });
+    // A skipped discovery is not a catalog resolution to count.
+    if (request.includeModelCatalog !== false)
+      recordRuntimeCatalogStatus({ adapter, catalog: runtimeCatalog });
     let commands: AdapterCommands = [];
     if (!hostDiscoveryDisabled && request.includeCommands !== false) {
       try {
