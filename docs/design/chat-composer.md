@@ -67,6 +67,17 @@ remains available in its original app. A failed opening retains the reader and o
 retry that does not create another continuation. Metadata is available through
 an explicit Details action.
 
+While a conversation's first load is in flight, an empty transcript shows a
+quiet loading stage: the Station mark and one status line naming the read in
+flight (**Opening conversation**, **Loading messages** or **Catching up**). A
+load that lands within a fraction of a second paints nothing. Past six seconds the stage adds
+**Taking longer than usual. Waiting on** the Station's name. A slow load offers
+no **Start new chat**. Retry and Start new chat belong to a load that failed:
+the recovery and history-failure notices. While the open read is pending, the
+composer stays editable for a draft. Send stays disabled until the read answers
+([stage](../../src-ui/src/components/conversation/ConversationLoadingStage.tsx),
+[body](../../src-ui/src/components/conversation/ConversationBody.tsx)).
+
 Message action rows reserve their layout space. Hover and keyboard focus may
 reveal controls, but must not change bubble size or the position of later messages.
 The desktop chat header's **Inventory** button opens the full Chat inventory
