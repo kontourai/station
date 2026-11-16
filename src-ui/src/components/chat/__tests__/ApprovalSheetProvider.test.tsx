@@ -409,8 +409,12 @@ describe('the conversation approval sheet', () => {
         <span>Conversation</span>
       </ApprovalSheetProvider>
     );
-    const mounted = render(tree([first], false));
+    // The first connection catches up and finishes: nothing is held then.
+    const mounted = render(tree([], true));
+    mounted.rerender(tree([first], true));
+    mounted.rerender(tree([first], false));
     await screen.findByRole('dialog', { name: 'Needs approval' });
+    // A reconnect replays the gap: what was shown stays put.
     mounted.rerender(
       tree([first, request('replayed-1'), request('replayed-2')], true),
     );
@@ -438,6 +442,31 @@ describe('the conversation approval sheet', () => {
     const mounted = render(tree([]));
     mounted.rerender(tree([request('first-load-a'), request('first-load-b')]));
     // Well inside the hold's 5 s cap: a held list would still be empty here.
+    expect(
+      await screen.findByRole(
+        'dialog',
+        { name: 'Needs approval (2)' },
+        { timeout: 1_000 },
+      ),
+    ).toBeTruthy();
+  });
+
+  // The live stream starts "unknown", turns "receiving" on its first frame,
+  // and a stream that never reports catching up stays there. That is not a
+  // reconnect: what arrives must show (the e2e smoke's live-emit shape).
+  test('a stream that starts receiving after idle, never caught up, does not hold', async () => {
+    const tree = (requests: PendingApprovalRequest[], catchingUp: boolean) => (
+      <ApprovalSheetProvider
+        requests={requests}
+        catchingUp={catchingUp}
+        onApprove={vi.fn(async () => 'answered' as const)}
+      >
+        <span>Conversation</span>
+      </ApprovalSheetProvider>
+    );
+    const mounted = render(tree([], false));
+    mounted.rerender(tree([], true));
+    mounted.rerender(tree([request('live-1'), request('live-2')], true));
     expect(
       await screen.findByRole(
         'dialog',

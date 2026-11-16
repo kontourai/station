@@ -38,11 +38,15 @@ export function useHeldDuringCatchUp<T>(
     const timer = setTimeout(() => setExpired(true), maxHoldMs);
     return () => clearTimeout(timer);
   }, [catchingUp, maxHoldMs]);
-  // Only a REconnect holds: the first connection also replays before it is
-  // caught up, and holding then would hide what is already waiting.
-  const settledOnce = useRef(false);
-  if (!catchingUp) settledOnce.current = true;
-  const holding = catchingUp && !expired && settledOnce.current;
+  // Only a REconnect holds: one that follows a catch-up this view saw finish.
+  // The first connection also replays before it is caught up (and a stream
+  // that never reports catching up stays "receiving"), so holding then would
+  // hide what is already waiting.
+  const wasCatchingUp = useRef(catchingUp);
+  const caughtUpOnce = useRef(false);
+  if (wasCatchingUp.current && !catchingUp) caughtUpOnce.current = true;
+  wasCatchingUp.current = catchingUp;
+  const holding = catchingUp && !expired && caughtUpOnce.current;
   const held = useRef(value);
   if (!holding) held.current = value;
   return holding ? held.current : value;
