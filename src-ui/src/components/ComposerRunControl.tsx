@@ -7,6 +7,7 @@ import {
   isValidElement,
   type ReactNode,
   useCallback,
+  useEffect,
   useId,
   useRef,
   useState,
@@ -37,12 +38,18 @@ export function ComposerRunControl({
   engineId,
   children,
   loadingLabel,
+  closeHandle,
 }: {
   label: string;
   icon: ReactNode;
   engineId?: EngineId | null;
   children: ReactNode;
   loadingLabel?: string;
+  /**
+   * Receives the panel's close, for a picker rendered outside the panel whose
+   * choice opens a dialog that should replace it (an engine switch on a phone).
+   */
+  closeHandle?: { current: (() => void) | null };
 }) {
   const agent =
     isValidElement<React.ComponentProps<typeof AgentIcon>>(icon) &&
@@ -66,6 +73,13 @@ export function ComposerRunControl({
   const contentId = useId();
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
+  useEffect(() => {
+    if (!closeHandle) return;
+    closeHandle.current = close;
+    return () => {
+      closeHandle.current = null;
+    };
+  }, [closeHandle, close]);
   const trigger = useRef<HTMLButtonElement>(null);
   const [summaries, setSummaries] = useState<
     Record<string, { label: string; safety?: string; changed?: boolean }>

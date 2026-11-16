@@ -591,6 +591,18 @@ export function ChatInputArea({
     return () => onEnabledChange?.(null);
   }, [textareaDisabled, textareaRef, onEnabledChange]);
   const isMobile = useIsMobile();
+  // On a phone an engine switch opens the handoff picker, which replaces Run
+  // setup rather than stacking over it (as choosing another Agent does).
+  const runSetupClose = useRef<(() => void) | null>(null);
+  const selectModel = (model: SelectableModel) => {
+    if (isMobile && model.executionAgentId !== currentExecutionAgentId)
+      runSetupClose.current?.();
+    onModelSelect(model);
+  };
+  const resetModel = () => {
+    if (isMobile && currentExecutionAgentId) runSetupClose.current?.();
+    onModelReset();
+  };
   const hasSendableDraft = Boolean(
     input.trim() || hasQuotedContext || attachments.length,
   );
@@ -1139,8 +1151,8 @@ export function ChatInputArea({
                 defaultModel={agentDefaultModel}
                 defaultSourceLabel={modelResetSourceLabel(defaultModelSource)}
                 runtimeOptions={modelRuntimeOptions}
-                onSelect={onModelSelect}
-                onReset={onModelReset}
+                onSelect={selectModel}
+                onReset={resetModel}
                 resetDisabledReason={modelResetDisabledReason}
                 onRuntimeOptionChange={onModelRuntimeOptionChange}
                 onClose={onModelClose}
@@ -1710,6 +1722,7 @@ export function ChatInputArea({
           {contextMeter}
           <div className="composer-choices chat-input__settings">
             <ComposerRunControl
+              closeHandle={runSetupClose}
               label={[
                 agentLabel ?? 'Current Agent',
                 modelLabel !== 'Model' ? modelLabel : undefined,
@@ -1815,9 +1828,7 @@ export function ChatInputArea({
                     aria-describedby={
                       modelResetDisabledReason ? modelResetReasonId : undefined
                     }
-                    onClick={
-                      modelResetDisabledReason ? undefined : onModelReset
-                    }
+                    onClick={modelResetDisabledReason ? undefined : resetModel}
                     title={
                       modelResetDisabledReason ??
                       'Reset this chat to its default model'

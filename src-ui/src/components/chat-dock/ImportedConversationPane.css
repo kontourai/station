@@ -47,3 +47,11 @@
 .chat-dock__header-action:empty {
   display: none;
 }
+
+/* Sized to the title bar's own controls, so the bar keeps its height and the
+   button clears the dock's resize handle along the top edge. */
+.chat-dock__header-action .button {
+  min-height: 26px;
+  height: 26px;
+  padding-block: 0;
+}

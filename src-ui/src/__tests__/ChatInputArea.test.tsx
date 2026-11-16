@@ -2448,3 +2448,51 @@ test('ACP reply setup uses the connection engine mark', async () => {
     ).not.toBeNull(),
   );
 });
+
+test('on a phone, choosing another engine closes Run setup; another model of the same engine does not', async () => {
+  const mobile = (query: string) => ({
+    matches: true,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+    media: query,
+    onchange: null,
+  });
+  vi.mocked(window.matchMedia).mockImplementation(mobile);
+  try {
+    const onModelSelect = vi.fn();
+    const models = [
+      { id: 'claude-sonnet', name: 'Claude Sonnet' },
+      { id: 'claude-opus', name: 'Claude Opus' },
+      { id: 'gpt-6', name: 'GPT Six', executionAgentId: 'codex' },
+    ];
+    renderChatInputArea({
+      modelQuery: '',
+      availableModels: models,
+      pickerModels: models,
+      onModelSelect,
+    });
+    fireEvent.click(screen.getByTestId('run-setup-trigger'));
+    expect(screen.getByRole('dialog', { name: 'Run setup' })).toBeTruthy();
+    fireEvent.click(
+      await screen.findByRole(
+        'option',
+        { name: /Claude Opus/ },
+        { timeout: 5_000 },
+      ),
+    );
+    expect(screen.getByRole('dialog', { name: 'Run setup' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('option', { name: /GPT Six/ }));
+    expect(onModelSelect).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: 'gpt-6' }),
+    );
+    expect(screen.queryByRole('dialog', { name: 'Run setup' })).toBeNull();
+  } finally {
+    vi.mocked(window.matchMedia).mockImplementation((query: string) => ({
+      ...mobile(query),
+      matches: false,
+    }));
+  }
+}, 7_500);
