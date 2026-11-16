@@ -33,6 +33,7 @@ import {
   useChildChatNavigation,
 } from '../components/chat-dock/ChildChatNavigationContext';
 import { ConversationConnectionProvider } from '../components/conversation/ConversationConnectionContext';
+import { backgroundTasksStore } from '../contexts/background-tasks-store';
 import { childWorkGlobalStore } from '../contexts/child-work-global-store';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
 import { PreviewProvider } from '../contexts/PreviewContext';
@@ -66,6 +67,8 @@ const history = vi.hoisted(() => ({
   hasPreviousPage: false,
   isFetching: false,
   fetchPreviousPage: vi.fn(),
+  hasLaterPage: false,
+  fetchNextPage: vi.fn(),
   sessions: [] as { threadId: string; childWork: { asChild: ChildWorkItem } }[],
 }));
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
@@ -86,6 +89,9 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
     isFetching: history.isFetching,
     isFetchingPreviousPage: false,
     fetchPreviousPage: history.fetchPreviousPage,
+    hasLaterPage: history.hasLaterPage,
+    isFetchingNextPage: false,
+    fetchNextPage: history.fetchNextPage,
     latestError: null,
   })),
 }));
@@ -108,6 +114,8 @@ afterEach(() => {
   history.hasPreviousPage = false;
   history.isFetching = false;
   history.fetchPreviousPage.mockClear();
+  history.hasLaterPage = false;
+  history.fetchNextPage.mockClear();
 });
 const connection = { apiBase: 'https://station.test' };
 const item: ChildWorkItem = {
@@ -683,4 +691,96 @@ test('mid-run user records stay in the run as muted notices, and a result with n
     .join(' ');
   expect(prose).not.toContain('orphan output');
   expect(prose).not.toContain('Tool result');
+});
+
+/** Two calls of the child: one with its result, one the record never closed. */
+const unclosedCallEntries: ChildWorkTranscriptEntry[] = [
+  { kind: 'text', message: 0, role: 'user', text: 'Run the checks.' },
+  {
+    kind: 'tool-call',
+    message: 1,
+    toolCallId: 'toolu_done',
+    name: 'Bash',
+    input: JSON.stringify({ command: 'npm run lint' }),
+  },
+  { kind: 'tool-result', message: 2, toolCallId: 'toolu_done', text: 'ok' },
+  {
+    kind: 'tool-call',
+    message: 3,
+    toolCallId: 'toolu_open',
+    name: 'Bash',
+    input: JSON.stringify({ command: 'npm test' }),
+  },
+];
+function liveToolStarted(id: string) {
+  // The parent chat's live record, in the partition the reader reads.
+  backgroundTasksStore.ingest(
+    {
+      provider: 'claude',
+      threadId: 'parent',
+      createdAt: '2026-11-16T10:00:00.000Z',
+      method: 'tool.started',
+      toolCallId: id,
+      toolName: 'Bash',
+      arguments: { command: 'npm test' },
+    } as never,
+    connection.apiBase,
+  );
+}
+
+test('a settled subagent’s call the live record never closed reads no result, not running', async () => {
+  backgroundTasksStore.reset();
+  history.entries = unclosedCallEntries;
+  liveToolStarted('toolu_open');
+  try {
+    render(tree());
+    fireEvent.click(screen.getByRole('button', { name: 'Open nested' }));
+    const transcript = await screen.findByRole('log', {
+      name: 'Conversation transcript',
+    });
+    await within(transcript).findByText(/no result/);
+    expect(transcript.textContent).not.toMatch(/running/);
+  } finally {
+    backgroundTasksStore.reset();
+  }
+});
+
+test('a running subagent’s call reads running from the live record', async () => {
+  backgroundTasksStore.reset();
+  history.entries = unclosedCallEntries;
+  liveToolStarted('toolu_open');
+  const running = { ...item, childId: 'nested', status: 'running' as const };
+  childWorkGlobalStore.reconcileSnapshot(connection.apiBase, [
+    {
+      threadId: 'parent',
+      childWork: {
+        children: {
+          observability: 'reported',
+          running: [running],
+          observedAt: '2026-11-13T00:00:00Z',
+        },
+      },
+    },
+  ]);
+  try {
+    render(tree());
+    fireEvent.click(screen.getByRole('button', { name: 'Open nested' }));
+    const transcript = await screen.findByRole('log', {
+      name: 'Conversation transcript',
+    });
+    await within(transcript).findByText(/running/);
+    expect(transcript.textContent).not.toMatch(/no result/);
+  } finally {
+    backgroundTasksStore.reset();
+  }
+});
+
+test('against a Station from before page ranges, later messages load on request', async () => {
+  history.hasLaterPage = true;
+  render(tree());
+  fireEvent.click(screen.getByRole('button', { name: 'Open nested' }));
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Show later messages' }),
+  );
+  expect(history.fetchNextPage).toHaveBeenCalledWith({ cancelRefetch: false });
 });

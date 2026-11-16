@@ -163,6 +163,11 @@ describe('#3163 GET /sessions/:threadId/child-work/:childId/transcript', () => {
       data: { entries: unknown[]; offset?: number; endOffset?: number };
     };
     expect(since.data).toEqual({ entries: [], offset: 5, endOffset: 5 });
+    // A cursor past the end (a transcript rewritten shorter) reads the end.
+    const past = (await (
+      await f.request(TRANSCRIPT_AGENT_ID, '?offset=9')
+    ).json()) as { data: unknown };
+    expect(past.data).toEqual({ entries: [], offset: 5, endOffset: 5 });
     const older = (await (
       await f.request(TRANSCRIPT_AGENT_ID, '?offset=1&limit=2')
     ).json()) as {

@@ -486,7 +486,10 @@ async function readPage(
       start: index - lastMessages.length,
       end: index,
     };
-  return { entries, more: false, start: offset, end: Math.max(offset, index) };
+  // A read from past the end starts at the end: a reader whose cursor is
+  // beyond it learns the transcript is now shorter.
+  const from = Math.min(offset, index);
+  return { entries, more: false, start: from, end: Math.max(from, index) };
 }
 
 /** A page of the child thread's transcript, starting at message `offset`. */

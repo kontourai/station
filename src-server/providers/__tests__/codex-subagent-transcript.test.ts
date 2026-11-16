@@ -132,6 +132,13 @@ describe('Codex subagent transcript (rollout file)', () => {
       expect.objectContaining({ message: 7, text: 'One more thing.' }),
     ]);
     expect(since.page).toMatchObject({ offset: 7, endOffset: 8 });
+    // A cursor past the end reads the end, so a reader can tell it shrank.
+    const past = await readCodexSubagentTranscriptPage(ref(home), {
+      offset: 12,
+      limit: 50,
+    });
+    if (past.status !== 'found') throw new Error(past.status);
+    expect(past.page).toEqual({ entries: [], offset: 8, endOffset: 8 });
   });
 
   test('a running child reads what Codex has appended since the last read', async () => {

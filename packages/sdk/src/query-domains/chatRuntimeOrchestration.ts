@@ -749,6 +749,14 @@ export function useChildWorkTranscriptQuery(
   });
 }
 
+/** A transcript read from a server that names no page ranges. */
+function isLegacyTranscript(
+  data: { pages: readonly ChildWorkTranscriptPage[] } | undefined,
+): boolean {
+  const first = data?.pages[0];
+  return first !== undefined && first.endOffset === undefined;
+}
+
 /** Where a page of a child's transcript is read from. */
 type ChildTranscriptPageParam =
   | { kind: 'tail' }
@@ -840,16 +848,39 @@ export function useChildWorkTranscriptTailQuery(
       first.offset !== undefined && first.offset > 0
         ? { kind: 'before', end: first.offset }
         : undefined,
-    // Later messages arrive through the cursor read below, never by
-    // re-reading pages.
-    getNextPageParam: () => undefined,
+    // The page after the last one. A server that names its pages' range is
+    // read forward from `endOffset`: the cursor read below appends those
+    // pages, and a refetch (an invalidation) rebuilds every loaded page
+    // from the first one instead of keeping only that first page. A server
+    // from before ranges ignores `tail` and pages forward from the first
+    // message by `nextOffset`, as `useChildWorkTranscriptQuery` does.
+    getNextPageParam: (last) => {
+      if (last.endOffset !== undefined)
+        return {
+          kind: 'range',
+          offset: last.endOffset,
+          end: last.endOffset + CHILD_WORK_TRANSCRIPT_PAGE_MAX,
+        };
+      return last.nextOffset !== undefined
+        ? {
+            kind: 'range',
+            offset: last.nextOffset,
+            end: last.nextOffset + CHILD_WORK_TRANSCRIPT_PAGE_SIZE,
+          }
+        : undefined;
+    },
     retry: false,
     staleTime: Number.POSITIVE_INFINITY,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
+    // An older server has no cursor to read past: a running child re-reads
+    // its loaded pages, as before ranges existed.
+    refetchInterval: (query) =>
+      input.running && isLegacyTranscript(query.state.data) ? 2_000 : false,
   });
   const pages = history.data?.pages;
-  const cursor = pages?.[pages.length - 1]?.endOffset;
+  const legacy = isLegacyTranscript(history.data);
+  const cursor = legacy ? undefined : pages?.[pages.length - 1]?.endOffset;
   const since = useQuery({
     queryKey: [...key, 'since', cursor ?? null],
     // Also read once per mount and on window focus, so a reopened reader,
@@ -864,6 +895,17 @@ export function useChildWorkTranscriptTailQuery(
   });
   const latest = since.data;
   useEffect(() => {
+    // A read from past the end names the transcript's end. Behind the
+    // cursor means the transcript was rewritten shorter: start again from
+    // its latest messages rather than wait at a cursor nothing will reach.
+    if (
+      latest?.offset !== undefined &&
+      cursor !== undefined &&
+      latest.offset < cursor
+    ) {
+      void client.resetQueries({ queryKey: key, exact: true });
+      return;
+    }
     if (
       !latest ||
       latest.offset === undefined ||
@@ -889,17 +931,25 @@ export function useChildWorkTranscriptTailQuery(
           }
         : data,
     );
-  }, [latest, client, key]);
+  }, [latest, client, key, cursor]);
   const { refetch: refetchSince } = since;
+  const { refetch: refetchHistory } = history;
   const refreshLatest = useCallback(() => {
     if (cursor !== undefined) void refetchSince();
-  }, [cursor, refetchSince]);
+    else if (legacy) void refetchHistory();
+  }, [cursor, legacy, refetchSince, refetchHistory]);
   const reload = useCallback(
     () => void client.resetQueries({ queryKey: key, exact: true }),
     [client, key],
   );
   return {
     ...history,
+    /**
+     * Later pages wait to be read: only from a server that pages forward
+     * from the first message (no ranges), where they are not read on their
+     * own. With ranges, later messages arrive past the cursor.
+     */
+    hasLaterPage: legacy && history.hasNextPage,
     /** The cursor read failed; loaded messages stay. */
     latestError: since.error,
     refreshLatest,

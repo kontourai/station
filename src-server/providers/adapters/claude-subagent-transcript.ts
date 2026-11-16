@@ -277,7 +277,9 @@ async function readMessages(
   }
   return {
     records: page,
-    start: tail ? index - page.length : offset,
+    // A read from past the end starts at the end: a reader whose cursor is
+    // beyond it learns the transcript is now shorter.
+    start: tail ? index - page.length : Math.min(offset, index),
     total: index,
   };
 }

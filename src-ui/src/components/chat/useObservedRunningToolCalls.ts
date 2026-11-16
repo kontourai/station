@@ -41,6 +41,14 @@ export const TranscriptToolRecordSource = createContext<string | undefined>(
 );
 
 /**
+ * Whether this transcript's calls may read the live tool record. A record
+ * of work that has ended (a settled subagent's transcript) says no: its
+ * calls are not this chat's to mark running, and a call the record never
+ * closed would otherwise read running for as long as other work runs.
+ */
+export const TranscriptToolRecordLive = createContext(true);
+
+/**
  * Of `candidates`, the ids this Station's live tool record still holds as
  * running (`tool.started` seen, no `tool.completed`, not closed by a turn
  * end), joined by newlines: a stable snapshot, so only a change to THESE
@@ -54,7 +62,8 @@ function useObservedRunningIds(candidates: readonly string[]): string {
   const partition = useBackgroundTasksPartition(
     transcriptSource ?? connectionApiBase,
   );
-  const key = candidates.join('\n');
+  const live = useContext(TranscriptToolRecordLive);
+  const key = live ? candidates.join('\n') : '';
   const getSnapshot = useCallback(() => {
     if (!key) return '';
     const { entries } = backgroundTasksStore.getSnapshot(partition);

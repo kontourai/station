@@ -10,6 +10,7 @@ import {
 import { useEffect, useMemo, useRef } from 'react';
 import { Button } from '../../components/Button';
 import { ChatMessageList } from '../../components/chat/ChatMessageList';
+import { TranscriptToolRecordLive } from '../../components/chat/useObservedRunningToolCalls';
 import { useOptionalConversationConnection } from '../../components/conversation/ConversationConnectionContext';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
 import type { ChatSession } from '../../types';
@@ -98,6 +99,9 @@ export function ChildWorkTranscript({
     isFetchingPreviousPage,
     isFetching,
     fetchPreviousPage,
+    hasLaterPage,
+    isFetchingNextPage,
+    fetchNextPage,
   } = transcript;
   const engine = parseEngineId(engineId);
   const session: ChatSession = {
@@ -155,21 +159,39 @@ export function ChildWorkTranscript({
       {transcript.isSuccess && entries.length === 0 && (
         <Empty label="No messages in this transcript yet." />
       )}
-      <ChatMessageList
-        activeSession={session}
-        emptyState={null}
-        fontSize={14}
-        showReasoning={false}
-        showToolDetails
-        suppressStreamingRow
-        hasOlderMessages={hasPreviousPage}
-        historyLoading={isFetchingPreviousPage}
-        onLoadOlder={async () => {
-          // A read already in flight would be cancelled by a new one.
-          if (isFetching) return;
-          await fetchPreviousPage({ cancelRefetch: false });
-        }}
-      />
+      {/* A settled child's calls are a record: none may read as running
+          from the parent chat's live tool record. */}
+      <TranscriptToolRecordLive.Provider value={running}>
+        <ChatMessageList
+          activeSession={session}
+          emptyState={null}
+          fontSize={14}
+          showReasoning={false}
+          showToolDetails
+          suppressStreamingRow
+          hasOlderMessages={hasPreviousPage}
+          historyLoading={isFetchingPreviousPage}
+          onLoadOlder={async () => {
+            // A read already in flight would be cancelled by a new one.
+            if (isFetching) return;
+            await fetchPreviousPage({ cancelRefetch: false });
+          }}
+        />
+      </TranscriptToolRecordLive.Provider>
+      {/* Only from a Station that pages forward from the first message:
+          its later messages are read on request, as that Station did. */}
+      {hasLaterPage && (
+        <Button
+          size="sm"
+          className="tap-target"
+          pending={isFetchingNextPage}
+          onClick={() => {
+            if (!isFetching) void fetchNextPage({ cancelRefetch: false });
+          }}
+        >
+          Show later messages
+        </Button>
+      )}
       {transcript.latestError && (
         <ErrorState
           variant="compact"
