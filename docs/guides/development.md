@@ -578,7 +578,9 @@ when abandoned; the attempts between are debug lines. Shutdown still tries
 every scope once more, abandoned ones included, and reports any that do not
 settle. `GET /api/system/workload` and the resource-posture route list pending
 and abandoned scopes under `cleanup` (at most 256 abandoned are kept, with a
-count of any dropped). Attempts are counted by
+count of any dropped). Settings › Advanced › Host options lists the abandoned
+ones, with a restart hint, whether or not the workload budget preview is on.
+Attempts are counted by
 `station.workload.scope_cleanup.attempts`, and the backlog is observed by
 `station.workload.scope_cleanup.backlog`.
 
