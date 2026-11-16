@@ -97,17 +97,19 @@ export type StationControlMcpTokenChannel =
  *
  * - `bound`: `sdk-in-process` only. The token never leaves Station's own
  *   process (the per-session in-process station-control server of Claude and
- *   of Station's own engine, #2377 slice D), so presenting it proves the call
- *   came through that session's MCP connection.
- * - `delegated-custody`: `http-header-token`. Station hands the token to an
- *   engine over a private channel (Codex's `thread/start` configuration
- *   header since #4372, an ACP agent app's declared HTTP MCP header), but
- *   what the engine does with it next is its own business: it may write it
- *   to its own config, argv or logs. Station cannot prove it stayed private.
- * - `bearer-exposed`: `url-token`, the retained legacy URL delivery. The
- *   token sits in a URL an engine holds (historically Codex's
- *   `-c mcp_servers…url=` argv, which any same-user process can read with
- *   `ps`), so presenting it proves possession, not session identity.
+ *   of Station's own engine, #2377 slice D, and Codex's bound `dynamicTools`
+ *   channel, whose calls arrive on the app-server pipe Station owns), so
+ *   presenting it proves the call came through that session's connection.
+ * - `delegated-custody`: `http-header-token`. Station hands the token to
+ *   Codex as an `Authorization` header in its private `thread/start` (or
+ *   `thread/resume`) configuration, or to an ACP agent app in `session/new`,
+ *   over a private pipe, but what the engine does with it next is its own
+ *   business: it may write it to its own config, argv or logs. Station
+ *   cannot prove it stayed private.
+ * - `bearer-exposed`: `url-token`. A token in a URL query string, such as
+ *   the `-c mcp_servers…url=` argv Codex once received (any same-user
+ *   process can read argv with `ps`), proves possession, not session
+ *   identity. No current engine receives a station-control one.
  *
  * Only `bound` may gate an action that must be attributable to the session
  * (a session-scoped browser tool, an owned child session).

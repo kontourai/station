@@ -218,7 +218,7 @@ export class StationControlToolRegistry {
         ),
         annotations: { readOnlyHint: true },
       },
-      async ({ family }) => {
+      async ({ family }, context) => {
         if (!(await callerCurrent()) || !disclosure.current())
           return jsonToolResult(
             stationControlRefusalBody(
@@ -238,6 +238,17 @@ export class StationControlToolRegistry {
             ),
           );
         for (const tool of tools) tool.enable();
+        // `enable()` announces the change on the server's standalone stream,
+        // which the stateless HTTP route does not keep: each request builds
+        // its own server. Sending it as a notification related to THIS call
+        // puts it on the call's own response stream, where an HTTP client
+        // reads it before the result (Codex 0.167 with
+        // `features.mcp_tool_list_changed` re-lists on it; see
+        // scripts/qualify-tool-disclosure.ts). Stateful transports may also
+        // get the standalone copy; a duplicate only prompts another list.
+        await context.mcpReq.notify({
+          method: 'notifications/tools/list_changed',
+        });
         return jsonToolResult({
           family,
           loaded: true,
