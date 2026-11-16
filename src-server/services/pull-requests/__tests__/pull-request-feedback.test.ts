@@ -216,10 +216,15 @@ async function setup() {
 }
 
 describe('pull request agent feedback reaches the owning conversation', () => {
-  it('(a) an idle agent gets one message with exactly the failing checks', async () => {
+  it('(a) an idle agent gets one message with exactly the failing checks, each named once', async () => {
     const t = await setup();
     t.claim();
-    t.observe(failingOnly());
+    const observed = failingOnly();
+    // A workflow run again on the head reports the same check twice.
+    t.observe({
+      ...observed,
+      checks: [...observed.checks, observed.checks[0]!],
+    });
     const delivery = t.use(new PullRequestFeedbackDelivery(t.ports()));
     await t.deliverPlaced(delivery);
     expect(t.entries()).toHaveLength(1);

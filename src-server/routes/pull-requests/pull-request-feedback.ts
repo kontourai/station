@@ -121,7 +121,7 @@ export function createPullRequestFeedbackRoutes(
               error: result.owner.title
                 ? `Feedback for this pull request goes to “${result.owner.title}”.`
                 : 'Feedback for this pull request goes to another chat.',
-              owner: result.owner,
+              details: { owner: result.owner },
             },
             409,
           );

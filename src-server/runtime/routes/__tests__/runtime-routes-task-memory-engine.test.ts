@@ -178,6 +178,16 @@ describe('an engine keeps Task memory through its own MCP connection', () => {
     );
     const port = await listening;
     const context = deepStub({
+      // Only pull request agent feedback's preview is on; every other
+      // binding reads off, as on a fresh Station.
+      featurePreviews: {
+        bind: (definition: { id: string }) => ({
+          select: <T>(branches: { enabled: () => T; disabled: () => T }) =>
+            definition.id === 'pull-request-agent-feedback'
+              ? branches.enabled()
+              : branches.disabled(),
+        }),
+      },
       projectSharedTasks: undefined,
       deploymentAuthentication: undefined,
       localAccounts: undefined,
@@ -778,6 +788,24 @@ describe('an engine keeps Task memory through its own MCP connection', () => {
     expect(e.stored(taskId).records).toMatchObject([
       { key: 'scope', version: 2, state: 'answered' },
     ]);
+  });
+
+  test("an operator reads a chat's pull request feedback through the production routes", async () => {
+    const e = await setup();
+    const { sessionId } = await e.dispatchedTask();
+    const conversation =
+      e.store.conversationForSession(sessionId)?.conversationId ?? sessionId;
+    // The route decides with the principal orchestration owns the chat
+    // under; without its authority binding the read failed (500).
+    const read = await e.asOperator(
+      'GET',
+      `/api/pull-request-feedback/conversations/${encodeURIComponent(conversation)}`,
+    );
+    expect(read.status, JSON.stringify(read.json)).toBe(200);
+    expect(read.json.data).toEqual({
+      conversationId: conversation,
+      pullRequests: [],
+    });
   });
 
   test("the production inbox asks pull request feedback's placement re-check before placing a queued prf- message", async () => {

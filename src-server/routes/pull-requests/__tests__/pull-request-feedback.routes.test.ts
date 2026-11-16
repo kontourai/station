@@ -121,7 +121,7 @@ describe('pull request feedback routes', () => {
     expect(refused.status).toBe(409);
     expect(await refused.json()).toMatchObject({
       code: 'pull_request_feedback_owned_elsewhere',
-      owner: { conversationId: 'chat-a', title: 'Other chat' },
+      details: { owner: { conversationId: 'chat-a', title: 'Other chat' } },
     });
     const moved = await t.put('chat-b', { ...t.on, move: true });
     expect(moved.status).toBe(200);

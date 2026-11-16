@@ -279,5 +279,5 @@ export function describePullRequestFeedbackCategories(
     });
   if (parts.length === 0) return 'nothing';
   if (parts.length === 1) return parts[0]!;
-  return `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`;
+  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
 }

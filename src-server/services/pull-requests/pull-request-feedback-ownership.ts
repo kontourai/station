@@ -63,6 +63,16 @@ export interface PullRequestFeedbackViewer {
   canRead(conversationId: string): boolean;
 }
 
+/** Just the pull request: a link carries its source and status too. */
+const identityOf = (
+  link: PullRequestLinkIdentity,
+): PullRequestLinkIdentity => ({
+  provider: link.provider,
+  host: link.host,
+  repository: { owner: link.repository.owner, name: link.repository.name },
+  ref: link.ref,
+});
+
 const sameIdentity = (a: PullRequestLinkIdentity, b: PullRequestLinkIdentity) =>
   pullRequestFeedbackKey(a) === pullRequestFeedbackKey(b);
 
@@ -130,7 +140,12 @@ export class PullRequestFeedbackOwnership {
     });
     return {
       kind: 'ok',
-      view: this.viewOf(store, linked, input.conversationId, input.viewer),
+      view: this.viewOf(
+        store,
+        identityOf(linked),
+        input.conversationId,
+        input.viewer,
+      ),
     };
   }
 
@@ -160,7 +175,8 @@ export class PullRequestFeedbackOwnership {
     const store = this.ports.readStore();
     const seen = new Set<string>();
     const pullRequests: PullRequestFeedbackView[] = [];
-    for (const identity of identities) {
+    for (const linked of identities) {
+      const identity = identityOf(linked);
       const key = pullRequestFeedbackKey(identity);
       if (seen.has(key)) continue;
       seen.add(key);

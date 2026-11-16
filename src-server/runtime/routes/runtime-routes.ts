@@ -4637,6 +4637,11 @@ export function configureRuntimeRoutes(
     '/api/pull-requests/*',
     bindConversationReadAuthority,
   );
+  context.app.on(
+    ['GET', 'PUT', 'POST', 'DELETE'],
+    '/api/pull-request-feedback/*',
+    bindConversationReadAuthority,
+  );
   context.app.use(
     '/api/projects/:slug/file-preview/*',
     bindConversationReadAuthority,
@@ -10665,7 +10670,12 @@ export function configureRuntimeRoutes(
       context.taskGraphService.listKeptDeclaredPullRequestsForSessions(ids),
     access: {
       current: isRequestPrincipalCurrent,
-      operator: ownerIdentityForRequest,
+      // The operator in person (never an agent), as the principal
+      // orchestration owns their chats under, not the OS alias.
+      operator: (request) =>
+        ownerIdentityForRequest(request)
+          ? conversationReadAuthorityForRequest(request).userId
+          : undefined,
       canRead: canReadConversation,
       readerOf: (request) => (id) => canReadConversation(request, id),
     },

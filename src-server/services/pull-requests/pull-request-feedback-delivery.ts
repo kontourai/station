@@ -176,9 +176,15 @@ function failingCandidate(
   // A required check still running means the head's result is not in yet.
   if (observation.checks.some((check) => check.required && !check.completed))
     return 'pending';
-  const failing = observation.checks
-    .filter(isFailing)
-    .sort((a, b) => a.name.localeCompare(b.name));
+  // One line per check name: a workflow run again on the same head reports
+  // the same check once per run.
+  const failing = [
+    ...new Map(
+      observation.checks
+        .filter(isFailing)
+        .map((check) => [`${check.name}\u0001${check.conclusion}`, check]),
+    ).values(),
+  ].sort((a, b) => a.name.localeCompare(b.name));
   if (!failing.length) return undefined;
   const names = [...new Set(failing.map((check) => check.name))].sort();
   return {
