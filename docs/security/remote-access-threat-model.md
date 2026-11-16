@@ -453,7 +453,9 @@ credential resolves to. A credential that verifies but names no person (an
 account-bound device or token), and a session with no credential, keep speech
 with no Station tools; only a credential that fails verification is refused.
 Accepted: a session's tools act with that person's full authority, not the
-presenting device's pairing scope, as an agent session's do.
+presenting device's pairing scope, as an agent session's do. Known gap: the
+desktop app's voice has speech but no Station tools until its Rust host opens
+the voice socket with its own operator credential.
 
 The public handshake is deliberately minimal and contains no credential,
 hostname, username, home directory, workspace, endpoint, process identity, or

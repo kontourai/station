@@ -5854,9 +5854,14 @@ run's Station tools act for that owner through a per-run `bound` caller, with
 that person's full authority (not a device's pairing scope). Editing, running,
 enabling, disabling or deleting a job with an owner is admitted against that
 owner, for a person and for an agent's `update_job`/`run_job`, as for a
-targeted automation. On a personal Station, the jobs stored before owners were
-recorded are given the operator once, by a recorded one-time ledger migration;
-a job stored without an owner afterwards stays ownerless. Such a job's view
+targeted automation. The operator in person (the operator credential or
+home-possession, never an agent) may also manage any owned untargeted job; a
+run they trigger still acts as the job's owner. The one-time owner migration is
+settled at every Station's first start with owner recording: a personal Station
+gives the operator the jobs stored before then; a shared or hosted one gives
+them to no one, so a Station that later becomes personal never hands its newer
+ownerless jobs to the operator. A job stored without an owner stays
+ownerless. Such a job's view
 carries `ownerNeeded` (the reason). Its runs get no Station caller and the model
 is told so; the Station tools are still listed to it, and every call is
 refused. The scheduler routes answer 404 on a hosted Station, so hosted jobs
