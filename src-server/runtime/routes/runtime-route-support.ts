@@ -582,8 +582,8 @@ export function configureRuntimeSupportServices(
       // The question wake's own re-check, with execute authority.
       mayReadTask: (task, owner) =>
         canUseTaskSource(context, task, owner, true),
-      forgeFeedbackOwned: (itemRef) =>
-        options.pullRequestFeedback?.owns(itemRef) === true,
+      forgeFeedbackOwned: (itemRef, kind) =>
+        options.pullRequestFeedback?.owns(itemRef, kind) === true,
       get submit(): TaskFollowUpWakePorts['submit'] {
         const inbox = options.threadInbox?.();
         return inbox ? (input) => inbox.submit(input) : undefined;

@@ -879,7 +879,7 @@ describe.skipIf(process.platform === 'win32')('Task tracker follow-ups', () => {
     let permitted: boolean;
     let wakePoller: TaskFollowUpPoller;
     /** Items pull request agent feedback owns (its claim is on). */
-    let forgeOwned: (itemRef: string) => boolean;
+    let forgeOwned: (itemRef: string, kind: string) => boolean;
 
     beforeEach(() => {
       submits = [];
@@ -902,7 +902,7 @@ describe.skipIf(process.platform === 'win32')('Task tracker follow-ups', () => {
         conversationOf: (sessionId) =>
           sessionId === 'session-lead' ? 'conversation-lead' : sessionId,
         mayReadTask: () => permitted,
-        forgeFeedbackOwned: (itemRef) => forgeOwned(itemRef),
+        forgeFeedbackOwned: (itemRef, kind) => forgeOwned(itemRef, kind),
         submit: (input) => {
           submits.push(input as Submit);
           return { outcome: 'queued', entry: {} as never };
@@ -990,6 +990,24 @@ describe.skipIf(process.platform === 'win32')('Task tracker follow-ups', () => {
       // above and 'a failing check wakes the lead').
       expect(submits).toEqual([]);
       expect(state(task, 'review_comment', '4363072349')).toBe('skipped');
+      expect(state(task, 'check_run', '120612876932')).toBe('skipped');
+    });
+
+    test('with only its checks switch on, a review comment on that pull request still wakes the lead', async () => {
+      const task = await trackerTask();
+      await enable();
+      forgeOwned = (itemRef, kind) =>
+        itemRef === 'github:acme/widgets#14804' && kind === 'check_run';
+      answerFirstPoll();
+      await wakePoll();
+      expect(submits).toHaveLength(1);
+      expect(submits[0]!.payload.message).toContain(
+        'Review comment 4363072349',
+      );
+      expect(submits[0]!.payload.message).not.toContain(
+        'Check run 120612876932',
+      );
+      expect(state(task, 'review_comment', '4363072349')).toBe('sent');
       expect(state(task, 'check_run', '120612876932')).toBe('skipped');
     });
 

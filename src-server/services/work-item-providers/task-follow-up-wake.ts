@@ -115,12 +115,12 @@ export interface TaskFollowUpWakePorts {
   /** Re-check the lead owner's access to the Task, as the question wake does. */
   mayReadTask(task: TaskRecord, ownerUserId: string): boolean;
   /**
-   * Whether pull request agent feedback owns this item
-   * (`pull-request-feedback-*.ts`): its checks and reviews are then sent by
-   * that feature, so this wake skips them (still recorded in the brief).
-   * Issue comments still wake.
+   * Whether pull request agent feedback sends this kind of item
+   * (`check_run`, `review`, `review_comment`) for this pull request
+   * (`pull-request-feedback-*.ts`); this wake then skips it (still recorded
+   * in the brief). Issue comments still wake.
    */
-  forgeFeedbackOwned?(itemRef: string): boolean;
+  forgeFeedbackOwned?(itemRef: string, kind: string): boolean;
   submit:
     | ((input: {
         readonly conversationId: string;
@@ -291,7 +291,7 @@ export class TaskFollowUpWake {
       const owned = pending.filter(
         (item) =>
           FORGE_FEEDBACK_KINDS.has(item.kind) &&
-          this.ports.forgeFeedbackOwned?.(item.itemRef) === true,
+          this.ports.forgeFeedbackOwned?.(item.itemRef, item.kind) === true,
       );
       if (owned.length) {
         store.settleWakes(task, owned, 'skipped');

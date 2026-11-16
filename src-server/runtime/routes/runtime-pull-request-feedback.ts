@@ -9,10 +9,7 @@
  * no conversation inbox), so every route there answers 404.
  */
 import type { ConversationPullRequestLink } from '@kontourai/station-contracts/conversation-pull-request-links';
-import {
-  pullRequestFeedbackKey,
-  pullRequestFeedbackSends,
-} from '@kontourai/station-contracts/pull-request-feedback';
+import { pullRequestFeedbackKey } from '@kontourai/station-contracts/pull-request-feedback';
 import type { IPullRequestProvider } from '@kontourai/station-contracts/pull-request-provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { isSessionLifecycleStateStopped } from '@kontourai/station-contracts/session-lifecycle';
@@ -34,7 +31,10 @@ import {
   type FeedbackSessionState,
   PullRequestFeedbackDelivery,
 } from '../../services/pull-requests/pull-request-feedback-delivery.js';
-import { PullRequestFeedbackOwnership } from '../../services/pull-requests/pull-request-feedback-ownership.js';
+import {
+  PullRequestFeedbackOwnership,
+  pullRequestFeedbackSendsKind,
+} from '../../services/pull-requests/pull-request-feedback-ownership.js';
 import { PullRequestFeedbackPoller } from '../../services/pull-requests/pull-request-feedback-poller.js';
 import {
   PullRequestFeedbackStoreHolder,
@@ -118,8 +118,8 @@ export interface PullRequestFeedbackRuntime {
   }): { reasonCode: string; reason: string } | undefined;
   /** The scheduler tick: started, never awaited. */
   tick(input: { now: number; signal: AbortSignal }): void;
-  /** #4508: whether this feature owns a Task follow-up item's checks and reviews. */
-  owns(itemRef: string): boolean;
+  /** #4508: whether this feature sends this kind of follow-up for the item. */
+  owns(itemRef: string, kind: string): boolean;
   close(): Promise<void>;
 }
 
@@ -260,7 +260,22 @@ export function composePullRequestFeedbackRuntime(
       orchestration: deps.orchestration,
       inbox,
     });
+  /** What a person linked to the chat (any Session of it) or kept on its Task. */
+  const linkedIdentities = async (conversationId: string) => {
+    const ids = lineage(conversationId);
+    const explicit: ConversationPullRequestLink[] = ids.flatMap((id) =>
+      deps.links.list(id),
+    );
+    return [
+      ...explicit,
+      ...declaredPullRequestsForConversation(
+        { lineageSessionIds: () => ids, keptForSessions: deps.keptForSessions },
+        conversationId,
+      ),
+    ];
+  };
   const delivery = new PullRequestFeedbackDelivery({
+    linked: linkedIdentities,
     store: () => holder.forRead(),
     enabled,
     session,
@@ -274,6 +289,7 @@ export function composePullRequestFeedbackRuntime(
     logger: deps.logger,
   });
   const poller = new PullRequestFeedbackPoller({
+    linked: linkedIdentities,
     enabled,
     store: () => holder.forRead(),
     providers: deps.providers,
@@ -285,22 +301,7 @@ export function composePullRequestFeedbackRuntime(
   const ownership = new PullRequestFeedbackOwnership({
     store: () => holder.forWrite(),
     readStore: () => holder.forRead(),
-    linkedIdentities: async (conversationId) => {
-      const ids = lineage(conversationId);
-      const explicit: ConversationPullRequestLink[] = ids.flatMap((id) =>
-        deps.links.list(id),
-      );
-      return [
-        ...explicit,
-        ...declaredPullRequestsForConversation(
-          {
-            lineageSessionIds: () => ids,
-            keptForSessions: deps.keptForSessions,
-          },
-          conversationId,
-        ),
-      ];
-    },
+    linkedIdentities,
     session,
     mayContinue: (conversationId, userId) =>
       inbox.mayContinue(conversationId, userId),
@@ -326,7 +327,7 @@ export function composePullRequestFeedbackRuntime(
     ],
     placementRefusal: (input) => delivery.placementRefusal(input),
     tick: (input) => poller.tick(input),
-    owns: (itemRef) => {
+    owns: (itemRef, kind) => {
       if (!enabled()) return false;
       const parsed = parseGitHubWorkItemRef(itemRef);
       if (!parsed) return false;
@@ -338,11 +339,7 @@ export function composePullRequestFeedbackRuntime(
           ref: String(parsed.number),
         }),
       );
-      return (
-        !!claim &&
-        pullRequestFeedbackSends(claim.settings) &&
-        claim.condition?.state !== 'closed'
-      );
+      return !!claim && pullRequestFeedbackSendsKind(claim, kind);
     },
     close: async () => {
       unsubscribe();
