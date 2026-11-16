@@ -4277,6 +4277,14 @@ are rounded milliseconds. MCP text content may be JSON-decoded by the result
 unwrapper. Tool errors, including station-control failure envelopes, are checked
 before success is returned. Unknown Agent/tool identities return 404.
 
+Station's own station-control tools run here, and in the invoke endpoints and a
+client's direct `POST /api/agents/:slug/chat`, as the principal Station resolved
+for the request: each request gets its own in-process `bound` caller, retired
+when the response ends
+([request runs](../../src-server/runtime/routes/request-station-control.ts)).
+A request with no resolvable principal gets no caller, and its station-control
+calls are refused with `station_control_caller_required`.
+
 ### Streaming Invocation
 
 ```http
