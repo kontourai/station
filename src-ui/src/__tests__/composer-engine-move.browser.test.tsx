@@ -258,7 +258,8 @@ test('a phone composer\'s Run setup trigger keeps "Agent moved" whole while its 
     await page.setViewportSize({ width: 1280, height: 844 });
     const wide = await page.evaluate(closedTrigger);
     expect(wide.painted).toBe('· Agent moved');
-    expect(wide.agent?.width).toBeGreaterThanOrEqual(80);
+    expect(wide.agent, 'Agent name at 1280px').not.toBeNull();
+    expect(wide.agent!.width).toBeGreaterThanOrEqual(80);
     await page.setViewportSize({ width: 390, height: 844 });
 
     // Not by position alone: the trigger's name and description say it too.
