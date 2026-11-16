@@ -593,7 +593,7 @@ describe('fast-checks shard runner (in process)', () => {
               failedTests: [
                 {
                   file: 'a/a.test.ts',
-                  name: 'counts > adds one',
+                  name: 'counts adds one',
                   excerpt: 'AssertionError: expected 102 to be 103',
                 },
                 {
@@ -632,7 +632,7 @@ describe('fast-checks shard runner (in process)', () => {
     expect(summary).toBeGreaterThanOrEqual(0);
     expect(text.slice(summary).split('\n').slice(1)).toEqual([
       '[fast-checks] failed tests (2):',
-      '  a/a.test.ts > counts > adds one',
+      '  a/a.test.ts > counts adds one',
       '  a/b.test.ts > multi line name',
       '[fast-checks] failed suites (1):',
       '  a/c.test.ts: Error: Cannot find module ./gone',
