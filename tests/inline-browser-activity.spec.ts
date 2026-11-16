@@ -470,6 +470,19 @@ for (const width of [390, 1440]) {
         activity.locator('.inline-browser-activity__chip'),
       ).toHaveCount(3);
       await expectPaintedPage(page);
+      const toolbar = activity.getByRole('toolbar', {
+        name: 'Browser activity controls',
+      });
+      await expect(toolbar).toBeVisible();
+      const controls = await toolbar.getByRole('button').all();
+      expect(controls.length).toBeGreaterThan(0);
+      for (const button of controls) {
+        if (!(await button.isVisible())) continue;
+        const box = await button.boundingBox();
+        expect(box).not.toBeNull();
+        expect(box!.height).toBeGreaterThanOrEqual(44);
+        expect(box!.width).toBeGreaterThanOrEqual(44);
+      }
       const activeStep = activity.locator('[aria-current="step"]');
       await expect(activeStep).toContainText('Clicking on the page');
       const stepBox = await activeStep.boundingBox();

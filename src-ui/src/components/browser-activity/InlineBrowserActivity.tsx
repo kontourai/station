@@ -20,6 +20,7 @@ import {
   DRIVER_TEXT,
   LiveSurfaceViewerControls,
 } from '../../live-surface/LiveSurfaceViewerControls';
+import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
 import type { BrowserActivityScope } from '../chat/BrowserActivityContext';
 import {
@@ -290,15 +291,16 @@ export function InlineBrowserActivity({
             </p>
           )}
           {session && (floating || !visible || !control) && (
-            <div>
-              {paneAction}
-              {placementAction}
-            </div>
+            <ActionRow
+              overflowLabel="More browser activity actions"
+              primary={paneAction ?? placementAction}
+              secondary={paneAction ? placementAction : undefined}
+            />
           )}
         </div>
       )}
       {active && steps && (
-        <div
+        <ol
           className="inline-browser-activity__chips"
           aria-label="Browser actions"
         >
@@ -316,8 +318,12 @@ export function InlineBrowserActivity({
               phase,
             );
             return (
-              <span
-                key={part.toolCallId ?? index}
+              <li
+                key={JSON.stringify([
+                  part.toolCallId,
+                  part.sourceEventId,
+                  index,
+                ])}
                 className="inline-browser-activity__chip"
                 aria-current={
                   index === steps.length - 1 &&
@@ -332,10 +338,10 @@ export function InlineBrowserActivity({
                   : phase === 'proposed'
                     ? ' · Approval needed'
                     : ''}
-              </span>
+              </li>
             );
           })}
-        </div>
+        </ol>
       )}
       {children && (
         <div className="inline-browser-activity__steps">{children}</div>

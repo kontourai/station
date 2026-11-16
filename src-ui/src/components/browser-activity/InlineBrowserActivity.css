@@ -32,6 +32,9 @@
 
 .inline-browser-activity__chips {
   display: flex;
+  margin: 0;
+  padding: 0;
+  list-style: none;
   gap: var(--k-space-2);
   flex-wrap: wrap;
 }
