@@ -1,9 +1,11 @@
 import type { PullRequestLinkIdentity } from '@kontourai/station-contracts/conversation-pull-request-links';
-import type {
-  ConversationPullRequestFeedback,
-  PullRequestFeedbackOwner,
-  PullRequestFeedbackSettings,
-  PullRequestFeedbackView,
+import {
+  type ConversationPullRequestFeedback,
+  type PullRequestFeedbackByPullRequest,
+  type PullRequestFeedbackOwner,
+  type PullRequestFeedbackSettings,
+  type PullRequestFeedbackView,
+  pullRequestFeedbackKey,
 } from '@kontourai/station-contracts/pull-request-feedback';
 import { envelopeError, StationHttpError } from './api-error-message';
 import { hasCapability } from './capability';
@@ -69,11 +71,45 @@ export function pullRequestFeedbackOwnerOf(
   const owner = (error.details as { owner?: unknown } | undefined)?.owner as
     | Partial<PullRequestFeedbackOwner>
     | undefined;
-  if (typeof owner?.conversationId !== 'string') return undefined;
-  return {
-    conversationId: owner.conversationId,
-    ...(typeof owner.title === 'string' ? { title: owner.title } : {}),
-  };
+  if (!owner || typeof owner !== 'object') return undefined;
+  // A chat the reader may not read is named by neither id nor title.
+  return typeof owner.conversationId === 'string'
+    ? {
+        conversationId: owner.conversationId,
+        ...(typeof owner.title === 'string' ? { title: owner.title } : {}),
+      }
+    : {};
+}
+
+/**
+ * One pull request's feedback, whichever chat is open. To a reader who may
+ * not read the owning chat the owner is `{ readable: false }` and nothing
+ * else is said.
+ */
+export async function getPullRequestFeedbackByPullRequest(
+  apiBase: string,
+  identity: PullRequestLinkIdentity,
+  options?: ClientRequestOptions,
+): Promise<PullRequestFeedbackByPullRequest> {
+  const query = new URLSearchParams({
+    provider: identity.provider,
+    host: identity.host,
+    owner: identity.repository.owner,
+    name: identity.repository.name,
+    ref: identity.ref,
+  });
+  const result = await read<PullRequestFeedbackByPullRequest>(
+    await getJson(
+      `${apiBase}/api/pull-request-feedback/by-pull-request?${query}`,
+      options,
+    ),
+  );
+  if (
+    !result.identity ||
+    pullRequestFeedbackKey(result.identity) !== pullRequestFeedbackKey(identity)
+  )
+    throw new Error('Pull request feedback response has the wrong identity');
+  return result;
 }
 
 /**

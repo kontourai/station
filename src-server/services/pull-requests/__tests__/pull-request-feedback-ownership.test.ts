@@ -95,7 +95,9 @@ describe('pull request feedback ownership', () => {
         settings: ON,
         viewer: viewer(() => false),
       }),
-    ).toEqual({ kind: 'conflict', owner: { conversationId: 'chat-a' } });
+      // A reader of chat-b who may not read chat-a learns only that
+      // another chat owns it: not which one.
+    ).toEqual({ kind: 'conflict', owner: {} });
     // The other chat sees who owns it, read-only.
     const seen = await ownership.view('chat-b', viewer());
     expect(seen.pullRequests[0]).toMatchObject({
@@ -103,6 +105,11 @@ describe('pull request feedback ownership', () => {
       owner: { conversationId: 'chat-a', title: 'Fix the parser' },
       history: [],
     });
+    const unseen = await ownership.view(
+      'chat-b',
+      viewer(() => false),
+    );
+    expect(unseen.pullRequests[0]?.owner).toEqual({});
   });
 
   it('a move bumps the generation and the old queued message is refused at placement', async () => {
