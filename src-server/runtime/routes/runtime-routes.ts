@@ -5851,6 +5851,8 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/tasks',
     createTaskRoutes(context.taskGraphService, {
+      pullRequestProviders: () =>
+        listProviders('pullRequest').map((entry) => entry.provider),
       logger: context.logger,
       workChatConversations: taskInboxProjection,
       onRoomSystemLine: async ({
