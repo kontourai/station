@@ -289,8 +289,17 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
         },
         (entry) => entry.name.endsWith('.jsonl') && !entry.isDirectory(),
       );
-      if (newest !== undefined)
+      if (candidatesTruncated) {
+        // A partial listing only raises what the previous pass knew.
+        const known = this.newestTranscriptByFolder.get(project.path);
+        if (newest !== undefined && newest > (known ?? 0))
+          this.newestTranscriptByFolder.set(project.path, newest);
+      } else if (newest !== undefined) {
         this.newestTranscriptByFolder.set(project.path, newest);
+      } else {
+        // Every transcript is gone; the folder ranks by its own mtime again.
+        this.newestTranscriptByFolder.delete(project.path);
+      }
     }
     const candidateLimit =
       candidatesTruncated || candidates.length > this.maxCandidates;
@@ -324,7 +333,10 @@ export class ClaudeTranscriptSessionSource implements AttachedSessionSource {
         previousIdentities.get(file),
       );
       if (!descriptor.session) {
-        if (descriptor.outcome !== 'ok') outcome = descriptor.outcome;
+        // A truncated pass stays `candidate_limit`: the refusals of the files
+        // it did reach are reported by count, not as the pass's outcome.
+        if (descriptor.outcome !== 'ok' && !candidateLimit)
+          outcome = descriptor.outcome;
         refusals[descriptor.outcome] = (refusals[descriptor.outcome] ?? 0) + 1;
         continue;
       }

@@ -516,35 +516,141 @@ describe('Claude transcript discovery of Claude Code 2.1 transcripts', () => {
     ]);
   });
 
-  test('charges no traversal budget for entries skipped by name or type', async () => {
-    const { root, project } = configHome();
+  // One project folder holding one transcript costs exactly four charges:
+  // the projects root (1), the folder's lstat (2), opening the folder (3)
+  // and the transcript's lstat (4).
+  const oneTranscriptHome = () => {
+    const home = configHome();
     writeFileSync(
-      join(project, `${SESSION}.jsonl`),
+      join(home.project, `${SESSION}.jsonl`),
       jsonl([aiTitle(), enqueue(), dequeue(), user()]),
     );
+    return home;
+  };
+
+  test('accepts a pass that uses exactly the traversal bound and refuses one charge more', async () => {
+    const { root } = oneTranscriptHome();
+
+    const atBound = await new ClaudeTranscriptSessionSource({
+      configDir: root,
+      maxTraversalEntries: 4,
+    }).discover();
+    expect(atBound.outcome).toBe('ok');
+    expect(atBound.sessions).toHaveLength(1);
+
+    const overBound = await new ClaudeTranscriptSessionSource({
+      configDir: root,
+      maxTraversalEntries: 3,
+    }).discover();
+    expect(overBound).toEqual({ outcome: 'candidate_limit', sessions: [] });
+  });
+
+  test('charges skipped entries only against their own bound, refusing one past it', async () => {
+    const { root, project } = oneTranscriptHome();
     const addSkipped = (from: number, to: number) => {
       for (let index = from; index < to; index += 1) {
         const id = `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`;
-        mkdirSync(join(project, id));
-        writeFileSync(join(project, `${id}.meta.json`), '{}');
+        // A session folder and a sidecar file, neither of them lstat'ed.
+        if (index % 2 === 0) mkdirSync(join(project, id));
+        else writeFileSync(join(project, `${id}.meta.json`), '{}');
       }
     };
-    // 14 skipped entries: session folders and non-transcript files.
-    addSkipped(0, 7);
-    // Root (1) + folder lstat (2) + folder (3) + transcript (4).
+    // The skipped-entry bound is four times the traversal bound: 16 here.
     const options = { configDir: root, maxTraversalEntries: 4 };
-    const withinBound = await new ClaudeTranscriptSessionSource(
-      options,
-    ).discover();
-    expect(withinBound.outcome).toBe('ok');
-    expect(withinBound.sessions).toHaveLength(1);
+    addSkipped(0, 16);
+    const atBound = await new ClaudeTranscriptSessionSource(options).discover();
+    expect(atBound.outcome).toBe('ok');
+    expect(atBound.sessions).toHaveLength(1);
 
-    // 20 skipped entries pass the skipped-entry bound (4 x 4 = 16): refused.
-    addSkipped(7, 10);
-    const pastSkipBound = await new ClaudeTranscriptSessionSource(
+    addSkipped(16, 17);
+    const overBound = await new ClaudeTranscriptSessionSource(
       options,
     ).discover();
-    expect(pastSkipBound.outcome).toBe('candidate_limit');
+    expect(overBound.outcome).toBe('candidate_limit');
+  });
+
+  test('a truncated pass reports candidate_limit even when a file it reached is malformed', async () => {
+    const { root, project } = configHome();
+    const malformed = '00000000-0000-4000-8000-0000000000bb';
+    writeFileSync(
+      join(project, `${malformed}.jsonl`),
+      jsonl([aiTitle(malformed), enqueue(malformed)]),
+    );
+    const projects = join(root, 'projects');
+    const unreached = join(projects, '-workspace-unreached');
+    mkdirSync(unreached);
+    writeFileSync(
+      join(unreached, `${SESSION}.jsonl`),
+      jsonl([aiTitle(), enqueue(), dequeue(), user()]),
+    );
+    utimesSync(unreached, 1, 1);
+    // Root (1), two folder lstats (3), the first folder (4) and its
+    // transcript (5); the unreached folder passes the bound.
+    const source = new ClaudeTranscriptSessionSource({
+      configDir: root,
+      maxTraversalEntries: 5,
+    });
+
+    const discovered = await source.discover();
+
+    expect(discovered).toEqual({ outcome: 'candidate_limit', sessions: [] });
+    expect(warnings.map((warning) => warning.context)).toEqual([
+      {
+        outcome: 'candidate_limit',
+        candidates: 1,
+        refusals: { malformed_record: 1 },
+      },
+    ]);
+  });
+
+  test('a folder whose transcripts were all removed loses its previous-pass rank', async () => {
+    const { root } = configHome();
+    const projects = join(root, 'projects');
+    rmSync(join(projects, '-workspace-example-project'), { recursive: true });
+    const emptied = join(projects, '-workspace-aa-emptied');
+    const busy = join(projects, '-workspace-zz-busy');
+    mkdirSync(emptied);
+    mkdirSync(busy);
+    const emptiedTranscript = join(emptied, `${SESSION}.jsonl`);
+    writeFileSync(
+      emptiedTranscript,
+      jsonl([aiTitle(), enqueue(), dequeue(), user()]),
+    );
+    utimesSync(emptiedTranscript, 300, 300);
+    utimesSync(emptied, 100, 100);
+    utimesSync(busy, 200, 200);
+    const busyTranscript = (index: number, mtime: number) => {
+      const id = `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`;
+      const path = join(busy, `${id}.jsonl`);
+      writeFileSync(
+        path,
+        jsonl([enqueue(id), dequeue(id), user({ sessionId: id })]),
+      );
+      utimesSync(path, mtime, mtime);
+      utimesSync(busy, 200, 200);
+      return id;
+    };
+    const source = new ClaudeTranscriptSessionSource({
+      configDir: root,
+      maxTraversalEntries: 6,
+    });
+    // Pass 1 sees the emptied folder's transcript at mtime 300.
+    expect((await source.discover()).outcome).toBe('ok');
+
+    // Pass 2 visits every folder and finds the emptied one empty.
+    rmSync(emptiedTranscript);
+    utimesSync(emptied, 100, 100);
+    const first = busyTranscript(1, 150);
+    expect((await source.discover()).outcome).toBe('ok');
+
+    // Pass 3 has room for the busy folder only. Ranked by the stale 300 the
+    // emptied folder would be visited first and a busy transcript missed.
+    const second = busyTranscript(2, 160);
+    const discovered = await source.discover();
+    expect(discovered.outcome).toBe('candidate_limit');
+    expect(
+      discovered.sessions.map((session) => session.sessionId).sort(),
+    ).toEqual([first, second]);
   });
 
   test('reuses a cached head result until the transcript is replaced', async () => {

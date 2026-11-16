@@ -1400,7 +1400,8 @@ lists `projects/<project>/<session>.jsonl` under the Claude config home and
 keeps the 128 most recently modified transcripts. Its traversal bound (4,096
 by default) charges each folder opened and each entry statted; entries skipped
 by name cost no system call and count against a separate bound four times as
-large. Passing either bound ends the pass as `candidate_limit`. Within the
+large. Passing either bound ends the pass as `candidate_limit`, even when
+some transcripts it reached were refused. Within the
 bound, project folders are visited in order of the newer of their own
 modification time and the newest transcript the previous pass saw in them. It does not descend into a
 session's own folder: the `subagents/` transcripts there repeat the parent's
@@ -1415,7 +1416,7 @@ Leading records that name different sessions, an identity past either bound,
 or a sidechain record in a session's place refuse the file. A file's result
 is reused until it is replaced, shrinks, or, for a refusal, changes size.
 When a pass finds transcripts but accepts none, the source logs one warning
-naming the outcome, and logs again only when that outcome changes or after a
+naming the outcome and counting refusals by reason, and logs again only when that outcome changes or after a
 pass accepts a session. On a home larger than the bound, a folder the
 previous pass did not reach is ranked by its own modification time only, so a
 long-running session in it can stay outside the bound.
