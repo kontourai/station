@@ -132,7 +132,11 @@ test('preview on: a new thread carries the station-control catalog as dynamicToo
   // A station-control call from the model reaches the bound server.
   const turn = h.adapter.sendTurn({ threadId: 'catalog-start', input: 'go' });
   await h.answer('turn/start', { turn: { id: 'turn-a' } });
-  await withTimeout(turn, 'turn');
+  // The cursor a later resume reads keeps the marker after every turn.
+  expect((await withTimeout(turn, 'turn')).resumeCursor).toMatchObject({
+    codexThreadId: 'native-a',
+    boundCatalog: true,
+  });
   await emit(h.child, {
     id: 90,
     method: 'item/tool/call',
