@@ -1636,6 +1636,9 @@ base commit and skips the capture only when every changed path is one the
 capture never reads (docs, agent instructions, other workflows, desktop Rust,
 test files). The scope is an exclusion list because the capture boots the
 whole product through `./station start`, not just `src-ui/`. Review changed images in the run's `gallery-pr-<run>-<attempt>` artifact.
+Rendered screens retain bounded browser errors in `capture.json` beside their
+UI audit, so a valid PNG with a failing product assertion keeps its runtime
+diagnostics. These errors do not change the capture or findings verdict.
 When an intentional change should become the new reference, download that
 hosted artifact and run `npm run screenshot:baseline -- --gallery=<download dir>`.
 Commit reviewed baseline updates separately; they are optional for a green
