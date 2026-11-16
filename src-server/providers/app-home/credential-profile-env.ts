@@ -12,8 +12,9 @@
  *
  * Deliberately NOT applied by this module's callers: model discovery (it
  * lists the connection's catalog, not a profile's), adoption and
- * source-affinity resumes (they must run under the source home), source-home
- * maintenance, readiness checks (a read must not create profile homes), and
+ * source-affinity resumes (they must run under the source home; a Codex
+ * source home that is a profile's gets that profile's overlay through
+ * `credentialProfileEnvForHome` instead), source-home maintenance, readiness checks (a read must not create profile homes), and
  * login/enrolment children (they only write the profile home's own
  * credentials).
  */

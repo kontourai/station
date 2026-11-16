@@ -1537,7 +1537,9 @@ one an Agent pins, the one credential recovery is trying, or else the
 connection's active profile. The overlay reaches Claude Code, Codex and Muse
 session starts and Codex quota reads for that profile. Muse has no connection
 `env` layer, and its profile's config-home key is `XDG_CONFIG_HOME`. It is not applied to model
-discovery, adopted sessions and source-home resumes, login readiness checks,
+discovery, adopted sessions and source-home resumes (except a Codex
+conversation found in a profile's own home, which continues with that
+profile's overlay), login readiness checks,
 login/enrolment into the profile, or the per-profile usage read
 (`GET /api/connections/agent/<engine>/credential-usage`), which reads the
 profile home directly.

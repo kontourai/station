@@ -167,7 +167,9 @@ to the server's own global config root with no per-call override, so running the
 child under a different config home would orphan it there. Codex had no analogous
 transcript-adoption path in that original wave. Current Codex adoption and resumes
 carrying source affinity resolve the recorded source home and refuse an unavailable
-home; that `CODEX_HOME` overrides profile and connection settings. The legacy
+home; that `CODEX_HOME` overrides profile and connection settings. When the
+source home is a credential profile's own home, that profile's env overlay is
+applied with it (an invalid overlay refuses the continuation). The legacy
 toggle-boundary caveat below applies to cursors without that affinity.
 
 **Import-from-global rules (claude):** an explicit, dedicated user action —
