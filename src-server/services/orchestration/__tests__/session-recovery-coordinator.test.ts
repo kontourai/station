@@ -904,7 +904,9 @@ describe('SessionRecoveryCoordinator', () => {
       const store = new EventStore(
         join(makeTempDir('continue-on-'), 'orchestration.sqlite'),
       );
-      const restartResume = vi.fn(async () => ({ turnId: 'profile-turn' }));
+      const restartResume = vi.fn(async (_input: unknown) => ({
+        turnId: 'profile-turn',
+      }));
       const sendTurn = vi.fn(async () => ({ turnId: 'same-account-turn' }));
       const recoveryLedger = store.createRecoveryLedger();
       if (extra.retireWaitingFails)
@@ -1161,7 +1163,8 @@ describe('SessionRecoveryCoordinator', () => {
           };
         },
       );
-      const dispatchSendTurn = vi.fn(async () => ({
+      const dispatchSendTurn = vi.fn(async (_replay: unknown) => ({
+        threadId: THREAD,
         turnId: 'same-account-turn',
       }));
       const recovery = new CredentialProfileRecovery({
