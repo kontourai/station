@@ -4,6 +4,7 @@ import {
   usePersonNotificationsQuery,
 } from '@kontourai/station-sdk';
 import { readNotificationEnvelope } from '@kontourai/station-shared/notification-envelope';
+import type { ReactNode } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { navigationStore } from '../../contexts/navigation-store';
 import { CLIENT_DOCUMENT_SESSION_ID } from '../../hooks/clientDocumentSession';
@@ -29,7 +30,15 @@ function targetPath(notification: Notification) {
  * exact message. Nothing renders until there is something to show; a failed
  * read says so with a retry, so it is never mistaken for "no mentions".
  */
-export function PersonMentionsSection() {
+export function PersonMentionsSection({
+  empty,
+}: {
+  /**
+   * The page's "nothing here" state, shown only once the feed has answered
+   * with no mentions, so it never stands beside an unread one.
+   */
+  empty?: ReactNode;
+} = {}) {
   const base = useHostRequestAuthorityScope();
   // A host scope is always current while this page shows it.
   const scope = base ?? {
@@ -39,7 +48,7 @@ export function PersonMentionsSection() {
   };
   const feed = usePersonNotificationsQuery(scope);
   const markRead = useMarkPersonNotificationReadMutation(scope);
-  if (!base) return null;
+  if (!base) return empty ?? null;
   if (feed.isError)
     return (
       <section className="person-mentions" aria-labelledby="person-mentions">
@@ -59,7 +68,7 @@ export function PersonMentionsSection() {
       item.status === 'delivered' &&
       !!targetPath(item),
   );
-  if (!mentions.length) return null;
+  if (!mentions.length) return feed.isSuccess ? (empty ?? null) : null;
   const open = (item: Notification) => {
     const path = targetPath(item);
     if (!path) return;

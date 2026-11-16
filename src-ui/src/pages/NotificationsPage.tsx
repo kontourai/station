@@ -313,13 +313,20 @@ export function NotificationsPage() {
              right now" on evidence that does not support it. An unreadable
              source keeps the sectioned layout, which says what it could not
              read. */
-          <Empty
-            variant="prominent"
-            label="All caught up"
-            description="Nothing needs your attention right now."
+          // The person's own mentions decide whether this is truly empty.
+          <PersonMentionsSection
+            empty={
+              <Empty
+                variant="prominent"
+                label="All caught up"
+                description="Nothing needs your attention right now."
+              />
+            }
           />
         ) : (
           <>
+            {/* The reader's own mentions (#4799), above their inbox. */}
+            <PersonMentionsSection />
             <NotificationHistoryFilterBar
               categories={categories}
               filters={filters}

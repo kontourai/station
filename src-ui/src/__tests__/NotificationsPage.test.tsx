@@ -27,6 +27,9 @@ let notifications: Notification[] = [];
 let notificationsError: Error | null = null;
 let attention: AttentionProjection = { items: [], pendingCount: 0 };
 let sessions: OrchestrationSessionSummary[] = [];
+// The person's own feed (#4799), at the SDK boundary.
+let personFeed: Notification[] = [];
+const markPersonRead = vi.fn(async () => 'read');
 
 // Snooze is a Feature Preview; off unless a test turns it on.
 let snoozePreviews: { id: string; enabled: boolean }[] = [];
@@ -95,6 +98,15 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
       mutate: acknowledgeAttentionItem,
     }),
     acknowledgeAttentionItem: sdkMocks.acknowledgeAttentionItem,
+    usePersonNotificationsQuery: () => ({
+      data: personFeed,
+      isError: false,
+      isSuccess: true,
+      refetch: vi.fn(),
+    }),
+    useMarkPersonNotificationReadMutation: () => ({
+      mutateAsync: markPersonRead,
+    }),
   };
 });
 
@@ -102,6 +114,11 @@ const acknowledgeAttentionItem = sdkMocks.acknowledgeAttentionItem;
 
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
+  useHostRequestAuthorityScope: () => ({
+    apiBase: 'http://station.test',
+    authorityKey: 'host',
+    isCurrent: () => true,
+  }),
 }));
 
 const navigate = vi.fn();
@@ -109,7 +126,9 @@ vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate }),
 }));
 
+import userEvent from '@testing-library/user-event';
 import { APP_DESTINATION_REGISTRY } from '../app-shell/destination-registry';
+import { navigationStore } from '../contexts/navigation-store';
 import { toastStore } from '../contexts/ToastContext';
 import { NotificationsPage } from '../pages/NotificationsPage';
 
@@ -192,6 +211,8 @@ describe('NotificationsPage', () => {
     notificationsError = null;
     attention = { items: [], pendingCount: 0 };
     sessions = [];
+    personFeed = [];
+    markPersonRead.mockClear();
     clearActivity.mockReset();
     dismiss.mockReset();
     action.mockReset();
@@ -502,6 +523,87 @@ describe('NotificationsPage', () => {
       screen.getByRole('button', { name: 'Dismiss eligible items' }),
     ).toHaveProperty('disabled', true);
   });
+
+  // #4799: a mention in the person's own feed, in the exact stored shape.
+  test.each([
+    { inbox: 'empty', key: '{Enter}' },
+    { inbox: 'non-empty', key: ' ' },
+  ])(
+    'For you shows an unread mention with a $inbox host inbox, never beside All caught up, and opens it from the keyboard',
+    async ({ inbox, key }) => {
+      const id = 'c1000000-0000-4000-8000-000000000001';
+      const messageId = 'a1000000-0000-4000-8000-000000000009';
+      const path = `/projects/room-live?section=room&message=${messageId}`;
+      const at = '2026-11-15T12:00:00.000Z';
+      personFeed = [
+        {
+          id,
+          source: 'project-room',
+          category: 'room-mention',
+          title: 'Lin mentioned you in #general',
+          body: '@Ada the pricing copy is ready.',
+          priority: 'normal',
+          status: 'delivered',
+          scheduledAt: null,
+          deliveredAt: at,
+          metadata: {
+            projectSlug: 'room-live',
+            messageId,
+            envelope: {
+              v: 1,
+              source: { kind: 'system', subsystem: 'project-room' },
+              audience: {
+                kind: 'principal',
+                principalId: 'human:local:ada',
+                projectId: 'project-room-live',
+              },
+              urgency: 'attention',
+              target: { kind: 'path', path },
+              interrupt: 'default',
+            },
+          },
+          createdAt: at,
+          updatedAt: at,
+        } as Notification,
+      ];
+      if (inbox === 'non-empty')
+        notifications = [
+          {
+            id: 'activity-1',
+            source: 'scheduler',
+            category: 'turn-completed',
+            title: 'Your agent finished',
+            priority: 'normal',
+            status: 'delivered',
+            scheduledAt: null,
+            deliveredAt: at,
+            createdAt: at,
+            updatedAt: at,
+          } as Notification,
+        ];
+      const open = vi
+        .spyOn(navigationStore, 'navigate')
+        .mockImplementation(() => {});
+      try {
+        renderPage();
+        const forYou = screen.getByRole('region', { name: 'For you' });
+        const row = within(forYou).getByRole('button', {
+          name: /Lin mentioned you in #general, unread/,
+        });
+        expect(screen.queryByText('All caught up')).toBeNull();
+        row.focus();
+        await userEvent.keyboard(key);
+        await waitFor(() =>
+          expect(markPersonRead).toHaveBeenCalledWith(
+            expect.objectContaining({ id }),
+          ),
+        );
+        expect(open).toHaveBeenCalledWith(path);
+      } finally {
+        open.mockRestore();
+      }
+    },
+  );
 
   test('filters both inbox sections and stores shareable filters in the URL', () => {
     const timestamp = '2026-08-11T12:00:00.000Z';
