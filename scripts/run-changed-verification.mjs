@@ -275,7 +275,7 @@ function importerList(value, count, limit, tests) {
  *
  * @returns {EscalatedImporterReport[]}
  */
-export function parseEscalatedImporters(
+function parseEscalatedImporters(
   root,
   seeds,
   metadata,
