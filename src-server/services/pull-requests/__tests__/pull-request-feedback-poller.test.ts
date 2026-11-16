@@ -351,9 +351,10 @@ describe('pull request feedback detection', () => {
     const refreshing = t.poller.refresh('chat-a');
     await vi.waitFor(() => expect(release).toBeDefined());
     // The tick finds the same pull request due while the refresh reads it.
-    expect(await t.poll(NOW)).toEqual({ outcome: 'polled', read: 0 });
+    const ticking = t.poll(NOW);
     release!();
     await refreshing;
+    expect(await ticking).toEqual({ outcome: 'polled', read: 0 });
     expect(t.reads).toEqual(['github.com#1']);
   });
 

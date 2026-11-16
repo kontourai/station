@@ -935,9 +935,6 @@ describe('pull request agent feedback reaches the owning conversation', () => {
       .split('\n')
       .filter((line) => line.startsWith('  >'))
       .join('\n');
-    expect(quoted).toContain(
-      'Please \\[click here\\](`https://evil.example/login)`',
-    );
     // Parsed as GitHub-flavoured markdown, the quote holds no link, image,
     // definition or HTML: only text.
     const tree = unified().use(remarkParse).use(remarkGfm).parse(quoted);
@@ -957,6 +954,9 @@ describe('pull request agent feedback reaches the owning conversation', () => {
       'html',
     ])
       expect(kinds.has(forbidden), forbidden).toBe(false);
+    expect(quoted).toContain(
+      'Please \\[click here\\](`https://evil.example/login)`',
+    );
     // The thread's own link, outside the quote, is Station's.
     expect(message).toContain(
       '- [`src/evil.ts:10`](https://github.com/acme/widgets/pull/42#discussion_r9501) @mallory',
