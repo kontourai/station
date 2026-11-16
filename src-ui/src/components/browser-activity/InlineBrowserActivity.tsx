@@ -28,8 +28,8 @@ import {
   classifyToolCall,
   toolCallPhase,
 } from '../chat/tool-call-labels';
-import { toolDisplayView } from '../chat/tool-display-view';
 import type { ToolCallLike } from '../chat/tool-call-runs';
+import { toolDisplayView } from '../chat/tool-display-view';
 import { ErrorState, SkeletonBlock } from '../state';
 import './InlineBrowserActivity.css';
 

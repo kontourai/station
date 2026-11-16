@@ -19,9 +19,9 @@ import {
   BrowserActivityContext,
   BrowserActivityProvider,
 } from '../BrowserActivityContext';
+import { BrowserTurnActivityProvider } from '../BrowserTurnActivity';
 import { MessageContent } from '../message-bubble/MessageContent';
 import { StreamingMessageView } from '../StreamingMessage';
-import { BrowserTurnActivityProvider } from '../BrowserTurnActivity';
 import { TranscriptTurnContext } from '../transcript-child-work';
 
 vi.mock('../../browser-activity/InlineBrowserActivity', () => ({

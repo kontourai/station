@@ -1,13 +1,13 @@
 import { createContext, useContext, useMemo } from 'react';
-import type { ChatMessage } from '../../types';
 import { useStreamingContent } from '../../hooks/useStreamingContent';
-import { browserCallSessionId } from './browser-activity-calls';
+import type { ChatMessage } from '../../types';
 import { useBrowserActivityScope } from './BrowserActivityContext';
-import {
-  TranscriptChildrenContext,
-  type TranscriptChildren,
-} from './transcript-child-work';
+import { browserCallSessionId } from './browser-activity-calls';
 import type { ToolCallLike } from './tool-call-runs';
+import {
+  type TranscriptChildren,
+  TranscriptChildrenContext,
+} from './transcript-child-work';
 
 type Activity = {
   calls: ToolCallLike[];

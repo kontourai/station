@@ -1,16 +1,16 @@
-import { useContext, type ReactNode } from 'react';
+import { type ReactNode, useContext } from 'react';
+import { LazyBoundary } from '../LazyBoundary';
+import { useBrowserActivityScope } from './BrowserActivityContext';
 import {
   browserTurnKey,
   useBrowserTurnActivities,
 } from './BrowserTurnActivity';
-import { TranscriptTurnContext } from './transcript-child-work';
-import { LazyBoundary } from '../LazyBoundary';
-import { useBrowserActivityScope } from './BrowserActivityContext';
 import {
   browserCallSessionId,
   stationBrowserTool,
 } from './browser-activity-calls';
 import type { ToolCallLike, ToolCallRun } from './tool-call-runs';
+import { TranscriptTurnContext } from './transcript-child-work';
 
 const loadBrowserActivityContent = () =>
   import('../browser-activity/BrowserActivityContent');

@@ -80,8 +80,8 @@ vi.mock('../components/icons/UserIcon', () => ({
   UserIcon: () => <span aria-hidden="true">U</span>,
 }));
 
-import { ChatMessageList } from '../components/chat/ChatMessageList';
 import { BrowserActivityContext } from '../components/chat/BrowserActivityContext';
+import { ChatMessageList } from '../components/chat/ChatMessageList';
 import { CHAT_READER_RESTORE_EVENT } from '../components/chat/chatScrollAnchor';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 

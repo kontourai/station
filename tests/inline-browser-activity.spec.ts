@@ -7,7 +7,7 @@ import {
   encodeLiveSurfaceRecord,
   LIVE_SURFACE_FRAMES_CONTENT_TYPE,
 } from '@kontourai/station-contracts/live-surface';
-import { expect, type Page } from '@playwright/test';
+import { expect, type Page, type TestInfo } from '@playwright/test';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import {
@@ -35,7 +35,7 @@ test.afterEach(async () => {
   );
 });
 
-async function installFrameFixture(page: Page) {
+async function installFrameFixture(page: Page, testInfo: TestInfo) {
   const source = await page.context().newPage();
   await source.setViewportSize({ width: 1280, height: 720 });
   await source.setContent(`<!doctype html><html lang="en"><style>
@@ -52,7 +52,9 @@ async function installFrameFixture(page: Page) {
   <article>Checks<strong>37 passed</strong></article><article>Region<strong>us-east-1</strong></article></section>
   <table><tr><th>Service</th><th>Status</th><th>Updated</th></tr><tr><td>Web application</td><td>Healthy</td><td>Just now</td></tr>
   <tr><td>API</td><td>Healthy</td><td>2 minutes ago</td></tr></table></main></html>`);
-  const png = await source.screenshot();
+  const png = await source.screenshot({
+    path: testInfo.outputPath('controlled-browser-source.png'),
+  });
   await source.close();
   let seq = 0;
   frameServer = createServer((request, response) => {
@@ -285,7 +287,7 @@ async function setup(
       ]),
     );
   });
-  if (enabled) await installFrameFixture(page);
+  if (enabled) await installFrameFixture(page, test.info());
   await page.goto('/projects/dev/layouts/code?chat=conv-1');
   await dismissSetupLauncher(page);
   await openChatRegion(page);
@@ -522,7 +524,12 @@ for (const width of [390, 1440]) {
       const settled = testInfo.outputPath(
         `inline-browser-settled-${width}-${colorScheme}.png`,
       );
-      await page.screenshot({ path: settled, animations: 'disabled' });
+      await page.screenshot({
+        path: testInfo.outputPath(
+          `inline-browser-settled-${width}-${colorScheme}.png`,
+        ),
+        animations: 'disabled',
+      });
       await testInfo.attach(`inline-browser-settled-${width}-${colorScheme}`, {
         path: settled,
         contentType: 'image/png',
