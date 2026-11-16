@@ -1,0 +1,13 @@
+{
+  "revision": "2ff9ffc7c0655c354ee3802324a02ef950bd0018",
+
+  "notes": [
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed: adds a server-internal findByDedupeTag read lookup used by finished-alert restart replay. No route, API, SDK, record shape or delivery-event claim changes.","inputs":["src-server/services/notifications/notification-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed: adds a server-internal findByDedupeTag read lookup used by finished-alert restart replay. No route, API, SDK, record shape or delivery-event claim changes.","inputs":["src-server/services/notifications/notification-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed: adds a server-internal findByDedupeTag read lookup used by finished-alert restart replay. No route, API, SDK, record shape or delivery-event claim changes.","inputs":["src-server/services/notifications/notification-service.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Reviewed: adds a server-internal findByDedupeTag read lookup used by finished-alert restart replay. No route, API, SDK, record shape or delivery-event claim changes.","inputs":["src-server/services/notifications/notification-service.ts"]}
+  ]
+}
