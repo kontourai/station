@@ -1,4 +1,7 @@
-import type { PullRequestFeedbackObservationResult } from './pull-request-feedback.js';
+import type {
+  PullRequestFeedbackObservationResult,
+  PullRequestsByHeadResult,
+} from './pull-request-feedback.js';
 
 /** Provider-neutral pull-request contract. Native ids and URLs stay opaque. */
 export type PullRequestCapability =
@@ -335,6 +338,16 @@ export interface IPullRequestProvider {
     ref: string,
     signal?: AbortSignal,
   ): Promise<PullRequestFeedbackObservationResult>;
+  /**
+   * The repository's open pull requests whose head branch is named
+   * `branch` (at most 5), for agent feedback's Task-branch discovery.
+   * Optional: a provider without it never discovers one.
+   */
+  findOpenPullRequestsByHead?(
+    context: PullRequestRepositoryIdentityContext,
+    branch: string,
+    signal?: AbortSignal,
+  ): Promise<PullRequestsByHeadResult>;
   /**
    * The same exact read, narrowed to what a status surface (the Task board)
    * reads: state, title, branches, mergeability, draft, review decision and
