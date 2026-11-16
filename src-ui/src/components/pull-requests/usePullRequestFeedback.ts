@@ -74,7 +74,8 @@ export function usePullRequestFeedback(conversationId: string) {
     retry: false,
   });
   const [pending, setPending] = useState<string | null>(null);
-  const [error, setError] = useState<{ key: string; message: string } | null>(
+  // `text` is display copy, already passed through userFacingErrorMessage.
+  const [error, setError] = useState<{ key: string; text: string } | null>(
     null,
   );
   const [conflict, setConflict] = useState<{
@@ -108,7 +109,7 @@ export function usePullRequestFeedback(conversationId: string) {
       else
         setError({
           key,
-          message:
+          text:
             caught instanceof Error
               ? userFacingErrorMessage(caught)
               : 'Pull request feedback could not be changed',

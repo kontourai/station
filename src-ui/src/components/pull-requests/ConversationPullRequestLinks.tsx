@@ -207,7 +207,7 @@ export function ConversationPullRequestLinks({
           pending={feedback.pending !== null}
           error={
             feedback.error && feedback.error.key === feedbackKeyOf(feedbackFor)
-              ? feedback.error.message
+              ? feedback.error.text
               : undefined
           }
           conflict={
