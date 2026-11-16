@@ -35,7 +35,12 @@ afterEach(() => {
   for (const store of stores.splice(0)) store.close();
 });
 
-function seed(store: EventStore, threadId: string, index: number, cwd?: string) {
+function seed(
+  store: EventStore,
+  threadId: string,
+  index: number,
+  cwd?: string,
+) {
   const createdAt = new Date(2026, 0, 1, 0, 0, index).toISOString();
   store.upsertSession({
     provider: 'claude',
