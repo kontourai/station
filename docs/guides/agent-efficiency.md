@@ -45,8 +45,11 @@ Station's experimental progressive-tools protocol initially lists `list_tool_fam
 existing registrations and schemas under that token's private incarnation.
 Source selection, custody filters and call-time authorization remain in force.
 Another token starts with its own index; rotation and revocation invalidate the
-old capability. It is not offered as a Station preview until a native consumer
-is qualified.
+old capability. It is not offered as a Station preview until an engine's
+admission ships (see [Qualify tool-family loading](#qualify-tool-family-loading)).
+Loading a family announces `notifications/tools/list_changed` on the
+`load_tool_family` call's own response stream, because the stateless HTTP route
+keeps no standing stream for a later notification.
 
 Each tool's family is stated in one map
 ([`station-control-tool-families.ts`](../../src-server/tools/station-control-tool-families.ts)),
@@ -69,8 +72,9 @@ engines without this runtime admission retain their static selection. Native
 Codex retains the static catalog, including on hosts that previously saved an
 enabled progressive-tools choice. The 0.164.0
 qualification loaded a family but did not expose its tools, including on the next
-turn. MCP transport notification fixtures do not establish engine compatibility.
-A future native admission must prove an actual family tool call before hiding
+turn. Codex 0.167.0 qualifies only with its `mcp_tool_list_changed` feature on;
+Station does not yet set it. MCP transport notification fixtures do not establish engine compatibility.
+A native admission must prove an actual family tool call before hiding
 the static catalog. Current Claude tool search needs no Station preview switch.
 
 Codex built-in Control and Knowledge credentials travel in private thread
@@ -78,6 +82,51 @@ JSON-RPC configuration as HTTP headers. They stay outside spawn argv and retain
 **delegated-custody** assurance. Only Station's in-process credential supplies
 bound assurance; private delivery does not itself authorize browser or device
 control.
+
+## Qualify tool-family loading
+
+Run the live qualification before admitting an engine to tool families and again
+after each engine upgrade:
+
+```sh
+npm run qualify:tool-disclosure
+npm run qualify:tool-disclosure -- --codex /path/to/codex --receipt receipt.json
+```
+
+The [qualification command](../../scripts/qualify-tool-disclosure.ts) runs the
+installed `codex` binary (the one Station's resolver finds, or `--codex`)
+against Station's real station-control route with loading on for one fixture
+credential. A local scripted Responses endpoint plays the model, so no paid
+model is called and no operator configuration or credential is read. The script
+calls `load_tool_family` for Agents, then calls `list_agents` only if Codex
+offers it in a later model request. A case qualifies only when every step is
+observed: the first request offers just the index, the route loads the family,
+Codex lists tools again, a later request offers `list_agents`, that call reaches
+Station and runs its read, and the result returns to the model.
+
+It runs `codex exec`, and `codex app-server` with the station-control server in
+`thread/start` configuration as Station delivers it, each with the feature off
+and on. Exit status 0 means every required case qualified, 1 means one did not,
+and 3 means no binary was found (SKIPPED, not a pass). The feature-on cases
+are required; the feature-off cases are reported controls.
+
+Result on 2026-11-16 with codex-cli 0.167.0:
+
+| Case | Result |
+| --- | --- |
+| `exec` or `app-server`, feature off | Not qualified: no list after loading, `list_agents` never offered |
+| `exec -c features.mcp_tool_list_changed=true` | Qualified |
+| `app-server -c features.mcp_tool_list_changed=true` | Qualified |
+| `app-server`, `features.mcp_tool_list_changed: true` in `thread/start` configuration | Qualified |
+
+The qualifying configuration needs both halves: Codex's
+`features.mcp_tool_list_changed=true` (an under-development flag, default off)
+and Station's `list_changed` on the load call's own stream. Without either, the
+qualification fails at the list-after-loading step. It does not establish that a
+real model chooses to load a family, or behaviour after thread resume. Engines
+Station reaches over ACP (OpenCode, Kiro and custom engines) each bring their
+own MCP client and remain unqualified. Claude keeps native tool search and is
+not a candidate.
 
 ## Review and use a learning
 
