@@ -775,7 +775,7 @@ when the conversation's work is done, or **Reopen** to bring it back. Closed
 Tasks follow their existing close-on-merge setting; standalone linked PRs do
 not settle a conversation automatically. Settlement syncs across your devices
 and is separate from dismissal or deletion. **Working** holds running and
-monitoring chats; **Needs attention** takes priority whenever input is owed.
+monitoring chats and armed check-backs, which show **Waiting**; **Needs attention** takes priority whenever input is owed.
 Drafts appear as a pencil on the chat row in its current status. Collapse a
 shelf to move it below expanded work. Shelf menus let you move sections up or
 down, with that order saved on this device. **Settled** is last by default.
@@ -1092,8 +1092,8 @@ shows the message with those values applied. **Start chat** opens a new chat
 and sends that message. This does not attach the skill to the Agent or install
 its dependencies; the Agent's configured tools and permissions still apply.
 
-To add skills, choose **Browse Registry Skills** and inspect the available
-catalog before installing. **Import .md** accepts standalone Markdown skill
+To add skills, choose **Browse Registry Skills** (**Browse Registry** while the
+library is empty) and inspect the available catalog before installing. **Import .md** accepts standalone Markdown skill
 files and reports the outcome of each file. Open an imported skill from its
 result to review and use it. Import does not copy a repository's
 scripts or supporting files. Load plugin packages through Registry.
@@ -1210,15 +1210,28 @@ Station looks in four places:
   Station, which is already there.
 - OpenCode's session database, `opencode.db` or `opencode-<channel>.db` (for
   example `opencode-stable.db`), in `opencode` under `XDG_DATA_HOME`, or
-  `~/.local/share/opencode` when that is not set. Station opens it read-only
-  and lists top-level OpenCode sessions you have sent a message in; subagent
-  sessions and archived sessions are left out. A message appears once OpenCode
-  has finished writing it. Conversations Station itself runs through an
-  OpenCode connection are not listed a second time. Older OpenCode releases
-  kept sessions as JSON files under `storage`; Station does not read those,
-  and current OpenCode moves them into the database when it starts. If an
-  OpenCode update changes the database layout, Station stops reading it and
-  logs one warning instead of guessing.
+  `~/.local/share/opencode` when that is not set. Station reads both OpenCode
+  1.x and OpenCode 2.x databases. Beside an OpenCode 2.x database, an
+  `opencode-next.db` is read only for sessions OpenCode 2.x does not hold: a
+  session it copied is shown as OpenCode 2.x has it, archived or deleted
+  there included. Once OpenCode's upgrade has finished, only sessions
+  created in `opencode-next.db` after it are listed from that file, since
+  OpenCode copies it only once. A file in the OpenCode preview format, which
+  Station cannot read, is skipped. Station opens each database read-only and lists top-level
+  OpenCode sessions you have sent a message in; subagent sessions and
+  archived sessions are left out. A message appears once OpenCode has
+  finished writing it. Later messages wait for an unfinished OpenCode
+  compaction; if one is still unfinished after 15 minutes (OpenCode stopped
+  partway and the conversation was not reopened), Station logs one warning
+  naming the conversation, once per Station run. Conversations Station
+  itself runs through an OpenCode connection are not listed a second time.
+  Older OpenCode releases kept sessions as JSON files under `storage`;
+  Station does not read those, and current OpenCode moves them into the
+  database when it starts. If an OpenCode update changes the database
+  layout, Station stops reading it and
+  logs one warning instead of guessing. A conversation Station already listed
+  from an OpenCode 1.x database stops updating once OpenCode 2.x converts that
+  database; its earlier messages stay in history.
 
 `STATION_EXTERNAL_CLAUDE_SOURCE_ROOT`, `STATION_EXTERNAL_CODEX_SOURCE_ROOT`,
 `STATION_EXTERNAL_GROK_SOURCE_ROOT` and `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT`

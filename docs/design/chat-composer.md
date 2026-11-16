@@ -335,8 +335,11 @@ action, which confirms continuation into an owned child.
 Owner, member and guest Task histories share record rendering and pagination;
 publication removal still clears a member's readable records. Desktop and mobile
 Inbox share search, activation currency, snooze, dismissal and Undo.
-Child-work notices retain their Station and result source. A structured tool
-return updates an earlier provider summary without adding a duplicate notice.
+Child-work results retain their Station and result source inside the shared
+subagent expander. When a spawn is outside loaded history, its completion uses
+the same expander without a dismissible message wrapper. A structured tool
+return updates the earlier provider summary. Successfully finished groups and
+cards use a quieter surface; failures and unknown outcomes retain their warnings.
 
 Request failures use the owning Station's shared translator. Source and target
 access failures name the appropriate Station; provider repair hints keep their
@@ -474,7 +477,7 @@ immediately to the right of that status and moves with it as the draft grows.
 When the chat pane is narrow, the status and scroll control are centered
 together in a row above the settings. In a dock too short to show the transcript
 (the composer has priority), there is nothing to scroll back to, so Scroll to
-bottom is not shown and a row left with no status takes no height. Scroll-button hover changes its background
+bottom is not shown and a row left with no status or scheduled notes takes no height. Scroll-button hover changes its background
 without enlarging its target. The desktop header exposes Hide inbox /
 Show inbox directly, as an icon button whose pressed state is available to assistive technology; its one labelled action is New, and "Open chat…" is the first row of its ⋯ menu.
 
@@ -739,19 +742,29 @@ These controls are owned by [ChatInputArea](../../src-ui/src/components/chat/Cha
 
 ### Turn navigation
 
+An armed check-back shares the composer activity row with **Scroll to bottom**.
+It takes the available width without moving that button to a second row.
+The shared work-status selector keeps a settled conversation with an armed
+check-back in **Working**, labelled **Waiting**. Running work, failures and
+requests for the person retain their existing priority; an unapproved proposal
+does not claim that the conversation will resume.
+
 A live transcript gets turn navigation from its first user turn (#342;
 [TranscriptTurnRail](../../src-ui/src/components/chat/TranscriptTurnRail.tsx)).
-Its user turns are derived from the whole transcript row model
-([transcriptTurnLandmarks](../../src-ui/src/components/chat/transcriptTurnLandmarks.ts)),
-so a virtualized transcript's unmounted turns are included; only the loaded
-window is mapped, and earlier history joins the map as it loads. Every user
-message row starts a turn.
+Its full turn map comes from the owning Station's paged turn directory,
+independent of loaded transcript bodies. Each page reads at most 100 prompt
+excerpts and outcomes through indexed queries. The first page counts turns;
+subsequent pages reuse that authorized count snapshot without recounting history. The rail and **Browse turns**
+share one authority-scoped query. The loaded row model
+([transcriptTurnLandmarks](../../src-ui/src/components/chat/transcriptTurnLandmarks.ts))
+still locates the reader and supplies previews for loaded replies. Older hosts
+without the directory retain the explicitly labelled loaded-window map.
 
 - **Turn rail.** A 16px gutter over the transcript's right edge, inside its
-  scrollbar, with one tick per user turn placed by the turn's position among
-  the rows. The rows on screen are drawn as a band, and their turns' ticks are
+  scrollbar, with one tick per indexed turn placed by its ordinal position. The loaded
+  fallback places ticks by their positions among transcript rows. The rows on screen are drawn as a band, and their turns' ticks are
   highlighted; both are written from the scroll handler, once per frame. Hover
-  or keyboard focus previews a turn: its prompt and the start of its first
+  or keyboard focus previews a turn: its prompt and, when loaded, the start of its first
   reply. Escape dismisses the preview without moving focus or the pointer:
   while it shows, the preview carries `data-escape-owner`, so the app's
   shortcuts (such as "Go up one level") leave that Escape to it. Pointing at
@@ -762,9 +775,9 @@ message row starts a turn.
   (measured on the column, not the viewport); a hidden rail unmounts its
   preview, so no Escape is spent on a preview nobody can see. A chat switch
   starts the rail over, dropping any hover, focus or dismissed preview.
-- **Markers.** A tick carries at most one marker, from facts the rows already
-  hold: a reply carrying the projected runtime error (`runtimeError`) marks
-  the turn as ended with an error; otherwise a standalone sub-agent row marks
+- **Markers.** A tick carries at most one marker. An indexed failed outcome,
+  or a loaded reply carrying the projected runtime error (`runtimeError`),
+  marks the turn as ended with an error; otherwise a loaded standalone sub-agent row marks
   it as having started a sub-agent. Sub-agents shown inside a reply's tool
   call, and interrupted turns, are not marked.
 - **Previous turn / Next turn.** Previous and next controls sit at the top and bottom of the turn rail.
@@ -779,9 +792,9 @@ message row starts a turn.
   is bounded to 64 pages; a retry continues from the retained cursor. Switching
   conversations or closing the browser cancels further page requests.
 
-- **Positions.** A turn is named "Turn N of M". While older history is not
-  loaded, the map covers only the loaded window, so it is named "Loaded turn
-  N of M" instead, and the numbers change as earlier history loads.
+- **Positions.** A turn is named "Turn N of M". The indexed map includes older turns before their bodies load. While the
+  directory is loading or unavailable on an older host, the fallback map is
+  named "Loaded turn N of M".
 - **Jumping.** A jump reveals the turn's prompt row, centred, through the same
   path a message link uses (`revealRowId`, then the virtualizer's
   `scrollToIndex`); a short transcript, with every row mounted, is scrolled

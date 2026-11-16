@@ -57,6 +57,11 @@ const rules: readonly Rule[] = [
   { method: 'GET', path: /^\/api\/orchestration\/sessions$/ },
   {
     method: 'GET',
+    path: /^\/api\/orchestration\/session-reads\/[^/]+\/turn-directory$/,
+    query: ['cursor', 'turnLimit', 'includeCount'],
+  },
+  {
+    method: 'GET',
     path: /^\/api\/orchestration\/sessions\/[^/]+$/,
     query: ['view', 'cursor', 'turnLimit'],
   },

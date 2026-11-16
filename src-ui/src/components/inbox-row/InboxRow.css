@@ -21,6 +21,13 @@
   --inbox-row-line: 18px;
   --inbox-row-pad-block: var(--space-3);
   --inbox-row-pad-inline: var(--space-4);
+  --inbox-row-action-size: 26px;
+  --inbox-row-action-top: calc(
+    var(--inbox-row-pad-block) +
+    1px +
+    (var(--inbox-row-line) - var(--inbox-row-action-size)) /
+    2
+  );
   /* #3075: a leading column every row keeps, read or not, for the unread
      dot, so the text column sits in one place in both states. */
   --inbox-row-unread-gutter: var(--k-space-3);
@@ -84,7 +91,10 @@
 .inbox-row__headline {
   display: flex;
   min-width: 0;
-  align-items: baseline;
+  /* One line tall, like the meta line it replaced at the top: the hover
+     actions' offset (--inbox-row-action-top) centres them on this line. */
+  height: var(--inbox-row-line);
+  align-items: center;
   gap: var(--k-space-2);
 }
 .inbox-row__headline > .inbox-row__title {
@@ -366,8 +376,8 @@
 
 .inbox-row__actions {
   position: absolute;
-  top: var(--space-2);
-  right: var(--space-3);
+  top: var(--inbox-row-action-top);
+  right: var(--inbox-row-pad-inline);
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -406,8 +416,8 @@
 .inbox-row__action {
   position: relative;
   display: inline-flex;
-  width: 26px;
-  height: 26px;
+  width: var(--inbox-row-action-size);
+  height: var(--inbox-row-action-size);
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
@@ -421,13 +431,12 @@
 
 /* An always-on invisible hit area: the drawn control stays 26px while the
  * target is 44px tall on every pointer, with no media query deciding who
- * gets it. It starts at the ROW's top edge (the slot sits `--space-2` below
- * it) and extends downward, so it never reaches into the row above or
+ * gets it. It starts at the row's top edge and extends downward, so it never reaches into the row above or
  * below. Horizontally it reaches only to the midpoint of the gap, so
  * neighbouring targets never overlap. */
 .inbox-row__action::after {
   position: absolute;
-  top: calc(var(--space-2) * -1);
+  top: calc(var(--inbox-row-action-top) * -1);
   right: calc(var(--space-2) / -2);
   left: calc(var(--space-2) / -2);
   height: 44px;

@@ -279,6 +279,7 @@ export const SESSION_STATUS_WORDS = {
   stopped: 'Stopped',
   elsewhere: 'Read only',
   running: 'Running',
+  scheduled: 'Waiting',
   draft: 'Draft',
   done: 'Done',
   idle: 'Idle',

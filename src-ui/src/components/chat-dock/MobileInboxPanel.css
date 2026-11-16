@@ -48,14 +48,8 @@
 }
 .mobile-inbox__search {
   margin: var(--k-space-2) var(--k-space-3);
-  min-height: 44px;
+  width: auto;
   min-width: 0;
-  padding: var(--k-space-2);
-  border: var(--k-border-thin) solid var(--k-line);
-  border-radius: var(--k-radius-md);
-  background: var(--k-bg);
-  color: var(--k-text);
-  font-size: var(--k-text-lg);
 }
 
 .mobile-inbox__list {

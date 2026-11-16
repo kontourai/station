@@ -97,7 +97,9 @@ function GuardedHarness({ dirty }: { dirty: boolean }) {
 
 describe('project-settings/KnowledgeSection (#242 shell port)', () => {
   it('renders the no-working-directory state through the canonical Empty component', () => {
-    render(<KnowledgeSection slug="demo-project" />);
+    const { container } = render(<KnowledgeSection slug="demo-project" />);
+    // The section title stands alone, without an eyebrow restating it.
+    expect(container.querySelector('.page-section__eyebrow')).toBeNull();
 
     // `.empty` is the hook the shared @kontourai/ui Empty primitive renders.
     expect(

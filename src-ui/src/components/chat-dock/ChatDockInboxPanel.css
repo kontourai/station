@@ -246,11 +246,7 @@
 }
 .chat-dock-inbox__scope--inline select {
   width: 100%;
-  min-height: 36px;
   text-overflow: ellipsis;
-}
-.chat-dock-inbox[data-coarse-pointer] .chat-dock-inbox__scope--inline select {
-  min-height: 44px;
 }
 
 /* Shown only while the scope hides work that needs the person. */
@@ -282,32 +278,8 @@
 }
 
 .chat-dock-inbox__toolbar {
-  display: flex;
-  align-items: center;
-  gap: var(--k-space-1);
-  padding: var(--k-space-2);
+  padding: var(--k-space-3);
   border-bottom: 1px solid var(--k-line);
-}
-.chat-dock-inbox__search {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  align-items: center;
-  gap: var(--k-space-2);
-  color: var(--k-text-muted);
-}
-.chat-dock-inbox__search input {
-  width: 100%;
-  min-width: 0;
-  min-height: 44px;
-  border: 0;
-  background: transparent;
-  color: var(--k-text);
-  font: inherit;
-}
-.chat-dock-inbox__search input:focus-visible {
-  outline: var(--k-border-thick) solid var(--k-focus);
-  outline-offset: calc(-1 * var(--k-border-thick));
 }
 .chat-dock-inbox__group.chat-dock-inbox__group--shelf-start {
   margin-block-start: auto;
@@ -318,15 +290,7 @@
 .chat-dock-inbox__group--collapsed + .chat-dock-inbox__group--collapsed {
   margin-block-start: 0;
 }
-.chat-dock-inbox__toolbar svg {
-  inline-size: 16px;
-  block-size: 16px;
-}
 .chat-dock-inbox__toolbar > button {
-  min-inline-size: 36px;
-  min-block-size: 36px;
-}
-.chat-dock-inbox[data-coarse-pointer] .chat-dock-inbox__toolbar > button {
   min-inline-size: 44px;
   min-block-size: 44px;
 }
