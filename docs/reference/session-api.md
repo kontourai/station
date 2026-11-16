@@ -1398,8 +1398,10 @@ silent tool; Station cannot tell which. `idle` means the latest turn ended.
 (recorded in 30-second steps), which covers writes that produce no event:
 
 - Claude Code: the transcript's modification time and, while that changed in
-  the last two hours, the newest `<session>/subagents/*.jsonl` (a directory
-  past 512 entries is not read).
+  the last two hours, the newest `<session>/subagents/*.jsonl`. A directory
+  with more than 1024 transcripts or 4096 entries is not read at all, and a
+  scan is reused for up to 25 seconds while no subagent is added, so an append
+  can be seen that much later.
 - OpenCode: the session row, the messages read, and the parts of a message
   still being written (`time_updated`).
 - Codex and Grok report none; their imported records' times are used.
