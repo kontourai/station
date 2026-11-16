@@ -1,0 +1,7 @@
+{
+  "revision": "8c008b260937ba2a64428ac7cfa283b81c2041aa",
+
+  "notes": [
+    {"path":"docs/guides/nightly.md","note":"Checked the new runner-loss paragraph against the second verifier attempt in nightly-native-cohort.yml and the manual path in native-releases.md; the marker and partial-cohort claims above it are unchanged.","inputs":["docs/guides/nightly.md",".github/workflows/nightly-native-cohort.yml","scripts/release-cohort-workflow.mjs"]}
+  ]
+}

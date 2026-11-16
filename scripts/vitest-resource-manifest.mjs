@@ -1254,6 +1254,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // fixture origin, then every ledger reader as a child process on the
   // resulting history: one commit per run is a claim about real git state.
   'scripts/__tests__/deploy-ledger-nightly-batch.test.ts',
+  // Runs the native cohort's real runner-loss decision step and its real
+  // incomplete-cohort receipt step under bash, because what they decide is
+  // the second verifier attempt and the recorded finality. Bounded,
+  // single-shot children against fixture files; no network.
+  'scripts/__tests__/nightly-finalize-runner-loss.test.ts',
   // Proves the published-packages
   // JSON parse's success and refusal exit statuses as a real child process,
   // the same "gate as a real child" shape as the entry-point gates above.
