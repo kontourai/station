@@ -2044,6 +2044,18 @@ Work-chat listings expose only currently readable canonical IDs and revisions.
 owner. See the real-store relationship and mounted-route tests for the local
 persistence/transport boundary; these do not qualify production composition.
 
+### Scheduled check-backs
+
+`OrchestrationSessionSummary.nextWakeUpAt` is the earliest armed check-back
+in that conversation, as an ISO timestamp. Approval proposals are excluded.
+The field is absent when no check-back is pending, and on older hosts. It is a
+display fact; it grants no send or execution permission.
+
+Home work rows carry this field too. Its description is part of the canonical
+Home-role projection record. A grant that predates the widened field list no
+longer covers that projection; the built-in Home remains the fallback until
+the grant is approved again.
+
 ### Finish time and engines run
 
 `OrchestrationSessionSummary.lifecycleChangedAt` is when the event that

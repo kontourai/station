@@ -59,6 +59,7 @@ import {
   originalMcpToolName,
   selectedMcpTools,
 } from '@kontourai/station-shared/mcp-tool-selection';
+import { stationEnablesClaudeToolSearch } from '../../runtime/agents/claude-tool-search.js';
 import { STATION_CAPABILITY_DISCOVERY_GUIDANCE } from '../../runtime/agents/station-capability-discovery.js';
 import {
   composeStationInstructions,
@@ -363,7 +364,11 @@ function resolveStationInstructions(args: {
       : controlTools.has('device_open'),
     delegated: Boolean(input.metadata?.delegation),
     harness,
-    toolSearch: provider === 'claude' && spec.tools?.mcpLoading !== 'always',
+    // Only when Station itself turns tool search on: under the harness
+    // default, Claude Code decides and names the tools it defers.
+    toolSearch:
+      provider === 'claude' &&
+      stationEnablesClaudeToolSearch(spec.tools?.mcpLoading),
     progressiveFamilies: options.progressiveToolsEnabled?.() === true,
   });
   if (!composed) return;

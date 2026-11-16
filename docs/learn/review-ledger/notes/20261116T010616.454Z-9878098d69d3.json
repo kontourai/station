@@ -1,0 +1,15 @@
+{
+  "revision": "968bacab14fdd1d11f0da8ffa317c65880b9cc4c",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Delta follow-up: a truncated pass now stays candidate_limit even when reached files are refused (warning counts refusals by reason); an emptied folder drops its previous-pass rank. Checked this page's Claude transcript claims; none describe pass outcomes or folder ranking, so they remain accurate.","inputs":["src-server/providers/sessions/claude-transcript-session-source.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Delta follow-up: a truncated pass now stays candidate_limit even when reached files are refused (warning counts refusals by reason); an emptied folder drops its previous-pass rank. Checked this page's Claude transcript claims; none describe pass outcomes or folder ranking, so they remain accurate.","inputs":["src-server/providers/sessions/claude-transcript-session-source.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Delta follow-up: a truncated pass now stays candidate_limit even when reached files are refused (warning counts refusals by reason); an emptied folder drops its previous-pass rank. Checked this page's Claude transcript claims; none describe pass outcomes or folder ranking, so they remain accurate.","inputs":["src-server/providers/sessions/claude-transcript-session-source.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Delta follow-up: a truncated pass now stays candidate_limit even when reached files are refused (warning counts refusals by reason); an emptied folder drops its previous-pass rank. Checked this page's Claude transcript claims; none describe pass outcomes or folder ranking, so they remain accurate.","inputs":["src-server/providers/sessions/claude-transcript-session-source.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Delta follow-up: a truncated pass now stays candidate_limit even when reached files are refused (warning counts refusals by reason); an emptied folder drops its previous-pass rank. Checked this page's Claude transcript claims; none describe pass outcomes or folder ranking, so they remain accurate.","inputs":["src-server/providers/sessions/claude-transcript-session-source.ts"]}
+  ]
+}

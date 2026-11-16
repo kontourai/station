@@ -8189,6 +8189,99 @@ export class EventStore {
     return rows.map((row) => row.thread_id);
   }
 
+  /** Navigation reads indexed metadata without tools or files; later pages can omit the initial count. */
+  readTurnDirectoryFacts(
+    threadIds: readonly string[],
+    options: {
+      beforeGlobalSequence?: number;
+      turnLimit: number;
+      includeCount?: boolean;
+    },
+  ): {
+    turns: Pick<
+      TurnDigestFacts,
+      | 'threadId'
+      | 'turnId'
+      | 'startedAt'
+      | 'startSequence'
+      | 'promptPrefix'
+      | 'terminal'
+    >[];
+    totalTurns?: number;
+    hasMore: boolean;
+  } {
+    const ids = [...new Set(threadIds)];
+    if (ids.length > TURN_DIGEST_LINEAGE_MAX)
+      throw new TurnDigestLineageTooLongError();
+    if (
+      !ids.length ||
+      !Number.isInteger(options.turnLimit) ||
+      options.turnLimit < 1 ||
+      options.turnLimit > 100
+    )
+      throw new Error(
+        'Turn directory requires a lineage and a limit between 1 and 100',
+      );
+    const startsWhere = `thread_id IN (${ids.map(() => '?').join(', ')}) AND method = 'turn.started'
+      AND turn_id IS NOT NULL AND json_valid(payload) AND json_extract(payload, '$.inputKind') IS NULL`;
+    const totalTurns =
+      options.includeCount === false
+        ? undefined
+        : Number(
+            (
+              this.db
+                .prepare(
+                  `SELECT COUNT(*) AS total FROM orchestration_events WHERE ${startsWhere}`,
+                )
+                .get(...ids) as { total: number }
+            ).total,
+          );
+    const starts = this.db
+      .prepare(`
+      SELECT thread_id, turn_id, created_at, global_sequence,
+        substr(${spilledTextSql('$.prompt', 'orchestration_events.thread_id')}, 1, ${TURN_DIGEST_PROMPT_PREFIX_CHARS}) AS prompt,
+        (SELECT json_object('method', terminal.method, 'finishReason', json_extract(terminal.payload, '$.finishReason'))
+           FROM orchestration_events terminal
+          WHERE terminal.thread_id = orchestration_events.thread_id AND terminal.turn_id = orchestration_events.turn_id
+            AND terminal.method IN ('turn.completed', 'turn.aborted', 'runtime.error') AND json_valid(terminal.payload)
+          ORDER BY terminal.sequence DESC LIMIT 1) AS terminal_json
+      FROM orchestration_events WHERE ${startsWhere} AND global_sequence < ?
+      ORDER BY global_sequence DESC LIMIT ?
+    `)
+      .all(
+        ...ids,
+        options.beforeGlobalSequence ?? Number.MAX_SAFE_INTEGER,
+        options.turnLimit + 1,
+      ) as {
+      thread_id: string;
+      turn_id: string;
+      created_at: string;
+      global_sequence: number;
+      prompt: unknown;
+      terminal_json: string | null;
+    }[];
+    return {
+      totalTurns,
+      hasMore: starts.length > options.turnLimit,
+      turns: starts.slice(0, options.turnLimit).map((start) => ({
+        threadId: start.thread_id,
+        turnId: start.turn_id,
+        startedAt: start.created_at,
+        startSequence: start.global_sequence,
+        ...(typeof start.prompt === 'string'
+          ? { promptPrefix: start.prompt }
+          : {}),
+        ...(start.terminal_json
+          ? {
+              terminal: JSON.parse(start.terminal_json) as NonNullable<
+                TurnDigestFacts['terminal']
+              >,
+            }
+          : {}),
+      })),
+    };
+  }
+
   /**
    * station#3413 (`get_session_digest`): the recorded facts of a window of a
    * conversation's turns, newest first, selected and aggregated in SQLite so

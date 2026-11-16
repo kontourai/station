@@ -262,6 +262,33 @@ Completed writes reach the OS page cache, with no power-loss/fsync guarantee.
 Stdout and the local store serialize separate redacted and unredacted records;
 they cannot safely share the same serialized bytes.
 
+**Repeated warnings.** The [logger seam](../../src-server/utils/logger.ts) limits
+repeated identical warnings ([limiter](../../src-server/utils/log-repeat-limiter.ts)).
+Two `warn` records are identical when they come from the same logger name, carry
+the same message, and carry the same error identity: the error's name, code and
+message, with digit runs folded so a changing pid or port does not count as a new
+error. Other context fields are not compared. The first five identical warnings
+in a 60-second window are written. Later ones are dropped and counted. When the
+window ends, one `warn` line, `Suppressed K repeats of: <message>`, reports the
+count. `error` and `fatal` records are never limited, and neither are levels
+below `warn`. Suppressed records increment the `station.logs.suppressed_records`
+counter, with attributes `component` (the logger name) and `level`. At most 512
+identities are tracked at once, and the oldest is summarized and dropped first.
+
+**The stdout log file.** `station start` and the service supervisor send the
+server's stdout and stderr to `<home>/logs/<instance>.log`
+(`station-<instance>.log` from a plain `station start`), passed to the server as
+`STATION_LOG_FILE`. The server checks that file's size at boot and every 30
+seconds. Once it reaches the cap, the server copies it to `<file>.1`, shifts
+older copies up to the retained count, removes any beyond it, and truncates the
+file in place ([source](../../src-server/services/infra/server-stdout-log-file.ts)).
+The diagnostics bundle, the failed-start report and smoke diagnostics read the
+tail of the current file, which always holds the newest output. They do not read
+the numbered copies. The day files above are the searchable history. Output
+another process writes to the same descriptor between the copy and the truncate
+can be lost. Rotations increment `station.logs.stdout_file.rotations`, with
+`outcome` `rotated` or `failed`.
+
 A successful read — a 2xx/304 `GET` or `HEAD` — is logged at `debug`; every other request (any other status, every mutation, and every streaming response) is logged at `info`. Because the level is applied before the durable store is written, at the default `info` those successful reads are not recorded at all rather than filed one level down, and the Developer → Logs level filter cannot recover them: set `STATION_LOG_LEVEL=debug` (or `logLevel` in `app.json`) before reproducing if you need the full access log.
 
 The Tauri desktop shell has a separate log and level (`STATION_DESKTOP_LOG_LEVEL`), documented with its recovery and privacy boundaries in [Recover a desktop start](../user/native-recovery.md#check-the-local-diagnosis). Do not substitute server-log output for evidence of native-window or renderer behavior.
@@ -297,6 +324,10 @@ issuance and read boundaries.
 | `STATION_LOG_LEVEL` | — | Overrides `app.json`'s `logLevel` for every logger in this process — every `createLogger()` call site resolves it at creation, and a later `app.json` change is pushed to all of them via `setGlobalLogLevel`, not just Station's own root logger. Takes precedence over the configured value, but not over a [managed policy](../guides/managed-policy.md#settings) lock on `logLevel`, which every logger applies instead, including those created before the policy loaded; an invalid value is ignored (falls back to `logLevel`/`"info"`) with a single startup warning. `"fatal"` is not a valid value here — fatal is emit-only, never a configurable filter floor. |
 | `STATION_SERVER_LOG_RETENTION_DAYS` | `30` | Days of server log files retained on disk (the active day is always kept regardless of age). |
 | `STATION_SERVER_LOG_MAX_BYTES` | `268435456` (256 MiB) | Maximum total bytes retained across server log files; oldest non-active-day files are removed first once the budget is exceeded. |
+| `STATION_LOG_REPEAT_LIMIT` | `5` | Identical warnings written per window before the rest are counted and summarized (see Repeated warnings above). `0` writes every repeat, for diagnosing a noisy loop. |
+| `STATION_LOG_REPEAT_WINDOW_SECONDS` | `60` | Length of the repeated-warning window, in seconds. |
+| `STATION_LOG_FILE_MAX_BYTES` | `67108864` (64 MiB) | Size at which the server rotates its stdout log file (`STATION_LOG_FILE`). |
+| `STATION_LOG_FILE_GENERATIONS` | `3` | Rotated copies of the stdout log file kept (`<file>.1` is newest; at most 20). `0` truncates without keeping a copy. |
 
 ## Chat attachments
 

@@ -9,6 +9,49 @@ import {
   MarkdownLoadingProjection,
 } from '../components/chat/EphemeralMessage';
 
+vi.mock('../components/chat/ChildWorkInstructionPanel', () => ({
+  ChildWorkInstructionPanel: () => null,
+}));
+
+test('a completion outside loaded history uses the shared subagent disclosure without a dismissible notice', async () => {
+  const { container } = render(
+    <EphemeralMessage
+      msg={{
+        content: 'Task finished',
+        backgroundTaskNotice: {
+          status: 'completed',
+          stationName: 'Build Station',
+          child: {
+            producer: 'engine-subagent',
+            reporterThreadId: 'reporter',
+            childId: 'child',
+            status: 'completed',
+            title: 'Review implementation',
+            result: {
+              source: 'provider-summary',
+              summary: 'The check passed.',
+            },
+          },
+        },
+      }}
+      idx={0}
+      fontSize={14}
+      isRemoving={false}
+      onDismiss={vi.fn()}
+    />,
+  );
+  expect(container.querySelector('.ephemeral-message')).toBeNull();
+  expect(screen.queryByText('Task finished')).toBeNull();
+  const disclosure = screen.getByRole('button', {
+    name: /Review implementation/,
+  });
+  expect(disclosure.getAttribute('aria-expanded')).toBe('false');
+  fireEvent.click(disclosure);
+  expect(disclosure.getAttribute('aria-expanded')).toBe('true');
+  expect(await screen.findByText('The check passed.')).toBeTruthy();
+  expect(screen.getByText('Via Build Station')).toBeTruthy();
+});
+
 // The HTML branch renders through a code-split sanitizer so DOMPurify stays out
 // of the first-paint bundle. These pin what the split must preserve: the markup
 // still arrives, and it still arrives sanitized.
