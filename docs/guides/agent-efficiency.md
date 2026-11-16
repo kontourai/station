@@ -75,7 +75,10 @@ the static catalog. Current Claude tool search needs no Station preview switch.
 
 Codex built-in Control and Knowledge credentials travel in private thread
 JSON-RPC configuration as HTTP headers. They stay outside spawn argv and retain
-**delegated-custody** assurance. Only Station's in-process credential supplies
+**delegated-custody** assurance. With the **Codex browser and device tools**
+preview on, a new Codex Session's Control tools travel on its bound
+`dynamicTools` channel instead: no header token, the full catalog on every
+thread, and no family loading. Only Station's in-process credential supplies
 bound assurance; private delivery does not itself authorize browser or device
 control.
 

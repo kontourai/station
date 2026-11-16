@@ -1123,7 +1123,10 @@ Delivery depends on the engine:
   the engine. When the engine is recovered just before the first turn, that
   check reads the delivery report written by the recovery.
 - Codex gets device guidance only while the `codex-bound-browser-device-tools`
-  preview is on and the bound channel offers `device_open`.
+  preview is on and the bound channel offers `device_open`. With that preview
+  on, a Codex Session whose Station Control is not coordinator-derived is told
+  the `bound` catalog its bound channel carries; otherwise the
+  `delegated-custody` subset.
 - Claude is told to load the tools it names with ToolSearch only when the
   Agent's `tools.mcpLoading` is `on-demand`, which is when Station turns
   Claude's tool search on. Under the harness default, Claude Code decides.

@@ -1146,9 +1146,10 @@ the context Station itself puts in front of every engine session: the
 `tools/list` of each built-in MCP server (name, description and input schema)
 and Station's injected text (orchestration instructions, workload budget,
 chat-image line). station-control is measured twice: `bound`, the listing
-Claude's in-process delivery receives, and `delegated-custody`, the subset Codex
-and ACP engines list. `codexBoundToolsJsonBytes` measures the `dynamicTools`
-Codex's bound browser and device channel offers at thread start, through the
+Claude's in-process delivery receives, and `delegated-custody`, the subset ACP
+engines, and Codex without its bound channel, list. `codexBoundToolsJsonBytes`
+measures the `dynamicTools` Codex's bound channel offers at thread start, the
+browser tools plus the whole station-control catalog at `bound`, through the
 mapping the adapter sends. `agent-context-budget.test.ts` beside it recomputes each
 number from live source and fails when the file disagrees, so update the JSON
 to the measured values in the same change. When text shrinks, lower the

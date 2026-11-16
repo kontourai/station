@@ -178,7 +178,8 @@ it is delivered; resolvers and adapters own the channel, the preview and receipt
 **Interface and ownership.** Every tool name in the text is gated on the
 `controlTools` set the caller passes, which `effectiveStationControlTools`
 derives from the Agent's selection and `stationControlToolListable` at the
-engine's assurance (`stationControlAssuranceFor`: Claude `bound`; Codex and ACP
+engine's assurance (`stationControlAssuranceFor`: Claude `bound`; Codex `bound`
+when its bound channel carries the catalog, otherwise `delegated-custody`; ACP
 `delegated-custody`; other engines none). A section with no offered tool is
 omitted. A delegated session gets the delegated-child section in place of
 orchestration and is never told to use `delegate_task` or `send_message`.
@@ -6082,7 +6083,10 @@ live-surface binder restores the saved human appearance on human claims. The cur
 records the authority constraints and Codex's default-off bound-channel preview.
 `codex-bound-tool-channel.ts` fences calls to the Session's current stream and
 turn; `codex-bound-request.ts` carries in-process proof through the HTTP
-bounded-body replacement. ACP remains unavailable without independent binding.
+bounded-body replacement. With the preview on, `createCodexBoundToolServer`
+also serves the Station Control catalog at `bound` and the adapter mints no
+header token; the resume cursor's `boundCatalog` says whether a resumed thread
+holds that catalog. ACP remains unavailable without independent binding.
 Control operations capture a lease fence and check it around asynchronous steps. JavaScript evaluation additionally needs the
 Project's default-off permission; timeout/preemption does not undo an effect
 already sent to Chromium. Closing a viewer only stops its capture subscription.
