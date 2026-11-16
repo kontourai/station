@@ -357,7 +357,12 @@ test.describe('Agents pane child work (#2459)', () => {
     await page.reload();
     await dismissSetupLauncher(page);
     await openChatRegion(page);
-    await openDesktopBackgroundTasks(page);
+    // The region keeps the Agents pane it showed; open it only if it did not.
+    const agentsPane = page.locator('.agents-pane');
+    await agentsPane
+      .waitFor({ state: 'visible', timeout: 5_000 })
+      .catch(() => undefined);
+    if (!(await agentsPane.isVisible())) await openDesktopBackgroundTasks(page);
     await expect(
       page.getByRole('button', { name: 'All chats', exact: true }),
     ).toHaveAttribute('aria-pressed', 'true');
