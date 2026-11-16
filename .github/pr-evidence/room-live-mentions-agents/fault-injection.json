@@ -652,5 +652,171 @@
         "tree_clean_after": true
       }
     ]
+  },
+  "final_rounds": {
+    "note": "Pre-merge-gate fixes and the independent-review fix round. Hashes are git blob ids (git hash-object) of the named file; restored files match the preimage blob.",
+    "injections": [
+      {
+        "id": "for-you pending and no-scope (both reverted)",
+        "file": "src-ui/src/components/notifications/PersonMentionsSection.tsx + src-ui/src/pages/NotificationsPage.tsx",
+        "test": "src-ui/src/__tests__/NotificationsPage.test.tsx",
+        "injected_exit": 1,
+        "injected_failures": [
+          "pending and no-scope cases"
+        ],
+        "injected_summary": [
+          "pending/no-scope cases failed"
+        ],
+        "preimage_git_blob": "section bb23c105 / page bf900955",
+        "injected_git_blob": "section 78a41d2a / page bdf08eab",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "Tests  48 passed (48)"
+        ],
+        "tree_clean_after": true
+      },
+      {
+        "id": "hub replays an announced room to a late listener",
+        "file": "packages/sdk/src/client/project-room-live.ts",
+        "test": "packages/sdk/src/__tests__/project-room-live.test.tsx",
+        "injected_exit": 1,
+        "injected_failures": [
+          "× a room opened after the sidebar already holds the connection still backfills a gap, never skips it"
+        ],
+        "injected_summary": [
+          "1 failed"
+        ],
+        "preimage_git_blob": "ceb6781e",
+        "injected_git_blob": "0a0112f7",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "all passed"
+        ],
+        "tree_clean_after": true
+      },
+      {
+        "id": "sidebar index treats subscribed as activity",
+        "file": "packages/sdk/src/query-domains/projectRooms.ts",
+        "test": "src-ui/src/components/project-conversations/__tests__/ProjectConversationListLive.test.tsx",
+        "injected_exit": 1,
+        "injected_failures": [
+          "× a message that lands while the stream is connecting still marks its row"
+        ],
+        "injected_summary": [
+          "1 failed"
+        ],
+        "preimage_git_blob": "5450b50f",
+        "injected_git_blob": "cbac4c08",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "all passed"
+        ],
+        "tree_clean_after": true
+      },
+      {
+        "id": "notification focus retries and clears its flash",
+        "file": "src-ui/src/components/room/RoomConversation.tsx",
+        "test": "src-ui/src/__tests__/room-conversation-follow.browser.test.tsx",
+        "injected_exit": 1,
+        "injected_failures": [
+          "flicker case, 2 of 2 runs"
+        ],
+        "injected_summary": [
+          "failed"
+        ],
+        "preimage_git_blob": "9568f77a",
+        "injected_git_blob": "9b6783a7",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "passed"
+        ],
+        "tree_clean_after": true
+      },
+      {
+        "id": "programmatic end scroll does not resume following past a focused message",
+        "file": "src-ui/src/components/room/RoomConversation.tsx",
+        "test": "src-ui/src/__tests__/room-conversation-follow.browser.test.tsx",
+        "injected_exit": 1,
+        "injected_failures": [
+          "lateScroll case, 2 of 2 runs"
+        ],
+        "injected_summary": [
+          "failed"
+        ],
+        "preimage_git_blob": "f1847074",
+        "injected_git_blob": "e89dbb57",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "5 of 5 runs passed"
+        ],
+        "tree_clean_after": true
+      },
+      {
+        "id": "review P1: failed reconciliation marks the room stale (injected: never stale)",
+        "file": "packages/sdk/src/query-domains/projectRooms.ts",
+        "test": "packages/sdk/src/__tests__/project-room-live.test.tsx",
+        "injected_exit": 1,
+        "injected_failures": [
+          "× a resync whose history read fails never lets the next append skip the messages it announced",
+          "× a reconnection whose history read fails never lets the next append skip the messages it announced"
+        ],
+        "injected_summary": [
+          "Tests  2 failed | 8 passed (10)"
+        ],
+        "preimage_git_blob": "a66f345c",
+        "injected_git_blob": "8e44ac07",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "Tests  10 passed (10)"
+        ],
+        "tree_clean_after": true
+      },
+      {
+        "id": "review P2: a read in flight keeps newer live rows (injected: none kept)",
+        "file": "packages/sdk/src/query-domains/projectRooms.ts",
+        "test": "packages/sdk/src/__tests__/project-room-live.test.tsx",
+        "injected_exit": 1,
+        "injected_failures": [
+          "× a history read already in flight never undoes a live append, in the cache or for its caller"
+        ],
+        "injected_summary": [
+          "Tests  1 failed | 9 passed (10)"
+        ],
+        "preimage_git_blob": "a66f345c",
+        "injected_git_blob": "9c3ac6d5",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "Tests  10 passed (10)"
+        ],
+        "tree_clean_after": true
+      },
+      {
+        "id": "review P2: the agents frame carries unsettled requests (injected: none)",
+        "file": "src-server/services/projects/project-room-store.ts",
+        "test": "src-server/routes/projects/project-room-routes.test.ts",
+        "injected_exit": 1,
+        "injected_failures": [
+          "× live (#4800): a request still working is carried however many newer requests have settled"
+        ],
+        "injected_summary": [
+          "Tests  1 failed | 86 passed (87)"
+        ],
+        "preimage_git_blob": "44b35259",
+        "injected_git_blob": "fdcdc0cb",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "Tests  87 passed (87)"
+        ],
+        "tree_clean_after": true
+      }
+    ]
   }
 }
