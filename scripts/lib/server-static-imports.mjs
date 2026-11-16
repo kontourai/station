@@ -7,14 +7,23 @@ import * as esbuild from 'esbuild';
 // static value import of one anywhere in the server source silently restores
 // the boot cost; this check fails the build instead.
 //
-// Specifiers are compared exactly: a denied package root does not deny its
-// subpaths. `@kontourai/flow-agents` (the root barrel) is not listed yet:
-// synchronous Station callers still need values that only the root exports.
+// Each entry denies a whole package: the package itself and every subpath
+// (`@kontourai/veritas` costs as much as `@kontourai/veritas/engine`, and
+// `@anthropic-ai/claude-agent-sdk/core` nearly as much as the SDK's root).
+// `@kontourai/flow-agents` is not listed yet: synchronous Station callers
+// still need values that only its root exports, and its light subpaths are
+// meant to stay static.
 export const BOOT_DENIED_STATIC_IMPORTS = Object.freeze([
   '@anthropic-ai/claude-agent-sdk',
   '@kontourai/console-server',
-  '@kontourai/veritas/engine',
+  '@kontourai/veritas',
 ]);
+
+function deniedBy(specifier, denied) {
+  return denied.find(
+    (name) => specifier === name || specifier.startsWith(`${name}/`),
+  );
+}
 
 /**
  * The specifiers `file` imports with a static `import`/`export ... from`
@@ -47,15 +56,17 @@ export async function staticImportSpecifiers(file) {
 }
 
 /**
- * Throws when the bundle at `file` statically imports any specifier in
- * `denied`, naming each one.
+ * Throws when the bundle at `file` statically imports any package in
+ * `denied`, or a subpath of one, naming each imported specifier.
  */
 export async function assertNoBootDeniedStaticImports(
   file,
   { denied = BOOT_DENIED_STATIC_IMPORTS } = {},
 ) {
   const imported = await staticImportSpecifiers(file);
-  const found = denied.filter((specifier) => imported.has(specifier));
+  const found = [...imported]
+    .filter((specifier) => deniedBy(specifier, denied))
+    .sort();
   if (found.length === 0) return;
   throw new Error(
     `${file} statically imports ${found.join(', ')}, which the server must ` +

@@ -2348,8 +2348,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         sourceAffinity: snapshotSessionSourceAffinity(input.sourceAffinity!),
       };
     }
-    await hooks?.onProviderChildCreationStarted?.();
+    // Before the creation hook: a failed load creates no child, so it must
+    // not enter the reservation-cleanup path.
     const sdk = await loadClaudeAgentSdk();
+    await hooks?.onProviderChildCreationStarted?.();
     const fork = await sdk.forkSession(input.sourceSessionId, {
       dir: input.cwd,
       title: adoptionTitle(input.threadId),
@@ -4363,6 +4365,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     let sdkQuery: Query | undefined;
     try {
       const { query } = await loadClaudeAgentSdk();
+      // An abort during the first load must not start the probe.
+      signal.throwIfAborted();
       sdkQuery = query({
         prompt: promptQueue,
         options: {
