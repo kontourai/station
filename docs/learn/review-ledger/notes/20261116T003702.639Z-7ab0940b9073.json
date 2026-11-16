@@ -1,0 +1,15 @@
+{
+  "revision": "e4fc7c1bdbfe5cad055fe08c313a7c9ce9fd1c3a",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Follow-up: the traversal bound now charges only folders opened and entries statted (skipped entries have a separate 4x bound, both ending as candidate_limit), the default is 4,096, and folders rank by the newer of their mtime and the previous pass's newest transcript. Checked this page's Claude transcript claims; none describe traversal, so they remain accurate.","inputs":["src-server/providers/sessions/claude-transcript-session-source.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Follow-up: the traversal bound now charges only folders opened and entries statted (skipped entries have a separate 4x bound, both ending as candidate_limit), the default is 4,096, and folders rank by the newer of their mtime and the previous pass's newest transcript. Checked this page's Claude transcript claims; none describe traversal, so they remain accurate.","inputs":["src-server/providers/sessions/claude-transcript-session-source.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Follow-up: the traversal bound now charges only folders opened and entries statted (skipped entries have a separate 4x bound, both ending as candidate_limit), the default is 4,096, and folders rank by the newer of their mtime and the previous pass's newest transcript. Checked this page's Claude transcript claims; none describe traversal, so they remain accurate.","inputs":["src-server/providers/sessions/claude-transcript-session-source.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Follow-up: the traversal bound now charges only folders opened and entries statted (skipped entries have a separate 4x bound, both ending as candidate_limit), the default is 4,096, and folders rank by the newer of their mtime and the previous pass's newest transcript. Checked this page's Claude transcript claims; none describe traversal, so they remain accurate.","inputs":["src-server/providers/sessions/claude-transcript-session-source.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Follow-up: the traversal bound now charges only folders opened and entries statted (skipped entries have a separate 4x bound, both ending as candidate_limit), the default is 4,096, and folders rank by the newer of their mtime and the previous pass's newest transcript. Checked this page's Claude transcript claims; none describe traversal, so they remain accurate.","inputs":["src-server/providers/sessions/claude-transcript-session-source.ts"]}
+  ]
+}

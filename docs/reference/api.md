@@ -6225,6 +6225,19 @@ Session for a caller that is not a bound operator, another Station) answers `404
 `session_not_found`, identical to one that does not exist. See the
 [route](../../src-server/routes/orchestration/session-project-activity.ts).
 
+### Conversation turn directory
+
+`GET /api/orchestration/session-reads/:sessionId/turn-directory?turnLimit=&cursor=`
+serves the conversation's indexed turn metadata independently of loaded history.
+Each page contains at most 100 turn IDs, timestamps, prompt excerpts and outcomes,
+plus the total turn count and an older-page cursor. `includeCount=false` omits
+the count on later pages when the reader retains its first-page snapshot. It reads no transcript bodies,
+tool inventory or file details. It uses the same person, owner and Project checks
+as Person Session Reads below, including refusal of internal credentials.
+It is available for existing turn navigation without enabling the CLI reads
+Feature Preview. Older hosts return `404`; the SDK retains the loaded-window
+fallback. This leaf is allowed through the authenticated peer-chat read relay.
+
 ### Person Session Reads
 
 These are the person-facing leaves of the same reads and of `wait_session`

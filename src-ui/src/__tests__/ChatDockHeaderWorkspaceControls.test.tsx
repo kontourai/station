@@ -653,3 +653,64 @@ describe('the region’s commands fold into the More menu', () => {
     trailing.remove();
   });
 });
+
+describe('ChatDockHeader More menu groups', () => {
+  test('rows render by group — switch, this chat, copy, about — with one separator per boundary', () => {
+    renderHeader({
+      workspaceControls: workspaceControls(),
+      // Listed out of order on purpose: the header owns the order.
+      moreActions: [
+        {
+          key: 'copy-thread-id',
+          group: 'copy',
+          label: 'Copy chat ID',
+          onSelect: vi.fn(),
+        },
+        {
+          key: 'input-origin',
+          group: 'about',
+          label: 'From a Task',
+          disabled: true,
+          onSelect: vi.fn(),
+        },
+        {
+          key: 'panel-files',
+          group: 'chat',
+          label: 'Changed files',
+          checked: false,
+          onSelect: vi.fn(),
+        },
+        {
+          key: 'turn-into-task',
+          label: 'New Task from this',
+          onSelect: vi.fn(),
+        },
+      ],
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^More dock actions/ }));
+    const menu = screen.getByRole('menu');
+    const rows = Array.from(
+      menu.querySelectorAll(
+        '[role^="menuitem"], hr.action-overflow__separator',
+      ),
+    ).map((node) => (node.tagName === 'HR' ? '—' : node.textContent?.trim()));
+    expect(rows).toEqual([
+      expect.stringMatching(/^Open chat…/),
+      '—',
+      'Changed files',
+      'New Task from this',
+      'Background tasks',
+      'Chat settings',
+      '—',
+      'Copy chat ID',
+      '—',
+      'From a Task',
+    ]);
+    // A panel toggle reports its state.
+    expect(
+      within(menu)
+        .getByRole('menuitemcheckbox', { name: 'Changed files' })
+        .getAttribute('aria-checked'),
+    ).toBe('false');
+  });
+});

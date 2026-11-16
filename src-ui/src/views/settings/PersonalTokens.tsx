@@ -74,7 +74,7 @@ export function sameScope(left: string, right: string): boolean {
 
 /** The guidance for a refused People change made without the operator credential. */
 export const OPERATOR_CREDENTIAL_REQUIRED_MESSAGE =
-  'Changing groups and tokens needs this Station’s operator credential, which this app doesn’t hold — it can only view them. Make the change from a connection that uses the operator credential.';
+  'Only the Station operator can change groups and tokens. This connection can only view them.';
 
 /** A refused token action, said as what to do next. */
 function tokenActionMessage(error: unknown): string {
