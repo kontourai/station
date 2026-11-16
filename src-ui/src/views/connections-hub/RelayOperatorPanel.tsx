@@ -26,6 +26,7 @@ import { copyToClipboard } from '../../lib/clipboard';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { RelaySetupHelp } from './RelaySetupHelp';
 import './ComputersSection.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 
 type Scope = NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
 type AppChannel = 'stable' | 'beta' | 'nightly';
@@ -104,6 +105,7 @@ export function RelayOperatorPanel() {
 }
 
 function OperatorPanel({ scope }: { scope: Scope }) {
+  useDecisionSurface('relay-device-enrollment');
   const [inviting, setInviting] = useState(false);
   const [removing, setRemoving] = useState<RelaySetupApproval | null>(null);
   // Recipients whose invitation write may have happened without its link
@@ -379,6 +381,7 @@ function InviteDeviceDialog({
   onUnconfirmed: (recipient: string, uncertain: boolean) => void;
   onClose: () => void;
 }) {
+  useDecisionSurface('relay-device-enrollment');
   const platformChannel = usePlatformProfile().channel;
   const [channel, setChannel] = useState<AppChannel>(
     platformChannel === 'stable' || platformChannel === 'beta'

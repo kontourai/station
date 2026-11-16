@@ -16,6 +16,7 @@ import { NewChatAction } from '../NewChatAction';
 import {
   ChatDockHeaderMoreMenu,
   type DockMoreAction,
+  groupDockMoreActions,
 } from './ChatDockHeaderMoreMenu';
 import { useIsChildChatCovered } from './ChildChatNavigationContext';
 import { inboxToggleLabel, workingChatsLabel } from './inbox-toggle-label';
@@ -153,8 +154,8 @@ interface ChatDockHeaderProps {
   /**
    * Extra rows for the More menu, supplied by the caller because their subject
    * is the active conversation rather than the dock's chrome — Copy thread ID,
-   * Copy project path, Open in Coding (#1536 F). Appended after the header's
-   * own rows.
+   * Copy project path, the panel toggles (#1536 F). Each names its group
+   * (`DockMoreGroup`); the menu orders and separates them.
    */
   moreActions?: readonly DockMoreAction[];
   /**
@@ -216,7 +217,7 @@ export function ChatDockHeader({
    * that are not the dock's primary verbs — every one still reachable, none of
    * them holding width the title needs.
    */
-  const dockMoreActions: DockMoreAction[] = [
+  const dockMoreActions: DockMoreAction[] = groupDockMoreActions([
     // The working chats, first: the quick jump the bar's "N chats working"
     // dropdown used to be. Their count rides the inbox toggle (or, without
     // one, this menu's trigger); the per-chat chords still work everywhere.
@@ -230,6 +231,7 @@ export function ChatDockHeader({
           : '';
       return {
         key: `working-${session.id}`,
+        group: 'switch' as const,
         label: session.title,
         glyph: <span className="chat-dock__working-glyph" aria-hidden="true" />,
         ...(shortcut ? { shortcut } : {}),
@@ -246,6 +248,7 @@ export function ChatDockHeader({
       ? [
           {
             key: 'open-chat',
+            group: 'switch' as const,
             label: withShortcutHint(
               'Open chat…',
               'dock.openConversation',
@@ -255,16 +258,8 @@ export function ChatDockHeader({
           },
         ]
       : []),
-    ...(chatControls
-      ? [
-          {
-            key: 'chat-settings',
-            label: 'Chat settings',
-            onSelect: () =>
-              chatControls.setShowChatSettings((previous) => !previous),
-          },
-        ]
-      : []),
+    // The active chat's own rows lead its group; the dock's follow.
+    ...(moreActions ?? []),
     ...(workspaceControls
       ? [
           {
@@ -328,16 +323,21 @@ export function ChatDockHeader({
           },
         ]
       : []),
-    ...(moreActions ?? []),
-    ...(regionMenu?.actions ?? []),
-  ].map((action, index, rows) =>
-    // The commands after the working chats start their own group.
-    index > 0 &&
-    rows[index - 1]?.key.startsWith('working-') &&
-    !action.key.startsWith('working-')
-      ? { ...action, separatorBefore: true }
-      : action,
-  );
+    ...(chatControls
+      ? [
+          {
+            key: 'chat-settings',
+            label: 'Chat settings',
+            onSelect: () =>
+              chatControls.setShowChatSettings((previous) => !previous),
+          },
+        ]
+      : []),
+    ...(regionMenu?.actions ?? []).map((action) => ({
+      ...action,
+      group: 'region' as const,
+    })),
+  ]);
   // The same fact the inbox rows show when the dock has it; the open chat
   // tabs only without one (a dock with no inbox behind it).
   const workingCount =
@@ -518,7 +518,7 @@ export function ChatDockHeader({
   }
 
   return (
-    <div className="chat-dock__header">
+    <div className="chat-dock__header" data-surface="chat-header">
       <div className="chat-dock__title">
         {slots?.start !== undefined ? inboxToggle : null}
         {leading}

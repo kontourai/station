@@ -1,0 +1,7 @@
+{
+  "revision": "6ba7d2563eb634b289aab9c418ca0786b2e2613e",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"abstraction-review cites this page; the change only adds the session read model reader metrics description (#4992), no abstraction it reviews changed.","inputs":["docs/reference/metrics.md"]}
+  ]
+}

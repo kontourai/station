@@ -241,16 +241,13 @@ export function ScheduleView() {
           {runError && <p role="alert">{runError}</p>}
 
           {runTarget && !runsLoading && !exactRun && (
-            <p role="status">
-              That scheduled run isn’t available, and Station won’t open a
-              different one in its place.
-            </p>
+            <p role="status">That run is no longer available.</p>
           )}
 
           {exactRun && !matchedDeepLinkedJob && (
-            <section aria-label="Exact Scheduler receipt">
-              <h2>Scheduled check receipt</h2>
-              <p>The owning job was removed; its durable run remains.</p>
+            <section aria-label="Scheduled run">
+              <h2>Scheduled run</h2>
+              <p>The job was removed, but this run was kept.</p>
               <JobDetail
                 name={exactRun.sourceId ?? qualifiedRun?.jobName ?? ''}
                 providerId={exactRun.providerId}

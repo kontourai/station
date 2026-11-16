@@ -156,6 +156,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // fixture replay's persistence decline reads; no wall-clock assertion.
   'src-server/providers/__tests__/opencode-adapter.replay.test.ts',
   'src-server/providers/__tests__/claude-adapter-native-web-read.test.ts',
+  // Runs the bundled Claude engine for one stub-answered turn per case,
+  // against a loopback stand-in for the Messages API; no wall-clock assertion.
+  'src-server/providers/__tests__/claude-adapter-instruction-files.process.test.ts',
   // #4852 review: one short-lived tsx child commits a Project-room file in a
   // second Project on the same home while the parent releases a deleted
   // message's files; no wall-clock assertion.
@@ -1936,6 +1939,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/supervisor/src/__tests__/protocol.test.ts',
   // Forks two children that pass a raw listening handle through this worker.
   'packages/supervisor/src/__tests__/handle-guard.test.ts',
+  // Boots the real server entrypoint as a child with an oversized STATION_LOG_FILE.
+  'src-server/__tests__/stdout-log-file-rotation.process.test.ts',
 ]);
 
 export const DOGFOOD_RECONCILE_PREFIX =

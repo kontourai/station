@@ -1,0 +1,7 @@
+{
+  "revision": "648c125c9ee583f7c059a11723c85fbfa9659850",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"#4994 only adds an optional TelemetryRequestFailure.detail, a 'rejected' outbox reason, product-batch 4xx drop/backoff/warn-once in UsageTelemetryService and two usage-telemetry counters; this page makes no claim about product batch retry, failure fields, outbox reasons or those counters, so it remains accurate.","inputs":["docs/architecture.md","src-server/telemetry/metrics.ts"]}
+  ]
+}

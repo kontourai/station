@@ -2320,6 +2320,30 @@ the personal deletion. If either copy was edited, promotion returns 409 and
 retains both. A pending dashboard proposal also returns 409 until applied or
 dismissed. This recovery is not a transaction spanning both stores.
 
+### Custom appearance
+
+The calling person's palette and CSS ([decision](../decisions/custom-appearance.md)).
+The owner is the request's principal; a device-only or non-person caller gets
+403 `custom_appearance_identity_required`.
+
+| Method | Path | Body / result |
+| --- | --- | --- |
+| GET | `/api/me/appearance` | `{revision, active, proposal, renderReport}` |
+| POST | `/api/me/appearance/proposal` | `{revision, appearance}`; replaces any pending proposal. Open to agents |
+| POST | `/api/me/appearance/proposal/keep` | `{revision, proposalId}`; makes the proposal active |
+| DELETE | `/api/me/appearance/proposal` | `{revision}`; dismisses the proposal |
+| PUT | `/api/me/appearance` | `{revision, appearance}`; `appearance: null` turns it off |
+| POST | `/api/me/appearance/proposal/report` | The previewing browser's render report for the current proposal |
+
+Every route but GET and the proposal refuses a request that may be an agent's
+(403 `custom_appearance_person_only`). A stale revision, or a report or keep
+for a proposal that is no longer pending, is 409 `custom_appearance_changed`.
+An invalid appearance is 400 `invalid_custom_appearance` with `violations`
+(shape, colour, role, CSS and contrast); bodies over 160 KiB are 413, and a
+change that would take the stored document over 512 KiB is 413
+`custom_appearance_store_full`. The render report's `stripped` list holds one
+`{where: "(sheet)", what: "*"}` entry when the browser refused the whole sheet.
+
 ### Personal Board authoring
 
 These endpoints share the same authenticated owner resolution as `/api/me/layouts`:
@@ -2813,6 +2837,8 @@ for draft, evidence and qualification limits.
 returns the current process's product queue, exact-receipt acknowledgements,
 loss/failure counters and OTel callback/probe state. It carries presence flags
 and counters rather than addresses, keys, installation IDs or receipt IDs.
+A refused batch's optional `lastFailure.detail` is the receiver's stated reason,
+at most 200 characters with those identifiers masked; older servers omit it.
 Unsupported versions and unavailable state must not be replaced with healthy
 defaults or cached success. Under a managed policy with `limits.telemetry:
 false`, `product.managedDenial` and `otel.managedDenial` carry the policy
@@ -6175,6 +6201,19 @@ A Session the caller may not see (another Project, another person, an unconfined
 Session for a caller that is not a bound operator, another Station) answers `404`
 `session_not_found`, identical to one that does not exist. See the
 [route](../../src-server/routes/orchestration/session-project-activity.ts).
+
+### Conversation turn directory
+
+`GET /api/orchestration/session-reads/:sessionId/turn-directory?turnLimit=&cursor=`
+serves the conversation's indexed turn metadata independently of loaded history.
+Each page contains at most 100 turn IDs, timestamps, prompt excerpts and outcomes,
+plus the total turn count and an older-page cursor. `includeCount=false` omits
+the count on later pages when the reader retains its first-page snapshot. It reads no transcript bodies,
+tool inventory or file details. It uses the same person, owner and Project checks
+as Person Session Reads below, including refusal of internal credentials.
+It is available for existing turn navigation without enabling the CLI reads
+Feature Preview. Older hosts return `404`; the SDK retains the loaded-window
+fallback. This leaf is allowed through the authenticated peer-chat read relay.
 
 ### Person Session Reads
 

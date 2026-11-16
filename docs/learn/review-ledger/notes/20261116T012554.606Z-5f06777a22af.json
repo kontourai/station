@@ -1,0 +1,7 @@
+{
+  "revision": "f3920b0f12df533b5bbf7b55ad44772559fdd8e2",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Checked the edits (tools/list omits _delegation; ToolSearch line only for mcpLoading on-demand). This document's references to the self-configuring-agent guide are unaffected.","inputs":["docs/guides/self-configuring-agent.md"]}
+  ]
+}

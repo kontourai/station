@@ -79,6 +79,24 @@ export const usageTelemetryOutcomes = meter.createCounter(
   'station.usage_telemetry.outcomes',
   { description: 'Usage telemetry delivery and drop outcomes' },
 );
+/**
+ * Full usage-telemetry batch delivery by publisher (`kontour`/`operator`),
+ * outcome (`acknowledged`/`rejected`/`retry_scheduled`), failure `code` (the
+ * closed request-failure vocabulary, absent when acknowledged) and
+ * `status_class` (`2xx`/`4xx`/`5xx`/`other`/`none`). #4994.
+ */
+export const usageTelemetryBatches = meter.createCounter(
+  'station.usage_telemetry.batches',
+  { description: 'Usage telemetry batch delivery outcomes by bounded class' },
+);
+/** Repeated identical usage-telemetry delivery warnings logged at debug instead. */
+export const usageTelemetrySuppressedWarnings = meter.createCounter(
+  'station.usage_telemetry.suppressed_warnings',
+  {
+    description:
+      'Usage telemetry delivery warnings suppressed as repeats, by publisher and code',
+  },
+);
 
 export const tokensInput = meter.createCounter('station.tokens.input', {
   description: 'Input tokens consumed',
@@ -1162,6 +1180,47 @@ export const sessionOwnerCacheOps = meter.createCounter(
   {
     description:
       'Per-thread session-owner cache lookups on the /events authorization gate, by outcome',
+  },
+);
+
+// ── Session read model readers (#4992) ──
+/**
+ * Every `listSessionReadModel` call. `purpose` is the caller's declared
+ * reason (`session-read-model-purpose.ts`, a closed vocabulary; anything
+ * else records `invalid`) and `scope` is `all` or `threads` (a `threadIds`
+ * read). No session, user or thread identity is ever a dimension.
+ */
+export const sessionReadModelReads = meter.createCounter(
+  'station.orchestration.session_read_model.reads',
+  {
+    description:
+      'Session read model reads by declared caller purpose and scope (all | threads)',
+  },
+);
+/**
+ * Wall time of one read, by `purpose` and `phase`: `total` includes the
+ * awaited adapter session sync; `build` is the synchronous fold after it,
+ * which holds the main thread.
+ */
+export const sessionReadModelDuration = meter.createHistogram(
+  'station.orchestration.session_read_model.duration',
+  {
+    description:
+      'Session read model read duration by caller purpose and phase (total | build)',
+    unit: 'ms',
+  },
+);
+/**
+ * Threads per read, by `purpose` and `outcome`: `considered` (readable
+ * threads the read built), `projection_refolded` / `projection_reused`
+ * (projection facts folded again or served from the event store's per-thread
+ * cache), and `count_refreshed` / `count_reused` (the same for event counts).
+ */
+export const sessionReadModelThreads = meter.createHistogram(
+  'station.orchestration.session_read_model.threads',
+  {
+    description:
+      'Threads per session read model read by caller purpose and outcome (considered | projection_refolded | projection_reused | count_refreshed | count_reused)',
   },
 );
 
@@ -2552,6 +2611,27 @@ export const serverLogStoreRetentionRemovedFiles = meter.createCounter(
   'station.logs.store.retention_removed_files',
   {
     description: 'Server log store files removed by age/size retention',
+  },
+);
+
+/** #4995: repeated identical records the logger seam suppressed, by the
+ * logger's component (a source-literal `createLogger` name, so bounded by
+ * call sites) and level. Never message text or context. */
+export const logRecordsSuppressed = meter.createCounter(
+  'station.logs.suppressed_records',
+  {
+    description:
+      'Repeated identical log records suppressed by the logger repeat limit, by component and level',
+  },
+);
+
+/** #4995: size-cap rotations of the server's stdout log file
+ * (`STATION_LOG_FILE`), by bounded outcome (rotated|failed). */
+export const serverStdoutLogRotations = meter.createCounter(
+  'station.logs.stdout_file.rotations',
+  {
+    description:
+      'Size-cap rotations of the server stdout log file by outcome (rotated|failed)',
   },
 );
 

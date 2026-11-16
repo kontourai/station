@@ -9517,6 +9517,7 @@ describe('ClaudeAdapter', () => {
   });
 
   describe('#895 wave B: agent-authored system prompt', () => {
+    const makeTempDir = trackTempDirs();
     test("startSession passes systemPrompt { type: 'preset', preset: 'claude_code', append } to query() when input.agent.systemPrompt is set, and merges a systemPrompt delivery report into session.configured", async () => {
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter();
@@ -9570,6 +9571,15 @@ describe('ClaudeAdapter', () => {
     });
 
     test('startSession keeps the promptless SDK options shape apart from the required engine-spawn TMPDIR', async () => {
+      // A Claude config home with no settings.json, so the developer's own
+      // settings cannot change the AGENTS.md setting below.
+      vi.stubEnv(
+        'CLAUDE_CONFIG_DIR',
+        makeTempDir('station-claude-options-shape-'),
+      );
+      onTestFinished(() => {
+        vi.unstubAllEnvs();
+      });
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter();
 
@@ -9590,6 +9600,7 @@ describe('ClaudeAdapter', () => {
         // A supplied title skips the engine's own session-naming request.
         title: 'Station conversation thread-no-system-prompt-baseline',
         includePartialMessages: true,
+        includeHookEvents: true,
         // station#1877: asks the SDK to summarise what a subagent is doing.
         // task_progress.summary is documented as carrying the model-generated
         // status only when this is on, so without it a background subagent
@@ -9611,10 +9622,20 @@ describe('ClaudeAdapter', () => {
         allowDangerouslySkipPermissions: undefined,
         thinking: undefined,
         effort: undefined,
-        settings: undefined,
+        // AGENTS.md beside CLAUDE.md (claude-instruction-files.ts).
+        settings: {
+          pluginConfigs: {
+            'agents-md@builtin': {
+              options: { instructionFiles: 'claude-md-and-agents-md' },
+            },
+          },
+        },
         // #4828: every session marks the conversation on a native web read;
         // with no Agent there is no PreToolUse policy.
-        hooks: { PostToolUse: [{ hooks: [expect.any(Function)] }] },
+        hooks: {
+          Stop: [{ hooks: [expect.any(Function)] }],
+          PostToolUse: [{ hooks: [expect.any(Function)] }],
+        },
       });
     });
 
@@ -9712,6 +9733,33 @@ describe('ClaudeAdapter', () => {
       ).rejects.toThrow('needs sign-in');
       expect(mockQuery).not.toHaveBeenCalled();
     });
+
+    test.each([
+      [undefined, 'from-the-harness'],
+      ['on-demand', 'true'],
+      ['always', 'false'],
+    ] as const)(
+      'mcpLoading %s leaves ENABLE_TOOL_SEARCH at %s (unset keeps the harness value)',
+      async (loading, expected) => {
+        vi.stubEnv('ENABLE_TOOL_SEARCH', 'from-the-harness');
+        try {
+          mockQuery.mockReturnValue(createMockQuery([]));
+          const adapter = new ClaudeAdapter();
+          await adapter.startSession({
+            provider: 'claude',
+            threadId: `tool-search-${loading ?? 'harness'}`,
+            agent: {
+              slug: 'my-agent',
+              ...(loading ? { toolServerLoading: loading } : {}),
+            },
+          });
+          const { options } = mockQuery.mock.calls[0][0];
+          expect(options.env.ENABLE_TOOL_SEARCH).toBe(expected);
+        } finally {
+          vi.unstubAllEnvs();
+        }
+      },
+    );
 
     test('adds selected tools without suppressing harness discovery and denies an unselected or newly published MCP call', async () => {
       mockQuery.mockReturnValue(createMockQuery([]));

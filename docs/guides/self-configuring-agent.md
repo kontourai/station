@@ -1114,6 +1114,9 @@ Delivery depends on the engine:
   check reads the delivery report written by the recovery.
 - Codex gets device guidance only while the `codex-bound-browser-device-tools`
   preview is on and the bound channel offers `device_open`.
+- Claude is told to load the tools it names with ToolSearch only when the
+  Agent's `tools.mcpLoading` is `on-demand`, which is when Station turns
+  Claude's tool search on. Under the harness default, Claude Code decides.
 
 Known limitations while this is a preview: the delivery check reads the event
 log, so a delivery report that has not yet been stored, or a recovery done by
@@ -1207,8 +1210,8 @@ A child's delegation context (its depth, parent, root, and tool limits) is
 derived by Station from the delegating session's own records:
 its Agent, its conversation, and the context that session was started with
 ([`request-delegation.ts`](../../src-server/runtime/agents/request-delegation.ts)).
-The `_delegation` argument a model writes into `delegate_task` or
-`send_message` is ignored. A session already at the depth limit is refused
+`tools/list` does not offer the `_delegation` argument, and a value a model
+writes into `delegate_task` or `send_message` anyway is ignored. A session already at the depth limit is refused
 before any child starts, on every engine.
 
 A delegated child that calls `delegate_task` or `send_message` is refused

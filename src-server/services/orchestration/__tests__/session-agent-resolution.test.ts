@@ -1637,10 +1637,34 @@ describe('Station orchestration instructions (resolution receipt)', () => {
       ).has('device_open'),
       delegated: false,
       harness: provider,
-      toolSearch: provider === 'claude',
+      // The default spec names no `mcpLoading`, so Station does not turn
+      // Claude's tool search on and says nothing about loading.
+      toolSearch: false,
       progressiveFamilies: false,
     });
   }
+
+  test.each([
+    [undefined, false],
+    ['on-demand', true],
+    ['always', false],
+  ] as const)(
+    'Claude with mcpLoading %s: the on-demand loading line is %s, matching what the adapter sets',
+    async (mcpLoading, says) => {
+      const result = await resolverFor({
+        prompt: 'Authored.',
+        tools: {
+          mcpServers: ['station-control'],
+          ...(mcpLoading ? { mcpLoading } : {}),
+        },
+      })(baseInput({ provider: 'claude' }));
+      expect(result.agent?.toolServerLoading).toBe(mcpLoading);
+      const text = result.agent?.stationInstructions ?? '';
+      expect(text.length).toBeGreaterThan(0);
+      expect(text.includes('Station tools load on demand')).toBe(says);
+      expect(text.includes('ToolSearch')).toBe(says);
+    },
+  );
 
   test('Claude with an authored prompt appends: definition.stationInstructions plus a system-prompt-append receipt', async () => {
     const result = await resolverFor({ prompt: 'Authored.' })(

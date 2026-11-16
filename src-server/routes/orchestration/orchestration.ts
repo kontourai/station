@@ -2607,7 +2607,9 @@ export function createOrchestrationRoutes(
     // that peer evidence reach Activity, not that a poll block on a peer's
     // network round trip to do it.
     startDelegatedTaskActivityRefresh(resolveActorPrincipal(deps, c).userId);
-    const data = await orchestrationService.listSessionReadModel(authority);
+    const data = await orchestrationService.listSessionReadModel(authority, {
+      purpose: 'session-list',
+    });
     return c.json({ success: true, data });
   });
 
@@ -7791,7 +7793,10 @@ export function createOrchestrationRoutes(
                     const sessions =
                       await orchestrationService.listSessionReadModel(
                         authority,
-                        threadId ? { threadIds: [threadId] } : undefined,
+                        {
+                          purpose: 'sse-overflow-reconcile',
+                          ...(threadId ? { threadIds: [threadId] } : {}),
+                        },
                       );
                     await writeAuthorized({
                       event: 'orchestration:snapshot',
@@ -8094,7 +8099,10 @@ export function createOrchestrationRoutes(
           if (!replayBudget.fitsBudget) {
             const sessions = await orchestrationService.listSessionReadModel(
               authority,
-              threadId !== undefined ? { threadIds: [threadId] } : undefined,
+              {
+                purpose: 'sse-snapshot',
+                ...(threadId !== undefined ? { threadIds: [threadId] } : {}),
+              },
             );
             // #2456 D1: `resolvedHead` stays `head` — see its declaration.
             await writeAuthorized({
@@ -8135,13 +8143,19 @@ export function createOrchestrationRoutes(
             // Reconcile present-tense side effects once, after the replay.
             replaySessions = await orchestrationService.listSessionReadModel(
               authority,
-              threadId !== undefined ? { threadIds: [threadId] } : undefined,
+              {
+                purpose: 'sse-replay-reconcile',
+                ...(threadId !== undefined ? { threadIds: [threadId] } : {}),
+              },
             );
           }
         } else {
           const sessions = await orchestrationService.listSessionReadModel(
             authority,
-            threadId !== undefined ? { threadIds: [threadId] } : undefined,
+            {
+              purpose: 'sse-snapshot',
+              ...(threadId !== undefined ? { threadIds: [threadId] } : {}),
+            },
           );
           // #2456 D1: the head is NOT re-read here. An earlier review
           // ("LOW") re-read it to make the cursor "exact", but an exact
