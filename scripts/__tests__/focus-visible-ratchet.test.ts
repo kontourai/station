@@ -39,7 +39,6 @@ describe('focus-visible outline ratchet', () => {
     expect(scopes).toEqual([
       ':root[data-brand-focus]',
       ':root.is-dev-build',
-      ':root[data-app-channel="beta"]',
       ':root[data-app-channel="nightly"]',
     ]);
   });

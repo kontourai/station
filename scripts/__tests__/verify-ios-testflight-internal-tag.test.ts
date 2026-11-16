@@ -10,20 +10,20 @@ import {
 
 const fingerprint = 'B'.repeat(40);
 const sourceSha = 'a'.repeat(40);
-const sourceRef = 'refs/tags/ios-testflight/beta/v0.1.10/11100';
+const sourceRef = 'refs/tags/ios-testflight/stable/v0.1.10/11100';
 const tagObject = 'c'.repeat(40);
 function exactTag(overrides = {}) {
   return {
     sourceRef,
     sourceSha,
-    channel: 'beta',
+    channel: 'stable',
     marketingVersion: '0.1.10',
     bundleVersion: '11100',
     expectedFingerprint: fingerprint,
     localTagObjectSha: tagObject,
     githubRef: { ref: sourceRef, object: { type: 'tag', sha: tagObject } },
     githubTag: {
-      tag: 'ios-testflight/beta/v0.1.10/11100',
+      tag: 'ios-testflight/stable/v0.1.10/11100',
       object: { type: 'commit', sha: sourceSha },
       tagger: {
         name: INTERNAL_TESTFLIGHT_GPG_TAGGER_NAME,
@@ -42,7 +42,7 @@ function exactTag(overrides = {}) {
 describe('internal iOS TestFlight annotated tag verifier', () => {
   test('permits an exact signed tag', () =>
     expect(verifyInternalTestFlightTag(exactTag())).toMatchObject({
-      channel: 'beta',
+      channel: 'stable',
     }));
   test.each([
     [

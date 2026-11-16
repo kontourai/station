@@ -18,6 +18,11 @@ waking); there is no OS job. A machine's
 [managed policy](managed-policy.md#update-control), read when the app starts,
 can turn these checks off or send them to an approved mirror.
 
+Stable RCs use the final product version and Stable update endpoint. Moving
+between RCs at the same `X.Y.Z` requires a manual reinstall; the updater does
+not treat another candidate at that version as newer. See
+[RC acceptance](release-rings.md#publish-a-release-candidate).
+
 Updating has three separate steps:
 
 1. **Download.** Open **Updates** in the sidebar, including its collapsed

@@ -278,7 +278,6 @@ function StreamingMessageWithApps({
                 <BrowserActivityRun
                   key={block.key}
                   run={block}
-                  active
                   renderCall={renderToolCall}
                 />
               );

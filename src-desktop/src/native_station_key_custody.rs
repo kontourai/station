@@ -375,7 +375,7 @@ fn validate_binding(binding: &CandidateBinding) -> CandidateResult<()> {
         || !valid_app_identifier(&binding.app_identifier)
         || !matches!(
             binding.channel.as_str(),
-            "dev" | "stable" | "beta" | "nightly"
+            "dev" | "stable" | "nightly"
         )
         || canonical_broker_origin(&binding.broker_origin).is_err()
         || !valid_uuid(&binding.station_id)
@@ -1024,7 +1024,7 @@ fn validate_trust_profile_binding(binding: &TrustProfileBinding) -> CandidateRes
         || !valid_app_identifier(&binding.app_identifier)
         || !matches!(
             binding.channel.as_str(),
-            "dev" | "stable" | "beta" | "nightly"
+            "dev" | "stable" | "nightly"
         )
         || !valid_uuid(&binding.client_instance_id)
         || canonical_broker_origin(&binding.broker_origin).is_err()

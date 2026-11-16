@@ -32,6 +32,10 @@ type TransactionRunOptions = {
   allowTimeoutResult?: boolean;
   withFeed?: boolean;
   cwdOutsideRepo?: boolean;
+  mode?: string;
+  producerTag?: string;
+  publicationTag?: string;
+  configuredFeedWithoutPayload?: boolean;
 };
 
 async function run({
@@ -47,6 +51,10 @@ async function run({
   allowTimeoutResult,
   withFeed = true,
   cwdOutsideRepo = false,
+  mode = 'stable',
+  producerTag = 'v1.2.3',
+  publicationTag,
+  configuredFeedWithoutPayload = false,
 }: TransactionRunOptions = {}) {
   const root = mkdtempSync(join(tmpdir(), 'station-feed-transaction-'));
   roots.push(root);
@@ -55,6 +63,8 @@ async function run({
   const node = join(root, 'node');
   const feed = join(root, 'feed.json');
   const state = join(root, 'draft.state');
+  const prereleaseState = join(root, 'prerelease.state');
+  writeFileSync(prereleaseState, 'false');
   const nodeLog = join(root, 'node.log');
   const bashEnvironment = join(root, 'bash-environment');
   writeFileSync(log, '');
@@ -63,7 +73,7 @@ async function run({
   writeFileSync(nodeLog, '');
   writeFileSync(
     gh,
-    '#!/usr/bin/env bash\necho "$*" >> "$GH_LOG"\nif [[ "$1 $2" == "release view" ]]; then [[ "$VIEW_UNAVAILABLE" == 1 ]] && exit 8; cat "$STATE_FILE"; exit 0; fi\nif [[ "$*" == *"--draft=false"* ]]; then [[ "$PUBLISH_FAILS_NO_COMMIT" == 1 ]] && exit 9; [[ "$PUBLISH_NOOP" == 1 ]] || echo false > "$STATE_FILE"; [[ "$PUBLISH_COMMITS_THEN_FAILS" == 1 ]] && exit 9; fi\nif [[ "$*" == *"--draft=true"* ]]; then [[ "$REDRAFT_FAILS" == 1 ]] && exit 9; echo true > "$STATE_FILE"; fi\n',
+    '#!/usr/bin/env bash\necho "$*" >> "$GH_LOG"\nif [[ "$1 $2" == "release view" ]]; then [[ "$VIEW_UNAVAILABLE" == 1 ]] && exit 8; if [[ "$*" == *"isPrerelease"* ]]; then cat "$PRERELEASE_FILE"; else cat "$STATE_FILE"; fi; exit 0; fi\nif [[ "$*" == *"--prerelease=false"* ]]; then echo false > "$PRERELEASE_FILE"; elif [[ "$*" == *"--prerelease"* ]]; then echo true > "$PRERELEASE_FILE"; fi\nif [[ "$*" == *"--draft=false"* ]]; then [[ "$PUBLISH_FAILS_NO_COMMIT" == 1 ]] && exit 9; [[ "$PUBLISH_NOOP" == 1 ]] || echo false > "$STATE_FILE"; [[ "$PUBLISH_COMMITS_THEN_FAILS" == 1 ]] && exit 9; fi\nif [[ "$*" == *"--draft=true"* ]]; then [[ "$REDRAFT_FAILS" == 1 ]] && exit 9; echo true > "$STATE_FILE"; fi\n',
   );
   writeFileSync(
     node,
@@ -87,7 +97,10 @@ async function run({
       env: {
         ...process.env,
         PATH: `${root}:${process.env.PATH}`,
-        RELEASE_TAG: 'v1.2.3',
+        RELEASE_TAG: producerTag,
+        RELEASE_MODE: mode,
+        PUBLICATION_TAG: publicationTag,
+        PRERELEASE_FILE: prereleaseState,
         GH_LOG: log,
         DEPLOY_STATUS: String(deploy),
         NODE_LOG: nodeLog,
@@ -102,9 +115,10 @@ async function run({
         STATION_TEST_HANG_ROOT: hangRoot ? '1' : undefined,
         VITE_NATIVE_APP_UPDATE_CHANNEL: 'stable',
         VITE_NATIVE_APP_VERSION: '1.2.3',
-        VITE_NATIVE_APP_UPDATE_FEED_URL: withFeed
-          ? 'https://updates.example.test/mobile/stable.json'
-          : undefined,
+        VITE_NATIVE_APP_UPDATE_FEED_URL:
+          withFeed || configuredFeedWithoutPayload
+            ? 'https://updates.example.test/mobile/stable.json'
+            : undefined,
         VITE_NATIVE_APP_UPDATE_PROVIDER_ORIGIN: withFeed
           ? 'https://updates.example.test'
           : undefined,
@@ -130,6 +144,56 @@ async function run({
 }
 
 describe('mobile feed publication compensation', () => {
+  test('publishes an RC prerelease without validating or deploying the configured Stable feed', async () => {
+    const { result, log, nodeLog, state } = await run({
+      mode: 'rc',
+      producerTag: 'v1.2.3-rc.3',
+      withFeed: false,
+      configuredFeedWithoutPayload: true,
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(state).toBe('false');
+    expect(log).toContain(
+      'release edit v1.2.3-rc.3 --draft=false --prerelease --latest=false',
+    );
+    expect(log).not.toContain('--prerelease=false --latest');
+    expect(
+      log
+        .trim()
+        .split('\n')
+        .every((line) => line.includes('v1.2.3-rc.3')),
+    ).toBe(true);
+    expect(nodeLog).toBe('');
+  });
+
+  test('publishes the final destination while keeping the candidate producer identity separate', async () => {
+    const { result, log, nodeLog } = await run({
+      mode: 'promote',
+      producerTag: 'v1.2.3-rc.3',
+      publicationTag: 'v1.2.3',
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(log).toContain(
+      'release edit v1.2.3 --draft=false --prerelease=false --latest',
+    );
+    expect(log).not.toContain('release edit v1.2.3-rc.3');
+    expect(nodeLog).toContain(' deploy ');
+  });
+
+  test('refuses an RC feed payload before any provider or GitHub operation', async () => {
+    const { result, log, nodeLog } = await run({
+      mode: 'rc',
+      producerTag: 'v1.2.3-rc.3',
+      withFeed: true,
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      'RC publication must not deploy a Stable feed',
+    );
+    expect(log).toBe('');
+    expect(nodeLog).toBe('');
+  });
+
   test('runs the feed tool beside the script, never the cwd copy', async () => {
     // publish-release.yml runs the default-branch copy of this script with a
     // tag checkout as cwd; a cwd-relative tool path would execute the tag's.

@@ -38,7 +38,7 @@ regenerated with the gallery baseline.</sub>
 
 > **Status:** open source (Apache-2.0) and in active development. Install
 > the Nightly with one command, use a Nightly desktop build, or run from source.
-> v1 is coming soon; no stable release is published yet. See [Get Station](#get-station).
+> The first Stable release is in preparation; no Stable release is published yet. See [Get Station](#get-station).
 
 ## Why Station
 
@@ -157,7 +157,7 @@ steps. Use it for:
 
 - the Windows PowerShell Nightly install, updates and uninstall;
 - the [verified installer](docs/user/getting-started.md#install-or-upgrade)
-  for a published stable or beta release ring, and the signed
+  for a published Stable release, and the signed
   prebuilt-archive path;
 - [the release list](https://github.com/kontourai/station/releases) and
   [release rings](docs/guides/release-rings.md) for what is currently published.

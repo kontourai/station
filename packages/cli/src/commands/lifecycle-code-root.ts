@@ -49,6 +49,7 @@ export {
   type PackagedRuntimeChannel,
   PREBUILT_ARCHIVE_MARKER_CONTENT,
   PREBUILT_ARCHIVE_MARKER_FILENAME,
+  packagedReleaseVersion,
   resolveInstallerOwnedArchiveVersion,
   validatePackagedReleaseManifest,
 } from '@kontourai/station-shared/prebuilt-archive';

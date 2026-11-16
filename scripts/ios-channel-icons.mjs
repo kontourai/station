@@ -40,12 +40,7 @@ import { PNG } from 'pngjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-export const IOS_ICON_CHANNELS = Object.freeze([
-  'stable',
-  'beta',
-  'nightly',
-  'dev',
-]);
+export const IOS_ICON_CHANNELS = Object.freeze(['stable', 'nightly', 'dev']);
 
 export const IOS_APP_ICON_CATALOG =
   'src-desktop/gen/apple/Assets.xcassets/AppIcon.appiconset';
@@ -88,7 +83,6 @@ export function iosIconChannelForConfig(root = ROOT, overlayPath) {
     ? 'dev'
     : {
         'io.kontourai.station': 'stable',
-        'io.kontourai.station.beta': 'beta',
         'io.kontourai.station.nightly': 'nightly',
       }[identifier];
   if (!channel) fail(`Unknown configured iOS Station identity: ${identifier}`);
@@ -306,7 +300,7 @@ function option(args, name) {
 function main(args) {
   const [command, channel] = args;
   if (command === 'apply') {
-    if (args.length !== 2) fail('usage: apply <stable|beta|nightly|dev>');
+    if (args.length !== 2) fail('usage: apply <stable|nightly|dev>');
     const { files } = applyIosChannelIcons(channel);
     process.stdout.write(
       `Applied the ${channel} iOS icon set to the catalog (${files.length} files)\n`,
@@ -317,9 +311,7 @@ function main(args) {
     const appDir = option(args, 'app');
     const receiptPath = option(args, 'receipt');
     if (!appDir || !receiptPath || args.length !== 6)
-      fail(
-        'usage: verify <stable|beta|nightly|dev> --app <dir> --receipt <path>',
-      );
+      fail('usage: verify <stable|nightly|dev> --app <dir> --receipt <path>');
     const receipt = existsSync(receiptPath)
       ? JSON.parse(readFileSync(receiptPath, 'utf8'))
       : {};
@@ -341,7 +333,7 @@ function main(args) {
     return;
   }
   fail(
-    'usage: apply <stable|beta|nightly|dev> | verify <channel> --app <dir> --receipt <path>',
+    'usage: apply <stable|nightly|dev> | verify <channel> --app <dir> --receipt <path>',
   );
 }
 

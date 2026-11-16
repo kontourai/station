@@ -59,7 +59,6 @@ function isValidNativeClientSurface(
     surface.kind === 'station-native' &&
     (surface.channel === 'dev' ||
       surface.channel === 'stable' ||
-      surface.channel === 'beta' ||
       surface.channel === 'nightly') &&
     typeof surface.appIdentifier === 'string' &&
     APP_IDENTIFIER_PATTERN.test(surface.appIdentifier) &&

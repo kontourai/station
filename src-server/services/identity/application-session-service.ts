@@ -50,7 +50,7 @@ const nativeSurface = z
   .object({
     kind: z.literal('station-native'),
     appIdentifier: z.string().min(1).max(256),
-    channel: z.enum(['dev', 'stable', 'beta', 'nightly']),
+    channel: z.enum(['dev', 'stable', 'nightly']),
     clientInstanceId: z.string().min(1).max(256),
     keyThumbprint: opaque,
   })
