@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { spawnSync } from "node:child_process";
+import { spawnSync } from 'node:child_process';
 import {
   copyFileSync,
   existsSync,
@@ -9,24 +9,24 @@ import {
   symlinkSync,
   unlinkSync,
   writeFileSync,
-} from "node:fs";
-import path from "node:path";
-import ts from "typescript-api";
-import { describe, expect, it } from "vitest";
-import { trackTempDirs } from "../../src-server/__test-utils__/temp-dirs";
-import { DOCS_TRUTH_GATE_LANES } from "../docs-truth-gate-aggregate.mjs";
+} from 'node:fs';
+import path from 'node:path';
+import ts from 'typescript-api';
+import { describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs';
+import { DOCS_TRUTH_GATE_LANES } from '../docs-truth-gate-aggregate.mjs';
 import {
   parseMetricDeclarations,
   renderMetricReference,
-} from "../generate-metric-reference.mjs";
-import { renderLearningDocument } from "../lib/learning-markdown.mjs";
-import { sanitizedGitEnvironment } from "../lib/git-environment.mjs";
-import { publishMetricReference } from "../lib/metric-reference-output.mjs";
+} from '../generate-metric-reference.mjs';
+import { sanitizedGitEnvironment } from '../lib/git-environment.mjs';
+import { renderLearningDocument } from '../lib/learning-markdown.mjs';
+import { publishMetricReference } from '../lib/metric-reference-output.mjs';
 
 const root = process.cwd();
-const script = path.join(root, "scripts/generate-metric-reference.mjs");
-const sourcePath = "src-server/telemetry/metrics.ts";
-const outputPath = "docs/reference/metrics.md";
+const script = path.join(root, 'scripts/generate-metric-reference.mjs');
+const sourcePath = 'src-server/telemetry/metrics.ts';
+const outputPath = 'docs/reference/metrics.md';
 const prelude =
   "import { metrics } from '@opentelemetry/api';\nconst meter = metrics.getMeter('station');\n";
 const makeTempDir = trackTempDirs();
@@ -34,7 +34,7 @@ const makeTempDir = trackTempDirs();
 function runCli(entry: string, fixtureRoot: string, args: string[]) {
   const result = spawnSync(process.execPath, [entry, ...args], {
     cwd: fixtureRoot,
-    encoding: "utf8",
+    encoding: 'utf8',
     windowsHide: true,
     timeout: 15_000,
     maxBuffer: 128 * 1024,
@@ -50,31 +50,31 @@ function cli(fixtureRoot: string, ...args: string[]) {
 
 function defaultCli(fixtureRoot: string, ...args: string[]) {
   return runCli(
-    path.join(fixtureRoot, "scripts/generate-metric-reference.mjs"),
+    path.join(fixtureRoot, 'scripts/generate-metric-reference.mjs'),
     fixtureRoot,
     args,
   );
 }
 
 function cliFixture() {
-  const fixtureRoot = makeTempDir("station-metric-owner-");
+  const fixtureRoot = makeTempDir('station-metric-owner-');
   for (const directory of [
-    "scripts/lib",
-    "src-server/telemetry",
-    "docs/reference",
+    'scripts/lib',
+    'src-server/telemetry',
+    'docs/reference',
   ])
     mkdirSync(path.join(fixtureRoot, directory), { recursive: true });
   for (const file of [
-    "scripts/generate-metric-reference.mjs",
-    "scripts/lib/module-entry.mjs",
-    "scripts/lib/learning-source-reader.mjs",
-    "scripts/lib/metric-reference-output.mjs",
+    'scripts/generate-metric-reference.mjs',
+    'scripts/lib/module-entry.mjs',
+    'scripts/lib/learning-source-reader.mjs',
+    'scripts/lib/metric-reference-output.mjs',
   ])
     copyFileSync(path.join(root, file), path.join(fixtureRoot, file));
   symlinkSync(
-    path.join(root, "node_modules"),
-    path.join(fixtureRoot, "node_modules"),
-    "junction",
+    path.join(root, 'node_modules'),
+    path.join(fixtureRoot, 'node_modules'),
+    'junction',
   );
   writeFileSync(
     path.join(fixtureRoot, sourcePath),
@@ -85,21 +85,21 @@ function cliFixture() {
 
 function git(repo: string, ...args: string[]) {
   return spawnSync(
-    "git",
+    'git',
     [
-      "-c",
-      "user.name=Metric Fixture",
-      "-c",
-      "user.email=metric-fixture@example.invalid",
-      "-c",
-      "commit.gpgsign=false",
-      "-c",
-      "core.autocrlf=false",
+      '-c',
+      'user.name=Metric Fixture',
+      '-c',
+      'user.email=metric-fixture@example.invalid',
+      '-c',
+      'commit.gpgsign=false',
+      '-c',
+      'core.autocrlf=false',
       ...args,
     ],
     {
       cwd: repo,
-      encoding: "utf8",
+      encoding: 'utf8',
       env: sanitizedGitEnvironment(),
       windowsHide: true,
       timeout: 15_000,
@@ -118,52 +118,52 @@ function gitOk(repo: string, ...args: string[]) {
 }
 
 const counter = (name: string) =>
-  `export const ${name.replace(/\W/g, "_")} = meter.createCounter('${name}', { description: 'Fixture ${name}' });\n`;
+  `export const ${name.replace(/\W/g, '_')} = meter.createCounter('${name}', { description: 'Fixture ${name}' });\n`;
 
 /**
  * Build a real repository whose base and two branches each commit a source
  * and its regenerated catalog, as two metric PRs off one base would.
  */
 function metricMergeFixture(top: string, bottom: string) {
-  const repo = makeTempDir("station-metric-merge-");
+  const repo = makeTempDir('station-metric-merge-');
   mkdirSync(path.join(repo, path.dirname(sourcePath)), { recursive: true });
   mkdirSync(path.join(repo, path.dirname(outputPath)), { recursive: true });
   const base = [
-    "station.alpha",
-    "station.charlie",
-    "station.echo",
-    "station.golf",
+    'station.alpha',
+    'station.charlie',
+    'station.echo',
+    'station.golf',
   ]
     .map(counter)
-    .join("\n");
+    .join('\n');
   const commit = (source: string, message: string) => {
     writeFileSync(path.join(repo, sourcePath), source);
     writeFileSync(path.join(repo, outputPath), renderMetricReference(source));
-    gitOk(repo, "add", "-A");
-    gitOk(repo, "commit", "-q", "-m", message);
+    gitOk(repo, 'add', '-A');
+    gitOk(repo, 'commit', '-q', '-m', message);
   };
-  gitOk(repo, "init", "-q", "-b", "main");
-  commit(prelude + base, "base");
+  gitOk(repo, 'init', '-q', '-b', 'main');
+  commit(prelude + base, 'base');
   // One branch inserts at the top of the source (shifting every later line);
   // the other appends at the bottom.
-  gitOk(repo, "checkout", "-q", "-b", "top");
+  gitOk(repo, 'checkout', '-q', '-b', 'top');
   commit(prelude + counter(top) + base, `add ${top}`);
-  gitOk(repo, "checkout", "-q", "main");
-  gitOk(repo, "checkout", "-q", "-b", "bottom");
+  gitOk(repo, 'checkout', '-q', 'main');
+  gitOk(repo, 'checkout', '-q', '-b', 'bottom');
   commit(prelude + base + counter(bottom), `add ${bottom}`);
   return repo;
 }
 
-describe("metric declaration reference", () => {
-  it("enumerates all instrument families, including unbound callback registrations", () => {
+describe('metric declaration reference', () => {
+  it('enumerates all instrument families, including unbound callback registrations', () => {
     const families = [
-      "createCounter",
-      "createUpDownCounter",
-      "createHistogram",
-      "createGauge",
-      "createObservableCounter",
-      "createObservableUpDownCounter",
-      "createObservableGauge",
+      'createCounter',
+      'createUpDownCounter',
+      'createHistogram',
+      'createGauge',
+      'createObservableCounter',
+      'createObservableUpDownCounter',
+      'createObservableGauge',
     ];
     const source =
       prelude +
@@ -172,7 +172,7 @@ describe("metric declaration reference", () => {
           (factory, index) =>
             `export const instrument${index} = meter.${factory}('station.metric${index}', { description: 'Description ${index}', unit: 'ms' });`,
         )
-        .join("\n") +
+        .join('\n') +
       `
 function register() {
   meter.createObservableGauge('station.callback').addCallback(callback);
@@ -190,53 +190,53 @@ const local = (meter['createCounter']('station.local', {unit: ''}) as Counter);
         binding: `instrument${index}`,
         declarationExported: true,
         description: `Description ${index}`,
-        unit: "ms",
+        unit: 'ms',
         container: null,
       })),
     );
     expect(declarations[7]).toMatchObject({
-      name: "station.callback",
+      name: 'station.callback',
       binding: null,
-      container: "register",
+      container: 'register',
       description: null,
       unit: null,
     });
     expect(declarations[8]).toMatchObject({
-      name: "station.local",
-      binding: "local",
+      name: 'station.local',
+      binding: 'local',
       declarationExported: false,
       description: null,
-      unit: "",
+      unit: '',
     });
   });
 
   it.each([
-    ["meter.createCounter(name)", "Instrument name must be a string literal"],
+    ['meter.createCounter(name)', 'Instrument name must be a string literal'],
     [
       `meter.createCounter(\`station.\${suffix}\`)`,
-      "Instrument name must be a string literal",
+      'Instrument name must be a string literal',
     ],
-    ["meter.createCounter('')", "Instrument name must not be empty"],
-    ["meter.createCounter('x', options)", "options must be an object literal"],
+    ["meter.createCounter('')", 'Instrument name must not be empty'],
+    ["meter.createCounter('x', options)", 'options must be an object literal'],
     [
       "meter.createCounter('x', {description: description})",
-      "Instrument description must be a string literal",
+      'Instrument description must be a string literal',
     ],
     [
       "meter.createCounter('x', {unit: units})",
-      "Instrument unit must be a string literal",
+      'Instrument unit must be a string literal',
     ],
     [
       "meter.createCounter('x', {...options})",
-      "Unsupported instrument metadata",
+      'Unsupported instrument metadata',
     ],
     [
       "meter.createCounter('x', {[key]: 'value'})",
-      "Unsupported instrument metadata",
+      'Unsupported instrument metadata',
     ],
     [
       "meter.createCounter('x', {description})",
-      "Unsupported instrument metadata",
+      'Unsupported instrument metadata',
     ],
     [
       "meter.createCounter('x', {advice: {}})",
@@ -248,29 +248,29 @@ const local = (meter['createCounter']('station.local', {unit: ''}) as Counter);
     ],
     [
       "meter.createCounter('x', {}, extra)",
-      "requires a literal name and optional literal options",
+      'requires a literal name and optional literal options',
     ],
     [
-      "meter.createCounter()",
-      "requires a literal name and optional literal options",
+      'meter.createCounter()',
+      'requires a literal name and optional literal options',
     ],
     [
       "const create = meter.createCounter; create('x')",
-      "Instrument factory references are unsupported",
+      'Instrument factory references are unsupported',
     ],
     [
       "const other = meter; other.createCounter('x')",
-      "aliases are unsupported",
+      'aliases are unsupported',
     ],
     [
       "meter.createCounter('valid'); const other = meter; other[factory](dynamicName)",
-      "aliases are unsupported",
+      'aliases are unsupported',
     ],
     [
       "meter.createCounter('valid'); registerHiddenDeclarations(meter)",
-      "escaping references",
+      'escaping references',
     ],
-    ["meter[factory]('x')", "Dynamic meter member access is unsupported"],
+    ["meter[factory]('x')", 'Dynamic meter member access is unsupported'],
     [
       "meter.createFutureInstrument('x')",
       "Unsupported instrument factory 'createFutureInstrument'",
@@ -279,23 +279,23 @@ const local = (meter['createCounter']('station.local', {unit: ''}) as Counter);
       "meter.createCounter('x'); meter.createHistogram('x')",
       "Duplicate instrument name 'x'",
     ],
-  ])("refuses unsupported or ambiguous declarations: %s", (body, error) => {
+  ])('refuses unsupported or ambiguous declarations: %s', (body, error) => {
     expect(() => parseMetricDeclarations(prelude + body)).toThrow(error);
     expect(() => parseMetricDeclarations(prelude + body)).toThrow(
       `${sourcePath}:3:`,
     );
   });
 
-  it("rejects missing declarations and TypeScript parse errors", () => {
+  it('rejects missing declarations and TypeScript parse errors', () => {
     expect(() => parseMetricDeclarations(prelude)).toThrow(
-      "no metric instrument declarations found",
+      'no metric instrument declarations found',
     );
     expect(() => parseMetricDeclarations(`${prelude}const = ;`)).toThrow(
       `${sourcePath}:3:`,
     );
   });
 
-  it("renders declared metadata safely and distinguishes absence from an empty string", () => {
+  it('renders declared metadata safely and distinguishes absence from an empty string', () => {
     const output = renderMetricReference(
       prelude +
         `
@@ -303,15 +303,15 @@ export const declared = meter.createCounter('station.a', {description: '<tag>|[l
 meter.createGauge('station.b');
 `,
     );
-    expect(output).toContain("&lt;tag&gt;&#124;\\[link\\]\\\\nnext");
+    expect(output).toContain('&lt;tag&gt;&#124;\\[link\\]\\\\nnext');
     expect(output).toContain('| "" |');
-    expect(output).toContain("| not declared | not declared |");
+    expect(output).toContain('| not declared | not declared |');
     expect(output).toContain(`(../../${sourcePath})`);
     expect(output).not.toMatch(/#L\d|SHA-256|creation calls\*\*/);
     expect(output).toContain(
-      "do **not** establish producers, live collection, correct labels, observed units or billing accuracy",
+      'do **not** establish producers, live collection, correct labels, observed units or billing accuracy',
     );
-    expect(output).toContain("../guides/monitoring.md");
+    expect(output).toContain('../guides/monitoring.md');
   });
 
   it.each([
@@ -322,11 +322,11 @@ meter.createGauge('station.b');
     "metrics.getMeter('station')['create' + 'Counter']('station.hidden');",
     "const get = metrics['get' + 'Meter'];",
     "const api = await import('@opentelemetry/api');",
-    "export { metrics };",
+    'export { metrics };',
     "export * from './hidden.js';",
     "export { hidden } from './hidden.js';",
     "export * as hidden from './hidden.js';",
-  ])("refuses API roots that escape the declaration grammar: %s", (body) => {
+  ])('refuses API roots that escape the declaration grammar: %s', (body) => {
     expect(() =>
       parseMetricDeclarations(
         `${prelude}meter.createCounter('station.visible');\n${body}`,
@@ -339,7 +339,7 @@ meter.createGauge('station.b');
     "import * as api from '@opentelemetry/api';",
     "import { makeMeter } from './hidden.js';",
   ])(
-    "refuses other runtime imports rather than silently skipping ownership: %s",
+    'refuses other runtime imports rather than silently skipping ownership: %s',
     (statement) => {
       expect(() =>
         parseMetricDeclarations(
@@ -349,7 +349,7 @@ meter.createGauge('station.b');
     },
   );
 
-  it("preserves literal string contents through the actual learning Markdown renderer", () => {
+  it('preserves literal string contents through the actual learning Markdown renderer', () => {
     const description =
       'first\nsecond | <tag> ~~literal~~ \\n "quote" `code` &nbsp;\r\t';
     const output = renderMetricReference(
@@ -358,8 +358,8 @@ meter.createGauge('station.b');
     const rendered = renderLearningDocument(
       output,
       outputPath,
-      new Set([outputPath, "docs/guides/monitoring.md"]),
-      "fixture",
+      new Set([outputPath, 'docs/guides/monitoring.md']),
+      'fixture',
       new Set([sourcePath]),
     );
     // Vitest supplies jsdom; keep the scripts compiler's Node-only library scope.
@@ -367,7 +367,7 @@ meter.createGauge('station.b');
       DOMParser: new () => {
         parseFromString(
           html: string,
-          type: "text/html",
+          type: 'text/html',
         ): {
           querySelectorAll(
             selector: string,
@@ -376,48 +376,48 @@ meter.createGauge('station.b');
         };
       };
     };
-    expect(typeof browser.DOMParser).toBe("function");
+    expect(typeof browser.DOMParser).toBe('function');
     const document = new browser.DOMParser().parseFromString(
       rendered.html,
-      "text/html",
+      'text/html',
     );
-    const cells = document.querySelectorAll("tbody tr:first-child td");
+    const cells = document.querySelectorAll('tbody tr:first-child td');
     expect(cells).toHaveLength(5);
     expect(cells[3].textContent).toBe(JSON.stringify(description));
     expect(JSON.parse(cells[3].textContent!)).toBe(description);
     expect(cells[4].textContent).toBe('""');
-    expect(document.querySelector("del")).toBeNull();
+    expect(document.querySelector('del')).toBeNull();
   });
 
   for (const kind of [
-    "input-leaf",
-    "input-ancestor",
-    "output-leaf",
-    "output-ancestor",
+    'input-leaf',
+    'input-ancestor',
+    'output-leaf',
+    'output-ancestor',
   ] as const) {
     // Windows file symlinks need privileges; directory junction cases still run there.
-    it.skipIf(process.platform === "win32" && kind.endsWith("leaf"))(
+    it.skipIf(process.platform === 'win32' && kind.endsWith('leaf'))(
       `refuses ${kind} symlinks through default CLI paths and preserves existing bytes`,
       () => {
         const fixtureRoot = cliFixture();
-        const outside = makeTempDir("station-metric-outside-");
+        const outside = makeTempDir('station-metric-outside-');
         expect(defaultCli(fixtureRoot).status).toBe(0);
         const sourceFile = path.join(fixtureRoot, sourcePath);
         const artifact = path.join(fixtureRoot, outputPath);
         const sourceBytes = readFileSync(sourceFile);
         const artifactBytes = readFileSync(artifact);
-        const input = kind.startsWith("input");
-        const leaf = kind.endsWith("leaf");
+        const input = kind.startsWith('input');
+        const leaf = kind.endsWith('leaf');
         const target = input ? sourceFile : artifact;
         const linked = leaf ? target : path.dirname(target);
         const outsideFile = path.join(
           outside,
-          `metrics.${input ? "ts" : "md"}`,
+          `metrics.${input ? 'ts' : 'md'}`,
         );
         const outsideBytes = Buffer.from(
           input
             ? `${prelude}meter.createCounter('station.outside'); // CONTROLLED_OUTSIDE\n`
-            : "CONTROLLED_OUTSIDE\n",
+            : 'CONTROLLED_OUTSIDE\n',
         );
         writeFileSync(outsideFile, outsideBytes);
         renameSync(linked, `${linked}.saved`);
@@ -425,9 +425,9 @@ meter.createGauge('station.b');
           symlinkSync(
             leaf ? outsideFile : outside,
             linked,
-            leaf ? "file" : "junction",
+            leaf ? 'file' : 'junction',
           );
-          for (const args of [[], ["--check"]]) {
+          for (const args of [[], ['--check']]) {
             const result = defaultCli(fixtureRoot, ...args);
             expect(result.status).toBe(1);
             expect(result.stderr).toMatch(
@@ -441,12 +441,12 @@ meter.createGauge('station.b');
         }
         expect(readFileSync(sourceFile)).toEqual(sourceBytes);
         expect(readFileSync(artifact)).toEqual(artifactBytes);
-        expect(defaultCli(fixtureRoot, "--check").status).toBe(0);
+        expect(defaultCli(fixtureRoot, '--check').status).toBe(0);
       },
     );
   }
 
-  it("rejects malformed source UTF-8 without replacing an artifact and accepts a BOM-prefixed source", () => {
+  it('rejects malformed source UTF-8 without replacing an artifact and accepts a BOM-prefixed source', () => {
     const fixtureRoot = cliFixture();
     expect(defaultCli(fixtureRoot).status).toBe(0);
     const artifact = path.join(fixtureRoot, outputPath);
@@ -455,12 +455,12 @@ meter.createGauge('station.b');
     const valid = readFileSync(sourceFile);
     writeFileSync(
       sourceFile,
-      Buffer.concat([valid, Buffer.from("// malformed "), Buffer.from([0xff])]),
+      Buffer.concat([valid, Buffer.from('// malformed '), Buffer.from([0xff])]),
     );
-    for (const args of [[], ["--check"]]) {
+    for (const args of [[], ['--check']]) {
       const result = defaultCli(fixtureRoot, ...args);
       expect(result.status).toBe(1);
-      expect(result.stderr).toContain("not valid UTF-8");
+      expect(result.stderr).toContain('not valid UTF-8');
       expect(readFileSync(artifact)).toEqual(before);
     }
     writeFileSync(
@@ -468,35 +468,35 @@ meter.createGauge('station.b');
       Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), valid]),
     );
     expect(defaultCli(fixtureRoot).status).toBe(0);
-    expect(defaultCli(fixtureRoot, "--check").status).toBe(0);
-    expect(readFileSync(artifact, "utf8")).toContain('"station.control"');
+    expect(defaultCli(fixtureRoot, '--check').status).toBe(0);
+    expect(readFileSync(artifact, 'utf8')).toContain('"station.control"');
   });
 
-  it("allows an explicit root alias while refusing nonportable output coordinates", () => {
+  it('allows an explicit root alias while refusing nonportable output coordinates', () => {
     const fixtureRoot = cliFixture();
-    const aliasParent = makeTempDir("station-metric-root-alias-");
-    const alias = path.join(aliasParent, "checkout");
-    symlinkSync(fixtureRoot, alias, "junction");
+    const aliasParent = makeTempDir('station-metric-root-alias-');
+    const alias = path.join(aliasParent, 'checkout');
+    symlinkSync(fixtureRoot, alias, 'junction');
     expect(cli(alias).status).toBe(0);
-    expect(cli(alias, "--check").status).toBe(0);
+    expect(cli(alias, '--check').status).toBe(0);
     const before = readFileSync(path.join(fixtureRoot, outputPath));
     for (const coordinate of [
-      "../outside.md",
-      "/outside.md",
-      "docs\\outside.md",
-      "C:outside.md",
-      "docs/./outside.md",
-      "docs//outside.md",
+      '../outside.md',
+      '/outside.md',
+      'docs\\outside.md',
+      'C:outside.md',
+      'docs/./outside.md',
+      'docs//outside.md',
     ]) {
       expect(() =>
-        publishMetricReference(fixtureRoot, coordinate, "replacement"),
-      ).toThrow("Unsafe metric reference output");
+        publishMetricReference(fixtureRoot, coordinate, 'replacement'),
+      ).toThrow('Unsafe metric reference output');
     }
     expect(readFileSync(path.join(fixtureRoot, outputPath))).toEqual(before);
   });
 
-  it("matches every creation call in the live source and its checked-in reference", () => {
-    const source = readFileSync(path.join(root, sourcePath), "utf8");
+  it('matches every creation call in the live source and its checked-in reference', () => {
+    const source = readFileSync(path.join(root, sourcePath), 'utf8');
     const file = ts.createSourceFile(
       sourcePath,
       source,
@@ -508,7 +508,7 @@ meter.createGauge('station.b');
       if (
         ts.isCallExpression(node) &&
         ts.isPropertyAccessExpression(node.expression) &&
-        node.expression.name.text.startsWith("create")
+        node.expression.name.text.startsWith('create')
       ) {
         const name = node.arguments[0];
         expect(ts.isStringLiteralLike(name)).toBe(true);
@@ -521,38 +521,38 @@ meter.createGauge('station.b');
     expect(parseMetricDeclarations(source).map((entry) => entry.name)).toEqual(
       creationNames,
     );
-    expect(readFileSync(path.join(root, outputPath), "utf8")).toBe(
+    expect(readFileSync(path.join(root, outputPath), 'utf8')).toBe(
       renderMetricReference(source),
     );
-    expect(cli(root, "--check").status).toBe(0);
+    expect(cli(root, '--check').status).toBe(0);
   });
 
-  it("proves missing, stale, changed-source and invalid-source failures through the CLI", () => {
-    const fixtureRoot = makeTempDir("station-metric-reference-");
+  it('proves missing, stale, changed-source and invalid-source failures through the CLI', () => {
+    const fixtureRoot = makeTempDir('station-metric-reference-');
     const sourceFile = path.join(fixtureRoot, sourcePath);
     const outputFile = path.join(fixtureRoot, outputPath);
     mkdirSync(path.dirname(sourceFile), { recursive: true });
     const baselineSource = `${prelude}export const counter = meter.createCounter('station.test');\n`;
-    const missingSource = cli(fixtureRoot, "--check");
+    const missingSource = cli(fixtureRoot, '--check');
     expect(missingSource.status).toBe(1);
-    expect(missingSource.stderr).toContain("ENOENT");
+    expect(missingSource.stderr).toContain('ENOENT');
     expect(existsSync(outputFile)).toBe(false);
     writeFileSync(sourceFile, baselineSource);
-    const missing = cli(fixtureRoot, "--check");
+    const missing = cli(fixtureRoot, '--check');
     expect(missing.status).toBe(1);
-    expect(missing.stderr).toContain("is missing");
+    expect(missing.stderr).toContain('is missing');
     expect(existsSync(outputFile)).toBe(false);
     expect(cli(fixtureRoot).status).toBe(0);
     const baselineBytes = readFileSync(outputFile);
-    expect(cli(fixtureRoot, "--check").status).toBe(0);
+    expect(cli(fixtureRoot, '--check').status).toBe(0);
     writeFileSync(
       outputFile,
-      Buffer.concat([baselineBytes, Buffer.from("stale\n")]),
+      Buffer.concat([baselineBytes, Buffer.from('stale\n')]),
     );
     const changedBytes = readFileSync(outputFile);
-    const stale = cli(fixtureRoot, "--check");
+    const stale = cli(fixtureRoot, '--check');
     expect(stale.status).toBe(1);
-    expect(stale.stderr).toContain("is stale");
+    expect(stale.stderr).toContain('is stale');
     expect(readFileSync(outputFile)).toEqual(changedBytes);
     expect(cli(fixtureRoot).status).toBe(0);
     expect(readFileSync(outputFile)).toEqual(baselineBytes);
@@ -560,26 +560,26 @@ meter.createGauge('station.b');
       sourceFile,
       `${baselineSource}meter.createHistogram('station.added', {unit: 's'});\n`,
     );
-    expect(cli(fixtureRoot, "--check").status).toBe(1);
+    expect(cli(fixtureRoot, '--check').status).toBe(1);
     expect(readFileSync(outputFile)).toEqual(baselineBytes);
     expect(cli(fixtureRoot).status).toBe(0);
-    expect(cli(fixtureRoot, "--check").status).toBe(0);
+    expect(cli(fixtureRoot, '--check').status).toBe(0);
     // Changed metadata on an existing declaration is drift too.
-    const generatedSource = readFileSync(sourceFile, "utf8");
+    const generatedSource = readFileSync(sourceFile, 'utf8');
     writeFileSync(
       sourceFile,
       generatedSource.replace("{unit: 's'}", "{unit: 'ms'}"),
     );
-    const changedUnit = cli(fixtureRoot, "--check");
+    const changedUnit = cli(fixtureRoot, '--check');
     expect(changedUnit.status).toBe(1);
-    expect(changedUnit.stderr).toContain("is stale");
+    expect(changedUnit.stderr).toContain('is stale');
     writeFileSync(sourceFile, generatedSource);
-    expect(cli(fixtureRoot, "--check").status).toBe(0);
+    expect(cli(fixtureRoot, '--check').status).toBe(0);
     const expandedBytes = readFileSync(outputFile);
     expect(expandedBytes.equals(baselineBytes)).toBe(false);
     for (const invalid of [
       "meter.createCounter('station.test');",
-      "meter.createCounter(dynamicName);",
+      'meter.createCounter(dynamicName);',
     ]) {
       writeFileSync(sourceFile, baselineSource + invalid);
       const result = cli(fixtureRoot);
@@ -592,21 +592,21 @@ meter.createGauge('station.b');
   });
 
   it.each([
-    ["top", "bottom"],
-    ["bottom", "top"],
+    ['top', 'bottom'],
+    ['bottom', 'top'],
   ])(
-    "merges two independently regenerated metric additions cleanly in git (%s into %s)",
+    'merges two independently regenerated metric additions cleanly in git (%s into %s)',
     (ours, theirs) => {
       // bravo and delta sort into neighbouring gaps (alpha|charlie and
       // charlie|echo), the tightest placement git can merge (#5056).
-      const repo = metricMergeFixture("station.bravo", "station.delta");
-      const merge = git(repo, "merge-tree", "--write-tree", ours, theirs);
+      const repo = metricMergeFixture('station.bravo', 'station.delta');
+      const merge = git(repo, 'merge-tree', '--write-tree', ours, theirs);
       expect(merge.error).toBeUndefined();
-      expect(merge.stdout).not.toContain("CONFLICT");
+      expect(merge.stdout).not.toContain('CONFLICT');
       expect(merge.status).toBe(0);
-      const tree = merge.stdout.trim().split("\n")[0];
-      const mergedSource = gitOk(repo, "show", `${tree}:${sourcePath}`);
-      const mergedCatalog = gitOk(repo, "show", `${tree}:${outputPath}`);
+      const tree = merge.stdout.trim().split('\n')[0];
+      const mergedSource = gitOk(repo, 'show', `${tree}:${sourcePath}`);
+      const mergedCatalog = gitOk(repo, 'show', `${tree}:${outputPath}`);
       expect(mergedSource).toContain("'station.bravo'");
       expect(mergedSource).toContain("'station.delta'");
       // The merged catalog is exactly what regeneration would produce, so
@@ -615,9 +615,9 @@ meter.createGauge('station.b');
     },
   );
 
-  it("still conflicts when both additions sort between the same two existing names", () => {
-    const repo = metricMergeFixture("station.bravo", "station.bravo_two");
-    const merge = git(repo, "merge-tree", "--write-tree", "top", "bottom");
+  it('still conflicts when both additions sort between the same two existing names', () => {
+    const repo = metricMergeFixture('station.bravo', 'station.bravo_two');
+    const merge = git(repo, 'merge-tree', '--write-tree', 'top', 'bottom');
     expect(merge.error).toBeUndefined();
     expect(merge.status).toBe(1);
     expect(merge.stdout).toContain(
@@ -626,22 +626,22 @@ meter.createGauge('station.b');
     expect(merge.stdout).not.toContain(`Merge conflict in ${sourcePath}`);
   });
 
-  it("runs the generation check and this test in the documentation lane", () => {
+  it('runs the generation check and this test in the documentation lane', () => {
     const { scripts } = JSON.parse(
-      readFileSync(path.join(root, "package.json"), "utf8"),
+      readFileSync(path.join(root, 'package.json'), 'utf8'),
     );
-    expect(scripts["docs:metrics:generate"]).toBe(
-      "node scripts/generate-metric-reference.mjs",
+    expect(scripts['docs:metrics:generate']).toBe(
+      'node scripts/generate-metric-reference.mjs',
     );
-    expect(scripts["docs:metrics:check"]).toBe(
-      "node scripts/generate-metric-reference.mjs --check",
+    expect(scripts['docs:metrics:check']).toBe(
+      'node scripts/generate-metric-reference.mjs --check',
     );
-    expect(scripts["docs:foundations:test"]).toContain(
-      "scripts/__tests__/metric-reference.test.ts",
+    expect(scripts['docs:foundations:test']).toContain(
+      'scripts/__tests__/metric-reference.test.ts',
     );
     expect(DOCS_TRUTH_GATE_LANES).toContainEqual({
-      id: "docs:metrics:check",
-      script: "docs:metrics:check",
+      id: 'docs:metrics:check',
+      script: 'docs:metrics:check',
     });
   });
 });
