@@ -1,8 +1,10 @@
-import { existsSync, realpathSync } from 'node:fs';
+import { existsSync, mkdirSync, realpathSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   appHomeProfileDir,
+  appHomesRootDir,
   ensureAppHomeProfile,
 } from '../app-home-profiles.js';
 import {
@@ -357,5 +359,24 @@ describe('credentialProfileEnvForHome', () => {
     expect(message).toContain('OPENAI_API_KEY');
     expect(message).not.toContain('value-canary');
     expect(message).not.toContain('broken-ref');
+  });
+
+  test("a connection config home placed under the app homes is the connection's, not an orphaned profile home", async () => {
+    const homeDir = await tempHome();
+    const configHome = join(appHomesRootDir(homeDir), 'my-codex');
+    mkdirSync(configHome, { recursive: true });
+    await expect(
+      credentialProfileEnvForHome(
+        {
+          engine: 'codex',
+          homeDir,
+          loadConnectionSettings: async () => ({
+            config: { configHome },
+            credentialRecovery: { profiles: [{ ref: 'other' }] },
+          }),
+        },
+        realpathSync(configHome),
+      ),
+    ).resolves.toBeUndefined();
   });
 });

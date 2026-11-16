@@ -226,13 +226,14 @@ export async function configuredEngineHomes(
  * The env overlay of the credential profile whose home is `canonicalHome`
  * (a real path), for running a session discovered in that home: the same
  * overlay a profile spawn applies, so the profile's credentials meet the
- * profile's endpoint. `undefined` for a home outside Station's app homes
- * (the default home, a connection config home: answered without reading
- * configuration) and for the legacy app home. Throws
- * {@link CredentialProfileEnvUnavailableError} for an invalid overlay, and for
- * any other app home no current profile owns: a deleted profile's home keeps
- * its credentials, and running it without its overlay would send them to
- * the ambient endpoint.
+ * profile's endpoint. `undefined` (no overlay) for a home outside
+ * Station's app homes, such as the default home (answered without reading
+ * configuration), for the legacy app home, and for the connection's own
+ * config home wherever it is placed, since the connection env already
+ * applies there. Throws {@link CredentialProfileEnvUnavailableError} for an
+ * invalid overlay, and for any other app home no current profile owns: a
+ * deleted profile's home keeps its credentials, and running it without its
+ * overlay would send them to the ambient endpoint.
  */
 export async function credentialProfileEnvForHome(
   options: Pick<
@@ -261,6 +262,14 @@ export async function credentialProfileEnvForHome(
   )
     return undefined;
   const settings = await options.loadConnectionSettings();
+  if (options.engine !== 'muse') {
+    const connectionHome = connectionSpawnEnv(
+      settings?.config,
+      options.engine,
+    )?.[CONFIG_HOME_ENV_KEY[options.engine]];
+    if (connectionHome && realOrNull(connectionHome) === canonicalHome)
+      return undefined;
+  }
   const homeOptions = options.homeDir ? { homeDir: options.homeDir } : {};
   for (const profile of normalizeCredentialProfileRegistry(
     settings?.credentialRecovery,
