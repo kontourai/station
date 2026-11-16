@@ -18,12 +18,19 @@
  *
  * The session lifecycle is the built-in engine adapter's
  * (`station-agent-adapter.ts`): it registers a session at start and stops it
- * (closing the server and revoking the token) at stop. A call with no
- * authorized turn, or for a session that is not registered, acts for no one
- * and is answered with the typed `station_control_caller_required` refusal:
- * a sessionless run (`/invoke`, a raw tool call, voice) has no session to
- * act for.
+ * (closing the server and revoking the token) at stop.
+ *
+ * A run with no session that an authenticated request starts (the invoke
+ * endpoints, a raw tool call) is a "request run"
+ * ({@link openNativeStationControlRequestRun}): it acts for the principal
+ * Station resolved for that request, on its own server and `bound` token,
+ * retired when the response ends.
+ *
+ * A call with neither an authorized turn of a registered session nor a live
+ * request run acts for no one and is answered with the typed
+ * `station_control_caller_required` refusal.
  */
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { MCPToolInfo } from '@kontourai/station-shared/mcp';
 import { createSelectedStationControlMcpServer } from '../../tools/station-control-mcp-server.js';
@@ -38,12 +45,19 @@ import {
 } from '../bootstrap/runtime-tenant-context.js';
 import { currentAuthorizedTurnCorrelation } from '../conversation/authorized-turn-correlation.js';
 import { extractMCPAppsToolMetadata } from './mcp-apps-metadata.js';
-import type { StationControlCallerRecordResolver } from './station-control-caller.js';
+import {
+  createStationControlCallerRecordResolver,
+  type StationControlCallerRecordResolver,
+} from './station-control-caller.js';
 import {
   createSessionInProcessStationControl,
   type InProcessStationControlServer,
   revokeSessionInProcessStationControl,
 } from './station-control-in-process.js';
+import {
+  forgetStationControlRequestRun,
+  registerStationControlRequestRun,
+} from './station-control-request-runs.js';
 
 /** The built-in station-control server id, as agents and the loader name it. */
 const SERVER_ID = 'station-control';
@@ -229,6 +243,8 @@ interface NativeStationControlSession {
 }
 
 const sessions = new Map<string, NativeStationControlSession>();
+/** The request run the current async work belongs to, if any. */
+const requestRuns = new AsyncLocalStorage<string>();
 
 async function closeSession(session: NativeStationControlSession) {
   session.active = false;
@@ -303,8 +319,10 @@ export async function callNativeStationControlTool(
   args: Record<string, unknown>,
 ): Promise<unknown> {
   const correlation = currentAuthorizedTurnCorrelation();
-  const session = correlation ? sessions.get(correlation.sessionId) : undefined;
-  if (!correlation || !session?.active) return callerRequired();
+  // A session turn wins; otherwise the request run this work belongs to.
+  const sessionId = correlation?.sessionId ?? requestRuns.getStore();
+  const session = sessionId ? sessions.get(sessionId) : undefined;
+  if (!sessionId || !session?.active) return callerRequired();
   // Hosted: a session acts only inside the tenant it was started for.
   const tenant = session.tenantExecutionContext?.tenantId;
   if (!tenant && isHostedTenantExecutionRequired())
@@ -317,7 +335,7 @@ export async function callNativeStationControlTool(
       'The station-control session belongs to another tenant execution context.',
     );
   if (!session.client) {
-    const opening = openSessionClient(correlation.sessionId, session);
+    const opening = openSessionClient(sessionId, session);
     session.client = opening;
     opening.catch(() => {
       if (session.client === opening) session.client = undefined;
@@ -326,6 +344,50 @@ export async function callNativeStationControlTool(
   const client = await session.client;
   if (!session.active) throw new Error('Station control session has stopped.');
   return client.request('tools/call', { name, arguments: args });
+}
+
+/**
+ * Open a request run for an authenticated request with no session: tool
+ * calls made inside {@link NativeStationControlRequestRun.run} act for
+ * `principalId` as a `bound` caller (the credential never leaves Station).
+ * `close` revokes the credential and retires the server; call it when the
+ * response has ended, streamed bodies included.
+ */
+export interface NativeStationControlRequestRun {
+  run<T>(work: () => T): T;
+  close(): Promise<void>;
+}
+
+export function openNativeStationControlRequestRun(input: {
+  principalId: string;
+  tenantExecutionContext?: TenantExecutionContext;
+}): NativeStationControlRequestRun {
+  const runId = registerStationControlRequestRun({
+    principalId: input.principalId,
+  });
+  startNativeStationControlSession(runId, {
+    ...(input.tenantExecutionContext
+      ? { tenantExecutionContext: input.tenantExecutionContext }
+      : {}),
+    // Only the run's own record: a request run has no session records.
+    resolveRecord: createStationControlCallerRecordResolver({
+      actingPrincipal: () => undefined,
+      startedMetadata: () => undefined,
+      localProjectId: () => undefined,
+      conversationId: () => undefined,
+    }),
+  });
+  let closing: Promise<void> | undefined;
+  return {
+    run: (work) => requestRuns.run(runId, work),
+    close: () => {
+      closing ??= (async () => {
+        forgetStationControlRequestRun(runId);
+        await stopNativeStationControlSession(runId);
+      })();
+      return closing;
+    },
+  };
 }
 
 /** Test-only: forget every session and the cached catalog. */
