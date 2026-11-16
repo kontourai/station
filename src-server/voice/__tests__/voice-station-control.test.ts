@@ -62,6 +62,8 @@ const ACCOUNT_DEVICE_CREDENTIAL = 'test-only-voice-account-device';
 const UI_DEVICE_CREDENTIAL = randomBytes(32).toString('base64url');
 const UI_COOKIE = `${deviceSessionCookieName(false, 'environment-test')}=${UI_DEVICE_CREDENTIAL}`;
 const STATION_ORIGIN = 'http://127.0.0.1:5173';
+// A device this Station issued and has since revoked: recognized, not valid.
+const REVOKED_DEVICE_CREDENTIAL = randomBytes(32).toString('base64url');
 const FORMAT: S2SAudioFormat = {
   mediaType: 'audio/pcm',
   sampleRateHertz: 16000,
@@ -194,12 +196,16 @@ beforeAll(async () => {
               subject: 'someone',
             },
           } as never)
-        : credential === UI_DEVICE_CREDENTIAL
+        : credential === UI_DEVICE_CREDENTIAL ||
+            credential === REVOKED_DEVICE_CREDENTIAL
           ? ({ id: 'device-ui', name: 'Station UI' } as never)
           : null,
     // A UI-bootstrap device is minted with home-possession locality.
     credentialLocality: (credential: string) =>
-      credential === UI_DEVICE_CREDENTIAL ? 'home-possession' : undefined,
+      credential === UI_DEVICE_CREDENTIAL ||
+      credential === REVOKED_DEVICE_CREDENTIAL
+        ? 'home-possession'
+        : undefined,
     credentialHasOwnerStanding: () => false,
   };
   const listener = attachVoiceWebSocket(
@@ -335,6 +341,17 @@ test('a loopback upgrade carrying the UI device cookie gets Station tools as tha
     boundOperator: true,
     caller: { principal: { id: LOCAL_OPERATOR_PRINCIPAL_ID } },
   });
+  ws.close();
+});
+
+test('a cookie whose credential fails verification gives the session no Station tools', async () => {
+  const { ws, provider } = await connect(undefined, {
+    cookie: `${deviceSessionCookieName(false, 'environment-test')}=${REVOKED_DEVICE_CREDENTIAL}`,
+    origin: STATION_ORIGIN,
+  });
+  const names = provider!.config?.tools?.map((tool) => tool.name) ?? [];
+  expect(names).not.toContain('stationControl_updateConfig');
+  expect(names).toContain('weather_today');
   ws.close();
 });
 
