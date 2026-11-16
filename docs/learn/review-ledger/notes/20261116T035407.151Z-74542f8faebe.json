@@ -1,0 +1,7 @@
+{
+  "revision": "53a97172a8e5746e1786f1b2241fc1dcb4612fa5",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"The test-impact manifest gained one read-by-path input: the iOS runtime smoke XCUITest source now selects the scan test that pins its tap-retry calls. Checked the guide's account of supplemental edges for suites that read a file outside the import graph: it describes the mechanism and names no list this entry would make incomplete.","inputs":["docs/guides/testing.md","scripts/test-impact-manifest.mjs"]}
+  ]
+}
