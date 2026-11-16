@@ -105,7 +105,7 @@ function baseScripts() {
     'veritas:readiness': 'npm exec -- veritas readiness --working-tree',
     'proof:sdk-builds': pass,
     'proof:app-builds': pass,
-    'veritas:fallow:advisory': pass,
+    'veritas:fallow:advisory': 'node scripts/run-fallow-audit.mjs',
   };
 }
 
