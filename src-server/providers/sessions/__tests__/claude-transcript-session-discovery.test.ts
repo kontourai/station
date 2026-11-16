@@ -1,16 +1,15 @@
 import {
   appendFileSync,
   mkdirSync,
-  mkdtempSync,
   renameSync,
   rmSync,
   statSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 
 const warnings = vi.hoisted(
   () => [] as Array<{ message: string; context?: unknown }>,
@@ -164,11 +163,10 @@ const subagentUser = (sessionId = SESSION) => ({
   gitBranch: 'main',
 });
 
-const dirs: string[] = [];
+const makeTempDir = trackTempDirs();
 
 function configHome(): { root: string; project: string } {
-  const root = mkdtempSync(join(tmpdir(), 'station-claude-discovery-'));
-  dirs.push(root);
+  const root = makeTempDir('station-claude-discovery-');
   const project = join(root, 'projects', '-workspace-example-project');
   mkdirSync(project, { recursive: true });
   return { root, project };
@@ -181,11 +179,6 @@ function jsonl(records: unknown[]): string {
 beforeEach(() => {
   warnings.length = 0;
   headScans.count = 0;
-});
-
-afterEach(() => {
-  for (const dir of dirs.splice(0))
-    rmSync(dir, { recursive: true, force: true });
 });
 
 describe('Claude transcript discovery of Claude Code 2.1 transcripts', () => {
