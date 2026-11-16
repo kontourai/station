@@ -1530,13 +1530,25 @@ hosted Station withdraws:
 - `DELETE` on the same path, body `{ identity }`, turns every switch off.
 - `POST …/send-again`, body `{ identity }`, lifts a pause for one round; 409
   `pull_request_feedback_not_paused` otherwise.
+- `DELETE …/derived`, body `{ identity }`, removes a pull request found on the
+  chat's Task branch from the chat for good, and releases its claim unless it
+  is also linked or kept there; 404 when there is no such row.
+- `GET /api/pull-request-feedback/projects/:projectSlug/defaults` reads a
+  Project's defaults (`ProjectPullRequestFeedbackDefaults`) for a reader of
+  the Project, with `canChange` and `stillOn`. `PUT` on the same path, body
+  `{ settings: { fixFailingChecks, addressReviewComments, reviewEachHead? } }`,
+  sets them; a switch left out keeps its stored value. Only this Station's
+  owner in person may set them; anyone else is answered 404.
 
 Reads need the chat's read access (`orchestration:read`). Writes need the
 operator in person (`access:manage`); Station's internal principal (an agent's
 tool call) and a delegation credential are answered 404. A paused pull request,
 or one whose chat's agent stopped with feedback waiting, also appears in
 `GET /api/attention` as a `pull-request-feedback` item for readers of that
-chat, with `viewerMayChange` derived from the same writer rule. See
+chat, with `viewerMayChange` derived from the same writer rule. A pull
+request found on a Task's own branch also appears in
+`GET /api/conversation-pull-requests/:conversationId` with source
+`branch-derived` while the preview is on. See
 [the decision](../decisions/pull-request-agent-feedback.md).
 
 
