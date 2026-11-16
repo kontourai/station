@@ -183,8 +183,8 @@ export function InboxScopeFilter({
           <button
             type="button"
             className="chat-dock-inbox__scope-badge"
-            aria-label={`Show all work: ${scope.hiddenAttention} outside this filter need you`}
-            title={`Show all work: ${scope.hiddenAttention} outside this filter need you`}
+            aria-label={`${scope.hiddenAttention} need you outside this filter. Show all work`}
+            title={`${scope.hiddenAttention} need you outside this filter. Show all work`}
             onClick={() => scope.onChange('all')}
           >
             {scope.hiddenAttention}
