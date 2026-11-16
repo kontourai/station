@@ -1261,7 +1261,7 @@ ones inside a Project, but no account can open them there.
 ## Continue an Attached Session
 
 Open an attached terminal Session from the **inbox**. It reads like any chat. To
-continue it in Station, press **Continue in Station** above the conversation;
+continue it in Station, press **Continue in Station** next to where it says it started;
 no message is needed. If you typed one, it is sent there once the
 continuation opens, and pressing Send continues the same way. Claude and Codex create independent child
 Sessions; the original terminal Session can keep running. OpenCode and Grok
