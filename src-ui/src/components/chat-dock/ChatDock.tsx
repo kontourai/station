@@ -3844,29 +3844,20 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     openProjectName: activeSession?.projectSlug
                       ? (sessionProjectName ?? activeSession.projectSlug)
                       : null,
-                    inputOriginLabel:
-                      !sessionContextAvailable &&
-                      activeOrchestrationSession?.inputOrigin
-                        ? delegatedTaskLabel(
-                            activeOrchestrationSession.inputOrigin,
-                          )
-                        : undefined,
+                    inputOriginLabel: activeOrchestrationSession?.inputOrigin
+                      ? delegatedTaskLabel(
+                          activeOrchestrationSession.inputOrigin,
+                        )
+                      : undefined,
                     onOpenProfile: () => navigate('/profile'),
                     onOpenAppSettings: () => navigate('/settings'),
                     // Mobile parity for the desktop More menu's clipboard rows —
                     // the sheet is a coarse device's only home for these IDs.
                     // The coordinator rows ride the same list: one-shot commands.
-                    // The This chat sheet holds the Copy commands, Chat
-                    // inventory and Background tasks while it is offered;
-                    // the coordinator rows stay here as one-shot commands.
-                    copyActions: sessionContextAvailable
-                      ? coordinatorActions
-                      : [...coordinatorActions, ...copyActions],
+                    copyActions: [...coordinatorActions, ...copyActions],
                     panelActions,
                     onOpenInventory:
-                      !sessionContextAvailable &&
-                      sessionInventoryControls &&
-                      sessionInventoryReady
+                      sessionInventoryControls && sessionInventoryReady
                         ? (trigger) => {
                             toggleSessionInventoryOccurrence({
                               full: true,
@@ -3908,9 +3899,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     // session is on screen the sheet would show the chat hidden
                     // behind it, so the row is omitted then too.
                     onOpenBackgroundTasks:
-                      !sessionContextAvailable &&
-                      activeSessionId &&
-                      !importedSessionId
+                      activeSessionId && !importedSessionId
                         ? showBackgroundTasks
                         : undefined,
                     backgroundTasksRunningCount,

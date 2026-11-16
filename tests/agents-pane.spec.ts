@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import { openDesktopBackgroundTasks } from './helpers/chat-inventory';
 import { test } from './helpers/fixture-audit';
 import {
   dismissSetupLauncher,
@@ -161,10 +162,7 @@ test.describe('Agents pane child work (#2459)', () => {
       },
     });
 
-    await page.getByRole('button', { name: 'More dock actions' }).click();
-    await page
-      .getByRole('menuitem', { name: /Background tasks — 1 running/ })
-      .click();
+    await openDesktopBackgroundTasks(page);
 
     const scopeChat = page.getByRole('button', {
       name: 'This conversation',
@@ -298,8 +296,7 @@ test.describe('Agents pane child work (#2459)', () => {
     await page.reload();
     await dismissSetupLauncher(page);
     await openChatRegion(page);
-    await page.getByRole('button', { name: 'More dock actions' }).click();
-    await page.getByRole('menuitem', { name: /Background tasks/ }).click();
+    await openDesktopBackgroundTasks(page);
     await expect(
       page.getByRole('button', { name: 'All', exact: true }),
     ).toHaveAttribute('aria-pressed', 'true');
