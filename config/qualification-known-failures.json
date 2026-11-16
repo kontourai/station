@@ -48,6 +48,13 @@
       "issue": 4971,
       "file": "src-ui/src/__tests__/composer-engine-move.browser.test.tsx",
       "titlePath": [
+        "a phone composer shows the next-turn destination in full beside four chips"
+      ]
+    },
+    {
+      "issue": 4971,
+      "file": "src-ui/src/__tests__/composer-engine-move.browser.test.tsx",
+      "titlePath": [
         "a phone composer keeps \"Agent moved\" visible ahead of a long engine name"
       ]
     }

@@ -2,9 +2,8 @@ import type { Plugin } from 'esbuild';
 import { expect, test } from 'vitest';
 import { scrollBrowserFixture } from './scroll-browser-fixture';
 
-// Controls that need an API provider are stubbed; Run setup and the four
-// controls in its panel (Agent, Engine & model, Mode, Approval) are the real
-// components.
+// Controls that need an API provider are stubbed; the four chips on the row
+// (Agent, Engine & model, Mode, Approval) are the real components.
 const controls: Plugin = {
   name: 'composer-controls',
   setup(builder) {
@@ -46,7 +45,7 @@ const controls: Plugin = {
   },
 };
 
-/** A phone composer with Run setup and long engine names. */
+/** A phone composer with four chips and long engine names. */
 function composer(nextTurn: boolean) {
   return `
     import React, {useRef} from 'react';
@@ -109,22 +108,16 @@ function unclipped(selector: string) {
   };
 }
 
-test('a phone composer shows the next-turn destination in full', async () => {
+test('a phone composer shows the next-turn destination in full beside four chips', async () => {
   const { browser, page, errors } = await scrollBrowserFixture(composer(true), [
     controls,
   ]);
   try {
     await page.waitForSelector('textarea');
     expect(errors).toEqual([]);
-    // The row carries the Run setup trigger, whose closed panel keeps the
-    // four real controls mounted (the Mode one loads lazily).
+    // The row really carries four chips (the Mode chip loads lazily).
     await page.waitForFunction(
-      () =>
-        document.querySelectorAll(
-          '.chat-input__settings > .composer-run-control',
-        ).length === 1 &&
-        document.querySelectorAll('.composer-run-panel__choices > *').length >=
-          4,
+      () => document.querySelectorAll('.chat-input__settings > *').length >= 4,
     );
     const destination = await page.evaluate(
       unclipped,
