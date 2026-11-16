@@ -1770,7 +1770,9 @@
 
     "src-server/services/evidence/task-code-review-module.ts",
 
-    "src-server/routes/evidence/task-code-reviews.ts"
+    "src-server/routes/evidence/task-code-reviews.ts",
+
+    "src-ui/src/components/chat/BrowserTurnActivity.tsx"
   ],
 
   "checks": [
