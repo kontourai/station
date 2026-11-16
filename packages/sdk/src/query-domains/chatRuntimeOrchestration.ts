@@ -922,8 +922,7 @@ export function useChildWorkTranscriptTailQuery(
     if (
       asked !== undefined &&
       first?.offset !== undefined &&
-      (first.offset < asked ||
-        (asked > 0 && first.endOffset === first.offset))
+      (first.offset < asked || (asked > 0 && first.endOffset === first.offset))
     ) {
       void client.resetQueries({ queryKey: key, exact: true });
       return;
