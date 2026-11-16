@@ -722,6 +722,12 @@ export const UNMODELLED_INPUT_EDGES = Object.freeze([
       'examples/smart-routing/**',
       'src-server/routes/__tests__/smart-routing-plugin.test.ts',
     ],
+    // Pins the tap-retry calls and the bounded alert wait in the XCUITest
+    // source by text; a rename there (#4891) otherwise reaches main unseen.
+    [
+      'tests/ios-runtime-smoke/StationRuntimeSmokeTests.swift',
+      'scripts/__tests__/ios-simulator-runtime-smoke.test.ts',
+    ],
   ].map(([pattern, test]) =>
     Object.freeze({
       pattern,

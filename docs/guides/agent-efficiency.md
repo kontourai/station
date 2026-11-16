@@ -48,7 +48,23 @@ Another token starts with its own index; rotation and revocation invalidate the
 old capability. It is not offered as a Station preview until a native consumer
 is qualified.
 
-Claude keeps its existing native on-demand tool search. External leases and
+Each tool's family is stated in one map
+([`station-control-tool-families.ts`](../../src-server/tools/station-control-tool-families.ts)),
+not inferred from its name; device and browser tools have their own Devices and
+Browser families. The same family is the Tools catalog's `ai.kontour/tool-group`.
+
+Station lists its tool schemas without what tells a model nothing: the `$schema`
+dialect URL, zod's safe-integer bounds, `propertyNames: {type: "string"}` and
+`additionalProperties: {}`. It also omits the arguments only Station's runtime
+writes (`_userId`, `_delegation`, `_delegationAttestation`, `_sourceContext`).
+Calls are still validated by each tool's own schema, so the runtime's values
+still arrive and a value a model writes anyway is judged as before.
+
+Claude keeps its existing native on-demand tool search. Station's orchestration
+instructions tell Claude to load the named tools with ToolSearch only when the
+Agent's loading is **On demand**, the one setting under which Station turns that
+search on. Under **Harness default**, Claude Code decides and names the tools it
+defers itself. External leases and
 engines without this runtime admission retain their static selection. Native
 Codex retains the static catalog, including on hosts that previously saved an
 enabled progressive-tools choice. The 0.164.0

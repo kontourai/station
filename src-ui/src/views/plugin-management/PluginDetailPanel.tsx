@@ -263,27 +263,11 @@ export function PluginDetailPanel({
 
       <div className="detail-panel__body">
         <div className="detail-panel__caps">
+          {/* Layouts, agents and connection types are listed by name under
+              "What it adds", so they get no manifest-syntax chip here. */}
           {selected.hasBundle && (
-            <span className="plugins__cap plugins__cap--bundle">ui</span>
+            <span className="plugins__cap plugins__cap--bundle">Interface</span>
           )}
-          {selected.layout && (
-            <span className="plugins__cap plugins__cap--workspace">
-              layout:{selected.layout.slug}
-            </span>
-          )}
-          {selected.agents?.map((agent) => (
-            <span key={agent.slug} className="plugins__cap plugins__cap--agent">
-              agent:{agent.slug}
-            </span>
-          ))}
-          {selected.providers?.map((provider) => (
-            <span
-              key={provider.type}
-              className="plugins__cap plugins__cap--provider"
-            >
-              type:{provider.type}
-            </span>
-          ))}
           {selected.git && (
             <span className="plugins__cap plugins__cap--ref">
               {selected.git.branch}@{selected.git.hash?.slice(0, 7)}
@@ -291,9 +275,8 @@ export function PluginDetailPanel({
           )}
         </div>
 
-        {/* #1536 G2: the chips above say `ui` and `layout:getting-started`.
-            They do not say that a layout arrived, what it is called, or how to
-            reach it — installing a starter and then finding nothing to open
+        {/* #1536 G2: manifest chips did not say that a layout arrived, what
+            it is called, or how to reach it — installing a starter and then finding nothing to open
             was the whole complaint. Only a layout gets an action, because a
             layout is the only contribution the operator has to place. */}
         {contributions.length > 0 && (

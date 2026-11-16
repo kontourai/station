@@ -5,8 +5,17 @@
  * rendered through `EphemeralMessage`, the component the dock's transcript
  * renders every ephemeral notice with.
  */
-import type { ChildWorkDelta } from '@kontourai/station-contracts/child-work';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import type {
+  ChildWorkDelta,
+  ChildWorkKind,
+} from '@kontourai/station-contracts/child-work';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { EphemeralMessage as StoredNotice } from '../../../contexts/active-chats-state';
 
@@ -35,6 +44,7 @@ function settle(
   status: Extract<ChildWorkDelta, { kind: 'settle' }>['status'],
   title: string | undefined,
   summary: string,
+  workKind: ChildWorkKind = 'command',
 ): ChildWorkDelta {
   return {
     kind: 'settle',
@@ -43,7 +53,7 @@ function settle(
     childId,
     status,
     result: { summary },
-    identity: { ...(title ? { title } : {}), backgrounded: true },
+    identity: { ...(title ? { title } : {}), backgrounded: true, workKind },
   };
 }
 
@@ -62,7 +72,10 @@ async function renderNotice(notice: StoredNotice) {
       onDismiss={() => {}}
     />,
   );
-  return within(view.container).getByTestId('background-task-notice');
+  expect(
+    within(view.container).queryByTestId('background-task-notice'),
+  ).toBeNull();
+  return within(view.container).getByTestId('subagent-card');
 }
 
 beforeEach(() => {
@@ -81,8 +94,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('background task settle notice', () => {
-  test('a finished task shows its title once, with the restating summary behind Details', async () => {
+describe('background task settlement in the shared disclosure', () => {
+  test('a finished command names its title once and retains its result in the expander', async () => {
     const title = 'Capture the mismatch screen once';
     handlers.applyChildWorkToChat(
       threadId,
@@ -96,25 +109,20 @@ describe('background task settle notice', () => {
     const [notice] = storedNotices();
     expect(notice).toBeDefined();
     const card = await renderNotice(notice!);
+    const toggle = within(card).getByRole('button', {
+      name: new RegExp(title),
+    });
 
-    expect(within(card).getByText('Task finished')).toBeTruthy();
-    // The title is the line's; the summary that repeats it is folded away.
-    const details = card.querySelector('details');
-    expect(details).not.toBeNull();
-    expect(details!.open).toBe(false);
-    expect(
-      within(details!).getByText(/^Summary · source not recorded/),
-    ).toBeTruthy();
-    expect(
-      within(details!).getByText(/completed \(exit code 0\)/),
-    ).toBeTruthy();
-    const outsideDetails = [...card.querySelectorAll('.task-notice__line')]
-      .map((line) => line.textContent ?? '')
-      .join('');
-    expect(outsideDetails.split(title)).toHaveLength(2);
+    expect(within(card).getByText('Run finished')).toBeTruthy();
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(card.textContent?.split(title)).toHaveLength(2);
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(await within(card).findByText('Exit code 0')).toBeTruthy();
+    expect(card.textContent?.split(title)).toHaveLength(2);
   });
 
-  test('success and failure carry different status text and tone', async () => {
+  test('success and failure retain distinct observed states and words', async () => {
     const title = 'Capture the screen five times and save images';
     handlers.applyChildWorkToChat(
       threadId,
@@ -131,22 +139,15 @@ describe('background task settle notice', () => {
     );
     const [finished, failed] = storedNotices();
     const finishedCard = await renderNotice(finished!);
-    const finishedStatus = within(finishedCard).getByText('Task finished');
+    expect(within(finishedCard).getByText('Run finished')).toBeTruthy();
+    expect(finishedCard.getAttribute('data-status')).toBe('completed');
     cleanup();
     const failedCard = await renderNotice(failed!);
-    const failedStatus = within(failedCard).getByText('Task failed');
-
-    expect(finishedStatus.className).toContain('task-notice__status--success');
-    expect(failedStatus.className).toContain('task-notice__status--danger');
-    // The glyph is decoration; the words carry the status.
-    expect(
-      failedStatus
-        .querySelector('.task-notice__glyph')
-        ?.getAttribute('aria-hidden'),
-    ).toBe('true');
+    expect(within(failedCard).getByText('Failed')).toBeTruthy();
+    expect(failedCard.getAttribute('data-status')).toBe('failed');
   });
 
-  test('a stopped task says so in words and draws no emoji', async () => {
+  test('a stopped command says so in words and draws no emoji', async () => {
     handlers.applyChildWorkToChat(threadId, {
       kind: 'settle',
       producer: 'engine-subagent',
@@ -154,17 +155,20 @@ describe('background task settle notice', () => {
       childId: 'stopped',
       status: 'cancelled',
       result: { handle: { kind: 'transcript-file', path: '/tmp/a.jsonl' } },
-      identity: { title: 'List open issues', backgrounded: true },
+      identity: {
+        title: 'List open issues',
+        backgrounded: true,
+        workKind: 'command',
+      },
     });
     const [notice] = storedNotices();
     const card = await renderNotice(notice!);
-    expect(within(card).getByText('Task stopped')).toBeTruthy();
+    expect(within(card).getByText('Stopped')).toBeTruthy();
     expect(card.textContent).not.toMatch(/\p{Extended_Pictographic}/u);
-    // No result summary was reported, so nothing repeats the title.
     expect(card.textContent?.split('List open issues')).toHaveLength(2);
   });
 
-  test("a subagent's own report stays visible inline", async () => {
+  test("a subagent's own report stays visible in the collapsed preview", async () => {
     handlers.applyChildWorkToChat(
       threadId,
       settle(
@@ -172,10 +176,15 @@ describe('background task settle notice', () => {
         'completed',
         'Research',
         'Research found the regression in #12.',
+        'agent',
       ),
     );
     const card = await renderNotice(storedNotices()[0]!);
-    expect(card.querySelector('details')).toBeNull();
+    expect(
+      within(card)
+        .getByRole('button', { name: /^Research/ })
+        .getAttribute('aria-expanded'),
+    ).toBe('false');
     expect(
       within(card).getByText(/Research found the regression in #12\./),
     ).toBeTruthy();

@@ -69,6 +69,7 @@ import {
   sameMessageResendSource,
 } from './fork-turn-source';
 import { formatFormSubmission } from './formSubmission';
+import { IndexedTranscriptTurnRail } from './IndexedTranscriptTurnRail';
 import { MessageBubble, type MessageBubbleSession } from './MessageBubble';
 import { PendingApprovalStrip } from './PendingApprovalStrip';
 import { QuoteSelectionToolbar } from './QuoteSelectionToolbar';
@@ -335,6 +336,42 @@ function ChatMessageListComponent({
   const touchTurnControls = isMobile || coarsePointer;
   const [turnBrowserOpen, setTurnBrowserOpen] = useState(false);
   const [pendingTurnJump, setPendingTurnJump] = useState<string | null>(null);
+  const turnNavigationRequest = useRef<AbortController | null>(null);
+  const cancelTurnNavigation = useCallback(() => {
+    turnNavigationRequest.current?.abort();
+    turnNavigationRequest.current = null;
+    setPendingTurnJump(null);
+  }, []);
+  useEffect(() => {
+    void activeSession.id;
+    return () => turnNavigationRequest.current?.abort();
+  }, [activeSession.id]);
+  const openTurnBrowser = useCallback(() => setTurnBrowserOpen(true), []);
+  const loadTurnAndReveal = useCallback(
+    async (turnId: string, signal: AbortSignal) => {
+      if (!onLoadTurn) return false;
+      turnNavigationRequest.current?.abort();
+      const request = new AbortController();
+      turnNavigationRequest.current = request;
+      const abort = () => request.abort(signal.reason);
+      if (signal.aborted) abort();
+      else signal.addEventListener('abort', abort, { once: true });
+      try {
+        const found = await onLoadTurn(turnId, request.signal);
+        request.signal.throwIfAborted();
+        if (found) setPendingTurnJump(turnId);
+        return found;
+      } catch (error) {
+        request.signal.throwIfAborted();
+        throw error;
+      } finally {
+        signal.removeEventListener('abort', abort);
+        if (turnNavigationRequest.current === request)
+          turnNavigationRequest.current = null;
+      }
+    },
+    [onLoadTurn],
+  );
   useEffect(() => {
     const browse = (event: Event) => {
       if (
@@ -733,6 +770,10 @@ function ChatMessageListComponent({
   );
   // History replay keeps its own timeline; the live transcript gets the rail.
   const turnNavigation = !activeSession.replay && turnLandmarks.length > 0;
+  const TurnRail =
+    target?.requestScope && activeSession.conversationId && onLoadTurn
+      ? IndexedTranscriptTurnRail
+      : TranscriptTurnRail;
   const turnRailRef = useRef<HTMLElement>(null);
   const turnViewport = useTranscriptTurnViewport({
     enabled: turnNavigation,
@@ -1485,6 +1526,7 @@ function ChatMessageListComponent({
   // stays "scrolled up" for the glide so the pin and the virtualizer's
   // follow cannot snap it; reader input cancels and leaves them in control.
   const handleScrollToBottom = () => {
+    cancelTurnNavigation();
     const el = messagesContainerRef.current;
     if (!el) return;
     // Before the glide, not after it: a message settling mid-glide must not
@@ -1539,6 +1581,7 @@ function ChatMessageListComponent({
   );
   const jumpToTurn = useCallback(
     (turnIndex: number) => {
+      cancelTurnNavigation();
       const landmark = turnLandmarksRef.current[turnIndex];
       const element = messagesContainerRef.current;
       if (!landmark || !element) return;
@@ -1603,7 +1646,12 @@ function ChatMessageListComponent({
       );
       visibleAnchorRef.current = captureChatScrollAnchor(element);
     },
-    [writeProgrammaticScroll, clearMessageRevealHash, messagesContainerRef],
+    [
+      writeProgrammaticScroll,
+      clearMessageRevealHash,
+      messagesContainerRef,
+      cancelTurnNavigation,
+    ],
   );
   useEffect(() => {
     if (!pendingTurnJump) return;
@@ -1623,18 +1671,12 @@ function ChatMessageListComponent({
   // later, so stepping to the same turn twice is announced twice.
   const [turnAnnouncement, setTurnAnnouncement] = useState('');
   const announceFrameRef = useRef<number | undefined>(undefined);
-  const stepToTurn = useCallback(
-    (turnIndex: number) => {
-      const landmarks = turnLandmarksRef.current;
-      const landmark = landmarks[turnIndex];
-      if (!landmark) return;
-      jumpToTurn(turnIndex);
-      const text = turnLabel(
-        landmark,
-        turnIndex,
-        landmarks.length,
-        Boolean(hasOlderMessages),
-      );
+  const announcementOwner = useRef<
+    { chatId: string; indexed: boolean } | undefined
+  >(undefined);
+  const announceTurnStep = useCallback(
+    (text: string, indexed = false) => {
+      announcementOwner.current = { chatId: activeSession.id, indexed };
       if (announceFrameRef.current !== undefined)
         cancelAnimationFrame(announceFrameRef.current);
       setTurnAnnouncement('');
@@ -1643,17 +1685,42 @@ function ChatMessageListComponent({
         setTurnAnnouncement(text);
       });
     },
-    [jumpToTurn, hasOlderMessages],
+    [activeSession.id],
   );
-  // What was said names a position in one chat's loaded window ("Loaded
-  // turn 5 of 10"): a chat switch, older history finishing loading, or a
-  // change in how many turns are loaded (another page of older history, or
-  // a new turn) makes it stale, so it goes.
+  const announceIndexedTurnStep = useCallback(
+    (text: string) => announceTurnStep(text, true),
+    [announceTurnStep],
+  );
+  const stepToTurn = useCallback(
+    (turnIndex: number) => {
+      const landmarks = turnLandmarksRef.current;
+      const landmark = landmarks[turnIndex];
+      if (!landmark) return;
+      jumpToTurn(turnIndex);
+      announceTurnStep(
+        turnLabel(
+          landmark,
+          turnIndex,
+          landmarks.length,
+          Boolean(hasOlderMessages),
+        ),
+      );
+    },
+    [jumpToTurn, hasOlderMessages, announceTurnStep],
+  );
+  // Loaded-window positions become stale as rows arrive. An indexed position
+  // survives that load; its destination must still be announced after reveal.
   const loadedTurnCount = turnLandmarks.length;
   useEffect(() => {
     void activeSession.id;
     void hasOlderMessages;
     void loadedTurnCount;
+    if (
+      announcementOwner.current?.chatId === activeSession.id &&
+      announcementOwner.current.indexed
+    )
+      return;
+    announcementOwner.current = undefined;
     if (announceFrameRef.current !== undefined)
       cancelAnimationFrame(announceFrameRef.current);
     announceFrameRef.current = undefined;
@@ -2291,19 +2358,13 @@ function ChatMessageListComponent({
                 conversationId: activeSession.conversationId,
                 landmarks: turnLandmarks,
                 onJumpLoaded: jumpToTurn,
-                onLoadTurn: onLoadTurn
-                  ? async (turnId: string, signal: AbortSignal) => {
-                      const found = await onLoadTurn(turnId, signal);
-                      if (found && !signal.aborted) setPendingTurnJump(turnId);
-                      return found;
-                    }
-                  : undefined,
+                onLoadTurn: onLoadTurn ? loadTurnAndReveal : undefined,
                 onClose: () => setTurnBrowserOpen(false),
               }}
             />
           )}
           {turnNavigation && (
-            <TranscriptTurnRail
+            <TurnRail
               // A chat switch starts the rail over: a hover or a dismissed
               // preview names a turn index in the chat it was made in.
               key={activeSession.id}
@@ -2314,11 +2375,16 @@ function ChatMessageListComponent({
               activeTurn={turnViewport.activeTurn}
               onJump={jumpToTurn}
               olderHistory={Boolean(hasOlderMessages)}
+              onBrowse={openTurnBrowser}
               previousTurn={previousTurn}
               nextTurn={nextTurn}
               onStep={stepToTurn}
               touchControls={touchTurnControls}
               touchStepsShown={isUserScrolledUp}
+              conversationId={activeSession.conversationId!}
+              activeStartVisible={turnViewport.activeStartVisible}
+              onAnnounceStep={announceIndexedTurnStep}
+              onLoadTurn={loadTurnAndReveal}
             />
           )}
           {/* Mounted with the navigation, before anything is said: a region
