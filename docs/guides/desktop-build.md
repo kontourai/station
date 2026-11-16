@@ -285,13 +285,20 @@ claims still use the registry's current atomic ownership check. The running
 sidecar supervisor checks child exit every two seconds; restart and shutdown
 messages wake it immediately, and startup retains its 150 ms exit check.
 
-The desktop sidecar enables Node 24's compile cache before loading the server,
-under `<STATION_HOME>/cache/node-compile`. Home schema preparation precedes
-that launch, since Node creates the directory before the server's home check.
-The server does not enable a cache after loading its bundle: that is too late
-to cache compilation of the entry point. `station start` does not give its
-supervisor or server a cache. Measured on the supervised server, a warm cache
-left it larger at rest and did not make startup measurably faster.
+Neither the desktop sidecar nor `station start` gives the server a compile
+cache; the sidecar removes any `NODE_COMPILE_CACHE` it inherits. Measured on
+the supervised server, a warm cache left it larger at rest and did not make
+startup measurably faster. Measured on the sidecar launch on one 64 GB Mac
+(three alternating rounds, medians after a 45-second settle), the cache added
+about 120 MB to the idle server. Startup did not get consistently faster. The
+server does not enable a cache after loading its bundle either: that is too
+late to cache compilation of the entry point.
+
+The sidecar starts Node with `--max-semi-space-size=16`, the young-generation
+cap the process supervisor gives each core it forks
+([server memory at rest](../reference/station-weight.md#server-memory-at-rest)).
+On the same measurement, the sidecar's idle process tree dropped from 663 MB
+to 425 MB with both changes.
 
 The server removes any inherited `NODE_COMPILE_CACHE` at boot, and
 child-process environments still scrub it. User and third-party Node
@@ -327,8 +334,7 @@ home itself may be a link. If either component is a symbolic link or anything
 other than a directory, the server neither hands the cache to the built-in
 children nor prunes it, and logs that once for the home. Otherwise Node and
 the prune would write into, or delete from, the link's target, such as an
-operator's shared directory. The desktop sidecar sets its own server's cache
-path natively, and this check does not cover that.
+operator's shared directory.
 
 No pre-generated cache ships with the desktop build. Node names each cache
 subdirectory after the Node version, architecture, V8 flags and user id, and
