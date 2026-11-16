@@ -907,6 +907,24 @@ export function useChildWorkTranscriptTailQuery(
   const first = pages?.[0];
   const firstParam = history.data?.pageParams[0];
   useEffect(() => {
+    // A server reads from past the end as from the end. A first page that
+    // starts before the offset its param asked for means the transcript was
+    // rewritten shorter while it sat loaded: start again from its latest
+    // messages rather than show the empty range past the new end.
+    const asked =
+      firstParam?.kind === 'range'
+        ? firstParam.offset
+        : firstParam?.kind === 'before'
+          ? Math.max(0, firstParam.end - CHILD_WORK_TRANSCRIPT_PAGE_SIZE)
+          : undefined;
+    if (
+      asked !== undefined &&
+      first?.offset !== undefined &&
+      first.offset < asked
+    ) {
+      void client.resetQueries({ queryKey: key, exact: true });
+      return;
+    }
     if (
       firstParam?.kind !== 'tail' ||
       first?.offset === undefined ||

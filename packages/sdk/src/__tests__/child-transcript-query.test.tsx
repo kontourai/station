@@ -402,3 +402,46 @@ test('an invalidation with no older history loaded keeps every polled message an
   observer.unmount();
   client.clear();
 });
+
+test('a transcript rewritten shorter while idle reads its latest messages after an invalidation', async () => {
+  vi.useFakeTimers();
+  let length = 70;
+  read.mockImplementation(
+    async (
+      _apiBase: string,
+      _thread: string,
+      _child: string,
+      page: { offset?: number; limit?: number; tail?: boolean },
+    ) => {
+      const limit = page.limit ?? 30;
+      // The server's shape: a read from past the end starts at the end.
+      const offset = page.tail
+        ? Math.max(0, length - limit)
+        : Math.min(page.offset ?? 0, length);
+      const end = Math.min(length, offset + limit);
+      return {
+        entries: Array.from({ length: end - offset }, (_, i) =>
+          text(offset + i),
+        ),
+        offset,
+        endOffset: end,
+      };
+    },
+  );
+  const { client, observer, messages } = mountTail(false);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1);
+  });
+  expect(messages()[0]).toBe(40);
+  length = 20;
+  await act(async () => {
+    await client.invalidateQueries();
+    await vi.advanceTimersByTimeAsync(1);
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1);
+  });
+  expect(messages()).toEqual(Array.from({ length: 20 }, (_, i) => i));
+  observer.unmount();
+  client.clear();
+});
