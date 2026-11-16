@@ -684,6 +684,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // discovery, which is itself a Vitest child. Single-shot spawns, no
   // wall-clock assertion.
   'scripts/__tests__/fast-checks-shard-cli.test.ts',
+  // #5010: plans one recorded incident diff through real related discovery,
+  // a Vitest child; it imports no child_process itself. Single-shot spawn,
+  // no wall-clock assertion.
+  'scripts/__tests__/test-impact-incidents.test.ts',
   // #3101: dependency-free planner CLI output and exit status in child processes.
   'scripts/__tests__/fast-checks-plan.test.ts',
   // Runs the merge-queue regression decision script and the required

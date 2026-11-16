@@ -21,7 +21,10 @@ import {
   configuredVitestEnvironment,
   vitestEnvironmentSuites,
 } from '../lib/dependency-change-scan.mjs';
-import { prepareChangedSelection } from '../run-changed-verification.mjs';
+import {
+  planChangedVerificationShards,
+  prepareChangedSelection,
+} from '../run-changed-verification.mjs';
 import { FAST_STATIC_COMMANDS } from '../run-ci-fast.mjs';
 import {
   dependencyChangeEdges,
@@ -337,6 +340,72 @@ describe('#4935, #4999: a new Station home root and the dev-home seed', () => {
       'packages/shared/src/station-home-store-registry.ts',
     ]);
     expect(executed(result)).toContain(SEED);
+  });
+});
+
+describe('#5010: an escalated diff runs the suites near its escalated files', () => {
+  // #5010 changed thirteen modules under packages/shared and packages/contracts
+  // and reached main with these suites failing (main qualification run
+  // 43925029422). Each imports a changed shared module directly, or through
+  // one module, and the escalation skipped related discovery for both.
+  const NEAR_IMPORTERS = [
+    // packages/shared/src/product-telemetry.ts, one edge away
+    'src-server/services/__tests__/usage-telemetry-service.test.ts',
+    // packages/shared/src/prebuilt-archive.ts, one edge away
+    'scripts/__tests__/accepted-release-parity.test.ts',
+    // packages/shared/src/prebuilt-archive.ts, two edges away
+    'src-server/routes/system/__tests__/archive-update-routes.test.ts',
+  ];
+
+  test('the hosted plan runs them, and still defers ci-fast for every escalated path', async () => {
+    // Real related discovery (a Vitest child) over the recorded paths.
+    const plan = await planChangedVerificationShards('HEAD', {
+      root,
+      changedPathsFn: () => ({
+        mergeBase: 'HEAD',
+        paths: [...incidents['5010'].paths],
+      }),
+      headSha: 'c'.repeat(40),
+    });
+    const files = plan.groups.flatMap(
+      (group: { files: string[] }) => group.files,
+    );
+    expect(files).toEqual(expect.arrayContaining(NEAR_IMPORTERS));
+    const ciFast = plan.deferredLanes.find(
+      (lane: { id: string }) => lane.id === 'ci-fast',
+    );
+    expect(ciFast?.reasons).toEqual(
+      expect.arrayContaining([
+        'escalation: packages/shared/src/prebuilt-archive.ts',
+        'escalation: packages/shared/src/product-telemetry.ts',
+      ]),
+    );
+    expect(plan.escalatedImporters?.paths).toContainEqual(
+      expect.objectContaining({
+        path: 'packages/shared/src/prebuilt-archive.ts',
+        disposition: 'selected',
+        depth: 2,
+      }),
+    );
+  }, 300_000);
+
+  test('the selection itself, and so the local profile, does not change', () => {
+    const local = select(incidents['5010'].paths);
+    expect(local.executionSelection).not.toHaveProperty('escalatedSeeds');
+    expect(local.selection).not.toHaveProperty('escalationPaths');
+    for (const suite of NEAR_IMPORTERS)
+      expect(executed(local)).not.toContain(suite);
+    const hosted = select(incidents['5010'].paths, undefined, true);
+    expect(hosted.executionSelection.escalatedSeeds).toEqual(
+      expect.arrayContaining([
+        'packages/shared/src/prebuilt-archive.ts',
+        'packages/shared/src/product-telemetry.ts',
+      ]),
+    );
+    // Workflows, lockfiles and deleted files have no importer to find.
+    expect(hosted.executionSelection.escalatedSeeds).not.toContain(
+      '.github/workflows/release.yml',
+    );
   });
 });
 

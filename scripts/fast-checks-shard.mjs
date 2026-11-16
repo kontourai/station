@@ -320,6 +320,17 @@ async function planCommand({ out }, { cwd, env, report, planShards, now }) {
           ? '\n'
           : ` of its ${(plan.relatedDiscovery.timeoutMilliseconds / 1000).toFixed(1)}s timeout\n`),
     );
+  if (plan.escalatedImporters) {
+    const { paths } = plan.escalatedImporters;
+    const deferred = paths.filter((entry) => entry.disposition === 'deferred');
+    const suites = paths.reduce((total, entry) => total + entry.suites, 0);
+    report(
+      `[fast-checks] escalated paths: ${suites} importing suite(s) planned for ${paths.length - deferred.length} of ${paths.length}` +
+        (deferred.length
+          ? `; over the bound, deferred to ci-fast: ${deferred.map((entry) => `${entry.path} (${entry.depth1Count} direct importers)`).join(', ')}\n`
+          : '\n'),
+    );
+  }
   return 0;
 }
 

@@ -798,6 +798,27 @@ A workspace `package.json` must not reach related discovery: Vitest's default
 the whole corpus and overruns the shard budget, while a checkout under a
 dot-directory selects nothing. Give a changed manifest explicit readers in the
 impact manifest instead, as the contracts, SDK and Basis pane manifests do.
+An escalated path (`ESCALATION_PATHS`: `packages/shared/`, `packages/contracts/`,
+root configuration, workflows, the selector's own files) records `ci-fast` and
+gets no related discovery, because most of the corpus imports it. The hosted
+shard plan (#5010) also runs the suites near each escalated file that exists
+and Vitest can import (a JS, TS or JSON file): every suite that reaches it
+through at most one intermediate module when there are at most 50 of them,
+otherwise every suite that imports it directly when there are at most 100,
+otherwise none. The distances come from the Vite module graph related
+discovery walks, in the same child process; a diff whose only importable
+changes are escalated files now starts that child. A path over both limits
+adds a `ci-fast` reason naming it and its direct importer count, and the plan
+step prints it; the plan never runs an arbitrary part of its importers. The
+plan's `escalatedImporters` field records each path's depth, counts and
+outcome. The `escalation:` reason and the `ci-fast` obligation stay either
+way, so the plan remains provisional and main qualification still runs the
+full corpus. Local unsharded feedback is unchanged. Over the 150 merges before
+2026-11-16 the rule added a median of 0 files and at most 53 to a plan, and
+deferred no path. It misses a suite further away, or one intermediate module
+away from a file with more than 50 such suites (`runtime-port.test.ts`, through
+`runtime-port.ts`, from `runtime-path-resolver.ts`, which has 134), and a
+suite that reads a changed file by path rather than importing it.
 
 Every test worker starts without the triggering event's environment:
 `vitest.setup.ts` removes each `GITHUB_*` variable except `GITHUB_ACTIONS`,

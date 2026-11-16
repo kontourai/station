@@ -1750,6 +1750,45 @@ describe('the plan records its related-discovery cost (#2803)', () => {
       '[fast-checks] related discovery: 34.2s of its 265.0s timeout\n',
     );
   });
+
+  test('the plan command names an escalated path deferred over the bound (#5010)', async () => {
+    const { directory, head } = repository();
+    const lines: string[] = [];
+    const status = await runFastChecksShardCli(['plan', '--out=plan.json'], {
+      cwd: directory,
+      env: { STATION_CI_FAST_BASE: 'HEAD' },
+      report: (message) => lines.push(message),
+      error: () => {},
+      planShards: async () => ({
+        ...planFor(head, ['a/a.test.ts']),
+        escalatedImporters: {
+          limits: { depth1: 100, depth2: 50 },
+          paths: [
+            {
+              path: 'packages/shared/src/a.ts',
+              disposition: 'selected',
+              depth: 2,
+              depth1Count: 1,
+              depth2Count: 3,
+              suites: 3,
+            },
+            {
+              path: 'packages/contracts/src/b.ts',
+              disposition: 'deferred',
+              depth: null,
+              depth1Count: 186,
+              depth2Count: 861,
+              suites: 0,
+            },
+          ],
+        },
+      }),
+    });
+    expect(status).toBe(0);
+    expect(lines.join('')).toContain(
+      '[fast-checks] escalated paths: 3 importing suite(s) planned for 1 of 2; over the bound, deferred to ci-fast: packages/contracts/src/b.ts (186 direct importers)\n',
+    );
+  });
 });
 
 describe('hosted mapped tests beside broad deferred obligations', () => {

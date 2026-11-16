@@ -23,11 +23,15 @@ import { runProductLawGate } from '../product-law-gate.mjs';
 import {
   changedDeadlineFromEnv,
   changedPaths,
+  decideEscalatedImporters,
   discoverRelatedTestFiles,
+  ESCALATED_IMPORTER_DEFERRAL_REASON,
+  ESCALATED_IMPORTER_LIMITS,
   escalateUnavailableExplicitTests,
   parseRelatedTestDiscovery,
   planChangedVerificationShards,
   planChangedVitestExecutions,
+  prepareChangedSelection,
   productLawEvidenceTests,
   RELATED_DISCOVERY_FLOOR_MS,
   RELATED_DISCOVERY_RESERVE_MS,
@@ -3989,5 +3993,261 @@ describe('documentation framework affected coverage', () => {
     expect(empty.lanes.map((lane: { id: string }) => lane.id)).toContain(
       'test-full',
     );
+  });
+});
+
+describe('an escalated path also runs its near importers in the hosted plan (#5010)', () => {
+  // No edge names a test for this path, so whatever the plan runs for it is
+  // the near-importer rule's doing.
+  const SHARED = 'packages/shared/src/ports.ts';
+  const NEAR = [
+    'packages/shared/src/__tests__/ports.test.ts',
+    'scripts/__tests__/channel-ports.test.ts',
+  ];
+  const names = (count: number) =>
+    Array.from({ length: count }, (_, index) => `src/s${index}.test.ts`);
+  type Report = {
+    path: string;
+    depth1Count: number;
+    depth2Count: number;
+    depth1?: string[];
+    depth2?: string[];
+  };
+
+  // Answers discovery as the child would: no related files, and the given
+  // report for the seeds it was asked about.
+  function fakeDiscovery(report: (seeds: string[]) => Report[]) {
+    return vi.fn(
+      async (
+        _root: string,
+        _paths: string[],
+        options?: {
+          escalatedSeeds?: string[];
+          onEscalatedImporters?: (entries: Report[]) => void;
+        },
+      ) => {
+        if (options?.escalatedSeeds?.length)
+          options.onEscalatedImporters?.(report(options.escalatedSeeds));
+        return [];
+      },
+    );
+  }
+  const plan = (
+    paths: string[],
+    discoverRelatedFiles: ReturnType<typeof fakeDiscovery>,
+  ) =>
+    planChangedVerificationShards('HEAD', {
+      root: process.cwd(),
+      changedPathsFn: () => ({ mergeBase: 'HEAD', paths }),
+      discoverRelatedFiles,
+      headSha: 'c'.repeat(40),
+      assertDependencyProvenance: () => ({}),
+    });
+  const files = (planned: { groups: Array<{ files: string[] }> }) =>
+    planned.groups.flatMap((group) => group.files);
+  const ciFastReasons = (planned: {
+    deferredLanes: Array<{ id: string; reasons: string[] }>;
+  }) => planned.deferredLanes.find((lane) => lane.id === 'ci-fast')?.reasons;
+
+  test('the limits are two edges up to 50 suites, else one edge up to 100', () => {
+    expect(ESCALATED_IMPORTER_LIMITS).toEqual({ depth1: 100, depth2: 50 });
+    const [two, one, over] = decideEscalatedImporters([
+      {
+        path: 'a.ts',
+        depth1Count: 3,
+        depth2Count: 50,
+        depth1: names(3),
+        depth2: names(50),
+      },
+      {
+        path: 'b.ts',
+        depth1Count: 100,
+        depth2Count: 51,
+        depth1: names(100),
+        depth2: names(51),
+      },
+      {
+        path: 'c.ts',
+        depth1Count: 101,
+        depth2Count: 101,
+        depth1: names(101),
+        depth2: names(101),
+      },
+    ]);
+    expect(two).toMatchObject({ disposition: 'selected', depth: 2 });
+    expect(two?.tests).toHaveLength(50);
+    expect(one).toMatchObject({ disposition: 'selected', depth: 1 });
+    expect(one?.tests).toHaveLength(100);
+    // Over both limits: nothing selected, not the first 100.
+    expect(over).toMatchObject({
+      disposition: 'deferred',
+      depth: null,
+      tests: [],
+    });
+    expect(over?.reason).toBe(
+      `${ESCALATED_IMPORTER_DEFERRAL_REASON}: c.ts (101 import it directly, above 100)`,
+    );
+  });
+
+  test('within the bound, the plan adds them and keeps the ci-fast deferral', async () => {
+    const discovery = fakeDiscovery((seeds) =>
+      seeds.map((path) => ({
+        path,
+        depth1Count: 2,
+        depth2Count: 2,
+        depth1: NEAR,
+        depth2: NEAR,
+      })),
+    );
+    const planned = await plan([SHARED], discovery);
+    expect(discovery.mock.calls[0]?.[2]?.escalatedSeeds).toEqual([SHARED]);
+    expect(files(planned)).toEqual([...NEAR].sort());
+    expect(ciFastReasons(planned)).toEqual([`escalation: ${SHARED}`]);
+    expect(planned.escalated).toBe(true);
+    expect(planned.escalatedImporters).toEqual({
+      limits: { depth1: 100, depth2: 50 },
+      paths: [
+        {
+          path: SHARED,
+          disposition: 'selected',
+          depth: 2,
+          depth1Count: 2,
+          depth2Count: 2,
+          suites: 2,
+        },
+      ],
+    });
+  });
+
+  test('over the bound, the plan runs none of them and says why', async () => {
+    const discovery = fakeDiscovery((seeds) =>
+      seeds.map((path) => ({ path, depth1Count: 101, depth2Count: 400 })),
+    );
+    const planned = await plan([SHARED], discovery);
+    expect(planned.fileCount).toBe(0);
+    expect(ciFastReasons(planned)).toEqual([
+      `${ESCALATED_IMPORTER_DEFERRAL_REASON}: ${SHARED} (101 import it directly, above 100)`,
+      `escalation: ${SHARED}`,
+    ]);
+    expect(planned.escalatedImporters?.paths).toEqual([
+      {
+        path: SHARED,
+        disposition: 'deferred',
+        depth: null,
+        depth1Count: 101,
+        depth2Count: 400,
+        suites: 0,
+      },
+    ]);
+  });
+
+  test('a non-escalated path asks for no importers and adds nothing', async () => {
+    const path = 'scripts/lib/learning-markdown.mjs';
+    const discovery = fakeDiscovery(() => {
+      throw new Error('no escalated seed was expected');
+    });
+    const planned = await plan([path], discovery);
+    expect(discovery.mock.calls[0]?.[2]?.escalatedSeeds).toBeUndefined();
+    expect(planned.escalatedImporters).toBeUndefined();
+    const { executionSelection } = prepareChangedSelection('HEAD', {
+      root: process.cwd(),
+      changedPathsFn: () => ({ mergeBase: 'HEAD', paths: [path, SHARED] }),
+      preserveMappedTargets: true,
+    });
+    expect(executionSelection.escalatedSeeds).toEqual([SHARED]);
+  });
+
+  test('discovery hands the child its seeds and refuses a malformed report', async () => {
+    const seed = 'packages/shared/src/ports.ts';
+    const answer = (escalatedImporters: unknown) =>
+      vi.fn(async () => ({
+        status: 0,
+        signal: null,
+        stdout: JSON.stringify({
+          files: [],
+          globalTriggeredPaths: [],
+          escalatedImporters,
+        }),
+        stderr: '',
+        launch: { attempted: true, started: true },
+        cleanup: { status: 'not_required', survivingOwnedChildren: 0 },
+      }));
+    const discover = (run: ReturnType<typeof answer>) => {
+      let reports: unknown;
+      return discoverRelatedTestFiles(process.cwd(), [], {
+        run,
+        deferGlobalTriggers: true,
+        escalatedSeeds: [seed],
+        onEscalatedImporters: (entries) => {
+          reports = entries;
+        },
+      }).then((related) => ({ related, reports }));
+    };
+    const absolute = join(process.cwd(), seed);
+    const good = answer({
+      tests: ['b.test.ts', 'a.test.ts'],
+      seeds: [
+        {
+          seed: absolute,
+          depth1Count: 1,
+          depth2Count: 2,
+          depth1: [1],
+          depth2: [0, 1],
+        },
+      ],
+    });
+    await expect(discover(good)).resolves.toEqual({
+      related: [],
+      reports: [
+        {
+          path: seed,
+          depth1Count: 1,
+          depth2Count: 2,
+          depth1: ['a.test.ts'],
+          depth2: ['a.test.ts', 'b.test.ts'],
+        },
+      ],
+    });
+    const args = good.mock.calls[0]?.[1] as string[];
+    expect(args).toContain(
+      `--escalated-importers=${JSON.stringify({ seeds: [absolute], limits: { depth1: 100, depth2: 50 } })}`,
+    );
+    for (const malformed of [
+      undefined,
+      // a count with no list
+      {
+        tests: [],
+        seeds: [{ seed: absolute, depth1Count: 1, depth2Count: 1 }],
+      },
+      // a list over its limit
+      {
+        tests: [],
+        seeds: [
+          {
+            seed: absolute,
+            depth1Count: 0,
+            depth2Count: 51,
+            depth1: [],
+            depth2: [],
+          },
+        ],
+      },
+      // another seed
+      {
+        tests: [],
+        seeds: [
+          {
+            seed: `${absolute}x`,
+            depth1Count: 0,
+            depth2Count: 0,
+            depth1: [],
+            depth2: [],
+          },
+        ],
+      },
+    ])
+      await expect(discover(answer(malformed))).rejects.toThrow(
+        /Invalid escalated importer discovery metadata/,
+      );
   });
 });
