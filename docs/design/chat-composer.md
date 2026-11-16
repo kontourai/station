@@ -42,11 +42,12 @@ conversations discovered in another coding app. A quiet "Started in Claude Code"
 work; history uses source-event time and remains separate from active work.
 
 Opening a conversation or typing does not migrate it. One compact
-**Continue in Station** action sits above the conversation and needs no
-message; a conversation no project claims states its own-folder choice beside
-it, with **Add a project instead**. The composer accepts a normal draft, and
-Send (or the configured Return shortcut, except during IME composition)
-continues with it; Shift+Return adds a line. Either way the continuation opens
+**Continue in Station** action sits with the origin (the dock title bar, a
+phone's origin row, or the Activity header) and needs no message; its reason
+when unavailable, or a conversation's own-folder choice with **Add a project
+instead**, follows on one quiet line. The composer is the plain **Message…**
+with **Send**: Send (or the configured Return shortcut, except during IME
+composition) continues with the draft; Shift+Return adds a line. Either way the continuation opens
 through the normal dock controller, and a draft, when there is one, goes to the
 normal sender once. The original conversation
 remains available in its original app. A failed opening retains the reader and offers a
@@ -206,11 +207,13 @@ execution binding. It retains the authored profile rather than substituting the
 coding app's default profile, and does not edit saved Agent defaults. Known
 capability incompatibilities remain visible with a refusal reason; live resource
 and adapter delivery checks still decide admission. In an existing conversation,
-changing or resetting the engine opens a compact handoff picker. Its one
-action switches now, sending the composer's draft as the first turn, prepared
-like any send (mentions, quotes and the size limit), or, with no draft, a
-fixed catch-up turn (the route starts the target Session with a real turn, so
-nothing is switched without one). A retried earlier request leaves a newer
+changing or resetting the engine opens a compact **Switch engine** (or
+**Switch agent**) picker; on a phone it replaces Run setup. Its one action
+switches now, sending the composer's draft as the first turn, prepared like
+any send (mentions, quotes and the size limit), or, with no draft, a fixed
+catch-up turn (the route starts the target Session with a real turn, so
+nothing is switched without one); attachments are never carried and stay in
+the composer. A busy current agent is refused with a reason saying to wait. A retried earlier request leaves a newer
 draft in the composer. The first message (including the exact catch-up text)
 and what carries over and resets are under **Details**. There the picker lists
 only the other engines this client can start (an unready or incompatible one is
