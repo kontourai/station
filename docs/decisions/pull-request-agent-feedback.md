@@ -1,0 +1,81 @@
+---
+status: current
+subject: Forge feedback goes to the agent that owns the pull request
+decided: 2026-11-16
+evidence:
+  - kind: doc
+    ref: docs/decisions/task-tracker-followups.md
+  - kind: code
+    ref: src-server/services/pull-requests/pull-request-feedback-delivery.ts
+---
+
+# Forge feedback goes to the agent that owns the pull request
+
+When a pull request owned by a Station chat gets failing checks, unresolved
+review threads or a merge conflict, Station sends that chat's agent one short,
+deduplicated, bounded message, and holds it while the agent works, waits on a
+person or has stopped. Everything is behind the `pull-request-agent-feedback`
+Feature Preview (off by default) and the `pullRequestFeedback` capability
+flag. Hosted Stations do not offer it, and GitLab reads as `unsupported`.
+
+## Decisions
+
+1. **What fails.** `FAILURE`, `TIMED_OUT`, `STARTUP_FAILURE` and
+   `ACTION_REQUIRED` count as failing. `CANCELLED` does not. A required check
+   still running sends nothing about checks until it finishes.
+2. **The agent's own replies.** A review thread whose newest comment is by
+   the GitHub login Station reads with is left out only when that comment was
+   written during one of the owning chat's turns. The same login outside a
+   turn (a person reviewing with the same account) still counts. Residual
+   gap: a person writing with that login *during* an agent turn is read as the
+   agent.
+3. **Bounds.** At most 3 placed messages per head, and 10 per pull request
+   per day. The same failing checks on 3 heads in a row pauses instead of
+   sending. A pause lifts on Send again (one more round on that head) or on a
+   new head whose feedback differs.
+4. **New claims only.** Project defaults would apply only when a claim is
+   created, never retroactively (not built in this slice).
+5. **Overlap with Task follow-ups.** For a pull request whose feedback is on,
+   [Task tracker follow-ups](task-tracker-followups.md) still record its
+   checks and reviews in the Task brief but no longer wake the lead with them;
+   issue comments still wake.
+6. **Origin.** The message is a Station-framed turn: Station's internal
+   client origin, the chat's recorded owner as sender, no dispatch origin
+   (the inbox records `task-dispatch` on a Task's Session, `unknown`
+   elsewhere). Never `interactive`, never a person's typed text, never
+   `automation`. A distinct `forge-feedback` origin is a follow-up.
+7. **Ownership.** One owning chat per pull request. Only a pull request a
+   person linked to the chat (`explicit`) or kept on its Task
+   (`task-declared`) can be claimed; an agent's declaration alone never can.
+   A second chat is refused with the owner named; Move here moves it and
+   refuses anything queued for the old owner. Reviewer chats never hold one.
+   An agent can never turn its own feedback on: the routes refuse Station's
+   internal principal and delegation credentials.
+
+## Implementation status
+
+Implemented: detection (one `gh api graphql --hostname` per pull request, on
+the built-in scheduler's existing tick, at most 20 per tick, 2/10/15-minute
+cadence, a re-read when the owning agent's turn ends), the store, ownership,
+delivery with holds and the placement re-check (`pr_feedback_stale`,
+`pr_feedback_session_waiting`, `pr_feedback_owner_changed`), the routes, and
+the Session details pull request rows with the Agent feedback dialog.
+
+Choices the decisions left open, and departures from the plan:
+
+- Review feedback is deduplicated per thread and newest comment, not per
+  whole set: a thread already sent is not sent again until someone writes in
+  it, and a standing change request is not repeated after its threads are
+  resolved.
+- A message is submitted only while the agent is idle, not queued behind a
+  running turn. A message queued behind a turn in which the agent pushed a fix
+  would carry the old head's failures.
+- Merge conflicts ride the "Fix failing checks" switch.
+- Sign-in and rate-limit failures are read from the one GraphQL call's error
+  output rather than a separate `gh auth status` probe.
+- Not yet built: the pull request panel strip, Project defaults (and so
+  automatic claims of a Task branch's pull request, `branch-derived`), the
+  `pull-request-feedback` attention item and push notification for a pause,
+  and the `by-pull-request` read. A pause shows on the pull request's row and
+  in its dialog only. The `review-findings` category and `reviewEachHead`
+  setting exist for the later per-head review and drive nothing.

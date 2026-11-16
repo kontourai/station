@@ -6202,6 +6202,18 @@ The [client](../../packages/sdk/src/client/conversation-pull-request-links.ts)
 and [route/store boundary](../../src-server/routes/pull-requests/conversation-pull-request-links.ts)
 own explicit links separately from provider-derived or Task-kept references.
 
+## Pull request agent feedback
+
+`@kontourai/station-sdk/pull-request-feedback` reads a chat's pull request
+feedback (`getConversationPullRequestFeedback`), sets a pull request's
+switches (`writePullRequestFeedback`, with `move` to take it from another
+chat), and lifts a pause (`sendPullRequestFeedbackAgain`). A 409 naming
+another chat is read with `pullRequestFeedbackOwnerOf`. Gate the calls on
+`readPullRequestFeedbackCapability` (the `pullRequestFeedback` flag) and the
+`pull-request-agent-feedback` Feature Preview; the routes answer 404 while the
+preview is off. The [client](../../packages/sdk/src/client/pull-request-feedback.ts)
+calls the [routes](../../src-server/routes/pull-requests/pull-request-feedback.ts).
+
 ## Files in answers to input requests
 
 `getInputReplyContext(apiBase, reference, options)` from
