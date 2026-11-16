@@ -292,13 +292,13 @@ describe('version PR currency probe on real git and changesets', () => {
       reason: 'unreadable state: version command timed out after 1500 ms',
     });
     expect(git(root, 'status', '--porcelain')).toBe('');
+    // Past the grandchild's delay: nothing wrote after the restore.
+    await new Promise((resolve) => setTimeout(resolve, 5_000));
+    expect(git(root, 'status', '--porcelain')).toBe('');
     const pgid = Number(readFileSync(pidFile, 'utf8'));
     expect(() => process.kill(-pgid, 0)).toThrow(
       expect.objectContaining({ code: 'ESRCH' }),
     );
-    // Past the grandchild's delay: nothing wrote after the restore.
-    await new Promise((resolve) => setTimeout(resolve, 5_000));
-    expect(git(root, 'status', '--porcelain')).toBe('');
   }, 30_000);
 
   test('reports an unsettled group instead of restoring under a live writer', async () => {
