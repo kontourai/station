@@ -563,17 +563,21 @@ export function useProjectRoom(
         readSeq = nextHistoryRead();
         const watch = { outlived: false };
         pendingReads.current.set(readSeq, watch);
-        // A read again reaches as far as the cache already does.
-        const reach = attempt
-          ? Math.max(
-              pageParam.end,
-              ...[...liveRows.current.values()].map((row) => row.message.seq),
-              client.getQueryData<InfiniteData<HistoryPage>>([
-                ...contentKey,
-                tailAfter,
-              ])?.pages[0]?.checkpoint.lastSeq ?? 0,
-            )
-          : pageParam.end;
+        // The newest window reads as far as the cached newest window already
+        // reaches. TanStack keeps each page's original param, so this is what
+        // carries a window that merges or a re-read widened into every later
+        // read of it; a re-read also reaches every row it must not undo.
+        const cachedTail = client.getQueryData<InfiniteData<HistoryPage>>([
+          ...contentKey,
+          tailAfter,
+        ])?.pages[0]?.messages;
+        const reach = Math.max(
+          pageParam.end,
+          cachedTail?.[cachedTail.length - 1]?.seq ?? 0,
+          ...(attempt
+            ? [...liveRows.current.values()].map((row) => row.message.seq)
+            : []),
+        );
         let read: Awaited<ReturnType<typeof readProjectRoomWindow>>;
         try {
           read = await readProjectRoomWindow(

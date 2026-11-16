@@ -597,3 +597,90 @@ test('a read outlived on every attempt fails rather than answer with rows it los
   );
   expect(seqs(hook)).toEqual(allSeqs(lastSeq));
 });
+
+// #4985 delta review 2: a re-read's wider window is what the next ordinary
+// read covers, so a later refetch never shrinks the newest window back.
+test('a window widened by a re-read stays wide for the next ordinary read and the append after it', async () => {
+  const { hook, answer } = await appendDuringHeldRead(501);
+  expect(answer.isSuccess).toBe(true);
+  expect(seqs(hook)).toEqual(allSeqs(502));
+  let again:
+    | Awaited<ReturnType<typeof hook.result.current.history.refetch>>
+    | undefined;
+  await act(async () => {
+    again = await hook.result.current.history.refetch();
+  });
+  expect(again?.isSuccess).toBe(true);
+  expect(again?.data?.pages[0]?.messages.map((m) => m.seq)).toEqual(
+    allSeqs(502),
+  );
+  push('append', { key: roomId, message: append('after later read') });
+  await waitFor(() => expect(hook.result.current.lastSeq).toBe(503));
+  await waitFor(() => expect(seqs(hook)).toEqual(allSeqs(503)));
+});
+
+test('a read that failed after three outlived attempts recovers on the next resync', async () => {
+  seed(1);
+  const hook = await openRoom();
+  holdOnlyAfter = 0;
+  holdNextHistory = true;
+  const waiting = hook.result.current.history.refetch();
+  let lastSeq = 1;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await waitFor(() => expect(heldHistory).toBeDefined());
+    const release = heldHistory!;
+    heldHistory = undefined;
+    for (let index = 0; index < 501; index++)
+      push('append', {
+        key: roomId,
+        message: append(`recover ${attempt}.${index}`),
+      });
+    lastSeq += 501;
+    await waitFor(() => expect(hook.result.current.lastSeq).toBe(lastSeq), {
+      timeout: 10_000,
+    });
+    holdNextHistory = attempt < 2;
+    release();
+  }
+  expect((await waiting).isError).toBe(true);
+  expect(seqs(hook)).toEqual(allSeqs(lastSeq));
+  push('resync', { key: roomId, lastSeq, activity: 0 });
+  await waitFor(
+    () => {
+      expect(hook.result.current.history.isSuccess).toBe(true);
+      expect(hook.result.current.history.isFetching).toBe(false);
+      expect(seqs(hook)).toEqual(allSeqs(lastSeq).slice(-25));
+    },
+    { timeout: 10_000 },
+  );
+  push('append', { key: roomId, message: append('recovered append') });
+  await waitFor(() => expect(hook.result.current.lastSeq).toBe(lastSeq + 1));
+  expect(seqs(hook)).toEqual(allSeqs(lastSeq + 1).slice(-26));
+});
+
+test('unmounting during an outlived read starts no re-read and leaves nothing cached', async () => {
+  seed(1);
+  const hook = await openRoom();
+  holdNextHistory = true;
+  const waiting = hook.result.current.history.refetch();
+  await waitFor(() => expect(heldHistory).toBeDefined());
+  for (let index = 0; index < 501; index++)
+    push('append', { key: roomId, message: append(`unmount ${index}`) });
+  await waitFor(() => expect(hook.result.current.lastSeq).toBe(502), {
+    timeout: 10_000,
+  });
+  const release = heldHistory!;
+  const before = reads.length;
+  hook.unmount();
+  release();
+  await waiting;
+  await waitFor(() =>
+    expect(
+      clients[0]!
+        .getQueryCache()
+        .getAll()
+        .some((query) => query.queryKey.includes('history')),
+    ).toBe(false),
+  );
+  expect(reads.length).toBe(before);
+});
