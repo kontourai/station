@@ -286,7 +286,9 @@ export class PullRequestFeedbackOwnership {
       return {
         state: 'paused',
         reason: condition.reason,
+        ...(condition.cap ? { cap: condition.cap } : {}),
         headSha: condition.headSha,
+        ...(condition.at ? { at: condition.at } : {}),
       };
     if (condition?.state === 'unavailable')
       return { state: 'unavailable', cause: condition.cause };

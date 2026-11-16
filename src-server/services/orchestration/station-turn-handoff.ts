@@ -10,6 +10,7 @@
 import {
   CLIENT_ORIGIN_VERSION,
   type ClientOrigin,
+  type ClientOriginSender,
   UNKNOWN_CLIENT_REPORTED_ORIGIN,
 } from '@kontourai/station-contracts/client-origin';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
@@ -58,6 +59,11 @@ export function submitStationFramedTurn(
     readonly actor: StationFramedTurnActor;
     /** #4512: who caused the turn, when the sender knows (an Automation run). */
     readonly dispatchOrigin?: TurnDispatchOrigin;
+    /**
+     * What Station subsystem the message is from, for the reader's header
+     * (pull request feedback). Provenance only: the actor stays internal.
+     */
+    readonly sender?: ClientOriginSender;
   },
 ): ThreadInboxSubmission {
   return submit({
@@ -72,7 +78,9 @@ export function submitStationFramedTurn(
           : {}),
         ...(input.actor.principal ? { principal: input.actor.principal } : {}),
       },
-      clientOrigin: STATION_FRAMED_TURN_CLIENT_ORIGIN,
+      clientOrigin: input.sender
+        ? { ...STATION_FRAMED_TURN_CLIENT_ORIGIN, sender: input.sender }
+        : STATION_FRAMED_TURN_CLIENT_ORIGIN,
       ...(input.dispatchOrigin ? { dispatchOrigin: input.dispatchOrigin } : {}),
     },
   });

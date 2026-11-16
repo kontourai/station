@@ -256,6 +256,8 @@ function openLinkLabel(kind: AttentionItem['kind']): string {
       return 'Review tool request';
     case 'plugin-lifecycle-proposal':
       return 'Open in Plugins';
+    case 'pull-request-feedback':
+      return 'Open chat';
     default:
       return 'Open session';
   }
