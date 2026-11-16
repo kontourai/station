@@ -225,6 +225,7 @@ export function ConversationPullRequestLinks({
       <ConfirmModal
         isOpen={removing !== null}
         role="alertdialog"
+        variant="danger"
         title="Remove from this chat"
         message={
           removing
