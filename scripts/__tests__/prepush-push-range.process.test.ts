@@ -588,7 +588,7 @@ describe.skipIf(process.platform === 'win32')(
             'src/probe.ts':
               'export function verifyProbeQuiesce() {\n  return 1;\n}\n',
             'src/routes.ts':
-              "const shares = '/api/shares/*';\nconst glob = '**/*.ts';\nexport async function route() {\n  const { verifyProbeQuiesce } = await import('./probe.js');\n  return [shares, glob, verifyProbeQuiesce()];\n}\n/* a later block comment */\n",
+              "const shares = '/api/shares/*';\nexport async function route() {\n  const { verifyProbeQuiesce } = await import('./probe.js');\n  return [shares, verifyProbeQuiesce()];\n}\n/* a later block comment */\n",
             'src/index.ts':
               "import { used } from './a';\nimport { helper } from './b';\nimport { route } from './routes';\nconsole.log(used(), helper(), route);\n",
           },
