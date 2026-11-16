@@ -88,6 +88,23 @@ export function outsideStationServerScope<T>(operation: () => T): T {
   return serverScope.exit(operation);
 }
 
+/**
+ * #2377 slice D hardening: start an engine's session, adoption or turn
+ * outside any server scope. A dispatch route handler runs in
+ * {@link runAsStationServer} so its request-prep hops (Agent and Connection
+ * reads, SSH connect, peer credential) pass the authority guard as server
+ * code. Without this, everything the engine does for the rest of that
+ * session's async lifetime would inherit the scope too, so any in-process,
+ * agent-driven `api()` call outside the station-control tool wrapper would
+ * carry the server-self attestation and reach Station as the operator. The
+ * orchestration service calls an adapter's start, adopt and send through
+ * this, so only the hops before it are server-scoped. Code that is genuinely
+ * Station's own (the built-in engine's relay) re-enters the scope itself.
+ */
+export function runEngineOutsideStationServerScope<T>(operation: () => T): T {
+  return serverScope.exit(operation);
+}
+
 /** The server-self header, only inside {@link runAsStationServer}. */
 export function stationServerScopeHeaders(): Record<string, string> {
   if (serverScope.getStore() !== true) return {};

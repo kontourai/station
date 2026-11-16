@@ -4,6 +4,7 @@ import { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provi
 import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
 import { isInputRequestEvent } from '@kontourai/station-shared/input-request';
 import { providerFailure } from '../../providers/provider-failure.js';
+import { runEngineOutsideStationServerScope } from '../../security/station-server-scope.js';
 
 export { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
 
@@ -1936,7 +1937,10 @@ export async function startRecoveredOrchestrationSession(options: {
             ? deps.invokeSessionStart(startInput.threadId, () =>
                 adapter.startSession(startInput),
               )
-            : adapter.startSession(startInput),
+            : // #2377 slice D: never inherit a dispatch route's server scope.
+              runEngineOutsideStationServerScope(() =>
+                adapter.startSession(startInput),
+              ),
       );
     } finally {
       admissionLease?.release();
