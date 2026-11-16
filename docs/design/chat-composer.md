@@ -217,7 +217,9 @@ the size limit), through the same idempotent request. It waits, with the
 reason, while a turn or queued message blocks the switch, and nothing else can
 be sent (nor the choice undone) while it is in flight, from any pane showing
 that chat. Another chat's picker stays closed until an in-flight armed send
-finishes. A retried earlier request leaves a newer draft in
+finishes, or until its chat is closed. The armed send waits for the agent
+catalog only while a read is still in flight, and at most a few seconds;
+then its dialog opens with the reason and Cancel, having sent nothing. A retried earlier request leaves a newer draft in
 the composer. The first message (including the exact catch-up text) and what
 carries over and resets are under **Details**. There the picker lists
 only the other engines this client can start (an unready or incompatible one is
