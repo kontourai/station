@@ -865,6 +865,15 @@ export class SessionRecoveryCoordinator {
       return true;
     }
     if (outcome.kind === 'unavailable') {
+      if (consentedProfileRef !== undefined) {
+        // A person's click is not consent to an unattended admission retry;
+        // the stop keeps waiting for its own reset.
+        this.clearIntentRuntime(intent, false);
+        const waiting = this.ledger.find(intent.fingerprint);
+        if (waiting?.outcome === 'armed' && waiting.dueAt)
+          this.schedule(waiting.fingerprint, waiting.dueAt);
+        return true;
+      }
       this.deferAdmission(intent, outcome.reason);
       return true;
     }

@@ -287,7 +287,7 @@ export interface UsageLimitContinueOnProfile {
  * allowance ranking and exclusion are not applied. Station does not know
  * whether these accounts are themselves limited. Empty when the engine cannot
  * switch profiles (Claude Code today), none qualifies, the stop is not
- * waiting, or the Station is hosted.
+ * waiting, credential-recovery admission is blocked, or the Station is hosted.
  */
 export interface UsageLimitContinueOnOptions {
   profiles: UsageLimitContinueOnProfile[];
