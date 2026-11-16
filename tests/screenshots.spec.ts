@@ -3707,8 +3707,9 @@ function roomConversationScreens(): Screen[] {
               await expect(
                 roomRegion.getByText('Jonas Berg is typing…'),
               ).toBeVisible();
+              // A narrowed search, so the list leaves the room above it in view.
               await composer.click();
-              await composer.pressSequentially('@');
+              await composer.pressSequentially('@Pri');
               await expect(
                 roomRegion.getByRole('option', { name: /Priya Natarajan/ }),
               ).toBeVisible();
@@ -3730,7 +3731,9 @@ function roomConversationScreens(): Screen[] {
               await expect(
                 conversation.getByText('Couldn’t finish'),
               ).toBeVisible();
-              await expect(conversation.getByText('Stopped')).toBeVisible();
+              await expect(
+                conversation.getByText('Stopped', { exact: true }),
+              ).toBeVisible();
             }
             if (scene === 'keyboard') {
               await composer.click();
@@ -4830,7 +4833,9 @@ function personMentionScreens(): Screen[] {
           await expect(section).toBeVisible();
           await expect(
             section.getByRole('button', {
-              name: /Priya Natarajan mentioned you in #general, unread/,
+              // The visually hidden ", unread" is its own box, so the
+              // accessible name may carry a space before its comma.
+              name: /Priya Natarajan mentioned you in #general\s*, unread/,
             }),
           ).toBeVisible();
           if (viewport.width === MOBILE.width)

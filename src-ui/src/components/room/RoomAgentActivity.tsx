@@ -65,7 +65,7 @@ export function RoomAgentActivity({
           {[
             detail,
             askedBy ? `Asked by ${askedBy}` : '',
-            when ? `${working ? 'started' : 'at'} ${when}` : '',
+            when ? (working ? `started ${when}` : when) : '',
           ]
             .filter(Boolean)
             .join(' · ')}
