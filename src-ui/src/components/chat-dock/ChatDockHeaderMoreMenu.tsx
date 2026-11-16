@@ -58,7 +58,11 @@ export function ChatDockHeaderMoreMenu(props: {
     <ActionOverflowMenu
       {...props}
       label="More dock actions"
-      inlineSingle
+      // A lone working chat stays behind the trigger: the trigger is what
+      // carries the "N working" count, and an inline row would drop it.
+      inlineSingle={
+        !(props.actions.length === 1 && props.actions[0]?.group === 'switch')
+      }
       reserveGlyphColumn
       triggerClassName="chat-dock__more-btn"
     />

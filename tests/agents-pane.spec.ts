@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page } from '@playwright/test';
+import { openDesktopBackgroundTasks } from './helpers/chat-inventory';
 import { test } from './helpers/fixture-audit';
 import {
   dismissSetupLauncher,
@@ -226,10 +227,7 @@ test.describe('Agents pane child work (#2459)', () => {
       },
     });
 
-    await page.getByRole('button', { name: 'More dock actions' }).click();
-    await page
-      .getByRole('menuitem', { name: /Background tasks — 1 running/ })
-      .click();
+    await openDesktopBackgroundTasks(page);
 
     const scopeChat = page.getByRole('button', {
       name: 'This chat',
@@ -359,8 +357,7 @@ test.describe('Agents pane child work (#2459)', () => {
     await page.reload();
     await dismissSetupLauncher(page);
     await openChatRegion(page);
-    await page.getByRole('button', { name: 'More dock actions' }).click();
-    await page.getByRole('menuitem', { name: /Background tasks/ }).click();
+    await openDesktopBackgroundTasks(page);
     await expect(
       page.getByRole('button', { name: 'All chats', exact: true }),
     ).toHaveAttribute('aria-pressed', 'true');
@@ -448,17 +445,15 @@ test.describe('Agents pane child work (#2459)', () => {
     // Another chat's tool call: All lists it, under that chat.
     await tool('session-other', 'call-release', 'Build the release candidate');
 
-    // Under load the dock menu can re-render while it opens (its row
-    // detaches mid-click); reopen it until the pane is on screen. The pane,
-    // not the menu, is what this journey checks.
+    // Under load the control can re-render while it opens (its row detaches
+    // mid-click); open it again until the pane is on screen. The pane, not
+    // the control, is what this journey checks. `openDesktopBackgroundTasks`
+    // finds Background tasks wherever the dock puts it (#5076).
     const pane = page.locator('.agents-pane');
     await expect(async () => {
       if (await pane.isVisible()) return;
       await page.keyboard.press('Escape');
-      await page.getByRole('button', { name: 'More dock actions' }).click();
-      await page
-        .getByRole('menuitem', { name: /Background tasks/ })
-        .click({ timeout: 3_000 });
+      await openDesktopBackgroundTasks(page);
       await expect(pane).toBeVisible({ timeout: 3_000 });
     }).toPass({ timeout: 30_000 });
     // The side dock at the owner's pane width, whatever it opened at.

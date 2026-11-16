@@ -16,7 +16,10 @@ import { execFileSyncBounded } from '../scripts/lib/bounded-capture.mjs';
 import { buildLongSessionTurns } from './fixtures/long-session';
 import { assertGalleryScreenSourcesCover } from './gallery-screen-sources.mjs';
 import { createAuthenticatedE2ERequest } from './helpers/authenticated-request';
-import { phoneChatInventoryControls } from './helpers/chat-inventory';
+import {
+  openDesktopChatInventory,
+  phoneChatInventoryControls,
+} from './helpers/chat-inventory';
 import { contrastRatio } from './helpers/color-contrast';
 import {
   agentConnectionFixture,
@@ -2583,13 +2586,7 @@ function inventoryDrilldownScreens(): Screen[] {
               await chatActions.click();
               await inventoryRow.click();
             } else {
-              await page
-                .locator('#chat-dock')
-                .getByRole('button', { name: 'More dock actions', exact: true })
-                .click();
-              await page
-                .getByRole('menuitem', { name: 'Chat inventory', exact: true })
-                .click();
+              await openDesktopChatInventory(page);
             }
             const reader = page.getByRole('dialog', {
               name: 'Chat inventory',
