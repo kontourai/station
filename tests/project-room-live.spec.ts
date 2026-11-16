@@ -327,16 +327,36 @@ test.describe
         });
         await openRoom();
         const general = channels.get('general')!;
+        const room = general.slice(0, 8);
+        /** Whether the proxy has passed a frame saying the room holds `seq`. */
+        const passed = (seq: number) =>
+          trail.some((entry) => {
+            const match = /^(append|subscribed|resync) (\S+) seq=(\d+)$/.exec(
+              entry,
+            );
+            return match?.[2] === room && Number(match[3]) >= seq;
+          });
+        /** A failed wait reports every frame the proxy saw by then. */
+        const withTrail = (error: Error) => {
+          throw new Error(`${error.message}\nframes ${JSON.stringify(trail)}`);
+        };
+        // The room is announced through the proxy before anything is posted.
+        await expect
+          .poll(() =>
+            trail.some((entry) => entry.startsWith(`subscribed ${room}`)),
+          )
+          .toBe(true)
+          .catch(withTrail);
         const first = await operatorPost(general, 'Before the gap.');
         await expect(rowOf(operator.room, 'Before the gap.')).toBeVisible();
         // The row can show from the room's own history read before its frame
-        // reaches the proxy; arm the drop only once that frame has passed, so
-        // the one dropped is the next message's.
+        // reaches the proxy, and a (re)connection announces it in `subscribed`
+        // instead of an `append`. Arm the drop only once the stream has said
+        // the room holds it, so the one dropped is the next message's.
         await expect
-          .poll(() =>
-            trail.includes(`append ${general.slice(0, 8)} seq=${first.seq}`),
-          )
-          .toBe(true);
+          .poll(() => passed(first.seq))
+          .toBe(true)
+          .catch(withTrail);
         const reads = backfills.length;
         dropNextAppend = true;
         await operatorPost(general, 'This frame is dropped.');
