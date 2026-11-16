@@ -83,6 +83,18 @@ async function expectActionsClearOfText(row: Locator) {
     .first()
     .boundingBox();
   expect(title?.width ?? 0).toBeGreaterThan(120);
+  // The latest tool's name ("Read") is shown whole, not cut to "R…".
+  const clipped = await row
+    .locator('.child-work-activity__name')
+    .evaluateAll(
+      (nodes) =>
+        nodes.filter(
+          (node) =>
+            (node as HTMLElement).scrollWidth >
+            (node as HTMLElement).clientWidth + 1,
+        ).length,
+    );
+  expect(clipped).toBe(0);
 }
 
 async function emit(page: Page, event: Record<string, unknown>) {
@@ -344,41 +356,13 @@ test.describe('Agents pane child work (#2459)', () => {
    * The owner's 2026-11-16 screenshot: a ~380px Agents pane with many
    * running Claude subagents, where the title collapsed to one letter and
    * "Open chat" / "Stop" sat on the model and elapsed time. Seeded with long
-   * titles, models, latest tools and tool calls from two chats, then laid
-   * out at 380px and 600px in dark theme.
+   * titles, models and latest tools, plus tool calls from this chat and
+   * another, then laid out at 380px and 600px in dark theme.
    */
   test('running rows keep their text clear of actions at 380px and 600px, and All groups by chat', async ({
     page,
   }, testInfo) => {
     await page.emulateMedia({ colorScheme: 'dark' });
-    await seedActiveChats(page, [
-      {
-        sessionId: SESSION_ID,
-        conversationId: CONVERSATION_ID,
-        agentSlug: 'dev-agent',
-        model: 'claude-sonnet',
-        provider: 'claude',
-        projectSlug: 'dev',
-        projectName: 'station',
-        title: 'Is this machine getting overwhelmed?',
-        orchestrationSessionStarted: true,
-        ephemeralMessages: [],
-        inputHistory: [],
-      },
-      {
-        sessionId: 'session-2',
-        conversationId: 'conv-2',
-        agentSlug: 'dev-agent',
-        model: 'claude-sonnet',
-        provider: 'claude',
-        projectSlug: 'dev',
-        projectName: 'station',
-        title: 'Release prep',
-        orchestrationSessionStarted: true,
-        ephemeralMessages: [],
-        inputHistory: [],
-      },
-    ]);
     await page.goto(`/?chat=${encodeURIComponent(CONVERSATION_ID)}`);
     await dismissSetupLauncher(page);
     await openChatRegion(page);
@@ -446,21 +430,60 @@ test.describe('Agents pane child work (#2459)', () => {
       'call-telemetry',
       'Run telemetry tests after change',
     );
-    await tool('session-2', 'call-release', 'Build the release candidate');
+    // Another chat's tool call: All lists it, under that chat.
+    await tool('session-other', 'call-release', 'Build the release candidate');
 
     await page.getByRole('button', { name: 'More dock actions' }).click();
     await page.getByRole('menuitem', { name: /Background tasks/ }).click();
     const pane = page.locator('.agents-pane');
+    // The side dock at the owner's pane width, whatever it opened at.
+    const setPaneWidth = (px: number) =>
+      page.locator('.agents-pane').evaluate((node, width) => {
+        // The pane and every box up to its dock, which otherwise keep the
+        // width the dock opened at.
+        for (
+          let box: HTMLElement | null = node as HTMLElement;
+          box && !box.classList.contains('app__main');
+          box = box.parentElement
+        ) {
+          box.style.width = `${width}px`;
+          box.style.minWidth = `${width}px`;
+          box.style.maxWidth = `${width}px`;
+          box.style.flex = `0 0 ${width}px`;
+          if (box.classList.contains('chat-dock')) {
+            // Pinned to the window's right edge, so a wider dock grows into
+            // the page instead of past the viewport.
+            box.style.position = 'fixed';
+            box.style.right = '0';
+            box.style.top = '0';
+            box.style.bottom = '0';
+            box.style.zIndex = '10';
+            break;
+          }
+        }
+      }, px);
     await expect(
       page.getByRole('heading', { name: 'Running · 3 agents · 2 tools' }),
     ).toBeVisible();
 
     for (const width of [380, 600]) {
-      // The pane at the owner's width, whatever the dock region measures.
-      await pane.evaluate((node, px) => {
-        (node as HTMLElement).style.width = `${px}px`;
-        (node as HTMLElement).style.maxWidth = `${px}px`;
-      }, width);
+      await setPaneWidth(width);
+      await expect
+        .poll(() =>
+          pane
+            .locator('.background-tasks-sheet__list')
+            .first()
+            .evaluate(
+              (node) => (node as HTMLElement).getBoundingClientRect().right,
+            ),
+        )
+        .toBeGreaterThan(
+          await pane.evaluate(
+            (node, w) =>
+              (node as HTMLElement).getBoundingClientRect().left + w - 40,
+            width,
+          ),
+        );
       for (const title of [
         'Inventory event-row readers for retention and replay',
         'Reproduce the overwhelmed-server report under load',
@@ -475,16 +498,22 @@ test.describe('Agents pane child work (#2459)', () => {
     }
 
     await page.getByRole('button', { name: 'All chats', exact: true }).click();
-    await expect(page.locator('.agents-pane__group-title')).toHaveText([
-      'Is this machine getting overwhelmed?',
-      'Release prep',
-    ]);
+    // This chat's group first, then the other chat's.
+    await expect(page.locator('.agents-pane__group')).toHaveCount(2);
+    await expect(
+      page
+        .locator('.agents-pane__group')
+        .first()
+        .locator('.agents-pane__group-meta'),
+    ).toContainText('This chat');
     await expect(page.getByText('Build the release candidate')).toBeVisible();
-    for (const width of [380, 600]) {
-      await pane.evaluate((node, px) => {
-        (node as HTMLElement).style.width = `${px}px`;
-        (node as HTMLElement).style.maxWidth = `${px}px`;
-      }, width);
+    for (const width of [600, 380]) {
+      await setPaneWidth(width);
+      await expectActionsClearOfText(
+        page.getByRole('listitem').filter({
+          hasText: 'Inventory event-row readers for retention and replay',
+        }),
+      );
       await pane.screenshot({
         path: testInfo.outputPath(`agents-pane-all-${width}-dark.png`),
       });

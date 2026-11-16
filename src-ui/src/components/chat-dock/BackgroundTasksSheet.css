@@ -152,6 +152,13 @@
   align-items: center;
 }
 
+/* A latest-tool name is a word or two ("Read", "Bash"); in a row it keeps
+   its width and the progress text beside it truncates instead. */
+.background-tasks-sheet__list .child-work-activity__tool {
+  flex-shrink: 0;
+  max-width: 50%;
+}
+
 .background-tasks-sheet__row + .background-tasks-sheet__row {
   margin-top: 2px;
 }
