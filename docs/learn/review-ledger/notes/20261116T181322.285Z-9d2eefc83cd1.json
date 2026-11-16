@@ -1,0 +1,7 @@
+{
+  "revision": "3102b6ebcc02227a6a40bc1671e2bd664c044077",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Re-reviewed after the cross-runtime and builtin-runtime journeys read a row's runtime from its mark tooltip (words when unmarked) and the scope badge moved to the 12px floor; no claim in this document depends on either.","inputs":["docs/user/getting-started.md","tests/cross-runtime-chat-switching.spec.ts"]}
+  ]
+}

@@ -336,7 +336,19 @@ describe('portable Nightly publication workflow: token, secret and effect scope'
     expect(publish.environment).toBe('portable-nightly-signing');
     for (const [id, job] of Object.entries(publication.jobs)) {
       if (id === 'publish') continue;
-      expect(referencesCredential(job), id).toBe(false);
+      const inspected = structuredClone(job);
+      if (id === 'plan') {
+        expect(inspected.permissions).toEqual({ contents: 'read' });
+        const historySteps = (inspected.steps ?? []).filter(
+          (step) =>
+            step.name ===
+            'Refuse a Nightly base at or below a published RC or final',
+        );
+        expect(historySteps).toHaveLength(1);
+        expect(historySteps[0].env?.GH_TOKEN).toBe(`\${{ github.token }}`);
+        delete historySteps[0].env?.GH_TOKEN;
+      }
+      expect(referencesCredential(inspected), id).toBe(false);
     }
     const secretSteps = (publish.steps ?? []).filter((step) =>
       /\bsecrets\./.test(JSON.stringify(step)),

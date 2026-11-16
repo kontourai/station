@@ -30,7 +30,6 @@ interface ThirdPartyPackage {
 
 const CHANNEL_LABELS = {
   stable: 'Stable',
-  beta: 'Beta',
   nightly: 'Nightly',
   dev: 'Development',
 } as const;

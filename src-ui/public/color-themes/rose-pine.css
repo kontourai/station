@@ -114,10 +114,6 @@ html[data-color-theme]:where([data-color-theme="rose-pine"][data-color-theme-fla
   --k-brand: #98560c;
   --k-brand-contrast: #ffffff;
 }
-:root[data-app-channel="beta"][data-color-theme="rose-pine"][data-color-theme-flavor][data-theme="light"] {
-  --k-brand: #4f5bd5;
-  --k-brand-contrast: #ffffff;
-}
 :root[data-app-channel="nightly"][data-color-theme="rose-pine"][data-color-theme-flavor][data-theme="light"] {
   --k-brand: #7c3aed;
   --k-brand-contrast: #ffffff;
@@ -234,10 +230,6 @@ html[data-color-theme]:where([data-color-theme="rose-pine"][data-color-theme-fla
   --k-brand: #e08b2f;
   --k-brand-contrast: #1b1205;
 }
-:root[data-app-channel="beta"][data-color-theme="rose-pine"][data-color-theme-flavor="main"]:not([data-theme="light"]) {
-  --k-brand: #7983f4;
-  --k-brand-contrast: #06080b;
-}
 :root[data-app-channel="nightly"][data-color-theme="rose-pine"][data-color-theme-flavor="main"]:not([data-theme="light"]) {
   --k-brand: #9d7bf8;
   --k-brand-contrast: #06080b;
@@ -353,10 +345,6 @@ html[data-color-theme]:where([data-color-theme="rose-pine"][data-color-theme-fla
 :root.is-dev-build[data-color-theme="rose-pine"][data-color-theme-flavor="moon"]:not([data-theme="light"]) {
   --k-brand: #e38e33;
   --k-brand-contrast: #1b1205;
-}
-:root[data-app-channel="beta"][data-color-theme="rose-pine"][data-color-theme-flavor="moon"]:not([data-theme="light"]) {
-  --k-brand: #8d99ff;
-  --k-brand-contrast: #06080b;
 }
 :root[data-app-channel="nightly"][data-color-theme="rose-pine"][data-color-theme-flavor="moon"]:not([data-theme="light"]) {
   --k-brand: #ac90ff;

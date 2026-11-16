@@ -353,7 +353,12 @@ retains the canonical human actor, account state and Device binding;
 [management authority](../../src-server/security/relay-management-authority.ts)
 rechecks explicit Device scope and provider currentness after asynchronous work.
 Target approval/revision is rechecked before issuance or revocation. Public SDK
-projections expose route/trust facts, never issuer credentials.
+projections expose route/trust facts, never issuer credentials. The
+[SDK read owner](../../packages/sdk/src/relay-management.ts) validates every
+wire row's Station scope before excluding legacy Beta approvals and pending
+Devices from actionable arrays and reporting their counts. Active setup links
+use Stable/Nightly; the protocol-1 wire response retains the old public Beta
+route-intent link only for old readers, without enrollment authority.
 
 The [operator panel](../../src-ui/src/views/connections-hub/RelayOperatorPanel.tsx)
 serves desktop and selected native relay views. `relay:manage` (**Manage remote
@@ -2857,7 +2862,10 @@ the inspector does not start its own timeout. It distinguishes a `TimeoutError` 
 from other aborts. Built-in adapters declaring awaited abort settlement get a separate
 bounded cleanup wait; arbitrary asynchronous work is not forcibly stopped. The
 launchable-model refresh supplies a signal, while ordinary runtime inventory calls can
-omit one. Command/prerequisite inclusion and discovery policy are explicit inputs.
+omit one. Command, model-catalog and prerequisite inclusion and discovery policy are
+explicit inputs. The boot-time built-in agent binding excludes model discovery and
+commands, because either can start an engine's program and readiness comes from
+prerequisites alone.
 Public connection identity is mapped at the composition Seam from the Adapter's
 canonical EngineId. Partial results state whether facts came from live observation,
 built-in fallback, or neither. Adapter failure cannot throw through the total Interface
@@ -6054,8 +6062,15 @@ appearance are registry-applied emulation shared by every viewer and Agent; the
 pane sizes a page it just opened from a narrow stage once and announces changes
 it did not make ([decision](../decisions/browser-viewport-is-shared-fit-is-per-viewer.md)).
 The off-by-default **Inline browser activity** preview places the same browser
-beside its qualified transcript calls. The conversation boundary supplies the
-Station request scope; exact session selection also requires the Project,
+beside its qualified transcript calls. The
+[turn projection](../../src-ui/src/components/chat/BrowserTurnActivity.tsx) owns one
+activity per execution thread, turn and browser session from loaded messages
+and the current stream. The active viewer has a stable transcript-tail owner;
+new browser calls update its action strip without remounting the canvas.
+Completed activity becomes a compact historical summary. Distinct terminal
+results retain their source-event identity and ordinary tool/approval controls.
+The conversation boundary supplies the Station request scope; exact session
+selection also requires the Project,
 principal and conversation binding. Inline and floating placements share
 `float-over-chat/BrowserSessionSurface.tsx`, including input, page dialogs and
 navigation. Existing source-visibility arbitration suppresses duplicate viewers.

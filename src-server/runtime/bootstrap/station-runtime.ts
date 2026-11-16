@@ -2291,21 +2291,26 @@ export class StationRuntime {
       controlPlaneObservation?: ControlPlaneObservation;
     }>
   > {
-    return (await this.connectionService.listRuntimeConnections()).map(
-      (connection) => ({
-        id: engineConnectionId(connection.id),
-        type: connection.type,
-        name: connection.name,
-        enabled: connection.enabled,
-        status: connection.status,
-        engineId: parseEngineId(connection.config.engineId),
-        capabilities: connection.capabilities,
-        // archive#1549: per connection, from the projection the picker
-        // reads — so the bootstrap binding and the picker derive the same
-        // capability from the same evidence.
-        controlPlaneObservation: connection.controlPlaneObservation,
-      }),
-    );
+    // Readiness comes from prerequisites, so the binding asks for neither
+    // model discovery nor commands: both can start an engine at every boot.
+    return (
+      await this.connectionService.listRuntimeConnections({
+        includeModelCatalog: false,
+        includeCommands: false,
+      })
+    ).map((connection) => ({
+      id: engineConnectionId(connection.id),
+      type: connection.type,
+      name: connection.name,
+      enabled: connection.enabled,
+      status: connection.status,
+      engineId: parseEngineId(connection.config.engineId),
+      capabilities: connection.capabilities,
+      // archive#1549: per connection, from the projection the picker
+      // reads — so the bootstrap binding and the picker derive the same
+      // capability from the same evidence.
+      controlPlaneObservation: connection.controlPlaneObservation,
+    }));
   }
 
   /**

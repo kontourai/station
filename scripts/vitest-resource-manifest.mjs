@@ -471,6 +471,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #4831: builds the docs server bundle, which starts esbuild's service
   // child; the file imports no child_process itself.
   'src-server/tools/__tests__/station-docs-bundle.test.ts',
+  // Parses each fixture bundle with esbuild, which starts esbuild's service
+  // child; the file imports no child_process itself.
+  'scripts/__tests__/server-static-imports.test.ts',
   // Epic #2323 S3: each draft build forks a disposable process that is
   // killed at its deadline; the test observes that process and a FIFO.
   'src-server/services/plugins/__tests__/plugin-draft-build-process.test.ts',
@@ -843,7 +846,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Bounded node children run the CLI ↔ Station Control parity entry point
   // against fixture manifests, and read the ratchet base through git.
   'scripts/__tests__/cli-mcp-parity.test.ts',
-  // Bounded node children prove generation and check failures in disposable roots.
+  // Bounded node children prove generation and check failures in disposable
+  // roots; bounded git children prove regenerated catalogs merge cleanly.
   'scripts/__tests__/metric-reference.test.ts',
   // Regenerate-and-diff plus real-entry-point runs: docs-index --check and
   // the repo hygiene gate each spawn one bounded node child.
@@ -1166,6 +1170,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // context and generation CLIs, for a release-candidate producer set.
   // Single-shot spawns under owned temp dirs, no wall-clock assertion.
   'scripts/__tests__/release-candidate-staging.test.ts',
+  // Release lifecycle commands own bounded CLI/Git children and private fixture receipts.
+  'scripts/__tests__/release-promotion.test.ts',
+  'scripts/__tests__/promote-store-release.test.ts',
+  'scripts/__tests__/release-cut.test.ts',
+  'scripts/__tests__/nightly-release-base.test.ts',
   // #4929: runs the shared release-tag parser's CLI, which the portable
   // packager calls from bash, as a real child to prove its exit statuses.
   'scripts/__tests__/release-tag.test.ts',

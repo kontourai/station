@@ -285,7 +285,7 @@ the signed portable release rings used by the installer below.
 | Nightly server install | macOS, Linux, Windows (x64) | You want the newest signed `main` build as a local server you open in a browser. Use the one-line [Nightly install](#install-nightly). |
 | Nightly desktop build | macOS (Apple silicon), Windows (x64) | You want a native app for testing. Download it from the [Nightly desktop pre-release](https://github.com/kontourai/station/releases/tag/nightly-desktop); see [Nightly desktop downloads](#nightly-desktop-downloads). |
 
-When a signed stable or beta portable ring is available,
+When a signed Stable portable release is available,
 [Install Or Upgrade](#install-or-upgrade) is the macOS/Linux installer path.
 The remaining sections cover that install and the first-run UI.
 
@@ -410,13 +410,12 @@ receipt before it builds and starts Station. The stable channel installs under
 `station` launcher in `~/.local/bin`. Open `http://localhost:18000` after the
 command completes.
 
-When a signed beta ring is available, export `STATION_CHANNEL=beta` before running the same
-installer command. Preview is a release provenance name; the local runtime is
-the **beta** channel. It uses a separate `~/.station/installs/beta` install root,
-`~/.station/instances/beta` runtime,
-`station-beta` launcher, and `http://localhost:28000` UI. Do not use the
-retired `STATION_CHANNEL=preview`; the installer refuses it. The exact channel
-identity, launcher, and port mapping are verified by the release installer.
+Stable and Nightly are the supported distribution channels. The installer
+refuses the retired `STATION_CHANNEL=beta` and `STATION_CHANNEL=preview` values.
+An operator accepting a release candidate can pin `STATION_VERSION=vX.Y.Z-rc.N`;
+it installs with Stable identity and the base product version. Follow the
+[release-candidate procedure](https://github.com/kontourai/station/blob/main/docs/guides/release-rings.md#publish-a-release-candidate)
+for acceptance and manual candidate replacement.
 
 An operator can instead supply `STATION_INSTALL_PUBLIC_MANIFEST_URL` for a
 signed platform-v2 prebuilt archive. That macOS/Linux path uses bundled
@@ -745,10 +744,11 @@ a scope, it follows the project whose page you are on and shows all work anywher
 else. The control shows **This project: <name>** on its page and **All work**
 elsewhere. **Always <name> · <Station>** pins a project across navigation. An
 explicit choice such as **All work** stays selected as you navigate. If work needs
-you outside the filter, choose **Show all** from the notice. On a computer the
-scope picker sits beside search; **Browse all conversations** is at the end of
-the list. Each row leads with its title and time, then its status, then the
-agent and project.
+you outside the filter, choose **Show all** from the notice; on a computer, a
+count badge on the scope picker does the same. On a computer the scope picker
+sits beside search, **Browse all conversations** is at the end of the list,
+and each row is two lines: its title and time, then the agent's icon, its
+status and its project. Hover the icon to read the agent's name.
 
 To clear your inbox, hover a conversation on desktop and choose **× Dismiss
 from inbox**. On mobile, tap **⋯** or hold a row to open its actions and
@@ -1517,11 +1517,13 @@ and Sessions:
 STATION_CHANNEL=stable "${STATION_ROOT:-$HOME/.station}/installs/stable/current/install.sh" uninstall
 ```
 
-Use
-`STATION_CHANNEL=beta "${STATION_ROOT:-$HOME/.station}/installs/beta/current/install.sh" uninstall`
-for beta. Add
-`--purge-data` only when you also intend to delete that channel's home
-(`~/.station/instances/stable` or `~/.station/instances/beta`). The installer accepts purge only
+For Nightly, use that install's retained installer:
+
+```bash
+STATION_CHANNEL=nightly "${STATION_ROOT:-$HOME/.station}/installs/nightly/current/install.sh" uninstall
+```
+Add `--purge-data` only when you also intend to delete the selected channel's
+home (`~/.station/instances/stable` or `~/.station/instances/nightly`). The installer accepts purge only
 for a data root it created and marked; it preserves an unmarked pre-existing
 directory for manual review.
 

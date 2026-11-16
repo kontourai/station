@@ -14031,6 +14031,28 @@ export class EventStore {
     return row ? mapPersistedSessionRow(row as any) : undefined;
   }
 
+  /**
+   * Persisted session ids under one thread-id prefix, oldest first. Internal
+   * inventory for a narrowed read model (#5051); never exposed to callers and
+   * not readability-checked here. A half-open range ('p:' <= id < 'p;'), not
+   * LIKE, so it is exact regardless of case_sensitive_like and seeks the
+   * primary key.
+   */
+  listSessionIdsByThreadPrefix(prefix: string): string[] {
+    if (!prefix) throw new Error('thread prefix is required');
+    const upper = `${prefix.slice(0, -1)}${String.fromCharCode(
+      prefix.charCodeAt(prefix.length - 1) + 1,
+    )}`;
+    const rows = this.db
+      .prepare(
+        `SELECT thread_id FROM provider_session_state
+         WHERE thread_id >= ? AND thread_id < ?
+         ORDER BY created_at ASC`,
+      )
+      .all(prefix, upper) as Array<{ thread_id: string }>;
+    return rows.map((row) => row.thread_id);
+  }
+
   /** Internal workspace-mutation barrier inventory; never exposed to callers. */
   listSessionIdsByCwd(cwd: string): string[] {
     const rows = this.db

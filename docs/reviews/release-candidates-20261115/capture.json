@@ -1,0 +1,189 @@
+{
+  "kind": "isolated-component-browser-evidence",
+  "scope": "Actual StatusSummary and RelayOperatorPanel with fixture query/authority boundaries; no live host/native/provider evidence.",
+  "observations": [
+    {
+      "revision": "before",
+      "theme": "light",
+      "width": 390,
+      "path": "before-light-390.png",
+      "metrics": {
+        "width": 390,
+        "scrollWidth": 390,
+        "text": "Desktop app\n\nUPDATE AVAILABLE\n\n0.2.0-nightly.20261115.0 \u2192 \nto\n0.2.0\n\nDevices\nInvite device\n\u22ef\n\nInvite a device to connect",
+        "code": [
+          {
+            "text": "0.2.0-nightly.20261115.0",
+            "title": ""
+          },
+          {
+            "text": "0.2.0",
+            "title": ""
+          }
+        ]
+      },
+      "errors": []
+    },
+    {
+      "revision": "before",
+      "theme": "light",
+      "width": 1440,
+      "path": "before-light-1440.png",
+      "metrics": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "text": "Desktop app\n\nUPDATE AVAILABLE\n\n0.2.0-nightly.20261115.0 \u2192 \nto\n0.2.0\n\nDevices\nInvite device\n\u22ef\n\nInvite a device to connect",
+        "code": [
+          {
+            "text": "0.2.0-nightly.20261115.0",
+            "title": ""
+          },
+          {
+            "text": "0.2.0",
+            "title": ""
+          }
+        ]
+      },
+      "errors": []
+    },
+    {
+      "revision": "before",
+      "theme": "dark",
+      "width": 390,
+      "path": "before-dark-390.png",
+      "metrics": {
+        "width": 390,
+        "scrollWidth": 390,
+        "text": "Desktop app\n\nUPDATE AVAILABLE\n\n0.2.0-nightly.20261115.0 \u2192 \nto\n0.2.0\n\nDevices\nInvite device\n\u22ef\n\nInvite a device to connect",
+        "code": [
+          {
+            "text": "0.2.0-nightly.20261115.0",
+            "title": ""
+          },
+          {
+            "text": "0.2.0",
+            "title": ""
+          }
+        ]
+      },
+      "errors": []
+    },
+    {
+      "revision": "before",
+      "theme": "dark",
+      "width": 1440,
+      "path": "before-dark-1440.png",
+      "metrics": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "text": "Desktop app\n\nUPDATE AVAILABLE\n\n0.2.0-nightly.20261115.0 \u2192 \nto\n0.2.0\n\nDevices\nInvite device\n\u22ef\n\nInvite a device to connect",
+        "code": [
+          {
+            "text": "0.2.0-nightly.20261115.0",
+            "title": ""
+          },
+          {
+            "text": "0.2.0",
+            "title": ""
+          }
+        ]
+      },
+      "errors": []
+    },
+    {
+      "revision": "after",
+      "theme": "light",
+      "width": 390,
+      "path": "after-light-390.png",
+      "metrics": {
+        "width": 390,
+        "scrollWidth": 390,
+        "text": "Desktop app\n\nUPDATE AVAILABLE\n\nNightly \u00b7 Nov 15 (build 251000) \u2192 \nto\n0.2.0\n\nDevices\nInvite device\n\u22ef\n\n2 retired Beta records excluded from device setup.\n\nInvite a device to connect",
+        "code": [
+          {
+            "text": "Nightly \u00b7 Nov 15 (build 251000)",
+            "title": "0.2.0-nightly.20261115.0"
+          },
+          {
+            "text": "0.2.0",
+            "title": "0.2.0"
+          }
+        ]
+      },
+      "errors": []
+    },
+    {
+      "revision": "after",
+      "theme": "light",
+      "width": 1440,
+      "path": "after-light-1440.png",
+      "metrics": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "text": "Desktop app\n\nUPDATE AVAILABLE\n\nNightly \u00b7 Nov 15 (build 251000) \u2192 \nto\n0.2.0\n\nDevices\nInvite device\n\u22ef\n\n2 retired Beta records excluded from device setup.\n\nInvite a device to connect",
+        "code": [
+          {
+            "text": "Nightly \u00b7 Nov 15 (build 251000)",
+            "title": "0.2.0-nightly.20261115.0"
+          },
+          {
+            "text": "0.2.0",
+            "title": "0.2.0"
+          }
+        ]
+      },
+      "errors": []
+    },
+    {
+      "revision": "after",
+      "theme": "dark",
+      "width": 390,
+      "path": "after-dark-390.png",
+      "metrics": {
+        "width": 390,
+        "scrollWidth": 390,
+        "text": "Desktop app\n\nUPDATE AVAILABLE\n\nNightly \u00b7 Nov 15 (build 251000) \u2192 \nto\n0.2.0\n\nDevices\nInvite device\n\u22ef\n\n2 retired Beta records excluded from device setup.\n\nInvite a device to connect",
+        "code": [
+          {
+            "text": "Nightly \u00b7 Nov 15 (build 251000)",
+            "title": "0.2.0-nightly.20261115.0"
+          },
+          {
+            "text": "0.2.0",
+            "title": "0.2.0"
+          }
+        ]
+      },
+      "errors": []
+    },
+    {
+      "revision": "after",
+      "theme": "dark",
+      "width": 1440,
+      "path": "after-dark-1440.png",
+      "metrics": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "text": "Desktop app\n\nUPDATE AVAILABLE\n\nNightly \u00b7 Nov 15 (build 251000) \u2192 \nto\n0.2.0\n\nDevices\nInvite device\n\u22ef\n\n2 retired Beta records excluded from device setup.\n\nInvite a device to connect",
+        "code": [
+          {
+            "text": "Nightly \u00b7 Nov 15 (build 251000)",
+            "title": "0.2.0-nightly.20261115.0"
+          },
+          {
+            "text": "0.2.0",
+            "title": "0.2.0"
+          }
+        ]
+      },
+      "errors": []
+    }
+  ],
+  "sourceInputs": {
+    "src-ui/src/components/StatusSummary.tsx": "d2b98d702181a3ce1fde06361dfaea3d1663e3e88250905509ea84b1b34ecaca",
+    "src-ui/src/views/connections-hub/RelayOperatorPanel.tsx": "3502b25befac19bd23a46f6e062db7c70259baf876cece64687ce60d1a8ecf83",
+    "src-ui/src/lib/releaseVersionLabel.ts": "065a831b9148162110e377feed4c21382cc620be40ce537196c8306de04632fd",
+    "src-ui/src/index.css": "643d13dadeea86e71b3ac4c0a790dd4f25968fc6db48be18074f4fd6987b4213"
+  },
+  "baselineComponents": "d026736c3be7ec51b7cad1ea6ba81eaf67be4409"
+}

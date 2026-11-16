@@ -77,7 +77,6 @@ function parseCandidate(value: unknown): NativeDeviceBindingCandidateV1 {
     typeof value.surface.appIdentifier !== 'string' ||
     (value.surface.channel !== 'dev' &&
       value.surface.channel !== 'nightly' &&
-      value.surface.channel !== 'beta' &&
       value.surface.channel !== 'stable') ||
     typeof value.surface.clientInstanceId !== 'string' ||
     typeof value.surface.keyThumbprint !== 'string' ||

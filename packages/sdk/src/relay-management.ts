@@ -21,7 +21,7 @@ const surface = z
   .object({
     kind: z.literal('station-native'),
     appIdentifier: z.string().min(1).max(255),
-    channel: z.enum(['dev', 'stable', 'beta', 'nightly']),
+    channel: z.enum(['dev', 'stable', 'nightly']),
     clientInstanceId: uuid,
     keyThumbprint: opaque,
   })
@@ -52,7 +52,7 @@ const candidate = z
     deviceProofKeyThumbprint: opaque,
   })
   .strict();
-const approval: z.ZodType<RelaySetupApproval> = z
+const approval = z
   .object({
     approvalId: uuid,
     revision: z.number().int().positive(),
@@ -61,7 +61,7 @@ const approval: z.ZodType<RelaySetupApproval> = z
     surface,
   })
   .strict();
-const view: z.ZodType<RelayManagementView> = z
+const view = z
   .object({
     route: z
       .object({
@@ -76,10 +76,11 @@ const view: z.ZodType<RelayManagementView> = z
     setupLinks: z
       .object({
         stable: z.string().max(24_000),
-        beta: z.string().max(24_000),
         nightly: z.string().max(24_000),
+        beta: z.string().max(24_000).optional(),
       })
-      .strict(),
+      .strict()
+      .transform(({ stable, nightly }) => ({ stable, nightly })),
     approvals: z.array(approval).max(1024),
     pendingDevices: z
       .array(
@@ -103,6 +104,26 @@ const view: z.ZodType<RelayManagementView> = z
       .max(1024),
   })
   .strict();
+// Legacy response metadata is not a native surface or an approval authority.
+const readSurface = surface
+  .extend({ channel: z.enum(['dev', 'stable', 'nightly', 'beta']) })
+  .refine(
+    (value) =>
+      value.channel !== 'beta' ||
+      value.appIdentifier === 'io.kontourai.station.beta',
+    'Retired surface identity is malformed',
+  );
+const readView = view.extend({
+  approvals: z.array(approval.extend({ surface: readSurface })).max(1024),
+  pendingDevices: z
+    .array(
+      view.shape.pendingDevices.element.extend({
+        candidate: candidate.extend({ surface: readSurface }),
+      }),
+    )
+    .max(1024),
+});
+
 async function relayResponse(response: Response): Promise<unknown> {
   const body = await readJsonBody(response);
   if (!response.ok)
@@ -124,10 +145,14 @@ export async function getRelayManagement(
   input?: ClientRequestOptions,
 ): Promise<RelayManagementView> {
   const result = z
-    .object({ data: view })
+    .object({ data: readView })
     .strict()
-    .parse(await relayResponse(await getJson(url(base), options(input)))).data;
-  for (const channel of ['stable', 'beta', 'nightly'] as const) {
+    .parse(
+      await relayResponse(
+        await getJson(`${url(base)}?viewVersion=2`, options(input)),
+      ),
+    ).data;
+  for (const channel of ['stable', 'nightly'] as const) {
     const parsed = parseNativeRelayLink(result.setupLinks[channel], {
       channel,
       appIdentifier: 'io.kontourai.station',
@@ -152,7 +177,24 @@ export async function getRelayManagement(
     )
   )
     throw new Error('Relay management response names another Station.');
-  return result;
+  const activeApprovals = result.approvals.filter(
+    (entry) => entry.surface.channel !== 'beta',
+  );
+  const activeDevices = result.pendingDevices.filter(
+    (entry) => entry.candidate.surface.channel !== 'beta',
+  );
+  const retiredRecords = {
+    approvals: result.approvals.length - activeApprovals.length,
+    pendingDevices: result.pendingDevices.length - activeDevices.length,
+  };
+  const active = view.parse({
+    ...result,
+    approvals: activeApprovals,
+    pendingDevices: activeDevices,
+  });
+  return retiredRecords.approvals || retiredRecords.pendingDevices
+    ? { ...active, retiredRecords }
+    : active;
 }
 export async function approveRelaySetup(
   base: string,
@@ -183,7 +225,7 @@ export async function createRelayInvitation(
       stationId: uuid,
       enrollmentId: uuid,
       appIdentifier: z.string().min(1).max(255),
-      channel: z.enum(['stable', 'beta', 'nightly']),
+      channel: z.enum(['stable', 'nightly']),
       clientInstanceId: uuid,
       keyThumbprint: opaque,
     })

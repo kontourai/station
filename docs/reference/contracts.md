@@ -1347,6 +1347,11 @@ exports `RelayInvitationLifetime`, `RelaySetupApproval`, `RelayPendingDevice`
 and `RelayManagementView`. The view contains public route/signing-confirmation
 facts, channel-specific setup links, exact approved surfaces and pending
 account-bound Device candidates; it contains no connector issuer credential.
+Active setup links and surfaces use Stable/Nightly (plus development surfaces).
+The optional `retiredRecords` counts are SDK-derived read metadata for excluded
+legacy Beta records, never actionable Device or approval authority.
+`RelayManagementWireView` retains the old public Beta route-intent link only for
+old SDK readers; it carries no enrollment grant.
 `approvedBy` preserves actual human actor attribution. `relay:manage`, declared
 in [environment security](../../packages/contracts/src/environment-security.ts),
 is an explicitly operator-promoted Device scope excluded from presets/defaults.
@@ -2005,7 +2010,14 @@ delivery history a chat reads, and pure helpers (the canonical lowercase
 identity key, the settings parser, the failing-conclusion set). Its
 `review-findings` category and `reviewEachHead` setting are reserved for a
 later per-head review. `IPullRequestProvider.getFeedbackObservation` is
-optional; a provider without it reads as `unsupported`. See
+optional; a provider without it reads as `unsupported`. A `paused` status
+carries `cap` (`head` or `day`, for a round limit) and `at` when it paused.
+The attention subpath's `PullRequestFeedbackAttentionItem`
+(`pull-request-feedback`) is that pause, or a stopped agent with feedback
+waiting, as a Needs-you item: its `source` names the owning chat and pull
+request, and `viewerMayChange` says whether the reader could send again or
+turn it off. `client-origin`'s `pull-request-feedback` sender labels the
+delivered message as Station's. See
 [Pull request agent feedback](../decisions/pull-request-agent-feedback.md).
 
 `TaskRecord.closeOnMerge` is optional and absent means off. It is a person's

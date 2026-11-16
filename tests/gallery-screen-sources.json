@@ -332,6 +332,15 @@
     "station-switcher-forget-dark-desktop": [
       "src-ui/src/components/header/StationSwitcherMenu.tsx"
     ],
+    "station-switcher-forget-after-keyboard-dark-desktop": [
+      "src-ui/src/components/header/StationSwitcherMenu.tsx"
+    ],
+    "station-switcher-forget-after-pointer-dark-mobile": [
+      "src-ui/src/components/header/StationSwitcherMenu.tsx"
+    ],
+    "station-switcher-forget-after-keyboard-six-dark-desktop": [
+      "src-ui/src/components/header/StationSwitcherMenu.tsx"
+    ],
     "new-chat-dark-desktop": [
       "src-ui/src/views/HomeView.tsx",
       "src-ui/src/components/chat-dock/ChatDock.tsx"

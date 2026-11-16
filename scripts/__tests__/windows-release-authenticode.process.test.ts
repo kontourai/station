@@ -50,31 +50,43 @@ const observeScript = releaseWorkflow.jobs['desktop-windows'].steps.find(
 /** Builds the fixtures and reports the two signer thumbprints. */
 const FIXTURES = String.raw`
 $ErrorActionPreference = 'Stop'
+$clock = [Diagnostics.Stopwatch]::StartNew()
+function Write-FixturePhase([string] $phase) {
+  [Console]::Error.WriteLine("Authenticode fixture: $phase; elapsedMs=$($clock.ElapsedMilliseconds)")
+}
 $dir = $env:FIXTURE_DIR
 $msi = Join-Path $dir 'unsigned.msi'
+Write-FixturePhase 'create-msi'
 $installer = New-Object -ComObject WindowsInstaller.Installer
 $database = $installer.OpenDatabase($msi, 3)
 $database.Commit()
 [void][Runtime.InteropServices.Marshal]::ReleaseComObject($database)
 [void][Runtime.InteropServices.Marshal]::ReleaseComObject($installer)
+Write-FixturePhase 'compile-pe'
 $library = Join-Path $dir 'self-signed.dll'
 Add-Type -TypeDefinition 'public static class StationAuthenticodeFixture { public static int Answer() { return 42; } }' -OutputAssembly $library
+Write-FixturePhase 'create-certificate'
 $certificate = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=Station Authenticode test fixture' -CertStoreLocation Cert:\CurrentUser\My -NotAfter (Get-Date).AddHours(1)
 try {
+  Write-FixturePhase 'sign-pe'
   $signed = Set-AuthenticodeSignature -LiteralPath $library -Certificate $certificate -HashAlgorithm SHA256
   if (-not $signed.SignerCertificate) { throw "Set-AuthenticodeSignature did not sign the fixture: $($signed.Status) $($signed.StatusMessage)" }
 } finally {
+  Write-FixturePhase 'remove-certificate'
   Remove-Item -LiteralPath "Cert:\CurrentUser\My\$($certificate.Thumbprint)"
 }
+Write-FixturePhase 'tamper-pe'
 $bytes = [IO.File]::ReadAllBytes($library)
 $bytes[0x300] = $bytes[0x300] -bxor 0xFF
 [IO.File]::WriteAllBytes((Join-Path $dir 'tampered.dll'), $bytes)
+Write-FixturePhase 'read-publisher'
 $publisher = Join-Path $dir 'publisher-signed.exe'
 Copy-Item -LiteralPath $env:NODE_EXE -Destination $publisher
 [ordered]@{
   selfSignedThumbprint = $certificate.Thumbprint
   publisherThumbprint = [Security.Cryptography.X509Certificates.X509Certificate]::CreateFromSignedFile($publisher).GetCertHashString()
 } | ConvertTo-Json -Compress
+Write-FixturePhase 'complete'
 `;
 
 function pwsh(
@@ -125,7 +137,7 @@ describe.skipIf(!onWindows)(
       });
       if (result.status !== 0)
         throw new Error(
-          `fixture generation failed (${result.status}): ${result.stderr}${result.stdout}`,
+          `fixture generation failed (status=${result.status}, signal=${result.signal}, error=${result.error?.message ?? 'none'}): ${result.stderr}${result.stdout}`,
         );
       ({ selfSignedThumbprint, publisherThumbprint } = JSON.parse(
         String(result.stdout).trim(),

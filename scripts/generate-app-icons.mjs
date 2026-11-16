@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
  * `scripts/lib/station-icon.mjs`: a square topographic map tile carved by the
  * canonical River S, contours offset from the river, a gold compass and a
  * stacked base layer, drawn as SVG for each release channel. Each channel has
- * an explicit water palette (stable blue, beta green, nightly rose, dev
+ * an explicit water palette (stable blue, nightly rose, dev
  * amber); parchment and gold are the same in all of them.
  *
  * Masters rendered here (committed):
@@ -17,7 +17,7 @@ import { createHash } from 'node:crypto';
  *   assets/brand/icon-square-1024.png — Stable full-bleed opaque square; iOS
  *                                       rejects alpha in App Store icons;
  *                                       cropped to the map face
- *   src-ui/public/favicon{,-dev,-beta,-nightly}.png
+ *   src-ui/public/favicon{,-dev,-nightly}.png
  *                                     — 192x192 tile cut out on transparency
  *                                       per channel (in-app surfaces render it
  *                                       over chrome; dev-build-identity.test.ts
@@ -80,7 +80,7 @@ import { createHash } from 'node:crypto';
  *                                       108dp; the launcher masks its corners
  *                                       and base instead of framing a small
  *                                       tile inside a dark square
- *   src-desktop/icons/<channel>/ios/AppIcon-*.png (stable, beta, nightly, dev)
+ *   src-desktop/icons/<channel>/ios/AppIcon-*.png (stable, nightly, dev)
  *                                     — from each channel's square master:
  *                                       the committed iOS asset-catalog sets.
  *                                       `tauri ios init` regenerates
@@ -379,7 +379,6 @@ const DIRECT_OUTPUTS = [
   'assets/brand/icon-1024.png',
   'assets/brand/icon-square-1024.png',
   'src-ui/public/favicon.png',
-  'src-ui/public/favicon-beta.png',
   'src-ui/public/favicon-nightly.png',
   'src-ui/public/favicon-dev.png',
   'src-ui/public/icons/station-512.png',
@@ -620,11 +619,6 @@ async function main() {
       rounded: paths['dev-macos'],
       square: paths['dev-ios'],
     });
-    writeChannelSet({
-      channel: 'beta',
-      rounded: paths['beta-macos'],
-      square: paths['beta-ios'],
-    });
 
     // The nightly channel's shade, committed under icons/nightly/:
     // tauri.nightly.conf.json points bundle.icon at the desktop set, and the
@@ -642,7 +636,7 @@ async function main() {
     }
   }
   console.log(
-    'Regenerated: Stable masters/platform sets, Dev/Beta/Nightly desktop + Android sets, Stable/Beta/Nightly/Dev iOS sets, favicons and the startup mark geometry',
+    'Regenerated: Stable masters/platform sets, Dev/Nightly desktop + Android sets, Stable/Nightly/Dev iOS sets, favicons and the startup mark geometry',
   );
 }
 

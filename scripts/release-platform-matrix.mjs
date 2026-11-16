@@ -5,7 +5,7 @@ import { load } from 'js-yaml';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const defaultRoot = resolve(import.meta.dirname, '..');
-const CHANNELS = ['development', 'nightly', 'preview', 'stable'];
+const CHANNELS = ['development', 'nightly', 'stable'];
 const PLATFORMS = [
   'web-portable',
   'macos',
@@ -52,6 +52,13 @@ export function validateReleasePlatformMatrix({
 }) {
   const errors = [];
   if (matrix?.schemaVersion !== 1) errors.push('schemaVersion must be 1');
+  for (const channel of new Set([
+    ...Object.keys(matrix?.channels ?? {}),
+    ...Object.keys(matrix?.cells ?? {}),
+  ])) {
+    if (!CHANNELS.includes(channel))
+      errors.push(`unsupported release channel ${channel}`);
+  }
   for (const channel of CHANNELS) {
     if (!matrix?.channels?.[channel]) errors.push(`missing channel ${channel}`);
   }
@@ -90,7 +97,7 @@ export function validateReleasePlatformMatrix({
       }
       if (
         platform === 'ios' &&
-        ['nightly', 'preview', 'stable'].includes(channel) &&
+        ['nightly', 'stable'].includes(channel) &&
         cell.state === 'configured'
       ) {
         if (
@@ -166,7 +173,7 @@ export function validateReleasePlatformMatrix({
       }
     }
   }
-  const iosIcons = ['nightly', 'preview', 'stable'].map(
+  const iosIcons = ['nightly', 'stable'].map(
     (channel) => matrix?.cells?.[channel]?.ios?.iconSource,
   );
   if (new Set(iosIcons).size !== iosIcons.length)

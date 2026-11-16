@@ -41,10 +41,6 @@ export const PUBLIC_MANIFEST_POINTERS = Object.freeze({
     rollingTag: 'portable-stable',
     manifestAsset: 'station-portable-stable-manifest.json',
   }),
-  preview: Object.freeze({
-    rollingTag: 'portable-preview',
-    manifestAsset: 'station-portable-preview-manifest.json',
-  }),
   nightly: Object.freeze({
     rollingTag: 'portable-nightly',
     manifestAsset: 'station-portable-nightly-manifest.json',

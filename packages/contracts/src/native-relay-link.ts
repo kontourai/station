@@ -1,6 +1,6 @@
 import type { SelfHostedBrokerNativeRouteInvitationV2 } from './self-hosted-broker.js';
 
-export type NativeRelayLinkChannel = 'dev' | 'stable' | 'beta' | 'nightly';
+export type NativeRelayLinkChannel = 'dev' | 'stable' | 'nightly';
 
 /** Public routing hints. None authenticates a Station or selects it for use. */
 export interface NativeRelayLinkRoute {

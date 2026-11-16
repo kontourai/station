@@ -42,8 +42,7 @@ const LAND = Object.freeze({
 
 /**
  * The water palette of each release channel, as explicit colours. They were
- * derived once from the approved stable blue (beta: hue -62deg, saturation
- * x0.7; nightly rose: hue +135deg, saturation x0.82; dev amber: hue -175deg)
+ * derived once from the approved stable blue (nightly rose: hue +135deg, saturation x0.82; dev amber: hue -175deg)
  * and are fixed here so a channel's colour is a reviewed value rather than
  * the output of an operation. Every channel hue stays well clear of the
  * Station brand purple (#7c3aed / #966aff); station-icon.test.ts enforces it.
@@ -63,21 +62,6 @@ export const CHANNEL_PALETTES = Object.freeze({
     baseSideDark: '#183f53',
     baseRim: '#b4dbec',
     shadow: '#00111a',
-  }),
-  beta: Object.freeze({
-    bgHi: '#175328',
-    bgLo: '#0a2f15',
-    bgEdge: '#07200e',
-    water: '#378a51',
-    waterLow: '#489f63',
-    waterDeep: '#0e3219',
-    bank: '#1b562e',
-    baseTop: '#76b087',
-    baseTopLow: '#59956b',
-    baseSide: '#356945',
-    baseSideDark: '#214a2d',
-    baseRim: '#bce4c7',
-    shadow: '#04160a',
   }),
   nightly: Object.freeze({
     bgHi: '#581230',
