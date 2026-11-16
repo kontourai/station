@@ -426,6 +426,36 @@ const loadConversationOpenRevalidator = () =>
   }));
 
 /**
+ * The first open after a page load otherwise waits on three chunks in series
+ * before its `/open` request starts: the revalidator, its controller, and the
+ * SDK open client. Fetch all three when the dock mounts, at idle, so that
+ * request starts on the first effect. Fire-and-forget: the boundaries report
+ * a failed import where they render.
+ */
+export function preloadConversationOpenChunks(): Promise<unknown> {
+  return Promise.all([
+    loadConversationOpenRevalidator(),
+    loadConversationOpenController().then((controller) =>
+      controller.preloadConversationOpenClient(),
+    ),
+  ]).catch(() => undefined);
+}
+
+function useConversationOpenPreload() {
+  useEffect(() => {
+    const idle = globalThis.requestIdleCallback;
+    if (typeof idle === 'function') {
+      const handle = idle(() => void preloadConversationOpenChunks(), {
+        timeout: 2_000,
+      });
+      return () => globalThis.cancelIdleCallback?.(handle);
+    }
+    const timer = setTimeout(() => void preloadConversationOpenChunks(), 0);
+    return () => clearTimeout(timer);
+  }, []);
+}
+
+/**
  * The pane-host machinery is ~17KB of entry budget the dock does not need at
  * parse time, so it stays a chunk. But the dock is a persistent shell
  * affordance: waiting for a user gesture to start the request would leave it
@@ -549,6 +579,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
 
 function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const { placement, projectSlug, layoutSlug, onRequestAuth } = props;
+  useConversationOpenPreload();
   const isFullscreenPlacement = placement === 'fullscreen';
   const layoutChatPlacement = useLayoutChatPlacement();
   // A full-screen Chat shows its active chat without opening the dock; end-of-

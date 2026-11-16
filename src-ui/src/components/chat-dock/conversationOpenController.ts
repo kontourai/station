@@ -43,6 +43,14 @@ interface ConversationOpenDockEffects {
   isCurrent?: () => boolean;
 }
 
+/**
+ * Fetch the SDK open client ahead of the first `/open`, so a reload's first
+ * conversation does not wait on this chunk after the controller's own.
+ */
+export function preloadConversationOpenClient(): Promise<unknown> {
+  return import('@kontourai/station-sdk/conversation-open');
+}
+
 export async function resolveConversationOpenAuthoritatively(
   conversationId: string,
   apiBase: string,
