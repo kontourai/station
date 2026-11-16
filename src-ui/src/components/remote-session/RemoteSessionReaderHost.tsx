@@ -21,6 +21,7 @@ import {
 import { displayProvider } from '../../utils/sessionDisplay';
 import { ConversationBody } from '../conversation/ConversationBody';
 import { Dialog } from '../Dialog';
+import { SkeletonBlock } from '../state';
 
 const REMOTE_HISTORY_TURNS = 10;
 
@@ -112,7 +113,7 @@ function RemoteSessionReader({
 
   let body: React.ReactNode;
   if (capability.isPending) {
-    body = <p role="status">Checking this Station…</p>;
+    body = <SkeletonBlock count={1} label="Checking this Station" />;
   } else if (!supported) {
     body = (
       <p role="status" data-testid="remote-session-unsupported">
