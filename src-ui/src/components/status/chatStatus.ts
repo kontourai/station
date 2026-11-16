@@ -165,18 +165,21 @@ export function deriveChatStatus(
   }
   if (!input.turnLive) {
     const children = activity?.runningChildWork;
-    if (!children) return undefined;
+    // The chat's own named work wins, as on its background strip, even
+    // before Station's count has caught up with it.
+    const named =
+      input.backgroundWork && backgroundWorkRunningLabel(input.backgroundWork);
+    if (!children && !named) return undefined;
     return {
       kind: 'working',
       tone: 'active',
       glyph: 'working',
       label:
-        children.count > 0
-          ? (input.backgroundWork &&
-              backgroundWorkRunningLabel(input.backgroundWork)) ||
-            `${children.count} background task${children.count === 1 ? '' : 's'} running`
-          : 'Waiting for background reply',
-      clockFrom: parseEpochMs(children.oldestStartedAt),
+        named ||
+        (children && children.count > 0
+          ? `${children.count} background task${children.count === 1 ? '' : 's'} running`
+          : 'Waiting for background reply'),
+      clockFrom: parseEpochMs(children?.oldestStartedAt),
       details: [],
       action: undefined,
     };

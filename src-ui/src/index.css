@@ -4047,7 +4047,6 @@ button:hover {
    its count line and the running tasks the transcript does not card. */
 .background-tasks-strip {
   margin: 8px 0;
-  overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--k-brand) 18%, transparent);
   border-radius: 10px;
   background: color-mix(in srgb, var(--k-brand) 6%, transparent);
@@ -4083,9 +4082,27 @@ button.background-tasks-banner {
   cursor: pointer;
 }
 
+/* The card's inner radius (10px less its 1px border), so the hover fill
+   meets its corners; square at the bottom when task rows follow. */
+button.background-tasks-banner {
+  border-radius: 9px;
+}
+
+.background-tasks-strip:has(.background-tasks-banner__tasks)
+  > button.background-tasks-banner {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
 button.background-tasks-banner:hover,
 button.background-tasks-banner:focus-visible {
   background: color-mix(in srgb, var(--k-brand) 10%, transparent);
+}
+
+/* Inside the card's edge, so the card never hides the focus ring. */
+button.background-tasks-banner:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
 }
 
 /* archive#1301: visually-hidden live-region sibling

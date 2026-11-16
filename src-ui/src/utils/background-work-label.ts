@@ -22,36 +22,35 @@ const ORDER: (keyof BackgroundWorkCounts)[] = [
   'tool',
 ];
 
+export type BackgroundWorkKind = keyof BackgroundWorkCounts;
+
 export function backgroundWorkCounts(
-  children: readonly { workKind?: ChildWorkKind }[],
-  runningToolCount: number,
+  kinds: Iterable<BackgroundWorkKind>,
 ): BackgroundWorkCounts {
   const counts: BackgroundWorkCounts = {
     agent: 0,
     command: 0,
     monitor: 0,
-    tool: runningToolCount,
+    tool: 0,
   };
-  for (const child of children) counts[child.workKind ?? 'agent'] += 1;
+  for (const kind of kinds) counts[kind] += 1;
   return counts;
 }
 
-export function backgroundWorkTotal(counts: BackgroundWorkCounts): number {
-  return ORDER.reduce((total, kind) => total + counts[kind], 0);
+/** "9 agents and 3 tools", "1 command"; empty for none. */
+export function backgroundWorkPhrase(counts: BackgroundWorkCounts): string {
+  const parts = ORDER.filter((kind) => counts[kind] > 0).map((kind) => {
+    const [one, many] = NOUNS[kind];
+    return `${counts[kind]} ${counts[kind] === 1 ? one : many}`;
+  });
+  if (parts.length <= 1) return parts[0] ?? '';
+  return `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`;
 }
 
 /** "9 agents and 3 tools running", "1 command running"; empty for none. */
 export function backgroundWorkRunningLabel(
   counts: BackgroundWorkCounts,
 ): string {
-  const parts = ORDER.filter((kind) => counts[kind] > 0).map((kind) => {
-    const [one, many] = NOUNS[kind];
-    return `${counts[kind]} ${counts[kind] === 1 ? one : many}`;
-  });
-  if (parts.length === 0) return '';
-  const joined =
-    parts.length === 1
-      ? parts[0]
-      : `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`;
-  return `${joined} running`;
+  const phrase = backgroundWorkPhrase(counts);
+  return phrase && `${phrase} running`;
 }

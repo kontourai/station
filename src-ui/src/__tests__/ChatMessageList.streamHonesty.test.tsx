@@ -307,12 +307,13 @@ describe('station#3300 — settled turn stays settled on resume', () => {
     expect(screen.queryByText(/Background agent/)).toBeNull();
   });
 
-  test('several background agents are counted with the running tools, which list inside the strip', () => {
+  test('each running call shows once: in its batch, counted "above" by the strip, which lists only the rest', () => {
     backgroundTasksStore.reset();
-    for (const [id, description] of [
+    const tools = [
       ['tool-a', 'Run gate:for on paths to edit'],
       ['tool-b', 'Run telemetry tests after change'],
-    ])
+    ] as const;
+    for (const [id, description] of tools)
       backgroundTasksStore.ingest(
         {
           provider: 'claude',
@@ -331,6 +332,24 @@ describe('station#3300 — settled turn stays settled on resume', () => {
           orchestrationStatus: 'idle',
           orchestrationTurnOpen: false,
           status: 'idle',
+          messages: [
+            { role: 'user', content: 'do the thing', timestamp: 1 },
+            {
+              role: 'assistant',
+              content: SETTLED_ANSWER,
+              timestamp: 2,
+              turnId: 'turn-1',
+              // The settled turn's calls, as the durable projection gives
+              // them: started, no outcome.
+              contentParts: tools.map(([id, description]) => ({
+                type: 'tool-invocation',
+                toolCallId: id,
+                toolName: 'Bash',
+                args: { command: 'npm run gate:for', description },
+                state: 'call',
+              })),
+            },
+          ] as ChatSession['messages'],
           backgroundTasks: [
             { taskId: 'a-1', backgrounded: true, description: 'Inventory' },
             { taskId: 'a-2', backgrounded: true, description: 'Review' },
@@ -339,22 +358,35 @@ describe('station#3300 — settled turn stays settled on resume', () => {
         }),
         true,
       );
-      // Counted, not "— Inventory, …": one name stood for three agents.
-      expect(screen.getByText('3 agents and 2 tools running')).toBeTruthy();
-      expect(screen.queryByText(/Inventory/)).toBeNull();
+      // The transcript's own rows say the calls are running, from the same
+      // live record the strip reads; none reads "No result recorded".
+      expect(screen.queryByText(/no result/i)).toBeNull();
+      for (const [, description] of tools)
+        expect(
+          screen.getByRole('button', { name: new RegExp(description) }),
+        ).toBeTruthy();
+      // The strip counts them as shown above and lists only the agents the
+      // transcript does not show.
+      expect(screen.getByText('2 tools above · 3 agents running')).toBeTruthy();
       const strip = document.querySelector(
         '.background-tasks-strip',
       ) as HTMLElement;
       const rows = strip.querySelectorAll('.background-tasks-banner__task');
-      // The running tools are rows of the strip's own card, each with its
-      // kind glyph, not loose lines after it.
-      expect(rows).toHaveLength(2);
-      for (const row of rows)
+      expect(rows).toHaveLength(3);
+      for (const row of rows) {
+        // The glyph names the kind; the row repeats no "Agent ·" word.
         expect(
           row.querySelector('.background-tasks-banner__task-glyph svg'),
         ).toBeTruthy();
-      expect(strip.textContent).toContain('Run gate:for on paths to edit');
-      expect(strip.textContent).toContain('Run telemetry tests after change');
+        expect(
+          row.querySelector('[role="img"]')?.getAttribute('aria-label'),
+        ).toBe('Agent');
+        expect(
+          row.querySelector('.background-tasks-sheet__meta')?.textContent,
+        ).not.toMatch(/Agent|Tool/);
+      }
+      for (const [, description] of tools)
+        expect(strip.textContent).not.toContain(description);
     } finally {
       backgroundTasksStore.reset();
     }
