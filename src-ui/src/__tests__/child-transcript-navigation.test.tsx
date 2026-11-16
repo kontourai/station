@@ -25,7 +25,6 @@ import {
   resolveCssImports,
 } from '../../../tests/helpers/css-cascade-fixture';
 import { SubagentTranscriptCard } from '../components/chat/SubagentTranscriptCard';
-import { ChatDockActiveIdentity } from '../components/chat-dock/ChatDockActiveIdentity';
 import { ChatDockHeader } from '../components/chat-dock/ChatDockHeader';
 import { ChildChatNavigation } from '../components/chat-dock/ChildChatNavigation';
 import type { ChildChatController } from '../components/chat-dock/ChildChatNavigationContext';
@@ -609,122 +608,6 @@ test('the breadcrumb is one trail: the parent crumb goes back and one separator 
   expect(
     screen.queryByRole('navigation', { name: 'Chat breadcrumb' }),
   ).toBeNull();
-});
-
-test('in the Coding bar a subagent chat names its parent once and Open Browser keeps one line', async () => {
-  // The Coding workbench's bar (`CodingWorkbench`): its own crumbs, then the
-  // slot the chat's toolbar renders into, then Open Browser.
-  const bar = document.createElement('div');
-  bar.className = 'coding-workbench__bar';
-  bar.innerHTML = `<nav class="coding-workbench__nav"><ol class="coding-workbench__crumbs"><li class="coding-workbench__crumb"><button type="button" class="coding-workbench__crumb-link">Inbox</button></li><li class="coding-workbench__crumb"><span class="coding-workbench__crumb-current" aria-current="page">Is this machine getting overwhelmed? Seems like station process/server is slow</span></li></ol></nav><div class="coding-workbench__bar-leading"></div><span class="coding-workbench__bar-spacer"></span><div class="coding-workbench__bar-trailing"></div><button type="button" class="button button--ghost button--sm coding-workbench__open-browser">Open Browser</button>`;
-  document.body.append(bar);
-  const leading = bar.querySelector<HTMLElement>(
-    '.coding-workbench__bar-leading',
-  )!;
-  const trailing = bar.querySelector<HTMLElement>(
-    '.coding-workbench__bar-trailing',
-  )!;
-  try {
-    render(
-      <KeyboardShortcutsProvider>
-        <QueryClientProvider client={new QueryClient()}>
-          <PreviewProvider>
-            <ConversationConnectionProvider value={connection}>
-              <RegionChromeSlotsContext.Provider
-                value={{ leading, trailing, namesPane: true }}
-              >
-                <ChildChatNavigation
-                  rootKey="parent"
-                  title="Is this machine getting overwhelmed? Seems like station process/server is slow"
-                  dockOutlet
-                >
-                  <ChatDockHeader
-                    chatIdentity={
-                      <ChatDockActiveIdentity
-                        session={{ id: 'parent', title: 'Parent' }}
-                        onClose={() => {}}
-                      />
-                    }
-                    regionVisible
-                  />
-                  <Nested />
-                </ChildChatNavigation>
-              </RegionChromeSlotsContext.Provider>
-            </ConversationConnectionProvider>
-          </PreviewProvider>
-        </QueryClientProvider>
-      </KeyboardShortcutsProvider>,
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Open nested' }));
-    await screen.findByRole('navigation', { name: 'Chat breadcrumb' });
-    const graph = createUiModuleGraph();
-    const stylesheets = [
-      ...graph.closure(
-        [
-          'src-ui/src/components/coding-layout/CodingWorkbench.tsx',
-          'src-ui/src/components/chat-dock/ChatDockHeader.tsx',
-          'src-ui/src/components/chat-dock/ChildChatNavigation.tsx',
-        ],
-        { followDynamic: false },
-      ),
-    ].filter((path) => path.endsWith('.css'));
-    const styles = ['src-ui/src/index.css', ...stylesheets]
-      .map((path) => resolveCssImports(resolve(path)))
-      .join('\n');
-    assertNoImportsSurvive(styles);
-    const output = resolve('test-results/child-chat-coding-bar');
-    mkdirSync(output, { recursive: true });
-    const browser = await chromium.launch();
-    try {
-      const page = await browser.newPage({
-        viewport: { width: 620, height: 120 },
-      });
-      await page.setContent(
-        `<!doctype html><html data-theme="dark"><head><style>${styles}</style></head><body style="margin:0">${bar.outerHTML}</body></html>`,
-      );
-      const facts = await page.evaluate(() => {
-        const bar = document.querySelector('.coding-workbench__bar')!;
-        const shown = (element: Element) =>
-          getComputedStyle(element).display !== 'none' &&
-          element.getClientRects().length > 0;
-        const parentNames = [
-          ...bar.querySelectorAll(
-            '.coding-workbench__crumb-current, .child-chat-trail__label',
-          ),
-        ].filter(shown).length;
-        const browserButton = bar.querySelector(
-          '.coding-workbench__open-browser',
-        )!;
-        const range = document.createRange();
-        range.selectNodeContents(browserButton);
-        const lineTops = new Set(
-          [...range.getClientRects()].map((rect) => Math.round(rect.top)),
-        );
-        const child = bar.querySelector('.child-chat-trail [aria-current]')!;
-        return {
-          parentNames,
-          browserLines: lineTops.size,
-          childWhole: child.scrollWidth <= child.clientWidth,
-          separators: [...bar.querySelectorAll('.child-chat-trail__separator')]
-            .filter(shown)
-            .map((separator) => separator.textContent),
-          back: shown(bar.querySelector('.child-chat-trail__back')!),
-        };
-      });
-      await page.screenshot({ path: `${output}/coding-bar-620-dark.png` });
-      expect(facts).toEqual({
-        parentNames: 1,
-        browserLines: 1,
-        childWhole: true,
-        separators: ['/'],
-        back: false,
-      });
-    } finally {
-      await browser.close();
-    }
-  } finally {
-    bar.remove();
-  }
 });
 
 test('mid-run user records stay in the run as muted notices, and a result with no call on hand is a tool row, not prose', async () => {

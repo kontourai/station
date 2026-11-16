@@ -1009,9 +1009,27 @@
   .coding-workbench__crumb:not(:first-child) {
   display: none;
 }
+/* "Inbox" alone: it keeps its width while the trail's titles yield, and
+   the bar's own gap (--k-space-2) is the space before the trail's "/". */
+.coding-workbench__bar:has(.child-chat-trail) .coding-workbench__nav {
+  flex: none;
+}
+.coding-workbench__bar:has(.child-chat-trail) .coding-workbench__crumb-link {
+  padding-inline-end: 0;
+}
+/* Every "/" sits the bar's gap (--k-space-2) from the text on each side. */
+.coding-workbench__bar-leading .child-chat-trail,
+.coding-workbench__bar-leading .child-chat-trail__segment {
+  gap: 0;
+}
 .coding-workbench__bar-leading .child-chat-trail::before {
   content: "/";
   flex: none;
-  margin-inline-start: var(--k-space-2);
   color: var(--k-text-muted);
+}
+.coding-workbench__bar-leading .child-chat-trail__segment .button {
+  padding-inline: var(--k-space-2);
+}
+.coding-workbench__bar-leading .child-chat-trail [aria-current] {
+  padding-inline-start: var(--k-space-2);
 }
