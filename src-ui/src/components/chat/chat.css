@@ -2416,8 +2416,10 @@
   min-height: 44px;
 }
 
-/* The settled answer's footer bar: the Basis chip, always visible (#926
-   amendment, owner 2026-10), then the hover-revealed action row. */
+/* The settled answer's footer bar: the hover-revealed action row, then the
+   Basis chip, always visible (#926 amendment, owner 2026-10), at the bubble's
+   edge. The chip comes first in the DOM, so focus reaches it before the
+   hidden row; `order` places it last. */
 .turn-footer__bar {
   display: flex;
   align-items: center;
@@ -2476,6 +2478,10 @@
 .turn-footer__bar .answer-basis-chip,
 .message-meta .answer-basis-chip {
   min-height: 44px;
+}
+
+.turn-footer__bar > .answer-basis-chip {
+  order: 1;
 }
 
 @media (hover: hover) {

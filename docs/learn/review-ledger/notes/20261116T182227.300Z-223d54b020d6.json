@@ -1,0 +1,11 @@
+{
+  "revision": "50be642daa052938f0a880e12241ee065e8c45af",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"ChatMessageList passes the transcript's tool-call ids to the background strip and provides its API base to tool rows (TranscriptToolRecordSource); the strip still lists the BackgroundTaskActivity line placement.md names. No bridge, placement or connection claim changes.","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"ChatMessageList passes the transcript's tool-call ids to the background strip and provides its API base to tool rows (TranscriptToolRecordSource); the strip still lists the BackgroundTaskActivity line placement.md names. No bridge, placement or connection claim changes.","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"ChatMessageList passes the transcript's tool-call ids to the background strip and provides its API base to tool rows (TranscriptToolRecordSource); the strip still lists the BackgroundTaskActivity line placement.md names. No bridge, placement or connection claim changes.","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

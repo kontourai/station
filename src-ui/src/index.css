@@ -4043,16 +4043,24 @@ button:hover {
   }
 }
 
-/* Backgrounded provider tasks that outlive the assistant turn. */
+/* Backgrounded work that outlives the assistant turn: the strip's card holds
+   its count line and the running tasks the transcript does not show. It does
+   not clip its content, so the product-wide focus ring (offset outside the
+   button) stays whole. */
+.background-tasks-strip {
+  margin: 8px 0;
+  border: 1px solid color-mix(in srgb, var(--k-brand) 18%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--k-brand) 6%, transparent);
+}
+
 .background-tasks-banner {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 8px 0;
   padding: 8px 12px;
-  border: 1px solid color-mix(in srgb, var(--k-brand) 18%, transparent);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--k-brand) 6%, transparent);
+  border: 0;
+  background: transparent;
 }
 
 .background-tasks-banner__label {
@@ -4074,6 +4082,18 @@ button.background-tasks-banner {
   color: inherit;
   text-align: left;
   cursor: pointer;
+}
+
+/* The card's inner radius (10px less its 1px border), so the hover fill
+   meets its corners; square at the bottom when task rows follow. */
+button.background-tasks-banner {
+  border-radius: 9px;
+}
+
+.background-tasks-strip:has(.background-tasks-banner__tasks)
+  > button.background-tasks-banner {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
 }
 
 button.background-tasks-banner:hover,

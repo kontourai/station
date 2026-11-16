@@ -1,0 +1,17 @@
+{
+  "revision": "50be642daa052938f0a880e12241ee065e8c45af",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"chat.css: the Basis chip is drawn last in the answer's footer bar via order while staying first in DOM focus order, and the bar's comment says so. Rail tick dimming is unchanged from the earlier round. Citing documents (module map, connection, responsive guide, user guide) make no claim this contradicts.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/chat-composer.md","note":"chat.css: the Basis chip is drawn last in the answer's footer bar via order while staying first in DOM focus order, and the bar's comment says so. Rail tick dimming is unchanged from the earlier round. Citing documents (module map, connection, responsive guide, user guide) make no claim this contradicts.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/placement.md","note":"chat.css: the Basis chip is drawn last in the answer's footer bar via order while staying first in DOM focus order, and the bar's comment says so. Rail tick dimming is unchanged from the earlier round. Citing documents (module map, connection, responsive guide, user guide) make no claim this contradicts.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/station-connection.md","note":"chat.css: the Basis chip is drawn last in the answer's footer bar via order while staying first in DOM focus order, and the bar's comment says so. Rail tick dimming is unchanged from the earlier round. Citing documents (module map, connection, responsive guide, user guide) make no claim this contradicts.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"chat.css: the Basis chip is drawn last in the answer's footer bar via order while staying first in DOM focus order, and the bar's comment says so. Rail tick dimming is unchanged from the earlier round. Citing documents (module map, connection, responsive guide, user guide) make no claim this contradicts.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"chat.css: the Basis chip is drawn last in the answer's footer bar via order while staying first in DOM focus order, and the bar's comment says so. Rail tick dimming is unchanged from the earlier round. Citing documents (module map, connection, responsive guide, user guide) make no claim this contradicts.","inputs":["src-ui/src/components/chat/chat.css"]}
+  ]
+}
