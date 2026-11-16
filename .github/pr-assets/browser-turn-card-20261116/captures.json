@@ -1,54 +1,54 @@
 {
-  "source": "999af13cce4d44467a0ed421bbc2446129f719ae",
+  "source": "fcd24555a6002903911eeb5d1920046f43b0678e",
   "command": "npm run test:e2e:product -- --spec=tests/inline-browser-activity.spec.ts",
-  "result": "11 passed in 24.7s",
+  "result": "11 passed in 26.8s; toolbar and compact disclosure target floors checked",
   "transport": "Controlled local HTTP binary stream of a real PNG fixture page; production Chromium producer not exercised.",
-  "lifecycle": "One boot-race recovery; final cleanup reported settled. Journal could not uniquely correlate the two boot attempts (conflicting-boot-or-build); no complete clean-boot qualification claimed.",
+  "lifecycle": "Cleanup settled. One managed boot-race recovery caused conflicting-boot-or-build / journalDaemonMatch false; full clean-boot qualification is not claimed. Prior af8c964 run independently had a single matched boot.",
   "captures": [
     {
       "name": "inline-browser-preview-off",
       "path": "inline-browser-preview-off.png",
-      "sha256": "646253bace0aa7a18851af872dd2412d0f1e7065fd4addd7beac9bd379c02fbd"
+      "sha256": "22c21fca25f5961f9bbe914f9ec9d7a18f011fb190037f1152b9bf0ba5e22e8b"
     },
     {
       "name": "inline-browser-390-light",
       "path": "inline-browser-390-light.png",
-      "sha256": "74779aa5a8b960e80baad21492b29ee957be42b91d34e1e0c33ec6396c610e07"
+      "sha256": "aa19e0f9b57cd57b6c5a214c31c5a04fb136387cf1106bd3ef391d628f28fd6f"
     },
     {
       "name": "inline-browser-settled-390-light",
       "path": "inline-browser-settled-390-light.png",
-      "sha256": "565cb20a3cd97f421ad3a0dbdca2a2307c3a48a801587511bac34f3ab4891679"
+      "sha256": "645629e80d1135497d086c303a391f53c01ea5373976a08e310ca286fd5f9fbf"
     },
     {
       "name": "inline-browser-390-dark",
       "path": "inline-browser-390-dark.png",
-      "sha256": "23983fb9710d27ecc5c5b1722c924d4ada5881ce727dec71fdda1168926797b7"
+      "sha256": "86c811732fc7b94cf3420d9149c4b9d7e53215ec195e53fc6d8fd64810c5d550"
     },
     {
       "name": "inline-browser-settled-390-dark",
       "path": "inline-browser-settled-390-dark.png",
-      "sha256": "2890b93ac9de4ed0b014f9026f57d1188d2ec53bd07cf93a00a619425e221bae"
+      "sha256": "415edf8ba1d5993aa21edac8ec88ab9ae4e6c45f864922bd772cd5065f7a90ab"
     },
     {
       "name": "inline-browser-1440-light",
       "path": "inline-browser-1440-light.png",
-      "sha256": "537d8402c1f0aacb1e27f009948549442dc40f817ed7e1d92d0052700ec48ebe"
+      "sha256": "72b1089d68f1358db4fce4260ef34492aa0b1ba99f0dc87114697ecf428a7f85"
     },
     {
       "name": "inline-browser-settled-1440-light",
       "path": "inline-browser-settled-1440-light.png",
-      "sha256": "4a2f03b5b521e5d6fe7278d43e2519b478d96901ba8a5e97a7d0fd07242f4261"
+      "sha256": "c446af34257c69774c4ac683231ab17562265e538849542343b252cfa58cafa5"
     },
     {
       "name": "inline-browser-1440-dark",
       "path": "inline-browser-1440-dark.png",
-      "sha256": "150408c1e721f2276c39dcd0f19d1fe78b5d9832d5fff7eafe2aae609d5fab41"
+      "sha256": "fc868173b24649cbfd5f822c5fc6facad2efc89d9ac8f26dc49c51bb967c8623"
     },
     {
       "name": "inline-browser-settled-1440-dark",
       "path": "inline-browser-settled-1440-dark.png",
-      "sha256": "5909da8b98a9cd82e77c132398bb44e804f424c8149cc1feb31336e362c55796"
+      "sha256": "decab79762211c290575c11ac10a17660fae3af044261049d16c7cb8f775a9ab"
     }
   ]
 }
