@@ -480,7 +480,16 @@ Show inbox directly, as an icon button whose pressed state is available to assis
 
 Pending tool permissions feed Needs approval; questions and forms feed Needs
 answer. Permission takes priority when both wait. The action opens the
-conversation's request sheet. Background work keeps the pill visible after the
+conversation's request sheet. Opening the sheet asks Station about each
+request it lists and drops any already settled, from the sheet and the pill
+alike; a failed check keeps the request. While a reconnect replays missed
+events, the sheet and the pill hold what they showed (at most five seconds),
+so requests opened and resolved in the gap do not run the count up and down.
+With two or more permissions waiting, the sheet's pinned actions offer
+**Allow all (N)** and, in its menu, **Allow all for this session**; each
+answer is its own authority check, and one refusal does not stop the rest.
+An in-flight decision shows on its chosen button (Allowing…, Denying…) with no
+status sentence. Background work keeps the pill visible after the
 main turn ends, using the server count and oldest reported start. Failed history or
 continuation observation shows Status unavailable and withholds the cached
 working clock; the remote turn may still be running. Already loaded transcript
