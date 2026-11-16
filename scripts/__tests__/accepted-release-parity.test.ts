@@ -250,6 +250,41 @@ const CASES: Case[] = [
     recorded: '1.0.0-nightly.1',
     relation: 'invalid',
   },
+  // Another ring's record whose version is valid for this ring: only the
+  // record's ring name tells them apart, so these reach that comparison.
+  {
+    ring: 'stable',
+    existing: mark('nightly', '1.3.0'),
+    offered: '1.3.1',
+    recorded: '1.3.1',
+    relation: 'invalid',
+  },
+  {
+    ring: 'nightly',
+    existing: mark('stable', '1.3.0-nightly.1'),
+    offered: '1.3.0-nightly.2',
+    recorded: '1.3.0-nightly.2',
+    relation: 'invalid',
+  },
+  // #4929 retired the Preview ring. With no record the check has nothing to
+  // compare, but neither side records a Preview release; a record a Preview
+  // install left is unreadable and is kept, not raised.
+  {
+    ring: 'preview',
+    existing: null,
+    offered: '1.2.4-preview.1',
+    recorded: null,
+    refused: true,
+    relation: 'absent',
+  },
+  {
+    ring: 'preview',
+    existing: mark('preview', '1.2.4-preview.1'),
+    offered: '1.2.4-preview.2',
+    recorded: '1.2.4-preview.1',
+    refused: true,
+    relation: 'invalid',
+  },
   {
     ring: 'stable',
     existing: mark('stable', '1.2.4-preview.1'),

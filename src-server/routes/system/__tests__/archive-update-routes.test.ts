@@ -140,16 +140,23 @@ function makeInstall({
   installerOwned = true,
   manifestUrl = MANIFEST_URL as string | null,
   stateSchema = 4,
-  ring = 'stable' as 'stable' | 'nightly',
+  ring = 'stable' as 'stable' | 'nightly' | 'preview',
 }: {
   installerOwned?: boolean;
   manifestUrl?: string | null;
   stateSchema?: 3 | 4;
-  ring?: 'stable' | 'nightly';
+  /** `preview`: an install of the ring #4929 retired, as it was written. */
+  ring?: 'stable' | 'nightly' | 'preview';
 } = {}): Install {
-  // The runtime channel each ring's archive carries (#4929 retired Beta).
-  const channel = ring;
-  const version = ring === 'nightly' ? '0.8.0-nightly.1' : RUNNING;
+  // The runtime channel each ring's archive carries; the retired Preview
+  // ring's was Beta.
+  const channel = ring === 'preview' ? 'beta' : ring;
+  const version =
+    ring === 'nightly'
+      ? '0.8.0-nightly.1'
+      : ring === 'preview'
+        ? '0.8.0-preview.1'
+        : RUNNING;
   const installRoot = makeTempDir('station-archive-install-');
   if (installerOwned) {
     writeFileSync(
@@ -183,8 +190,10 @@ function makeInstall({
   );
   writeFileSync(
     join(versionRoot, '.station-release.json'),
-    // scripts/package-portable-release.sh writes Stable as schema 3 (bound
-    // to the product version) and Nightly as schema 2 (bound to its tag).
+    // createPackagedReleaseManifest (scripts/lib/container-release-metadata.mjs,
+    // which the portable archive builder calls) writes Stable as schema 3,
+    // bound to the product version, and Nightly as schema 2, bound to its
+    // tag; a Preview archive was schema 2 before #4929.
     `${JSON.stringify(
       ring === 'stable'
         ? {
@@ -487,6 +496,35 @@ describe('a manifest older than a release this install already accepted (#187)',
         `${join(install.installRoot, '.station-release-accepted.json')} is not a private file of this user holding a stable release record`,
       );
     }
+  });
+});
+
+describe('an install of a retired ring (#4929)', () => {
+  test('a Preview install is not an archive of any ring: nothing is checked, offered or applied, and it is not treated as Stable', async () => {
+    const install = makeInstall({ ring: 'preview' });
+    const app = createApp(install);
+    const body = await json(await app.request('/core-update'));
+    expect(body).toMatchObject({
+      installKind: 'unknown',
+      provenanceIssue: 'missing',
+      updateAvailable: false,
+    });
+    expect(body).not.toHaveProperty('channel');
+    expect(body).not.toHaveProperty('latestVersion');
+    expect(body).not.toHaveProperty('applyMethod');
+    expect(fetchFn).not.toHaveBeenCalled();
+
+    const post = await app.request('/core-update', { method: 'POST' });
+    expect(post.status).toBe(409);
+    expect(await json(post)).toEqual({
+      success: false,
+      error:
+        'This install carries no update provenance, so it cannot update itself.',
+    });
+    expect(existsSync(serviceUpdatePaths(install.installRoot).request)).toBe(
+      false,
+    );
+    expect(fetchFn).not.toHaveBeenCalled();
   });
 });
 
