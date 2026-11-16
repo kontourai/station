@@ -501,7 +501,10 @@ import {
   type PreparedTurnIntentView,
   samePreparedValue,
 } from './prepared-turn-intent.js';
-import { type RecoveryDispatchAdapter } from './recovery-dispatch-adapter.js';
+import {
+  markSessionUntouched,
+  type RecoveryDispatchAdapter,
+} from './recovery-dispatch-adapter.js';
 import {
   inspectRequestEvent,
   RequestEventGuardError,
@@ -4246,7 +4249,9 @@ export class OrchestrationService {
   }> {
     const existing = this.sessionReadModel.get(input.threadId);
     if (!existing) {
-      throw new Error('Credential profile recovery session is unavailable.');
+      throw markSessionUntouched(
+        new Error('Credential profile recovery session is unavailable.'),
+      );
     }
     // #484 phase A follow-up: credential-recovery replays carry no
     // admission context, and the caller follows this restart with a DIRECT
@@ -4259,8 +4264,11 @@ export class OrchestrationService {
       const unadmittedConsent = this.persistedPortableConsentOfThread(
         input.threadId,
       );
+      // Nothing has been stopped yet: recovery must not restore this session.
       if (unadmittedConsent)
-        throw portableRefusalForUnadmittedThread(unadmittedConsent);
+        throw markSessionUntouched(
+          portableRefusalForUnadmittedThread(unadmittedConsent),
+        );
     }
     // archive#3476: resolve by the session's own persisted provider rather
     // than by probing every adapter for a live thread. This path REPLACES the

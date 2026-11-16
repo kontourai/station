@@ -149,13 +149,10 @@ function UsageLimitBannerFor({
   });
   const [notSwitched, setNotSwitched] = useState(false);
   /**
-   * The account a switch went to, for the stop it was made on: a later stop
-   * in this conversation never reports it.
+   * The account a switch went to. A switch resumes its own stop, so it is
+   * cleared as soon as any stop waits again: a later stop never reports it.
    */
-  const [switched, setSwitched] = useState<{
-    stopId: string;
-    label: string;
-  } | null>(null);
+  const [switched, setSwitched] = useState<{ label: string } | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [notice, setNotice] = useState<string | null>(null);
   const wasEngaged = useRef(false);
@@ -307,8 +304,7 @@ function UsageLimitBannerFor({
       {
         onSuccess: ({ result }) => {
           setNotSwitched(result?.kind === 'not-switched');
-          if (result?.kind === 'resumed')
-            setSwitched({ stopId: continueOnStopId, label });
+          if (result?.kind === 'resumed') setSwitched({ label });
         },
       },
     );

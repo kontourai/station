@@ -339,9 +339,10 @@ class CredentialRecoveryImplementation implements CredentialRecoveryModule {
         const rolledBack = await this.rollback(claimed, 'adoption_failed');
         // A restart that began before failing left the session down or on
         // the candidate; put it back on the connection's own account.
-        const restored =
-          !outcome.sessionTouched || (await this.restoreOrQuarantine(claimed));
-        if (!rolledBack || !restored) {
+        const session = outcome.sessionTouched
+          ? await this.restoreSessionOutcome(claimed)
+          : 'restored';
+        if (!rolledBack || session === 'failed') {
           const marked = this.markCompensationRequired(claimed);
           if (marked.kind !== 'applied') return { kind: 'indeterminate' };
           return { kind: 'indeterminate' };
@@ -357,6 +358,15 @@ class CredentialRecoveryImplementation implements CredentialRecoveryModule {
           if (released.kind === 'applied') {
             this.claims.delete(intent.fingerprint);
             this.claimedFingerprints.delete(intent.fingerprint);
+            // A quarantined session is closed: the stop cannot resume at its
+            // reset, so it is retired with that reason, not left waiting.
+            if (session === 'quarantined')
+              this.dependencies.ledger.retireWaiting({
+                fingerprint: intent.fingerprint,
+                outcome: 'canceled',
+                reason: 'session-ended',
+                now: this.now(),
+              });
             return { kind: 'rolled-back' };
           }
         }
@@ -993,19 +1003,29 @@ class CredentialRecoveryImplementation implements CredentialRecoveryModule {
   private async restoreOrQuarantine(
     intent: ConnectionRecoveryIntent,
   ): Promise<boolean> {
+    return (await this.restoreSessionOutcome(intent)) !== 'failed';
+  }
+
+  /**
+   * Which of the two made the session safe: a quarantined session is closed,
+   * so nothing may still promise to resume it.
+   */
+  private async restoreSessionOutcome(
+    intent: ConnectionRecoveryIntent,
+  ): Promise<'restored' | 'quarantined' | 'failed'> {
     try {
       await this.dependencies.restoreSession({
         threadId: intent.threadId,
         signal: new AbortController().signal,
       });
-      return true;
+      return 'restored';
     } catch {
       try {
-        if (!this.dependencies.quarantineSession) return false;
+        if (!this.dependencies.quarantineSession) return 'failed';
         await this.dependencies.quarantineSession(intent.threadId);
-        return true;
+        return 'quarantined';
       } catch {
-        return false;
+        return 'failed';
       }
     }
   }

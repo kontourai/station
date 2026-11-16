@@ -22,6 +22,7 @@ import {
 } from '../credential-recovery-module.js';
 import { EventStore } from '../event-store.js';
 import type { RecoveryDispatchAdapter } from '../recovery-dispatch-adapter.js';
+import { markSessionUntouched } from '../recovery-dispatch-adapter.js';
 import { SessionRecoveryCoordinator as RuntimeSessionRecoveryCoordinator } from '../session-recovery-coordinator.js';
 import {
   observeRecoveryFences,
@@ -893,6 +894,8 @@ describe('SessionRecoveryCoordinator', () => {
           threadId: string;
           signal: AbortSignal;
         }) => Promise<void>;
+        quarantineSession?: (threadId: string) => Promise<void>;
+        onOutcome?: (input: { outcome: string }) => void;
       } = {},
     ) {
       vi.useFakeTimers({ now: STOPPED_AT });
@@ -921,6 +924,10 @@ describe('SessionRecoveryCoordinator', () => {
         ...(extra.restoreSession
           ? { restoreSession: extra.restoreSession }
           : {}),
+        ...(extra.quarantineSession
+          ? { quarantineSession: extra.quarantineSession }
+          : {}),
+        ...(extra.onOutcome ? { onOutcome: extra.onOutcome } : {}),
         autoResume,
         resumeChoices: store.usageLimitResumeChoices(),
         now: () => new Date(Date.now()),
@@ -1132,6 +1139,10 @@ describe('SessionRecoveryCoordinator', () => {
         credentialProfileRef?: string;
       }) => Promise<void>;
       providerSendTurn: () => Promise<{ turnId: string }>;
+      /** The replay's posture check, run after the restart. */
+      replayModelOptions?: () => Promise<void>;
+      /** The retained workspace check, run after the restart. */
+      assertWorkspace?: () => Promise<void>;
     }) {
       const providerSendTurn = vi.fn(options.providerSendTurn);
       const restartProviderSession = vi.fn(
@@ -1151,9 +1162,13 @@ describe('SessionRecoveryCoordinator', () => {
         interruptRecoveredTurn: vi.fn(async () => undefined),
         restartProviderSession,
         reportRedispatchFailed: vi.fn(),
-        replayModelOptions: async (_threadId, _provider, modelOptions) =>
-          modelOptions,
-        assertRetainedWorkspaceAuthorized: async () => undefined,
+        replayModelOptions: async (_threadId, _provider, modelOptions) => {
+          await options.replayModelOptions?.();
+          return modelOptions;
+        },
+        assertRetainedWorkspaceAuthorized: async () => {
+          await options.assertWorkspace?.();
+        },
         replayConfinement: () => ({ mode: 'none' }) as any,
         onTurnDispatched: vi.fn(),
         forgetCoalescedThread: vi.fn(),
@@ -1215,6 +1230,164 @@ describe('SessionRecoveryCoordinator', () => {
       );
       expect(production.dispatchSendTurn).toHaveBeenCalledOnce();
       expect(production.providerSendTurn).not.toHaveBeenCalled();
+      await coordinator.dispose();
+      store.close();
+      vi.useRealTimers();
+    });
+
+    for (const [check, failing] of [
+      [
+        'posture',
+        {
+          replayModelOptions: async () => {
+            throw new Error('approval posture refused');
+          },
+        },
+      ],
+      [
+        'workspace',
+        {
+          assertWorkspace: async () => {
+            throw new Error('workspace no longer authorized');
+          },
+        },
+      ],
+    ] as const) {
+      test(`with the production adapter, a ${check} refusal after the restart but before the send is unsent: the session is restored and the stop waits`, async () => {
+        const production = productionDispatch({
+          restart: async () => undefined,
+          providerSendTurn: async () => ({ turnId: 'never' }),
+          ...failing,
+        });
+        const { store, coordinator } = setup(consentedOnly, () => true, {
+          recoveryDispatchAdapter: production.recovery.createDispatchAdapter(),
+          restoreSession: (input) => production.recovery.restoreSession(input),
+        });
+        stopOnUsageLimit(store, coordinator);
+        await vi.advanceTimersByTimeAsync(0);
+
+        await expect(
+          coordinator.continueUsageLimitOnProfile(
+            THREAD,
+            'work',
+            stopIdOf(coordinator),
+          ),
+        ).resolves.toEqual({ kind: 'not-switched' });
+        expect(production.providerSendTurn).not.toHaveBeenCalled();
+        expect(
+          production.restartProviderSession.mock.calls.map(
+            ([input]) => input.credentialProfileRef,
+          ),
+        ).toEqual(['work', undefined]);
+        expect(coordinator.latestProjection(THREAD)).toMatchObject({
+          outcome: 'armed',
+          dueAt: RESET_AT,
+        });
+        await coordinator.dispose();
+        store.close();
+        vi.useRealTimers();
+      });
+    }
+
+    test('with the production adapter, a refusal before the restart touched anything leaves the session alone', async () => {
+      const production = productionDispatch({
+        restart: async ({ credentialProfileRef }) => {
+          if (credentialProfileRef)
+            throw markSessionUntouched(new Error('portable consent refused'));
+        },
+        providerSendTurn: async () => ({ turnId: 'never' }),
+      });
+      const { store, coordinator } = setup(consentedOnly, () => true, {
+        recoveryDispatchAdapter: production.recovery.createDispatchAdapter(),
+        restoreSession: (input) => production.recovery.restoreSession(input),
+      });
+      stopOnUsageLimit(store, coordinator);
+      await vi.advanceTimersByTimeAsync(0);
+
+      await expect(
+        coordinator.continueUsageLimitOnProfile(
+          THREAD,
+          'work',
+          stopIdOf(coordinator),
+        ),
+      ).resolves.toEqual({ kind: 'not-switched' });
+      // No restore: the refused restart never stopped the session.
+      expect(
+        production.restartProviderSession.mock.calls.map(
+          ([input]) => input.credentialProfileRef,
+        ),
+      ).toEqual(['work']);
+      expect(coordinator.latestProjection(THREAD)).toMatchObject({
+        outcome: 'armed',
+      });
+      await coordinator.dispose();
+      store.close();
+      vi.useRealTimers();
+    });
+
+    test('with the production adapter, a session that cannot be restored is quarantined and the stop is retired, not left waiting', async () => {
+      const quarantineSession = vi.fn(async () => undefined);
+      const production = productionDispatch({
+        // Neither the chosen account nor the restore can start a session.
+        restart: async () => {
+          throw new Error('engine will not start');
+        },
+        providerSendTurn: async () => ({ turnId: 'never' }),
+      });
+      const { store, coordinator } = setup(consentedOnly, () => true, {
+        recoveryDispatchAdapter: production.recovery.createDispatchAdapter(),
+        restoreSession: (input) => production.recovery.restoreSession(input),
+        quarantineSession,
+      });
+      stopOnUsageLimit(store, coordinator);
+      await vi.advanceTimersByTimeAsync(0);
+
+      await expect(
+        coordinator.continueUsageLimitOnProfile(
+          THREAD,
+          'work',
+          stopIdOf(coordinator),
+        ),
+      ).resolves.toEqual({ kind: 'retired', reason: 'session-ended' });
+      expect(quarantineSession).toHaveBeenCalledWith(THREAD);
+      expect(coordinator.latestProjection(THREAD)).toMatchObject({
+        outcome: 'canceled',
+        outcomeReason: 'session-ended',
+      });
+      await vi.advanceTimersByTimeAsync(
+        Date.parse(RESET_AT) - STOPPED_AT.getTime() + 60_000,
+      );
+      expect(production.dispatchSendTurn).not.toHaveBeenCalled();
+      await coordinator.dispose();
+      store.close();
+      vi.useRealTimers();
+    });
+
+    test('with the production adapter, an automatic attempt that fails before the send records its failed outcome', async () => {
+      const outcomes: string[] = [];
+      // Automatic recovery on: the stage selects without a person's choice.
+      const automatic: TestCredentialRecoveryAdapter['stage'] = async () => ({
+        candidateProfileRef: 'work',
+        capability: 'restart_resume',
+      });
+      const production = productionDispatch({
+        restart: async ({ credentialProfileRef }) => {
+          if (credentialProfileRef) throw new Error('not signed in');
+        },
+        providerSendTurn: async () => ({ turnId: 'never' }),
+      });
+      const { store, coordinator } = setup(automatic, () => true, {
+        recoveryDispatchAdapter: production.recovery.createDispatchAdapter(),
+        restoreSession: (input) => production.recovery.restoreSession(input),
+        onOutcome: ({ outcome }) => outcomes.push(outcome),
+      });
+      stopOnUsageLimit(store, coordinator);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(coordinator.latestProjection(THREAD)).toMatchObject({
+        outcome: 'failed',
+      });
+      expect(outcomes).toContain('failed');
       await coordinator.dispose();
       store.close();
       vi.useRealTimers();

@@ -797,7 +797,9 @@ export class SessionRecoveryCoordinator {
           ? { kind: 'resumed' }
           : after?.outcome === 'armed' || after?.outcome === 'manual'
             ? { kind: 'not-switched' }
-            : { kind: 'failed' };
+            : after?.outcome === 'canceled' && after.outcomeReason
+              ? { kind: 'retired', reason: after.outcomeReason }
+              : { kind: 'failed' };
     });
     return result;
   }
@@ -899,6 +901,13 @@ export class SessionRecoveryCoordinator {
     const current = this.ledger.find(intent.fingerprint);
     if (outcome.kind === 'indeterminate') {
       this.recordIntentOutcome(intent, 'compensation-required');
+    } else if (
+      outcome.kind === 'rolled-back' &&
+      (current?.outcome === 'failed' || current?.outcome === 'canceled')
+    ) {
+      // The module settled it itself (a definite pre-send refusal).
+      this.clearTimer(intent.fingerprint);
+      this.recordIntentOutcome(intent, current.outcome);
     } else if (current?.outcome === 'resumed') {
       const failed = this.ledger.terminal(
         intent.fingerprint,

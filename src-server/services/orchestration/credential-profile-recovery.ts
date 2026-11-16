@@ -14,6 +14,7 @@ import type { EventStore } from './event-store.js';
 import type { OrchestrationService } from './orchestration-service.js';
 import {
   createRecoveryDispatchAdapter,
+  isSessionUntouched,
   type RecoveryDispatchAdapter,
   type RecoveryDispatchReplay,
   RecoveryNotSentError,
@@ -188,7 +189,9 @@ export class CredentialProfileRecovery {
     try {
       restarted = await this.deps.restartProviderSession(input);
     } catch (error) {
-      throw new RecoveryNotSentError(error);
+      throw new RecoveryNotSentError(error, {
+        sessionTouched: !isSessionUntouched(error),
+      });
     }
     const { adapter, armedInternalStopTurnId } = restarted;
     let sendInvoked = false;
