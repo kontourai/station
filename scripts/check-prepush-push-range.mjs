@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Pre-push: three cheap checks on the commit being pushed, run on every push the
- * hook does not classify as a pure merge of main.
+ * Pre-push: three checks on the commit being pushed, run on every push the
+ * hook does not classify as a pure merge of main. Whitespace and the ratchet
+ * can refuse (exit PREPUSH_FINDING_EXIT); the export check only warns.
  *
  * - The merge queue's whitespace check (scripts/diff-whitespace-gate.mjs, the
  *   `git diff --check` the queue's `diff` job runs): a trailing space or a
@@ -11,11 +12,11 @@
  *   `verification:policy:gate` both run.
  * - A new export that no other module names (scripts/lib/new-export-check.mjs):
  *   the shape of every unused-export blocker CI's code-health gate raised in
- *   that window, without the 25-50s fallow audit the gate itself costs.
+ *   that window. A heuristic, so a warning only; the gate is the judge.
  *
  * Measured over 732 pull-request CI runs (2026-11-13 to 15), these failed up
  * to 35 runs between them, each costing a push and a CI round trip, while they
- * cost one to two seconds here. All three are judged against the pushed commit
+ * cost about 1-5 s here (measured on a loaded host). All three are judged against the pushed commit
  * itself, never the working tree: the whitespace and export checks compare
  * `<merge base with origin/main>...<pushed sha>` and search that commit's
  * tree, and the ratchet reads the files and the baseline from it (`--rev`),
@@ -32,6 +33,7 @@ import { runDiffWhitespaceGate } from './diff-whitespace-gate.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { newUnnamedExports } from './lib/new-export-check.mjs';
 import { describeUnusableBase, resolvePushBase } from './lib/prepush-base.mjs';
+import { PREPUSH_FINDING_EXIT } from './lib/prepush-verdict.mjs';
 
 // The base the other scoped pre-push gates use, overridable the same way.
 const MAIN_REF = process.env.STATION_BASE_REF ?? 'origin/main';
@@ -71,6 +73,16 @@ function pushBase(update) {
       resolved,
       base: resolved.mergeBase,
       described: `its merge base with ${MAIN_REF}`,
+    };
+  // Under a merged branch the local base does not contain, the merge base
+  // still bounds every line this push carries. Lines merged from main were
+  // already through the merge queue's own diff check, and lines merged from
+  // an unpublished branch are part of this push, so judging them is sound.
+  if (resolved.state === 'stale')
+    return {
+      resolved,
+      base: resolved.mergeBase,
+      described: `its merge base with ${MAIN_REF}, including the commits it merges`,
     };
   const { remoteSha, sha } = update;
   if (
@@ -150,47 +162,43 @@ function ratchetPasses(update) {
 }
 
 /**
- * New exports that no other module names (scripts/lib/new-export-check.mjs);
- * false only on a finding. It is a heuristic for the one case CI's
- * code-health gate kept refusing, not the gate, and says so.
+ * New exports that no other module names (scripts/lib/new-export-check.mjs).
+ * A heuristic that differs from CI's code-health gate, so it only prints: it
+ * never decides the push.
  */
-function exportsPass(update, base) {
+function reportNewExports(update, base) {
   if (base.resolved.state !== 'ok') {
-    warn(
-      `new exports not checked for ${update.ref}: ${describeUnusableBase(MAIN_REF, base.resolved)}.`,
+    console.log(
+      `New exports: not checked for ${update.ref}: ${describeUnusableBase(MAIN_REF, base.resolved)}. CI's code-health gate will judge them.`,
     );
-    return true;
+    return;
   }
   let result;
   try {
     result = newUnnamedExports({ base: base.base, sha: update.sha });
   } catch (error) {
-    warn(
-      `new exports not checked for ${update.ref}: ${error instanceof Error ? error.message : error}.`,
+    console.log(
+      `New exports: not checked for ${update.ref}: ${error instanceof Error ? error.message : error}. CI's code-health gate will judge them.`,
     );
-    return true;
+    return;
   }
   if (result.findings.length === 0) {
     console.log(
       `New exports: ${result.checked} new export name(s), each named in another module.`,
     );
-    return true;
+    return;
   }
-  console.error(
+  console.log(
     [
-      `FAIL: ${result.findings.length} new export(s) that no other module names; CI's code-health gate refuses these as unused exports:`,
+      `WARNING: ${result.findings.length} new export(s) that no other module seems to name. This is a heuristic, not CI's code-health gate, which is the judge; the push continues:`,
       ...result.findings.map(
         ({ path, name }) =>
           `  ${path}: export ${name} is not named in any other file`,
       ),
-      'Drop the `export`, or use it from where it is needed.',
-      'This checks only a new export that nothing else names. A name that appears',
-      'elsewhere by coincidence, or an export whose last use was removed, is left',
-      "to CI. CI's exact verdict, locally (25-50s):",
+      'If the gate agrees, drop the `export` or use it. Its exact verdict, locally (25-50s):',
       `  ${fullVerdict(base.base)}`,
     ].join('\n'),
   );
-  return false;
 }
 
 function main(stdinText) {
@@ -198,9 +206,9 @@ function main(stdinText) {
   for (const update of pushedUpdates(stdinText)) {
     const base = pushBase(update);
     if (base.resolved.state === 'stale')
-      // Said first, because every later line is judged against that base.
-      warn(
-        `${update.ref}: ${describeUnusableBase(MAIN_REF, base.resolved)}. Whitespace is compared against the remote's tip when it has one; new exports are not checked.`,
+      // Said first: it changes what the lines below can claim.
+      console.log(
+        `NOTE: ${update.ref}: ${describeUnusableBase(MAIN_REF, base.resolved)}. Whitespace and the temp-dir ratchet are still judged (they need only the pushed commits); new exports are not checked, and CI will judge them.`,
       );
     if (!whitespacePasses(update, base))
       failed.push(
@@ -208,10 +216,7 @@ function main(stdinText) {
       );
     if (!ratchetPasses(update))
       failed.push(`node scripts/test-temp-dir-ratchet.mjs --rev=${update.sha}`);
-    if (!exportsPass(update, base))
-      failed.push(
-        `${fullVerdict(base.base)}   # CI's full unused-export verdict`,
-      );
+    reportNewExports(update, base);
   }
   if (failed.length > 0) {
     console.error(
@@ -224,7 +229,7 @@ function main(stdinText) {
         '',
       ].join('\n'),
     );
-    return 1;
+    return PREPUSH_FINDING_EXIT;
   }
   return 0;
 }

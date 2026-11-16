@@ -262,7 +262,7 @@ describe.skipIf(process.platform === 'win32')(
           'npm run docs:review:record -- <path> --note',
         );
         expect(result.output).toMatch(
-          /FAIL: this branch records documentation reviews \(\d+ ledger file\(s\) since its merge base\), and the pushed commit, checked out with no uncommitted changes, leaves the reviews above stale\. CI's docs:truth:gate refuses the same commit\./,
+          /FAIL: this branch records documentation reviews \(\d+ ledger file\(s\) since its merge base\), and the pushed commit, checked out with no uncommitted or untracked ledger changes, leaves the reviews above stale\. CI's docs:truth:gate refuses the same commit\./,
         );
         expect(result.gates).not.toContain(
           'scripts/check-prepush-orchestration-transfer.mjs',
@@ -307,7 +307,7 @@ describe.skipIf(process.platform === 'win32')(
     );
 
     it(
-      'only warns when another commit is checked out than the one pushed',
+      'says it did not check, rather than reporting the checked-out commit, when another commit is pushed',
       () => {
         const f = hookFixture();
         changeSource(f, 'export const a = 2;\n');
@@ -318,7 +318,10 @@ describe.skipIf(process.platform === 'win32')(
         expect(result.status, result.output).toBe(0);
         expect(f.remoteHas('feat')).toBe(fresh);
         expect(result.output).toContain(
-          'only a warning because the check read the checked-out commit, which is not the commit being pushed',
+          'WARNING: documentation freshness: not checked: the commit being pushed is not the checked-out commit',
+        );
+        expect(result.output).not.toMatch(
+          /Documentation freshness: \d+ reviews/,
         );
         expect(result.output).not.toContain('refuses the same commit');
       },
@@ -477,10 +480,91 @@ describe.skipIf(process.platform === 'win32')(
         const result = f.push();
         expect(result.status, result.output).toBe(0);
         expect(result.output).toMatch(
-          /WARNING: documentation freshness: not checked: the pushed range merges 1 commit\(s\) the local origin\/main does not contain \([0-9a-f]{12}\); if that was main, the local origin\/main is stale .* Run `git fetch origin main` and push again\./,
+          /WARNING: documentation freshness: not checked: the pushed range merges 1 commit\(s\) the local origin\/main does not contain \([0-9a-f]{12}\): either the local origin\/main is behind \(`git fetch origin main` fixes that\) or a branch not yet on main was merged \(fetching will not help\)/,
         );
         expect(result.output).not.toContain(
           'Documentation review needs refresh',
+        );
+      },
+      TIMEOUT,
+    );
+    it(
+      'says it did not check a fresh pushed commit that is not checked out',
+      () => {
+        const f = hookFixture();
+        changeSource(f, 'export const a = 2;\n');
+        const fresh = recordNote(f);
+        git(f.repo, ['switch', '-qc', 'elsewhere']);
+        f.write('notes.txt', 'elsewhere\n');
+        commit(f.repo, 'chore: elsewhere moves on');
+        const result = f.push({}, ['feat']);
+        expect(result.status, result.output).toBe(0);
+        expect(f.remoteHas('feat')).toBe(fresh);
+        expect(result.output).toContain(
+          'not checked: the commit being pushed is not the checked-out commit',
+        );
+        expect(result.output).not.toMatch(
+          /Documentation freshness: \d+ reviews/,
+        );
+      },
+      TIMEOUT,
+    );
+
+    it(
+      'only warns when an untracked file under the review ledger is present',
+      () => {
+        const f = hookFixture();
+        changeSource(f, 'export const a = 2;\n');
+        recordNote(f);
+        // A fresh, correct commit on a branch that records reviews, plus an
+        // untracked record (as the verifier did): a copy of docs/a.md's
+        // record retargeted at a page that does not exist.
+        const record = 'docs/learn/review-ledger/records/docs/a.md.json';
+        f.write(
+          'docs/learn/review-ledger/records/docs/a-copy.md.json',
+          f
+            .read(record)
+            .replace('"path": "docs/a.md"', '"path": "docs/a-copy.md"'),
+        );
+        const result = f.push();
+        expect(result.status, result.output).toBe(0);
+        expect(result.output).toContain(
+          'untracked files under the review ledger',
+        );
+        expect(result.output).not.toContain('refuses the same commit');
+      },
+      TIMEOUT,
+    );
+
+    it(
+      'reports a check killed by a signal as killed, not as a timeout',
+      () => {
+        const f = hookFixture();
+        const head = changeSource(f, 'export const a = 2;\n');
+        f.writeCheck("process.kill(process.pid, 'SIGKILL');\n");
+        const result = f.push();
+        expect(result.status, result.output).toBe(0);
+        expect(f.remoteHas('feat')).toBe(head);
+        expect(result.output).toContain(
+          'not checked: the check could not run (was terminated by SIGKILL)',
+        );
+        expect(result.output).not.toContain('did not finish within');
+      },
+      TIMEOUT,
+    );
+
+    it(
+      'lets a branch that records reviews push work in progress with STATION_DOCS_FRESHNESS=advisory',
+      () => {
+        const f = hookFixture();
+        changeSource(f, 'export const a = 2;\n');
+        recordNote(f);
+        const head = changeSource(f, 'export const a = 3;\n');
+        const result = f.push({ STATION_DOCS_FRESHNESS: 'advisory' });
+        expect(result.status, result.output).toBe(0);
+        expect(f.remoteHas('feat')).toBe(head);
+        expect(result.output).toMatch(
+          /WARNING: documentation freshness: ran in advisory mode \(.*\), so \d+ stale entr\(ies\) were reported as advisory and nothing was judged\./,
         );
       },
       TIMEOUT,

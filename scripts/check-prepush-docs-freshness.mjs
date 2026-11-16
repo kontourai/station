@@ -9,18 +9,24 @@
  *
  * - fresh: one line, and the push continues;
  * - stale, the pushed commit is the checked-out commit, the tracked tree is
- *   clean (so the check saw exactly what CI will see), and that commit's
- *   range adds or changes a file under the review ledger: REFUSED, with the
+ *   clean and no untracked file sits under the review ledger (so the check
+ *   read the pushed commit), and that commit's range adds or changes a file
+ *   under the review ledger: REFUSED (exit PREPUSH_FINDING_EXIT), with the
  *   check's own list and remedy. The author has started recording reviews,
  *   so a stale entry is a note outdated by a later edit or a cited page
  *   missed, which is what CI's docs:truth:gate kept failing on;
  * - stale otherwise: the same list as a WARNING saying why it is only a
  *   warning, and the push continues. Before the branch records any review,
  *   refusing would force notes before the change is final; with uncommitted
- *   edits or another commit checked out, the list is not about the pushed
- *   commit at all;
- * - no verdict possible (no base ref, no merge base, a local base older than
- *   a main the branch merged, or the check crashing or timing out): a WARNING
+ *   edits the list may not be about the pushed commit;
+ * - the pushed commit is not checked out: not checked, a WARNING, because
+ *   the check reads the checked-out tree;
+ * - STATION_DOCS_FRESHNESS=advisory (the check's own mode variable): the
+ *   check reports stale entries as advisory, so this step warns and does not
+ *   refuse; CI runs the check in its own mode;
+ * - no verdict possible (no base ref, no merge base, a merged commit the
+ *   local base does not contain, or the check crashing, being killed or
+ *   timing out): a WARNING
  *   naming what could not be checked, and the push continues. The stale-base
  *   case is detected before the check runs, and its hint is printed first.
  *
@@ -36,6 +42,7 @@ import { CAPTURE_MAX_BYTES } from './lib/bounded-capture.mjs';
 import { scaleLivenessMs } from './lib/liveness-scale.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { describeUnusableBase, resolvePushBase } from './lib/prepush-base.mjs';
+import { PREPUSH_FINDING_EXIT } from './lib/prepush-verdict.mjs';
 import { REVIEW_LEDGER_DIR } from './lib/review-ledger-paths.mjs';
 
 const BASE_REF =
@@ -105,9 +112,11 @@ function jsonVerdict() {
     return {
       state: 'error',
       detail:
-        result.error?.code === 'ETIMEDOUT' || result.signal
+        result.error?.code === 'ETIMEDOUT'
           ? `did not finish within ${Math.round(timeout / 1000)}s`
-          : String(result.error?.message ?? result.signal),
+          : result.error
+            ? String(result.error.message)
+            : `was terminated by ${result.signal}`,
     };
   const lastLine = String(result.stdout ?? '')
     .trim()
@@ -189,6 +198,26 @@ function scopedLine(mergeBase) {
   return `  Scoped against ${BASE_REF}${described ? ` at ${described.replace(' ', ', committed ')}` : ''}${mergeBase ? ` (merge base ${mergeBase.slice(0, 12)})` : ''}. If the list names files this branch did not change, run \`git fetch origin main\` and push again.`;
 }
 
+/**
+ * Whether the working tree is exactly the checked-out commit as far as the
+ * check is concerned: no tracked change, and no untracked file under the
+ * review ledger (the check reads untracked ledger files too).
+ */
+function workingTreeState() {
+  const tracked = git(['status', '--porcelain', '--untracked-files=no']);
+  const ledgerUntracked = git([
+    'ls-files',
+    '--others',
+    '--exclude-standard',
+    '--',
+    REVIEW_LEDGER_DIR,
+  ]);
+  if (tracked !== '') return 'a working tree with uncommitted changes';
+  if (ledgerUntracked !== '')
+    return 'a working tree with untracked files under the review ledger';
+  return null;
+}
+
 function main(stdinText) {
   const pushed = pushedShas(stdinText);
   const head = git(['rev-parse', 'HEAD']);
@@ -202,43 +231,60 @@ function main(stdinText) {
     warn(`not checked: ${describeUnusableBase(BASE_REF, unusable.base)}.`);
     return 0;
   }
-  const check = jsonVerdict();
-  if (check.state === 'fresh') {
-    console.log(
-      `Documentation freshness: ${check.result.reviews} reviews and ${check.result.captures} captures current.`,
+  // The check reads the checked-out tree, so it says nothing about a pushed
+  // commit that is not checked out.
+  if (head === null || !pushed.includes(head)) {
+    warn(
+      `not checked: the commit being pushed is not the checked-out commit (${head?.slice(0, 12) ?? 'none'}), and the check reads the checked-out tree.`,
     );
     return 0;
   }
+  const dirty = workingTreeState();
+  const check = jsonVerdict();
   if (check.state === 'error') {
     warn(
       `not checked: the check could not run (${check.detail}). Reproduce with npm run docs:freshness:check.`,
     );
     return 0;
   }
+  if (check.state === 'fresh') {
+    const advisory = check.result.advisory?.length ?? 0;
+    if (check.result.mode !== 'scoped')
+      console.log(
+        `WARNING: documentation freshness: ran in ${check.result.mode} mode (${check.result.reason}), so ${advisory} stale entr(ies) were reported as advisory and nothing was judged. CI's docs:truth:gate runs in its own mode.`,
+      );
+    else if (dirty)
+      console.log(
+        `Documentation freshness: current in ${dirty}; the pushed commit itself was not checked.`,
+      );
+    else
+      console.log(
+        `Documentation freshness: ${check.result.reviews} reviews and ${check.result.captures} captures current.`,
+      );
+    return 0;
+  }
   const report = checkReport();
   const scoped = scopedLine(check.result.mergeBase);
-  const headPushed = head !== null && pushed.includes(head);
-  const clean = git(['status', '--porcelain', '--untracked-files=no']) === '';
-  const recording = headPushed
-    ? ledgerChanges(bases.find(({ sha }) => sha === head).base.mergeBase, head)
-    : [];
-  if (headPushed && clean && recording.length > 0) {
+  const recording = ledgerChanges(
+    bases.find(({ sha }) => sha === head).base.mergeBase,
+    head,
+  );
+  if (!dirty && recording.length > 0) {
     console.error(
       [
         report,
         scoped,
         '',
-        `FAIL: this branch records documentation reviews (${recording.length} ledger file(s) since its merge base), and the pushed commit, checked out with no uncommitted changes, leaves the reviews above stale. CI's docs:truth:gate refuses the same commit.`,
+        `FAIL: this branch records documentation reviews (${recording.length} ledger file(s) since its merge base), and the pushed commit, checked out with no uncommitted or untracked ledger changes, leaves the reviews above stale. CI's docs:truth:gate refuses the same commit.`,
+        'To push work in progress anyway: STATION_DOCS_FRESHNESS=advisory git push (CI still runs the check and will fail until the reviews are recorded).',
         '',
       ].join('\n'),
     );
-    return 1;
+    return PREPUSH_FINDING_EXIT;
   }
-  const why = !headPushed
-    ? 'the check read the checked-out commit, which is not the commit being pushed, so this list may not describe the pushed commit'
-    : !clean
-      ? 'the check read a working tree with uncommitted changes, so this list may not describe the pushed commit'
-      : "this branch has not recorded any review yet; CI's statics job will fail on these until they are reviewed";
+  const why = dirty
+    ? `the check read ${dirty}, so this list may not describe the pushed commit`
+    : "this branch has not recorded any review yet; CI's statics job will fail on these until they are reviewed";
   console.log(
     [
       `WARNING: documentation freshness: only a warning because ${why}.`,

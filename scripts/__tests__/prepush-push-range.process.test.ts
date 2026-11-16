@@ -139,6 +139,8 @@ if (args[0] === 'scripts/commit-message-gate.mjs') {
   require('node:fs').readFileSync(0);
 } else {
   const result = spawnSync(${JSON.stringify(process.execPath)}, args, { stdio: 'inherit', env: process.env, windowsHide: true });
+  // Pass a signal death on as one, the way the hook would see real node die.
+  if (result.signal) process.kill(process.pid, result.signal);
   process.exit(result.status ?? 1);
 }
 `,
@@ -296,10 +298,10 @@ describe.skipIf(process.platform === 'win32')(
     );
 
     it(
-      'refuses a pushed commit that adds an export no other file names',
+      'warns, and still lets the push through, when a pushed commit adds an export no other file names',
       () => {
         const f = fixture();
-        f.commit(
+        const head = f.commit(
           {
             'src/b.ts':
               "import { alsoUsed } from './a';\nexport function helper() {\n  return alsoUsed();\n}\nexport function newlyUnused() {\n  return 4;\n}\nconst local = 1;\nexport { local as renamedLocal };\n",
@@ -307,10 +309,10 @@ describe.skipIf(process.platform === 'win32')(
           'feat: add exports nothing names',
         );
         const result = f.push();
-        expect(result.status).not.toBe(0);
-        expect(f.remoteHas('feat')).toBe('');
+        expect(result.status, result.output).toBe(0);
+        expect(f.remoteHas('feat')).toBe(head);
         expect(result.output).toContain(
-          'FAIL: 2 new export(s) that no other module names',
+          "WARNING: 2 new export(s) that no other module seems to name. This is a heuristic, not CI's code-health gate, which is the judge; the push continues:",
         );
         expect(result.output).toContain(
           '  src/b.ts: export newlyUnused is not named in any other file',
@@ -318,16 +320,13 @@ describe.skipIf(process.platform === 'win32')(
         expect(result.output).toContain(
           '  src/b.ts: export renamedLocal is not named in any other file',
         );
-        expect(result.output).toContain(
-          'Drop the `export`, or use it from where it is needed.',
-        );
-        expect(result.output).toContain(
-          'This checks only a new export that nothing else names.',
-        );
         expect(result.output).toMatch(
           /node scripts\/code-health-gate\.mjs --base=[0-9a-f]{40}/,
         );
-        expect(result.gates).not.toContain(RECORDED_GATES[0]);
+        expect(result.output).not.toContain(
+          'push-range check(s) found a problem',
+        );
+        expect(result.gates).toContain(RECORDED_GATES[0]);
       },
       TIMEOUT,
     );
@@ -415,7 +414,7 @@ describe.skipIf(process.platform === 'win32')(
     );
 
     it(
-      'passes a type-only export used in its own file, and refuses a value used only there',
+      'is quiet about a type-only export used in its own file, and warns about a value used only there',
       () => {
         const f = fixture();
         f.commit(
@@ -429,8 +428,8 @@ describe.skipIf(process.platform === 'win32')(
         );
         const result = f.push();
         // `area` is used only inside shapes.ts; the analyzer still reports a
-        // value export used only in its own file, so this refuses on it alone.
-        expect(result.status).not.toBe(0);
+        // value export used only in its own file, so it is the one warning.
+        expect(result.status, result.output).toBe(0);
         expect(result.output).toContain(
           '  src/shapes.ts: export area is not named in any other file',
         );
@@ -441,7 +440,7 @@ describe.skipIf(process.platform === 'win32')(
     );
 
     it(
-      'refuses an export that another file mentions only in a comment, a type-position import or a destructured dynamic import',
+      'warns about an export that another file mentions only in a comment, a type-position import or a destructured dynamic import',
       () => {
         const f = fixture();
         f.commit(
@@ -454,7 +453,7 @@ describe.skipIf(process.platform === 'win32')(
           'feat: an export only comments mention',
         );
         const result = f.push();
-        expect(result.status).not.toBe(0);
+        expect(result.status, result.output).toBe(0);
         expect(result.output).toContain(
           '  src/b.ts: export onlyInComments is not named in any other file',
         );
@@ -573,7 +572,7 @@ describe.skipIf(process.platform === 'win32')(
         expect(result.output).not.toContain('merge cleanly');
         expect(result.output).not.toContain('could not check');
         expect(result.output).toContain(
-          'WARNING: new exports not checked for refs/heads/feat: there is no origin/main here to compare against',
+          'New exports: not checked for refs/heads/feat: there is no origin/main here to compare against',
         );
       },
       TIMEOUT,
@@ -661,10 +660,10 @@ describe.skipIf(process.platform === 'win32')(
         expect(accepted.status, accepted.output).toBe(0);
         expect(f.remoteHas('feat')).toBe(head);
         expect(accepted.output).toContain(
-          'WARNING: new exports not checked for refs/heads/feat: git diff',
+          'New exports: not checked for refs/heads/feat: git diff',
         );
         expect(accepted.output).toContain(
-          'its output passed the capture bound; the range is very large, which usually means the local origin/main is stale',
+          "its output passed the capture bound; the range is very large). CI's code-health gate will judge them.",
         );
         f.commit({ 'docs/notes.md': 'notes\ntrailing space \n' }, 'docs: x');
         const refused = f.push(['feat'], bound);
@@ -691,7 +690,7 @@ describe.skipIf(process.platform === 'win32')(
           'WARNING: whitespace not checked for refs/heads/orphan: the pushed commit shares no history with origin/main (an orphan branch?)',
         );
         expect(result.output).toContain(
-          'WARNING: new exports not checked for refs/heads/orphan: the pushed commit shares no history with origin/main',
+          'New exports: not checked for refs/heads/orphan: the pushed commit shares no history with origin/main',
         );
         expect(result.output).not.toContain('no origin/main here');
       },
@@ -699,7 +698,7 @@ describe.skipIf(process.platform === 'win32')(
     );
 
     it(
-      'names a stale local origin/main first, checks no exports, and still refuses a raw mkdtemp',
+      'names a merged commit origin/main lacks first, still judges whitespace and the ratchet, and checks no exports',
       () => {
         const f = fixture();
         const knownMain = f.git(['rev-parse', 'origin/main']);
@@ -721,7 +720,7 @@ describe.skipIf(process.platform === 'win32')(
         expect(accepted.status, accepted.output).toBe(0);
         const lines = accepted.output.split('\n');
         const hint = lines.findIndex((line) =>
-          line.includes('the local origin/main is stale'),
+          line.includes('either the local origin/main is behind'),
         );
         const firstCheck = lines.findIndex(
           (line) =>
@@ -731,7 +730,13 @@ describe.skipIf(process.platform === 'win32')(
         expect(hint).toBeGreaterThanOrEqual(0);
         expect(hint).toBeLessThan(firstCheck);
         expect(accepted.output).toContain(
-          'WARNING: new exports not checked for refs/heads/feat: the pushed range merges 1 commit(s)',
+          'or a branch not yet on main was merged (fetching will not help)',
+        );
+        expect(accepted.output).toContain(
+          'Whitespace: checking refs/heads/feat',
+        );
+        expect(accepted.output).toContain(
+          'New exports: not checked for refs/heads/feat: the pushed range merges 1 commit(s)',
         );
         f.commit(
           { 'src-server/feature/__tests__/leaky.test.ts': RAW },
@@ -779,6 +784,92 @@ describe.skipIf(process.platform === 'win32')(
         const refused = f.push();
         expect(refused.status).not.toBe(0);
         expect(refused.output).toContain('[diff-whitespace] FAIL');
+      },
+      TIMEOUT,
+    );
+    it(
+      'is quiet about a renamed file whose exports were already there',
+      () => {
+        const f = fixture();
+        f.commit(
+          {
+            'src/moved.ts':
+              'export const keptA = 1;\nexport const keptB = 2;\n',
+          },
+          'feat: a module (inherited at the base after the next push)',
+        );
+        f.git(['push', '-q', 'origin', 'feat:main']);
+        f.git(['fetch', '-q', 'origin']);
+        f.git(['mv', 'src/moved.ts', 'src/moved-again.ts']);
+        f.git(['commit', '-qm', 'chore: rename']);
+        const result = f.push();
+        expect(result.status, result.output).toBe(0);
+        expect(result.output).not.toContain('keptA');
+        expect(result.output).toContain('New exports: 0 new export name(s)');
+      },
+      TIMEOUT,
+    );
+
+    it(
+      'collects exports in a path with a space and a non-ASCII name',
+      () => {
+        const f = fixture();
+        f.commit(
+          { 'src/odd dir/é.ts': 'export const oddUnused = 1;\n' },
+          'feat: an odd path',
+        );
+        const result = f.push();
+        expect(result.status, result.output).toBe(0);
+        expect(result.output).toContain(
+          '  src/odd dir/é.ts: export oddUnused is not named in any other file',
+        );
+      },
+      TIMEOUT,
+    );
+
+    it(
+      'warns, never refuses, about an export const line inside a template literal',
+      () => {
+        const f = fixture();
+        const head = f.commit(
+          {
+            'src/gen.ts':
+              'export function render() {\n  return `\nexport const GENERATED_ONLY = 1;\n`;\n}\n',
+            'src/index.ts':
+              "import { used } from './a';\nimport { helper } from './b';\nimport { render } from './gen';\nconsole.log(used(), helper(), render());\n",
+          },
+          'feat: a generator',
+        );
+        const result = f.push();
+        expect(result.status, result.output).toBe(0);
+        expect(f.remoteHas('feat')).toBe(head);
+        expect(result.output).toContain('export GENERATED_ONLY is not named');
+      },
+      TIMEOUT,
+    );
+
+    it.each([
+      ['throws while loading', "throw new Error('load failure');\n", 'exit 1'],
+      [
+        'is killed by a signal',
+        "process.kill(process.pid, 'SIGKILL');\n",
+        'exit 137',
+      ],
+    ])(
+      'warns and lets the push through when the push-range step %s',
+      (_label, source, status) => {
+        const f = fixture();
+        const head = f.commit(
+          { 'docs/notes.md': 'notes, edited\n' },
+          'docs: y',
+        );
+        f.write('scripts/check-prepush-push-range.mjs', source);
+        const result = f.push();
+        expect(result.status, result.output).toBe(0);
+        expect(f.remoteHas('feat')).toBe(head);
+        expect(result.output).toContain(
+          `[station pre-push] WARNING: push range did not reach a verdict (${status}); that is not a finding in the pushed commit, so the push continues and CI will judge it.`,
+        );
       },
       TIMEOUT,
     );

@@ -64,6 +64,6 @@ export function describeUnusableBase(baseRef, base) {
       .map((sha) => sha.slice(0, 12))
       .join(
         ', ',
-      )}); if that was main, the local ${baseRef} is stale and main's own changes would be judged as this branch's. Run \`git fetch origin main\` and push again`;
+      )}): either the local ${baseRef} is behind (\`git fetch origin main\` fixes that) or a branch not yet on main was merged (fetching will not help), so a comparison against it would count those commits as this branch's`;
   return '';
 }

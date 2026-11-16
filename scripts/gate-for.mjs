@@ -61,7 +61,7 @@ export const EVERY_PUSH_CHECKS = Object.freeze([
   }),
   Object.freeze({
     command: 'node scripts/check-prepush-push-range.mjs',
-    note: 'on the pushed commit: git diff --check, raw-mkdtemp test ratchet, new exports no other file names (~1-2s)',
+    note: 'on the pushed commit: refuses whitespace and raw mkdtemp; warns about new exports no other file names (1-5s)',
   }),
   Object.freeze({
     command: 'node scripts/check-prepush-docs-freshness.mjs',

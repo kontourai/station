@@ -158,7 +158,7 @@ module.exports = (gate) => {
   }
   if (process.env.STATION_FIXTURE_FAIL_GATE === gate) {
     console.error('INTENTIONAL_GATE_REFUSAL ' + gate);
-    process.exit(37);
+    process.exit(Number(process.env.STATION_FIXTURE_FAIL_STATUS || 37));
   }
 };
 `,
@@ -203,7 +203,7 @@ if (gates.some(gate => args[0] === 'scripts/' + gate)) {
       ]);
       return {
         pushedHead,
-        push: (branch: string, failGate = '') =>
+        push: (branch: string, failGate = '', failStatus = '') =>
           spawnSync(
             'git',
             [
@@ -223,6 +223,7 @@ if (gates.some(gate => args[0] === 'scripts/' + gate)) {
                 GIT_CONFIG_KEY_0: 'station.fixture-local',
                 GIT_CONFIG_VALUE_0: 'environment-local',
                 STATION_FIXTURE_FAIL_GATE: failGate,
+                STATION_FIXTURE_FAIL_STATUS: failStatus,
               },
               encoding: 'utf8',
               windowsHide: true,
@@ -278,11 +279,7 @@ if (gates.some(gate => args[0] === 'scripts/' + gate)) {
       ]);
     });
 
-    it.each([
-      'lint:check',
-      'proof:repo-governance',
-      'scripts/check-prepush-docs-freshness.mjs',
-    ])(
+    it.each(['lint:check', 'proof:repo-governance'])(
       'refuses the actual push when %s fails and publishes no remote ref',
       (gate) => {
         const f = fixture();
@@ -292,6 +289,26 @@ if (gates.some(gate => args[0] === 'scripts/' + gate)) {
         expect(f.remoteRef('refused').status).not.toBe(0);
         expect(f.observations().map((entry) => entry.gate)).not.toContain(
           'scripts/check-prepush-orchestration-transfer.mjs',
+        );
+      },
+    );
+
+    it.each([
+      'scripts/check-prepush-push-range.mjs',
+      'scripts/check-prepush-docs-freshness.mjs',
+    ])(
+      'refuses the push when %s reports a finding (exit 10), and only then',
+      (gate) => {
+        const f = fixture();
+        const refused = f.push('found', gate, '10');
+        expect(refused.status).not.toBe(0);
+        expect(f.remoteRef('found').status).not.toBe(0);
+        // Any other failure is not a verdict: a warning, and the push lands.
+        const crashed = f.push('crashed', gate, '37');
+        expect(crashed.status, crashed.stderr).toBe(0);
+        expect(f.remoteRef('crashed').status).toBe(0);
+        expect(`${crashed.stdout}${crashed.stderr}`).toContain(
+          'did not reach a verdict (exit 37); that is not a finding in the pushed commit, so the push continues',
         );
       },
     );
