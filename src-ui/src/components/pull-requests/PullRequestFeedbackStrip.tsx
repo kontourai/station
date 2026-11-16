@@ -187,8 +187,8 @@ function ReadableOwner({
         </Button>
       )}
       {last && (
+        // No leading dot: on a narrow pane this group wraps to its own line.
         <span className="pr-feedback-strip__last">
-          <Separator />
           <span>
             Sent {describePullRequestFeedbackCategories(last.categories)}
           </span>
