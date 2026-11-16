@@ -565,18 +565,18 @@ export function createStagedPreToolPolicyEvaluator(
     // A required question. An enforce-mode guardian may still refuse it, but
     // nothing below (a tool grant, a guardian allow, an unattended opt-in)
     // can answer it instead of a person.
-    const requiredAsk = async (): Promise<PreToolPolicyDecision> => {
-      const review = await reviewWithGuardian(deps, tool, invocation, options);
+    const requiredAsk = async (
+      reviewed?: GuardianOutcome,
+      noChannelPredicate = 'requires a person to approve this call.',
+    ): Promise<PreToolPolicyDecision> => {
+      const review =
+        reviewed ?? (await reviewWithGuardian(deps, tool, invocation, options));
       if (review.kind === 'decided' && review.decision.behavior === 'deny')
         return review.decision;
       if (invocation.delegation?.denyApprovals)
         return delegatedApprovalDenial(tool.toolName, options.interaction);
       if (options.interaction === 'managed' && !options.hasInteractiveApproval)
-        return deny(
-          'no_approval_channel',
-          tool.toolName,
-          'requires a person to approve this call.',
-        );
+        return deny('no_approval_channel', tool.toolName, noChannelPredicate);
       return { behavior: 'ask', required: true };
     };
 
@@ -630,8 +630,25 @@ export function createStagedPreToolPolicyEvaluator(
         toolRequestChangesAuthority(
           `${provenance.integrationId}_${provenance.originalToolName}`,
         ))
-    )
-      return requiredAsk();
+    ) {
+      // No pattern, session grant or full access answers it. On Station's
+      // own engine (voice and other unattended runs included) an approval
+      // guardian the operator enabled still may, as it may any mutation
+      // there (archive#2016: one approval mechanism on every surface). An
+      // external engine at full access would run a guardian-allowed call
+      // unasked, so there a person is always asked.
+      const review = await reviewWithGuardian(deps, tool, invocation, options);
+      if (
+        options.interaction === 'managed' &&
+        review.kind === 'decided' &&
+        review.decision.behavior === 'allow'
+      )
+        return review.decision;
+      return requiredAsk(
+        review,
+        'changes who or what holds authority in Station, so a person must approve it, but this run has no approval channel to ask (unattended runs — scheduled jobs, /invoke, CLI — have no one to consent).',
+      );
+    }
 
     const untrusted = await deps.untrustedContentPermission?.(tool, invocation);
     if (untrusted === 'deny') {

@@ -421,7 +421,8 @@ tool set to refuse after untrusted content still refuses.
 The station-control tools that change who or what holds authority (Station
 configuration, creating or updating Agents, plugins, deleting integrations,
 skills and SSH hosts) ask a person on every call on every engine, at full
-access too, and offer no session option
+access too, and offer no session option. On Station's own engine an approval
+guardian you enabled may still allow one, as it may any mutation there
 ([delivery boundary](../conformance/tool-policy-delivery.md#built-in-tools-that-change-authority)).
 
 ### Unattended runs

@@ -182,6 +182,39 @@ describe('createStagedPreToolPolicyEvaluator', () => {
     ).resolves.toEqual({ behavior: 'allow', toolGrant: true });
   });
 
+  // archive#2016: an operator-enabled guardian approves mutations the same way
+  // on every Station-engine surface; on an external engine a person is still
+  // asked, since a guardian allow there would run unasked at full access.
+  test('an authority tool takes a guardian allow on Station’s engine, never on an external one', async () => {
+    const guardian = {
+      isEnabled: vi.fn(() => true),
+      getMode: vi.fn(() => 'review'),
+      readConversation: () => NO_PERSON_INTENT,
+      reviewToolCall: vi
+        .fn()
+        .mockResolvedValue({ decision: 'allow', reason: 'Scoped.' }),
+    };
+    const evaluator = createEvaluator({ approvalGuardian: guardian });
+    const update = {
+      ...tool,
+      toolName: 'mcp__station-control__update_config',
+    };
+    await expect(
+      evaluator(update, invocation, {
+        interaction: 'managed',
+        hasInteractiveApproval: false,
+      }),
+    ).resolves.toEqual({ behavior: 'allow' });
+    await expect(
+      evaluator(update, invocation, {
+        interaction: 'external',
+        fullAccess: true,
+      }),
+    ).resolves.toEqual({ behavior: 'ask', required: true });
+    // One review per call: the required ask reuses it.
+    expect(guardian.reviewToolCall).toHaveBeenCalledTimes(2);
+  });
+
   test('explicit Ask me takes precedence over automatic, guardian and unattended allows', async () => {
     const evaluator = createEvaluator({
       spec: { name: 'Reviewer', tools: { askBeforeUse: ['repo_write'] } },

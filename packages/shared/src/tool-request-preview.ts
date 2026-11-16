@@ -375,7 +375,8 @@ const PLAN_REVIEW_TOOLS: ReadonlySet<string> = new Set(['cursor/createplan']);
  * Agents and their instructions or allowances, plugins, integrations, skills
  * and SSH hosts. Each call asks a person, once, even under full access: full
  * access trusts an agent with the work, never with widening its own trust,
- * so no session grant, pattern or guardian allow answers it. (Tools that run
+ * so no session grant or pattern answers it; on Station's own engine an
+ * operator-enabled approval guardian still may (archive#2016). (Tools that run
  * host code or store credentials are already person-only at the
  * station-control guard and never reach an agent.)
  */

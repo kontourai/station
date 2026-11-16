@@ -261,9 +261,13 @@ never with widening its own trust. The station-control tools that change who
 or what holds authority (`STATION_AUTHORITY_TOOLS`: Station configuration,
 creating or updating Agents, plugins, deleting integrations, skills and SSH
 hosts) are a required question on every engine, in any name the engine gives
-them: the staged evaluator asks a person before any grant, pattern, guardian
-allow or full access is read, and `toolRequestNeedsPerson` offers and honours
-no session answer for them. Tools that run host code or store credentials
+them: the staged evaluator asks a person before any grant, pattern or full
+access is read, and `toolRequestNeedsPerson` offers and honours no session
+answer for them. On Station's own engine (voice and other unattended runs
+included) an approval guardian the operator enabled may still allow one, as
+it may any mutation there (archive#2016); on an external engine, which would
+run a guardian-allowed call unasked at full access, a person is always asked.
+Tools that run host code or store credentials
 stay person-only at the station-control guard and never reach an agent.
 
 Engine-native web reads set the same mark (#4828): Claude Code through an
