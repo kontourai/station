@@ -173,6 +173,7 @@
     "qualify:telemetry-companion": "node scripts/qualify-telemetry-companion.mjs",
     "qualify:isolated-repair": "node scripts/qualify-isolated-repair.mjs",
     "qualify:isolated-repair:prepare": "flow-agents kit prepare-worker",
+    "qualify:tool-disclosure": "tsx scripts/qualify-tool-disclosure.ts",
     "typecheck:contracts": "node scripts/tsc-slot.mjs -p packages/contracts/tsconfig.json --noEmit",
     "typecheck:sdk": "node scripts/tsc-slot.mjs -p packages/sdk/tsconfig.tests.json --noEmit",
     "typecheck:board-pane": "node scripts/tsc-slot.mjs -p packages/board-pane/tsconfig.tests.json --noEmit",
