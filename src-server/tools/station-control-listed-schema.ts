@@ -89,7 +89,7 @@ function listedNode(node: unknown): unknown {
  * 2020-12, the dialect that URL names) and the top-level arguments only
  * Station's runtime writes (`STATION_INJECTED_TOOL_ARGUMENTS`).
  */
-export function listedJsonSchema(schema: JsonObject): JsonObject {
+function listedJsonSchema(schema: JsonObject): JsonObject {
   const { $schema: _dialect, ...rest } = schema;
   const listed = listedNode(rest) as JsonObject;
   if (isObject(listed.properties)) {
