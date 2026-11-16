@@ -123,41 +123,39 @@ describe('the dev mark matches the dev launcher icon', () => {
 });
 
 describe('release channels carry their native identity through app chrome', () => {
-  it.each([
-    ['beta', 'favicon-beta.png'],
-    ['nightly', 'favicon-nightly.png'],
-  ])('uses the %s channel accent and mark', (channel, favicon) => {
-    const css = read('index.css');
-    const rule = css.match(
-      new RegExp(`:root\\[data-app-channel="${channel}"\\][^{]*\\{[^}]*\\}`),
-    )?.[0];
-    expect(rule).toContain('--k-brand:');
-    expect(css).toContain(`content: url("/${favicon}")`);
-  });
+  it.each([['nightly', 'favicon-nightly.png']])(
+    'uses the %s channel accent and mark',
+    (channel, favicon) => {
+      const css = read('index.css');
+      const rule = css.match(
+        new RegExp(`:root\\[data-app-channel="${channel}"\\][^{]*\\{[^}]*\\}`),
+      )?.[0];
+      expect(rule).toContain('--k-brand:');
+      expect(css).toContain(`content: url("/${favicon}")`);
+    },
+  );
 });
 
 describe('the in-app mark carries no background of its own', () => {
-  it.each([
-    'favicon.png',
-    'favicon-dev.png',
-    'favicon-beta.png',
-    'favicon-nightly.png',
-  ])('ships %s with real transparency', async (file) => {
-    // The header, sidebar and connect screens render these assets directly
-    // over app chrome; an opaque plate behind them reads as a pasted-on
-    // tile. favicon-dev.png is what a dev build actually displays, so it
-    // is held to the same contract.
-    const png = readFileSync(join(UI_SRC, '..', 'public', file));
-    expect(png.subarray(1, 4).toString()).toBe('PNG');
+  it.each(['favicon.png', 'favicon-dev.png', 'favicon-nightly.png'])(
+    'ships %s with real transparency',
+    async (file) => {
+      // The header, sidebar and connect screens render these assets directly
+      // over app chrome; an opaque plate behind them reads as a pasted-on
+      // tile. favicon-dev.png is what a dev build actually displays, so it
+      // is held to the same contract.
+      const png = readFileSync(join(UI_SRC, '..', 'public', file));
+      expect(png.subarray(1, 4).toString()).toBe('PNG');
 
-    // IHDR colour type 6 is RGBA. Byte 25 of a PNG is the colour type field.
-    expect(png[25]).toBe(6);
+      // IHDR colour type 6 is RGBA. Byte 25 of a PNG is the colour type field.
+      expect(png[25]).toBe(6);
 
-    // An RGBA image can be fully opaque, so the encoding alone proves
-    // nothing. Decode the alpha channel and require a real transparent
-    // region: the mark previously sat on an opaque tile and would have
-    // passed the check above unchanged.
-    const { transparentRatio } = decodeAlpha(png);
-    expect(transparentRatio).toBeGreaterThan(0.2);
-  });
+      // An RGBA image can be fully opaque, so the encoding alone proves
+      // nothing. Decode the alpha channel and require a real transparent
+      // region: the mark previously sat on an opaque tile and would have
+      // passed the check above unchanged.
+      const { transparentRatio } = decodeAlpha(png);
+      expect(transparentRatio).toBeGreaterThan(0.2);
+    },
+  );
 });

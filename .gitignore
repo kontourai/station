@@ -47,7 +47,6 @@ archive/
 *.png
 # Reviewed application captures; raw capture output stays in .kontourai.
 !docs/learn/media/*.png
-!src-ui/public/favicon-beta.png
 !src-ui/public/favicon-nightly.png
 # Real-writer images (macOS sips, Chromium) the chat-host-images capture tests
 # read: generated fixtures would not prove what real writers emit.

@@ -1,0 +1,9 @@
+{
+  "revision": "60fd22348d954097ebd393bab0a1dc3b74813efd",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Only added the Pull request agent feedback routes subsection before the Table of Contents; existing sections and anchors unchanged.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Only added the Pull request agent feedback routes subsection before the Table of Contents; existing sections and anchors unchanged.","inputs":["docs/reference/api.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "207ba5362307323a97988f89bf4041787587ede8",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Pure-merge paragraph and heavy-slot table no longer list a pre-push code-health step; checked against .githooks/pre-push.","inputs":["docs/guides/testing.md",".githooks/pre-push","scripts/__tests__/prepush-typecheck.test.ts","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

@@ -6,16 +6,18 @@ A merged PR is integration evidence. It does not establish release readiness.
 
 ## Release flow
 
-Preview is the Beta channel. Nightly publishes usable main-edge builds after
-its source and artifact gates. Full qualification on main tests the combined
-merged changes; Beta and Stable require its exact-source evidence.
+Nightly publishes usable main-edge builds after its source and artifact gates.
+Full qualification tests the combined merged changes. Stable release candidates
+and final publication require exact-source full qualification, signed artifact
+and provider checks, plus owner acceptance. Beta and its `preview` release ring
+are retired ([#4929](https://github.com/kontourai/station/issues/4929)).
 
-Beta is being retired in favor of a release-candidate step
-([#4929](https://github.com/kontourai/station/issues/4929)): `vX.Y.Z-preview.N`
-tags are replaced by `vX.Y.Z-rc.N` tags, which stage with Stable identity and
-the bare base version and stage a complete draft named for the rc tag.
-Publishing an rc tag is not available yet, so the Preview steps below describe
-the retiring flow.
+A `vX.Y.Z-rc.N` candidate builds Stable identity and bare product version
+`X.Y.Z`, then publishes as a GitHub prerelease with no Stable pointer changes.
+Promotion creates `vX.Y.Z` and copies the accepted RC's unchanged assets instead
+of rebuilding them. It also promotes the exact Play build and submits the exact
+Apple build for App Review. Provider approval and installed-device acceptance
+remain separate evidence.
 
 ```mermaid
 flowchart TD
@@ -30,12 +32,11 @@ flowchart TD
     MAIN --> DECIDE["Hourly Nightly decision: six-hour minimum publication interval"]
     DECIDE -->|Eligible| SMOKE["Exact-source lint, typecheck, native boundary and browser smoke"]
     SMOKE --> NIGHTLY["Build, sign, verify and publish Nightly"]
-    RECEIPT --> PREVIEW["Owner selects frozen source and signed Preview tag"]
-    PREVIEW --> STAGE["Stage Beta artifacts: qualification, signing and inventory"]
-    STAGE --> ACCEPT["Installation, startup, critical journeys, upgrade and rollback acceptance"]
-    ACCEPT --> BETA["Owner-approved Beta publication and dogfooding"]
-    BETA --> STABLE["Same reviewed source: Stable packaging and acceptance"]
-    STABLE --> PUBLISH["Owner-approved Stable publication"]
+    RECEIPT --> RC["Owner selects frozen source and immutable RC tag"]
+    RC --> STAGE["Stage Stable-identity bytes: signing, store testing and inventory"]
+    STAGE --> PRERELEASE["Owner-approved RC prerelease; no Stable pointers"]
+    PRERELEASE --> ACCEPT["Installation, critical journeys, upgrade and rollback acceptance"]
+    ACCEPT --> PUBLISH["Owner-approved same-byte final promotion and exact-build store operations"]
 ```
 
 The [qualification workflow](../../.github/workflows/main-qualification.yml),
@@ -54,7 +55,7 @@ central six-hourly scan owns disclosure tracking; its assigned owner and
 operational-versus-finding distinction are documented in
 [dependency security](dependency-security.md#where-the-scan-runs).
 
-Preview/Beta and Stable publication use the shared
+RC and final publication use the shared
 [release advisory gate](../../.github/workflows/release-advisory.yml) against the
 immutable candidate SHA and lockfile. The evaluator and exception records come
 from a trusted default-branch policy checkout with its own tooling install. A supplied
@@ -66,7 +67,7 @@ dependency digests and scan times. Registry errors, malformed results,
 incomplete scopes, patch mismatches and changed inputs block publication.
 
 Tagged staging gates its direct GHCR and store effects. Protected release and
-host-pointer publication, manual npm publication and independent Beta/Stable
+host-pointer publication, manual npm publication and independent Stable
 TestFlight upload retain the gate; pointer-repair break glass cannot skip it.
 New gate coverage applies to reviewed post-policy workflow definitions only;
 old tag staging/reruns remain tag-owned YAML. Protected publication/provider
@@ -85,10 +86,10 @@ publication or all-artifact acceptance.
 | Merge queue | Affected tests, static/browser invariants, security and relevant platform checks against the synthesized combined candidate | Blocks incompatible integration |
 | Main source qualification | Every full-regression phase and Android viewport tests | Opens or updates one repair episode; source remains unqualified |
 | Scheduled delivery validation | All five packaging/platform families after successful source qualification | Retains delivery failure; does not turn the source receipt into artifact proof |
-| Internal development | Local/dev build with focused and smoke evidence | Must be identified as unqualified; never advertised as Preview or Stable |
+| Internal development | Local/dev build with focused and smoke evidence | Must be identified as unqualified; never advertised as a qualified RC or Stable |
 | Nightly | Exact-source lint, typecheck, native boundary and critical browser smoke, then signed artifact and platform/provider gates | Failed source or artifact admission blocks publication |
-| Preview | Frozen qualified source, signed/staged inventory, installation and update evidence, owner-approved publication | Blocks publication |
-| Stable | The reviewed Preview source, qualified evidence and channel-specific packaging/provider checks | Blocks publication |
+| Release candidate | Frozen qualified source, Stable-identity signed/staged inventory, store test delivery, installation/update evidence and owner-approved prerelease | Blocks RC publication |
+| Stable | Authenticated transfer of accepted RC bytes and store builds, current qualification/advisory admission and verified public authorities; or a separately accepted direct-final draft | Blocks final publication |
 
 The authorities are [CI](../../.github/workflows/ci.yml),
 [manual integration diagnosis](../../.github/workflows/merge-queue-regression.yml), and
@@ -147,11 +148,10 @@ install → portable archives → native checks → desktop clean checkout → e
 packaging. A failed family does not cancel later selected families. Scheduled
 qualification runs every family after the full corpus succeeds.
 
-The five families use 15 jobs instead of 20: installer checks combine stable
-and preview exercises into six jobs instead of eight; native Rust/Kotlin checks
-share one job instead of four; all five portable targets remain, capped at two
-concurrent jobs. Installer jobs run in three waves of two; desktop uses two jobs
-and ecosystem one. Thus one delivery-validation invocation uses at most two
+The five families bound their own matrices: installer smoke uses Stable
+fixtures, native Rust/Kotlin checks share a job, and all five portable targets
+remain capped at two concurrent jobs. Desktop and ecosystem families retain
+their declared jobs. One delivery-validation invocation uses at most two
 runners at once. The shared background group serializes these invocations
 with background qualification; unrelated workloads and repositories still
 share hosted capacity. A trusted merged-close handler retires remaining optional
@@ -193,7 +193,7 @@ trusted evidence during rollout; do not manually write successful statuses.
 The event-driven publisher uses short jobs, not waiting runners. Metadata
 completion may reconcile a pending source result; metadata start events do not
 allocate a source publisher. Its status is
-not full release qualification and does not replace Beta/stable receipts.
+not full release qualification and does not replace RC/final receipts.
 
 [Main: Qualification](../../.github/workflows/main-qualification.yml) runs at
 each main push, minute 17 every six UTC hours, or by manual dispatch. It tests
@@ -470,7 +470,7 @@ integration incidents. The owner can set repository variable
 `STATION_INTEGRATION_PAUSED=true` to fail subsequent merge-integration candidates,
 coordinate a repair PR, and clear it after verification. A repair deadline that
 passes without green qualification requires owner escalation; the tracker
-remains P1; Beta and Stable publication still require full source qualification. Broader failures
+remains P1; RC and final publication still require full source qualification. Broader failures
 receive the repair sweep while unrelated fast-green work can continue.
 
 ## Landing without agent monitoring
@@ -530,30 +530,52 @@ publication retains the workflow credential for GitHub operations and npm's
 existing OIDC authentication. Checkout credentials remain non-persistent;
 trigger admission is not check success or publication proof.
 
-1. Choose a release-train base version from repository/provider state and freeze
-   a reviewed current-main SHA. Use the version authority in
-   [release rings](release-rings.md), not an arbitrary calendar bump.
-2. Run qualification for that source, or reuse an admitted exact-source receipt
-   within its original 24-hour lifetime. A green ancestor does not qualify the
-   candidate. A diagnostic test subset does not qualify it either.
-3. Create a new immutable signed `vX.Y.Z-preview.N` tag on that source. The
-   tag-triggered stage workflow qualifies the exact SHA and creates a draft
-   only after the platform, signing, provenance and inventory checks succeed.
-4. Inspect the draft and receipts. Exercise installation, startup, the critical
-   user journeys, upgrade and rollback on the supported release platforms.
-   Record unverified provider/device paths explicitly. Use
-   [native operations](native-releases.md) and [mobile release](mobile-release.md)
-   for their platform-specific authorities.
-5. Dispatch and approve `Release: Publish` for that draft tag. It validates
-   the draft, inventory and provenance, and re-admits exact-source qualification
-   before changing public release/update authorities. An old staged draft can
-   require fresh qualification; source qualification from an ancestor is refused. Confirm the actual public artifacts and installed behavior.
-6. Dogfood Preview. If a fix is required, create another immutable Preview tag
-   from the fixed source and repeat qualification and acceptance.
-7. Promote the same reviewed Preview commit with `vX.Y.Z`; source never changes
-   during promotion. Stable packaging may rebuild for channel identity/signing.
-   Source qualification can reuse the same valid receipt; artifact, installation,
-   update and external-provider evidence still has to match the Stable outputs.
+1. Choose an unused release-train product base from current repository and
+   provider state, then freeze a reviewed main SHA. The private root owns the
+   product number (`0.2.0` for the first planned full-release train); published
+   CLI/library packages keep independent versions. See
+   [version authority](native-releases.md#product-version-and-release-cut).
+2. Qualify that exact source, or reuse an admitted receipt within its original
+   24-hour lifetime. A green ancestor or diagnostic subset does not qualify it.
+3. Create an immutable signed `vX.Y.Z-rc.N` tag, N from 1 to 98. `Release: Stage`
+   builds Stable identity and bare `X.Y.Z`, delivers the store test builds, and
+   creates its draft only after platform, signing, advisory, provenance and
+   inventory gates pass. Retain failed tags and receipts; do not move them.
+4. Inspect the draft and receipts, then dispatch `Release: Publish` on main with
+   `mode=rc` and that tag. Its protected publication re-admits source and
+   advisory evidence. Confirm the public prerelease and unchanged Stable
+   pointers. Exercise installation, startup, critical journeys, upgrade and
+   rollback on supported release platforms; record unverified provider/device
+   paths explicitly. RC desktop testers reinstall later RCs manually because
+   all use `X.Y.Z`; portable testers replacing same-version bytes explicitly
+   allow rollback. A fix takes another immutable RC and matching evidence.
+5. Immediately after the cut, run the plan/apply
+   [release-cut command](native-releases.md#product-version-and-release-cut) in
+   a clean sibling delivery worktree and land main's next minor base through a
+   normal PR. Do not change the frozen release source. Nightly publication
+   independently refuses a base at or below the highest public RC/final base.
+6. After acceptance, dispatch `Release: Publish` on main with `mode=promote`
+   and the published RC tag. It creates the final ref without retriggering
+   producers, copies original assets/names/inventory/SBOMs with a digest-bound
+   attested transfer receipt, and retains RC store slot N. Do not push a final
+   tag that rebuilds slot 99 as a substitute for same-byte promotion.
+7. Before approving promotion, provision its dedicated Play production WIF and
+   App Store Connect publication secrets, and prepare the matching Apple
+   listing/version with manual release. First Play production launch requires
+   explicit `android_rollout_fraction=1`. Use only definite authenticated RC
+   upload authority. Set bootstrap inputs only for proven-empty initial
+   updater/host pointers and a successful no-prior-release availability result.
+   See [store setup](store-entry.md#same-build-production-promotion).
+8. Confirm final GitHub assets, container digest aliases, rolling updater/host
+   manifests, mobile feed when configured and exact store outcomes. Keep the
+   RC release/assets public while the unchanged host payload references them.
+   App Review submission is not Apple approval or public availability. Inspect
+   durable attempted/unknown journals and provider state after interruption;
+   no blanket retry or inferred rollback is authorized by a green source test.
+
+Direct-final `mode=stable` remains available for a separately built and accepted
+final-tag draft. Its build slot is 99 and it has its own artifact/installed
+acceptance; it does not establish that an earlier RC's bytes were promoted.
 
 Nightly has two entry points, both serialized on the `nightly` concurrency group:
 
@@ -628,8 +650,8 @@ appender with the arguments the workflow passes, through
 `node scripts/lib/deploy-ledger-commit.mjs --commit-subject "docs(ledger): record <channel> <version> from run <run id>" -- node scripts/deploy-ledger.mjs …`
 on a checkout of `main`, with a token allowed to push there.
 
-Preview
-and Stable are evidence-driven owner decisions, not automatic calendar releases.
+RC publication
+and Stable promotion are evidence-driven owner decisions, not automatic calendar releases.
 No public release is created merely by merging a normal PR. Package-version
 PR maintenance runs on main pushes except those changing only the generated
 `docs/reference/deploy-ledger.json` and `docs/reference/deploy-ledger.md` outputs.

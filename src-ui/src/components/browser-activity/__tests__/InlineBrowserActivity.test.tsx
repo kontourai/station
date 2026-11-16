@@ -28,13 +28,19 @@ vi.mock('../../../contexts/ApiBaseContext', () => ({
 vi.mock('../../../contexts/useOpenInRegion', () => ({
   useOpenBrowserSessionInRegion: () => null,
 }));
-vi.mock('../../../float-over-chat/BrowserSessionSurface', () => ({
-  BrowserSessionSurface: ({
-    session,
-  }: {
-    session: { browserSessionId: string };
-  }) => <div>Live {session.browserSessionId}</div>,
-}));
+vi.mock(
+  '../../../float-over-chat/BrowserSessionSurface',
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import('../../../float-over-chat/BrowserSessionSurface')
+    >()),
+    BrowserSessionSurface: ({
+      session,
+    }: {
+      session: { browserSessionId: string };
+    }) => <div>Live {session.browserSessionId}</div>,
+  }),
+);
 
 import { browserShownSourceKey } from '../../../float-over-chat/floatSource';
 import { announceShownSource } from '../../../float-over-chat/shownSources';

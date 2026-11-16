@@ -19,7 +19,6 @@ describe('cross-platform release invariant matrix', () => {
     expect(Object.keys(matrix.cells)).toEqual([
       'development',
       'nightly',
-      'preview',
       'stable',
     ]);
     for (const cells of Object.values(matrix.cells) as Record<string, any>[]) {
@@ -164,7 +163,7 @@ describe('cross-platform release invariant matrix', () => {
 
   test('limits the Linux in-app updater authority to AppImage packages', () => {
     const matrix = readReleasePlatformMatrix();
-    for (const channel of ['preview', 'stable']) {
+    for (const channel of ['stable']) {
       expect(matrix.cells[channel].linux.updateAuthority).toContain(
         'AppImage only',
       );
@@ -198,4 +197,13 @@ describe('cross-platform release invariant matrix', () => {
       'stable:ios.buildJob references missing release.yml#missing-job',
     );
   });
+});
+
+test('refuses retired preview cells rather than projecting them as Stable', () => {
+  const matrix = readReleasePlatformMatrix();
+  matrix.channels.preview = { ...matrix.channels.stable };
+  matrix.cells.preview = { ...matrix.cells.stable };
+  expect(validateReleasePlatformMatrix({ matrix, root, ledger })).toContain(
+    'unsupported release channel preview',
+  );
 });

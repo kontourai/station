@@ -14,6 +14,8 @@ import {
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { validatePackagedReleaseManifest } from '../../packages/cli/src/commands/lifecycle-code-root.js';
+import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 
 const SCRIPT = resolve('scripts/package-portable-release.sh');
 // The packager classifies release tags through the shared parser (#4929), so
@@ -139,6 +141,80 @@ function packageFixture(
 // workers or a sibling session the 5s default budget starves. Cap, not
 // expectation.
 describe('portable release packager', { timeout: 30_000 }, () => {
+  it.each([
+    {
+      name: 'signs the source-smoke manifest from schema-3 product identity',
+      tag: 'v0.1.0',
+      admitted: true,
+    },
+    {
+      name: 'refuses an RC as the final source-smoke manifest',
+      tag: 'v0.1.0-rc.1',
+      admitted: false,
+    },
+  ])('$name', ({ tag, admitted }) => {
+    const root = createFixture();
+    const source = readFileSync(
+      resolve('scripts/smoke-install-source.sh'),
+      'utf8',
+    );
+    const serverStart = source.indexOf(
+      '\nnode -e \'\n  require("node:http").createServer',
+    );
+    if (serverStart < 0)
+      throw new Error('Source smoke fixture setup boundary is missing');
+    const runnerTemp = join(root, 'runner-temp');
+    const result = spawnSyncBounded(
+      'bash',
+      ['-c', source.slice(0, serverStart)],
+      {
+        cwd: root,
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 30_000,
+        env: isolatedGitEnvironment({
+          ...process.env,
+          RUNNER_TEMP: runnerTemp,
+          GITHUB_WORKSPACE: resolve('.'),
+          SMOKE_HOME: join(root, 'smoke-home'),
+          RELEASE_DIR: join(root, 'release'),
+          RELEASE_TAG: tag,
+          RELEASE_CHANNEL: 'stable',
+          RUNTIME_CHANNEL: 'stable',
+          ARTIFACT_PORT: '18765',
+        }),
+      },
+    );
+    expect(
+      result.status,
+      `${result.error?.message ?? ''}${result.stderr}`,
+    ).toBe(admitted ? 0 : 1);
+    if (!admitted) {
+      expect(result.stderr).toContain(
+        'source smoke tag does not match packaged product version',
+      );
+      return;
+    }
+    const manifest = JSON.parse(
+      readFileSync(
+        join(
+          runnerTemp,
+          'install-source-stable/fixture-manifests/manifest.json',
+        ),
+        'utf8',
+      ),
+    );
+    expect(manifest.payload).toMatchObject({
+      channel: 'stable',
+      version: '0.1.0',
+      releaseTag: tag,
+      sourceSha: run('git', ['rev-parse', 'HEAD'], root),
+    });
+    expect(manifest.payload.artifacts.macos.name).toBe(
+      'station-0.1.0-macos-universal.dmg',
+    );
+  });
+
   it('isolates nested repositories from inherited Git hook state', () => {
     const outerRoot = mkdtempSync(join(tmpdir(), 'station-outer-repository-'));
     roots.push(outerRoot);
@@ -201,12 +277,14 @@ describe('portable release packager', { timeout: 30_000 }, () => {
       ),
     );
     expect(embedded).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       channel: 'stable',
       releaseChannel: 'stable',
       prerelease: false,
-      ref: 'v0.2.0-rc.3',
+      version: '0.2.0',
     });
+    expect(embedded).not.toHaveProperty('ref');
+    expect(validatePackagedReleaseManifest(embedded)).toEqual(embedded);
   });
 
   it('creates deterministic tracked-only bytes with exact provenance and checksum', () => {
@@ -235,9 +313,9 @@ describe('portable release packager', { timeout: 30_000 }, () => {
       ),
     );
     expect(manifest).toEqual({
-      schemaVersion: 2,
+      schemaVersion: 3,
       sha: run('git', ['rev-parse', 'HEAD'], root),
-      ref: 'v0.1.0',
+      version: '0.1.0',
       createdAt: CREATED_AT,
       channel: 'stable',
       releaseChannel: 'stable',
@@ -246,7 +324,7 @@ describe('portable release packager', { timeout: 30_000 }, () => {
     expect(Object.keys(manifest)).toEqual([
       'schemaVersion',
       'sha',
-      'ref',
+      'version',
       'createdAt',
       'channel',
       'releaseChannel',

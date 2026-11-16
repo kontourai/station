@@ -1,0 +1,7 @@
+{
+  "revision": "6a6b39ee1af7b7faf299de3e195e4b3f3b15ed04",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked the diff: a runtime inventory request may set includeModelCatalog false, which skips each Adapter's listModelCatalog/listModels and the catalog-resolution metric; the connection then carries its built-in catalog fallback, and its status still derives from prerequisites. Default requests are unchanged.","inputs":["src-server/services/connections/connection-inspector.ts"]}
+  ]
+}

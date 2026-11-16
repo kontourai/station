@@ -1,7 +1,6 @@
 // Generated from config/channel-platform-matrix.json by scripts/channel-platform-matrix.mjs.
 export const RELEASE_PAIRING_DEEP_LINK_SCHEMES = {
   stable: 'station-stable',
-  beta: 'station-beta',
   nightly: 'station-nightly',
 } as const;
 

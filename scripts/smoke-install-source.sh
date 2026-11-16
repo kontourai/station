@@ -49,8 +49,12 @@ mkdir -p "$serve_dir" "$manifests_dir" "$keys_dir"
 cp "$RELEASE_DIR/station-portable.tar.gz" "$serve_dir/"
 provenance="$(tar -xOzf "$serve_dir/station-portable.tar.gz" station/.station-release.json)"
 source_sha="$(printf '%s' "$provenance" | jq -r .sha)"
-release_tag="$(printf '%s' "$provenance" | jq -r .ref)"
-version="${release_tag#v}"
+version="$(printf '%s' "$provenance" | jq -er 'select(.schemaVersion == 3 and .releaseChannel == "stable") | .version | select(type == "string" and length > 0)')"
+release_tag="$RELEASE_TAG"
+if [ "$release_tag" != "v$version" ]; then
+  echo 'source smoke tag does not match packaged product version' >&2
+  exit 1
+fi
 printf 'install-smoke macOS cask fixture\n' >"$serve_dir/station-$version-macos-universal.dmg"
 node -e '
   const { generateKeyPairSync } = require("node:crypto");

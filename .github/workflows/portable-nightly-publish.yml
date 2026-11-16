@@ -81,6 +81,16 @@ jobs:
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
+      - name: Refuse a Nightly base at or below a published RC or final
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_PRODUCT_BASE: ${{ inputs.marketing_version }}
+        run: |
+          set -euo pipefail
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '[.[][] | {tag_name, draft, prerelease}]' > "$RUNNER_TEMP/published-product-releases.json"
+          expected=()
+          if [ -n "$EXPECTED_PRODUCT_BASE" ]; then expected=(--expected-base "$EXPECTED_PRODUCT_BASE"); fi
+          node scripts/nightly-release-base.mjs --package-json package.json --release-history "$RUNNER_TEMP/published-product-releases.json" "${expected[@]}"
       - id: identity
         name: Bind the source SHA and derive the Nightly version
         env:

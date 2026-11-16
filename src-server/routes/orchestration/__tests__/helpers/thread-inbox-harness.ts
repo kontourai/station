@@ -45,7 +45,10 @@ import { memoryContinuationForInbox } from '../../../../services/orchestration/m
 import { OrchestrationService } from '../../../../services/orchestration/orchestration-service.js';
 import { createSessionAgentResolver } from '../../../../services/orchestration/session-agent-resolution.js';
 import { ACTIVE_TURN_FOLD_METHODS } from '../../../../services/orchestration/session-lifecycle-service.js';
-import { ThreadInboxDelivery } from '../../../../services/orchestration/thread-inbox.js';
+import {
+  ThreadInboxDelivery,
+  type ThreadInboxDeliveryPorts,
+} from '../../../../services/orchestration/thread-inbox.js';
 import {
   createOrchestrationRoutes,
   isForegroundDispatchHandle,
@@ -271,6 +274,8 @@ export function createInboxHarness() {
        * person's route; `automatic` also feeds Station's own trigger.
        */
       memoryContinuation?: 'manual' | 'automatic';
+      /** A sender's placement policy, as production chains them. */
+      placementRefusal?: ThreadInboxDeliveryPorts['placementRefusal'];
     } = {},
   ) {
     const root = options.root ?? tempDir('station-inbox-');
@@ -571,6 +576,9 @@ export function createInboxHarness() {
               listener({ threadId: event.threadId, method: event.method });
           }),
         logger: { warn: vi.fn() },
+        ...(options.placementRefusal
+          ? { placementRefusal: options.placementRefusal }
+          : {}),
         retryDelaysMs: [20, 50, 100],
         ...(options.placementDeadlineMs
           ? { placementDeadlineMs: options.placementDeadlineMs }
@@ -789,6 +797,7 @@ export function createInboxHarness() {
       continueSend,
       root,
       adapter,
+      bus,
       store,
       service,
       inbox,
