@@ -976,7 +976,7 @@
   height: 15px;
   padding: 0 3px;
   border: 1px solid var(--k-line);
-  border-radius: var(--radius-pill);
+  border-radius: calc(var(--k-radius-md) * 2);
   background: var(--k-panel);
   color: var(--k-text);
   font-size: var(--k-text-xs);
@@ -993,8 +993,8 @@
   place-items: center;
   width: 14px;
   height: 14px;
-  border-radius: var(--radius-pill);
-  background: var(--bg-primary);
+  border-radius: calc(var(--k-radius-md) * 2);
+  background: var(--k-bg);
   color: currentColor;
   font-size: var(--k-text-xs);
   font-weight: var(--weight-bold);
