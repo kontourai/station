@@ -2201,6 +2201,15 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       (isPaneOpen || isCollapsedDragPreview),
     SESSION_CONTEXT_EXIT_MS,
   );
+  // The This chat card (or, too narrow for it, its chip) is where Background
+  // tasks, Chat inventory, the Copy commands and where the chat came from
+  // live; the More menu drops them only while one of the two is actually on
+  // screen. A card whose chunk has not loaded (or failed to) leaves them in
+  // the menu, so no command is ever reachable from nowhere.
+  const sessionContextOwnsRows =
+    !isMobile &&
+    (sessionContextCardShown ||
+      (sessionContextChipPresence.mounted && !sessionContextCardVisible));
   // The composer's context meter: for a chat the inbox lists as open (the
   // same gate the header meter had), never for an imported session.
   const contextMeterShown = Boolean(
@@ -3170,6 +3179,11 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
    * opening a surface that already exists. Rows a fact cannot fill are
    * omitted by the card rather than worded as a state nothing computes.
    */
+  // A string, so the memoised card compares it by value: the origin record is
+  // rebuilt on every session-list read.
+  const sessionOriginLabel = activeOrchestrationSession?.inputOrigin
+    ? delegatedTaskLabel(activeOrchestrationSession.inputOrigin)
+    : undefined;
   const sessionContextCardProps = useMemo(() => {
     if (!sessionContextAvailable) return null;
     const actions = () => sessionContextActionsRef.current;
@@ -3232,9 +3246,13 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
             },
           }
         : undefined,
+      origin: sessionOriginLabel,
+      copyActions,
       onPresentChange: setSessionContextCardPresent,
     };
   }, [
+    sessionOriginLabel,
+    copyActions,
     sessionContextAvailable,
     sessionContextProjectSlug,
     sessionProjectName,
@@ -4004,7 +4022,17 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       />
                     ) : null
                   }
-                  moreActions={importedSessionId ? [] : dockMoreActions}
+                  moreActions={
+                    importedSessionId
+                      ? []
+                      : sessionContextOwnsRows
+                        ? dockMoreActions.filter(
+                            (action) =>
+                              action.group !== 'copy' &&
+                              action.group !== 'about',
+                          )
+                        : dockMoreActions
+                  }
                   // #3309: the tab strip's controls fold into the header — one
                   // chrome bar, every reclaimed pixel is transcript space. Only
                   // while the pane is open; the collapsed bar stays minimal.

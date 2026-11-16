@@ -1,0 +1,7 @@
+{
+  "revision": "140cfafaa2f4bf32525e23cbf65ffd13b98cc1ad",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Re-reviewed after keeping Chat inventory (full reader) as a More-menu row while the This chat card shows; the card's footer link opens the compact inventory. Background tasks, Copy and the origin note still move to the card.","inputs":["docs/design/placement.md"]}
+  ]
+}
