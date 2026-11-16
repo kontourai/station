@@ -373,6 +373,21 @@ describe('PR Gallery verdict', () => {
     expect(result.status, result.out).toBe(status);
   });
 
+  it('keeps a lost lazy chunk red under its own title, not as the pull request', () => {
+    const result = verdict({
+      COMPOSE: 'success',
+      CAPTURE: 'failure',
+      DIFF: 'skipped',
+      ASSERTIONS: 'skipped',
+      ATTRIBUTION: 'infrastructure',
+    });
+    expect(result.status, result.out).toBe(1);
+    expect(result.out).toContain(
+      `::error title=Gallery chunk load failure::A lazy UI chunk failed to download during the capture, and main at ${sha} captured those screens cleanly.`,
+    );
+    expect(result.out).not.toContain('title=Gallery verdict');
+  });
+
   it('says when it excuses a failure, and which main', () => {
     const result = verdict({
       COMPOSE: 'success',
@@ -404,6 +419,9 @@ function screen(name: string, overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+// The capture's identity line for a screen that lost a lazy chunk.
+const CHUNK_IDENTITY =
+  'app-error-surface: lazy-boundary-row; failed chunk requests: /assets/WorkspacePaneHost-<hash>.js';
 const failedCapture = (
   name: string,
   error = 'breadcrumb stays before actions',
@@ -697,6 +715,49 @@ describe('PR Gallery attributes a failure main already has', () => {
     }).run();
     expect(full.output).toBe('verdict=pr\n');
     expect(full.out).toContain("the base capture's selection null");
+  });
+
+  it('answers infrastructure for a lost lazy chunk the base does not reproduce', () => {
+    const { run } = attributionFixture({
+      composed: [
+        failedCapture(
+          'child-chat-dark-390',
+          `${CHUNK_IDENTITY}\nBrowser errors: ["Failed to fetch dynamically imported module"]`,
+        ),
+        screen('home'),
+      ],
+      baseCapture: manifest(
+        [screen('child-chat-dark-390')],
+        ['child-chat-dark-390'],
+      ),
+    });
+    const result = run();
+    expect(result.status, result.out).toBe(0);
+    expect(result.output).toBe('verdict=infrastructure\n');
+    expect(result.summary).toContain(
+      `CHUNK LOAD child-chat-dark-390: capture-failed (${CHUNK_IDENTITY})`,
+    );
+    expect(result.summary).not.toContain('INTRODUCED');
+  });
+
+  it('answers pr when a lost chunk comes with a failure that is not one', () => {
+    for (const other of [
+      withFinding('home', 'overflow:document'),
+      // A surface without a failed chunk request: a render error.
+      failedCapture(
+        'home',
+        'app-error-surface: lazy-boundary-row; no failed chunk request',
+      ),
+    ]) {
+      const { run } = attributionFixture({
+        composed: [failedCapture('child-chat-dark-390', CHUNK_IDENTITY), other],
+        baseCapture: manifest(
+          [screen('child-chat-dark-390'), screen('home')],
+          ['child-chat-dark-390', 'home'],
+        ),
+      });
+      expect(run().output).toBe('verdict=pr\n');
+    }
   });
 
   it('judges the base with its own allowlist', () => {
@@ -1315,6 +1376,35 @@ describe('gallery-main-attribution decisions', () => {
     });
     expect(
       compareAttribution([failure('a', 'overflow:x')], [failure('a')]).verdict,
+    ).toBe('pr');
+  });
+
+  it('names chunk delivery only when every failure main lacks is a lost chunk', () => {
+    const chunk = (
+      screen: string,
+      line = 'failed chunk requests: /a-<hash>.js',
+    ) => ({
+      screen,
+      identity: 'capture-failed',
+      signature: `app-error-surface: lazy-boundary-row, route-chunk-error; ${line}\nmore`,
+    });
+    expect(compareAttribution([chunk('a'), chunk('b')], []).verdict).toBe(
+      'infrastructure',
+    );
+    // What main also has does not need to be a chunk.
+    expect(
+      compareAttribution([chunk('a'), failure('b')], [failure('b')]).verdict,
+    ).toBe('infrastructure');
+    expect(compareAttribution([chunk('a'), failure('b')], []).verdict).toBe(
+      'pr',
+    );
+    expect(
+      compareAttribution([chunk('a', 'no failed chunk request')], []).verdict,
+    ).toBe('pr');
+    // The identity is the capture's own; a finding whose text quotes it is not.
+    expect(
+      compareAttribution([{ ...chunk('a'), identity: 'audit-error' }], [])
+        .verdict,
     ).toBe('pr');
   });
 });

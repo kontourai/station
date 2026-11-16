@@ -35,6 +35,7 @@ import {
   type ControlMovement,
   type ControlNameDiff,
   createFailedRequestLog,
+  failedScreenReason,
   formatControlChangeTable,
   type GalleryFault,
   isChunkPath,
@@ -54,6 +55,7 @@ import {
 } from './helpers/gallery-document-tracker';
 import {
   captureScreens,
+  failedScreenFields,
   MAX_SECOND_CAPTURES,
   readSettleWindow,
   type SecondCaptureRecord,
@@ -7153,6 +7155,19 @@ function readGalleryCheckout() {
     };
   }
 }
+/** One line per failed screen, naming a lost lazy chunk as such (#5028). */
+function failedShotReasons(shots: Shot[]): string[] {
+  return shots
+    .filter((shot) => !shot.ok)
+    .map((shot) =>
+      failedScreenReason(
+        shot.screen.name,
+        shot.error ?? 'screen did not render',
+        shot.appError,
+      ),
+    );
+}
+
 test('build gallery — capture key screens', async ({ page }) => {
   const browserErrors: string[] = [];
   page.on('console', (message) => {
@@ -7818,17 +7833,9 @@ test('build gallery — capture key screens', async ({ page }) => {
           : {
               screen,
               file,
-              ok: false,
-              // An app error surface leads with its identity; the already
-              // bounded console/page errors stay as the last line, which
-              // attribution sets aside.
-              error: [
-                ...result.errorLines,
-                ...(browserErrors.length
-                  ? [`Browser errors: ${JSON.stringify(browserErrors)}`]
-                  : []),
-              ].join('\n'),
-              ...(final.appError ? { appError: final.appError } : {}),
+              // An app error surface leads with its identity, not the layout
+              // findings of its error row (#5028).
+              ...failedScreenFields(result, browserErrors),
             };
         shot.attempts = result.attempts;
         shots.push(shot);
@@ -7969,10 +7976,13 @@ test('build gallery — capture key screens', async ({ page }) => {
     }
   }
 
+  const failedReasons = failedShotReasons(shots);
+  for (const reason of failedReasons) console.log(reason);
   const ok = shots.filter((shot) => shot.ok).length;
-  expect(ok, 'every selected gallery screen should render').toBe(
-    selectedScreens.length,
-  );
+  expect(
+    ok,
+    `every selected gallery screen should render; failed: ${failedReasons.join('; ') || 'none recorded'}`,
+  ).toBe(selectedScreens.length);
   if (
     selectedScreens.some(
       (screen) => screen.name === 'overlay-dock-project-mismatch',
