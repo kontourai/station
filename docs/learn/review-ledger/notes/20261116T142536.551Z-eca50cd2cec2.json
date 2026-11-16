@@ -1,0 +1,25 @@
+{
+  "revision": "0d93bb86c701292b6bf25f5f1efb56d750ce40ad",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Adds one type re-export (PullRequestFeedbackAttentionItem) beside the other attention item types. Checked citing pages: no claim enumerates the barrel's attention types or is affected by a new type-only export.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/knowledge-recall-ui.md","note":"Adds one type re-export (PullRequestFeedbackAttentionItem) beside the other attention item types. Checked citing pages: no claim enumerates the barrel's attention types or is affected by a new type-only export.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/pane-host-contract.md","note":"Adds one type re-export (PullRequestFeedbackAttentionItem) beside the other attention item types. Checked citing pages: no claim enumerates the barrel's attention types or is affected by a new type-only export.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Adds one type re-export (PullRequestFeedbackAttentionItem) beside the other attention item types. Checked citing pages: no claim enumerates the barrel's attention types or is affected by a new type-only export.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Adds one type re-export (PullRequestFeedbackAttentionItem) beside the other attention item types. Checked citing pages: no claim enumerates the barrel's attention types or is affected by a new type-only export.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Adds one type re-export (PullRequestFeedbackAttentionItem) beside the other attention item types. Checked citing pages: no claim enumerates the barrel's attention types or is affected by a new type-only export.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Adds one type re-export (PullRequestFeedbackAttentionItem) beside the other attention item types. Checked citing pages: no claim enumerates the barrel's attention types or is affected by a new type-only export.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Adds one type re-export (PullRequestFeedbackAttentionItem) beside the other attention item types. Checked citing pages: no claim enumerates the barrel's attention types or is affected by a new type-only export.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"examples/meeting-transcription/README.md","note":"Adds one type re-export (PullRequestFeedbackAttentionItem) beside the other attention item types. Checked citing pages: no claim enumerates the barrel's attention types or is affected by a new type-only export.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Adds one type re-export (PullRequestFeedbackAttentionItem) beside the other attention item types. Checked citing pages: no claim enumerates the barrel's attention types or is affected by a new type-only export.","inputs":["packages/sdk/src/index.ts"]}
+  ]
+}

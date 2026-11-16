@@ -1,0 +1,7 @@
+{
+  "revision": "0d93bb86c701292b6bf25f5f1efb56d750ce40ad",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Cites the API reference, which gained one paragraph on pull request feedback in /api/attention; nothing about the terminal routes changed.","inputs":["docs/design/terminal.md","docs/reference/api.md"]}
+  ]
+}

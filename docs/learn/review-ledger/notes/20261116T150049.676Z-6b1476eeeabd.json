@@ -1,0 +1,9 @@
+{
+  "revision": "544d2d194f3952310fbde15de20b7726c0cfead0",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"AttentionCard gains the pull-request-feedback arm (Send again or Open chat as primary, Open pull request and Turn off auto-fix in the same action row, or a remedy line). Checked citing pages: their descriptions of other kinds' actions and the Dismiss/Snooze menu are unchanged.","inputs":["src-ui/src/components/attention/AttentionCard.tsx"]},
+
+    {"path":"docs/reference/session-api.md","note":"AttentionCard gains the pull-request-feedback arm (Send again or Open chat as primary, Open pull request and Turn off auto-fix in the same action row, or a remedy line). Checked citing pages: their descriptions of other kinds' actions and the Dismiss/Snooze menu are unchanged.","inputs":["src-ui/src/components/attention/AttentionCard.tsx"]}
+  ]
+}

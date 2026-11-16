@@ -1,0 +1,7 @@
+{
+  "revision": "d0282be8a93c664ba098d518a822f3b44aab2d48",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Cites the web push guide, which only gained pull request feedback in its category list; the abstraction review's claims are unchanged.","inputs":["docs/architecture/abstraction-review.md","docs/guides/web-push-notifications.md"]}
+  ]
+}

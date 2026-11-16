@@ -6295,7 +6295,9 @@ own explicit links separately from provider-derived or Task-kept references.
 `@kontourai/station-sdk/pull-request-feedback` reads a chat's pull request
 feedback (`getConversationPullRequestFeedback`), sets a pull request's
 switches (`writePullRequestFeedback`, with `move` to take it from another
-chat), and lifts a pause (`sendPullRequestFeedbackAgain`). A 409 naming
+chat), lifts a pause (`sendPullRequestFeedbackAgain`), and turns every
+switch off for a pull request the chat owns (`turnOffPullRequestFeedback`,
+which the Needs-you item calls). A 409 naming
 another chat is read with `pullRequestFeedbackOwnerOf`. Gate the calls on
 `readPullRequestFeedbackCapability` (the `pullRequestFeedback` flag) and the
 `pull-request-agent-feedback` Feature Preview; the routes answer 404 while the

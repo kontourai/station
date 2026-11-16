@@ -63,6 +63,7 @@ const sdk = vi.hoisted(() => ({
   view: undefined as unknown,
   write: vi.fn(),
   sendAgain: vi.fn(async () => undefined),
+  turnOff: vi.fn(async () => undefined),
   read: vi.fn(),
 }));
 vi.mock('@kontourai/station-sdk/pull-request-feedback', async (original) => {
@@ -83,6 +84,8 @@ vi.mock('@kontourai/station-sdk/pull-request-feedback', async (original) => {
     writePullRequestFeedback: (...args: unknown[]) => sdk.write(...args),
     sendPullRequestFeedbackAgain: (...args: unknown[]) =>
       sdk.sendAgain(...(args as [])),
+    turnOffPullRequestFeedback: (...args: unknown[]) =>
+      sdk.turnOff(...(args as [])),
   };
 });
 
@@ -186,6 +189,43 @@ describe('agent feedback on a linked pull request', () => {
         expect.anything(),
       ),
     );
+  });
+
+  test('turning the last switch off turns feedback off through the one turn-off path', async () => {
+    sdk.view = view();
+    sdk.turnOff.mockClear();
+    renderLinks();
+    const dialog = await openDialog();
+    fireEvent.click(
+      within(dialog).getByRole('switch', {
+        name: 'Fix failing checks automatically',
+      }),
+    );
+    await waitFor(() =>
+      expect(sdk.turnOff).toHaveBeenCalledWith(
+        'http://station.test',
+        'c1',
+        IDENTITY,
+        expect.anything(),
+      ),
+    );
+    expect(sdk.write).not.toHaveBeenCalled();
+  });
+
+  test('a 24-hour pause says so, not "3 rounds"', async () => {
+    sdk.view = view({
+      status: {
+        state: 'paused',
+        reason: 'round-limit',
+        cap: 'day',
+        headSha: 'a1b2c3d4e5f6',
+      },
+    });
+    renderLinks();
+    expect(
+      await screen.findByText('Paused after 10 messages in 24 hours'),
+    ).toBeTruthy();
+    expect(screen.queryByText(/3 rounds/)).toBeNull();
   });
 
   test("another chat's feedback: 409 names it and Move here moves it", async () => {

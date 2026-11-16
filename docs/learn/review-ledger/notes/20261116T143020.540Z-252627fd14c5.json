@@ -1,0 +1,7 @@
+{
+  "revision": "0d93bb86c701292b6bf25f5f1efb56d750ce40ad",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"Routes to the contracts reference; the reference gained the pull request feedback attention item paragraph. The routing guidance is unchanged.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

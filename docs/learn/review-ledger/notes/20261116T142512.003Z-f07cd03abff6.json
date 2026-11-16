@@ -1,0 +1,15 @@
+{
+  "revision": "0d93bb86c701292b6bf25f5f1efb56d750ce40ad",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"createAttentionRoutes gains an optional viewerMayChangePullRequestFeedback predicate feeding the projection's viewer; GET/ack/snooze paths, bodies, status codes and the acknowledge rule are unchanged. Checked citing pages (inbox rows, Dismiss/Snooze, exact request inspection): their claims still hold; a pull-request-feedback item is acknowledgeable like other non-decision kinds.","inputs":["src-server/routes/orchestration/attention.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"createAttentionRoutes gains an optional viewerMayChangePullRequestFeedback predicate feeding the projection's viewer; GET/ack/snooze paths, bodies, status codes and the acknowledge rule are unchanged. Checked citing pages (inbox rows, Dismiss/Snooze, exact request inspection): their claims still hold; a pull-request-feedback item is acknowledgeable like other non-decision kinds.","inputs":["src-server/routes/orchestration/attention.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"createAttentionRoutes gains an optional viewerMayChangePullRequestFeedback predicate feeding the projection's viewer; GET/ack/snooze paths, bodies, status codes and the acknowledge rule are unchanged. Checked citing pages (inbox rows, Dismiss/Snooze, exact request inspection): their claims still hold; a pull-request-feedback item is acknowledgeable like other non-decision kinds.","inputs":["src-server/routes/orchestration/attention.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"createAttentionRoutes gains an optional viewerMayChangePullRequestFeedback predicate feeding the projection's viewer; GET/ack/snooze paths, bodies, status codes and the acknowledge rule are unchanged. Checked citing pages (inbox rows, Dismiss/Snooze, exact request inspection): their claims still hold; a pull-request-feedback item is acknowledgeable like other non-decision kinds.","inputs":["src-server/routes/orchestration/attention.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"createAttentionRoutes gains an optional viewerMayChangePullRequestFeedback predicate feeding the projection's viewer; GET/ack/snooze paths, bodies, status codes and the acknowledge rule are unchanged. Checked citing pages (inbox rows, Dismiss/Snooze, exact request inspection): their claims still hold; a pull-request-feedback item is acknowledgeable like other non-decision kinds.","inputs":["src-server/routes/orchestration/attention.ts"]}
+  ]
+}

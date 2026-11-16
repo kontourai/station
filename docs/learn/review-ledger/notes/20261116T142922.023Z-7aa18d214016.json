@@ -1,0 +1,7 @@
+{
+  "revision": "0d93bb86c701292b6bf25f5f1efb56d750ce40ad",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Added paused status cap/at, PullRequestFeedbackAttentionItem on the attention subpath and the pull-request-feedback client-origin sender, checked against packages/contracts/src/attention.ts, pull-request-feedback.ts and client-origin.ts.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "0d93bb86c701292b6bf25f5f1efb56d750ce40ad",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Added turnOffPullRequestFeedback (DELETE with identity) to the pull request feedback client paragraph, checked against packages/sdk/src/client/pull-request-feedback.ts and its AttentionCard caller.","inputs":["docs/reference/sdk.md","packages/sdk/package.json"]}
+  ]
+}

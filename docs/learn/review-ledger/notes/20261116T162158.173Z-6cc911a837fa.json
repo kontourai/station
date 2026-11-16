@@ -1,0 +1,9 @@
+{
+  "revision": "4f0e377f8b01a4098d5e1edab0e396d651c9253b",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"The pull-request-feedback card now leads with its primary action (Send again or Open chat), then Open pull request, Turn off auto-fix last. Citing pages describe other kinds' actions and the Dismiss/Snooze menu, which are unchanged.","inputs":["src-ui/src/components/attention/AttentionCard.tsx"]},
+
+    {"path":"docs/reference/session-api.md","note":"The pull-request-feedback card now leads with its primary action (Send again or Open chat), then Open pull request, Turn off auto-fix last. Citing pages describe other kinds' actions and the Dismiss/Snooze menu, which are unchanged.","inputs":["src-ui/src/components/attention/AttentionCard.tsx"]}
+  ]
+}

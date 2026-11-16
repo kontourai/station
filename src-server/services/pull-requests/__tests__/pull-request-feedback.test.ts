@@ -300,10 +300,13 @@ describe('pull request agent feedback reaches the owning conversation', () => {
     expect(t.feedbackPrompts()[1]).toContain('acme/widgets#42 at b2c3d4e');
   });
 
-  it('(e) a fourth round on one head pauses instead of sending; Send again grants one', async () => {
+  it('(e) a fourth round on one head pauses instead of sending, tells a person once; Send again grants one', async () => {
     const t = await setup();
     t.claim({ ...BOTH, fixFailingChecks: false });
-    const delivery = t.use(new PullRequestFeedbackDelivery(t.ports()));
+    const notify = vi.fn();
+    const delivery = t.use(
+      new PullRequestFeedbackDelivery(t.ports({ notify })),
+    );
     const threads: ReturnType<typeof thread>[] = [];
     for (const round of [1, 2, 3, 4]) {
       threads.push(
@@ -318,13 +321,35 @@ describe('pull request agent feedback reaches the owning conversation', () => {
       if (round < 4) await t.deliverPlaced(delivery);
     }
     expect(t.entries()).toHaveLength(3);
+    expect(notify).not.toHaveBeenCalled();
     expect((await delivery.deliver(CONVERSATION)).kind).toBe('none');
     expect(t.entries()).toHaveLength(3);
-    expect(t.store.claim(PR_KEY)?.condition).toEqual({
+    const condition = t.store.claim(PR_KEY)?.condition;
+    expect(condition).toEqual({
       state: 'paused',
       reason: 'round-limit',
+      cap: 'head',
       headSha: HEAD,
+      rounds: 3,
+      at: expect.any(String),
     });
+    expect(Date.parse((condition as { at: string }).at)).not.toBeNaN();
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith({
+      conversationId: CONVERSATION,
+      prKey: PR_KEY,
+      identity: IDENTITY,
+      reason: 'round-limit',
+      cap: 'head',
+      headSha: HEAD,
+      rounds: 3,
+      // The pause's own version: the notice and the item agree on it.
+      at: (condition as { at: string }).at,
+    });
+    // Polled again while paused: no second notice, the same pause.
+    expect((await delivery.deliver(CONVERSATION)).kind).toBe('none');
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(t.store.claim(PR_KEY)?.condition).toEqual(condition);
     // Send again lifts the pause for exactly one more round.
     expect(
       (await delivery.sendAgain(PR_KEY)) as { kind: string },
@@ -443,7 +468,7 @@ describe('pull request agent feedback reaches the owning conversation', () => {
     expect(t.feedbackPrompts()).toHaveLength(1);
   });
 
-  it('(i) the message is Station-framed: internal origin, no person, no Automation', async () => {
+  it('(i) the message is Station-framed: internal origin, labelled as pull request feedback, no person, no Automation', async () => {
     const t = await setup();
     t.claim();
     t.observe(failingOnly());
@@ -452,6 +477,12 @@ describe('pull request agent feedback reaches the owning conversation', () => {
     const record = t.h.store.threadInboxStore().read(CONVERSATION, key);
     const payload = decodePayload(record!.payload)!;
     expect(payload.clientOrigin?.actor.kind).toBe('internal');
+    // The chat labels it from this sender, not "sender unknown".
+    // The receiving Session, as context: no Session sent it.
+    expect(payload.clientOrigin?.sender).toEqual({
+      kind: 'pull-request-feedback',
+      sessionId: t.h.service.currentConversationSessionId(CONVERSATION),
+    });
     expect(payload.actor.userId).toBe(OWNER);
     expect(payload.authoredBy).toBeUndefined();
     expect(payload.dispatchOrigin).toBeUndefined();
@@ -491,10 +522,13 @@ describe('pull request agent feedback reaches the owning conversation', () => {
     expect(message).not.toContain('src/agent-reply.ts');
   });
 
-  it('(k) at most 10 messages a day per pull request: the 11th pauses', async () => {
+  it('(k) at most 10 messages a day per pull request: the 11th pauses once, and a new push that day does not pause again', async () => {
     const t = await setup();
     t.claim({ ...BOTH, fixFailingChecks: false });
-    const delivery = t.use(new PullRequestFeedbackDelivery(t.ports()));
+    const notify = vi.fn();
+    const delivery = t.use(
+      new PullRequestFeedbackDelivery(t.ports({ notify })),
+    );
     const heads = ['1', '2', '3', '4'].map((n) => n.repeat(40));
     let round = 0;
     const threads: ReturnType<typeof thread>[] = [];
@@ -522,12 +556,153 @@ describe('pull request agent feedback reaches the owning conversation', () => {
     // The fourth head has had one round of three, so only the day stops it.
     nextRound(heads[3]!);
     expect((await delivery.deliver(CONVERSATION)).kind).toBe('none');
-    expect(t.store.claim(PR_KEY)?.condition).toEqual({
+    const condition = t.store.claim(PR_KEY)?.condition;
+    expect(condition).toEqual({
       state: 'paused',
       reason: 'round-limit',
+      cap: 'day',
+      headSha: heads[3],
+      at: expect.any(String),
+    });
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify.mock.calls[0]![0]).toMatchObject({
+      reason: 'round-limit',
+      cap: 'day',
       headSha: heads[3],
     });
     expect(t.feedbackPrompts()).toHaveLength(10);
+    // A push the same day: still the day's cap, so the one pause moves to
+    // the new head (where Send again grants its round) and nobody is told
+    // twice.
+    const fifth = '5'.repeat(40);
+    nextRound(fifth);
+    expect((await delivery.deliver(CONVERSATION)).kind).toBe('none');
+    expect(t.store.claim(PR_KEY)?.condition).toEqual({
+      ...condition,
+      headSha: fifth,
+    });
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(t.feedbackPrompts()).toHaveLength(10);
+    // Send again on it sends one more round.
+    expect(
+      (await delivery.sendAgain(PR_KEY)) as { kind: string },
+    ).toMatchObject({ kind: 'queued' });
+    await eventually(() => expect(t.feedbackPrompts()).toHaveLength(11));
+  });
+
+  it('(k2) a stopped agent with feedback waiting is noticed once per stop, as the same notice while the same feedback waits', async () => {
+    const t = await setup();
+    t.claim();
+    t.observe(failingOnly());
+    const notify = vi.fn();
+    const delivery = t.use(
+      new PullRequestFeedbackDelivery(t.ports({ notify })),
+    );
+    t.forced.state = 'stopped';
+    expect(await delivery.deliver(CONVERSATION)).toEqual({
+      kind: 'held',
+      reason: 'agent-stopped',
+      deliveries: 1,
+    });
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith({
+      conversationId: CONVERSATION,
+      prKey: PR_KEY,
+      identity: IDENTITY,
+      reason: 'agent-stopped',
+      headSha: HEAD,
+      // The oldest waiting feedback: what makes it one notice (its tag).
+      at: t.store.pendingDeliveries(CONVERSATION)[0]!.createdAt,
+      waiting: [{ category: 'failing-checks', count: 2 }],
+    });
+    // Polled again while stopped: told once.
+    await delivery.deliver(CONVERSATION);
+    await delivery.deliver(CONVERSATION);
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(t.entries()).toHaveLength(0);
+    // Back, then stopped again before the feedback went: a new stop.
+    t.forced.state = 'busy';
+    await delivery.deliver(CONVERSATION);
+    t.forced.state = 'stopped';
+    await delivery.deliver(CONVERSATION);
+    expect(notify).toHaveBeenCalledTimes(2);
+    // Noticed again, but as the same notice: the same feedback still waits,
+    // so the notification's tag finds the first record and pushes nothing.
+    expect(notify.mock.calls[1]![0].at).toBe(notify.mock.calls[0]![0].at);
+    expect(t.entries()).toHaveLength(0);
+  });
+
+  it('(k3) a 24-hour pause moving to a new head names what fails there, not on the old head', async () => {
+    const t = await setup();
+    t.claim();
+    const notify = vi.fn();
+    const delivery = t.use(
+      new PullRequestFeedbackDelivery(t.ports({ notify })),
+    );
+    const at = new Date().toISOString();
+    // Ten messages already placed in the last 24 hours.
+    for (let n = 0; n < 10; n += 1) {
+      const placed = t.store.recordDelivery({
+        id: `day-${n}`,
+        prKey: PR_KEY,
+        conversationId: CONVERSATION,
+        headSha: `${n}`.repeat(40),
+        category: 'review-threads',
+        signature: `day-${n}`,
+        summary: { count: 1 },
+        now: at,
+      });
+      t.store.beginBatch(
+        {
+          key: `prf-day-${n}`,
+          conversationId: CONVERSATION,
+          generation: 1,
+          state: 'submitting',
+          message: 'm',
+          actor: { userId: OWNER },
+          createdAt: at,
+          summary: [
+            {
+              prKey: PR_KEY,
+              headSha: `${n}`.repeat(40),
+              generation: 1,
+              categories: [],
+            },
+          ],
+        },
+        [placed.id],
+      );
+      t.store.settleBatch(`prf-day-${n}`, 'sent', at);
+    }
+    t.store.setCondition(PR_KEY, {
+      state: 'paused',
+      reason: 'round-limit',
+      cap: 'day',
+      headSha: HEAD,
+      failing: ['old / check'],
+      shown: ['old / check'],
+      at: '2026-11-16T09:00:00.000Z',
+    });
+    const observed = failingOnly(NEXT_HEAD);
+    t.observe({
+      ...observed,
+      checks: observed.checks.map((check) => ({
+        ...check,
+        required: check.name === 'security/scan',
+      })),
+    });
+    expect((await delivery.deliver(CONVERSATION)).kind).toBe('none');
+    expect(t.store.claim(PR_KEY)?.condition).toEqual({
+      state: 'paused',
+      reason: 'round-limit',
+      cap: 'day',
+      headSha: NEXT_HEAD,
+      failing: ['ci / unit-tests', 'security/scan'],
+      // Required first, for a person reading it.
+      shown: ['security/scan', 'ci / unit-tests'],
+      at: '2026-11-16T09:00:00.000Z',
+    });
+    expect(notify).not.toHaveBeenCalled();
   });
 
   it('(l) queued, then the agent waits on a person before placement: refused, then delivered once when it is free', async () => {

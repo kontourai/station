@@ -22,9 +22,12 @@
  *   different feedback.
  * - One in flight per conversation, carrying every owned pull request.
  * - Never as a person and never as an Automation: the turn is sent as the
- *   conversation's recorded owner with Station's internal client origin and
- *   no dispatch origin, so the inbox records `task-dispatch` on a Task's
- *   Session and `unknown` elsewhere.
+ *   conversation's recorded owner with Station's internal client origin
+ *   (sender `pull-request-feedback`, so the chat labels it) and no dispatch
+ *   origin, so the inbox records `task-dispatch` on a Task's Session and
+ *   `unknown` elsewhere.
+ * - Told once: entering a pause, or finding the agent stopped with feedback
+ *   waiting, calls `notify` once, for a person's push notification.
  */
 import { createHash } from 'node:crypto';
 import type { PullRequestLinkIdentity } from '@kontourai/station-contracts/conversation-pull-request-links';
@@ -45,11 +48,13 @@ import {
   type StationFramedTurnSubmit,
   submitStationFramedTurn,
 } from '../orchestration/station-turn-handoff.js';
+import type { PullRequestFeedbackNotice } from './pull-request-feedback-attention.js';
 import type {
   DeliverySummary,
   PullRequestFeedbackClaim,
   PullRequestFeedbackStore,
   StoredBatch,
+  StoredClaimCondition,
   StoredDelivery,
 } from './pull-request-feedback-store.js';
 
@@ -72,6 +77,8 @@ const PATH_CHARS = 300;
 export interface FeedbackSessionState {
   state: 'idle' | 'busy' | 'awaiting' | 'stopped';
   ownerUserId?: string;
+  /** The conversation's current Session, which a message placed now reaches. */
+  sessionId?: string;
 }
 
 export interface PullRequestFeedbackDeliveryPorts {
@@ -102,6 +109,18 @@ export interface PullRequestFeedbackDeliveryPorts {
       }
     | undefined;
   now?(): number;
+  /**
+   * A pause began, or the agent was found stopped with this pull request's
+   * feedback waiting: called once per pause and once per stop, never per
+   * poll. Best-effort; a throw is logged and ignored.
+   */
+  notify?(notice: PullRequestFeedbackNotice): void;
+  /**
+   * After every run: a pause lifted, a claim released or turned off, or an
+   * agent no longer stopped may have resolved a notice, which is settled so
+   * it stops asking. Best-effort.
+   */
+  settleNotices?(): void;
   readonly logger: {
     warn(message: string, meta?: Record<string, unknown>): void;
   };
@@ -225,6 +244,8 @@ export interface Candidate {
   category: PullRequestFeedbackCategory;
   signature: string;
   summary: DeliverySummary;
+  /** failing-checks: the failing names as a person reads them, required first. */
+  shown?: string[];
   /**
    * The block's lines: `excerptChars` bounds each quoted excerpt (0: none),
    * `maxItems` how many items are written out (the rest are counted).
@@ -318,6 +339,13 @@ function failingCandidate(
       ...failing.map((check) => `${check.name}\u0001${check.conclusion}`),
     ]),
     summary: { count: failing.length, failing: names },
+    shown: [
+      ...new Set(
+        [...failing]
+          .sort((a, b) => Number(b.required) - Number(a.required))
+          .map((check) => check.name),
+      ),
+    ],
     render: (host, excerptChars, maxItems) => {
       const shown = failing.slice(0, maxItems);
       return [
@@ -619,11 +647,84 @@ export class PullRequestFeedbackDelivery {
     string,
     Promise<PullRequestFeedbackDeliveryOutcome>
   >();
+  /**
+   * Per conversation, the pull requests already noticed while its agent is
+   * stopped. Cleared once the agent is not stopped, so the next stop is
+   * noticed again. In memory: after a restart the notice is sent again, and
+   * the notification's dedupe tag keeps that from interrupting twice.
+   */
+  private readonly stoppedNoticed = new Map<string, Set<string>>();
 
   constructor(private readonly ports: PullRequestFeedbackDeliveryPorts) {}
 
   private now(): number {
     return this.ports.now?.() ?? Date.now();
+  }
+
+  private notify(notice: PullRequestFeedbackNotice): void {
+    try {
+      this.ports.notify?.(notice);
+    } catch (error) {
+      this.ports.logger.warn('Pull request feedback notice failed', {
+        conversationId: notice.conversationId,
+        error: errorMessage(error),
+      });
+    }
+  }
+
+  /** Pause a claim and tell a person once. */
+  private pause(
+    store: PullRequestFeedbackStore,
+    claim: PullRequestFeedbackClaim,
+    condition: Extract<StoredClaimCondition, { state: 'paused' }>,
+  ): void {
+    store.setCondition(claim.prKey, condition);
+    this.notify({
+      conversationId: claim.conversationId,
+      prKey: claim.prKey,
+      identity: claim.identity,
+      reason: condition.reason,
+      headSha: condition.headSha,
+      at: condition.at ?? new Date(this.now()).toISOString(),
+      ...(condition.cap ? { cap: condition.cap } : {}),
+      ...(condition.shown || condition.failing
+        ? { failing: condition.shown ?? condition.failing }
+        : {}),
+      ...(condition.rounds ? { rounds: condition.rounds } : {}),
+    });
+  }
+
+  /**
+   * The agent is stopped with feedback waiting: tell a person once per pull
+   * request until the agent is no longer stopped.
+   */
+  private noticeStopped(
+    conversationId: string,
+    sections: readonly PullRequestSection[],
+  ): void {
+    let noticed = this.stoppedNoticed.get(conversationId);
+    if (!noticed) {
+      noticed = new Set();
+      this.stoppedNoticed.set(conversationId, noticed);
+    }
+    for (const section of sections) {
+      if (noticed.has(section.claim.prKey)) continue;
+      noticed.add(section.claim.prKey);
+      this.notify({
+        conversationId,
+        prKey: section.claim.prKey,
+        identity: section.claim.identity,
+        reason: 'agent-stopped',
+        headSha: section.observation.headSha,
+        // The oldest waiting feedback: one notice per stop, stable across
+        // restarts, as the attention item's own version.
+        at: section.parts.map(({ delivery }) => delivery.createdAt).sort()[0]!,
+        waiting: section.parts.map(({ candidate }) => ({
+          category: candidate.category,
+          count: candidate.summary.count,
+        })),
+      });
+    }
   }
 
   /**
@@ -703,7 +804,16 @@ export class PullRequestFeedbackDelivery {
         });
         return { kind: 'error' } as const;
       })
-      .finally(() => this.running.delete(conversationId));
+      .finally(() => {
+        this.running.delete(conversationId);
+        try {
+          this.ports.settleNotices?.();
+        } catch (error) {
+          this.ports.logger.warn('Pull request feedback notices not settled', {
+            error: errorMessage(error),
+          });
+        }
+      });
     this.running.set(conversationId, run);
     return run;
   }
@@ -777,6 +887,13 @@ export class PullRequestFeedbackDelivery {
       clientTurnId: batch.key,
       message: batch.message,
       actor: { userId: batch.actor.userId },
+      sender: {
+        kind: 'pull-request-feedback',
+        // The Session that receives it, as context (no Session sent it).
+        sessionId:
+          this.ports.session(batch.conversationId).sessionId ??
+          batch.conversationId,
+      },
     });
     if (submitted.outcome === 'queued') {
       store.markBatchQueued(batch.key);
@@ -844,8 +961,14 @@ export class PullRequestFeedbackDelivery {
       (total, section) => total + section.parts.length,
       0,
     );
-    if (!count) return { kind: 'none' };
+    if (!count) {
+      this.stoppedNoticed.delete(conversationId);
+      return { kind: 'none' };
+    }
     const session = this.ports.session(conversationId);
+    if (session.state === 'stopped')
+      this.noticeStopped(conversationId, sections);
+    else this.stoppedNoticed.delete(conversationId);
     if (session.state !== 'idle')
       return {
         kind: 'held',
@@ -991,6 +1114,31 @@ export class PullRequestFeedbackDelivery {
           failing && failing !== 'pending' ? failing.summary.failing : [],
         );
       if (!(moved && differs)) return undefined;
+      // A day's cap still reached holds on the new head too: one pause,
+      // moved to that head so Send again grants its round there, rather
+      // than a fresh pause (and a fresh notice) for every push.
+      if (
+        condition.cap === 'day' &&
+        this.dayCapReached(store, claim.prKey, observation.headSha, now)
+      ) {
+        // What fails now, on the head it moved to; never the old head's.
+        const failingNow =
+          failing && failing !== 'pending' ? failing : undefined;
+        store.setCondition(claim.prKey, {
+          state: 'paused',
+          reason: condition.reason,
+          cap: 'day',
+          headSha: observation.headSha,
+          ...(condition.at ? { at: condition.at } : {}),
+          ...(failingNow?.summary.failing?.length
+            ? {
+                failing: failingNow.summary.failing,
+                shown: failingNow.shown ?? failingNow.summary.failing,
+              }
+            : {}),
+        });
+        return undefined;
+      }
       store.setCondition(claim.prKey, null);
     }
 
@@ -1010,23 +1158,32 @@ export class PullRequestFeedbackDelivery {
     }
     if (!parts.length) return undefined;
 
-    const rounds = store.rounds(claim.prKey, observation.headSha);
-    if (
-      rounds.count >= MAX_ROUNDS_PER_HEAD + rounds.extra ||
-      (store.sentSince(claim.prKey, new Date(now - DAY_MS).toISOString()) >=
-        MAX_SENT_PER_DAY &&
-        rounds.extra === 0)
-    ) {
-      store.setCondition(claim.prKey, {
-        state: 'paused',
-        reason: 'round-limit',
-        headSha: observation.headSha,
-      });
-      return undefined;
-    }
     const failingPart = parts.find(
       ({ candidate }) => candidate.category === 'failing-checks',
     );
+    const rounds = store.rounds(claim.prKey, observation.headSha);
+    const headCap = rounds.count >= MAX_ROUNDS_PER_HEAD + rounds.extra;
+    if (
+      headCap ||
+      this.dayCapReached(store, claim.prKey, observation.headSha, now)
+    ) {
+      const failingNames = failingPart?.candidate.summary.failing;
+      this.pause(store, claim, {
+        state: 'paused',
+        reason: 'round-limit',
+        cap: headCap ? 'head' : 'day',
+        headSha: observation.headSha,
+        ...(failingNames?.length
+          ? {
+              failing: failingNames,
+              shown: failingPart?.candidate.shown ?? failingNames,
+            }
+          : {}),
+        ...(headCap ? { rounds: rounds.count } : {}),
+        at: nowIso,
+      });
+      return undefined;
+    }
     if (failingPart && claim.overrideHead !== observation.headSha) {
       const names = failingPart.candidate.summary.failing ?? [];
       const earlier = store.recentSentFailures(
@@ -1039,16 +1196,31 @@ export class PullRequestFeedbackDelivery {
           .size === REPEATED_FAILURE_HEADS &&
         earlier.every((delivery) => sameSet(delivery.summary.failing, names))
       ) {
-        store.setCondition(claim.prKey, {
+        this.pause(store, claim, {
           state: 'paused',
           reason: 'repeated-failure',
           headSha: observation.headSha,
           failing: names,
+          shown: failingPart.candidate.shown ?? names,
+          at: nowIso,
         });
         return undefined;
       }
     }
     return { claim, observation, parts };
+  }
+
+  /** The day's messages are spent and Send again granted nothing on this head. */
+  private dayCapReached(
+    store: PullRequestFeedbackStore,
+    prKey: string,
+    headSha: string,
+    now: number,
+  ): boolean {
+    return (
+      store.sentSince(prKey, new Date(now - DAY_MS).toISOString()) >=
+        MAX_SENT_PER_DAY && store.rounds(prKey, headSha).extra === 0
+    );
   }
 
   /** Send again: lift a pause for one more round, then deliver. */

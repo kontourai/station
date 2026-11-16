@@ -1,0 +1,19 @@
+{
+  "revision": "0d93bb86c701292b6bf25f5f1efb56d750ce40ad",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"The pull request feedback runtime Pick widens to attentionSources and bindNotifier; the notification service is bound to it right after creation, and the attention projection gets a trailing sources option. Checked citing pages: no claim about notification service composition order or projection constructor arguments changes.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"The pull request feedback runtime Pick widens to attentionSources and bindNotifier; the notification service is bound to it right after creation, and the attention projection gets a trailing sources option. Checked citing pages: no claim about notification service composition order or projection constructor arguments changes.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"The pull request feedback runtime Pick widens to attentionSources and bindNotifier; the notification service is bound to it right after creation, and the attention projection gets a trailing sources option. Checked citing pages: no claim about notification service composition order or projection constructor arguments changes.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/automations.md","note":"The pull request feedback runtime Pick widens to attentionSources and bindNotifier; the notification service is bound to it right after creation, and the attention projection gets a trailing sources option. Checked citing pages: no claim about notification service composition order or projection constructor arguments changes.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"The pull request feedback runtime Pick widens to attentionSources and bindNotifier; the notification service is bound to it right after creation, and the attention projection gets a trailing sources option. Checked citing pages: no claim about notification service composition order or projection constructor arguments changes.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"The pull request feedback runtime Pick widens to attentionSources and bindNotifier; the notification service is bound to it right after creation, and the attention projection gets a trailing sources option. Checked citing pages: no claim about notification service composition order or projection constructor arguments changes.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"The pull request feedback runtime Pick widens to attentionSources and bindNotifier; the notification service is bound to it right after creation, and the attention projection gets a trailing sources option. Checked citing pages: no claim about notification service composition order or projection constructor arguments changes.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]}
+  ]
+}
