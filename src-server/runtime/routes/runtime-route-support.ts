@@ -562,7 +562,7 @@ export function configureRuntimeSupportServices(
     }),
   );
   const resolveSessionProjectId = (threadId: string) =>
-    resolveSessionRecord(threadId).localProjectId;
+    resolveSessionRecord(threadId)?.localProjectId;
   const approvalInboxProvider = new ApprovalInboxNotificationProvider({
     approvalRegistry: context.approvalRegistry,
     orchestrationService: context.orchestrationService,
