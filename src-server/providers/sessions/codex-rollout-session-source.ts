@@ -23,6 +23,7 @@ import type {
   AttachedSessionSource,
   AttachedSessionSourceOutcome,
 } from './attached-session-source.js';
+import { isSessionSourceAffinity } from './session-source-affinity.js';
 import {
   asRecord,
   boundedInteger,
@@ -138,6 +139,7 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
    * the default home.
    */
   private knownHomes: readonly string[];
+  private homeRefresh?: Promise<void>;
   private readonly maxCandidates: number;
   private readonly maxTotalCandidates: number;
   private readonly maxBytes: number;
@@ -618,6 +620,7 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
   resolveSourceHome(
     affinity: ProviderSessionSourceAffinity | undefined,
   ): string | null {
+    if (!isCodexHomeAffinity(affinity)) return null;
     for (const home of this.knownHomes) {
       const resolved = resolveConfigHomeAffinity(
         SOURCE_HOME_NAMESPACE,
@@ -638,9 +641,16 @@ export class CodexRolloutSessionSource implements AttachedSessionSource {
   async resolveSourceHomeWithRefresh(
     affinity: ProviderSessionSourceAffinity | undefined,
   ): Promise<string | null> {
+    if (!isCodexHomeAffinity(affinity)) return null;
     const known = this.resolveSourceHome(affinity);
-    if (known || !affinity) return known;
-    await this.resolveHomes();
+    if (known) return known;
+    // Concurrent misses share one read of the configured home list.
+    this.homeRefresh ??= this.resolveHomes()
+      .then(() => undefined)
+      .finally(() => {
+        this.homeRefresh = undefined;
+      });
+    await this.homeRefresh;
     return this.resolveSourceHome(affinity);
   }
 
@@ -1498,6 +1508,17 @@ function compareCandidates(
 ): number {
   return (
     right.modifiedAt - left.modifiedAt || left.path.localeCompare(right.path)
+  );
+}
+
+/** A well-formed Codex config-home affinity: exact keys, digest reference. */
+function isCodexHomeAffinity(
+  affinity: ProviderSessionSourceAffinity | undefined,
+): affinity is ProviderSessionSourceAffinity {
+  return (
+    isSessionSourceAffinity(affinity) &&
+    affinity.kind === SOURCE_HOME_NAMESPACE &&
+    /^[a-f0-9]{64}$/u.test(affinity.ref)
   );
 }
 

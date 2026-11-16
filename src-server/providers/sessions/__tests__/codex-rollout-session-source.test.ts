@@ -982,6 +982,36 @@ describe('CodexRolloutSessionSource', () => {
     ).toThrow(/maxTotalCandidates/);
   });
 
+  test('a refresh runs only for a well-formed Codex affinity, and concurrent ones share one home-list read', async () => {
+    const defaultHome = fixtureRoot();
+    const profileHome = fixtureRoot();
+    writeFileSync(rolloutPath(profileHome), line(meta('profile-session')));
+    const listConfiguredHomes = vi.fn(async () => [profileHome]);
+    const options = { homeDir: defaultHome, listConfiguredHomes };
+    const affinity = (await discoverOne(new CodexRolloutSessionSource(options)))
+      .affinity!;
+    listConfiguredHomes.mockClear();
+
+    const source = new CodexRolloutSessionSource(options);
+    for (const malformed of [
+      { kind: 'claude-config-home', ref: affinity.ref },
+      { kind: 'codex-config-home', ref: 'not-a-digest' },
+      { kind: 'codex-config-home', ref: affinity.ref, extra: true },
+    ])
+      await expect(
+        source.resolveSourceHomeWithRefresh(malformed as never),
+      ).resolves.toBeNull();
+    expect(listConfiguredHomes).not.toHaveBeenCalled();
+
+    const answers = await Promise.all([
+      source.resolveSourceHomeWithRefresh(affinity),
+      source.resolveSourceHomeWithRefresh(affinity),
+      source.resolveSourceHomeWithRefresh(affinity),
+    ]);
+    expect(answers).toEqual(Array(3).fill(realpathSync(profileHome)));
+    expect(listConfiguredHomes).toHaveBeenCalledTimes(1);
+  });
+
   test('a failing or oversized home list keeps the default home and reports the limit', async () => {
     const defaultHome = fixtureRoot();
     writeFileSync(rolloutPath(defaultHome), line(meta('default')));
