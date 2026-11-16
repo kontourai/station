@@ -129,9 +129,7 @@ describe('ComposerActionsMenu', () => {
     // Reset is last and reads as the one row that costs something.
     const conversation = within(groups[2]!).getAllByRole('menuitem');
     expect(conversation.at(-1)!.textContent).toBe('Reset agent context…');
-    expect(conversation.at(-1)!.className).toContain(
-      'composer-actions-menu__item--danger',
-    );
+    expect(conversation.at(-1)!.getAttribute('data-tone')).toBe('danger');
     for (const item of within(menu).getAllByRole('menuitem')) {
       expect(item.tagName).toBe('BUTTON');
       expect(item.getAttribute('type')).toBe('button');

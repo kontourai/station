@@ -206,7 +206,8 @@ export function ComposerActionsMenu({
         key="reset"
         type="button"
         role="menuitem"
-        className="composer-actions-menu__item composer-actions-menu__item--danger"
+        className="composer-actions-menu__item"
+        data-tone="danger"
         disabled={handoffDisabled}
         onClick={run(onOpenContextReset)}
       >
