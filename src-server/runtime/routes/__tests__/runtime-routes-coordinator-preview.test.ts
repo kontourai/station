@@ -126,6 +126,10 @@ describe('configureRuntimeRoutes: coordinator-session preview', () => {
       error() {},
     } as never);
     const bus = new EventBus();
+    // Every frame on this process's bus, from before it is composed: a
+    // replay dispatched while composing or settling is not missed.
+    const frames: string[] = [];
+    bus.subscribe((frame) => void frames.push(frame.event));
     const app = new Hono();
     const context = deepStub({
       projectSharedTasks: undefined,
@@ -242,6 +246,7 @@ describe('configureRuntimeRoutes: coordinator-session preview', () => {
       store,
       registry,
       homeDir,
+      frames,
       /** Stops this process's HTTP server (its other listeners stay idle). */
       closeServer: closers[0],
     };
@@ -343,8 +348,6 @@ describe('configureRuntimeRoutes: coordinator-session preview', () => {
       previewEnabled: true,
       orchestration,
     });
-    const frames: string[] = [];
-    second.bus.subscribe((frame) => void frames.push(frame.event));
     const items = await until(
       () =>
         second.store
@@ -353,14 +356,14 @@ describe('configureRuntimeRoutes: coordinator-session preview', () => {
           .map((item) => item.itemKey),
       (keys) => keys.length > 0,
       'the coordinator item',
-    ).catch(() => []);
+    );
     expect(items).toEqual([`finished:${tag}`]);
     const secondNotifications = support.composed.at(-1) as unknown as {
       get(id: string): Promise<unknown>;
     };
     expect(await secondNotifications.get(record!.id)).toEqual(before);
     expect(
-      frames.filter(
+      second.frames.filter(
         (event) =>
           event === SERVER_EVENTS.NOTIFICATION_DELIVERED ||
           event === SERVER_EVENTS.NOTIFICATION_UPDATED,
