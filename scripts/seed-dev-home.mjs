@@ -113,6 +113,7 @@ export const ROOT_DECISIONS = Object.freeze({
   devices: 'other-machines',
   environments: 'other-machines',
   integrations: 'other-machines',
+  'remote-task-engines': 'other-machines',
   'repository-acquisitions': 'other-machines',
 
   'agent-plugin-data': 'execution',
