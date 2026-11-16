@@ -118,16 +118,16 @@ function sessionIndex(sessions: readonly ChildWorkSessionSource[]) {
   return new Map(sessions.map((session) => [session.threadId, session]));
 }
 
-/**
- * The chat a session belongs to: its own id, else its durable conversation's
- * (a conversation's older execution child still resolves to its chat).
- */
 /** What chat membership reads: session rows and the open-chat lookup. */
 export type ChatMembershipInput = Pick<
   ChildWorkSelectorInput,
   'sessions' | 'chatKeyFor'
 >;
 
+/**
+ * The chat a session belongs to: its own id, else its durable conversation's
+ * (a conversation's older execution child still resolves to its chat).
+ */
 function resolveChat(
   threadId: string,
   input: ChatMembershipInput,
