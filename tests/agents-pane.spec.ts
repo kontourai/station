@@ -83,6 +83,19 @@ async function expectActionsClearOfText(row: Locator) {
     .first()
     .boundingBox();
   expect(title?.width ?? 0).toBeGreaterThan(120);
+  // Every line stays inside the text column: a nowrap line that is not a
+  // block of its own runs past the column, under the pill and the actions.
+  const overflowing = await row
+    .locator('.child-work-row__text, .background-tasks-sheet__row-text')
+    .evaluateAll((columns) =>
+      columns.flatMap((column) => {
+        const edge = column.getBoundingClientRect().right + 1;
+        return [...column.querySelectorAll('*')]
+          .filter((node) => node.getBoundingClientRect().right > edge)
+          .map((node) => node.className);
+      }),
+    );
+  expect(overflowing).toEqual([]);
   // The latest tool's name ("Read") is shown whole, not cut to "R…".
   const clipped = await row
     .locator('.child-work-activity__name')
