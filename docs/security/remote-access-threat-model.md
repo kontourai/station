@@ -1903,16 +1903,23 @@ own credential being refused. The read is view-only: this Station offers no
 continuation of a remote session.
 
 The remote Station authorizes the outbound peer bearer, and that bearer is
-Station-wide: it does not say which local caller asked. So both the list and
-the history read admit only the person that bearer stands for, the same rule
-the paired Station chat relay applies over the same credential. The caller
+Station-wide: it does not say which local caller asked. So every read of
+another Station through this one admits only the person that bearer stands
+for: the list, the history read, and the remote part of message search
+(`GET /api/conversations/search`). This is the same rule the paired Station
+chat relay applies over the same credential. One
+[read authority](../../src-server/security/remote-station-read-authority.ts)
+decides all three. The caller
 must be the bound owner, the request principal must still be current, and the
 request must not be one an agent could have sent (an agent tool origin or the
 internal token). Any other paired device, including an operate-scoped device
 bound to another person, gets 403 and nothing is sent to the remote. A Station
 whose runtime composed no read authority fails closed the same way. A hosted
 Station has no tenant binding for the bearer, so it serves neither read
-(404). Its handshake withdraws `remoteSessionHistory` to match.
+(404) and searches no remote Station. Its handshake withdraws
+`remoteSessionHistory` to match. A refused caller's message search still
+returns their local results. The remote part is withheld entirely: no remote
+Station is named and no bearer is sent.
 
 Separately, disclosing that read to a caller of this Station is gated at
 `orchestration:operate` here — deliberately stricter than the
