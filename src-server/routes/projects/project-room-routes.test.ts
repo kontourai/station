@@ -2700,6 +2700,136 @@ test('live (#4800): working requests are found past more failed ones than one pa
   expect(requests.at(-1)?.requestId).toBe(running.requestId);
 });
 
+test('live (#4800): a frame reads the failure journal a fixed number of times, however many requests failed', async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  let unavailable = false;
+  const agents = createProjectRoomAgentRuntime(h.home, h.runtime.store, {
+    async prepare() {
+      if (unavailable) throw new Error('unavailable');
+      return { label: 'Scout' };
+    },
+    async launch() {},
+    async answer() {
+      return null;
+    },
+    async cancel() {},
+  });
+  cleanup.push(() => agents.close());
+  const authority = {
+    scope: h.scope,
+    requester: a.actor,
+    executionRoot: h.home,
+    assertCurrent: () => {},
+  };
+  const first = await agents.module.request(authority, {
+    intentId: randomUUID(),
+    agentId: 'scout',
+    text: 'really running',
+  });
+  unavailable = true;
+  // One room's whole request allowance, all but the first failed.
+  for (let index = 1; index < 1000; index++)
+    await agents.module.request(authority, {
+      intentId: randomUUID(),
+      agentId: 'scout',
+      text: `failure ${index}`,
+    });
+  // Every execution of a statement that reads the failure journal.
+  let journalReads = 0;
+  const prepare = DatabaseSync.prototype.prepare;
+  const spy = vi
+    .spyOn(DatabaseSync.prototype, 'prepare')
+    .mockImplementation(function (this: DatabaseSync, sql: string) {
+      const statement = prepare.call(this, sql);
+      if (/^\s*SELECT\b[\s\S]*\bproject_room_agent_failures\b/i.test(sql))
+        for (const method of ['get', 'all', 'iterate'] as const) {
+          const run = statement[method].bind(statement);
+          (statement as unknown as Record<string, unknown>)[method] = (
+            ...args: unknown[]
+          ) => {
+            journalReads += 1;
+            return (run as (...values: unknown[]) => unknown)(...args);
+          };
+        }
+      return statement;
+    });
+  const app = new Hono();
+  app.get('/api/projects/:slug/rooms/live', (c) =>
+    projectRoomLiveResponse(c, h.service, (ids) => agents.module.failures(ids)),
+  );
+  const open = async () =>
+    liveReader(
+      await app.request(
+        `/api/projects/example/rooms/live?channel=${a.roomId}&client=${randomUUID()}`,
+        { headers: { authorization: 'Bearer bob-session' } },
+      ),
+    );
+  const one = await open();
+  let two: Awaited<ReturnType<typeof open>> | undefined;
+  try {
+    await one.until('subscribed');
+    const frame = await one.until('agents');
+    expect(
+      frame.requests.find((r) => r.requestId === first.requestId)?.state,
+    ).toBe('started');
+    // One batched read answers the selection; the newest 20 are among the
+    // unsettled requests it already asked about, so projecting the frame
+    // asks again for nothing.
+    const opened = journalReads;
+    expect(opened).toBe(1);
+    two = await open();
+    await two.until('subscribed');
+    await two.until('agents');
+    expect(journalReads - opened).toBe(1);
+    // One change re-sends both subscribers' frames. The settled request is
+    // neither among the newest 20 nor working, so it leaves the frame.
+    const before = journalReads;
+    h.runtime.store.cancelRequest(h.scope, first.requestId, () => {});
+    for (const stream of [one, two]) {
+      const settled = await stream.until('agents');
+      expect(
+        settled.requests.some((r) => r.requestId === first.requestId),
+      ).toBe(false);
+    }
+    expect(journalReads - before).toBe(2);
+  } finally {
+    spy.mockRestore();
+    await one.cancel();
+    await two?.cancel();
+  }
+});
+
+test('live (#4800): with more than fifty working, the newest fifty are kept and a settled one is replaced', async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  const reserve = () =>
+    h.runtime.store.reserveRequest(
+      h.scope,
+      a.actor,
+      { intentId: randomUUID(), agentId: 'scout', text: 'working' },
+      () => {},
+    );
+  const working = Array.from({ length: 55 }, () => {
+    const request = reserve();
+    h.runtime.store.markStarted(h.scope, request.requestId, () => {});
+    return request.requestId;
+  });
+  for (let index = 0; index < 20; index++)
+    h.runtime.store.cancelRequest(h.scope, reserve().requestId, () => {});
+  const none = () => new Map();
+  let requests = h.service.recentRequests(a.roomId, 20, 50, none);
+  expect(requests).toHaveLength(70);
+  expect(
+    requests.filter((r) => r.state === 'started').map((r) => r.requestId),
+  ).toEqual(working.slice(5).reverse());
+  h.runtime.store.cancelRequest(h.scope, working[54]!, () => {});
+  requests = h.service.recentRequests(a.roomId, 20, 50, none);
+  expect(
+    requests.filter((r) => r.state === 'started').map((r) => r.requestId),
+  ).toEqual(working.slice(4, 54).reverse());
+});
+
 test('mentions (#4799): a message names a member by id; only that person is told, once, and an edit tells only someone newly named', async () => {
   const h = await harness();
   const a = await h.discover('alice');

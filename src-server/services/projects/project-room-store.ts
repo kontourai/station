@@ -1242,27 +1242,28 @@ export class ProjectRoomStore {
     roomId: string,
     limit: number,
     working: number,
-    failed: (requestIds: readonly string[]) => ReadonlySet<string>,
+    failed: (requestIds: readonly string[]) => { has(id: string): boolean },
   ): ProjectRoomAgentRequest[] {
     return this.transaction(() => {
-      const unsettled = this.db.prepare(
-        `SELECT rowid AS position, request_id FROM project_room_requests WHERE room_id=? AND rowid<? AND json_extract(record, '$.state') IN ('reserved', 'started') ORDER BY rowid DESC LIMIT ?`,
-      );
-      const running: number[] = [];
-      // Newest first, a page at a time, until enough are known to be running
-      // (a room holds at most LIMITS.requestsPerRoom requests).
-      for (let before = Number.MAX_SAFE_INTEGER; running.length < working; ) {
-        const page = unsettled.all(roomId, before, 100) as Array<{
-          position: number;
-          request_id: string;
-        }>;
-        const refused = failed(page.map((row) => row.request_id));
-        for (const row of page)
-          if (running.length < working && !refused.has(row.request_id))
-            running.push(row.position);
-        if (page.length < 100) break;
-        before = page[page.length - 1]!.position;
-      }
+      // Every unsettled request, newest first, asked about in one batch (a
+      // room holds at most LIMITS.requestsPerRoom requests).
+      const unsettled = this.db
+        .prepare(
+          `SELECT rowid AS position, request_id FROM project_room_requests WHERE room_id=? AND json_extract(record, '$.state') IN ('reserved', 'started') ORDER BY rowid DESC LIMIT ?`,
+        )
+        .all(roomId, LIMITS.requestsPerRoom + 1) as Array<{
+        position: number;
+        request_id: string;
+      }>;
+      // More than a room may ever hold: the store is not what it wrote.
+      if (unsettled.length > LIMITS.requestsPerRoom) corrupt();
+      const refused = unsettled.length
+        ? failed(unsettled.map((row) => row.request_id))
+        : new Set<string>();
+      const running = unsettled
+        .filter((row) => !refused.has(row.request_id))
+        .slice(0, working)
+        .map((row) => row.position);
       return this.db
         .prepare(
           `SELECT * FROM project_room_requests WHERE room_id=? AND (

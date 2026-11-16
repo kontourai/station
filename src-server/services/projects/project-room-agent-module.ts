@@ -284,13 +284,18 @@ export class ProjectRoomAgentModule {
    * already admitted. Codes only: never a Session or its output.
    */
   failures(requestIds: readonly string[]) {
-    const query = this.db.prepare(
-      'SELECT code FROM project_room_agent_failures WHERE request_id=?',
-    );
     const result = new Map<string, ProjectRoomAgentFailure>();
-    for (const id of requestIds) {
-      const parsed = failureSchema.safeParse(query.get(id)?.code);
-      if (parsed.success) result.set(id, parsed.data);
+    if (!requestIds.length) return result;
+    // One read for the whole batch: a live frame asks about a room's
+    // unsettled requests at once (at most LIMITS.requestsPerRoom).
+    const rows = this.db
+      .prepare(
+        'SELECT request_id, code FROM project_room_agent_failures WHERE request_id IN (SELECT value FROM json_each(?))',
+      )
+      .all(JSON.stringify(requestIds));
+    for (const row of rows) {
+      const parsed = failureSchema.safeParse(row.code);
+      if (parsed.success) result.set(String(row.request_id), parsed.data);
     }
     return result;
   }

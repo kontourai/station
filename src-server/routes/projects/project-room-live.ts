@@ -155,15 +155,27 @@ export async function projectRoomLiveResponse(
       await write({ kind: 'revoked', key: sub.key });
     };
     const agents = (roomId: string) => {
+      // This frame's failure answers: each id is asked about at most once,
+      // in batches, so a frame costs a fixed number of journal reads.
+      const failed = new Map<
+        string,
+        NonNullable<ProjectRoomAgentActivity['failure']> | undefined
+      >();
+      const lookup = (ids: readonly string[]) => {
+        const missing = ids.filter((id) => !failed.has(id));
+        const found = missing.length ? failures?.(missing) : undefined;
+        for (const id of missing) failed.set(id, found?.get(id));
+        return { has: (id: string) => failed.get(id) !== undefined };
+      };
       // A request with a recorded failure is not working, so it never
       // takes a place kept for one that is.
       const requests = service.recentRequests(
         roomId,
         PROJECT_ROOM_LIVE_AGENT_REQUESTS,
         PROJECT_ROOM_LIVE_WORKING_REQUESTS,
-        (ids) => new Set(failures?.(ids).keys() ?? []),
+        lookup,
       );
-      const failed = failures?.(requests.map((r) => r.requestId));
+      lookup(requests.map((r) => r.requestId));
       return requests.map((request): ProjectRoomAgentActivity => {
         const failure = failed?.get(request.requestId);
         return {

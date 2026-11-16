@@ -642,7 +642,7 @@ export class ProjectRoomService {
     roomId: string,
     limit: number,
     working: number,
-    failed: (requestIds: readonly string[]) => ReadonlySet<string>,
+    failed: (requestIds: readonly string[]) => { has(id: string): boolean },
   ) {
     return this.store.recentRequests(roomId, limit, working, failed);
   }
