@@ -89,7 +89,8 @@ the link. URLs must be https on the pull request's host, with `(`, `)`, `\` and
 spaces percent-encoded; one longer than 300 characters is dropped and the
 item is named without a link. Quoted excerpts are inert markdown: bare URLs,
 `www.` hosts and emails become inline code (even right after `_`, which GFM
-also links) and `\`, `[`, `<` and backticks are escaped, so a reviewer's text
+also links) and `\`, `[`, `<`, `&` and backticks are escaped (GFM decodes a
+character reference such as `&#64;` before finding autolinks), so a reviewer's text
 cannot become a live link, image or HTML in the person's chat. Each block shows as many items as fit on their
 own; excerpts then shrink (600, 300, 120 characters, then none) until
 everything fits in about 6,000 characters, and when a block still stays out
