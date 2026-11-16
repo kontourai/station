@@ -338,6 +338,13 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
     'Propose',
     fixed('a personal Board'),
   ),
+  get_appearance: read(fixed('your appearance')),
+  propose_appearance: entry(
+    'Proposed',
+    'Proposing',
+    'Propose',
+    ({ args }) => quoted(text(args, 'name')) ?? 'an appearance',
+  ),
 
   // Skills
   list_skills: listed('Skills'),

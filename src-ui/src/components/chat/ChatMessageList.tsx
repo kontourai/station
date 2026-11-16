@@ -2080,6 +2080,7 @@ function ChatMessageListComponent({
           )}
           <div
             className="chat-messages"
+            data-surface="transcript"
             data-touch-turn-controls={
               (turnNavigation && touchTurnControls) || undefined
             }

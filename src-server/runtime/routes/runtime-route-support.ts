@@ -956,8 +956,8 @@ export function configureRuntimeSupportServices(
         ),
       deviceHasOwnerStanding: (deviceId) =>
         context.environmentSecurityService.deviceHasOwnerStanding(deviceId),
-      listSessionReadModel: (authority) =>
-        context.orchestrationService.listSessionReadModel(authority),
+      listSessionReadModel: (authority, options) =>
+        context.orchestrationService.listSessionReadModel(authority, options),
       listProjectionEvents: (threadIds) => {
         const byThread = new Map<string, CanonicalRuntimeEvent[]>();
         const persisted =

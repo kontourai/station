@@ -1,0 +1,379 @@
+{
+  "revision": "8936108acee45b2522e93ce910ff237e49c447ae",
+
+  "notes": [
+    {"path":"docs/README.md","note":"Added user/appearance.md to the Use Station list; checked the link resolves and the list's other entries are unchanged.","inputs":["docs/README.md","docs/pages/public-docs.json"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Added the Custom appearance module row and section; checked every link (contract, route, store, tools, controller, sanitizer, decision surfaces, preview, keep bar, tests) against the files and the claims against the decision record and code.","inputs":["docs/architecture/module-map.md","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts","src-server/tools/station-control-policy.ts","src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx","src-ui/src/components/review/ReviewLayout.tsx","src-ui/src/lib/color-theme-catalog.ts","src-ui/src/views/connections-hub/RelayOperatorPanel.tsx"]},
+
+    {"path":"docs/guides/theming.md","note":"Added the Custom appearance section; checked the cascade claims (adopted sheets after document sheets, !important palette over named theme, branding and device accent), the sanitizer, suspension and pre-paint order against controller.ts, palette-css.ts, main.tsx and the Chromium suite.","inputs":["docs/guides/theming.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts","src-ui/src/components/ResponsiveDialogSurface.tsx","src-ui/src/lib/color-theme-catalog.ts","src-ui/src/main.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Added the /api/me/appearance table; checked methods, bodies, status codes (400/403/409/413) and error codes against routes/me/custom-appearance.ts and its route tests.","inputs":["docs/reference/api.md","packages/sdk/src/client/index.ts","packages/sdk/src/queries.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Added the Custom appearance section; checked the six client functions and two hooks against packages/sdk/src/client/custom-appearance.ts and query-domains/customAppearance.ts, including the 15 s default poll.","inputs":["docs/reference/sdk.md","packages/sdk/src/__tests__/publicBarrel.test.ts","packages/sdk/src/components/ActionControl.tsx","packages/sdk/src/index.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts","src-ui/src/components/attention/NeedsInputReply.tsx","src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx","src-ui/src/main.tsx"]},
+
+    {"path":"docs/reference/contracts.md","note":"Added the custom-appearance subpath row; checked the named exports against packages/contracts/src/custom-appearance.ts.","inputs":["docs/reference/contracts.md","packages/contracts/package.json","packages/contracts/package.json#/exports","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts","src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Named the Custom appearance section among the Appearance page's choices; checked against AppearancePage.tsx and the decision record. Other claims unchanged.","inputs":["docs/design/settings-architecture.md","src-ui/src/components/chat/MessageBubble.tsx","src-ui/src/pages/AppearancePage.tsx"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"Custom appearance (docs/decisions/custom-appearance.md): mounts one new /api/me family (createCustomAppearanceRoutes with the existing orchestration principal resolver and tenant context). No existing route, middleware order, authority or composition the citing documents describe changed.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds six /api/me/appearance leaves to the /api/me family inherited-leaf list at the family's read/mutate tiers. No other leaf, tier or family changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds six /api/me/appearance leaves to the /api/me family inherited-leaf list at the family's read/mutate tiers. No other leaf, tier or family changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds six /api/me/appearance leaves to the /api/me family inherited-leaf list at the family's read/mutate tiers. No other leaf, tier or family changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/inference-fleet.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds six /api/me/appearance leaves to the /api/me family inherited-leaf list at the family's read/mutate tiers. No other leaf, tier or family changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds six /api/me/appearance leaves to the /api/me family inherited-leaf list at the family's read/mutate tiers. No other leaf, tier or family changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-relay-enrollment.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds six /api/me/appearance leaves to the /api/me family inherited-leaf list at the family's read/mutate tiers. No other leaf, tier or family changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds six /api/me/appearance leaves to the /api/me family inherited-leaf list at the family's read/mutate tiers. No other leaf, tier or family changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds six /api/me/appearance leaves to the /api/me family inherited-leaf list at the family's read/mutate tiers. No other leaf, tier or family changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds six /api/me/appearance leaves to the /api/me family inherited-leaf list at the family's read/mutate tiers. No other leaf, tier or family changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds six /api/me/appearance leaves to the /api/me family inherited-leaf list at the family's read/mutate tiers. No other leaf, tier or family changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds six /api/me/appearance leaves to the /api/me family inherited-leaf list at the family's read/mutate tiers. No other leaf, tier or family changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds six /api/me/appearance leaves to the /api/me family inherited-leaf list at the family's read/mutate tiers. No other leaf, tier or family changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds six /api/me/appearance leaves to the /api/me family inherited-leaf list at the family's read/mutate tiers. No other leaf, tier or family changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds six /api/me/appearance leaves to the /api/me family inherited-leaf list at the family's read/mutate tiers. No other leaf, tier or family changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds six /api/me/appearance leaves to the /api/me family inherited-leaf list at the family's read/mutate tiers. No other leaf, tier or family changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds six /api/me/appearance leaves to the /api/me family inherited-leaf list at the family's read/mutate tiers. No other leaf, tier or family changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds six /api/me/appearance leaves to the /api/me family inherited-leaf list at the family's read/mutate tiers. No other leaf, tier or family changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds six /api/me/appearance leaves to the /api/me family inherited-leaf list at the family's read/mutate tiers. No other leaf, tier or family changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds six /api/me/appearance leaves to the /api/me family inherited-leaf list at the family's read/mutate tiers. No other leaf, tier or family changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"packages/connect/README.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds six /api/me/appearance leaves to the /api/me family inherited-leaf list at the family's read/mutate tiers. No other leaf, tier or family changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds six /api/me/appearance leaves to the /api/me family inherited-leaf list at the family's read/mutate tiers. No other leaf, tier or family changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/architecture.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds exports for the custom appearance query hooks (useCustomAppearanceQuery, useCustomAppearanceMutation, customAppearanceKey). Existing exports unchanged.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/knowledge-recall-ui.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds exports for the custom appearance query hooks (useCustomAppearanceQuery, useCustomAppearanceMutation, customAppearanceKey). Existing exports unchanged.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/pane-host-contract.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds exports for the custom appearance query hooks (useCustomAppearanceQuery, useCustomAppearanceMutation, customAppearanceKey). Existing exports unchanged.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds exports for the custom appearance query hooks (useCustomAppearanceQuery, useCustomAppearanceMutation, customAppearanceKey). Existing exports unchanged.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds exports for the custom appearance query hooks (useCustomAppearanceQuery, useCustomAppearanceMutation, customAppearanceKey). Existing exports unchanged.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds exports for the custom appearance query hooks (useCustomAppearanceQuery, useCustomAppearanceMutation, customAppearanceKey). Existing exports unchanged.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds exports for the custom appearance query hooks (useCustomAppearanceQuery, useCustomAppearanceMutation, customAppearanceKey). Existing exports unchanged.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds exports for the custom appearance query hooks (useCustomAppearanceQuery, useCustomAppearanceMutation, customAppearanceKey). Existing exports unchanged.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"examples/meeting-transcription/README.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds exports for the custom appearance query hooks (useCustomAppearanceQuery, useCustomAppearanceMutation, customAppearanceKey). Existing exports unchanged.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds exports for the custom appearance query hooks (useCustomAppearanceQuery, useCustomAppearanceMutation, customAppearanceKey). Existing exports unchanged.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds the same custom appearance query hook exports to the query barrel. Existing exports unchanged.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds the same custom appearance query hook exports to the query barrel. Existing exports unchanged.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds the same custom appearance query hook exports to the query barrel. Existing exports unchanged.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds the same custom appearance query hook exports to the query barrel. Existing exports unchanged.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds the same custom appearance query hook exports to the query barrel. Existing exports unchanged.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Custom appearance (docs/decisions/custom-appearance.md): re-exports the new client/custom-appearance module. Existing exports unchanged.","inputs":["packages/sdk/src/client/index.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Custom appearance (docs/decisions/custom-appearance.md): applies the cached custom appearance after bindColorThemeToSettings and before the first render, and mounts CustomAppearanceBridge beside BrandingThemeBridge. Boot order, recovery, startup animation, connection and authority claims are unchanged; theming.md documents the new step.","inputs":["src-ui/src/main.tsx"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Custom appearance (docs/decisions/custom-appearance.md): applies the cached custom appearance after bindColorThemeToSettings and before the first render, and mounts CustomAppearanceBridge beside BrandingThemeBridge. Boot order, recovery, startup animation, connection and authority claims are unchanged; theming.md documents the new step.","inputs":["src-ui/src/main.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Custom appearance (docs/decisions/custom-appearance.md): applies the cached custom appearance after bindColorThemeToSettings and before the first render, and mounts CustomAppearanceBridge beside BrandingThemeBridge. Boot order, recovery, startup animation, connection and authority claims are unchanged; theming.md documents the new step.","inputs":["src-ui/src/main.tsx"]},
+
+    {"path":"docs/guides/theming.md","note":"Custom appearance (docs/decisions/custom-appearance.md): applies the cached custom appearance after bindColorThemeToSettings and before the first render, and mounts CustomAppearanceBridge beside BrandingThemeBridge. Boot order, recovery, startup animation, connection and authority claims are unchanged; theming.md documents the new step.","inputs":["src-ui/src/main.tsx"]},
+
+    {"path":"docs/patterns/backend.md","note":"Custom appearance (docs/decisions/custom-appearance.md): applies the cached custom appearance after bindColorThemeToSettings and before the first render, and mounts CustomAppearanceBridge beside BrandingThemeBridge. Boot order, recovery, startup animation, connection and authority claims are unchanged; theming.md documents the new step.","inputs":["src-ui/src/main.tsx"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Custom appearance (docs/decisions/custom-appearance.md): applies the cached custom appearance after bindColorThemeToSettings and before the first render, and mounts CustomAppearanceBridge beside BrandingThemeBridge. Boot order, recovery, startup animation, connection and authority claims are unchanged; theming.md documents the new step.","inputs":["src-ui/src/main.tsx"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Custom appearance (docs/decisions/custom-appearance.md): applies the cached custom appearance after bindColorThemeToSettings and before the first render, and mounts CustomAppearanceBridge beside BrandingThemeBridge. Boot order, recovery, startup animation, connection and authority claims are unchanged; theming.md documents the new step.","inputs":["src-ui/src/main.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Custom appearance (docs/decisions/custom-appearance.md): applies the cached custom appearance after bindColorThemeToSettings and before the first render, and mounts CustomAppearanceBridge beside BrandingThemeBridge. Boot order, recovery, startup animation, connection and authority claims are unchanged; theming.md documents the new step.","inputs":["src-ui/src/main.tsx"]},
+
+    {"path":"docs/user/native-recovery.md","note":"Custom appearance (docs/decisions/custom-appearance.md): applies the cached custom appearance after bindColorThemeToSettings and before the first render, and mounts CustomAppearanceBridge beside BrandingThemeBridge. Boot order, recovery, startup animation, connection and authority claims are unchanged; theming.md documents the new step.","inputs":["src-ui/src/main.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds get_appearance (SELF_READ) and propose_appearance (any assurance, role self, mutating) entries and lists both in the restricted-network allow-list. No existing tool policy changed.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds get_appearance (SELF_READ) and propose_appearance (any assurance, role self, mutating) entries and lists both in the restricted-network allow-list. No existing tool policy changed.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds get_appearance (SELF_READ) and propose_appearance (any assurance, role self, mutating) entries and lists both in the restricted-network allow-list. No existing tool policy changed.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds get_appearance (SELF_READ) and propose_appearance (any assurance, role self, mutating) entries and lists both in the restricted-network allow-list. No existing tool policy changed.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds get_appearance (SELF_READ) and propose_appearance (any assurance, role self, mutating) entries and lists both in the restricted-network allow-list. No existing tool policy changed.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds get_appearance (SELF_READ) and propose_appearance (any assurance, role self, mutating) entries and lists both in the restricted-network allow-list. No existing tool policy changed.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds get_appearance (SELF_READ) and propose_appearance (any assurance, role self, mutating) entries and lists both in the restricted-network allow-list. No existing tool policy changed.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds get_appearance (SELF_READ) and propose_appearance (any assurance, role self, mutating) entries and lists both in the restricted-network allow-list. No existing tool policy changed.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds get_appearance (SELF_READ) and propose_appearance (any assurance, role self, mutating) entries and lists both in the restricted-network allow-list. No existing tool policy changed.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Custom appearance (docs/decisions/custom-appearance.md): registers the two appearance tools. Grouping regexes and other registrations unchanged.","inputs":["src-server/tools/station-control-mcp-server.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Custom appearance (docs/decisions/custom-appearance.md): registers the two appearance tools. Grouping regexes and other registrations unchanged.","inputs":["src-server/tools/station-control-mcp-server.ts"]},
+
+    {"path":"docs/architecture.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds the ./custom-appearance subpath export. No existing subpath changed.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds the ./custom-appearance subpath export. No existing subpath changed.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/reference/contracts.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds the ./custom-appearance subpath export. No existing subpath changed.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds the ./custom-appearance subpath export. No existing subpath changed.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"packages/contracts/README.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds the ./custom-appearance subpath export. No existing subpath changed.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/reference/contracts.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds the ./custom-appearance subpath export only.","inputs":["packages/contracts/package.json"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Custom appearance (docs/decisions/custom-appearance.md): COLOR_THEME_ROLE_PROPERTIES now re-exports APPEARANCE_ROLE_PROPERTIES from the contracts with the identical thirteen roles in the same order; catalog values, generation and contrast are unchanged.","inputs":["src-ui/src/lib/color-theme-catalog.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Custom appearance (docs/decisions/custom-appearance.md): COLOR_THEME_ROLE_PROPERTIES now re-exports APPEARANCE_ROLE_PROPERTIES from the contracts with the identical thirteen roles in the same order; catalog values, generation and contrast are unchanged.","inputs":["src-ui/src/lib/color-theme-catalog.ts"]},
+
+    {"path":"docs/guides/code-hygiene.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added a stable data-* hook attribute (APPEARANCE_HOOKS) on the existing root element. No class, structure, behavior or authority change; the citing documents' claims remain accurate. (data-slot=\"button\"; spread props still override).","inputs":["packages/sdk/src/components/ActionControl.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added a stable data-* hook attribute (APPEARANCE_HOOKS) on the existing root element. No class, structure, behavior or authority change; the citing documents' claims remain accurate. (data-slot=\"button\"; spread props still override).","inputs":["packages/sdk/src/components/ActionControl.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added a stable data-* hook attribute (APPEARANCE_HOOKS) on the existing root element. No class, structure, behavior or authority change; the citing documents' claims remain accurate. (data-surface=\"dialog\" on the panel props).","inputs":["src-ui/src/components/ResponsiveDialogSurface.tsx"]},
+
+    {"path":"docs/guides/theming.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added a stable data-* hook attribute (APPEARANCE_HOOKS) on the existing root element. No class, structure, behavior or authority change; the citing documents' claims remain accurate. (data-surface=\"dialog\" on the panel props).","inputs":["src-ui/src/components/ResponsiveDialogSurface.tsx"]},
+
+    {"path":"docs/patterns/backend.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added a stable data-* hook attribute (APPEARANCE_HOOKS) on the existing root element. No class, structure, behavior or authority change; the citing documents' claims remain accurate. (data-surface=\"dialog\" on the panel props).","inputs":["src-ui/src/components/ResponsiveDialogSurface.tsx"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added a stable data-* hook attribute (APPEARANCE_HOOKS) on the existing root element. No class, structure, behavior or authority change; the citing documents' claims remain accurate. (data-surface=\"dialog\" on the panel props).","inputs":["src-ui/src/components/ResponsiveDialogSurface.tsx"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added a stable data-* hook attribute (APPEARANCE_HOOKS) on the existing root element. No class, structure, behavior or authority change; the citing documents' claims remain accurate. (data-surface=\"dialog\" on the panel props).","inputs":["src-ui/src/components/ResponsiveDialogSurface.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added a stable data-* hook attribute (APPEARANCE_HOOKS) on the existing root element. No class, structure, behavior or authority change; the citing documents' claims remain accurate. (data-surface=\"menu\").","inputs":["src-ui/src/components/ActionOverflowMenu.tsx"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added a stable data-* hook attribute (APPEARANCE_HOOKS) on the existing root element. No class, structure, behavior or authority change; the citing documents' claims remain accurate. (data-surface=\"sidebar\" on the navigation).","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"docs/reviews/sidebar-focus-20261107/README.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added a stable data-* hook attribute (APPEARANCE_HOOKS) on the existing root element. No class, structure, behavior or authority change; the citing documents' claims remain accurate. (data-surface=\"sidebar\" on the navigation).","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"docs/reviews/sidebar-focus-20261107/manager-audit-addendum.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added a stable data-* hook attribute (APPEARANCE_HOOKS) on the existing root element. No class, structure, behavior or authority change; the citing documents' claims remain accurate. (data-surface=\"sidebar\" on the navigation).","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"docs/reviews/workspace-map-20261015/README.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added a stable data-* hook attribute (APPEARANCE_HOOKS) on the existing root element. No class, structure, behavior or authority change; the citing documents' claims remain accurate. (data-surface=\"sidebar\" on the navigation).","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added a stable data-* hook attribute (APPEARANCE_HOOKS) on the existing root element. No class, structure, behavior or authority change; the citing documents' claims remain accurate. (data-surface=\"sidebar\" on the navigation).","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"examples/custom-branding/README.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added a stable data-* hook attribute (APPEARANCE_HOOKS) on the existing root element. No class, structure, behavior or authority change; the citing documents' claims remain accurate. (data-surface=\"sidebar\" on the navigation).","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added a stable data-* hook attribute (APPEARANCE_HOOKS) on the existing root element. No class, structure, behavior or authority change; the citing documents' claims remain accurate. (data-surface=\"message\" and data-message-role on the message row).","inputs":["src-ui/src/components/chat/MessageBubble.tsx"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added a stable data-* hook attribute (APPEARANCE_HOOKS) on the existing root element. No class, structure, behavior or authority change; the citing documents' claims remain accurate. (data-surface=\"message\" and data-message-role on the message row).","inputs":["src-ui/src/components/chat/MessageBubble.tsx"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added a stable data-* hook attribute (APPEARANCE_HOOKS) on the existing root element. No class, structure, behavior or authority change; the citing documents' claims remain accurate. (data-surface=\"message\" and data-message-role on the message row).","inputs":["src-ui/src/components/chat/MessageBubble.tsx"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added a stable data-* hook attribute (APPEARANCE_HOOKS) on the existing root element. No class, structure, behavior or authority change; the citing documents' claims remain accurate. (data-surface=\"transcript\" on .chat-messages).","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added a stable data-* hook attribute (APPEARANCE_HOOKS) on the existing root element. No class, structure, behavior or authority change; the citing documents' claims remain accurate. (data-surface=\"transcript\" on .chat-messages).","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added a stable data-* hook attribute (APPEARANCE_HOOKS) on the existing root element. No class, structure, behavior or authority change; the citing documents' claims remain accurate. (data-surface=\"transcript\" on .chat-messages).","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added a stable data-* hook attribute (APPEARANCE_HOOKS) on the existing root element. No class, structure, behavior or authority change; the citing documents' claims remain accurate. (data-surface=\"composer\" on .chat-input).","inputs":["src-ui/src/components/chat/ChatInputArea.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added a stable data-* hook attribute (APPEARANCE_HOOKS) on the existing root element. No class, structure, behavior or authority change; the citing documents' claims remain accurate. (data-surface=\"composer\" on .chat-input).","inputs":["src-ui/src/components/chat/ChatInputArea.tsx"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Custom appearance (docs/decisions/custom-appearance.md): the page gains a Custom section (CustomAppearanceSection) after Accent. Mode, theme, flavor, accent, density and motion behavior are unchanged; settings-architecture.md and theming.md now name the section.","inputs":["src-ui/src/pages/AppearancePage.tsx"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds one test that renders the sidebar and queries its appearance hook. Existing tests unchanged.","inputs":["src-ui/src/__tests__/ProjectSidebar.test.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds one test that renders the composer and queries its appearance hook. Existing tests unchanged.","inputs":["src-ui/src/__tests__/ChatInputArea.test.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Custom appearance (docs/decisions/custom-appearance.md): classifies the new customAppearance query domain as public. No other classification changed.","inputs":["packages/sdk/src/__tests__/publicBarrel.test.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Custom appearance (docs/decisions/custom-appearance.md): regenerated by docs:mcp:generate to include the new decision record, user guide and edited references; no hand edits.","inputs":["src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/learn/README.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds the Custom appearance module to the shell interface group beside ColorThemes so the learning tree covers it.","inputs":["docs/learn/atlas.json"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds the Custom appearance module to the shell interface group beside ColorThemes so the learning tree covers it.","inputs":["docs/learn/atlas.json"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds the Custom appearance module to the shell interface group beside ColorThemes so the learning tree covers it.","inputs":["docs/learn/atlas.json"]},
+
+    {"path":"docs/README.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds the new user guide user/appearance.md to Use Station.","inputs":["docs/pages/public-docs.json"]},
+
+    {"path":"docs/pages/README.md","note":"Custom appearance (docs/decisions/custom-appearance.md): adds the new user guide user/appearance.md to Use Station.","inputs":["docs/pages/public-docs.json"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx"]},
+
+    {"path":"docs/contexts/extension-ecosystem/CONTEXT.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx"]},
+
+    {"path":"docs/guides/plugins.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx"]},
+
+    {"path":"docs/reference/shared.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx"]},
+
+    {"path":"docs/reference/task-basis-mcp-app.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/components/attention/RequestInspectionDialog.tsx"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/components/attention/RequestInspectionDialog.tsx"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/components/attention/RequestInspectionDialog.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/components/attention/RequestInspectionDialog.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/components/attention/RequestInspectionDialog.tsx"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/views/connections-hub/RelayRouteKeyApproval.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/views/connections-hub/RelayRouteKeyApproval.tsx"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/views/connections-hub/RelayRouteKeyApproval.tsx"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/views/connections-hub/RelayRouteKeyApproval.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/views/connections-hub/RelayOperatorPanel.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/views/connections-hub/RelayOperatorPanel.tsx"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/views/connections-hub/RelayOperatorPanel.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/components/review/ReviewLayout.tsx"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/components/review/ReviewLayout.tsx"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/components/review/ReviewLayout.tsx"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/components/profile/ToolRequestsPanel.tsx"]},
+
+    {"path":"docs/reference/session-api.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/components/profile/ToolRequestsPanel.tsx"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/components/attention/AttentionCard.tsx"]},
+
+    {"path":"docs/reference/session-api.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/components/attention/AttentionCard.tsx"]},
+
+    {"path":"docs/guides/plugins.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/views/plugin-management/PluginModalStack.tsx"]},
+
+    {"path":"docs/guides/plugins.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/views/plugin-management/InstallPreviewModal.tsx"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/components/UsageSharingPrompt.tsx"]},
+
+    {"path":"docs/guides/plugins.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/components/registry/StationExtensionsAccess.tsx"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/components/notifications/NotificationContainer.tsx"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/components/chat/InputRequestDecision.tsx"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/components/chat/InputRequestCard.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this decision UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/components/attention/NeedsInputReply.tsx"]}
+  ]
+}
