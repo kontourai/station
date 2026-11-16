@@ -237,9 +237,7 @@ for (const viewport of [
       await expect(childLog).toContainText(
         viewport.width < 600 ? 'used 1 tool' : 'Tool result',
       );
-      await expect(
-        childLog.getByText('Text output unavailable.'),
-      ).toBeHidden();
+      await expect(childLog.getByText('Text output unavailable.')).toBeHidden();
       // One reply row, not one card per tool call, and no paging buttons
       // at the foot of the transcript.
       await expect(
