@@ -5,7 +5,11 @@ import {
 } from '@kontourai/station-contracts/presence';
 import { authenticatedFetch } from '@kontourai/station-sdk';
 import { CLIENT_DOCUMENT_SESSION_ID } from './clientDocumentSession';
-import { isWatchingRunningTurn } from './orchestration/chatForeground';
+import {
+  foregroundChatSessionIds,
+  isWatchingRunningTurn,
+  subscribeForegroundChat,
+} from './orchestration/chatForeground';
 
 /** Collapses a burst of focus/blur/visibility events into one report. */
 export const FOCUS_REPORT_DEBOUNCE_MS = 1_000;
@@ -44,6 +48,19 @@ export interface FocusReporterEnvironment {
    * Absent: input recency alone decides.
    */
   readonly isWatching?: () => boolean;
+  /**
+   * The sessions this document shows (`viewingSessionIds`), so a finished
+   * turn's alert is quieted only for the chat actually on screen. Absent:
+   * the report does not say, and the server treats focus as device-wide.
+   */
+  readonly readViewing?: () => readonly string[];
+  /** Calls the listener when `readViewing`'s answer may have changed. */
+  readonly subscribeViewing?: (listener: () => void) => () => void;
+}
+
+/** Compares what two reports said is on screen; '' when they said nothing. */
+function viewingKey(viewing: readonly string[] | undefined): string {
+  return viewing === undefined ? '' : JSON.stringify(viewing);
 }
 
 function readFocusState(doc: Document, pageHidden = false): FocusState {
@@ -112,7 +129,11 @@ export function retryAfterMs(value: string | null, now: number): number {
  *   to 30 s). Every delay is clamped to [1 s, 5 min]. A network error,
  *   timeout or 5xx may still have landed, so it also forgets the
  *   acknowledged state and the retry sends the current state unconditionally;
- * - 400/403 are not retried. A 401 (not signed in yet) is retried on the
+ * - focused documents also say which chat they show (`viewingSessionIds`),
+ *   and a change of chat while focused is reported like a state change
+ *   (debounced). A host built before that field answers 400 to it; the
+ *   reporter then drops the field for this document and resends once;
+ * - 400/403 are otherwise not retried. A 401 (not signed in yet) is retried on the
  *   next focus/visibility change, or by the next heartbeat tick after user
  *   input — so within a minute of signing in;
  * - while focused, a 60 s heartbeat renews the lease only if there was user
@@ -129,6 +150,7 @@ export function startFocusReporter(
     state: FocusState,
     seq: number,
     signal: AbortSignal,
+    viewingSessionIds?: readonly string[],
   ) => Promise<FocusReportResponse>,
   env: FocusReporterEnvironment = {
     document,
@@ -146,7 +168,20 @@ export function startFocusReporter(
   };
   let stopped = false;
   let nextSeq = 1;
+  /** Cleared when the host refuses the field (an older Station). */
+  let viewingSupported = env.readViewing !== undefined;
+  const viewingNow = (): readonly string[] | undefined => {
+    if (!viewingSupported) return undefined;
+    try {
+      return [...(env.readViewing?.() ?? [])];
+    } catch {
+      // Unknown means unscoped: the server's device-wide rule.
+      return undefined;
+    }
+  };
   let acked: FocusState | undefined;
+  /** `viewingKey` of the acknowledged report. */
+  let ackedViewing: string | undefined;
   let ackedSeq = 0;
   let ackedAt = Number.NEGATIVE_INFINITY;
   /** Whether this document has transmitted any report at all. */
@@ -171,6 +206,10 @@ export function startFocusReporter(
   /** Between `pagehide` and `pageshow` the page is hidden whatever it reads. */
   let pageHidden = false;
   const currentState = () => readFocusState(doc, pageHidden);
+  // What is on screen only matters to the server while focused.
+  const needsSend = (state: FocusState) =>
+    state !== acked ||
+    (state === 'focused' && viewingKey(viewingNow()) !== ackedViewing);
 
   const clearDebounce = () => {
     if (debounce !== undefined) clearTimeout(debounce);
@@ -184,9 +223,13 @@ export function startFocusReporter(
     }, clampRetry(ms));
   };
 
-  const transmit = async (
-    state: FocusState,
-  ): Promise<{ seq: number; response: FocusReportResponse | undefined }> => {
+  interface Transmitted {
+    seq: number;
+    response: FocusReportResponse | undefined;
+    viewing: readonly string[] | undefined;
+  }
+  const transmit = async (state: FocusState): Promise<Transmitted> => {
+    const viewing = viewingNow();
     const seq = nextSeq;
     nextSeq += 1;
     sentAny = true;
@@ -201,12 +244,16 @@ export function startFocusReporter(
     });
     try {
       const response = await Promise.race([
-        Promise.resolve().then(() => send(state, seq, controller.signal)),
+        Promise.resolve().then(() =>
+          viewing === undefined
+            ? send(state, seq, controller.signal)
+            : send(state, seq, controller.signal, viewing),
+        ),
         timeout,
       ]);
-      return { seq, response };
+      return { seq, response, viewing };
     } catch {
-      return { seq, response: undefined };
+      return { seq, response: undefined, viewing };
     } finally {
       clearTimeout(timer);
     }
@@ -215,13 +262,13 @@ export function startFocusReporter(
   /** Records one settled send; returns whether it was a 2xx. */
   const settle = (
     state: FocusState,
-    seq: number,
-    response: FocusReportResponse | undefined,
+    { seq, response, viewing }: Transmitted,
   ): boolean => {
     const status = response?.status ?? 0;
     if (status >= 200 && status < 300) {
       if (seq > ackedSeq) {
         acked = state;
+        ackedViewing = viewingKey(viewing);
         ackedSeq = seq;
         ackedAt = now();
       }
@@ -230,7 +277,11 @@ export function startFocusReporter(
       return true;
     }
     if (seq === hiddenSeq) hiddenSeq = 0;
-    if (response && status === 429) {
+    if (status === 400 && viewing !== undefined && viewingSupported) {
+      // An older host refuses the unknown field: report without it.
+      viewingSupported = false;
+      flushQueued = true;
+    } else if (response && status === 429) {
       retryIn(retryAfterMs(response.headers.get('retry-after'), now()));
     } else if (status === 401) {
       authBlocked = true;
@@ -255,14 +306,14 @@ export function startFocusReporter(
     if (stopped || inFlight) return;
     const queued = flushQueued;
     flushQueued = false;
-    if (queued || (succeeded && currentState() !== acked)) flush();
+    if (queued || (succeeded && needsSend(currentState()))) flush();
   };
 
   const sendHiddenNow = async () => {
     if (stopped) return;
-    const { seq, response } = await transmit('hidden');
+    const sent = await transmit('hidden');
     if (stopped) return;
-    afterSettle(settle('hidden', seq, response));
+    afterSettle(settle('hidden', sent));
   };
 
   const deliver = async (state: FocusState) => {
@@ -272,10 +323,10 @@ export function startFocusReporter(
       return;
     }
     inFlight = true;
-    const { seq, response } = await transmit(state);
+    const sent = await transmit(state);
     inFlight = false;
     if (stopped) return;
-    afterSettle(settle(state, seq, response));
+    afterSettle(settle(state, sent));
   };
   function flush() {
     debounce = undefined;
@@ -285,7 +336,7 @@ export function startFocusReporter(
       return;
     }
     const state = currentState();
-    if (state !== acked) void deliver(state);
+    if (needsSend(state)) void deliver(state);
   }
   const schedule = () => {
     if (stopped) return;
@@ -360,6 +411,22 @@ export function startFocusReporter(
   for (const type of INPUT_EVENTS) {
     win.addEventListener(type, onInput, { passive: true, capture: true });
   }
+  let unsubscribeViewing: (() => void) | undefined;
+  // The chat store changes on every streamed token. Only an actual change of
+  // what is on screen reschedules, or a streaming chat would keep pushing
+  // the debounce back and no report would go out.
+  let lastViewing = viewingKey(viewingNow());
+  try {
+    unsubscribeViewing = env.subscribeViewing?.(() => {
+      if (!viewingSupported) return;
+      const next = viewingKey(viewingNow());
+      if (next === lastViewing) return;
+      lastViewing = next;
+      if (currentState() === 'focused') schedule();
+    });
+  } catch {
+    unsubscribeViewing = undefined;
+  }
   schedule();
 
   return () => {
@@ -375,6 +442,11 @@ export function startFocusReporter(
     for (const type of INPUT_EVENTS) {
       win.removeEventListener(type, onInput, { capture: true });
     }
+    try {
+      unsubscribeViewing?.();
+    } catch {
+      /* Presence is advisory. */
+    }
   };
 }
 
@@ -382,7 +454,7 @@ export function startFocusReporter(
 export function startStationFocusReporter(apiBase: string): () => void {
   const url = `${apiBase}${FOCUS_PRESENCE_REPORT_PATH}`;
   return startFocusReporter(
-    (state, seq, signal) =>
+    (state, seq, signal, viewingSessionIds) =>
       authenticatedFetch(url, {
         signal,
         method: 'POST',
@@ -394,6 +466,7 @@ export function startStationFocusReporter(apiBase: string): () => void {
           clientSessionId: CLIENT_DOCUMENT_SESSION_ID,
           state,
           seq,
+          ...(viewingSessionIds ? { viewingSessionIds } : {}),
         }),
         keepalive: true,
       }),
@@ -402,6 +475,8 @@ export function startStationFocusReporter(apiBase: string): () => void {
       window,
       now: () => Date.now(),
       isWatching: isWatchingRunningTurn,
+      readViewing: foregroundChatSessionIds,
+      subscribeViewing: subscribeForegroundChat,
     },
   );
 }

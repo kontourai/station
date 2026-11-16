@@ -173,7 +173,7 @@ exact identity ticket, then uses the one reveal authority after ready. The
 source test coverage and packaged-platform limits are recorded in [Native shell
 verification](native-shell-verification.md); physical tray/second-launch
 deferral and diagnostic/relaunch behavior remain **NOT_VERIFIED** on packaged
-Stable, Beta, and Nightly builds.
+Stable and Nightly builds.
 
 ## Desktop alerts while the window is hidden
 
@@ -224,7 +224,7 @@ recorded there.
 | Linux | `~/.local/share/io.kontourai.station/logs/station.log` (or `$XDG_DATA_HOME` if set) |
 | Windows | `%LOCALAPPDATA%\io.kontourai.station\logs\station.log` |
 
-Beta, Nightly and Dev use their own application identifier in these paths.
+Nightly and Dev use their own application identifier in these paths.
 The [native shell guide](native-shell-verification.md#logs-and-diagnosis-boundary)
 lists the release-channel paths and service-log distinctions.
 

@@ -11,13 +11,16 @@ import type {
   ProjectRoomChannelUpdateInput,
   ProjectRoomDeleteInput,
   ProjectRoomEditInput,
+  ProjectRoomMention,
+  ProjectRoomMessage,
   ProjectRoomNoteInput,
   ProjectRoomReactionInput,
   ProjectRoomView,
 } from '@kontourai/station-contracts/project-room';
-import type {
-  ProjectRoomBrowserView,
-  ProjectRoomPresence,
+import {
+  PROJECT_ROOM_TYPING_TTL_MS,
+  type ProjectRoomBrowserView,
+  type ProjectRoomPresence,
 } from '@kontourai/station-contracts/project-room-browser';
 import { createLogger } from '../../utils/logger.js';
 import { ProjectRoomRefusal, ProjectRoomStore } from './project-room-store.js';
@@ -52,6 +55,27 @@ export interface ProjectRoomAccessPort {
     actorId: string,
     action: ProjectMemberAction,
   ): Promise<boolean>;
+  /**
+   * The people who may read this Project's rooms, with current names
+   * (#4799): who a message may mention. Called inside an admitted operation.
+   * Absent means only the caller.
+   */
+  members?(
+    scope: ProjectMembershipScope,
+    actor: ProjectRoomActor,
+  ): ProjectRoomActor[];
+}
+/** A committed message that names people (#4799), for their notifications. */
+export interface ProjectRoomMentionEvent {
+  scope: ProjectMembershipScope;
+  slug: string;
+  /** Absent for the Project's default room. */
+  channelId?: string;
+  message: ProjectRoomMessage;
+  /** The channel's name, when the room is a named channel. */
+  channelName?: string;
+  /** People newly named: never the author, each once. */
+  recipients: string[];
 }
 export interface ProjectRoomMutationGuard {
   expectedRoomId: string;
@@ -104,6 +128,8 @@ export interface ProjectRoomAttachmentPort {
  * incarnation. A message can name only its author's own uploads, and a read
  * resolves through the author of the message that carries the file.
  */
+const liveKey = (actorId: string, clientId: string) =>
+  JSON.stringify([actorId, clientId]);
 const attachmentBinding = (
   scope: ProjectMembershipScope,
   roomId: string,
@@ -127,10 +153,18 @@ export class ProjectRoomService {
     }
   >();
   private subscriptions = new Set<() => void>();
+  /** Who is typing where (#4798): self-expiring, and cleared with its stream. */
+  private typists = new Map<
+    string,
+    { roomId: string; actor: ProjectRoomActor; expiresAt: number }
+  >();
+  /** Clients with an open live stream, by actor: their presence does not lapse. */
+  private liveClients = new Map<string, number>();
   constructor(
     private readonly store: ProjectRoomStore,
     readonly access: ProjectRoomAccessPort,
     private readonly attachments?: ProjectRoomAttachmentPort,
+    private readonly onMention?: (event: ProjectRoomMentionEvent) => void,
   ) {}
   /**
    * Runs a whole admitted operation under the file store's lock: the lock is
@@ -171,34 +205,50 @@ export class ProjectRoomService {
   private rooms = new Map<
     string,
     {
-      listeners: Set<() => void>;
+      listeners: Set<(changed?: readonly string[]) => void>;
       off: () => void;
       timer: ReturnType<typeof setInterval>;
       value: ReturnType<ProjectRoomStore['checkpoint']> | undefined;
     }
   >();
-  watch(roomId: string, callback: () => void) {
+  /**
+   * Wakes `callback` when the room changes. A commit in this process passes
+   * the messages whose reactions, edit or delete it wrote (#4798), and wakes
+   * even when the checkpoint is unchanged (an Agent request moved); a change
+   * seen only by the periodic consistency read passes nothing.
+   */
+  watch(roomId: string, callback: (changed?: readonly string[]) => void) {
     this.assertOpen();
     let room = this.rooms.get(roomId);
     if (!room) {
-      const listeners = new Set<() => void>();
-      const refresh = () => {
+      const listeners = new Set<(changed?: readonly string[]) => void>();
+      const read = () => {
         const current = this.rooms.get(roomId);
-        if (!current) return;
+        if (!current) return false;
         try {
           const value = this.store.checkpoint(roomId);
-          if (JSON.stringify(value) === JSON.stringify(current.value)) return;
+          if (JSON.stringify(value) === JSON.stringify(current.value))
+            return false;
           current.value = value;
         } catch {
           current.value = undefined;
           // Wake consumers to fail closed on the next checkpoint read.
         }
+        return true;
+      };
+      const refresh = () => {
+        if (!read()) return;
         for (const listener of listeners) listener();
+      };
+      const committed = (changed: readonly string[]) => {
+        if (!this.rooms.has(roomId)) return;
+        read();
+        for (const listener of listeners) listener(changed);
       };
       room = {
         listeners,
         value: this.store.checkpoint(roomId),
-        off: this.store.subscribe(roomId, refresh),
+        off: this.store.subscribe(roomId, committed),
         timer: setInterval(refresh, 20000),
       };
       this.rooms.set(roomId, room);
@@ -235,11 +285,62 @@ export class ProjectRoomService {
   }
   private prune() {
     const now = Date.now();
-    for (const [key, p] of this.participants)
+    for (const [key, p] of this.participants) {
+      // A client whose live stream is open stays present without renewing.
+      if (this.liveClients.has(liveKey(p.value.actor.id, p.value.clientId))) {
+        if (Date.parse(p.value.expiresAt) - now < 15000)
+          p.value.expiresAt = new Date(now + 30000).toISOString();
+        continue;
+      }
       if (Date.parse(p.value.expiresAt) <= now) {
         this.participants.delete(key);
         this.notifyPresence(p.roomId);
       }
+    }
+    for (const [key, t] of this.typists)
+      if (t.expiresAt <= now) {
+        this.typists.delete(key);
+        this.notifyPresence(t.roomId);
+      }
+  }
+  /** People typing in `roomId` now, each once, in the order they started. */
+  typing(roomId: string): ProjectRoomActor[] {
+    this.prune();
+    const seen = new Map<string, ProjectRoomActor>();
+    for (const t of this.typists.values())
+      if (t.roomId === roomId && !seen.has(t.actor.id))
+        seen.set(t.actor.id, { ...t.actor });
+    return [...seen.values()];
+  }
+  /**
+   * A live stream opened for this client (#4798). Its presence lasts while
+   * the stream is open; closing the stream (the returned function) clears
+   * that client's presence and typing at once.
+   */
+  openClient(actorId: string, clientId: string) {
+    const key = liveKey(actorId, clientId);
+    this.liveClients.set(key, (this.liveClients.get(key) ?? 0) + 1);
+    let open = true;
+    return () => {
+      if (!open) return;
+      open = false;
+      const count = (this.liveClients.get(key) ?? 1) - 1;
+      if (count > 0) {
+        this.liveClients.set(key, count);
+        return;
+      }
+      this.liveClients.delete(key);
+      for (const [entry, p] of this.participants)
+        if (p.value.actor.id === actorId && p.value.clientId === clientId) {
+          this.participants.delete(entry);
+          this.notifyPresence(p.roomId);
+        }
+      for (const [entry, t] of this.typists)
+        if (entry.startsWith(`${key}\u0000`)) {
+          this.typists.delete(entry);
+          this.notifyPresence(t.roomId);
+        }
+    };
   }
   presence(roomId: string): ProjectRoomPresence[] {
     this.prune();
@@ -415,7 +516,165 @@ export class ProjectRoomService {
             ),
           );
         }
-        return this.store.append(scope, actor, input, assertCurrent, channelId);
+        this.assertMentions(scope, actor, input.mentions);
+        const message = this.store.append(
+          scope,
+          actor,
+          input,
+          assertCurrent,
+          channelId,
+        );
+        return message;
+      },
+      channelId,
+    ).then((result) => {
+      this.announce(result.admission.scope, slug, channelId, result.data, []);
+      return result;
+    });
+  }
+  /** A message may name only people who can read this Project's rooms. */
+  private assertMentions(
+    scope: ProjectMembershipScope,
+    actor: ProjectRoomActor,
+    mentions: readonly ProjectRoomMention[] | undefined,
+  ) {
+    if (!mentions?.length) return;
+    const members = new Set(
+      (this.access.members?.(scope, actor) ?? [actor]).map(
+        (member) => member.id,
+      ),
+    );
+    if (mentions.some((mention) => !members.has(mention.actorId)))
+      throw new ProjectRoomRefusal('invalid');
+  }
+  /** Tells newly named people, once each, never the author (#4799). */
+  private announce(
+    scope: ProjectMembershipScope,
+    slug: string,
+    channelId: string | undefined,
+    message: ProjectRoomMessage,
+    before: readonly string[],
+  ) {
+    if (!this.onMention || !message.mentions?.length) return;
+    const recipients = [
+      ...new Set(message.mentions.map((mention) => mention.actorId)),
+    ].filter((id) => id !== message.actor.id && !before.includes(id));
+    if (!recipients.length) return;
+    try {
+      const channelName = this.store.channelName(scope, message.roomId);
+      this.onMention({
+        scope: structuredClone(scope),
+        slug,
+        ...(channelId === undefined ? {} : { channelId }),
+        message: structuredClone(message),
+        ...(channelName ? { channelName } : {}),
+        recipients,
+      });
+    } catch (error) {
+      // A notification is best effort; the message is already committed.
+      logger.warn('Project room mention notification failed', { error });
+    }
+  }
+  /**
+   * The people a message here may mention (#4799), with current names: the
+   * picker's list, and the names old mentions render with.
+   */
+  members(request: Request, slug: string, channelId?: string) {
+    return this.run(
+      request,
+      slug,
+      'view',
+      undefined,
+      (scope, actor, _caps, assertCurrent) => {
+        if (!this.store.lookupRoom(scope, channelId))
+          throw new ProjectRoomRefusal('not_found');
+        // Public fields only, whatever the port returns: id, current name
+        // and kind. People only; nothing else about a member leaves here.
+        const members = (this.access.members?.(scope, actor) ?? [actor])
+          .filter((member) => member.kind === 'person')
+          .map((member) => ({
+            id: member.id,
+            displayName: member.displayName,
+            kind: 'person' as const,
+          }));
+        assertCurrent();
+        return { members };
+      },
+      channelId,
+    );
+  }
+  /**
+   * Whether an unread message after `after` names the caller (#4799), read
+   * under the room's `view` admission, at most `limit` messages ahead.
+   */
+  mentioned(
+    request: Request,
+    slug: string,
+    after: number,
+    limit: number,
+    channelId?: string,
+  ) {
+    return this.run(
+      request,
+      slug,
+      'view',
+      undefined,
+      (scope, actor, _caps, assertCurrent) => {
+        const room = this.store.lookupRoom(scope, channelId);
+        if (!room) throw new ProjectRoomRefusal('not_found');
+        const mentioned = this.store.mentionedAfter(
+          room.roomId,
+          after,
+          actor.id,
+          limit,
+        );
+        assertCurrent();
+        return mentioned;
+      },
+      channelId,
+    );
+  }
+  /** Admitted-room reads for the live stream: deltas and Agent activity. */
+  projectedMessages(roomId: string, messageIds: readonly string[]) {
+    return this.store.projectedMessages(roomId, messageIds);
+  }
+  recentRequests(
+    roomId: string,
+    limit: number,
+    working: number,
+    failed: (requestIds: readonly string[]) => { has(id: string): boolean },
+  ) {
+    return this.store.recentRequests(roomId, limit, working, failed);
+  }
+  /** Starts or stops the caller's typing signal in a room (#4798). */
+  updateTyping(
+    request: Request,
+    slug: string,
+    guard: ProjectRoomMutationGuard,
+    clientId: string,
+    typing: boolean,
+    channelId?: string,
+  ) {
+    return this.run(
+      request,
+      slug,
+      'discuss',
+      guard,
+      (_scope, actor, _caps, assertCurrent) => {
+        this.prune();
+        const key = `${liveKey(actor.id, clientId)}\u0000${guard.expectedRoomId}`;
+        if (typing && !this.typists.has(key) && this.typists.size >= 1000)
+          throw new ProjectRoomRefusal('capacity');
+        assertCurrent();
+        if (typing)
+          this.typists.set(key, {
+            roomId: guard.expectedRoomId,
+            actor: { ...actor },
+            expiresAt: Date.now() + PROJECT_ROOM_TYPING_TTL_MS,
+          });
+        else this.typists.delete(key);
+        this.notifyPresence(guard.expectedRoomId);
+        return { typing };
       },
       channelId,
     );
@@ -458,17 +717,38 @@ export class ProjectRoomService {
       slug,
       'discuss',
       guard,
-      (scope, actor, _caps, assertCurrent) =>
-        this.store.edit(
-          scope,
-          actor,
-          messageId,
-          input,
-          assertCurrent,
-          channelId,
-        ),
+      (scope, actor, _caps, assertCurrent) => {
+        this.assertMentions(scope, actor, input.mentions);
+        const roomId = this.store.lookupRoom(scope, channelId)?.roomId;
+        const before = roomId
+          ? (this.store
+              .projectedMessages(roomId, [messageId])[0]
+              ?.mentions?.map((mention) => mention.actorId) ?? [])
+          : [];
+        return {
+          before,
+          message: this.store.edit(
+            scope,
+            actor,
+            messageId,
+            input,
+            assertCurrent,
+            channelId,
+          ),
+        };
+      },
       channelId,
-    );
+    ).then(({ data, admission }) => {
+      // Only people the edit newly names are told.
+      this.announce(
+        admission.scope,
+        slug,
+        channelId,
+        data.message,
+        data.before,
+      );
+      return { data: data.message, admission };
+    });
   }
   deleteMessage(
     request: Request,

@@ -37,6 +37,7 @@ import { createLogger } from '../../utils/logger.js';
 import { JsonFileStore } from '../infra/json-store.js';
 import type { EventBus } from '../orchestration/event-bus.js';
 import type { ProjectMembershipService } from '../projects/project-membership-service.js';
+import { PULL_REQUEST_FEEDBACK_NOTIFICATION_SOURCE } from '../pull-requests/pull-request-feedback-attention.js';
 import { ON_ACTIVITY_CARD_METADATA_KEY } from './delivery/card-alerted-categories.js';
 
 const logger = createLogger({ name: 'notification-service' });
@@ -184,8 +185,11 @@ export const INTERNAL_NOTIFICATION_SOURCES: ReadonlySet<string> = new Set([
   'agent',
   'approval-inbox',
   'device-pairing',
+  // Project-room mentions of a person (#4799).
+  'project-room',
   'scheduler',
   TURN_COMPLETION_NOTIFICATION_SOURCE,
+  PULL_REQUEST_FEEDBACK_NOTIFICATION_SOURCE,
 ]);
 
 /**
@@ -300,6 +304,7 @@ export class NotificationService {
         onCorruption: 'throw',
         durableAtomicWrite: true,
         maxReadBytes: PRINCIPAL_FEED_MAX_BYTES,
+        metricStore: 'principal-notifications',
       },
     );
     this.projectMembership = options.projectMembership;
@@ -313,6 +318,9 @@ export class NotificationService {
         // would silently erase it (and every other notification).
         onCorruption: 'throw',
         durableAtomicWrite: true,
+        // #4995: the feed has no retention, so every change rewrites it
+        // and its `.previous` copy whole; this makes that cost visible.
+        metricStore: 'notifications',
       });
     this.beforeActionDispatch = options.beforeActionDispatch;
     this.onAsyncDispatchError = options.onAsyncDispatchError;
@@ -1171,6 +1179,25 @@ export class NotificationService {
   async get(id: string): Promise<Notification | undefined> {
     const notification = (await this.read()).find((n) => n.id === id);
     return notification ? toPublicNotification(notification) : undefined;
+  }
+
+  /**
+   * Server-internal: the stored record holding `dedupeTag`, by the same
+   * unscoped lookup a dedupe schedule makes. No route exposes it; the caller
+   * checks the record's identity itself. `leased` says an action holds it.
+   */
+  async findByDedupeTag(
+    dedupeTag: string,
+  ): Promise<{ notification: Notification; leased: boolean } | undefined> {
+    const stored = (await this.read()).find(
+      (n) => n.metadata?.dedupeTag === dedupeTag,
+    );
+    return stored
+      ? {
+          notification: toPublicNotification(stored),
+          leased: stored.actionLease !== undefined,
+        }
+      : undefined;
   }
 
   async list(opts?: {

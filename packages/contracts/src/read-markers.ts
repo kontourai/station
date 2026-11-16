@@ -37,9 +37,8 @@
  * - `task-room` — the Task room's `checkpoint.throughSeq` in its current
  *   epoch. A re-homed room (new epoch) starts a new marker.
  *
- * Mentions: there is deliberately no "mentions me" field yet. Structured
- * mentions do not exist (#4799), so nothing could compute one; the field will
- * be added with the code that derives it.
+ * Mentions (#4799): `mentioned` is derived from Project-room messages'
+ * structured mentions after the marker. Task rooms do not report it yet.
  */
 
 /** `POST` a {@link ReadMarkerSummaryRequest}; answers {@link ReadMarkerSummary}. */
@@ -109,6 +108,11 @@ export interface ReadMarkerState {
    * counted.
    */
   readonly unreadCount?: number;
+  /**
+   * Project rooms only: an unread message (after the marker, within the
+   * unread count's cap) names the caller in its structured mentions.
+   */
+  readonly mentioned?: boolean;
 }
 
 /**

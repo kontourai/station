@@ -298,9 +298,10 @@ The authenticated one-liner uses an existing GitHub CLI login for release
 verification. It verifies the
 stable-ring manifest,
 checksum, and archive attestations before parsing or using them; there is no
-anonymous or unsigned fallback. Set `STATION_CHANNEL=beta` for the beta runtime
-channel, whose signed release ring is preview. See [release rings](../guides/release-rings.md) for recovery and
-revocation guidance.
+anonymous or unsigned fallback. Beta and `preview` are retired and refused.
+For an accepted candidate, pin `STATION_VERSION=vX.Y.Z-rc.N`; it uses Stable
+identity and the base product version. See [release rings](../guides/release-rings.md)
+for candidate acceptance, recovery and revocation guidance.
 
 The checksum-addressed releases live under `~/.station/installs/stable/releases`,
 `current` points atomically to the active release, and `~/.local/bin/station`
@@ -688,7 +689,7 @@ station triage
 station triage --context-only
 station triage --headless --agent=codex
 station triage --agent=claude
-station triage --problem='Beta stopped opening' --search-issues --agent=codex
+station triage --problem='Nightly stopped opening' --search-issues --agent=codex
 station triage draft-report < report.json
 ```
 
@@ -2855,8 +2856,8 @@ allowed origins. The
 unit is named by instance alone, so a manifest in the home `status` read can
 describe an earlier install. On Windows the command comes from the manifest
 beside the task's wrapper. A service that runs an installer-owned archive is
-reinstalled through that install's channel launcher (`station`,
-`station-beta`, or `station-nightly`); the launcher sets `STATION_ROOT`
+reinstalled through that install's channel launcher (`station` or
+`station-nightly`); the launcher sets `STATION_ROOT`
 itself, so when the unit records another root no command is given. Otherwise
 the command is prefixed with `STATION_ROOT=…` when the unit's recorded root
 differs from the one a shell without `STATION_ROOT` would derive. When no
@@ -3199,7 +3200,7 @@ station environment show
 station environment credential show
 station environment credential rotate [--force]
 station environment reset [--force]
-station environment offer [--scope=<scope,…>] [--require-approval] [--browser-url=<web-origin>] [--tailscale] [--tailscale-serve-port=<port>]
+station environment offer [--scope=<scope,…>] [--require-approval] [--browser-url=<web-origin>] [--tailscale] [--tailscale-serve-port=<port>] [--client-channel=<stable|nightly>] [--payload-only]
 station environment operator passkeys [list] [--json] [--api-base=<loopback-url>|--station=<name>]
 station environment operator passkeys approve <code> [--device=<id-prefix>] [--api-base=<loopback-url>|--station=<name>]
 station environment operator passkeys deny <code> [--api-base=<loopback-url>|--station=<name>]
@@ -3243,7 +3244,11 @@ station environment peers remove <environment-id>
   owner-validated local service record, verifies the loopback listener's identity and
   proof before sending the operator credential, then creates the existing
   device-pairing offer and prints its expiry, short manual pairing code, plaintext
-  `station-pairing:v1:` payload, and terminal QR. A loopback offer is explicitly
+  `station-pairing:v1:` payload, and terminal QR. `--client-channel` selects the
+  Stable (default) or Nightly app link independently of the host channel. Beta
+  and other unsupported client channels are refused before local identity or
+  network work, including with `--payload-only`, which prints only the raw offer.
+  A loopback offer is explicitly
   not reachable from a phone; it does not guess or advertise a LAN address.
   Under a [managed policy](../guides/managed-policy.md#network-exposure)
   without `remote` clients, `--tailscale` is refused before any `tailscale`
@@ -3835,7 +3840,9 @@ check, and no stored connection counts as ready while it stands.
 Run from a prebuilt server archive, doctor reports the Node.js the archive
 ships (`Node.js — v24.x (bundled: <archive>/runtime/...)`, a warn when some
 other Node.js is running it) and a `Prebuilt archive` line with the release
-ref, sha, ring, channel and lifecycle-state directory. It skips the npm, tsx,
+version, sha, ring, channel and lifecycle-state directory. Schema-3 provenance
+binds that version and source SHA without an origin tag; schema-2 archives
+retain their exact-ref validation. It skips the npm, tsx,
 Rust and `@kontourai/*` pin checks and the toolchain fix commands: an archive
 cannot build itself and ships no source manifest.
 
@@ -4137,6 +4144,17 @@ provenance (`fullSha`, `shortSha`, `branch`, `builtAt`, `ageSeconds`,
 `instanceId`, `bootId`, `channel`, and `dirty`), redacted app configuration,
 and up to 256 KiB from the end of the current server log. Build provenance is
 additive within schema version 1 and omitted only when none is available.
+`sessionReadModel` (additive, #4992) carries per-purpose totals of session
+read model reads since the server process first read it: `since`,
+`observedAt`, and `byPurpose`, keyed by the caller's declared purpose (a
+closed vocabulary such as `session-list`, `sse-snapshot` or `attention`), with
+`reads`, `threadScopedReads`, `totalMs`/`maxTotalMs`, `buildMs`/`maxBuildMs`
+(the synchronous fold), `threadsConsidered`, and the event store cache's
+`projectionRefolded`/`projectionReused` and `countRefreshed`/`countReused`
+thread counts. It holds counts and durations only, never a session, user or
+thread identity. The same numbers are exported as the
+`station.orchestration.session_read_model.reads`, `.duration` and `.threads`
+OpenTelemetry metrics.
 When logging is not enabled,
 the payload explicitly contains:
 

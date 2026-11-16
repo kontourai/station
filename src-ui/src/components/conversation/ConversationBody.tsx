@@ -44,6 +44,7 @@ import { useScopedProjectChatDefaultsQuery } from '../../contexts/ProjectsContex
 import { useWorkObservation } from '../../contexts/work-observation';
 import { BoundBrowserActivityProvider } from '../../float-over-chat/BoundBrowserActivityProvider';
 import { resyncOrchestrationEventStream } from '../../hooks/orchestration/ensureOrchestrationEventStream';
+import { useStreamCatchingUp } from '../../hooks/orchestration/heldDuringCatchUp';
 import { unansweredApprovalRequests } from '../../hooks/orchestration/pendingRequestRows';
 import {
   drainQueuedMessageOnTurnCompleted,
@@ -788,6 +789,7 @@ function LiveConversationBody({
     target?.focus();
     return Boolean(target && document.activeElement === target);
   }, [chatInput.textareaRef]);
+  const streamCatchingUp = useStreamCatchingUp(apiBase);
   // Live chat status shares the composer rail; replay keeps its recorded rows.
   const { pill: statusPill, statusInPill } = useChatStatusPill({
     activeSession,
@@ -799,6 +801,7 @@ function LiveConversationBody({
     resyncPending,
     onResync: resyncConversation,
     onRecoveryFocus: focusRecoveredComposer,
+    catchingUp: streamCatchingUp,
   });
   /*
    * One transitional state for the whole conversation, from the two things
@@ -2529,18 +2532,6 @@ function LiveConversationBody({
         session={activeSession}
         summary={activeOrchestrationSession}
       />
-      {/* What an agent scheduled here: check-backs and job proposals. */}
-      {activeSession.conversationId &&
-      !activeSession.replay &&
-      (!station || station.routeKind === 'host') ? (
-        <AgentScheduleNotes
-          conversationId={activeSession.conversationId}
-          refreshKey={agentScheduleRefreshKey(
-            activeSession.conversationActivity?.openTurn?.turnId,
-            activeSession.streamingMessage?.contentParts,
-          )}
-        />
-      ) : null}
       {/* Commands an agent asked to run here, each waiting for its own Run. */}
       {activeSession.conversationId &&
       !activeSession.replay &&
@@ -2880,7 +2871,22 @@ function LiveConversationBody({
             />
           )}
           <ConversationComposer
-            activity={statusPill}
+            activity={
+              <>
+                {activeSession.conversationId &&
+                !activeSession.replay &&
+                (!station || station.routeKind === 'host') ? (
+                  <AgentScheduleNotes
+                    conversationId={activeSession.conversationId}
+                    refreshKey={agentScheduleRefreshKey(
+                      activeSession.conversationActivity?.openTurn?.turnId,
+                      activeSession.streamingMessage?.contentParts,
+                    )}
+                  />
+                ) : null}
+                {statusPill}
+              </>
+            }
             contextMeter={
               showContextMeter && activeSession.conversationId ? (
                 <ContextPercentage

@@ -108,7 +108,7 @@ const APPENDED_CONSOLE_LINE = /\nBrowser errors: \[.*\]$/;
  *   `Browser errors: [...]` (console output carries bundle hashes and ports
  *   that differ between any two builds, and never fails a screen on its own);
  *   the same text anywhere else is kept, so an error whose own message
- *   embeds console output (telemetry-feedback-mobile's) is never excused.
+ *   embeds console output is never excused.
  *   A message whose own last line is `Browser errors: [...]` cannot be told
  *   from the appended one; no current message ends that way;
  * - in a Playwright `Call log:`, every line after the first entry (retry

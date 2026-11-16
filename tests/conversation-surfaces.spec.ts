@@ -411,14 +411,12 @@ test('attached record fixture requires consent and opens the owned child in the 
   await detail
     .getByRole('textbox', { name: 'Message', exact: true })
     .fill('Continue this exact draft.');
+  expect(commands).toEqual([]);
+  // One action, no confirmation: Continue adopts and carries the draft.
   await detail
     .getByRole('button', { name: 'Continue in Station', exact: true })
     .click();
-  await expect(
-    page.getByRole('dialog', { name: 'Continue here?' }),
-  ).toBeVisible();
-  expect(commands).toEqual([]);
-  await page.getByRole('button', { name: 'Continue and send' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect.poll(() => commands).toEqual(['adoptSession']);
   await expect(
     page

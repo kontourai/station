@@ -5,6 +5,7 @@ import React, { lazy } from 'react';
 import ReactDOM from 'react-dom/client';
 import { buildInfo } from './build-info';
 import { BrandingThemeBridge } from './components/BrandingThemeBridge';
+import { CustomAppearanceBridge } from './components/CustomAppearanceBridge';
 import { LazyBoundary } from './components/LazyBoundary';
 import { SkeletonBlock } from './components/state';
 import { AccountPreferencesProvider } from './contexts/AccountPreferencesProvider';
@@ -90,6 +91,7 @@ import {
   bindColorThemeToSettings,
   renderWhenColorThemeSettled,
 } from './lib/color-theme-apply';
+import { applyCachedCustomAppearance } from './lib/custom-appearance/controller';
 import {
   deviceSettingsStore,
   resolveBootAccentColor,
@@ -280,6 +282,11 @@ if (_bootBrandingTheme)
 // device settings now (startup-theme.js already stamped them before first
 // paint), account preferences once they bind. See lib/color-theme-apply.ts.
 bindColorThemeToSettings(document.documentElement, deviceSettingsStore);
+// The person's custom appearance (palette and sanitized CSS), from the copy
+// this browser last applied, so a reload does not flash Station's look first.
+// CustomAppearanceBridge replaces it with the server's answer. Skipped in a
+// tab opened with ?appearance=safe. See lib/custom-appearance/controller.ts.
+applyCachedCustomAppearance();
 
 function renderApp(): void {
   // A notification link loaded cold names its Station: hold its conversation
@@ -386,6 +393,7 @@ function renderApp(): void {
                                                           <RegionModelProvider>
                                                             <PaneRelationsProvider>
                                                               <BrandingThemeBridge />
+                                                              <CustomAppearanceBridge />
                                                               <WorkClaimsProvider>
                                                                 <ConversationWorkStateProvider>
                                                                   <InboxDismissUndo>

@@ -86,6 +86,9 @@ export const STATION_HOME_ROOTS: Readonly<
   engines: 'external',
   environments: 'state',
   feedback: 'state',
+  // Finished alerts held, being written or recently released; a restart
+  // replays them so none is lost or sent twice.
+  'finished-alert-episodes.json': 'state',
   imports: 'state',
   integrations: 'state',
   kits: 'state',
@@ -117,8 +120,14 @@ export const STATION_HOME_ROOTS: Readonly<
   projects: 'state',
   prompts: 'state',
   'proposed-changes.json': 'state',
+  // Pull request agent feedback: claims, observations and deliveries.
+  'pull-request-feedback': 'state',
   'pull-request-guides': 'state',
   // Durable receipts are state; nested working copies are external below.
+  // Remote task engine connections and the stored messages of their tasks
+  // (docs/decisions/remote-task-engines.md); the vendor token is in
+  // `security/`, not here.
+  'remote-task-engines': 'state',
   'repository-acquisitions': 'state',
   runtime: 'state',
   'runtime-auth-health.json': 'state',
@@ -293,6 +302,8 @@ export const STATION_HOME_SQLITE_STORES: readonly (readonly string[])[] =
     // #4508: Task tracker follow-ups. Created at the first poll with the
     // preview on.
     ['task-follow-ups', 'task-follow-ups.sqlite'],
+    // Pull request agent feedback. Created at the first switch turned on.
+    ['pull-request-feedback', 'pull-request-feedback.sqlite'],
     ['authentication', 'application-sessions.sqlite'],
     ['authentication', 'local-accounts.sqlite'],
     ['authentication', 'local-account-authority.sqlite'],

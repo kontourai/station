@@ -349,6 +349,12 @@ export {
   useTerminalProcessQuery,
 } from './query-domains/chatRuntime';
 export {
+  type CustomAppearanceAction,
+  customAppearanceKey,
+  useCustomAppearanceMutation,
+  useCustomAppearanceQuery,
+} from './query-domains/customAppearance';
+export {
   fetchPairedDevices,
   pairedDeviceQueries,
   usePairedDevicesQuery,
@@ -682,14 +688,17 @@ export {
 export {
   type CreateSshEnvironmentInput,
   fetchOpenSshHosts,
+  fetchRemoteSessionHistory,
   fetchRemoteSessions,
   fetchSshEnvironments,
   type OpenSshDiscoveryResult,
   type RemoteEnvironmentAuthenticationRequired,
   type RemoteEnvironmentSessions,
   type RemoteEnvironmentUnavailable,
+  type RemoteSessionHistoryPage,
   type RemoteSessionsResult,
   type ResolvedOpenSshHost,
+  readRemoteSessionHistoryCapability,
   type SshEnvironmentLaunchMode,
   type SshEnvironmentProfile,
   type SshEnvironmentState,
@@ -813,6 +822,7 @@ export {
   fetchTask,
   fetchTaskClaim,
   fetchTaskGraph,
+  fetchTaskPullRequestFacts,
   fetchTasks,
   fetchTaskTurnReferences,
   fetchTaskUserInputReferences,
@@ -844,6 +854,7 @@ export {
   useSessionRelationsQuery,
   useTaskClaimQuery,
   useTaskGraphQuery,
+  useTaskPullRequestFactsQuery,
   useTaskQuery,
   useTasksQuery,
   useTaskTurnReferencesQuery,

@@ -1,0 +1,17 @@
+{
+  "revision": "4632a686ad02e3eface00296e3fa5bc66c187df1",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"testing.md changed only in the idle-weight paragraph (the run also fails when the fixture CLAUDE.md or AGENTS.md misses the first request). None of the citing pages describes station-weight's gate, so their routing and policy claims are unaffected.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"testing.md changed only in the idle-weight paragraph (the run also fails when the fixture CLAUDE.md or AGENTS.md misses the first request). None of the citing pages describes station-weight's gate, so their routing and policy claims are unaffected.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"testing.md changed only in the idle-weight paragraph (the run also fails when the fixture CLAUDE.md or AGENTS.md misses the first request). None of the citing pages describes station-weight's gate, so their routing and policy claims are unaffected.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"testing.md changed only in the idle-weight paragraph (the run also fails when the fixture CLAUDE.md or AGENTS.md misses the first request). None of the citing pages describes station-weight's gate, so their routing and policy claims are unaffected.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"testing.md changed only in the idle-weight paragraph (the run also fails when the fixture CLAUDE.md or AGENTS.md misses the first request). None of the citing pages describes station-weight's gate, so their routing and policy claims are unaffected.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"testing.md changed only in the idle-weight paragraph (the run also fails when the fixture CLAUDE.md or AGENTS.md misses the first request). None of the citing pages describes station-weight's gate, so their routing and policy claims are unaffected.","inputs":["docs/guides/testing.md"]}
+  ]
+}

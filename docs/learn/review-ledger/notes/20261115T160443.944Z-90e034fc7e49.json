@@ -1,0 +1,7 @@
+{
+  "revision": "52ed0aa6aabf748c9ee05e71166d5643f077e086",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Added the third ciao patch correction (no import-time source-map-support/register) and linked the new installed-package test ciao-stack-trace.test.ts; checked the patch hunk and the test, and the surrounding lifecycle claims are unchanged.","inputs":["docs/guides/connections.md"]}
+  ]
+}

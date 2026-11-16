@@ -17,6 +17,7 @@ import type {
   CredentialProfileApplicationCapability,
   CredentialProfileApplicationProjection,
   CredentialRecoveryGroupProjection,
+  UsageLimitContinueOnProfile,
 } from '@kontourai/station-contracts/connection-recovery';
 import { resolveCredentialProfileApplicationCapability } from '@kontourai/station-contracts/connection-recovery';
 import type { FleetContributionManifest } from '@kontourai/station-contracts/fleet-contribution';
@@ -219,6 +220,12 @@ class InventorySiblingAbort extends Error {
       cause,
     });
   }
+}
+
+/** What a runtime inventory read may start; both default to included. */
+interface RuntimeConnectionInspectionOptions {
+  includeModelCatalog?: boolean;
+  includeCommands?: boolean;
 }
 
 interface ModelCatalogCacheEntry {
@@ -636,7 +643,18 @@ export class ConnectionService {
     resolveConnectionId: (provider: string) => string | undefined,
   ): CredentialProfileRecoveryAdapter {
     return {
-      stage: async ({ provider, failure, recoveryFingerprint }) => {
+      listContinueOnProfiles: async (provider) => {
+        const connectionId = resolveConnectionId(provider);
+        return connectionId
+          ? this.listUsageLimitContinueOnProfiles(connectionId)
+          : [];
+      },
+      stage: async ({
+        provider,
+        failure,
+        recoveryFingerprint,
+        consentedProfileRef,
+      }) => {
         const connectionId = resolveConnectionId(provider);
         if (!connectionId) return { kind: 'unavailable' };
         try {
@@ -645,6 +663,7 @@ export class ConnectionService {
               connectionId,
               failure,
               recoveryFingerprint as ReturnType<typeof randomUUID>,
+              consentedProfileRef,
             );
           const attempt = rawAttempt
             ? Object.freeze({
@@ -1258,19 +1277,29 @@ export class ConnectionService {
    * route too, so the reason travels with it rather than being lost one seam
    * away from where it is rendered.
    */
-  async listRuntimeConnectionInventory(): Promise<{
+  async listRuntimeConnectionInventory(
+    options: RuntimeConnectionInspectionOptions = {},
+  ): Promise<{
     connections: AgentConnectionView[];
     failures: ConnectionInventoryFailure[];
   }> {
     const inventoryPromise = this.listModelConnectionInventory();
     const connections = await this.listRuntimeConnectionsForModels(
       inventoryPromise.then((inventory) => inventory.connections),
+      options,
     );
     return { connections, failures: (await inventoryPromise).failures };
   }
 
-  async listRuntimeConnections(): Promise<AgentConnectionView[]> {
-    return (await this.listRuntimeConnectionInventory()).connections;
+  /**
+   * Every caller gets live model discovery and commands unless it opts out;
+   * the built-in agent binding opts out of both because it reads only
+   * status, capabilities and identity, and either can start an engine.
+   */
+  async listRuntimeConnections(
+    options: RuntimeConnectionInspectionOptions = {},
+  ): Promise<AgentConnectionView[]> {
+    return (await this.listRuntimeConnectionInventory(options)).connections;
   }
 
   /**
@@ -1424,6 +1453,7 @@ export class ConnectionService {
       signal?: AbortSignal;
       concurrency?: number;
       includeCommands?: boolean;
+      includeModelCatalog?: boolean;
       includePrerequisites?: boolean;
       disableHostDiscovery?: boolean;
       allowBuiltInOnDiscoveryFailure?: boolean;
@@ -1456,6 +1486,7 @@ export class ConnectionService {
       signal: options.signal,
       concurrency: options.concurrency,
       includeCommands: options.includeCommands,
+      includeModelCatalog: options.includeModelCatalog,
       includePrerequisites: options.includePrerequisites,
       disableHostDiscovery:
         options.disableHostDiscovery ??
@@ -2618,6 +2649,8 @@ export class ConnectionService {
     connectionId: string,
     failure: ClassifiedConnectionFailure,
     attemptId: ReturnType<typeof randomUUID> = randomUUID(),
+    /** A person's "Continue on <label>": stage exactly this profile. */
+    consentedProfileRef?: string,
   ): Promise<CredentialProfileApplicationAttempt | undefined> {
     return this.withCredentialApplicationLock(connectionId, async () => {
       const capability = this.credentialRecoveryCapability(connectionId);
@@ -2636,6 +2669,7 @@ export class ConnectionService {
         failure,
         capability,
         attemptId,
+        consentedProfileRef,
       );
       if (result.attempt) return result.attempt;
       credentialProfileApplication.add(1, {
@@ -2654,8 +2688,18 @@ export class ConnectionService {
     failure: ClassifiedConnectionFailure,
     capability: CredentialProfileApplicationCapability,
     attemptId: ReturnType<typeof randomUUID>,
+    consentedProfileRef?: string,
   ): Promise<AutomaticCredentialProfileStageResult> {
     const state = await this.readCredentialRecoveryState(connectionId);
+    if (consentedProfileRef !== undefined)
+      return this.stageConsentedCredentialProfileTransition(
+        connectionId,
+        failure,
+        capability,
+        attemptId,
+        state,
+        consentedProfileRef,
+      );
     const candidates = (state.group?.enrolledProfileRefs ?? []).filter(
       (ref) => ref !== state.activeProfileRef,
     );
@@ -2774,6 +2818,90 @@ export class ConnectionService {
       application.pendingProfileRef === attempt.candidateProfileRef
       ? { attempt }
       : { refusalReason: 'conflict' };
+  }
+
+  /**
+   * A person's "Continue on <label>" on a usage-limit stop: the one profile
+   * they chose, through the same selector as automatic recovery with only the
+   * `automatic` opt-in replaced by their consent. No allowance ranking: the
+   * person picked the account.
+   */
+  private async stageConsentedCredentialProfileTransition(
+    connectionId: string,
+    failure: ClassifiedConnectionFailure,
+    capability: CredentialProfileApplicationCapability,
+    attemptId: ReturnType<typeof randomUUID>,
+    state: LegacyCredentialProfileRegistryState,
+    candidateProfileRef: string,
+  ): Promise<AutomaticCredentialProfileStageResult> {
+    const selection = selectCredentialRecoveryCandidate({
+      capability:
+        this.credentialRecoveryAdapter(connectionId)?.metadata.recovery,
+      failure,
+      policy: state.policy,
+      group: state.group,
+      activeProfileRef: state.activeProfileRef,
+      candidateProfileRef,
+      profiles: state.profiles,
+      consented: true,
+    });
+    if (selection.outcome !== 'selected')
+      return { refusalReason: selection.reason };
+    const attempt: CredentialProfileApplicationAttempt = {
+      connectionId,
+      attemptId,
+      candidateProfileRef: selection.candidateProfileRef,
+      capability,
+    };
+    const application = await this.stageCredentialProfileApplicationUnlocked(
+      connectionId,
+      attempt,
+    );
+    return application.outcome === 'staged' &&
+      application.pendingProfileRef === attempt.candidateProfileRef
+      ? { attempt }
+      : { refusalReason: 'conflict' };
+  }
+
+  /**
+   * The profiles a usage-limit stop on this connection may be continued on:
+   * enrolled, not active, and selectable with the person's consent for an
+   * account-scoped limit. Empty when the connection cannot switch profiles.
+   */
+  async listUsageLimitContinueOnProfiles(
+    connectionId: string,
+  ): Promise<UsageLimitContinueOnProfile[]> {
+    const capability = this.credentialRecoveryCapability(connectionId);
+    // Staging only applies `restart_resume` (see the automatic path).
+    if (capability !== 'restart_resume') return [];
+    const state = await this.readCredentialRecoveryState(connectionId);
+    const adapter = this.credentialRecoveryAdapter(connectionId);
+    const failure: ClassifiedConnectionFailure = {
+      kind: 'rate-limit',
+      scope: 'account',
+      timing: {},
+      usageLimit: true,
+    };
+    return (state.group?.enrolledProfileRefs ?? [])
+      .filter(
+        (ref) =>
+          selectCredentialRecoveryCandidate({
+            capability: adapter?.metadata.recovery,
+            failure,
+            policy: state.policy,
+            group: state.group,
+            activeProfileRef: state.activeProfileRef,
+            candidateProfileRef: ref,
+            profiles: state.profiles,
+            consented: true,
+          }).outcome === 'selected',
+      )
+      .map((ref) => {
+        const label = state.profiles.find(
+          (profile) => profile.ref === ref,
+        )?.label;
+        return label ? { ref, label } : { ref };
+      });
   }
 
   async commitCredentialProfileApplication(

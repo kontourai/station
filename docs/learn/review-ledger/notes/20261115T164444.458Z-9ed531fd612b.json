@@ -1,0 +1,7 @@
+{
+  "revision": "940be3079c4399a864e8e2ec18ab76ffc8a99af8",
+
+  "notes": [
+    {"path":"docs/guides/web-push-notifications.md","note":"Focus paragraph: per-session focus for session-targeted done/info records traced to policy.ts watchesNotification and FocusPresence.snapshot; [] for no chat and older-host 400 fallback traced to focusReporter.ts. Evidence: policy, notification-delivery-focus and useFocusReporter tests. Browser push delivery itself not re-verified.","inputs":["docs/guides/web-push-notifications.md","src-server/services/notifications/delivery/policy.ts"]}
+  ]
+}

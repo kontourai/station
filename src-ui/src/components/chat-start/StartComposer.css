@@ -592,3 +592,11 @@
   container-type: inline-size;
   --composer-label-collapse: 310px;
 }
+/* A Station that cannot take work now: listed, greyed, with its reason. */
+.start-menu__list .start-menu__station--unavailable {
+  color: var(--k-text-muted);
+}
+.start-menu__list .start-menu__station--unavailable:disabled {
+  background: transparent;
+  cursor: not-allowed;
+}

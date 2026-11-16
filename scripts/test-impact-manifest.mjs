@@ -9,6 +9,7 @@ import {
 } from './lib/dependency-change-scan.mjs';
 import {
   invertPathReadPins,
+  scanNativeLiteralPins,
   scanPathReadPins,
 } from './lib/path-read-pin-scan.mjs';
 import { spawnedScriptDependents } from './lib/spawned-script-scan.mjs';
@@ -722,6 +723,12 @@ export const UNMODELLED_INPUT_EDGES = Object.freeze([
       'examples/smart-routing/**',
       'src-server/routes/__tests__/smart-routing-plugin.test.ts',
     ],
+    // Pins the tap-retry calls and the bounded alert wait in the XCUITest
+    // source by text; a rename there (#4891) otherwise reaches main unseen.
+    [
+      'tests/ios-runtime-smoke/StationRuntimeSmokeTests.swift',
+      'scripts/__tests__/ios-simulator-runtime-smoke.test.ts',
+    ],
   ].map(([pattern, test]) =>
     Object.freeze({
       pattern,
@@ -796,6 +803,43 @@ const COMPOSITION_EDGES = Object.freeze([
       'Agent audience enforcement through the production route composition; ' +
       'kept explicit so an escalated diff still runs its caller suite (#3149)',
   }),
+  // The seed must decide every root this registry declares. The suite imports
+  // the registry, but `packages/shared/` escalates and an escalated diff
+  // drops related discovery: #4935 and #4999 each added a root and reached
+  // main with the suite failing.
+  Object.freeze({
+    pattern: 'packages/shared/src/station-home-store-registry.ts',
+    supplemental: true,
+    tests: Object.freeze(['scripts/__tests__/seed-dev-home.test.ts']),
+    reason:
+      'the dev-home seed decides every root this registry declares; ' +
+      'kept explicit so an escalated diff still runs it (#3149)',
+  }),
+  // These suites boot the server entry point as a child process and assert
+  // the status it exits with, and the line it prints, when it refuses to
+  // start. #4752 changed that status in the first two files below and two of
+  // the suites failed first on main; the rest are the modules that raise
+  // the refusals, which none of the suites imports.
+  ...[
+    'src-server/index.ts',
+    'packages/supervisor/src/protocol.ts',
+    'src-server/runtime/bootstrap/managed-policy-boot.ts',
+    'src-server/security/managed-approval-ceiling.ts',
+    'src-server/security/managed-network-exposure.ts',
+  ].map((pattern) =>
+    Object.freeze({
+      pattern,
+      supplemental: true,
+      tests: Object.freeze([
+        'src-server/__tests__/managed-approval-ceiling.process.test.ts',
+        'src-server/__tests__/managed-policy-startup.process.test.ts',
+        'src-server/__tests__/managed-remote-clients.process.test.ts',
+      ]),
+      reason:
+        'boots the server entry point as a child process and asserts its ' +
+        'startup-refused exit status; kept explicit so the diff runs it (#3149)',
+    }),
+  ),
 ]);
 
 /**
@@ -2152,6 +2196,38 @@ const UNIQUE_IMPACT_PATTERNS = Object.freeze(
  */
 const VITEST_INELIGIBLE_TEST = /^tests\//;
 
+/**
+ * Supplemental edges from a pin scan: one per pinned path, naming every
+ * schedulable pinning test (plus `alsoTests`). A pattern the validator
+ * requires to be unique gets no edge, and a spec Vitest cannot run is
+ * filtered out before the edge is built.
+ *
+ * @param {readonly { test: string, pins: readonly string[] }[]} scanned
+ * @param {{ reason: string, alsoTests: readonly string[] }} options
+ * @returns {readonly ImpactEdge[]}
+ */
+function supplementalPinEdges(scanned, { reason, alsoTests }) {
+  return Object.freeze(
+    invertPathReadPins(scanned).flatMap(({ pin, tests }) => {
+      if (UNIQUE_IMPACT_PATTERNS.has(pin)) return [];
+      const schedulable = tests.filter(
+        (test) => !VITEST_INELIGIBLE_TEST.test(test),
+      );
+      if (!schedulable.length) return [];
+      return [
+        Object.freeze({
+          pattern: pin,
+          supplemental: true,
+          tests: Object.freeze(
+            [...new Set([...schedulable, ...alsoTests])].sort(),
+          ),
+          reason,
+        }),
+      ];
+    }),
+  );
+}
+
 // Keyed by root and never invalidated within a process: the scan is a
 // snapshot of the working tree at first call. Correct for the one-shot CLI,
 // wrong for any long-lived caller that expects to see later edits.
@@ -2191,26 +2267,63 @@ export function pathReadPinEdges({ root = process.cwd(), entries } = {}) {
   const cached = cacheable ? pathReadPinEdgeCache.get(root) : undefined;
   if (cached) return cached;
   const scanned = entries ?? scanPathReadPins({ root });
-  const edges = Object.freeze(
-    invertPathReadPins(scanned).flatMap(({ pin, tests }) => {
-      if (UNIQUE_IMPACT_PATTERNS.has(pin)) return [];
-      const schedulable = tests.filter(
-        (test) => !VITEST_INELIGIBLE_TEST.test(test),
-      );
-      if (!schedulable.length) return [];
-      return [
-        Object.freeze({
-          pattern: pin,
-          supplemental: true,
-          tests: Object.freeze(
-            [...new Set([...schedulable, PATH_READ_PIN_BOUNDARY_TEST])].sort(),
-          ),
-          reason: PATH_READ_PIN_REASON,
-        }),
-      ];
-    }),
-  );
+  const edges = supplementalPinEdges(scanned, {
+    reason: PATH_READ_PIN_REASON,
+    alsoTests: [PATH_READ_PIN_BOUNDARY_TEST],
+  });
   if (cacheable) pathReadPinEdgeCache.set(root, edges);
+  return edges;
+}
+
+/**
+ * Reason recorded on every derived native-literal edge. Exported so the
+ * local selection can tell a test only these edges selected from the rest.
+ */
+export const NATIVE_LITERAL_PIN_REASON =
+  'a test names this file by a literal repository path, outside the import ' +
+  'graph, and a pull request otherwise runs nothing for it (#4891)';
+
+const nativeLiteralPinEdgeCache = new Map();
+
+/**
+ * Impact edges for native files that a scripts test names by literal path.
+ *
+ * A change under `src-desktop/**` matches a boundary edge that only names the
+ * deferred `verify-local` lane, so no test runs for it in a pull request, yet
+ * many suites assert on the text of those files (Rust, Kotlin, Swift, plists,
+ * manifests, Tauri config) through a cwd-relative literal. The path-read scan
+ * refuses such a literal by design, so these pins were unscheduled.
+ *
+ * Same contract as `pathReadPinEdges`: every edge is `supplemental`, so it
+ * only ADDS tests and never changes a path's boundary, escalation, related
+ * paths, or lanes (#1563, #1613). Derived at gate time so a deleted pin
+ * cannot linger and a new one cannot be forgotten. The same two skips apply:
+ * a pattern the validator requires to be unique gets no edge, and a test
+ * Vitest cannot run is filtered out (the scan only reads `scripts/__tests__`,
+ * so the second is a guard, not a live case).
+ *
+ * What it does not see: paths built from several segments, template literals
+ * with substitutions, and tests outside `scripts/__tests__`.
+ *
+ * @param {{
+ *   root?: string,
+ *   nativeEntries?: readonly { test: string, pins: readonly string[] }[],
+ * }} [options] `nativeEntries` substitutes a scan result, for tests.
+ * @returns {readonly ImpactEdge[]}
+ */
+export function nativeLiteralPinEdges({
+  root = process.cwd(),
+  nativeEntries,
+} = {}) {
+  const cacheable = nativeEntries === undefined;
+  const cached = cacheable ? nativeLiteralPinEdgeCache.get(root) : undefined;
+  if (cached) return cached;
+  const scanned = nativeEntries ?? scanNativeLiteralPins({ root });
+  const edges = supplementalPinEdges(scanned, {
+    reason: NATIVE_LITERAL_PIN_REASON,
+    alsoTests: [],
+  });
+  if (cacheable) nativeLiteralPinEdgeCache.set(root, edges);
   return edges;
 }
 
@@ -2416,6 +2529,7 @@ export function buildTestImpactManifest(options) {
   return Object.freeze([
     ...TEST_IMPACT_MANIFEST,
     ...pathReadPinEdges(options),
+    ...nativeLiteralPinEdges({ root: options?.root }),
     ...spawnedScriptEdges({ root: options?.root }),
   ]);
 }

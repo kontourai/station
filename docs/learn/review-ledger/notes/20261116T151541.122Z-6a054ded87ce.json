@@ -1,0 +1,9 @@
+{
+  "revision": "fcd24555a6002903911eeb5d1920046f43b0678e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Final scoped check of semantic action-list and shared placement/disclosure markup plus the exact browser assertions. The native Current session disclosure uses the existing 44px class; a DOMRect reported 43.999969 for the 44px box, so only measurement precision is normalized to 0.001px before enforcing the same floor. The genuine 41.6px placement-control failure remains below the floor and was fixed in the implementation. Stable turn/session identity, canvas continuity, source-event outcomes, access and explicit recording are unchanged. Browser consumer rendering remains separate from production Chromium/provider/native/release proof.","inputs":["docs/architecture/module-map.md","tests/inline-browser-activity.spec.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Final scoped check of semantic action-list and shared placement/disclosure markup plus the exact browser assertions. The native Current session disclosure uses the existing 44px class; a DOMRect reported 43.999969 for the 44px box, so only measurement precision is normalized to 0.001px before enforcing the same floor. The genuine 41.6px placement-control failure remains below the floor and was fixed in the implementation. Stable turn/session identity, canvas continuity, source-event outcomes, access and explicit recording are unchanged. Browser consumer rendering remains separate from production Chromium/provider/native/release proof.","inputs":["docs/guides/browser-workspace.md","tests/inline-browser-activity.spec.ts"]}
+  ]
+}

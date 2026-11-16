@@ -1,0 +1,7 @@
+{
+  "revision": "6036f8819b98102306c8ec42716273fb56faa98e",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed the finished-alert window sentence against turn-completion-notifications.ts: it now states Station's own reason for FINISHED_ALERT_CONFIRM_MS (5 s), avoiding a completion announcement between a finished turn and an immediately queued follow-up. The source change is comment-only; the 5,000 ms value and all behavior are unchanged.","inputs":["docs/design/notification-delivery.md","src-server/services/orchestration/turn-completion-notifications.ts"]}
+  ]
+}

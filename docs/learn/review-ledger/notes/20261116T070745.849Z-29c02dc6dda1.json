@@ -1,0 +1,7 @@
+{
+  "revision": "a99d98613c4e1cf6760fd15243ccf1bf426c4b94",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Checked the claims citing pre-tool-policy.ts: they describe the staged policy's place in the connection flow, which this change does not move; the new authority stage and full-access flag add asks and skip one, neither contradicted here.","inputs":["docs/guides/connections.md","src-server/runtime/agents/pre-tool-policy.ts"]}
+  ]
+}

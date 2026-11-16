@@ -1,0 +1,13 @@
+{
+  "revision": "7d561c4a94012d1dd057f65eda0865f9e4b7bd91",
+
+  "notes": [
+    {"path":"docs/guides/web-push-notifications.md","note":"#4995 names the two notification JsonFileStores for the write-bytes histogram only; storage format, durability, API and SDK behaviour are unchanged.","inputs":["src-server/services/notifications/notification-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#4995 names the two notification JsonFileStores for the write-bytes histogram only; storage format, durability, API and SDK behaviour are unchanged.","inputs":["src-server/services/notifications/notification-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"#4995 names the two notification JsonFileStores for the write-bytes histogram only; storage format, durability, API and SDK behaviour are unchanged.","inputs":["src-server/services/notifications/notification-service.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"#4995 names the two notification JsonFileStores for the write-bytes histogram only; storage format, durability, API and SDK behaviour are unchanged.","inputs":["src-server/services/notifications/notification-service.ts"]}
+  ]
+}

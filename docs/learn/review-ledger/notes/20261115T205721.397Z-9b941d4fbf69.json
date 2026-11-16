@@ -1,0 +1,7 @@
+{
+  "revision": "7d561c4a94012d1dd057f65eda0865f9e4b7bd91",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"#4995: added counter rows station.setup_requirement.probe_outcomes (outcome ready/blocked/failed, memoized reuses uncounted, warn once per error identity) and station.file_mutation_lock.orphan_temporaries (outcome removed/retained_live/failed), and histogram station.json_store.write_bytes (store notifications/principal-notifications, artifact primary/previous, By). Checked against producers in runtime-route-support.ts, runtime-startup.ts and json-store.ts.","inputs":["docs/guides/monitoring.md","src-server/telemetry/metrics.ts"]}
+  ]
+}

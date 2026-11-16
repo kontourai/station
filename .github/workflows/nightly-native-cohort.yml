@@ -62,6 +62,16 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - run: npm run dependencies:ci
+      - name: Refuse a Nightly base at or below a published RC or final
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_PRODUCT_BASE: ${{ inputs.marketing_version }}
+        run: |
+          set -euo pipefail
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '[.[][] | {tag_name, draft, prerelease}]' > "$RUNNER_TEMP/published-product-releases.json"
+          expected=()
+          if [ -n "$EXPECTED_PRODUCT_BASE" ]; then expected=(--expected-base "$EXPECTED_PRODUCT_BASE"); fi
+          node scripts/nightly-release-base.mjs --package-json package.json --release-history "$RUNNER_TEMP/published-product-releases.json" "${expected[@]}"
       - name: Admit only byte-for-byte staged assets
         run: |
           node scripts/release-cohort-workflow.mjs artifact-input artifacts.json android=station-nightly-universal.aab=cohort/cohort-android/station-nightly-universal.aab macos=latest.json=cohort/cohort-macos/latest.json macos=station-nightly-desktop-macos-aarch64.app.tar.gz=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz macos=station-nightly-desktop-macos-aarch64.app.tar.gz.sig=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz.sig macos=station-nightly-desktop-macos-aarch64.dmg=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.dmg windows=station-nightly-desktop-windows-x86_64-setup.exe=cohort/cohort-windows/station-nightly-desktop-windows-x86_64-setup.exe windows=station-nightly-desktop-windows-x86_64-setup.exe.sig=cohort/cohort-windows/station-nightly-desktop-windows-x86_64-setup.exe.sig windows=windows-build-receipt.json=cohort/cohort-windows/windows-build-receipt.json
@@ -310,6 +320,21 @@ jobs:
           node scripts/release-cohort.mjs promotion-receipt promotion-state.json windows-claim.json > promotion-windows-state.json
           node scripts/release-cohort.mjs group-desktop-states promotion-macos-state.json promotion-windows-state.json > promotion-desktop-state.pending.json
           mv promotion-desktop-state.pending.json promotion-desktop-state.json
+      # #3593: keeps the rolling release under GitHub's 1,000-asset cap. Runs
+      # only after this cohort's publication is read back and its claims are
+      # recorded, and always prints its plan; it deletes only when
+      # vars.STATION_NIGHTLY_DESKTOP_PRUNE is exactly `enabled` (a native-release
+      # environment variable of that name wins over the repository's). Its
+      # failure is a warning, never this publication's outcome; its timeout is
+      # kept small because it counts against the job's 60 minutes.
+      - name: Prune versioned desktop downloads past the retention window
+        if: ${{ steps.publisher.outputs.desktop_needed == 'true' && steps.macos_provider_state.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STATION_NIGHTLY_DESKTOP_PRUNE: ${{ vars.STATION_NIGHTLY_DESKTOP_PRUNE }}
+        run: node scripts/retain-nightly-desktop-assets.mjs cohort/cohort-plan.json
       - name: Record unknown macOS provider state for disclosure
         if: ${{ always() && steps.macos_provider_state.outcome != 'success' }}
         run: |

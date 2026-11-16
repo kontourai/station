@@ -1,0 +1,7 @@
+{
+  "revision": "da3f9ba9df04737bc6151d7943da623e60540231",
+
+  "notes": [
+    {"path":"docs/reference/station-weight.md","note":"Server-memory-at-rest now says the desktop sidecar passes --max-semi-space-size=16 itself rather than missing it (build_sidecar_command; supervisor CORE_EXEC_ARGV unchanged).","inputs":["docs/reference/station-weight.md","scripts/bench/station-weight-budgets.mjs"]}
+  ]
+}

@@ -39,6 +39,7 @@ import { CommandPalette } from './CommandPalette';
 import { FirstRunFlow } from './first-run/FirstRunFlow';
 import { HomeRecoveryBannerSource } from './notifications/HomeRecoveryBannerSource';
 import { NotificationStationOpener } from './notifications/NotificationStationOpener';
+import { RemoteSessionReaderHost } from './remote-session/RemoteSessionReaderHost';
 import { ReportProblemHost } from './report-problem/ReportProblemHost';
 import { SchedulerJobDialogHost } from './scheduler/SchedulerJobDialogHost';
 import { TroubleshootHost } from './troubleshoot/TroubleshootHost';
@@ -88,6 +89,7 @@ export default function DeferredAppOverlays() {
       <ReportProblemHost />
       <TroubleshootHost />
       <SchedulerJobDialogHost />
+      <RemoteSessionReaderHost />
       <HomeRecoveryBannerSource />
       <TrayNavigationListener />
       <NotificationStationOpener />

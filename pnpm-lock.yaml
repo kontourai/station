@@ -59,7 +59,7 @@ overrides:
   cacache@21: ^21.0.2
 
 patchedDependencies:
-  '@homebridge/ciao@1.3.12': 390b9ac129555770dde11639b296eb66e06d0fead511348ded161e88e09e967d
+  '@homebridge/ciao@1.3.12': e64290ee64e181207ab90e416cad6921794c9ececaf663aa5f777842e1278ab0
   '@modelcontextprotocol/client@2.4.0': 2501897259233d420cf716d5490c38a87df5ff9f02de1d06587e74fc08bb0835
   '@vitest/runner@4.1.12': 9b6cf6c4e3aaefd7dc627ae0896ea8ad7c958d3752915f84b9963e898ce0c00a
   '@voltagent/core@2.10.0': 8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a
@@ -120,7 +120,7 @@ importers:
         version: 4.14.0
       '@homebridge/ciao':
         specifier: 1.3.12
-        version: 1.3.12(patch_hash=390b9ac129555770dde11639b296eb66e06d0fead511348ded161e88e09e967d)(supports-color@7.2.0)
+        version: 1.3.12(patch_hash=e64290ee64e181207ab90e416cad6921794c9ececaf663aa5f777842e1278ab0)(supports-color@7.2.0)
       '@hono/node-server':
         specifier: ^2.1.7
         version: 2.1.7(hono@4.13.17)
@@ -185,13 +185,13 @@ importers:
         specifier: ^0.5.1
         version: link:packages/connect
       '@kontourai/station-contracts':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:packages/contracts
       '@kontourai/station-sdk':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:packages/sdk
       '@kontourai/station-shared':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:packages/shared
       '@kontourai/surface':
         specifier: 6.3.0
@@ -631,7 +631,7 @@ importers:
         specifier: 0.15.0
         version: 0.15.0(@ai-sdk/provider@3.0.19)(@anthropic-ai/sdk@0.122.0(zod@4.6.7))(@kontourai/bearing@0.2.0(playwright@1.65.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.96)(@smithy/signature-v4@5.7.5)(ws@8.22.2)(zod@4.6.7))(playwright@1.65.0)(supports-color@7.2.0)(typescript@7.0.2)
       '@kontourai/station-sdk':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:../../packages/sdk
     devDependencies:
       '@tanstack/react-query':
@@ -683,10 +683,10 @@ importers:
   packages/basis-pane:
     dependencies:
       '@kontourai/station-contracts':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:../contracts
       '@kontourai/station-sdk':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:../sdk
       '@kontourai/surface':
         specifier: ^6.3.0
@@ -729,10 +729,10 @@ importers:
         specifier: ^0.3.0
         version: 0.3.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@kontourai/station-contracts':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:../contracts
       '@kontourai/station-sdk':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:../sdk
       '@kontourai/ui':
         specifier: ^1.19.0
@@ -767,13 +767,13 @@ importers:
         specifier: ^0.5.1
         version: link:../connect
       '@kontourai/station-contracts':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:../contracts
       '@kontourai/station-sdk':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:../sdk
       '@kontourai/station-shared':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:../shared
       commander:
         specifier: ^15.1.0
@@ -791,10 +791,10 @@ importers:
   packages/connect:
     dependencies:
       '@kontourai/station-contracts':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:../contracts
       '@kontourai/station-shared':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:../shared
       jsqr:
         specifier: ^1.4.0
@@ -860,10 +860,10 @@ importers:
         specifier: 11.0.0
         version: 11.0.0(@ai-sdk/provider@3.0.19)(@kontourai/bearing@0.2.0(playwright@1.65.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.96)(@smithy/signature-v4@5.7.5)(ws@8.22.2)(zod@4.6.7))(playwright@1.65.0)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.7)
       '@kontourai/station-contracts':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:../contracts
       '@kontourai/station-shared':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:../shared
       '@kontourai/surface':
         specifier: ^6.3.0
@@ -900,7 +900,7 @@ importers:
   packages/shared:
     dependencies:
       '@kontourai/station-contracts':
-        specifier: ^0.13.0
+        specifier: ^0.14.0
         version: link:../contracts
       '@kontourai/thread':
         specifier: 0.7.0
@@ -10313,7 +10313,7 @@ snapshots:
 
   '@hexagon/base64@1.1.28': {}
 
-  '@homebridge/ciao@1.3.12(patch_hash=390b9ac129555770dde11639b296eb66e06d0fead511348ded161e88e09e967d)(supports-color@7.2.0)':
+  '@homebridge/ciao@1.3.12(patch_hash=e64290ee64e181207ab90e416cad6921794c9ececaf663aa5f777842e1278ab0)(supports-color@7.2.0)':
     dependencies:
       debug: 4.4.3(supports-color@7.2.0)
       fast-deep-equal: 3.1.3

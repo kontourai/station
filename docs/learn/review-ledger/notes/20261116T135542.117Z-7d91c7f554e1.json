@@ -1,0 +1,7 @@
+{
+  "revision": "02f1beee3aaaa45bf91e05a0109e283dbaa053d9",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Runs-on picker: an SSH environment in the error phase is no longer disabled; it stays choosable with notice 'Disconnected · reconnects when used' (ExecutionStation.notice), because dispatch reconnects SSH. Paired-Station greying unchanged. Checked against useExecutionStationCatalog.ts, StartMenus.tsx and StartStationControl.test.tsx (25 passing; restoring the old greying fails the new test); rendered at 1440 and 390 px.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-start/StartMenus.tsx","src-ui/src/components/chat-start/__tests__/StartStationControl.test.tsx","src-ui/src/hooks/useExecutionStationCatalog.ts"]}
+  ]
+}

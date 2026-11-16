@@ -1,0 +1,21 @@
+{
+  "revision": "393ff5c1e280e54ee083c45a7712d464c4089418",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Second fix round: a consented recovery that reports readiness unavailable re-arms the stop's own reset instead of an unattended admission retry. Reset/auto-resume claims on citing pages unchanged. Executed coordinator tests incl. fault injection.","inputs":["src-server/services/orchestration/session-recovery-coordinator.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Second fix round: a consented recovery that reports readiness unavailable re-arms the stop's own reset instead of an unattended admission retry. Reset/auto-resume claims on citing pages unchanged. Executed coordinator tests incl. fault injection.","inputs":["src-server/services/orchestration/session-recovery-coordinator.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Second fix round: a consented recovery that reports readiness unavailable re-arms the stop's own reset instead of an unattended admission retry. Reset/auto-resume claims on citing pages unchanged. Executed coordinator tests incl. fault injection.","inputs":["src-server/services/orchestration/session-recovery-coordinator.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Second fix round: doc comment on UsageLimitContinueOnOptions now lists blocked admission; no shape change.","inputs":["packages/contracts/src/connection-recovery.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Second fix round: doc comment on UsageLimitContinueOnOptions now lists blocked admission; no shape change.","inputs":["packages/contracts/src/connection-recovery.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Second fix round: doc comment on UsageLimitContinueOnOptions now lists blocked admission; no shape change.","inputs":["packages/contracts/src/connection-recovery.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Second fix round: doc comment on UsageLimitContinueOnOptions now lists blocked admission; no shape change.","inputs":["packages/contracts/src/connection-recovery.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Second fix round: doc comment on UsageLimitContinueOnOptions now lists blocked admission; no shape change.","inputs":["packages/contracts/src/connection-recovery.ts"]}
+  ]
+}

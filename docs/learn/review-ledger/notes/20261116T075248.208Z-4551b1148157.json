@@ -1,0 +1,7 @@
+{
+  "revision": "5cfa1f33214feca9e7654dafc90069bba32f1477",
+
+  "notes": [
+    {"path":"docs/learn/media/agent-efficiency-usage.png","note":"Wording drift (still pending recapture): the frame predates the current UsageRollupPanel copy, which now reads 'Reported usage and estimates are shown separately. A dash (—) means not reported.'. The frame still shows the same panel and controls; only explainer wording differs. Not recaptured here.","inputs":["docs/learn/media/agent-efficiency-usage.png","src-ui/src/components/usage-stats/UsageRollupPanel.tsx"]}
+  ]
+}

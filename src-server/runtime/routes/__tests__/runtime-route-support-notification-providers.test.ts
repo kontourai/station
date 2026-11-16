@@ -62,6 +62,10 @@ const {
   '../../../services/orchestration/orchestration-stream-presence.js'
 );
 
+const { FINISHED_ALERT_CONFIRM_MS } = await import(
+  '../../../services/orchestration/turn-completion-notifications.js'
+);
+
 const makeTempDir = trackTempDirs();
 const shutdowns: Array<() => Promise<unknown>> = [];
 
@@ -108,6 +112,8 @@ function withStubFallback<T extends object>(members: T): T {
 }
 
 test('a turn completion is recorded while its owner holds a live /events stream', async () => {
+  // The record is written after the finish's confirmation window.
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   // The live-Station regression: a desktop app idling in the tray keeps its
   // orchestration stream open, and the old "owner is connected" gate then
   // recorded no completion at all, so no surface was ever notified. Whether
@@ -126,6 +132,9 @@ test('a turn completion is recorded while its owner holds a live /events stream'
       isEphemeralSession: () => false,
       resolveSessionPresenceSubject: () => owner,
       consumeInternalStopSuppression: () => false,
+      // The real service's finished-alert facts: nothing holds this one.
+      readFinishedAlertHold: (): string[] => [],
+      isDelegatedChildSession: () => false,
     }),
   });
   const services = configureRuntimeSupportServices(context as never, stub(), {
@@ -147,10 +156,19 @@ test('a turn completion is recorded while its owner holds a live /events stream'
       event: { ...event, method: 'turn.completed', finishReason: 'stop' },
     });
     await services.notificationService.drainAsyncDispatch();
+    const turnRecords = async () =>
+      (await services.notificationService.list()).filter(
+        (notification) => notification.source === 'turn-completion',
+      );
+    expect(await turnRecords()).toEqual([]);
+    // Still inside the window: nothing yet.
+    await vi.advanceTimersByTimeAsync(FINISHED_ALERT_CONFIRM_MS - 1);
+    await services.notificationService.drainAsyncDispatch();
+    expect(await turnRecords()).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    await services.notificationService.drainAsyncDispatch();
 
-    const recorded = (await services.notificationService.list()).filter(
-      (notification) => notification.source === 'turn-completion',
-    );
+    const recorded = await turnRecords();
     expect(recorded).toEqual([
       expect.objectContaining({
         category: 'turn-completed',
@@ -167,6 +185,7 @@ test('a turn completion is recorded while its owner holds a live /events stream'
     );
   } finally {
     disconnect();
+    vi.useRealTimers();
   }
 });
 

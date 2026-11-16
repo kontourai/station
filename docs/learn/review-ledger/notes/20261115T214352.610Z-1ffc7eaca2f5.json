@@ -1,0 +1,7 @@
+{
+  "revision": "6ba7d2563eb634b289aab9c418ca0786b2e2613e",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Added Session read model readers section (#4992); names, attributes and phases checked against metrics.ts and session-read-model-measurement.ts.","inputs":["docs/guides/monitoring.md"]}
+  ]
+}

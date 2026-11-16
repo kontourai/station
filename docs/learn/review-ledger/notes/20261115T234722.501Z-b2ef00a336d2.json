@@ -1,0 +1,7 @@
+{
+  "revision": "9ab0e548e18ec874022811452c3ebd4f6c01883a",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed the 'See conversations started outside Station' OpenCode bullet against opencode-session-source.ts: it now reads OpenCode 1.x (session/message/part) and 2.x (session_v2/session_message/session_part) stores read-only, lists top-level unarchived sessions with a user message, imports settled messages only, fails closed with one warning on an unknown layout, and rejects a 1.x cursor once the store is converted to 2.x. Checked by the v1 and v2 source tests and a run against a copy of a real OpenCode 2.3.0 store. Other sections untouched.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

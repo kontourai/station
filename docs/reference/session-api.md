@@ -55,7 +55,10 @@ Provider handoffs retain the Conversation ID and append linked execution
 Sessions. Returning to a compatible built-in engine can resume its earlier
 native thread with a bounded seed of the intervening conversation, after the
 previous engine confirms retirement. Unsupported or unbound history uses
-bounded replay. An explicit fork creates a separate Conversation.
+bounded replay. An explicit fork creates a separate Conversation. A handoff
+while the current Session still has a turn running, or has not settled, is
+refused (`409`) with `code: "conversation_handoff_predecessor_busy"`
+(`CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE`).
 
 An ordinary follow-up is refused while the native return's seed-bearing turn
 has no observed completion, including a failed or uncertain turn. Acceptance of
@@ -1394,6 +1397,32 @@ Codex rollout observation reads the local `CODEX_HOME/sessions` directory
 (`~/.codex/sessions` by default) through bounded, read-only pages. It imports
 supported turn boundaries, user messages, assistant text, public reasoning
 summaries, tool activity, cumulative token snapshots, and compaction markers.
+Claude transcript discovery
+([`claude-transcript-session-source.ts`](../../src-server/providers/sessions/claude-transcript-session-source.ts))
+lists `projects/<project>/<session>.jsonl` under the Claude config home and
+keeps the 128 most recently modified transcripts. Its traversal bound (4,096
+by default) charges each folder opened and each entry statted; entries skipped
+by name cost no system call and count against a separate bound four times as
+large. Passing either bound ends the pass as `candidate_limit`, even when
+some transcripts it reached were refused. Within the
+bound, project folders are visited in order of the newer of their own
+modification time and the newest transcript the previous pass saw in them. It does not descend into a
+session's own folder: the `subagents/` transcripts there repeat the parent's
+session ID and are part of that session. Current Claude Code starts a
+transcript with title, owner and queue records that carry no working
+directory. Discovery reads at most 16 leading records and 4 MiB of each file,
+skipping any record over the line limit (a pasted image can make the first
+prompt megabytes long), to reach the first one that names both the session
+and its working directory. The session's creation time is the earliest
+timestamp among those records, normally when its first prompt was queued.
+Leading records that name different sessions, an identity past either bound,
+or a sidechain record in a session's place refuse the file. A file's result
+is reused until it is replaced, shrinks, or, for a refusal, changes size.
+When a pass finds transcripts but accepts none, the source logs one warning
+naming the outcome and counting refusals by reason, and logs again only when that outcome changes or after a
+pass accepts a session. On a home larger than the bound, a folder the
+previous pass did not reach is ranked by its own modification time only, so a
+long-running session in it can stay outside the bound.
 Every discovered transcript enters the shared follower
 ([`AttachedSessionFollowService`](../../src-server/services/orchestration/attached-session-follow-service.ts)),
 which attributes it with `resolveAttachedSessionProject`: first a Project whose
@@ -1647,9 +1676,27 @@ That home therefore also supplies the continued process's account/configuration.
 Claude continuation requires the source home to match the SDK's globally
 configured home; an independently overridden observation root is not enough.
 Without an override, observation uses `CODEX_HOME` or `CLAUDE_CONFIG_DIR`, then
-the engine's default home directory. `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT`
+the engine's default home directory. Codex observation also reads the homes
+Station runs Codex in ([`configuredEngineHomes`](../../src-server/providers/app-home/credential-profile-env.ts):
+the connection's config home, the legacy app home and every credential-profile
+home), unless `STATION_EXTERNAL_CODEX_SOURCE_ROOT` is set. Each home has its
+own source affinity and thread ids, so continuation resumes in the home the
+rollout was found in, with a credential profile's env overlay applied
+(`credentialProfileEnvForHome`; an invalid overlay refuses the continuation, and so does an app home that is no current profile's, the legacy app home or the connection's config home, such as a deleted profile's).
+A native session id present in two homes is two threads, one per home. Each
+home reads its own newest 128 rollouts, up to 512 in all, default home first.
+An affinity resolves only for a currently configured home; on a miss the home
+list is re-read once, so a continuation right after a restart does not wait
+for discovery. `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT`
 selects the folder holding OpenCode's session database for observation only;
-OpenCode sessions have no continuation. See the
+OpenCode sessions have no continuation. With
+`STATION_EXTERNAL_ACP_SESSIONS=1`, the
+[ACP session list source](../../src-server/providers/sessions/acp-session-list-source.ts)
+lists the sessions an ACP connection reports through `session/list`, read by
+the capability probe Station already runs per connection
+([`acp-session-listing.ts`](../../src-server/services/acp/acp-session-listing.ts)).
+It imports no transcript, because `session/load` resumes the session in the
+agent, and ACP declares `externalSessionContinuation: unsupported`. See the
 [Codex adapter](../../src-server/providers/adapters/codex-adapter.ts) and
 [Claude source-home check](../../src-server/providers/adapters/claude-adapter.ts).
 
@@ -2043,11 +2090,38 @@ in [contracts](contracts.md)). These routes serve the chat banner:
   A held stop keeps Resume now. Either answers `not-waiting` for a stop with
   no known reset or one no longer waiting.
 
+- `GET /sessions/:threadId/usage-limit/continue-on` answers `{ profiles }`
+  (`UsageLimitContinueOnOptions`): the enrolled credential profiles
+  (`ref`, optional `label`) a waiting stop may continue on, in enrollment
+  order. It is empty for an engine that cannot apply a profile (Claude Code),
+  a stop that is not waiting, a hosted Station, or while credential-recovery
+  admission is blocked.
+  The answer also carries `stopId`, the waiting stop the accounts are offered
+  for. `POST /sessions/:threadId/usage-limit/continue-on` with
+  `{ "profileRef", "stopId" }`
+  ("Continue on <label>") stages that profile and replays the stopped turn
+  under it, through the same protocol as automatic credential recovery, with
+  this request as the consent the `automatic` policy otherwise gives. The
+  pre-dispatch checks apply first. A `stopId` that is not the waiting stop
+  answers `not-waiting` (a click from an older banner never acts on a newer
+  stop). A profile not currently offered, one that no longer qualifies when
+  staged, or a failure before the replay reaches the engine's send (the
+  account is rolled back and the session restarted on the connection's
+  account) answers `not-switched` and leaves the stop waiting for its reset.
+  If the session cannot be restarted on the connection's account either, it is
+  quarantined and the answer is `retired` with `session-ended` (or
+  `not-waiting` if that retirement could not be written; the stop then retires
+  at its reset, when the pre-dispatch check finds the closed session).
+  A failure after the send was called answers `failed`, and the stop does not
+  resume on its own. Both list or switch this Station's accounts, so they need the
+  `access:manage` pairing scope as well as the Session's own person.
+
 Every POST answers `{ result, recovery }`: `result.kind` is `resumed` (the
 dispatch started; whether the provider accepts it shows later in `recovery`,
 which can still read `failed` if the dispatch is rejected), `failed` (it could
 not be dispatched at all, for example its attachment bytes are gone), `canceled`, `retired`
-(with `reason`), `chosen` (with `choice`) or `not-waiting` (nothing was left
+(with `reason`), `chosen` (with `choice`), `not-switched` (Continue on did
+not switch accounts) or `not-waiting` (nothing was left
 to act on), and `recovery`
 is the projection afterward.
 

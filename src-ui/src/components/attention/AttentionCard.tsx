@@ -21,6 +21,7 @@ import type {
   GateRouteBackAttentionItem,
   NeedsInputAttentionItem,
   ProposedChangeAttentionItem,
+  PullRequestFeedbackAttentionItem,
   ReviewPendingAttentionItem,
   SessionFailedAttentionItem,
 } from '@kontourai/station-sdk';
@@ -36,6 +37,10 @@ import {
   useQueryClient,
   useSystemStatusForApiBaseQuery,
 } from '@kontourai/station-sdk';
+import {
+  sendPullRequestFeedbackAgain,
+  turnOffPullRequestFeedback,
+} from '@kontourai/station-sdk/pull-request-feedback';
 import { operatorCliCommand } from '@kontourai/station-shared/ports';
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState } from 'react';
@@ -81,6 +86,7 @@ import { RowMenu, type RowMenuItem } from '../notifications/RowMenu';
 import { SkeletonList } from '../state';
 import { ExactRequestInline } from './ExactRequestInline';
 import './AttentionCard.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { useProposedChangeDecision } from '../review/proposedChangeDecision';
 import {
   ACKNOWLEDGE_ATTENTION_ACTION,
@@ -336,7 +342,107 @@ function AttentionAction({
     // the item resolves by configuring a connection, not by answering here.
     case 'setup-incomplete':
       return <OpenModelConnectionsLink href={item.openHref} />;
+    case 'pull-request-feedback':
+      return <PullRequestFeedbackActions item={item} />;
   }
+}
+
+/**
+ * Pull request feedback that needs a person. Paused: Send again is the
+ * primary action (one more round). The agent stopped: Send again would
+ * answer "not paused", so the way forward is the chat itself. Turning
+ * feedback off resolves either. A reader who may not change it gets the
+ * remedy instead of buttons that could only be refused.
+ */
+function PullRequestFeedbackActions({
+  item,
+}: {
+  item: PullRequestFeedbackAttentionItem;
+}) {
+  const scope = useHostRequestAuthorityScope();
+  const queryClient = useQueryClient();
+  const change = useMutation({
+    mutationFn: async (action: 'send-again' | 'turn-off') => {
+      if (!scope?.isCurrent())
+        throw new Error('This Station is no longer the one in view.');
+      const { conversationId, identity } = item.source;
+      const options = { requestScope: scope };
+      if (action === 'send-again')
+        await sendPullRequestFeedbackAgain(
+          scope.apiBase,
+          conversationId,
+          identity,
+          options,
+        );
+      else
+        await turnOffPullRequestFeedback(
+          scope.apiBase,
+          conversationId,
+          identity,
+          options,
+        );
+    },
+    onSettled: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['attention'] }),
+        queryClient.invalidateQueries({ queryKey: ['pull-request-feedback'] }),
+      ]);
+    },
+  });
+  const sendAgain = item.viewerMayChange && item.reason !== 'agent-stopped';
+  return (
+    <>
+      {/* The one primary action first, so on a narrow card it leads the
+          first row instead of wrapping alone onto the last. */}
+      <div className="notice-actions">
+        {sendAgain ? (
+          <NoticeAction
+            type="button"
+            className="notice-action--primary"
+            disabled={change.isPending}
+            onClick={() => change.mutate('send-again')}
+          >
+            Send again
+          </NoticeAction>
+        ) : (
+          <a
+            className="button notice-action notice-action--primary"
+            href={item.openHref}
+          >
+            Open chat
+          </a>
+        )}
+        {item.pullRequestUrl && (
+          <a
+            className="button notice-action"
+            href={item.pullRequestUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Open pull request
+          </a>
+        )}
+        {item.viewerMayChange && (
+          <NoticeAction
+            type="button"
+            disabled={change.isPending}
+            onClick={() => change.mutate('turn-off')}
+          >
+            Turn off auto-fix
+          </NoticeAction>
+        )}
+      </div>
+      {!item.viewerMayChange && (
+        <div
+          className="attention-item__detail"
+          data-testid="attention-pr-feedback-remedy"
+        >
+          Change this from the chat on this Station's owner device.
+        </div>
+      )}
+      <MutationError error={change.error} />
+    </>
+  );
 }
 
 const loadRequestInspection = () =>
@@ -409,6 +515,7 @@ function ExactRequestAction({
  * `HostDevicePairingPanel`'s copy for the same statuses).
  */
 function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
+  useDecisionSurface('device-pairing-review');
   const confirmMutation = useConfirmDevicePairingRequestMutation();
   const denyMutation = useDenyDevicePairingRequestMutation();
   const busy = confirmMutation.isPending || denyMutation.isPending;
@@ -662,6 +769,7 @@ function ProposedChangeActions({
 }: {
   item: ProposedChangeAttentionItem;
 }) {
+  useDecisionSurface('proposed-change');
   const decision = useProposedChangeDecision(INBOX_DECISION_SURFACE);
   return (
     <>
@@ -730,6 +838,7 @@ function ApprovalActions({
   const mutation = useNotificationActionMutation();
   const dismissMutation = useDismissNotificationMutation();
   const livePending = isApprovalLivePending(item);
+  useDecisionSurface('attention-approval-actions', livePending);
   // archive#3779: measured — this does NOT delete. `DELETE /notifications/:id`
   // sets `status: 'dismissed'` and keeps the record; what differs from the bulk
   // acknowledge is the subject and terminality, not destruction.
@@ -870,6 +979,7 @@ function PeerRequestDecisionActions({
 }: {
   reference: AttentionPeerRequestReference;
 }) {
+  useDecisionSurface('peer-request-decision');
   const scope = useHostRequestAuthorityScope();
   const answer = useApprovalAnswering(scope?.apiBase ?? '');
   const queryClient = useQueryClient();
@@ -1203,6 +1313,7 @@ function AcceptExceptionDialog({
   onCancel: () => void;
   onSubmit: (input: { reason: string; authority: string }) => void;
 }) {
+  useDecisionSurface('gate-exception');
   const [reason, setReason] = useState('');
   const [authority, setAuthority] = useState('');
   const reasonId = useId();

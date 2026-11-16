@@ -1,0 +1,23 @@
+{
+  "revision": "18c36766a3c199a2db9b8c5f356816c8c4e9e093",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Checked the projectRoomLive section against the live hub and useProjectRoomLiveIndex: added that a hook joining an open connection starts from where the room stands (the hub replays its subscribed position, so a later gap is backfilled) and that onActivity also fires when the connection announces a channel.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-domains/projectRooms.ts"]},
+
+    {"path":"docs/design/motion.md","note":"The screenshots.spec.ts change adds room live-mention, agent-working, agent-outcome and For you scenes and fixes the switcher scene's handshake; the reduced-motion screenshot coverage this page describes is unchanged.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked the screenshot runner commands and gallery workflow rows against screenshots.spec.ts: the new room and For you scenes use the same --screens selection and runner; no command or lane claim changes.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"The usage-sharing, outbox and feedback scenes in screenshots.spec.ts this page cites are untouched; the change only adds room and For you scenes.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"NotificationsPage now mounts the For you mention section and shows a skeleton, not All caught up, while the person feed is pending; the approval and review-evidence paths through Notifications described here are unchanged.","inputs":["docs/guides/starter-work.md","src-ui/src/pages/NotificationsPage.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"The inspect-request walkthrough still matches: For you renders nothing when the reader has no mentions, so the Notifications page and request inspector it describes are unchanged.","inputs":["docs/learn/walkthroughs.md","src-ui/src/pages/NotificationsPage.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the Notifications and Project Room passages: For you only adds the reader's own mentions above the inbox and the room's focus behavior opens the exact message; the stated recall, toast and Room claims remain true.","inputs":["docs/user/getting-started.md","src-ui/src/components/room/RoomConversation.tsx","src-ui/src/pages/NotificationsPage.tsx"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Capture runs the real routes with no person mentions, so the For you section renders nothing and the pending state resolves before the inspector opens; the captured inspector and page are unaffected by the NotificationsPage change.","inputs":["docs/learn/media/inspect-request.png","src-ui/src/pages/NotificationsPage.tsx"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Same as the PNG: with no person mentions For you renders nothing, and the recording's trimmed interval starts after loading, so the inspected request flow is unaffected by the NotificationsPage change.","inputs":["docs/learn/media/inspect-request.webm","src-ui/src/pages/NotificationsPage.tsx"]}
+  ]
+}

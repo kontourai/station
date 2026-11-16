@@ -192,7 +192,9 @@ function isEngineSignInLeaf(request: {
     (['GET', 'POST', 'DELETE'].includes(request.method) &&
       /^\/acp\/connections\/[^/]+\/host-auth\/login$/.test(path)) ||
     (request.method === 'POST' &&
-      /^\/acp\/connections\/[^/]+\/host-auth\/sign-out$/.test(path))
+      /^\/acp\/connections\/[^/]+\/host-auth\/sign-out$/.test(path)) ||
+    (['PUT', 'DELETE'].includes(request.method) &&
+      /^\/remote-task-engines\/connections\/[^/]+\/credential$/.test(path))
   );
 }
 
@@ -421,6 +423,9 @@ const PAIRING_SCOPE_DOMAIN_PREFIXES: readonly string[] = [
   '/api/webhooks',
   '/api/agents',
   '/acp',
+  // docs/decisions/remote-task-engines.md: reads `orchestration:read`,
+  // changes `orchestration:operate`; the token leaf is `engine:login` below.
+  '/remote-task-engines',
   // createInvokeRoutes mounts at '/' with absolute leaf paths — '/invoke'
   // and '/tool-approval' are the two that do not already fall under
   // another listed prefix (their sibling `/agents/:slug/invoke` and
@@ -1857,6 +1862,16 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       origin: 'explicit',
     }),
   ),
+  // A remote task engine's vendor token: the `engine:login` decision, like
+  // an ACP connection's key.
+  {
+    id: '/remote-task-engines/connections/:id/credential:engine-login',
+    method: '*',
+    prefix: '/remote-task-engines/connections/:id/credential',
+    exact: true,
+    scope: PAIRING_SCOPE_ENGINE_LOGIN,
+    origin: 'explicit',
+  },
   {
     id: '/acp/connections/:id/credentials:engine-login',
     method: '*',
@@ -2263,6 +2278,23 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
     origin: 'explicit' as const,
   })),
+  // Pull request agent feedback: reading it is a conversation read; a
+  // switch, a move or Send again acts on what the agent is told, the same
+  // tier as linking the pull request.
+  {
+    id: '/api/pull-request-feedback:read',
+    method: 'GET',
+    prefix: '/api/pull-request-feedback',
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  ...(['PUT', 'DELETE', 'POST'] as const).map((method) => ({
+    id: `/api/pull-request-feedback:${method.toLowerCase()}`,
+    method,
+    prefix: '/api/pull-request-feedback',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit' as const,
+  })),
   // archive#1131 review round 1 (HIGH, own-audit finding beyond what the
   // reviewer named): `registerPluginHostApprovalRoutes`
   // (`plugin-host-approval-routes.ts`) exists specifically so a 'trusted'
@@ -2343,6 +2375,18 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
   // enroll, import, enable automatic recovery, or apply a profile. The
   // `:id` segment is a route parameter, matched structurally below rather
   // than treated as a literal pathname component.
+  // "Continue on <label>" on a usage-limit stop lists this Station's
+  // enrolled credential profiles and switches the connection's account, the
+  // same effects as credential-recovery below, so it takes the same tier
+  // instead of the Session family's.
+  {
+    id: '/api/orchestration/sessions/:threadId/usage-limit/continue-on:manage',
+    method: '*',
+    prefix: '/api/orchestration/sessions/:threadId/usage-limit/continue-on',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
   {
     id: '/api/connections/agent/:id/credential-recovery:manage',
     method: '*',
@@ -3683,6 +3727,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     },
     {
       method: 'GET',
+      path: '/api/orchestration/session-reads/:sessionId/turn-directory',
+    },
+    {
+      method: 'GET',
       path: '/api/orchestration/session-reads/:sessionId/wait',
     },
     // #3413 part B work claims. The three POST leaves are agent-only at the
@@ -3833,6 +3881,15 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // no other principal's records, so none is more sensitive than the family.
     { method: 'GET', path: '/api/me/preferences' },
     { method: 'PATCH', path: '/api/me/preferences' },
+    // The person's own custom appearance: every leaf reads or writes only the
+    // request principal's document. Keep, save, dismiss and report also
+    // refuse a request that may be an agent's.
+    { method: 'GET', path: '/api/me/appearance' },
+    { method: 'PUT', path: '/api/me/appearance' },
+    { method: 'POST', path: '/api/me/appearance/proposal' },
+    { method: 'DELETE', path: '/api/me/appearance/proposal' },
+    { method: 'POST', path: '/api/me/appearance/proposal/keep' },
+    { method: 'POST', path: '/api/me/appearance/proposal/report' },
     { method: 'GET', path: '/api/me/notifications' },
     { method: 'POST', path: '/api/me/notifications/:id/read' },
     { method: 'DELETE', path: '/api/me/notifications/:id' },
@@ -3890,6 +3947,11 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/api/tasks/:taskId/work-chats' },
     { method: 'DELETE', path: '/api/tasks/:taskId/work-chats' },
     { method: 'GET', path: '/api/tasks/:taskId/kept-pull-requests' },
+    // Derived Task lanes: the same kept pull requests for a Project's live
+    // Tasks, filtered by the same per-keep session read check, with each
+    // read at its exact identity through the host's own forge login (as the
+    // `work-item` leaf below). Personal mode only; it changes nothing.
+    { method: 'GET', path: '/api/tasks/pull-request-facts' },
     { method: 'PATCH', path: '/api/tasks/:taskId/title' },
     { method: 'GET', path: '/api/tasks/:taskId/room' },
     { method: 'GET', path: '/api/tasks/:taskId/room/history' },
@@ -4053,6 +4115,44 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     {
       method: 'GET',
       path: '/api/projects/:slug/flow/runs/:runId/gates/:gateId/evaluations/:evaluationId',
+    },
+    // docs/decisions/remote-task-engines.md: connection settings, the
+    // acknowledgement, and remote tasks. None returns a credential; the
+    // handlers also refuse a request that may be an agent's.
+    { method: 'GET', path: '/remote-task-engines/connections' },
+    { method: 'POST', path: '/remote-task-engines/connections' },
+    { method: 'GET', path: '/remote-task-engines/connections/:id' },
+    { method: 'PATCH', path: '/remote-task-engines/connections/:id' },
+    { method: 'DELETE', path: '/remote-task-engines/connections/:id' },
+    {
+      method: 'POST',
+      path: '/remote-task-engines/connections/:id/acknowledgement',
+    },
+    {
+      method: 'DELETE',
+      path: '/remote-task-engines/connections/:id/acknowledgement',
+    },
+    { method: 'GET', path: '/remote-task-engines/connections/:id/tasks' },
+    { method: 'POST', path: '/remote-task-engines/connections/:id/tasks' },
+    {
+      method: 'GET',
+      path: '/remote-task-engines/connections/:id/tasks/:taskId',
+    },
+    {
+      method: 'POST',
+      path: '/remote-task-engines/connections/:id/tasks/:taskId/messages',
+    },
+    {
+      method: 'POST',
+      path: '/remote-task-engines/connections/:id/tasks/:taskId/cancel',
+    },
+    {
+      method: 'POST',
+      path: '/remote-task-engines/connections/:id/tasks/:taskId/sync',
+    },
+    {
+      method: 'GET',
+      path: '/remote-task-engines/connections/:id/tasks/:taskId/events',
     },
     // prettier-ignore
     { method: 'GET', path: '/acp/connections' },
@@ -4918,6 +5018,12 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'PUT', path: '/api/projects/:slug/room/note' },
     { method: 'POST', path: '/api/projects/:slug/room/presence' },
     { method: 'GET', path: '/api/projects/:slug/room/events' },
+    // #4798, #4799: typing composes the room's discuss tier like presence;
+    // the member directory and the multiplexed stream are reads, each channel
+    // admitted by its own room read.
+    { method: 'POST', path: '/api/projects/:slug/room/typing' },
+    { method: 'GET', path: '/api/projects/:slug/room/members' },
+    { method: 'GET', path: '/api/projects/:slug/rooms/live' },
     // Reactions, edits and deletes (#4796, #4797) compose the room's discuss
     // tier; the room refuses edits and deletes of anyone else's message.
     // Files (#4812): upload is discuss, a read is the room's view tier. Unlike
@@ -4970,6 +5076,11 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       path: '/api/projects/:slug/channels/:channelId/presence',
     },
     { method: 'GET', path: '/api/projects/:slug/channels/:channelId/events' },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/typing',
+    },
+    { method: 'GET', path: '/api/projects/:slug/channels/:channelId/members' },
     {
       method: 'POST',
       path: '/api/projects/:slug/channels/:channelId/messages/:messageId/reactions',

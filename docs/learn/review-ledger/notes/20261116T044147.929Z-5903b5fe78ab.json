@@ -1,0 +1,7 @@
+{
+  "revision": "8b13dd88d6a59e5a31174fa9d2b3082ed6bd620d",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Round 4: the new pre-push steps refuse only on a finding in the pushed commit and otherwise warn and continue; freshness refuses only for a clean checkout of the pushed commit; gate:for's note and the shard test's name shape changed. Re-read this page's claims about the hook, gate:for and shard output: none is contradicted.","inputs":["scripts/__tests__/fast-checks-shard-cli.test.ts"]}
+  ]
+}

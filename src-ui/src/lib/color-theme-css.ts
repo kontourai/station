@@ -30,7 +30,7 @@
  *   the mode, weight (0,4,0); a named accent adds one attribute (0,5,0). That
  *   outranks the tokens' and index.css's `:root`/`[data-theme]` blocks (0,1,0)
  *   and the channel blocks (up to 0,3,0), so the theme owns action and focus
- *   in a Dev, Beta or Nightly build too. Weight, not order, decides: the
+ *   in a Dev or Nightly build too. Weight, not order, decides: the
  *   family sheet loads before or after the entry CSS depending on the path.
  * - Brand: `html[data-color-theme]:where(...)`, weight (0,1,1). It beats the
  *   (0,1,0) defaults but loses to the channel blocks (0,2,0 and up), and
@@ -169,7 +169,7 @@ function flavorRules(
       block(brandSelectors(family.id, scope, extra), brandDeclarations(accent)),
     );
   }
-  // Dev before Beta and Nightly, as in index.css: a dev build that also
+  // Dev before Nightly, as in index.css: a dev build that also
   // reports a channel shows the channel, there and here.
   for (const channel of COLOR_THEME_CHANNELS) {
     out.push(

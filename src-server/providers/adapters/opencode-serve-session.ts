@@ -299,11 +299,15 @@ export interface OpenCodeNativeSessionDeps {
    * adapter declines it (`requestPermission`, `askPersonFor`).
    */
   readonly denyApprovals?: boolean;
-  readonly preToolPolicy?: (tool: {
-    readonly toolName: string;
-    readonly toolCallId: string;
-    readonly toolArgs: unknown;
-  }) => Promise<PreToolPolicyDecision>;
+  readonly preToolPolicy?: (
+    tool: {
+      readonly toolName: string;
+      readonly toolCallId: string;
+      readonly toolArgs: unknown;
+    },
+    /** The session runs at full access (`approvalMode: 'never'`). */
+    fullAccess?: boolean,
+  ) => Promise<PreToolPolicyDecision>;
   /**
    * This session, or one of its descendants, moved to another directory
    * (`session.moved`). OpenCode has loaded that directory's configuration
@@ -2449,11 +2453,14 @@ export class OpenCodeNativeSession {
     // An evaluator that throws, at once or later, denies.
     void Promise.resolve()
       .then(() =>
-        policy({
-          toolName,
-          toolCallId,
-          toolArgs: tool.input ?? ask.metadata ?? {},
-        }),
+        policy(
+          {
+            toolName,
+            toolCallId,
+            toolArgs: tool.input ?? ask.metadata ?? {},
+          },
+          this.deps.approvalMode === 'never',
+        ),
       )
       .catch(
         (error: unknown): PreToolPolicyDecision => ({

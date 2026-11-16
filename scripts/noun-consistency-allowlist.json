@@ -8,7 +8,7 @@
   {
     "file": "src-ui/src/components/usage-stats/UsageDrillDownModal.tsx",
     "line": 143,
-    "snippet": "Prompt Total",
+    "snippet": "Prompt total",
     "reason": "LLM-prompt sense (station#4196 cache-honest model drilldown): the declared-disjoint cache-inclusive input total, not the retired Prompts/Skills authoring noun."
   },
   {

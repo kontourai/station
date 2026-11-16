@@ -42,6 +42,7 @@ import type {
   StagedPreToolPolicyEvaluator,
 } from '../../runtime/agents/pre-tool-policy.js';
 import { builtinStationApiServerId } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import { codexDynamicTools } from '../../runtime/mcp/codex-dynamic-tools.js';
 import type { InvocationContext } from '../../runtime/types.js';
 import {
   assertRequiredConfinementObserved,
@@ -265,7 +266,16 @@ interface CodexAdapterOptions {
   /** Resolve only a source-owned affinity registered by runtime composition. */
   resolveSourceHome?: (
     affinity: ProviderSessionSourceAffinity,
-  ) => string | null;
+  ) => string | null | Promise<string | null>;
+  /**
+   * The env overlay a resolved source home requires: a credential profile's
+   * routing overlay when the home is that profile's, else undefined. A
+   * rejection refuses the continuation; it never falls back to the bare home,
+   * which would pair the profile's credentials with another endpoint.
+   */
+  resolveSourceHomeEnv?: (
+    sourceHome: string,
+  ) => Promise<Record<string, string> | undefined>;
   /**
    * archive#1195: mints a per-session, short-lived, station-control-scoped
    * bearer credential delivered only through private thread configuration — called ONLY when the resolved agent's
@@ -1838,10 +1848,11 @@ export class CodexAdapter implements ProviderAdapterShape {
       sourceHome: string;
     }) => Promise<T>,
   ): Promise<T> {
-    const sourceHome = this.options.resolveSourceHome?.(affinity);
+    const sourceHome = await this.options.resolveSourceHome?.(affinity);
     if (!boundedFilesystemPath(sourceHome) || !isAbsolute(sourceHome)) {
       throw new Error('Codex source-home affinity is no longer available.');
     }
+    const sourceHomeEnv = await this.options.resolveSourceHomeEnv?.(sourceHome);
     const transport = new CodexAdapterTransport(this.now);
     const externalThreadId = `codex-maintenance:${crypto.randomUUID()}`;
     // station#2072: routing keys ride this maintenance child; the source
@@ -1851,6 +1862,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       externalThreadId,
       process: this.processFactory({
         ...connectionEnvForMaintenance,
+        ...sourceHomeEnv,
         CODEX_HOME: sourceHome,
       }),
       provider: this.provider,
@@ -2101,11 +2113,15 @@ export class CodexAdapter implements ProviderAdapterShape {
     let appHome: 'profile' | 'global' | 'source';
     let resolvedHome: ResolvedAppHome | undefined;
     if (sourceAffinity) {
-      const sourceHome = this.options.resolveSourceHome?.(sourceAffinity);
+      const sourceHome = await this.options.resolveSourceHome?.(sourceAffinity);
       if (!boundedFilesystemPath(sourceHome) || !isAbsolute(sourceHome)) {
         throw new Error('Codex source-home affinity is no longer available.');
       }
-      appHomeEnv = { CODEX_HOME: sourceHome };
+      // Same precedence as a profile spawn: overlay, then the home key.
+      appHomeEnv = {
+        ...(await this.options.resolveSourceHomeEnv?.(sourceHome)),
+        CODEX_HOME: sourceHome,
+      };
       appHome = 'source';
     } else {
       resolvedHome = await this.resolveAppHomeEnv(input.credentialProfileRef);
@@ -2377,12 +2393,7 @@ export class CodexAdapter implements ProviderAdapterShape {
               experimentalRawEvents: false,
               ...(boundTools
                 ? {
-                    dynamicTools: offeredTools.map((tool) => ({
-                      type: 'function',
-                      name: tool.name,
-                      description: tool.description ?? tool.name,
-                      inputSchema: tool.inputSchema,
-                    })),
+                    dynamicTools: codexDynamicTools(offeredTools),
                   }
                 : {}),
               persistExtendedHistory: false,
@@ -3198,6 +3209,13 @@ export class CodexAdapter implements ProviderAdapterShape {
         updatedAt: this.now().toISOString(),
         model: input.modelId ?? record.session.model,
       };
+      // The mode this turn really runs at: Station's own bound-tool approvals
+      // read it, so full access asks nothing there either.
+      if (postured)
+        record.appliedApprovalMode = mapCodexKnobsToApprovalMode({
+          approvalPolicy: postured.knobs.approvalPolicy,
+          sandbox: postured.plan.applied,
+        });
 
       this.transport.publish({
         eventId: crypto.randomUUID(),
@@ -3696,6 +3714,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       : 'station-control';
     const name = `mcp__${server}__${tool}`;
     if (!policy || !input.agent || !current()) return false;
+    const fullAccess = record.appliedApprovalMode === 'never';
     const rawDelegation = input.metadata?.delegation;
     const delegation =
       rawDelegation && typeof rawDelegation === 'object'
@@ -3714,6 +3733,7 @@ export class CodexAdapter implements ProviderAdapterShape {
           {
             interaction: 'external',
             identity: externalPreToolPolicyIdentity(name),
+            ...(fullAccess ? { fullAccess } : {}),
           },
         ),
         AbortSignal.timeout(5_000),
@@ -3723,7 +3743,12 @@ export class CodexAdapter implements ProviderAdapterShape {
     }
     if (!current() || decision.behavior === 'deny') return false;
     if (decision.behavior === 'allow') return true;
-    if (decision.behavior === 'defer' && record.approvedTools.has(name))
+    // Full access answers what Station's policy leaves open (`defer`); a
+    // required ask (a tool that changes authority) still reaches a person.
+    if (
+      decision.behavior === 'defer' &&
+      (fullAccess || record.approvedTools.has(name))
+    )
       return true;
     if (delegation?.denyApprovals) return false;
     record.boundToolApprovals ??= new Map();

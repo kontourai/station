@@ -13,6 +13,7 @@ import {
   within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { mountedDecisionSurfaces } from '../../../lib/custom-appearance/decision-surfaces';
 import { OwnAccessTokensPanel } from '../OwnAccessTokensPanel';
 import { PeopleSection } from '../PeopleSection';
 
@@ -209,6 +210,7 @@ describe('People section', () => {
       return list(call);
     };
     mount(<PeopleSection />);
+    expect(mountedDecisionSurfaces()).toContain('people-roles');
 
     const select = (await screen.findByLabelText(
       'Group for ada@example.com',
@@ -289,7 +291,7 @@ describe('People section', () => {
     fireEvent.change(select, { target: { value: 'admin' } });
 
     const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toContain('operator credential');
+    expect(alert.textContent).toContain('Only the Station operator');
     expect(alert.textContent).toContain('can only view');
     expect(select.value).toBe('member');
   });
@@ -870,6 +872,8 @@ describe('Your access tokens', () => {
   test('a device tied to no person sees nothing, not an error', async () => {
     handler = () => json({ error: { code: 'person_device_required' } }, 403);
     const { client, container } = mount(<OwnAccessTokensPanel />);
+    // Custom CSS is held off while this grant UI is on screen.
+    expect(mountedDecisionSurfaces()).toContain('access-tokens');
     await waitFor(() => expect(settledInError(client, OWN_KEY)).toBe(true));
     expect(container.textContent).toBe('');
   });

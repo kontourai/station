@@ -285,8 +285,8 @@ function AccessPanel({
             label="You can’t manage people for this Project from here"
             description={
               refusal.sharing === 'on'
-                ? 'This Project is shared. Its owner or an admin manages who can access it.'
-                : 'A Project owner or admin manages access. Turning sharing on needs Station owner authority.'
+                ? 'This Project is shared. Its Owner or an Admin manages who can access it.'
+                : 'A Project Owner or Admin manages access. Only the Station operator can turn sharing on.'
             }
           />
           {refusal.sharing === 'undisclosed' &&

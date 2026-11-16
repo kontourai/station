@@ -14,7 +14,7 @@ export const nativeEnrollmentSurfaceSchema = z
   .object({
     kind: z.literal('station-native'),
     appIdentifier: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9.-]{0,254}$/u),
-    channel: z.enum(['dev', 'stable', 'beta', 'nightly']),
+    channel: z.enum(['dev', 'stable', 'nightly']),
     clientInstanceId: uuid,
     keyThumbprint: nativeEnrollmentOpaque,
   })

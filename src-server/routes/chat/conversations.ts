@@ -2787,6 +2787,8 @@ export function createGlobalConversationRoutes(
   searchRemoteMessages?: (
     query: string,
     signal?: AbortSignal,
+    /** Whose search this is: a remote read is the bound owner's alone. */
+    request?: Request,
   ) => Promise<{
     matches: Array<{
       conversationId: string;
@@ -2894,7 +2896,11 @@ export function createGlobalConversationRoutes(
         20,
       ) ?? [];
     const remote = searchRemoteMessages
-      ? await searchRemoteMessages(parsed.data.query, c.req.raw.signal)
+      ? await searchRemoteMessages(
+          parsed.data.query,
+          c.req.raw.signal,
+          c.req.raw,
+        )
       : { matches: [], instances: [], deferredInstanceCount: 0 };
     // The local index retains its established rank order. Remote rows are
     // independently capped before this final, cross-instance 20-hit cap.

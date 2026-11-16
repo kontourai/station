@@ -1488,12 +1488,12 @@ describe('ConnectedServerUpdates', () => {
       await waitIdentitySettled();
       expect(
         await screen.findByText(
-          'This server install has no usable update provenance. Station cannot determine whether a server update is available. Use the installation method that manages this server.',
+          'This server has no install record, so Station can’t check for updates. Update it with the method that installed it.',
         ),
       ).toBeTruthy();
       expect(
         screen.queryByText(
-          'This server’s update provenance is invalid. Station cannot determine whether a server update is available. Use the installation method that manages this server.',
+          'This server’s install record is invalid, so Station can’t check for updates. Update it with the method that installed it.',
         ),
       ).toBeNull();
     });
@@ -1543,7 +1543,7 @@ describe('ConnectedServerUpdates', () => {
       // P4/P5, rendered inside the disclosure from the poisoned result.
       expect(
         await screen.findByText(
-          'This server’s update provenance is invalid. Station cannot determine whether a server update is available. Use the installation method that manages this server.',
+          'This server’s install record is invalid, so Station can’t check for updates. Update it with the method that installed it.',
         ),
       ).toBeTruthy();
       // The affected host is named from the correlated identity response.

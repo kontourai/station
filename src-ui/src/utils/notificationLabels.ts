@@ -26,6 +26,10 @@ const NOTIFICATION_LABELS: Readonly<Record<string, string>> = {
   // #2323 S5: an agent asked a person to install, update or remove a plugin.
   'plugin-lifecycle-proposal': 'Plugin proposal',
   'tool-request': 'Tool request',
+  // The attention kind and the notification category for the same fact:
+  // pull request feedback paused, or its chat's agent stopped with it
+  // waiting.
+  'pull-request-feedback': 'Agent feedback',
 };
 
 export function notificationCategoryLabel(category: string): string {

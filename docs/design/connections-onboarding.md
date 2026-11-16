@@ -57,8 +57,8 @@ decisions. The full picker and configuration editors are optional customization.
 
 The usage disclosure is a separate decision. The automatic Home path returns to
 work after that choice; it does not proceed into engine or personalization
-questions or mark the optional setup run complete. **Personalize Station** opens
-that run explicitly after the work entry.
+questions or mark the optional setup run complete. **Open setup** on the
+**Finish setup** card opens that run explicitly after the work entry.
 
 New chat opens the start composer (Run setup, Project and Start) as a draft
 in the chat dock. A setup helper appears when the
@@ -167,7 +167,11 @@ to the server's own global config root with no per-call override, so running the
 child under a different config home would orphan it there. Codex had no analogous
 transcript-adoption path in that original wave. Current Codex adoption and resumes
 carrying source affinity resolve the recorded source home and refuse an unavailable
-home; that `CODEX_HOME` overrides profile and connection settings. The legacy
+home; that `CODEX_HOME` overrides profile and connection settings. When the
+source home is a credential profile's own home, that profile's env overlay is
+applied with it. An invalid overlay refuses the continuation, as does an app
+home that is not the legacy app home, the connection's config home or a
+current profile's (a deleted profile keeps its directory and credentials). The legacy
 toggle-boundary caveat below applies to cursors without that affinity.
 
 **Import-from-global rules (claude):** an explicit, dedicated user action —
@@ -364,12 +368,23 @@ a candidate whose env overlay differs from the active profile's (`environment_mi
 or an unsupported adapter all refuse. The selected recovery restart/resume follows the
 same stage → commit-on-live-success / rollback-on-failure protocol as manual adoption.
 
+**A person's "Continue on <label>".** A usage-limit stop still waiting offers each
+enrolled profile the same selector would choose, with the person's click replacing
+only the `automatic` opt-in (`consented`); every other refusal above still applies,
+and the stage, restart and replay are the automatic path's. Its list and action
+(`/api/orchestration/sessions/:threadId/usage-limit/continue-on`) take the
+`access:manage` pairing tier like the profile-management routes, are refused on a
+hosted Station, and need the Session's own person. The application metric records it
+as `source: recovery`, like the automatic path. Station does not know whether the chosen
+account is limited too.
+
 **Privacy and telemetry.** The bounded `station.credential_profile.application` metric
 contains only source, declared capability, outcome, classified scope, and bounded reason.
 It excludes profile refs, labels, profile paths, provider/engine identity, account identity,
 credential material, raw runtime errors, prompts, and attachments. The same exclusions
 apply to logs and recovery receipts. Profile refs and management-only labels appear only
-on explicit profile-management UI/API/CLI surfaces; those surfaces still exclude
+on explicit profile-management UI/API/CLI surfaces and the `access:manage`
+"Continue on" list on a usage-limit banner; those surfaces still exclude
 profile-home paths, account identity, credential material, and raw runtime data.
 
 **Current recovery boundary.** This is recovery from an observed failure, not proactive

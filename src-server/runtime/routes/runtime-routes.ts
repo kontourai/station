@@ -50,6 +50,7 @@ import { createHomeTransferRoomRoutes } from '../../routes/environments/home-tra
 import { createLiveSurfaceRoutes } from '../../routes/live-surface.js';
 import { createEngineOAuthProxyRoutes } from '../../routes/mcp/engine-oauth-proxy-route.js';
 import { createAccountPreferencesRoutes } from '../../routes/me/account-preferences.js';
+import { createCustomAppearanceRoutes } from '../../routes/me/custom-appearance.js';
 import { createPersonNotificationRoutes } from '../../routes/me/person-notifications.js';
 import { createMediaToolsRoutes } from '../../routes/media-tools.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
@@ -186,6 +187,7 @@ import { AccountPreferencesStore } from '../../services/identity/account-prefere
 import { accountSharingOriginOptions } from '../../services/identity/account-sharing-origins.js';
 import type { ApplicationSessionService } from '../../services/identity/application-session-service.js';
 import type { AuthorityObservationRequestContext } from '../../services/identity/authority-observation.js';
+import { CustomAppearanceStore } from '../../services/identity/custom-appearance.js';
 import type { LoadedDeploymentAuthentication } from '../../services/identity/deployment-authentication-loader.js';
 import {
   type DeploymentAuthenticationService,
@@ -213,6 +215,7 @@ import { ProjectMembershipRefusal } from '../../services/projects/project-member
 import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
 import { createProjectRoomAgentRuntime } from '../../services/projects/project-room-agent-module.js';
 import { createProjectRoomAgentPublication } from '../../services/projects/project-room-agent-publication.js';
+import { notifyProjectRoomMention } from '../../services/projects/project-room-mention-notifications.js';
 import { ProjectRoomService } from '../../services/projects/project-room-service.js';
 import {
   createProjectRoomRuntime,
@@ -617,8 +620,10 @@ import {
 } from '../../routes/projects/terminal-session-routes.js';
 import { createUICommandRoutes } from '../../routes/projects/ui-commands.js';
 import { createConversationPullRequestLinkRoutes } from '../../routes/pull-requests/conversation-pull-request-links.js';
+import { createPullRequestFeedbackRoutes } from '../../routes/pull-requests/pull-request-feedback.js';
 import { createPullRequestRoutes } from '../../routes/pull-requests/pull-request-routes.js';
 import { createReadMarkerRoutes } from '../../routes/read-markers/read-marker-routes.js';
+import { createRemoteTaskEngineRoutes } from '../../routes/remote-task-engines/remote-task-engine-routes.js';
 import { createSearchRoutes } from '../../routes/search.js';
 import { createSecretBindingRoutes } from '../../routes/secret-bindings.js';
 import { createSetupImportRoutes } from '../../routes/setup-imports.js';
@@ -668,6 +673,7 @@ import {
   type PairingScopeContextStore,
   refusedOnWebSocket,
 } from '../../security/pairing-route-scopes.js';
+import { runtimeRemoteStationReadAuthority } from '../../security/remote-station-read-authority.js';
 import {
   attestedBrowserVisibleHost,
   attestedProxyPeerAddress,
@@ -736,6 +742,7 @@ import type { ConnectionService } from '../../services/connections/connection-se
 import type { ProviderService } from '../../services/connections/provider-service.js';
 import type { ConsentChannelService } from '../../services/consent/consent-channel.js';
 import type { DiscordGatewayService } from '../../services/discord/discord-gateway-service.js';
+import { engineHostAuth } from '../../services/engine-host-auth/service.js';
 import {
   ANSWER_ASSESSMENT_UPDATED_EVENT,
   AnswerAssessmentModule,
@@ -869,6 +876,7 @@ import { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.j
 import { resolveWorkspaceIdentity } from '../../services/orchestration/workspace-identity.js';
 import { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
 import { PeerEnrollmentService } from '../../services/peers/peer-enrollment-service.js';
+import { PeerReadinessService } from '../../services/peers/peer-readiness-service.js';
 import { DistributionProfileService } from '../../services/plugins/distribution-profile-service.js';
 import { IntegrationIconAssets } from '../../services/plugins/integration-icon-assets.js';
 import type { MCPService } from '../../services/plugins/mcp-service.js';
@@ -936,6 +944,9 @@ import {
   taskRoomVersionSource,
 } from '../../services/read-markers/room-version-sources.js';
 import { createRemoteStationForwarder } from '../../services/remote-stations/remote-station-forwarder.js';
+import { RemoteTaskCredentials } from '../../services/remote-task-engines/credentials.js';
+import { RemoteTaskEngineService } from '../../services/remote-task-engines/service.js';
+import { RemoteTaskTracker } from '../../services/remote-task-engines/tracker.js';
 import {
   conversationAutomationsFrom,
   readStoredScheduledTurnTerminal,
@@ -971,7 +982,7 @@ import {
   type NativeDeviceProofBindingService,
   NativeDeviceProofOperatorAuthority,
 } from '../../services/ssh/native-device-proof-binding-service.js';
-import { searchConnectedRemoteMessages } from '../../services/ssh/remote-session-reader.js';
+import { runtimeRemoteMessageSearch } from '../../services/ssh/remote-session-reader.js';
 import type { SshEnvironmentService } from '../../services/ssh/ssh-environment-service.js';
 import {
   createStarterOwnerAdapter,
@@ -1147,6 +1158,7 @@ import {
   mayAnswerDelegatedRequest,
   runtimeAttentionRouteOptions,
 } from './runtime-attention-route-options.js';
+import { composePullRequestFeedbackRuntime } from './runtime-pull-request-feedback.js';
 import {
   configureRuntimeSupportServices,
   createRuntimeSystemRouteDeps,
@@ -1685,10 +1697,10 @@ export function isProjectMemberDraftLease(method: string, path: string) {
 function isProjectMemberRoomAction(method: string, path: string) {
   return (
     (method === 'POST' &&
-      (/^\/api\/projects\/[^/]+\/room\/(?:init|messages|messages\/[^/]+\/(?:reactions|edit|delete)|attachments|presence|agents|agents\/[^/]+\/(?:cancel|reconcile))$/.test(
+      (/^\/api\/projects\/[^/]+\/room\/(?:init|messages|messages\/[^/]+\/(?:reactions|edit|delete)|attachments|presence|typing|agents|agents\/[^/]+\/(?:cancel|reconcile))$/.test(
         path,
       ) ||
-        /^\/api\/projects\/[^/]+\/channels(?:\/[^/]+\/(?:messages|messages\/[^/]+\/(?:reactions|edit|delete)|attachments|presence|agents|agents\/[^/]+\/(?:cancel|reconcile)))?$/.test(
+        /^\/api\/projects\/[^/]+\/channels(?:\/[^/]+\/(?:messages|messages\/[^/]+\/(?:reactions|edit|delete)|attachments|presence|typing|agents|agents\/[^/]+\/(?:cancel|reconcile)))?$/.test(
           path,
         ))) ||
     (method === 'PUT' &&
@@ -1754,6 +1766,7 @@ export function configureRuntimeRoutes(
   let durableTaskFollowUpWake:
     | Pick<TaskFollowUpWake, 'placementRefusal'>
     | undefined;
+  let pullRequestFeedback: ReturnType<typeof composePullRequestFeedbackRuntime>;
   // Shared by the operator grant routes and diagnostics admission.
   const unattendedGrantStore = new UnattendedGrantStore(
     context.configLoader.getProjectHomeDir(),
@@ -2047,9 +2060,13 @@ export function configureRuntimeRoutes(
   // here, at startup, so an invalid STATION_REMOTE_REQUEST_TIMEOUT_MS fails
   // the boot with its own message. (The peer store above has other
   // in-process readers for their own peer calls.)
+  // One readiness cache serves the peer list (`GET /api/environments/peers`)
+  // and the forwarder's refuse-before-dispatch check.
+  const peerReadiness = new PeerReadinessService();
   const remoteStations = createRemoteStationForwarder({
     ssh: context.sshEnvironmentService,
     peers: peerCredentialStore,
+    readiness: peerReadiness,
     warn: (message) => context.logger.warn(message),
   });
   const actionOperations = context.actionOperations;
@@ -3807,7 +3824,7 @@ export function configureRuntimeRoutes(
           try {
             mine = await context.orchestrationService.listSessionReadModel(
               conversationReadAuthorityForContext(c),
-              { threadIds: running },
+              { purpose: 'restart-running-turns', threadIds: running },
             );
           } catch {
             mine = [];
@@ -4308,6 +4325,8 @@ export function configureRuntimeRoutes(
     createDiagnosticsRoutes(
       new DiagnosticsService(context.configLoader.getProjectHomeDir(), {
         buildProvenanceSnapshot: context.buildProvenanceSnapshot,
+        readSessionReadModelMeasurement: () =>
+          context.orchestrationService.sessionReadModelMeasurement(),
       }),
       context.logger,
       // station#1896 logging slice 2: same directory slice 1's
@@ -4629,6 +4648,11 @@ export function configureRuntimeRoutes(
   context.app.on(
     ['GET', 'POST'],
     '/api/pull-requests/*',
+    bindConversationReadAuthority,
+  );
+  context.app.on(
+    ['GET', 'PUT', 'POST', 'DELETE'],
+    '/api/pull-request-feedback/*',
     bindConversationReadAuthority,
   );
   context.app.use(
@@ -5847,6 +5871,8 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/tasks',
     createTaskRoutes(context.taskGraphService, {
+      pullRequestProviders: () =>
+        listProviders('pullRequest').map((entry) => entry.provider),
       logger: context.logger,
       workChatConversations: taskInboxProjection,
       onRoomSystemLine: async ({
@@ -7030,7 +7056,8 @@ export function configureRuntimeRoutes(
           conversationId: input.conversationId,
           clientTurnId: input.clientTurnId,
           userId: input.payload.actor.userId,
-        }),
+        }) ??
+        pullRequestFeedback?.placementRefusal(input),
       hasPossibleEffect: (threadId) =>
         eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
       // The live continuation's own rule (`canContinueConversation`): the
@@ -8183,6 +8210,36 @@ export function configureRuntimeRoutes(
     createACPSignInRoutes({
       ctx: runtimeContext,
       service: engineSignInService,
+    }),
+  );
+  // docs/decisions/remote-task-engines.md: cloud coding agents. Bound here
+  // unconditionally so the preview is offered; every route, the tracker's
+  // polls and the service's vendor calls read the selector at each use.
+  const remoteTaskService = new RemoteTaskEngineService({
+    homeDir: context.configLoader.getProjectHomeDir(),
+    credentials: new RemoteTaskCredentials(
+      () => engineHostAuth()?.vault ?? null,
+    ),
+    preview: context.featurePreviews.bind({
+      id: 'remote-task-engines',
+      label: 'Remote task engines',
+      description:
+        "Send coding tasks to cloud agents (Devin, GitHub Copilot cloud agent, Cursor Cloud Agents) that run on the vendor's machines. Prompts and repository code leave this computer, and each task spends your vendor account's credits.",
+    }),
+    managedPolicy: () => context.managedPolicy ?? null,
+    fetch: (input, init) => fetch(input, init),
+    logger: context.logger,
+  });
+  const remoteTaskTracker = new RemoteTaskTracker({
+    service: remoteTaskService,
+    logger: context.logger,
+  });
+  context.app.route(
+    '/remote-task-engines',
+    createRemoteTaskEngineRoutes({
+      service: remoteTaskService,
+      tracker: remoteTaskTracker,
+      logger: context.logger,
     }),
   );
   context.app.route('/agents', createAgentToolRoutes(runtimeContext));
@@ -9542,10 +9599,21 @@ export function configureRuntimeRoutes(
       );
     },
   });
+  // Bound once the notification service is composed below (#4799).
+  let roomMentionNotifications: NotificationService | undefined;
   const projectRoomService = new ProjectRoomService(
     roomStore.store,
     roomAccess,
     new ProjectRoomAttachments(join(roomHome, 'project-room-attachments')),
+    (event) => {
+      const service = roomMentionNotifications;
+      if (!service) return;
+      void notifyProjectRoomMention(service, event).catch((error: unknown) => {
+        context.logger.warn('Project room mention notification failed', {
+          error,
+        });
+      });
+    },
   );
   let roomAgentRuntime:
     | ReturnType<typeof createProjectRoomAgentRuntime>
@@ -9810,6 +9878,20 @@ export function configureRuntimeRoutes(
       tenantId: (request) =>
         tenantExecutionContextForRequest(request)?.tenantId,
       isInternal: (request) => !!stationControlRequestAuthority(request),
+    }),
+  );
+  // The person's own custom appearance. Station-control requests resolve to
+  // the session's recorded owner, so an agent proposes into its person's
+  // document; the route refuses agents every step but read and propose.
+  context.app.route(
+    '/api/me',
+    createCustomAppearanceRoutes({
+      store: new CustomAppearanceStore(
+        context.configLoader.getProjectHomeDir(),
+      ),
+      resolvePrincipal: resolveOrchestrationRequestPrincipal,
+      tenantId: (request) =>
+        tenantExecutionContextForRequest(request)?.tenantId,
     }),
   );
   const personalLayoutResolver =
@@ -10621,6 +10703,44 @@ export function configureRuntimeRoutes(
       },
     ),
   );
+  // Pull request agent feedback: composition, routes and the inbox's
+  // placement re-check live in runtime-pull-request-feedback.ts.
+  const canReadConversation = (request: Request, id: string) =>
+    context.orchestrationService.canUserReadConversation(
+      id,
+      conversationReadAuthorityForRequest(request),
+    );
+  pullRequestFeedback = composePullRequestFeedbackRuntime({
+    homeDir: context.configLoader.getProjectHomeDir(),
+    hosted: hostedTenantRegistry !== undefined,
+    featurePreviews: context.featurePreviews,
+    eventStore: context.orchestrationEventStore,
+    inbox: threadInbox,
+    orchestration: context.orchestrationService,
+    eventBus: context.eventBus,
+    logger: context.logger,
+    links: conversationPullRequestLinks,
+    providers: () =>
+      listProviders('pullRequest').map((entry) => entry.provider),
+    keptForSessions: (ids) =>
+      context.taskGraphService.listKeptDeclaredPullRequestsForSessions(ids),
+    access: {
+      current: isRequestPrincipalCurrent,
+      // The operator in person (never an agent), as the principal
+      // orchestration owns their chats under, not the OS alias.
+      operator: (request) =>
+        ownerIdentityForRequest(request)
+          ? conversationReadAuthorityForRequest(request).userId
+          : undefined,
+      canRead: canReadConversation,
+      readerOf: (request) => (id) => canReadConversation(request, id),
+    },
+  });
+  if (pullRequestFeedback)
+    context.app.route(
+      '/api/pull-request-feedback',
+      createPullRequestFeedbackRoutes(...pullRequestFeedback.routeArgs),
+    );
   context.app.route(
     '/api/pull-requests',
     createPullRequestRoutes(
@@ -10699,6 +10819,9 @@ export function configureRuntimeRoutes(
       context.sshEnvironmentService,
       undefined,
       peerCredentialStore,
+      undefined,
+      undefined,
+      runtimeRemoteStationReadAuthority(context.environmentSecurityService),
     ),
   );
   // station#1123 slice 2: outbound peer-credential admin routes. Gated to
@@ -10725,6 +10848,7 @@ export function configureRuntimeRoutes(
         hostname(),
         context.configLoader.getProjectHomeDir(),
       ),
+      peerReadiness,
     ),
   );
   context.app.route(
@@ -12382,14 +12506,11 @@ export function configureRuntimeRoutes(
       conversationAcknowledgements,
       conversationReadAuthorityForRequest,
       context.orchestrationService,
-      (query, signal) =>
-        searchConnectedRemoteMessages(
-          context.sshEnvironmentService,
-          query,
-          signal,
-          undefined,
-          peerCredentialStore,
-        ),
+      runtimeRemoteMessageSearch(
+        runtimeRemoteStationReadAuthority(context.environmentSecurityService),
+        context.sshEnvironmentService,
+        peerCredentialStore,
+      ),
       context.environmentSecurityService,
       readMarkers,
     ),
@@ -12458,6 +12579,8 @@ export function configureRuntimeRoutes(
     taskFollowUpWake,
   } = configureRuntimeSupportServices(context, flowRunService, {
     threadInbox: () => threadInbox,
+    pullRequestFeedback,
+    coordinatorWakes: () => coordinatorPlacement,
     focus: focusPresence,
     inAppLiveness: clientStreamPresence.inAppLiveness,
     ...(scheduledConversationRuns
@@ -12474,6 +12597,7 @@ export function configureRuntimeRoutes(
         context.projectService.listProjects().map((project) => project.slug),
       ),
   });
+  roomMentionNotifications = notificationService;
   automationActions = runtimeAutomationActions;
   durableTaskFollowUpWake = taskFollowUpWake;
   threadInbox?.start();
@@ -12939,6 +13063,7 @@ export function configureRuntimeRoutes(
         resolvePrincipal: resolveOrchestrationRequestPrincipal,
         security: context.environmentSecurityService,
         stationControlDispatchScope,
+        pullRequestFeedback,
       }),
     ),
   );
