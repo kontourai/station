@@ -859,11 +859,14 @@ describe('Codex native attached-session adoption', () => {
     await adoption;
     expect(resolveSourceHomeEnv).toHaveBeenCalledWith('/profile-home');
     // The profile overlay outranks the connection env; the home key is last.
-    expect(processFactory.mock.calls[0]?.[0]).toMatchObject({
-      OPENAI_BASE_URL: 'http://127.0.0.1:8319',
-      OPENAI_API_KEY: '',
-      CODEX_HOME: '/profile-home',
-    });
+    expect(processFactory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        OPENAI_BASE_URL: 'http://127.0.0.1:8319',
+        OPENAI_API_KEY: '',
+        CODEX_HOME: '/profile-home',
+      }),
+      expect.anything(),
+    );
 
     const maintenance = new FakeCodexProcess();
     const maintenanceFactory = vi.fn(() => maintenance);
@@ -910,9 +913,10 @@ describe('Codex native attached-session adoption', () => {
     await initialize(process);
     respond(process, await waitForCall(process, 'thread/fork'), forkResult());
     await adoption;
-    expect(processFactory.mock.calls[0]?.[0]).toMatchObject({
-      CODEX_HOME: '/refreshed-home',
-    });
+    expect(processFactory).toHaveBeenCalledWith(
+      expect.objectContaining({ CODEX_HOME: '/refreshed-home' }),
+      expect.anything(),
+    );
   });
 
   test('a profile home whose overlay cannot be prepared refuses continuation before spawning', async () => {
