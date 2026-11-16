@@ -29,3 +29,30 @@
   min-width: 44px;
   min-height: 44px;
 }
+
+.inline-browser-activity__chips {
+  display: flex;
+  gap: var(--k-space-2);
+  overflow-x: auto;
+}
+.inline-browser-activity__chip {
+  flex: none;
+  padding: var(--k-space-1) var(--k-space-2);
+  border: var(--k-border-thin, 1px) solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  color: var(--k-text-muted);
+}
+.inline-browser-activity__chip[aria-current="step"] {
+  color: var(--k-text);
+  border-color: var(--k-line-strong);
+}
+
+.inline-browser-activity[data-active="false"] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.inline-browser-activity[data-active="false"] .inline-browser-activity__steps {
+  border: 0;
+  padding: 0;
+}

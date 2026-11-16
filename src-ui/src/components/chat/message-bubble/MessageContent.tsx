@@ -207,7 +207,6 @@ function MessageContentComponent({
                 <BrowserActivityRun
                   key={block.key}
                   run={block}
-                  active={false}
                   renderCall={renderToolCall}
                 />
               );

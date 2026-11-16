@@ -23,6 +23,20 @@ import {
   clipboardWrites,
 } from './clipboard-stubs';
 
+vi.mock('../components/browser-activity/InlineBrowserActivity', () => ({
+  InlineBrowserActivity: ({
+    active,
+    children,
+  }: {
+    active: boolean;
+    children: React.ReactNode;
+  }) => (
+    <section className="inline-browser-activity" data-active={String(active)}>
+      {children}
+    </section>
+  ),
+}));
+
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => [],
 }));
@@ -67,8 +81,104 @@ vi.mock('../components/icons/UserIcon', () => ({
 }));
 
 import { ChatMessageList } from '../components/chat/ChatMessageList';
+import { BrowserActivityContext } from '../components/chat/BrowserActivityContext';
 import { CHAT_READER_RESTORE_EVENT } from '../components/chat/chatScrollAnchor';
 import { deviceSettingsStore } from '../lib/device-settings-store';
+
+test('keeps one live browser activity through persisted rows and settlement', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const first = {
+    type: 'tool-invocation' as const,
+    toolCallId: 'open',
+    toolName: 'mcp__station-browser__browser_open',
+    input: {},
+    output: { ok: true, session: { browserSessionId: 'tab-a' } },
+  };
+  const click = {
+    type: 'tool-invocation' as const,
+    toolCallId: 'click',
+    toolName: 'mcp__station-browser__browser_click',
+    input: { browserSessionId: 'tab-a' },
+    output: 'ok',
+  };
+  const base = {
+    id: 'browser-thread',
+    currentSessionId: 'browser-thread',
+    openTurnId: 'turn-a',
+    orchestrationSessionStarted: true,
+    orchestrationTurnOpen: true,
+    agentSlug: agentId('dev-agent'),
+    agentName: 'Dev Agent',
+    title: 'Browser',
+    input: '',
+    attachments: [],
+    queuedMessages: [],
+    inputHistory: [],
+    status: 'idle' as const,
+    createdAt: 1,
+    updatedAt: 1,
+    source: 'manual' as const,
+  };
+  const messages = [
+    {
+      role: 'assistant' as const,
+      content: '',
+      turnId: 'turn-a',
+      contentParts: [first],
+    },
+    {
+      role: 'assistant' as const,
+      content: 'Between calls',
+      turnId: 'turn-a',
+      contentParts: [
+        { type: 'text' as const, content: 'Between calls' },
+        click,
+      ],
+    },
+  ];
+  const scope = {
+    apiBase: '/station',
+    requestScope: { apiBase: '/station', authorityKey: 'a' },
+    projectSlug: 'p',
+    threadIds: ['browser-thread'],
+    conversationKey: 'c',
+  };
+  const view = (live: boolean) => (
+    <QueryClientProvider client={client}>
+      <BrowserActivityContext.Provider value={scope}>
+        <ChatMessageList
+          activeSession={{ ...base, orchestrationTurnOpen: live, messages }}
+          fontSize={14}
+          showReasoning={false}
+          showToolDetails={false}
+          suppressStreamingRow
+        />
+      </BrowserActivityContext.Provider>
+    </QueryClientProvider>
+  );
+  const rendered = render(view(true));
+  await waitFor(() =>
+    expect(
+      document
+        .querySelector('.inline-browser-activity')
+        ?.getAttribute('data-active'),
+    ).toBe('true'),
+  );
+  expect(screen.getByText('Between calls')).toBeTruthy();
+  expect(document.querySelectorAll('.inline-browser-activity')).toHaveLength(1);
+  rendered.rerender(view(false));
+  await waitFor(() =>
+    expect(
+      document
+        .querySelector('.inline-browser-activity')
+        ?.getAttribute('data-active'),
+    ).toBe('false'),
+  );
+  expect(document.querySelectorAll('.inline-browser-activity')).toHaveLength(1);
+  client.clear();
+});
 
 describe('ChatMessageList', () => {
   test('only the current Station completion notices appear in the transcript', () => {

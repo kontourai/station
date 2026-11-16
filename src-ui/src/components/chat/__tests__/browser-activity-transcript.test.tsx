@@ -12,6 +12,7 @@ import {
 import type { ComponentProps } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { ChatContentPart } from '../../../contexts/active-chats-state';
+import { activeChatsStore } from '../../../contexts/active-chats-store';
 import type { InlineBrowserActivity } from '../../browser-activity/InlineBrowserActivity';
 import type { BrowserActivityScope } from '../BrowserActivityContext';
 import {
@@ -20,6 +21,8 @@ import {
 } from '../BrowserActivityContext';
 import { MessageContent } from '../message-bubble/MessageContent';
 import { StreamingMessageView } from '../StreamingMessage';
+import { BrowserTurnActivityProvider } from '../BrowserTurnActivity';
+import { TranscriptTurnContext } from '../transcript-child-work';
 
 vi.mock('../../browser-activity/InlineBrowserActivity', () => ({
   InlineBrowserActivity: ({
@@ -94,21 +97,62 @@ const props = {
   ),
 };
 
+function TestTurn({
+  children,
+  calls = parts,
+  live = true,
+}: {
+  children: React.ReactNode;
+  calls?: ChatContentPart[];
+  live?: boolean;
+}) {
+  return (
+    <BrowserTurnActivityProvider
+      messages={[
+        {
+          role: 'assistant',
+          content: '',
+          sessionId: 'thread',
+          turnId: 'turn',
+          contentParts: calls,
+        },
+      ]}
+      chatId="thread"
+      threadId="thread"
+      liveTurnId="turn"
+      live={live}
+      includeStream={false}
+    >
+      <TranscriptTurnContext.Provider
+        value={{ threadId: 'thread', turnId: 'turn', browserOwner: 'row:0' }}
+      >
+        {children}
+      </TranscriptTurnContext.Provider>
+    </BrowserTurnActivityProvider>
+  );
+}
+
 describe('browser activity in the transcript', () => {
   test('groups a real open result with its selected browser action and leaves another server outside', async () => {
     render(
       <BrowserActivityContext.Provider value={scope}>
-        <StreamingMessageView {...props} />
+        <TestTurn>
+          <StreamingMessageView {...props} />
+        </TestTurn>
       </BrowserActivityContext.Provider>,
     );
     const card = await screen.findByRole('region', { name: 'Browser tab-a' });
-    expect(card.textContent).toContain('open');
+    expect(screen.getByText('open')).toBeTruthy();
     expect(card.textContent).toContain('click approval');
     expect(card.textContent).not.toContain('other');
     expect(screen.getByText('other')).toBeTruthy();
   });
   test('keeps normal tool rows when the preview is unavailable', () => {
-    render(<StreamingMessageView {...props} />);
+    render(
+      <TestTurn>
+        <StreamingMessageView {...props} />
+      </TestTurn>,
+    );
     expect(screen.queryByRole('region', { name: 'Browser tab-a' })).toBeNull();
     expect(screen.getByText('click approval')).toBeTruthy();
   });
@@ -139,22 +183,27 @@ test('a settled card retains the pending approval and answers its exact request'
   render(
     <QueryClientProvider client={client}>
       <BrowserActivityContext.Provider value={scope}>
-        <MessageContent
-          contentParts={[parts[0]!, failed, pending]}
-          textContent=""
-          chatFontSize={14}
-          showReasoning={false}
-          showToolDetails={false}
-          isStreamingMessage={false}
-          onToolApproval={approve}
-        />
+        <TestTurn calls={[parts[0]!, failed, pending]} live={false}>
+          <MessageContent
+            contentParts={[parts[0]!, failed, pending]}
+            textContent=""
+            chatFontSize={14}
+            showReasoning={false}
+            showToolDetails
+            isStreamingMessage={false}
+            onToolApproval={approve}
+          />
+        </TestTurn>
       </BrowserActivityContext.Provider>
     </QueryClientProvider>,
   );
   const card = await screen.findByRole('region', { name: 'Browser tab-a' });
   expect(card.getAttribute('data-active')).toBe('false');
   expect(within(card).getByText(/1 failed/)).toBeTruthy();
-  expect(within(card).getByText('Browser actions')).toBeTruthy();
+  const failedRow = screen.getByText('Failed').closest('button');
+  expect(failedRow).toBeTruthy();
+  fireEvent.click(failedRow!);
+  expect(screen.getByText('The page refused the action.')).toBeTruthy();
   fireEvent.click(within(card).getByRole('button', { name: 'Allow Once' }));
   await waitFor(() => expect(approve).toHaveBeenCalledWith(pending, 'once'));
   client.clear();
@@ -189,7 +238,9 @@ test.each([
         session={{ id: 'thread', projectSlug: 'project' }}
         {...overrides}
       >
-        <StreamingMessageView {...props} />
+        <TestTurn>
+          <StreamingMessageView {...props} />
+        </TestTurn>
       </BrowserActivityProvider>,
     );
     expect(screen.queryByRole('region', { name: 'Browser tab-a' })).toBeNull();
@@ -209,10 +260,177 @@ test('matching host authority enables the browser card', async () => {
       readOnly={false}
       session={{ id: 'thread', projectSlug: 'project' }}
     >
-      <StreamingMessageView {...props} />
+      <TestTurn>
+        <StreamingMessageView {...props} />
+      </TestTurn>
     </BrowserActivityProvider>,
   );
   expect(
     await screen.findByRole('region', { name: 'Browser tab-a' }),
   ).toBeTruthy();
+});
+
+test('keeps one activity per turn and browser session across assistant messages', async () => {
+  const click = { ...parts[1]!, needsApproval: false, output: 'ok' };
+  const second = {
+    ...click,
+    toolCallId: 'second-session',
+    input: { browserSessionId: 'tab-b' },
+  };
+  const unknown = { ...click, toolCallId: 'unknown', input: {} };
+  const messages = [
+    {
+      role: 'assistant' as const,
+      content: '',
+      sessionId: 'thread',
+      turnId: 'turn',
+      contentParts: [parts[0]!],
+    },
+    {
+      role: 'assistant' as const,
+      content: 'Between calls',
+      sessionId: 'thread',
+      turnId: 'turn',
+      contentParts: [click, parts[2]!, second, unknown],
+    },
+    {
+      role: 'assistant' as const,
+      content: '',
+      sessionId: 'thread',
+      turnId: 'older',
+      contentParts: [{ ...click, toolCallId: 'older' }],
+    },
+  ];
+  const view = (live: boolean) => (
+    <BrowserActivityContext.Provider value={scope}>
+      <BrowserTurnActivityProvider
+        messages={messages}
+        chatId="thread"
+        threadId="thread"
+        liveTurnId="turn"
+        live={live}
+        includeStream={false}
+      >
+        {messages.map((message, index) => (
+          <TranscriptTurnContext.Provider
+            key={message.turnId + message.content}
+            value={{
+              threadId: 'thread',
+              turnId: message.turnId,
+              browserOwner: `row:${index}`,
+            }}
+          >
+            <StreamingMessageView
+              {...props}
+              contentParts={message.contentParts}
+              streamingText={message.content}
+            />
+          </TranscriptTurnContext.Provider>
+        ))}
+      </BrowserTurnActivityProvider>
+    </BrowserActivityContext.Provider>
+  );
+  const rendered = render(view(true));
+  await waitFor(() =>
+    expect(
+      screen.getAllByRole('region', { name: 'Browser tab-a' }),
+    ).toHaveLength(2),
+  );
+  expect(
+    screen
+      .getByRole('region', { name: 'Browser tab-b' })
+      .getAttribute('data-active'),
+  ).toBe('true');
+  expect(
+    screen
+      .getAllByRole('region', { name: 'Browser tab-a' })
+      .map((card) => card.getAttribute('data-active')),
+  ).toEqual(['true', 'false']);
+  expect(screen.getByText('unknown')).toBeTruthy();
+  expect(screen.getByText('other')).toBeTruthy();
+  rendered.rerender(view(false));
+  await waitFor(() =>
+    expect(
+      screen
+        .getAllByRole('region', { name: 'Browser tab-a' })
+        .every((card) => card.getAttribute('data-active') === 'false'),
+    ).toBe(true),
+  );
+});
+
+test('deduplicates stream flush overlap and switches the live source with the chat', async () => {
+  const meta = { agentSlug: 'agent', agentName: 'Agent', title: 'Chat' };
+  activeChatsStore.initChat('flush-a', meta);
+  activeChatsStore.initChat('flush-b', meta);
+  const callA = { ...parts[1]!, needsApproval: false, output: 'ok' };
+  const callB = {
+    ...callA,
+    toolCallId: 'click-b',
+    input: { browserSessionId: 'tab-b' },
+  };
+  activeChatsStore.updateChat('flush-a', {
+    streamingMessage: { role: 'assistant', content: '', contentParts: [callA] },
+  });
+  activeChatsStore.updateChat('flush-b', {
+    streamingMessage: { role: 'assistant', content: '', contentParts: [callB] },
+  });
+  const view = (chat: 'flush-a' | 'flush-b') => {
+    const call = chat === 'flush-a' ? callA : callB;
+    const persisted =
+      chat === 'flush-a'
+        ? [
+            {
+              role: 'assistant' as const,
+              content: '',
+              turnId: 'turn',
+              contentParts: [callA],
+            },
+          ]
+        : [];
+    return (
+      <BrowserActivityContext.Provider value={scope}>
+        <BrowserTurnActivityProvider
+          messages={persisted}
+          chatId={chat}
+          threadId={chat}
+          liveTurnId="turn"
+          live
+          includeStream
+        >
+          {persisted.length > 0 && (
+            <TranscriptTurnContext.Provider
+              value={{ threadId: chat, turnId: 'turn', browserOwner: 'row:0' }}
+            >
+              <StreamingMessageView {...props} contentParts={[callA]} />
+            </TranscriptTurnContext.Provider>
+          )}
+          <TranscriptTurnContext.Provider
+            value={{ threadId: chat, turnId: 'turn', browserOwner: 'stream' }}
+          >
+            <StreamingMessageView {...props} contentParts={[call]} />
+          </TranscriptTurnContext.Provider>
+        </BrowserTurnActivityProvider>
+      </BrowserActivityContext.Provider>
+    );
+  };
+  try {
+    const rendered = render(view('flush-a'));
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole('region', { name: 'Browser tab-a' }),
+      ).toHaveLength(1),
+    );
+    expect(screen.getAllByText('click')).toHaveLength(1);
+    rendered.rerender(view('flush-b'));
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole('region', { name: 'Browser tab-b' }),
+      ).toHaveLength(1),
+    );
+    expect(screen.queryByRole('region', { name: 'Browser tab-a' })).toBeNull();
+    expect(screen.getAllByText('click-b')).toHaveLength(1);
+  } finally {
+    activeChatsStore.removeChat('flush-a');
+    activeChatsStore.removeChat('flush-b');
+  }
 });

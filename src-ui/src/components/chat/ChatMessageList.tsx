@@ -54,6 +54,7 @@ import {
   type ScrollToBottomAnimation,
 } from './animateScrollToBottom';
 import { ChatRunningBackgroundTasks } from './BackgroundTaskActivity';
+import { BrowserTurnActivityProvider } from './BrowserTurnActivity';
 import { ChatEmptyState } from './ChatEmptyState';
 import {
   CHAT_READER_RESTORE_EVENT,
@@ -97,7 +98,6 @@ import {
   foldTranscriptChildren,
   projectTranscriptChildRows,
   type TranscriptChild,
-  TranscriptChildrenContext,
   TranscriptTurnContext,
 } from './transcript-child-work';
 import { BROWSE_TURNS_EVENT } from './transcript-turn-browser-events';
@@ -1874,9 +1874,13 @@ function ChatMessageListComponent({
       const turn =
         message.role === 'assistant'
           ? {
-              threadId: message.sessionId,
+              threadId:
+                message.sessionId ??
+                activeSession.currentSessionId ??
+                activeSession.id,
               turnId: message.turnId,
               messageId: message.id,
+              browserOwner: `row:${row.index}`,
               firstRow: !seenTurns.has(key),
             }
           : undefined;
@@ -1908,7 +1912,13 @@ function ChatMessageListComponent({
     }
     previousPresentation.current = next;
     return next;
-  }, [transcriptRows, messages, onResendFromMessage]);
+  }, [
+    transcriptRows,
+    messages,
+    onResendFromMessage,
+    activeSession.currentSessionId,
+    activeSession.id,
+  ]);
 
   const renderDefaultMessage = (
     msg: ChatMessage,
@@ -2085,11 +2095,19 @@ function ChatMessageListComponent({
   // every consumer under the memoised streaming row.
   const streamingTurnContext = useMemo(
     () => ({
-      threadId: activeSession.currentSessionId,
-      turnId: activeSession.openTurnId,
+      threadId: activeSession.currentSessionId ?? activeSession.id,
+      turnId:
+        activeSession.conversationActivity?.openTurn?.turnId ??
+        activeSession.openTurnId,
       wholeTurn: true,
+      browserOwner: 'stream',
     }),
-    [activeSession.currentSessionId, activeSession.openTurnId],
+    [
+      activeSession.currentSessionId,
+      activeSession.id,
+      activeSession.conversationActivity?.openTurn?.turnId,
+      activeSession.openTurnId,
+    ],
   );
 
   const scrollToBottomControl =
@@ -2162,7 +2180,18 @@ function ChatMessageListComponent({
       }
     >
       <UIBlockActionsContext.Provider value={uiBlockActions}>
-        <TranscriptChildrenContext.Provider value={transcriptChildren}>
+        <BrowserTurnActivityProvider
+          transcriptChildren={transcriptChildren}
+          messages={messages}
+          chatId={activeSession.id}
+          threadId={activeSession.currentSessionId ?? activeSession.id}
+          liveTurnId={
+            activeSession.conversationActivity?.openTurn?.turnId ??
+            activeSession.openTurnId
+          }
+          live={turnLive}
+          includeStream={isStreaming}
+        >
           {onQuote && !activeSession.replay && (
             <QuoteSelectionToolbar
               container={messagesContainerRef}
@@ -2435,7 +2464,7 @@ function ChatMessageListComponent({
             (scrollControlsTarget
               ? createPortal(scrollControls, scrollControlsTarget)
               : scrollControls)}
-        </TranscriptChildrenContext.Provider>
+        </BrowserTurnActivityProvider>
       </UIBlockActionsContext.Provider>
     </ApprovalSheetProvider>
   );
