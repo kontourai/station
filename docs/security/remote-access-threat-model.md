@@ -1879,6 +1879,23 @@ supplies the peer credential store. A missing credential or remote authenticatio
 rejection is reported as `authenticationRequired`; loopback arrival does not
 bypass the remote Station's authentication.
 
+Opening one of those rows reads its history through the same tunnel and
+bearer (`GET /api/environments/ssh/sessions/:environmentId/:threadId/history`,
+[route](../../src-server/routes/operations/ssh-environments.ts)). This
+includes external Claude, Codex, OpenCode and Grok sessions. The remote
+Station discovered those on its own host with its own follower, so no
+transcript path, source handle or provider home crosses the tunnel: the remote
+answers its ordinary bounded `window-v1` session read, and the remote Station
+authorizes it. The relay never dials an environment that is not already
+connected. It refuses a page that names a different session or carries more
+than 2,000 events, rather than truncating it. It caps a page at the remote
+route's own 20-turn and 512-character cursor bounds, and relays only the
+page's own fields. The environment name on the result comes from this
+Station's profile, never from the remote's answer. A remote 401 is reported as
+`authentication_required` with a 409, never as a 401 from this Station, which
+a client would read as its own credential being refused. The read is
+view-only: this Station offers no continuation of a remote session.
+
 Separately, disclosing that read to a caller of this Station is gated at
 `orchestration:operate` here — deliberately stricter than the
 `orchestration:read` the rest of the `/api/environments/ssh` family uses for

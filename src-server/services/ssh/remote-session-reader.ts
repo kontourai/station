@@ -1,4 +1,7 @@
-import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
+import type {
+  OrchestrationSessionEventWindow,
+  OrchestrationSessionSummary,
+} from '@kontourai/station-contracts/orchestration';
 // archive#1778: ONE normalizer, shared with the SDK's fetch helpers. A second
 // hand-written copy here would be the divergent-copy disease this change is
 // about — and the first version of it guarded on truthiness, so a remote
@@ -7,6 +10,7 @@ import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/o
 import { withNormalizedAnswerability } from '@kontourai/station-contracts/orchestration';
 import {
   type ClientRequestOptions,
+  getOrchestrationSessionDetailWindow,
   listOrchestrationSessions,
   StationHttpError,
   StationRequestTimeoutError,
@@ -399,4 +403,163 @@ class RemoteSessionAuthenticationRequiredError extends Error {
     );
     this.name = 'RemoteSessionAuthenticationRequiredError';
   }
+}
+
+/** One history page is a short, bounded read over the tunnel. */
+const REMOTE_SESSION_HISTORY_TIMEOUT_MS = 5_000;
+
+/** Newest turns asked of the remote per page; the route refuses more. */
+export const MAX_REMOTE_SESSION_HISTORY_TURNS = 20;
+
+/** Matches the remote orchestration route's own cursor bound. */
+export const MAX_REMOTE_HISTORY_CURSOR_LENGTH = 512;
+
+/**
+ * Defense-in-depth bound on events relayed from one remote page,
+ * independent of the remote Station's own window budget. A larger page is
+ * refused, not truncated: a cut page would read as a complete transcript.
+ */
+export const MAX_REMOTE_SESSION_HISTORY_EVENTS = 2_000;
+
+export type RemoteSessionHistoryFetcher = (
+  apiBase: string,
+  threadId: string,
+  input: { cursor?: string; turnLimit: number },
+  options?: ClientRequestOptions,
+) => Promise<OrchestrationSessionEventWindow>;
+
+const defaultHistoryFetcher: RemoteSessionHistoryFetcher = (
+  apiBase,
+  threadId,
+  input,
+  options,
+) =>
+  getOrchestrationSessionDetailWindow(apiBase, threadId, input, {
+    timeoutMs: REMOTE_SESSION_HISTORY_TIMEOUT_MS,
+    readOnly: true,
+    ...options,
+  });
+
+export type RemoteSessionHistoryFailure =
+  /** No saved environment by that id, or it is not connected right now. */
+  | 'environment_unavailable'
+  /** Connected, but no outbound peer bearer, or the remote rejected it. */
+  | 'authentication_required'
+  /** The remote Station has no session by that id readable to this peer. */
+  | 'not_found'
+  /** The remote did not answer in time or could not be reached. */
+  | 'unreachable'
+  /** The remote answered with a page this Station will not relay. */
+  | 'invalid_response';
+
+export class RemoteSessionHistoryError extends Error {
+  constructor(readonly reason: RemoteSessionHistoryFailure) {
+    super(`Remote session history unavailable: ${reason}`);
+    this.name = 'RemoteSessionHistoryError';
+  }
+}
+
+export interface RemoteSessionHistoryPage {
+  environmentId: string;
+  environmentName: string;
+  window: OrchestrationSessionEventWindow;
+}
+
+/**
+ * Read one bounded history page of a session that lives on a connected SSH
+ * environment's Station. The remote Station discovered and owns the
+ * session (its own attached-session follower read its own host), so this
+ * Station only relays a read: it never dials a tunnel (only an environment
+ * already `connected` is used), presents the provisioned outbound peer
+ * bearer, and the remote derives the read's authority itself. The remote's
+ * answer must name the requested session, and the environment identity on
+ * the result comes from this Station's profile, never from the response.
+ */
+export async function readConnectedRemoteSessionHistory(
+  service: Pick<SshEnvironmentService, 'list'>,
+  environmentId: string,
+  threadId: string,
+  input: { cursor?: string; turnLimit: number },
+  fetchHistory: RemoteSessionHistoryFetcher = defaultHistoryFetcher,
+  peerCredentials?: Pick<PeerCredentialStore, 'get'>,
+): Promise<RemoteSessionHistoryPage> {
+  const environment = connectedEnvironments(service).find(
+    (candidate) => candidate.id === environmentId,
+  );
+  if (!environment) {
+    throw new RemoteSessionHistoryError('environment_unavailable');
+  }
+  const peer = environment.peerEnvironmentId
+    ? peerCredentials?.get(environment.peerEnvironmentId)
+    : null;
+  if (peerCredentials && !peer) {
+    throw new RemoteSessionHistoryError('authentication_required');
+  }
+  let window: OrchestrationSessionEventWindow;
+  try {
+    window = await fetchHistory(
+      environment.localUrl,
+      threadId,
+      {
+        ...(input.cursor !== undefined ? { cursor: input.cursor } : {}),
+        turnLimit: Math.min(input.turnLimit, MAX_REMOTE_SESSION_HISTORY_TURNS),
+      },
+      peer
+        ? { headers: { Authorization: `Bearer ${peer.credential}` } }
+        : undefined,
+    );
+  } catch (error) {
+    if (error instanceof StationHttpError) {
+      if (error.status === 401) {
+        throw new RemoteSessionHistoryError('authentication_required');
+      }
+      // A read the remote refuses for this peer is indistinguishable from
+      // a missing session, as on the remote itself.
+      if (error.status === 403 || error.status === 404) {
+        throw new RemoteSessionHistoryError('not_found');
+      }
+    }
+    if (
+      error instanceof Error &&
+      /does not support bounded session detail/u.test(error.message)
+    ) {
+      throw new RemoteSessionHistoryError('invalid_response');
+    }
+    throw new RemoteSessionHistoryError('unreachable');
+  }
+  if (
+    !window ||
+    typeof window !== 'object' ||
+    window.protocolVersion !== 1 ||
+    !window.session ||
+    window.session.threadId !== threadId ||
+    !Array.isArray(window.events) ||
+    window.events.length > MAX_REMOTE_SESSION_HISTORY_EVENTS ||
+    typeof window.hasMore !== 'boolean' ||
+    !Number.isSafeInteger(window.watermark) ||
+    (window.nextCursor !== undefined &&
+      (typeof window.nextCursor !== 'string' ||
+        window.nextCursor.length > MAX_REMOTE_HISTORY_CURSOR_LENGTH))
+  ) {
+    throw new RemoteSessionHistoryError('invalid_response');
+  }
+  return {
+    environmentId: environment.id,
+    environmentName: environment.name,
+    // Only the fields a read-only history page needs are relayed; anything
+    // else a remote adds stays on the remote.
+    window: {
+      protocolVersion: 1,
+      session: withNormalizedAnswerability(window.session),
+      events: window.events,
+      hasMore: window.hasMore,
+      ...(window.nextCursor !== undefined
+        ? { nextCursor: window.nextCursor }
+        : {}),
+      ...(window.turnStartDetached === true
+        ? { turnStartDetached: true as const }
+        : {}),
+      watermark: window.watermark,
+    },
+  };
 }

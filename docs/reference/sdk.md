@@ -1913,6 +1913,19 @@ explicit captured scope. The generic wrapper does not add authority, validate a
 response, or partition an arbitrary caller-supplied key. Follow each operation's
 scope contract rather than assuming every SDK query is interchangeable.
 
+### Remote session history
+
+`fetchRemoteSessionHistory(environmentId, threadId, { cursor?, turnLimit? })`
+reads one read-only history page of a session on a connected SSH
+environment's Station. These are the rows `useRemoteSessionsQuery` lists.
+This Station relays the remote's bounded `window-v1` read over the
+environment's tunnel and peer bearer, and labels the page with its own
+`environmentName`. `readRemoteSessionHistoryCapability(apiBase)` reports the
+`remoteSessionHistory` handshake flag. Ask it before offering to open a
+remote row, because an older host answers the path 404. Failures throw with
+the server's sentence: not connected, needs a repaired credential, not found,
+or did not answer. The page is view-only and carries no continuation.
+
 ### `useAgentsQuery(config?)`
 
 Reads the Agent catalog under `['agents']`. `data` projects its Agent array;

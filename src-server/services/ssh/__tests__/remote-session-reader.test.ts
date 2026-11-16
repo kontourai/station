@@ -773,3 +773,67 @@ describe('remote answerability normalization (station#1778)', () => {
     expect(result.environments[0].sessions[0].answerability).toEqual(remote);
   });
 });
+
+describe('readConnectedRemoteSessionHistory through the real SDK fetcher', () => {
+  test("reads the remote Station's bounded window over the tunnel origin with the peer bearer", async () => {
+    const { createServer } = await import('node:http');
+    const { readConnectedRemoteSessionHistory } = await import(
+      '../remote-session-reader.js'
+    );
+    const thread = 'external:codex:0123456789abcdef0123456789abcdef';
+    const seen: { url?: string; authorization?: string } = {};
+    const server = createServer((request, response) => {
+      seen.url = request.url;
+      seen.authorization = request.headers.authorization;
+      response.setHeader('Content-Type', 'application/json');
+      response.end(
+        JSON.stringify({
+          success: true,
+          data: {
+            protocolVersion: 1,
+            session: { threadId: thread, controlMode: 'read-only-attached' },
+            events: [{ sequence: 3, event: { eventId: 'evt-3' } }],
+            hasMore: false,
+            watermark: 3,
+          },
+        }),
+      );
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, '127.0.0.1', resolve),
+    );
+    try {
+      const address = server.address() as { port: number };
+      const page = await readConnectedRemoteSessionHistory(
+        {
+          list: () =>
+            [
+              connectedView(
+                'env-1',
+                'Home media',
+                `http://127.0.0.1:${address.port}`,
+                'peer-env',
+              ),
+            ] as any,
+        },
+        'env-1',
+        thread,
+        { turnLimit: 50 },
+        undefined,
+        { get: () => ({ credential: 'peer-bearer-for-test' }) as any },
+      );
+      expect(seen.authorization).toBe('Bearer peer-bearer-for-test');
+      const url = new URL(seen.url!, 'http://x');
+      expect(url.pathname).toBe(
+        `/api/orchestration/sessions/${encodeURIComponent(thread)}`,
+      );
+      expect(url.searchParams.get('view')).toBe('window-v1');
+      // The relay clamps to the remote route's own turn bound.
+      expect(url.searchParams.get('turnLimit')).toBe('20');
+      expect(page.environmentName).toBe('Home media');
+      expect(page.window.events).toHaveLength(1);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+});

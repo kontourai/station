@@ -5,8 +5,14 @@ import type { PeerCredentialStore } from '../../services/peers/peer-credential-s
 import { SSH_PROBE_MAX_SECONDS } from '../../services/ssh/openssh-reachability.js';
 import {
   listConnectedRemoteSessions,
+  MAX_REMOTE_HISTORY_CURSOR_LENGTH,
+  MAX_REMOTE_SESSION_HISTORY_TURNS,
+  RemoteSessionHistoryError,
+  type RemoteSessionHistoryFailure,
+  type RemoteSessionHistoryFetcher,
   type RemoteSessionsFetcher,
   type RemoteSessionsResult,
+  readConnectedRemoteSessionHistory,
 } from '../../services/ssh/remote-session-reader.js';
 import type { SshEnvironmentService } from '../../services/ssh/ssh-environment-service.js';
 import {
@@ -29,6 +35,38 @@ function errorStatus(message: string): 400 | 404 | 409 | 500 {
   return 500;
 }
 
+/** Profile ids and thread ids are opaque, single path segments. */
+const REMOTE_HISTORY_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/u;
+
+/**
+ * No failure is a 401: this Station authenticated its own caller, and a 401
+ * here would read to the client as its own credential being refused.
+ */
+const REMOTE_HISTORY_FAILURES: Record<
+  RemoteSessionHistoryFailure,
+  { status: 404 | 409 | 502; message: string }
+> = {
+  environment_unavailable: {
+    status: 409,
+    message: 'That computer is not connected. Connect it, then try again.',
+  },
+  authentication_required: {
+    status: 409,
+    message:
+      'This Station has no working credential for that computer. Reconnect it to repair access.',
+  },
+  not_found: { status: 404, message: 'Session not found on that computer.' },
+  unreachable: {
+    status: 502,
+    message: 'That computer did not answer in time. Try again.',
+  },
+  invalid_response: {
+    status: 502,
+    message:
+      "That computer's Station returned history this Station cannot show. Update it, then try again.",
+  },
+};
+
 export function createSshEnvironmentRoutes(
   service: SshEnvironmentService,
   listRemoteSessions: (
@@ -44,6 +82,8 @@ export function createSshEnvironmentRoutes(
   admission: SshProbeAdmission = new SshProbeAdmission({
     retryAfterSeconds: SSH_PROBE_MAX_SECONDS,
   }),
+  /** For tests: how one remote history page is fetched over the tunnel. */
+  fetchRemoteHistory?: RemoteSessionHistoryFetcher,
 ) {
   const app = new Hono();
 
@@ -69,6 +109,63 @@ export function createSshEnvironmentRoutes(
       });
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 503);
+    }
+  });
+
+  // One read-only history page of a session that lives on a connected SSH
+  // environment's Station (attached external sessions included: the remote
+  // Station discovered those on its own host). Under the `/sessions` prefix
+  // on purpose, so it takes that leaf's `orchestration:operate` scope in
+  // pairing-route-scopes.ts. Never dials: an environment that is not
+  // connected answers `environment_unavailable`.
+  app.get('/sessions/:environmentId/:threadId/history', async (c) => {
+    const environmentId = param(c, 'environmentId');
+    const threadId = param(c, 'threadId');
+    const cursor = c.req.query('cursor');
+    const turnLimitText = c.req.query('turnLimit');
+    const turnLimit =
+      turnLimitText === undefined ? 10 : Number.parseInt(turnLimitText, 10);
+    if (
+      !REMOTE_HISTORY_ID.test(environmentId) ||
+      !REMOTE_HISTORY_ID.test(threadId) ||
+      (cursor !== undefined &&
+        (cursor.length === 0 ||
+          cursor.length > MAX_REMOTE_HISTORY_CURSOR_LENGTH)) ||
+      (turnLimitText !== undefined && !/^[0-9]{1,2}$/u.test(turnLimitText)) ||
+      turnLimit < 1 ||
+      turnLimit > MAX_REMOTE_SESSION_HISTORY_TURNS
+    ) {
+      return c.json(
+        { success: false, error: 'Invalid remote session history request' },
+        400,
+      );
+    }
+    try {
+      const data = await readConnectedRemoteSessionHistory(
+        service,
+        environmentId,
+        threadId,
+        { ...(cursor !== undefined ? { cursor } : {}), turnLimit },
+        fetchRemoteHistory,
+        peerCredentials,
+      );
+      return c.json({ success: true, data });
+    } catch (error) {
+      if (error instanceof RemoteSessionHistoryError) {
+        const { status, message } = REMOTE_HISTORY_FAILURES[error.reason];
+        return c.json(
+          { success: false, error: message, code: error.reason },
+          status,
+        );
+      }
+      return c.json(
+        {
+          success: false,
+          error: 'Could not read this session from the other computer.',
+          code: 'unreachable',
+        },
+        502,
+      );
     }
   });
 

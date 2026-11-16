@@ -31,6 +31,11 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // SSH environment management: src-server/services/ssh/, /api/ssh-environments
   // routes, packages/sdk/src/query-domains/sshEnvironments.ts.
   sshEnvironments: true,
+  // Read-only history of a session on a connected SSH environment's Station:
+  // src-server/routes/operations/ssh-environments.ts
+  // `/sessions/:environmentId/:threadId/history`. Served wherever the SSH
+  // environment routes are, as `sshEnvironments` is.
+  remoteSessionHistory: true,
   // Private memory review, recall and briefing: src-server/routes/knowledge/
   // memory-routes.ts. Hosted deployments withdraw it: see servesPrivateMemory.
   privateMemoryReview: true,

@@ -1,8 +1,13 @@
-import { withNormalizedAnswerability } from '@kontourai/station-contracts/orchestration';
+import {
+  type OrchestrationSessionEventWindow,
+  withNormalizedAnswerability,
+} from '@kontourai/station-contracts/orchestration';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { _getApiBase } from '../api';
 import { apiErrorMessage } from '../api-core';
+import { hasCapability } from '../client/capability';
 import { authenticatedFetch } from '../client/http';
+import { fetchPublicStationCapabilities } from '../client/publicStationCapabilities';
 import type { QueryConfig } from '../query-core';
 import type { OrchestrationSessionSummary } from './chatRuntimeTypes';
 export interface ResolvedOpenSshHost {
@@ -250,6 +255,52 @@ export async function fetchRemoteSessions(): Promise<RemoteSessionsResult> {
     // boundary while current servers always return the explicit array.
     authenticationRequired: result.authenticationRequired ?? [],
   };
+}
+
+/**
+ * One read-only history page of a session that lives on a connected SSH
+ * environment's Station, relayed by this Station over that tunnel. The
+ * environment identity comes from this Station's profile, never from the
+ * remote's answer.
+ */
+export interface RemoteSessionHistoryPage {
+  environmentId: string;
+  environmentName: string;
+  window: OrchestrationSessionEventWindow;
+}
+
+/** `GET /api/environments/ssh/sessions/:environmentId/:threadId/history`. */
+export async function fetchRemoteSessionHistory(
+  environmentId: string,
+  threadId: string,
+  input: { cursor?: string; turnLimit?: number } = {},
+): Promise<RemoteSessionHistoryPage> {
+  const query = new URLSearchParams();
+  if (input.cursor !== undefined) query.set('cursor', input.cursor);
+  if (input.turnLimit !== undefined)
+    query.set('turnLimit', String(input.turnLimit));
+  const page = await request<RemoteSessionHistoryPage>(
+    `/sessions/${encodeURIComponent(environmentId)}/${encodeURIComponent(threadId)}/history${query.size ? `?${query}` : ''}`,
+  );
+  return {
+    ...page,
+    window: {
+      ...page.window,
+      session: withNormalizedAnswerability(page.window.session),
+    },
+  };
+}
+
+/**
+ * Whether this Station relays remote session history
+ * (`remoteSessionHistory`). An older host answers the history path 404, the
+ * same as a missing session, so a client asks before offering to open one.
+ */
+export async function readRemoteSessionHistoryCapability(
+  apiBase: string,
+): Promise<boolean> {
+  const handshake = await fetchPublicStationCapabilities(apiBase);
+  return handshake ? hasCapability(handshake, 'remoteSessionHistory') : false;
 }
 
 export const sshEnvironmentQueries = {
