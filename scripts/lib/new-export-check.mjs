@@ -235,8 +235,17 @@ function wholeImportedPaths(modules, paths) {
   const whole = new Set();
   for (const { path: file, text } of modules) {
     if (text.includes('import') || text.includes('require'))
-      for (const [, specifier] of text.matchAll(WHOLE_IMPORT)) {
+      for (const match of text.matchAll(WHOLE_IMPORT)) {
+        const specifier = match[1];
         if (!specifier.startsWith('.')) continue;
+        // `const { a } = await import('…')` uses only the names it
+        // destructures, which the name search already sees.
+        if (
+          /\}\s*=\s*(?:await\s+)?$/.test(
+            text.slice(Math.max(0, match.index - 40), match.index),
+          )
+        )
+          continue;
         const target = withoutExtension(
           posix.normalize(posix.join(posix.dirname(file), specifier)),
         );
@@ -265,9 +274,10 @@ function wholeImportedPaths(modules, paths) {
  * - an entry-point file (a test-directory module, or a file package.json,
  *   a workflow, a hook or .fallowrc.json names): fallow treats its exports
  *   as externally accessible;
- * - a module another file imports whole (`import * as`, `import()`,
- *   `require()`, or an `import.meta.glob` pattern that matches it): every
- *   export counts as used, and a name search cannot see it;
+ * - a module another file imports whole (`import * as`, an `import()` or
+ *   `require()` that is not destructured, or an `import.meta.glob` pattern
+ *   that matches it): every export counts as used, and a name search cannot
+ *   see it;
  * - a type-only export used elsewhere in its own file
  *   (`ignoreExportsUsedInFile` for types in .fallowrc.json).
  * Only module sources count as naming an export: a name in prose or

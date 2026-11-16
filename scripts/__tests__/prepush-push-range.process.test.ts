@@ -440,7 +440,7 @@ describe.skipIf(process.platform === 'win32')(
     );
 
     it(
-      'refuses an export that another file mentions only in a comment or a type-position import',
+      'refuses an export that another file mentions only in a comment, a type-position import or a destructured dynamic import',
       () => {
         const f = fixture();
         f.commit(
@@ -448,7 +448,7 @@ describe.skipIf(process.platform === 'win32')(
             'src/b.ts':
               "import { alsoUsed } from './a';\nexport function helper() {\n  return alsoUsed();\n}\nexport function onlyInComments() {\n  return 4;\n}\n",
             'src/index.ts':
-              "import { used } from './a';\nimport { helper } from './b';\n// onlyInComments is described here but never called.\n/* nor here: onlyInComments */\ntype B = typeof import('./b');\nconsole.log(used(), helper());\n",
+              "import { used } from './a';\nimport { helper } from './b';\n// onlyInComments is described here but never called.\n/* nor here: onlyInComments */\ntype B = typeof import('./b');\nconst { helper: again } = await import(\n  './b'\n);\nconsole.log(used(), helper(), again);\n",
           },
           'feat: an export only comments mention',
         );
