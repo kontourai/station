@@ -168,7 +168,7 @@ test('needs_input attention answer field stays genuinely visible once the viewpo
     'none',
   );
 
-  const answer = page.getByLabel('Answer this session');
+  const answer = page.getByLabel('Answer this request');
   const box = await answer.boundingBox();
   expect(box, 'bounding box of the answer textarea').not.toBeNull();
   expect(box?.width ?? 0, 'answer textarea width').toBeGreaterThan(0);

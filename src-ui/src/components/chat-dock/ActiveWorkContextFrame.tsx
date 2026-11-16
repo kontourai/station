@@ -12,6 +12,7 @@ import {
   useRef,
 } from 'react';
 import type { ChatSession, FileAttachment } from '../../types';
+import { FOCUSABLE_SELECTOR, wrapTabFocus } from '../../utils/focusable';
 import { ResponsiveDialogCloseButton } from '../ResponsiveDialogSurface';
 import { Empty } from '../state';
 
@@ -127,9 +128,8 @@ export function ActiveWorkContextFrame({
   useLayoutEffect(() => {
     if (!isMobile) return;
     returnFocusRef.current = captureReturnFocus(returnFocusTarget);
-    const firstControl = sheetRef.current?.querySelector<HTMLElement>(
-      'button:not(:disabled), [href], input:not(:disabled), [tabindex]:not([tabindex="-1"])',
-    );
+    const firstControl =
+      sheetRef.current?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
     firstControl?.focus();
   }, [isMobile, returnFocusTarget]);
 
@@ -142,21 +142,13 @@ export function ActiveWorkContextFrame({
         return;
       }
       if (event.key !== 'Tab') return;
-      const controls = Array.from(
-        sheetRef.current?.querySelectorAll<HTMLElement>(
-          'button:not(:disabled), [href], input:not(:disabled), [tabindex]:not([tabindex="-1"])',
-        ) ?? [],
-      ).filter((element) => element.getAttribute('aria-hidden') !== 'true');
-      if (controls.length === 0) return;
-      const first = controls[0];
-      const last = controls.at(-1)!;
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
+      wrapTabFocus(
+        event,
+        Array.from(
+          sheetRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR) ??
+            [],
+        ).filter((element) => element.getAttribute('aria-hidden') !== 'true'),
+      );
     };
     document.addEventListener('keydown', containFocus);
     return () => document.removeEventListener('keydown', containFocus);

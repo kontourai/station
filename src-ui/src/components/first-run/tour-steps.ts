@@ -44,7 +44,7 @@ interface FirstRunTourStep {
 
 export const FIRST_RUN_ANCHOR_ATTRIBUTE = 'data-first-run-anchor';
 
-export const FIRST_RUN_TOUR_STEPS = [
+export const FIRST_RUN_TOUR_STEPS: readonly FirstRunTourStep[] = [
   {
     // #2065 retired the global review queue: Review is a layout kind a
     // Project places, so there is no cross-Project decision page left for a
@@ -52,28 +52,15 @@ export const FIRST_RUN_TOUR_STEPS = [
     // where a decision is now made — it carries Approve/Reject itself (#2064)
     // — so the step teaches the surface that still holds the whole claim.
     id: 'decisions',
-    title: 'Decisions are part of the record',
-    body: 'Work that needs your approval stops here, and the decision you make is kept with the run that asked for it — so later you can see not just what happened, but who let it.',
+    title: 'Approve or reject work',
+    body: 'Approvals stop here. Your decision is saved with the run.',
     view: { type: 'notifications' },
     anchor: 'notifications',
   },
   {
-    id: 'activity',
-    title: 'Every run keeps its own evidence',
-    body: 'Each session holds the events that produced its result, so an answer can be traced back to the work behind it instead of being taken on trust.',
-    surface: 'activity',
-    // The Activity page root, via `SplitPaneLayout`'s `firstRunAnchor` prop:
-    // `SessionsView` renders a bare `SplitPaneLayout` with no root element of
-    // its own to hang the attribute on. The layout root is present whether or
-    // not any session exists yet. Not the sidebar's `nav-activity` row: that
-    // row reveals the region rather than navigating (#928), so the coachmark
-    // would point at the way in rather than at the surface it is teaching.
-    anchor: 'activity',
-  },
-  {
     id: 'schedule',
-    title: 'Unattended work is held to the same standard',
-    body: 'A scheduled job produces the same evidence as work you start yourself, because nobody is watching it — which is exactly when a receipt matters most.',
+    title: 'Scheduled work',
+    body: 'Scheduled runs keep the same record as runs you start.',
     view: { type: 'schedule' },
     anchor: 'schedule',
   },
@@ -84,7 +71,7 @@ export const FIRST_RUN_TOUR_STEPS = [
     view: { type: 'home' },
     anchor: 'customize',
   },
-] as const satisfies readonly FirstRunTourStep[];
+];
 
 export type FirstRunTourStepId = (typeof FIRST_RUN_TOUR_STEPS)[number]['id'];
 
@@ -112,13 +99,11 @@ export function tourStepPath(step: FirstRunTourStep): string | null {
  * (device-settings.ts), so a step rename must keep every previously
  * persisted id resolving to the renamed step — not silently to step 0.
  */
-const PERSISTED_TOUR_STEP_ALIASES: Readonly<Record<string, string>> = {
-  sessions: 'activity',
-};
+const PERSISTED_TOUR_STEP_ALIASES: Readonly<Record<string, string>> = {};
 
 export function tourStepIndexForId(id: string | undefined): number {
   if (!id) return 0;
   const canonical = PERSISTED_TOUR_STEP_ALIASES[id] ?? id;
   const index = FIRST_RUN_TOUR_STEPS.findIndex((step) => step.id === canonical);
-  return index >= 0 ? index : 0;
+  return Math.max(index, 0);
 }

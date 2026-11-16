@@ -237,6 +237,34 @@ describe('authenticated client transport', () => {
     expect(onAuthenticated).toHaveBeenCalledOnce();
   });
 
+  it.each(['text/html; charset=utf-8', 'Application/XHTML+XML'])(
+    'does not recover credentials from a 200 %s fallback',
+    async (contentType) => {
+      const onAuthenticated = vi.fn();
+      setClientCredentialResolver(() => ({
+        credential: CREDENTIAL,
+        origin: 'https://station.example.test',
+        onAuthenticated,
+      }));
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          async () =>
+            new Response('<!doctype html><title>Sign in</title>', {
+              headers: { 'content-type': contentType },
+            }),
+        ),
+      );
+      const response = await getJson(
+        'https://station.example.test/api/settings',
+      );
+      expect(onAuthenticated).not.toHaveBeenCalled();
+      // The response remains available to its consumer, which can report the
+      // actual content failure rather than claiming authenticated recovery.
+      expect(await response.text()).toContain('<!doctype html>');
+    },
+  );
+
   it('does not report a deliberately public 2xx as authenticated recovery', async () => {
     // `/.well-known/station/v1` answers 200 to an ANONYMOUS caller, and
     // `fetchEventStreamResumeCapability` / `fetchSessionEventWindowCapability`

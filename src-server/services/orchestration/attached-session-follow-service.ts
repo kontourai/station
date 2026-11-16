@@ -31,6 +31,8 @@ import {
   attachedSessionProjectAttribution,
   attachedSessionScanDuration,
 } from '../../telemetry/metrics.js';
+import { mapWithConcurrency } from '../../utils/bounded-async.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
 import type { AdoptionLedger } from './adoption-ledger.js';
@@ -197,25 +199,15 @@ export async function resolveAttachedProjectRoots(
   ) => string | undefined | Promise<string | undefined>,
   concurrency = DEFAULT_ROOT_RESOLUTION_CONCURRENCY,
 ): Promise<AttachedProjectRoot[]> {
-  const limit = Math.max(1, Math.floor(concurrency));
-  const resolved = new Array<AttachedProjectRoot>(projects.length);
-  let next = 0;
-  async function worker(): Promise<void> {
-    for (;;) {
-      const index = next++;
-      if (index >= projects.length) return;
-      const project = projects[index];
-      resolved[index] = {
-        slug: project.slug,
-        workingDirectory:
-          (await resolvePath(project.slug)) ?? project.workingDirectory,
-      };
-    }
-  }
-  await Promise.all(
-    Array.from({ length: Math.min(limit, projects.length) }, worker),
+  return mapWithConcurrency(
+    projects,
+    Math.max(1, Math.floor(concurrency)),
+    async (project) => ({
+      slug: project.slug,
+      workingDirectory:
+        (await resolvePath(project.slug)) ?? project.workingDirectory,
+    }),
   );
-  return resolved;
 }
 
 interface AttachedSessionFollowServiceOptions {
@@ -386,7 +378,7 @@ export class AttachedSessionFollowService {
       } catch (error) {
         this.options.logger?.warn('Attached-session source failed to close', {
           source: sourceLabel(source),
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         });
       }
     }
@@ -402,7 +394,7 @@ export class AttachedSessionFollowService {
   private pollSafely(): Promise<void> {
     return this.pollNow().catch((error: unknown) => {
       this.options.logger?.warn('Attached-session poll failed', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     });
   }

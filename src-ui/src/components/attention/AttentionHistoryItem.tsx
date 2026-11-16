@@ -1,8 +1,10 @@
 import type { AttentionItem } from '@kontourai/station-sdk';
 import { useAcknowledgeAttentionItemMutation } from '@kontourai/station-sdk';
 import type { ReactNode } from 'react';
+import { useDeveloperFeatures } from '../../hooks/useDeveloperFeatures';
 import {
   attentionKindLabel,
+  isFlowGateKind,
   isPeerHostedAttentionItem,
   peerAttentionElsewhereText,
   sessionFailureCause,
@@ -92,12 +94,16 @@ export function AttentionHistoryItem({
             },
           ]
         : [];
+  // Same rule as the live card's `OpenFlowConsoleLink`.
+  const { flow } = useDeveloperFeatures();
+  const opensFlowConsole = isFlowGateKind(item.kind);
   const openLink = (
     <>
       {item.kind === 'session-failed' ? (
         <FailedSessionOpenLink item={item} onClose={onClose} />
       ) : (
-        item.openHref && (
+        item.openHref &&
+        (flow || !opensFlowConsole) && (
           <a
             className="notification-history__action"
             href={item.openHref}
@@ -231,11 +237,8 @@ function FailedSessionOpenLink({
 }
 
 function openLinkLabel(kind: AttentionItem['kind']): string {
+  if (isFlowGateKind(kind)) return 'Open flow console';
   switch (kind) {
-    case 'gate-route-back':
-    case 'gate-blocked':
-    case 'gate-exception':
-      return 'Open flow console';
     case 'device-pairing':
       return 'Review device request';
     // #1536 D8: the requirement's route out, not a session.

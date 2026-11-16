@@ -242,7 +242,6 @@
       "long-copy:text:PageRow": 1
     },
     "src-ui/src/views/connections-hub/ConnectStationDialog.tsx": {
-      "long-copy:literal:new:Error": 1,
       "multi-sentence:literal:call:setError": 1
     },
     "src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx": {

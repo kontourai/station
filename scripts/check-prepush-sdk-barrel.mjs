@@ -25,9 +25,10 @@
  * skips — which is most pushes.
  */
 import { spawnSync } from 'node:child_process';
-import { execFileSyncBounded } from './lib/bounded-capture.mjs';
+import { changedPathsSince } from './lib/change-scope.mjs';
 import { resolveRef } from './lib/git-ref.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { npmInvocation } from './lib/npm-cli.mjs';
 
 const BASE_REF = process.env.STATION_BASE_REF ?? 'origin/main';
 
@@ -75,57 +76,26 @@ export function decideSdkBarrelScope({ baseSha, changedPaths }) {
   };
 }
 
-function git(args) {
-  return execFileSyncBounded('git', args, {
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-}
-
-/** Paths this branch changes relative to `base`, as repo-relative strings. */
-export function changedPathsSince(base, run = git) {
-  return run(['diff', '--name-only', '-z', `${base}...HEAD`])
-    .split('\0')
-    .filter(Boolean);
-}
-
 function runBarrelTest() {
   // On Windows a bare `npm` is `npm.cmd`, which spawnSync cannot resolve
   // without a shell (`ENOENT`), and which Node then refuses to spawn directly
   // at all (`EINVAL`, the CVE-2024-27980 hardening). Either way this gate died
   // before running a single assertion, so every Windows push touching the SDK
   // barrel was refused for a reason that had nothing to do with the barrel.
-  //
-  // Preferring `npm_execpath` runs npm's own CLI through the current Node
-  // rather than spawning a shim, which sidesteps both failures — the same form
-  // `prepare-verify-static.mjs` already uses. The `npm.cmd` fallback covers an
-  // invocation with no npm lifecycle env.
-  // `npm_execpath` is set when npm itself invoked us, and running npm's own
-  // CLI through the current Node avoids spawning a shim at all. The pre-push
-  // hook has no npm lifecycle, so the fallback is the path that actually runs
-  // here: on Windows that is `npm.cmd`, which Node will only spawn through a
-  // shell. Every argument below is a constant literal — nothing user-supplied
-  // reaches the shell.
-  const npmCli = process.env.npm_execpath;
-  const command = npmCli
-    ? { executable: process.execPath, args: [npmCli], shell: false }
-    : {
-        executable: process.platform === 'win32' ? 'npm.cmd' : 'npm',
-        args: [],
-        shell: process.platform === 'win32',
-      };
-  const result = spawnSync(
-    command.executable,
-    [
-      ...command.args,
-      'run',
-      '--silent',
-      'test:focused',
-      '--',
-      'packages/sdk/src/__tests__/publicBarrel.test.ts',
-    ],
-    { stdio: 'inherit', windowsHide: true, shell: command.shell },
-  );
+  // `npmInvocation` runs npm's own JS entry under the current Node there —
+  // no shim and no shell — and resolves it without an npm lifecycle
+  // environment, which the pre-push hook does not provide.
+  const { command, args } = npmInvocation([
+    'run',
+    '--silent',
+    'test:focused',
+    '--',
+    'packages/sdk/src/__tests__/publicBarrel.test.ts',
+  ]);
+  const result = spawnSync(command, args, {
+    stdio: 'inherit',
+    windowsHide: true,
+  });
   if (result.error) throw result.error;
   return result.status ?? 1;
 }

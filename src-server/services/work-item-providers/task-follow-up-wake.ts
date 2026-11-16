@@ -44,6 +44,7 @@ import {
 import { isSessionLifecycleStateStopped } from '@kontourai/station-contracts/session-lifecycle';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { canonicalGitHubWorkItemRef } from '@kontourai/station-contracts/work-item-provider';
+import { errorMessage } from '../../utils/error-message.js';
 import { quotedLines } from '../orchestration/quoted-text.js';
 import type { TaskLeadState } from '../orchestration/task-question-wake.js';
 import type {
@@ -333,7 +334,7 @@ export class TaskFollowUpWake {
     } catch (error) {
       this.ports.logger.warn('Task follow-up wake failed', {
         taskId: task.taskId,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       return { kind: 'deferred', reason: 'error' };
     }

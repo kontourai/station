@@ -19,6 +19,7 @@ import {
   CHAT_ATTACHMENT_MAX_DATA_URL_LENGTH,
   CHAT_ATTACHMENT_MAX_NAME_LENGTH,
   type ChatAttachmentInput,
+  parseChatAttachmentDataUrl,
   validateChatAttachment,
   validateChatAttachments,
 } from '@kontourai/station-contracts/chat-attachment';
@@ -72,6 +73,7 @@ import {
 } from '@kontourai/station-contracts/provider';
 import { isRuntimeEventContentDigest } from '@kontourai/station-contracts/runtime-event-content';
 import {
+  ENGINE_MCP_SERVER_NAME_MAX_CHARS,
   ORCHESTRATION_STREAM_ACTIVITY_EVENT,
   ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
   SERVER_EVENTS,
@@ -120,6 +122,7 @@ import {
   requestMayBeAnAgent,
 } from '../../security/coding-authority.js';
 import { managedEngineRefusalBody } from '../../security/managed-engine-limits.js';
+import { personTypedRequest } from '../../security/person-authorship.js';
 import {
   getRuntimeAuthenticatedRequestPrincipal,
   resolveClientOriginForRequest,
@@ -204,6 +207,7 @@ import {
 import { parseExperienceIdentity } from '../../services/orchestration/skill-experience-model.js';
 import {
   ConversationTurnQueuedError,
+  type ThreadInboxAttachment,
   type ThreadInboxDelivery,
 } from '../../services/orchestration/thread-inbox.js';
 import { MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES } from '../../services/orchestration/thread-tool-result-adapter.js';
@@ -542,9 +546,11 @@ const respondToRequestCommandSchema = z.object({
     .optional(),
   decision: z.enum(['accept', 'acceptForSession', 'decline', 'cancel']),
   // Typed, optional: an older client omits it and keeps the per-tool grant.
-  // Only an `acceptForSession` answer reads it, and only an authentic
-  // Station browser request honours it (the adapter's grant computation).
-  sessionGrantScope: z.literal('server').optional(),
+  // Only an `acceptForSession` answer reads it, and only a request that
+  // offered the scope honours it (the adapter's grant computation): `server`
+  // for an authentic Station browser call, `rule` for a Claude Bash ask with
+  // suggested command prefixes.
+  sessionGrantScope: z.enum(['server', 'rule']).optional(),
   // docs/design/event-content-spill.md: proof the client loaded a spilled
   // request's full content before allowing it. Checked by the service.
   viewedContentDigest: z
@@ -984,17 +990,19 @@ export const foregroundMessageObjectSchema = z.object({
  * #3568: the follow-up a `/chat` send hands to its conversation's inbox when
  * the conversation is busy, or undefined when this send cannot be held there.
  * Only a plain continuation can: the inbox replays it through the
- * conversation's persisted binding later, without this request. Attachments,
- * a visual skill start, an input reply, an approval pick, a delegated or
- * another Station's target all need this request's own
- * authority or bytes, so they are refused when busy, as before.
+ * conversation's persisted binding later, without this request. Files can
+ * wait with it when the host stores them (`filesQueueable`): their bytes go
+ * to the attachment blob store and placement reads them back. A visual skill
+ * start, an input reply, an approval pick, a delegated or another Station's
+ * target all need this request's own authority, so they are refused when
+ * busy, as before.
  */
 function inboxFollowUpOf(
   body: z.infer<typeof foregroundMessageObjectSchema> & {
     whenBusy?: 'queue';
     automaticBackground?: true;
   },
-  options: { delegated: boolean; remote: boolean },
+  options: { delegated: boolean; remote: boolean; filesQueueable: boolean },
 ):
   | {
       conversationId: string;
@@ -1011,8 +1019,8 @@ function inboxFollowUpOf(
     !body.clientTurnId ||
     options.delegated ||
     options.remote ||
-    body.attachments?.length ||
-    body.attachmentRefs?.length ||
+    ((body.attachments?.length || body.attachmentRefs?.length) &&
+      !options.filesQueueable) ||
     body.skillExperience ||
     body.mcpPromptOrigin ||
     body.expectedInputRequest ||
@@ -1353,6 +1361,8 @@ interface DelegateTaskRequest {
 }
 
 interface ForegroundMessageRequest {
+  /** #4827: see `ForegroundMessageInput.personAuthored`. */
+  personAuthored?: true;
   skillExperience?: SkillExperienceStartInputV1;
   expectedInputRequest?: AttentionRequestReference;
   target: ExecutionTarget;
@@ -2111,6 +2121,12 @@ export function createOrchestrationRoutes(
      * Without it, no request's claimed context is stamped.
      */
     resolveRequestDelegation?: RequestDelegationResolver;
+    /**
+     * Stores one queued follow-up file's bytes in the attachment blob store
+     * and returns its content address, or undefined when it could not be
+     * written. Present on hosts that hold files with queued follow-ups.
+     */
+    storeQueuedAttachment?: (bytes: Buffer) => string | undefined;
     /** Current-host only; resolves byte-free stage references immediately before dispatch. */
     hydrateStagedAttachments?: (
       owner: PrincipalRef,
@@ -2223,6 +2239,7 @@ export function createOrchestrationRoutes(
       | 'deliveryOutcome'
       | 'heldByOther'
       | 'inFlight'
+      | 'nudge'
     >;
     /**
      * Continuing a conversation whose engine was killed for memory
@@ -2265,6 +2282,12 @@ export function createOrchestrationRoutes(
     ) => boolean;
     /** Revalidates protected point-read publication at its response boundary. */
     isRequestPrincipalCurrent?: (request: Request) => boolean;
+    /**
+     * #3075: the request's read-marker person key (`readMarkerPersonKey`),
+     * `undefined` for a caller that is not a person. A `/events` subscriber
+     * receives `read-markers:changed` only for its own key.
+     */
+    readMarkerPersonKey?: (c: Context) => string | undefined;
     /** Personal-only producer binding authority. Hosted requires a tenant adapter. */
     answerAssessmentModule?: AnswerAssessmentModule;
     /** Personal-only exact retained narrative binding owner. */
@@ -2577,7 +2600,9 @@ export function createOrchestrationRoutes(
     // that peer evidence reach Activity, not that a poll block on a peer's
     // network round trip to do it.
     startDelegatedTaskActivityRefresh(resolveActorPrincipal(deps, c).userId);
-    const data = await orchestrationService.listSessionReadModel(authority);
+    const data = await orchestrationService.listSessionReadModel(authority, {
+      purpose: 'session-list',
+    });
     return c.json({ success: true, data });
   });
 
@@ -2735,7 +2760,16 @@ export function createOrchestrationRoutes(
     return c.json({ success: true, data }, 202);
   };
 
-  const handleForegroundMessage = async (c: Context) => {
+  /**
+   * `composer`: this is the person-facing `/chat` route that Station's own
+   * clients send a typed message through. Only it may mark a send as the
+   * person's own (#4827); `/chat/delegated` and `/chat/background` share the
+   * handler and never do.
+   */
+  const handleForegroundMessage = async (
+    c: Context,
+    route: { composer?: true } = {},
+  ) => {
     if (!deps.executeForegroundMessage) {
       return c.json(
         { success: false, error: 'Foreground Agent execution is unavailable' },
@@ -3016,6 +3050,21 @@ export function createOrchestrationRoutes(
         // start. Set here only, after the body spread, so a body can never
         // supply it.
         delegationProvenance: resolvedDelegation?.provenance,
+        // #4827: whether a person typed this message, decided here from the
+        // route and the verified caller only, after the body spread, so a
+        // body can never supply it. Not for a delegation, an automatic
+        // background send, an agent-attributed start, or an MCP prompt
+        // expansion (an MCP server wrote that text).
+        personAuthored:
+          route.composer === true &&
+          !claimedDelegation &&
+          !delegation &&
+          body.automaticBackground !== true &&
+          ownerAttribution === undefined &&
+          !verifiedMcpPromptOrigin &&
+          personTypedRequest(c.req.raw, deps.resolveInboundDeviceKind?.(c))
+            ? (true as const)
+            : undefined,
         ...(stagedAttachments?.length
           ? {
               resolveAttachments: (
@@ -3091,6 +3140,14 @@ export function createOrchestrationRoutes(
         ? inboxFollowUpOf(body, {
             delegated: Boolean(claimedDelegation || delegation),
             remote: resolvedTarget.environment.kind !== 'current',
+            filesQueueable: Boolean(
+              deps.storeQueuedAttachment &&
+                (!stagedAttachments?.length ||
+                  (principal &&
+                    deps.hydrateStagedAttachments &&
+                    deps.acceptStagedAttachments &&
+                    deps.releaseStagedAttachments)),
+            ),
           })
         : undefined;
       if (
@@ -3116,32 +3173,85 @@ export function createOrchestrationRoutes(
           ) === null
         )
           throw new Error('The requested conversation is unavailable.');
-        queueOnBusyRefusal = () =>
-          queuedFollowUpResponse(
-            c,
-            inbox.submit({
-              conversationId: followUp.conversationId,
-              clientTurnId: followUp.clientTurnId,
-              payload: {
-                message: followUp.message,
-                ...(followUp.automaticBackground
-                  ? { automaticBackground: true as const }
-                  : {}),
-                inputDigest,
-                ...(followUp.ambientContext
-                  ? { ambientContext: followUp.ambientContext }
-                  : {}),
-                ...(followUp.model ? { model: followUp.model } : {}),
-                actor: {
-                  userId,
-                  ...(principal ? { principal } : {}),
-                  ...(ownerAttribution ? { ownerAttribution } : {}),
-                },
-                clientOrigin: foregroundRequest.clientOrigin,
+        queueOnBusyRefusal = () => {
+          // Files wait in the blob store, not in the entry. A stage the live
+          // attempt already bound keeps that binding; it is accepted only
+          // once the entry is queued and released otherwise, so a resend of
+          // the same chips is never refused as bound.
+          const filesBinding = stagedAttachments?.length
+            ? (stagedBinding ?? {
+                threadId: followUp.conversationId,
+                clientTurnId: followUp.clientTurnId,
+              })
+            : undefined;
+          const settleStage = (queued: boolean) => {
+            if (!filesBinding || !stagedAttachments?.length) return;
+            (queued
+              ? deps.acceptStagedAttachments
+              : deps.releaseStagedAttachments)?.(
+              principal!,
+              stagedAttachments,
+              filesBinding,
+            );
+          };
+          let attachments: ThreadInboxAttachment[] | undefined;
+          if (body.attachments?.length || stagedAttachments?.length) {
+            const inputs = filesBinding
+              ? deps.hydrateStagedAttachments!(
+                  principal!,
+                  stagedAttachments!,
+                  filesBinding,
+                )
+              : (body.attachments as ChatAttachmentInput[]);
+            attachments = [];
+            for (const input of inputs) {
+              const parsed = parseChatAttachmentDataUrl(input.dataUrl);
+              const blobRef = parsed
+                ? deps.storeQueuedAttachment!(
+                    Buffer.from(parsed.base64, 'base64'),
+                  )
+                : undefined;
+              if (!blobRef) {
+                settleStage(false);
+                return undefined;
+              }
+              attachments.push({
+                kind: input.kind,
+                name: input.name,
+                mimeType: input.mimeType,
+                size: input.size,
+                blobRef,
+              });
+            }
+          }
+          const submitted = inbox.submit({
+            conversationId: followUp.conversationId,
+            clientTurnId: followUp.clientTurnId,
+            payload: {
+              message: followUp.message,
+              ...(attachments ? { attachments } : {}),
+              ...(followUp.automaticBackground
+                ? { automaticBackground: true as const }
+                : {}),
+              inputDigest,
+              ...(followUp.ambientContext
+                ? { ambientContext: followUp.ambientContext }
+                : {}),
+              ...(followUp.model ? { model: followUp.model } : {}),
+              actor: {
+                userId,
+                ...(principal ? { principal } : {}),
+                ...(ownerAttribution ? { ownerAttribution } : {}),
               },
-            }),
-            followUp,
-          );
+              clientOrigin: foregroundRequest.clientOrigin,
+              ...(foregroundRequest.personAuthored
+                ? { authoredBy: 'person' as const }
+                : {}),
+            },
+          });
+          settleStage(submitted.outcome === 'queued');
+          return queuedFollowUpResponse(c, submitted, followUp);
+        };
         if (inbox.mustQueue(followUp.conversationId)) {
           const held = queueOnBusyRefusal();
           if (held) return held;
@@ -3401,11 +3511,11 @@ export function createOrchestrationRoutes(
       releaseDeliveryReceipt?.();
     }
   };
-  app.post('/chat', validate(foregroundMessageSchema), handleForegroundMessage);
-  app.post(
-    '/chat/delegated',
-    validate(delegatedForegroundMessageSchema),
-    handleForegroundMessage,
+  app.post('/chat', validate(foregroundMessageSchema), (c) =>
+    handleForegroundMessage(c, { composer: true }),
+  );
+  app.post('/chat/delegated', validate(delegatedForegroundMessageSchema), (c) =>
+    handleForegroundMessage(c),
   );
   app.post('/chat/background', validate(foregroundMessageSchema), async (c) => {
     const body = getBody(c);
@@ -3722,6 +3832,11 @@ export function createOrchestrationRoutes(
               : {}),
           },
           clientOrigin: resolveClientOriginForRequest(c.req.raw),
+          // #4827: the composer's queued follow-up or steer, typed by a
+          // person; decided from the verified caller only.
+          ...(personTypedRequest(c.req.raw, deps.resolveInboundDeviceKind?.(c))
+            ? { authoredBy: 'person' as const }
+            : {}),
         },
       };
       let result: ReturnType<ThreadInboxDelivery['submitSteer']>;
@@ -5458,6 +5573,126 @@ export function createOrchestrationRoutes(
     }
   });
 
+  /**
+   * Restart one MCP server the session's ENGINE runs (one an
+   * `engine-mcp.status` event named), or with `startOAuth` begin its sign-in;
+   * the consent link then arrives as a URL input request. The person's own
+   * act on their own Session, as for the usage-limit actions: the request
+   * principal must be current and own the Session. Answers the engine's
+   * outcome as it gave it (`EngineCommandOutcome`): an engine with no such
+   * call answers `not-declared`, an adapter without one `unsupported`.
+   */
+  const reconnectMcpServerSchema = z
+    .object({ startOAuth: z.boolean().optional() })
+    .strict();
+  app.post(
+    '/sessions/:threadId/mcp-servers/:serverName/reconnect',
+    async (c) => {
+      const threadId = param(c, 'threadId');
+      if (deps.isRequestPrincipalCurrent?.(c.req.raw) !== true)
+        return c.json({ success: false, error: 'Session not found' }, 404);
+      const identity = mutationIdentity(c);
+      if (
+        !orchestrationService.canUserMutateSession(
+          threadId,
+          identity.userId,
+          identity.tenant,
+        )
+      )
+        return c.json({ success: false, error: 'Session not found' }, 404);
+      const serverName = param(c, 'serverName');
+      if (
+        serverName.length === 0 ||
+        serverName.length > ENGINE_MCP_SERVER_NAME_MAX_CHARS
+      )
+        return c.json(
+          { success: false, error: 'Invalid MCP server name' },
+          400,
+        );
+      const parsed = reconnectMcpServerSchema.safeParse(
+        await c.req.json().catch(() => ({})),
+      );
+      if (!parsed.success)
+        return c.json(
+          { success: false, error: 'Invalid reconnect request' },
+          400,
+        );
+      try {
+        return c.json({
+          success: true,
+          data: await orchestrationService.reconnectEngineMcpServer(
+            threadId,
+            serverName,
+            { startOAuth: parsed.data.startOAuth === true },
+          ),
+        });
+      } catch (error) {
+        return c.json({ success: false, error: errorMessage(error) }, 409);
+      }
+    },
+  );
+
+  /**
+   * This Session's continuity as its live engine declared it (`live: false`
+   * when no engine process holds it). Read under the same gate as the
+   * Session's other reads; a client offers an engine-native action, such as
+   * "Rewind conversation to here", only on what this answers.
+   */
+  app.get('/sessions/:threadId/continuity', async (c) => {
+    const threadId = param(c, 'threadId');
+    if (!orchestrationService.canUserReadSession(threadId, readAuthorityFor(c)))
+      return c.json({ success: false, error: 'Session not found' }, 404);
+    return c.json({
+      success: true,
+      data: await orchestrationService.readSessionLiveContinuity(threadId),
+    });
+  });
+
+  /**
+   * Rewind the Session's ENGINE context in place to before one of its turns.
+   * The person's own act on their own Session, like the MCP reconnect above:
+   * the request principal must be current and own the Session. The
+   * transcript is never edited; the engine's marker event records the turns
+   * it hid. Answers `SessionRewindOutcome`, including a typed refusal.
+   */
+  const rewindSessionSchema = z
+    .object({ turnId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS) })
+    .strict();
+  app.post('/sessions/:threadId/rewind', async (c) => {
+    const threadId = param(c, 'threadId');
+    if (deps.isRequestPrincipalCurrent?.(c.req.raw) !== true)
+      return c.json({ success: false, error: 'Session not found' }, 404);
+    const identity = mutationIdentity(c);
+    if (
+      !orchestrationService.canUserMutateSession(
+        threadId,
+        identity.userId,
+        identity.tenant,
+      )
+    )
+      return c.json({ success: false, error: 'Session not found' }, 404);
+    const parsed = rewindSessionSchema.safeParse(
+      await c.req.json().catch(() => undefined),
+    );
+    if (!parsed.success)
+      return c.json({ success: false, error: 'Invalid rewind request' }, 400);
+    try {
+      return c.json({
+        success: true,
+        data: await orchestrationService.rewindSessionToTurn(
+          threadId,
+          parsed.data.turnId,
+        ),
+      });
+    } catch (error) {
+      return c.json({ success: false, error: errorMessage(error) }, 409);
+    } finally {
+      // Sends refused busy while the engine rewound may go now, whatever
+      // the rewind's outcome; no turn event says the Session is free.
+      deps.threadInbox?.nudge(threadId);
+    }
+  });
+
   app.get('/session-board/projects/:projectSlug', async (c) => {
     try {
       const data = await orchestrationService.listProjectSessionBoard(
@@ -7037,57 +7272,67 @@ export function createOrchestrationRoutes(
           status: 'running',
           progress: { kind: 'phase', code: 'creating-continuation' },
         });
-        const result = await orchestrationService.dispatchWithReceipt(command, {
-          userId: actorUserId,
-          ...(ownerAttribution ? { ownerAttribution } : {}),
-          ...(command.type === 'adoptSession' && fullAccessGrant
-            ? { fullAccessGrant }
-            : {}),
-          // #2915: this route's authorization is the one `setApprovalMode`
-          // uses (an Auto pick needs nothing beyond it), so an answer sent
-          // here may record the Auto posture an edit-mode answer implies.
-          ...(command.type === 'respondToRequest'
-            ? { approvalModeAuthority: true as const }
-            : {}),
-          // #3483: a person answering, not a station-control tool call that
-          // acts for its session's owner. Only a person's approval admits a
-          // call the untrusted-content permission asks about.
-          ...(command.type === 'respondToRequest' && isPersonRequest(c.req.raw)
-            ? { personAnswer: true as const }
-            : {}),
-          ...(command.type === 'respondToRequest' &&
-          command.expectedRequestEventId !== undefined
-            ? {
-                requestCurrent: () =>
-                  deps.isRequestPrincipalCurrent?.(c.req.raw) === true,
-              }
-            : {}),
-          ...(command.type === 'steerChildWork'
-            ? {
-                requestCurrent: () =>
-                  deps.isRequestPrincipalCurrent?.(c.req.raw) === true &&
-                  stationControlRequestCurrent(c.req.raw) &&
-                  orchestrationService.canUserReadSession(
-                    command.threadId,
-                    readAuthority,
-                  ) &&
-                  orchestrationService.canUserMutateSession(
-                    command.threadId,
-                    actorUserId,
-                    tenantExecutionContextForRequest(c.req.raw),
-                  ),
-              }
-            : {}),
-          // archive#4075 stage 2: this is the STEER path's attribution
-          // seam — `dispatchWithReceipt`'s `steerTurn` case wraps
-          // `adapter.steerTurn` in the same begin/settle propagation
-          // `sendTurn` uses, so the steering caller's principal lands on
-          // the adapter-emitted `turn.started (inputKind:'steer')` at
-          // emit time.
-          principal,
-          tenantExecutionContext: tenantExecutionContextForRequest(c.req.raw),
-          clientOrigin: resolveClientOriginForRequest(c.req.raw),
-        });
+        const result = await orchestrationService.dispatchWithReceipt(
+          command,
+          {
+            userId: actorUserId,
+            ...(ownerAttribution ? { ownerAttribution } : {}),
+            ...(command.type === 'adoptSession' && fullAccessGrant
+              ? { fullAccessGrant }
+              : {}),
+            // #2915: this route's authorization is the one `setApprovalMode`
+            // uses (an Auto pick needs nothing beyond it), so an answer sent
+            // here may record the Auto posture an edit-mode answer implies.
+            ...(command.type === 'respondToRequest'
+              ? { approvalModeAuthority: true as const }
+              : {}),
+            // #3483: a person answering, not a station-control tool call that
+            // acts for its session's owner. Only a person's approval admits a
+            // call the untrusted-content permission asks about.
+            ...(command.type === 'respondToRequest' &&
+            isPersonRequest(c.req.raw)
+              ? { personAnswer: true as const }
+              : {}),
+            ...(command.type === 'respondToRequest' &&
+            command.expectedRequestEventId !== undefined
+              ? {
+                  requestCurrent: () =>
+                    deps.isRequestPrincipalCurrent?.(c.req.raw) === true,
+                }
+              : {}),
+            ...(command.type === 'steerChildWork'
+              ? {
+                  requestCurrent: () =>
+                    deps.isRequestPrincipalCurrent?.(c.req.raw) === true &&
+                    stationControlRequestCurrent(c.req.raw) &&
+                    orchestrationService.canUserReadSession(
+                      command.threadId,
+                      readAuthority,
+                    ) &&
+                    orchestrationService.canUserMutateSession(
+                      command.threadId,
+                      actorUserId,
+                      tenantExecutionContextForRequest(c.req.raw),
+                    ),
+                }
+              : {}),
+            // archive#4075 stage 2: this is the STEER path's attribution
+            // seam — `dispatchWithReceipt`'s `steerTurn` case wraps
+            // `adapter.steerTurn` in the same begin/settle propagation
+            // `sendTurn` uses, so the steering caller's principal lands on
+            // the adapter-emitted `turn.started (inputKind:'steer')` at
+            // emit time.
+            principal,
+            tenantExecutionContext: tenantExecutionContextForRequest(c.req.raw),
+            clientOrigin: resolveClientOriginForRequest(c.req.raw),
+          },
+          // #4827: a steer typed into Station's composer is the person's own.
+          // `sendTurn` here is not the composer's path, so it never is.
+          ...(command.type === 'steerTurn' &&
+          personTypedRequest(c.req.raw, deps.resolveInboundDeviceKind?.(c))
+            ? ([{ personAuthored: true }] as const)
+            : ([] as const)),
+        );
         if (actionOperation && command.type === 'adoptSession') {
           const targetSessionId =
             typeof result.result === 'object' &&
@@ -7249,6 +7494,19 @@ export function createOrchestrationRoutes(
     // clients or a first-ever connect produce) always takes the snapshot
     // path below, byte-identical to the prior behavior (AC4).
     const cursor = parseResumeCursor(c.req.header('Last-Event-ID'));
+    // #3075 review: whose read-marker changes this stream carries is
+    // resolved when each change is published, never captured at connect: a
+    // device whose owner standing is withdrawn (narrowed to read-only, bound
+    // to a person, revoked) stops receiving the owner's changes at once. A
+    // per-session stream carries none.
+    const readMarkerPerson = (): string | undefined => {
+      if (threadId !== undefined) return undefined;
+      try {
+        return deps.readMarkerPersonKey?.(c);
+      } catch {
+        return undefined;
+      }
+    };
     if (c.req.query('includeGeneral') === '1' && deps.generalEventProducer) {
       c.header('X-Station-General-Stream', '1');
     }
@@ -7472,7 +7730,10 @@ export function createOrchestrationRoutes(
                     const sessions =
                       await orchestrationService.listSessionReadModel(
                         authority,
-                        threadId ? { threadIds: [threadId] } : undefined,
+                        {
+                          purpose: 'sse-overflow-reconcile',
+                          ...(threadId ? { threadIds: [threadId] } : {}),
+                        },
                       );
                     await writeAuthorized({
                       event: 'orchestration:snapshot',
@@ -7594,6 +7855,17 @@ export function createOrchestrationRoutes(
             const isAuthorized = () => canRead(authority) === true;
             if (isAuthorized())
               forward({ event: evt.event, data: '{}', isAuthorized });
+            return;
+          }
+          if (evt.event === SERVER_EVENTS.READ_MARKERS_CHANGED) {
+            // Only this person's own clients; the frame names no one.
+            const personKey = (evt.data as { personKey?: unknown } | undefined)
+              ?.personKey;
+            if (
+              typeof personKey === 'string' &&
+              personKey === readMarkerPerson()
+            )
+              forward({ event: evt.event, data: '{}' });
             return;
           }
           if (evt.event === SERVER_EVENTS.ORCHESTRATION_INBOX_CHANGED) {
@@ -7764,7 +8036,10 @@ export function createOrchestrationRoutes(
           if (!replayBudget.fitsBudget) {
             const sessions = await orchestrationService.listSessionReadModel(
               authority,
-              threadId !== undefined ? { threadIds: [threadId] } : undefined,
+              {
+                purpose: 'sse-snapshot',
+                ...(threadId !== undefined ? { threadIds: [threadId] } : {}),
+              },
             );
             // #2456 D1: `resolvedHead` stays `head` — see its declaration.
             await writeAuthorized({
@@ -7805,13 +8080,19 @@ export function createOrchestrationRoutes(
             // Reconcile present-tense side effects once, after the replay.
             replaySessions = await orchestrationService.listSessionReadModel(
               authority,
-              threadId !== undefined ? { threadIds: [threadId] } : undefined,
+              {
+                purpose: 'sse-replay-reconcile',
+                ...(threadId !== undefined ? { threadIds: [threadId] } : {}),
+              },
             );
           }
         } else {
           const sessions = await orchestrationService.listSessionReadModel(
             authority,
-            threadId !== undefined ? { threadIds: [threadId] } : undefined,
+            {
+              purpose: 'sse-snapshot',
+              ...(threadId !== undefined ? { threadIds: [threadId] } : {}),
+            },
           );
           // #2456 D1: the head is NOT re-read here. An earlier review
           // ("LOW") re-read it to make the cursor "exact", but an exact

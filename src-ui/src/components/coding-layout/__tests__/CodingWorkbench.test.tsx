@@ -16,7 +16,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
-import { type ReactNode, useEffect } from 'react';
+import { type ReactNode, useContext, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { requestCenterChatPage } from '../../../app-shell/chat-placement';
@@ -31,6 +31,7 @@ import type { WorkspacePaneHostOpenAction } from '../../../workspace-panes/Works
 import { workspacePaneHostScopeKey } from '../../../workspace-panes/workspacePaneHostNavigation';
 import { WORKSPACE_PANE_OPENED } from '../../../workspace-panes/workspacePaneHostOpenOutcome';
 import { ActionOverflowMenu } from '../../ActionOverflowMenu';
+import { MobileDockHeaderLeadingContext } from '../../chat-dock/MobileDockHeaderLeading';
 import { CodingWorkbench } from '../CodingWorkbench';
 import {
   resolveCodingStackLocation,
@@ -75,6 +76,8 @@ vi.mock('../../chat-dock/ChatDock', () => ({
     harness.chatProps = props;
     harness.chatRenders += 1;
     const slots = useRegionChromeSlots();
+    // The real phone header draws the host's leading control first.
+    const headerLeading = useContext(MobileDockHeaderLeadingContext);
     harness.chatSlots = slots;
     useEffect(() => {
       harness.chatMounts += 1;
@@ -87,6 +90,9 @@ vi.mock('../../chat-dock/ChatDock', () => ({
     }, [onPresentationTitleChange]);
     return (
       <div data-testid="center-chat">
+        {headerLeading ? (
+          <div data-testid="chat-dock-mobile-header">{headerLeading}</div>
+        ) : null}
         <div className="chat-input">
           <textarea aria-label="Message" />
         </div>
@@ -306,6 +312,33 @@ test('central phone chat preserves the ambient dock state while mounting and lea
   expect(navigationStore.getSnapshot().isDockOpen).toBe(false);
   view.unmount();
   expect(navigationStore.getSnapshot().isDockOpen).toBe(false);
+});
+
+test('phone Chat page: the tool picker leads the chat header and the bar takes no row', async () => {
+  harness.isMobile = true;
+  renderStack();
+  const header = screen.getByTestId('chat-dock-mobile-header');
+  expect(
+    within(header).getByRole('button', { name: 'Switch tool, current: Chat' }),
+  ).toBeTruthy();
+  // The chat header has its own Inbox button; the bar's back control and
+  // its Open Browser button are gone with the bar.
+  expect(screen.queryByRole('button', { name: 'Inbox' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Open Browser' })).toBeNull();
+  expect(
+    window.document
+      .querySelector('.coding-workbench__bar')
+      ?.hasAttribute('hidden'),
+  ).toBe(true);
+  // Drilled into a tool, the bar is back with its way home to Chat.
+  await drillInto('Files');
+  expect(
+    window.document
+      .querySelector('.coding-workbench__bar')
+      ?.hasAttribute('hidden'),
+  ).toBe(false);
+  expect(screen.getByRole('button', { name: 'Chat' })).toBeTruthy();
+  expect(screen.queryByTestId('chat-dock-mobile-header')).toBeNull();
 });
 
 test('phone tool picker switches through canonical history and preserves the chat draft', async () => {
@@ -1377,9 +1410,31 @@ describe('CodingWorkbench — one quiet bar, the inbox beside a tool, and names 
     // #4401: focus handed back to a rail item after a pointer interaction
     // (a closed panel restores it) is not visible focus, so it raises no tip
     // that would stay over the rail once the pointer has gone.
-    act(() => railItem('Files').focus());
-    expect(window.document.activeElement).toBe(railItem('Files'));
-    expect(screen.queryByRole('tooltip')).toBeNull();
+    // jsdom 31 aliases :focus-visible to :focus: it has no input-modality
+    // heuristic. Model only that browser-owned selector here, retaining real
+    // focus events and both outcomes. tests/chat-dock-bounds.spec.ts exercises
+    // pointer-close restoration and keyboard focus in Chromium without a mock.
+    const filesItem = railItem('Files');
+    const matches = filesItem.matches.bind(filesItem);
+    let keyboardFocus = false;
+    const focusVisible = vi
+      .spyOn(filesItem, 'matches')
+      .mockImplementation((selector) =>
+        selector === ':focus-visible' ? keyboardFocus : matches(selector),
+      );
+    try {
+      act(() => filesItem.focus());
+      expect(window.document.activeElement).toBe(railItem('Files'));
+      expect(screen.queryByRole('tooltip')).toBeNull();
+
+      act(() => filesItem.blur());
+      keyboardFocus = true;
+      act(() => filesItem.focus());
+      expect(window.document.activeElement).toBe(filesItem);
+      expect(screen.getByRole('tooltip').textContent).toBe('src/app/files.ts');
+    } finally {
+      focusVisible.mockRestore();
+    }
   });
 });
 

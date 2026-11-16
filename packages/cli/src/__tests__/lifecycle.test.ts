@@ -16,7 +16,10 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs';
-import { request as nodeRequest } from 'node:http';
+import {
+  createServer as createHttpServer,
+  request as nodeRequest,
+} from 'node:http';
 import {
   createConnection as createRawConnection,
   createServer as createRawServer,
@@ -776,6 +779,8 @@ function writeInstanceState(options: {
   hostedProbeAuthority?: string;
   /** Where the lifecycle keeps records; a prebuilt archive's is elsewhere. */
   stateDir?: string;
+  /** Started through the process supervisor (`station restart` needs it). */
+  supervised?: boolean;
 }): string {
   const instanceId =
     options.instanceId ||
@@ -806,6 +811,7 @@ function writeInstanceState(options: {
         serverFingerprint: options.serverFingerprint,
         serverPort: options.serverPort ?? 3141,
         startedAt: options.startedAt ?? new Date().toISOString(),
+        supervised: options.supervised,
         uiPid: options.uiPid,
         uiFingerprint: options.uiFingerprint,
         uiPort: options.uiPort ?? 3000,
@@ -2310,6 +2316,158 @@ describe('lifecycle instance state', () => {
     }
   }, 15_000);
 
+  describe('restart says what it is about to interrupt', () => {
+    const CREDENTIAL = 'paired-device-credential';
+
+    /**
+     * A supervised instance whose server port answers the running-turns
+     * route as the real one does, a handoff that records when it was asked,
+     * and a profile store of this test's own.
+     */
+    async function restartHarness(options: { savedCredential: boolean }) {
+      ensureDir(TEST_CWD);
+      ensureDir(TEST_ALT_HOME);
+      const station = createHttpServer((request, response) => {
+        const authorized =
+          request.url === '/api/system/core-update/running-turns' &&
+          request.headers.authorization === `Bearer ${CREDENTIAL}`;
+        response.writeHead(authorized ? 200 : 401, {
+          'Content-Type': 'application/json',
+        });
+        response.end(
+          JSON.stringify(
+            authorized
+              ? {
+                  turns: [
+                    {
+                      sessionId: 'task:build',
+                      conversationId: 'task:build',
+                      title: 'Fix the build',
+                      engine: 'claude',
+                      startedAt: null,
+                    },
+                  ],
+                  hiddenCount: 1,
+                }
+              : { success: false, error: { code: 'authentication_required' } },
+          ),
+        );
+      });
+      await new Promise<void>((resolveListening) =>
+        station.listen(0, '127.0.0.1', () => resolveListening()),
+      );
+      const serverPort = (station.address() as { port: number }).port;
+      const serverPid = await spawnLongRunning();
+      writeInstanceState({
+        baseDir: TEST_ALT_HOME,
+        instanceName: 'restart-turns',
+        serverPid,
+        serverPort,
+        supervised: true,
+        uiPid: null,
+        uiPort: 5279,
+      });
+      vi.stubEnv('STATION_ROOT', join(TEST_ROOT, 'profile-root'));
+      vi.stubEnv('STATION_HOME', join(TEST_ROOT, 'profile-root', 'home'));
+      const output: string[] = [];
+      vi.spyOn(console, 'log').mockImplementation((line?: unknown) => {
+        output.push(String(line));
+      });
+      const runSupervisorHandoff = vi.fn(async () => {
+        output.push('<handoff requested>');
+        return {
+          status: 'unavailable' as const,
+          messages: [],
+          detail: 'no supervisor in this test',
+        };
+      });
+      vi.doMock('../commands/supervisor-launch.js', async () => ({
+        ...(await vi.importActual<
+          typeof import('../commands/supervisor-launch.js')
+        >('../commands/supervisor-launch.js')),
+        runSupervisorHandoff,
+      }));
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(() => '') },
+        platformOverrides: { killProcessTree: vi.fn() },
+      });
+      // The module instances the freshly loaded lifecycle reads.
+      const credentials = await import('../commands/profile-credentials.js');
+      const values = new Map<string, string>();
+      const previousStore = credentials.getProfileCredentialStore();
+      credentials.setProfileCredentialStore({
+        get: (ref) => values.get(ref.id),
+        set: (ref, credential) => void values.set(ref.id, credential),
+        delete: (ref) => void values.delete(ref.id),
+        status: (ref) => (values.has(ref.id) ? 'available' : 'missing'),
+      });
+      if (options.savedCredential) {
+        const credentialRef = credentials.profileCredentialRef('test:local');
+        values.set(credentialRef.id, CREDENTIAL);
+        const { upsertProfile } = await import('../commands/profile-store.js');
+        upsertProfile({
+          name: 'local',
+          endpoint: `http://127.0.0.1:${serverPort}`,
+          setupSource: 'existing',
+          configurationState: 'configured',
+          credentialRef,
+          makeDefault: true,
+          force: true,
+        });
+      }
+      return {
+        lifecycle,
+        output,
+        runSupervisorHandoff,
+        close: async () => {
+          credentials.setProfileCredentialStore(previousStore);
+          vi.doUnmock('../commands/supervisor-launch.js');
+          await new Promise<void>((resolveClosed) => {
+            station.closeAllConnections();
+            station.close(() => resolveClosed());
+          });
+        },
+      };
+    }
+
+    it('prints the running turns before it asks for the handoff, and asks nothing', async () => {
+      const harness = await restartHarness({ savedCredential: true });
+      try {
+        // No supervisor answers in this test: the restart itself fails
+        // after the handoff was requested, which is all this test needs.
+        await expect(
+          harness.lifecycle.restart({ instanceName: 'restart-turns' }),
+        ).rejects.toThrow('Could not restart');
+        expect(harness.runSupervisorHandoff).toHaveBeenCalledOnce();
+        expect(harness.output).toEqual([
+          '2 agent turns are running and will be interrupted:',
+          '  · Fix the build (claude)',
+          '  · 1 more in a session this device may not read',
+          expect.stringContaining('to a new core generation'),
+          '<handoff requested>',
+        ]);
+      } finally {
+        await harness.close();
+      }
+    });
+
+    it('with no credential for the instance it restarts exactly as before', async () => {
+      const harness = await restartHarness({ savedCredential: false });
+      try {
+        await expect(
+          harness.lifecycle.restart({ instanceName: 'restart-turns' }),
+        ).rejects.toThrow('Could not restart');
+        expect(harness.runSupervisorHandoff).toHaveBeenCalledOnce();
+        expect(harness.output).toEqual([
+          expect.stringContaining('to a new core generation'),
+          '<handoff requested>',
+        ]);
+      } finally {
+        await harness.close();
+      }
+    });
+  });
+
   it('signals only the recorded pids and never a lingering port owner (#3253)', async () => {
     ensureDir(TEST_CWD);
     ensureDir(TEST_ALT_HOME);
@@ -2852,6 +3010,49 @@ describe('lifecycle instance state', () => {
     ).rejects.toThrow('--watch runs from source and builds nothing');
     expect(spawn).not.toHaveBeenCalled();
   });
+
+  // #3909: STATION_FEATURES=strands-runtime used to switch the server to
+  // Strands. The server no longer reads it, so start refuses it before any
+  // other check; any other value never changed the runtime and is ignored.
+  // `watch` + `build` makes the next check refuse too, so an ignored value
+  // reaches that refusal instead of starting anything.
+  it.each([
+    ['strands-runtime', true],
+    ['managed-chat-orchestration,strands-runtime', true],
+    ['managed-chat-orchestration', false],
+    ['', false],
+  ])(
+    'STATION_FEATURES=%s at start: refused=%s, before anything is spawned',
+    async (value, refused) => {
+      ensureDir(TEST_CWD);
+      ensureDir(TEST_ALT_HOME);
+      const spawn = vi.fn();
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(), spawn },
+      });
+      vi.stubEnv('STATION_FEATURES', value);
+      try {
+        await expect(
+          lifecycle.start({
+            baseDir: TEST_ALT_HOME,
+            homeSource: '--base',
+            instanceName: 'features-env',
+            serverPort: 3343,
+            uiPort: 5375,
+            watch: true,
+            build: true,
+          }),
+        ).rejects.toThrow(
+          refused
+            ? /^STATION_FEATURES=.* no longer selects the Strands runtime .*station config set runtime strands/
+            : /--watch runs from source and builds nothing/,
+        );
+      } finally {
+        vi.unstubAllEnvs();
+      }
+      expect(spawn).not.toHaveBeenCalled();
+    },
+  );
 
   it('refuses start --watch on a non-loopback host before anything is spawned (#3254)', async () => {
     ensureDir(TEST_CWD);

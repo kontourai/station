@@ -18,6 +18,8 @@ import {
   type WatchHandle,
   watchWithFallback,
 } from '@kontourai/station-shared/source-watch';
+import { errorMessage } from '../../utils/error-message.js';
+import { sleep } from '../../utils/sleep.js';
 import { buildPluginDraftInChildProcess } from './plugin-draft-build-process.js';
 import { parsePluginManifestDocumentWithFormat } from './plugin-manifest-loader.js';
 
@@ -290,7 +292,7 @@ export class PluginDraftService {
     for (;;) {
       const entry = this.entryFor(projectSlug, projectDir);
       if (!entry || (!entry.building && !entry.pending)) return;
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      await sleep(20);
     }
   }
 
@@ -498,7 +500,7 @@ export class PluginDraftService {
     } catch (error) {
       this.options.logger?.warn?.('Plugin draft build failed unexpectedly', {
         draftId: entry.draftId,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       result = {
         ok: false,

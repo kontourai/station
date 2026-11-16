@@ -68,6 +68,7 @@ vi.mock('@kontourai/station-sdk', async () => ({
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { handleOrchestrationEvent } from '../hooks/orchestration/eventHandlers';
 import {
+  raiseSequencedLiveFloor,
   recordSequencedLiveEvent,
   resetSequencedLiveEventsForTests,
 } from '../hooks/orchestration/sequencedLiveEvents';
@@ -357,6 +358,190 @@ describe('useActiveChatTranscript', () => {
       expect(view.result.current.events.map((item) => item.sequence)).toEqual([
         1, 2, 3, 4, 5, 6,
       ]);
+    } finally {
+      view.unmount();
+      activeChatsStore.removeChat(id);
+      resetSequencedLiveEventsForTests();
+    }
+  });
+  // Page load during a streaming turn. The window read is served at its
+  // watermark; the stream's first connect is served later, and its snapshot
+  // delivers no events: only what comes after the snapshot's cursor arrives
+  // live. Events between the two are in neither source until something
+  // re-reads the window.
+  test('a window served before the stream snapshot is re-read for the events between them', async () => {
+    const id = 'first-attach';
+    const apiBase = 'http://first-attach.test';
+    const openTurn = {
+      turnId: 'turn-attach',
+      threadId: id,
+      startedAt: '2026-09-24T00:00:00.000Z',
+    };
+    activeChatsStore.initChat(id, {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'First attach',
+      conversationId: id,
+      orchestrationSessionStarted: true,
+    });
+    activeChatsStore.updateChat(id, {
+      conversationActivity: { conversationId: id, asOfSequence: 3, openTurn },
+      orchestrationTurnOpen: true,
+    });
+    const started = {
+      ...event('e1', 'turn.started', {
+        threadId: id,
+        turnId: 'turn-attach',
+        prompt: 'Question',
+      }),
+      sequence: 1,
+    };
+    const delta = (sequence: number, text: string) => ({
+      ...event(`e${sequence}`, 'content.text-delta', {
+        threadId: id,
+        turnId: 'turn-attach',
+        itemId: 'answer',
+        delta: text,
+      }),
+      sequence,
+    });
+    const answer = (view: {
+      result: { current: ReturnType<typeof useActiveChatTranscript> };
+    }) =>
+      view.result.current.messages
+        .filter((row) => row.role === 'assistant')
+        .map((row) => row.content)
+        .join('');
+    fetchWindow.mockReset();
+    fetchCapability.mockResolvedValue(true);
+    fetchConversationWindow.mockImplementation((...args: unknown[]) =>
+      fetchWindow(...args),
+    );
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 3,
+      hasMore: false,
+      events: [started, delta(2, 'A'), delta(3, 'B')],
+    });
+    fetchWindow.mockResolvedValue({
+      protocolVersion: 1,
+      watermark: 6,
+      hasMore: false,
+      events: [
+        started,
+        delta(2, 'A'),
+        delta(3, 'B'),
+        delta(4, 'C'),
+        delta(5, 'D'),
+        delta(6, 'E'),
+      ],
+    });
+    const session = () =>
+      ({
+        ...baseSession,
+        ...activeChatsStore.getSnapshot()[id],
+        id,
+      }) as ChatSession;
+    const view = renderHook(
+      ({ chat }) => useActiveChatTranscript(apiBase, chat),
+      { initialProps: { chat: session() } },
+    );
+    try {
+      await waitFor(() => expect(view.result.current.settled).toBe(true));
+      expect(answer(view)).toBe('AB');
+      expect(fetchWindow).toHaveBeenCalledTimes(1);
+
+      // The stream's first snapshot is served at cursor 5, where this
+      // conversation's newest event also is; frame 6 then arrives live.
+      act(() => {
+        raiseSequencedLiveFloor(apiBase, 5);
+        activeChatsStore.updateChat(id, {
+          conversationActivity: {
+            conversationId: id,
+            asOfSequence: 5,
+            openTurn,
+          },
+        });
+        const live = delta(6, 'E');
+        recordSequencedLiveEvent(
+          apiBase,
+          live.event as Parameters<typeof recordSequencedLiveEvent>[1],
+          live.sequence,
+        );
+      });
+      view.rerender({ chat: session() });
+
+      await waitFor(() => expect(answer(view)).toBe('ABCDE'));
+      expect(fetchWindow).toHaveBeenCalledTimes(2);
+      // The transcript on screen is never blanked for this read.
+      expect(view.result.current.catchingUp).toBe(false);
+    } finally {
+      view.unmount();
+      activeChatsStore.removeChat(id);
+      resetSequencedLiveEventsForTests();
+    }
+  });
+  // The snapshot's cursor is the Station's head; a window's watermark is its
+  // own conversation's newest event. For a conversation at rest the second is
+  // lower than the first for good, so comparing them alone would re-read, and
+  // hold, every idle conversation.
+  test('a conversation at rest below the stream snapshot cursor is neither re-read nor held', async () => {
+    const id = 'at-rest-below-snapshot';
+    const apiBase = 'http://at-rest-below-snapshot.test';
+    activeChatsStore.initChat(id, {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'At rest',
+      conversationId: id,
+      orchestrationSessionStarted: true,
+    });
+    activeChatsStore.updateChat(id, {
+      conversationActivity: { conversationId: id, asOfSequence: 2 },
+    });
+    fetchWindow.mockReset();
+    fetchCapability.mockResolvedValue(true);
+    fetchConversationWindow.mockImplementation((...args: unknown[]) =>
+      fetchWindow(...args),
+    );
+    fetchWindow.mockResolvedValue({
+      protocolVersion: 1,
+      watermark: 2,
+      hasMore: false,
+      events: [
+        {
+          ...event('e1', 'turn.started', {
+            threadId: id,
+            turnId: 'done',
+            prompt: 'Question',
+          }),
+          sequence: 1,
+        },
+        {
+          ...event('e2', 'turn.completed', {
+            threadId: id,
+            turnId: 'done',
+            outputText: 'Answer',
+          }),
+          sequence: 2,
+        },
+      ],
+    });
+    const session = {
+      ...baseSession,
+      ...activeChatsStore.getSnapshot()[id],
+      id,
+    } as ChatSession;
+    const view = renderHook(() => useActiveChatTranscript(apiBase, session));
+    try {
+      await waitFor(() => expect(view.result.current.settled).toBe(true));
+      // Other conversations took the Station's head to 5,000.
+      act(() => raiseSequencedLiveFloor(apiBase, 5_000));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(fetchWindow).toHaveBeenCalledTimes(1);
+      expect(view.result.current.catchingUp).toBe(false);
+      expect(view.result.current.messages.map((row) => row.content)).toContain(
+        'Answer',
+      );
     } finally {
       view.unmount();
       activeChatsStore.removeChat(id);
@@ -2856,6 +3041,76 @@ describe('useActiveChatTranscript', () => {
       expect(await view.result.current.loadTurn('chosen')).toBe(true);
     });
     expect(fetchWindow).toHaveBeenCalledTimes(3);
+  });
+
+  // A jump reads older pages on the same request slot as the newest-window
+  // read, so it retires one that is still in flight. That read was the
+  // catch-up for a bumped revision: it must be asked again once the jump is
+  // done, or the transcript stays held until some later revision.
+  test('a turn jump during catch-up re-runs the catch-up read it retired', async () => {
+    const newest = {
+      protocolVersion: 1,
+      watermark: 30,
+      hasMore: true,
+      nextCursor: 'older',
+      events: [
+        event('e30', 'turn.started', { turnId: 'latest', prompt: 'Latest' }),
+      ],
+    };
+    fetchWindow
+      .mockResolvedValueOnce(newest)
+      // The catch-up read: still in flight when the jump starts.
+      .mockImplementationOnce(() => new Promise(() => {}))
+      .mockResolvedValueOnce({
+        protocolVersion: 1,
+        watermark: 30,
+        hasMore: false,
+        events: [
+          event('e10', 'turn.started', {
+            turnId: 'chosen',
+            prompt: 'Chosen older turn',
+          }),
+        ],
+      })
+      .mockResolvedValueOnce({
+        ...newest,
+        watermark: 31,
+        events: [
+          ...newest.events,
+          event('e31', 'turn.completed', {
+            turnId: 'latest',
+            outputText: 'Caught up',
+          }),
+        ],
+      });
+    const view = renderHook(
+      ({ chat }) => useActiveChatTranscript('http://station.test', chat),
+      { initialProps: { chat: baseSession } },
+    );
+    await waitFor(() => expect(view.result.current.settled).toBe(true));
+
+    view.rerender({
+      chat: { ...baseSession, orchestrationHistoryRevision: 1 } as ChatSession,
+    });
+    await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(2));
+    expect(view.result.current.catchingUp).toBe(true);
+
+    let found = false;
+    await act(async () => {
+      found = await view.result.current.loadTurn('chosen');
+    });
+    expect(found).toBe(true);
+
+    await waitFor(() => expect(view.result.current.catchingUp).toBe(false));
+    expect(fetchWindow).toHaveBeenCalledTimes(4);
+    // The re-run is a newest-window read, not another older page.
+    expect(fetchWindow.mock.calls[2]?.[2]).toMatchObject({ cursor: 'older' });
+    expect(fetchWindow.mock.calls[3]?.[2]).toMatchObject({ turnLimit: 10 });
+    expect(fetchWindow.mock.calls[3]?.[2]).not.toHaveProperty('cursor');
+    const contents = view.result.current.messages.map((row) => row.content);
+    expect(contents).toContain('Chosen older turn');
+    expect(contents).toContain('Caught up');
+    view.unmount();
   });
 
   test('a cancelled turn jump does not fetch older pages', async () => {

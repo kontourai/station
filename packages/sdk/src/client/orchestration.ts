@@ -114,8 +114,12 @@ export interface RespondToRequestInput {
   requestId: string;
   expectedRequestEventId?: string;
   decision: ApprovalDecision;
-  /** With `acceptForSession`: grant the whole Station browser server. */
-  sessionGrantScope?: 'server';
+  /**
+   * With `acceptForSession`: `server` grants the whole Station browser
+   * server; `rule` only the Bash command prefixes the engine suggested.
+   * Honoured only where the request offered that scope.
+   */
+  sessionGrantScope?: 'server' | 'rule';
   /**
    * #3390: accepted content for a form input request, keyed by field name;
    * validated server-side against the exact opened event.

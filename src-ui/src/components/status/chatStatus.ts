@@ -1,13 +1,16 @@
 import type { ConversationTurnActivity } from '@kontourai/station-contracts/orchestration';
+import { SESSION_STATUS_WORDS } from '@kontourai/station-contracts/session-attention';
 import type { ChatActivityHint } from '../../contexts/active-chats-state';
 import type { ChatStreamStatus } from '../../hooks/orchestration/useChatStreamStatus';
 import { retryActivityLabel } from '../../utils/chat-activity';
 import { openTurnStartedAtMs } from '../../utils/conversation-activity';
+import { parseEpochMs } from '../../utils/parseEpochMs';
 import { turnToolsRunning } from '../../utils/turn-tools-running';
 import { receivedDeliveryLabel } from '../chat/deliveryLabels';
 import type { LiveStatusGlyphKind, LiveStatusTone } from './LiveStatusGlyph';
 
 export type ChatStatusKind =
+  | 'answer'
   | 'approval'
   | 'blocked'
   | 'reconnecting'
@@ -44,6 +47,7 @@ export interface ChatStatusInput {
   resyncPending?: boolean;
   /** This chat's open approval requests. */
   approvalCount: number;
+  inputCount?: number;
   stream?: ChatStreamStatus;
   turnLive: boolean;
   /** Paused for the user with no approval behind it (needs input). */
@@ -66,12 +70,6 @@ export interface ChatStatusInput {
 
 const STREAM_DETAIL =
   'Live updates are paused; the remote request may still be running.';
-
-function epochMs(value: string | undefined): number | undefined {
-  if (!value) return undefined;
-  const ms = Date.parse(value);
-  return Number.isNaN(ms) ? undefined : ms;
-}
 
 /**
  * The one status a chat pane shows: transport recovery, then failed-read
@@ -129,12 +127,22 @@ export function deriveChatStatus(
       kind: 'approval',
       tone: 'attention',
       glyph: 'approval',
-      label: 'Needs approval',
+      label: SESSION_STATUS_WORDS.approval,
       count: input.approvalCount > 1 ? input.approvalCount : undefined,
       details: [],
       action: 'reveal-approval',
     };
   }
+  if ((input.inputCount ?? 0) > 0)
+    return {
+      kind: 'answer',
+      tone: 'attention',
+      glyph: 'attention',
+      label: SESSION_STATUS_WORDS.answer,
+      count: input.inputCount! > 1 ? input.inputCount : undefined,
+      details: [],
+      action: 'reveal-approval',
+    };
   if (stream?.kind === 'restored') {
     return {
       kind: 'restored',
@@ -145,7 +153,22 @@ export function deriveChatStatus(
       action: undefined,
     };
   }
-  if (!input.turnLive) return undefined;
+  if (!input.turnLive) {
+    const children = activity?.runningChildWork;
+    if (!children) return undefined;
+    return {
+      kind: 'working',
+      tone: 'active',
+      glyph: 'working',
+      label:
+        children.count > 0
+          ? `${children.count} background task${children.count === 1 ? '' : 's'} running`
+          : 'Waiting for background reply',
+      clockFrom: parseEpochMs(children.oldestStartedAt),
+      details: [],
+      action: undefined,
+    };
+  }
 
   const clockFrom = activity
     ? openTurnStartedAtMs(activity)
@@ -194,7 +217,9 @@ export function deriveChatStatus(
     label = 'Retrying';
     details.push({ text: retryActivityLabel(input.activityHint) });
   }
-  const silentSince = epochMs(activity?.progressSilence?.silentSinceEventAt);
+  const silentSince = parseEpochMs(
+    activity?.progressSilence?.silentSinceEventAt,
+  );
   if (silentSince !== undefined && input.activityHint?.kind !== 'retrying') {
     // The ladder's word for a quiet run, not a second one: the strip says
     // "No progress" with the clock, and its detail reads exactly like the

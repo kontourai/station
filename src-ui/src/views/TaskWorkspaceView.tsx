@@ -57,6 +57,7 @@ import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { clientOriginDetail } from '../utils/clientOrigin';
 import { errorText } from '../utils/errorText';
 import { describeStationFailure } from '../utils/stationFailure';
+import { nextTabIndex } from '../utils/tab-navigation';
 import { ProjectTaskRoomProvider } from '../workspace-panes/ProjectTaskRoomContext';
 import {
   ProjectTaskRoomConversation,
@@ -76,6 +77,7 @@ import {
   type TaskExperienceId,
 } from './task-experiences';
 import { TaskCapabilityPath } from './task-workspace/TaskCapabilityPath';
+import { TaskCodeReviewPanel } from './task-workspace/TaskCodeReviewPanel';
 import { TaskLearningPanel } from './task-workspace/TaskLearningPanel';
 import { TaskMemoryPanel } from './task-workspace/TaskMemoryPanel';
 import {
@@ -611,27 +613,17 @@ function TaskWorkspaceContent({
               onClick={() => setTab(name)}
               onFocus={(event) => revealTab(event.currentTarget)}
               onKeyDown={(event) => {
-                if (
-                  !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(
-                    event.key,
-                  )
-                )
-                  return;
                 const tabs = Array.from(
                   event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
                     '[role="tab"]',
                   ) ?? [],
                 ).filter((button) => button.offsetParent !== null);
-                const index = tabs.indexOf(event.currentTarget);
-                const next =
-                  event.key === 'Home'
-                    ? 0
-                    : event.key === 'End'
-                      ? tabs.length - 1
-                      : (index +
-                          (event.key === 'ArrowRight' ? 1 : -1) +
-                          tabs.length) %
-                        tabs.length;
+                const next = nextTabIndex(
+                  tabs.indexOf(event.currentTarget),
+                  tabs.length,
+                  event.key,
+                );
+                if (next === null) return;
                 event.preventDefault();
                 const target = tabs[next];
                 if (target) {
@@ -721,6 +713,20 @@ function TaskWorkspaceContent({
             }}
           />
         )}
+        {reviewEnabled &&
+          supervisionAuthority &&
+          (graph.task.workspaceBinding?.repoRoot ||
+            graph.task.taskWorktree ||
+            graph.task.taskWorktreeUnknown) && (
+            <TaskCodeReviewPanel
+              key={`${supervisionAuthority.apiBase}:${supervisionAuthority.authorityKey}:${projectId}:${graph.task.id}:${graph.task.createdAt}`}
+              authority={supervisionAuthority}
+              projectId={projectId}
+              taskId={graph.task.id}
+              taskCreatedAt={graph.task.createdAt}
+              visible={tab === 'Overview'}
+            />
+          )}
         {supervisionAuthority && (
           <TaskSupervisionPanel
             taskId={graph.task.id}

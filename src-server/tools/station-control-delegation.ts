@@ -3106,6 +3106,29 @@ function connectionModels(connection: AgentConnectionView): ModelOption[] {
 }
 
 /**
+ * #2266: whether an explicit model can be chosen for this target. For an
+ * engine connection that is the adapter's declared launch capability (a
+ * selector applied at start or per turn), never whether its catalog listed
+ * anything: Muse applies `--model` while its catalog can be empty. A
+ * connection with no declaration (an older host) and a Station-engine Agent
+ * still answer from the models listed.
+ */
+function targetModelSelection(
+  connection: AgentConnectionView | undefined,
+  models: ModelOption[],
+): boolean {
+  // Read from another Station's answer: only the exact booleans count.
+  const launch: unknown = connection?.modelLaunch;
+  if (launch && typeof launch === 'object') {
+    const declared = launch as Record<string, unknown>;
+    return (
+      declared.overrideAtStart === true || declared.overridePerTurn === true
+    );
+  }
+  return models.length > 0;
+}
+
+/**
  * List only stable, secret-free environment selection state. Unlike target
  * discovery, this never connects an SSH profile or returns its transport and
  * verified filesystem binding.
@@ -3334,7 +3357,7 @@ export async function discoverDelegationOptions(
             approvals: connection
               ? connection.capabilities.includes('approvals')
               : true,
-            modelSelection: models.length > 0,
+            modelSelection: targetModelSelection(connection, models),
           },
         },
       ];
@@ -4055,9 +4078,11 @@ function optionalNumber(value: unknown): number | undefined {
  * #225: the usage fields a delegated-task event carries, keyed by the
  * canonical `TokenUsageUpdatedEvent` so a field added to the contract is a
  * compile error here instead of a silent drop. Pricing snapshots and serving
- * routes stay on the canonical receipt; this projection carries token counters.
- * `reportedCostUsd` has a per-provider scope (per-turn versus cumulative)
- * that this per-event projection cannot state.
+ * routes stay on the canonical receipt; this projection carries token counters
+ * and context occupancy. `reportedCostUsd` has a per-provider scope (per-turn
+ * versus cumulative) that this per-event projection cannot state;
+ * `reportedCost` is a cost in the engine's own unit, not a counter, and stays
+ * on the canonical event too.
  */
 type DelegatedUsageField = Exclude<
   keyof TokenUsageUpdatedEvent,
@@ -4066,6 +4091,7 @@ type DelegatedUsageField = Exclude<
   | 'pricingSnapshot'
   | 'servingRoute'
   | 'reportedCostUsd'
+  | 'reportedCost'
 >;
 
 const DELEGATED_USAGE_FIELD_PROJECTORS: {
@@ -4089,6 +4115,10 @@ const DELEGATED_USAGE_FIELD_PROJECTORS: {
   },
   contextTokens: optionalNumber,
   contextWindowTokens: optionalNumber,
+  contextPercent: (value) => {
+    const percent = optionalNumber(value);
+    return percent !== undefined && percent <= 100 ? percent : undefined;
+  },
 };
 
 function optionalCount(value: unknown): number | undefined {
@@ -4551,7 +4581,9 @@ export async function listDelegatedTasks(
   try {
     rawSessions =
       target.kind === 'current' && orchestrationService
-        ? await orchestrationService.listSessionReadModel(readAuthority)
+        ? await orchestrationService.listSessionReadModel(readAuthority, {
+            purpose: 'delegated-task-inventory',
+          })
         : await readSelectedStation(target, () =>
             listOrchestrationSessions(target.apiBase, target.requestOptions),
           );
@@ -4891,7 +4923,9 @@ export async function refreshPeerDelegationActivity(
 ): Promise<void> {
   const readAuthority = readAuthorityForInput(input);
   const records = (
-    await orchestrationService.listSessionReadModel(readAuthority)
+    await orchestrationService.listSessionReadModel(readAuthority, {
+      purpose: 'peer-delegation-refresh',
+    })
   )
     .filter(
       (session) =>
@@ -5216,13 +5250,12 @@ export async function respondToDelegatedTaskRequest(
     // hosting the task: a body naming another environment is refused before
     // any outbound request, so a request id is never decided elsewhere.
     if (selectedTarget.kind === 'peer' && orchestrationService) {
-      const hosts =
-        await orchestrationService.peerDelegationHostingEnvironmentIds(
-          input.taskId,
-          readAuthority,
-        );
-      if (!hosts.includes(selectedTarget.environmentId))
-        throw new Error(PEER_RESPOND_ENVIRONMENT_MISMATCH_MESSAGE);
+      const hosted = await orchestrationService.peerDelegationHostsTask(
+        input.taskId,
+        selectedTarget.environmentId,
+        readAuthority,
+      );
+      if (!hosted) throw new Error(PEER_RESPOND_ENVIRONMENT_MISMATCH_MESSAGE);
     }
     // Same follow-up poster as the continue path — a receiver's closed
     // portable refusal keeps its code/403 here too.
@@ -6652,7 +6685,10 @@ export async function delegateTask(
 /**
  * #4512: the origin a delegated send records: `delegation` for a new
  * conversation (the delegated child it starts) or one whose current Session
- * is itself unattended, else `unknown`.
+ * is itself unattended, else `unknown`. A conversation id the send names but
+ * no Session holds yet is a new conversation too (#4830: classifying it from
+ * the facts of a Session that does not exist read `unknown`); one Station
+ * cannot read counts as new, so it is never mistaken for a person's chat.
  */
 function delegatedTargetOrigin(
   orchestrationService: OrchestrationService | undefined,
@@ -6660,6 +6696,14 @@ function delegatedTargetOrigin(
 ): TurnDispatchOrigin {
   if (!conversationId) return 'delegation';
   if (!orchestrationService) return 'unknown';
+  let existing: boolean;
+  try {
+    existing =
+      orchestrationService.conversationSessionIds(conversationId).length > 0;
+  } catch {
+    existing = false;
+  }
+  if (!existing) return 'delegation';
   const facts = orchestrationService.sessionDispatchFacts(
     orchestrationService.currentConversationSessionId(conversationId),
   );
@@ -6943,6 +6987,11 @@ export async function executeExecutionTargetMessage(
       let currentMetadata = currentDetail
         ? sessionBinding(currentDetail)
         : undefined;
+      // The provider the conversation's current session runs on, so a
+      // successor on the same connection keeps it (ruling R2).
+      let currentProvider: unknown = currentDetail
+        ? record(currentDetail.session).provider
+        : undefined;
       const reservedHandoff = currentDetail
         ? undefined
         : orchestrationService.reservedConversationHandoff(currentSessionId);
@@ -6958,6 +7007,9 @@ export async function executeExecutionTargetMessage(
             readAuthority,
           );
         currentMetadata = continued ? sessionBinding(continued) : undefined;
+        currentProvider = continued
+          ? record(continued.session).provider
+          : undefined;
       }
       const boundTarget = reservedHandoff
         ? { kind: 'agent' as const, id: reservedHandoff.targetAgentId }
@@ -7022,6 +7074,13 @@ export async function executeExecutionTargetMessage(
           : typeof currentMetadata?.connectionId === 'string'
             ? { connectionId: currentMetadata.connectionId }
             : {}),
+        // A reserved handoff moves to another target; its provider is the
+        // target's, not the current session's.
+        ...(!reservedHandoff &&
+        typeof currentProvider === 'string' &&
+        currentProvider
+          ? { provider: currentProvider }
+          : {}),
       };
     },
     readPendingConversationSubmission: (
@@ -7458,6 +7517,9 @@ export async function executeExecutionTargetMessage(
               ...(context?.mcpPromptOrigin
                 ? { mcpPromptOrigin: context.mcpPromptOrigin }
                 : {}),
+              ...(context?.personAuthored
+                ? { personAuthored: true as const }
+                : {}),
               ...(context?.dispatchOrigin
                 ? { dispatchOrigin: context.dispatchOrigin }
                 : {}),
@@ -7490,6 +7552,9 @@ export async function executeExecutionTargetMessage(
                 : {}),
               ...(context?.mcpPromptOrigin
                 ? { mcpPromptOrigin: context.mcpPromptOrigin }
+                : {}),
+              ...(context?.personAuthored
+                ? { personAuthored: true as const }
                 : {}),
               ...(context?.dispatchOrigin
                 ? { dispatchOrigin: context.dispatchOrigin }

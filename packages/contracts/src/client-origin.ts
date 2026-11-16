@@ -1,3 +1,5 @@
+import { isObjectRecord } from './record-guard.js';
+
 /**
  * Bounded provenance for one user-issued Station request.
  *
@@ -112,7 +114,7 @@ export function clientOriginSender(
   origin: { sender?: unknown } | undefined,
 ): ClientOriginSender | undefined {
   const value = origin?.sender;
-  if (!isRecord(value)) return undefined;
+  if (!isObjectRecord(value)) return undefined;
   if (
     !CLIENT_ORIGIN_SENDER_KINDS.includes(value.kind as ClientOriginSenderKind)
   )
@@ -199,8 +201,10 @@ export function parseClientReportedOrigin(
 
 /** Validate persisted server-composed provenance without normalizing it. */
 export function isClientOrigin(value: unknown): value is ClientOrigin {
-  if (!isRecord(value) || value.version !== CLIENT_ORIGIN_VERSION) return false;
-  if (!isRecord(value.actor) || !isRecord(value.reported)) return false;
+  if (!isObjectRecord(value) || value.version !== CLIENT_ORIGIN_VERSION)
+    return false;
+  if (!isObjectRecord(value.actor) || !isObjectRecord(value.reported))
+    return false;
   const actor = value.actor;
   const reported = value.reported;
   const actorKeys = Object.keys(actor);
@@ -226,10 +230,6 @@ export function isClientOrigin(value: unknown): value is ClientOrigin {
     );
   }
   return false;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function isSafeBuild(value: string): boolean {

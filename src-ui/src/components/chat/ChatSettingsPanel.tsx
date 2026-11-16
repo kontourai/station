@@ -101,11 +101,11 @@ export function ChatSettingsPanel({
       initialFocusPolicy="panel"
     >
       <h3 id="chat-settings-title" className="chat-settings-modal__title">
-        Chat Settings
+        Chat settings
       </h3>
       <p className="chat-settings-modal__caption">
-        Chat display preferences sync with your account when signed in.
-        Device-specific options stay on this device.
+        Synced to your account when signed in. Some options apply to this device
+        only.
       </p>
       {sessionId && <SessionGoalControl sessionId={sessionId} />}
 
@@ -134,13 +134,12 @@ export function ChatSettingsPanel({
           <option value="newline">Return inserts a new line</option>
         </select>
         <p className="chat-settings-modal__hint">
-          Shift+Return adds a line. Ctrl/Cmd+Return sends. This preference also
-          applies to attached keyboards.
+          Shift+Return adds a line. Ctrl/Cmd+Return sends.
         </p>
       </div>
 
       <fieldset className="chat-settings-modal__section">
-        <legend className="chat-settings-modal__label">Font Size</legend>
+        <legend className="chat-settings-modal__label">Font size</legend>
         <div className="chat-settings-modal__control">
           <button
             type="button"
@@ -210,8 +209,7 @@ export function ChatSettingsPanel({
           id="chat-settings-answer-delivery-hint"
           className="chat-settings-modal__hint"
         >
-          Choose immediate text, steady reveal, or larger updates at tools,
-          approvals, completion, and other action boundaries
+          How replies appear while streaming.
         </p>
       </div>
 
@@ -222,16 +220,9 @@ export function ChatSettingsPanel({
             checked={showReasoning}
             onChange={setShowReasoning}
             size="sm"
-            describedBy="chat-settings-reasoning-hint"
           />
           <span>Show reasoning</span>
         </label>
-        <p
-          id="chat-settings-reasoning-hint"
-          className="chat-settings-modal__hint"
-        >
-          Display model reasoning steps in chat messages
-        </p>
       </div>
 
       <div className="chat-settings-modal__section">
@@ -241,13 +232,9 @@ export function ChatSettingsPanel({
             checked={showToolDetails}
             onChange={setShowToolDetails}
             size="sm"
-            describedBy="chat-settings-tools-hint"
           />
           <span>Show tool details</span>
         </label>
-        <p id="chat-settings-tools-hint" className="chat-settings-modal__hint">
-          Allow expanding tool calls to view arguments and results
-        </p>
       </div>
 
       <div className="chat-settings-modal__section">
@@ -294,7 +281,7 @@ export function ChatSettingsPanel({
 
       {sessionSummary && (
         <fieldset className="chat-settings-modal__section">
-          <legend className="chat-settings-modal__label">This session</legend>
+          <legend className="chat-settings-modal__label">This chat</legend>
           {/* #3045: one labelled action. The two ways of putting a summary
               away fold into the menu, as on the summary card itself. */}
           <ActionRow
@@ -341,8 +328,7 @@ export function ChatSettingsPanel({
             ]}
           />
           <p className="chat-settings-modal__hint">
-            Adds a derived summary card above the transcript. Runs on the server
-            for this conversation.
+            Adds a summary above the chat.
           </p>
         </fieldset>
       )}
@@ -362,11 +348,11 @@ export function ChatSettingsPanel({
               onClose();
             }}
           >
-            Step through this conversation
+            Step through this chat
           </button>
           <p className="chat-settings-modal__hint">
-            Opens a copy of this chat in the dock and plays its recorded events
-            one at a time. The live conversation is not changed.
+            Opens a copy of this chat and plays its recorded events one at a
+            time. The live chat isn't changed.
           </p>
         </fieldset>
       ) : null}

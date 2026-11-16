@@ -20,7 +20,7 @@ const SCOPES = [
     'Build an unsigned macOS staging candidate',
     RELEASE,
     'STATION_CHANNEL',
-    `\${{ needs.preflight.outputs.channel == 'preview' && 'beta' || needs.preflight.outputs.channel }}`,
+    `\${{ needs.preflight.outputs.channel }}`,
   ],
   [
     'release.yml',
@@ -28,7 +28,7 @@ const SCOPES = [
     'Build signed Windows staging candidate',
     RELEASE,
     'STATION_CHANNEL',
-    `\${{ needs.preflight.outputs.channel == 'preview' && 'beta' || needs.preflight.outputs.channel }}`,
+    `\${{ needs.preflight.outputs.channel }}`,
   ],
   [
     'release.yml',
@@ -36,7 +36,7 @@ const SCOPES = [
     'Build Linux deb and rpm packages',
     RELEASE,
     'STATION_CHANNEL',
-    `\${{ needs.preflight.outputs.channel == 'preview' && 'beta' || needs.preflight.outputs.channel }}`,
+    `\${{ needs.preflight.outputs.channel }}`,
   ],
   [
     'release.yml',
@@ -44,7 +44,7 @@ const SCOPES = [
     'Build signed AppImage with the contained runtime overlay',
     RELEASE,
     'STATION_CHANNEL',
-    `\${{ needs.preflight.outputs.channel == 'preview' && 'beta' || needs.preflight.outputs.channel }}`,
+    `\${{ needs.preflight.outputs.channel }}`,
   ],
   [
     'nightly-native-stage.yml',

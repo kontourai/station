@@ -4,6 +4,8 @@ import {
   taskStatusLabel,
 } from '@kontourai/station-contracts/task-graph';
 import { Empty, StatusBadge } from '@kontourai/ui/react';
+import { taskPlanProgressLabel } from '../utils/taskPlanProgress';
+import { TaskPlanProgressLine, useTaskPlanProgress } from './TaskPlanProgress';
 import './ProjectTaskBoard.css';
 
 const COLUMNS: readonly { label: string; statuses: readonly TaskStatus[] }[] = [
@@ -52,34 +54,11 @@ export function ProjectTaskBoard({
             <ul>
               {items.map((task) => (
                 <li key={task.id}>
-                  <button
-                    type="button"
-                    className="project-task-board__card"
-                    aria-label={`${task.title}, ${taskStatusLabel(task.status)}`}
-                    aria-pressed={selectedTaskId === task.id}
-                    onClick={() => onSelect(task.id)}
-                  >
-                    <strong>{task.title}</strong>
-                    {task.description ? (
-                      <span className="project-task-board__brief">
-                        {task.description}
-                      </span>
-                    ) : null}
-                    <span>
-                      <StatusBadge
-                        tone={
-                          task.status === 'done'
-                            ? 'positive'
-                            : task.status === 'blocked'
-                              ? 'caution'
-                              : 'neutral'
-                        }
-                        status={taskStatusLabel(task.status)}
-                      />
-                      {task.priority !== 'normal' && ` · ${task.priority}`}
-                    </span>
-                    {task.agentId && <span>Assigned to {task.agentId}</span>}
-                  </button>
+                  <ProjectTaskBoardCard
+                    task={task}
+                    selected={selectedTaskId === task.id}
+                    onSelect={onSelect}
+                  />
                 </li>
               ))}
             </ul>
@@ -87,5 +66,50 @@ export function ProjectTaskBoard({
         );
       })}
     </section>
+  );
+}
+
+function ProjectTaskBoardCard({
+  task,
+  selected,
+  onSelect,
+}: {
+  task: TaskRecord;
+  selected: boolean;
+  onSelect(taskId: string): void;
+}) {
+  const plan = useTaskPlanProgress(task);
+  return (
+    <button
+      type="button"
+      className="project-task-board__card"
+      aria-label={[
+        task.title,
+        taskStatusLabel(task.status),
+        ...(plan ? [taskPlanProgressLabel(plan)] : []),
+      ].join(', ')}
+      aria-pressed={selected}
+      onClick={() => onSelect(task.id)}
+    >
+      <strong>{task.title}</strong>
+      {task.description ? (
+        <span className="project-task-board__brief">{task.description}</span>
+      ) : null}
+      <span>
+        <StatusBadge
+          tone={
+            task.status === 'done'
+              ? 'positive'
+              : task.status === 'blocked'
+                ? 'caution'
+                : 'neutral'
+          }
+          status={taskStatusLabel(task.status)}
+        />
+        {task.priority !== 'normal' && ` · ${task.priority}`}
+      </span>
+      {plan && <TaskPlanProgressLine progress={plan} />}
+      {task.agentId && <span>Assigned to {task.agentId}</span>}
+    </button>
   );
 }

@@ -81,8 +81,11 @@ export function useInboxGroups(
 export function useInboxNeedsYouCount(
   items: HomeWorkItem[],
   now: number,
+  workFacts?: WorkFactsById,
 ): number {
-  const groups = useInboxGroups(items, now);
+  // The same facts the inbox reads: without them this count's dismissal read
+  // would see an engine-opened turn as waking a row, and restore it.
+  const groups = useInboxGroups(items, now, workFacts);
   const group = groups.find((group) => group.id === 'needsYou');
   return group ? workAttentionCount(group.items, now, group.childrenById) : 0;
 }

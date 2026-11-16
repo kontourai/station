@@ -10,6 +10,13 @@ Preview is the Beta channel. Nightly publishes usable main-edge builds after
 its source and artifact gates. Full qualification on main tests the combined
 merged changes; Beta and Stable require its exact-source evidence.
 
+Beta is being retired in favor of a release-candidate step
+([#4929](https://github.com/kontourai/station/issues/4929)): `vX.Y.Z-preview.N`
+tags are replaced by `vX.Y.Z-rc.N` tags, which stage with Stable identity and
+the bare base version and stage a complete draft named for the rc tag.
+Publishing an rc tag is not available yet, so the Preview steps below describe
+the retiring flow.
+
 ```mermaid
 flowchart TD
     PR["PR: required affected tests, security and platform checks"] --> MQ["Merge queue: combined candidate checks"]
@@ -191,6 +198,12 @@ not full release qualification and does not replace Beta/stable receipts.
 [Main: Qualification](../../.github/workflows/main-qualification.yml) runs at
 each main push, minute 17 every six UTC hours, or by manual dispatch. It tests
 one exact workflow-event SHA from `main`, independently of platform publishing.
+A push that changes only `docs/reference/deploy-ledger.json` and `.md` (the
+release bot's ledger commits) starts no run, so it cannot displace a pending
+source run; that commit stays unqualified until a scheduled or manual run
+tests it. Tests read the ledger, so a pass on its parent is never reused for
+it; only a recent test failure on the parent can stop a scheduled re-run (see
+below).
 Push runs qualify source only; scheduled/manual success also runs delivery
 validation. Coalesced pending revisions remain unqualified. Matrices do not cancel siblings
 on failure, and the phase driver continues through failed phases. A prerequisite
@@ -204,7 +217,8 @@ The [evidence resolver](../../scripts/qualification-evidence.mjs) can reuse a
 successful run for the same exact source from an admitted main, release or
 manual `PR: CI` workflow, within 24 hours. Historical Nightly runs that actually
 completed full qualification remain eligible; the new usability gate is not.
-It requires all eleven canonical source jobs to have completed successfully in
+It requires all twelve canonical source jobs (including three process-heavy
+slices) to have completed successfully in
 the current run attempt, bound to the same source, plus an unexpired receipt
 artifact and a final run/attempt identity check. Trusted main and historical
 Nightly parents may still be queued, pending, waiting or running optional
@@ -217,8 +231,20 @@ evidence runs fresh qualification. A newer failed qualification invalidates
 prior green evidence for that source. An API lookup failure also runs fresh;
 it cannot admit publication.
 
-Quiet intervals therefore avoid rerunning successful unchanged source. Failed
-source is revisited on the next interval, with all available failure logs kept.
+Quiet intervals therefore avoid rerunning successful unchanged source. A
+scheduled run also declines to repeat the corpus on a source whose newest
+executed main qualification failed in a test step within 24 hours, looking
+through first-parent ancestors that differ from it only in the deploy ledger
+(up to 30 commits) when the source itself has no executed run: its gate
+fails with `Not re-run: run <id> already failed tests on this exact source`, so
+the source stays unqualified and the earlier run keeps the failure logs. The
+scheduled run executes the corpus when main has moved, when that run was
+cancelled, timed out or incomplete, when a job failed outside its test step
+(checkout, install, browser download or prerequisites), and once the 24 hours
+pass. Pushes and manual dispatches always execute. A lookup failure runs fresh.
+Such a skipped run leaves the open repair episode and its run link unchanged,
+since it ran no tests; the health watchdog still counts it as a started,
+unqualified run.
 Dispatch a fresh diagnostic when investigating environment changes or confirming
 a repair; a receipt is bounded source/environment evidence, not physical-device
 or provider publication proof:
@@ -237,7 +263,15 @@ or retries. It maintains one P1 issue owned by repository release maintainers
 when no qualification job started within eight hours, no source qualification
 passed within fourteen hours, or the latest unqualified run has remained queued
 or running for more than three hours. The eight-hour start and fourteen-hour success bounds allow schedule and
-execution delay. It also reports a
+execution delay. It first selects the newest executed red run, downloads
+its failure manifests and classifies it; the body then says whether main is
+red only on known failures, owned by which open issues, with a line
+"red only on known failures since <run>" carried across observations, and
+that release qualification stays blocked. In report mode the alert
+decisions are unchanged. With `STATION_QUALIFICATION_SIGNAL=enforce`, a
+known-only run that completed within the 24-hour scheduled-skip window
+replaces the fourteen-hour staleness reason with that line, and a new
+failure is reported as its own reason. It also reports a
 failed scheduled or manual Nightly delivery after its source gate passed. The
 passing gate's completion time and exact source identify qualification health;
 a long native build does not make qualification stale by itself.
@@ -276,7 +310,10 @@ command above; failed-source repair stays in its existing bounded episode.
 
 `STATION_QUALIFICATION_RUNNER_PROFILE` selects `free` (default), `expanded` or `custom`.
 Free runs at most two ordinary and one process-heavy corpus jobs concurrently;
-Expanded runs four and two. Every matrix leg and canonical phase remains.
+Expanded runs four and two. On Free the three process-heavy slices therefore
+run one after another, not side by side; each slice gets about a third of
+the files and its own 30-minute deadline. That headroom is unmeasured until
+a hosted run reports per-slice durations. Every matrix leg and canonical phase remains.
 Unknown profiles fail before fanout. Custom requires positive integer
 `STATION_QUALIFICATION_ORDINARY_SLOTS` (1–4),
 `STATION_QUALIFICATION_PROCESS_HEAVY_SLOTS` (1–2), and
@@ -289,8 +326,31 @@ including after an earlier suite fails; the final receipt still requires every
 job to pass. Together with the corpus matrices, the Free peak is four runners
 and the integration planning reserve is twelve; Expanded uses seven and twenty. These are planning bounds,
 not a cross-workflow reservation or a guarantee that another repository will
-leave capacity unused. The merge queue builds one candidate at a time, with
-up to three entries per merge batch. Background callers share the native FIFO
+leave capacity unused. The merge queue builds up to two candidates at a time,
+each on top of the one ahead of it, with up to three entries per merge batch.
+One merge-group build peaked at seven concurrent jobs when measured on
+2026-11-13. Measured across all workflows from 06:46Z to 17:30Z on 2026-11-14,
+two concurrent builds peaked at eleven jobs, one of them on a macOS runner,
+inside the twelve-runner reserve; the reserve stays a planning bound. PR source
+computation is bounded separately at nine slots (five shard, three statics and
+one for the release-bot PR; see [testing](testing.md)). Eleven merge-group jobs,
+the Free qualification peak of four and those nine already total 24 before unbounded per-PR
+lanes, so the PR slots bound how many PR source jobs can wait for a runner
+ahead of a merge-group job, not a share of the twenty. GitHub has no priority
+between them. The slot counts were sized from the wait for a slot alone: they
+do not model the pool, and a job that used to be superseded while waiting
+for a slot can now start. The third statics slot followed a 2026-11-15
+measurement in which a PR waited 70 minutes for one of two statics slots while
+seven of the twenty runners were idle. A statics job takes about 13 minutes, so one slot clears
+about four and a half an hour. The slots are separate queues, not a pool: with PR numbers spread
+evenly the busiest slot (four of the ten digits) fills at about eleven PR pushes an hour, against
+about nine with two slots, and a PR can still wait in its own slot while another is idle. From 00:00Z to 03:00Z on 2026-11-14, before the
+heavy platform lanes left pull-request events, all twenty hosted runners were
+busy a quarter of the time and merge-group jobs waited a median of three
+minutes (p90 about fifteen) for a runner. If that wait rises, first return statics to
+two slots (digits 7 and 9 back to `odd`, 8 back to `even`, in `ci.yml`, its pin in
+`scripts/actionlint-gate.mjs` and the job-graph test's slot table), then lower the
+shard slot count. Background callers share the native FIFO
 group described above; integration uses source-specific groups and release
 qualification has its own group. The class input is validated before fanout.
 These groups do not reserve slots across other repositories.
@@ -346,6 +406,15 @@ when they failed before creating a reservation.
 to completed canonical main-qualification runs. It keeps one P1 issue titled
 `Main qualification repair`, with failed source/run, job outcomes, an owner,
 state and a deadline 24 hours after the episode opens.
+
+Each prepare run downloads the run's `qualification-manifest-*` artifacts
+with the existing `actions: read` and writes the [failure
+classification](testing.md#known-qualification-failures) into the episode's
+report. In report mode (the default) that changes no decision. With
+`STATION_QUALIFICATION_SIGNAL=enforce`, a run red only on known failures
+whose issues are open opens no episode and only refreshes an open one;
+it never closes an episode, and a new failure still opens or updates it.
+Only a green qualification run or a person closes an episode.
 
 By default no automated repair agent runs: repository variable
 `QUALIFICATION_REPAIR_AGENT` is unset, and the issue is opened or updated with
@@ -413,7 +482,14 @@ label, then arms auto-merge once. Adding the label or marking a PR ready also
 triggers trusted-base automation, which first verifies successful CI for its
 current head. Both landing jobs load their helpers from the workflow's own
 trusted revision (`github.workflow_sha`), including when the PR event's base
-predates those helpers. Candidate code is never executed. It does not poll the queue, bypass checks,
+predates those helpers. The arm job, not the workflow, holds the
+concurrency group, keyed by the PR's head branch, so arm runs for one PR are
+serialized and other PRs' runs never queue behind them. An event the arm job
+skips (another label, a red or queue CI run, a dequeue) is meant not to take
+a pending arm run's place; that relies on GitHub queuing a job for its
+concurrency group only after its `if` admits it, which GitHub does not
+document; a hosted run has not yet confirmed it here. A dequeue run and a label arm run for
+the same PR can run at once; both arm only the head they read. Candidate code is never executed. It does not poll the queue, bypass checks,
 merge main into contributors' branches or wake an agent for status observation.
 Repair PRs opt in automatically. Maintainers can label their own ready PRs;
 unlabelled lanes remain under their owner's control.
@@ -509,13 +585,62 @@ publication incidents until actual native-ledger or CLI registry-provenance
 recovery, independently of source-qualification repair. Read provider receipts
 for the failed leg; a green or skipped later job does not prove recovery.
 
+A Nightly records its deploy-ledger rows in one commit to `main`. In run
+history, every ledger push made GitHub discard and rebuild the merge groups in
+flight. The CLI job no longer writes
+its `nightly-npm` row. When the native cohort reaches `record-native-completion`,
+that job writes the npm, Android and desktop rows in one commit through
+[`deploy-ledger-commit.mjs`](../../scripts/lib/deploy-ledger-commit.mjs). It
+includes the npm row only after the CLI's provider receipt from the same run
+names that run's version and source, and the registry still binds that version
+to the source. The `record-cli-ledger` job runs after the cohort ends, whether it
+succeeded, failed, was skipped or was cancelled. When the CLI publish was verified,
+it records the npm row alone unless `main` already holds it. Both writers pass
+`--if-absent`, so either order leaves exactly one row. The commit subject names
+the rows it adds (`docs(ledger): record nightly-npm …, nightly-android …,
+nightly-desktop … from run <id>`), and the helper refuses a subject that
+[`normalize-deploy-ledger-head.mjs`](../../scripts/normalize-deploy-ledger-head.mjs)
+would not peel. A failure of `record-cli-ledger` counts against the CLI leg in
+health monitoring. Stable releases and package publication still write one
+record per commit.
+
+If the combined commit fails for any reason, the record job falls back to the
+earlier behaviour. It records the Android and then the desktop row in their own
+commits, using exactly the earlier invocation, and leaves the npm row to
+`record-cli-ledger`. So one bad row cannot take the others with it, and the
+Android marker moves when the native rows land, as it did before. If a
+combined commit did land, these per-row writes are refused as duplicates rather
+than written twice.
+
+Roll this back workflows first. Revert `nightly.yml` and
+`nightly-native-cohort.yml`, and keep the script changes: `--if-absent`,
+`--record` and `--subject-run-id` are additive, and the single-record
+`--commit-subject … --` form the stable workflows use is unchanged. Never
+revert `scripts/deploy-ledger.mjs` while a run of the new workflow is in
+flight. The commit helper runs from the job's checkout, but the appender it
+spawns runs from `origin/main` after the detach, and the older appender
+rejects `--if-absent`. In that case the record job's per-row fallback still
+records the native rows, because it passes no new flag. `record-cli-ledger`
+fails, though, and the npm row is missing. To add a missing row by hand, take the version and `verifiedAt` from
+that run's `nightly-cli-provider-receipt-<run id>` artifact, or the native
+versions from its `nightly-cohort-final-<run id>` receipt. Then run the
+appender with the arguments the workflow passes, through
+`node scripts/lib/deploy-ledger-commit.mjs --commit-subject "docs(ledger): record <channel> <version> from run <run id>" -- node scripts/deploy-ledger.mjs …`
+on a checkout of `main`, with a token allowed to push there.
+
 Preview
 and Stable are evidence-driven owner decisions, not automatic calendar releases.
 No public release is created merely by merging a normal PR. Package-version
 PR maintenance runs on main pushes except those changing only the generated
 `docs/reference/deploy-ledger.json` and `docs/reference/deploy-ledger.md` outputs.
 Those receipt updates do not change the package release plan; regenerating the
-version PR would replace its scoped review notes and formatting corrections.
+version PR would replace any review notes added to it. Its generated output
+needs none: `npm run version-packages` writes changelogs through
+[`changeset-changelog.mjs`](../../scripts/changeset-changelog.mjs), which drops
+upstream's trailing whitespace, and the review ledger's
+[release-versioning contract](documentation-review-ledger.md#generated-release-records-and-removed-notes)
+accepts the version bumps and the changelog sections built from consumed notes.
+A record that cites a version value still needs a note.
 Mixed pushes and every other changed path still trigger maintenance. Manual
 package publication remains available and requires exact-source qualification.
 The separately authorized published

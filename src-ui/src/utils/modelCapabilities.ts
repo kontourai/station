@@ -1,5 +1,8 @@
 import type { AgentProfileCapability } from '@kontourai/station-contracts/enriched-agent';
-import type { ModelOption } from '@kontourai/station-contracts/tool';
+import type {
+  ModelOption,
+  ModelOptionCapabilities,
+} from '@kontourai/station-contracts/tool';
 
 export type SelectableModel = Pick<
   ModelOption,
@@ -44,6 +47,10 @@ const UPPERCASE_PARTS = new Set(['gpt']);
  * but a fabricated one. For those the id itself is the most honest thing we
  * have, so it is returned unchanged (archive#3391).
  *
+ * Hyphenated version digits read as one version: 'claude-opus-5-5' is
+ * "Opus 5.5" and 'claude-3-5-sonnet' "3.5 Sonnet". A date stamp
+ * ('-20250929') stays a word of its own.
+ *
  * A dot BETWEEN DIGITS is a version number, not a provider qualifier
  * (#4402): `gpt-6.1-sol` reads "GPT 6.1 Sol" — the Codex catalog's own name —
  * where the transcript used to print the raw id because the dot alone sent
@@ -58,6 +65,19 @@ export function prettifyModelId(modelId: string): string {
     .replace(/\[1m\]$/i, '')
     .replace(/^claude-/i, '')
     .split('-')
+    // A short number after a number is the version's minor part:
+    // 'opus-5-5' is "Opus 5.5", not "Opus 5 5". A date stamp is not.
+    .reduce<string[]>((parts, part) => {
+      const previous = parts.at(-1);
+      if (
+        previous !== undefined &&
+        /^\d{1,2}$/.test(part) &&
+        /^\d{1,2}$/.test(previous)
+      )
+        parts[parts.length - 1] = `${previous}.${part}`;
+      else parts.push(part);
+      return parts;
+    }, [])
     .map((part) =>
       UPPERCASE_PARTS.has(part.toLowerCase())
         ? part.toUpperCase()
@@ -259,6 +279,26 @@ export function effortLabel(value: string): string {
 }
 
 /**
+ * The reasoning effort a run requests, as the Run setup trigger names it.
+ * Undefined when nothing was requested or the model does not report that
+ * level: the engine's own default then applies, and a chip never names a
+ * level it cannot know.
+ */
+export function requestedEffortLabel(
+  capabilities: ModelOptionCapabilities | undefined,
+  runtimeOptions: Record<string, unknown> | undefined,
+): string | undefined {
+  const requested = runtimeOptions?.effort ?? runtimeOptions?.reasoningEffort;
+  if (
+    typeof requested !== 'string' ||
+    capabilities?.supportsEffort !== true ||
+    !capabilities.supportedEffortLevels?.includes(requested)
+  )
+    return undefined;
+  return effortLabel(requested);
+}
+
+/**
  * Keep approval and other non-model state, but remove model controls the newly
  * selected descriptor does not report. This prevents an effort from a prior
  * model silently leaking into the next turn.
@@ -422,6 +462,17 @@ export function resolveModelChoice(
         : effective.source,
     engineName: selected?.engineName,
     executionAgentId: choice?.executionAgentId,
+    effortLabel: requestedEffortLabel(
+      (
+        selected ??
+        models.find(
+          (model) =>
+            model.id === (sourceModel ?? effective.id) &&
+            model.executionAgentId === choice?.executionAgentId,
+        )
+      )?.capabilities,
+      choice?.providerOptions,
+    ),
   };
 }
 

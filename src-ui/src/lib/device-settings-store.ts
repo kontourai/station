@@ -1098,13 +1098,21 @@ class DeviceSettingsStore {
           if (this.releasedRebind === marker) this.releasedRebind = undefined;
         });
       } else if (binding.values) {
-        const { theme, colorTheme, colorThemeFlavor, colorThemeAccent } =
-          this.snapshot;
+        const {
+          theme,
+          colorTheme,
+          colorThemeFlavor,
+          colorThemeAccent,
+          density,
+          motion,
+        } = this.snapshot;
         this.bootAppearance = {
           theme,
           colorTheme,
           colorThemeFlavor,
           colorThemeAccent,
+          density,
+          motion,
         };
         this.bootAppearanceOwner = owner ?? null;
       }

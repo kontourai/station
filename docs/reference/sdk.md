@@ -24,6 +24,12 @@ dispatch or publication. This also fences whole-body readers, clones, stream
 readers, iterators, branches and pipes; cancellation remains available after
 retirement. Unscoped calls retain the selected host contract.
 
+Credential recovery ignores successful responses declared as `text/html` or
+`application/xhtml+xml`: a sign-in page or a stale address's HTML fallback
+must not clear a recorded credential rejection or restart authority checks.
+The response remains available to the caller for normal content validation.
+
+
 `dispatchOrchestrationCommandWithReceipt(command, apiBase?, timeoutMs?, options?)`
 accepts `{ requestScope }` as its fourth argument. Pass a captured
 `requestScope` when a command follows a delayed confirmation or Undo window;
@@ -58,7 +64,7 @@ Station has no `port + 1` terminal listener; the SDK no longer exports
 Both return a `TerminalSession`, the narrow interface a renderer consumes:
 `terminalId`, `state` (`connecting`, `replaying`, `ready`, `reconnecting`,
 `failed`, `detached`), `status`, `readOnly`, `error`; `subscribe({output,
-reset, change})`, `write(data)`, `resize(cols, rows)`, `cwd()`,
+resize, reset, change})`, `write(data)`, `resize(cols, rows)`, `cwd()`,
 `restart({subdirectory?})`, `close()` and `detach()`. `restart` runs the
 session's program again under the same id (a shell, an agent tab, or a package
 script resolved again by name) and resolves with `{restartedAfterSeq}`; the new
@@ -71,7 +77,10 @@ a promise that settles once it has; the host is credited for that output only
 after every such listener settled it, oldest first, so a fast program waits
 for its slowest view instead of queueing unbounded output in front of it.
 Unsubscribing releases what a listener still owed; a reconnect starts its
-credit afresh.
+credit afresh. `resize(cols, rows, sequence)` reports, in order with output,
+the size the terminal had from that point on, as its host recorded it; it is
+retained for later subscribers like output. A host older than resize records
+sends none.
 Each session notifies only its own subscribers, so output on one terminal
 never wakes a view of another. Input is coalesced per animation frame and held until replay is acknowledged;
 resize is latest-wins. After a dropped socket the store reconnects with backoff
@@ -158,7 +167,16 @@ renderer and input modules behind it are internal and may change.
 Pass a `session` implementing `TerminalViewSession`: `state`, `readOnly`,
 `subscribe(listener)`, `write(bytes)` and `resize(cols, rows)`. The listener's
 `output(bytes, kind)` receives PTY output in order; `kind: 'replay'` marks output
-from before this attachment. It returns a promise that settles once the view's
+from before this attachment. Optional `resize(cols, rows, kind)` gives a
+recorded size and `replayed()` says earlier output has all arrived: the view
+parses replayed output at the size it was written for, so a screen the
+program repainted after a resize does not land on lines that had scrolled,
+then returns to its own size. An incremental reconnect uses the last recorded
+size received before disconnect, even when the program exited or failed while
+offline. A reset, replacement session or full rebuild from retained history
+discards that cache and reconstructs it from the retained size records. Output
+before the first available size record uses the view's size.
+The output listener returns a promise that settles once the view's
 emulator parsed that output; a session should not hand the view more until it
 does (the SDK store's sessions wait). A view holds at most 4 MiB it has not
 parsed: past that it resets its screen and subscribes again, replaying what the
@@ -174,8 +192,9 @@ session. A view refits whenever its box changes (a window resize, a pane
 splitter, moving between dock regions, a phone keyboard or rotation, a
 devicePixelRatio change): the grid and renderer follow at once, and the
 latest size reaches the session at most every 100 ms. The scrollbar sits in
-the inset, so scrollback appearing never takes columns from the grid. Handing a mounted view a different session (a reconnect, a fresh
-attachment of the same terminal) first resets its emulator to a fresh terminal,
+the inset, so scrollback appearing never takes columns from the grid. Handing
+a mounted view a different session object (including a fresh attachment of the
+same terminal) first resets its emulator to a fresh terminal,
 because the new attachment replays its terminal from the oldest retained
 output; the history is drawn once. A session `reset` does the same.
 
@@ -599,6 +618,16 @@ caps omit its start event. An explicit `null` clears activity; only older
 responses without the field fall back to their loaded events. A missing tool
 report remains absent.
 
+`useSessionLiveContinuityQuery(threadId, apiBase?, config?)` reads what a
+live Session's engine declared it can do natively (`SessionLiveContinuity`:
+`live`, `rewind`, `fork`); a host without the read answers nothing offered.
+`useRewindSessionToTurnMutation(apiBase?, requestScope?)` and
+`rewindOrchestrationSessionToTurn({ threadId, turnId })` rewind that engine's
+context in place to before a turn and answer the typed
+`SessionRewindOutcome`; a host without the route answers `refused`
+`unsupported`. See the
+[session API](session-api.md#engine-continuity-and-rewind-sessionsthreadidcontinuity-rewind).
+
 Trusted plugin Workspace Panes are wrapped in the canonical `SDKProvider` graph
 by the host, on both direct routes and placed Pane hosts. No plugin-side mock
 provider is required. Project identity comes from the server-issued Pane
@@ -708,8 +737,11 @@ An `indeterminate` command may have applied: refresh and inspect before another
 explicit operation. Reads do not start or resume an engine.
 
 The default-off **Session goals** preview currently supports Codex inspection,
-paused-objective saves, pause and clear. Resume and Station-managed objective
-execution remain unavailable. Goal usage is engine-reported and is not a billing
+paused-objective saves, pause and clear, and Muse (`muse serve`) inspection,
+pause and clear. Resume and Station-managed objective execution remain
+unavailable. Goal accounting fields are optional: render only the figures
+present, and hide the budget input when the capability's `tokenBudget` is
+`unsupported`. Goal usage is engine-reported and is not a billing
 statement or proof that the requested outcome was achieved.
 
 Use hooks inside the host's React provider tree. Query hooks return a React
@@ -765,20 +797,78 @@ transport. They never select an ambient operator connection.
 
 Discovery reads an existing shared room, authenticated actor, capabilities,
 note, and presence. It does not create a room. `room.unprovisioned` identifies
-only the specific room-not-found response; `room.initialize.mutate()` explicitly
+only the specific room-not-found response, and `room.projectMissing` a Project
+this Station does not have (`project_room_project_not_found`, also read by
+`useProjectRoomChannels`, which keeps `unsupported` for a bare 404); `room.initialize.mutate()` explicitly
 opens the room using the expected local Project ID. Access denial remains a
 separate state. Message and note writes pin the discovered room, Project, and
 actor with server guards. History is ordered by sequence in 25-message windows.
 The hook follows forward continuations when the server's byte limit splits a
-window, then loads older windows; it retains up to 20 windows. Named `changed` events
+window, then loads older windows; it retains up to 20 windows.
+`useProjectRoomRetainedHistory` re-reads the rows a caller still shows from
+windows the room has moved past, each time the room is invalidated, so an edit,
+delete or reaction reaches them too. It reads at most
+`PROJECT_ROOM_RETAINED_REREAD_MESSAGES` (500) below the live windows; a caller
+retires kept rows older than that instead of showing them stale.
+`useProjectRoomHistorySpan` reads one span right away: give it the rows that
+just left the live windows, so a history read cancelled as the tail moved
+does not leave them stale until the next event. Every history result (each
+live window page, the retained re-read and the span read) carries `readSeq`,
+one order taken when its read started across all three; keep, per message,
+the `readSeq` that last set it, and never let a lower one replace it, so a
+slow earlier response cannot bring back text a later read replaced. Named `changed` events
 invalidate queries, `presence` updates participants, and `revoked` or terminal
 401/403 stops the stream and clears retained query content. Cache identities
 include the API authority, local Project ID, and room ID for history.
 
+`room.react`, `room.edit` and `room.remove` set the caller's reaction and edit
+or delete the caller's own message (`reactToProjectRoomMessage`,
+`editProjectRoomMessage`, `deleteProjectRoomMessage`). Each takes a `target` of
+the room guards plus `messageId` and re-reads the room when it settles, since
+none of them moves `lastSeq`. `uploadProjectRoomAttachments` stores files for the
+next message and `fetchProjectRoomAttachment` reads one back.
+`readProjectRoomMessageActionsCapability(apiBase)` reports the
+`projectRoomMessageActions` handshake flag; offer these actions only when it is
+true, because an older host answers 404.
+
+On a host with that flag, the embeddable `ProjectRoom` UI shows reaction pills
+under each message (a tap toggles yours; who reacted is a tooltip, or a long
+press or **Who reacted** on touch), a quick picker of recent emoji with search,
+**Edit** and **Delete** on your own messages (↑ in an empty composer edits your
+last one; Delete asks first), and files dropped, pasted or attached in the
+composer.
+
 The embeddable `ProjectRoom` UI retains an immutable message intent in browser
-session storage before sending. A lost acknowledgement or reload offers an
-explicit retry of that exact payload and UUID; it never automatically resends.
-Changing authority, Project, or discovered actor retires the prior draft.
+session storage before sending, per channel. Until it is confirmed, the message waits in the
+conversation; a lost acknowledgement or reload offers an explicit retry of that
+exact payload and UUID and never resends automatically. A retry of a message
+since edited or deleted is acknowledged with its current revision (its
+tombstone once deleted), which the client accepts. The retained intent
+settles once room history shows a message with its intent ID. The unsent draft
+(text, reply target and Agent recipient) is kept per channel, and an open
+thread keeps its own, in the same tab's
+session storage, keyed by the shell's reload partition rather than its
+per-reload authority epoch; `#general` keeps the key the room used before
+channels, and the channel on screen is remembered the same way, so a reload
+returns to it. A host can own the channel through the route instead
+(`routeChannel` and `onRouteChannel`), and the open thread (`thread`): replies
+whose `replyTo` chain reaches a loaded message then sit in that message's
+thread, and every send or Agent ask from the open thread replies to its root. A
+thread whose root is older than the loaded history pages back to it, up to
+`PROJECT_ROOM_HISTORY_MAX_PAGES` windows of 25 messages. `screen` gives a
+phone's full-screen bar. The full channel marks itself read through the newest
+message of a history read that succeeded, while it is on screen; a held or
+failed read, or an open thread, marks nothing. Messages, `@agent` asks and
+retained Agent requests are addressed to the channel on screen; a restored recipient must still be an available
+Agent, shown under its current catalog name. While an Agent request is
+unsettled, Ask is disabled and shows which Agent it is waiting for; ordinary
+messages still send. A new `@agent` ask never reuses a retained Agent intent,
+which only an explicit retry sends, and its acknowledgement clears the draft
+only if the draft is unchanged since that ask. A retained request that never got
+a handle can be abandoned after a confirmation; the current draft is kept and
+the original may already have run. Changing Project, discovered actor or reload partition
+retires the prior drafts and channel selection; changing authority retires every
+channel's retained send.
 Shared notes use revision compare-and-swap and preserve a conflicting draft for
 comparison. With both discussion and execution capabilities, Bring an Agent
 selects from the current scoped catalog's available Agents. `useProjectRoomAgent`
@@ -1486,8 +1576,8 @@ Types: `'info' | 'success' | 'warning' | 'error'`. The object form takes one
 Returns immediate-toast `notify` plus server-backed `schedule` and `dismiss`
 methods. The example uses only `notify`; it does not create an inbox, push or
 scheduled notification. Server methods still require the host's transport and
-request authorization. `dismiss` currently awaits `fetch` without checking its
-HTTP status, so its resolved promise is not proof of successful deletion.
+request authorization. `schedule` and `dismiss` both reject when the server
+answers with an error status.
 
 ```ts
 type Notifications = ReturnType<typeof useNotifications>;
@@ -1794,7 +1884,7 @@ content and recorded metadata; changed content refuses continuation instead of
 splicing revisions. Missing Agent identity is optional, never a default Agent.
 The read-only inspector does not adopt, resume, fork, or send to a Session.
 
-The palette's explicit **Workspace search (this Station)** mode consumes local
+The palette's explicit **Search Tasks and messages** mode consumes local
 Task/message results and this exact inspector. Command/legacy remote search is
 preserved as a separate mode; only the selected mode dispatches search queries.
 This is a local tracer, not completion of the broader multi-source search issue.
@@ -1922,7 +2012,9 @@ Fetches app configuration.
 
 ### `useStatsQuery(agentSlug, conversationId, config?)`
 
-Fetches conversation stats. Disabled when either param is undefined.
+Fetches conversation stats. Disabled when either param is undefined. The
+response's `engineMcp`, when present, is the engine's folded MCP status, which
+a reopened conversation shows in place of the live list.
 
 ### `useConversationUsageTreeQuery(conversationId, apiBase?, config?)`
 
@@ -2189,6 +2281,43 @@ Renames a conversation and invalidates that agent's conversation list on success
 
 Deletes a conversation, invalidates that agent's conversation list, and removes its cached message query on success.
 
+### Read markers
+
+Unread state is kept by the server (see
+[read marker contracts](contracts.md#read-marker-contracts)). Conversation
+inventory items carry `readState` (`version`, `seenVersion`, `unread`); read it
+rather than comparing `acknowledgedAt` or `updatedAt` yourself. `version` is
+the conversation's content version: a monotonic, opaque number that moves only
+when readable content arrives, never its `updatedAt`. Compare it only with
+versions of the same conversation. `{ version, unavailable: true }` means the
+server could not read it: show it as unknown, never as read.
+
+- `useAcknowledgeConversationMutation()` takes `{ conversationId, updatedAt,
+  readVersion? }`: `readVersion` is the content version the client rendered
+  (`readState.version`) and is what the server marks read; `updatedAt` is the
+  inventory version shown, kept as "last viewed". With `readVersion` the
+  cached row reads as read at once; if the server refuses, the row is restored
+  and the mutation rejects. Without it (older callers) the server records only
+  "last viewed" and marks nothing read, so the row stays unread. An unknown
+  row stays unknown until the server answers.
+- `acknowledgeConversation(apiBase, conversationId, updatedAt, opts?,
+  readVersion?)` is the same call without React Query.
+- `useMarkReadMutation()` marks `{ target, version }` read for any kind, with
+  the same immediate update for an agent conversation.
+- `useReadMarkerSummaryQuery(targets, config?)` reads up to 100 agent
+  conversations, Project rooms (`{ kind: 'project-room', projectSlug,
+  roomId }`) and Task rooms (`{ kind: 'task-room', taskId }`) in one request.
+  It is disabled for an empty list.
+- `markRead(apiBase, target, version)` and
+  `fetchReadMarkerSummary(apiBase, targets)` are the same calls without React
+  Query. `readMarkerQueries` owns the cache keys.
+
+Gate the summary and mark calls on the handshake's `readMarkers` flag: an
+older host answers them 404. Open clients of the same person refresh on their
+own: the shared orchestration event stream re-reads the inventory and
+read-marker queries when that person's marker moves, coalesced with the
+inventory's own refresh.
+
 ### `useCreateProjectMutation(requestScope?)`
 
 `useCreateProjectMutation(requestScope?)` accepts an optional captured host
@@ -2447,7 +2576,18 @@ request authority remain distinct. `interruptOrchestrationTurn` and
 `dispatchOrchestrationCommand` accepts it in its fourth options argument.
 The runtime-event-content hooks accept `apiBase` and `requestScope` in their
 input. `useChildWorkTranscriptQuery` also accepts `requestScope` in its input
-and the target API base as its second argument. Explicit target reads partition
+and the target API base as its second argument. Its optional `running` input
+refreshes a visible engine transcript every two seconds through React Query.
+The caller supplies current child-work state and stops polling after settlement;
+a changed revision can request the final read. The shell refreshes the parent
+inventory when opening a child reader and derives delegate streaming state from
+the current Session's child-work facts.
+Chat opens engine children with a parent `session` and `child` selector;
+delegates use `childSession` for their own Session thread. `childTitle` labels
+the breadcrumb. These selectors choose a read-only child view and grant no
+additional authority. The pane consumes each child request once and retains
+an already-open parent Chat, including its draft, when the bound parent matches.
+Explicit target reads partition
 cache entries by that target and authority. These options grant no access and
 expose no outbound peer credential.
 
@@ -3280,7 +3420,7 @@ SDK request scope. Source reads and actions require `access:manage` plus the
 Station operator principal; the hooks do not grant that authority.
 `useRegistrySourceActionMutation()` accepts `{action, id?,
 source?}` with `add`, `enable`, `disable`, `remove` or `refresh`; `add` supplies
-`{displayName, adapter, location}`. Mutations invalidate Registry queries.
+`{location, ref?, displayName?}`. Mutations invalidate Registry queries.
 `useRegistrySkillContentQuery(id)` inspects the unchanged opaque catalog
 selection ID and is disabled without an ID. These hooks use the existing
 React Query/request authority rather than a separate marketplace cache.
@@ -3349,7 +3489,9 @@ The server obtains the claim and signing policy from host owners and returns
 `registry-trust-refused` with a closed reason when the review or continuity no
 longer matches. A managed policy's signature requirement instead answers `403`
 with `managed-policy-capability-disabled` and reason
-`managed-signature-required`. See [registry trust policy](../design/registry-trust-policy.md).
+`managed-signature-required`. A plain ID whose agent catalog owner is
+ambiguous or unknown answers `agent-catalog-ambiguous` (409) or
+`agent-catalog-unavailable` (503). See [registry trust policy](../design/registry-trust-policy.md).
 
 `consent` is required (archive#4288). It records the operator's decision from
 the preview they read: the permission set the preview derived, the digest of
@@ -5065,8 +5207,12 @@ Each keeps its earlier constructor; the new form takes the helper's
 `StationHttpError`, not a `DelegationApiError`: a page is not Station's
 refusal. `getAuthorityObservation` keeps its own two sentences and reports the
 refusal's `status` and `code`; branch on `status === 401`, not on the
-sentence. Fetchers outside `client/` (the React query domains) are not yet on
-the helper.
+sentence. Of the fetchers outside `client/` (the React query domains), the
+Task graph, Task memory, work-item, operating-state and attention fetchers
+throw the helper's `StationHttpError` too, so a refusal whose body is not JSON
+(a proxy's error page, an empty body) keeps its status instead of surfacing a
+parse exception; attention snooze keeps its own plain `Error`. Not every other
+query domain is on the helper yet.
 
 Some family subclasses are `StationHttpError`s too. The scheduler's
 `SchedulerResponseError` and its run errors (`SchedulerRunIndeterminateError`,
@@ -5087,6 +5233,9 @@ job does not transfer its earlier conversation's history to the new target.
 Older runs without a recorded target require the creator and current-target
 read access, except creatorless, untargeted jobs remain readable by the local
 operator. An agent can read only its own conversation's runs.
+`readFollowUpAttachmentsCapability(apiBase)` (from `@kontourai/station-sdk/client`)
+reads `followUpAttachments`: `true` when the host holds a busy follow-up with
+its files, `false` otherwise, including an unreadable handshake.
 `readTroubleshootCapability(apiBase)` (from `@kontourai/station-sdk/client`)
 reads the host's public handshake the same way for `troubleshootPrepare`:
 `true`, `false`, or `null` when the handshake could not be read.
@@ -5540,8 +5689,8 @@ The portable client exports `getWorkspacePaneHostActions`,
 Project-bound one-shot ticket, held in memory for 60 seconds. A restart loses
 unused tickets. Execution consumes it before any provider work.
 Do not store or log tickets, and never retry execution automatically. An
-`indeterminate` result means work may have started; use existing Activity and
-conversation evidence to inspect it. An accepted result carries distinct
+`indeterminate` result means work may have started; use the inbox and
+conversation evidence in Chat to inspect it. An accepted result carries distinct
 conversation, execution-session, and provider-turn identities.
 
 For an external client, obtain the Station API credential through the deployment's
@@ -5585,7 +5734,7 @@ export async function runPackageAction(
 Render an `unavailable` reason for the user to resolve, and expose the returned
 Session/conversation identities for an `accepted` result. Treat a thrown catalog
 or preparation error as an unavailable operation; do not downgrade to an ordinary
-chat launch. For `indeterminate`, direct the user to Activity without calling
+chat launch. For `indeterminate`, direct the user to the inbox without calling
 this function again automatically. Catalog availability is a display snapshot;
 preparation and execution repeat authorization against the current installation.
 
@@ -5776,12 +5925,15 @@ await respondToRequest(requestScope.apiBase, {
 }, { requestScope });
 ```
 
-`RespondToRequestInput` also takes an optional `sessionGrantScope: 'server'`
-with `decision: 'acceptForSession'`. It widens the grant to the built-in
-Station browser server and only where the request offered that choice. Omit it
-for the per-tool grant; a Station that predates the field ignores it.
+`RespondToRequestInput` also takes an optional `sessionGrantScope` with
+`decision: 'acceptForSession'`. `'server'` widens the grant to the built-in
+Station browser server; `'rule'` narrows it to the Bash command prefixes a
+Claude engine suggested. Each applies only where the request offered that
+choice; otherwise the answer is a one-call accept. Omit it for the per-tool
+grant. A Station that predates `'server'` ignores it; one that predates
+`'rule'` refuses the command.
 The approval decision option carries the same optional `sessionGrantScope`;
-renderers must forward it separately from `acceptForSession` so the server
+renderers must forward it separately from `acceptForSession` so a scoped
 choice cannot collapse into ordinary per-tool trust.
 
 The host captures `requestScope`; do not reconstruct it from a URL or title.
@@ -6243,9 +6395,19 @@ sign-in for an engine run as a command (`/acp/connections/:id/sign-in*`):
 `useEngineSignInAttemptQuery` (polls every 2 seconds while a sign-in runs),
 `useEngineSignInMutation` (start by method id, or cancel) and
 `useEngineCredentialMutation` (set a key value or clear it; the value is never
-read back). Responses are parsed strictly against
-`@kontourai/station-contracts/engine-sign-in`, and every caller supplies a
-captured `ApiRequestScope`.
+read back). For an engine Station signs in itself, the view carries
+`hostAuth`, and `useEngineHostAuthLoginQuery` (polls every 2 seconds while the
+sign-in runs; it carries the device code), `useEngineHostAuthLoginMutation`
+(start with a `HostAuthLoginRequest`, or cancel),
+`useEngineHostAuthSignOutMutation` and `useManagedEngineInstallMutation`
+(`{ consent: true }`) drive `/host-auth/login`, `/host-auth/sign-out` and
+`/managed-install`; the view polls while an install runs. A
+`{ identity: 'social' }` start answers with `authorizationUrl`, Kiro's page to
+open on the Station's computer, and a failed attempt may carry `failure`. The
+view lists `social` only for a browser on that computer and otherwise carries
+`socialSignIn: 'needs-browser-on-host'`. Responses are parsed
+strictly against `@kontourai/station-contracts/engine-sign-in`, and every
+caller supplies a captured `ApiRequestScope`.
 
 ## Engine account queries
 
@@ -6257,7 +6419,8 @@ are disabled and live status polls only while a login is pending. Quota refresh 
 `@kontourai/station-contracts/engine-accounts`. Quota queries strictly parse
 optional account/credit/model, Claude spending/breakdown/limit metadata and
 response-shape audit fields and bounded hourly allowance history on both
-known and unknown quota variants. `useEngineActivityQuery` accepts an optional
+known and unknown quota variants. `useEngineActivityQuery` takes an engine id
+string and an optional
 credential profile filter: `null` selects the default profile, a string selects
 a saved profile, and an omitted filter includes all engine accounts. Older
 usage without an account observation remains excluded from profile totals. Consumers must not treat unknown quota as zero
@@ -6327,6 +6490,10 @@ The SDK root retains the same hook and fetcher exports.
 `requireRequestScope`, with the same captured-authority rules as the operator
 query. Scoped keys include Station, authority, and the explicit credential-profile
 filter; all accounts, the default profile, and a named profile remain distinct.
+`UsageRollupQuery` also takes any declared usage `provider`, and local
+`connectionId`/`modelConnectionId` filters (with `localOnly`), keyed separately.
+Gate the connection filters on the `usageConnectionFilters` capability: an
+older host ignores them and returns unfiltered totals.
 The Profile receipt panel requires a scope and clears its page position when
 authority changes. HTTP 401/403 pauses default polling; cached rows are hidden
 on error or lost authority. `fetchUsageRollup(query, options?)` forwards captured
@@ -6469,6 +6636,20 @@ Station. They grant no execution permissions and do not provide cross-Station
 cloud synchronization. See the [settings architecture](../design/settings-architecture.md#account-preferences-and-device-settings).
 
 
+## Custom appearance
+
+The client barrel exports `getCustomAppearance`, `proposeCustomAppearance`,
+`saveCustomAppearance`, `keepCustomAppearanceProposal`,
+`dismissCustomAppearanceProposal` and `reportCustomAppearanceRender` over
+`/api/me/appearance`. Shapes come from
+`@kontourai/station-contracts/custom-appearance`. Only the proposal is open to
+Station-control tool requests; the others are the person's own steps and
+answer 403 to them. Propose, save and keep take the document's `revision`; a
+stale one is 409. `useCustomAppearanceQuery(requestScope)` reads the document
+(polling every 15 seconds by default) and `useCustomAppearanceMutation` runs
+the person's steps and updates that cache. See the
+[decision](../decisions/custom-appearance.md).
+
 ## Personal Board authoring
 
 The `@kontourai/station-contracts/personal-board` contract defines a versioned,
@@ -6585,8 +6766,8 @@ browser fixtures do not establish native/installed/release qualification.
 `@kontourai/station-sdk/workspace-file-preview` exports
 `readProjectWorkspaceVisualFile(apiBase, projectSlug, path, options?, thread?)`.
 Pass the render-captured request scope and abort signal in `options`. The
-read-only POST returns a validated HTML page plus isolated frame origin, or a
-bounded raster preview. `thread` selects an authorized Session workspace;
+read-only POST returns a validated HTML page, plus the isolated frame origin
+for a browser on the Station host, or a bounded raster preview. `thread` selects an authorized Session workspace;
 verified Git worktrees of that repository are also eligible. The returned bytes
 are display data, not permission to navigate to a host filesystem URL. A failed
 read throws `WorkspaceVisualFileError` with `status` and a `reason`
@@ -6617,6 +6798,23 @@ unavailability, never empty transcript success. The CLI and Station-control MCP
 use these same fetchers.
 
 ### Task review threads
+
+`taskCodeReviewQueryKey(scope, projectId, taskId, taskCreatedAt)`,
+`useTaskCodeReviewQuery(scope, projectId, taskId, taskCreatedAt, enabled)` and
+`useRequestTaskCodeReviewMutation(scope, projectId, taskId, taskCreatedAt)`
+are exported from the SDK root and query barrel. They call the
+[Task code-review API](api.md#independent-code-review) using the supplied
+authority scope. Keys include the API base, authority, Project ID and Task
+incarnation. A failed read hides cached protected data; 404 explains that the
+host or preview does not support this surface. The query refreshes every four
+seconds only while returned requests are running, and stops after a read error.
+Disable it when its view is hidden.
+
+The mutation submits `TaskCodeReviewRequest` with retries disabled and
+invalidates that exact query after settlement. The caller retains the original
+Project ID/creation time, request ID and commit pair across uncertain transport
+outcomes; explicit retry reuses those values. A replacement Project cannot
+inherit that saved intent. A completed request is not a passed gate.
 
 The SDK root and query barrel export `fetchTaskReview(taskId)`,
 `taskReviewQueryKey(taskId)` and `useTaskReviewQuery(taskId, {poll})` for the

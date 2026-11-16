@@ -152,17 +152,35 @@ change before it reaches a real release tag — they carry no store-upload step
 and no signing secret, and are unrelated to everything else in this doc.
 Android also runs on affected `main` pushes and `workflow_dispatch`. iOS runs
 through the reviewed base-controlled `pull_request_target` topology, through
-`merge_group`, and through `workflow_dispatch`. It has no push trigger: the
-merge queue fast-forwards `main` to the exact candidate it already built.
+`merge_group`, through `main` pushes, and through `workflow_dispatch`.
 Every pull request and queued merge candidate emits the stable
 `build-ios-verification` check so the main ruleset can require it. A reviewed
-hosted-Linux classifier runs the `macos-26` job only when the pull-request or
-merge-group diff changes iOS, native, frontend, or shared package inputs
-(test-only `__tests__/`, `*.test.*` and `*.spec.*` TypeScript files under
-`src-ui/`, and a package's top-level `src/__tests__/`, do not count: the app's
-builds never compile them);
-unrelated candidates receive a successful skipped job without consuming macOS
-capacity. The cancellation group supersedes stale runs for the same candidate.
+hosted-Linux classifier runs the `macos-26` job before landing only when the
+pull-request or merge-group diff changes native inputs: `src-desktop/`, Rust
+and Cargo files, dependency manifests, the runtime smoke, the workflow,
+`vite.config.ts` and every executed file named for iOS or the native client,
+and the native-shell slice of `src-ui/` (`src/platform/`, `public/`, and the
+boot entry). Everything else the app can contain or be built with is built
+after it lands: every source root the UI bundle imports (`src-ui/`,
+`src-shared/`, and the workspace packages it reaches) and the generic
+tooling the job runs. Two of those files sit on the native path and still
+build only after landing: `scripts/vite-ui-assets.ts` (its native
+`precompress: false` branch) and `scripts/lib/desktop-build-manifest.mjs`
+(imported by the native manifest writers). `scripts/classify-ci-change.mjs` owns both lists, and
+its test derives them from the job's commands and the UI's imports; files
+read only at run time are not derived. A `main` push builds when its range
+has a post-merge change and no native input, since the merge queue
+fast-forwards `main` to the candidate it already built whenever a native
+input was present. Post-merge builds coalesce to one running and one
+pending, and a red one opens a `main-health.yml` tracker. A commit pushed to
+`main` without the merge queue is the gap: if it has a native input, no
+build covers it until someone dispatches the workflow on `main`.
+Test-only `__tests__/`, `*.test.*` and `*.spec.*` TypeScript files under
+`src-ui/` and `src-shared/`, and a package's top-level `src/__tests__/`,
+never count: the app's builds never compile them. Unrelated candidates, drafts and the automation
+release PR receive a successful skipped job without consuming macOS capacity;
+the merge group still builds a relevant candidate. The cancellation group
+supersedes stale runs for the same candidate.
 The macOS job builds an unsigned iOS 26.5 simulator app, installs it on an
 iPhone 17 Pro simulator, and uses native XCUITest against the packaged
 WKWebView accessibility tree. A clean install must leave the startup surface
@@ -171,7 +189,7 @@ budget. The smoke checks that QR/manual welcome actions are hittable, at least
 44 points tall and inside the viewport, while protected workspace navigation is
 absent. It opens **Enter a pairing code**, checks the real address/code fields
 and title geometry before/after keyboard focus, closes that surface, then follows
-**Other ways to connect → Open connection manager → Connect a Station**. The
+**More ways to connect → Manage Stations → Connect a Station**. The
 existing address/title horizontal containment and focus-scale checks remain.
 It submits no pairing request and does not prove camera capture, host approval,
 credential persistence or physical-device behavior. Notification-sheet discovery
@@ -296,6 +314,50 @@ package evidence.
 | Camera | Android `CAMERA` plus optional camera hardware; iOS camera rationale | Scan a pairing QR code. |
 | Microphone | Android `RECORD_AUDIO`/`MODIFY_AUDIO_SETTINGS` plus optional microphone hardware; iOS microphone rationale | Voice conversations with an agent. |
 | Notifications | Android `POST_NOTIFICATIONS` | Show requested Station attention on supported Android releases. |
+| Shared images | Android MainActivity `image/*` `SEND`/`SEND_MULTIPLE` intent filter; no permission | Receive images shared from another app into a conversation or a new chat. |
+
+Android keyboard image insertion uses Wry's `WRY_RUSTWEBVIEW_CLASS_EXTENSION`
+in `src-desktop/.cargo/config.toml`, not a hand edit to generated Kotlin.
+`KeyboardImageIntake` wraps the Chromium input connection on API 25+ and
+advertises PNG, JPEG, GIF and WebP for multiline editors. It requests a
+keyboard URI grant when supplied and releases it after the bounded native
+read, detach, or a 30-second deadline from grant creation (including capture
+and queue delays). WebView state is checked on the UI thread after the IME
+handoff. The
+selection-menu callback offers **Paste** only for an image-capable focused
+composer, and reuses Chromium's existing Paste item when present;
+ordinary text paste keeps Chromium's callback. Each prepare removes Station's
+item when the clipboard changes or Chromium supplies Paste. Station handles its
+own item directly; native Paste detection uses IDs/resource names, not translated
+menu labels. A receive-content listener alone
+is insufficient to ensure Chromium's own input connection and selection menu
+reach the app, so both entry points are explicitly wrapped.
+
+The media-intake plugin applies the same external-provider URI admission,
+image sniffing and count/byte limits as shared images. Its WebView bridge
+captures the focused composer before reading and dispatches files to that
+composer's existing paste handler. Blur, removal, disabling, navigation or a
+changed reply identity drops the pending delivery. Query and hash changes alone
+do not retarget a composer. The bridge runs only on the packaged app origin,
+`http://tauri.localhost`; remote pages cannot capture or receive images.
+The development server origin (`http://127.0.0.1:5173`) is deliberately outside
+this gate, so keyboard/menu image insertion is unavailable in devUrl sessions.
+Use a packaged-asset debug build for this acceptance sequence.
+WebView attachment rebinds the process-lived plugin after activity recreation. A field without attachment
+support does not accept the native payload. These paths do not submit a message.
+
+Physical acceptance remains separate from JVM and DOM checks. On a connected
+Android phone, build this checkout with `npm run build:android:arm64`, install
+its debug APK with `adb install -r <apk>`, and record the APK hash, app identifier,
+Android/WebView/Gboard versions and source SHA. In both a new-chat draft and an
+existing reply, focus the composer and insert an image from Gboard's clipboard
+and sticker picker. Confirm one attachment preview, no unsupported-paste toast,
+and no automatic send; send it and confirm the intended conversation receives
+it. Copy an image from another app and exercise long-press **Paste**, then test
+ordinary text Paste. During a slow read, switch conversations or blur the field
+and confirm no image attaches to the destination. Repeat with unsupported and
+over-limit images, permission denial, and foreground/background transitions.
+An APK build or a synthetic DOM paste does not establish these device outcomes.
 
 The Android activity uses the maintained Android platform contract
 `windowSoftInputMode="adjustResize"`.

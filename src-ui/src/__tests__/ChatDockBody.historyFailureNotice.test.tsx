@@ -207,7 +207,6 @@ function buildSession(overrides: Partial<ChatSession> = {}): ChatSession {
     attachments: [],
     queuedMessages: [],
     inputHistory: [],
-    hasUnread: false,
     status: 'idle',
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -715,10 +714,10 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
 
     expect(
       await screen.findByText(
-        'Last known: background agent working (status unavailable)',
+        'Last known: background task running (status unavailable)',
       ),
     ).toBeTruthy();
-    expect(screen.queryByText('Background agent working')).toBeNull();
+    expect(screen.queryByText('Background task running')).toBeNull();
   });
 
   test('a resync that ends in blocked repair does not complete on a later reconnect', async () => {

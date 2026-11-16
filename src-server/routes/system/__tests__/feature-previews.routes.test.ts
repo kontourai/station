@@ -56,24 +56,25 @@ afterEach(() => {
 });
 
 describe('feature preview routes', () => {
-  test('lists only bound consumer entries and persists a server-side toggle', async () => {
+  test('serializes the bound catalog and persists a server-side toggle', async () => {
     const registry = registryWithConsumer();
     const app = createFeaturePreviewRoutes(registry, logger);
+    // Registry tests own membership; this boundary must serialize it intact.
+    const expectedCatalog = registry.list();
 
     const before = await app.request('/');
-    expect(await before.json()).toMatchObject({
+    const catalog = await before.json();
+    expect(catalog).toEqual({ success: true, data: expectedCatalog });
+    expect(catalog).toMatchObject({
       success: true,
-      data: [
-        { id: 'task-review', enabled: false },
-        { id: 'continue-interrupted-turn', enabled: false },
-        { id: 'task-capabilities', enabled: false },
-        { id: 'task-collaboration', enabled: false },
-        { id: 'apps-library', enabled: false },
-        { id: 'chat-apps', enabled: false },
-        { id: 'visual-skills', enabled: false },
-        { id: 'integration-content-trust', enabled: false },
-        { id: 'real-consumer', enabled: false },
-      ],
+      data: expect.arrayContaining([
+        expect.objectContaining({ id: 'real-consumer', enabled: false }),
+      ]),
+    });
+    expect(catalog).not.toMatchObject({
+      data: expect.arrayContaining([
+        expect.objectContaining({ id: 'invented' }),
+      ]),
     });
 
     const update = await app.request('/real-consumer', {

@@ -1,7 +1,0 @@
-{
-  "revision": "afc5075dffd45ae320b2c811bb563f5b597aad98",
-
-  "notes": [
-    {"path":"CONTEXT-MAP.md","note":"Round-3 module-map change is one clause in the ProductTelemetryReceiver section (the fixed public domain now names provisioned channels). Checked this document: it makes no claim about the telemetry receiver or public domain, so its claims are unaffected.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]}
-  ]
-}

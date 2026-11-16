@@ -28,7 +28,10 @@
  * #2333 added `test-path-import-gate` (~1.5s alone, not re-measured together). Most are
  * under 500ms each; `a11y` is ~5s of that because it runs its own biome pass,
  * and `ui-glyph-coverage` (~0.7s) and `stored-path-expansion` (~0.6s) are the
- * next slowest. A docs-only or workflow-only push pays none of it.
+ * next slowest. A push that changes only text outside the roots below (docs,
+ * workflows, Rust) pays for `station-vocabulary-gate` alone (~3s), because
+ * that gate scans every tracked text file; a push that changes no text file
+ * pays nothing.
  *
  * When the scope cannot be computed the gate runs anyway: "I could not look"
  * must not resolve to the same answer as "nothing changed"
@@ -39,6 +42,7 @@ import { spawnSync } from 'node:child_process';
 import { changedPathsSince, describeMatches } from './lib/change-scope.mjs';
 import { resolveRef } from './lib/git-ref.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { isVocabularyTextFile } from './station-vocabulary-gate.mjs';
 
 const BASE_REF = process.env.STATION_BASE_REF ?? 'origin/main';
 
@@ -97,6 +101,10 @@ export const PREPUSH_STATIC_GATES = Object.freeze([
   'component-style-hygiene',
   // ~1s: TypeScript AST over src-ui copy; fails only on growth.
   'ui-copy-length',
+  // ~4s: TypeScript AST over every file that mentions child_process; fails
+  // only on growth. Also in `verification:policy:gate` (ci:fast); listed here
+  // so the push that adds a launch without windowsHide is the one refused.
+  'windows-hide-ratchet',
   'a11y-ratchet',
 ]);
 
@@ -104,7 +112,9 @@ export const PREPUSH_STATIC_GATES = Object.freeze([
  * Source roots these ratchets read. `a11y` scans the whole `lint:check` set,
  * which is why this is broader than the UI build's inputs; the rest are
  * `src-ui`-scoped. Their own scripts and baselines count as inputs too — a
- * ceiling edit changes the verdict without touching a source file.
+ * ceiling edit changes the verdict without touching a source file. `docs/ui/`
+ * holds the reviewed exception inventories the focus-visible,
+ * responsive-surface and accent-foreground ratchets read.
  */
 export const STATIC_GATE_INPUT_PREFIXES = Object.freeze([
   'src-ui/',
@@ -115,14 +125,30 @@ export const STATIC_GATE_INPUT_PREFIXES = Object.freeze([
   'examples/',
   'scripts/',
   'schemas/agent-plugins/',
+  'docs/ui/',
 ]);
 
 /**
  * Single files these gates read. The root manifest names the
  * `typecheck:examples` chain that examples-conformance checks coverage
- * against, so editing it alone can uncover an example.
+ * against, so editing it alone can uncover an example. `biome.json` decides
+ * whether the a11y preset the a11y ratchet counts is enabled at all, and
+ * font-origin-ratchet scans the desktop shell's `tauri.conf.json` CSP.
  */
-const STATIC_GATE_INPUT_FILES = Object.freeze(['package.json']);
+const STATIC_GATE_INPUT_FILES = Object.freeze([
+  'package.json',
+  'biome.json',
+  'src-desktop/tauri.conf.json',
+]);
+
+/**
+ * The one gate whose inputs are wider than the roots above: it scans every
+ * tracked text file, so docs, workflow, Rust and root-manifest edits feed it
+ * and nothing else here. It is scoped separately so those pushes run the one
+ * gate that reads them rather than all of them, or none.
+ */
+const VOCABULARY_GATE = 'station-vocabulary-gate';
+const VOCABULARY_ONLY_GATES = Object.freeze([VOCABULARY_GATE]);
 
 /** Does one repo-relative path feed any of these gates? */
 export function isStaticGateInput(path) {
@@ -139,30 +165,51 @@ export function staticGateInputs(paths) {
   return paths.filter((path) => isStaticGateInput(path));
 }
 
+/** Changed paths only the vocabulary gate reads: any tracked text file. */
+function vocabularyGateInputs(paths) {
+  return paths.filter((path) =>
+    isVocabularyTextFile(String(path).replaceAll('\\', '/')),
+  );
+}
+
 /**
  * `run: false` is only ever returned when the scope was computed AND
- * contained nothing these ratchets read.
+ * contained nothing these ratchets read. `gates` names what a run executes:
+ * every gate when a shared input changed (or the scope is unknown), the
+ * vocabulary gate alone when the only changes are text outside those inputs.
  */
 export function decideStaticGateScope({ baseSha, changedPaths }) {
   if (!baseSha) {
     return {
       run: true,
       matched: [],
+      gates: PREPUSH_STATIC_GATES,
       reason: `no ${BASE_REF} ref here, so this push cannot be scoped; running rather than assuming`,
     };
   }
   const matched = staticGateInputs(changedPaths);
-  if (matched.length === 0) {
+  if (matched.length > 0) {
     return {
-      run: false,
+      run: true,
       matched,
-      reason: `none of the ${changedPaths.length} path(s) this branch changes feed one of these gates`,
+      gates: PREPUSH_STATIC_GATES,
+      reason: `this branch changes ${matched.length} gate input(s): ${describeMatches(matched)}`,
+    };
+  }
+  const vocabularyOnly = vocabularyGateInputs(changedPaths);
+  if (vocabularyOnly.length > 0) {
+    return {
+      run: true,
+      matched: vocabularyOnly,
+      gates: VOCABULARY_ONLY_GATES,
+      reason: `this branch changes ${vocabularyOnly.length} text file(s) that only ${VOCABULARY_GATE} reads: ${describeMatches(vocabularyOnly)}`,
     };
   }
   return {
-    run: true,
+    run: false,
     matched,
-    reason: `this branch changes ${matched.length} gate input(s): ${describeMatches(matched)}`,
+    gates: [],
+    reason: `none of the ${changedPaths.length} path(s) this branch changes feed one of these gates`,
   };
 }
 
@@ -208,7 +255,7 @@ function main() {
   }
 
   console.log(`Static gates: checking — ${decision.reason}.`);
-  const failed = PREPUSH_STATIC_GATES.filter((name) => runRatchet(name) !== 0);
+  const failed = decision.gates.filter((name) => runRatchet(name) !== 0);
   if (failed.length > 0) {
     console.error(failureNote(failed));
     process.exitCode = 1;

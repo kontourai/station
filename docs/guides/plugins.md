@@ -58,6 +58,22 @@ bundle's download together, a stylesheet fetch and a same-origin script
 `preload` for each, then still applies and executes them one at a time in
 registry order, so each registration is read at its own script's load event.
 Each stylesheet's deadline starts at its plugin's turn, not at its download.
+Before any of that, the UI reads `GET /api/plugins` up to three times, with
+8, 16 and 24 second deadlines and a 1 second pause between reads, when a read
+times out, fails in transit or gets a 5xx. Plugin layout tabs show a loading
+state meanwhile. Against a Station that accepts the connection and then hangs,
+that is about 50 seconds before a tab reports **Extensions could not load**,
+with a **Retry** button; a Station that is down refuses at once, and the three
+reads finish in about 2 seconds. A refused read (4xx) is not retried. After
+that, while the connection stays healthy, completed health probes (every 10
+seconds, for a probed Station and for the desktop app's own managed Station
+alike) re-read an inventory that failed for one of those passing reasons. The
+re-read runs on the 1st, 3rd, 7th and 15th probe after the failure and every
+8th after that; probes during a re-read do not count. It runs in the
+background: the tab keeps showing **Extensions could not load** and **Retry**
+until a re-read succeeds, then shows the plugin. Pressing **Retry** during a
+background re-read shows the loading state at once and reads again after the
+running re-read ends, like any other reload.
 See the [registry](../../src-ui/src/core/PluginRegistry.ts).
 
 The capability is a per-launch 256-bit secret checked in constant time. It
@@ -569,9 +585,20 @@ Managing connected sources requires the Station operator and an
 `access:manage` credential. Standard paired clients can browse ordinary
 catalog items without gaining host source-management authority.
 
-The Registry's Add marketplace flow connects additional public GitHub Skill
-libraries, local Skill directories and local/HTTPS Station manifests without
-changing `registryUrl`. Sources persist separately, can be refreshed or disabled,
+The Registry's **Add source** flow connects additional sources without
+changing `registryUrl`. A source is a location, with an optional ref for a
+GitHub repository. Station detects what it provides from its content:
+`SKILL.md` packages, a Station manifest's plugins and agents, and a Claude Code
+marketplace index or MCP definitions, which are recognized but not yet
+installable ([decision](../decisions/registry-sources-detected-by-structure.md)). Each
+source under **Manage sources** (opened from the Registry toolbar, so the
+catalog comes first) shows its trust tier
+(Station, Default, Plugin, or Unverified for one a person added), what it was
+detected to provide with counts (a default catalog shows its last count, or
+that it has not been scanned yet), and when it was last read and last changed
+upstream. Sources with the same name are told apart by their location, and a
+source that reads the same repository or folder as another says they overlap.
+Choosing a source keeps it selected across the Registry tabs. Sources persist separately, can be refreshed or disabled,
 and report offline/stale/error status independently. Offline plugin rows retain
 the current installed state from the local Library, even after an update or
 removal; cached catalog metadata cannot declare a package installed. Removing one preserves
@@ -1181,7 +1208,14 @@ module.exports = () => ({
 });
 ```
 
-Alternatively, point `module` at a JSON file and the server auto-wraps it with `JsonManifestRegistryProvider`.
+Alternatively, point `module` at a JSON file and the server auto-wraps it with
+`JsonManifestRegistryProvider`, whose agent view lists only the manifest's
+`type: "agent"` entries. Every registered agent registry is listed: rows carry
+`catalogSourceName`, and an ID that two registries offer is marked
+`ambiguous-source` and refused at install rather than taken from the first. A
+plain-ID install is also refused while any agent registry cannot be read, since
+it might offer the same ID. The same rule holds on the plugin install, preview
+and update paths for an ID that a readable registry offers as an agent.
 
 ### integrationRegistry
 
@@ -1754,8 +1788,10 @@ The dev server:
   - `POST /api/plugins/fetch` — server-side fetch proxy
 
 The dev server reads installed dependencies from `<STATION_HOME>/plugins/` and
-starts the existing install command for a missing dependency with a resolved
-source. That is an installation attempt, not proof that consent, activation or
+runs the existing install command for a missing dependency with a resolved
+source, waiting for it to finish before it generates the preview page. A
+refused or failed install is printed as a warning and the preview still
+starts. That is an installation attempt, not proof that consent, activation or
 dependency readiness completed before the preview starts.
 
 Direct `--host` or non-loopback HTTP exposure is not supported. For remote development, run `station plugin dev 4300` on the development host, forward it with `ssh -N -L 4300:127.0.0.1:4300 user@dev-host`, and open `http://127.0.0.1:4300` locally. The privileged file, MCP, fetch, and reload routes enforce the same exact loopback browser boundary.
@@ -2027,7 +2063,7 @@ selector. Grant `agents.invoke` in Library, configure the native model or extern
 engine connection, and make the Agent available in the Project before running it.
 
 The host confirms that a conversation was accepted and offers **Open
-conversation**. If delivery is uncertain, inspect Activity; the host does not
+conversation**. If delivery is uncertain, inspect the Chat inbox; the host does not
 retry a possibly started action. Revoked permissions, changed packages, missing
 Agents, and unavailable execution modes remain visible failures.
 

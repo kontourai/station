@@ -1,5 +1,6 @@
 import { isProjectChatApprovalPosture } from '@kontourai/station-contracts/project-chat-defaults';
 import type { ProjectConfig } from '../../contexts/ProjectsContext';
+import { relativeTimeAgoFromIso } from '../../utils/relativeTime';
 import type { ProjectForm } from './types';
 
 /**
@@ -26,6 +27,7 @@ export function buildProjectSavePayload(
     defaultApprovalModeSelection,
     defaultApprovalMode,
     icon,
+    iconDisabled,
     ...rest
   } = form;
   return {
@@ -35,7 +37,11 @@ export function buildProjectSavePayload(
     // legacy value the icon rule now refuses. `''` is sent as is: it is the
     // route's "clear the icon", which `JSON.stringify` would drop as
     // `undefined`.
-    ...(savedForm && icon === savedForm.icon ? {} : { icon }),
+    ...(savedForm &&
+    icon === savedForm.icon &&
+    iconDisabled === savedForm.iconDisabled
+      ? {}
+      : { icon, iconDisabled: iconDisabled ?? false }),
     // `'inherit'` is the form's spelling of "this project makes no choice";
     // `null` is the route's, which drops the override rather than storing it
     // (#2144 slice 2). Sent explicitly rather than omitted: `JSON.stringify`
@@ -64,6 +70,7 @@ export function buildProjectForm(project: ProjectConfig): ProjectForm {
   return {
     name: project.name,
     icon: project.icon ?? '',
+    iconDisabled: project.iconDisabled ?? false,
     description: project.description ?? '',
     defaultAgent: project.defaultAgent,
     defaultModel: project.defaultModel ?? '',
@@ -95,10 +102,7 @@ export function buildProjectForm(project: ProjectConfig): ProjectForm {
   };
 }
 
+/** The shared sentence form, for "indexed 5m ago". */
 export function getKnowledgeTimeAgo(iso: string, now = Date.now()): string {
-  const diff = now - new Date(iso).getTime();
-  if (diff < 60_000) return 'just now';
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  return `${Math.floor(diff / 86_400_000)}d ago`;
+  return relativeTimeAgoFromIso(iso, now);
 }

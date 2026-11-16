@@ -1,10 +1,19 @@
 /**
  * Sign-in for engines Station launches as local commands: what Station knows
  * about whether one is signed in, and the ways it can sign one in. Station
- * never reads, copies or hands on an engine's own credentials; an API key a
- * person enters is kept in Station's engine credential store and only its
- * variable name is ever served back.
+ * never reads or copies an engine's own credentials; an API key a person
+ * enters is kept in Station's engine credential store and only its variable
+ * name is ever served back. Where an engine is launched to delegate its
+ * credential to the host, Station issues an access token from its own
+ * engine host-auth vault through a reviewed binding
+ * (`@kontourai/station-contracts/engine-credential-provider`).
  */
+
+import type {
+  EngineHostAuthPolicy,
+  EngineHostAuthStatus,
+} from './engine-credential-provider.js';
+import type { ManagedInstallState } from './managed-engine-install.js';
 
 export type EngineSignInState = 'authenticated' | 'unauthenticated' | 'unknown';
 
@@ -15,12 +24,15 @@ export type EngineSignInState = 'authenticated' | 'unauthenticated' | 'unknown';
  * - `refusal`: the engine refused a chat because it needs a sign-in.
  * - `sign-in`: a sign-in Station started finished as the protocol defines
  *   success (`authenticate` answered, or the terminal login exited 0).
+ * - `station-vault`: Station's engine host-auth vault holds (or lacks) the
+ *   credential this connection's engine delegates to the host.
  * - `none`: nothing has been observed (`unknown`).
  */
 export type EngineSignInSource =
   | 'status-command'
   | 'refusal'
   | 'sign-in'
+  | 'station-vault'
   | 'none';
 
 export interface EngineSignInStatus {
@@ -113,5 +125,42 @@ export interface EngineSignInView {
     signIn: boolean;
     /** Run the engine's login in a terminal on the host. */
     terminal: boolean;
+  };
+  /**
+   * Present when Station itself signs this engine in (the engine delegates
+   * its credential to the host) or installs it. Never carries a token, a
+   * sign-in code or a host path.
+   */
+  hostAuth?: EngineHostAuthView;
+}
+
+/** A managed install's state as a client sees it: no host paths. */
+export type ManagedInstallStateView =
+  | Exclude<ManagedInstallState, { readonly kind: 'installed' }>
+  | { readonly kind: 'installed'; readonly version: string };
+
+export interface EngineHostAuthView {
+  /** Present when Station owns this engine's sign-in. */
+  status?: EngineHostAuthStatus;
+  /** The identities Station can sign this engine in with, for this caller. */
+  identities: Array<'builder-id' | 'identity-center' | 'social'>;
+  /**
+   * Google and GitHub sign-in exists for this engine but this caller's
+   * browser is not on the Station's computer, where the sign-in page
+   * returns. Absent when `identities` has `social`, or there is none.
+   */
+  socialSignIn?: 'needs-browser-on-host';
+  /** Managed policy's `limits.engines.engineHostAuth`. */
+  policy: EngineHostAuthPolicy;
+  /** Present when Station installs this engine itself. */
+  install?: {
+    installId: string;
+    version: string;
+    state: ManagedInstallStateView;
+  };
+  /** What this caller may do beyond `allowed.signIn`. */
+  allowed: {
+    /** Install the engine (an operate-level action). */
+    install: boolean;
   };
 }

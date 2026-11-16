@@ -5,6 +5,12 @@ import {
   translateChatError,
   translateProjectedRuntimeError,
 } from '../../../utils/chatErrorTranslation';
+import { useBrowserActivityScope } from '../BrowserActivityContext';
+import {
+  BrowserActivityRun,
+  isBrowserActivityRun,
+} from '../BrowserActivityRun';
+import { splitBrowserActivityRuns } from '../browser-activity-calls';
 import { FilePartPreview } from '../FilePartPreview';
 import { InputRequestRecordRow } from '../InputRequestRecordRow';
 import { LazyMarkdown } from '../LazyMarkdown';
@@ -25,6 +31,7 @@ import { TranscriptAppTools } from '../TranscriptAppTools';
 import {
   foldTurnWork,
   isToolCallPart,
+  runWithoutCalls,
   splitToolCallRuns,
 } from '../tool-call-runs';
 import {
@@ -71,7 +78,7 @@ interface MessageContentProps {
   foldWork?: boolean;
   onToolApproval?: (
     part: MessageContentPart,
-    action: 'once' | 'trust' | 'trust-server' | 'deny',
+    action: 'once' | 'trust' | 'trust-server' | 'trust-rule' | 'deny',
   ) => Promise<ToolApprovalOutcome>;
 }
 
@@ -88,19 +95,27 @@ function MessageContentComponent({
   onToolApproval,
   appTools,
 }: MessageContentProps & { appTools: ReadonlySet<string> }) {
+  const browserScope = useBrowserActivityScope();
   const anchoredChildren = useTranscriptChildrenForCalls(
     contentParts?.flatMap((part) =>
       part.toolCallId ? [part.toolCallId] : [],
     ) ?? [],
   );
   const keepChildAnchors = anchoredChildren.length > 0;
+  // A call that spawned child work is drawn as that child's card, which
+  // carries its status; its own row would only repeat the title.
+  const cardCallIds = new Set(
+    anchoredChildren.flatMap((child) =>
+      child.item.parent?.toolCallId ? [child.item.parent.toolCallId] : [],
+    ),
+  );
   const baseBlocks = useMemo(() => {
     const parts: MessageContentPart[] = contentParts?.length
       ? contentParts
       : textContent
         ? [{ type: 'text', content: textContent }]
         : [];
-    return foldWork && !keepChildAnchors
+    return foldWork && !keepChildAnchors && !browserScope
       ? foldTurnWork(parts, appTools, showReasoning)
       : splitToolCallRuns(parts, appTools, showReasoning);
   }, [
@@ -110,8 +125,11 @@ function MessageContentComponent({
     keepChildAnchors,
     appTools,
     showReasoning,
+    browserScope,
   ]);
-  const blocks = useTranscriptChildBlocks(baseBlocks);
+  const blocks = useTranscriptChildBlocks(
+    browserScope ? splitBrowserActivityRuns(baseBlocks) : baseBlocks,
+  );
   usePreloadToolCallBatch(
     blocks.some((block) => block.type === 'tool-call-run'),
   );
@@ -184,6 +202,15 @@ function MessageContentComponent({
               <SubagentTranscriptCard key={block.key} child={block.child} />
             );
           if (block.type === 'tool-call-run') {
+            if (browserScope && isBrowserActivityRun(block))
+              return (
+                <BrowserActivityRun
+                  key={block.key}
+                  run={block}
+                  active={false}
+                  renderCall={renderToolCall}
+                />
+              );
             // A solo call stays inline. Calls with reasoning or sibling
             // calls share one summary line that opens the sheet —
             // live and settled share this threshold so a run does not
@@ -196,12 +223,22 @@ function MessageContentComponent({
                 calls={block.calls}
               />
             );
+            // A call drawn as its child's card leaves the run, so the run
+            // neither repeats it nor folds it into "Ran N commands".
+            const run = runWithoutCalls(block, cardCallIds);
+            if (run.calls.length === 0)
+              return [
+                ...(run.interludes ?? []).map(({ part, index }) =>
+                  renderInterlude(part, index),
+                ),
+                subagents,
+              ];
             if (
-              block.calls.length + (block.interludes?.length ?? 0) <=
+              run.calls.length + (run.interludes?.length ?? 0) <=
               INLINE_RUN_LIMIT
             ) {
               return [
-                ...block.calls.map(({ part, index }) =>
+                ...run.calls.map(({ part, index }) =>
                   renderToolCall(part, index),
                 ),
                 subagents,
@@ -211,11 +248,11 @@ function MessageContentComponent({
             // back to its parts in original order — narration included — so
             // a load failure never drops the prose the fold moved.
             const inlineRows = [
-              ...block.calls.map(({ part, index }) => ({
+              ...run.calls.map(({ part, index }) => ({
                 index,
                 node: renderToolCall(part, index),
               })),
-              ...(block.interludes ?? []).map(({ part, index }) => ({
+              ...(run.interludes ?? []).map(({ part, index }) => ({
                 index,
                 node: renderInterlude(part, index),
               })),
@@ -225,7 +262,7 @@ function MessageContentComponent({
             return [
               <ToolCallBatchBoundary
                 key={block.key}
-                run={block}
+                run={run}
                 renderCall={renderToolCall}
                 renderInterlude={renderInterlude}
                 pending={inlineRows}

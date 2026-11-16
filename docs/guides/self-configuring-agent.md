@@ -22,6 +22,8 @@ example does not grant one implicitly.
 
 Attach `station-control` and select `html_preview` and `html_render` to let an
 Agent preview and publish a self-contained HTML reply in its own conversation.
+A session whose network Station restricts is not given them: they run in
+Station's Chromium, outside its sandbox.
 This works through the existing Claude, Codex and ACP MCP passthroughs when the
 connection supports tool servers. Preview starts Chromium and publishing stores a page. Both are bounded writes
 and respect the engine's approval policy. The [visual replies guide](../user/html-replies.md)
@@ -59,8 +61,8 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
 - `respond_to_task_request` for an open approval or permission request from a
   delegated worker
 - `coordinator_picture_read` and `coordinator_picture_update` for the bound
-  designated coordinator, when the **Coordinator working picture** preview is
-  enabled. They keep short, person-scoped notes about readable conversations;
+  designated coordinator, when the **Coordinator chat** and **Coordinator
+  working picture** previews are enabled. They keep short, person-scoped notes about readable conversations;
   Station rechecks source access on reads and updates. Notes are the
   coordinator's account, not authoritative live status. See [Houston's
   working picture](../user/houston.md#working-picture).
@@ -150,6 +152,9 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
 - `schedule_wake_up`, `list_wake_ups`, `cancel_wake_up` and `propose_job`
   for an agent on any engine to check back in its own chat later, or to ask
   the person for a scheduled job ([Wake an agent later](#wake-an-agent-later))
+- `propose_automation_source`, `propose_automation_rule` and
+  `list_automation_proposals` to ask the person for a GitHub Automation source
+  or rule ([Propose an automation](#propose-an-automation))
 - `terminal_run` and `terminal_read` to run a shell command in a terminal in
   the chat's working directory and read its exit and output. The person sees
   the exact command and directory and approves or declines each run; no
@@ -219,6 +224,12 @@ Station checks an Agent's dispatch against its verified Session caller:
   with that owner's `execute` action in the target Project.
 - Other verified callers also stay within their calling Session's Project or
   global scope and cannot reach a conversation that runs unconfined (`host`).
+- A Session whose network Station restricts
+  ([`confinedNetwork`](../reference/config.md#optional-fields)) is not given
+  the dispatch tools at all, nor the device, HTML-preview and settings tools.
+  The server refuses it, with `station_control_network_restricted`, every
+  route owned only by withheld tools; a route a kept tool shares stays open
+  to the kept tool's calls (#4769).
 
 Here, `bound` describes verified caller assurance, not a selected approval mode.
 A plain folder target belongs to the deepest Project whose canonical working
@@ -348,7 +359,7 @@ repeats the folder decision; tool approval does not bypass them.
 ### Reading a referenced conversation
 
 When a person references another conversation in a message (the composer's
-conversation picker, or a conversation dragged in from Activity or the inbox),
+conversation picker, or a conversation dragged in from the inbox),
 the message carries a link to it, its id, and a line telling the receiving
 Agent to read it with `read_conversation`. The read returns up to 50 messages
 per page, at most 64 KB serialized, oldest first, with a `nextCursor` for the
@@ -521,10 +532,10 @@ Session by its `sessionId`, without creating a task.
   `clientOrigin.sender` (`kind: 'agent-session'`, the sending `sessionId`, its
   title, Agent and engine as Station recorded them, and the call's `requestKey`)
   beside the unchanged `internal` actor. `read_conversation` and the Session
-  digest carry that provenance. Chat and Activity show the sender's own words
+  digest carry that provenance. Chat shows the sender's own words
   as that agent's message, with a link to the sending Session; the sender's transcript shows the call as
   "Sent to <Session>" with its outcome. Links open the exact sending call or
-  received input in Activity by its recorded request key. The transcript may
+  received input in Chat by its recorded request key. The transcript may
   read up to 20 older pages to establish a unique match, then focuses and
   announces it. A missing or repeated key is an explicit unavailable or
   ambiguous anchor; reaching the page limit selects nothing. The public
@@ -532,14 +543,14 @@ Session by its `sessionId`, without creating a task.
   carries a sent/received direction and a 1–128 character request key, with
   a 1–512 character Session id. The parser refuses a mismatched or absent
   Session and drops an invalid anchor without treating it as an exact target.
-  Activity takes the anchor through its ordinary one-shot surface intent;
+  Chat takes the anchor through its ordinary one-shot surface intent;
   remounting cannot replay it, while a new intent token can reveal it again.
   Sender accents use the canonical sending Session id, so a changed display
   name or engine does not recolor that Session.
   On phones, a muted cause row expands to the sender details, message and link.
   Engine-opened replies retain a provider cause on the assistant row after
   settlement and reload; origin is never inferred from prompt text.
-  Inbox and Activity mark the latest agent-delivered input without changing
+  The inbox and Chat mark the latest agent-delivered input without changing
   the status ladder. Settled delegated-result delivery remains dependent on
   #3158; a declared provenance kind alone does not deliver a result.
   The engine's own tool-call id is not visible to Station's tool server, so
@@ -648,7 +659,8 @@ inputs: nothing names a Project, an owner, or a host.
   turn's last terminal event (`completed`, `failed` for a `runtime.error`,
   `interrupted` for an abort or a `cancelled` finish, or `open` when none is
   recorded), tool calls by name (`otherTools` counts the names beyond the first
-  eight), `files` (only a successful call whose engine reported an edit, delete
+  eight; a Station tool also has a plain-language `label`, such as "Wait for a
+  Session"), `files` (only a successful call whose engine reported an edit, delete
   or move kind and a path argument, and a path is never guessed from a tool's
   name), `filesReported: false` on a turn that called tools none of which carried
   an engine-reported tool kind (a missing `files` there means unknown, not none;
@@ -920,6 +932,56 @@ has no scheduler to approve with, refuses proposals
 (`job_proposal_unavailable`).
 
 The refusal an agent gets from `add_job` names both tools.
+
+### Propose an automation
+
+An agent cannot create an Automation source or rule. It can ask for one
+([decision](../decisions/agent-proposed-automations.md)):
+
+- `propose_automation_source` proposes a `github-poll` source: a `name`, a
+  `repository` (`owner/repo`), an optional `pollIntervalMs`, and optional
+  `grants`. Each grant names a Project id, an Agent slug and
+  `["dispatch-task"]`.
+- `propose_automation_rule` proposes a rule on an existing `sourceId`, or on
+  the `sourceProposalId` of a source this chat proposed. It takes a `match`
+  on `github.workflow_run.completed` fields, an optional `episode`, a
+  `dispatch-task` `action` (Project id, Agent slug, instructions, budget) and
+  a `rateLimit`.
+
+Station answers with the proposal's id and the description the person will
+see. The person confirms or declines it on a card in this chat; nothing is
+created before they confirm. A confirmed source starts disabled and a
+confirmed rule starts observing, unless the person turns it on in the same
+step. A rule on a proposed source can be confirmed only after that source.
+`list_automation_proposals` shows what became of each proposal, including a
+confirmed source's id.
+
+A proposal is refused (`automation_proposal_exceeds_authority`) when it would
+grant more than this chat could do itself:
+
+- a Project or Agent outside the chat's dispatch scope;
+- an action other than `dispatch-task`;
+- `approvalMode: "auto"`;
+- `fullAccessGrant`, a credential, a secret, `enabled` or `mode`.
+
+Only a turn a person typed into Station's composer can propose
+(`automation_proposal_unattended`). A turn started by anything else cannot:
+an automation, a delegated child's result in the person's chat, a peer
+Station, the CLI, an MCP prompt, a Task dispatch or a check-back. Station
+infers which turn made the call from the Session's state. A known race lets
+a concurrent steer clear a delegated continuation's pending reservation, so
+an agent continuation can still create a proposal card. The person's
+confirmation is required either way and is the authority boundary. An
+invocationless legacy turn start can also leave the Session refusing
+proposals until it exits. A turn-bound credential will fix both
+([#4882](https://github.com/kontourai/station/issues/4882)). If this chat has read content written by
+others (#3483), when it proposes or at any time before the person answers,
+the card tells the person so. The card shows Station's own description, and
+apart from it, under "Written by the agent", the name, conditions, reason
+and complete instructions you gave. When the person confirms, Station checks
+again that this chat could still start work for each Agent named, and that
+each Agent is unchanged. A chat may have 3 proposals
+waiting and make 10 an hour.
 
 ### Scheduled jobs
 

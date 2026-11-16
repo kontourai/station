@@ -38,11 +38,12 @@ The CLI exposes this command shape:
 station checkpoints restore --thread=<threadId> --turn=<turnId> --confirm
 ```
 
-Its current implementation does not use Station's shared authenticated client
-or saved-Station selection, so it is not a working equivalent on a normally
-protected Station. It also immediately confirms the returned preview without
-showing its affected paths. Use the chat preview/confirmation flow above until
-[#2734](https://github.com/kontourai/station/issues/2734) fixes those gaps.
+It selects a Station and sends its credential like other client commands
+(`--station=<name>`, `--api-base=<url>`, or the saved default), but it
+immediately confirms the returned preview without showing its affected paths.
+Use the chat preview/confirmation flow above when you want to review the
+changes first;
+[#2734](https://github.com/kontourai/station/issues/2734) tracks that gap.
 
 The command defaults to the `settle` checkpoint; `--phase=baseline`
 selects the snapshot associated with turn start. These describe the current parser, not a

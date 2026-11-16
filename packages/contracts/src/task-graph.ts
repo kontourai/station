@@ -1,5 +1,6 @@
 import type { ClientOrigin } from './client-origin.js';
 import type { EngineId, ProviderSession } from './provider.js';
+import { isObjectRecord } from './record-guard.js';
 
 /**
  * Station's task status vocabulary (roadmap #581, part of epic #580).
@@ -976,7 +977,7 @@ export function validateTaskWorkspaceBinding(
   binding: TaskWorkspaceBinding | undefined,
 ): string[] {
   if (binding === undefined) return [];
-  if (!isRecord(binding)) return ['workspaceBinding must be an object'];
+  if (!isObjectRecord(binding)) return ['workspaceBinding must be an object'];
 
   const errors: string[] = [];
   if (
@@ -1275,10 +1276,6 @@ function isNonBlankString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function isJsonValue(value: unknown): boolean {
   if (
     value === null ||
@@ -1289,7 +1286,7 @@ function isJsonValue(value: unknown): boolean {
   }
   if (typeof value === 'number') return Number.isFinite(value);
   if (Array.isArray(value)) return value.every(isJsonValue);
-  if (!isRecord(value)) return false;
+  if (!isObjectRecord(value)) return false;
   return Object.values(value).every(isJsonValue);
 }
 
@@ -1297,7 +1294,7 @@ function validateReferenceMetadata(
   metadata: Record<string, unknown> | undefined,
 ): string[] {
   if (metadata === undefined) return [];
-  if (!isRecord(metadata) || !isJsonValue(metadata)) {
+  if (!isObjectRecord(metadata) || !isJsonValue(metadata)) {
     return ['metadata must be a JSON object'];
   }
   const metadataBytes = new TextEncoder().encode(JSON.stringify(metadata));

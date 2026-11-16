@@ -1,5 +1,4 @@
 import type { RunStatus, RunSummary } from '@kontourai/station-contracts/runs';
-import { MS_PER_MINUTE } from '@kontourai/station-contracts/time';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigation } from '../../contexts/NavigationContext';
 import {
@@ -10,6 +9,7 @@ import {
   useSchedulerJobs,
 } from '../../hooks/useScheduler';
 import { isPlainLeftClick } from '../../utils/attentionOpen';
+import { relativeTimeAgo } from '../../utils/relativeTime';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
 import {
@@ -69,17 +69,12 @@ function runStatusVisual(status: RunStatus): {
   }
 }
 
+/** The shared sentence form ("5m ago"); "never" before a first run. */
 export function relTime(iso: string | null) {
   if (!iso) return 'never';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  const diff = Date.now() - d.getTime();
-  const mins = Math.floor(diff / MS_PER_MINUTE);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
+  const at = Date.parse(iso);
+  if (Number.isNaN(at)) return iso;
+  return relativeTimeAgo(at, Date.now());
 }
 
 /**

@@ -14,8 +14,10 @@
  *  - pooled child: a stdio station-control child with no caller credential;
  *  - raw token: anything holding the per-boot internal token, with no caller.
  */
+
 import type { AddressInfo } from 'node:net';
 import { serve } from '@hono/node-server';
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import {
   getOrchestrationSession,
@@ -132,6 +134,8 @@ let server: ReturnType<typeof serve>;
 let baseUrl: string;
 let port: number;
 const refusals: string[] = [];
+/** #4769: the sessions whose start ran with a restricted network. */
+const restrictedSessions = new Set<string>();
 const PEER_ENVIRONMENT_ID = 'env-authority-peer';
 let peerServer: ReturnType<typeof serve>;
 const peerReceived: Array<{ path: string; body: any }> = [];
@@ -246,6 +250,11 @@ beforeAll(async () => {
         });
         return verdict.allowed ? undefined : verdict.reason;
       },
+      // #4828: the production carry over the shared ledger.
+      delegatedResultRead: (conversationIds) =>
+        sharedUntrustedContentLedger.carryDescendantRead(...conversationIds),
+      networkRestrictedSession: (sessionId) =>
+        restrictedSessions.has(sessionId),
       onRefusal: (refusal) => refusals.push(refusal.code),
     }),
   );
@@ -1012,6 +1021,41 @@ describe('the server enforces the same refusal for each channel’s forwarded cr
       ),
     ).toEqual({ status: 403, code: 'station_control_caller_required' });
     expect(hits).toEqual([]);
+  });
+
+  test('#4769: a restricted session acting for the operator is refused the routes of withheld tools, and keeps the rest', async () => {
+    const sessionId = nextSession('op-');
+    const headers = () =>
+      internalHeaders({
+        [STATION_CONTROL_CALLER_TOKEN_HEADER]: forwardedCaller(
+          'bound',
+          sessionId,
+        )!,
+      });
+    // Unrestricted, the operator's bound session may change a setting.
+    hits.length = 0;
+    expect(await rest('PUT', '/config/app', headers(), { theme: 'x' })).toEqual(
+      { status: 200 },
+    );
+    restrictedSessions.add(sessionId);
+    try {
+      hits.length = 0;
+      for (const [method, path, body] of [
+        ['PUT', '/config/app', { theme: 'x' }],
+        ['POST', '/api/device-agent/open', {}],
+        ['POST', '/api/orchestration/delegations', {}],
+      ] as const)
+        expect(await rest(method, path, headers(), body), path).toEqual({
+          status: 403,
+          code: 'station_control_network_restricted',
+        });
+      expect(hits).toEqual([]);
+      // A read the allow-list keeps still reaches its route.
+      expect(await rest('GET', '/agents', headers())).toEqual({ status: 200 });
+      expect(hits).toEqual(['GET /agents']);
+    } finally {
+      restrictedSessions.delete(sessionId);
+    }
   });
 
   test('a route handler that authorizes the caller itself (notify_user) is left to it', async () => {
@@ -1831,6 +1875,76 @@ describe('after untrusted content, station-control applies the permission (#3483
     expect(await rest('PUT', '/config/app', headers, { theme: 'x' })).toEqual({
       status: 200,
     });
+  });
+});
+
+describe("a delegated child's untrusted read reaches its parent (#4828)", () => {
+  const callerHeaders = (sessionId: string) =>
+    internalHeaders({
+      [STATION_CONTROL_CALLER_TOKEN_HEADER]: forwardedCaller(
+        'bound',
+        sessionId,
+      )!,
+    });
+  const childRead = (parentSessionId: string) =>
+    sharedUntrustedContentLedger.markConversation(
+      `child-of-${parentSessionId}`,
+      Promise.resolve(true),
+      {
+        mode: 'isolated-child',
+        depth: 1,
+        maxDepth: 3,
+        parentAgentSlug: agentId('writer'),
+        parentConversationId: parentSessionId,
+        parentSessionId,
+        rootAgentSlug: agentId('writer'),
+        rootConversationId: parentSessionId,
+      },
+    );
+
+  test('a delegation tool call by the parent marks it when its child read untrusted content', async () => {
+    const sessionId = nextSession('op-');
+    childRead(sessionId);
+    await sharedUntrustedContentLedger.conversationHasRead(
+      `child-of-${sessionId}`,
+    );
+    expect(
+      await sharedUntrustedContentLedger.conversationHasRead(sessionId),
+    ).toBe(false);
+    // `GET /agents` is `list_agents`: no delegated result, nothing carried.
+    expect(await rest('GET', '/agents', callerHeaders(sessionId))).toEqual({
+      status: 200,
+    });
+    expect(
+      await sharedUntrustedContentLedger.conversationHasRead(sessionId),
+    ).toBe(false);
+    // The delegation route the delegation tools reach carries the read.
+    expect(
+      await rest(
+        'POST',
+        '/api/orchestration/delegations',
+        callerHeaders(sessionId),
+        {},
+      ),
+    ).toEqual({ status: 200 });
+    expect(
+      await sharedUntrustedContentLedger.conversationHasRead(sessionId),
+    ).toBe(true);
+  });
+
+  test('a parent whose children read nothing untrusted is not marked', async () => {
+    const sessionId = nextSession('op-');
+    expect(
+      await rest(
+        'POST',
+        '/api/orchestration/delegations',
+        callerHeaders(sessionId),
+        {},
+      ),
+    ).toEqual({ status: 200 });
+    expect(
+      await sharedUntrustedContentLedger.conversationHasRead(sessionId),
+    ).toBe(false);
   });
 });
 

@@ -1033,7 +1033,7 @@ test.describe('Connections CRUD', () => {
     );
     await expect(setup.getByText('Ready', { exact: true })).toHaveCount(0);
     await expect(
-      setup.getByRole('button', { name: 'Try again' }),
+      setup.getByRole('button', { name: 'Retry', exact: true }),
     ).toBeVisible();
     await setup.getByRole('button', { name: 'Edit setup' }).click();
     await expect(setup.getByLabel('Name')).toHaveValue('Gemini CLI');
@@ -1419,7 +1419,9 @@ test.describe('Connections CRUD', () => {
     await page.waitForSelector('#int-name', { timeout: 15_000 });
     await page.getByRole('button', { name: 'Delete' }).click();
 
-    const confirm = page.getByRole('dialog', { name: 'Delete Tool Server' });
+    const confirm = page.getByRole('alertdialog', {
+      name: 'Delete tool server',
+    });
     await expect(confirm).toBeVisible();
     await expect(confirm).toBeFocused();
     await confirm.getByRole('button', { name: 'Cancel' }).click();

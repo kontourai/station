@@ -1,7 +1,0 @@
-{
-  "revision": "6794a9b9b04d182bf7d2b96e67ceee564a56984a",
-
-  "notes": [
-    {"path":"docs/user/native-recovery.md","note":"#4517 managed settings. Changed: index.ts: startup checks managed setting values against the settings schema inside the existing fail-closed policy load. The managed policy startup error text and recovery steps are unchanged; a settings problem uses the same marker.","inputs":["docs/user/native-recovery.md","src-server/index.ts"]}
-  ]
-}

@@ -29,7 +29,9 @@ export interface ConfirmModalProps {
   /**
    * `alertdialog` when the prompt interrupts to guard something — unsaved
    * work, a destructive action. Assistive tech announces the two roles
-   * differently, so this is not cosmetic.
+   * differently, so this is not cosmetic. A `danger` confirmation is one by
+   * definition, so it defaults to `alertdialog`; every other variant
+   * defaults to `dialog`.
    */
   role?: 'dialog' | 'alertdialog';
   pending?: boolean;
@@ -68,7 +70,7 @@ export function ConfirmModal({
   onConfirm,
   onCancel,
   variant = 'default',
-  role = 'dialog',
+  role = variant === 'danger' ? 'alertdialog' : 'dialog',
   pending = false,
   error = null,
   eyebrow,

@@ -13,7 +13,7 @@ import {
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
 const agentsMock = vi.hoisted(() => ({ current: [] as any[] }));
@@ -177,7 +177,6 @@ function buildSession(overrides: Partial<ChatSession> = {}): ChatSession {
     attachments: [],
     queuedMessages: [],
     inputHistory: [],
-    hasUnread: false,
     status: 'idle',
     createdAt: 0,
     updatedAt: 0,
@@ -246,6 +245,9 @@ function renderDock(
 }
 
 async function engineChip() {
+  const trigger = await screen.findByTestId('run-setup-trigger');
+  if (trigger.getAttribute('aria-expanded') !== 'true')
+    fireEvent.click(trigger);
   const button = await screen.findByRole('button', {
     name: /^Engine & model:/,
   });

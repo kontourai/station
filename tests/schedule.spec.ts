@@ -551,11 +551,11 @@ test.describe('Schedule Page', () => {
     await page
       .getByRole('button', { name: 'Delete weekly-brief-copy' })
       .click();
-    await expect(page.getByRole('dialog')).toContainText(
+    await expect(page.getByRole('alertdialog')).toContainText(
       'Delete job "weekly-brief-copy"?',
     );
     await page
-      .getByRole('dialog')
+      .getByRole('alertdialog')
       .getByRole('button', { name: 'Delete', exact: true })
       .click();
     await expect(page.getByTestId('job-row-weekly-brief-copy')).toHaveCount(0);

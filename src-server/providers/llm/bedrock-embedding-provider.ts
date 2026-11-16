@@ -1,6 +1,7 @@
 import { fromIni, fromNodeProviderChain } from '@aws-sdk/credential-providers';
 import type { BedrockAuthMode } from './bedrock-credentials.js';
 import { bedrockClientAuth } from './bedrock-credentials.js';
+import { assertEmbeddingVectors } from './embedding-http.js';
 import type { IEmbeddingProvider } from './model-provider-types.js';
 
 export interface BedrockEmbeddingProviderConfig {
@@ -47,7 +48,7 @@ export class BedrockEmbeddingProvider implements IEmbeddingProvider {
       }),
     });
 
-    const results: number[][] = [];
+    const results: unknown[] = [];
     for (const text of texts) {
       const command = new InvokeModelCommand({
         modelId: this.model,
@@ -60,10 +61,15 @@ export class BedrockEmbeddingProvider implements IEmbeddingProvider {
         }),
       });
       const response = await client.send(command);
-      const body = JSON.parse(new TextDecoder().decode(response.body));
-      results.push(body.embedding);
+      const body = JSON.parse(new TextDecoder().decode(response.body)) as {
+        embedding?: unknown;
+      } | null;
+      results.push(body?.embedding);
     }
-    return results;
+    // `client.send` already rejects on an error status; this catches a 200
+    // whose body carries no usable vector, which callers would otherwise
+    // publish as `undefined` against its text.
+    return assertEmbeddingVectors(this.displayName, results, texts.length);
   }
 
   dimensions(): number {

@@ -1110,3 +1110,68 @@ describe('a foldable stream and a released shell (desktop-v0.1.11-nightly.2500)'
     });
   });
 });
+
+test('input sources are bound to the authenticated viewer and close seals late input', async () => {
+  const h = harness({ authorize: () => true });
+  const open = await h.request(
+    `${base}/lease`,
+    'operator',
+    JSON.stringify({ action: 'open-input-source' }),
+  );
+  expect(open.status).toBe(200);
+  const opened = await open.json();
+  if (
+    typeof opened !== 'object' ||
+    opened === null ||
+    !('data' in opened) ||
+    typeof opened.data !== 'object' ||
+    opened.data === null ||
+    !('sourceId' in opened.data) ||
+    typeof opened.data.sourceId !== 'string'
+  )
+    throw new Error('Expected a registered input-source ID');
+  const { sourceId } = opened.data;
+  const event = { kind: 'key', type: 'down', key: 'a', code: 'KeyA' };
+  const foreign = await h.request(
+    `${base}/input`,
+    'viewer2',
+    JSON.stringify({ epoch: 0, sourceId, events: [event] }),
+  );
+  expect(foreign.status).toBe(409);
+  expect(await foreign.json()).toMatchObject({
+    data: { code: 'invalid-source' },
+  });
+  const accepted = await h.request(
+    `${base}/input`,
+    'operator',
+    JSON.stringify({ epoch: 0, sourceId, events: [event] }),
+  );
+  expect(accepted.status).toBe(200);
+  expect(
+    (
+      await h.request(
+        `${base}/lease`,
+        'viewer2',
+        JSON.stringify({ action: 'close-input-source', sourceId }),
+      )
+    ).status,
+  ).toBe(403);
+  expect(
+    (
+      await h.request(
+        `${base}/lease`,
+        'operator',
+        JSON.stringify({ action: 'close-input-source', sourceId }),
+      )
+    ).status,
+  ).toBe(200);
+  const late = await h.request(
+    `${base}/input`,
+    'operator',
+    JSON.stringify({ epoch: 1, sourceId, events: [event] }),
+  );
+  expect(late.status).toBe(409);
+  expect(await late.json()).toMatchObject({
+    data: { code: 'invalid-source' },
+  });
+});

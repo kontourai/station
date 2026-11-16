@@ -97,9 +97,14 @@ export class OrchestrationReviewExecutor implements ReadOnlyReviewExecutor {
       reviewerId: input.reviewer.reviewerId,
     };
     let started = false;
+    let startAttempted = false;
     let outcome: ReviewExecutionOutcome | undefined;
     let workspaceRelease: 'safe' | 'retain' = 'safe';
     try {
+      input.context.assertCurrent?.();
+      const admission = input.context.assertCurrent
+        ? { recheck: async () => input.context.assertCurrent!() }
+        : undefined;
       const startInput: ProviderSessionStartInput = {
         threadId,
         provider: this.#provider,
@@ -115,16 +120,20 @@ export class OrchestrationReviewExecutor implements ReadOnlyReviewExecutor {
         },
         signal: input.signal,
       };
+      startAttempted = true;
       const start = await this.#orchestration.dispatchWithReceipt(
         { type: 'startSession', input: startInput },
         orchestrationContext(input),
-        { reviewIsolation: isolation },
+        {
+          reviewIsolation: isolation,
+          ...(admission ? { receiverExecutionAdmission: admission } : {}),
+        },
       );
       if (!isProviderSession(start.result, threadId)) {
         outcome = {
           kind: 'failed',
           reason: 'Reviewer session did not start.',
-          workspaceRelease: 'safe',
+          workspaceRelease: 'retain',
         };
         return outcome;
       }
@@ -139,7 +148,10 @@ export class OrchestrationReviewExecutor implements ReadOnlyReviewExecutor {
       const sent = await this.#orchestration.dispatchWithReceipt(
         { type: 'sendTurn', input: turnInput },
         orchestrationContext(input),
-        { reviewIsolation: isolation },
+        {
+          reviewIsolation: isolation,
+          ...(admission ? { receiverExecutionAdmission: admission } : {}),
+        },
       );
       if (!isTurnStart(sent.result, threadId)) {
         outcome = {
@@ -161,7 +173,7 @@ export class OrchestrationReviewExecutor implements ReadOnlyReviewExecutor {
         reason: input.signal.aborted
           ? 'Reviewer execution timed out.'
           : 'Reviewer execution failed.',
-        workspaceRelease: started ? 'retain' : 'safe',
+        workspaceRelease: startAttempted ? 'retain' : 'safe',
       };
       return outcome;
     } finally {

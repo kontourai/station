@@ -1,4 +1,5 @@
 import type { ApprovedStationConnectionTrust } from '@kontourai/station-contracts/connection-proof';
+import { encodeBase64Url } from '@kontourai/station-shared/base64url';
 
 export const SDP_LIMIT = 64 * 1024;
 export const FINGERPRINT = /^(?:[0-9A-F]{2}:){31}[0-9A-F]{2}$/u;
@@ -15,19 +16,12 @@ export function fingerprint(sdp: string) {
   return distinct[0]!;
 }
 
-export function base64url(value: Uint8Array) {
-  let binary = '';
-  for (const byte of value) binary += String.fromCharCode(byte);
-  return btoa(binary)
-    .replaceAll('+', '-')
-    .replaceAll('/', '_')
-    .replace(/=+$/u, '');
-}
-
 export function randomNonce(bytes: number) {
   if (!globalThis.crypto?.getRandomValues)
     throw new Error('native_connection_secure_context_required');
-  return base64url(globalThis.crypto.getRandomValues(new Uint8Array(bytes)));
+  return encodeBase64Url(
+    globalThis.crypto.getRandomValues(new Uint8Array(bytes)),
+  );
 }
 
 export function sameTrust(

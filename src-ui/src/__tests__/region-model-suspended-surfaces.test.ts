@@ -40,7 +40,7 @@ describe('withSuspendedSurfaces', () => {
     const view = withSuspendedSurfaces(
       withBottom({
         visible: true,
-        panes: ['terminal', 'chat', 'activity'],
+        panes: ['terminal', 'chat', 'workspace-agents'],
         occupant: 'chat',
         maximized: true,
       }),
@@ -48,9 +48,9 @@ describe('withSuspendedSurfaces', () => {
     );
     expect(view.bottom).toMatchObject({
       visible: true,
-      panes: ['terminal', 'activity'],
+      panes: ['terminal', 'workspace-agents'],
       // The tab after Chat, as a close would select.
-      occupant: 'activity',
+      occupant: 'workspace-agents',
       maximized: false,
     });
   });
@@ -59,16 +59,16 @@ describe('withSuspendedSurfaces', () => {
     const view = withSuspendedSurfaces(
       withBottom({
         visible: true,
-        panes: ['chat', 'activity'],
-        occupant: 'activity',
+        panes: ['chat', 'workspace-agents'],
+        occupant: 'workspace-agents',
         maximized: true,
       }),
       CHAT,
     );
     expect(view.bottom).toMatchObject({
       visible: true,
-      panes: ['activity'],
-      occupant: 'activity',
+      panes: ['workspace-agents'],
+      occupant: 'workspace-agents',
       maximized: true,
     });
   });
@@ -87,17 +87,17 @@ describe('restoreSuspendedPanes', () => {
   test('a reorder made in the suspended view keeps Chat where it was', () => {
     expect(
       restoreSuspendedPanes(
-        ['terminal', 'chat', 'activity'],
-        ['activity', 'terminal'],
+        ['terminal', 'chat', 'workspace-agents'],
+        ['workspace-agents', 'terminal'],
         CHAT,
       ),
-    ).toEqual(['activity', 'chat', 'terminal']);
+    ).toEqual(['workspace-agents', 'chat', 'terminal']);
     expect(
       restoreSuspendedPanes(
-        ['terminal', 'activity', 'chat'],
-        ['activity', 'terminal'],
+        ['terminal', 'workspace-agents', 'chat'],
+        ['workspace-agents', 'terminal'],
         CHAT,
       ),
-    ).toEqual(['activity', 'terminal', 'chat']);
+    ).toEqual(['workspace-agents', 'terminal', 'chat']);
   });
 });

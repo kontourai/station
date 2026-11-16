@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { isLoopbackOrigin } from '../../lib/accountSharingOrigin';
 import { copyToClipboard } from '../../lib/clipboard';
+import { formatDateTime } from '../../utils/relativeTime';
 import { Button } from '../Button';
 import { Checkbox } from '../Checkbox';
 import { InfoGlyph } from '../icons/Glyph';
@@ -155,9 +156,7 @@ export function InvitationLinkReveal({
   return (
     <section className="invitation-link" aria-label="Share this invitation">
       <h3>Share this invitation</h3>
-      {expiresAt && (
-        <p>Single-use · Expires {new Date(expiresAt).toLocaleString()}</p>
-      )}
+      {expiresAt && <p>Single-use · Expires {formatDateTime(expiresAt)}</p>}
       <Button
         variant="primary"
         onClick={() => void copyToClipboard(link).then(onCopied)}

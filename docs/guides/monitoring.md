@@ -930,6 +930,31 @@ optional refresh, time bounds and structured records with scan-coverage warnings
 See the [Developer surface](../design/developer-surface.md) for implementation
 owners. None of these views requires OTel export to be enabled.
 
+### Session read model readers
+
+Every read of the session read model (`listSessionReadModel`) declares a
+caller purpose from a closed vocabulary
+(`src-server/services/orchestration/session-read-model-purpose.ts`, for example
+`session-list`, `sse-snapshot`, `attention` or `agent-activity`), so you can see
+which consumers drive its rate (#4992). Each read records:
+
+- `station.orchestration.session_read_model.reads`, by `purpose` and `scope`
+  (`all`, or `threads` for a `threadIds` read)
+- `station.orchestration.session_read_model.duration` (ms), by `purpose` and
+  `phase`. `total` includes the awaited adapter session sync; `build` is the
+  synchronous fold that holds the main thread.
+- `station.orchestration.session_read_model.threads`, by `purpose` and
+  `outcome`. `considered` counts the readable threads built. The other
+  outcomes say whether the event store's per-thread cache folded or counted a
+  thread again or reused it: `projection_refolded`, `projection_reused`,
+  `count_refreshed` and `count_reused`.
+
+A purpose outside the vocabulary is recorded as `invalid`. No session, user or
+thread identity is ever a dimension. Without a collector, the diagnostics
+bundle's `sessionReadModel` field carries the same per-purpose totals since the
+server process's first read; divide `reads` by the time since `since` for a
+rate.
+
 ## Profile usage and paired people
 
 The [Profile page](../../src-ui/src/pages/ProfilePage.tsx) puts the current
@@ -1035,9 +1060,9 @@ is attribution, never a grant or a claim of personal lifetime totals.
 | Codex engine and imported rollouts | Session-cumulative input/output and cache-read tokens | No provider-reported cost; cumulative totals are not per-answer deltas |
 | Imported OpenCode sessions | Per-turn input, output (reasoning included) and cache read/write tokens, summed from the turn's steps | OpenCode's own cost figure is an estimate from its price catalog, not a provider charge, so it is not imported |
 | Bedrock and Ollama adapters | Tokens reported for each model call | Absent usage stays absent; cost estimates need an eligible pricing snapshot |
-| Muse serve | Model-call input/output/cache figures, emitted as per-turn usage | Uses the wire `usage` object rather than `cumulative`; child-work usage stays a separate projection |
+| Muse serve | Model-call input/output/cache figures, emitted as per-turn usage; the session's USD cost from `cumulative.cost` when Muse priced every call; context occupancy and window from `session/contextUsage` | Tokens use the wire `usage` object rather than `cumulative`; a `partial` cost is a lower bound and is not published; live 1.4.20 sent both a priced cost and the context window (1.4.18 on the probed provider sent no cost); child-work usage stays a separate projection |
 | Muse stdio | Completed work and other reported lifecycle facts | Its envelope supplies no token-usage event |
-| ACP, including ACP-backed engines | Reported context occupancy/window | Occupancy is not consumed tokens; arbitrary-currency ACP costs are not projected |
+| ACP, including ACP-backed engines | Reported context occupancy/window, an engine's own context percentage, costs in the engine's own unit, and per-turn tokens from the prompt answer's `usage` for an engine recorded reporting them (Antigravity) | Occupancy is not consumed tokens; a reported cost (an ISO currency or a vendor unit such as credits) is shown in conversation statistics as reported, one total per unit, never converted to USD, and usage receipts do not include it |
 | Station agent / direct model-provider chat | Saved messages and their recorded usage/estimates | Canonical relay joins use saved messages as primary; overlapping engine activity is separately disclosed |
 
 Attached Claude transcripts retain a bounded record-to-turn ancestry map in the
@@ -1698,11 +1723,25 @@ only for a provider declared `per-turn` in
 the turn's frames. A session-cumulative provider (Codex) or an undeclared one
 leaves the span's usage absent, because its frames are session totals, not that
 turn's usage. Spans written before this change can carry a Codex session total.
+The bridge writes one `execute_tool` start per open tool call id: an engine
+that re-publishes `tool.started` as a call's title, kind or input changes (ACP)
+does not add start rows. The start row records the input known at first sight.
+When a later `tool.started` reports a different input (OpenCode first reports
+`{}`; Grok backfills fields into a partial input), the end row carries the
+latest in `gen_ai.tool.call.arguments`. Claude is the exception: its
+`task_started` re-publishes a started Agent call with a task descriptor, which
+is not the tool's input, so a known Claude input is kept. Both rows use the
+name the call started under, so Insights counts a call and its outcome under
+one tool; a later retitle (OpenCode's description, such as "List files") is not
+a tool name. A call first reported with no name keeps its id on the start row.
 
 The emitter redacts content, emits the live event, and tracks an asynchronous
 persistence promise. Persistence rejection is contained; `flush()` waits for
-pending attempts but does not turn a failed write into durable evidence. This
-is operational history, not an execution receipt or the canonical EventStore.
+pending attempts but does not turn a failed write into durable evidence. The
+event log serializes appends and writes each line with one append call; a line
+torn by a writer that died mid-write is left as one malformed line, which reads
+skip with one warning per file per query. This is operational history, not an
+execution receipt or the canonical EventStore.
 
 ### Event Schema
 
@@ -1755,7 +1794,7 @@ Station extensions:
 | `emitAgentStart` | Chat request begins | slug, model, input |
 | `emitAgentComplete` | Chat request ends | tokens, steps, finish reason |
 | `emitToolCall` | Tool execution starts | tool name, arguments |
-| `emitToolResult` | Tool execution ends | tool name, result |
+| `emitToolResult` | Tool execution ends | tool name, result; input that changed after the start row |
 | `emitReasoning` | Extended thinking | reasoning text |
 | `emitHealth` | Health check | healthy, checks, integrations |
 | `emitRaw` | Custom events | any MonitoringEvent |

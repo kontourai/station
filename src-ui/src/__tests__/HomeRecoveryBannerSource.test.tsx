@@ -52,7 +52,7 @@ const recovered: HomeRecoveryDisclosure = {
   authorityTransferred: false,
 };
 
-test('shows the recovered snapshot in the workspace and retains authority disclosure in Station details', () => {
+test('shows the recovered snapshot in the workspace and keeps the missing-work warning in Station details', () => {
   state.recovery = recovered;
   render(view());
   const workspace = screen.getByRole('status');
@@ -65,9 +65,9 @@ test('shows the recovered snapshot in the workspace and retains authority disclo
   );
   const details = screen.getByRole('dialog', { name: 'Station details' });
   expect(
-    within(details).getByText(/Work after that snapshot may be missing/)
+    within(details).getByText(/Work after this copy was saved may be missing/)
       .textContent,
-  ).toContain('Restoring this copy did not transfer execution authority.');
+  ).toContain('Check recent work before you continue.');
   expect(
     within(details).queryByRole('button', { name: /dismiss/i }),
   ).toBeNull();
@@ -81,12 +81,12 @@ test('shows the recovered snapshot in the workspace and retains authority disclo
   );
   expect(
     within(screen.getByRole('dialog')).getByText(
-      /did not transfer execution authority/,
+      /Work after this copy was saved may be missing/,
     ),
   ).toBeTruthy();
 });
 
-test('withdraws prior-host recovery on selection change and explains unavailable evidence without claiming ownership', () => {
+test('withdraws prior-host recovery on selection change and explains unavailable recovery evidence', () => {
   state.recovery = recovered;
   const mounted = render(view());
   fireEvent.click(screen.getByRole('button', { name: 'Review Station' }));
@@ -99,18 +99,18 @@ test('withdraws prior-host recovery on selection change and explains unavailable
   state.recovery = { kind: 'unavailable' };
   mounted.rerender(view());
   expect(screen.getByRole('status').textContent).toMatch(
-    /recovery record could not be verified/,
+    /Couldn’t verify how this Station was restored/,
   );
   fireEvent.click(screen.getByRole('button', { name: 'Review Station' }));
   expect(
     within(screen.getByRole('dialog')).getByText(
-      /does not establish execution ownership/,
+      /Check recent work before you continue/,
     ),
   ).toBeTruthy();
   state.recovery = { kind: 'not-restored' };
   mounted.rerender(view());
   expect(
-    screen.queryByText(/recovery record could not be verified/),
+    screen.queryByText(/Couldn’t verify how this Station was restored/),
   ).toBeNull();
   expect(screen.queryByRole('status')).toBeNull();
 });

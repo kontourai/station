@@ -1,0 +1,7 @@
+{
+  "revision": "d048111291fa8a6a00f83348f505c2696d8a41f1",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"Checked: agent runtime options and engine selection text unaffected by the adapter changes; the agent-default effort still does not reach ACP sessions (buildProviderOptions), which this guide does not claim. No claim changed.","inputs":["docs/guides/agent-configuration.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

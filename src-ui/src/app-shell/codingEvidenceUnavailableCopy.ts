@@ -11,12 +11,10 @@ const CODING_EVIDENCE_UNAVAILABLE_DESCRIPTIONS: Record<
   CodingEvidencePaneUnavailableReason,
   string
 > = {
-  'capability-unavailable':
-    'Station cannot reach the capability this evidence Pane reads from.',
-  'grant-denied':
-    'This evidence Pane is not granted the capability it reads from.',
+  'capability-unavailable': 'Station can’t reach this pane’s data source.',
+  'grant-denied': 'This pane doesn’t have access to its data source.',
   'capability-unavailable-and-grant-denied':
-    'Station cannot reach the capability this evidence Pane reads from, and the Pane is not granted it either.',
+    'This pane can’t reach its data source and doesn’t have access to it.',
 };
 
 /**
@@ -39,6 +37,6 @@ export function codingEvidenceUnavailableCopy(entry: {
 }): { label: string; description: string } {
   return {
     label: `${entry.category[0].toUpperCase()}${entry.category.slice(1)} evidence unavailable`,
-    description: `${CODING_EVIDENCE_UNAVAILABLE_DESCRIPTIONS[entry.reason]} Healthy evidence Panes remain active.`,
+    description: CODING_EVIDENCE_UNAVAILABLE_DESCRIPTIONS[entry.reason],
   };
 }

@@ -116,6 +116,9 @@ receive public routing and signing-trust facts, validate recipient setup against
 that exact Station/enrollment, approve or revoke exact native surfaces, issue
 single-use installation-bound invitations, and approve or deny pending Device
 requests. The WebView and SDK never receive the connector issuer credential.
+A Station without a connector mounts only the capability probe,
+`/api/relay-management/capabilities` (GET and HEAD), which answers
+`configured: false`; the panel then shows nothing.
 
 The [Connections panel](../../src-ui/src/views/connections-hub/RelayOperatorPanel.tsx)
 shows **Devices** and **Invite device** for current operators and explicitly promoted
@@ -842,6 +845,8 @@ origin policy, Device grants and account-provider configuration must separately
 admit the browser. No CORS, membership or authentication permission is added by
 the connector. `maxPeers` and `maxPeerLifetimeMs` are independently optional with
 the defaults shown; heartbeat, renewal and offer polling use 5s, 10s and 1s.
+At `maxPeers` live browser peers the connector leaves further browser offers
+unanswered until a peer ends; reaching the limit does not fail the connector.
 
 An operator may additionally opt in one exact native v2 client surface by adding
 this field to the connector file:

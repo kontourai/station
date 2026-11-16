@@ -4258,6 +4258,7 @@ describe('Orchestration Routes', () => {
     });
     expect(service.listSessionReadModel).toHaveBeenCalledWith(
       personalReadAuthority(ROUTE_TEST_USER_ID),
+      { purpose: 'session-list' },
     );
     expect(service.listLoadedSessionReadModel).toHaveBeenCalledWith(
       personalReadAuthority(ROUTE_TEST_USER_ID),
@@ -4697,6 +4698,7 @@ describe('Orchestration Routes', () => {
         mode: 'hosted',
         tenantExecutionContext: { tenantId: 'tenant-alpha', source: 'request' },
       }),
+      { purpose: 'session-list' },
     );
     expect(service.listSessionReadModel).toHaveBeenNthCalledWith(
       2,
@@ -4705,6 +4707,7 @@ describe('Orchestration Routes', () => {
         mode: 'hosted',
         tenantExecutionContext: { tenantId: 'tenant-bravo', source: 'request' },
       }),
+      { purpose: 'session-list' },
     );
     expect(
       JSON.stringify(await readJson(await requestFor('tenant-alpha'))),
@@ -4724,6 +4727,7 @@ describe('Orchestration Routes', () => {
         mode: 'hosted',
         tenantExecutionContext: undefined,
       }),
+      { purpose: 'session-list' },
     );
   });
 

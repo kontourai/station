@@ -18,6 +18,7 @@ import { PageFrame } from '../../components/page-frame';
 import { ErrorState, SkeletonList } from '../../components/state';
 import { clearOfflineReading } from '../../lib/offlineReading';
 import { errorText, userFacingErrorMessage } from '../../utils/errorText';
+import { formatDateTime } from '../../utils/relativeTime';
 import { StationUiError } from '../../utils/StationUiError';
 import {
   clearAccountEntryContinuation,
@@ -436,9 +437,7 @@ export function AccountEntryView({
                 </strong>
                 .
               </p>
-              <p>
-                Expires {new Date(invitationView.expiresAt).toLocaleString()}.
-              </p>
+              <p>Expires {formatDateTime(invitationView.expiresAt)}.</p>
               {invitationView.recipientEmail && (
                 <p>
                   Use an account with the verified email{' '}
@@ -459,9 +458,7 @@ export function AccountEntryView({
               title="Sign-in is unavailable"
               description="This Station’s account service could not be loaded. Contact its operator or try again."
               action={
-                <Button onClick={() => void descriptor.refetch()}>
-                  Try again
-                </Button>
+                <Button onClick={() => void descriptor.refetch()}>Retry</Button>
               }
             />
           ) : invitation && mode !== 'reset' && preview.isPending ? (
@@ -509,9 +506,7 @@ export function AccountEntryView({
               title="Could not verify your account"
               description={errorText(session.error)}
               action={
-                <Button onClick={() => void session.refetch()}>
-                  Try again
-                </Button>
+                <Button onClick={() => void session.refetch()}>Retry</Button>
               }
             />
           ) : session.data && mode !== 'reset' ? (

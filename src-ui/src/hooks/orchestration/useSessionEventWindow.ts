@@ -305,6 +305,13 @@ export function useSessionEventWindow(
   const requestSerialRef = useRef(0);
   const reconcileRevisionRef = useRef(reconcileRevision);
   const requestControllerRef = useRef<AbortController | undefined>(undefined);
+  // Older-page reads share the request slot with `reload`, so one of them
+  // retires a `reload` that is still in flight, and a retired `reload` never
+  // settles. `unsettledReloadRef` holds that reload's serial; `reloadOwedRef`
+  // says an older-page read retired it, and whoever asked for the older pages
+  // runs it again when they are done.
+  const unsettledReloadRef = useRef<number | undefined>(undefined);
+  const reloadOwedRef = useRef(false);
   const fillRef = useRef<(cursor: string, floor: number) => Promise<void>>(
     async () => {},
   );
@@ -336,6 +343,8 @@ export function useSessionEventWindow(
     }
     const requestGeneration = generation.current;
     const requestSerial = ++requestSerialRef.current;
+    unsettledReloadRef.current = requestSerial;
+    reloadOwedRef.current = false;
     const read = observation?.read(
       threadId,
       'history',
@@ -503,6 +512,7 @@ export function useSessionEventWindow(
         requestGeneration === generation.current &&
         requestSerial === requestSerialRef.current
       ) {
+        unsettledReloadRef.current = undefined;
         setLoading(false);
         // A failed or upgrade-refused read is still a reading: the caller now
         // knows something, and `error`/`upgradeRequired` say what. Only a read
@@ -537,6 +547,10 @@ export function useSessionEventWindow(
       if (!threadId) return undefined;
       const requestGeneration = generation.current;
       const requestSerial = ++requestSerialRef.current;
+      if (unsettledReloadRef.current !== undefined) {
+        unsettledReloadRef.current = undefined;
+        reloadOwedRef.current = true;
+      }
       const read = observation?.read(
         threadId,
         'older-history',
@@ -625,16 +639,28 @@ export function useSessionEventWindow(
     ],
   );
 
+  // After a requested older read: run the `reload` it retired, if any. Not
+  // after each page, where the next page would only retire it again.
+  const runOwedReload = useCallback(() => {
+    if (!reloadOwedRef.current) return;
+    reloadOwedRef.current = false;
+    void reload();
+  }, [reload]);
+
   const loadOlder = useCallback(async () => {
-    const heldGap = heldGapsRef.current.at(-1);
-    if (heldGap) {
-      await fillRef.current(heldGap.cursor, heldGap.floor);
-      return;
+    try {
+      const heldGap = heldGapsRef.current.at(-1);
+      if (heldGap) {
+        await fillRef.current(heldGap.cursor, heldGap.floor);
+        return;
+      }
+      const pageCursor = cursorRef.current;
+      if (pageCursor)
+        await readOlder(pageCursor, { adoptCursor: true, olderLoaded: true });
+    } finally {
+      runOwedReload();
     }
-    const pageCursor = cursorRef.current;
-    if (pageCursor)
-      await readOlder(pageCursor, { adoptCursor: true, olderLoaded: true });
-  }, [readOlder]);
+  }, [readOlder, runOwedReload]);
 
   const loadTurn = useCallback(
     async (turnId: string, signal?: AbortSignal) => {
@@ -651,26 +677,30 @@ export function useSessionEventWindow(
         );
       if (containsWholeTurn(eventsRef.current)) return true;
       let pageCursor = heldGapsRef.current.at(-1)?.cursor ?? cursorRef.current;
-      // Bound each user-requested jump. A retry continues from the retained cursor.
-      for (let pages = 0; pageCursor && pages < 64; pages += 1) {
-        if (signal?.aborted || requestGeneration !== generation.current)
-          return false;
-        const page = await readOlder(pageCursor, {
-          adoptCursor: true,
-          olderLoaded: true,
-        });
-        if (
-          !page ||
-          signal?.aborted ||
-          requestGeneration !== generation.current
-        )
-          return false;
-        if (containsWholeTurn(page.events)) return true;
-        pageCursor = page.nextCursor;
+      try {
+        // Bound each user-requested jump. A retry continues from the retained cursor.
+        for (let pages = 0; pageCursor && pages < 64; pages += 1) {
+          if (signal?.aborted || requestGeneration !== generation.current)
+            return false;
+          const page = await readOlder(pageCursor, {
+            adoptCursor: true,
+            olderLoaded: true,
+          });
+          if (
+            !page ||
+            signal?.aborted ||
+            requestGeneration !== generation.current
+          )
+            return false;
+          if (containsWholeTurn(page.events)) return true;
+          pageCursor = page.nextCursor;
+        }
+        return false;
+      } finally {
+        runOwedReload();
       }
-      return false;
     },
-    [readOlder],
+    [readOlder, runOwedReload],
   );
 
   // Page down from a reload's newest page until it runs unbroken to `floor`.
@@ -712,6 +742,8 @@ export function useSessionEventWindow(
     generation.current += 1;
     requestSerialRef.current += 1;
     requestControllerRef.current?.abort();
+    unsettledReloadRef.current = undefined;
+    reloadOwedRef.current = false;
     olderLoadedRef.current = false;
     pendingFloorRef.current = undefined;
     partialRef.current = new Set();
@@ -739,6 +771,9 @@ export function useSessionEventWindow(
     return () => {
       generation.current += 1;
       requestControllerRef.current?.abort();
+      // A jump still unwinding must not start a read for a reader that is gone.
+      unsettledReloadRef.current = undefined;
+      reloadOwedRef.current = false;
       if (recoveryTimerRef.current !== undefined) {
         clearTimeout(recoveryTimerRef.current);
         recoveryTimerRef.current = undefined;

@@ -202,7 +202,7 @@ what is risky.
 - An open question on a Task that is not done or canceled puts the Task in
   **Needs you**. The Tasks list carries `openQuestionCount`, and the existing
   Task fold on Home and in the inbox reads it: the Task's word becomes
-  "Task · Needs answer" in the Needs you lane until the question is answered.
+  "Task · Needs input" in the Needs you lane until the question is answered.
 
 Agents cannot change a Task's status, and memory writes never touch it or the
 Task document. Status changes remain person-only, and close-on-merge is

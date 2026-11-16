@@ -4,9 +4,11 @@ import {
 } from '@kontourai/station-contracts/runtime-event-content';
 import { useApprovalContentQuery } from '@kontourai/station-sdk/runtime-event-content';
 import {
+  type ToolRequestRuleGrant,
   type ToolRequestServerGrant,
   type ToolRequestSessionGrant,
   toolRequestFromPayload,
+  toolRequestRuleGrantFromPayload,
   toolRequestServerGrantFromPayload,
   toolRequestSessionGrantFromPayload,
 } from '@kontourai/station-shared/tool-request-preview';
@@ -39,6 +41,8 @@ export interface ApprovalContentGate {
   args?: unknown;
   sessionGrant?: ToolRequestSessionGrant;
   serverGrant?: ToolRequestServerGrant;
+  /** `null`: the resolved request offers no command-prefix grant. */
+  ruleGrant?: ToolRequestRuleGrant | null;
   retry: () => void;
 }
 
@@ -99,7 +103,7 @@ export function useApprovalContent(
         target.station.capabilities.approvalAnswer.state === 'allowed'),
     ...(target?.station &&
     target.station.capabilities.approvalTrustTool.state !== 'allowed'
-      ? { sessionGrant: 'none' }
+      ? { sessionGrant: 'none', ruleGrant: null }
       : {}),
     ...(target?.station &&
     target.station.capabilities.approvalTrustServer.state !== 'allowed'
@@ -181,6 +185,7 @@ function ApprovalContentLoader({
         toolCall.args,
       sessionGrant: toolRequestSessionGrantFromPayload(payload),
       serverGrant: toolRequestServerGrantFromPayload(payload),
+      ruleGrant: toolRequestRuleGrantFromPayload(payload) ?? null,
       retry,
     });
   }, [data, isError, refetch, threadId, requestEventId, target]);

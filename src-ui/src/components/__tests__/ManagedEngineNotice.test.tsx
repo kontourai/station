@@ -34,7 +34,7 @@ vi.mock('../../contexts/ApiBaseContext', () => ({
 import { ManagedPolicyProvider } from '../../contexts/ManagedPolicyContext';
 import {
   ManagedEngineNotice,
-  managedEngineSubtitle,
+  managedEngineFact,
   managedEnvironmentLocked,
 } from '../ManagedEngineNotice';
 
@@ -138,9 +138,11 @@ describe('#4520: managed engines in the UI', () => {
     const claude = managedEngineState(view, 'claude');
     expect(claude).toMatchObject({ disallowed: false, pin: { locked: true } });
     expect(managedEnvironmentLocked(claude)).toBe(true);
-    expect(managedEngineSubtitle(managedEngineState(view, 'codex'))).toBe(
-      'Managed: not allowed · ',
+    expect(managedEngineFact(managedEngineState(view, 'codex'))).toBe(
+      'Managed',
     );
+    expect(managedEngineFact(claude)).toBe('Managed launch');
+    expect(managedEngineFact(null)).toBeNull();
     expect(managedEngineIdFor('station', false)).toBe('station-agent');
     expect(managedEngineIdFor('opencode', true)).toBe('acp');
   });

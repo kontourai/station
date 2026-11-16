@@ -14,6 +14,7 @@ import {
   foldUsageEvents,
   foldUsageObservationProjection,
   providerCostScope,
+  providerReportsContextOccupancyOnly,
   providerUsageScope,
 } from '@kontourai/station-shared/usage-fold';
 import type { OrchestrationSessionUsage } from '../../analytics/usage-aggregator-state.js';
@@ -21,7 +22,11 @@ import {
   CatalogUsagePricingSnapshotReader,
   stampUsageReceiptPrice,
 } from '../../analytics/usage-pricing-snapshot-reader.js';
-import type { EventStore, UsageReceiptEventRow } from './event-store.js';
+import type {
+  EventStore,
+  UsageReceiptEventRow,
+  UsageReceiptFilter,
+} from './event-store.js';
 import { createIsolatedSessionTranscriptSearch } from './isolated-session-transcript-search.js';
 // Type-only import back into the service module: erased at runtime, so no
 // import cycle exists — and it avoids adding ANOTHER copy of the read-scope
@@ -39,6 +44,9 @@ const COVERAGE_CAP_REASON =
   'coverage evidence cap reached (1000 observations); additional provider evidence is missing';
 const STALE_OBSERVATION_REASON =
   'provider observations are older than the 24-hour freshness threshold for this window';
+/** An engine with no usage totals is a declared gap, never a zero. */
+const CONTEXT_OCCUPANCY_ONLY_REASON =
+  'engine reports context occupancy only, not token or cost totals';
 
 interface SessionTranscriptReadsDeps {
   canReadSession: (threadId: string, authority: SessionReadScope) => boolean;
@@ -358,6 +366,7 @@ export class SessionTranscriptReads {
       cursor?: string;
       pageSize?: number;
       aggregate?: boolean;
+      filter?: UsageReceiptFilter;
     },
   ): {
     receipts: UsageReceipt[];
@@ -401,6 +410,7 @@ export class SessionTranscriptReads {
       to: request.to,
       ...(after ? { after } : {}),
       limit: pageSize,
+      ...(request.filter ? { filter: request.filter } : {}),
     });
     const page = rows.slice(0, pageSize);
     // The windowed rollup counts only Station-observed receipts; a legacy row
@@ -428,6 +438,7 @@ export class SessionTranscriptReads {
       {
         terminalTurns: Set<string>;
         usageTurns: Set<string>;
+        contextOnlyTurns: Set<string>;
         observedThrough?: string;
         providerObservedThrough?: string;
       }
@@ -438,11 +449,13 @@ export class SessionTranscriptReads {
       const created: {
         terminalTurns: Set<string>;
         usageTurns: Set<string>;
+        contextOnlyTurns: Set<string>;
         observedThrough?: string;
         providerObservedThrough?: string;
       } = {
         terminalTurns: new Set<string>(),
         usageTurns: new Set<string>(),
+        contextOnlyTurns: new Set<string>(),
       };
       providers.set(name, created);
       return created;
@@ -483,6 +496,19 @@ export class SessionTranscriptReads {
         provider.usageTurns.add(
           `${event.threadId}:${event.turnId ?? event.id}`,
         );
+      } else if (
+        event.payload.method === 'token-usage.updated' &&
+        (isReportedAmount(event.payload.contextTokens) ||
+          isReportedAmount(event.payload.contextWindowTokens) ||
+          isReportedAmount(event.payload.contextPercent) ||
+          isReportedAmount(event.payload.reportedCost?.amount))
+      ) {
+        // Context (the token pair or an engine's percent) or an engine's own
+        // cost (Kiro credits, Grok USD, scoped by its unit), with no token
+        // totals: what the occupancy reason describes.
+        provider.contextOnlyTurns.add(
+          `${event.threadId}:${event.turnId ?? event.id}`,
+        );
       }
     }
     const requestedEnd = Date.parse(`${request.to}T23:59:59.999Z`);
@@ -493,6 +519,16 @@ export class SessionTranscriptReads {
         const usageReportedTurnCount = [...provider.terminalTurns].filter(
           (key) => provider.usageTurns.has(key),
         ).length;
+        // Usage scope is declared per provider, but within one provider an
+        // engine may report only its context (ACP: every engine but those in
+        // `ACP_PER_TURN_PROMPT_USAGE_ENGINES`). So the reason is read from
+        // what the unreported turns did carry, not only from the declaration.
+        const unreportedTurns = [...provider.terminalTurns].filter(
+          (key) => !provider.usageTurns.has(key),
+        );
+        const unreportedReportContextOnly =
+          unreportedTurns.length > 0 &&
+          unreportedTurns.every((key) => provider.contextOnlyTurns.has(key));
         const reportsComplete =
           observedTurnCount > 0 && usageReportedTurnCount === observedTurnCount;
         const freshness = provider.providerObservedThrough
@@ -518,7 +554,10 @@ export class SessionTranscriptReads {
                   ? COVERAGE_CAP_REASON
                   : observedTurnCount === 0
                     ? 'provider declared but no terminal turns observed'
-                    : 'terminal turns missing usage reports',
+                    : providerReportsContextOccupancyOnly(providerName) ||
+                        unreportedReportContextOnly
+                      ? CONTEXT_OCCUPANCY_ONLY_REASON
+                      : 'terminal turns missing usage reports',
               }
             : {}),
         };
@@ -638,6 +677,8 @@ export function usageReceiptsForEventRow(
     model,
     costSegment,
     accountKey,
+    connectionId,
+    modelConnectionId,
   }: UsageReceiptEventRow,
   stationId: string,
 ): UsageReceipt[] {
@@ -645,6 +686,8 @@ export function usageReceiptsForEventRow(
   const usage = event.payload;
   const common = {
     ...(accountKey !== undefined ? { accountKey } : {}),
+    ...(connectionId !== undefined ? { connectionId } : {}),
+    ...(modelConnectionId !== undefined ? { modelConnectionId } : {}),
     sourceEventId: event.id,
     sourceSequence: event.sequence,
     stationId,

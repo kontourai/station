@@ -12,8 +12,14 @@ editing in Chat settings. Its scriptable equivalent is
 execution Session ID rather than the Conversation ID. Reads do not start or
 resume an engine. Writes require an authenticated person with Session mutation
 authority and `orchestration:operate`. The current Codex adapter supports save
-paused, pause and clear; resume and Station-managed execution are unavailable.
+paused, pause and clear; a Muse Session on `muse serve` supports read, pause
+and clear. Resume and Station-managed execution are unavailable.
 See [Session Goals](api.md#session-goals) for commands and uncertain outcomes.
+
+A Session that started in a worktree of its own records what became of its
+output once: `GET` or `POST /api/orchestration/sessions/:threadId/worktree-settlement`
+(discarded, kept, released or cleaned up without a decision). No composer
+control calls it yet. See [Worktree output settlement](api.md#worktree-output-settlement).
 
 For foreground chat, the canonical execution surface is
 `POST /api/orchestration/chat`. It accepts an
@@ -58,6 +64,15 @@ This refusal does not automatically resend the seed or reopen the start boundary
 Delivery and current native identity are checked again synchronously at provider
 dispatch, including resumption of a prepared turn. An identity replacement after
 continuation resolution cannot borrow the earlier identity's completion.
+
+A handoff that is not a native return, or a plain continuation with no
+deliberate context boundary, is not stranded by a failed or stopped seed-bearing
+turn: the next ordinary follow-up starts a successor Session with a freshly
+pinned bounded seed of the whole conversation, never the failed Session's native
+cursor. That holds again if the redelivery's own turn is stopped. A seed turn
+that is still open or uncertain is refused, as is a failed native return,
+context-boundary seed or fork seed. These refusals carry the code
+`conversation-context-unavailable`.
 
 New native-return reservations pin the exact catch-up text and its SHA-256 digest
 alongside ordered source Session cutoffs and omission facts in the existing event
@@ -409,9 +424,12 @@ carries `resolution.confinement` once its session has started (#2494). It is
 the session's confinement record, read back from that session's own
 `session.started`: the level, whether it was required, the posture the engine
 reported applying at that start (`confined`, `no-mechanism` or
-`configured-but-failed`), the mechanism (`codex-sandbox` or `seatbelt`),
-workspace access and policy basis. A Seatbelt record also lists the kinds of
-writes its profile grants (`writeGrants`). A start that asked for confinement
+`configured-but-failed`), the mechanism (`codex-sandbox`, `seatbelt` or
+`bubblewrap`), workspace access and policy basis. A Seatbelt or bubblewrap
+record also lists the kinds of writes its profile grants (`writeGrants`), and
+says `network: 'restricted'` when the Station's
+[`confinedNetwork`](config.md#optional-fields) policy limited the started
+process to Station's egress broker (#4769); absent, its network was open. A start that asked for confinement
 but ran at Auto with none engaged names why in `fallback`
 (`confined-credential-unavailable`, `config-root-pinned`,
 `resume-bound-elsewhere` or `workspace-too-broad`). It
@@ -422,7 +440,8 @@ answers with the refusal's closed code (`confinement_mechanism_unavailable`,
 `confinement_workspace_incompatible`, `confinement_not_observed`) and leaves
 the conversation able to start again.
 A start whose required confinement has no mechanism on this host is refused
-before anything starts. See
+before anything starts, as is one whose restricted network no mechanism here
+can enforce (`confinement_mechanism_unavailable`, naming why). See
 [confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494).
 
 ### Find out what became of a send
@@ -556,7 +575,8 @@ refusal; a request alone does not prove storage.
   earlier follow-ups are still waiting), the send is held and answered `202`
   with `data.outcome: "queued"` and the held `entry`. Otherwise it is sent at
   once, with the usual receipt. A send refused because the engine opened a turn
-  itself (`provider_turn_in_progress`) or is still starting
+  itself or is rewinding the conversation in place
+  (`provider_turn_in_progress`) or is still starting
   (`provider_session_starting`) can be held before its keyed dispatch begins.
   If the keyed dispatch has begun and is definitively refused, it closes that
   key: HTTP `409`, `success: false`, `code: "client_turn_settled"`, and the
@@ -595,10 +615,17 @@ refusal; a request alone does not prove storage.
   path too. An inbox holds at most 50 unsettled
   messages; past that a send is refused `409` with
   `code: "conversation_inbox_full"`.
-- Only a plain continuation can be held: no attachments, approval pick, input
+- Only a plain continuation can be held: no approval pick, input
   reply, visual skill start, engine or Agent-definition precondition
   (`expectedEngine`, `expectedDefinitionFingerprint`), delegated send, and no
-  target on another Station. Plain automatic replay may queue; its background
+  target on another Station. Files (`attachments` or staged `attachmentRefs`)
+  can be held only on a host that advertises `followUpAttachments` (absent on
+  hosted Stations): their bytes go to the attachment blob store, a staged
+  reference is accepted for the held entry (released if it is not queued), the
+  entry lists them as `attachments` descriptors (kind, name, MIME type, size;
+  never bytes), and placement sends them with the message. The same key with
+  different files is a different message. Without the flag a busy send with
+  files is not held. Plain automatic replay may queue; its background
   resource-admission class persists through placement. Its `target.agent` and
   `target.workspace` must name exactly the conversation's binding, since that
   binding is what the message is sent through later. The sender must be one
@@ -621,8 +648,8 @@ the scope to (for one tied to an account, that the account is enabled and
 was not signed out everywhere since the message was queued); otherwise the message is `refused` (`not_permitted` or
 `device_not_permitted`) and nothing is sent. Station's own coordinator wakes
 (#3628) are also checked against their sender's policy at that moment, and a
-refused one carries `coordinator_retired`, `coordinator_wake_expired` or
-`coordinator_source_unreadable`; a person's messages have no such policy. It never stores a full-access
+refused one carries `coordinator_retired`, `coordinator_wake_expired`,
+`coordinator_source_unreadable` or `coordinator_preview_disabled`; a person's messages have no such policy. It never stores a full-access
 grant: an engine restarted to take a held message starts confined. Each
 message keeps its `clientTurnId`, so the
 [delivery lookup](#find-out-what-became-of-a-send) follows it, and Station
@@ -665,8 +692,10 @@ own text). `reasonCode` is one of `not_permitted`, `device_not_permitted`,
 `continuation_workspace_corrupt_worktree_binding`,
 `continuation_workspace_worktree_gone`,
 `continuation_workspace_different_project`,
-`continuation_workspace_worktree_moved`, or `start_refused` for any other
-refusal. Every client of the conversation sees the same list, except that
+`continuation_workspace_worktree_moved`, `attachment_unavailable` (a held
+file was no longer stored when it was due to be sent; nothing was sent),
+`attachment_input_unsupported` (the engine takes no files), or `start_refused`
+for any other refusal. Every client of the conversation sees the same list, except that
 someone else's message that may still be sent (`queued`, `sending`,
 `unconfirmed`) is shown without its `clientTurnId`. A
 conversation you may not read, or a Station without an inbox, answers `404`.
@@ -701,7 +730,7 @@ retry returns its retained entry even after the head advances. Changed input
 returns HTTP409 `inbox_key_conflict`. A new entry with a stale head returns
 HTTP409 `inbox_stale_head` and `currentHead`, without a write.
 
-- **Steer:** text and head are durable before handoff. Native Claude/Codex
+- **Steer:** text and head are durable before handoff. Native Claude/Codex/Muse
   placement is engine-defined and disclosed. Where Station owns the loop,
   input waits for its next observed post-tool boundary; otherwise it waits
   for the next turn boundary. The current VoltAgent loop observes the boundary
@@ -740,7 +769,8 @@ external effects are not claimed without an engine idempotency or receipt
 protocol.
 
 The browser hands eligible busy sends and IndexedDB replay to the server inbox
-with `whenBusy: 'queue'`; a definitive unqueued refusal restores the draft.
+with `whenBusy: 'queue'`; a definitive unqueued refusal of a composer send
+restores the draft. A replay neither clears nor restores the composer.
 Legacy sessionStorage records lack a Station/authority identity and remain
 review-only, without automatic drain or reassignment to the current account.
 Offline steering can retain an already observed, authority-scoped head; without
@@ -855,6 +885,11 @@ Station's, the chat runs an agent Station does not govern
 ([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)), or
 the project's OpenCode configuration declares code OpenCode runs at launch
 ([what the modes cannot govern](../guides/acp.md#what-ask-and-auto-cannot-govern-on-opencode)).
+On OpenCode 2 it is also refused when the chat runs over ACP, where Station
+cannot verify OpenCode 2's rules ([OpenCode 2 and OpenCode 1](../guides/acp.md#opencode-2-and-opencode-1)).
+On the `opencode` engine's native transport, it is refused when OpenCode has
+saved approvals that would let a governed action run without asking
+([OpenCode native transport](../decisions/opencode-native-transport.md#governance)).
 The message names the setting and says what picking Default would do in that
 chat. A refused start keeps that code: it is checked before Station claims the
 start, so it is never reported as a start that may have happened
@@ -930,7 +965,7 @@ requests through simulated process streams; they are not a live Codex receipt.
   "threadId": "string, required, min length 1",
   "requestId": "string, required, min length 1 — from the request.opened event",
   "decision": "'accept' | 'acceptForSession' | 'decline' | 'cancel'",
-  "sessionGrantScope": "'server', optional, only with acceptForSession",
+  "sessionGrantScope": "'server' | 'rule', optional, only with acceptForSession",
   "expectedRequestEventId": "string, optional — the exact request.opened event answered",
   "viewedContentDigest": "'sha256-<hex>', required to allow a request with spilledContent"
 }
@@ -1088,6 +1123,18 @@ not read the field, and a Station that predates it, grant the one tool. The
 inbox offers it as the `acceptForSessionServer` action, which sends the same
 typed decision. The delegated-task respond route does not accept the field.
 
+`sessionGrantScope: 'rule'` narrows an `acceptForSession` answer to the Bash
+command prefixes the engine suggested. A Claude Session offers it on a plain
+Bash call whose suggestions carry one or two `addRules` allow rules for Bash
+in prefix form (`npm ls *` or `npm ls:*`); an exact-command rule offers
+nothing. The adapter forwards only those rules, with `destination:
+'session'`, so the engine allows later matching commands itself, and Station
+mints no tool grant. A `rule` answer to a request that offered none, or to
+an engine that does not declare the scope (every engine but Claude), is a
+one-call accept, never a wider grant. A prefix containing `*` or `"` is
+not offered. The inbox offers it as the
+`acceptForSessionRule` action.
+
 A Claude Session also treats these as escalations that always prompt, even
 under a tool grant or an agent's `autoApprove` of `*` (#2932): the sandbox
 network-host ask (`SandboxNetworkAccess`), which offers no session option and
@@ -1126,12 +1173,15 @@ to forward.
 - Every PowerShell ask. PowerShell wraps an ordinary command and one with a
   security warning in the same `subcommandResults` shape.
 - A chained Bash command (`subcommandResults`: `a && b`, `a; b`, a pipeline)
-  whose request carries `classifier_approvable`, any `decisionReason` text, a
-  `matchedAskRule`, a blocked path, a directory suggestion, a sandbox
-  override or an ask flag.
+  whose request carries `classifier_approvable`, a `matchedAskRule`, a
+  blocked path, a directory suggestion, a sandbox override or an ask flag.
 - An ask of type `other` whose reason is not exactly `This command requires
-  approval`, the text Claude Code 2.1.278 sends for an ordinary single Bash
-  command.
+  approval`, and a chained Bash command with any reason text. One exception:
+  a person's own Bash session grant answers the engine's Bash
+  command-analysis warnings ("A variable in this command can't be checked
+  before it runs", …), which say a command-prefix rule cannot be checked; a
+  whole-tool grant checks none. `autoApprove` and the guardian still prompt
+  for them.
 - An ask whose request Station could not read. This fails closed: a changed
   or missing request costs a prompt, never a grant.
 
@@ -1219,7 +1269,10 @@ aborted. Two aborts count, and they settle different sets
   waiting on it. Separately, the adapters read for this change (Claude Code,
   Codex, ACP) resolve the requests they hold `cancelled` when they stop a
   turn or session, a subagent's included on Claude Code; that publication,
-  not this rule, is what normally closes them.
+  not this rule, is what normally closes them. ACP resolves only the requests
+  the stopped turn opened (on interrupt, steer and prompt end); one opened
+  outside any turn, such as an MCP reconnect's consent link, stays open until
+  it is answered or the session stops.
 
 A turn that fails without being aborted (`runtime.error` or `session.exited`
 alone) settles nothing, and neither does an ordinary `turn.completed` or a
@@ -1239,9 +1292,13 @@ The remaining controls are defined by
 `src-server/routes/orchestration/orchestration.ts`:
 
 - `steerTurn`: `{ type: 'steerTurn', threadId, input, turnId?, clientInputId }` sends steering
-  input where the engine supports it. An ACP engine without a native steer
+  input where the engine supports it. An ACP engine whose handshake matches a
+  prompt hand-off entry (Antigravity) takes the steer as a second prompt on the
+  running turn, cancelling nothing. Any other ACP engine without a native steer
   method is steered by cancelling and re-prompting the running turn; that
-  steer's `turn.started` carries `steerInterruptedRun: true`.
+  steer's `turn.started` carries `steerInterruptedRun: true`. A Muse Session
+  on `muse serve` steers natively with `turn/steer`; one on the `muse exec`
+  fallback is refused `unsupported-engine` before the engine is called.
   On this server, a stable `clientInputId` makes acknowledgement retries safe: a durable claim
   precedes the adapter call, confirmed same-ID input returns its stored result,
   and an unresolved claim returns `outcome: 'indeterminate'` without invoking
@@ -1279,6 +1336,13 @@ The remaining controls are defined by
   names. Captures with Codex 0.164 show v1 accepting child `turn/steer` and v2
   rejecting direct app-server input. This provider evidence does not establish
   an end-to-end Station HTTP or deployed-device journey.
+
+  A Muse workflow's turn ends when it launches its children, so the Muse
+  serve adapter declares `childSteerOutlivesParentTurn`. With no running
+  parent turn, the server then admits a child steer only for a child the
+  child-work projection still holds running under that `turnId` (its steer
+  token); the dormant-session and confinement checks still apply. Muse
+  receives it as `subagent/sendMessage`.
 
 - `inspectSteerInput`: `{ type: 'inspectSteerInput', threadId, input, turnId?, clientInputId }`
   reads the original journal identity and returns `steered`, `indeterminate` or
@@ -1872,6 +1936,78 @@ handle's `providerTurnId` when proving one turn, so an earlier answer cannot
 satisfy a later check. The shared projection assembles streamed text and handles
 aggregate `turn.completed.outputText` where appropriate.
 
+### Engine MCP servers (`/sessions/:threadId/mcp-servers`)
+
+Some engines run MCP servers of their own and report them as
+`engine-mcp.status` events (`EngineMcpServerStatus` in
+[contracts](contracts.md)).
+
+- `POST /sessions/:threadId/mcp-servers/:serverName/reconnect` asks the
+  Session's engine to restart one of them. With body `{ "startOAuth": true }`
+  it starts that server's sign-in instead; the consent link then arrives as a
+  URL input request, which the person opens from its card. The name is at most
+  128 characters (`ENGINE_MCP_SERVER_NAME_MAX_CHARS`); an empty or longer name
+  is refused `400`, and so is any other body key.
+
+The caller must be the current request principal and own the Session, as for
+the usage-limit actions below; anyone else gets `404`. A Session with no live
+engine answers `409`. Otherwise it answers the engine's
+`EngineCommandOutcome`: `answered` (with the engine's `success` and `text`
+where it gave them), `failed` (with a message), `not-declared` (this engine
+has no reconnect call), or `unsupported` (the Session's adapter has none).
+Station decides nothing from the answer; a later `engine-mcp.status` reports
+the server's new state. A report carries `reconnect: true` only when the
+Session's engine declares a reconnect Station can send; clients offer
+Reconnect and Sign in only then.
+
+### Engine continuity and rewind (`/sessions/:threadId/continuity`, `/rewind`)
+
+Some engines can act on their own session natively. What a live Session's
+engine declared at its handshake is read per Session, never assumed for an
+engine family:
+
+- `GET /sessions/:threadId/continuity` answers `SessionLiveContinuity`
+  (`@kontourai/station-contracts/provider`): `{ live, rewind, fork }`, where
+  `rewind` is `in-place` or `none` and `fork` is `native` or `none`. A Session
+  no engine process holds answers `{ live: false, rewind: 'none', fork:
+  'none' }`; no engine is started for the read. It is read under the Session's
+  read gate; anyone who cannot read the Session gets `404`, which a client
+  reads like an older host: nothing offered.
+- `POST /sessions/:threadId/rewind` with body `{ "turnId": "<turn>" }` rewinds
+  the engine's context in place to before that turn: the turn and every later
+  one are hidden from the engine. The transcript is never edited. The engine
+  records the rewind as a `runtime.warning` with code `acp.session-rewound`
+  (`ACP_SESSION_REWOUND_CODE`, details `beforeTurnId`, `hiddenTurnIds` and,
+  when the engine reported restored files, `affectedFileCount`); the
+  transcript projection draws it as a marker row and marks each hidden turn
+  `rewound`. This is not checkpoint restore: only files the engine itself
+  restores change.
+
+The rewind caller must be the current request principal and own the Session,
+as for the MCP reconnect above; anyone else gets `404`. A `turnId` that is
+missing, empty or over 1,024 characters, or any other body key, is refused
+`400`. Otherwise it answers `SessionRewindOutcome`:
+
+| Outcome | Meaning |
+| --- | --- |
+| `rewound` | `beforeTurnId`, `hiddenTurnIds`, and `affectedFiles: { count, paths }` when the engine reported them (at most 50 paths; `count` is the engine's) |
+| `refused` `unsupported` | the Session's engine declared no in-place rewind, or its adapter has none |
+| `refused` `not-live` | no engine process holds the Session |
+| `refused` `turn-running` | a turn is running; stop it first. While a rewind waits on the engine, a send to the Session is refused retryably with `provider_turn_in_progress` |
+| `refused` `send-preparing` | a message is being sent and its turn is not running yet |
+| `refused` `rewind-pending` | an earlier rewind is still with the engine: waiting for its answer, or past its 30-second deadline and not yet answered (for at most 5 more minutes) |
+| `refused` `unknown-turn` | the engine never reported an id for that turn in this process: a turn from before a restart, one Station no longer keeps, or one an earlier rewind hid |
+| `failed` | the engine's own refusal or error, with its message; or no answer within 30 seconds. Then nothing is marked rewound yet, and another rewind is refused `rewind-pending` until the engine answers or 5 more minutes pass. A late success with no turn since, within 5 minutes, is recorded as a rewind (the marker and rewound turns appear then); any other late success, or an engine process that exits or is relaunched with the request unanswered (not a requested stop, which is only logged), is a `runtime.warning` `acp.session-rewound-late`, drawn as its own marker row with nothing marked |
+
+A refusal sends nothing to the engine. Today only the ACP adapter declares a
+rewind, for an engine whose handshake declares it (Kiro's agent service, and
+Grok Build by its handshake identity; see
+[ACP](../guides/acp.md#engine-session-actions)). On Grok, `failed` also covers
+what Station checks before applying anything: the engine's rewind points not
+lining up with the turns, and files changed outside the engine since that
+turn, which a rewind would overwrite. The message names them, and nothing is
+changed.
+
 ### Usage-limit recovery (`/sessions/:threadId/usage-limit`)
 
 When a Claude Code or Codex turn stops on a provider usage limit, Station
@@ -1944,6 +2080,9 @@ Query: `offset` (message index, default `0`) and `limit` (messages per page,
 `1`–`50`, default `30`). The response's `data` is a `ChildWorkTranscriptPage`:
 `entries` (prompt and reply text, tool calls, tool results; inline image data
 replaced by a placeholder, then each text cut at 4,000 characters and flagged) and `nextOffset` when another page follows.
+Tool calls and results carry an optional engine-issued `toolCallId`. Readers join
+only matching IDs; legacy entries without IDs remain readable without assuming
+that adjacent records belong to the same call.
 `404` means no transcript for a session you can read; `503` means the engine
 no longer has it.
 
@@ -2025,8 +2164,20 @@ is checked again before queued content is written.
 
 Station's SessionDetail subscribes to the tab's shared orchestration feed and
 filters canonical events by Session id. Closing a detail releases its local
-subscription. The shared transport retains the server cursor and epoch across
-retries; a snapshot fallback reloads each mounted detail's bounded history.
+subscription. The shared transport retains the server cursor across retries; a
+snapshot fallback reloads each mounted detail's bounded history. Its request
+headers are fixed when it is created, so it sends `X-Station-Stream-Epoch` only
+if the epoch was already known then; a transport created earlier, such as the
+document's first, retries in place with the cursor and no epoch.
+The browser also checks the epoch on `orchestration:caughtUp`: when a replay
+ends on a different epoch from the one it holds, it discards the replay and
+reconnects without a cursor, which takes the snapshot path.
+A snapshot delivers no events, so the chat transcript re-reads a history window
+that was served before the snapshot's cursor when the stream reports newer
+events for that conversation.
+The browser ends a reconnect wait early when its health status returns to
+connected or reports a new server boot, as it does on visibility, focus and
+`online`. A stream stopped by a 401/403 is not woken by health recovery.
 History starts after capability discovery and does not wait for SSE to open.
 The same-tab subscription needs no BroadcastChannel or SharedWorker. Tabs still
 own separate shared feeds; scheduler, monitoring and Task-room feeds remain
@@ -2038,6 +2189,10 @@ Snapshot and caught-up session summaries use the same scope as the stream:
 Live `orchestration:event` frames carry `{ event: CanonicalRuntimeEvent }`;
 `threadId` filters the stream and caller authorization still applies. Coalesced
 activity may also arrive as `orchestration:activity`, without a durable cursor.
+The global stream (no `threadId`) also carries `read-markers:changed` with an
+empty payload and no `id`, only to the person whose
+[read marker](contracts.md#read-marker-contracts) moved; re-read the inventory
+and read-marker summaries.
 The browser opts in to general events with `?includeGeneral=1` on the shared
 orchestration stream only when its current authority's boot payload advertises
 `sharedRealtime: true`. A missing or failed boot read selects the legacy path;
@@ -2045,7 +2200,10 @@ the boot advertisement is separate from the capabilities section. A capable
 host acknowledges the stream request with the response header
 `X-Station-General-Stream: 1`. Without that acknowledgement, the browser uses
 the legacy `/events` connection as well; general events remain ephemeral and can
-be missed while either connection is reconnecting. These frames use `event: station:general` and contain a
+be missed while either connection is reconnecting. When the connection that
+carries them re-opens after a failure, the UI invalidates the queries those
+events keep current (not its whole cache); missed toasts, navigation and
+plugin registry reloads are not replayed. These frames use `event: station:general` and contain a
 JSON envelope with the original `event` and `data` strings. They have no SSE
 `id`, so they do not advance the orchestration replay cursor. General and
 orchestration events retain their respective request-authority checks. The bare
@@ -2420,3 +2578,28 @@ Before starting work, agents can use `search_conversations` and
 [work discovery](../guides/self-configuring-agent.md#find-related-work-before-starting)
 for input bounds, caller scope, incomplete search results and recorded workspace
 fields, and the [HTTP leaves](api.md#station-control-work-discovery).
+
+### Blocking request kinds and background elapsed time
+
+Session summaries include `openRequestKinds`, keyed by unresolved request ID,
+with `input` for questions, elicitation forms and links to open, and `approval` for tool
+permissions and plan review that gates leaving plan mode (including Claude
+ExitPlanMode and ACP plan approval). These are display hints only: adapters
+retain their existing request types and lifecycle/Attention routing. Structured
+forms retain an exact `requestReference`; request inspection directs the person
+to the chat to answer the form. `blockingOpenRequestIds` remains the authoritative set
+that suspends progress. The fields are additive: an older host without kind
+metadata uses conservative approval display until a validated form is read. Older persisted forms are
+classified from their validated input-request payload when the host projects
+its summary.
+
+The conversation pill and Inbox use **Needs input** for input and **Needs
+approval** for permission. Permission takes precedence when both wait, matching
+the attention ladder. Requests answered locally stop asking for attention while
+the engine confirms delivery. With no main turn open, the pill still shows
+server-reported background work and its count; its clock starts at the oldest
+reported child start. A pending provider follow-up reads **Waiting for background
+reply**. This display does not enable Stop or Steer for a closed turn.
+
+Elapsed displays share `src-ui/src/utils/relativeTime.ts` and use `45s`,
+`2m 1s`, and `1h 4m`. Under an hour, live clocks retain seconds.

@@ -4,8 +4,8 @@
 // detection, commands, and events out of feature code and makes the web
 // fallback deterministic.
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { gitLsFiles } from './lib/ratchet-utils.mjs';
 
 export const TAURI_CAPABILITY_MANIFEST =
   'src-desktop/capabilities/default.json';
@@ -85,7 +85,7 @@ export const EXPECTED_TAURI_CSP = {
   'font-src': "'self' data:",
   'img-src': "'self' asset: http://asset.localhost data: blob: http: https:",
   'media-src': "'self' asset: http://asset.localhost data: blob: http: https:",
-  'frame-src': "'self' data: blob: http: https:",
+  'frame-src': "'self' data: blob: http: https: station-html-reply:",
   'worker-src': "'self' blob:",
   'manifest-src': "'self'",
   'object-src': "'none'",
@@ -104,6 +104,9 @@ export const TAURI_ADAPTER_FILES = new Set([
   'src-ui/src/platform/native/productName.ts',
   // Converts installed bundle paths to the narrow host-authenticated protocol.
   'src-ui/src/platform/native/pluginBundleUrl.ts',
+  // Stages a visual-reply document on the shell's station-html-reply: scheme
+  // and builds its capability URL; the viewer imports only this seam.
+  'src-ui/src/platform/native/htmlReplyStagedDocument.ts',
   // The one host-owned authenticated transport. It is intentionally the only
   // renderer module allowed to create a Tauri IPC channel for HTTP bytes.
   'src-ui/src/platform/native/authenticatedTransport.ts',
@@ -456,11 +459,7 @@ export function findTauriResourceBoundaryViolations(
 
 function listTrackedUiSources() {
   return (
-    execFileSyncBounded('git', ['ls-files', 'src-ui/src'], {
-      encoding: 'utf8',
-      windowsHide: true,
-    })
-      .split('\n')
+    gitLsFiles(['src-ui/src'])
       .filter((file) => /\.(?:ts|tsx)$/.test(file))
       // `git ls-files` includes a tracked file removed in the current working
       // tree. Do not make a removal itself prevent the static gate from

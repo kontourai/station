@@ -18,6 +18,7 @@ import { SchedulerStorageUnavailableError } from '../../services/scheduling/sche
 import type { SchedulerService } from '../../services/scheduling/scheduler-service.js';
 import { SchedulerScheduleInvalidError } from '../../services/scheduling/scheduler-service.js';
 import { schedulerJobRuns } from '../../telemetry/metrics.js';
+import { boundedIntQuery } from '../../utils/bounded-int-query.js';
 import type { Logger } from '../../utils/logger.js';
 import {
   addJobSchema,
@@ -460,7 +461,9 @@ export function createSchedulerRoutes(
       const cron = c.req.query('cron');
       if (!cron)
         return c.json({ success: false, error: 'cron is required' }, 400);
-      const count = parseInt(c.req.query('count') || '5', 10);
+      // The projection caps a preview at 1000 occurrences.
+      const count =
+        boundedIntQuery(c.req.query('count'), { min: 0, max: 1000 }) ?? 5;
       // #1536 D1: the zone travels with the expression or the projection is
       // wrong for every zoned schedule.
       const timezone = c.req.query('timezone') || undefined;
@@ -490,7 +493,8 @@ export function createSchedulerRoutes(
           (!providerId || candidate.provider === providerId),
       );
       if (!job) return c.json({ success: false, error: 'Job not found' }, 404);
-      const count = parseInt(c.req.query('count') || '20', 10);
+      const count =
+        boundedIntQuery(c.req.query('count'), { min: 1, max: 1000 }) ?? 20;
       const data = providerId
         ? await schedulerService.getJobLogsForProvider(
             providerId,

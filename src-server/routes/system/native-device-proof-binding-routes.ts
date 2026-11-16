@@ -17,6 +17,7 @@ import {
   NativeDeviceProofBindingService,
   NativeDeviceProofOperatorAuthority,
 } from '../../services/ssh/native-device-proof-binding-service.js';
+import { isRecord } from '../../utils/is-record.js';
 
 const UUID_V4 =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -48,17 +49,13 @@ async function readBoundedJson(context: Context): Promise<unknown> {
   }
 }
 
-function record(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 function exactKeys(value: Record<string, unknown>, keys: string): boolean {
   return Object.keys(value).sort().join(',') === keys;
 }
 
 function parseCandidate(value: unknown): NativeDeviceBindingCandidateV1 {
   if (
-    !record(value) ||
+    !isRecord(value) ||
     !exactKeys(
       value,
       'bindingId,deviceId,deviceProofJwk,deviceProofKeyThumbprint,stationId,surface,version',
@@ -74,7 +71,7 @@ function parseCandidate(value: unknown): NativeDeviceBindingCandidateV1 {
     !UUID_V4.test(value.bindingId) ||
     typeof value.deviceProofKeyThumbprint !== 'string' ||
     !/^[A-Za-z0-9_-]{43}$/.test(value.deviceProofKeyThumbprint) ||
-    !record(value.surface) ||
+    !isRecord(value.surface) ||
     !exactKeys(value.surface, SURFACE_KEYS) ||
     value.surface.kind !== 'station-native' ||
     typeof value.surface.appIdentifier !== 'string' ||
@@ -84,7 +81,7 @@ function parseCandidate(value: unknown): NativeDeviceBindingCandidateV1 {
       value.surface.channel !== 'stable') ||
     typeof value.surface.clientInstanceId !== 'string' ||
     typeof value.surface.keyThumbprint !== 'string' ||
-    !record(value.deviceProofJwk) ||
+    !isRecord(value.deviceProofJwk) ||
     !exactKeys(value.deviceProofJwk, JWK_KEYS) ||
     value.deviceProofJwk.kty !== 'EC' ||
     value.deviceProofJwk.crv !== 'P-256' ||
@@ -125,7 +122,7 @@ function parseBody(value: unknown): {
   candidate: NativeDeviceBindingCandidateV1;
 } {
   if (
-    !record(value) ||
+    !isRecord(value) ||
     !exactKeys(value, 'candidate,operation') ||
     (value.operation !== 'create' && value.operation !== 'revoke')
   ) {

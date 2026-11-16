@@ -980,3 +980,18 @@
   font-size: var(--k-text-sm);
   line-height: 1;
 }
+
+/* Phone, Chat page: the bar has nothing left to hold (the tool picker rides
+   in the chat's own header), so it takes no row. */
+.coding-workbench__bar[hidden] {
+  display: none;
+}
+
+/* The picker at the start of the chat's mobile header: glyph and caret. */
+.coding-workbench[data-mobile]
+  .coding-workbench__tool-trigger.coding-workbench__tool-trigger--compact {
+  flex: none;
+  gap: var(--k-space-1);
+  margin-inline-start: 0;
+  padding-inline: var(--k-space-2);
+}

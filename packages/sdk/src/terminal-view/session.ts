@@ -19,6 +19,14 @@ export interface TerminalViewSessionListener {
    * session should not take more output for the view until it does.
    */
   output(bytes: Uint8Array, kind: 'replay' | 'live'): unknown;
+  /**
+   * The size the program wrote the output after this for (#4625). The view
+   * replays earlier output at its recorded size, so a screen repainted for
+   * one size does not overwrite lines that had scrolled at another.
+   */
+  resize?(cols: number, rows: number, kind: 'replay' | 'live'): void;
+  /** Every earlier output has been delivered; what follows is live. */
+  replayed?(): void;
   /** The retained output was lost; the view clears before the next replay. */
   reset?(): void;
   state?(state: TerminalViewSessionState, detail?: string): void;

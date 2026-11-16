@@ -1,0 +1,7 @@
+{
+  "revision": "5c863e045c928e907d25d88181bc0a12850b00bc",
+
+  "notes": [
+    {"path":"docs/reference/product-laws.md","note":"Regenerated the product-law projection with product-law-gate --write. Compared the sole changed row to config/product-laws.json and its named ChatDockMobileHeader tests: header switching and absence of future-project control only; navigation rebinding is no longer claimed. Other rows are byte-identical.","inputs":["docs/reference/product-laws.md"]}
+  ]
+}

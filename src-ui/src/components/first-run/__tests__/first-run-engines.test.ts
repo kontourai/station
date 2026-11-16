@@ -267,7 +267,7 @@ describe('buildFirstRunEngineOptions — what the checklist may offer', () => {
       state: 'undetected',
       defaultChecked: false,
       selectable: false,
-      note: 'Not found on this machine.',
+      note: 'Not found on this computer.',
     });
   });
 

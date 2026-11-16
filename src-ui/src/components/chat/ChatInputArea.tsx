@@ -1,3 +1,4 @@
+import { parseEngineId } from '@kontourai/station-contracts/agent-identity';
 import type {
   AcpApprovalControl,
   ToolPolicyDelivery,
@@ -36,13 +37,16 @@ import {
 import {
   type ModelProviderOption,
   modelIdentityLabel,
+  requestedEffortLabel,
   resolvedModelLabel,
   type SelectableModel,
 } from '../../utils/modelCapabilities';
+import { ActionOverflowMenu } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { ApprovalModeChip } from '../badges/ApprovalModeChip';
 import { EngineApprovalDisclosureChip } from '../badges/EngineApprovalDisclosureChip';
 import { ComposerChoice } from '../ComposerChoice';
+import { ComposerRunControl } from '../ComposerRunControl';
 import {
   ComposerActionsMenu,
   type ComposerActionsMenuProps,
@@ -198,6 +202,11 @@ interface ChatInputAreaProps {
    */
   busyFollowUp?: 'steer' | 'queue';
   busySteeringKind?: 'native' | 'safe-stop';
+  /**
+   * The host queues a follow-up together with its files
+   * (`followUpAttachments`), so a draft with files can be queued mid-turn.
+   */
+  busyQueueTakesFiles?: boolean;
   busySteeringUnavailableReason?: string;
   /** Hold the draft as a follow-up instead of steering the open turn. */
   onQueueFollowUp?: () => Promise<void>;
@@ -216,6 +225,7 @@ interface ChatInputAreaProps {
    */
   modelProviderLabel?: string;
   executionEngineLabel?: string;
+  executionEngineId?: string;
   /**
    * The engine this chat's Agent is configured for now, when it differs from
    * the engine `executionEngineLabel` names for the live Session.
@@ -296,7 +306,11 @@ interface ChatInputAreaProps {
   removalUnblocksSend?: boolean;
   /** Why nothing can be attached; tapping the paperclip reports it. */
   attachUnavailableReason?: string;
-  onAttachUnavailable?: (reason: string) => void;
+  /**
+   * Shows why nothing was attached when the paperclip is tapped without an
+   * attachment path.
+   */
+  onAttachUnavailable: (reason: string) => void;
   attachmentStages?: ComposerAttachmentStageSnapshot[];
   sendBlockedReason?: string;
   /**
@@ -473,6 +487,7 @@ export function ChatInputArea({
   allowDraftWhileDisabled = false,
   turnInFlight,
   busySteeringKind = 'native',
+  busyQueueTakesFiles = false,
   busySteeringUnavailableReason,
   busyFollowUp = 'queue',
   onQueueFollowUp,
@@ -481,6 +496,7 @@ export function ChatInputArea({
   fileAttachmentsSupported = modelSupportsAttachments,
   modelProviderLabel,
   executionEngineLabel,
+  executionEngineId,
   agentEngineMove,
   fontSize,
   dockHeight,
@@ -518,7 +534,7 @@ export function ChatInputArea({
   onSend,
   onCancel,
   onClearInput,
-  selectAttachmentFiles = async () => {},
+  selectAttachmentFiles,
   attachmentError = null,
   attachmentNotice,
   sendFailureNotice,
@@ -593,23 +609,34 @@ export function ChatInputArea({
   const approvalEngineId = acpApproval
     ? acpApproval.engineId
     : (agentConnectionId ?? null);
-  // Steering takes text only (`steerTurn` carries an input string) and the
-  // mid-turn follow-up queue holds text only, so a draft with files cannot
-  // join a running turn. The paperclip stays usable — the next message can
-  // be prepared now — and this says why it waits, with the way out.
+  // Steering takes text only (`steerTurn` carries an input string). A host
+  // with `followUpAttachments` queues a draft's files with it; on any other
+  // the mid-turn queue holds text only, so a draft with files cannot join a
+  // running turn. The paperclip stays usable — the next message can be
+  // prepared now — and this says why it waits, with the way out.
   const busyAttachmentReason =
-    turnInFlight && (attachments.length > 0 || attachmentStages.length > 0)
+    turnInFlight &&
+    !busyQueueTakesFiles &&
+    (attachments.length > 0 || attachmentStages.length > 0)
       ? 'Files can’t be added to a running turn: Steer and Queue carry text only. Send when this turn ends, or remove them.'
       : undefined;
   const sendBlockedReason = sendBlockedReasonProp ?? busyAttachmentReason;
   const removalUnblocksSend =
     removalUnblocksSendProp ||
     (sendBlockedReasonProp === undefined && busyAttachmentReason !== undefined);
-  const [sendMode, setSendMode] = useState<'queue' | 'steer'>('queue');
+  // A follow-up during a running turn steers it when the engine takes the
+  // message natively (it joins the turn at its next tool boundary). Safe-stop
+  // steering ends the turn early, so there Queue stays the default. An
+  // explicit choice holds until the conversation changes.
+  const [chosenSendMode, setSendMode] = useState<'queue' | 'steer' | null>(
+    null,
+  );
+  const sendMode =
+    chosenSendMode ?? (busySteeringKind === 'native' ? 'steer' : 'queue');
   const [sendModeOpen, setSendModeOpen] = useState(false);
   useEffect(() => {
     void sessionId;
-    setSendMode('queue');
+    setSendMode(null);
     setSendModeOpen(false);
   }, [sessionId]);
   const { chatReturnBehavior } = useDeviceSettings();
@@ -707,6 +734,15 @@ export function ChatInputArea({
   const modelLabel = effectiveModelId
     ? modelIdentityLabel(effectiveModelId, availableModels)
     : 'Model';
+  // Only an effort this chat requests is named; otherwise the engine's own
+  // default applies and the pill does not guess it.
+  const effortLabel =
+    modelLabel !== 'Model'
+      ? requestedEffortLabel(
+          effectiveModelInfo?.capabilities,
+          modelRuntimeOptions,
+        )
+      : undefined;
   const modelSource =
     currentModelSource ??
     defaultModelSource ??
@@ -741,6 +777,7 @@ export function ChatInputArea({
       ? `${modelProviderLabel} — ${fullModelIdentity}`
       : fullModelIdentity,
     modelSource !== 'unknown' ? `(${modelSourceLabel(modelSource)})` : '',
+    effortLabel ? `Effort: ${effortLabel}.` : '',
     !canModelSelect
       ? `Unavailable: ${modelSelectionReason ?? 'You can’t change the model for this chat'}`
       : '',
@@ -1053,7 +1090,7 @@ export function ChatInputArea({
   useEffect(() => () => setShortcutContext('composerFocused', false), []);
 
   return (
-    <div className="chat-input" ref={composerRootRef}>
+    <div className="chat-input" data-surface="composer" ref={composerRootRef}>
       {modelQuery !== null && !input.startsWith('/model ') && (
         <ResponsiveDialogSurface
           layer="popover"
@@ -1123,7 +1160,7 @@ export function ChatInputArea({
         </ResponsiveDialogSurface>
       )}
 
-      {/* Settings stay in a scrollable rail; activity and reader controls move together. */}
+      {/* Destination notices and conversation status stay above the draft. */}
       <div className="chat-input__meta">
         {agentEngineMove?.nextTurn && (
           // A narrow composer's chip cannot hold a destination name, so the
@@ -1136,162 +1173,6 @@ export function ChatInputArea({
             </span>
           </p>
         )}
-        <div className="composer-choices chat-input__settings">
-          {onOpenAgentHandoff && (
-            <ComposerChoice
-              ref={agentHandoffTriggerRef}
-              className="chat-input__agent-btn"
-              onClick={agentHandoffDisabled ? undefined : onOpenAgentHandoff}
-              aria-disabled={agentHandoffDisabled}
-              aria-haspopup="dialog"
-              aria-label={agentAccessibleLabel}
-              title={agentAccessibleLabel}
-              caption="Agent"
-              icon={agentIcon}
-              valueClassName="chat-input__agent-name"
-              value={
-                <>
-                  {agentLabel ?? 'Current Agent'}
-                  {agentRoute && (
-                    <span className="chat-input__agent-route">
-                      {' · '}
-                      {agentRoute}
-                    </span>
-                  )}
-                </>
-              }
-            />
-          )}
-          <ComposerChoice
-            ref={modelButtonRef}
-            onClick={canModelSelect ? onModelOpen : undefined}
-            aria-disabled={!canModelSelect}
-            className={`chat-input__model-btn ${isOverride ? 'chat-input__model-btn--override' : 'chat-input__model-btn--default'}`}
-            aria-haspopup="dialog"
-            aria-expanded={modelQuery !== null && !input.startsWith('/model ')}
-            aria-label={modelAccessibleLabel}
-            title={modelAccessibleLabel}
-            caption={
-              <>
-                {/* The engine name gives way first, so a narrow chip keeps
-                    the move hint rather than cutting it to an ellipsis. */}
-                <span className="chat-input__chip-caption-engine">
-                  {executionEngineLabel ?? 'Engine & model'}
-                </span>
-                {agentEngineMove && (
-                  <>
-                    <span className="chat-input__engine-moved--full">
-                      {agentEngineMove.nextTurn
-                        ? ` · Next turn on ${agentEngineMove.to}`
-                        : ` · Agent now on ${agentEngineMove.to}`}
-                    </span>
-                    {/* A narrow composer states the next-turn move in the
-                        notice above the chips instead (no chip has room for
-                        a destination name). */}
-                    {!agentEngineMove.nextTurn && (
-                      <span className="chat-input__engine-moved--short">
-                        {' · Agent moved'}
-                      </span>
-                    )}
-                  </>
-                )}
-                {currentExecutionAgentId ? (
-                  <span className="chat-input__chip-caption-engine">
-                    {' · Conversation override'}
-                  </span>
-                ) : null}
-              </>
-            }
-            value={modelLabel}
-            valueClassName="chat-input__model-name"
-          />
-          {/* A reset the conversation cannot take at all is not offered. While
-              the reset is only temporarily blocked (any shared handoff reason:
-              a turn running, queued or offline messages unresolved, or their
-              state still being checked or unavailable) it stays in place,
-              disabled, so the row does not shift every turn, and carries the
-              reason as its description: the composer row has no room for the
-              sentence, and the picker states the same reason as text. */}
-          {isOverride && modelResetOffered && (
-            <>
-              <button
-                type="button"
-                className="chat-input__model-reset"
-                aria-disabled={modelResetDisabledReason ? true : undefined}
-                aria-describedby={
-                  modelResetDisabledReason ? modelResetReasonId : undefined
-                }
-                onClick={modelResetDisabledReason ? undefined : onModelReset}
-                title={
-                  modelResetDisabledReason ??
-                  'Reset this chat to its default model'
-                }
-              >
-                Use {modelResetSourceLabel(defaultModelSource)}
-              </button>
-              {modelResetDisabledReason && (
-                <span id={modelResetReasonId} className="sr-only">
-                  {modelResetDisabledReason}
-                </span>
-              )}
-            </>
-          )}
-          {modeChoices.length > 0 && onAcpSessionModeChange ? (
-            <React.Suspense fallback={null}>
-              <AcpSessionModeChip
-                key={sessionId}
-                modes={modeChoices}
-                currentModeId={
-                  typeof modelRuntimeOptions?.mode === 'string'
-                    ? modelRuntimeOptions.mode
-                    : acpCurrentModeId
-                }
-                onChange={onAcpSessionModeChange}
-              />
-            </React.Suspense>
-          ) : null}
-          {/* #3290: an ACP engine's Mode (OpenCode's build or plan agent) is a
-              choice beside the approval control, not a second one: an engine
-              Station governs gets Station's modes, and one that decides for
-              itself says so instead of offering a mode nothing applies. */}
-          {executionMode === EXECUTION_MODE.EXTERNAL &&
-          acpApproval?.control === 'engine' ? (
-            <EngineApprovalDisclosureChip
-              key={sessionId}
-              engineName={acpApproval.engineName}
-              engineHasModes={acpSessionModes.length > 0}
-            />
-          ) : (
-            executionMode === EXECUTION_MODE.EXTERNAL &&
-            approvalModeKnobSupported(approvalEngineId) && (
-              <ApprovalModeChip
-                // Structural reset (not blur-dependent) for the chip's local
-                // confirm state when the active session changes — this
-                // subtree persists across session switches with no natural
-                // remount otherwise (archive#727 3).
-                key={sessionId}
-                engineConnectionId={approvalEngineId}
-                toolPolicyDelivery={toolPolicyDelivery}
-                sessionOverride={approvalModeOverride?.mode}
-                sessionOverrideState={approvalModeOverride?.state}
-                isNewSession={approvalModeIsNewSession}
-                agentDefault={approvalModeAgentDefault}
-                projectDefault={
-                  approvalModeIsNewSession
-                    ? approvalModeProjectDefault
-                    : undefined
-                }
-                projectDefaultUnavailable={
-                  approvalModeIsNewSession &&
-                  approvalModeProjectDefaultUnavailable
-                }
-                stationDefault={approvalModeStationDefault}
-                lastAppliedApprovalMode={lastAppliedApprovalMode}
-                onChange={onApprovalModeChange}
-              />
-            )
-          )}
-        </div>
         <div className="chat-input__activity" ref={activityRef}>
           {activity}
         </div>
@@ -1443,6 +1324,15 @@ export function ChatInputArea({
           )}
           <textarea
             ref={textareaRef}
+            data-native-image-paste={
+              selectAttachmentFiles && modelSupportsAttachments
+                ? JSON.stringify([
+                    sessionId,
+                    activeConversationId,
+                    mentionAuthority,
+                  ])
+                : undefined
+            }
             // The placeholder changes with the turn and is empty while
             // sending is refused, so it cannot be the field's name (#4403).
             aria-label="Message"
@@ -1500,7 +1390,7 @@ export function ChatInputArea({
               const files = filesFromDataTransfer(event.clipboardData);
               if (files.length === 0) return;
               event.preventDefault();
-              void selectAttachmentFiles(files);
+              void selectAttachmentFiles?.(files);
             }}
             onDragOver={(event) => {
               if (
@@ -1712,20 +1602,10 @@ export function ChatInputArea({
           )}
         </fieldset>
         <div className="chat-controls-row">
-          {secondaryActions && (
-            <ComposerActionsMenu
-              {...secondaryActions}
-              onOpenConversationReference={
-                mentionAuthority && mentionRequestScope?.isCurrent() === true
-                  ? () => setSessionReferencesOpen(true)
-                  : undefined
-              }
-            />
-          )}
           <React.Suspense fallback={null}>
             <FileAttachmentInput
               attachments={attachments}
-              onFilesSelected={selectAttachmentFiles}
+              onFilesSelected={selectAttachmentFiles ?? (async () => {})}
               onRemove={onRemoveAttachment}
               onClearAll={onClearAttachments}
               // A running turn does not disable the paperclip: files join the
@@ -1754,8 +1634,19 @@ export function ChatInputArea({
               onStop={onVoiceStop}
             />
           )}
+          {secondaryActions && (
+            <ComposerActionsMenu
+              {...secondaryActions}
+              onOpenConversationReference={
+                mentionAuthority && mentionRequestScope?.isCurrent() === true
+                  ? () => setSessionReferencesOpen(true)
+                  : undefined
+              }
+            />
+          )}
           <React.Suspense fallback={null}>
             <PortableDraftsMenu
+              hideTrigger={isMobile}
               input={input}
               quotes={quoteContext}
               attachments={attachments}
@@ -1770,7 +1661,28 @@ export function ChatInputArea({
               }}
             />
           </React.Suspense>
-          {input && (
+          {isMobile && (
+            <ActionOverflowMenu
+              label="More draft options"
+              actions={[
+                {
+                  key: 'drafts',
+                  label: 'Saved drafts',
+                  onSelect: () => setPortableDraftsOpen(true),
+                },
+                ...(input
+                  ? [
+                      {
+                        key: 'clear',
+                        label: 'Clear message',
+                        onSelect: onClearInput,
+                      },
+                    ]
+                  : []),
+              ]}
+            />
+          )}
+          {input && !isMobile && (
             <ComposerIconAction
               label="Clear message"
               className="chat-input__clear"
@@ -1815,6 +1727,187 @@ export function ChatInputArea({
           )}
           <span className="chat-controls-row__spacer" />
           {contextMeter}
+          <div className="composer-choices chat-input__settings">
+            <ComposerRunControl
+              label={[
+                agentLabel ?? 'Current Agent',
+                modelLabel !== 'Model' ? modelLabel : undefined,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+              effort={effortLabel}
+              icon={agentIcon}
+              engineId={parseEngineId(
+                acpApproval?.engineId ?? executionEngineId,
+              )}
+            >
+              {onOpenAgentHandoff && (
+                <ComposerChoice
+                  ref={agentHandoffTriggerRef}
+                  className="chat-input__agent-btn"
+                  onClick={
+                    agentHandoffDisabled ? undefined : onOpenAgentHandoff
+                  }
+                  aria-disabled={agentHandoffDisabled}
+                  aria-haspopup="dialog"
+                  aria-label={agentAccessibleLabel}
+                  title={agentAccessibleLabel}
+                  caption="Agent"
+                  icon={agentIcon}
+                  valueClassName="chat-input__agent-name"
+                  value={
+                    <>
+                      {agentLabel ?? 'Current Agent'}
+                      {agentRoute && (
+                        <span className="chat-input__agent-route">
+                          {' · '}
+                          {agentRoute}
+                        </span>
+                      )}
+                    </>
+                  }
+                />
+              )}
+              <ComposerChoice
+                ref={modelButtonRef}
+                changedForConversation={Boolean(
+                  currentExecutionAgentId || isOverride,
+                )}
+                onClick={canModelSelect ? onModelOpen : undefined}
+                aria-disabled={!canModelSelect}
+                className={`chat-input__model-btn ${isOverride ? 'chat-input__model-btn--override' : 'chat-input__model-btn--default'}`}
+                aria-haspopup="dialog"
+                aria-expanded={
+                  modelQuery !== null && !input.startsWith('/model ')
+                }
+                aria-label={modelAccessibleLabel}
+                title={modelAccessibleLabel}
+                caption={
+                  <>
+                    {/* The engine name gives way first, so a narrow chip keeps
+                    the move hint rather than cutting it to an ellipsis. */}
+                    <span className="chat-input__chip-caption-engine">
+                      {executionEngineLabel ?? 'Engine & model'}
+                    </span>
+                    {agentEngineMove && (
+                      <>
+                        <span className="chat-input__engine-moved--full">
+                          {agentEngineMove.nextTurn
+                            ? ` · Next turn on ${agentEngineMove.to}`
+                            : ` · Agent now on ${agentEngineMove.to}`}
+                        </span>
+                        {/* A narrow composer states the next-turn move in the
+                        notice above the chips instead (no chip has room for
+                        a destination name). */}
+                        {!agentEngineMove.nextTurn && (
+                          <span className="chat-input__engine-moved--short">
+                            {' · Agent moved'}
+                          </span>
+                        )}
+                      </>
+                    )}
+                    {currentExecutionAgentId ? (
+                      <span className="chat-input__chip-caption-engine">
+                        {' · Conversation override'}
+                      </span>
+                    ) : null}
+                  </>
+                }
+                value={
+                  effortLabel ? `${modelLabel} · ${effortLabel}` : modelLabel
+                }
+                valueClassName="chat-input__model-name"
+              />
+              {/* A reset the conversation cannot take at all is not offered. While
+              the reset is only temporarily blocked (any shared handoff reason:
+              a turn running, queued or offline messages unresolved, or their
+              state still being checked or unavailable) it stays in place,
+              disabled, so the row does not shift every turn, and carries the
+              reason as its description: the composer row has no room for the
+              sentence, and the picker states the same reason as text. */}
+              {isOverride && modelResetOffered && (
+                <>
+                  <button
+                    type="button"
+                    className="chat-input__model-reset"
+                    aria-disabled={modelResetDisabledReason ? true : undefined}
+                    aria-describedby={
+                      modelResetDisabledReason ? modelResetReasonId : undefined
+                    }
+                    onClick={
+                      modelResetDisabledReason ? undefined : onModelReset
+                    }
+                    title={
+                      modelResetDisabledReason ??
+                      'Reset this chat to its default model'
+                    }
+                  >
+                    Use {modelResetSourceLabel(defaultModelSource)}
+                  </button>
+                  {modelResetDisabledReason && (
+                    <span id={modelResetReasonId} className="sr-only">
+                      {modelResetDisabledReason}
+                    </span>
+                  )}
+                </>
+              )}
+              {modeChoices.length > 0 && onAcpSessionModeChange ? (
+                <React.Suspense fallback={null}>
+                  <AcpSessionModeChip
+                    key={sessionId}
+                    modes={modeChoices}
+                    currentModeId={
+                      typeof modelRuntimeOptions?.mode === 'string'
+                        ? modelRuntimeOptions.mode
+                        : acpCurrentModeId
+                    }
+                    onChange={onAcpSessionModeChange}
+                  />
+                </React.Suspense>
+              ) : null}
+              {/* #3290: an ACP engine's Mode (OpenCode's build or plan agent) is a
+              choice beside the approval control, not a second one: an engine
+              Station governs gets Station's modes, and one that decides for
+              itself says so instead of offering a mode nothing applies. */}
+              {executionMode === EXECUTION_MODE.EXTERNAL &&
+              acpApproval?.control === 'engine' ? (
+                <EngineApprovalDisclosureChip
+                  key={sessionId}
+                  engineName={acpApproval.engineName}
+                  engineHasModes={acpSessionModes.length > 0}
+                />
+              ) : (
+                executionMode === EXECUTION_MODE.EXTERNAL &&
+                approvalModeKnobSupported(approvalEngineId) && (
+                  <ApprovalModeChip
+                    // Structural reset (not blur-dependent) for the chip's local
+                    // confirm state when the active session changes — this
+                    // subtree persists across session switches with no natural
+                    // remount otherwise (archive#727 3).
+                    key={sessionId}
+                    engineConnectionId={approvalEngineId}
+                    toolPolicyDelivery={toolPolicyDelivery}
+                    sessionOverride={approvalModeOverride?.mode}
+                    sessionOverrideState={approvalModeOverride?.state}
+                    isNewSession={approvalModeIsNewSession}
+                    agentDefault={approvalModeAgentDefault}
+                    projectDefault={
+                      approvalModeIsNewSession
+                        ? approvalModeProjectDefault
+                        : undefined
+                    }
+                    projectDefaultUnavailable={
+                      approvalModeIsNewSession &&
+                      approvalModeProjectDefaultUnavailable
+                    }
+                    stationDefault={approvalModeStationDefault}
+                    lastAppliedApprovalMode={lastAppliedApprovalMode}
+                    onChange={onApprovalModeChange}
+                  />
+                )
+              )}
+            </ComposerRunControl>
+          </div>
           {/* On a phone Send/Queue hide (keeping their width) until there is
               something to send, so typing never moves Stop. Stop therefore
               sits after them, at the row's edge: before them it floated

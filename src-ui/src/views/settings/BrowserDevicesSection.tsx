@@ -95,7 +95,7 @@ export function BrowserDevicesSection() {
                 description={describeBrowserFailure(access.error)}
                 action={
                   <Button size="sm" onClick={() => void access.refetch()}>
-                    Try again
+                    Retry
                   </Button>
                 }
               />

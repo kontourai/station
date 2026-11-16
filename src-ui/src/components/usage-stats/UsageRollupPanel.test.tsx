@@ -118,7 +118,7 @@ describe('UsageRollupPanel (station#4135)', () => {
       screen.getByRole('button', { name: 'Coverage incomplete' }),
     );
     expect(
-      screen.getByRole('dialog', { name: 'Missing usage sources' }),
+      screen.getByRole('dialog', { name: 'Source coverage' }),
     ).toBeTruthy();
     expect(screen.getByText(/2\/3 turns reported usage/)).toBeTruthy();
     expect(

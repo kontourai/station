@@ -1,7 +1,0 @@
-{
-  "revision": "a3e67b39c59207ded7ea29b7f89bd514498ed4c7",
-
-  "notes": [
-    {"path":"docs/design/settings-architecture.md","note":"ProjectLayoutRenderer's only change passes fill to the Terminal's WorkspacePaneFrame in the Coding lower panel so the terminal fills the panel. Checked the lower-panel and renderer claims here (Terminal is the lower panel via renderCodingPane, one terminal, panel sizes, heads, renderer kinds): unchanged and accurate.","inputs":["docs/design/settings-architecture.md","src-ui/src/app-shell/ProjectLayoutRenderer.tsx"]}
-  ]
-}

@@ -127,3 +127,17 @@ export function isCanonicalPathWithin(
     (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
   );
 }
+
+/**
+ * {@link isCanonicalPathWithin} without the root itself: whether canonical
+ * `candidate` lies below canonical `root`. A candidate that only spells the
+ * root differently (a trailing separator, a `.` segment) is still the root.
+ */
+export function isCanonicalPathStrictlyWithin(
+  root: string,
+  candidate: string,
+): boolean {
+  return (
+    relative(root, candidate) !== '' && isCanonicalPathWithin(root, candidate)
+  );
+}

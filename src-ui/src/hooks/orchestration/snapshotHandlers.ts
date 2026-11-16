@@ -5,6 +5,7 @@ import {
 import type { QueryClient } from '@tanstack/react-query';
 import {
   chatBelongsToStation,
+  outboundStationIdentity,
   type StationStateScope,
   stationPartitionKey,
 } from '../../connections/station-state';
@@ -13,6 +14,7 @@ import { activeChatsStore } from '../../contexts/active-chats-store';
 import { backgroundTasksStore } from '../../contexts/background-tasks-store';
 import { childWorkGlobalStore } from '../../contexts/child-work-global-store';
 import { toastStore } from '../../contexts/ToastContext';
+import { observeConversationOpenTurns } from '../../lib/outboundAcceptedTurnObservations';
 import { newerConversationActivity } from '../../utils/conversation-activity';
 import {
   acknowledgesModelRequest,
@@ -40,6 +42,7 @@ type SnapshotChatState = Pick<
   | 'currentSessionId'
   | 'conversationId'
   | 'pendingApprovals'
+  | 'pendingRequestKinds'
   | 'answeredApprovals'
   | 'pendingApprovalTurnIds'
   | 'approvalToasts'
@@ -135,6 +138,35 @@ function reconnectCatchUpUpdates(
   };
 }
 
+/**
+ * A replayed outbox message Station accepted keeps its row until that turn's
+ * terminal event, and a browser that was reloaded, closed or cut off while
+ * the turn ran never receives it: a snapshot replays no events. The server's
+ * conversation record names the open turn exactly, so a record naming another
+ * turn, or none, is the server's own word that the accepted turn has ended.
+ * `records` hold the newest record this client knows for each conversation
+ * the snapshot named; the outbox applies them only to rows accepted before
+ * `observedAt`.
+ */
+function settleEndedDurableTurns(
+  records: ReadonlyMap<string, ConversationRecord>,
+  observedAt: number,
+  station?: StationStateScope,
+): void {
+  if (records.size === 0) return;
+  const observed = [...records.values()].map((record) => ({
+    conversationId: record.conversationId,
+    ...(record.openTurn ? { openTurnId: record.openTurn.turnId } : {}),
+  }));
+  // Published, not sent: this path loads no module of its own. The outbox
+  // takes it now if it has loaded, or when it does.
+  observeConversationOpenTurns({
+    records: observed,
+    observedAt,
+    ...(station ? { station: outboundStationIdentity(station) } : {}),
+  });
+}
+
 type OrchestrationSnapshotSyncPlan = {
   sessionUpdates: Array<{
     /** The chat STORE key the updates apply to (see `selectSnapshotRows`). */
@@ -207,6 +239,7 @@ type SelectedSnapshotRow = {
   record: ConversationRecord | undefined;
   openRequestIds: string[] | undefined;
   blockingOpenRequestIds: string[] | undefined;
+  openRequestKinds: Record<string, 'input' | 'approval'>;
   lastTurnEndMethod?: 'turn.completed' | 'turn.aborted' | 'runtime.error';
   /** #3157: that turn end was a provider usage-limit stop. */
   usageLimitStopped?: boolean;
@@ -320,6 +353,9 @@ function selectSnapshotRows(
               ),
             ),
           ];
+    const openRequestKinds = Object.fromEntries(
+      candidates.flatMap((row) => Object.entries(row.openRequestKinds ?? {})),
+    );
     const latest = (rows: SnapshotSession[]) =>
       rows.reduce((best, row) =>
         snapshotRowRecency(row) >= snapshotRowRecency(best) ? row : best,
@@ -350,6 +386,7 @@ function selectSnapshotRows(
         record,
         openRequestIds,
         blockingOpenRequestIds,
+        openRequestKinds,
         lastTurnEndMethod,
         usageLimitStopped,
       });
@@ -367,6 +404,7 @@ function selectSnapshotRows(
       record: undefined,
       openRequestIds,
       blockingOpenRequestIds,
+      openRequestKinds,
       lastTurnEndMethod,
       usageLimitStopped,
     });
@@ -387,6 +425,7 @@ function planSnapshot(
         row: session,
         record,
         blockingOpenRequestIds,
+        openRequestKinds,
         lastTurnEndMethod,
         usageLimitStopped,
       },
@@ -507,6 +546,7 @@ function planSnapshot(
           ...(blockingOpenRequestIds
             ? {
                 pendingApprovals: blockingOpenRequestIds,
+                pendingRequestKinds: openRequestKinds,
                 // An answer is only meaningful while its request is still
                 // open: one the server no longer lists was resolved, and its
                 // mark would otherwise outlive it.
@@ -678,9 +718,31 @@ export function applyOrchestrationSnapshot(
   // plan's writes below merge onto it. A replayed snapshot never feeds the
   // live store.
   if (!replayId) {
+    const records = new Map<string, ConversationRecord>();
     for (const session of payload.sessions) {
       chatStore.applyConversationActivity(session.conversationActivity);
+      const record = newerConversationActivity(
+        records.get(session.conversationActivity?.conversationId ?? ''),
+        session.conversationActivity,
+      );
+      if (record) records.set(record.conversationId, record);
     }
+    // Another carrier (a list read, a live frame) may already have delivered
+    // a newer record than this snapshot's: the newest one known decides.
+    for (const chat of Object.values(activeChatsStore.getSnapshot())) {
+      const known = chat.conversationActivity;
+      if (
+        known &&
+        records.has(known.conversationId) &&
+        chatBelongsToStation(chat, station)
+      )
+        records.set(
+          known.conversationId,
+          newerConversationActivity(known, records.get(known.conversationId)) ??
+            known,
+        );
+    }
+    settleEndedDurableTurns(records, Date.now(), station);
   }
 
   for (const { threadId, updates } of plan.sessionUpdates) {

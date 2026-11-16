@@ -1,10 +1,17 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  GUARDIAN_ESCALATE_AFTER_CONSECUTIVE,
+  GUARDIAN_ESCALATE_AFTER_TOTAL,
+  GuardianDenialLedger,
+  NO_PERSON_INTENT,
+} from '../../../services/approvals/guardian-conversation.js';
 import { builtinStationControlServerPath } from '../../bootstrap/station-control-runtime-env.js';
 import { isAutoApprovedExternalTool } from '../../tools/tool-executor.js';
 import { createStagedPreToolPolicyEvaluator } from '../pre-tool-policy.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
+  approvalGuardianOps: { add: vi.fn() },
   toolDenials: { add: vi.fn() },
 }));
 
@@ -77,6 +84,7 @@ describe('createStagedPreToolPolicyEvaluator', () => {
       isUnattendedGranted: () => true,
       approvalGuardian: {
         isEnabled: () => true,
+        readConversation: () => NO_PERSON_INTENT,
         reviewToolCall: async () => ({ decision: 'allow' }),
       },
     });
@@ -126,6 +134,7 @@ describe('createStagedPreToolPolicyEvaluator', () => {
       approvalGuardian: {
         isEnabled: () => true,
         getMode: () => 'enforce',
+        readConversation: () => NO_PERSON_INTENT,
         isEnforcing: () => true,
         reviewToolCall: async () => ({
           decision: 'deny',
@@ -371,6 +380,7 @@ describe('station#3210: denial text a user can trust', () => {
       approvalGuardian: {
         isEnabled: () => true,
         getMode: () => 'enforce',
+        readConversation: () => NO_PERSON_INTENT,
         reviewToolCall: async () => ({
           decision: 'deny',
           reason: guardianReason,
@@ -511,6 +521,7 @@ describe('station#3210: denial text a user can trust', () => {
       approvalGuardian: {
         isEnabled: () => true,
         getMode: () => 'enforce',
+        readConversation: () => NO_PERSON_INTENT,
         reviewToolCall: async () => ({ decision: 'deny', reason: 'no.' }),
       },
     });
@@ -562,5 +573,183 @@ describe('station#3210: denial text a user can trust', () => {
     expect(decision.denial.policyDenied).toBe(true);
     // …and archive#3210's separate authorship marker is what licenses the text.
     expect(decision.denial.stationComposedReason).toBe(true);
+  });
+});
+
+/**
+ * #4827: a guardian that keeps refusing hands the next refusal to the person
+ * through the ordinary approval path, and never where nobody can answer.
+ */
+describe('approval guardian escalation (#4827)', () => {
+  type Verdict = 'allow' | 'deny' | 'defer';
+
+  function escalationHarness(options: {
+    verdicts?: Verdict[];
+    mode?: 'enforce' | 'review';
+    currentTurnInteractive?: boolean;
+  }) {
+    const verdicts = [...(options.verdicts ?? [])];
+    const reviewToolCall = vi.fn(async () => {
+      const decision = verdicts.length ? verdicts.shift()! : 'deny';
+      return { decision, reason: `guardian says ${decision}` };
+    });
+    const evaluator = createEvaluator({
+      approvalGuardian: {
+        isEnabled: () => true,
+        getMode: () => options.mode ?? 'enforce',
+        readConversation: () => ({
+          ...NO_PERSON_INTENT,
+          currentTurnInteractive: options.currentTurnInteractive ?? false,
+        }),
+        reviewToolCall,
+      },
+      guardianDenialLedger: new GuardianDenialLedger(),
+    });
+    return { evaluator, reviewToolCall };
+  }
+
+  const attended = {
+    interaction: 'managed' as const,
+    hasInteractiveApproval: true,
+  };
+  const call = { ...tool, toolName: 'repo_write' };
+
+  test('the call after three consecutive denials asks the person; the run then restarts', async () => {
+    expect(GUARDIAN_ESCALATE_AFTER_CONSECUTIVE).toBe(3);
+    const { evaluator } = escalationHarness({});
+    const outcomes = [];
+    for (let index = 0; index < 8; index += 1)
+      outcomes.push((await evaluator(call, invocation, attended)).behavior);
+    expect(outcomes).toEqual([
+      'deny',
+      'deny',
+      'deny',
+      'ask',
+      'deny',
+      'deny',
+      'deny',
+      'ask',
+    ]);
+    await expect(
+      escalationHarness({ verdicts: ['deny', 'deny', 'deny'] }).evaluator(
+        call,
+        invocation,
+        attended,
+      ),
+    ).resolves.toMatchObject({ behavior: 'deny' });
+  });
+
+  test('the escalation is a required question, the same one an authored ask produces', async () => {
+    const { evaluator } = escalationHarness({});
+    for (let index = 0; index < 3; index += 1)
+      await evaluator(call, invocation, attended);
+    await expect(evaluator(call, invocation, attended)).resolves.toEqual({
+      behavior: 'ask',
+      required: true,
+    });
+  });
+
+  test('an allow breaks the run; denials in other conversations do not count', async () => {
+    const { evaluator } = escalationHarness({
+      verdicts: ['deny', 'deny', 'allow', 'deny', 'deny', 'deny', 'deny'],
+    });
+    const other = { ...invocation, conversationId: 'thread-other' };
+    const outcomes = [];
+    for (const [index] of Array.from({ length: 7 }).entries())
+      outcomes.push(
+        (await evaluator(call, index === 1 ? other : invocation, attended))
+          .behavior,
+      );
+    // deny(t1) deny(other) allow(t1) deny deny deny(t1: 3 in a row) → ask
+    expect(outcomes).toEqual([
+      'deny',
+      'deny',
+      'allow',
+      'deny',
+      'deny',
+      'deny',
+      'ask',
+    ]);
+  });
+
+  test('after twenty denials in a conversation, every further denial asks', async () => {
+    expect(GUARDIAN_ESCALATE_AFTER_TOTAL).toBe(20);
+    // Never three in a row: deny, deny, allow, repeated.
+    const verdicts: Verdict[] = [];
+    for (let index = 0; index < 10; index += 1)
+      verdicts.push('deny', 'deny', 'allow');
+    verdicts.push('deny', 'deny');
+    const { evaluator } = escalationHarness({ verdicts });
+    const outcomes = [];
+    for (let index = 0; index < verdicts.length; index += 1)
+      outcomes.push((await evaluator(call, invocation, attended)).behavior);
+    expect(outcomes.slice(0, 30)).not.toContain('ask');
+    expect(outcomes.slice(30)).toEqual(['ask', 'ask']);
+  });
+
+  test.each([
+    [
+      'a managed run with no requester',
+      { interaction: 'managed' as const, hasInteractiveApproval: false },
+      invocation,
+      true,
+    ],
+    [
+      'a delegated child that may not grant approvals',
+      attended,
+      {
+        ...invocation,
+        delegation: { denyApprovals: true } as any,
+      },
+      true,
+    ],
+    [
+      'an external engine whose current turn no person sent',
+      { interaction: 'external' as const },
+      invocation,
+      false,
+    ],
+  ])(
+    '%s keeps denying instead of waiting on nobody',
+    async (_label, options, inv, interactive) => {
+      const { evaluator } = escalationHarness({
+        currentTurnInteractive: interactive,
+      });
+      for (let index = 0; index < 5; index += 1) {
+        const decision = await evaluator(call, inv, options);
+        expect(decision.behavior).toBe('deny');
+        if (decision.behavior === 'deny' && index < 3)
+          expect(decision.denial.reason).toContain('approval guardian');
+      }
+    },
+  );
+
+  test('an external engine whose current turn a person sent asks that person', async () => {
+    const { evaluator } = escalationHarness({ currentTurnInteractive: true });
+    const outcomes = [];
+    for (let index = 0; index < 4; index += 1)
+      outcomes.push(
+        (await evaluator(call, invocation, { interaction: 'external' }))
+          .behavior,
+      );
+    expect(outcomes).toEqual(['deny', 'deny', 'deny', 'ask']);
+  });
+
+  test('no verdict is never an allow and is not counted as a denial', async () => {
+    const { evaluator } = escalationHarness({
+      verdicts: ['defer', 'defer', 'defer', 'defer', 'deny'],
+    });
+    const outcomes = [];
+    for (let index = 0; index < 5; index += 1)
+      outcomes.push((await evaluator(call, invocation, attended)).behavior);
+    expect(outcomes).toEqual(['ask', 'ask', 'ask', 'ask', 'deny']);
+  });
+
+  test('review mode never escalates: its deny is advisory', async () => {
+    const { evaluator } = escalationHarness({ mode: 'review' });
+    for (let index = 0; index < 5; index += 1)
+      await expect(evaluator(call, invocation, attended)).resolves.toEqual({
+        behavior: 'ask',
+      });
   });
 });

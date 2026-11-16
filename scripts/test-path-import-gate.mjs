@@ -32,13 +32,14 @@
 // and `@shared/` resolve into their roots. Bare package specifiers are not
 // followed: a package's `exports` map would have to expose a test path for
 // one to reach it.
-import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { load } from 'js-yaml';
 import ts from 'typescript-api';
 import { SECURITY_CODEQL_CONFIG } from './actionlint-gate.mjs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { toPosixPath } from './lib/posix-path.mjs';
 
 /** The CodeQL `paths-ignore` globs, parsed from the one declared config. */
 export function codeqlIgnoreGlobs(config = SECURITY_CODEQL_CONFIG) {
@@ -59,7 +60,7 @@ export function codeqlIgnoreGlobs(config = SECURITY_CODEQL_CONFIG) {
 export function ignoredPathMatcher(globs = codeqlIgnoreGlobs()) {
   // Node's own glob matcher: no undeclared dependency to drift underneath it.
   return (repoPath) =>
-    globs.some((glob) => path.posix.matchesGlob(toPosix(repoPath), glob));
+    globs.some((glob) => path.posix.matchesGlob(toPosixPath(repoPath), glob));
 }
 
 const SCOPE_PATTERN =
@@ -68,7 +69,7 @@ const SOURCE_EXTENSION = /\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;
 
 /** CI tooling that imports test infrastructure by design (#2333). */
 function isExemptPath(repoPath) {
-  const posix = toPosix(repoPath);
+  const posix = toPosixPath(repoPath);
   return (
     posix.startsWith('scripts/') ||
     posix.includes('/scripts/') ||
@@ -77,17 +78,13 @@ function isExemptPath(repoPath) {
 }
 
 export function isScannedProductFile(repoPath, isIgnored) {
-  const posix = toPosix(repoPath);
+  const posix = toPosixPath(repoPath);
   return (
     SCOPE_PATTERN.test(posix) &&
     SOURCE_EXTENSION.test(posix) &&
     !isExemptPath(posix) &&
     !isIgnored(posix)
   );
-}
-
-function toPosix(value) {
-  return String(value).replaceAll('\\', '/');
 }
 
 /** Every module specifier a file references, with its offset. */
@@ -146,7 +143,7 @@ function lexicalTarget(importerRepoPath, specifier) {
     bare === '..'
   )
     return path.posix.normalize(
-      path.posix.join(path.posix.dirname(toPosix(importerRepoPath)), bare),
+      path.posix.join(path.posix.dirname(toPosixPath(importerRepoPath)), bare),
     );
   for (const [prefix, target] of ALIASES)
     if (bare.startsWith(prefix)) return target + bare.slice(prefix.length);
@@ -238,11 +235,10 @@ function scanFile({ root, repoPath, content, isIgnored }) {
 }
 
 function listTrackedFiles(root) {
-  return execFileSync('git', ['ls-files', '-z'], {
+  return execFileSyncBounded('git', ['ls-files', '-z'], {
     cwd: root,
     encoding: 'utf8',
     windowsHide: true,
-    maxBuffer: 64 * 1024 * 1024,
   })
     .split('\0')
     .filter(Boolean);

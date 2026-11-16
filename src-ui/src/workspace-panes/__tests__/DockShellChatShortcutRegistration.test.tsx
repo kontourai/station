@@ -117,7 +117,6 @@ vi.mock('../../contexts/open-chats-store', () => ({
     items: [],
     currentSessionIdByConversation: new Map(),
   }),
-  countOpenChatAttention: () => 0,
 }));
 
 vi.mock('../../hooks/useActiveChatSessions', () => ({

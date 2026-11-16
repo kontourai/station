@@ -40,7 +40,8 @@ operator's computer.
   separate default-off permission; a person can preempt Agent control.
 - [Device sessions](../../src-server/services/devices/device-session-service.ts)
   expose local and configured SSH-host `device_*` tools to bound, verified
-  Sessions through the shared lease and per-device shares. Human takeover
+  Sessions through the shared lease and per-device shares; never to a
+  Session whose network Station restricts (#4769). Human takeover
   fences input. Opening observes without claiming control and can request a
   bounded, reauthorized pane reveal in the matching active conversation.
   Weaker-custody engine credentials remain unavailable; real SSH/device

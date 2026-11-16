@@ -17,6 +17,7 @@ import {
   type ManagedListenerAdmission,
   managedRepairRelayHost,
 } from '../../security/managed-network-exposure.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
 import type { TaskGraphService } from '../projects/task-graph-service.js';
 import { sourceGrantsRuleAction } from './automation-config-validation.js';
@@ -538,7 +539,7 @@ export class IsolatedRepairController {
             this.options.logger.warn(
               'Repair relay refused by the managed policy',
               {
-                error: error instanceof Error ? error.message : String(error),
+                error: errorMessage(error),
               },
             );
             throw new Error(MANAGED_REPAIR_RELAY_REFUSED);

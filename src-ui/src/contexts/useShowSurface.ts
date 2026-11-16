@@ -57,6 +57,10 @@ export function useShowSurface(): (
           surfaceId,
           sessionId: intent?.session,
           focus: intent?.focus,
+          messageAnchor: intent?.messageAnchor,
+          childId: intent?.childId,
+          childSessionId: intent?.childSessionId,
+          childTitle: intent?.childTitle,
         }),
       );
     },
@@ -70,8 +74,7 @@ export function useShowSurface(): (
 }
 
 /**
- * "Go to this surface's page" — what a PLACE row means: the sidebar's
- * Activity row, the palette's Activity entry and Home's "View Activity". A
+ * "Go to this surface's page" — the palette's Home entry. A
  * surface that declares `main` is put there (Home, the previous occupant,
  * is unplaced and comes back through its own row) and the model navigates
  * to `/`, so the row can be the current page (`aria-current`) the way Home

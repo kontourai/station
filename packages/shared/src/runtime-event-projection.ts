@@ -29,17 +29,21 @@ import {
 import {
   EXTENSION_TRANSCRIPT_MARKER_PART_TYPE,
   EXTENSION_TRANSCRIPT_MARKER_TEXT,
-  type ExtensionTranscriptMarkerKind,
   extensionTranscriptMarker,
+  modelReroutedMarkerText,
+  sessionRewoundLateMarker,
+  sessionRewoundMarker,
 } from './extension-transcript-markers.js';
 import {
   inputRequestFromRequestEvent,
   inputRequestOutcome,
   inputRequestSummary,
+  inputRequestUrlFromRequestEvent,
 } from './input-request.js';
 import {
   toolRequestDisplayName,
   toolRequestFromPayload,
+  toolRequestRuleGrantFromPayload,
   toolRequestServerGrantFromPayload,
   toolRequestSessionGrantFromPayload,
 } from './tool-request-preview.js';
@@ -83,7 +87,7 @@ function appendRuntimeErrorPart(
   const previousText = previous?.type === 'text' ? previous.text : undefined;
   if (previousText?.startsWith(prefix)) {
     const suffix = previousText.slice(prefix.length);
-    const match = /^ \(repeated (\d+)×\)$/.exec(suffix);
+    const match = /^ \(repeated (\d+)\u00d7\)$/.exec(suffix);
     if (suffix && !match) return [...parts, runtimeErrorPart(prefix, code)];
     const count = match ? Number(match[1]) + 1 : 2;
     return [
@@ -457,6 +461,16 @@ export function projectRuntimeEventsToMessages(
   /** The open turn's last pre-steer row, owner of last resort. */
   let preSteerRowIndex: number | undefined;
   const revokedAnswerTurns = new Set<string>();
+  // Turns an in-place engine rewind hid from the engine. The transcript is
+  // append-only: their rows stay, marked `rewound`.
+  const rewoundTurns = new Set<string>();
+  for (const ev of events) {
+    if (ev.method !== 'runtime.warning') continue;
+    for (const turnId of sessionRewoundMarker(ev)?.hiddenTurnIds ?? []) {
+      const key = turnKey(ev.threadId, turnId);
+      if (key) rewoundTurns.add(key);
+    }
+  }
   // station#1182: `turnReportedModel` is per-turn (set from turn.started/
   // turn.completed metadata); `sessionReportedModel` is the last value seen
   // on a session.configured event, carried forward as a fallback across
@@ -593,8 +607,8 @@ export function projectRuntimeEventsToMessages(
 
   /** station#3415: markers that arrived during the open turn. */
   let heldMarkers: Array<{
-    ev: Extract<CanonicalRuntimeEvent, { method: 'extension.notification' }>;
-    marker: ExtensionTranscriptMarkerKind;
+    ev: { eventId?: string; createdAt?: string };
+    text: { betweenTurns: string; duringTurn: string };
   }> = [];
 
   /**
@@ -689,8 +703,8 @@ export function projectRuntimeEventsToMessages(
     heldMarkers = [];
     openTurnSessionExited = false;
     if (releaseMarkers)
-      for (const { ev, marker } of held)
-        pushTranscriptMarker(ev, marker, true, closedTurnTimestamp);
+      for (const { ev, text } of held)
+        pushTranscriptMarker(ev, text, true, closedTurnTimestamp);
   };
 
   const stamp = (createdAt?: string) => {
@@ -755,8 +769,8 @@ export function projectRuntimeEventsToMessages(
    * nothing, so a live marker never moves or remounts the open turn's row.
    */
   const pushTranscriptMarker = (
-    ev: Extract<CanonicalRuntimeEvent, { method: 'extension.notification' }>,
-    marker: ExtensionTranscriptMarkerKind,
+    ev: { eventId?: string; createdAt?: string },
+    text: { betweenTurns: string; duringTurn: string },
     duringTurn: boolean,
     /**
      * For a held marker, the closed turn's row timestamp: readers that merge
@@ -768,7 +782,6 @@ export function projectRuntimeEventsToMessages(
     const timestamp =
       turnRowTimestamp ??
       (ev.createdAt ? Date.parse(ev.createdAt) : Number.NaN);
-    const text = EXTENSION_TRANSCRIPT_MARKER_TEXT[marker];
     messages.push({
       id:
         options.stableIds && ev.eventId
@@ -789,8 +802,14 @@ export function projectRuntimeEventsToMessages(
   ) => {
     const marker = extensionTranscriptMarker(ev.namespace, ev.type);
     if (!marker) return;
-    if (turnOpen) heldMarkers.push({ ev, marker });
-    else pushTranscriptMarker(ev, marker, false);
+    holdOrPushMarker(ev, EXTENSION_TRANSCRIPT_MARKER_TEXT[marker]);
+  };
+  const holdOrPushMarker = (
+    ev: { eventId?: string; createdAt?: string },
+    text: { betweenTurns: string; duringTurn: string },
+  ) => {
+    if (turnOpen) heldMarkers.push({ ev, text });
+    else pushTranscriptMarker(ev, text, false);
   };
 
   /**
@@ -1318,7 +1337,7 @@ export function projectRuntimeEventsToMessages(
         // `request.resolved`, so an answer given anywhere — this device,
         // another one, a timeout — leaves a trace.
         const openRecord = (
-          kind: 'form' | 'decision',
+          kind: 'form' | 'decision' | 'url',
           requester: string,
           message: string,
         ) => {
@@ -1350,6 +1369,12 @@ export function projectRuntimeEventsToMessages(
         const form = inputRequestFromRequestEvent(ev);
         if (form) {
           openRecord('form', form.requester, inputRequestSummary(form.message));
+          break;
+        }
+        // A link is opened from its own card too, never allowed in a click.
+        const link = inputRequestUrlFromRequestEvent(ev);
+        if (link) {
+          openRecord('url', link.requester, inputRequestSummary(link.message));
           break;
         }
         const toolName = ev.payload?.toolName ?? ev.payload?.tool;
@@ -1401,6 +1426,9 @@ export function projectRuntimeEventsToMessages(
           target.approvalServerGrant = toolRequestServerGrantFromPayload(
             ev.payload,
           );
+          const ruleGrant = toolRequestRuleGrantFromPayload(ev.payload);
+          if (ruleGrant) target.approvalRuleGrant = ruleGrant;
+          else delete target.approvalRuleGrant;
           // docs/design/event-content-spill.md: what a surface must load
           // whole before it offers Allow.
           approvalRequestByPart.set(target, ev);
@@ -1594,6 +1622,21 @@ export function projectRuntimeEventsToMessages(
       case 'extension.notification':
         emitTranscriptMarker(ev);
         break;
+      case 'model.rerouted':
+        // A quiet marker line, placed like an extension marker: after the
+        // turn it happened in.
+        holdOrPushMarker(ev, modelReroutedMarkerText(ev));
+        break;
+      case 'runtime.warning': {
+        // An in-place engine rewind: a marker where it happened. The turns it
+        // hid stay in the transcript, marked `rewound` below.
+        const rewound = sessionRewoundMarker(ev);
+        if (rewound) holdOrPushMarker(ev, rewound.text);
+        // A late one names no turns it hid; its marker is all there is.
+        const late = sessionRewoundLateMarker(ev);
+        if (late) holdOrPushMarker(ev, late);
+        break;
+      }
       case 'session.exited':
         // The turn row itself is unchanged (it is still emitted as it
         // stands at the end); only its held markers are now owed a place.
@@ -1666,7 +1709,17 @@ export function projectRuntimeEventsToMessages(
     }
     emitAssistantTurn(openTurnSessionExited);
   }
-  return messages.map((message) => {
+  return messages.map((projected) => {
+    const message =
+      projected.metadata?.turnId &&
+      rewoundTurns.has(
+        turnKey(projected.metadata.sessionId, projected.metadata.turnId) ?? '',
+      )
+        ? {
+            ...projected,
+            metadata: { ...projected.metadata, rewound: true as const },
+          }
+        : projected;
     if (
       message.role !== 'assistant' ||
       !message.metadata?.turnId ||

@@ -86,7 +86,7 @@ describe('Settings → About', () => {
     fetchMock.mockResolvedValueOnce(new Response('', { status: 404 }));
     renderAbout();
     fireEvent.click(screen.getByRole('button', { name: 'Bundled packages' }));
-    const retry = await screen.findByRole('button', { name: 'Try again' });
+    const retry = await screen.findByRole('button', { name: 'Retry' });
     expect(screen.getByText('License list unavailable')).toBeTruthy();
 
     fetchMock.mockResolvedValueOnce(

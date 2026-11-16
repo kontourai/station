@@ -1,0 +1,17 @@
+{
+  "revision": "d048111291fa8a6a00f83348f505c2696d8a41f1",
+
+  "notes": [
+    {"path":"README.md","note":"Checked after the ACP steer, resume-model and usage edits to the docs this one depends on (cli.md, session-api.md, monitoring.md): this document makes no claim about ACP resume, ACP steering or ACP usage scope (grep for acp with resume/steer/usage/token and for Antigravity finds none). No claim changed.","inputs":["README.md","docs/reference/cli.md"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Checked after the ACP steer, resume-model and usage edits to the docs this one depends on (cli.md, session-api.md, monitoring.md): this document makes no claim about ACP resume, ACP steering or ACP usage scope (grep for acp with resume/steer/usage/token and for Antigravity finds none). No claim changed.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked after the ACP steer, resume-model and usage edits to the docs this one depends on (cli.md, session-api.md, monitoring.md): this document makes no claim about ACP resume, ACP steering or ACP usage scope (grep for acp with resume/steer/usage/token and for Antigravity finds none). No claim changed.","inputs":["docs/architecture/abstraction-review.md","docs/guides/monitoring.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Checked after the ACP steer, resume-model and usage edits to the docs this one depends on (cli.md, session-api.md, monitoring.md): this document makes no claim about ACP resume, ACP steering or ACP usage scope (grep for acp with resume/steer/usage/token and for Antigravity finds none). No claim changed.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked after the ACP steer, resume-model and usage edits to the docs this one depends on (cli.md, session-api.md, monitoring.md): this document makes no claim about ACP resume, ACP steering or ACP usage scope (grep for acp with resume/steer/usage/token and for Antigravity finds none). No claim changed.","inputs":["docs/guides/integrating-station.md","docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"Checked after the ACP steer, resume-model and usage edits to the docs this one depends on (cli.md, session-api.md, monitoring.md): this document makes no claim about ACP resume, ACP steering or ACP usage scope (grep for acp with resume/steer/usage/token and for Antigravity finds none). No claim changed.","inputs":["packages/cli/README.md","docs/reference/cli.md"]}
+  ]
+}

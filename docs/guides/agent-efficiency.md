@@ -120,9 +120,11 @@ repeated summary attempts on the turn's critical path.
 
 ## Retain supervision and question delivery
 
-Opted-in Task supervision retains the Task incarnation, coordinator identity,
-checkpoint and known wait state. Reconciliation reads canonical Task and Session
-facts; an idle Session does not prove unfinished work. Approval, capacity, quota
+Supervision wakes the person's coordinator, so it also needs the
+`coordinator-session` preview. Opted-in Task supervision retains the Task
+incarnation, coordinator identity, checkpoint and known wait state.
+Reconciliation reads canonical Task and Session facts; an idle Session does not
+prove unfinished work. Approval, capacity, quota
 and indeterminate delivery remain waits, not invitations to launch duplicates.
 The existing durable inbox places eligible work under the original request key.
 

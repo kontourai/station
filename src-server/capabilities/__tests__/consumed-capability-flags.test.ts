@@ -6,6 +6,7 @@ import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import {
   parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
+  tenantId,
 } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
@@ -23,9 +24,12 @@ import { createMemoryRoutes } from '../../routes/knowledge/memory-routes.js';
 import { createPushRoutes } from '../../routes/operations/push-routes.js';
 import { createRecipientCandidateRoutes } from '../../routes/operations/recipient-candidates.js';
 import { createSchedulerRoutes } from '../../routes/operations/scheduler.js';
+import { createInboxHarness } from '../../routes/orchestration/__tests__/helpers/thread-inbox-harness.js';
 import { createCoordinatorRoutes } from '../../routes/orchestration/coordinator.js';
 import { createOrchestrationRoutes } from '../../routes/orchestration/orchestration.js';
 import { createSessionPersonActivityRoutes } from '../../routes/orchestration/session-project-activity.js';
+import { createProjectRoomRoutes } from '../../routes/projects/project-room-routes.js';
+import { createReadMarkerRoutes } from '../../routes/read-markers/read-marker-routes.js';
 import { createDiagnosticsRoutes } from '../../routes/system/diagnostics.js';
 import { createSystemStatusRoutes } from '../../routes/system/system-status-routes.js';
 import { HOSTED_TENANT_REGISTRY_FILE_ENV } from '../../runtime/bootstrap/hosted-tenant-mode.js';
@@ -35,13 +39,22 @@ import {
 } from '../../runtime/routes/runtime-route-support.js';
 import { configureRuntimePublicRoutes } from '../../runtime/routes/runtime-routes.js';
 import { TroubleshootService } from '../../services/infra/troubleshoot-service.js';
+import {
+  conversationAcknowledgementKey,
+  FileConversationAcknowledgementStore,
+} from '../../services/orchestration/conversation-acknowledgement-store.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
+import { ProjectRoomService } from '../../services/projects/project-room-service.js';
+import { createProjectRoomRuntime } from '../../services/projects/project-room-store.js';
+import { ReadMarkerService } from '../../services/read-markers/read-marker-service.js';
+import { FileReadMarkerStore } from '../../services/read-markers/read-marker-store.js';
 import { createRemoteStationForwarder } from '../../services/remote-stations/remote-station-forwarder.js';
 import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
 import {
   resolveStationCapabilityFlags,
   STATION_CAPABILITY_FLAGS,
   servesCoordinatorSession,
+  servesFollowUpAttachments,
 } from '../station-capability-flags.js';
 import { TABLED_CAPABILITY_FLAGS } from './consumed-capability-flag-names.js';
 
@@ -82,6 +95,9 @@ function orchestrationRoutes(
  * client-capability-gates.scan.test.ts fails when a client gates on a flag
  * missing here; TABLED_CAPABILITY_FLAGS names these rows for it.
  */
+/** The conversation inbox world a busy follow-up is held in. */
+const inboxStation = createInboxHarness();
+
 const CONSUMED_FLAGS: Record<
   string,
   (deployment: Deployment) => Promise<boolean>
@@ -315,6 +331,85 @@ const CONSUMED_FLAGS: Record<
     read.mockRestore();
     return response.status === 200;
   },
+  // POST /api/read-markers/summary answers the caller's read state, keyed by
+  // the same per-person (hosted: tenant) key as the inventory.
+  readMarkers: async ({ hosted }) => {
+    const home = makeTempDir('read-markers-flag-');
+    const authority = hosted
+      ? sessionReadAuthorityFromRequest(
+          'alpha-user',
+          { tenantId: tenantId('alpha') },
+          parseHostedTenantRegistry(REGISTRY),
+        )
+      : sessionReadAuthorityFromRequest('operator', undefined, undefined);
+    const service = new ReadMarkerService({
+      personKeyFor: () => conversationAcknowledgementKey(authority),
+      conversations: new FileConversationAcknowledgementStore(home),
+      store: new FileReadMarkerStore(home),
+      agentConversations: {
+        latestVersions: async () =>
+          new Map([
+            ['c1', { version: 10, space: 'content', acknowledgeableUntil: 10 }],
+          ]),
+        versionsOf: () => new Map(),
+      },
+    });
+    const routes = new Hono().route(
+      '/api/read-markers',
+      createReadMarkerRoutes({ service }),
+    );
+    const response = await routes.request('/api/read-markers/summary', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        targets: [{ kind: 'agent-conversation', conversationId: 'c1' }],
+      }),
+    });
+    return response.status === 200;
+  },
+  // POST /:slug/room/messages/:messageId/reactions sets the caller's reaction.
+  projectRoomMessageActions: async () => {
+    const runtime = createProjectRoomRuntime(makeTempDir('room-actions-flag-'));
+    try {
+      const scope = {
+        stationId: 'station',
+        localProjectId: 'project-id',
+        portableProjectId: 'portable',
+        localProjectSlug: 'project',
+      };
+      const actor = { id: 'ada', displayName: 'Ada', kind: 'person' as const };
+      const caps = { view: true, discuss: true, edit: true, execute: false };
+      const service = new ProjectRoomService(runtime.store, {
+        withAction: async (_request, _slug, _action, _actorId, operation) =>
+          operation(scope, actor, caps, () => {}),
+        current: async () => true,
+      });
+      const { roomId } = runtime.store.ensureRoom(scope, () => {});
+      const message = runtime.store.append(
+        scope,
+        actor,
+        { intentId: randomUUID(), text: 'hello' },
+        () => {},
+      );
+      const response = await createProjectRoomRoutes(service).request(
+        `/project/room/messages/${message.messageId}/reactions`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            expectedRoomId: roomId,
+            expectedProjectId: scope.localProjectId,
+            expectedActorId: actor.id,
+            emoji: '👍',
+            reacted: true,
+          }),
+        },
+      );
+      return response.status === 200;
+    } finally {
+      runtime.close();
+    }
+  },
   // GET /sessions/:threadId/event-window answers a bounded window.
   sessionEventWindow: async (deployment) => {
     const routes = orchestrationRoutes(deployment, {
@@ -363,6 +458,7 @@ const CONSUMED_FLAGS: Record<
             mayMutate: () => true,
           }),
           dispatchActor: () => ({ userId: 'owner' }),
+          preview: { select: (branches) => branches.enabled() },
         }),
       );
       const response = await routes.request('/api/orchestration/coordinator');
@@ -370,6 +466,29 @@ const CONSUMED_FLAGS: Record<
     } finally {
       eventStore.close();
     }
+  },
+  // POST /api/orchestration/chat holds a busy follow-up with a file (202)
+  // only where the runtime builds the conversation inbox, from the same
+  // predicate as the flag; without it the send is refused, never held.
+  followUpAttachments: async (deployment) => {
+    const world = inboxStation({
+      queuedFiles: true,
+      ...(servesFollowUpAttachments(deployment) ? {} : { inbox: false }),
+    });
+    await world.busy();
+    const response = await world.send('probe-file', 'with a file', {
+      whenBusy: 'queue',
+      attachments: [
+        {
+          kind: 'file',
+          name: 'probe.txt',
+          mimeType: 'text/plain',
+          size: 2,
+          dataUrl: 'data:text/plain;base64,aGk=',
+        },
+      ],
+    });
+    return response.status === 202;
   },
   // GET /api/system/routes answers the Station routes only where runtime
   // route support composes a resolver, from the same predicate as the flag.
@@ -576,6 +695,8 @@ describe('consumed capability flags match what their routes serve', () => {
     childWorkSteering: { personal: true, hosted: true },
     privateMemoryReview: { personal: true, hosted: false },
     privateOperationalOutcomes: { personal: true, hosted: true },
+    projectRoomMessageActions: { personal: true, hosted: true },
+    readMarkers: { personal: true, hosted: true },
     scheduledConversationTarget: { personal: true, hosted: false },
     sessionEventWindow: { personal: true, hosted: true },
     sessionInventoryInputRead: { personal: true, hosted: false },
@@ -584,6 +705,7 @@ describe('consumed capability flags match what their routes serve', () => {
     webPushNotifications: { personal: true, hosted: false },
     connectionRoutes: { personal: true, hosted: false },
     coordinatorSession: { personal: true, hosted: false },
+    followUpAttachments: { personal: true, hosted: false },
     troubleshootPrepare: { personal: true, hosted: true },
   };
 

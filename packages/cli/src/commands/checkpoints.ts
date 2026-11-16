@@ -24,6 +24,7 @@ import { execFile, spawn } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import { authenticatedFetch } from '@kontourai/station-sdk/client';
 import {
   type CheckpointGitRunner,
   enumerateThreadCheckpointRefs,
@@ -36,6 +37,11 @@ import {
   admitStationRuntimeHome,
   resolveRuntimeHome,
 } from '@kontourai/station-shared/runtime-path-resolver';
+import {
+  configureApiCredential,
+  parseCoreArgs,
+  resolveApiBase,
+} from './core-api.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -49,6 +55,11 @@ interface IndexTurnRecord {
   updatedAt?: string;
   baseline?: IndexTurnPhase;
   settle?: IndexTurnPhase;
+}
+
+/** The part of the restore-preview reply the confirmation is built from. */
+interface RestorePreviewEnvelope {
+  data?: { previewId?: unknown; currentTreeSha?: unknown };
 }
 
 export interface CheckpointsCommandDeps {
@@ -461,13 +472,29 @@ export async function runCheckpointsCommand(
     }
     let events: unknown[] = [];
     try {
-      const parsed = JSON.parse(
+      const parsed: unknown = JSON.parse(
         readFileSync(join(home, 'checkpoint-restores.json'), 'utf-8'),
-      ) as { events?: Array<{ threadId?: string }> };
-      events = (parsed.events ?? []).filter(
-        (event) => event.threadId === thread,
       );
-    } catch {}
+      const recorded = (parsed as { events?: unknown } | null)?.events;
+      if (!Array.isArray(recorded)) {
+        throw new Error('invalid restore audit schema');
+      }
+      events = recorded.filter(
+        (event) =>
+          (event as { threadId?: unknown } | null)?.threadId === thread,
+      );
+    } catch (error) {
+      // A missing audit means nothing was recorded. Anything else (corrupt
+      // bytes, an unreadable file) must not read as "no restores", exactly as
+      // `retention` below refuses to.
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        err(
+          `station checkpoints history: audit unavailable: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+    }
     if (json) out(JSON.stringify({ threadId: thread, events }, null, 2));
     else if (events.length === 0)
       out(`thread ${thread}: no checkpoint restores recorded`);
@@ -520,10 +547,6 @@ export async function runCheckpointsCommand(
       rawArgs
         .find((arg) => arg.startsWith('--phase='))
         ?.slice('--phase='.length) ?? 'settle';
-    const apiBase =
-      rawArgs
-        .find((arg) => arg.startsWith('--api-base='))
-        ?.slice('--api-base='.length) ?? 'http://127.0.0.1:3141';
     if (
       !thread ||
       !turn ||
@@ -542,40 +565,64 @@ export async function runCheckpointsCommand(
       process.exitCode = 1;
       return;
     }
-    const baseUrl = `${apiBase.replace(/\/$/, '')}/api/orchestration/sessions/${encodeURIComponent(thread)}/checkpoints/${encodeURIComponent(turn)}`;
-    const previewResponse = await (deps.fetch ?? fetch)(
-      `${baseUrl}/restore-preview`,
-      {
+    // The same target, credential and deadline as every other command that
+    // calls a Station (#2734): `--api-base`/`--station`/`STATION_TARGET`, the
+    // saved or active-local Station, then the loopback default; the credential
+    // that goes with it; and the shared request deadline, which
+    // `authenticatedFetch` applies.
+    const parsed = parseCoreArgs(rawArgs);
+    const apiBase = resolveApiBase(parsed);
+    configureApiCredential(parsed, apiBase);
+    const request: (url: string, init: RequestInit) => Promise<Response> =
+      deps.fetch ?? authenticatedFetch;
+    const baseUrl = `${apiBase}/api/orchestration/sessions/${encodeURIComponent(thread)}/checkpoints/${encodeURIComponent(turn)}`;
+    // The whole envelope is kept, not just `data`: a refusal carries its
+    // `reason` beside `error`, and `--json` prints the reply as received. A
+    // reply that is not JSON (a proxy's error page) is reported with its
+    // status instead of surfacing as a parse error.
+    const post = async (
+      path: string,
+      payload: unknown,
+    ): Promise<{ status: number; ok: boolean; body: unknown }> => {
+      const response = await request(`${baseUrl}/${path}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ phase }),
-      },
-    );
-    const previewBody = (await previewResponse.json()) as any;
-    if (!previewResponse.ok || !previewBody?.data?.previewId) {
+        body: JSON.stringify(payload),
+      });
+      const text = await response.text();
+      let body: unknown;
+      try {
+        body = JSON.parse(text);
+      } catch {
+        return { status: response.status, ok: false, body: undefined };
+      }
+      return { status: response.status, ok: response.ok, body };
+    };
+
+    const preview = await post('restore-preview', { phase });
+    const previewData = (preview.body as RestorePreviewEnvelope | null)?.data;
+    if (!preview.ok || !previewData?.previewId) {
       err(
-        `station checkpoints restore preview failed (${previewResponse.status}): ${JSON.stringify(previewBody)}`,
+        `station checkpoints restore preview failed (${preview.status}): ${preview.body === undefined ? 'the reply was not JSON' : JSON.stringify(preview.body)}`,
       );
       process.exitCode = 1;
       return;
     }
-    const response = await (deps.fetch ?? fetch)(`${baseUrl}/restore`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        confirmed: true,
-        previewId: previewBody.data.previewId,
-        expectedCurrentTreeSha: previewBody.data.currentTreeSha,
-      }),
+    const restored = await post('restore', {
+      confirmed: true,
+      previewId: previewData.previewId,
+      expectedCurrentTreeSha: previewData.currentTreeSha,
     });
-    const body = await response.json();
-    if (!response.ok) {
+    if (!restored.ok) {
+      // A reply that cannot be read says nothing about whether the restore
+      // ran, so it must not be worded as "nothing changed".
       err(
-        `station checkpoints restore failed (${response.status}): ${JSON.stringify(body)}`,
+        `station checkpoints restore failed (${restored.status}): ${restored.body === undefined ? 'the reply was not JSON, so the outcome is unknown; inspect the workspace before retrying' : JSON.stringify(restored.body)}`,
       );
       process.exitCode = 1;
       return;
     }
+    const { body } = restored;
     out(
       json
         ? JSON.stringify(body, null, 2)

@@ -332,6 +332,8 @@ describe('color theme cascade', () => {
             'data-color-theme-accent=pink',
             'data-color-theme-flavor=macchiato',
             'data-color-theme=catppuccin',
+            // Density is stamped with the mode (#4692): Comfortable unless saved.
+            'data-density=comfortable',
             'data-theme=dark',
           ],
           themeColor: macchiato.roles['--k-bg'],

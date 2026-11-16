@@ -1879,7 +1879,17 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 <div className="settings__scope-caption">
                   <SettingsScopeBadge scope="station" />
                 </div>
-                <KnowledgeStoreSection />
+                <KnowledgeStoreSection>
+                  <StationConfigSection
+                    section="knowledge"
+                    embedded
+                    config={config}
+                    provenance={provenance}
+                    onChange={setConfig}
+                    containerScope="station"
+                    projectOverride={projectOverride}
+                  />
+                </KnowledgeStoreSection>
               </section>
             )}
           </div>

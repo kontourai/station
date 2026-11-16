@@ -3,6 +3,7 @@ import type {
   ChildWorkRegistryState,
 } from '@kontourai/station-contracts/child-work';
 import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-capability-matrix';
+import { parseEpochMs } from '../../utils/parseEpochMs';
 
 /**
  * #2459: the Agents pane's read of child work — Station delegates from the
@@ -93,12 +94,6 @@ export interface ChildWorkSelectorInput {
   toolCallStartedAt?: (toolCallId: string) => number | undefined;
 }
 
-function parseTime(iso: string | undefined): number | undefined {
-  if (!iso) return undefined;
-  const parsed = Date.parse(iso);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
 function itemKey(item: ChildWorkItem): string {
   return JSON.stringify([item.producer, item.reporterThreadId, item.childId]);
 }
@@ -159,6 +154,16 @@ function engineStopIsWired(provider: string | undefined): boolean {
 /** Whether the engine's matrix says it reports nothing about subagents. */
 function engineReportsNoSubagents(provider: string | undefined): boolean {
   return engineMatrix(provider)?.subagentObservability.state === 'none';
+}
+
+/** The matrix's reason when only some of this engine's connections report. */
+function engineReportsPerConnection(
+  provider: string | undefined,
+): string | undefined {
+  const cell = engineMatrix(provider)?.subagentObservability;
+  return cell?.state === 'declared'
+    ? cell.perConnection?.unobservedReason
+    : undefined;
 }
 
 /**
@@ -282,11 +287,11 @@ function buildCandidates(input: ChildWorkSelectorInput): Candidate[] {
     const reportedDepth =
       item.producer === 'engine-subagent' && item.depth ? item.depth - 1 : 0;
     const startedAtMs =
-      parseTime(item.startedAt) ??
+      parseEpochMs(item.startedAt) ??
       (item.parent?.toolCallId
         ? input.toolCallStartedAt?.(item.parent.toolCallId)
         : undefined);
-    const endedAtMs = parseTime(item.endedAt);
+    const endedAtMs = parseEpochMs(item.endedAt);
     const stopEndsParentTurn =
       stop === 'provider-task-stop'
         ? engineStopEndsParentTurn(provider)
@@ -508,6 +513,14 @@ export function subagentNoticeFor(options: {
       label: 'This engine does not report subagents',
       description:
         'Delegated tasks and tool calls from this conversation still appear here.',
+    };
+  // Only some connections of this engine report (ACP): with nothing from
+  // the server yet, "No subagents running" would be a claim nothing made.
+  const unobserved = engineReportsPerConnection(options.provider);
+  if (unobserved)
+    return {
+      label: 'Subagents are not shown for this engine',
+      description: unobserved,
     };
   return undefined;
 }

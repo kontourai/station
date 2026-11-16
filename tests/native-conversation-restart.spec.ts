@@ -234,10 +234,8 @@ for (const { runtimeFramework, origin } of restartProfiles) {
       );
       mkdirSync(evidenceRoot, { recursive: true });
       await createRepository(repository, 'native-restart');
+      // startStation persists the runtime setting and boots on it (#3909).
       await startStation(live, true, lifecycle);
-      // Persist the boot selection through the real config owner. A feature
-      // flag alone is lost from appConfig when Agent setup reloads from disk.
-      await api(live, '/config/app', 'PUT', { runtime: runtimeFramework });
       const fixture = await startOllamaFixture(
         MODEL,
         (body) => {

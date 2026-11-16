@@ -1,6 +1,6 @@
-import { execFileSync } from 'node:child_process';
 import { appendFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { ensureLivenessScale } from './lib/liveness-scale-resolve.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
@@ -129,11 +129,10 @@ export function evaluateCodeHealthAudit(report, base, head) {
 
 async function runCodeHealthGate(root, baseRef) {
   const git = (args) =>
-    execFileSync('git', args, {
+    execFileSyncBounded('git', args, {
       cwd: root,
       encoding: 'utf8',
       windowsHide: true,
-      maxBuffer: 4 * 1024 * 1024,
     }).trim();
   // Never infer the base from this branch's upstream: after a push that may be
   // the candidate itself, which would turn every new finding into inherited debt.

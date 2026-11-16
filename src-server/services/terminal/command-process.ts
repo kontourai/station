@@ -19,6 +19,12 @@ import {
   type WindowsProcessLister,
 } from '../infra/process-utils.js';
 import {
+  type CommandChild,
+  GuardSpawnError,
+  resolveWindowsCommandGuard,
+  spawnGuardedCommand,
+} from './windows-command-guard.js';
+import {
   attributeWindowsProcesses,
   type OwnedWindowsProcess,
   windowsNowUs,
@@ -99,9 +105,12 @@ class CommandProcess implements IPtyProcess {
   /** Checks the group while terminating, so emptiness is seen promptly. */
   private groupWatch: ReturnType<typeof setInterval> | undefined;
   private terminating: Promise<void> | undefined;
+  private paused = false;
+  private outputIncomplete = false;
+  private pending: string[] = [];
 
   constructor(
-    private readonly child: ChildProcess,
+    private readonly child: CommandChild,
     private readonly outputCapBytes: number,
     /** No later than the leader's creation, in the process table's clock. */
     private readonly spawnedUs: bigint,
@@ -113,12 +122,18 @@ class CommandProcess implements IPtyProcess {
     child.once('exit', () => {
       this.leaderExited = true;
       this.leaderExitedUs = windowsNowUs();
+      if (this.paused) this.outputIncomplete = true;
     });
     child.stdout?.setEncoding('utf8');
     child.stderr?.setEncoding('utf8');
     const deliver = (data: string) => this.deliver(data);
     child.stdout?.on('data', deliver);
     child.stderr?.on('data', deliver);
+    for (const output of [child.stdout, child.stderr])
+      output?.on('error', () => {
+        this.outputIncomplete = true;
+        if (child.completeOutput) void this.terminate().catch(() => undefined);
+      });
     // A write to a command that has stopped reading its input is lost, as
     // input to a PTY that just exited is.
     child.stdin?.on('error', () => {});
@@ -134,18 +149,59 @@ class CommandProcess implements IPtyProcess {
         exitCode: code ?? -1,
         signal: signalNumber(signal),
         ...(this.capped && { outputCapped: true }),
+        ...((this.outputIncomplete ||
+          this.paused ||
+          this.pending.length > 0) && {
+          outputIncomplete: true,
+        }),
       };
+      this.pending = [];
       reported();
       for (const listener of [...this.exitListeners]) listener(this.exit);
     };
     // `close` follows the last byte of output; `exit` bounds how long a
     // background child holding the pipes can delay it.
-    child.once('close', report);
+    const fenceOutput = () => {
+      for (const output of [child.stdout, child.stderr]) {
+        output?.pause();
+        output?.off('data', deliver);
+        // Fence delivery first, then charge every chunk already accepted by
+        // Node before closing the pipes. Background children need not send EOF.
+        while (output) {
+          const buffered: string | null = output.read();
+          if (buffered === null) break;
+          this.deliver(buffered);
+        }
+        output?.destroy();
+      }
+    };
+    let drain: ReturnType<typeof setTimeout> | undefined;
+    child.once('close', (code, signal) => {
+      clearTimeout(drain);
+      if (child.completeOutput) fenceOutput();
+      if (child.completeOutput && signal && !this.terminating)
+        this.outputIncomplete = true;
+      report(code, signal);
+    });
     child.once('exit', (code, signal) => {
-      setTimeout(() => {
-        child.stdout?.destroy();
-        child.stderr?.destroy();
-        report(code, signal);
+      if (this.exit) return;
+      drain = setTimeout(() => {
+        if (child.completeOutput) {
+          fenceOutput();
+          if (this.paused || this.pending.length) this.outputIncomplete = true;
+          if (this.capped || this.terminating || this.outputIncomplete) {
+            // Do not await terminate here: it waits for the final close report.
+            void this.terminate().catch(() => undefined);
+          } else {
+            void child.completeOutput().catch(() => {
+              this.outputIncomplete = true;
+            });
+          }
+        } else {
+          child.stdout?.destroy();
+          child.stderr?.destroy();
+          report(code, signal);
+        }
       }, PIPE_DRAIN_MS).unref();
     });
   }
@@ -155,11 +211,16 @@ class CommandProcess implements IPtyProcess {
   }
 
   pause(): void {
+    this.paused = true;
+    if (this.child.completeOutput) return;
     this.child.stdout?.pause();
     this.child.stderr?.pause();
   }
 
   resume(): void {
+    this.paused = false;
+    this.flushPending();
+    if (this.child.completeOutput) return;
     this.child.stdout?.resume();
     this.child.stderr?.resume();
   }
@@ -178,9 +239,10 @@ class CommandProcess implements IPtyProcess {
    * Ends the command and what it started, and resolves only once none of it
    * remains: the leader exiting is not enough, since a process it started
    * can ignore SIGTERM or outlive its parent. POSIX: its process group,
-   * SIGTERM then SIGKILL. Windows: every process proven to descend from it,
-   * forcibly, until a process table shows none left. Rejects when that
-   * cannot be established before the deadline.
+   * SIGTERM then SIGKILL. Windows: its whole Job when it runs in one (the
+   * guard confirms the Job is empty); otherwise every process proven to
+   * descend from it, forcibly, until a process table shows none left.
+   * Rejects when that cannot be established before the deadline.
    */
   terminate(): Promise<void> {
     if (this.exit && !this.terminating) return Promise.resolve();
@@ -213,6 +275,21 @@ class CommandProcess implements IPtyProcess {
 
   private async terminateWindows(): Promise<void> {
     const deadline = Date.now() + WINDOWS_KILL_DEADLINE_MS;
+    // A command in a Job (#4624): ending the Job ends every process the
+    // command started, including one whose parent already exited, and the
+    // guard confirms none is left.
+    if (this.child.endJob) {
+      if (!(await this.within(this.child.endJob(), WINDOWS_KILL_DEADLINE_MS)))
+        throw new Error('The command or a process it started did not exit');
+      if (
+        !(await this.within(
+          this.closed,
+          Math.max(0, deadline - Date.now()) || 1,
+        ))
+      )
+        throw new Error('The command did not exit');
+      return;
+    }
     // The command ends now, never after a process-table read: that read
     // goes through PowerShell, and a cold one can take tens of seconds.
     // Node holds the leader's process handle until it reports the exit, so
@@ -315,6 +392,7 @@ class CommandProcess implements IPtyProcess {
 
   onData(cb: (data: string) => void): () => void {
     this.dataListeners.add(cb);
+    this.flushPending();
     return () => this.dataListeners.delete(cb);
   }
 
@@ -341,7 +419,20 @@ class CommandProcess implements IPtyProcess {
       void this.terminate().catch(() => this.signalGroup('SIGKILL'));
       return;
     }
-    for (const listener of [...this.dataListeners]) listener(data);
+    if (this.child.completeOutput) {
+      // Cap accounting keeps flowing while the journal applies backpressure.
+      // These ordered strings are charged to the same finite cap, not a second
+      // unbounded pipe buffer; they are never forwarded while delivery is paused.
+      this.pending.push(data);
+      this.flushPending();
+    } else for (const listener of [...this.dataListeners]) listener(data);
+  }
+
+  private flushPending(): void {
+    while (!this.paused && this.dataListeners.size && this.pending.length) {
+      const data = this.pending.shift()!;
+      for (const listener of [...this.dataListeners]) listener(data);
+    }
   }
 
   private signalGroup(signal: NodeJS.Signals): void {
@@ -384,9 +475,11 @@ function isWindowsCommandProcessor(
 /**
  * Starts a command and resolves once it has started, or rejects with a
  * `CommandSpawnError` (a missing or unrunnable executable) without leaving an
- * unhandled `error` event behind.
+ * unhandled `error` event behind. On Windows the command runs in a Job
+ * through the Station Job guard when one is available
+ * (`windows-command-guard.ts`), so Stop reaches every process it started.
  */
-export function spawnCommandProcess(
+export async function spawnCommandProcess(
   input: {
     command: string;
     args: readonly string[];
@@ -395,6 +488,11 @@ export function spawnCommandProcess(
     outputCapBytes?: number;
     /** Test seam: the Windows process table and per-pid kill. */
     windowsCensus?: WindowsCommandCensus;
+    /**
+     * Test seam: the Windows Job guard to start the command through; null
+     * starts it directly. Absent: the one this process resolves.
+     */
+    windowsGuard?: string | null;
   },
   spawn: (
     command: string,
@@ -403,6 +501,41 @@ export function spawnCommandProcess(
   ) => ChildProcess = (command, args, options) =>
     nodeSpawn(command, [...args], options),
 ): Promise<CommandProcess> {
+  const guard =
+    process.platform !== 'win32'
+      ? null
+      : input.windowsGuard === undefined
+        ? await resolveWindowsCommandGuard()
+        : input.windowsGuard;
+  const outputCapBytes =
+    input.outputCapBytes ?? DEFAULT_COMMAND_OUTPUT_CAP_BYTES;
+  if (guard) {
+    // Before the spawn: no later than the process's creation time.
+    const spawnedUs = windowsNowUs();
+    try {
+      const child = await spawnGuardedCommand(
+        guard,
+        {
+          command: input.command,
+          args: input.args,
+          cwd: input.cwd,
+          env: input.env,
+          verbatim: isWindowsCommandProcessor(input.command),
+        },
+        spawn,
+      );
+      return new CommandProcess(
+        child,
+        outputCapBytes,
+        spawnedUs,
+        input.windowsCensus,
+      );
+    } catch (error) {
+      if (error instanceof GuardSpawnError)
+        throw new CommandSpawnError(error.message, error.code);
+      throw error;
+    }
+  }
   return new Promise((resolve, reject) => {
     let child: ChildProcess;
     // Before the spawn: no later than the process's creation time.
@@ -438,7 +571,7 @@ export function spawnCommandProcess(
       resolve(
         new CommandProcess(
           child,
-          input.outputCapBytes ?? DEFAULT_COMMAND_OUTPUT_CAP_BYTES,
+          outputCapBytes,
           spawnedUs,
           input.windowsCensus,
         ),

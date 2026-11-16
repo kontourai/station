@@ -8,6 +8,7 @@ import type {
 } from '@kontourai/station-contracts/runtime-events';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
 import type {
+  ToolRequestRuleGrant,
   ToolRequestServerGrant,
   ToolRequestSessionGrant,
 } from './tool-request-preview.js';
@@ -153,6 +154,11 @@ export interface MessagePart {
    */
   approvalServerGrant?: ToolRequestServerGrant;
   /**
+   * The command-prefix grant that request also offers
+   * (`toolRequestRuleGrantFromPayload`); absent offers nothing.
+   */
+  approvalRuleGrant?: ToolRequestRuleGrant;
+  /**
    * station#3117: `'policy-denied'` is set only from the runtime event's own
    * `policyDenied` marker (see `runtime-event-projection.ts`'s `tool.completed`
    * case) — never inferred from `state === 'error'` alone, so a rehydrated
@@ -207,6 +213,11 @@ export interface ConversationMessage {
      * (`isStationRestartContinuationTurn`). Shown as Station's.
      */
     stationRestartContinuation?: true;
+    /**
+     * An in-place engine rewind hid this turn from the engine
+     * (`ACP_SESSION_REWOUND_CODE`). The row stays; it is shown as rewound.
+     */
+    rewound?: true;
     /**
      * The interrupted-turn boundary a `[TURN_INTERRUPTED]` banner row reports
      * (`SessionStateChangedEvent.interruptedTurnBoundary.boundaryId`). The

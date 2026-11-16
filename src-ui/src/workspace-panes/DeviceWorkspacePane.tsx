@@ -654,7 +654,7 @@ function DeviceWorkspacePaneSurface({
           description={describeReadFailure(inventory.error)}
           action={
             <Button size="sm" onClick={() => void inventory.refetch()}>
-              Try again
+              Retry
             </Button>
           }
         />

@@ -8,6 +8,8 @@ export const ACCOUNT_PREFERENCE_KEYS = [
   'colorTheme',
   'colorThemeFlavor',
   'colorThemeAccent',
+  'density',
+  'motion',
   'diffStyle',
   'diffWrap',
   'chatShowReasoning',

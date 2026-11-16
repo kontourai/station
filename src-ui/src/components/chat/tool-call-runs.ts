@@ -104,6 +104,22 @@ function buildRun<P extends ToolCallLike>(
   return { type: 'tool-call-run', key, calls };
 }
 
+/**
+ * `run` without the calls in `drawnElsewhere` (a call that spawned child work
+ * is drawn as that child's card). Same object when nothing is dropped, so a
+ * memoised batch keeps its identity.
+ */
+export function runWithoutCalls<P extends ToolCallLike>(
+  run: ToolCallRun<P>,
+  drawnElsewhere: ReadonlySet<string>,
+): ToolCallRun<P> {
+  if (drawnElsewhere.size === 0) return run;
+  const calls = run.calls.filter(
+    ({ part }) => !part.toolCallId || !drawnElsewhere.has(part.toolCallId),
+  );
+  return calls.length === run.calls.length ? run : { ...run, calls };
+}
+
 /** Adjacent tools and visible reasoning share an activity run. Prose, artifacts
  * and requests keep their own rows. Reasoning without a tool stays standalone. */
 export function splitToolCallRuns<P extends ToolCallLike>(

@@ -467,11 +467,18 @@ class MonitoringStore {
     if (this.eventSource) return;
 
     this.connectionStatus = 'connecting';
+    // A new stream owes no heartbeat yet. The stamp outlives a stream (the
+    // store is kept across remounts and range changes), so without this the
+    // time spent away counted as silence on a connection that had just opened.
+    this.lastHeartbeat = Date.now();
     this.notify();
 
     // Load historical data from specified start time or last 5 minutes
     const { start, end } = this.hydrationWindow(startFrom);
     this.fetchHistoricalEvents(start, end);
+    // Set by a stream error: whatever was recorded until the next open reached
+    // neither this stream nor the read above.
+    let reopenOwesHistory = false;
 
     this.eventSource = fetchSSE(`${this.apiBase}/monitoring/events`, {
       authentication: 'required',
@@ -480,8 +487,16 @@ class MonitoringStore {
       retryDelayMs: 5000,
       maxRetryDelayMs: 30_000,
       onOpen: () => {
+        this.lastHeartbeat = Date.now();
         this.connectionStatus = 'connected';
         this.notify();
+        if (reopenOwesHistory) {
+          reopenOwesHistory = false;
+          // Same start, end at now: the snapshot replaces the list (see
+          // `mergeHydratedEvents`), so a later start would drop what the
+          // first read supplied.
+          this.fetchHistoricalEvents(start, new Date());
+        }
       },
       onMessage: (event) => {
         try {
@@ -490,6 +505,12 @@ class MonitoringStore {
           // Filter out SSE protocol events
           if (data[K.SYSTEM_TYPE] === 'heartbeat') {
             this.lastHeartbeat = Date.now();
+            // The stale check below can only take the status away; a
+            // heartbeat is the evidence that gives it back.
+            if (this.connectionStatus === 'error') {
+              this.connectionStatus = 'connected';
+              this.notify();
+            }
             return;
           }
           if (data[K.SYSTEM_TYPE] === 'connected') {
@@ -514,6 +535,7 @@ class MonitoringStore {
       },
       onError: () => {
         log.api('Monitoring stream error, reconnecting...');
+        reopenOwesHistory = true;
         this.connectionStatus = 'error';
         this.notify();
       },

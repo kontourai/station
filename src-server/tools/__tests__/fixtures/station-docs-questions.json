@@ -1,0 +1,82 @@
+{
+  "description": "Questions in a newcomer's words over Station's shipped docs, each with the topic that answers it. A fixture for #4831, written by the change it tests, not an unbiased benchmark. knownMiss marks a question ranked search still misses; it stays listed so the misses stay visible.",
+  "questions": [
+    { "question": "set up a cron job", "expect": "scheduled-jobs" },
+    {
+      "question": "run something on a timer every hour",
+      "expect": "scheduled-jobs"
+    },
+    {
+      "question": "get an alert when a recurring job fails",
+      "expect": "scheduled-jobs"
+    },
+    { "question": "can I use a local Ollama model", "expect": "connections" },
+    {
+      "question": "what is the difference between a session and a run",
+      "expect": "sessions-and-runs",
+      "knownMiss": "Session and run are in many architecture module titles, which outrank the manual section."
+    },
+    {
+      "question": "how do I write my own plugin",
+      "expect": "plugin-authoring"
+    },
+    { "question": "borrow a GPU from another computer", "expect": "fleet" },
+    {
+      "question": "share the same instructions across several agents",
+      "expect": "skills"
+    },
+    {
+      "question": "does the agent saying it is done prove the work happened",
+      "expect": "station-overview",
+      "knownMiss": "The topic says completion is not proof; prove and proof do not share a stem or a synonym group."
+    },
+    { "question": "what can the docs tools not do", "expect": "station-docs" },
+    {
+      "question": "use Claude Code as an external engine",
+      "expect": "agents-and-engines"
+    },
+    {
+      "question": "what does a gate verdict mean",
+      "expect": "trust-and-receipts"
+    },
+    { "question": "what is a task", "expect": "tasks" },
+    { "question": "install a plugin from the registry", "expect": "plugins" },
+    { "question": "add an MCP server with tools", "expect": "tool-servers" },
+    {
+      "question": "why can't the built-in assistant do anything",
+      "expect": "builtin-assistant"
+    },
+    {
+      "question": "what should I call a phone that connects to Station",
+      "expect": "vocabulary"
+    },
+    {
+      "question": "where do terminal sessions live",
+      "expect": "architecture-terminalsessions"
+    },
+    {
+      "question": "keyboard shortcuts",
+      "expect": "architecture-keyboard-shortcuts"
+    },
+    {
+      "question": "back up my station home",
+      "expect": "architecture-stationhomearchive",
+      "knownMiss": "Ranks fourth, behind module topics that use station and home as often."
+    },
+    {
+      "question": "which regions can a workspace pane go in",
+      "expect": "plugin-authoring"
+    },
+    { "question": "approval", "expect": "tool-servers" },
+    { "question": "evidence", "expect": "trust-and-receipts" },
+    {
+      "question": "what is a project",
+      "expect": "projects",
+      "knownMiss": "Project is in many architecture module titles, which outrank the manual section."
+    },
+    {
+      "question": "turn a video into a transcript",
+      "expect": "projects"
+    }
+  ]
+}

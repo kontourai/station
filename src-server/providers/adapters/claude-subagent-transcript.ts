@@ -11,6 +11,7 @@ import {
 } from '@kontourai/station-contracts/child-work';
 import { redactInlineData } from '../model-image-attachments.js';
 import {
+  asRecord,
   createResolvedPathCache,
   directoryEntries as entriesOf,
   isRealDirectory,
@@ -74,12 +75,6 @@ function bounded(text: string): { text: string; truncated?: true } {
   );
 }
 
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
-}
-
 /** A tool result's text: a string, or the text blocks of its content. */
 function toolResultText(content: unknown): string | undefined {
   if (typeof content === 'string') return content;
@@ -109,11 +104,17 @@ function blockEntry(
     case 'tool_use': {
       if (typeof record.name !== 'string') return undefined;
       if (record.input === undefined)
-        return { message, kind: 'tool-call', name: record.name };
+        return {
+          message,
+          kind: 'tool-call',
+          ...(typeof record.id === 'string' ? { toolCallId: record.id } : {}),
+          name: record.name,
+        };
       const cut = bounded(JSON.stringify(record.input));
       return {
         message,
         kind: 'tool-call',
+        ...(typeof record.id === 'string' ? { toolCallId: record.id } : {}),
         name: record.name,
         input: cut.text,
         ...(cut.truncated ? { truncated: true as const } : {}),
@@ -125,6 +126,9 @@ function blockEntry(
       return {
         message,
         kind: 'tool-result',
+        ...(typeof record.tool_use_id === 'string'
+          ? { toolCallId: record.tool_use_id }
+          : {}),
         ...(cut ? { text: cut.text } : {}),
         ...(cut?.truncated ? { truncated: true as const } : {}),
         ...(record.is_error === true ? { isError: true as const } : {}),

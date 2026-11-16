@@ -14,18 +14,22 @@ as SVG — a square map tile carved by the canonical River S, contours offset
 from the river, a gold compass and a stacked base layer — on the geometry in
 `scripts/lib/station-icon-geometry.mjs`. `scripts/generate-app-icons.mjs`
 rasterizes every surface from it, including the platform fan-out (it runs
-`tauri icon` itself): the macOS-grid master (inset with a drop shadow) for
-the `.icns` only; a tighter rounded master with no shadow for `icon.ico`, the
-32/64/128 PNGs and `icon.png` (Windows, Linux and the tray, which
-`src-desktop/src/tray.rs` embeds), where the grid inset would leave the tile a
-few pixels wide; the opaque iOS master (`icon-square-1024.png`, rendered from
-the `ios` target) and the iOS Live Activity's `StationAppIcon`, cropped to the
-map face so the artwork fills the icon; the uncropped `square` target for
-Windows tiles and the web maskable icon; an Android master with that
+`tauri icon` itself): the macOS-grid master (inset with a drop shadow, the map
+face filling the squircle) for the `.icns` only; a rounded master with no
+shadow or grid inset, the map face again filling it, for `icon.ico` and the
+32/64/128 PNGs (Windows and Linux, drawn at 16-32px); the `framed` master
+(the tile and base layer on the channel backdrop) for `icon.png`, the tray
+icon `src-desktop/src/tray.rs` embeds, and the web install icon; the opaque
+iOS master (`icon-square-1024.png`, rendered from the `ios` target), cropped
+to the map face so the artwork fills the icon, for the iOS sets, the iOS Live
+Activity's `StationAppIcon` and the Windows `Square*`/`StoreLogo` tiles; the
+uncropped `square` target for the web maskable icon; an Android master with that
 face filling the central 72 of 108dp of the adaptive layer. Launcher masks crop
 the tile corners and base while the river and compass stay central; the
 transparent in-app mark; the monochrome Android status-bar mark
-(`agent_activity_mark.xml`); and per-channel sets. Each channel has an
+(`agent_activity_mark.xml`) and the same geometry as an SVG path for the UI
+(`src-ui/src/components/icons/station-mark.ts`, the mark on Station's own tool
+calls); and per-channel sets. Each channel has an
 explicit water palette in `station-icon.mjs` while parchment and gold stay
 fixed: stable blue, green for Beta, rose for Nightly and amber for Dev.
 `scripts/__tests__/station-icon.test.ts` keeps the icon palettes and the
@@ -87,7 +91,7 @@ favicon and light/dark background in the asset catalog. These are build inputs;
 a packaged launch must still be checked on the target platform.
 
 The web app manifest's install icons, `src-ui/public/icons/station-512.png`
-(the rounded Stable tile on transparency) and `station-maskable-512.png` (the
+(the framed Stable tile in a rounded body) and `station-maskable-512.png` (the
 opaque full-bleed square, also the `apple-touch-icon`), are direct generator
 outputs pinned in the icon manifest. Only the web build links them; native
 shells do not.
@@ -99,7 +103,8 @@ Generate icons only when deliberately changing the artwork:
    node scripts/generate-app-icons.mjs
    ```
    This also rewrites `src-ui/src/lib/startup-mark-geometry.ts`, where the
-   startup animation finds the river in the mark. Rasterization runs in
+   startup animation finds the river in the mark, and
+   `src-ui/src/components/icons/station-mark.ts`, the monochrome UI mark. Rasterization runs in
    Playwright's Chromium; regenerate the whole set in one run so every
    surface comes from the same renderer.
 2. Verify the Tauri app:
@@ -139,4 +144,7 @@ If you prefer to manually create icons:
 - Ensure good contrast at small sizes (32x32)
 - Use the rounded desktop master where alpha is supported; keep the iOS,
   Android and Windows tile master opaque and square.
+- The macOS startup cover draws the channel's transparent mark
+  (`src-ui/public/favicon*.png`), not the app icon, so it matches the
+  renderer startup screen.
 - Test on both light and dark backgrounds

@@ -1,4 +1,7 @@
 import type { ElementType, ReactNode } from 'react';
+// PageSection owns its classes, so it brings their stylesheet rather than
+// relying on a parent view to have loaded it.
+import '../views/page-layout.css';
 
 interface PageSectionProps {
   id?: string;

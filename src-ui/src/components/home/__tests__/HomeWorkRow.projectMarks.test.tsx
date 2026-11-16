@@ -2,11 +2,17 @@
 
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import { cleanup, render } from '@testing-library/react';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { HomeWorkItem } from '../../../views/home/home-view-model';
 import { buildHomeWorkItems } from '../../../views/home/home-view-model';
 import { buildWorkFacts } from '../../../views/home/work-facts';
 import { renderHomeWorkRow } from '../HomeWorkRow';
+
+// #4695: a Session row reads its plan; these rows report none.
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
+  useOrchestrationSessionActivityQuery: () => ({ data: undefined }),
+}));
 
 const AT = '2026-08-24T12:00:00.000Z';
 
@@ -92,10 +98,16 @@ describe("Home rows take a project's colour and icon only for this Station's pro
     expect(mark?.textContent).toContain('🚀');
   });
 
-  test("a remote row with the same slug names another Station's project, so it has neither colour nor icon", () => {
+  test("a remote row with the same slug uses neutral initials, never this Station's colour or icon", () => {
     expect(remote).toBeDefined();
     expect(remote?.projectSlug).toBe('station');
     expect(remote?.environmentId).toBe('peer-1');
-    expect(markFor(remote as HomeWorkItem, icons)).toBeNull();
+    const mark = markFor(remote as HomeWorkItem, icons);
+    expect(mark).not.toBeNull();
+    expect(mark?.classList.contains('project-icon--initials')).toBe(true);
+    expect(mark?.textContent).toBe('ST');
+    expect(mark?.textContent).not.toContain('🚀');
+    expect(mark?.dataset.projectIcon).toBeUndefined();
+    expect(mark?.style.backgroundColor).toBe('');
   });
 });

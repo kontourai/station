@@ -54,7 +54,8 @@ export function approvalKnobSupported(
  * #2493/#2494: whether this engine runs `never` confined to the workspace.
  *
  * - Codex: always, with its own sandbox (`workspace-write`).
- * - Claude: inside a Seatbelt profile Station applies around the engine.
+ * - Claude: inside a sandbox Station applies around the engine (a Seatbelt
+ *   profile on macOS, bubblewrap on Linux).
  *   At a START the request passes through: the start resolves its
  *   confinement (a plan, or a refusal where no mechanism exists), and the
  *   adapter applies full access only once the provider has observed the

@@ -1,3 +1,4 @@
+import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type {
   ProjectMemberAction,
   ProjectMembershipScope,
@@ -5,14 +6,32 @@ import type {
 import type {
   ProjectRoomActor,
   ProjectRoomAppendInput,
+  ProjectRoomAttachment,
+  ProjectRoomChannelCreateInput,
+  ProjectRoomChannelUpdateInput,
+  ProjectRoomDeleteInput,
+  ProjectRoomEditInput,
   ProjectRoomNoteInput,
+  ProjectRoomReactionInput,
   ProjectRoomView,
 } from '@kontourai/station-contracts/project-room';
 import type {
   ProjectRoomBrowserView,
   ProjectRoomPresence,
 } from '@kontourai/station-contracts/project-room-browser';
+import { createLogger } from '../../utils/logger.js';
 import { ProjectRoomRefusal, ProjectRoomStore } from './project-room-store.js';
+import {
+  ProjectRoomFilesUnavailable,
+  type ReclaimOutcome,
+} from './task-room-attachments.js';
+
+const logger = createLogger({ name: 'project-room-service' });
+/**
+ * How long an upload no message names is kept for its send (#4812). A send
+ * that fails or is discarded leaves it behind; after this it is released.
+ */
+const PROJECT_ROOM_UNSENT_FILE_TTL_MS = 24 * 60 * 60 * 1000;
 export type ProjectRoomCapabilities = ProjectRoomView['capabilities'];
 export interface ProjectRoomAccessPort {
   withAction<T>(
@@ -39,10 +58,64 @@ export interface ProjectRoomMutationGuard {
   expectedProjectId: string;
   expectedActorId: string;
 }
+/** Guards a channel operation: the Project and actor the client saw. */
+export type ProjectRoomChannelGuard = Omit<
+  ProjectRoomMutationGuard,
+  'expectedRoomId'
+>;
 export interface ProjectRoomAdmission {
   scope: ProjectMembershipScope;
   actorId: string;
 }
+/** Byte storage for room files (`ProjectRoomAttachments`), keyed by a binding tuple. */
+export interface ProjectRoomAttachmentPort {
+  /**
+   * Runs `operation` under the store's cross-process lock. `store`, `release`
+   * and `sweep` are called only inside it, and so is any message write that
+   * names files (`ProjectRoomAttachments.locked`).
+   */
+  locked<T>(operation: () => Promise<T>): Promise<T>;
+  store(
+    binding: readonly string[],
+    inputs: ChatAttachmentInput[],
+  ): ProjectRoomAttachment[];
+  read(
+    binding: readonly string[],
+    id: string,
+  ): { attachment: ProjectRoomAttachment; bytes: Buffer } | undefined;
+  resolve(
+    binding: readonly string[],
+    attachments: ProjectRoomAttachment[],
+  ): unknown;
+  /**
+   * Gives up these files, and deletes bytes no other file names; `blocked`
+   * when the store could not prove its references and nothing changed.
+   */
+  release(binding: readonly string[], ids: readonly string[]): ReclaimOutcome;
+  /** Releases files no standing message needs (`ProjectRoomAttachments.sweep`). */
+  sweep(
+    binding: readonly string[],
+    unsentBefore: number,
+    links: (ids: string[]) => { standing: Set<string>; linked: Set<string> },
+  ): ReclaimOutcome;
+}
+/**
+ * A file belongs to the person who uploaded it, in one room of one Project
+ * incarnation. A message can name only its author's own uploads, and a read
+ * resolves through the author of the message that carries the file.
+ */
+const attachmentBinding = (
+  scope: ProjectMembershipScope,
+  roomId: string,
+  uploader: ProjectRoomActor,
+) => [
+  scope.stationId,
+  scope.localProjectId,
+  scope.portableProjectId,
+  roomId,
+  uploader.kind,
+  uploader.id,
+];
 export class ProjectRoomService {
   private closed = false;
   private participants = new Map<
@@ -57,7 +130,42 @@ export class ProjectRoomService {
   constructor(
     private readonly store: ProjectRoomStore,
     readonly access: ProjectRoomAccessPort,
+    private readonly attachments?: ProjectRoomAttachmentPort,
   ) {}
+  /**
+   * Runs a whole admitted operation under the file store's lock: the lock is
+   * taken first and the operation's authority check runs inside it, so access
+   * revoked while waiting refuses before anything is written.
+   */
+  private async underFileLock<T>(operation: () => Promise<T>): Promise<T> {
+    if (!this.attachments) return operation();
+    try {
+      return await this.attachments.locked(operation);
+    } catch (error) {
+      // The store could not even be opened for writing (its root or lock
+      // file): the files are unavailable, not the room (#4852 review).
+      if (error instanceof ProjectRoomFilesUnavailable)
+        throw new ProjectRoomRefusal('files_unavailable');
+      throw error;
+    }
+  }
+  /**
+   * Refused input (a validation, the per-room cap) is invalid; a store that
+   * cannot prove its references or could not write is unavailable.
+   */
+  private files<T>(run: (port: ProjectRoomAttachmentPort) => T): T {
+    if (!this.attachments) throw new ProjectRoomRefusal('not_found');
+    try {
+      return run(this.attachments);
+    } catch (error) {
+      // A store that cannot prove its references, or whose write failed,
+      // takes no new files; any other byte-store failure is the caller's
+      // input.
+      if (error instanceof ProjectRoomFilesUnavailable)
+        throw new ProjectRoomRefusal('files_unavailable');
+      throw new ProjectRoomRefusal('invalid');
+    }
+  }
   // One consistency read per active Room, independent of subscriber count.
   // Other SQLite connections/processes do not share the in-process commit owner.
   private rooms = new Map<
@@ -143,13 +251,14 @@ export class ProjectRoomService {
     request: Request,
     slug: string,
     action: ProjectMemberAction,
-    guard: ProjectRoomMutationGuard | undefined,
+    guard: ProjectRoomMutationGuard | ProjectRoomChannelGuard | undefined,
     operation: (
       scope: ProjectMembershipScope,
       actor: ProjectRoomActor,
       caps: ProjectRoomCapabilities,
       assertCurrent: () => void,
     ) => T,
+    channelId?: string,
   ) {
     this.assertOpen();
     const outcome = await this.access.withAction(
@@ -164,7 +273,9 @@ export class ProjectRoomService {
             guard &&
             (actor.id !== guard.expectedActorId ||
               scope.localProjectId !== guard.expectedProjectId ||
-              this.store.lookupRoom(scope)?.roomId !== guard.expectedRoomId)
+              ('expectedRoomId' in guard &&
+                this.store.lookupRoom(scope, channelId)?.roomId !==
+                  guard.expectedRoomId))
           )
             throw new ProjectRoomRefusal('conflict');
           const result = operation(scope, actor, caps, () => {
@@ -203,17 +314,22 @@ export class ProjectRoomService {
       },
     );
   }
-  discover(request: Request, slug: string) {
+  discover(request: Request, slug: string, channelId?: string) {
     return this.run(
       request,
       slug,
       'view',
       undefined,
       (scope, actor, capabilities, assertCurrent): ProjectRoomBrowserView => {
-        const room = this.store.lookupRoom(scope);
+        const room = this.store.lookupRoom(scope, channelId);
         if (!room) throw new ProjectRoomRefusal('not_found');
-        const checkpoint = this.store.history(scope, 0, 1).checkpoint;
-        const note = this.store.getNote(scope);
+        const checkpoint = this.store.history(
+          scope,
+          0,
+          1,
+          channelId,
+        ).checkpoint;
+        const note = this.store.getNote(scope, channelId);
         assertCurrent();
         return {
           ...room,
@@ -224,19 +340,27 @@ export class ProjectRoomService {
           presence: this.presence(room.roomId),
         };
       },
+      channelId,
     );
   }
-  history(request: Request, slug: string, after: number, limit: number) {
+  history(
+    request: Request,
+    slug: string,
+    after: number,
+    limit: number,
+    channelId?: string,
+  ) {
     return this.run(
       request,
       slug,
       'view',
       undefined,
       (scope, _actor, _caps, assertCurrent) => {
-        const result = this.store.history(scope, after, limit);
+        const result = this.store.history(scope, after, limit, channelId);
         assertCurrent();
         return result;
       },
+      channelId,
     );
   }
   append(
@@ -244,6 +368,65 @@ export class ProjectRoomService {
     slug: string,
     guard: ProjectRoomMutationGuard,
     input: ProjectRoomAppendInput,
+    channelId?: string,
+  ) {
+    // A message naming files is linked under the file lock, so no sweep in
+    // another process can release a file between this check and the link.
+    if (!input.attachments?.length)
+      return this.appendAdmitted(request, slug, guard, input, channelId);
+    return this.underFileLock(() =>
+      this.appendAdmitted(request, slug, guard, input, channelId),
+    );
+  }
+  private appendAdmitted(
+    request: Request,
+    slug: string,
+    guard: ProjectRoomMutationGuard,
+    input: ProjectRoomAppendInput,
+    channelId?: string,
+  ) {
+    return this.run(
+      request,
+      slug,
+      'discuss',
+      guard,
+      (scope, actor, _caps, assertCurrent) => {
+        // An exact retry of a committed send is acknowledged first, as the
+        // message now stands: its files may since have been released, and a
+        // replay links nothing (#4852 review).
+        if (input.attachments?.length) {
+          const replay = this.store.sendReceipt(
+            scope,
+            actor,
+            input,
+            assertCurrent,
+            channelId,
+          );
+          if (replay) return replay;
+        }
+        // Every file must be the sender's own upload to this room, unchanged.
+        if (input.attachments?.length) {
+          const roomId = this.store.lookupRoom(scope, channelId)?.roomId;
+          if (!roomId) throw new ProjectRoomRefusal('not_found');
+          this.files((port) =>
+            port.resolve(
+              attachmentBinding(scope, roomId, actor),
+              input.attachments!,
+            ),
+          );
+        }
+        return this.store.append(scope, actor, input, assertCurrent, channelId);
+      },
+      channelId,
+    );
+  }
+  react(
+    request: Request,
+    slug: string,
+    guard: ProjectRoomMutationGuard,
+    messageId: string,
+    input: ProjectRoomReactionInput,
+    channelId?: string,
   ) {
     return this.run(
       request,
@@ -251,7 +434,171 @@ export class ProjectRoomService {
       'discuss',
       guard,
       (scope, actor, _caps, assertCurrent) =>
-        this.store.append(scope, actor, input, assertCurrent),
+        this.store.react(
+          scope,
+          actor,
+          messageId,
+          input,
+          assertCurrent,
+          channelId,
+        ),
+      channelId,
+    );
+  }
+  edit(
+    request: Request,
+    slug: string,
+    guard: ProjectRoomMutationGuard,
+    messageId: string,
+    input: ProjectRoomEditInput,
+    channelId?: string,
+  ) {
+    return this.run(
+      request,
+      slug,
+      'discuss',
+      guard,
+      (scope, actor, _caps, assertCurrent) =>
+        this.store.edit(
+          scope,
+          actor,
+          messageId,
+          input,
+          assertCurrent,
+          channelId,
+        ),
+      channelId,
+    );
+  }
+  deleteMessage(
+    request: Request,
+    slug: string,
+    guard: ProjectRoomMutationGuard,
+    messageId: string,
+    input: ProjectRoomDeleteInput,
+    channelId?: string,
+  ) {
+    return this.underFileLock(() =>
+      this.run(
+        request,
+        slug,
+        'discuss',
+        guard,
+        (scope, actor, _caps, assertCurrent) => {
+          const deleted = this.store.deleteMessage(
+            scope,
+            actor,
+            messageId,
+            input,
+            assertCurrent,
+            channelId,
+          );
+          // The tombstone already withholds the files; their place in the
+          // uploader's quota goes with them. A failure here is logged, and the
+          // next upload's sweep releases them instead.
+          if (this.attachments) {
+            const files = this.store.messageFiles(scope, messageId, channelId);
+            if (files.ids.length)
+              try {
+                const outcome = this.attachments.release(
+                  attachmentBinding(scope, files.roomId, files.author),
+                  files.ids,
+                );
+                if (outcome === 'blocked')
+                  logger.warn(
+                    'Project room file records could not be read; nothing was reclaimed and new attachments are refused',
+                  );
+                else if (outcome === 'kept')
+                  logger.warn(
+                    'Project room file bytes could not be deleted; their records are kept for a later retry',
+                  );
+              } catch (error) {
+                logger.warn(
+                  'Project room files of a deleted message were kept',
+                  {
+                    error:
+                      error instanceof Error ? error.message : String(error),
+                  },
+                );
+              }
+          }
+          return deleted;
+        },
+        channelId,
+      ),
+    );
+  }
+  /** Stores files for a message the caller is about to send in this room. */
+  storeAttachments(
+    request: Request,
+    slug: string,
+    guard: ProjectRoomMutationGuard,
+    inputs: ChatAttachmentInput[],
+    channelId?: string,
+  ) {
+    return this.underFileLock(() =>
+      this.run(
+        request,
+        slug,
+        'discuss',
+        guard,
+        (scope, actor, _caps, assertCurrent) => {
+          const roomId = this.store.writableRoomId(scope, channelId);
+          assertCurrent();
+          const binding = attachmentBinding(scope, roomId, actor);
+          // Before counting the quota, release what no standing message needs:
+          // a deleted message's files and old unsent uploads.
+          if (this.attachments)
+            try {
+              const outcome = this.attachments.sweep(
+                binding,
+                Date.now() - PROJECT_ROOM_UNSENT_FILE_TTL_MS,
+                (ids) => this.store.attachmentLinks(roomId, ids),
+              );
+              if (outcome === 'blocked')
+                logger.warn(
+                  'Project room file records could not be read; nothing was reclaimed and new attachments are refused',
+                );
+              else if (outcome === 'kept')
+                logger.warn(
+                  'Project room file bytes could not be deleted; their records are kept for a later retry',
+                );
+            } catch (error) {
+              logger.warn('Project room upload sweep did not finish', {
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
+          return this.files((port) => port.store(binding, inputs));
+        },
+        channelId,
+      ),
+    );
+  }
+  /** A file of a readable message in this room; anything else is not found. */
+  readAttachment(
+    request: Request,
+    slug: string,
+    attachmentId: string,
+    channelId?: string,
+  ) {
+    return this.run(
+      request,
+      slug,
+      'view',
+      undefined,
+      (scope, _actor, _caps, assertCurrent) => {
+        const owner = this.store.attachmentRoom(scope, attachmentId, channelId);
+        const file = owner
+          ? this.attachments?.read(
+              attachmentBinding(scope, owner.roomId, owner.author),
+              attachmentId,
+            )
+          : undefined;
+        if (!file) throw new ProjectRoomRefusal('not_found');
+        assertCurrent();
+        return file;
+      },
+      channelId,
     );
   }
   note(
@@ -259,6 +606,7 @@ export class ProjectRoomService {
     slug: string,
     guard: ProjectRoomMutationGuard,
     input: ProjectRoomNoteInput,
+    channelId?: string,
   ) {
     return this.run(
       request,
@@ -266,7 +614,52 @@ export class ProjectRoomService {
       'edit',
       guard,
       (scope, actor, _caps, assertCurrent) =>
-        this.store.updateNote(scope, actor, input, assertCurrent),
+        this.store.updateNote(scope, actor, input, assertCurrent, channelId),
+      channelId,
+    );
+  }
+  channels(request: Request, slug: string) {
+    return this.run(
+      request,
+      slug,
+      'view',
+      undefined,
+      (scope, _actor, _caps, assertCurrent) => {
+        const channels = this.store.listChannels(scope);
+        assertCurrent();
+        return { channels };
+      },
+    );
+  }
+  createChannel(
+    request: Request,
+    slug: string,
+    guard: ProjectRoomChannelGuard,
+    input: ProjectRoomChannelCreateInput,
+  ) {
+    return this.run(
+      request,
+      slug,
+      'edit',
+      guard,
+      (scope, _actor, _caps, assertCurrent) =>
+        this.store.createChannel(scope, input, assertCurrent),
+    );
+  }
+  updateChannel(
+    request: Request,
+    slug: string,
+    channelId: string,
+    guard: ProjectRoomChannelGuard,
+    input: ProjectRoomChannelUpdateInput,
+  ) {
+    return this.run(
+      request,
+      slug,
+      'edit',
+      guard,
+      (scope, _actor, _caps, assertCurrent) =>
+        this.store.updateChannel(scope, channelId, input, assertCurrent),
     );
   }
   updatePresence(
@@ -275,6 +668,7 @@ export class ProjectRoomService {
     guard: ProjectRoomMutationGuard,
     clientId: string,
     state: 'join' | 'leave',
+    channelId?: string,
   ) {
     return this.run(
       request,
@@ -306,6 +700,7 @@ export class ProjectRoomService {
         this.notifyPresence(guard.expectedRoomId);
         return this.presence(guard.expectedRoomId);
       },
+      channelId,
     );
   }
   async current(request: Request, admission: ProjectRoomAdmission) {

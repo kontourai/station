@@ -43,6 +43,7 @@ import {
   useApiBase,
   useHostRequestAuthorityScope,
 } from '../../contexts/ApiBaseContext';
+import { useDeveloperFeatures } from '../../hooks/useDeveloperFeatures';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { openApprovalConversation } from '../../lib/openApprovalConversation';
 import {
@@ -80,6 +81,7 @@ import { RowMenu, type RowMenuItem } from '../notifications/RowMenu';
 import { SkeletonList } from '../state';
 import { ExactRequestInline } from './ExactRequestInline';
 import './AttentionCard.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { useProposedChangeDecision } from '../review/proposedChangeDecision';
 import {
   ACKNOWLEDGE_ATTENTION_ACTION,
@@ -408,6 +410,7 @@ function ExactRequestAction({
  * `HostDevicePairingPanel`'s copy for the same statuses).
  */
 function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
+  useDecisionSurface('device-pairing-review');
   const confirmMutation = useConfirmDevicePairingRequestMutation();
   const denyMutation = useDenyDevicePairingRequestMutation();
   const busy = confirmMutation.isPending || denyMutation.isPending;
@@ -661,6 +664,7 @@ function ProposedChangeActions({
 }: {
   item: ProposedChangeAttentionItem;
 }) {
+  useDecisionSurface('proposed-change');
   const decision = useProposedChangeDecision(INBOX_DECISION_SURFACE);
   return (
     <>
@@ -729,6 +733,7 @@ function ApprovalActions({
   const mutation = useNotificationActionMutation();
   const dismissMutation = useDismissNotificationMutation();
   const livePending = isApprovalLivePending(item);
+  useDecisionSurface('attention-approval-actions', livePending);
   // archive#3779: measured — this does NOT delete. `DELETE /notifications/:id`
   // sets `status: 'dismissed'` and keeps the record; what differs from the bulk
   // acknowledge is the subject and terminality, not destruction.
@@ -869,6 +874,7 @@ function PeerRequestDecisionActions({
 }: {
   reference: AttentionPeerRequestReference;
 }) {
+  useDecisionSurface('peer-request-decision');
   const scope = useHostRequestAuthorityScope();
   const answer = useApprovalAnswering(scope?.apiBase ?? '');
   const queryClient = useQueryClient();
@@ -1110,11 +1116,10 @@ function GateRouteBackDetail({ item }: { item: GateRouteBackAttentionItem }) {
 }
 
 /**
- * Shared affordance for `gate-route-back` and `gate-blocked`: a deep link
- * into the owning Flow run console plus an optional re-evaluate, which posts
- * to the same `POST .../runs/:runId/evaluate` route the console itself uses
- * — resolving the gate here produces the identical run-history trail as
- * resolving it in place.
+ * Shared affordance for `gate-route-back` and `gate-blocked`: Re-evaluate,
+ * which posts to the same `POST .../runs/:runId/evaluate` route the console
+ * uses (so the run history is identical), plus a link to the Flow run console
+ * while the Flow preview is on.
  */
 function GateReEvaluateAction({
   item,
@@ -1205,6 +1210,7 @@ function AcceptExceptionDialog({
   onCancel: () => void;
   onSubmit: (input: { reason: string; authority: string }) => void;
 }) {
+  useDecisionSurface('gate-exception');
   const [reason, setReason] = useState('');
   const [authority, setAuthority] = useState('');
   const reasonId = useId();
@@ -1306,7 +1312,10 @@ function OpenSessionLink({
   );
 }
 
+/** No link while the Flow preview is off: the console would only say so. */
 function OpenFlowConsoleLink({ href }: { href: string }) {
+  const { flow } = useDeveloperFeatures();
+  if (!flow) return null;
   return (
     <a className="attention-open-link" href={href}>
       Open flow console

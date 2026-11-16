@@ -1211,9 +1211,7 @@ describe('device pairing panels', () => {
         'Too many access requests',
       );
       expect(
-        screen
-          .getByRole('button', { name: 'Try again' })
-          .hasAttribute('disabled'),
+        screen.getByRole('button', { name: 'Retry' }).hasAttribute('disabled'),
       ).toBe(false);
       localStorage.removeItem(
         'station-http-development:http://100.64.0.21:3492',
@@ -1284,7 +1282,7 @@ describe('device pairing panels', () => {
     ).toBeTruthy();
     expect(document.body.textContent).not.toContain('network unavailable');
     expect(screen.getAllByRole('alert')).toHaveLength(1);
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 
   test('defaults the device name from userAgentData high-entropy values while staying editable', async () => {

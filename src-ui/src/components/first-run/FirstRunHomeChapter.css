@@ -1,46 +1,12 @@
 /*
- * First-run chapter: the chapter dialog's own scrim and panel. Home's
+ * First-run chapter: the steps inside the shared `Dialog`, which owns the
+ * scrim, panel, header and title like every other Station dialog. Home's
  * re-offer card is a `PageCallout` (#1582 C4) and owns no styles here.
  *
- * `ResponsiveDialogSurface` owns the layer, the focus trap, Escape, and the
- * mobile sheet geometry (`.responsive-surface-overlay` /
- * `.responsive-surface-panel` in `index.css`); each consumer supplies its own
- * scrim and surface through `overlayClassName`/`panelClassName`, exactly as
- * `NewProjectModal.css` does — the base classes carry no background of their
- * own, and a panel that omits one renders as bare text over the page (caught
- * live on the first run of this chapter).
- *
- * The `z-index` still comes from the shared overlay class, which sets
- * `--layer-dialog` with `!important`. Nothing here re-declares it: a first-run
- * surface that picks its own layer is the SHELL-12 defect.
+ * The dialog previously drew its own scrim, panel and a small grey title, so it
+ * looked unlike every other Station dialog and its header sat indented from
+ * its body.
  */
-
-.first-run-chapter__overlay {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-4, 16px);
-  background: var(--overlay-modal);
-  backdrop-filter: blur(10px);
-}
-
-.first-run-chapter {
-  width: min(520px, 100%);
-  max-height: min(92vh, 860px);
-  overflow: auto;
-  padding: var(--space-5, 20px);
-  background: var(--bg-primary);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-lg, 12px);
-  box-shadow: 0 30px 80px rgb(0 0 0 / 40%);
-}
-
-/* The dialog header's own spacing, matching the New Project modal's rhythm. */
-.first-run-chapter .responsive-dialog-header {
-  margin-bottom: var(--space-4, 16px);
-}
 
 .first-run-chapter__lede {
   margin: 0 0 var(--space-4, 16px);

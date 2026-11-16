@@ -1,5 +1,6 @@
 import { useAcknowledgeConversationMutation } from '@kontourai/station-sdk';
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useRef } from 'react';
+import { useDocumentFocused } from '../../hooks/useDocumentFocused';
 import {
   type HomeWorkItem,
   isTerminalLifecycle,
@@ -7,7 +8,12 @@ import {
 
 type AcknowledgeableItem = Pick<
   HomeWorkItem,
-  'id' | 'lifecycleLabel' | 'conversationUpdatedAt' | 'acknowledgedAt'
+  | 'id'
+  | 'lifecycleLabel'
+  | 'conversationUpdatedAt'
+  | 'acknowledgedAt'
+  | 'unread'
+  | 'readVersion'
 >;
 
 /**
@@ -20,6 +26,12 @@ type AcknowledgeableItem = Pick<
  *   inventory refresh: that view is what later puts it in "Just finished"
  *   when it finishes after the person looked away.
  * - Nothing already on record at or past this version is sent again.
+ *
+ * #3075: every version the server calls `unread` is recorded while the chat
+ * is on screen, so a second device sees it read even mid-turn. Otherwise the
+ * last-viewed rule above still decides: "read" may come from the baseline
+ * (history before read state was kept), and Home's Just finished compares
+ * the recorded view with the finish time, so that record must still be made.
  */
 export function visibleConversationAcknowledgement(
   item: AcknowledgeableItem | undefined,
@@ -27,6 +39,8 @@ export function visibleConversationAcknowledgement(
 ): string | undefined {
   const version = item?.conversationUpdatedAt;
   if (!item || !version) return undefined;
+  // The server says unread: record it, every version, while on screen.
+  if (item.unread === true) return version;
   const versionAt = Date.parse(version);
   if (!Number.isFinite(versionAt)) return undefined;
   if (item.acknowledgedAt !== undefined && item.acknowledgedAt >= versionAt) {
@@ -37,16 +51,10 @@ export function visibleConversationAcknowledgement(
   return version;
 }
 
-function subscribeVisibility(onChange: () => void) {
-  document.addEventListener('visibilitychange', onChange);
-  return () => document.removeEventListener('visibilitychange', onChange);
-}
-
-const documentVisible = () => document.visibilityState === 'visible';
-
 /**
  * Records "last viewed" for the chat the pane is showing while the pane is
- * open and the page is in the foreground. `paneVisible` is the caller's
+ * open and its window is focused (#3075: a chat on screen in a window the
+ * person is not using stays unread). `paneVisible` is the caller's
  * answer for its own chrome (dock open, not covered by the phone's task
  * switcher).
  */
@@ -55,12 +63,8 @@ export function useAcknowledgeVisibleConversation(
   paneVisible: boolean,
 ): void {
   const { mutate } = useAcknowledgeConversationMutation();
-  const pageVisible = useSyncExternalStore(
-    subscribeVisibility,
-    documentVisible,
-    () => false,
-  );
-  const visible = paneVisible && pageVisible;
+  const focused = useDocumentFocused();
+  const visible = paneVisible && focused;
   const viewedWhileLive = useRef(new Set<string>());
   const sent = useRef<string | null>(null);
 
@@ -73,12 +77,19 @@ export function useAcknowledgeVisibleConversation(
   const version = visible
     ? visibleConversationAcknowledgement(item, viewedWhileLive.current)
     : undefined;
+  // #3075: the content version this client rendered, which is what the
+  // server marks read.
+  const readVersion = item?.readVersion;
   useEffect(() => {
     if (!id || !version) return;
-    const key = `${id}\u0000${version}`;
+    const key = `${id}\u0000${version}\u0000${readVersion ?? ''}`;
     if (sent.current === key) return;
     sent.current = key;
     viewedWhileLive.current.add(id);
-    mutate({ conversationId: id, updatedAt: version });
-  }, [id, version, mutate]);
+    mutate({
+      conversationId: id,
+      updatedAt: version,
+      ...(readVersion === undefined ? {} : { readVersion }),
+    });
+  }, [id, version, readVersion, mutate]);
 }

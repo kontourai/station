@@ -1,0 +1,7 @@
+{
+  "revision": "d3d159d35a80b8db3030abcff4d5431115547d89",
+
+  "notes": [
+    {"path":"docs/guides/nightly.md","note":"Re-checked after native-release-config.mjs gained a minor<=999/patch<=99 store build-number bound: this document states no tag-derived versionCode formula or component range (Nightly numbering is separate), so no claim changes.","inputs":["docs/guides/nightly.md","scripts/lib/native-release-config.mjs"]}
+  ]
+}

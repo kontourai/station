@@ -12,6 +12,7 @@ import { Badge } from '@kontourai/ui/react';
 import { useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { Button } from '../Button';
+import { Dialog } from '../Dialog';
 import { Empty, ErrorState, SkeletonBlock } from '../state';
 import './UsageRollupPanel.css';
 
@@ -307,108 +308,93 @@ export function UsageRollupPanel() {
         </>
       )}
       {showCoverage && (
-        <div
-          className="usage-rollup__drawer"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Missing usage sources"
-          aria-describedby="usage-coverage-description"
+        <Dialog
+          title="Source coverage"
+          closeLabel="Close source coverage"
+          onClose={() => setShowCoverage(false)}
         >
-          <div>
-            <button type="button" onClick={() => setShowCoverage(false)}>
-              Close
-            </button>
-            <h4>Source coverage</h4>
-            <p id="usage-coverage-description">
-              Gaps are not zero usage. Counts and freshness describe only what
-              Station observed in each provider window.
-            </p>
-            {!isLoading && !error && coverage.length === 0 && (
-              <Empty label="Usage not reported for this window" />
-            )}
-            {error && <p>Coverage could not be refreshed.</p>}
-            {isLoading && <SkeletonBlock count={1} label="Loading coverage" />}
-            {coverage.map((item: UsageCoverage) => (
-              <div key={item.stationId}>
-                <p>
-                  <strong>{item.stationId}</strong>: {item.state}
-                  {item.reason ? ` — ${item.reason}` : ''}
-                  {`; window ${item.window.from} to ${item.window.to}`}
-                  {item.observedThrough
-                    ? `; observed through ${item.observedThrough}`
+          <p>
+            Gaps are not zero usage. Counts and freshness describe only what
+            Station observed in each provider window.
+          </p>
+          {!isLoading && !error && coverage.length === 0 && (
+            <Empty label="Usage not reported for this window" />
+          )}
+          {error && <p>Coverage could not be refreshed.</p>}
+          {isLoading && <SkeletonBlock count={1} label="Loading coverage" />}
+          {coverage.map((item: UsageCoverage) => (
+            <div key={item.stationId}>
+              <p>
+                <strong>{item.stationId}</strong>: {item.state}
+                {item.reason ? ` — ${item.reason}` : ''}
+                {`; window ${item.window.from} to ${item.window.to}`}
+                {item.observedThrough
+                  ? `; observed through ${item.observedThrough}`
+                  : '; observation time unknown'}
+                {`; ${item.freshness ?? 'unknown'} freshness`}
+                {item.observedTurnCount !== undefined
+                  ? `; ${item.usageReportedTurnCount ?? '—'}/${item.observedTurnCount} turns reported usage`
+                  : ''}
+                {item.droppedReceiptCount !== undefined
+                  ? `; ${item.droppedReceiptCount} receipts omitted for ${item.droppedReceiptWindow?.from} to ${item.droppedReceiptWindow?.to}`
+                  : ''}
+              </p>
+              {item.providers?.map((provider) => (
+                <p key={`${item.stationId}:${provider.provider}`}>
+                  {provider.provider}: {provider.state}; window{' '}
+                  {provider.window.from} to {provider.window.to};{' '}
+                  {provider.freshness ?? 'unknown'} freshness;{' '}
+                  {provider.usageReportedTurnCount ?? '—'}/
+                  {provider.observedTurnCount ?? '—'} turns reported
+                  {provider.observedThrough
+                    ? `; observed through ${provider.observedThrough}`
                     : '; observation time unknown'}
-                  {`; ${item.freshness ?? 'unknown'} freshness`}
-                  {item.observedTurnCount !== undefined
-                    ? `; ${item.usageReportedTurnCount ?? '—'}/${item.observedTurnCount} turns reported usage`
-                    : ''}
-                  {item.droppedReceiptCount !== undefined
-                    ? `; ${item.droppedReceiptCount} receipts omitted for ${item.droppedReceiptWindow?.from} to ${item.droppedReceiptWindow?.to}`
-                    : ''}
+                  {provider.reason ? `; ${provider.reason}` : ''}
                 </p>
-                {item.providers?.map((provider) => (
-                  <p key={`${item.stationId}:${provider.provider}`}>
-                    {provider.provider}: {provider.state}; window{' '}
-                    {provider.window.from} to {provider.window.to};{' '}
-                    {provider.freshness ?? 'unknown'} freshness;{' '}
-                    {provider.usageReportedTurnCount ?? '—'}/
-                    {provider.observedTurnCount ?? '—'} turns reported
-                    {provider.observedThrough
-                      ? `; observed through ${provider.observedThrough}`
-                      : '; observation time unknown'}
-                    {provider.reason ? `; ${provider.reason}` : ''}
-                  </p>
-                ))}
-              </div>
-            ))}
-          </div>
-        </div>
+              ))}
+            </div>
+          ))}
+        </Dialog>
       )}
       {showReceipts && !error && (
-        <div
-          className="usage-rollup__drawer"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Usage receipts"
+        <Dialog
+          title="Usage receipts"
+          closeLabel="Close usage receipts"
+          onClose={() => setShowReceipts(false)}
         >
-          <div>
-            <button type="button" onClick={() => setShowReceipts(false)}>
-              Close
-            </button>
-            <h4>Receipts</h4>
-            {(data?.receipts ?? []).map((receipt: UsageReceipt) => (
-              <p key={receipt.id}>
-                {receipt.provider} · {receipt.model ?? 'model unreported'} ·{' '}
-                {tokens(receipt.inputTokens)} input ·{' '}
-                {receipt.observedAt ?? 'legacy ingestion time unknown'} ·{' '}
-                {receipt.pricing?.status ?? 'unpriced'}
-                {' · Published-rate retail: '}
-                {receipt.retailEquivalent?.state === 'available' ||
-                receipt.retailEquivalent?.state === 'stale'
-                  ? `${receipt.retailEquivalent.amount.toFixed(6)} ${receipt.retailEquivalent.currency} (${receipt.retailEquivalent.state}; ${receipt.retailEquivalent.basis.routeId}; tariff ${receipt.retailEquivalent.basis.tariffId}; ${receipt.retailEquivalent.basis.sourceUrl})`
-                  : 'Unavailable'}
-                {' · Account charge: Not reported'}
-                {receipt.conversationId ? (
-                  <>
-                    {' · '}
-                    <a
-                      href={`/chat/${encodeURIComponent(receipt.conversationId)}`}
-                    >
-                      Conversation
-                    </a>
-                  </>
-                ) : null}
-                {receipt.taskId ? (
-                  <>
-                    {' · '}
-                    <a href={`/tasks/${encodeURIComponent(receipt.taskId)}`}>
-                      Task
-                    </a>
-                  </>
-                ) : null}
-              </p>
-            ))}
-          </div>
-        </div>
+          {(data?.receipts ?? []).map((receipt: UsageReceipt) => (
+            <p key={receipt.id}>
+              {receipt.provider} · {receipt.model ?? 'model unreported'} ·{' '}
+              {tokens(receipt.inputTokens)} input ·{' '}
+              {receipt.observedAt ?? 'legacy ingestion time unknown'} ·{' '}
+              {receipt.pricing?.status ?? 'unpriced'}
+              {' · Published-rate retail: '}
+              {receipt.retailEquivalent?.state === 'available' ||
+              receipt.retailEquivalent?.state === 'stale'
+                ? `${receipt.retailEquivalent.amount.toFixed(6)} ${receipt.retailEquivalent.currency} (${receipt.retailEquivalent.state}; ${receipt.retailEquivalent.basis.routeId}; tariff ${receipt.retailEquivalent.basis.tariffId}; ${receipt.retailEquivalent.basis.sourceUrl})`
+                : 'Unavailable'}
+              {' · Account charge: Not reported'}
+              {receipt.conversationId ? (
+                <>
+                  {' · '}
+                  <a
+                    href={`/chat/${encodeURIComponent(receipt.conversationId)}`}
+                  >
+                    Conversation
+                  </a>
+                </>
+              ) : null}
+              {receipt.taskId ? (
+                <>
+                  {' · '}
+                  <a href={`/tasks/${encodeURIComponent(receipt.taskId)}`}>
+                    Task
+                  </a>
+                </>
+              ) : null}
+            </p>
+          ))}
+        </Dialog>
       )}
     </section>
   );

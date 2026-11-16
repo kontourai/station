@@ -11,6 +11,7 @@ import {
 } from '@kontourai/station-contracts/child-work';
 import { redactInlineData } from '../model-image-attachments.js';
 import {
+  asRecord,
   createResolvedPathCache,
   directoryEntries,
   isRealDirectory,
@@ -105,12 +106,6 @@ function bounded(text: string): { text: string; truncated?: true } {
     redactInlineData(text),
     CHILD_WORK_TRANSCRIPT_TEXT_MAX_CHARS,
   );
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
 }
 
 function codexHomeOf(ref: CodexThreadTranscriptRef): string {
@@ -307,12 +302,24 @@ function codexRolloutEntries(
       const input =
         payload.type === 'function_call' ? payload.arguments : payload.input;
       if (typeof input !== 'string' || input.length === 0)
-        return [{ message, kind: 'tool-call', name }];
+        return [
+          {
+            message,
+            kind: 'tool-call',
+            ...(typeof payload.call_id === 'string'
+              ? { toolCallId: payload.call_id }
+              : {}),
+            name,
+          },
+        ];
       const cut = bounded(input);
       return [
         {
           message,
           kind: 'tool-call',
+          ...(typeof payload.call_id === 'string'
+            ? { toolCallId: payload.call_id }
+            : {}),
           name,
           input: cut.text,
           ...(cut.truncated ? { truncated: true as const } : {}),
@@ -330,6 +337,9 @@ function codexRolloutEntries(
         {
           message,
           kind: 'tool-result',
+          ...(typeof payload.call_id === 'string'
+            ? { toolCallId: payload.call_id }
+            : {}),
           ...(cut ? { text: cut.text } : {}),
           ...(cut?.truncated ? { truncated: true as const } : {}),
           ...(failed ? { isError: true as const } : {}),

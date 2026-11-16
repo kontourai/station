@@ -13,6 +13,7 @@ import {
   isPrincipalRef,
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
+import { encodeBase64Url } from '@kontourai/station-shared/base64url';
 import { isStationNativeShellOrigin } from '@kontourai/station-shared/native-shell-origin';
 import { z } from 'zod/v3';
 import { envelopeError } from './api-error-message';
@@ -84,15 +85,10 @@ const cookieAdoptionSchema = z
     continuation: continuationSchema,
   })
   .strict();
-const base64url = (bytes: Uint8Array) =>
-  btoa(String.fromCharCode(...bytes))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
 const encode = (value: unknown) =>
-  base64url(new TextEncoder().encode(JSON.stringify(value)));
+  encodeBase64Url(new TextEncoder().encode(JSON.stringify(value)));
 const hash = async (value: string) =>
-  base64url(
+  encodeBase64Url(
     new Uint8Array(
       await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)),
     ),
@@ -170,7 +166,7 @@ export async function createApplicationSessionProof(
     htm: request.method.toUpperCase(),
     htu: binding.requestOrigin + target.pathname + target.search,
     ...(credential ? { ath: await hash(credential) } : {}),
-    jti: base64url(crypto.getRandomValues(new Uint8Array(16))),
+    jti: encodeBase64Url(crypto.getRandomValues(new Uint8Array(16))),
     iat: Math.floor(Date.now() / 1000),
   });
   const input = `${protectedHeader}.${payload}`;
@@ -179,7 +175,7 @@ export async function createApplicationSessionProof(
     throw new Error(
       'Application session signer returned an incompatible signature.',
     );
-  return `${input}.${base64url(signature)}`;
+  return `${input}.${encodeBase64Url(signature)}`;
 }
 
 async function read(response: Response): Promise<unknown> {

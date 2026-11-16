@@ -80,13 +80,15 @@ function mount(outer: readonly string[], inner: readonly string[]) {
 }
 
 test('an inner suspension adds to the outer one and never lifts it', async () => {
-  mount(['chat'], ['activity']);
+  mount(['chat'], ['workspace-agents']);
   await waitFor(() => expect(model).not.toBeNull());
   act(() => {
-    model?.placeSurface('activity', 'right');
+    model?.placeSurface('workspace-agents', 'right');
     model?.setRegion('bottom', { visible: true });
   });
-  await waitFor(() => expect(model?.regions.right.panes).toEqual(['activity']));
+  await waitFor(() =>
+    expect(model?.regions.right.panes).toEqual(['workspace-agents']),
+  );
   // Both owners' surfaces are out of the view; the record still holds them.
   expect(seen.regions?.bottom.panes).toEqual([]);
   expect(seen.regions?.right.panes).toEqual([]);

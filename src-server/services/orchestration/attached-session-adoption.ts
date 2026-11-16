@@ -230,7 +230,7 @@ export interface AttachedSessionAdoptionDeps {
    */
   applyConfinement?: (
     input: ProviderSessionAdoptInput,
-  ) => ProviderSessionAdoptInput;
+  ) => ProviderSessionAdoptInput | Promise<ProviderSessionAdoptInput>;
   forgetAbandonedAdoptionMemory: (reservation: AdoptionReservation) => void;
   logCleanupFailure: (
     resource: string,
@@ -823,7 +823,7 @@ export class AttachedSessionAdoption {
         : {}),
     };
     const baseAdoptionInput =
-      this.deps.applyConfinement?.(unconfinedAdoptionInput) ??
+      (await this.deps.applyConfinement?.(unconfinedAdoptionInput)) ??
       unconfinedAdoptionInput;
     const launchInput = this.deps.withAcceptedModelLaunchPlan(
       adapter,

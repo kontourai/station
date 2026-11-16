@@ -1,7 +1,0 @@
-{
-  "revision": "4c5db200cdf52665dfd333c747075e0498124fe7",
-
-  "notes": [
-    {"path":"docs/architecture/module-map.md","note":"After merging main (#4468): this PR moved the agent JavaScript panel from workspace-panes/browser-pane to views/settings (Settings › Advanced › Browser & devices); the module map's Browser and device claims are unchanged.","inputs":["docs/architecture/module-map.md","src-ui/src/views/settings/BrowserAgentSettingsPanel.tsx","src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx"]}
-  ]
-}

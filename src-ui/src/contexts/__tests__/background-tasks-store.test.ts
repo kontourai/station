@@ -53,6 +53,46 @@ describe('ingestBackgroundTaskEvent — tool cards', () => {
     expect(state.entries['call-1'].title).toBe('bash');
   });
 
+  /**
+   * The expanded row says what ran: the tool's name survives a description
+   * taking the title, and its arguments survive as one bounded line. Dropping
+   * either field from the fold fails the first case; an unbounded or
+   * multi-line summary fails the second.
+   */
+  test('tool.started keeps the tool name and a one-line input summary', () => {
+    const state = ingestBackgroundTaskEvent(
+      createEmptyBackgroundTasksState(),
+      event('tool.started', {
+        toolCallId: 'call-1',
+        toolName: 'local_bash',
+        arguments: {
+          description: 'Run tests',
+          command: 'pnpm vitest run\n  --reporter dot',
+        },
+      }),
+    );
+    expect(state.entries['call-1']).toMatchObject({
+      title: 'Run tests',
+      toolName: 'local_bash',
+      toolInput: 'pnpm vitest run --reporter dot',
+    });
+
+    const long = 'x'.repeat(500);
+    const unnamed = ingestBackgroundTaskEvent(
+      createEmptyBackgroundTasksState(),
+      event('tool.started', {
+        toolCallId: 'call-2',
+        toolName: 'mcp_lookup',
+        arguments: { description: 'Look up', ids: [long] },
+      }),
+    ).entries['call-2'];
+    // 240 is TOOL_INPUT_LIMIT, pinned here independently of the constant.
+    expect(unnamed.toolInput).toHaveLength(240);
+    expect(unnamed.toolInput?.startsWith('{"ids":["xxx')).toBe(true);
+    expect(unnamed.toolInput?.endsWith('…')).toBe(true);
+    expect(unnamed.toolInput).not.toContain('description');
+  });
+
   test('tool.progress refreshes detail on the running card', () => {
     let state = ingestBackgroundTaskEvent(
       createEmptyBackgroundTasksState(),

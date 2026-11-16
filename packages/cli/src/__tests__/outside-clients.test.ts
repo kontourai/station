@@ -80,6 +80,8 @@ test('isolated command composition rejects code input, full, unknown flags and i
     ['approve', 'request_identifier_123456', '--global', '--access=full'],
     ['approve', 'request_identifier_123456'],
     ['approve', 'request_identifier_123456', '--global', '--project=alpha'],
+    // A zero duration would grant access that has already expired.
+    ['approve', 'request_identifier_123456', '--global', '--expires-in=0d'],
   ];
   for (const args of invalid)
     await expect(

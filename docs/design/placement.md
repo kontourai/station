@@ -11,6 +11,19 @@
 > callers; this review does not renew historical bundle measurements, screenshots,
 > browser gesture measurements or physical-device results.
 
+## Current amendment: session readers belong to Chat
+
+Activity and its Quick review pane are retired. Session destinations open in
+Chat, and child transcripts push onto a navigation stack owned by that chat
+pane. Home and the inbox own the work lists. The Activity-specific examples
+and measurements in the dated slices below describe their historical revision.
+
+Legacy `/activity`, `/sessions` and `?surface=activity` URLs open the named
+session in Chat, or the inbox without a session. Saved Activity region entries
+migrate to Home in `main` and Chat in a dock; an existing Chat keeps its original
+placement. Retired quick-review tabs are removed, and a dock emptied by this
+migration closes. Other pane order and selection are retained.
+
 Status: **accepted direction with an implemented core**. The dated sections
 record the decisions and sequence of the placement work. Read later amendments
 where an earlier slice says a capability is absent. The current source has both
@@ -46,8 +59,11 @@ This source contract does not renew browser or native geometry qualification.
 ## Mobile tool navigation (2026-10-27)
 
 On a phone, the Coding workbench replaces its trailing icon rail and breadcrumb
-with a compact header: Inbox on Chat, Chat when a tool is open, and the current
-tool's labeled picker. The picker opens the shared Dialog as a bottom sheet.
+with a compact header. On the Chat page the workbench bar takes no row: the
+tool picker (glyph and caret, named for a screen reader) leads the chat's own
+mobile header, whose Inbox button already returns to the inbox, and Open
+Browser stays in the picker's list. With a tool open, the bar returns with
+Chat and the tool's labeled picker. The picker opens the shared Dialog as a bottom sheet.
 It lists Chat and the host's pane instances in the layout's declared order,
 including added panes, changed-file counts, the Browser launcher when available,
 and Add tool when the host can open its catalog. Choosing a pane uses the same
@@ -251,7 +267,7 @@ every other route. These rules make it a region rather than a special case
   `?surface=home` deep link. Home is `hiddenFromNav` and has no palette
   entry.
 - **A `main` occupant's toggle returns it to the dock.** A surface's chord
-  (⌘⇧A for Activity) and its row in the folded Regions menu are one model
+  (⌘D for Chat) and its row in the folded Regions menu are one model
   command, `toggleSurface` (#1523; the toolbar carries no placement rule of its
   own, #1420): a dock occupant's region is hidden or shown, and a surface
   occupying `main` is moved to its default dock region — visible, Home left in
@@ -866,7 +882,8 @@ background work of the conversation on screen — tool calls, delegated
 sessions, provider subagents — as a dock tab (`workspace-agents`,
 `exposure: 'catalog'`, no chord, dock regions only). It is the SAME list as
 `BackgroundTasksSheet`: `TaskRow` and its labels moved to
-`backgroundTaskRows.tsx` and both render it. The occurrence binds nothing,
+`backgroundTaskRows.tsx` and both render it. Its activity line
+(`BackgroundTaskActivity`) is also what the chat's background banner lists. The occurrence binds nothing,
 like Activity's — which conversation's work it shows is what the pane READS
 (`activeChat`), not what it IS — and it reads no region state, so
 "View transcript" reveals the delegate through `useShowSurface`. Fields the
@@ -898,6 +915,9 @@ remains for an engine whose control cell is not wired.
 **Amended 2026-10-14.** Subagents also appear as inline chat transcript
 cards (`components/chat/SubagentTranscriptCard.tsx`). Claude and Muse cards
 sit after their spawning tool-call run, including every child of a workflow.
+A spawning call drawn as its card leaves that run. Claude's background shell
+commands are child work of kind `command` or `monitor` (`childWorkKindOf`),
+drawn as command cards and rows rather than as subagents.
 When an engine such as Codex reports a child without a tool-call row, the
 card uses the child's parent turn and the spawn event's text position.
 That position counts the narration a settled phone turn folds into its tool
@@ -942,8 +962,8 @@ and time formatting (`utils/child-work-display.ts`).
 
 **Child-work retention and result amendment (2026-11-05).** The pane and
 background sheet show retained work, not a complete lifetime inventory.
-Recent activity bounds settled tool rows and closed-chat history; counts marked
-“shown” count retained rows. Running work survives chat closure. The “All”
+The sheet's “Recent tasks only” footer marks the bound on settled tool rows
+and closed-chat history; counts marked “shown” count retained rows. Running work survives chat closure. The “All”
 child registry and completion notices are scoped to the Station connection;
 a foreign Station with the same reported child IDs cannot replace a notice.
 Missing snapshot evidence leaves an outcome unknown.
@@ -1317,7 +1337,7 @@ one arrangement, and no control at all that said whether a region was open
   renders no `RegionChromeBar`, so a surface holding it (Activity) leaves
   through: a dock region's chooser, which lists it as "Move here from Main"
   (#2154; #2143's "Show Activity here" offer row); its chord
-  (⌘⇧A, `toggleSurface`: to its default dock region, Home back in `main`);
+  (retired Activity chord; Chat uses ⌘D and `toggleSurface`);
   or the sidebar's Home row (`showSurface('home')` places Home, and the
   displaced surface is unplaced — its chord places it afresh in its dock,
   and its sidebar row makes it the page again). With every dock region occupied there is no pointer route in the

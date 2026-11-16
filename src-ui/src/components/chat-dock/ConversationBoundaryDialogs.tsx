@@ -196,7 +196,7 @@ export function ConversationBoundaryDialogs({
               );
               invalidate(orchestrationQueries.sessions().queryKey);
               if (boundary.status === 'reserved')
-                showToast('Next engine context reserved', 'success');
+                showToast('Agent context reset is ready', 'success');
             }}
           />
         )}

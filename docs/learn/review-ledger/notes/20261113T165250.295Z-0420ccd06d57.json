@@ -1,0 +1,7 @@
+{
+  "revision": "d048111291fa8a6a00f83348f505c2696d8a41f1",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Checked: the connections.md change (Antigravity row) does not alter which host runs an engine or the host hint. No claim changed.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

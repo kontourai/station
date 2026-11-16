@@ -55,7 +55,7 @@ export function PersonalBoardView({ boardSlug }: { boardSlug: string }) {
         action={
           missing ? undefined : (
             <button type="button" onClick={() => refetch()}>
-              Try again
+              Retry
             </button>
           )
         }

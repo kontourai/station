@@ -32,6 +32,8 @@ const CAPABILITY_STATES: Record<NativeCapabilityId, NativeCapabilityState> = {
   'native-consent-broker': 'enabled',
   'remote-push': 'unsupported',
   'share-intake': 'disabled',
+  'image-share-intake': 'enabled',
+  'clipboard-image': 'enabled',
 };
 
 const CAPABILITIES = Object.entries(CAPABILITY_STATES).map(([id, state]) => ({
@@ -121,5 +123,85 @@ describe('capability report carries the dev-build flag across the adapter', () =
     }).getCapabilityReport();
 
     expect(result.status).toBe('error');
+  });
+});
+
+describe('capability report forward compatibility', () => {
+  const report = (capabilities: unknown[]) =>
+    adapterReporting({
+      platform: 'android',
+      capabilities,
+    }).getCapabilityReport();
+
+  it('skips a capability id this UI does not know and keeps the rest', async () => {
+    const adapter = adapterReporting({
+      platform: 'android',
+      capabilities: [
+        ...CAPABILITIES,
+        { id: 'future-capability', state: 'enabled', reason: 'newer shell' },
+      ],
+    });
+    const result = await adapter.getCapabilityReport();
+    expect(result.status).toBe('ok');
+    if (result.status !== 'ok') throw new Error('Expected a valid report');
+    expect(result.value.capabilities.map(({ id }) => id)).not.toContain(
+      'future-capability',
+    );
+    expect(adapter.capability('image-share-intake').state).toBe('enabled');
+    expect(
+      adapter.capability('image-share-intake').reportVerified,
+    ).toBeUndefined();
+  });
+
+  it('still rejects a malformed entry for a known id', async () => {
+    const malformed = CAPABILITIES.map((capability) =>
+      capability.id === 'haptics'
+        ? { ...capability, state: 'sometimes' }
+        : capability,
+    );
+    expect((await report(malformed)).status).toBe('error');
+    const noReason = CAPABILITIES.map((capability) =>
+      capability.id === 'haptics' ? { ...capability, reason: '' } : capability,
+    );
+    expect((await report(noReason)).status).toBe('error');
+  });
+
+  it('rejects a malformed entry for an optional known id', async () => {
+    for (const id of ['image-share-intake', 'clipboard-image']) {
+      const corrupted = CAPABILITIES.map((capability) =>
+        capability.id === id
+          ? { ...capability, state: 'sometimes' }
+          : capability,
+      );
+      expect((await report(corrupted)).status).toBe('error');
+    }
+  });
+
+  it('still rejects an entry that is not a capability at all', async () => {
+    expect((await report([...CAPABILITIES, 'haptics'])).status).toBe('error');
+    expect((await report([...CAPABILITIES, { state: 'enabled' }])).status).toBe(
+      'error',
+    );
+  });
+
+  it('still rejects duplicates and a missing required id', async () => {
+    expect((await report([...CAPABILITIES, CAPABILITIES[0]])).status).toBe(
+      'error',
+    );
+    expect(
+      (
+        await report(
+          CAPABILITIES.filter(({ id }) => id !== 'capability-report'),
+        )
+      ).status,
+    ).toBe('error');
+    const unknownTwice = {
+      id: 'future-capability',
+      state: 'enabled',
+      reason: 'x',
+    };
+    expect(
+      (await report([...CAPABILITIES, unknownTwice, unknownTwice])).status,
+    ).toBe('error');
   });
 });

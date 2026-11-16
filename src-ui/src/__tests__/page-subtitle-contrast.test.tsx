@@ -39,7 +39,7 @@ function fixtureHtml(): string {
     <PageFrame
       spec={{
         title: 'Agents',
-        subtitle: 'Choose an AI app or create your own agent.',
+        subtitle: 'Create an agent or use a connected engine',
       }}
       routeIdentity="agents"
     >

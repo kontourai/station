@@ -10,12 +10,17 @@ import {
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
-import { inputRequestFromRequestEvent } from '@kontourai/station-shared/input-request';
+import {
+  inputRequestFromRequestEvent,
+  inputRequestUrlFromRequestEvent,
+  isCardAnsweredRequestEvent,
+} from '@kontourai/station-shared/input-request';
 import {
   STATION_BROWSER_SERVER_GRANT_LABEL,
   toolRequestFromPayload,
   toolRequestGrantLabel,
   toolRequestIsPlanReview,
+  toolRequestRuleGrantFromPayload,
   toolRequestServerGrantFromPayload,
   toolRequestSessionGrantFromPayload,
 } from '@kontourai/station-shared/tool-request-preview';
@@ -217,7 +222,9 @@ export class ApprovalInboxNotificationProvider
         // The typed choice, never the label.
         ...(actionId === ACCEPT_SERVER_FOR_SESSION_ACTION
           ? { sessionGrantScope: 'server' as const }
-          : {}),
+          : actionId === ACCEPT_RULE_FOR_SESSION_ACTION
+            ? { sessionGrantScope: 'rule' as const }
+            : {}),
       };
       await (clientOrigin
         ? this.deps.orchestrationService.dispatch(command, { clientOrigin })
@@ -516,6 +523,8 @@ export function wireApprovalInboxNotifications(
     // may do. An answer from this card is sent as a one-call accept, so
     // the card does not offer "Auto-accept file edits for this session".
     const grant = toolRequestSessionGrantFromPayload(event.payload);
+    // The narrower command-prefix choice sits before the whole-tool one.
+    const ruleGrant = toolRequestRuleGrantFromPayload(event.payload);
     const grantLabel =
       grant === 'edit-mode'
         ? undefined
@@ -535,6 +544,8 @@ export function wireApprovalInboxNotifications(
         // #3390: a form is answered with content on its own card, against
         // the exact event the person saw; this card's decisions carry
         // neither and would be refused, so it offers only the way there.
+        // A link is opened from its own card too: an Allow here would say
+        // the person opened a link nobody showed them.
         //
         // docs/design/event-content-spill.md: a request whose content
         // (or a tool call it gates) was stored out of line, or whose
@@ -542,12 +553,21 @@ export function wireApprovalInboxNotifications(
         // allowed, so its card offers only Deny; opening the card is
         // the way to review and allow it. A bound call that arrives
         // later, or a refused allow, rewrites the card (below).
-        actions: inputRequestFromRequestEvent(event)
+        actions: isCardAnsweredRequestEvent(event)
           ? []
           : needsLoad
             ? [{ id: 'decline', label: 'Deny', variant: 'danger' }]
             : [
                 { id: 'accept', label: 'Allow Once', variant: 'primary' },
+                ...(ruleGrant
+                  ? [
+                      {
+                        id: ACCEPT_RULE_FOR_SESSION_ACTION,
+                        label: ruleGrant.label,
+                        variant: 'secondary' as const,
+                      },
+                    ]
+                  : []),
                 ...(grantLabel
                   ? [
                       {
@@ -689,7 +709,7 @@ export function wireApprovalInboxNotifications(
         if (provider.isReadOnlyAttachedSession(event.threadId)) return;
         await scheduleOrchestrationApproval(
           event,
-          !inputRequestFromRequestEvent(event) &&
+          !isCardAnsweredRequestEvent(event) &&
             provider.requiresContentLoad(event),
         );
         approvalInboxOps.add(1, { action: 'opened', target: 'orchestration' });
@@ -851,13 +871,16 @@ function parseInboxTarget(notification: Notification): InboxTarget | null {
 
 /** The inbox action of the server-wide Station browser session grant. */
 const ACCEPT_SERVER_FOR_SESSION_ACTION = 'acceptForSessionServer';
+/** The inbox action of the command-prefix session grant. */
+const ACCEPT_RULE_FOR_SESSION_ACTION = 'acceptForSessionRule';
 
 function mapOrchestrationDecision(
   actionId: string,
 ): 'accept' | 'acceptForSession' | 'decline' {
   if (
     actionId === 'acceptForSession' ||
-    actionId === ACCEPT_SERVER_FOR_SESSION_ACTION
+    actionId === ACCEPT_SERVER_FOR_SESSION_ACTION ||
+    actionId === ACCEPT_RULE_FOR_SESSION_ACTION
   ) {
     return 'acceptForSession';
   }
@@ -897,6 +920,11 @@ function formatOrchestrationBody(
     return toolRequestIsPlanReview(toolName)
       ? `${form.requester} wants you to review a plan.`
       : `${form.requester} asked a question.`;
+  const link = inputRequestUrlFromRequestEvent(event);
+  if (link)
+    return link.body.purpose === 'mcp-sign-in'
+      ? `${link.requester} wants you to sign in.`
+      : `${link.requester} wants you to open a link.`;
   if (toolName) {
     return `${event.provider} wants approval to use ${toolName}.`;
   }

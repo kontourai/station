@@ -6,6 +6,7 @@ import {
 } from '@kontourai/station-contracts/session-lifecycle';
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import { agentMark, engineMark } from './identity-marks';
+import { parseEpochMs } from './parseEpochMs';
 
 /**
  * A turn is mid-flight. archive#1073: gated on the summary's turn-level fold, not
@@ -157,9 +158,7 @@ export function sessionRecency(session: OrchestrationSessionSummary): number {
 }
 
 function parseTimestamp(value: string | undefined): number {
-  if (!value) return 0;
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : 0;
+  return parseEpochMs(value) ?? 0;
 }
 
 export function sessionKindLabel(session: OrchestrationSessionSummary): string {

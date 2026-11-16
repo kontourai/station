@@ -1,0 +1,17 @@
+{
+  "revision": "2352f55302bd0bccf8ea28566b3c9c8de889b399",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this grant UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this grant UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this grant UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this grant UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/components/badges/ComposerModeSheet.tsx"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this grant UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/views/settings/PeopleSection.tsx"]},
+
+    {"path":"docs/learn/media/oauth-mcp-sign-in-comparison.png","note":"Custom appearance (docs/decisions/custom-appearance.md): added one useDecisionSurface call, which only switches off a person's custom CSS sheet while this grant UI is mounted. Rendering, actions, authorization and copy are unchanged, so the citing documents' claims about this component remain accurate.","inputs":["src-ui/src/views/integrations/IntegrationEditorPanel.tsx"]}
+  ]
+}

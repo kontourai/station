@@ -663,7 +663,7 @@ describe('ConnectedServerUpdates', () => {
         name: 'Downloading the update',
       });
       expect(bar.getAttribute('aria-valuenow')).toBe('25');
-      expect(screen.getByText('25.0 / 100.0 MB')).toBeTruthy();
+      expect(screen.getByText('25.0 MB / 100.0 MB')).toBeTruthy();
       expect(postBodies).toEqual([{ action: 'stage' }]);
 
       // The server now reports `staged` (it pushes it as

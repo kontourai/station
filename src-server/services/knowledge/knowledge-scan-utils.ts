@@ -1,4 +1,5 @@
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { type Dirent, existsSync } from 'node:fs';
+import { readdir } from 'node:fs/promises';
 import {
   extname,
   join,
@@ -279,45 +280,66 @@ export function applyKnowledgeScanPatterns(
   });
 }
 
-export function collectKnowledgeFiles(
+/** A directory's entries, or none when it cannot be read. */
+async function readScanDirectory(path: string): Promise<Dirent[]> {
+  try {
+    return await readdir(path, { withFileTypes: true });
+  } catch (error) {
+    logger.debug('Failed to read directory during knowledge scan', {
+      path,
+      error,
+    });
+    return [];
+  }
+}
+
+/** Most files one directory scan hands to the indexer. */
+const MAX_KNOWLEDGE_SCAN_FILES = 200;
+
+/**
+ * Walks `dirPath` for files to index: regular files with an allowed extension
+ * that `accept` keeps, at most `maxFiles` of them.
+ *
+ * `accept` (the scan's include/exclude patterns) is applied WHILE walking, so
+ * the cap counts files that will actually be indexed. Capping first and
+ * filtering afterwards indexed nothing whenever the first `maxFiles`
+ * extension matches happened to sit outside the included paths.
+ *
+ * Symbolic links are never followed, to a file or to a directory. A link
+ * inside a project tree (a cloned repository can carry one) may point
+ * anywhere on the host, and following it would index files from outside the
+ * directory the operator asked to scan. `readdir` reports the entry's own
+ * type without resolving it, so nothing is read through a link. This matches
+ * the project file tree, which skips links for the same reason.
+ */
+export async function collectKnowledgeFiles(
   dirPath: string,
   allowedExtensions: Set<string>,
-  maxFiles = 200,
-): string[] {
+  accept: (filePath: string) => boolean = () => true,
+  maxFiles = MAX_KNOWLEDGE_SCAN_FILES,
+): Promise<string[]> {
   const results: string[] = [];
-  const walk = (currentPath: string, depth: number) => {
+  const isWanted = (entry: Dirent, fullPath: string): boolean =>
+    entry.isFile() &&
+    allowedExtensions.has(extname(entry.name).toLowerCase()) &&
+    accept(fullPath);
+
+  const walk = async (currentPath: string, depth: number): Promise<void> => {
     if (depth > 8 || results.length >= maxFiles) return;
 
-    let entries: string[];
-    try {
-      entries = readdirSync(currentPath);
-    } catch (error) {
-      logger.debug('Failed to read directory during knowledge scan', {
-        path: currentPath,
-        error,
-      });
-      return;
-    }
-
-    for (const name of entries) {
+    for (const entry of await readScanDirectory(currentPath)) {
       if (results.length >= maxFiles) break;
-      const fullPath = join(currentPath, name);
-      try {
-        const stat = statSync(fullPath);
-        if (stat.isDirectory()) {
-          if (!SKIP_DIRS.has(name)) walk(fullPath, depth + 1);
-          continue;
-        }
-        if (allowedExtensions.has(extname(name).toLowerCase())) {
-          results.push(fullPath);
-        }
-      } catch (error) {
-        logger.debug('Failed to stat file during knowledge scan', { error });
+      if (entry.isSymbolicLink()) continue;
+      const fullPath = join(currentPath, entry.name);
+      if (entry.isDirectory()) {
+        if (!SKIP_DIRS.has(entry.name)) await walk(fullPath, depth + 1);
+      } else if (isWanted(entry, fullPath)) {
+        results.push(fullPath);
       }
     }
   };
 
-  walk(dirPath, 0);
+  await walk(dirPath, 0);
   return results;
 }
 

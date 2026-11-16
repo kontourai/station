@@ -121,7 +121,6 @@ vi.mock('../contexts/open-chats-store', () => ({
     items: [],
     currentSessionIdByConversation: new Map(),
   }),
-  countOpenChatAttention: () => 0,
 }));
 
 // The conversation fetch the cold open delegates to: it hands back the tab
@@ -413,10 +412,10 @@ test('real Chat render crashes preserve frame recovery, diagnose on the third ca
       within(failure).getByRole('button', { name: 'Minimize' }),
     ).toBeTruthy();
     expect(signal).not.toHaveBeenCalled();
-    fireEvent.click(within(failure).getByRole('button', { name: 'Try again' }));
+    fireEvent.click(within(failure).getByRole('button', { name: 'Retry' }));
     await screen.findByRole('region', { name: 'Chat unavailable' });
     expect(signal).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await waitFor(() =>
       expect(signal).toHaveBeenCalledExactlyOnceWith({
         slot: 'chat',
@@ -433,7 +432,7 @@ test('real Chat render crashes preserve frame recovery, diagnose on the third ca
     // Clearing the conversation kept this pane occurrence and its diagnostic history.
     expect(signal).toHaveBeenCalledTimes(1);
     for (let retry = 0; retry < 2; retry++) {
-      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
       await screen.findByRole('region', { name: 'Chat unavailable' });
       expect(signal).toHaveBeenCalledTimes(1);
     }

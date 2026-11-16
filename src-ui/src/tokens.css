@@ -17,7 +17,7 @@
   --text-2xs: 11px;
   --text-xs: 12px;
   --text-sm: 12px;
-  --text-base: 12px;
+  /* `--text-base` is set per density below (#4692). */
   --text-md: 13px;
   --text-lg: 14px;
   --text-15: 15px;
@@ -126,6 +126,28 @@
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
 }
 
+/* Density (#4692). The base text size follows the person's density choice,
+   applied as `data-density` on the root (lib/display-preferences.ts,
+   public/startup-theme.js). Comfortable is the default, including before the
+   attribute is set; Compact keeps the sizes Station used before it: a 12px
+   `--text-base` and the shared kit's 12.5px `--k-text-sm`, which most body
+   and control text reads. Rows are sized by their text and padding, so their
+   heights follow. Touch targets do not shrink: their 44px floors are set
+   separately (docs/guides/responsive-ui.md).
+
+   Both selectors outrank the kit's own `:root` declaration of `--k-text-sm`,
+   which index.css imports after this file. `density-tokens.browser.test.tsx`
+   measures them applied. */
+:root:not([data-density="compact"]) {
+  --text-base: 13px;
+  --k-text-sm: 13px;
+}
+
+:root[data-density="compact"] {
+  --text-base: 12px;
+  --k-text-sm: 12.5px;
+}
+
 /* Global reduced-motion: honor the OS "reduce motion" setting everywhere in one
    place (previously respected in only 2 files). Near-instant transitions. */
 @media (prefers-reduced-motion: reduce) {
@@ -145,4 +167,24 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* The person's own Reduced motion choice (#4692): the same contract as the
+   device setting above, applied as `data-motion="reduce"` on the root
+   (lib/display-preferences.ts). `prefersReducedMotion()` reads the attribute
+   too, so script-driven motion follows it. */
+:root[data-motion="reduce"] {
+  --loading-label-display: block;
+  --motion-fast: 0.01ms;
+  --motion-base: 0.01ms;
+  --motion-slow: 0.01ms;
+}
+
+:root[data-motion="reduce"] *,
+:root[data-motion="reduce"] *::before,
+:root[data-motion="reduce"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
 }

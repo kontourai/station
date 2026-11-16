@@ -29,7 +29,10 @@ import type {
   LaunchableModelInventory,
 } from '@kontourai/station-contracts/model-inventory';
 import { isLlmModelConnection } from '@kontourai/station-contracts/model-inventory';
-import type { EngineId } from '@kontourai/station-contracts/provider';
+import {
+  type EngineId,
+  isAcpFamilyEngine,
+} from '@kontourai/station-contracts/provider';
 import {
   type AgentConnectionView,
   CONNECTION_UNREACHABLE_GRACE_MS,
@@ -47,8 +50,10 @@ import {
 import { sanitizeFreeText } from '@kontourai/station-shared/redaction';
 import { type AgentRegistry } from '../../domain/agent-registry.js';
 import {
+  acpConnectionRuntimeAdapter,
   connectionIdForAdapter,
   engineIdForAdapter,
+  isAcpConnectionBacked,
   nativeRuntimeConnectionIds,
 } from '../../providers/adapter-identity.js';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
@@ -330,7 +335,10 @@ function externalEngineRegistryBinding(
 ): { id: EngineConnectionId; settingsId: string } | null {
   if (connection.kind !== 'agent') return null;
   if (connection.config?.engineId === 'station') return null;
-  if (connection.config?.engineId === 'acp') {
+  if (
+    connection.type === 'acp' &&
+    isAcpFamilyEngine(connection.config?.engineId as string | undefined)
+  ) {
     return {
       id: engineConnectionId(connection.id),
       settingsId: connection.id,
@@ -474,8 +482,8 @@ function applyRuntimeAuthenticationFailure<
       : runtime.name;
   const readinessReason =
     typeof runtime.config.proxyConnectionId === 'string'
-      ? 'The last request could not sign in through this proxy. Check the address and key in Models, then choose Check connection.'
-      : `${providerLabel} rejected a real runtime request. Sign in again; Station will automatically recheck this client shortly.`;
+      ? 'The last request could not sign in through this proxy. Check the address and key in Models, then run Check connection on this engine to prove recovery.'
+      : `${providerLabel} rejected a real runtime request. Sign in again, then run Check connection on this engine to prove recovery.`;
   return {
     ...runtime,
     status: 'missing_prerequisites',
@@ -1299,7 +1307,8 @@ export class ConnectionService {
       // Per Adapter, never total: an Adapter whose identity cannot be read
       // loses only its own connection's attribution.
       try {
-        if (adapter.provider === 'acp') continue;
+        if (adapter.provider === 'acp' || isAcpConnectionBacked(adapter))
+          continue;
         const adapterEngineId = engineIdForAdapter(adapter);
         const identity = publicEngineConnection(
           adapters,
@@ -1343,9 +1352,14 @@ export class ConnectionService {
         configEngineId,
       );
       if (!identity) continue;
+      // The inspector's projection: an ACP-backed adapter claiming the
+      // connection names the engine, otherwise ACP.
+      const runtimeAdapter = acpConnectionRuntimeAdapter(adapters, config);
       identities.push({
         id: identity.id,
-        engineId: engineId('acp'),
+        engineId: runtimeAdapter
+          ? engineIdForAdapter(runtimeAdapter)
+          : engineId('acp'),
         type: 'acp',
       });
     }
@@ -2670,26 +2684,19 @@ export class ConnectionService {
     }> = [];
     const readQuota = adapter?.readQuotaSnapshot?.bind(adapter);
     if (state.policy.allowancePreference && readQuota) {
-      const pending = [...eligible];
       const byProfile = new Map<string, ConnectionQuotaSnapshot>();
-      await Promise.all(
-        Array.from({ length: Math.min(4, pending.length) }, async () => {
-          for (;;) {
-            const profileRef = pending.shift();
-            if (profileRef === undefined) return;
-            try {
-              const result = await readQuota({
-                connectionId,
-                credentialProfileRef: profileRef,
-              });
-              if (result.kind === 'snapshot')
-                byProfile.set(profileRef, result.snapshot);
-            } catch {
-              /* Unavailable evidence preserves enrollment order. */
-            }
-          }
-        }),
-      );
+      await mapWithConcurrency(eligible, 4, async (profileRef) => {
+        try {
+          const result = await readQuota({
+            connectionId,
+            credentialProfileRef: profileRef,
+          });
+          if (result.kind === 'snapshot')
+            byProfile.set(profileRef, result.snapshot);
+        } catch {
+          /* Unavailable evidence preserves enrollment order. */
+        }
+      });
       observations.push(
         ...eligible.map((profileRef) => ({
           profileRef,
@@ -3630,7 +3637,19 @@ export class ConnectionService {
       (candidate) => candidate.id === connection.id,
     );
     if (acpConnection) {
-      return valueFingerprint({ type: 'acp', connection: acpConnection });
+      // Which adapter runs it changes what the connection projects. The key
+      // is added only while an ACP-backed adapter claims the connection
+      // (OpenCode, preview on), so every other connection keeps the
+      // fingerprint its saved smoke results were recorded under.
+      const runtime = acpConnectionRuntimeAdapter(
+        adapters,
+        acpConnection,
+      )?.provider;
+      return valueFingerprint({
+        type: 'acp',
+        connection: acpConnection,
+        ...(runtime ? { runtime } : {}),
+      });
     }
     const rawEngineIdentity = connection.config?.engineId;
     const engineIdentity =

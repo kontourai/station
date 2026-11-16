@@ -1,0 +1,17 @@
+{
+  "revision": "bc0544e11a8263b9cd3931b1a0777bb4e37ccbce",
+
+  "notes": [
+    {"path":"docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","note":"Bounded delta review: the edited paragraph covers only compile-cache isolation evidence. Citing pages link to other sections of that guide; their claims are unaffected. No prose change.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Bounded delta review: the edited paragraph covers only compile-cache isolation evidence. Citing pages link to other sections of that guide; their claims are unaffected. No prose change.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Bounded delta review: the edited paragraph covers only compile-cache isolation evidence. Citing pages link to other sections of that guide; their claims are unaffected. No prose change.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Bounded delta review: the edited paragraph covers only compile-cache isolation evidence. Citing pages link to other sections of that guide; their claims are unaffected. No prose change.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Bounded delta review: the edited paragraph covers only compile-cache isolation evidence. Citing pages link to other sections of that guide; their claims are unaffected. No prose change.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"src-desktop/AGENTS.md","note":"Bounded delta review: the edited paragraph covers only compile-cache isolation evidence. Citing pages link to other sections of that guide; their claims are unaffected. No prose change.","inputs":["docs/guides/native-shell-verification.md"]}
+  ]
+}

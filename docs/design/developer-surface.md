@@ -34,7 +34,8 @@ existing engine, capability, developer-service and ACP projections, including
 unavailable reasons and discovery freshness. Ready means the projection's
 readiness observation, not successful execution of a turn.
 
-Monitoring has Activity and Companion tabs. Companion reads operator-only host
+Monitoring includes platform action operations (including cancellation and reentry),
+followed by Activity and Companion tabs. Companion reads operator-only host
 prerequisites through the authority-bound SDK query; it exposes missing
 capabilities and observed versions. An explicitly authorized operator can prepare
 the signed archive and fixed companion files. Receipt reads recover a lost reply

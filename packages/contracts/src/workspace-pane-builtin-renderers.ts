@@ -26,7 +26,6 @@
  */
 export const BUILTIN_WORKSPACE_PANE_RENDERER_NAMES = [
   'flow-run-console',
-  'workspace-activity-review',
   'workspace-chat',
   'task-room-editor',
   'coding',
@@ -50,7 +49,6 @@ export const BUILTIN_WORKSPACE_PANE_RENDERER_NAMES = [
   // `LayoutRenderer` the main region uses for the layout the id names.
   'workspace-layout',
   'workspace-home',
-  'workspace-activity',
   // This conversation's running tool calls, delegated sessions and provider
   // subagents as a dock tab (#2050). Its descriptor lives in
   // `workspace-agents-pane.ts`.

@@ -54,17 +54,20 @@ only when this Station's build can run it; if none is, the section says
 | `station-orchestration-instructions` | Station orchestration instructions | Tells Agents that have Station control tools when and how to use them (delegating to another Agent, waiting on Sessions, browser and device tools). It rides the Agent's system prompt on Claude when the Agent has one, otherwise the first message of a new Session. | Adds a few thousand characters to each new Session's prompt. Applies to Sessions started after the change; resumed Sessions are not re-sent. Station control tool approval and access rules are unchanged. |
 | `learning-lifecycle-review` | Learning lifecycle review | Shows evidence, decisions, active guidance, effects and retirement in Project Sources. | Personal POSIX hosts only. Owner-reviewed activation can change future Task context; it does not install or deploy a Skill. |
 | `context-compaction` | Context compaction | Offers a bounded summary cold start and opt-in threshold compaction where supported. | Summary generation can spend model tokens. Old messages stay retained; native tool and approval state is omitted, not transferred. Unknown capacity prevents automatic compaction. |
-| `project-supervision` | Project supervision | Retains opted-in Task supervision and reconciles missed next actions through the conversation inbox. | May queue model turns; current access, Task incarnation, waits, capacity and original delivery keys still govern placement. |
+| `project-supervision` | Project supervision | Retains opted-in Task supervision and reconciles missed next actions through the conversation inbox. | Needs Coordinator chat. May queue model turns; current access, Task incarnation, waits, capacity and original delivery keys still govern placement. |
 | `github-automation-actions` | GitHub automation actions | Dispatches explicitly granted, matching rules into durable Tasks and their first inbox turn. | Can spend model tokens under retained budgets. Off by default; observation alone grants no execution authority. Repair publication requires credential separation. |
 | `isolated-github-repairs` | Isolated GitHub repairs | Runs explicitly granted GitHub repairs in Docker, retaining a Task and exact proposal for operator review. | Can spend provider credits. Separate single-use publication grants open drafts only; audit and cleanup remain available when disabled. |
-| `session-goals` | Session goals | Adds engine Goal inspection and paused-objective editing to Chat settings. | The current Codex adapter supports read, save paused, pause and clear. Activation and Station-managed goal loops are unavailable; reads do not start an engine. |
-| `coordinator-picture` | Coordinator working picture | Lets the designated coordinator keep short notes about readable work, shown on Home. | Notes can contain work details; access to each source is rechecked. Finished notes expire after seven days. |
+| `session-goals` | Session goals | Adds engine Goal inspection and paused-objective editing to Chat settings. | The current Codex adapter supports read, save paused, pause and clear; Muse on `muse serve` supports read, pause and clear and reports no token or time figures. Activation and Station-managed goal loops are unavailable; reads do not start an engine. |
+| `coordinator-session` | Coordinator chat | Lets you make one chat your personal agent ([Houston](https://github.com/kontourai/station/blob/main/docs/user/houston.md)), shown on Home and woken when work you can read needs you, fails or finishes. | Each wake is a model call. On an engine with Station tools it acts with your permissions. Turning it off keeps your choice of chat; nothing is woken and queued updates are not sent. |
+| `coordinator-picture` | Coordinator working picture | Lets the designated coordinator keep short notes about readable work, shown on Home. | Needs Coordinator chat. Notes can contain work details; access to each source is rechecked. Finished notes expire after seven days. |
 | `conversation-resolution` | Open and Settled inbox | Keeps conversations Open until explicitly settled. Task closure follows the existing Task close-on-merge setting. | Personal resolution state syncs across devices. Turning it off preserves saved choices and restores turn-based grouping; no provider cost. |
 | `attention-snooze` | Attention snooze | Lets the attention API temporarily hide any inbox item until a chosen time, up to 30 days. A newer source version resurfaces immediately. | Local per-user state only; no provider cost or background jobs. Off by default; disabling keeps saved snoozes but omits their effect while off. |
 | `private-memory` | Private memory | Private memory you can check and search. New chats start with what you confirmed. No erasure yet. | Memory can contain personal information. Off by default. Only chats on the Station engine get the brief. Create it through the API. Disabling hides access but retains the store. Hosted Stations do not offer it. |
+| `opencode-native-engine` | OpenCode native engine | New chats on an OpenCode connection run on Station's `opencode` engine. It runs OpenCode 2 through its own local server (`opencode serve`) when Station verified that version's API, and over ACP otherwise (OpenCode 1, another 2.x version, or a chat with an effort setting). An Agent's tool policy applies on both. | Existing chats keep their engine; turning it off runs `opencode` chats over ACP. A local `opencode serve` runs per connection and folder, and a chat with Station tool servers gets its own; one unused for 5 minutes stops. The managed-policy `acp` entry still governs and pins OpenCode. |
 | `fleet-consumer-probes` | Fleet consumer probes | Sends a test request to a peer-contributed model before routing work to it. | Can spend a completion on another Station. |
 | `integration-content-trust` | Integration content trust | Shows trust classification and after-untrusted-content permissions for integrations in Connections. | Saved choices remain effective when the preview is off; enforcement depends on the engine and integration path. |
 | `browser-experience` | Browser experience | Adds Browser shortcuts, per-tab zoom and appearance, float over chat, and agent action visualization. | Off by default on personal hosts; ordinary Browser authority and control checks still apply. |
+| `inline-browser-activity` | Inline browser activity | Shows the browser beside its calls in a conversation, with floating and Browser pane placements. | Off by default. Uses the existing browser session and access checks; recording remains explicit. |
 | `plugin-recovery-inventory` | Plugin recovery inventory | Enables the operator's retained plugin backup listing and manual recovery guidance. | The listing reveals local backup paths to the operator; it does not restore backups. |
 | `browser-artifacts` | Browser artifacts | Enables Browser annotation, chat attachment, recording and network diagnostics. | Images and clips can contain page content; recording uses FFmpeg and temporary storage; network query values are redacted. |
 | `walkthroughs` | Walkthroughs | Imports narrated recordings and enables Task-bound Browser and Device clips. | One-time consented media/speech tool download; CPU use; recordings may contain private information. |
@@ -75,7 +78,7 @@ only when this Station's build can run it; if none is, the section says
 | `task-tracker-follow-ups` | Task tracker follow-ups | Every five minutes, reads new comments, reviews and check results on the GitHub items of tracker-backed Tasks (the issue and pull requests a person kept on the Task) and shows them in the Task brief, labeled member, bot, other or CI. A member's comment or review, or a failing check, sends the Task's lead agent one message. | Uses the host's `gh` login and GitHub API requests. Off by default, personal Stations only. The message waits for the lead's running turn, or starts a turn when it is idle; bots and other authors never send one. Comments made with the same GitHub account Station's `gh` uses never send one either, because agents post with it: on a single-user Station your own GitHub comments are recorded but do not wake the lead, so steer it in Station instead. If that account cannot be determined, only failing checks send one. Turning it off stops polling and waking; recorded follow-ups stay in the brief. |
 | `github-automation-observations` | GitHub automation observations | Observes configured GitHub workflow runs without starting agents. | Uses GitHub API requests and bounded private delivery storage. Off by default; management configuration is separate. Turning it off stops new observation effects and discards in-flight results; existing history remains. |
 | `task-capabilities` | Task capabilities | Adds a capability and evidence path to Task Overview, with searchable Project tool setup. | Opening tool inspection reads configured catalogs and may contact their providers. It starts no Agent and changes no tools or permissions. |
-| `task-review` | Task review | Adds a Review tab and Overview Timeline to Tasks for Screens and anchored comments that can be sent to the lead agent. | Sending starts or queues a lead-agent turn; Screen capture needs a committed workspace. |
+| `task-review` | Task review | Adds Review, Timeline and committed-code review to eligible Tasks. | Sending comments starts or queues a lead-agent turn; code review may incur provider charges. Screen capture needs a committed workspace. |
 | `member-passkeys` | Member passkeys | Lets invited people with Station accounts create an account, sign in and recover with a passkey (see [member passkeys](https://github.com/kontourai/station/blob/main/docs/guides/deployment-authentication.md#member-passkeys-feature-preview)). | Passkeys work only at the configured sign-in address, selected in Settings or supplied by `STATION_AUTHENTICATION_ORIGIN`; changing its hostname orphans them. Turning it off keeps stored passkeys, but they cannot sign in. |
 | `apps-library` | Apps library | Adds a searchable launcher for your personal Boards and plugin layouts, with name, icon and description editing. | Uses existing personal-layout permissions; does not install plugins or grant access. |
 | `task-collaboration` | Task collaboration | Shows member names and presence in shared Task rooms. | Project membership and an explicit Task share are still required. |
@@ -108,6 +111,21 @@ after the latest 12. A bound agent can also capture an
 authorized device Screen; see [device capture](https://github.com/kontourai/station/blob/main/docs/guides/mobile-device-workspace.md#capture-a-device-screen-to-a-task).
 Turning the preview off hides Review and Timeline; a
 `taskView=review` link then opens Overview.
+
+Overview also offers **Code review** on personal hosts. Its checkout label,
+branch and commit describe the Task's recorded working directory; they do not
+establish where every linked conversation runs or whether dependencies are
+prepared. Expand **Checkout and comparison** to inspect the path and base
+commit. Assign a lead Agent and configure a different Codex Agent in the Project
+to request a read-only review. Requesting review can spend provider credits.
+When no reviewer is available, **Open Agents** leads to the existing Agent setup.
+
+Reviews cover committed changes only. Reviewer failures and the comparison with
+the current checkout are separate observations. A recorded review is neither
+approval nor a passed gate. Refresh after changes to inspect freshness. If a
+reply is lost, **Retry request** uses the original Project, request and commit
+pair, including after reloading the same browser tab. Unavailable history is
+shown explicitly instead of an empty review list.
 
 With **Walkthroughs** also enabled, Browser clips made by the Task's bound
 agent appear under **Screens** with their commit and duration. With **Device
@@ -148,7 +166,8 @@ to your chat and is not continued. Each such turn the restart cut off gets one t
 **Continue** sends, oldest Task first, as the Session's owner. The chat shows it
 as **Continued after restart**. It is never sent for a turn you sent yourself
 (including Station's automatic continuation of your turn after a memory kill),
-an Automation's run (Automations keep their own recovery), a coordinator, or a
+an Automation's run (Station never repeats a run a restart cut off; the run is
+recorded with its outcome unknown, see [Automations](automations.md)), a coordinator, or a
 turn whose cause Station did not record. It also skips a Task that is done,
 canceled or blocked, a chat that has moved on since, and a turn that was itself
 such a continuation, so a second restart does not continue it again. It uses
@@ -246,7 +265,7 @@ Browser's **⋯ › Browser settings…** opens it on that Browser's Project.
   Project's admins can open in the Browser. **Find local servers** suggests
   some, and nothing is shared until you choose it. Shared servers appear as
   buttons on an empty Browser.
-- **Open device setup** opens the device setup wizard: the device hub,
+- **Open device setup** opens the device setup wizard: the device helper,
   sharing devices with Projects, and agent device access.
 
 ## Device hosts
@@ -278,14 +297,23 @@ switch says whether publication succeeded; enabling it does not change your
 network or firewall. Connecting still needs your approval. See
 [Connect your phone](getting-started.md#connect-your-phone).
 
+A server connection loss shows a brief reconnecting notice after three failed
+checks. Recovery shows a notice only if a loss was announced; an active event
+stream must catch up first. Pairing and other blocking failures still need the
+action shown in Station details.
+
 ## Updates and changelogs
 
 Open **Updates** in the sidebar to review an app or server update. **What’s
-new** shows the offered version’s release notes. **Previous versions and
+new** shows release notes for the installed server and any offered update. **Previous versions and
 changelogs** lets you browse published releases without starting an update.
 The circle around the sidebar update icon fills as a download progresses.
 
-After an app upgrade, its changelog opens once on this device. To turn that
+After an app or connected-server upgrade, its changelog opens once on this device.
+A browser served by the updated server shows one popup for that upgrade.
+In-app changelogs omit installation instructions; those remain on GitHub.
+Long lists show the first 50 changes. **See all changes** opens the full release.
+Server versions are remembered separately for each server. To turn that
 off, clear **Show changelog after updates** in the dialog, Updates, or
 **Settings → System**. Release history stays available. The first launch on a
 new device establishes the starting version without showing an upgrade dialog.

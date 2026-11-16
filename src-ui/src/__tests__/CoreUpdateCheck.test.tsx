@@ -1629,8 +1629,8 @@ describe('download, then a confirmed restart (#3851)', () => {
       name: 'Downloading the update',
     });
     expect(bar.getAttribute('aria-valuenow')).toBe('25');
-    expect(bar.getAttribute('aria-valuetext')).toBe('25.0 / 100.0 MB (25%)');
-    expect(screen.getByText('25.0 / 100.0 MB')).toBeTruthy();
+    expect(bar.getAttribute('aria-valuetext')).toBe('25.0 MB / 100.0 MB (25%)');
+    expect(screen.getByText('25.0 MB / 100.0 MB')).toBeTruthy();
     expect(screen.queryByText(/Downloading the release/)).toBeNull();
     expect(badgeText()).toBe('Downloading');
     expect(screen.queryByRole('button', { name: /Download/ })).toBeNull();

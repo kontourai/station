@@ -7,6 +7,7 @@ import {
   type NativeDeviceBindingSnapshot,
   type NativeDeviceProofPublicKey,
 } from '@kontourai/station-contracts/native-device-proof';
+import { encodeBase64Url } from '@kontourai/station-shared/base64url';
 import { z } from 'zod/v3';
 
 /**
@@ -60,13 +61,8 @@ const bindingSchema = z
   })
   .strict();
 
-const base64url = (bytes: Uint8Array) =>
-  btoa(String.fromCharCode(...bytes))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
 const encode = (value: unknown) =>
-  base64url(new TextEncoder().encode(JSON.stringify(value)));
+  encodeBase64Url(new TextEncoder().encode(JSON.stringify(value)));
 
 function canonicalPath(value: string): string {
   if (
@@ -85,7 +81,7 @@ function canonicalPath(value: string): string {
 
 /** RFC 7638 thumbprint so the signer can be matched to the approved binding. */
 async function jwkThumbprint(publicKey: NativeDeviceProofPublicKey) {
-  return base64url(
+  return encodeBase64Url(
     new Uint8Array(
       await crypto.subtle.digest(
         'SHA-256',
@@ -158,10 +154,10 @@ export async function createNativeDeviceRequestProof(
     peerNonce: snapshot.peerNonce,
     htm: method,
     htu: path,
-    bodySha256: base64url(
+    bodySha256: encodeBase64Url(
       new Uint8Array(await crypto.subtle.digest('SHA-256', body)),
     ),
-    jti: base64url(crypto.getRandomValues(new Uint8Array(16))),
+    jti: encodeBase64Url(crypto.getRandomValues(new Uint8Array(16))),
     iat,
     exp: iat + NATIVE_DEVICE_PROOF_LIFETIME_SECONDS,
   });
@@ -174,5 +170,5 @@ export async function createNativeDeviceRequestProof(
     throw new Error(
       'Native device proof signer returned an incompatible signature.',
     );
-  return `${input}.${base64url(signature)}`;
+  return `${input}.${encodeBase64Url(signature)}`;
 }

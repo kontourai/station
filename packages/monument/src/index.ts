@@ -66,6 +66,7 @@ export {
   ownerLivenessFromProbe,
   type ProcessIdentityObservation,
   type ProcessIdentityProbe,
+  parseOwnerIdentity,
 } from './owner.js';
 export {
   type CommitParticipant,

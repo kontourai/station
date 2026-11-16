@@ -1,7 +1,0 @@
-{
-  "revision": "7c3d66ff973f5f35c58463a7f0d5d69775600859",
-
-  "notes": [
-    {"path":"docs/design/terminal.md","note":"The retention suite's rendered-restore check now replays the journal through an SDK-owned Ghostty fixture run as a child process (packages/sdk/src/__tests__/terminal-view/fixtures/replay-plain-text.ts); the doc's claim that the suite checks the order a person sees is unchanged.","inputs":["docs/design/terminal.md","src-server/services/terminal/__tests__/terminal-retention.process.test.ts","packages/sdk/src/__tests__/terminal-view/fixtures/replay-plain-text.ts"]}
-  ]
-}

@@ -148,6 +148,19 @@ export function hasInboxDismissal(
   return Object.hasOwn(entries, keyFor(item));
 }
 
+/**
+ * Lifecycles an engine-opened turn may move a dismissed conversation through
+ * without bringing it back: it ran or finished. Failing, stopping, needing
+ * attention or becoming unanswerable still does.
+ */
+const QUIET_LIFECYCLES: ReadonlySet<string> = new Set([
+  'Running',
+  'Current',
+  'Ready',
+  'Recent',
+  'Completed',
+]);
+
 export function isInboxDismissed(
   item: HomeWorkItem,
   entries: InboxDismissals,
@@ -156,11 +169,17 @@ export function isInboxDismissed(
   if (!hasInboxDismissal(item, entries)) return false;
   const entry = entries[keyFor(item)];
   if (entry.thirdParty) return item.controlMode === 'read-only-attached';
+  if (facts !== undefined && entry.attention !== facts.attention) return false;
+  // A turn the engine opened on its own (background work finishing, a task
+  // notification) is nobody's new message: it does not undo a dismissal
+  // unless it fails, stops or needs the person.
   if (
-    entry.lifecycle !== item.lifecycleLabel ||
-    (facts !== undefined && entry.attention !== facts.attention)
+    facts?.engineOpenedTurn &&
+    QUIET_LIFECYCLES.has(item.lifecycleLabel) &&
+    QUIET_LIFECYCLES.has(entry.lifecycle)
   )
-    return false;
+    return true;
+  if (entry.lifecycle !== item.lifecycleLabel) return false;
   // Streaming and tool progress continuously advance recency during a turn.
   return (
     item.lifecycleLabel === 'Running' ||

@@ -18,6 +18,7 @@ import {
 import { type FormEvent, useState } from 'react';
 import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
+import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { Empty, ErrorState, Skeleton } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { DeviceShares } from '../../workspace-panes/device/DeviceShares';
@@ -346,23 +347,6 @@ function DeviceHostRow({
             <Button onClick={() => setMode('idle')}>Cancel</Button>
           </div>
         </div>
-      ) : mode === 'remove' ? (
-        <div className="device-hosts__confirm">
-          <p>Remove {host.label}? Its device sessions end and its hub stops.</p>
-          <div className="device-hosts__actions">
-            <Button
-              onClick={() => remove.mutate(host.hostId)}
-              pending={remove.isPending}
-              pendingLabel="Removing…"
-              variant="danger"
-            >
-              Remove host
-            </Button>
-            <Button disabled={remove.isPending} onClick={() => setMode('idle')}>
-              Cancel
-            </Button>
-          </div>
-        </div>
       ) : (
         // #3045: the connection test and whatever the hub needs next are the
         // two labelled actions; the rest fold into the menu.
@@ -440,6 +424,20 @@ function DeviceHostRow({
           ]}
         />
       )}
+      {/* The dialog closes when the request settles: a refused removal is
+          reported once, by the row's error line below. */}
+      <ConfirmModal
+        isOpen={mode === 'remove'}
+        variant="danger"
+        title="Remove host"
+        message={`Remove ${host.label}? Its device sessions end and its hub stops.`}
+        confirmLabel="Remove host"
+        pending={remove.isPending}
+        onConfirm={() =>
+          remove.mutate(host.hostId, { onSettled: () => setMode('idle') })
+        }
+        onCancel={() => setMode('idle')}
+      />
       {check.isError || setHub.isError || startHub.isError || remove.isError ? (
         <p className="device-hosts__error" role="alert">
           {refusalText(

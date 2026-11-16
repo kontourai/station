@@ -187,6 +187,10 @@
   font-size: var(--k-text-sm);
   color: var(--text-muted);
 }
+/* #3075 review: Home's column already sets the inset its headings use. */
+.home-view__recent .read-status-note {
+  padding-inline: 0;
+}
 .home-view__row-action {
   min-width: 44px;
   min-height: 44px;

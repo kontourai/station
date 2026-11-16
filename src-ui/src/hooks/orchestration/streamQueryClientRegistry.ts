@@ -57,6 +57,11 @@ export interface SessionReadModelRefreshState {
   inventoryLastAt: number;
   inventoryDeferred: ReturnType<typeof setTimeout> | undefined;
   inventoryAwaitingSettle: (() => void) | undefined;
+  /**
+   * #3075 review: a read-marker change asked for the read-marker summaries
+   * too; the next inventory refresh re-reads them in the same pass.
+   */
+  readMarkersOwed: boolean;
 }
 const sessionReadModelRefreshes = new Map<
   string,
@@ -76,6 +81,7 @@ export function sessionReadModelRefreshState(
       inventoryLastAt: 0,
       inventoryDeferred: undefined,
       inventoryAwaitingSettle: undefined,
+      readMarkersOwed: false,
     };
     sessionReadModelRefreshes.set(apiBase, state);
   }

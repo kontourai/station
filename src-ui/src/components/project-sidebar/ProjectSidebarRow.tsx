@@ -10,6 +10,7 @@ import {
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import { Button } from '../Button';
 import { ProjectIcon } from '../icons/ProjectIcon';
+import { LazyBoundary } from '../LazyBoundary';
 import { ErrorState, SkeletonBlock } from '../state';
 import {
   type ProjectLayoutChip,
@@ -26,6 +27,12 @@ import type { ProjectRowReorderProps } from './useProjectListReorder';
  * could legitimately carry would collide with it.
  */
 const BOARD_SHORTCUT_KEY = 'shortcut:board';
+
+/** #4794: the expanded Project's channels and Task rooms, off the shell bundle. */
+const loadProjectSidebarConversations = () =>
+  import('./ProjectSidebarConversations').then((module) => ({
+    default: module.ProjectSidebarConversations,
+  }));
 
 export function ProjectSidebarRow({
   project,
@@ -309,13 +316,27 @@ export function ProjectSidebarRow({
       </div>
 
       {showChips && !collapsed && (
-        <ProjectSidebarViews
-          projectName={project.name}
-          chips={chips}
-          isPending={isPending}
-          isError={isError}
-          retry={() => void refetch()}
-        />
+        <>
+          <ProjectSidebarViews
+            projectName={project.name}
+            chips={chips}
+            isPending={isPending}
+            isError={isError}
+            retry={() => void refetch()}
+          />
+          <LazyBoundary
+            load={loadProjectSidebarConversations}
+            pending={null}
+            componentProps={{
+              project: {
+                slug: project.slug,
+                id: project.id,
+                name: project.name,
+              },
+              onNavigate,
+            }}
+          />
+        </>
       )}
       <SidebarPopover
         open={collapsed && menuOpen}

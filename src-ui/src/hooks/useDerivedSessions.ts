@@ -302,7 +302,6 @@ function deriveSession(
     unsentMessages: chatState.unsentMessages,
     outboundQueuedTurns: chatState.outboundQueuedTurns || [],
     inputHistory: chatState.inputHistory || [],
-    hasUnread: chatState.hasUnread || false,
     error: chatState.error,
     status: sessionStatus,
     isThinking,
@@ -364,6 +363,7 @@ function deriveSession(
     currentModeId: chatState.currentModeId,
     planArtifact: latestPlanArtifact,
     pendingApprovals: chatState.pendingApprovals,
+    pendingRequestKinds: chatState.pendingRequestKinds,
     answeredApprovals: chatState.answeredApprovals,
     unacknowledgedDecisions: chatState.unacknowledgedDecisions,
     isProcessingStep: chatState.isProcessingStep,
@@ -371,6 +371,9 @@ function deriveSession(
     activityHint: chatState.activityHint,
     backgroundTasks: chatState.backgroundTasks,
     liveUsage: chatState.liveUsage,
+    engineMcpServers: chatState.engineMcpServers,
+    engineMcpReconnect: chatState.engineMcpReconnect,
+    engineMcpComplete: chatState.engineMcpComplete,
     replay: chatState.replay,
   };
 }

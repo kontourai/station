@@ -754,6 +754,78 @@ describe('ConnectionsProvider — seedDefault matrix (D4)', () => {
     expect(result.current.apiBase).toBe('http://localhost:3141');
   });
 
+  it('does not seed a Default over a stored list it cannot parse', async () => {
+    localStorage.clear();
+    const unparseable = '{"formatVersion":9,"rows":[{"name":"Office"}]}';
+    localStorage.setItem('station-connect-connections', unparseable);
+    vi.resetModules();
+    const { ConnectionsProvider, useConnections } = await import(
+      '../react/ConnectionsContext'
+    );
+    const { result } = renderHook(() => useConnections(), {
+      wrapper: ({ children }: { children: React.ReactNode }) => (
+        <ConnectionsProvider defaultUrl="http://localhost:3141">
+          {children}
+        </ConnectionsProvider>
+      ),
+    });
+    expect(result.current.connections).toHaveLength(0);
+    // The same-origin Station stays reachable without a saved profile.
+    expect(result.current.apiBase).toBe('http://localhost:3141');
+    expect(localStorage.getItem('station-connect-connections')).toBe(
+      unparseable,
+    );
+  });
+
+  it('keeps the readable saved connections, and the row it cannot read, at load', async () => {
+    localStorage.clear();
+    const unreadable = {
+      id: 'broker-1',
+      name: 'Relay',
+      url: 'https://app.example.com',
+      brokerRoute: {
+        brokerOrigin: 'https://broker.example.com',
+        scope: {
+          stationId: 'station-12345',
+          enrollmentId: 'enroll-12345',
+          routingGeneration: 1,
+          browserOrigin: 'https://ui.example.com',
+          extra: 1,
+        },
+      },
+    };
+    localStorage.setItem(
+      'station-connect-connections',
+      JSON.stringify([
+        { id: 'office-1', name: 'Office', url: 'https://office.example.com' },
+        unreadable,
+        { id: 'default-1', name: 'Default', url: 'http://localhost:3141' },
+      ]),
+    );
+    vi.resetModules();
+    const { ConnectionsProvider, useConnections } = await import(
+      '../react/ConnectionsContext'
+    );
+    const { result } = renderHook(() => useConnections(), {
+      wrapper: ({ children }: { children: React.ReactNode }) => (
+        <ConnectionsProvider defaultUrl="http://192.168.1.42:3010">
+          {children}
+        </ConnectionsProvider>
+      ),
+    });
+    expect(result.current.connections.map((item) => item.name)).toEqual([
+      'Office',
+      'Default',
+    ]);
+    // Load-time healing wrote the list; the unreadable row survived it.
+    const persisted = JSON.parse(
+      localStorage.getItem('station-connect-connections') ?? '[]',
+    );
+    expect(persisted).toHaveLength(3);
+    expect(persisted[1]).toEqual(unreadable);
+    expect(persisted[2].url).toBe('http://192.168.1.42:3010');
+  });
+
   it('skips origin default seeding when seedDefault is false', async () => {
     localStorage.clear();
     vi.resetModules();

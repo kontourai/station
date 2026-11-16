@@ -45,6 +45,7 @@ import {
 import { createRuntimeProcessLifecycle } from './runtime/bootstrap/runtime-process-lifecycle.js';
 import type { SelfHostedBrokerStatus } from './runtime/bootstrap/self-hosted-broker-runtime.js';
 import { loadSelfHostedBrokerConnectorConfig } from './runtime/bootstrap/self-hosted-connector-config.js';
+import { scheduleStationCompileCachePrune } from './runtime/bootstrap/station-compile-cache.js';
 import { StationRuntime } from './runtime/bootstrap/station-runtime.js';
 import { armSupervisedParentWatchdog } from './runtime/bootstrap/supervised-parent-watchdog.js';
 import {
@@ -169,6 +170,8 @@ async function main() {
   // anything older than a day before doing anything else. Best-effort: a
   // failure here must never block boot.
   void sweepStationTempRoot().catch(() => {});
+  // Node never prunes its compile cache; bound this home's after startup.
+  void scheduleStationCompileCachePrune(resolveHomeDir());
   // archive#1863: an engine child spawned with `detached: true` outlives a
   // SIGKILLed/crashed Station, and none of that Station's in-process cleanup
   // ever runs. Reap orphaned engine processes a PREVIOUS Station on this host

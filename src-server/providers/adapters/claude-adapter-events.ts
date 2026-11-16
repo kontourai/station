@@ -274,6 +274,30 @@ export interface ClaudeMessageState extends ClaudeUsageLimitState {
    */
   activeTasks?: Map<string, ClaudeActiveTask>;
   /**
+   * #2540: housekeeping tasks the SDK keeps out of the transcript
+   * (`skip_transcript`, e.g. a post-turn memory save) that have not ended.
+   * They publish nothing and are no child work, but they run in the engine,
+   * so the finished-session park waits for them.
+   */
+  housekeepingTasks?: Set<string>;
+  /**
+   * #2540: whether the engine's last `init` reported only Station's own
+   * in-process (`sdk`) MCP servers. Anything else (a user, project or plugin
+   * server, or one whose origin the engine does not report) can hold state
+   * in a process Station cannot see. Absent until an `init`.
+   */
+  mcpServersStationOnly?: boolean;
+  /**
+   * #2540: the engine ran a hook Station did not install: it reported a
+   * `hook_started` (Station's own hooks are SDK callbacks, which report no
+   * hook events). Such a hook may still run, or rewake the engine, after the
+   * turn (`async`, `asyncRewake`), so it holds the engine for the rest of
+   * this process's life as far as the finished-session park is concerned.
+   */
+  foreignHookObserved?: boolean;
+  /** #2540: the CLI version the engine's last `init` reported. */
+  claudeCodeVersion?: string;
+  /**
    * #2348: called with a task's id when the engine reports it ended (either
    * terminal). The adapter withdraws the permission requests THAT subagent
    * raised — `canUseTool`'s `agentID` is the subagent's `task_id` (captured:
@@ -576,6 +600,15 @@ export function mapClaudeSdkMessage({
     record.stationBrowserVerified = stationBrowserVerifiedByInit(
       message.mcp_servers,
     );
+    record.claudeCodeVersion =
+      typeof message.claude_code_version === 'string'
+        ? message.claude_code_version
+        : undefined;
+    record.mcpServersStationOnly =
+      Array.isArray(message.mcp_servers) &&
+      message.mcp_servers.every(
+        (server: { source?: string }) => server.source === 'sdk',
+      );
     record.session.status = 'ready';
     record.session.updatedAt = createdAt;
     if (message.permissionMode) {
@@ -656,10 +689,20 @@ export function mapClaudeSdkMessage({
     return;
   }
 
+  // #2540: every hook the engine runs is reported (`includeHookEvents`), and
+  // Station's own hooks are SDK callbacks, which report none: any hook seen
+  // here is one Station did not install.
+  if (message.type === 'system' && message.subtype === 'hook_started') {
+    record.foreignHookObserved = true;
+    return;
+  }
+
   if (message.type === 'system' && message.subtype === 'task_started') {
     if (message.skip_transcript === true) {
       // Ambient/housekeeping task — the SDK asks consumers to keep it out
-      // of the inline transcript.
+      // of the inline transcript. It still runs in the engine (#2540).
+      if (!record.housekeepingTasks) record.housekeepingTasks = new Set();
+      record.housekeepingTasks.add(message.task_id);
       return;
     }
     const toolCallId = message.tool_use_id ?? message.task_id;
@@ -726,7 +769,10 @@ export function mapClaudeSdkMessage({
   if (message.type === 'system' && message.subtype === 'task_updated') {
     observeClaudeTaskUpdated(childWorkContext, message);
     const terminal = mapClaudeTaskStatus(message.patch?.status);
-    if (terminal) record.onTaskSettled?.(message.task_id);
+    if (terminal) {
+      record.onTaskSettled?.(message.task_id);
+      record.housekeepingTasks?.delete(message.task_id);
+    }
     const tracked = record.activeTasks?.get(message.task_id);
     if (!tracked) return;
     if (terminal) {
@@ -752,6 +798,8 @@ export function mapClaudeSdkMessage({
       ownedBySubagent: tracked?.ownedBySubagent === true,
     });
     record.onTaskSettled?.(message.task_id);
+    // Any notification ends a housekeeping task, whatever its status says.
+    record.housekeepingTasks?.delete(message.task_id);
     const status = mapClaudeTaskStatus(message.status);
     // SDK/CLI version skew must not turn an unrecognised terminal status into
     // a persisted tool success. This matches task_updated's no-op contract.

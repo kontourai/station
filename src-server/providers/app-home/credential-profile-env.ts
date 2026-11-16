@@ -1,7 +1,7 @@
 /**
  * #2966: a credential profile is an isolated engine home plus an optional,
  * non-secret env overlay. This module owns turning a selected profile into
- * the spawn env the Claude/Codex adapters receive from `getAppHomeEnv`, and
+ * the spawn env the Claude/Codex/Muse adapters receive from `getAppHomeEnv`, and
  * the routing fingerprint automatic recovery compares between profiles.
  *
  * Merge ownership lives here (not in the adapters) so later layers, such as
@@ -28,11 +28,14 @@ import {
   claudeAppHomeEnv,
   codexAppHomeEnv,
   ensureAppHomeProfile,
+  locateAppHomeProfile,
+  museAppHomeEnv,
   type ResolvedAppHome,
 } from './app-home-profiles.js';
 import {
   credentialProfileStorageId,
   ensureCredentialProfileAppHome,
+  locateCredentialProfileAppHome,
   normalizeCredentialProfileRegistry,
   persistedCredentialProfile,
 } from './credential-profile-registry.js';
@@ -107,12 +110,21 @@ export function credentialProfilesRouteAlike(
   );
 }
 
+/**
+ * The engines with a credential-profile home. Wider than
+ * {@link ConnectionEnvEngine}: Muse (#1942) has an app home but no
+ * per-connection env layer (`connectionSpawnEnv`), so its config-home key is
+ * not one the connection env refuses or expands.
+ */
+export type CredentialProfileAppHomeEngine = ConnectionEnvEngine | 'muse';
+
 const APP_HOME_ENV_FOR: Record<
-  ConnectionEnvEngine,
+  CredentialProfileAppHomeEngine,
   (dir: string) => Record<string, string>
 > = {
   claude: claudeAppHomeEnv,
   codex: codexAppHomeEnv,
+  muse: museAppHomeEnv,
 };
 
 /**
@@ -123,15 +135,54 @@ const APP_HOME_ENV_FOR: Record<
  * failures before selection or on the legacy opt-in degrade to global with a
  * warning, as before.
  */
-export function createCredentialProfileAppHomeEnvResolver(options: {
-  engine: ConnectionEnvEngine;
+export function createCredentialProfileAppHomeEnvResolver(
+  options: CredentialProfileAppHomeEnvOptions,
+): (credentialProfileRef?: string) => Promise<ResolvedAppHome | undefined> {
+  const homeOptions = options.homeDir ? { homeDir: options.homeDir } : {};
+  return appHomeEnvResolver(options, {
+    profileHome: (profileRef) =>
+      ensureCredentialProfileAppHome(options.engine, profileRef, homeOptions),
+    legacyHome: () => ensureAppHomeProfile(options.engine, homeOptions),
+  });
+}
+
+/**
+ * #4774: the env {@link createCredentialProfileAppHomeEnvResolver} would
+ * return for the same settings, by the same selection, refusals and
+ * degradation, without creating or writing anything: a profile home that
+ * does not exist yet is named by the directory the resolver would create
+ * (its path is derived, not discovered), so the env is the one a start
+ * gets. It cannot see a failure of the resolver's own writes. For reads
+ * that must not create profile homes (the confinement preflight).
+ */
+export function createCredentialProfileAppHomeEnvPeek(
+  options: CredentialProfileAppHomeEnvOptions,
+): (credentialProfileRef?: string) => Promise<ResolvedAppHome | undefined> {
+  const homeOptions = options.homeDir ? { homeDir: options.homeDir } : {};
+  return appHomeEnvResolver(options, {
+    profileHome: (profileRef) =>
+      locateCredentialProfileAppHome(options.engine, profileRef, homeOptions),
+    legacyHome: () => locateAppHomeProfile(options.engine, homeOptions),
+  });
+}
+
+export interface CredentialProfileAppHomeEnvOptions {
+  engine: CredentialProfileAppHomeEngine;
   loadConnectionSettings: () => Promise<
     | { credentialRecovery?: unknown; config?: Record<string, unknown> }
     | undefined
   >;
   warn?: (message: string) => void;
   homeDir?: string;
-}): (credentialProfileRef?: string) => Promise<ResolvedAppHome | undefined> {
+}
+
+function appHomeEnvResolver(
+  options: CredentialProfileAppHomeEnvOptions,
+  homes: {
+    profileHome: (profileRef: string) => Promise<{ dir: string }>;
+    legacyHome: () => Promise<{ dir: string }>;
+  },
+): (credentialProfileRef?: string) => Promise<ResolvedAppHome | undefined> {
   const homeEnvFor = APP_HOME_ENV_FOR[options.engine];
   return async (credentialProfileRef) => {
     let selectedProfileRef = credentialProfileRef;
@@ -149,20 +200,13 @@ export function createCredentialProfileAppHomeEnvResolver(options: {
           settings?.credentialRecovery,
           profileRef,
         );
-        const { dir } = await ensureCredentialProfileAppHome(
-          options.engine,
-          profileRef,
-          options.homeDir ? { homeDir: options.homeDir } : {},
-        );
+        const { dir } = await homes.profileHome(profileRef);
         // The profile's home key is last: the overlay can never redirect the
         // session away from the profile's own credentials.
         return { env: { ...overlay, ...homeEnvFor(dir) }, profileRef };
       }
       if (!appHomeActive(settings?.config)) return { profileRef: null };
-      const { dir } = await ensureAppHomeProfile(
-        options.engine,
-        options.homeDir ? { homeDir: options.homeDir } : {},
-      );
+      const { dir } = await homes.legacyHome();
       return { env: homeEnvFor(dir), profileRef: null };
     } catch (error) {
       if (selectedProfileRef) {

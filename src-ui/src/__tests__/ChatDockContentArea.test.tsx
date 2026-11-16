@@ -39,7 +39,6 @@ describe('ChatDockContentArea', () => {
       attachments: [],
       queuedMessages: [],
       status: 'idle',
-      hasUnread: false,
       inputHistory: [],
       createdAt: 1,
       updatedAt: 1,

@@ -131,8 +131,10 @@ describe('gate-for report', () => {
     }
   });
 
-  it("marks every scoped gate skipped for a docs-only surface, with the deciders' own reasons", () => {
-    const changedPaths = ['docs/guides/testing.md'];
+  it("marks every scoped gate skipped for a surface none of them reads, with the deciders' own reasons", () => {
+    // Not text: a docs prose edit still feeds the static gates' vocabulary
+    // scan, which the next test covers.
+    const changedPaths = ['docs/assets/diagram.png'];
     const scopes = gateScopes({ changedPaths, baseSha });
     expect(scopes.filter((scope) => scope.runs)).toEqual([]);
     expect(scopes.map((scope) => scope.reason)).toEqual(
@@ -142,6 +144,17 @@ describe('gate-for report', () => {
         decideSdkBarrelScope,
       ].map((decide) => decide({ baseSha, changedPaths }).reason),
     );
+  });
+
+  it('reports the static gates as running for a docs-only text surface, because the vocabulary gate reads it', () => {
+    const changedPaths = ['docs/guides/testing.md'];
+    const scopes = gateScopes({ changedPaths, baseSha });
+    expect(
+      scopes.filter((scope) => scope.runs).map((scope) => scope.name),
+    ).toEqual(['static gates (UI contracts, content)']);
+    expect(decideStaticGateScope({ baseSha, changedPaths }).gates).toEqual([
+      'station-vocabulary-gate',
+    ]);
   });
 
   it('names the source-edit hook commands and a ladder of real commands', () => {

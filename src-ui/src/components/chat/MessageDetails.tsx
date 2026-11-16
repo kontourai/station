@@ -40,7 +40,7 @@ export function MessageDetails({
             ariaLabel={label}
             onClose={() => setOpen(false)}
             historyMode="entry"
-            overlayClassName="composer-popover-overlay"
+            overlayClassName="composer-popover-overlay message-details__overlay"
             panelClassName="composer-popover-panel message-details__panel"
           >
             <ResponsiveDialogHeader

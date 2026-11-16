@@ -489,6 +489,10 @@ work is running, the user chooses between waiting for it and stopping it.
   with binary framing. Engine JSON-RPC lines and terminal bytes pass through
   as bytes, never re-encoded.
 - **Journaling:** a ring buffer plus appends. Nothing rewrites a whole file.
+- **Core memory:** each core generation is forked with the supervisor's own
+  Node flags dropped and `--max-semi-space-size=16` added. That flag bounds a young
+  generation V8 would otherwise size from host memory and keep at rest
+  ([measurement](../reference/station-weight.md#server-memory-at-rest)).
 - **Budget:** the added hop must stay under 1 ms at p99 on a local machine,
   measured before and after the engine phase. If it does not, the transport is
   fixed before engines move.
@@ -515,14 +519,24 @@ On startup, before interrupted turns are consumed, the core server:
 
 Only turns whose engine is gone take the interrupted path.
 
-As a safety net for every engine, an interrupted turn can be resumed
-automatically from its `resumeCursor`, with a bounded retry. This is the
-"bounded auto-resume" slice already anticipated in
-[`interrupted-turn-recovery.ts`](../../src-server/services/orchestration/interrupted-turn-recovery.ts).
-In-process engines (Ollama, Bedrock, station-agent) rely on it, since they
-live in the core server.
+As a safety net for every engine, an interrupted turn would be resumed
+automatically from its `resumeCursor`, with a bounded retry. This "bounded
+auto-resume" slice is not built:
+[`interrupted-turn-recovery.ts`](../../src-server/services/orchestration/interrupted-turn-recovery.ts)
+only names it as a future reader of the facts it records. In-process engines
+(Ollama, Bedrock, station-agent) would rely on it, since they live in the
+core server.
 
-For external engines, which can only be resumed by a new turn, unattended work
+Implemented today: no interrupted turn is resumed on any engine. At boot,
+interrupted-turn recovery closes each dead turn, expires the requests it was
+waiting on and writes the **Turn interrupted** notice. A turn it could not
+settle is retried within the boot (four attempts over about 1.75 seconds),
+then once a minute until it settles or Station stops; until it settles, its
+boundary row stays for the next boot. The conversation goes on only through a new
+turn: the person's **Continue** (preview `continue-interrupted-turn`), their
+next message, or the unattended continuation below.
+
+Since an engine can only be resumed by a new turn, unattended work
 gets one such turn behind the `continue-unattended-after-restart` preview
 (#4512). After boot, [`RestartContinuation`](../../src-server/services/orchestration/restart-continuation.ts)
 takes the turns interrupted-turn recovery settled this boot
@@ -539,7 +553,9 @@ this Station's own turn boundaries, so Sessions mirrored from another Station
 never qualify. The continuation's own turn shows as **Continued after
 restart**. A crash between a boundary's resolution and the queued entry loses
 that continuation (the banner and the person's Continue remain): the path is at
-most once.
+most once. A turn recovery settles only on its later once-a-minute retry is not
+among the turns settled this boot, so it gets the banner and the person's
+Continue but no automatic continuation.
 
 ### Launch modes and the tray
 
@@ -679,10 +695,10 @@ Every path becomes a generation handoff:
 
 | Failure | Outcome |
 | --- | --- |
-| Core server crash | Supervisor restarts it; workloads keep running and reattach. |
+| Core server crash | Supervisor restarts it. Terminals that run as supervisor workloads keep running and the new generation reattaches them. Agent engines are not workloads yet (phase 3): they end with the core, boot ends any left running, and their turns are marked interrupted. |
 | Trial generation fails to park | The old generation was never drained and keeps serving; the handoff is reported as rolled back. |
 | Trial generation fails readiness | The old generation has already exited in phase 1, so its entry is started again as a new generation. Connections wait in the backlog; the handoff is reported as rolled back. |
-| Supervisor crash | Workloads end, because their stdio and PTYs die with it. Boot behaves as today: interrupt, then auto-resume. Keeping the supervisor small keeps this rare. |
+| Supervisor crash | Workloads end, because their stdio and PTYs die with it. Boot behaves as today: running turns are marked interrupted (auto-resume is not built). Keeping the supervisor small keeps this rare. |
 | Disk journal full | Oldest closed segments are trimmed; a running workload's tail is never dropped silently. The trim is reported. |
 
 ### Later: remote workloads

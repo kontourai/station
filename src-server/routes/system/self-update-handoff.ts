@@ -13,6 +13,7 @@ import {
   type HandoffOutcomeReport,
   onHandoffOutcome,
 } from '../../runtime/bootstrap/supervisor-link.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { readBuildProvenance } from './build-provenance.js';
 import { resolveInstallProvenance } from './install-provenance.js';
 import {
@@ -121,7 +122,7 @@ export function installSupervisedRestartResolver(
         logger,
         'warn',
         'Core restart: could not record the supervised handoff outcome',
-        { error: error instanceof Error ? error.message : String(error) },
+        { error: errorMessage(error) },
       );
     }
   });

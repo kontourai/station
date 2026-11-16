@@ -113,7 +113,6 @@ function session(messages: ChatMessage[]): ChatSession {
     error: null,
     createdAt: 1,
     updatedAt: 1,
-    hasUnread: false,
   };
 }
 

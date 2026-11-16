@@ -29,6 +29,7 @@ import { ChatInputArea } from '../chat/ChatInputArea';
 import { ConversationConnectionProvider } from '../conversation/ConversationConnectionContext';
 import { ErrorState, SkeletonBlock } from '../state';
 import './NeedsInputReply.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { Button } from '../Button';
@@ -41,6 +42,7 @@ export function NeedsInputReply({
   item: NeedsInputAttentionItem & { inputReference: AttentionRequestReference };
   scope: Scope;
 }) {
+  useDecisionSurface('needs-input-reply');
   const [reference] = useState(item.inputReference);
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
@@ -117,7 +119,7 @@ export function NeedsInputReply({
     mutationFn: async (input: ForegroundMessageInput) => {
       if (!scope.isCurrent() || changed)
         throw new Error(
-          'The request or Station access changed. Open the current session before answering.',
+          'This request or your Station access changed. Open the chat before answering.',
         );
       return sendExecutionMessage(scope.apiBase, input, {
         requestScope: scope,
@@ -171,9 +173,7 @@ export function NeedsInputReply({
           (staged.length !== stages.length ||
             staged.some((stage) => !stage.reference))))
     ) {
-      composer.setError(
-        'The selected files do not have one complete delivery mode. Reattach them before sending.',
-      );
+      composer.setError("These files can't be sent together. Reattach them.");
       return;
     }
     const input: ForegroundMessageInput = {
@@ -208,7 +208,7 @@ export function NeedsInputReply({
     return (
       <ErrorState
         title="Station access changed"
-        description="This answer remains bound to its original Station and cannot be sent here."
+        description="This answer belongs to another Station and can't be sent here."
       />
     );
   return (
@@ -221,8 +221,7 @@ export function NeedsInputReply({
     >
       {changed ? (
         <p role="alert">
-          This request changed. Your draft still belongs to the earlier request;
-          open the session to review it.
+          This request changed. Open the chat to review your draft.
         </p>
       ) : null}
       {query.isFetching ? (
@@ -237,7 +236,7 @@ export function NeedsInputReply({
           description={
             query.isError
               ? describeStationFailure(query.error).body
-              : 'Its current binding or input capabilities could not be confirmed. Your draft has been retained.'
+              : "Couldn't confirm this chat can accept a reply. Your draft is saved."
           }
           action={<Button onClick={() => void query.refetch()}>Retry</Button>}
         />
@@ -266,6 +265,7 @@ export function NeedsInputReply({
           onClearInput={() => setText('')}
           selectAttachmentFiles={composer.selectFiles}
           attachmentError={composer.error}
+          onAttachUnavailable={composer.setError}
           attachmentStages={stages}
           sendBlockedReason={composer.sendBlockedReason}
           onRetryAttachmentStage={composer.retry}
@@ -289,7 +289,7 @@ export function NeedsInputReply({
           closeAll={() => {}}
           submitAction={{
             label: 'Send answer',
-            placeholder: 'Answer this session',
+            placeholder: 'Answer this request',
           }}
         />
       </ConversationConnectionProvider>
@@ -297,7 +297,7 @@ export function NeedsInputReply({
         <p role="alert">
           {userFacingErrorMessage(mutation.error)}{' '}
           {attempt
-            ? 'Retry sends the same answer with the same operation identity.'
+            ? "Retrying won't send it twice."
             : 'Review this answer, then send again.'}
         </p>
       )}

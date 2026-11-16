@@ -12,6 +12,7 @@ import {
   unattendedGrantStorePath,
 } from '../../../services/agents/unattended-grant-store.js';
 import { ApprovalGuardianService } from '../../../services/approvals/approval-guardian.js';
+import { NO_PERSON_INTENT } from '../../../services/approvals/guardian-conversation.js';
 import { MCPToolProvenanceGeneration } from '../../../services/orchestration/mcp-tool-provenance.js';
 import {
   type MCPToolNameMappingEntry,
@@ -195,6 +196,7 @@ describe('createAgentHooks', () => {
     const guardian = {
       isEnabled: vi.fn(() => true),
       getMode: vi.fn(() => 'review'),
+      readConversation: () => NO_PERSON_INTENT,
       reviewToolCall: vi.fn().mockResolvedValue({
         decision: 'allow',
         reason: 'Safe and scoped.',
@@ -221,6 +223,7 @@ describe('createAgentHooks', () => {
         approvalGuardian: {
           isEnabled: () => true,
           getMode: () => 'enforce',
+          readConversation: () => NO_PERSON_INTENT,
           reviewToolCall: vi.fn().mockResolvedValue({
             decision: 'deny',
             reason: 'Too destructive.',
@@ -252,12 +255,91 @@ describe('createAgentHooks', () => {
     });
   });
 
+  // #4827: the ledger is shared by every Agent's hooks, so each test below
+  // uses a conversation id of its own.
+  test('after three guardian denials in a row the next refused call goes to the conversation approval requester', async () => {
+    const reviewToolCall = vi.fn().mockResolvedValue({
+      decision: 'deny',
+      reason: 'Force push was not asked for.',
+    });
+    const hooks = createAgentHooks(
+      createDeps({
+        approvalGuardian: {
+          isEnabled: () => true,
+          getMode: () => 'enforce',
+          readConversation: () => NO_PERSON_INTENT,
+          reviewToolCall,
+        },
+      }),
+    );
+    const requester = vi.fn().mockResolvedValue(true);
+    hooks.registerApprovalRequester('conv-escalate-4827', requester);
+    const call = {
+      toolName: 'run_terminal',
+      toolCallId: 'tool-1',
+      toolArgs: { command: 'git push --force' },
+    };
+    const invocation = {
+      agentSlug: 'planner',
+      conversationId: 'conv-escalate-4827',
+    };
+
+    for (let index = 0; index < 3; index += 1)
+      await expect(
+        hooks.beforeToolCall!(call, invocation),
+      ).resolves.toMatchObject({
+        allowed: false,
+        reason: expect.stringContaining('Force push was not asked for.'),
+      });
+    expect(requester).not.toHaveBeenCalled();
+
+    await expect(hooks.beforeToolCall!(call, invocation)).resolves.toBe(true);
+    expect(requester).toHaveBeenCalledOnce();
+    expect(requester).toHaveBeenCalledWith(call);
+    expect(reviewToolCall).toHaveBeenCalledTimes(4);
+  });
+
+  test('with no approval requester the escalation stays a guardian denial', async () => {
+    const hooks = createAgentHooks(
+      createDeps({
+        approvalGuardian: {
+          isEnabled: () => true,
+          getMode: () => 'enforce',
+          readConversation: () => NO_PERSON_INTENT,
+          reviewToolCall: vi.fn().mockResolvedValue({
+            decision: 'deny',
+            reason: 'Force push was not asked for.',
+          }),
+        },
+      }),
+    );
+    const invocation = {
+      agentSlug: 'planner',
+      conversationId: 'conv-unattended-4827',
+    };
+    for (let index = 0; index < 5; index += 1)
+      await expect(
+        hooks.beforeToolCall!(
+          {
+            toolName: 'run_terminal',
+            toolCallId: 'tool-1',
+            toolArgs: { command: 'git push --force' },
+          },
+          invocation,
+        ),
+      ).resolves.toMatchObject({
+        allowed: false,
+        reason: expect.stringContaining('was denied by the approval guardian'),
+      });
+  });
+
   test('falls back to human approval when the guardian defers', async () => {
     const hooks = createAgentHooks(
       createDeps({
         approvalGuardian: {
           isEnabled: () => true,
           getMode: () => 'review',
+          readConversation: () => NO_PERSON_INTENT,
           reviewToolCall: vi.fn().mockResolvedValue({
             decision: 'defer',
             reason: 'Unclear.',
@@ -580,6 +662,7 @@ describe('createAgentHooks — fail-closed approval fallthrough (station#1834)',
             approvalGuardian: {
               isEnabled: () => true,
               getMode: () => 'enforce',
+              readConversation: () => NO_PERSON_INTENT,
               reviewToolCall: vi.fn().mockResolvedValue({
                 decision: 'allow',
                 reason: 'Safe and scoped.',
@@ -599,6 +682,7 @@ describe('createAgentHooks — fail-closed approval fallthrough (station#1834)',
             approvalGuardian: {
               isEnabled: () => true,
               getMode: () => 'enforce',
+              readConversation: () => NO_PERSON_INTENT,
               reviewToolCall: vi.fn().mockResolvedValue({
                 decision: 'deny',
                 reason: 'Too destructive.',
@@ -805,6 +889,7 @@ describe('createAgentHooks — fail-closed approval fallthrough (station#1834)',
         approvalGuardian: {
           isEnabled: () => true,
           getMode: () => 'enforce',
+          readConversation: () => NO_PERSON_INTENT,
           reviewToolCall: vi.fn().mockResolvedValue({
             decision: 'deny',
             reason: 'destructive operation',
@@ -1274,6 +1359,7 @@ describe('createAgentHooks — attended autoApprove vs unattended opt-in (#2613)
         approvalGuardian: {
           isEnabled: () => true,
           getMode: () => 'enforce',
+          readConversation: () => NO_PERSON_INTENT,
           reviewToolCall,
         },
       },
@@ -1438,6 +1524,7 @@ describe('createAgentHooks — attended autoApprove vs unattended opt-in (#2613)
     return {
       isEnabled: () => true,
       getMode: () => mode,
+      readConversation: () => NO_PERSON_INTENT,
       reviewToolCall: vi
         .fn()
         .mockResolvedValue({ decision, reason: 'Unsure.' }),

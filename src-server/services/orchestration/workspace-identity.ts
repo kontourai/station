@@ -1,4 +1,5 @@
 import { realpath } from 'node:fs/promises';
+import { errorMessage } from '../../utils/error-message.js';
 import { execGit } from '../../utils/git-exec.js';
 
 const RESOLVE_TIMEOUT_MS = 5_000;
@@ -30,7 +31,7 @@ export async function resolveWorkspaceIdentity(
       root: canonicalGitRoot,
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     if (/not a git repository/i.test(message))
       return { kind: 'directory', key: `directory:${root}`, root };
     throw new Error('workspace_identity_unavailable', { cause: error });

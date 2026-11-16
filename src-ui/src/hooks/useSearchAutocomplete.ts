@@ -24,9 +24,11 @@ export function useSearchAutocomplete(
   >([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
 
+  // A new query is a new list: start from its first row.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: searchQuery is the reset signal.
   useEffect(() => {
     setSelectedIndex(0);
-  }, []);
+  }, [searchQuery]);
 
   useEffect(() => {
     const query = searchQuery.toLowerCase();
@@ -95,21 +97,28 @@ export function useSearchAutocomplete(
     return words.join(' ') + (addSpace ? ' ' : '');
   };
 
+  // The options also follow the filters (live events), which can shorten the
+  // list under an unchanged query; the highlight stays on a row that exists.
+  const highlightedIndex = Math.min(
+    selectedIndex,
+    Math.max(0, autocompleteOptions.length - 1),
+  );
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!showAutocomplete || autocompleteOptions.length === 0) return;
 
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setSelectedIndex((prev) => (prev + 1) % autocompleteOptions.length);
+      setSelectedIndex((highlightedIndex + 1) % autocompleteOptions.length);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       setSelectedIndex(
-        (prev) =>
-          (prev - 1 + autocompleteOptions.length) % autocompleteOptions.length,
+        (highlightedIndex - 1 + autocompleteOptions.length) %
+          autocompleteOptions.length,
       );
-    } else if (e.key === 'Enter' && selectedIndex >= 0) {
-      const option = autocompleteOptions[selectedIndex];
-      if (!option.isEmpty) {
+    } else if (e.key === 'Enter' && highlightedIndex >= 0) {
+      const option = autocompleteOptions[highlightedIndex];
+      if (option && !option.isEmpty) {
         e.preventDefault();
         return handleSelect(option);
       }
@@ -122,7 +131,7 @@ export function useSearchAutocomplete(
   return {
     showAutocomplete,
     autocompleteOptions,
-    selectedIndex,
+    selectedIndex: highlightedIndex,
     handleSelect,
     handleKeyDown,
   };

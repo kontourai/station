@@ -1,7 +1,0 @@
-{
-  "revision": "6794a9b9b04d182bf7d2b96e67ceee564a56984a",
-
-  "notes": [
-    {"path":"docs/design/registry-trust-policy.md","note":"#4517 managed settings. Changed: config-loader-app.ts: observeAppConfigFile applies the managed overlay; config-loader.ts: loadAppConfig, the launchability snapshot and mutation results apply the managed overlay; mutateAppConfig and saveAppConfig refuse locked-key changes; loadStoredAppConfig added; station-runtime.ts: StationRuntime installs the loaded managed policy settings before config loads. Cited docs edited: docs/design/registry-trust-policy.md. Added that a managed policy can lock registryTrust as a whole, making the policy value the observed candidate and refusing PUT /config/app changes. Remaining trust rules unaffected.","inputs":["docs/design/registry-trust-policy.md","src-server/domain/config-loader-app.ts","src-server/domain/config-loader.ts","src-server/runtime/bootstrap/station-runtime.ts"]}
-  ]
-}

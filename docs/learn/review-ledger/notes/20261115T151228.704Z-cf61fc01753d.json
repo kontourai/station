@@ -1,0 +1,7 @@
+{
+  "revision": "426f889e19bb28e34b80ca24f545e8d79ea431ba",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Cites docs/guides/connections.md; the only change there is the Station switcher probe paragraph. This guide makes no switcher, handshake, Online or Unreachable claim (grep), so its prose is unaffected.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

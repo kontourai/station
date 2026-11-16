@@ -29,6 +29,7 @@ import { PersonList } from '../../components/people/PersonList';
 import { PersonRow } from '../../components/people/PersonRow';
 import { Empty, ErrorState } from '../../components/state';
 import { errorText, userFacingErrorMessage } from '../../utils/errorText';
+import { plural } from '../../utils/plural';
 import {
   OPERATOR_CREDENTIAL_REQUIRED_MESSAGE,
   PersonalTokens,
@@ -38,6 +39,7 @@ import {
 import { SettingsSection } from './SettingsSection';
 import { settingsRow } from './settings-catalog';
 import './PeopleSection.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 
 /**
  * Settings › People (#3557): everyone with a device tied to them, the Station
@@ -79,10 +81,6 @@ interface HeldSecret {
   minted: MintedPersonalAccessToken;
 }
 
-function plural(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? '' : 's'}`;
-}
-
 function limitedDevices(person: StationPerson): number {
   return person.devices.filter(
     (device) => !sameScope(device.scope, device.effectiveScope),
@@ -98,6 +96,7 @@ function matchesFilter(person: StationPerson, needle: string): boolean {
 }
 
 export function PeopleSection() {
+  useDecisionSurface('people-roles');
   const people = useStationPeopleQuery();
   const mintMutation = useMintStationPersonTokenMutation();
   // Held HERE, above the list query: a refetch that fails or is refused after

@@ -38,6 +38,7 @@ import {
   type SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
 import { WORK_CLAIM_MAX_ACTIVE_PER_SESSION } from '../../routes/orchestration/work-claim-limits.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type { EventStore } from '../orchestration/event-store.js';
 import {
   type DigestTurn,
@@ -193,7 +194,7 @@ type WorkClaimRecordLike = Awaited<
 >[number];
 
 function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return errorMessage(error);
 }
 
 const incarnationOf = (task: TaskRecord): TaskMemoryIncarnation => ({
@@ -608,7 +609,10 @@ export function composeTaskBriefSource(input: {
   sessionReadModel?: {
     listSessionReadModel(
       authority: typeof INTERNAL_SESSION_READ_SCOPE,
-      options: { threadIds: readonly string[] },
+      options: {
+        purpose: 'task-brief' | 'work-claims';
+        threadIds: readonly string[];
+      },
     ): Promise<OrchestrationSessionSummary[]>;
     currentConversationSessionId(conversationId: string): string;
     canUserReadSession(
@@ -686,7 +690,7 @@ export function composeTaskBriefSource(input: {
       const summaries = input.sessionReadModel
         ? await input.sessionReadModel.listSessionReadModel(
             INTERNAL_SESSION_READ_SCOPE,
-            { threadIds: sessionIds },
+            { purpose: 'task-brief', threadIds: sessionIds },
           )
         : [];
       const status = new Map(

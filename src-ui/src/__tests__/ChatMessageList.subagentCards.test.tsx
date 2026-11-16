@@ -1,3 +1,5 @@
+import { ChildChatContext } from '../components/chat-dock/ChildChatNavigationContext';
+import { ConversationConnectionProvider } from '../components/conversation/ConversationConnectionContext';
 /**
  * @vitest-environment jsdom
  *
@@ -81,6 +83,8 @@ vi.mock('../hooks/orchestration/useSessionEventWindow', () => ({
 import { ChatMessageList } from '../components/chat/ChatMessageList';
 import { ActiveChatsProvider } from '../contexts/ActiveChatsContext';
 import { activeChatsStore } from '../contexts/active-chats-store';
+import { backgroundTasksStore } from '../contexts/background-tasks-store';
+import { childWorkGlobalStore } from '../contexts/child-work-global-store';
 import { applyChildWorkToChat } from '../hooks/orchestration/childWorkHandlers';
 import { useActiveChatTranscript } from '../hooks/orchestration/useActiveChatTranscript';
 import type { ChatSession } from '../types';
@@ -112,7 +116,6 @@ function chatSession(): ChatSession {
     error: null,
     createdAt: 0,
     updatedAt: 0,
-    hasUnread: false,
     orchestrationSessionStarted: true,
     orchestrationHistoryRevision: 0,
   };
@@ -386,29 +389,34 @@ function stubFetch(): void {
   );
 }
 
+const openChild = vi.fn();
 function renderTranscript(session = chatSession(), streamingShell = false) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   const tree = () => (
     <QueryClientProvider client={client}>
-      <ActiveChatsProvider>
-        {streamingShell ? (
-          <ChatMessageList
-            activeSession={session}
-            approvalEvents={
-              windowEvents.current as Parameters<
-                typeof ChatMessageList
-              >[0]['approvalEvents']
-            }
-            fontSize={13}
-            showReasoning={false}
-            showToolDetails={false}
-          />
-        ) : (
-          <TranscriptHarness session={session} />
-        )}
-      </ActiveChatsProvider>
+      <ConversationConnectionProvider value={{ apiBase: API_BASE }}>
+        <ChildChatContext.Provider value={openChild}>
+          <ActiveChatsProvider>
+            {streamingShell ? (
+              <ChatMessageList
+                activeSession={session}
+                approvalEvents={
+                  windowEvents.current as Parameters<
+                    typeof ChatMessageList
+                  >[0]['approvalEvents']
+                }
+                fontSize={13}
+                showReasoning={false}
+                showToolDetails={false}
+              />
+            ) : (
+              <TranscriptHarness session={session} />
+            )}
+          </ActiveChatsProvider>
+        </ChildChatContext.Provider>
+      </ConversationConnectionProvider>
     </QueryClientProvider>
   );
   const rendered = render(tree());
@@ -427,6 +435,7 @@ async function findCard(): Promise<HTMLElement> {
 describe('subagent transcript cards', () => {
   beforeEach(() => {
     _setApiBase(API_BASE);
+    openChild.mockClear();
     sequence = 0;
     unexpectedRequests.length = 0;
     stubFetch();
@@ -711,9 +720,7 @@ describe('subagent transcript cards', () => {
       expect(screen.getAllByTestId('subagent-card')).toHaveLength(1);
       expect(within(card).getByText('Run finished')).toBeTruthy();
       expect(within(card).getByText('done')).toBeTruthy();
-      expect(
-        within(card).getByText(index === 0 ? '0:05' : '0:04'),
-      ).toBeTruthy();
+      expect(within(card).getByText(index === 0 ? '5s' : '4s')).toBeTruthy();
       const spawnAt = events.findIndex(
         (event) => event.method === 'child-work.updated',
       );
@@ -1241,7 +1248,7 @@ describe('subagent transcript cards', () => {
     expect(card.querySelector('.child-work-activity')).toBeNull();
     expect(within(card).queryByText('Running')).toBeNull();
     // The first settle's reported end (17m 04s after the reported start).
-    expect(within(card).getByText('17:04')).toBeTruthy();
+    expect(within(card).getByText('17m 4s')).toBeTruthy();
     expect(
       within(card).getByText('Verdict: merge as-is. I found no blockers.'),
     ).toBeTruthy();
@@ -1251,16 +1258,15 @@ describe('subagent transcript cards', () => {
       await within(card).findByText('Every required check passed.'),
     ).toBeTruthy();
     expect(
-      within(card).getByText('48,210 tokens · 37 tool uses · ran 17:04'),
+      within(card).getByText('48,210 tokens · 37 tool uses · ran 17m 4s'),
     ).toBeTruthy();
-    fireEvent.click(
-      within(card).getByRole('button', { name: 'View transcript' }),
-    );
-    expect(
-      await within(card).findByText('Review the ADR freeze PR.', {
-        selector: '.child-work-transcript__text',
+    fireEvent.click(within(card).getByRole('button', { name: 'Open chat' }));
+    expect(openChild).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: THREAD,
+        childId: expect.any(String),
       }),
-    ).toBeTruthy();
+    );
     expect(unexpectedRequests).toEqual([]);
   });
 
@@ -1280,6 +1286,152 @@ describe('subagent transcript cards', () => {
     ).toBeTruthy();
   });
 
+  /** A backgrounded Bash call and the `local_bash` child it started. */
+  function shellTurn(
+    calls: { id: string; title: string; command: string }[],
+    workKind: ChildWorkItem['workKind'],
+  ) {
+    const items = calls.map(
+      (call): ChildWorkItem => ({
+        producer: 'engine-subagent',
+        reporterThreadId: THREAD,
+        childId: `bash-${call.id}`,
+        status: 'running',
+        parent: { toolCallId: call.id, turnId: 'turn-1' },
+        title: call.title,
+        kindLabel: 'local_bash',
+        ...(workKind ? { workKind } : {}),
+        backgrounded: true,
+        startedAt: STARTED_AT,
+        controls: { stop: 'provider-task-stop' },
+      }),
+    );
+    return [
+      runtimeEvent('2026-10-14T14:24:58.000Z', {
+        method: 'turn.started',
+        turnId: 'turn-1',
+        prompt: 'Re-trigger CI',
+      }),
+      ...calls.flatMap((call, index) => [
+        runtimeEvent(STARTED_AT, {
+          method: 'tool.started',
+          turnId: 'turn-1',
+          itemId: call.id,
+          toolCallId: call.id,
+          toolName: 'Bash',
+          arguments: {
+            command: call.command,
+            description: call.title,
+            run_in_background: true,
+          },
+        }),
+        childWork(STARTED_AT, {
+          kind: 'snapshot',
+          producer: 'engine-subagent',
+          reporterThreadId: THREAD,
+          running: items.slice(0, index + 1),
+        }),
+        runtimeEvent(STARTED_AT, {
+          method: 'tool.completed',
+          turnId: 'turn-1',
+          itemId: call.id,
+          toolCallId: call.id,
+          toolName: 'Bash',
+          status: 'success',
+          output: `Command running in background with ID: bash-${call.id}`,
+        }),
+      ]),
+      runtimeEvent('2026-10-14T14:25:03.000Z', {
+        method: 'turn.completed',
+        turnId: 'turn-1',
+        finishReason: 'stop',
+      }),
+      ...items.map((item) =>
+        childWork(ENDED_AT, {
+          kind: 'settle',
+          producer: 'engine-subagent',
+          reporterThreadId: THREAD,
+          childId: item.childId,
+          status: 'completed',
+          result: {
+            summary: `Background command "${item.title}" completed (exit code 0)`,
+            source: 'provider-summary',
+          },
+          identity: {
+            parent: item.parent,
+            title: item.title,
+            kindLabel: item.kindLabel,
+            ...(workKind ? { workKind } : {}),
+            startedAt: STARTED_AT,
+            endedAt: ENDED_AT,
+          },
+        }),
+      ),
+    ];
+  }
+
+  // History from before `workKind` (its kindLabel is the raw task type)
+  // must read the same as a child that reports it.
+  test.each([
+    ['reported', 'command' as const],
+    ['history', undefined],
+  ])(
+    'a background shell command (%s) is one command card, never a subagent',
+    async (_name, workKind) => {
+      windowEvents.current = shellTurn(
+        [
+          {
+            id: 'toolu_bash_1',
+            title: 'Push empty commit to re-trigger CI',
+            command: 'git commit --allow-empty -m retrigger && git push',
+          },
+        ],
+        workKind,
+      );
+      renderTranscript();
+      const card = await findCard();
+      await within(card).findByText('Run finished');
+      // The card stands in for the Bash call: the title is drawn once.
+      expect(
+        screen.getAllByText('Push empty commit to re-trigger CI'),
+      ).toHaveLength(1);
+      // The engine's summary only restates the title; its exit code is the news.
+      expect(within(card).getByText('Exit code 0')).toBeTruthy();
+      fireEvent.click(within(card).getByRole('button', { expanded: false }));
+      expect(within(card).getByText('Background command')).toBeTruthy();
+      expect(
+        within(card).getByText(
+          'git commit --allow-empty -m retrigger && git push',
+        ),
+      ).toBeTruthy();
+      expect(within(card).queryByText('model not reported')).toBeNull();
+      expect(
+        within(card).queryByText('local_bash', { exact: false }),
+      ).toBeNull();
+      expect(
+        within(card).queryByText(/Instruction history|Station instructions/),
+      ).toBeNull();
+      expect(within(card).queryByText('Provider summary')).toBeNull();
+      expect(unexpectedRequests).toEqual([]);
+    },
+  );
+
+  test('two background commands group as commands, counted in plain words', async () => {
+    windowEvents.current = shellTurn(
+      [
+        { id: 'toolu_bash_1', title: 'Push empty commit', command: 'git push' },
+        { id: 'toolu_bash_2', title: 'Wait for CI', command: 'gh run watch' },
+      ],
+      'command',
+    );
+    renderTranscript();
+    await waitFor(() =>
+      expect(screen.getByText('2 background commands')).toBeTruthy(),
+    );
+    expect(screen.getByText('2 finished')).toBeTruthy();
+    expect(screen.queryByText(/subagents/)).toBeNull();
+  });
+
   test('a session that ends without settling its child reads No result, never Completed', async () => {
     windowEvents.current = [
       ...spawningTurn(),
@@ -1293,5 +1445,137 @@ describe('subagent transcript cards', () => {
     await within(card).findByText('No result');
     expect(within(card).queryByText('Run finished')).toBeNull();
     expect(within(card).queryByText('Running')).toBeNull();
+  });
+});
+
+/**
+ * The banner under a finished turn lists running background work, but a task
+ * the transcript already draws as its card is not drawn again: the card is
+ * the task's one appearance, with its own activity and elapsed time.
+ */
+describe('running background tasks under the banner', () => {
+  const chatId = 'chat-tab';
+  /** Spawned in a turn the loaded transcript does not hold: no card. */
+  const offscreenChild: ChildWorkItem = {
+    ...runningChild,
+    childId: 'off-screen-1',
+    parent: { toolCallId: 'toolu_earlier', turnId: 'turn-0' },
+    title: 'Lane 7: gallery baselines',
+    transcript: undefined,
+    latestTool: 'Bash',
+    progress: 'Waiting on dependencies:ci',
+  };
+
+  function bannerSession(): ChatSession {
+    return {
+      ...chatSession(),
+      conversationActivity: {
+        conversationId: 'conversation-1',
+        currentThreadId: THREAD,
+        asOfSequence: 99,
+        runningChildWork: { count: 2, producers: ['engine-subagent'] },
+      },
+    };
+  }
+
+  /** What the live stream feeds the background-task stores for the chat. */
+  function seedLiveStores(running: ChildWorkItem[]) {
+    for (const item of running)
+      backgroundTasksStore.ingest(
+        {
+          provider: 'claude',
+          createdAt: STARTED_AT,
+          threadId: chatId,
+          method: 'tool.started',
+          itemId: item.parent!.toolCallId,
+          toolCallId: item.parent!.toolCallId,
+          toolName: 'Agent',
+        } as never,
+        API_BASE,
+      );
+    backgroundTasksStore.bindProviderReporter(API_BASE, THREAD, chatId);
+    childWorkGlobalStore.ingest(API_BASE, {
+      eventId: 'live-snapshot',
+      provider: 'claude',
+      createdAt: STARTED_AT,
+      threadId: THREAD,
+      method: 'child-work.updated',
+      delta: {
+        kind: 'snapshot',
+        producer: 'engine-subagent',
+        reporterThreadId: THREAD,
+        running,
+      },
+    } as never);
+  }
+
+  beforeEach(() => {
+    _setApiBase(API_BASE);
+    sequence = 0;
+    unexpectedRequests.length = 0;
+    stubFetch();
+    backgroundTasksStore.reset();
+    childWorkGlobalStore.reset();
+  });
+
+  afterEach(() => {
+    cleanup();
+    backgroundTasksStore.reset();
+    childWorkGlobalStore.reset();
+    activeChatsStore.removeChat(chatId);
+    vi.unstubAllGlobals();
+    _setApiBase('');
+  });
+
+  test('a carded running task is drawn once, by its card; an uncarded one gets a banner line', async () => {
+    windowEvents.current = [...spawningTurn(), progress()];
+    seedLiveStores([
+      {
+        ...runningChild,
+        latestTool: 'Read',
+        progress: 'Reading the decision records',
+      },
+      offscreenChild,
+    ]);
+    renderTranscript(bannerSession());
+    const card = await findCard();
+    // The card carries the carded task's activity and elapsed time itself.
+    expect(within(card).getByText('Reading the decision records')).toBeTruthy();
+    expect(card.querySelector('.subagent-card__elapsed')).toBeTruthy();
+    await waitFor(() =>
+      expect(document.querySelector('.background-tasks-banner')).toBeTruthy(),
+    );
+    expect(
+      screen.getAllByText(runningChild.title!, { exact: true }),
+    ).toHaveLength(1);
+    const lines = document.querySelector(
+      '.background-tasks-banner__tasks',
+    ) as HTMLElement;
+    expect(lines).toBeTruthy();
+    expect(within(lines).getByText('Lane 7: gallery baselines')).toBeTruthy();
+    expect(lines.textContent).toContain('Waiting on dependencies:ci');
+    expect(lines.textContent).not.toContain(runningChild.title!);
+  });
+
+  test('with every running task carded, no task list renders', async () => {
+    windowEvents.current = [...spawningTurn(), progress()];
+    seedLiveStores([
+      {
+        ...runningChild,
+        latestTool: 'Read',
+        progress: 'Reading the decision records',
+      },
+    ]);
+    renderTranscript(bannerSession());
+    await findCard();
+    await waitFor(() =>
+      expect(document.querySelector('.background-tasks-banner')).toBeTruthy(),
+    );
+    expect(
+      document.querySelector('.background-tasks-banner__tasks'),
+    ).toBeNull();
+    expect(
+      screen.getAllByText(runningChild.title!, { exact: true }),
+    ).toHaveLength(1);
   });
 });

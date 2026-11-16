@@ -214,7 +214,11 @@ test('shows display notes, discloses a lost read and recovers without counting n
   expect(screen.queryByText(/pending/)).toBeNull();
   fetcher.mockRejectedValue(new Error('offline'));
   await act(() => client.refetchQueries({ queryKey: ['conversation-inbox'] }));
-  expect(await screen.findByText('Couldn’t load inbox entries.')).toBeTruthy();
+  expect(
+    await screen.findByText('Couldn’t load inbox entries.', undefined, {
+      timeout: 3_000,
+    }),
+  ).toBeTruthy();
   fetcher.mockImplementation(async () => read());
   fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   expect(await screen.findByText('visible note')).toBeTruthy();
@@ -280,13 +284,64 @@ test('a failed refresh makes a previously available count unavailable, never zer
   await screen.findByText('1 pending');
   failed = true;
   await act(() => client.refetchQueries({ queryKey: ['conversation-inbox'] }));
-  await screen.findByText('Couldn’t load inbox entries.');
+  await screen.findByText('Couldn’t load inbox entries.', undefined, {
+    timeout: 3_000,
+  });
   expect(screen.queryByText(/0 pending/)).toBeNull();
   // The last-read rows are not shown as if current; they collapse away.
   await waitFor(() => expect(screen.queryByText('own')).toBeNull());
   expect(
     screen.queryByRole('button', { name: /Remove held message/ }),
   ).toBeNull();
+});
+
+test('one missed read keeps the pending rows instead of flickering to unavailable', async () => {
+  let failures = 0;
+  const fetcher = vi.fn(async () => {
+    if (failures > 0) {
+      failures -= 1;
+      throw new TypeError('Failed to fetch');
+    }
+    return response([entry('queued', 'own')]);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  const { client } = mount();
+  await screen.findByText('1 pending');
+  const before = fetcher.mock.calls.length;
+  failures = 1;
+  const seen: string[] = [];
+  const observer = new MutationObserver(() => {
+    if (screen.queryByText('Couldn’t load inbox entries.')) seen.push('lost');
+    if (!screen.queryByText('1 pending')) seen.push('gone');
+  });
+  observer.observe(document.body, { subtree: true, childList: true });
+  await act(() => client.refetchQueries({ queryKey: ['conversation-inbox'] }));
+  await waitFor(() =>
+    expect(fetcher.mock.calls.length).toBeGreaterThanOrEqual(before + 2),
+  );
+  observer.disconnect();
+  expect(seen).toEqual([]);
+  expect(screen.getByText('1 pending')).toBeTruthy();
+});
+
+test('an authority refusal is final and is not retried', async () => {
+  let refused = false;
+  const fetcher = vi.fn(async () =>
+    refused
+      ? new Response(JSON.stringify({ success: false, error: 'forbidden' }), {
+          status: 403,
+        })
+      : response([entry('queued', 'own')]),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  const { client } = mount();
+  await screen.findByText('1 pending');
+  refused = true;
+  const before = fetcher.mock.calls.length;
+  await act(() => client.refetchQueries({ queryKey: ['conversation-inbox'] }));
+  await screen.findByText('Couldn’t load inbox entries.');
+  await new Promise((resolve) => setTimeout(resolve, 1_000));
+  expect(fetcher.mock.calls.length).toBe(before + 1);
 });
 
 test('retired authority cannot publish a late answer into the next authority view', async () => {
@@ -752,4 +807,32 @@ test('reads every 2s while anything is held, and slowly while nothing is', async
   expect(interval()).toBe(INBOX_ACTIVE_POLL_MS);
   expect(INBOX_ACTIVE_POLL_MS).toBe(2_000);
   expect(INBOX_IDLE_POLL_MS).toBe(15_000);
+});
+
+test('a held message lists the files it carries by name, never their bytes', async () => {
+  const file = (name: string) => ({
+    kind: 'file' as const,
+    name,
+    mimeType: 'text/plain' as const,
+    size: 2,
+  });
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      response([
+        { ...entry('queued', 'one'), attachments: [file('notes.txt')] },
+        {
+          ...entry('queued', 'two'),
+          attachments: [file('a.txt'), file('b.txt')],
+        },
+      ]),
+    ),
+  );
+  mount();
+  await screen.findByText('2 pending');
+  expand();
+  expect(screen.getByText('notes.txt')).toBeTruthy();
+  expect(screen.getByText('2 files').getAttribute('title')).toBe(
+    'a.txt, b.txt',
+  );
 });

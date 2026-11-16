@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  QueryClient,
+  QueryClientProvider,
+  QueryObserver,
+} from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import * as React from 'react';
@@ -17,6 +21,8 @@ const streams = vi.hoisted(
     [] as Array<
       ReturnType<typeof import('@kontourai/station-sdk').fetchSSE> & {
         onMessage: (message: { event: string; data: string }) => void;
+        onOpen?: (response: Response) => void;
+        onError?: (error: unknown) => void;
       }
     >,
 );
@@ -47,15 +53,26 @@ vi.mock('@kontourai/station-sdk', () => ({
       url: string,
       options: {
         onMessage: (message: { event: string; data: string }) => void;
+        onOpen?: (response: Response) => void;
+        onError?: (error: unknown) => void;
       },
     ) => {
-      const stream = { ...createStreamHandle(), onMessage: options.onMessage };
+      const stream = {
+        ...createStreamHandle(),
+        onMessage: options.onMessage,
+        onOpen: options.onOpen,
+        onError: options.onError,
+      };
       if (url.endsWith('/events') && !url.includes('/api/orchestration/'))
         streams.push(stream);
       return stream;
     },
   ),
   notifyCredentialChanged: vi.fn(),
+  serverUpdateStateQueryKey: (apiBase: string) => [
+    'server-update-state',
+    apiBase,
+  ],
   setClientCredentialResolver: vi.fn(),
   setClientRawEgressPolicyResolver: vi.fn(),
 }));
@@ -206,6 +223,97 @@ test('overflow resync invalidates every cached query, including future event que
     unmount();
     expect(stream.signal.aborted).toBe(true);
     await expect(stream.completed).resolves.toBeUndefined();
+    client.clear();
+  }
+});
+
+/*
+ * General events are not replayed, so a stream that re-opens after a failure
+ * may have missed any of them. The hook re-reads the queries those events keep
+ * current. Unlike the overflow resync above it must not touch the rest of the
+ * cache: a reconnect is routine, and refetching every mounted query on each
+ * one is what overloads a slow Station.
+ */
+test('a general stream re-opening after a failure invalidates the event-backed queries only', async () => {
+  streams.length = 0;
+  const client = new QueryClient();
+  const eventBacked = [
+    ['notifications'],
+    ['attention'],
+    ['plugins'],
+    ['projects'],
+    ['layouts'],
+    ['agents'],
+    ['system-status'],
+    ['plugin-updates'],
+    ['server-update-state', 'https://station.test'],
+  ];
+  const untouched = [['orchestration-sessions'], ['future-event-key']];
+  for (const key of [...eventBacked, ...untouched])
+    client.setQueryData(key, { value: 'stale' });
+  const invalidated = (key: readonly unknown[]) =>
+    client.getQueryState(key)?.isInvalidated;
+  const { unmount } = renderHook(() => useServerEvents(), {
+    wrapper: ({ children }: { children: ReactNode }) =>
+      React.createElement(
+        ApiBaseProvider,
+        undefined,
+        React.createElement(QueryClientProvider, { client }, children),
+      ),
+  });
+  try {
+    const stream = streams[0]!;
+    // Control: the first open follows no failure and re-reads nothing.
+    act(() => stream.onOpen?.(new Response(null)));
+    for (const key of eventBacked) expect(invalidated(key)).toBe(false);
+
+    act(() => {
+      stream.onError?.(new Error('socket closed'));
+      stream.onOpen?.(new Response(null));
+    });
+    for (const key of eventBacked)
+      expect(invalidated(key), String(key)).toBe(true);
+    for (const key of untouched)
+      expect(invalidated(key), String(key)).toBe(false);
+  } finally {
+    unmount();
+    client.clear();
+  }
+});
+
+test('re-reading after a resumed stream keeps a read that is already in flight', async () => {
+  const { invalidateQueriesForMissedServerEvents } = await import(
+    '../hooks/useServerEvents'
+  );
+  const client = new QueryClient();
+  let finish!: (value: string[]) => void;
+  const queryFn = vi.fn(
+    () =>
+      new Promise<string[]>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  client.setQueryData(['agents'], ['stale']);
+  const observer = new QueryObserver(client, {
+    queryKey: ['agents'],
+    queryFn,
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  const unsubscribe = observer.subscribe(() => {});
+  try {
+    // The health recovery's own refetch is in flight when the stream re-opens.
+    void client.invalidateQueries({ queryKey: ['agents'] });
+    expect(queryFn).toHaveBeenCalledTimes(1);
+    // `agents` is named by several handlers: none of them, and not the read
+    // already running, may start another request.
+    invalidateQueriesForMissedServerEvents(client, 'https://station.test');
+    expect(queryFn).toHaveBeenCalledTimes(1);
+    finish(['fresh']);
+    await vi.waitFor(() =>
+      expect(client.getQueryData(['agents'])).toEqual(['fresh']),
+    );
+  } finally {
+    unsubscribe();
     client.clear();
   }
 });

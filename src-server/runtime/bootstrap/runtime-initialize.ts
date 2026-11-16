@@ -2,6 +2,7 @@ import type { ACPConfig } from '@kontourai/station-contracts/acp';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { BuiltinAgentEngineBinding } from '@kontourai/station-contracts/engine-capability-matrix';
+import { isAcpFamilyEngine } from '@kontourai/station-contracts/provider';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { tenantExecutionContextFromSession } from '@kontourai/station-contracts/tenancy';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
@@ -34,6 +35,7 @@ import type { ClaudeAdapter } from '../../providers/adapters/claude-adapter.js';
 import type { CodexAdapter } from '../../providers/adapters/codex-adapter.js';
 import type { MuseAdapter } from '../../providers/adapters/muse-adapter.js';
 import type { OllamaAdapter } from '../../providers/adapters/ollama-adapter.js';
+import { OpenCodeAdapter } from '../../providers/adapters/opencode-adapter.js';
 import {
   createRegistryAwareHasAgent,
   StationAgentAdapter,
@@ -57,6 +59,7 @@ import {
 } from '../../providers/registries/registry.js';
 import type { AttachedSessionSource } from '../../providers/sessions/attached-session-source.js';
 import { attachVoiceWebSocket } from '../../routes/operations/voice.js';
+import { loadConfinedNetworkPlan } from '../../security/confinement/confinement-provider.js';
 import {
   createRuntimeNativeForkReadAdmissionDomain,
   type NativeForkReadAdmissionDomain,
@@ -73,6 +76,7 @@ import { getAgentPolicyService } from '../../services/agents/agent-policy-servic
 import { publicIdentityAgentSetView } from '../../services/agents/runtime-agent-identity.js';
 import { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
+import { createGuardianConversationReader } from '../../services/approvals/guardian-conversation.js';
 import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
 import { ConsoleBridgeService } from '../../services/evidence/console-bridge-service.js';
 import { configurePlatformMutationGate } from '../../services/evidence/platform-mutation-gate.js';
@@ -256,6 +260,14 @@ export interface InitializeRuntimeDeps {
   orchestrationEventStore: EventStore;
   /** The `chat-host-images` Feature Preview selector, passed to orchestration. */
   hostImagesPreview?: FeaturePreviewSelector;
+  /** #3628: absent on a hosted Station, where no chat is a coordinator. */
+  coordinatorSessionPreview?: FeaturePreviewSelector;
+  /**
+   * `opencode-native-engine`: whether new chats on an OpenCode connection
+   * run on the `opencode` engine, and whether it may use OpenCode 2's own
+   * server. Read at every claim, start, resume and server spawn.
+   */
+  openCodeNativeEnginePreview?: FeaturePreviewSelector;
   durableAgentPreview?: FeaturePreviewSelector;
   credentialProfileRecoveryAdapter?: CredentialProfileRecoveryAdapter;
   usageAggregator?: UsageAggregator;
@@ -441,15 +453,7 @@ export async function initializeRuntime(
   // Keep this tiny forwarding seam stable, then install the real catalog
   // authority below before adapter streams can emit usage events.
   let usagePricingSnapshotCapture: UsagePricingSnapshotCapture | undefined;
-  const features = (process.env.STATION_FEATURES || '')
-    .split(',')
-    .filter(Boolean);
-  // SUNSET(#3909): delete once the persisted `runtime` setting is the only
-  // runtime selector, or Strands is the default.
-  if (features.includes('strands-runtime')) {
-    appConfig.runtime = 'strands';
-  }
-
+  // The persisted `runtime` setting is the only runtime selector (#3909).
   const runtime = appConfig.runtime || 'voltagent';
   const framework: RuntimeFramework =
     runtime === 'strands'
@@ -466,9 +470,9 @@ export async function initializeRuntime(
 
   applyConfiguredLogLevel(appConfig.logLevel, logger);
 
-  const acpAdapter = new AcpAdapter({
-    getConnections: async () =>
-      ((await configLoader.loadACPConfig()) as ACPConfig).connections,
+  const getAcpConnections = async () =>
+    ((await configLoader.loadACPConfig()) as ACPConfig).connections;
+  const acpAdapterOptions = {
     logger,
     resolveToolServer: (id) =>
       configLoader.loadIntegration(id).catch(() => null),
@@ -530,6 +534,23 @@ export async function initializeRuntime(
     },
     revokeStationControlMcpAuth: (threadId: string, serverId) =>
       revokeStationControlMcpToken(threadId, serverId),
+  } satisfies Omit<AcpAdapterOptions, 'getConnections'>;
+  const acpAdapter = new AcpAdapter({
+    ...acpAdapterOptions,
+    getConnections: getAcpConnections,
+  });
+  // Always registered: a chat that started on `opencode` keeps it after the
+  // preview is turned off, and then runs over ACP (ruling R2). The preview
+  // decides which provider a new OpenCode chat gets (`claimsAcpConnection`)
+  // and whether OpenCode 2's own server may run.
+  const openCodeAdapter = new OpenCodeAdapter({
+    getConnections: getAcpConnections,
+    acp: acpAdapterOptions,
+    nativeEnabled: () =>
+      deps.openCodeNativeEnginePreview?.select({
+        enabled: () => true,
+        disabled: () => false,
+      }) === true,
   });
   let stationAgentsReady = false;
   const durableOwner = stationAgentRuntimeOwner(
@@ -590,7 +611,14 @@ export async function initializeRuntime(
     eventBus,
   });
   registerProviderAdapters(
-    [claudeAdapter, codexAdapter, museAdapter, acpAdapter, stationAgentAdapter],
+    [
+      claudeAdapter,
+      codexAdapter,
+      museAdapter,
+      acpAdapter,
+      openCodeAdapter,
+      stationAgentAdapter,
+    ],
     { builtin: true, source: 'station-core' },
   );
   registerACPConnectionRegistryProvider(
@@ -602,6 +630,11 @@ export async function initializeRuntime(
   const flowRunService = new FlowRunService();
   const hostedTenantRegistry = loadHostedTenantRegistryFromEnvironment();
   const publicAdapterRegistry = createProviderAdapterRegistry();
+  const coordinatorEnabled = () =>
+    deps.coordinatorSessionPreview?.select({
+      enabled: () => true,
+      disabled: () => false,
+    }) === true;
   // archive#895 wave A: resolve per-agent capability delivery (ACP tool servers,
   // Claude skills) into a session's ResolvedAgentDefinition before dispatch.
   // Fail-open closures, mirroring the ClaudeAdapter skills wiring above:
@@ -629,6 +662,7 @@ export async function initializeRuntime(
     // #3628: read at each Session start, so a designation reaches the
     // coordinator's next Session (and a successor Session of it).
     isCoordinatorSession: (threadId) => {
+      if (!coordinatorEnabled()) return false;
       try {
         const conversationId =
           orchestrationEventStore.conversationForSession(threadId)
@@ -694,6 +728,10 @@ export async function initializeRuntime(
     // grant unconfined, from their next turn.
     isFullAccessGrantorCurrent: (deviceId) =>
       deps.environmentSecurityService.deviceHoldsFullAccess(deviceId),
+    // #4769: read at each start that requires confinement, so a changed
+    // policy applies from the next such start.
+    confinedNetworkPolicy: () =>
+      loadConfinedNetworkPlan(() => configLoader.loadAppConfig()),
     // Bedrock and Ollama are Station-engine model-provider implementations,
     // not public engine connections. Keep them available for dispatch without
     // publishing them through the registry that feeds New Chat inventory.
@@ -777,7 +815,7 @@ export async function initializeRuntime(
     // directory of its own, read from the same config the adapter reads, so
     // a scoped dispatch is decided on the directory it will run in.
     resolveConnectionDefaultCwd: async (provider, connectionId) => {
-      if (provider !== 'acp') return undefined;
+      if (!isAcpFamilyEngine(provider)) return undefined;
       const connection = (
         (await configLoader.loadACPConfig()) as ACPConfig
       ).connections.find((candidate) => candidate.id === connectionId);
@@ -827,6 +865,7 @@ export async function initializeRuntime(
     agentPolicyService: getAgentPolicyService(logger),
     workflowSidecarService: new WorkflowSidecarService({ logger }),
     resolveSessionAgent,
+    coordinatorEnabled,
     coordinatorGenerationForSession: (threadId) =>
       coordinatorGeneration(
         orchestrationEventStore.conversationForSession(threadId)
@@ -1165,6 +1204,9 @@ export async function initializeRuntime(
           logger,
           modelCatalog,
           projectHomeDir: configLoader.getProjectHomeDir(),
+          readConversation: createGuardianConversationReader(
+            orchestrationEventStore,
+          ),
         }),
       })) as Record<string, Agent>,
     createVoltAgentInstance,

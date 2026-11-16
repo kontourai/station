@@ -168,7 +168,9 @@ test.each(['idle', 'completed'] as const)(
         INTERNAL_SESSION_READ_SCOPE,
       );
       const listed = (
-        await service.listSessionReadModel(INTERNAL_SESSION_READ_SCOPE)
+        await service.listSessionReadModel(INTERNAL_SESSION_READ_SCOPE, {
+          purpose: 'session-list',
+        })
       ).find((row) => row.threadId === 'parent');
       const page = await service.readSessionEventPage('parent', {
         afterSequence: 0,

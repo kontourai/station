@@ -153,7 +153,7 @@ describe('ContextPickerOptions', () => {
         folderlessHint={{ kind: 'home' }}
       />,
     );
-    const filter = screen.getByPlaceholderText('Filter...');
+    const filter = screen.getByPlaceholderText('Filter…');
     expect(document.activeElement).not.toBe(filter);
     expect(
       screen.getAllByRole('button', { name: /Station|No workspace|No CWD/ }),
@@ -172,9 +172,7 @@ describe('ContextPickerOptions', () => {
         folderlessHint={{ kind: 'home' }}
       />,
     );
-    expect(document.activeElement).toBe(
-      screen.getByPlaceholderText('Filter...'),
-    );
+    expect(document.activeElement).toBe(screen.getByPlaceholderText('Filter…'));
   });
 
   test('marks the selected option active and badges projects with no working directory', () => {
@@ -255,7 +253,7 @@ describe('ContextPickerOptions', () => {
     fireEvent.click(screen.getByRole('button', { name: /Station/ }));
     expect(onSelectContext).toHaveBeenCalledWith('station');
 
-    const filter = screen.getByPlaceholderText('Filter...');
+    const filter = screen.getByPlaceholderText('Filter…');
     fireEvent.change(filter, { target: { value: 'station' } });
     expect(onContextSearchChange).toHaveBeenCalledWith('station');
 

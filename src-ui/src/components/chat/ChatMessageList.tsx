@@ -9,6 +9,7 @@ import React, {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { conversationAccessFor } from '../../connections/station-connection';
+import { chatBelongsToStation } from '../../connections/station-state';
 import { useAgents } from '../../contexts/AgentsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import type { ChatContentPart } from '../../contexts/active-chats-state';
@@ -29,8 +30,10 @@ import { isShallowEqual } from '../../utils/isShallowEqual';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import {
   chatWaitsOnUser,
+  requestAttentionKind,
   requestsWaitingOnUser,
 } from '../../utils/waiting-approvals';
+import { attentionWord } from '../../views/home/work-status';
 import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
 import { useApprovalAnswering } from '../conversation/useApprovalAnswering';
 import { AgentIcon } from '../icons/AgentIcon';
@@ -46,6 +49,7 @@ import {
   animateScrollToBottom,
   type ScrollToBottomAnimation,
 } from './animateScrollToBottom';
+import { ChatRunningBackgroundTasks } from './BackgroundTaskActivity';
 import { ChatEmptyState } from './ChatEmptyState';
 import {
   CHAT_READER_RESTORE_EVENT,
@@ -87,6 +91,7 @@ import {
   type ChildTranscriptRow,
   foldTranscriptChildren,
   projectTranscriptChildRows,
+  type TranscriptChild,
   TranscriptChildrenContext,
   TranscriptTurnContext,
 } from './transcript-child-work';
@@ -213,11 +218,26 @@ function backgroundTasksLabel(
   tasks: NonNullable<ChatSession['backgroundTasks']>,
 ): string {
   const first = tasks[0];
-  const description = first?.description || 'agent task';
+  const kinds = new Set(tasks.map((task) => task.workKind ?? 'agent'));
+  const noun =
+    kinds.size > 1
+      ? 'task'
+      : kinds.has('command')
+        ? 'command'
+        : kinds.has('monitor')
+          ? 'monitor'
+          : 'agent';
+  const description = first?.description || `background ${noun}`;
   if (tasks.length === 1) {
-    return `Background agent working — ${description}`;
+    return noun === 'agent'
+      ? `Background agent working — ${description}`
+      : noun === 'monitor'
+        ? `Monitor watching — ${description}`
+        : `Background command running — ${description}`;
   }
-  return `${tasks.length} background agents working — ${description}, …`;
+  return noun === 'agent'
+    ? `${tasks.length} background agents working — ${description}, …`
+    : `${tasks.length} background ${noun}s running — ${description}, …`;
 }
 
 // A resize below this delta is treated as jitter (sub-pixel layout rounding,
@@ -379,7 +399,9 @@ function ChatMessageListComponent({
             (approvalEvents ?? [])
               .map((item) => item.event)
               .filter((event) => Boolean(event.eventId)),
-          ).filter((request) => !request.inputRequest),
+          ).filter(
+            (request) => !request.inputRequest && !request.inputRequestUrl,
+          ),
     [activeSession.replay, approvalEvents, target?.record?.readOnly],
   );
   // The store is already live at the shell; reading its scalar snapshot here
@@ -602,9 +624,11 @@ function ChatMessageListComponent({
     [submitForm, formScope, target, activeSession.replay, activeSession],
   );
 
-  const messages = useMemo(() => {
+  // The children the loaded transcript draws as their own card: anchored to
+  // a loaded row, to the turn streaming now, or standalone.
+  const cardedChildren = useMemo(() => {
     const loaded = activeSession.messages || EMPTY_MESSAGES;
-    const represented = new Set<string>();
+    const represented = new Map<string, TranscriptChild>();
     for (const [key, child] of transcriptChildren) {
       const inLoadedRow = loaded.some(
         (message) =>
@@ -622,8 +646,13 @@ function ChatMessageListComponent({
         activeSession.currentSessionId === child.item.reporterThreadId &&
         activeSession.openTurnId === child.spawn?.turnId;
       if (child.spawn?.standalone || inLoadedRow || inStreamingRow)
-        represented.add(key);
+        represented.set(key, child);
     }
+    return represented;
+  }, [activeSession, suppressStreamingRow, transcriptChildren]);
+  const messages = useMemo(() => {
+    const loaded = activeSession.messages || EMPTY_MESSAGES;
+    const represented = cardedChildren;
     const visible = loaded.filter((message) => {
       const key = message.childWorkKey
         ? visibleChildWorkNoticeKey(message.childWorkKey, apiBase)
@@ -631,7 +660,17 @@ function ChatMessageListComponent({
       return key !== null && (!key || !represented.has(key));
     });
     return visible.length === loaded.length ? loaded : visible;
-  }, [activeSession, apiBase, suppressStreamingRow, transcriptChildren]);
+  }, [activeSession, apiBase, cardedChildren]);
+  // A running task the transcript already draws as a card (with its own
+  // activity and elapsed time) is not listed again under the banner.
+  const cardedTaskIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const child of cardedChildren.values()) {
+      ids.add(child.item.childId);
+      if (child.item.parent?.toolCallId) ids.add(child.item.parent.toolCallId);
+    }
+    return ids;
+  }, [cardedChildren]);
   // archive#3300: the turn fold, not the session flags — a settled turn must
   // not reconstruct its own streaming row after resume. See the doc comment
   // on `isTurnStreamLive` for why `isSessionExecutionActive` was the wrong
@@ -648,8 +687,8 @@ function ChatMessageListComponent({
     localBackgroundTasks.length > 0
       ? backgroundTasksLabel(localBackgroundTasks)
       : serverBackgroundCount === 1
-        ? 'Background agent working'
-        : `${serverBackgroundCount} background agents working`;
+        ? 'Background task running'
+        : `${serverBackgroundCount} background tasks running`;
   const backgroundBannerLabel = liveStatusUnavailable
     ? `Last known: ${currentBackgroundLabel.charAt(0).toLowerCase()}${currentBackgroundLabel.slice(1)} (status unavailable)`
     : currentBackgroundLabel;
@@ -1946,6 +1985,17 @@ function ChatMessageListComponent({
     ],
   );
 
+  // One object per open turn rather than per render: a new value re-renders
+  // every consumer under the memoised streaming row.
+  const streamingTurnContext = useMemo(
+    () => ({
+      threadId: activeSession.currentSessionId,
+      turnId: activeSession.openTurnId,
+      wholeTurn: true,
+    }),
+    [activeSession.currentSessionId, activeSession.openTurnId],
+  );
+
   const scrollToBottomControl =
     isUserScrolledUp && !scrollingToBottom ? (
       <ScrollToBottomButton onClick={handleScrollToBottom} />
@@ -2020,7 +2070,9 @@ function ChatMessageListComponent({
               onQuote={onQuote}
             />
           )}
-          {!target?.record && (
+          {/* Summaries are this Station's own derived records; a chat another
+              Station owns has none here, and its tunnel offers no summary read. */}
+          {!target?.record && chatBelongsToStation(activeSession) && (
             <SessionSummaryCard
               activeSession={activeSession}
               hasSettingsEntryPoint={hasSettingsEntryPoint}
@@ -2028,6 +2080,7 @@ function ChatMessageListComponent({
           )}
           <div
             className="chat-messages"
+            data-surface="transcript"
             data-touch-turn-controls={
               (turnNavigation && touchTurnControls) || undefined
             }
@@ -2114,11 +2167,7 @@ function ChatMessageListComponent({
                     data-chat-message-key={`${activeSession.id}:streaming`}
                   >
                     <TranscriptTurnContext.Provider
-                      value={{
-                        threadId: activeSession.currentSessionId,
-                        turnId: activeSession.openTurnId,
-                        wholeTurn: true,
-                      }}
+                      value={streamingTurnContext}
                     >
                       <ActiveStreamingMessage
                         sessionId={activeSession.id}
@@ -2137,21 +2186,15 @@ function ChatMessageListComponent({
                         suppressActivity={suppressActivity}
                         hideProgressSilence={progressSilenceShownElsewhere}
                         statusLabel={
-                          activeSession.orchestrationStatus ===
-                            'awaiting-approval' &&
-                          chatWaitsOnUser(activeSession)
-                            ? // station#2235: the status alone asserts nothing about
-                              // an approval — a crashed turn's needs_input folds to
-                              // this status with no request behind it. Name the
-                              // approval only when a request is still waiting on
-                              // the user; without one the session is waiting on the
-                              // user, not on a decision. A session whose requests
-                              // are all answered is waiting on the engine, and says
-                              // nothing here.
-                              waitingApprovalCount > 0
-                              ? 'Waiting for approval'
-                              : 'Waiting on you'
-                            : undefined
+                          waitingApprovalCount > 0
+                            ? requestAttentionKind(activeSession) === 'answer'
+                              ? attentionWord('answer')
+                              : 'Waiting for approval'
+                            : activeSession.orchestrationStatus ===
+                                  'awaiting-approval' &&
+                                chatWaitsOnUser(activeSession)
+                              ? attentionWord('waiting')
+                              : undefined
                         }
                         attributionAgent={streamingAttributionAgent}
                         owner={owner}
@@ -2204,6 +2247,20 @@ function ChatMessageListComponent({
                       </span>
                     </div>
                   ))}
+                {/* Each running task's latest activity and elapsed time, so
+                the transcript itself shows the work progressing. Outside the
+                live region: a ticking clock must not be re-announced. A
+                last-known banner shows no live lines. */}
+                {!turnLive &&
+                  !liveStatusUnavailable &&
+                  (localBackgroundTasks.length > 0 ||
+                    serverBackgroundCount > 0) && (
+                    <ChatRunningBackgroundTasks
+                      chatThreadId={activeSession.id}
+                      source={apiBase}
+                      cardedTaskIds={cardedTaskIds}
+                    />
+                  )}
               </>
             )}
             {/* Mounted while empty too: its live region must exist before the
@@ -2261,6 +2318,7 @@ function ChatMessageListComponent({
               nextTurn={nextTurn}
               onStep={stepToTurn}
               touchControls={touchTurnControls}
+              touchStepsShown={isUserScrolledUp}
             />
           )}
           {/* Mounted with the navigation, before anything is said: a region

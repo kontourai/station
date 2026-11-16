@@ -1392,7 +1392,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       'Try again in a moment.',
     );
     expect(screen.queryByText('Station connection was interrupted')).toBeNull();
-    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(screen.getByRole('alertdialog')).toBeTruthy();
     expect(navigationMocks.navigate).not.toHaveBeenCalled();
     expect(navigationMocks.showSurface).not.toHaveBeenCalled();
   });
@@ -1417,10 +1417,10 @@ describe('ProjectSettingsView (#250 shell port)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete Project' }));
 
-    expect(screen.getByRole('dialog').textContent).toContain(
+    expect(screen.getByRole('alertdialog').textContent).toContain(
       'Tasks and chats stay in history',
     );
-    expect(screen.getByRole('dialog').textContent).toContain(
+    expect(screen.getByRole('alertdialog').textContent).toContain(
       'no longer have a live Project workspace',
     );
   });
@@ -1649,6 +1649,22 @@ describe('ProjectSettingsView: changing the icon after creation', () => {
       ),
     );
     expect(screen.queryByText('unsaved')).toBeNull();
+  });
+
+  test('detected notice follows unsaved icon visibility in both directions', () => {
+    sdkMocks.project = {
+      ...projectFixture,
+      icon: undefined,
+      derivedIcon: FAVICON.dataUrl,
+    };
+    renderProjectSettings();
+    openPicker();
+    const notice = 'Detected icon · Choose No icon to hide it.';
+    expect(screen.getByText(notice)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'No icon' }));
+    expect(screen.queryByText(notice)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Use detected icon' }));
+    expect(screen.getByText(notice)).toBeTruthy();
   });
 
   test('No icon saves the clear the route understands', async () => {
