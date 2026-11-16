@@ -380,9 +380,11 @@ test.describe('Agents pane child work (#2459)', () => {
       latestTool: 'Read',
       progress: 'Reading src-server/services/orchestration/event-store.ts',
       controls: { stop: 'provider-task-stop' },
+      // A transcript ref the contract accepts, so the row offers Open chat
+      // beside Stop, as in the screenshot.
       transcript: {
         kind: 'claude-subagent',
-        sessionId: SESSION_ID,
+        sessionId: '5f0c7e1a-2b3d-4c5e-8f90-1a2b3c4d5e6f',
         agentId: childId,
       },
     });
@@ -484,6 +486,16 @@ test.describe('Agents pane child work (#2459)', () => {
             width,
           ),
         );
+      // Reachability: the subagent rows carry BOTH actions, as in the
+      // screenshot, so the check below meets the crowded case.
+      await expect(
+        page
+          .getByRole('listitem')
+          .filter({
+            hasText: 'Inventory event-row readers for retention and replay',
+          })
+          .getByRole('button', { name: 'Open chat' }),
+      ).toBeVisible();
       for (const title of [
         'Inventory event-row readers for retention and replay',
         'Reproduce the overwhelmed-server report under load',
