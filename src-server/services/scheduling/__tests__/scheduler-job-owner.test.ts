@@ -105,3 +105,29 @@ test('only a Station with no other accounts and no hosting is personal', () => {
   vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', '/hosted-tenants.json');
   expect(isPersonalStation({})).toBe(false);
 });
+
+test('the operator backfill is a one-time migration: a job created ownerless afterwards keeps no owner across a restart', async () => {
+  const directory = join(makeTempDir('station-job-owner-once-'), 'scheduler');
+  const operator = { userId: LOCAL_OPERATOR_PRINCIPAL_ID };
+  // First start: the migration runs (and records itself) on an empty ledger.
+  const first = schedulerOver(createSchedulerLedger({ directory }), operator);
+  await first.stop();
+  // A job stored afterwards with no owner (e.g. an owner that did not
+  // resolve), before the next start.
+  const between = createSchedulerLedger({ directory });
+  expect(
+    between.create({
+      name: 'later',
+      cron: '0 9 * * *',
+      prompt: 'tidy',
+      enabled: true,
+      createdAt: new Date().toISOString(),
+    } as never).kind,
+  ).toBe('created');
+  // Restart: the migration does not run again.
+  const restartedLedger = createSchedulerLedger({ directory });
+  schedulerOver(restartedLedger, operator);
+  const [job] = views(restartedLedger);
+  expect(job).not.toHaveProperty('createdBy');
+  expect(job?.ownerNeeded).toBe(JOB_OWNER_NEEDED_REASON);
+});

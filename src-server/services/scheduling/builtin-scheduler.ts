@@ -232,10 +232,11 @@ export interface BuiltinSchedulerOptions {
   ledger?: SchedulerLedger;
   turnAdapter: ScheduledTurnAdapter;
   /**
-   * #2377 slice D: on a personal Station only, the operator, recorded as the
-   * owner of every stored job that has none (jobs created before owners were
-   * recorded). Absent on shared and hosted Stations, where such a job keeps
-   * no owner and runs without Station tools (`ownerNeeded`).
+   * #2377 slice D: on a personal Station only, the operator, recorded once
+   * (a one-time ledger migration) as the owner of every stored job that had
+   * none, i.e. those created before owners were recorded. Absent on shared
+   * and hosted Stations, where such a job keeps no owner and runs without
+   * Station tools (`ownerNeeded`).
    */
   personalJobOwner?: SchedulerAutomationCreator;
   /**

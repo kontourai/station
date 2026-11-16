@@ -467,6 +467,9 @@ export const ANNOUNCEMENT_LEASE_MS = 60_000;
 /** Records that the pre-outbox backfill has run to completion, exactly once. */
 export const ANNOUNCEMENT_OUTBOX_MIGRATION_KEY = 'announcement-outbox-migrated';
 
+/** #2377 slice D: records that older ownerless jobs were given an owner, once. */
+export const JOB_OWNER_MIGRATION_KEY = 'job-owner-backfill-v1';
+
 /** #2377 slice D: why a job with no recorded owner has no Station tools. */
 export const JOB_OWNER_NEEDED_REASON =
   'This job has no recorded owner, so its runs have no Station tools. Re-create it to make you its owner.';
@@ -570,9 +573,12 @@ export interface SchedulerOwedAnnouncements {
 export interface SchedulerLedger {
   create(job: StoredSchedulerJob): SchedulerCreateOutcome;
   /**
-   * #2377 slice D: record `owner` on every stored job that has none. The
-   * caller decides when that is true (a personal Station's operator only).
-   * Returns how many jobs it changed.
+   * #2377 slice D: a one-time migration, recorded in the ledger. The first
+   * call records `owner` on every stored job that has none (the jobs created
+   * before owners were recorded) and marks the migration done; every later
+   * call changes nothing, so a job created ownerless afterwards stays
+   * ownerless (`ownerNeeded`). The caller decides who `owner` is (a personal
+   * Station's operator only). Returns how many jobs it changed.
    */
   backfillJobOwners(owner: SchedulerAutomationCreator): number;
   update(name: string, update: Record<string, unknown>): SchedulerUpdateOutcome;
@@ -1000,6 +1006,12 @@ class SqliteSchedulerLedger implements SchedulerLedger {
 
   backfillJobOwners(owner: SchedulerAutomationCreator): number {
     return this.transaction(() => {
+      // Decided under the write lock: two instances over one home migrate
+      // once between them.
+      const migrated = this.db
+        .prepare('SELECT value FROM scheduler_ledger_meta WHERE key = ?')
+        .get(JOB_OWNER_MIGRATION_KEY);
+      if (migrated !== undefined) return 0;
       const rows = this.db
         .prepare('SELECT name, data FROM scheduler_jobs')
         .all() as Array<{ name: string; data: string }>;
@@ -1014,6 +1026,9 @@ class SqliteSchedulerLedger implements SchedulerLedger {
           .run(JSON.stringify({ ...job, createdBy: owner }), row.name);
         changed += 1;
       }
+      this.db
+        .prepare('INSERT INTO scheduler_ledger_meta(key, value) VALUES (?, ?)')
+        .run(JOB_OWNER_MIGRATION_KEY, new Date().toISOString());
       return changed;
     });
   }
