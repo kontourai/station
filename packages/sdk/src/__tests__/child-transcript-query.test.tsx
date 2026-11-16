@@ -385,6 +385,8 @@ test('an invalidation with no older history loaded keeps every polled message an
     });
   }
   expect(messages()).toEqual(Array.from({ length: 35 }, (_, i) => 10 + i));
+  // Later messages arrive past the cursor: no "later page" is ever offered.
+  expect(observer.result.current.hasNextPage).toBe(false);
   observer.rerender({ running: false });
   read.mockClear();
   await act(async () => {
