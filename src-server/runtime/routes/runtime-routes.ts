@@ -3807,7 +3807,7 @@ export function configureRuntimeRoutes(
           try {
             mine = await context.orchestrationService.listSessionReadModel(
               conversationReadAuthorityForContext(c),
-              { threadIds: running },
+              { purpose: 'restart-running-turns', threadIds: running },
             );
           } catch {
             mine = [];
@@ -4308,6 +4308,8 @@ export function configureRuntimeRoutes(
     createDiagnosticsRoutes(
       new DiagnosticsService(context.configLoader.getProjectHomeDir(), {
         buildProvenanceSnapshot: context.buildProvenanceSnapshot,
+        readSessionReadModelMeasurement: () =>
+          context.orchestrationService.sessionReadModelMeasurement(),
       }),
       context.logger,
       // station#1896 logging slice 2: same directory slice 1's

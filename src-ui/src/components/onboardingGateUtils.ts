@@ -230,7 +230,7 @@ export function buildSetupBannerContent(
         title: 'No model connection is ready for chat',
         description:
           'Enable or repair a model connection in Connections before starting a chat.',
-        actionLabel: 'Manage Connections',
+        actionLabel: 'Manage connections',
         badges: dedupeBadges(
           configured.map((provider) =>
             provider.enabled

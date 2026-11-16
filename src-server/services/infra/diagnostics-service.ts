@@ -20,6 +20,7 @@ import {
   diagnosticsBundleErrors,
   diagnosticsBundlesGenerated,
 } from '../../telemetry/metrics.js';
+import type { SessionReadModelMeasurementSnapshot } from '../orchestration/session-read-model-measurement.js';
 
 const MAX_DIAGNOSTIC_LOG_BYTES = 256 * 1024;
 const LOGS_NOT_CONFIGURED_REASON =
@@ -38,6 +39,12 @@ export interface DiagnosticsBundle {
   config: unknown;
   logs: string | null;
   logsUnavailableReason?: string;
+  /**
+   * Who read the session read model since this process started, and what
+   * each purpose cost (#4992). Counts and durations only, by a closed purpose
+   * vocabulary: no session, user or thread identity.
+   */
+  sessionReadModel?: SessionReadModelMeasurementSnapshot;
 }
 
 export interface DiagnosticsServiceDeps {
@@ -58,6 +65,8 @@ export interface DiagnosticsServiceDeps {
   nodeVersion: string;
   platform: string;
   buildProvenanceSnapshot?: BuildProvenanceSnapshot;
+  /** The orchestration service's read-model measurement; absent omits it. */
+  readSessionReadModelMeasurement?: () => SessionReadModelMeasurementSnapshot;
 }
 
 async function readConfig(path: string): Promise<unknown> {
@@ -172,6 +181,7 @@ export class DiagnosticsService {
         logsUnavailableReason = LOGS_NOT_CONFIGURED_REASON;
       }
 
+      const sessionReadModel = this.deps.readSessionReadModelMeasurement?.();
       const build = readBuildProvenanceSnapshot(
         this.deps.buildProvenanceSnapshot,
         this.deps.now().getTime(),
@@ -193,6 +203,7 @@ export class DiagnosticsService {
         config: redactDeep(config),
         logs,
         ...(logsUnavailableReason ? { logsUnavailableReason } : {}),
+        ...(sessionReadModel ? { sessionReadModel } : {}),
       };
       diagnosticsBundlesGenerated.add(1);
       return bundle;
