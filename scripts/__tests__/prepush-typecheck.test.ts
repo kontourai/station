@@ -297,19 +297,23 @@ if (gates.some(gate => args[0] === 'scripts/' + gate)) {
       'scripts/check-prepush-push-range.mjs',
       'scripts/check-prepush-docs-freshness.mjs',
     ])(
-      'refuses the push when %s reports a finding (exit 10), and only then',
+      'refuses the push when %s reports a finding (exit 40), and only then',
       (gate) => {
         const f = fixture();
-        const refused = f.push('found', gate, '10');
+        const refused = f.push('found', gate, '40');
         expect(refused.status).not.toBe(0);
         expect(f.remoteRef('found').status).not.toBe(0);
         // Any other failure is not a verdict: a warning, and the push lands.
-        const crashed = f.push('crashed', gate, '37');
-        expect(crashed.status, crashed.stderr).toBe(0);
-        expect(f.remoteRef('crashed').status).toBe(0);
-        expect(`${crashed.stdout}${crashed.stderr}`).toContain(
-          'did not reach a verdict (exit 37); that is not a finding in the pushed commit, so the push continues',
-        );
+        // 1 is an uncaught error or a module that will not load, and 10 is
+        // Node's own internal run-time failure.
+        for (const status of ['1', '10', '37']) {
+          const crashed = f.push(`crashed-${status}`, gate, status);
+          expect(crashed.status, crashed.stderr).toBe(0);
+          expect(f.remoteRef(`crashed-${status}`).status).toBe(0);
+          expect(`${crashed.stdout}${crashed.stderr}`).toContain(
+            `did not reach a verdict (exit ${status}); that is not a finding in the pushed commit, so the push continues`,
+          );
+        }
       },
     );
   },

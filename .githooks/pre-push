@@ -99,7 +99,7 @@ npm run --silent proof:repo-governance
 # edit amended into the merge, a new non-merge commit, or any git failure is
 # not pure, and every lane runs. scripts/prepush-pure-merge.mjs owns the rule.
 # The push-range and freshness steps refuse only on a finding in the pushed
-# commit, which they report with exit 10 (PREPUSH_FINDING_EXIT in
+# commit, which they report with exit 40 (PREPUSH_FINDING_EXIT in
 # scripts/lib/prepush-verdict.mjs). Any other non-zero status (a crash, a
 # module that will not load, a kill, a timeout) is not a verdict: say so and
 # continue, because --no-verify is not allowed and CI will judge it.
@@ -108,7 +108,7 @@ prepush_step_verdict() {
   if [[ "$status" -eq 0 ]]; then
     return 0
   fi
-  if [[ "$status" -eq 10 ]]; then
+  if [[ "$status" -eq 40 ]]; then
     exit 1
   fi
   echo "[station pre-push] WARNING: $step_name did not reach a verdict (exit $status); that is not a finding in the pushed commit, so the push continues and CI will judge it."
