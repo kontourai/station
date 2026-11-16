@@ -230,7 +230,9 @@
 
     "pnpm-lock.yaml#/packages/koffi@3.3.7",
 
-    "src-desktop/src/html_reply_protocol.rs"
+    "src-desktop/src/html_reply_protocol.rs",
+
+    "scripts/lib/server-static-imports.mjs"
   ],
 
   "checks": [
