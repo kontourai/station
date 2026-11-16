@@ -50,6 +50,9 @@ export const ActionControl = forwardRef<HTMLButtonElement, ActionControlProps>(
       <button
         ref={ref}
         type="button"
+        // A stable hook custom appearance CSS may select
+        // (APPEARANCE_HOOKS in @kontourai/station-contracts/custom-appearance).
+        data-slot="button"
         className={classes}
         disabled={disabled || pending}
         aria-busy={pending || undefined}

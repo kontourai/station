@@ -1160,6 +1160,8 @@ function MessageBubbleComponent({
     return (
       <div
         className="message-row message-row--agent message-row--compact"
+        data-surface="message"
+        data-message-role="assistant"
         data-chat-message-key={anchorKey}
         data-message-mobile={isMobile}
         style={agentAccentStyle(sender)}
@@ -1190,6 +1192,9 @@ function MessageBubbleComponent({
           ? ' message-row--exchange-start'
           : ''
       }`}
+      data-surface="message"
+      // Another agent's message arrives as a user turn; it reads as the agent's.
+      data-message-role={sender ? 'assistant' : msg.role}
       data-chat-message-key={anchorKey}
       data-message-mobile={isMobile}
       // The sender's accent (agentSenderAccent.ts); the avatar and the bubble
