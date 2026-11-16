@@ -1,3 +1,5 @@
+import type { PullRequestFeedbackObservationResult } from './pull-request-feedback.js';
+
 /** Provider-neutral pull-request contract. Native ids and URLs stay opaque. */
 export type PullRequestCapability =
   | 'list'
@@ -300,6 +302,16 @@ export interface IPullRequestProvider {
     context: PullRequestRepositoryIdentityContext,
     ref: string,
   ): Promise<PullRequestResult<PullRequest>>;
+  /**
+   * One read of a pull request's checks, review threads and mergeability,
+   * for agent feedback (`pull-request-feedback.ts`). Optional: a provider
+   * without it reads as `unsupported`.
+   */
+  getFeedbackObservation?(
+    context: PullRequestRepositoryIdentityContext,
+    ref: string,
+    signal?: AbortSignal,
+  ): Promise<PullRequestFeedbackObservationResult>;
   openPullRequest(
     context: PullRequestRepositoryContext,
     input: PullRequestOpenInput,
