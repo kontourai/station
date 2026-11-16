@@ -262,7 +262,7 @@ const USAGE = `Usage:
   station environment operator passkeys approve <code> [--device=<id-prefix>] [--api-base=<loopback-url>|--station=<name>]
   station environment operator passkeys deny <code> [--api-base=<loopback-url>|--station=<name>]
   station environment operator passkeys revoke <passkey-id> [--api-base=<loopback-url>|--station=<name>]
-  station environment offer [--scope=<scope,…>] [--require-approval] [--browser-url=<web-origin>] [--client-channel=<stable|beta|nightly>] [--tailscale] [--tailscale-serve-port=<port>] [--payload-only] [--advertise-url=<url>]
+  station environment offer [--scope=<scope,…>] [--require-approval] [--browser-url=<web-origin>] [--client-channel=<stable|nightly>] [--tailscale] [--tailscale-serve-port=<port>] [--payload-only] [--advertise-url=<url>]
   station environment hosts [--api-base=<url>]
   station environment list [--api-base=<url>]
   station environment show <id> [--api-base=<url>]
@@ -514,7 +514,6 @@ function parseEnvironmentOfferInvocation(
   if (
     clientChannel !== undefined &&
     clientChannel !== 'stable' &&
-    clientChannel !== 'beta' &&
     clientChannel !== 'nightly'
   ) {
     throw usageError();

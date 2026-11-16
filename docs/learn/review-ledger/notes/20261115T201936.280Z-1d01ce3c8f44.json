@@ -1,0 +1,9 @@
+{
+  "revision": "814a7e3e39ff75df10b7e40d4740d9533502d720",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"Reviewed the sole exclude-list addition for docs/reviews/release-candidates-20261115/README.md. This dated component/browser evidence review retains its README, source hashes, capture bytes and retention policy; it is linked from operator guidance and the PR, not promoted into product manual/Pages content. Other product documents, public sources, topic IDs, promise/builtOn declarations and validation/freshness rules remain unchanged. The exact pinned hosted Corpus0.7 tool passes all checks after this classification.","inputs":["corpus.json"]},
+
+    {"path":"docs/pages/README.md","note":"Reviewed the sole exclude-list addition for docs/reviews/release-candidates-20261115/README.md. This dated component/browser evidence review retains its README, source hashes, capture bytes and retention policy; it is linked from operator guidance and the PR, not promoted into product manual/Pages content. Other product documents, public sources, topic IDs, promise/builtOn declarations and validation/freshness rules remain unchanged. The exact pinned hosted Corpus0.7 tool passes all checks after this classification.","inputs":["corpus.json"]}
+  ]
+}

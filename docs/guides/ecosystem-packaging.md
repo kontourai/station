@@ -7,7 +7,8 @@ distribution, an approved tap or production signing-key custody.
 The installer selects the public-manifest path when
 `STATION_INSTALL_PUBLIC_MANIFEST_URL` is set, and for `STATION_CHANNEL=nightly`,
 which defaults it to the rolling `portable-nightly` manifest. Its default
-stable/beta path uses GitHub release attestation and a GitHub credential. Normal manifest verification uses pinned,
+Stable path uses GitHub release attestation and a GitHub credential. Beta and
+the `preview` ring are retired. Normal manifest verification uses pinned,
 channel-scoped keys. It does not require different manifest/artifact origins or
 fetch a trust key from a third authority. Signature and hash checks identify the
 signer and artifact bytes, not every aspect of freshness or safe execution.
@@ -35,8 +36,10 @@ runtime, or a separately pinned official Node.js download. On Windows,
 it, and installs, upgrades and uninstalls it on a host without a Station
 service.
 
-Schema v1 source archives remain supported for stable/preview and require
-the host toolchain. The former v2 `artifacts.portable` shape is no longer
+Schema v1 source archives remain supported for Stable and require the host
+toolchain. Legacy preview payloads remain readable as fixture/historical data;
+current pinned signing keys grant no preview authority and installers refuse
+Beta/preview selection. The former v2 `artifacts.portable` shape is no longer
 accepted. Only v1 can produce a Homebrew cask. The
 [manifest README](../../packaging/manifest/README.md) maps the consumers, and
 the [archive install contract](release-channel-ports.md#prebuilt-archives-and-source-releases)

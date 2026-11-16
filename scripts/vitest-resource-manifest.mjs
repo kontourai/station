@@ -471,6 +471,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #4831: builds the docs server bundle, which starts esbuild's service
   // child; the file imports no child_process itself.
   'src-server/tools/__tests__/station-docs-bundle.test.ts',
+  // Parses each fixture bundle with esbuild, which starts esbuild's service
+  // child; the file imports no child_process itself.
+  'scripts/__tests__/server-static-imports.test.ts',
   // Epic #2323 S3: each draft build forks a disposable process that is
   // killed at its deadline; the test observes that process and a FIFO.
   'src-server/services/plugins/__tests__/plugin-draft-build-process.test.ts',
@@ -699,6 +702,14 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // classifier, and once the real pre-push hook through `git push` with
   // stubbed gate commands, as bounded single-shot children.
   'scripts/__tests__/prepush-pure-merge.test.ts',
+  // Runs the real pre-push hook through `git push` against small real Git
+  // graphs, with the real push-range and main-conflict steps and the other
+  // gates stubbed. Bounded single-shot children.
+  'scripts/__tests__/prepush-push-range.process.test.ts',
+  // Runs the real pre-push hook through `git push` over the freshness
+  // suite's fixture ledger, with the real docs-freshness decision script,
+  // the real check and the real record command. Bounded single-shot children.
+  'scripts/__tests__/prepush-docs-freshness.process.test.ts',
   // #3101 slice F: runs the fixture policy's real main() as a child process
   // against a small real Git graph (merge base versus main's tip).
   'scripts/__tests__/test-fixture-policy.process.test.ts',
@@ -1158,6 +1169,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // context and generation CLIs, for a release-candidate producer set.
   // Single-shot spawns under owned temp dirs, no wall-clock assertion.
   'scripts/__tests__/release-candidate-staging.test.ts',
+  // Release lifecycle commands own bounded CLI/Git children and private fixture receipts.
+  'scripts/__tests__/release-promotion.test.ts',
+  'scripts/__tests__/promote-store-release.test.ts',
+  'scripts/__tests__/release-cut.test.ts',
+  'scripts/__tests__/nightly-release-base.test.ts',
   // #4929: runs the shared release-tag parser's CLI, which the portable
   // packager calls from bash, as a real child to prove its exit statuses.
   'scripts/__tests__/release-tag.test.ts',

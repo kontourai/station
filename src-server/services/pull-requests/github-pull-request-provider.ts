@@ -15,6 +15,7 @@ import type {
   PullRequestWriteAdmission,
 } from '@kontourai/station-contracts/pull-request-provider';
 import { execGitContextCommand } from '../../utils/git-exec.js';
+import { readGitHubFeedbackObservation } from './github-feedback-observation.js';
 import {
   readPullRequestReview,
   writePullRequestReview,
@@ -37,6 +38,9 @@ const defaultGitHubTransport = (
     timeout: 10_000,
     encoding: 'utf8',
     windowsHide: true,
+    // Explicit, not the 1 MB default: a feedback read of a busy pull request
+    // (100 checks, 50 threads) must not fail on its size.
+    maxBuffer: 8 * 1024 * 1024,
   });
 
 const offeredCapabilities: PullRequestCapabilities = {
@@ -671,6 +675,16 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
       GITHUB_PULL_REQUEST_FIELDS,
     ]);
   }
+  /** Agent feedback's one read per pull request (github-feedback-observation.ts). */
+  getFeedbackObservation(c: PullRequestRepositoryIdentityContext, ref: string) {
+    return readGitHubFeedbackObservation((args) => this.gh(args, c), {
+      provider: this.id,
+      host: c.host,
+      repository: c.repository,
+      ref,
+    });
+  }
+
   async getPullRequestStatusByIdentity(
     c: PullRequestRepositoryIdentityContext,
     ref: string,

@@ -3326,7 +3326,11 @@ pending Devices must name that Station. `createRelayInvitation` also takes the
 reviewed route, recipient setup and a `RelayInvitationLifetime`; it validates
 the returned installation binding and requested expiry before returning the
 link. Lifetimes are `5m`, `15m`, `1h`, `24h` and `never`; the UI chooses `24h`.
-Every invitation remains single-use.
+Every invitation remains single-use. Reads request `viewVersion=2` and expose only Stable/Nightly setup links.
+An older host may include legacy Beta rows. The SDK validates every row's Station
+scope first, excludes valid legacy Beta records from actionable arrays and
+reports their counts in `retiredRecords`. Malformed or foreign records still
+reject the response; mutation responses never admit Beta authority.
 
 This published SDK leaf consumes the canonical codec from
 `@kontourai/station-shared/native-relay-link`, not the private Connect package.
@@ -6285,6 +6289,20 @@ it changes nothing in what the read returns (see the [API reference](api.md#keep
 The [client](../../packages/sdk/src/client/conversation-pull-request-links.ts)
 and [route/store boundary](../../src-server/routes/pull-requests/conversation-pull-request-links.ts)
 own explicit links separately from provider-derived or Task-kept references.
+
+## Pull request agent feedback
+
+`@kontourai/station-sdk/pull-request-feedback` reads a chat's pull request
+feedback (`getConversationPullRequestFeedback`), sets a pull request's
+switches (`writePullRequestFeedback`, with `move` to take it from another
+chat), lifts a pause (`sendPullRequestFeedbackAgain`), and turns every
+switch off for a pull request the chat owns (`turnOffPullRequestFeedback`,
+which the Needs-you item calls). A 409 naming
+another chat is read with `pullRequestFeedbackOwnerOf`. Gate the calls on
+`readPullRequestFeedbackCapability` (the `pullRequestFeedback` flag) and the
+`pull-request-agent-feedback` Feature Preview; the routes answer 404 while the
+preview is off. The [client](../../packages/sdk/src/client/pull-request-feedback.ts)
+calls the [routes](../../src-server/routes/pull-requests/pull-request-feedback.ts).
 
 ## Files in answers to input requests
 

@@ -93,6 +93,10 @@ describe('WebPushChannel', () => {
     expect(channel.accepts(APPROVAL)).toBe(true);
     expect(channel.accepts(JOB_FAILURE)).toBe(true);
     expect(channel.accepts({ ...APPROVAL, category: 'general' })).toBe(false);
+    // A pull request feedback pause or stopped agent reaches the browser.
+    expect(
+      channel.accepts({ ...APPROVAL, category: 'pull-request-feedback' }),
+    ).toBe(true);
   });
 
   test('registrations are the subscribed devices, as device surfaces', () => {

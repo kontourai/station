@@ -412,7 +412,7 @@ describe('TestFlight delivery builds the Live Activity where the channel names o
     );
   });
 
-  it.each(['stable', 'beta', 'nightly'])(
+  it.each(['stable', 'nightly'])(
     'admits %s signing without a mobile endpoint and still rejects missing protected prerequisites',
     async (channel) => {
       const env = endpointFreeEnvironment(channelPrerequisites(channel));
@@ -442,7 +442,6 @@ describe('TestFlight delivery builds the Live Activity where the channel names o
   it.each([
     ['stable', ''],
     ['stable', 'true'],
-    ['beta', ''],
     ['nightly', ''],
   ])(
     'writes endpoint-free Cargo configuration through the %s package build command with stable gate=%s',
@@ -477,7 +476,7 @@ describe('TestFlight delivery builds the Live Activity where the channel names o
     },
   );
 
-  it.each(['stable', 'beta', 'nightly'])(
+  it.each(['stable', 'nightly'])(
     'admits %s app authority in build and upload without an endpoint while retaining API credential checks',
     async (channel) => {
       const directory = makeTempDir('station-endpoint-free-app-authority-');
@@ -796,11 +795,11 @@ printf '<plist><dict><key>LSRequiresIPhoneOS</key><true/></dict></plist>\\n' > s
       'io.kontourai.station.NotificationService',
     ],
     [
-      'beta',
+      'nightly',
       'true',
       'true',
-      'io.kontourai.station.beta.AgentActivity',
-      'io.kontourai.station.beta.NotificationService',
+      'io.kontourai.station.nightly.AgentActivity',
+      'io.kontourai.station.nightly.NotificationService',
     ],
     [
       'nightly',
@@ -808,13 +807,6 @@ printf '<plist><dict><key>LSRequiresIPhoneOS</key><true/></dict></plist>\\n' > s
       'true',
       'io.kontourai.station.nightly.AgentActivity',
       'io.kontourai.station.nightly.NotificationService',
-    ],
-    [
-      'beta',
-      'false',
-      'true',
-      'io.kontourai.station.beta.AgentActivity',
-      'io.kontourai.station.beta.NotificationService',
     ],
     [
       'nightly',

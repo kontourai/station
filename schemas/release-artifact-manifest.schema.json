@@ -148,6 +148,7 @@
             "updater-signature",
             "updater-public-key",
             "platform-signing-receipt",
+            "store-promotion-authority",
             "portable-checksum",
             "release-ring",
             "host-archive",

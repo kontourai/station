@@ -1,0 +1,7 @@
+{
+  "revision": "85534836acfda54b33644dc5fc2847ffd7065aab",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Docs-freshness row now describes check-prepush-docs-freshness.mjs: refuses only when a pushed range adds or changes a review-ledger file, warns otherwise, refuses when the check cannot run, names the scoped base and a likely stale origin/main. Checked against the script, the hook and the new process test.","inputs":["docs/guides/code-quality.md",".fallowrc.json#/dynamicallyLoaded",".githooks/pre-push","docs/guides/testing.md","scripts/__tests__/prepush-typecheck.test.ts"]}
+  ]
+}

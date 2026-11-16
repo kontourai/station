@@ -96,6 +96,7 @@ import {
 } from '../plugins/runtime-provider-resolution.js';
 import { createAgentActivitySessionReader } from './agent-activity-session-reader.js';
 import { wireNotificationDelivery } from './notification-delivery-wiring.js';
+import type { PullRequestFeedbackRuntime } from './runtime-pull-request-feedback.js';
 import type { ConfigureRuntimeRoutesContext } from './runtime-routes.js';
 
 const WEB_PUSH_FALLBACK_SUBJECT = 'mailto:push@station.local';
@@ -496,6 +497,14 @@ export function configureRuntimeSupportServices(
       | Pick<CoordinatorWakeDelivery, 'observeNotification'>
       | undefined;
     /**
+     * Pull request agent feedback: its tick, shutdown, #4508 overlap, its
+     * Needs-you items, and the notification service its notices go to.
+     */
+    pullRequestFeedback?: Pick<
+      PullRequestFeedbackRuntime,
+      'tick' | 'close' | 'owns' | 'attentionSources' | 'bindNotifier'
+    >;
+    /**
      * #2064 (D4): paused Survey/Flow gate review sessions for the attention
      * projection. Injected rather than constructed here because the
      * aggregate needs the live project inventory, which the caller already
@@ -535,6 +544,8 @@ export function configureRuntimeSupportServices(
         }),
     },
   );
+  // Composed before this service exists; its notices go here from now on.
+  options.pullRequestFeedback?.bindNotifier(notificationService);
   const approvalInboxProvider = new ApprovalInboxNotificationProvider({
     approvalRegistry: context.approvalRegistry,
     orchestrationService: context.orchestrationService,
@@ -672,6 +683,8 @@ export function configureRuntimeSupportServices(
       // The question wake's own re-check, with execute authority.
       mayReadTask: (task, owner) =>
         canUseTaskSource(context, task, owner, true),
+      forgeFeedbackOwned: (itemRef, kind) =>
+        options.pullRequestFeedback?.owns(itemRef, kind) === true,
       get submit(): TaskFollowUpWakePorts['submit'] {
         const inbox = options.threadInbox?.();
         return inbox ? (input) => inbox.submit(input) : undefined;
@@ -763,12 +776,14 @@ export function configureRuntimeSupportServices(
           // flight and deadline, so slow GitHub reads cannot hold up the
           // observation, actions and repairs below.
           taskFollowUpPoller?.tick(input);
+          options.pullRequestFeedback?.tick(input);
           await automationObservation.poller?.poll(input);
           if (!input.signal.aborted) await automationActions?.tick();
           if (!input.signal.aborted) await isolatedRepairs?.tick();
         },
         async close() {
           await taskFollowUpPoller?.close();
+          await options.pullRequestFeedback?.close();
           taskFollowUps?.close();
           await isolatedRepairs?.close();
           automationActions?.close();
@@ -1079,6 +1094,7 @@ export function configureRuntimeSupportServices(
           'Temporarily hide attention items until a chosen time. New source activity resurfaces immediately.',
       }),
     },
+    { pullRequestFeedback: options.pullRequestFeedback },
   );
   return {
     schedulerService,

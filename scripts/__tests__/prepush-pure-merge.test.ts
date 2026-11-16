@@ -20,6 +20,8 @@ import { sanitizedGitEnvironment } from '../lib/git-environment.mjs';
 const SCRIPT = realpathSync('scripts/prepush-pure-merge.mjs');
 const ZERO = '0'.repeat(40);
 const EXPENSIVE = [
+  'scripts/check-prepush-push-range.mjs',
+  'scripts/check-prepush-docs-freshness.mjs',
   'scripts/check-prepush-orchestration-transfer.mjs',
   'scripts/check-prepush-static-gates.mjs',
   'scripts/check-prepush-sdk-barrel.mjs',
@@ -298,10 +300,14 @@ describe.skipIf(process.platform === 'win32')(
       cpSync('scripts/lib', join(f.repo, 'scripts', 'lib'), {
         recursive: true,
       });
-      writeFileSync(
-        join(f.repo, 'scripts', 'prepush-pure-merge.mjs'),
-        readFileSync('scripts/prepush-pure-merge.mjs'),
-      );
+      for (const script of [
+        'prepush-pure-merge.mjs',
+        'prepush-main-conflict.mjs',
+      ])
+        writeFileSync(
+          join(f.repo, 'scripts', script),
+          readFileSync(`scripts/${script}`),
+        );
       // The expensive lanes run through the real heavy-check slot runner, so
       // their stand-ins are scripts it executes, not intercepted commands.
       writeFileSync(
@@ -315,10 +321,13 @@ describe.skipIf(process.platform === 'win32')(
         mkdirSync(join(f.repo, shared, '..'), { recursive: true });
         writeFileSync(join(f.repo, shared), readFileSync(shared));
       }
+      // Stand-ins that record their name; the push-range step reads git's
+      // ref lines on stdin, as does the docs-freshness step, so their
+      // stand-ins drain them as the real ones do.
       for (const gate of EXPENSIVE)
         writeFileSync(
           join(f.repo, gate),
-          `import { appendFileSync } from 'node:fs';\nappendFileSync(${JSON.stringify(report)}, ${JSON.stringify(`${gate}\n`)});\n`,
+          `import { appendFileSync, readFileSync } from 'node:fs';\n${/push-range|docs-freshness/.test(gate) ? 'readFileSync(0);\n' : ''}appendFileSync(${JSON.stringify(report)}, ${JSON.stringify(`${gate}\n`)});\n`,
         );
       const slotDir = join(f.root, 'heavy-check-slots');
       // Hook files are untracked in the fixture so they never affect the merge.
@@ -456,8 +465,14 @@ if (/^scripts\\/commit-message-gate/.test(args[0] ?? '')) {
           `FAIL: waited 0s for a heavy-check slot for pre-push:transfer-budgets; all 1 are held: pid ${process.pid} \\(docs:truth:gate\\)`,
         ),
       );
-      // The first heavy lane refused, so the hook stopped before any ran.
-      for (const gate of EXPENSIVE) expect(gates).not.toContain(gate);
+      // The first heavy lane refused, so the hook stopped before any ran;
+      // only the push-range and docs-freshness steps, which take no slot,
+      // ran before it.
+      const unslotted = /push-range|docs-freshness/;
+      for (const gate of EXPENSIVE.filter((gate) => unslotted.test(gate)))
+        expect(gates).toContain(gate);
+      for (const gate of EXPENSIVE.filter((gate) => !unslotted.test(gate)))
+        expect(gates).not.toContain(gate);
     });
 
     it('runs every lane for a hand-edited merge resolution', () => {

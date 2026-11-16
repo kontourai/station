@@ -22,7 +22,7 @@ import {
 export interface SourceBootstrapContext {
   readonly stationCodeRoot: string;
   readonly stationRoot: string;
-  readonly channel: 'development' | 'stable' | 'beta' | 'nightly';
+  readonly channel: 'development' | 'stable' | 'nightly';
   readonly instanceId: string;
   readonly serverPort: number;
   readonly uiPort: number;

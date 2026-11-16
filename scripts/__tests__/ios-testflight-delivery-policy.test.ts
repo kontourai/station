@@ -28,20 +28,18 @@ describe('internal iOS TestFlight delivery admission', () => {
     expect(
       assertEnvironmentAdmissions({
         'native-release': environment(),
-        'ios-beta': environment(),
         'ios-nightly': environment(),
       }),
-    ).toHaveLength(3);
+    ).toHaveLength(2);
     expect(() =>
       assertEnvironmentAdmissions({
         'native-release': environment(),
-        'ios-beta': {
+        'ios-nightly': {
           ...environment(),
-          branch_policies: [{ name: 'v*-preview.*', type: 'tag' }],
+          branch_policies: [{ name: 'v*-rc.*', type: 'tag' }],
         },
-        'ios-nightly': environment(),
       }),
-    ).toThrow(/ios-beta does not admit refs\/heads\/main/);
+    ).toThrow(/ios-nightly does not admit refs\/heads\/main/);
   });
   test('requires one immutable unbypassed tag ruleset', () => {
     expect(assertInternalTagRuleset([ruleset])).toMatchObject({ id: 7 });
