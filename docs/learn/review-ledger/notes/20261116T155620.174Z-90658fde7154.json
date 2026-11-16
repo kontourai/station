@@ -1,0 +1,29 @@
+{
+  "revision": "d629db88fd8d7570dab22345c157d203abc88aba",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Review fix round in claude-adapter.ts: adoptSession loads the Agent SDK before onProviderChildCreationStarted (a failed load creates no child), and the model-catalog probe re-checks its abort signal after the first SDK load. No citing page describes adoption hook ordering or probe abort timing; their claims are unchanged.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Review fix round in claude-adapter.ts: adoptSession loads the Agent SDK before onProviderChildCreationStarted (a failed load creates no child), and the model-catalog probe re-checks its abort signal after the first SDK load. No citing page describes adoption hook ordering or probe abort timing; their claims are unchanged.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Review fix round in claude-adapter.ts: adoptSession loads the Agent SDK before onProviderChildCreationStarted (a failed load creates no child), and the model-catalog probe re-checks its abort signal after the first SDK load. No citing page describes adoption hook ordering or probe abort timing; their claims are unchanged.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/design/agent-interaction-capabilities.md","note":"Review fix round in claude-adapter.ts: adoptSession loads the Agent SDK before onProviderChildCreationStarted (a failed load creates no child), and the model-catalog probe re-checks its abort signal after the first SDK load. No citing page describes adoption hook ordering or probe abort timing; their claims are unchanged.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Review fix round in claude-adapter.ts: adoptSession loads the Agent SDK before onProviderChildCreationStarted (a failed load creates no child), and the model-catalog probe re-checks its abort signal after the first SDK load. No citing page describes adoption hook ordering or probe abort timing; their claims are unchanged.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Review fix round in claude-adapter.ts: adoptSession loads the Agent SDK before onProviderChildCreationStarted (a failed load creates no child), and the model-catalog probe re-checks its abort signal after the first SDK load. No citing page describes adoption hook ordering or probe abort timing; their claims are unchanged.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Review fix round in claude-adapter.ts: adoptSession loads the Agent SDK before onProviderChildCreationStarted (a failed load creates no child), and the model-catalog probe re-checks its abort signal after the first SDK load. No citing page describes adoption hook ordering or probe abort timing; their claims are unchanged.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Review fix round in claude-adapter.ts: adoptSession loads the Agent SDK before onProviderChildCreationStarted (a failed load creates no child), and the model-catalog probe re-checks its abort signal after the first SDK load. No citing page describes adoption hook ordering or probe abort timing; their claims are unchanged.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Review fix round in claude-adapter.ts: adoptSession loads the Agent SDK before onProviderChildCreationStarted (a failed load creates no child), and the model-catalog probe re-checks its abort signal after the first SDK load. No citing page describes adoption hook ordering or probe abort timing; their claims are unchanged.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Review fix round in claude-adapter.ts: adoptSession loads the Agent SDK before onProviderChildCreationStarted (a failed load creates no child), and the model-catalog probe re-checks its abort signal after the first SDK load. No citing page describes adoption hook ordering or probe abort timing; their claims are unchanged.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Review fix round in claude-adapter.ts: adoptSession loads the Agent SDK before onProviderChildCreationStarted (a failed load creates no child), and the model-catalog probe re-checks its abort signal after the first SDK load. No citing page describes adoption hook ordering or probe abort timing; their claims are unchanged.","inputs":["src-server/providers/adapters/claude-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Review fix round in claude-adapter.ts: adoptSession loads the Agent SDK before onProviderChildCreationStarted (a failed load creates no child), and the model-catalog probe re-checks its abort signal after the first SDK load. No citing page describes adoption hook ordering or probe abort timing; their claims are unchanged.","inputs":["src-server/providers/adapters/claude-adapter.ts"]}
+  ]
+}
