@@ -247,6 +247,18 @@ test.describe
     test('a frame the client never received is backfilled from history, never skipped', async () => {
       // The browser's stream passes through a proxy that can drop one frame.
       let dropNextAppend = false;
+      /** Every frame the proxy saw, for the failure message: event, room, seq. */
+      const trail: string[] = [];
+      const describe = (frame: string) => {
+        const event = /^event: (\w+)/m.exec(frame)?.[1] ?? 'comment';
+        const data = /^data: (.*)$/m.exec(frame)?.[1];
+        try {
+          const value = data ? JSON.parse(data) : {};
+          return `${event} ${String(value.key ?? '').slice(0, 8)} seq=${value.message?.seq ?? value.lastSeq ?? ''}`;
+        } catch {
+          return event;
+        }
+      };
       let dropped = 0;
       const proxy: Server = createServer(async (request, response) => {
         const upstream = await fetch(`${live.api}${request.url}`, {
@@ -284,8 +296,10 @@ test.describe
             if (dropNextAppend && frame.startsWith('event: append')) {
               dropNextAppend = false;
               dropped += 1;
+              trail.push(`DROPPED ${describe(frame)}`);
               continue;
             }
+            trail.push(describe(frame));
             response.write(frame);
           }
         }
@@ -327,9 +341,10 @@ test.describe
         ).toBeVisible({
           timeout: 5000,
         });
-        expect(backfills.slice(reads)).toContainEqual(
-          expect.stringContaining(`after=${first.seq}`),
-        );
+        expect(
+          backfills.slice(reads),
+          `history reads ${JSON.stringify(backfills)}; frames ${JSON.stringify(trail)}`,
+        ).toContainEqual(expect.stringContaining(`after=${first.seq}`));
       } finally {
         await operator.page.unroute('**/rooms/live*');
         proxy.closeAllConnections();
