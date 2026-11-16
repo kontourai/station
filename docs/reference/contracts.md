@@ -1073,6 +1073,7 @@ non-retryable.
 | `acp-approval-takeover-failed` | `warning` | `false` |
 | `acp_approval_governance_refused` | `permission_denied` | `false` |
 | `adoption_continuation_in_progress` | `busy` | `true` |
+| `conversation_handoff_predecessor_busy` | `busy` | `true` |
 | `approval-escalation-requires-restart` | `warning` | `false` |
 | `approval-full-access-not-granted` | `permission_denied` | `false` |
 | `attachment_input_unsupported` | `input_unsupported` | `false` |
