@@ -1133,3 +1133,35 @@ test('All chats notes the tool-call window only when tool calls are listed', () 
     screen.queryByText('Tool calls are listed from when this window opened.'),
   ).toBeNull();
 });
+
+test('a chat known only from its session row shows its title but not its project slug', () => {
+  sessionsResult = {
+    data: [
+      { threadId: 'exec-9', displayTitle: 'Old chat', projectSlug: 'dev' },
+    ],
+  };
+  childWorkGlobalStore.ingest(API, {
+    provider: 'claude',
+    threadId: 'exec-9',
+    createdAt: '2026-09-24T00:00:01.000Z',
+    method: 'child-work.updated',
+    delta: {
+      kind: 'upsert',
+      item: {
+        producer: 'engine-subagent',
+        reporterThreadId: 'exec-9',
+        childId: 'sub-9',
+        status: 'running',
+        title: 'Survey the repository',
+      },
+    },
+  });
+  const { container } = render(<AgentsWorkspacePane />);
+  const group = container.querySelector('.agents-pane__group');
+  expect(group?.querySelector('.agents-pane__group-heading')?.textContent).toBe(
+    'Old chat',
+  );
+  expect(group?.querySelector('.agents-pane__group-meta')?.textContent).toBe(
+    '1 running',
+  );
+});
