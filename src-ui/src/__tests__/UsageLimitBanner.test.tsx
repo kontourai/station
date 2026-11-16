@@ -747,7 +747,7 @@ describe('UsageLimitBanner (#3157)', () => {
         await screen.findByRole('button', { name: 'Continue on Work' }),
       );
       expect((await screen.findByRole('alert')).textContent).toBe(
-        "Couldn't switch accounts. This conversation is still waiting.",
+        "Couldn't switch accounts, so nothing changed.",
       );
       expect(button('Resume now')).not.toBeNull();
       // Another action on the stop drops the stale switch message, even when

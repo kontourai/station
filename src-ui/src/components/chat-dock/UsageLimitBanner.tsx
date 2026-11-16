@@ -434,7 +434,7 @@ function UsageLimitBannerFor({
         </p>
       ) : notSwitched ? (
         <p className="usage-limit-banner__error" role="alert">
-          Couldn't switch accounts. This conversation is still waiting.
+          Couldn't switch accounts, so nothing changed.
         </p>
       ) : null}
       {/* Two actions at most: the choice this stop offers, and Resume now. */}
