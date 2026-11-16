@@ -2,7 +2,11 @@
 
 Use `station-control` to let an Agent inspect Station's project records, refine
 existing skills, and delegate a bounded task. Tool availability and approval
-policy determine which changes it can actually make.
+policy determine which changes it can actually make. The tools that change who
+or what holds authority (configuration, Agents, plugins, integrations, skills
+and SSH hosts) ask a person on every call, at full access too, with no session
+option; on Station's own engine an approval guardian you enabled may still
+allow one ([delivery boundary](../conformance/tool-policy-delivery.md#built-in-tools-that-change-authority)).
 
 ## Goal
 

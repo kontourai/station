@@ -408,6 +408,26 @@ approvals is denied an escalation at once, guardian allow or not. With the
 guardian enabled, a headless run on these engines that reaches an escalation
 waits on an approval request where it used to run on the guardian's allow.
 
+### A person's session answer, full access, and authority tools
+
+A person's own **Allow … for this session** is offered on every tool
+approval, including the escalations listed above (owner decision,
+2026-11-16). It covers what it was given on: an answer to a plain call
+covers later plain calls of that tool, and only an answer to an escalation
+also covers the tool's later escalations. A pattern and a guardian allow keep
+the limits above.
+
+Full access means no prompts: the untrusted-content ask is not raised at full
+access on Claude Code, Codex, OpenCode or a Station-governed ACP session; a
+tool set to refuse after untrusted content still refuses.
+
+The station-control tools that change who or what holds authority (Station
+configuration, creating or updating Agents, plugins, deleting integrations,
+skills and SSH hosts) ask a person on every call on every engine, at full
+access too, and offer no session option. On Station's own engine an approval
+guardian you enabled may still allow one, as it may any mutation there
+([delivery boundary](../conformance/tool-policy-delivery.md#built-in-tools-that-change-authority)).
+
 ### Unattended runs
 
 A run with nobody to confirm a tool call — a scheduled job without a target,

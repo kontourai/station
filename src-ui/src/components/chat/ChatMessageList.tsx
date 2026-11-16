@@ -16,6 +16,10 @@ import type { ChatContentPart } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { chatFormDraftsStore } from '../../contexts/chat-form-drafts-store';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
+import {
+  rememberSettledRequest,
+  useStreamCatchingUp,
+} from '../../hooks/orchestration/heldDuringCatchUp';
 import { unansweredApprovalRequests } from '../../hooks/orchestration/pendingRequestRows';
 import { useSendMessage } from '../../hooks/useActiveChatSessions';
 import { useCoarsePointer } from '../../hooks/useCoarsePointer';
@@ -291,6 +295,28 @@ function sameLandmarks(
   );
 }
 const NO_PENDING_APPROVALS: ReturnType<typeof unansweredApprovalRequests> = [];
+
+const SETTLED_CATCH_UP_DELAY_MS = 250;
+const settledCatchUps = new Map<string, ReturnType<typeof setTimeout>>();
+/**
+ * One history refetch per burst of stale requests on a chat: it brings in the
+ * resolutions this view missed and any request opened since.
+ */
+function scheduleSettledCatchUp(chatId: string) {
+  if (settledCatchUps.has(chatId)) return;
+  settledCatchUps.set(
+    chatId,
+    setTimeout(() => {
+      settledCatchUps.delete(chatId);
+      const current = activeChatsStore.getSnapshot()[chatId];
+      if (!current) return;
+      activeChatsStore.updateChat(chatId, {
+        orchestrationHistoryRevision:
+          (current.orchestrationHistoryRevision ?? 0) + 1,
+      });
+    }, SETTLED_CATCH_UP_DELAY_MS),
+  );
+}
 function ChatMessageListComponent({
   externalScrollContainerRef,
   preserveReading = false,
@@ -441,6 +467,9 @@ function ChatMessageListComponent({
           ),
     [activeSession.replay, approvalEvents, target?.record?.readOnly],
   );
+  // A reconnect replays what this view missed one event at a time; the sheet
+  // holds its list until the replay ends (`ApprovalSheetProvider`).
+  const sheetCatchingUp = useStreamCatchingUp(apiBase);
   // The store is already live at the shell; reading its scalar snapshot here
   // avoids adding a second subscription/allocation to every streaming row.
   // A mid-stream toggle is observed on the next existing 80 ms stream flush.
@@ -2072,22 +2101,26 @@ function ChatMessageListComponent({
   // A request Station reports settled that this view still lists: drop it
   // from the pending set and refetch history, which brings in the
   // resolution this view missed and any request opened since.
+  // Several stale requests found together (the sheet checks every listed
+  // request when it opens) share one refetch, not one each.
   const catchUpSettledRequest = (request: { approvalId?: string }) => {
-    const current = activeChatsStore.getSnapshot()[activeSession.id];
+    const chatId = activeSession.id;
+    rememberSettledRequest(request.approvalId);
+    const current = activeChatsStore.getSnapshot()[chatId];
     if (!current) return;
-    activeChatsStore.updateChat(activeSession.id, {
+    activeChatsStore.updateChat(chatId, {
       pendingApprovals: current.pendingApprovals?.filter(
         (id) => id !== request.approvalId,
       ),
-      orchestrationHistoryRevision:
-        (current.orchestrationHistoryRevision ?? 0) + 1,
     });
+    scheduleSettledCatchUp(chatId);
   };
 
   return (
     <ApprovalSheetProvider
       apiBase={apiBase}
       requests={sheetRequests}
+      catchingUp={sheetCatchingUp}
       onCheck={async (request) => {
         if (
           !request.approvalThreadId ||

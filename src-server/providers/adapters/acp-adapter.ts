@@ -4827,6 +4827,9 @@ export class AcpAdapter implements ProviderAdapterShape {
             // ACP names are reported by the external process. Keep the raw
             // name authoritative so reserved-name grants remain fail-closed.
             identity: externalPreToolPolicyIdentity(toolName),
+            // Full access: the untrusted-content ask is not raised; a tool
+            // that changes authority still asks (owner decision 2026-11-16).
+            ...(record.approvalMode === 'never' ? { fullAccess: true } : {}),
           },
         );
         // #2947: no Station allow answers a request addressed to a person.

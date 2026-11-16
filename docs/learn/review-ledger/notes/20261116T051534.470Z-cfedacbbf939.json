@@ -1,0 +1,7 @@
+{
+  "revision": "c6775beaa2f5024da07fae8b330aa2d193febaac",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Checked the claims citing the changed adapters (claude, codex, acp, opencode) and UI files: the change touches only tool-approval grants, the full-access flag into the staged policy, Codex's recorded applied mode and the approval sheet/pill; no claim in this document describes those, and none is contradicted.","inputs":["docs/reference/contracts.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

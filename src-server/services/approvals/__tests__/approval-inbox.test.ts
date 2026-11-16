@@ -648,7 +648,33 @@ describe('approval inbox notifications', () => {
     ]);
   });
 
-  test('#2915: a Claude read with nothing to forward is persisted without a session-grant action', async () => {
+  // Owner decision (2026-11-16): a session answer is offered on every tool
+  // approval; a built-in tool that changes authority is the exception.
+  test('a built-in tool that changes authority is persisted without a session-grant action', async () => {
+    await emit('orchestration:event', {
+      event: {
+        createdAt: new Date().toISOString(),
+        method: 'request.opened',
+        payload: {
+          toolName: 'mcp__station-control__update_config',
+          toolInput: {},
+        },
+        provider: 'claude',
+        requestId: 'req-authority',
+        requestType: 'approval',
+        threadId: 'thread-authority',
+        title: 'Allow update_config',
+      },
+    });
+
+    const notifications = await notificationService.list();
+    expect(notifications[0].actions?.map((candidate) => candidate.id)).toEqual([
+      'accept',
+      'decline',
+    ]);
+  });
+
+  test('#2915: a Claude read with nothing to forward still offers the session grant', async () => {
     await emit('orchestration:event', {
       event: {
         createdAt: new Date().toISOString(),
@@ -665,6 +691,7 @@ describe('approval inbox notifications', () => {
     const notifications = await notificationService.list();
     expect(notifications[0].actions?.map((candidate) => candidate.id)).toEqual([
       'accept',
+      'acceptForSession',
       'decline',
     ]);
   });
