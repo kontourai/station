@@ -2,6 +2,7 @@
 
 import { render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
+import { mountedDecisionSurfaces } from '../../../lib/custom-appearance/decision-surfaces';
 
 const engineConnections = vi.fn();
 const accountValues = vi.fn();
@@ -34,6 +35,8 @@ const engine = (id: string) => ({ id, config: { engineId: id } });
 test('without a Muse engine there is no "New Muse chats" row (#4402)', () => {
   engineConnections.mockReturnValue([engine('codex'), engine('claude')]);
   render(<AccountPreferencesSection />);
+  // Custom CSS is held off while this grant UI is on screen.
+  expect(mountedDecisionSurfaces()).toContain('account-approval-defaults');
   expect(screen.getByText('New Codex chats')).toBeTruthy();
   expect(screen.getByText('New Claude chats')).toBeTruthy();
   expect(screen.queryByText('New Muse chats')).toBeNull();

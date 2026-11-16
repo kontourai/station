@@ -307,7 +307,7 @@ export function CronPreview({ schedule }: { schedule: SchedulerSchedule }) {
           {human || '--'}
         </div>
         <span className="schedule__cron-label">Next fires:</span>
-        <span className="schedule__cron-time">...</span>
+        <span className="schedule__cron-time">…</span>
       </div>
     );
 

@@ -126,14 +126,14 @@ function OutcomeWindowResult({
         {label} · {window.from} – {window.to} UTC
       </h5>
       <p>
-        Independent source population. Retained terminal observations only;
-        coverage unknown. Counts are not full reliability or error rates.
+        How kept turns ended for this source. Coverage is unknown, so counts are
+        not full reliability or error rates.
       </p>
       {result.error ? (
         <>
           <p role="alert">
-            {errorText(result.error)} Current access and coverage are not
-            verified; stale, offline or withdrawn data is withheld.
+            {errorText(result.error)} Older results stay hidden until this
+            source refreshes.
           </p>
           <Button onClick={() => void result.refetch()}>Retry outcomes</Button>
         </>
@@ -145,12 +145,7 @@ function OutcomeWindowResult({
             Observed turns (denominator): {data.observedTurns.toLocaleString()}{' '}
             · retained for {data.coverage.retentionDays} days
           </p>
-          {!data.rows.length ? (
-            <p>
-              No retained terminal observations. Missing observations are not
-              zero.
-            </p>
-          ) : null}
+          {!data.rows.length ? <p>Nothing reported for this period.</p> : null}
           <table>
             <thead>
               <tr>
@@ -233,8 +228,7 @@ function UsageWindowResult({
       </h5>
       {result.error && !historical ? (
         <p role="alert">
-          This source could not be refreshed. Current access and coverage are
-          not verified. {errorText(result.error)}
+          This source couldn't be refreshed. {errorText(result.error)}
         </p>
       ) : !data ? (
         <SkeletonBlock count={1} label="Private source results" />
@@ -249,17 +243,15 @@ function UsageWindowResult({
         <>
           <p className="personal-insights-coverage">
             {historical
-              ? `Historical retained snapshot, last checked ${new Date(data.receivedAt).toLocaleString()}. Refresh failed; current source access is not verified. `
+              ? `Saved snapshot from ${new Date(data.receivedAt).toLocaleString()}. Refresh failed, so current access isn't confirmed. `
               : ''}
-            Retained observations only · completeness unknown.{' '}
+            Kept records only · may be incomplete.{' '}
             {data.asOf.freshness === 'behind-current-source-head'
               ? 'New usage is available; sync to refresh this snapshot.'
               : 'Snapshot matched the source when checked.'}
           </p>
           {!data.summary?.rows.length ? (
-            <p>
-              No matching attributed observations. Missing usage is not zero.
-            </p>
+            <p>Nothing reported for this period.</p>
           ) : (
             <div className="personal-insights-table">
               <table>
@@ -693,11 +685,10 @@ export function PersonalInsights() {
   return (
     <section className="personal-insights" aria-label="Personal Insights">
       <header>
-        <h3>Enrolled private usage</h3>
+        <h3>Private usage</h3>
         <p>
-          Canonical usage from sources you explicitly enrolled.
-          Connected-Station lifetime summaries and operator reliability stay
-          separate.
+          Usage from the sources you added. Connected-Station totals and
+          reliability are shown separately.
         </p>
       </header>
       {!scope?.isCurrent() ? (
@@ -706,8 +697,8 @@ export function PersonalInsights() {
         <>
           {inventory.views.error || inventory.sources.error ? (
             <p role="alert">
-              Private sources or saved views are unavailable. A verified person
-              is required; operator access alone does not grant personal
+              Private sources or saved views are unavailable. Sign in as
+              yourself; Station operator access doesn't include personal
               history.
             </p>
           ) : null}
@@ -1084,18 +1075,20 @@ export function PersonalInsights() {
           </fieldset>
           {!valid && draft.sources.length > 1 ? (
             <p role="status">
-              This selection cannot be applied. Check source availability and
-              choose at most one connection per source Station identity.
+              This selection can't be applied. Check that each source is
+              available and choose one connection per Station.
             </p>
           ) : null}
-          <p>
-            Connections advertising the same Station identity cannot be
-            combined. Independent identities stay separate and may overlap;
-            clones with different identities cannot be detected. No cross-source
-            deduplication is performed. Project and engine filters are
-            unavailable without producer attribution. Missing dimensions and
-            measurements are not guessed.
-          </p>
+          <p>Each Station is counted separately; overlaps aren't removed.</p>
+          <details className="editor-disclosure">
+            <summary>About these numbers</summary>
+            <p>
+              Two connections to the same Station can't be combined. A copied
+              Station with a different identity is counted as a separate
+              Station. Project and engine filters need sources that report them.
+              — means not reported.
+            </p>
+          </details>
           <ActionRow
             className="personal-insights-actions"
             overflowLabel="More view actions"

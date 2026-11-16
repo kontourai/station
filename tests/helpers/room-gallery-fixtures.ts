@@ -244,7 +244,8 @@ export type ProjectRoomScene =
   | 'agent-outcome'
   /**
    * #4794/#4795: the channel list, a channel and a thread. `#general` holds
-   * the short history plus two replies to Scout's message (its thread).
+   * a bug triage with SHORT's shape (two Jonas lines, Scout, Maya) plus two
+   * replies to Scout's message (its thread).
    */
   | 'navigation';
 
@@ -252,12 +253,37 @@ export type ProjectRoomScene =
 const SHARED_IMAGE_ID = '6a1f2e3d-4c5b-4a69-8877-665544332211';
 const SHARED_FILE_ID = '6a1f2e3d-4c5b-4a69-8877-665544332212';
 
-/** Replies to Scout's plan check (sequence 3): the navigation scene's thread. */
-const THREAD_REPLIES: ProjectLine[] = [
+/**
+ * The navigation scene's `#general`. The Pages home publishes its thread
+ * capture (#4801), so it carries no pricing-like text. Sequence 3 is Scout's
+ * diagnosis, the thread root; the six messages keep the read-marker fixture's
+ * latest version (6).
+ */
+const NAVIGATION_HISTORY: ProjectLine[] = [
+  {
+    actor: JONAS,
+    at: at(1, 14, 2),
+    text: 'Morning! Two reports of the Safari sign-in loop came in overnight.',
+  },
+  {
+    actor: JONAS,
+    at: at(1, 14, 3),
+    text: 'Both are on the latest build, right after the login redirect.',
+  },
+  {
+    actor: SCOUT,
+    at: at(1, 14, 6),
+    text: 'I traced it in `auth/redirect.ts`. Two things differ on Safari:\n\n- The **return URL** loses its query string after sign-in.\n- The **session cookie** is set after the redirect, so the first load sees none.',
+  },
+  {
+    actor: VIEWER,
+    at: at(1, 14, 11),
+    text: 'Good catch. Jonas, can you take both before the release?',
+  },
   {
     actor: PRIYA,
     at: at(1, 14, 20),
-    text: 'Both numbers are fixed in the draft now.',
+    text: 'Both fixes are in the branch now.',
     replyTo: 3,
   },
   {
@@ -271,7 +297,7 @@ const THREAD_REPLIES: ProjectLine[] = [
 function projectLines(scene: ProjectRoomScene): ProjectLine[] {
   if (scene === 'empty') return [];
   if (scene === 'long' || scene === 'new-messages') return longHistory();
-  if (scene === 'navigation') return [...SHORT, ...THREAD_REPLIES];
+  if (scene === 'navigation') return NAVIGATION_HISTORY;
   const [first, second, third, fourth] = SHORT as [
     ProjectLine,
     ProjectLine,
@@ -409,7 +435,7 @@ function projectLines(scene: ProjectRoomScene): ProjectLine[] {
   return SHORT;
 }
 
-/** The navigation scene's thread root: Scout's plan check. */
+/** The navigation scene's thread root: Scout's Safari diagnosis. */
 export const NAVIGATION_THREAD_ROOT = uuid(3, 'c1');
 /** `#design` room id, for routes and read markers. */
 export const GALLERY_DESIGN_ROOM_ID = DESIGN_ID;
@@ -912,7 +938,7 @@ export async function installProjectConversationsFixture(
       sessionId: runningSession,
     }),
     task(2, 'Draft the release notes for 2.4', at(2, 15, 10)),
-    task(3, 'Audit the pricing page copy', at(2, 14, 0), { status: 'review' }),
+    task(3, 'Check the onboarding copy', at(2, 14, 0), { status: 'review' }),
     // No room was ever opened for this Task: the summary answers unavailable.
     task(4, 'Rename the onboarding checklist', at(2, 13, 0)),
   ];

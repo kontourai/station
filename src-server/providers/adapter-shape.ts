@@ -322,6 +322,16 @@ export interface ProviderAdapterMetadata {
   /** Optional bounded same-session recovery declaration; absence is unsupported. */
   recovery?: ConnectionRecoveryCapability;
   /**
+   * #2540 `complete`: {@link ProviderAdapterShape.hasOpenEngineWork} and
+   * {@link ProviderAdapterShape.earlyParkRefusal} together account for
+   * everything this engine keeps in its process past a turn (tasks,
+   * subagents, scheduled wakeups, stateful tool servers). Only then may
+   * Station park a finished-by-design Session seconds after its turn
+   * settles. Absent: the account is partial or there is none, and such
+   * Sessions wait for the ordinary idle park.
+   */
+  openEngineWork?: 'complete';
+  /**
    * Plugin-safe additive continuity declaration. Absent third-party adapters
    * are read as `none` until they opt in with a version they actually support.
    */
@@ -682,6 +692,14 @@ export interface ProviderAdapterShape {
    * adapter cannot tell, and the child-work record alone decides.
    */
   hasOpenEngineWork?(threadId: string): boolean;
+  /**
+   * #2540: why the thread's engine must not be parked seconds after a
+   * finished turn, beyond {@link hasOpenEngineWork}: state it holds that a
+   * restart would lose, or facts it has not reported. `undefined` when
+   * nothing refuses. Read only by the finished-session park, never by the
+   * idle, recovery or relaunch parks.
+   */
+  earlyParkRefusal?(threadId: string): string | undefined;
   stopAll(): Promise<void>;
   /** Implementations must settle pending reads when the signal is aborted. */
   streamEvents(

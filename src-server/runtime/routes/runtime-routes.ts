@@ -50,6 +50,7 @@ import { createHomeTransferRoomRoutes } from '../../routes/environments/home-tra
 import { createLiveSurfaceRoutes } from '../../routes/live-surface.js';
 import { createEngineOAuthProxyRoutes } from '../../routes/mcp/engine-oauth-proxy-route.js';
 import { createAccountPreferencesRoutes } from '../../routes/me/account-preferences.js';
+import { createCustomAppearanceRoutes } from '../../routes/me/custom-appearance.js';
 import { createPersonNotificationRoutes } from '../../routes/me/person-notifications.js';
 import { createMediaToolsRoutes } from '../../routes/media-tools.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
@@ -186,6 +187,7 @@ import { AccountPreferencesStore } from '../../services/identity/account-prefere
 import { accountSharingOriginOptions } from '../../services/identity/account-sharing-origins.js';
 import type { ApplicationSessionService } from '../../services/identity/application-session-service.js';
 import type { AuthorityObservationRequestContext } from '../../services/identity/authority-observation.js';
+import { CustomAppearanceStore } from '../../services/identity/custom-appearance.js';
 import type { LoadedDeploymentAuthentication } from '../../services/identity/deployment-authentication-loader.js';
 import {
   type DeploymentAuthenticationService,
@@ -3808,7 +3810,7 @@ export function configureRuntimeRoutes(
           try {
             mine = await context.orchestrationService.listSessionReadModel(
               conversationReadAuthorityForContext(c),
-              { threadIds: running },
+              { purpose: 'restart-running-turns', threadIds: running },
             );
           } catch {
             mine = [];
@@ -4309,6 +4311,8 @@ export function configureRuntimeRoutes(
     createDiagnosticsRoutes(
       new DiagnosticsService(context.configLoader.getProjectHomeDir(), {
         buildProvenanceSnapshot: context.buildProvenanceSnapshot,
+        readSessionReadModelMeasurement: () =>
+          context.orchestrationService.sessionReadModelMeasurement(),
       }),
       context.logger,
       // station#1896 logging slice 2: same directory slice 1's
@@ -9822,6 +9826,20 @@ export function configureRuntimeRoutes(
       tenantId: (request) =>
         tenantExecutionContextForRequest(request)?.tenantId,
       isInternal: (request) => !!stationControlRequestAuthority(request),
+    }),
+  );
+  // The person's own custom appearance. Station-control requests resolve to
+  // the session's recorded owner, so an agent proposes into its person's
+  // document; the route refuses agents every step but read and propose.
+  context.app.route(
+    '/api/me',
+    createCustomAppearanceRoutes({
+      store: new CustomAppearanceStore(
+        context.configLoader.getProjectHomeDir(),
+      ),
+      resolvePrincipal: resolveOrchestrationRequestPrincipal,
+      tenantId: (request) =>
+        tenantExecutionContextForRequest(request)?.tenantId,
     }),
   );
   const personalLayoutResolver =
