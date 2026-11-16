@@ -35,6 +35,7 @@ import {
   callNativeStationControlTool,
 } from '../../runtime/mcp/station-control-native-tools.js';
 import { markTrustedNativeStationControlTool } from '../../runtime/tools/tool-provenance.js';
+import { RuntimeAuthFailureLimiter } from '../../security/runtime-request-security.js';
 import { createStationControlAuthorityGuard } from '../../security/station-control-authority-guard.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import { __resetStationServerSelfAttestationForTests } from '../../security/station-server-scope.js';
@@ -113,6 +114,9 @@ let voiceListener: WebSocketServer;
 let voiceUrl: string;
 let providers: FakeProvider[] = [];
 const createSession = vi.fn();
+const audit = vi.fn();
+const limiter = new RuntimeAuthFailureLimiter();
+const recordFailure = vi.spyOn(limiter, 'recordFailure');
 const seen: Array<ReturnType<typeof stationControlRequestAuthority>> = [];
 
 beforeAll(async () => {
@@ -224,6 +228,8 @@ beforeAll(async () => {
         security.identifyDevice(credential) !== null,
       // Only Station's own UI origin may open a browser-shaped upgrade.
       browserOrigins: { admits: async (origin) => origin === STATION_ORIGIN },
+      audit,
+      limiter,
     },
   );
   if (!listener) throw new Error('voice listener was not created');
@@ -233,6 +239,8 @@ beforeAll(async () => {
 });
 
 afterEach(() => {
+  audit.mockClear();
+  recordFailure.mockClear();
   seen.length = 0;
   providers = [];
   createSession.mockClear();
@@ -352,6 +360,25 @@ test('a cookie whose credential fails verification gives the session no Station 
   const names = provider!.config?.tools?.map((tool) => tool.name) ?? [];
   expect(names).not.toContain('stationControl_updateConfig');
   expect(names).toContain('weather_today');
+  // Counted and audited exactly as a failed auth frame is.
+  expect(recordFailure).toHaveBeenCalledWith('127.0.0.1');
+  expect(audit).toHaveBeenCalledWith(
+    expect.objectContaining({
+      event: 'station.auth.failure',
+      reason: 'invalid_credential',
+      peerClass: 'loopback',
+    }),
+  );
+  ws.close();
+});
+
+test('a verified cookie is neither counted nor audited as a failure', async () => {
+  const { ws } = await connect(undefined, {
+    cookie: UI_COOKIE,
+    origin: STATION_ORIGIN,
+  });
+  expect(recordFailure).not.toHaveBeenCalled();
+  expect(audit).not.toHaveBeenCalled();
   ws.close();
 });
 

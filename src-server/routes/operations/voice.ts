@@ -358,6 +358,8 @@ export function attachVoiceWebSocket(
     url: URL,
     cookie: string | undefined,
     loopbackAuth: VoiceWebSocketAuthOptions,
+    limiterKey: string,
+    peerClass: RuntimePeerClass,
   ): Promise<void> => {
     const credential = loopbackAuth.recognizesDeviceCredential
       ? parseDeviceSessionCookie(
@@ -365,15 +367,23 @@ export function attachVoiceWebSocket(
           loopbackAuth.recognizesDeviceCredential,
         )
       : undefined;
-    let principalId: string | undefined;
+    let verified = false;
     try {
-      principalId =
-        credential && (await loopbackAuth.verifyCredential(credential))
-          ? loopbackAuth.resolvePrincipal?.(credential)
-          : undefined;
+      verified =
+        !!credential && (await loopbackAuth.verifyCredential(credential));
     } catch {
-      principalId = undefined;
+      verified = false;
     }
+    // A cookie that fails verification counts and is audited exactly as a
+    // failed auth frame is, then the session falls back to speech only.
+    if (credential && !verified) {
+      auditVoiceFailure(loopbackAuth, peerClass, 'invalid_credential');
+      failureLimiter.recordFailure(limiterKey);
+    }
+    const principalId =
+      credential && verified
+        ? loopbackAuth.resolvePrincipal?.(credential)
+        : undefined;
     if (ws.readyState !== ws.OPEN) return;
     acceptVoiceSession(ws, url, voiceService, principalId);
   };
@@ -417,7 +427,14 @@ export function attachVoiceWebSocket(
         url.searchParams.get(VOICE_AUTHENTICATE_QUERY) !== '1')
     ) {
       if (auth && peerClass === 'loopback')
-        void acceptLoopbackCookieSession(ws, url, req.headers.cookie, auth);
+        void acceptLoopbackCookieSession(
+          ws,
+          url,
+          req.headers.cookie,
+          auth,
+          limiterKey,
+          peerClass,
+        );
       else acceptVoiceSession(ws, url, voiceService);
       return;
     }
