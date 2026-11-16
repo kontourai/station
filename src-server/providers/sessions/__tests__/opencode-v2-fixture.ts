@@ -271,6 +271,11 @@ export class OpenCodeV2FixtureWriter {
       tokens?: V2Tokens;
       /** Write the content as `session_part` rows (`experimental.part_rows`). */
       partRows?: boolean;
+      /**
+       * With part rows: inline content an older OpenCode build wrote to the
+       * row after its parts were split out (OpenCode reads parts first).
+       */
+      inlineContent?: Json[];
     } = {},
   ): string {
     const created = this.tick();
@@ -280,7 +285,9 @@ export class OpenCodeV2FixtureWriter {
       created,
       this.assistantData(created, {
         ...options,
-        content: options.partRows ? [] : options.content,
+        content: options.partRows
+          ? (options.inlineContent ?? [])
+          : options.content,
       }),
     );
     if (options.partRows) {
@@ -354,28 +361,32 @@ export class OpenCodeV2FixtureWriter {
 
   compaction(sessionId: string, status: 'running' | 'completed'): string {
     const created = this.tick();
-    return this.insert(sessionId, 'compaction', created, {
-      time: { created },
-      status,
-      reason: 'auto',
-      summary: 'Synthetic summary.',
-      ...(status === 'completed'
-        ? {
-            model: {
-              id: 'model-a',
-              providerID: 'provider-a',
-              variant: 'default',
-            },
-            cost: 0,
-            tokens: {
-              input: 9,
-              output: 9,
-              reasoning: 0,
-              cache: { read: 0, write: 0 },
-            },
-          }
-        : {}),
-    });
+    return this.insert(
+      sessionId,
+      'compaction',
+      created,
+      compactionData(status, created),
+    );
+  }
+
+  /**
+   * Finishes a running compaction in place, the way OpenCode's
+   * `session.compaction.ended` updates the latest running compaction row.
+   */
+  completeCompaction(sessionId: string, messageId: string): void {
+    const row = this.db
+      .prepare('SELECT time_created FROM session_message WHERE id = ?')
+      .get(messageId) as { time_created: number };
+    this.db
+      .prepare(
+        'UPDATE session_message SET data = ?, time_updated = ? WHERE id = ?',
+      )
+      .run(
+        JSON.stringify(compactionData('completed', row.time_created)),
+        this.tick(),
+        messageId,
+      );
+    this.touch(sessionId);
   }
 
   /** A row with no conversation turn (`synthetic`, `model-switched`, ...). */
@@ -449,4 +460,32 @@ export class OpenCodeV2FixtureWriter {
         : {}),
     };
   }
+}
+
+function compactionData(
+  status: 'running' | 'completed',
+  created: number,
+): Json {
+  return {
+    time: { created },
+    status,
+    reason: 'auto',
+    summary: status === 'running' ? '' : 'Synthetic summary.',
+    ...(status === 'completed'
+      ? {
+          model: {
+            id: 'model-a',
+            providerID: 'provider-a',
+            variant: 'default',
+          },
+          cost: 0,
+          tokens: {
+            input: 9,
+            output: 9,
+            reasoning: 0,
+            cache: { read: 0, write: 0 },
+          },
+        }
+      : {}),
+  };
 }

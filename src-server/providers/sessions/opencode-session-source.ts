@@ -62,6 +62,7 @@ const EPOCH = '1970-01-01T00:00:00.000Z';
 const SOURCE_HOME_NAMESPACE = 'opencode-data-home';
 const PROMPT_SOURCE = 'opencode-session';
 const DATABASE_FILE_PATTERN = /^opencode(?:-[A-Za-z0-9._-]{1,64})?\.db$/u;
+const NEXT_PREVIEW_DATABASE = 'opencode-next.db';
 
 /**
  * The only tables this source reads, and the columns it depends on. Message
@@ -434,8 +435,24 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
       updatedAt: number;
       registration: SourceRegistration;
     }> = [];
-    for (const database of listed.databases) {
+    // OpenCode 2.x imports its preview store `opencode-next.db` into
+    // `opencode.db` read-only and leaves it in place, so beside a 2.x store
+    // it is a stale copy: skipped, not warned about. Read last so every other
+    // store's layout is known; alone (or a 1.x `next` channel store) it is
+    // read like any other.
+    const ordered = [
+      ...listed.databases.filter(
+        (database) => database.fileName !== NEXT_PREVIEW_DATABASE,
+      ),
+      ...listed.databases.filter(
+        (database) => database.fileName === NEXT_PREVIEW_DATABASE,
+      ),
+    ];
+    let sawV2Store = false;
+    for (const database of ordered) {
+      if (database.fileName === NEXT_PREVIEW_DATABASE && sawV2Store) continue;
       const result = await this.withDatabase(database, (db, layout) => {
+        if (layout.kind === 'v2') sawV2Store = true;
         // `time_updated` has no index upstream, so this is one scan of the
         // session table (about 12 ms warm on a 61k-session store). The
         // EXISTS probe uses `message_session_time_created_id_idx` (2.x:
@@ -642,6 +659,13 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
           idle: messageRows
             .slice(index + 1)
             .some((later) => later?.info?.role === 'idle'),
+          runningCompaction: messageRows
+            .slice(index + 1)
+            .some(
+              (later) =>
+                later?.info?.role === 'compaction' &&
+                later.info.status === 'running',
+            ),
         },
         cloneState(state),
       );
@@ -1373,6 +1397,8 @@ interface FollowingMessages {
   assistant: boolean;
   /** OpenCode 2.x: a later `idle` row (the turn ended). */
   idle: boolean;
+  /** OpenCode 2.x: a later compaction row that is still running. */
+  runningCompaction: boolean;
 }
 
 /**
@@ -1525,7 +1551,9 @@ function mapMessageV2(
   if (!isSettledV2(info, following)) return { kind: 'unsettled' };
   const state = cloneState(previous);
   if (message.oversized) return { kind: 'oversized', events: [], state };
-  if (!info?.role) return { kind: 'malformed', events: [], state };
+  if (!info?.role || !V2_MESSAGE_TYPES.has(info.role)) {
+    return { kind: 'malformed', events: [], state };
+  }
   const emitter = new MessageEmitter(session, message, state);
   if (info.role === 'user') {
     emitter.closeTurn({ kind: 'superseded' });
@@ -1560,10 +1588,31 @@ function mapMessageV2(
 }
 
 /**
+ * Every `Session.Message.Info` type of OpenCode 2.3. A row of any other type
+ * is a writer change this source does not understand: it is reported as
+ * malformed and passed, like a 1.x row with an unknown role.
+ */
+const V2_MESSAGE_TYPES = new Set([
+  'agent-switched',
+  'model-switched',
+  'location-switched',
+  'user',
+  'synthetic',
+  'system',
+  'skill',
+  'shell',
+  'assistant',
+  'compaction',
+  'idle',
+]);
+
+/**
  * Settled: an assistant step once completed or failed, or once a later step
- * or idle row exists (the writer died mid-write); a compaction once it is no
- * longer running or anything follows it. Every other 2.x row is written
- * whole, with its content inline.
+ * or idle row exists (the writer died mid-write). A compaction once it is no
+ * longer running: OpenCode finishes the latest running compaction row in
+ * place (`session.compaction.ended`/`failed`), however many rows follow it,
+ * so a running one is settled early only when a later running compaction
+ * has superseded it. Every other 2.x row is written whole, content inline.
  */
 function isSettledV2(
   info: MessageInfo | null,
@@ -1578,7 +1627,7 @@ function isSettledV2(
     );
   }
   if (info?.role === 'compaction') {
-    return info.status !== 'running' || following.any;
+    return info.status !== 'running' || following.runningCompaction;
   }
   return true;
 }

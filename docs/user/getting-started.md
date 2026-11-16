@@ -1208,7 +1208,9 @@ Station looks in four places:
 - OpenCode's session database, `opencode.db` or `opencode-<channel>.db` (for
   example `opencode-stable.db`), in `opencode` under `XDG_DATA_HOME`, or
   `~/.local/share/opencode` when that is not set. Station reads both OpenCode
-  1.x and OpenCode 2.x databases. It opens the database read-only
+  1.x and OpenCode 2.x databases; beside an OpenCode 2.x database it skips
+  `opencode-next.db`, the preview copy OpenCode 2.x has already imported. It
+  opens the database read-only
   and lists top-level OpenCode sessions you have sent a message in; subagent
   sessions and archived sessions are left out. A message appears once OpenCode
   has finished writing it. Conversations Station itself runs through an

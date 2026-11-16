@@ -9,7 +9,7 @@ import type {
   AttachedSessionDescriptor,
 } from '../attached-session-source.js';
 import { OpenCodeSessionSource } from '../opencode-session-source.js';
-import { OpenCodeFixtureWriter } from './opencode-fixture.js';
+import { OPENCODE_SCHEMA, OpenCodeFixtureWriter } from './opencode-fixture.js';
 import {
   OPENCODE_V2_SCHEMA,
   OPENCODE_V2_SCHEMA_WITHOUT_PARTS,
@@ -477,5 +477,198 @@ describe('OpenCodeSessionSource on an OpenCode 2.x store', () => {
       outcome: 'rejected_candidate',
       events: [],
     });
+  });
+  test('reports an unknown message type as malformed and keeps reading the rest', async () => {
+    const dataDir = join(fixtureRoot(), 'opencode');
+    const store = writer(dataDir);
+    store.session('ses_main', '/workspace/project');
+    const first = writeTurn(store, 'ses_main', 'Before');
+    store.other('ses_main', 'assistant-next', { text: 'a future row type' });
+    const second = writeTurn(store, 'ses_main', 'After');
+    const source = new OpenCodeSessionSource({ dataDir });
+    const session = (await source.discover()).sessions[0]!;
+    const result = await drain(source, session);
+    expect(result.outcomes[0]).toBe('malformed_record');
+    expect(
+      result.events.filter((event) => event.method === 'turn.started'),
+    ).toMatchObject([{ turnId: first.user }, { turnId: second.user }]);
+    expect(
+      result.events.filter((event) => event.method === 'turn.completed'),
+    ).toHaveLength(2);
+  });
+
+  test('holds a running compaction until OpenCode finishes that row in place', async () => {
+    const dataDir = join(fixtureRoot(), 'opencode');
+    const store = writer(dataDir);
+    store.session('ses_main', '/workspace/project');
+    const user = store.user('ses_main', 'Long one');
+    const compaction = store.compaction('ses_main', 'running');
+    store.assistant('ses_main', {
+      finish: 'stop',
+      content: [v2Content.text('Done')],
+    });
+    store.idle('ses_main', 'succeeded');
+
+    const source = new OpenCodeSessionSource({ dataDir });
+    const session = (await source.discover()).sessions[0]!;
+    const before = await drain(source, session);
+    expect(before.outcomes.at(-1)).toBe('incomplete_tail');
+    expect(shape(before.events)).toEqual([
+      { method: 'turn.started', turnId: user },
+    ]);
+
+    store.completeCompaction('ses_main', compaction);
+    const after = await drain(source, session, before.cursor);
+    expect(shape(after.events)).toEqual([
+      { method: 'extension.notification' },
+      { method: 'content.text-delta', turnId: user },
+      { method: 'turn.completed', turnId: user },
+    ]);
+    expect(after.events[0]).toMatchObject({ type: 'context-compacted' });
+  });
+
+  test('passes a running compaction that a later running one superseded, since OpenCode finishes only the latest', async () => {
+    const dataDir = join(fixtureRoot(), 'opencode');
+    const store = writer(dataDir);
+    store.session('ses_main', '/workspace/project');
+    const user = store.user('ses_main', 'Compact twice');
+    store.compaction('ses_main', 'running');
+    const latest = store.compaction('ses_main', 'running');
+    const source = new OpenCodeSessionSource({ dataDir });
+    const session = (await source.discover()).sessions[0]!;
+    const before = await drain(source, session);
+    // The superseded one is passed; the latest holds the tail.
+    expect(before.outcomes.at(-1)).toBe('incomplete_tail');
+    expect(before.cursor).toMatchObject({ offset: 2 });
+    expect(shape(before.events)).toEqual([
+      { method: 'turn.started', turnId: user },
+    ]);
+
+    store.completeCompaction('ses_main', latest);
+    store.idle('ses_main', 'succeeded');
+    const after = await drain(source, session, before.cursor);
+    expect(after.outcomes.at(-1)).toBe('ok');
+    expect(shape(after.events)).toEqual([
+      { method: 'extension.notification' },
+      { method: 'turn.completed', turnId: user },
+    ]);
+  });
+
+  test('skips the opencode-next.db an OpenCode 2.x store already imported, without a warning', async () => {
+    const dataDir = join(fixtureRoot(), 'opencode');
+    const store = writer(dataDir);
+    store.session('ses_main', '/workspace/project');
+    writeTurn(store, 'ses_main', 'Hello');
+    // The 2.x preview store OpenCode 2.x imports read-only and leaves in place
+    // (`isNextDatabase`: project, session and session_message, no message
+    // table); approximated from the 1.x DDL without `message` and `part`.
+    const preview = new DatabaseSync(join(dataDir, 'opencode-next.db'));
+    writers.push(preview);
+    preview.exec(
+      OPENCODE_SCHEMA.replace(/CREATE TABLE `message`[\s\S]*?\);\n/u, '')
+        .replace(/CREATE TABLE `part`[\s\S]*?\);\n/u, '')
+        .replace(/CREATE INDEX `part_[^\n]*\n/gu, '')
+        .replace(/CREATE INDEX `message_[^\n]*\n/gu, ''),
+    );
+    expect(
+      preview
+        .prepare("SELECT name FROM sqlite_master WHERE name = 'message'")
+        .get(),
+    ).toBeUndefined();
+    const warn = vi.fn();
+    const source = new OpenCodeSessionSource({ dataDir, warn });
+    const discovery = await source.discover();
+    expect(discovery.outcome).toBe('ok');
+    expect(discovery.sessions.map((session) => session.sessionId)).toEqual([
+      'ses_main',
+    ]);
+    expect(warn).not.toHaveBeenCalled();
+
+    // Without a 2.x store beside it, the same file still fails closed.
+    store.close();
+    const alone = join(fixtureRoot(), 'alone', 'opencode');
+    mkdirSync(alone, { recursive: true });
+    const lonePreview = new DatabaseSync(join(alone, 'opencode-next.db'));
+    writers.push(lonePreview);
+    lonePreview.exec(
+      'CREATE TABLE `session` (`id` text PRIMARY KEY, `parent_id` text, `directory` text, `time_created` integer, `time_updated` integer, `time_archived` integer, `version` text);',
+    );
+    const loneWarn = vi.fn();
+    const loneSource = new OpenCodeSessionSource({
+      dataDir: alone,
+      warn: loneWarn,
+    });
+    expect((await loneSource.discover()).outcome).toBe('rejected_candidate');
+    expect(loneWarn.mock.calls[0]![1]).toMatchObject({
+      database: 'opencode-next.db',
+      detail: 'message:missing',
+    });
+  });
+
+  test('reads a row with part rows and later inline content in OpenCode order: parts first', async () => {
+    const dataDir = join(fixtureRoot(), 'opencode');
+    const store = writer(dataDir);
+    store.session('ses_main', '/workspace/project');
+    store.user('ses_main', 'Mixed');
+    store.assistant('ses_main', {
+      partRows: true,
+      finish: 'stop',
+      content: [v2Content.text('From parts.')],
+      inlineContent: [v2Content.text('From inline.')],
+    });
+    store.idle('ses_main', 'succeeded');
+    const source = new OpenCodeSessionSource({ dataDir });
+    const session = (await source.discover()).sessions[0]!;
+    const result = await source.read(session);
+    expect(
+      result.events
+        .filter((event) => event.method === 'content.text-delta')
+        .map((event) =>
+          event.method === 'content.text-delta' ? event.delta : '',
+        ),
+    ).toEqual(['From parts.', '\n\nFrom inline.']);
+  });
+
+  test('an idle row settles an unfinished step that nothing else follows', async () => {
+    const dataDir = join(fixtureRoot(), 'opencode');
+    const store = writer(dataDir);
+    store.session('ses_main', '/workspace/project');
+    const user = store.user('ses_main', 'Go');
+    store.assistant('ses_main', {
+      completed: false,
+      content: [v2Content.text('Cut off')],
+    });
+    store.idle('ses_main', 'interrupted');
+    const source = new OpenCodeSessionSource({ dataDir });
+    const session = (await source.discover()).sessions[0]!;
+    const result = await source.read(session);
+    expect(result.outcome).toBe('ok');
+    expect(shape(result.events)).toEqual([
+      { method: 'turn.started', turnId: user },
+      { method: 'content.text-delta', turnId: user },
+      { method: 'turn.aborted', turnId: user },
+    ]);
+  });
+
+  test("carries an open turn's step finish across a page break to its idle row", async () => {
+    const dataDir = join(fixtureRoot(), 'opencode');
+    const store = writer(dataDir);
+    store.session('ses_main', '/workspace/project');
+    store.user('ses_main', 'Write a lot');
+    store.assistant('ses_main', {
+      finish: 'length',
+      content: [v2Content.text('Truncated answer')],
+    });
+    store.idle('ses_main', 'succeeded');
+    const source = new OpenCodeSessionSource({ dataDir, maxMessages: 2 });
+    const session = (await source.discover()).sessions[0]!;
+    const first = await source.read(session);
+    expect(
+      first.events.some((event) => event.method === 'turn.completed'),
+    ).toBe(false);
+    const rest = await drain(source, session, first.cursor);
+    expect(
+      rest.events.filter((event) => event.method === 'turn.completed'),
+    ).toMatchObject([{ finishReason: 'max-tokens' }]);
   });
 });
