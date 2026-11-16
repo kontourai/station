@@ -142,11 +142,6 @@
   flex-wrap: wrap;
   gap: var(--k-space-2);
 }
-@media (pointer: coarse) {
-  .conversation-handoff-dialog__agent {
-    min-height: 44px;
-  }
-}
 .conversation-handoff-boundary {
   display: grid;
   gap: 6px;
