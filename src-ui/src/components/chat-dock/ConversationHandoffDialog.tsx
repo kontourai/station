@@ -68,33 +68,6 @@ export interface AcceptedConversationHandoff {
 export const HANDOFF_CATCH_UP_MESSAGE =
   'You are taking over this conversation. Briefly summarize where things stand and what you would do next, then wait for my reply.';
 
-/**
- * A target chosen in the picker for the conversation's next composer send:
- * nothing is sent when it is chosen, and the composer's next message becomes
- * the handoff's first turn through this dialog's dispatch.
- */
-export interface ArmedConversationHandoff {
-  conversationId: string;
-  targetId: string;
-  executionPreset?: { executionAgentId?: string; modelId?: string };
-  modelId?: string;
-  modelOptions?: Record<string, unknown>;
-  /** "Codex reviewer · GPT-5" — what the composer chip names. */
-  label: string;
-}
-
-/** A send from the composer while a target is armed. */
-export interface ConversationHandoffAutoSubmit {
-  /** The prepared text sent as the first turn. */
-  message: string;
-  targetId: string;
-  modelId?: string;
-  modelOptions?: Record<string, unknown>;
-  /** The raw composer draft and quotes it was prepared from. */
-  draft?: string;
-  quotes?: readonly DraftQuote[];
-}
-
 interface ConversationHandoffDialogProps {
   apiBase: string;
   conversationId: string;
@@ -119,17 +92,6 @@ interface ConversationHandoffDialogProps {
   } | null>;
   /** The composer's quotes, which are part of its draft. */
   draftQuotes?: readonly DraftQuote[];
-  /** Whether the armed send is still sending or now needs the person. */
-  onPhaseChange?: (phase: 'sending' | 'attention') => void;
-  /** Keep the request running but show nothing (its chat is not on screen). */
-  suspended?: boolean;
-  /**
-   * Dispatch at mount with this exact message and target, rendering nothing
-   * unless the dispatch needs the person (a refusal, or an outcome to check).
-   */
-  autoSubmit?: ConversationHandoffAutoSubmit;
-  /** Choose the target for the next composer message instead of sending now. */
-  onArm?: (armed: ArmedConversationHandoff) => void;
   onAccepted: (result: AcceptedConversationHandoff) => void;
   onDispatchStarted: (input: { message: string; clientTurnId: string }) => void;
   onDefiniteFailure: (clientTurnId: string) => void;
@@ -257,8 +219,6 @@ export function handoffStatusFeedback(
   }
 }
 
-/** How long an armed send waits for the catalog before asking the person. */
-export const ARMED_CATALOG_WAIT_MS = 8_000;
 const NO_QUOTES: readonly DraftQuote[] = [];
 function quoteKeys(quotes: readonly DraftQuote[]): string {
   return JSON.stringify(quotes);
@@ -278,10 +238,6 @@ export function ConversationHandoffDialog({
   blockedReason,
   prepareDraft,
   draftQuotes = NO_QUOTES,
-  onPhaseChange,
-  suspended = false,
-  autoSubmit,
-  onArm,
   onAccepted,
   onDispatchStarted,
   onDefiniteFailure,
@@ -318,9 +274,7 @@ export function ConversationHandoffDialog({
     ],
   );
   const [targetId, setTargetId] = useState<string | undefined>(
-    restoredIntent?.targetId ??
-      autoSubmit?.targetId ??
-      (executionPreset ? currentAgentId : undefined),
+    restoredIntent?.targetId ?? (executionPreset ? currentAgentId : undefined),
   );
   const target = agents.find((candidate) => candidate.slug === targetId);
   const executionAgentId = restoredIntent
@@ -330,6 +284,9 @@ export function ConversationHandoffDialog({
     ? agents.find((agent) => agent.slug === executionAgentId)
     : target;
   const retainedIntent = useRef<PendingHandoffIntent | null>(restoredIntent);
+  // A dispatch of the retained request has begun (here, or before a reload:
+  // a restored request was saved just before its dispatch).
+  const dispatchStarted = useRef(Boolean(restoredIntent));
   const targetName = target?.name ?? `deleted Agent “${targetId}”`;
   // Only models this client can start are offered; a catalog entry marked
   // unavailable is not a choice here. A restored request is the exception:
@@ -348,19 +305,18 @@ export function ConversationHandoffDialog({
     ? selection.defaultEffectiveModelForAgent(executionTarget).id
     : undefined;
   const [modelId, setModelId] = useState<string | undefined>(
-    restoredIntent?.modelId ?? autoSubmit?.modelId ?? executionPreset?.modelId,
+    restoredIntent?.modelId ?? executionPreset?.modelId,
   );
   const [modelOptions, setModelOptions] = useState<Record<string, unknown>>(
-    restoredIntent?.modelOptions ?? autoSubmit?.modelOptions ?? {},
+    restoredIntent?.modelOptions ?? {},
   );
   const [disclosureOpen, setDisclosureOpen] = useState(false);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const modelTriggerRef = useRef<HTMLButtonElement>(null);
-  // No field edits this: the composer's draft (or the armed send's exact
-  // text) is the first turn, and an empty draft means the catch-up request.
+  // No field edits this: the composer's draft is the first turn, and an empty draft means the catch-up request.
   // A retained uncertain request is retried exactly as it was sent; a newer
   // draft is not part of it and stays in the composer.
-  const composerDraft = (autoSubmit?.message ?? initialMessage).trim();
+  const composerDraft = initialMessage.trim();
   const composerHasDraft = Boolean(composerDraft) || draftQuotes.length > 0;
   // Like for like: the composer's raw draft and quotes against the raw draft
   // and quotes the retained request was prepared from (an older request
@@ -374,11 +330,8 @@ export function ConversationHandoffDialog({
   );
   const message =
     restoredIntent?.message ?? (composerDraft || HANDOFF_CATCH_UP_MESSAGE);
-  // The armed send has been attempted (or given up waiting): from then on
-  // the dialog is an ordinary picker, so choosing again gets defaults.
-  const [armedAttempted, setArmedAttempted] = useState(false);
   const sentQuotes = useRef<readonly DraftQuote[]>(
-    restoredIntent?.quotes ?? autoSubmit?.quotes ?? NO_QUOTES,
+    restoredIntent?.quotes ?? NO_QUOTES,
   );
   const starting = useRef(false);
   const [state, setState] = useState<
@@ -413,9 +366,10 @@ export function ConversationHandoffDialog({
   // say so rather than leave "Retry safely" greyed out without a reason.
   // A request already made (an uncertain one being retried or checked) is
   // not a new turn: its own dispatch is what makes the chat read busy, and a
-  // same-key retry only ever answers with that request's receipt.
+  // same-key retry only ever answers with that request's receipt. "Made"
+  // means its dispatch began; a send the queue fence refused never did.
   const effectiveBlockedReason =
-    state === 'indeterminate' || retainedIntent.current
+    state === 'indeterminate' || dispatchStarted.current
       ? undefined
       : blockedReason;
   const preconditionReason =
@@ -440,14 +394,7 @@ export function ConversationHandoffDialog({
       !executionPreset.modelId,
   );
   useEffect(() => {
-    // An armed send keeps exactly the model it was armed with; a model that
-    // has gone is refused at dispatch rather than silently replaced here.
-    if (
-      mutationLocked ||
-      inheritsAgentDefaults ||
-      (autoSubmit && !armedAttempted)
-    )
-      return;
+    if (mutationLocked || inheritsAgentDefaults) return;
     if (!target) {
       setModelId(undefined);
       return;
@@ -461,18 +408,16 @@ export function ConversationHandoffDialog({
           : targetModels[0]?.id,
     );
   }, [
-    autoSubmit,
     defaultModel,
     inheritsAgentDefaults,
     mutationLocked,
     target,
-    armedAttempted,
     targetModels,
   ]);
 
   const runHandoff = async () => {
     if (!targetId || state === 'pending' || starting.current) return;
-    if (blockedReason && !retainedIntent.current) {
+    if (blockedReason && !dispatchStarted.current) {
       setState('error');
       setFeedback(blockedReason);
       return;
@@ -483,10 +428,10 @@ export function ConversationHandoffDialog({
       return;
     }
     let firstMessage = message;
-    let firstDraft = autoSubmit?.draft ?? initialMessage;
+    let firstDraft = initialMessage;
     if (!retainedIntent.current) {
-      // A new request names a target this client can still start: an armed
-      // choice can outlive its Agent, engine or model.
+      // A new request names a target this client can still start: the
+      // catalog can change while the picker is open.
       if (
         !target ||
         !executionTarget ||
@@ -500,7 +445,7 @@ export function ConversationHandoffDialog({
         );
         return;
       }
-      if (!autoSubmit && prepareDraft) {
+      if (prepareDraft) {
         starting.current = true;
         let prepared: Awaited<ReturnType<typeof prepareDraft>>;
         try {
@@ -554,6 +499,7 @@ export function ConversationHandoffDialog({
       const fenced = await outboundDispatch.fenceConversationHandoff(
         { conversationId, sessionId },
         async () => {
+          dispatchStarted.current = true;
           onDispatchStarted({ message: intent.message, clientTurnId });
           const result = await handoffExecutionMessage(
             apiBase,
@@ -605,7 +551,9 @@ export function ConversationHandoffDialog({
         },
       );
       if (fenced.status === 'blocked') {
+        // Nothing was sent: no request is retained to retry or check.
         clearPendingIntent(apiBase, conversationId);
+        retainedIntent.current = null;
         setState('error');
         setFeedback(
           `Send or discard this chat’s queued messages before ${changeLabel}.`,
@@ -620,6 +568,7 @@ export function ConversationHandoffDialog({
       } else {
         clearPendingIntent(apiBase, conversationId);
         retainedIntent.current = null;
+        dispatchStarted.current = false;
         onDefiniteFailure(clientTurnId);
         setState('error');
         setFeedback(
@@ -703,64 +652,7 @@ export function ConversationHandoffDialog({
     }
   };
 
-  // An armed send dispatches once, when the catalog it is checked against has
-  // answered: before that, its Agent or model would read as gone. A retained
-  // uncertain request takes precedence: it opens as its recovery instead of
-  // sending again.
-  // A failed or unrunnable project read counts as answered (its filter is
-  // then unknown; Station still checks the target). The wait is bounded: if
-  // the catalog has not answered in time, the dialog surfaces with the
-  // reason and its Cancel, and nothing is sent until the person chooses.
-  const catalogReady =
-    !selection.runtimeLoading &&
-    !selection.modelsLoading &&
-    selection.selectedContextSettled !== false;
-  const autoSubmitted = useRef(false);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once the catalog is ready; runHandoff reads that render's choice, which is the armed one.
-  useEffect(() => {
-    if (!autoSubmit || restoredIntent || autoSubmitted.current || !catalogReady)
-      return;
-    autoSubmitted.current = true;
-    setArmedAttempted(true);
-    void runHandoff();
-  }, [catalogReady]);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: one deadline per dialog, from mount.
-  useEffect(() => {
-    if (!autoSubmit || restoredIntent) return;
-    const timer = window.setTimeout(() => {
-      if (autoSubmitted.current) return;
-      autoSubmitted.current = true;
-      setArmedAttempted(true);
-      setState('error');
-      setFeedback(
-        "Station hasn't loaded this chat's agents, so nothing was sent. Try again or cancel.",
-      );
-    }, ARMED_CATALOG_WAIT_MS);
-    return () => window.clearTimeout(timer);
-  }, []);
-  const phase =
-    state === 'pending' || (state === 'idle' && !feedback)
-      ? 'sending'
-      : 'attention';
-  useEffect(() => {
-    if (autoSubmit) onPhaseChange?.(phase);
-  }, [autoSubmit, onPhaseChange, phase]);
-
   const targetModel = targetModels.find((model) => model.id === modelId);
-  const choiceLabel = [
-    executionPreset ? (engineLabel ?? 'Default engine') : targetName,
-    targetModel?.name,
-  ]
-    .filter(Boolean)
-    .join(' · ');
-  // The armed send stays out of sight while it dispatches: the composer shows
-  // the message as sending. It surfaces only when the person must act.
-  if (
-    suspended ||
-    (autoSubmit && (state === 'idle' || state === 'pending') && !feedback)
-  )
-    return null;
-  const canArm = onArm && !autoSubmit && !restoredIntent && state !== 'pending';
   const primaryDisabled =
     state === 'pending' || !retryEligible || Boolean(preconditionReason);
 
@@ -946,29 +838,6 @@ export function ConversationHandoffDialog({
           {/* The shared action row owns phone wrapping, tap targets and the
               safe area; this class keeps only the desktop alignment. */}
           <ResponsiveSurfaceActions className="conversation-handoff-dialog__actions">
-            {canArm && (
-              <Button
-                disabled={primaryDisabled}
-                aria-describedby={
-                  preconditionReason ? preconditionId : undefined
-                }
-                onClick={() => {
-                  if (!targetId) return;
-                  onArm({
-                    conversationId,
-                    targetId,
-                    ...(executionPreset ? { executionPreset } : {}),
-                    ...(modelId ? { modelId } : {}),
-                    ...(Object.keys(modelOptions).length > 0
-                      ? { modelOptions }
-                      : {}),
-                    label: choiceLabel,
-                  });
-                }}
-              >
-                Use for next message
-              </Button>
-            )}
             {state === 'indeterminate' && (
               <Button onClick={() => void observe()}>Check status</Button>
             )}

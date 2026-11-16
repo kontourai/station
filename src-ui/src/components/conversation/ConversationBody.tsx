@@ -63,7 +63,7 @@ import { requestTroubleshoot } from '../../lib/troubleshootEvents';
 import { isWorkspaceRefusedTurn } from '../../lib/workspaceRefusal';
 import type { ChatMessage, ChatSession, FileAttachment } from '../../types';
 import { advertisedAcpSessionModesFromConnection } from '../../utils/acpSessionMode';
-import type { DraftQuote, SavedAnswerQuote } from '../../utils/answer-quotes';
+import type { SavedAnswerQuote } from '../../utils/answer-quotes';
 import {
   acpApprovalFor,
   sessionApprovalOverride,
@@ -327,27 +327,6 @@ export interface ConversationBodyProps {
   secondaryActions?: ComposerActionsMenuProps;
   onOpenAgentHandoff?: () => void;
   agentHandoffTriggerRef?: React.RefObject<HTMLButtonElement | null>;
-  /**
-   * An Agent or engine picked for the next message: Send hands the draft to
-   * `onSend` (the handoff dispatch) instead of the ordinary sender.
-   */
-  nextMessageHandoff?: {
-    label: string;
-    /** What the choice changes, for the chip's Undo wording. */
-    kind: 'agent' | 'engine';
-    /** The armed send is in flight: nothing else may be sent meanwhile. */
-    pending: boolean;
-    /** In flight: still sending, or its dialog needs the person. */
-    phase?: 'sending' | 'attention';
-    /** Why the handoff cannot run now (a turn or queued message). */
-    blockedReason?: string;
-    onSend: (prepared: {
-      text: string;
-      draft: string;
-      quotes: readonly DraftQuote[];
-    }) => void;
-    onUndo: () => void;
-  };
   onOpenBackgroundTasks?: () => void;
   /**
    * station#1827: opens the new-chat flow — wired to the terminal-session
@@ -596,7 +575,6 @@ function LiveConversationBody({
   secondaryActions: dockSecondaryActions,
   onOpenAgentHandoff,
   agentHandoffTriggerRef,
-  nextMessageHandoff,
   onOpenBackgroundTasks,
   onNewChat: onNewChatProp,
   onRetryConversationOpen,
@@ -1145,32 +1123,7 @@ function LiveConversationBody({
     ),
   });
 
-  // With a target armed, every send that leaves this composer (Send, Enter,
-  // a busy-turn Queue) is the handoff's first turn, so the chip and the
-  // routing never disagree. It takes the ordinary preparation (mentions,
-  // quotes, size and Station checks), and nothing goes while the handoff is
-  // dispatching or blocked. A slash command stays local. The handoff carries
-  // no ambient context, as before.
-  const armedHandoff =
-    nextMessageHandoff && !chatInput.input.trimStart().startsWith('/')
-      ? nextMessageHandoff
-      : undefined;
-  const sendArmedHandoff = useCallback(
-    async (armed: NonNullable<typeof nextMessageHandoff>) => {
-      if (
-        armed.pending ||
-        armed.blockedReason ||
-        chatInput.attachments.length > 0
-      )
-        return;
-      const prepared = await chatInput.prepareOutgoingText();
-      if (!prepared?.text.trim()) return;
-      armed.onSend(prepared);
-    },
-    [chatInput],
-  );
   const handleSendWithContext = useCallback((): Promise<void> => {
-    if (armedHandoff) return sendArmedHandoff(armedHandoff);
     // Ambient context travels OUT-OF-BAND (#685): the server composes it into
     // the model-facing input only, so the transcript keeps the typed text.
     // `ambientContextForSend` keeps the `[`-prefix and slash-command
@@ -1181,9 +1134,8 @@ function LiveConversationBody({
       chatInput.input,
     );
     return chatInput.handleSend(undefined, undefined, { ambientContext });
-  }, [getComposedContext, chatInput, armedHandoff, sendArmedHandoff]);
+  }, [getComposedContext, chatInput]);
   const handleQueueFollowUp = useCallback((): Promise<void> => {
-    if (armedHandoff) return sendArmedHandoff(armedHandoff);
     const ambientContext = ambientContextForSend(
       getComposedContext(),
       chatInput.input,
@@ -1193,13 +1145,7 @@ function LiveConversationBody({
       queueOnBusy: true,
       ...(queueTakesFiles ? { queueFilesOnBusy: true } : {}),
     });
-  }, [
-    getComposedContext,
-    chatInput,
-    queueTakesFiles,
-    armedHandoff,
-    sendArmedHandoff,
-  ]);
+  }, [getComposedContext, chatInput, queueTakesFiles]);
   const nativeSteering =
     sessionSteeringPlacement(activeSession.orchestrationDurability).state ===
     'native';
@@ -3044,7 +2990,6 @@ function LiveConversationBody({
                 : (onOpenAgentHandoff ?? secondaryActions?.onOpenHandoff)
             }
             agentHandoffTriggerRef={agentHandoffTriggerRef}
-            nextMessageHandoff={nextMessageHandoff}
             agentHandoffDisabled={secondaryActions?.handoffDisabled}
             agentHandoffDisabledReason={secondaryActions?.handoffDisabledReason}
             executionMode={activeSession.executionMode}
@@ -3098,14 +3043,7 @@ function LiveConversationBody({
                         // quietly disabled. An `unverified` check (#2424) is the same:
                         // its notice says what failed and carries the Retry.
                         undefined
-                      : armedHandoff?.pending
-                        ? armedHandoff.phase === 'attention'
-                          ? `Finish the switch to ${armedHandoff.label} first.`
-                          : `Switching to ${armedHandoff.label}…`
-                        : (armedHandoff?.blockedReason ??
-                          (armedHandoff && chatInput.attachments.length > 0
-                            ? 'Remove attachments, or undo the switch to send them.'
-                            : chatInput.sendBlockedReason))
+                      : chatInput.sendBlockedReason
             }
             onRetryAttachmentStage={chatInput.retryAttachmentStage}
             onCancelAttachmentStage={chatInput.cancelAttachmentStage}

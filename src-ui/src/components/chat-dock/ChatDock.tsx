@@ -2027,11 +2027,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
             openConversationHandoff(composerMenuTriggerRef.current),
           handoffDisabled: Boolean(handoffDisabledReason),
           handoffDisabledReason,
-          contextResetDisabled: Boolean(
-            conversationBoundaryDialogs.contextResetDisabledReason,
-          ),
-          contextResetDisabledReason:
-            conversationBoundaryDialogs.contextResetDisabledReason,
           onOpenContextReset: () =>
             activeSession.conversationId &&
             setContextResetSource({ id: activeSession.conversationId }),
@@ -4548,28 +4543,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                                   )
                                 }
                                 agentHandoffTriggerRef={composerAgentTriggerRef}
-                                nextMessageHandoff={
-                                  conversationBoundaryDialogs.armedHandoff
-                                    ? {
-                                        label:
-                                          conversationBoundaryDialogs
-                                            .armedHandoff.label,
-                                        kind: conversationBoundaryDialogs
-                                          .armedHandoff.executionPreset
-                                          ? 'engine'
-                                          : 'agent',
-                                        pending:
-                                          conversationBoundaryDialogs.armedHandoffPending,
-                                        phase:
-                                          conversationBoundaryDialogs.armedHandoffPhase,
-                                        blockedReason: handoffDisabledReason,
-                                        onSend:
-                                          conversationBoundaryDialogs.sendArmedHandoff,
-                                        onUndo:
-                                          conversationBoundaryDialogs.undoArmedHandoff,
-                                      }
-                                    : undefined
-                                }
                                 isHistoryOpen={isHistoryOpen}
                                 onCloseHistory={closeHistory}
                                 onToggleStatsPanel={setShowStatsPanel}

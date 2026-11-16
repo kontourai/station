@@ -206,22 +206,13 @@ execution binding. It retains the authored profile rather than substituting the
 coding app's default profile, and does not edit saved Agent defaults. Known
 capability incompatibilities remain visible with a refusal reason; live resource
 and adapter delivery checks still decide admission. In an existing conversation,
-changing or resetting the engine opens a compact handoff picker. Its primary
-action switches now, sending the composer's draft as the first turn, or, with
-no draft, a fixed catch-up turn (the route starts the target Session with a
-real turn, so nothing is switched without one); **Use for next message**
-instead arms the choice, shown above the composer as "Next message → …" with
-Undo. While armed, every send from that composer (Send, Return, or Queue
-during a turn) is the handoff, prepared like any send (mentions, quotes and
-the size limit), through the same idempotent request. It waits, with the
-reason, while a turn or queued message blocks the switch, and nothing else can
-be sent (nor the choice undone) while it is in flight, from any pane showing
-that chat. Another chat's picker stays closed until an in-flight armed send
-finishes, or until its chat is closed. The armed send waits for the agent
-catalog only while a read is still in flight, and at most a few seconds;
-then its dialog opens with the reason and Cancel, having sent nothing. A retried earlier request leaves a newer draft in
-the composer. The first message (including the exact catch-up text) and what
-carries over and resets are under **Details**. There the picker lists
+changing or resetting the engine opens a compact handoff picker. Its one
+action switches now, sending the composer's draft as the first turn, prepared
+like any send (mentions, quotes and the size limit), or, with no draft, a
+fixed catch-up turn (the route starts the target Session with a real turn, so
+nothing is switched without one). A retried earlier request leaves a newer
+draft in the composer. The first message (including the exact catch-up text)
+and what carries over and resets are under **Details**. There the picker lists
 only the other engines this client can start (an unready or incompatible one is
 left out rather than shown with a refusal), lists none when the conversation's
 open resolution does not allow changes (read-only, unverified, busy on the

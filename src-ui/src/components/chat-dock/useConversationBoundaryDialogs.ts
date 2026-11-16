@@ -3,23 +3,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useOutboundQueueSnapshot } from '../../hooks/useOutboundQueueSnapshot';
 import type { ChatSession, FileAttachment } from '../../types';
-import type { DraftQuote } from '../../utils/answer-quotes';
 import {
   type EffectiveModelSource,
   isSessionExecutionActive,
 } from '../../utils/execution';
 import type { SelectableModel } from '../../utils/modelCapabilities';
 import { agentRunnability } from '../agent-runnability';
-import {
-  type ArmedHandoffPhase,
-  armedHandoffKey,
-  armedHandoffStore,
-  useArmedHandoffEntry,
-} from './armedHandoffStore';
-import type {
-  ArmedConversationHandoff,
-  ConversationHandoffAutoSubmit,
-} from './ConversationHandoffDialog';
 import {
   readConversationContextBoundaryUiState,
   writeConversationContextBoundaryUiState,
@@ -66,17 +55,6 @@ export function useConversationBoundaryDialogs({
      * request state can never carry into another's picker.
      */
     nonce: number;
-    /** A composer send to dispatch as the handoff's first turn. */
-    autoSubmit?: ConversationHandoffAutoSubmit;
-    /**
-     * The composer state that send came from: the chat it was typed in, its
-     * raw draft and its quotes, cleared from that chat once accepted.
-     */
-    armedDraft?: {
-      sessionId: string;
-      draft: string;
-      quotes: readonly DraftQuote[];
-    };
   } | null>(null);
   const nextNonce = useRef(0);
   const [forkSource, setForkSource] = useState<{
@@ -211,53 +189,23 @@ export function useConversationBoundaryDialogs({
   // One reason gates every boundary action this hook owns: continuing with
   // another Agent, switching engines, and replacing engine context. The words
   // therefore name no single action; each surface supplies its own subject.
-  const activeKey = activeSession?.conversationId
-    ? armedHandoffKey(apiBase, activeSession.conversationId)
-    : undefined;
-  const activeEntry = useArmedHandoffEntry(activeKey);
-  const activeArmedHandoff = activeEntry.armed;
-  // An armed send in flight for another chat holds this pane's one handoff
-  // dialog (out of sight, possibly needing the person); a second picker here
-  // would replace it.
-  const otherChatSwitching = Boolean(
-    handoffSource?.autoSubmit &&
-      handoffSource.id !== activeSession?.conversationId,
-  );
-  // This chat's armed send is in flight from another pane (this pane does
-  // not hold its dialog): a picker here could re-arm or post a second
-  // handoff under a fresh key.
-  const otherPaneSwitching = Boolean(
-    activeEntry.phase && handoffSource?.id !== activeSession?.conversationId,
-  );
-  // What blocks replacing this chat's context. A switch in another chat does
-  // not: it holds this pane's handoff dialog, not this conversation.
-  const contextResetDisabledReason = !activeSession?.conversationId
+  const handoffDisabledReason = !activeSession?.conversationId
     ? 'Send a message first.'
-    : otherPaneSwitching
-      ? 'This chat is still switching agents.'
-      : isSessionExecutionActive(activeSession)
-        ? 'Wait for the current turn to finish.'
-        : hasLocalDeferredMessages
-          ? 'Send or discard queued messages first.'
-          : durableHandoffQueue.status === 'pending'
-            ? 'Checking queued messages…'
-            : durableHandoffQueue.status === 'error'
-              ? 'Queued message state is unavailable. Try again.'
-              : durableHandoffQueueCount > 0
-                ? 'Send or discard queued messages first.'
-                : undefined;
-  const handoffDisabledReason = otherChatSwitching
-    ? 'Another chat is still switching agents. Open it to finish first.'
-    : contextResetDisabledReason;
+    : isSessionExecutionActive(activeSession)
+      ? 'Wait for the current turn to finish.'
+      : hasLocalDeferredMessages
+        ? 'Send or discard queued messages first.'
+        : durableHandoffQueue.status === 'pending'
+          ? 'Checking queued messages…'
+          : durableHandoffQueue.status === 'error'
+            ? 'Queued message state is unavailable. Try again.'
+            : durableHandoffQueueCount > 0
+              ? 'Send or discard queued messages first.'
+              : undefined;
 
   const openConversationHandoff = useCallback(
     (returnFocusTarget: HTMLButtonElement | null) => {
-      if (
-        !activeSession?.conversationId ||
-        handoffSource?.autoSubmit ||
-        activeEntry.phase
-      )
-        return;
+      if (!activeSession?.conversationId) return;
       handoffReturnFocusRef.current = returnFocusTarget;
       setHandoffSource({
         id: activeSession.conversationId,
@@ -265,17 +213,12 @@ export function useConversationBoundaryDialogs({
         nonce: ++nextNonce.current,
       });
     },
-    [activeSession, handoffSource, activeEntry.phase],
+    [activeSession],
   );
 
   const openExecutionHandoff = useCallback(
     (model?: SelectableModel) => {
-      if (
-        !activeSession?.conversationId ||
-        handoffSource?.autoSubmit ||
-        activeEntry.phase
-      )
-        return;
+      if (!activeSession?.conversationId) return;
       // The engine picker owns no button to return to; the dialog returns
       // focus to the composer instead.
       handoffReturnFocusRef.current = null;
@@ -289,83 +232,7 @@ export function useConversationBoundaryDialogs({
         },
       });
     },
-    [activeSession, handoffSource, activeEntry.phase],
-  );
-
-  const setArmedHandoff = useCallback(
-    (armed: ArmedConversationHandoff | null, conversationId?: string) => {
-      const id = armed?.conversationId ?? conversationId;
-      if (id) armedHandoffStore.setArmed(armedHandoffKey(apiBase, id), armed);
-    },
-    [apiBase],
-  );
-  const undoArmedHandoff = useCallback(() => {
-    if (activeKey) armedHandoffStore.undo(activeKey);
-  }, [activeKey]);
-  // This pane owns the in-flight send while its dialog holds an armed
-  // source; the conversation's phase says so to every pane showing it.
-  const sourceKey = handoffSource?.autoSubmit
-    ? armedHandoffKey(apiBase, handoffSource.id)
-    : undefined;
-  useEffect(() => {
-    if (!sourceKey) return;
-    armedHandoffStore.setPhase(sourceKey, 'sending');
-    return () => armedHandoffStore.setPhase(sourceKey, undefined);
-  }, [sourceKey]);
-  const setArmedHandoffPhase = useCallback(
-    (phase: ArmedHandoffPhase) => {
-      if (sourceKey) armedHandoffStore.setPhase(sourceKey, phase);
-    },
-    [sourceKey],
-  );
-
-  /**
-   * The composer's send while a target is armed: the message becomes the
-   * handoff's first turn through the handoff dialog's own dispatch, so the
-   * idempotency key, retained intent and recovery are the dialog's. The
-   * choice stays armed until a receipt arrives, so a refused send keeps it.
-   */
-  const sendArmedHandoff = useCallback(
-    (prepared: {
-      text: string;
-      draft: string;
-      quotes: readonly DraftQuote[];
-    }) => {
-      if (
-        !activeArmedHandoff ||
-        !activeSession ||
-        handoffSource ||
-        activeEntry.phase
-      )
-        return;
-      const message = prepared.text;
-      setHandoffSource({
-        id: activeArmedHandoff.conversationId,
-        agentSlug: activeSession.agentSlug,
-        nonce: ++nextNonce.current,
-        ...(activeArmedHandoff.executionPreset
-          ? { executionPreset: activeArmedHandoff.executionPreset }
-          : {}),
-        autoSubmit: {
-          message,
-          targetId: activeArmedHandoff.targetId,
-          ...(activeArmedHandoff.modelId
-            ? { modelId: activeArmedHandoff.modelId }
-            : {}),
-          ...(activeArmedHandoff.modelOptions
-            ? { modelOptions: activeArmedHandoff.modelOptions }
-            : {}),
-          draft: prepared.draft,
-          quotes: prepared.quotes,
-        },
-        armedDraft: {
-          sessionId: activeSession.id,
-          draft: prepared.draft,
-          quotes: prepared.quotes,
-        },
-      });
-    },
-    [activeArmedHandoff, activeSession, handoffSource, activeEntry.phase],
+    [activeSession],
   );
 
   const handoffSession = handoffSource
@@ -376,28 +243,11 @@ export function useConversationBoundaryDialogs({
       )
     : undefined;
   // The source chat was deleted or closed: its dialog has nothing to render
-  // into, so a held source would refuse every later picker in this pane.
-  // Drop it, and its armed choice (its phase goes with the source).
+  // into, so the held source is dropped.
   const sourceGone = Boolean(handoffSource && !handoffSession);
   useEffect(() => {
-    if (!sourceGone || !handoffSource) return;
-    armedHandoffStore.setArmed(
-      armedHandoffKey(apiBase, handoffSource.id),
-      null,
-    );
-    setHandoffSource(null);
-  }, [sourceGone, handoffSource, apiBase]);
-  // Armed choices for chats this Station no longer lists are dropped.
-  const liveConversationIds = useMemo(
-    () =>
-      allSessions
-        .map((session) => session.conversationId)
-        .filter((id): id is string => Boolean(id)),
-    [allSessions],
-  );
-  useEffect(() => {
-    armedHandoffStore.retain(apiBase, liveConversationIds);
-  }, [apiBase, liveConversationIds]);
+    if (sourceGone) setHandoffSource(null);
+  }, [sourceGone]);
 
   return {
     handoffReturnFocusRef,
@@ -405,17 +255,8 @@ export function useConversationBoundaryDialogs({
     setHandoffSource,
     handoffSession,
     handoffDisabledReason,
-    contextResetDisabledReason,
     openConversationHandoff,
     openExecutionHandoff,
-    armedHandoff: activeArmedHandoff,
-    /** The active chat's armed send is in flight, in this pane or another. */
-    armedHandoffPending: Boolean(activeEntry.phase),
-    armedHandoffPhase: activeEntry.phase,
-    setArmedHandoff,
-    undoArmedHandoff,
-    setArmedHandoffPhase,
-    sendArmedHandoff,
     forkSource,
     setForkSource,
     forkOperation,

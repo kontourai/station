@@ -28,12 +28,6 @@ export interface ComposerActionsMenuProps {
   onOpenHandoff?: () => void;
   handoffDisabled?: boolean;
   handoffDisabledReason?: string;
-  /**
-   * What blocks Reset agent context, when it differs from the handoff's
-   * reason (a switch in another chat holds the handoff, not this context).
-   */
-  contextResetDisabled?: boolean;
-  contextResetDisabledReason?: string;
   onOpenContextReset?: () => void;
   contextBoundaryStatus?: string;
   onOpenConversationReference?: () => void;
@@ -61,18 +55,11 @@ export function ComposerActionsMenu({
   onOpenHandoff,
   handoffDisabled = false,
   handoffDisabledReason,
-  contextResetDisabled,
-  contextResetDisabledReason,
   onOpenContextReset,
   contextBoundaryStatus,
   onOpenConversationReference,
   commandLauncherShortcut: registeredShortcut,
 }: ComposerActionsMenuProps) {
-  const resetDisabled = contextResetDisabled ?? Boolean(handoffDisabled);
-  const resetDisabledReason =
-    contextResetDisabled === undefined
-      ? handoffDisabledReason
-      : contextResetDisabledReason;
   const [isOpen, setIsOpen] = useState(false);
   // A finger has no chord to press: on a coarse primary pointer the menu
   // shows no keyboard hint, in its label or as a kbd. Accepted limit: a
@@ -157,8 +144,8 @@ export function ComposerActionsMenu({
                 type="button"
                 role="menuitem"
                 className="composer-actions-menu__item"
-                disabled={resetDisabled}
-                title={resetDisabled ? resetDisabledReason : undefined}
+                disabled={handoffDisabled}
+                title={handoffDisabled ? handoffDisabledReason : undefined}
                 onClick={() => {
                   close();
                   onOpenContextReset();
