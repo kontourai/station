@@ -161,6 +161,14 @@ export function stationEligibleModels(
     );
 }
 
+/** Answered (data or error), or not running at all (disabled, no scope). */
+export function readSettled(query: {
+  isPending: boolean;
+  isFetching: boolean;
+}) {
+  return !query.isPending || !query.isFetching;
+}
+
 export function useNewChatSelectionModel({
   agents,
   projects,
@@ -647,6 +655,16 @@ export function useNewChatSelectionModel({
     selectedContextResolved:
       !selectedProjectSlug ||
       (selectedProjectQuery.isSuccess && !projectChatDefaultsQuery.isPending),
+    /**
+     * The selected context's reads have answered one way or another: like
+     * `selectedContextResolved`, but a failed read, or one that cannot run
+     * (no request scope), also counts. A caller that must not wait forever
+     * uses this and treats the missing detail as unknown.
+     */
+    selectedContextSettled:
+      !selectedProjectSlug ||
+      (readSettled(selectedProjectQuery) &&
+        readSettled(projectChatDefaultsQuery)),
     setupError,
     refreshSetup,
     // archive#771: both flow into a single `flatList.length === 0` gate in

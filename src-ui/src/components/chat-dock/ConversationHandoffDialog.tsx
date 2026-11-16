@@ -40,7 +40,7 @@ import {
 } from '../ResponsiveDialogSurface';
 import { Empty } from '../state';
 import '../chat/ConversationHandoff.css';
-import type { DraftQuote } from '../../utils/answer-quotes';
+import { type DraftQuote, parseDraftQuote } from '../../utils/answer-quotes';
 import { userFacingErrorMessage } from '../../utils/errorText';
 
 export interface AcceptedConversationHandoff {
@@ -195,7 +195,10 @@ function readPendingIntent(
             ? { modelOptions: parsed.modelOptions }
             : {}),
           ...(typeof parsed.draft === 'string' ? { draft: parsed.draft } : {}),
-          ...(Array.isArray(parsed.quotes)
+          // Each quote is checked: an element that does not parse drops the
+          // whole list, so a damaged record never consumes the wrong quote.
+          ...(Array.isArray(parsed.quotes) &&
+          parsed.quotes.every((quote) => parseDraftQuote(quote))
             ? { quotes: parsed.quotes as DraftQuote[] }
             : {}),
         }
@@ -254,6 +257,8 @@ export function handoffStatusFeedback(
   }
 }
 
+/** How long an armed send waits for the catalog before asking the person. */
+export const ARMED_CATALOG_WAIT_MS = 8_000;
 const NO_QUOTES: readonly DraftQuote[] = [];
 function quoteKeys(quotes: readonly DraftQuote[]): string {
   return JSON.stringify(quotes);
@@ -369,6 +374,9 @@ export function ConversationHandoffDialog({
   );
   const message =
     restoredIntent?.message ?? (composerDraft || HANDOFF_CATCH_UP_MESSAGE);
+  // The armed send has been attempted (or given up waiting): from then on
+  // the dialog is an ordinary picker, so choosing again gets defaults.
+  const [armedAttempted, setArmedAttempted] = useState(false);
   const sentQuotes = useRef<readonly DraftQuote[]>(
     restoredIntent?.quotes ?? autoSubmit?.quotes ?? NO_QUOTES,
   );
@@ -427,7 +435,12 @@ export function ConversationHandoffDialog({
   useEffect(() => {
     // An armed send keeps exactly the model it was armed with; a model that
     // has gone is refused at dispatch rather than silently replaced here.
-    if (mutationLocked || inheritsAgentDefaults || autoSubmit) return;
+    if (
+      mutationLocked ||
+      inheritsAgentDefaults ||
+      (autoSubmit && !armedAttempted)
+    )
+      return;
     if (!target) {
       setModelId(undefined);
       return;
@@ -446,6 +459,7 @@ export function ConversationHandoffDialog({
     inheritsAgentDefaults,
     mutationLocked,
     target,
+    armedAttempted,
     targetModels,
   ]);
 
@@ -686,18 +700,37 @@ export function ConversationHandoffDialog({
   // answered: before that, its Agent or model would read as gone. A retained
   // uncertain request takes precedence: it opens as its recovery instead of
   // sending again.
+  // A failed or unrunnable project read counts as answered (its filter is
+  // then unknown; Station still checks the target). The wait is bounded: if
+  // the catalog has not answered in time, the dialog surfaces with the
+  // reason and its Cancel, and nothing is sent until the person chooses.
   const catalogReady =
     !selection.runtimeLoading &&
     !selection.modelsLoading &&
-    selection.selectedContextResolved !== false;
+    selection.selectedContextSettled !== false;
   const autoSubmitted = useRef(false);
   // biome-ignore lint/correctness/useExhaustiveDependencies: runs once the catalog is ready; runHandoff reads that render's choice, which is the armed one.
   useEffect(() => {
     if (!autoSubmit || restoredIntent || autoSubmitted.current || !catalogReady)
       return;
     autoSubmitted.current = true;
+    setArmedAttempted(true);
     void runHandoff();
   }, [catalogReady]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: one deadline per dialog, from mount.
+  useEffect(() => {
+    if (!autoSubmit || restoredIntent) return;
+    const timer = window.setTimeout(() => {
+      if (autoSubmitted.current) return;
+      autoSubmitted.current = true;
+      setArmedAttempted(true);
+      setState('error');
+      setFeedback(
+        "Station hasn't loaded this chat's agents, so nothing was sent. Try again or cancel.",
+      );
+    }, ARMED_CATALOG_WAIT_MS);
+    return () => window.clearTimeout(timer);
+  }, []);
   const phase =
     state === 'pending' || (state === 'idle' && !feedback)
       ? 'sending'

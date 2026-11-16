@@ -2027,6 +2027,11 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
             openConversationHandoff(composerMenuTriggerRef.current),
           handoffDisabled: Boolean(handoffDisabledReason),
           handoffDisabledReason,
+          contextResetDisabled: Boolean(
+            conversationBoundaryDialogs.contextResetDisabledReason,
+          ),
+          contextResetDisabledReason:
+            conversationBoundaryDialogs.contextResetDisabledReason,
           onOpenContextReset: () =>
             activeSession.conversationId &&
             setContextResetSource({ id: activeSession.conversationId }),

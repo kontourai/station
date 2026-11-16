@@ -312,7 +312,9 @@ describe('session detail scroll structure (station#3305)', () => {
     ]);
     // The pinned bar holds only its bounded action row (no transcript or
     // other growable content that would be clipped outside the log).
-    const bar = detail.querySelector('.sessions-detail__continue-bar')!;
+    const bar = detail.querySelector<HTMLElement>(
+      '.sessions-detail__continue-bar',
+    )!;
     expect(bar.contains(log)).toBe(false);
     expect([...bar.children].map((child) => child.className)).toEqual([
       'sessions-detail__continue-row',

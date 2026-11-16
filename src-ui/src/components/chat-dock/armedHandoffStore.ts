@@ -58,6 +58,36 @@ export const armedHandoffStore = {
     if (entry.phase === phase) return;
     write(key, { ...entry, phase });
   },
+  /**
+   * Drop this Station's armed choices for conversations it no longer lists
+   * (deleted, or gone after sign-out). A send in flight is kept: its own
+   * dialog settles it.
+   */
+  retain(apiBase: string, conversationIds: readonly string[]) {
+    const live = new Set(
+      conversationIds.map((id) => armedHandoffKey(apiBase, id)),
+    );
+    const prefix = `${apiBase}\0`;
+    let changed = false;
+    for (const [key, entry] of entries) {
+      if (key.startsWith(prefix) && !live.has(key) && !entry.phase) {
+        entries.delete(key);
+        changed = true;
+      }
+    }
+    if (changed) for (const listener of listeners) listener();
+  },
+  /** Another Station's authority took over: no choice made here applies. */
+  dropIdle() {
+    let changed = false;
+    for (const [key, entry] of entries) {
+      if (!entry.phase) {
+        entries.delete(key);
+        changed = true;
+      }
+    }
+    if (changed) for (const listener of listeners) listener();
+  },
   subscribe(listener: () => void) {
     listeners.add(listener);
     return () => {
@@ -70,6 +100,11 @@ export const armedHandoffStore = {
     for (const listener of listeners) listener();
   },
 };
+
+if (typeof window !== 'undefined')
+  window.addEventListener('station:orchestration-authority-change', () =>
+    armedHandoffStore.dropIdle(),
+  );
 
 export function useArmedHandoffEntry(key: string | undefined): Entry {
   return useSyncExternalStore(armedHandoffStore.subscribe, () =>

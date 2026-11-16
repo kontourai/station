@@ -188,3 +188,29 @@ describe('ComposerActionsMenu', () => {
     );
   });
 });
+
+test('a switch held by another chat blocks Continue with… but not this chat’s context reset', () => {
+  renderMenu({
+    onOpenHandoff: vi.fn(),
+    handoffDisabled: true,
+    handoffDisabledReason:
+      'Another chat is still switching agents. Open it to finish first.',
+    onOpenContextReset: vi.fn(),
+    contextResetDisabled: false,
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Composer actions' }));
+  expect(
+    (
+      screen.getByRole('menuitem', {
+        name: /Continue with/,
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+  expect(
+    (
+      screen.getByRole('menuitem', {
+        name: /Reset agent context/,
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(false);
+});

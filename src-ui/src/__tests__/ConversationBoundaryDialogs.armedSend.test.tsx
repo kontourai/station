@@ -247,16 +247,18 @@ function Pane({
   active,
   textarea,
   onState,
+  sessions = [chatA, chatB],
 }: {
   active: ChatSession;
   textarea: { current: HTMLTextAreaElement | null };
   onState: (state: ReturnType<typeof useConversationBoundaryDialogs>) => void;
+  sessions?: ChatSession[];
 }) {
   const dialogs = useConversationBoundaryDialogs({
     agents: agents as never,
     apiBase: 'http://station.test',
     activeSession: active,
-    allSessions: [chatA, chatB],
+    allSessions: sessions,
   });
   onState(dialogs);
   return (
@@ -304,10 +306,11 @@ describe('one pane, two chats', () => {
     let latest!: ReturnType<typeof useConversationBoundaryDialogs>;
     const textarea = { current: document.createElement('textarea') };
     document.body.append(textarea.current);
-    const tree = (next: ChatSession) => (
+    const tree = (next: ChatSession, sessions?: ChatSession[]) => (
       <ActiveChatsProvider>
         <Pane
           active={next}
+          sessions={sessions}
           textarea={textarea}
           onState={(state) => {
             latest = state;
@@ -318,7 +321,8 @@ describe('one pane, two chats', () => {
     const view = render(tree(active));
     return {
       get: () => latest,
-      show: (next: ChatSession) => view.rerender(tree(next)),
+      show: (next: ChatSession, sessions?: ChatSession[]) =>
+        view.rerender(tree(next, sessions)),
       textarea,
     };
   }
@@ -415,5 +419,104 @@ describe('one pane, two chats', () => {
       second.get().sendArmedHandoff({ text: 'go', draft: 'go', quotes: [] }),
     );
     expect(second.get().handoffSource).toBeNull();
+  });
+
+  function armAndSend(pane: ReturnType<typeof mount>) {
+    act(() =>
+      pane.get().setArmedHandoff({
+        conversationId: 'conversation-a',
+        targetId: 'codex',
+        modelId: 'gpt-5',
+        label: 'Codex reviewer · GPT-5',
+      }),
+    );
+    act(() =>
+      pane.get().sendArmedHandoff({ text: 'go', draft: 'go', quotes: [] }),
+    );
+  }
+
+  test('a chat deleted mid-send releases the pane: pickers open again and its choice is gone', async () => {
+    handoffExecutionMessage.mockReturnValue(new Promise(() => {}));
+    const pane = mount(chatA);
+    armAndSend(pane);
+    await waitFor(() => expect(handoffExecutionMessage).toHaveBeenCalled());
+    pane.show(chatB);
+    expect(pane.get().handoffDisabledReason).toContain('Another chat');
+    // Chat A is deleted (or closed): it leaves this Station's list.
+    pane.show(chatB, [chatB]);
+    await waitFor(() => expect(pane.get().handoffSource).toBeNull());
+    expect(pane.get().handoffDisabledReason).toBeUndefined();
+    expect(
+      armedHandoffStore.get('http://station.test\0conversation-a').armed,
+    ).toBeNull();
+    act(() => pane.get().openConversationHandoff(null));
+    expect(pane.get().handoffSource?.id).toBe('conversation-b');
+  });
+
+  test('another pane on the same chat cannot open a picker while its armed send is in flight', async () => {
+    handoffExecutionMessage.mockReturnValue(new Promise(() => {}));
+    const owner = mount(chatA);
+    const other = mount(chatA);
+    armAndSend(owner);
+    await waitFor(() => expect(other.get().armedHandoffPending).toBe(true));
+    expect(other.get().handoffDisabledReason).toBe(
+      'This chat is still switching agents.',
+    );
+    act(() => other.get().openConversationHandoff(null));
+    act(() => other.get().openExecutionHandoff());
+    expect(other.get().handoffSource).toBeNull();
+    // The owner's own recovery is not blocked by its own send.
+    expect(owner.get().handoffDisabledReason).toBeUndefined();
+  });
+
+  test('a switch in another chat blocks handoffs here, not this chat’s context reset', async () => {
+    handoffExecutionMessage.mockReturnValue(new Promise(() => {}));
+    const pane = mount(chatA);
+    armAndSend(pane);
+    await waitFor(() => expect(handoffExecutionMessage).toHaveBeenCalled());
+    pane.show(chatB);
+    expect(pane.get().handoffDisabledReason).toContain('Another chat');
+    expect(pane.get().contextResetDisabledReason).toBeUndefined();
+  });
+});
+
+describe('armed choices are pruned', () => {
+  beforeEach(() => armedHandoffStore.clear());
+
+  test('a conversation the Station no longer lists loses its idle choice; an in-flight one is kept', () => {
+    const key = (id: string) => `http://station.test\0${id}`;
+    armedHandoffStore.setArmed(key('gone'), {
+      conversationId: 'gone',
+      targetId: 'codex',
+      label: 'Codex',
+    });
+    armedHandoffStore.setArmed(key('flying'), {
+      conversationId: 'flying',
+      targetId: 'codex',
+      label: 'Codex',
+    });
+    armedHandoffStore.setPhase(key('flying'), 'sending');
+    armedHandoffStore.setArmed(key('kept'), {
+      conversationId: 'kept',
+      targetId: 'codex',
+      label: 'Codex',
+    });
+    armedHandoffStore.retain('http://station.test', ['kept']);
+    expect(armedHandoffStore.get(key('gone')).armed).toBeNull();
+    expect(armedHandoffStore.get(key('flying')).armed).not.toBeNull();
+    expect(armedHandoffStore.get(key('kept')).armed).not.toBeNull();
+  });
+
+  test('a Station authority change drops every idle choice', () => {
+    const key = 'http://station.test\0c';
+    armedHandoffStore.setArmed(key, {
+      conversationId: 'c',
+      targetId: 'codex',
+      label: 'Codex',
+    });
+    window.dispatchEvent(
+      new CustomEvent('station:orchestration-authority-change'),
+    );
+    expect(armedHandoffStore.get(key).armed).toBeNull();
   });
 });
