@@ -39,14 +39,14 @@ import { LAZY_BOUNDARY_ERROR_SELECTOR } from './lazy-surface-readiness';
  * that starts to must be exempted by name in `APP_ERROR_SURFACE_EXEMPT_SCREENS`
  * with the reason.
  */
-export const APP_ERROR_SURFACES = {
+const APP_ERROR_SURFACES = {
   'lazy-boundary-row': LAZY_BOUNDARY_ERROR_SELECTOR,
   'extension-registry-toast': '[data-testid="toast-card"]',
 } as const;
 export type AppErrorSurfaceName = keyof typeof APP_ERROR_SURFACES;
 
 /** Screens that show an error surface on purpose. None today. */
-export const APP_ERROR_SURFACE_EXEMPT_SCREENS: ReadonlySet<string> = new Set();
+const APP_ERROR_SURFACE_EXEMPT_SCREENS: ReadonlySet<string> = new Set();
 
 /** Browser-side: the error surfaces attached to the document, with counts. */
 export const READ_APP_ERROR_SURFACES = `(() => {
