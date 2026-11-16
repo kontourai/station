@@ -1,0 +1,7 @@
+{
+  "revision": "207ba5362307323a97988f89bf4041787587ede8",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Hook table: the code-health row is removed; the push-range row now lists the new-export check with its exemptions and what it leaves to CI; the why-paragraph and heavy-slot list no longer name a code-health step; gate:for prints CI's full code-health command. Checked against .githooks/pre-push, scripts/check-prepush-push-range.mjs, scripts/lib/new-export-check.mjs and gate-for.mjs.","inputs":["docs/guides/code-quality.md",".githooks/pre-push","scripts/__tests__/prepush-typecheck.test.ts","docs/guides/testing.md"]}
+  ]
+}

@@ -291,13 +291,18 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
             );
             const row = pg.locator('.inbox-row--card').first();
             await row.hover();
-            const meta = (await row.locator('.inbox-row__meta').boundingBox())!;
+            // The actions take over the time slot, on the headline.
+            const slotLine = (await row
+              .locator('.inbox-row__headline')
+              .boundingBox())!;
             for (const action of await row
               .locator('.inbox-row__actions button')
               .all()) {
               const box = (await action.boundingBox())!;
               expect(
-                Math.abs(box.y + box.height / 2 - (meta.y + meta.height / 2)),
+                Math.abs(
+                  box.y + box.height / 2 - (slotLine.y + slotLine.height / 2),
+                ),
               ).toBeLessThanOrEqual(0.5);
             }
           }

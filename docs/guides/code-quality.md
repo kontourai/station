@@ -33,14 +33,17 @@ a pane package it also names the gallery screens whose module graph loads the
 path and the commands to capture just those
 ([gallery product assertions](testing.md#gallery-product-assertions)).
 
-The pre-push hook runs six checks, in this order. Costs in this table are
+The pre-push hook runs these checks, in this order. Costs in this table are
 historical measurements, not deadlines or guarantees on the current host. The hook file,
 `.githooks/pre-push`, is the source of truth if this table drifts:
 
 | Check | Cost | Refuses |
 | --- | --- | --- |
+| `node scripts/prepush-main-conflict.mjs` | instant | nothing: it warns, naming the files, when the pushed commit does not merge cleanly into the `origin/main` this checkout last fetched, because CI's `PR source admission` then runs no source check. That `main` may be stale, so it never refuses, and it is silent when `origin/main` is unknown |
 | `npm run lint:check` | ~4s | a lint, formatting, or organize-imports error |
 | `npm run proof:repo-governance` | ~4s | a governance-proof violation. Until 2026-09-14 this proof was composed only by `full:regression:raw`, which no pull-request, push or merge-queue trigger reaches, so two violations landed on `main` while the Nightly that owned them was itself red |
+| `node scripts/check-prepush-push-range.mjs` | 1–5 s measured on a loaded host (load 18–29), no heavy-check slot | on the pushed commit, never the working tree: trailing whitespace or a conflict marker in the lines it adds since its merge base with `origin/main` (the merge queue's `git diff --check`, with the pushed commit's `.gitattributes`), or a raw `mkdtemp` in a test file above its baseline (#2421). It also *warns*, never refuses, about a new export no other module seems to name (`path: export NAME is not named in any other file`): a heuristic for the one unused-export case CI kept failing, which differs from CI's code-health gate, so it prints the gate's command (`node scripts/code-health-gate.mjs --base=<merge base>`) as the judge. When the pushed range merges commits the local `origin/main` does not contain (`origin/main` is behind, or a branch not yet on `main` was merged), whitespace and the ratchet are still judged and new exports are not checked. A step that cannot reach a verdict (no merge base, a diff too large to read, a crash) warns and lets the push through |
+| `node scripts/check-prepush-docs-freshness.mjs` | 5–9 s measured on a loaded host | a recorded documentation review that `docs:freshness:check` reports stale, only when the pushed commit is the checked-out commit, the working tree has no uncommitted change and no untracked file under `docs/learn/review-ledger/`, and the branch has recorded a review (a pushed range adds or changes a file there): a note outdated by a later edit of a cited source, or a cited page missed. CI's `docs:truth:gate` refuses the same case in `docs:foundations:test`. Otherwise it warns and says why: no review recorded yet (so notes are not forced before the change is final), or uncommitted or untracked ledger changes. It does not check at all, and says so, when the pushed commit is not checked out, when there is no merge base, when the pushed range merges commits the local `origin/main` does not contain, or when the check crashes, is killed or times out. `STATION_DOCS_FRESHNESS=advisory git push` (the check's own mode variable) turns its stale entries into an advisory warning, so work in progress can be pushed; CI still runs the check and fails until the reviews are recorded. The list is capped at 30 entries; it prints the `docs:review:record` remedy |
 | `node scripts/check-prepush-orchestration-transfer.mjs` | scoped; requires a verified baseline at the merge base when orchestration transport inputs change | missing, stale, incomplete, or over-budget two-baseline-plus-candidate transfer evidence |
 | `node scripts/check-prepush-static-gates.mjs` | ~7s before the windowsHide ratchet (~4s) joined, and only when the push changes something these gates read | a UI-contract ratchet or content-gate violation (#3208), or a new child-process launch without `windowsHide` |
 | `node scripts/check-prepush-sdk-barrel.mjs` | ~6s, and only when the push changes the SDK's own sources | an SDK export missing from the public barrel (#3629) |
@@ -50,8 +53,37 @@ Repository-wide Veritas readiness and all typecheck lanes belong to hosted
 `fast-checks-statics`, via `FAST_STATIC_COMMANDS` in
 `scripts/run-ci-fast.mjs`. The `fast-checks` aggregate rejects any
 non-success statics result, and the required `Source verification policy`
-context reconciles that aggregate. Local pushes retain cheap lint/governance and
-commit checks plus scoped transfer, static and SDK checks.
+context reconciles that aggregate. Local pushes retain cheap lint/governance,
+whitespace, test temp-dir, documentation-freshness and commit checks plus
+scoped transfer, static and SDK checks; the new-export check only warns.
+
+Of the steps this hook gained in 2026-11, three can refuse a push, each only
+on a finding in the pushed commit, reported with a dedicated exit status (40):
+trailing whitespace or a conflict marker, a raw `mkdtemp` in a test file, and
+a stale recorded review on a clean checkout of the pushed commit. The
+new-export check and the main-conflict check only warn, and so does every
+step that cannot reach a verdict: the hook treats any other non-zero status
+from those steps (a crash, a module that will not load, a kill, a timeout) as
+a warning and continues, because `--no-verify` is not allowed here. Together
+they added about 9–12 s to a push on a loaded host (push range 1–5 s,
+documentation freshness 5–9 s). CI's full unused-export
+verdict is not run on a push (a fallow audit costs 25-50s and queues for a
+heavy-check slot); `npm run gate:for` prints the command that reproduces it,
+`node scripts/code-health-gate.mjs --base=$(git merge-base origin/main HEAD)`.
+
+**Why the push-range checks moved here.** Of 87 failed pull-request CI runs
+between 2026-11-13 and 2026-11-15 (732 runs in all), 16 were the code-health
+gate's unused-export blocker, up to 16 the raw-`mkdtemp` ratchet and 3 the
+whitespace check, and at least 4 of the 10 `docs:truth:gate` failures were
+review notes outdated by a later edit of a cited source, which
+`docs:freshness:check` reports (the hook refuses that on a clean checkout of
+the pushed commit once the branch records reviews, and warns otherwise). Each cost a push and a CI round trip. The 16
+unused-export failures were nine distinct exports, every one new and named by
+no other file, which is the case the push-range check now warns about from
+Git in a second or two; four rounds of verification each found a different
+way it refused code the gate accepts, so it never refuses. Running the gate itself on each push was tried and removed: it
+doubled a source push's own work and, queued behind other worktrees' heavy
+checks, turned pushes into minutes.
 
 Biome 2.6 keeps Markdown and YAML formatting disabled in `biome.json`,
 preserving their existing documentation and fixture formatting. The new
@@ -78,7 +110,8 @@ scale once and exports it to every step (see the
 a budget or assertion.
 
 A push that only adds clean merges of `origin/main` onto the tip the remote
-already holds skips the transfer, static-gate and SDK-barrel rows; the other three still run, and every row runs for a conflict
+already holds skips the push-range, documentation-freshness, transfer,
+static-gate and SDK-barrel rows; the other four still run, and every row runs for a conflict
 resolution, an edited merge or any new commit of the author's
 ([testing guide](testing.md#pre-push-orchestration-transfer-gate)).
 

@@ -1,0 +1,47 @@
+{
+  "revision": "60fd22348d954097ebd393bab0a1dc3b74813efd",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Added only /api/pull-request-feedback rows (GET orchestration:read; PUT, DELETE, POST access:manage) beside the conversation-pull-requests rows. No existing row, tier or family prefix changed; citing pages' scope claims are unaffected.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Added only /api/pull-request-feedback rows (GET orchestration:read; PUT, DELETE, POST access:manage) beside the conversation-pull-requests rows. No existing row, tier or family prefix changed; citing pages' scope claims are unaffected.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Added only /api/pull-request-feedback rows (GET orchestration:read; PUT, DELETE, POST access:manage) beside the conversation-pull-requests rows. No existing row, tier or family prefix changed; citing pages' scope claims are unaffected.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/inference-fleet.md","note":"Added only /api/pull-request-feedback rows (GET orchestration:read; PUT, DELETE, POST access:manage) beside the conversation-pull-requests rows. No existing row, tier or family prefix changed; citing pages' scope claims are unaffected.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Added only /api/pull-request-feedback rows (GET orchestration:read; PUT, DELETE, POST access:manage) beside the conversation-pull-requests rows. No existing row, tier or family prefix changed; citing pages' scope claims are unaffected.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-relay-enrollment.md","note":"Added only /api/pull-request-feedback rows (GET orchestration:read; PUT, DELETE, POST access:manage) beside the conversation-pull-requests rows. No existing row, tier or family prefix changed; citing pages' scope claims are unaffected.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Added only /api/pull-request-feedback rows (GET orchestration:read; PUT, DELETE, POST access:manage) beside the conversation-pull-requests rows. No existing row, tier or family prefix changed; citing pages' scope claims are unaffected.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Added only /api/pull-request-feedback rows (GET orchestration:read; PUT, DELETE, POST access:manage) beside the conversation-pull-requests rows. No existing row, tier or family prefix changed; citing pages' scope claims are unaffected.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Added only /api/pull-request-feedback rows (GET orchestration:read; PUT, DELETE, POST access:manage) beside the conversation-pull-requests rows. No existing row, tier or family prefix changed; citing pages' scope claims are unaffected.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Added only /api/pull-request-feedback rows (GET orchestration:read; PUT, DELETE, POST access:manage) beside the conversation-pull-requests rows. No existing row, tier or family prefix changed; citing pages' scope claims are unaffected.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Added only /api/pull-request-feedback rows (GET orchestration:read; PUT, DELETE, POST access:manage) beside the conversation-pull-requests rows. No existing row, tier or family prefix changed; citing pages' scope claims are unaffected.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Added only /api/pull-request-feedback rows (GET orchestration:read; PUT, DELETE, POST access:manage) beside the conversation-pull-requests rows. No existing row, tier or family prefix changed; citing pages' scope claims are unaffected.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Added only /api/pull-request-feedback rows (GET orchestration:read; PUT, DELETE, POST access:manage) beside the conversation-pull-requests rows. No existing row, tier or family prefix changed; citing pages' scope claims are unaffected.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Added only /api/pull-request-feedback rows (GET orchestration:read; PUT, DELETE, POST access:manage) beside the conversation-pull-requests rows. No existing row, tier or family prefix changed; citing pages' scope claims are unaffected.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Added only /api/pull-request-feedback rows (GET orchestration:read; PUT, DELETE, POST access:manage) beside the conversation-pull-requests rows. No existing row, tier or family prefix changed; citing pages' scope claims are unaffected.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Added only /api/pull-request-feedback rows (GET orchestration:read; PUT, DELETE, POST access:manage) beside the conversation-pull-requests rows. No existing row, tier or family prefix changed; citing pages' scope claims are unaffected.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Added only /api/pull-request-feedback rows (GET orchestration:read; PUT, DELETE, POST access:manage) beside the conversation-pull-requests rows. No existing row, tier or family prefix changed; citing pages' scope claims are unaffected.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Added only /api/pull-request-feedback rows (GET orchestration:read; PUT, DELETE, POST access:manage) beside the conversation-pull-requests rows. No existing row, tier or family prefix changed; citing pages' scope claims are unaffected.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Added only /api/pull-request-feedback rows (GET orchestration:read; PUT, DELETE, POST access:manage) beside the conversation-pull-requests rows. No existing row, tier or family prefix changed; citing pages' scope claims are unaffected.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"packages/connect/README.md","note":"Added only /api/pull-request-feedback rows (GET orchestration:read; PUT, DELETE, POST access:manage) beside the conversation-pull-requests rows. No existing row, tier or family prefix changed; citing pages' scope claims are unaffected.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","note":"Added only /api/pull-request-feedback rows (GET orchestration:read; PUT, DELETE, POST access:manage) beside the conversation-pull-requests rows. No existing row, tier or family prefix changed; citing pages' scope claims are unaffected.","inputs":["src-server/security/pairing-route-scopes.ts"]}
+  ]
+}

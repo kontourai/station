@@ -103,7 +103,8 @@ the conversation is absent from the loaded inventory and no row or reader
 references it, or its authority query cache is cleared. A released reader cannot
 recreate an observation when its pending read settles. Other conversations and
 Stations retain their own observations. Use **Resync** on the
-conversation or **Refresh inbox** to request fresh observations.
+conversation, or **Retry** when the inbox says it could not refresh, to request
+fresh observations.
 
 The pending-message list above the composer also shows follow-ups Station
 holds in the open conversation's server inbox, marked **Held by Station**,

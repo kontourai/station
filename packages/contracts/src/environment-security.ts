@@ -1448,6 +1448,8 @@ export interface StationCapabilityFlags {
    * Absent on hosted deployments, which have no conversation inbox.
    */
   followUpAttachments?: boolean;
+  /** Pull request agent feedback (`/api/pull-request-feedback`). */
+  pullRequestFeedback?: boolean;
 }
 
 export interface PublicStationHandshake {

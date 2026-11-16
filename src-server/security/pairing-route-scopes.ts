@@ -2278,6 +2278,23 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
     origin: 'explicit' as const,
   })),
+  // Pull request agent feedback: reading it is a conversation read; a
+  // switch, a move or Send again acts on what the agent is told, the same
+  // tier as linking the pull request.
+  {
+    id: '/api/pull-request-feedback:read',
+    method: 'GET',
+    prefix: '/api/pull-request-feedback',
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  ...(['PUT', 'DELETE', 'POST'] as const).map((method) => ({
+    id: `/api/pull-request-feedback:${method.toLowerCase()}`,
+    method,
+    prefix: '/api/pull-request-feedback',
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit' as const,
+  })),
   // archive#1131 review round 1 (HIGH, own-audit finding beyond what the
   // reviewer named): `registerPluginHostApprovalRoutes`
   // (`plugin-host-approval-routes.ts`) exists specifically so a 'trusted'

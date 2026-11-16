@@ -1,0 +1,7 @@
+{
+  "revision": "97e1eefda198a51bd315b249b226e75f4655f5a5",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Rule that child-process/browser tests are classified in vitest-resource-manifest.mjs still holds (new gallery-app-error-state.browser.test.ts is classified); testing.md anchors cited still resolve.","inputs":["scripts/AGENTS.md","docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

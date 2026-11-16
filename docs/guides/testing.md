@@ -856,7 +856,10 @@ by the `PR source admission` job (`scripts/pr-source-admission.mjs`) before the
 plan, shards and statics run, because it cannot merge and that work would be
 discarded. Only the job's explicit `admitted=false` output defers: mergeability
 still being computed, an API failure or the job failing to start admit the run.
-A deferred run fails `fast-checks` with the annotation naming the conflict. Merge `main`
+A deferred run fails `fast-checks` with the annotation naming the conflict. The
+pre-push hook warns about the same conflict before the push, against the
+`origin/main` the checkout last fetched (`scripts/prepush-main-conflict.mjs`);
+that `main` may be stale, so the warning never refuses a push. Merge `main`
 (a new head starts a new run), or, when `main` has since cleared
 the conflict without a head change, use "Re-run failed jobs" on the run: the
 source-policy publisher reads each run's newest attempt, so the rerun supersedes
@@ -1102,9 +1105,11 @@ clearing package caches leaves those installed dependency trees in place.
 
 **A pure merge of main skips the expensive lanes (#3101).** When every pushed
 ref only adds clean merges of `origin/main` on top of the tip the remote
-already holds, `.githooks/pre-push` skips the transfer gate, static gates, SDK
-barrel; biome, the governance proof and the
-commit-subject gate still run. `scripts/prepush-pure-merge.mjs` owns the rule:
+already holds, `.githooks/pre-push` skips the push-range checks, documentation
+freshness (which otherwise refuses only a clean checkout of the pushed commit,
+with no untracked review-ledger file, on a branch that records reviews, and
+warns in every other case), transfer gate, static gates and SDK barrel; the main-conflict warning,
+biome, the governance proof and the commit-subject gate still run. `scripts/prepush-pure-merge.mjs` owns the rule:
 the remote ref is the record of the last push the hook accepted, each merge's
 second parent must be on `main` as the remote itself reports it (`git
 ls-remote`, never a local ref such as `origin/main`), and each merge's tree
@@ -1612,10 +1617,13 @@ same assertion with different actual numbers compare equal. The assertion
 message, matcher, every `Expected` value, locator, timeout bound, quoted or
 mixed `Received` values, repo-relative paths with their line numbers, and URL
 paths must match, and an error that is not text, or is empty once normalised,
-never matches. `telemetry-feedback-mobile` throws one line that embeds console
-output, so its failure is never excused; a message whose own last line is
+never matches. Console text inside a message's own lines is compared, so such
+a failure is never excused; a message whose own last line is
 `Browser errors: [...]` could not be told from the appended one, and no
-current message ends that way.
+current message ends that way. An app error surface's identity (below) leads
+the error and carries only the surfaces and the failed chunk paths with their
+content hashes masked, so the same chunk failing compares equal between two
+builds as long as it keeps its name.
 So a break already on `main` does not turn unrelated
 PRs red, while breaking the same screen another way stays red. A crash or
 test-level assertion with no failing screen, a failing screen `main` lacks,
@@ -1777,6 +1785,147 @@ To add
 a screen: add it to `SCREENS` and the screen map, capture it, run
 `node scripts/gallery-ui-findings.mjs adopt --screens=<name>`, and review the
 listed findings in the PR.
+
+#### Gallery app error states and the after-photo control record
+
+When a lazily loaded part of the product fails, it shows an error surface and
+does not retry on its own. Photographed and audited, that state produced
+hit-target findings that attribution, which re-captures only on `main`, blamed
+on the pull request: 7 certain and 3 probable of 312 finished runs between
+2026-11-13 and 2026-11-15. `tests/screenshots.spec.ts` therefore checks every
+screen for the product's error surfaces immediately before the screenshot and
+again after the audit, the second check catching a surface that appeared after
+the photo. The loop over screens, the run's second-capture budget, the order of
+the checks, the photo, the audit and the retry rule live in
+`tests/helpers/gallery-screen-attempt.ts`, and the page listeners that record
+failed requests in `observeGalleryRequests`
+(`tests/helpers/gallery-document-tracker.ts`). The spec drives both with its
+page operations; `scripts/__tests__/gallery-screen-attempt.test.ts` drives them
+with fakes, and `scripts/__tests__/gallery-app-error-state.browser.test.ts`
+wires them as the spec does against a small real page in Chromium. The helper
+empties the failed-request log before every attempt, so one screen's failed
+request cannot count for the next. That the two `*-conversation-resync`
+screens declare `afterAudit` is seen only by reading the spec, like any
+screen's own assertion.
+
+Detected surfaces (`tests/helpers/gallery-app-error-state.ts`): the
+`LazyBoundary` row (`.lazy-boundary__error`), the extension-registry
+notification (a `toast-card` carrying `EXTENSIONS_UNAVAILABLE_LABEL`), and the
+route boundary's chunk failure (an `.error-state` titled with the catalog's
+`route.chunk.title` or `route.chunk.offlineTitle`). A surface means a lazily
+loaded part failed, not that a download failed: `LazyBoundary` shows its row for
+any error its child throws, a render error included. NOT detected, because none
+has a shared hook: the `WorkspacePaneFrame` and `HomeRolePane` boundaries,
+`RequiredSlotHost` rendering nothing, `MonitoringErrorBoundary`,
+`DeferredCapabilityBoundary` in banner mode, and `LazyBoundary` callers with
+their own `unavailable` slot (several render nothing). The route boundary's
+other error states, its authority failure (`route.authority.title`) and its
+render failure (`route.generic.title`), are not detected either. The route
+surface is matched by its en-US titles only, so a capture in another locale
+does not detect it. No screen shows a detected surface on purpose, checked by
+grep; no full capture has been run since route-chunk detection was added. A
+screen that starts to must be exempted by name in
+`APP_ERROR_SURFACE_EXEMPT_SCREENS`.
+
+A screen with a surface fails as `capture-failed`, and no layout findings are
+judged for that state. A failed chunk request means a script request of the
+live document for one of the app's own build files: the same origin as the
+page under capture and a path under `/assets/`. A cross-origin script, or a
+same-origin script elsewhere, is recorded in `appError` (with `appAsset:
+false`) but is not a chunk. The first line of the error is its identity: the
+surfaces and the failed chunk requests with hashes masked, for example `app-error-surface: lazy-boundary-row; failed chunk requests:
+/assets/CoreUpdateLaunchCheck-<hash>.js`, or `no failed chunk request` when there
+was none (a render error, or a chunk that downloaded but threw). It leaves out
+what differs between two captures of one failure: requests of the document a
+navigation was replacing, error text (one aborted chunk read `ERR_ABORTED` on one
+attempt and `ERR_FAILED` on another), whether it surfaced before or after the
+photo, counts, and a capture step's own error. All of that is in the screen's
+`appError` in `capture.json`, with the console errors.
+
+A second capture needs both in the same attempt: a detected surface and a
+failed chunk request. A failed chunk request alone is not evidence that the
+screen lost a chunk it needed: in a full capture on 2026-11-16,
+`task-capabilities-light-desktop` and `task-capabilities-light-mobile` each had
+two app chunk requests aborted in the live document and rendered correctly. So
+a render error that coincides with an aborted request is captured again too,
+and its identity names that chunk. The second capture runs once, on the same
+instance with a fresh navigation (`beforeGoto` and `cleanup` run again), and for
+at most `MAX_SECOND_CAPTURES` (5) screens a run, after which further screens fail
+without one and the log says so. That includes a capture step that threw while
+such a surface was on the page, so an ordinary failure that coincides with a
+download failure is captured again too; it passes only if the whole second
+capture passes. A surface without that evidence, an ordinary assertion or audit
+failure with no surface, and a screen failing a second time are not captured
+again. A clean second capture passes the screen as a transient: a `::warning`
+annotation, a `TRANSIENT <screen>: ...` line from
+`node scripts/gallery-ui-findings.mjs` (which does not change its verdict), and
+an entry under `secondCaptures` in `capture.json` with the first attempt's
+identity and record; the first attempt's image (the full-page photo when one
+was taken) is kept as `gallery/transients/<screen>.attempt-1.png`. A second
+capture that fails, fails the screen as before, so a pull request that breaks a
+chunk fails twice and attribution proceeds unchanged. A second capture that
+throws (a screen's `cleanup`, say) fails that one screen with both errors and the
+capture goes on. A screen whose fixture keeps state across `beforeGoto` calls
+can behave differently the second time. The flip side: a pull request that makes
+chunk delivery fail intermittently, or only on a screen's first visit, passes
+each such screen as a transient with a warning, and fails only once more than
+five screens in one run need a second capture.
+
+Not verified: none of the four hosted runs this was built from (43751068714,
+43739274329, 43704347024, 43769487439) has been shown to have had a failed
+chunk request of the live document, which is what earns a second capture. Their
+asset diagnostics put screens 127 to 242 in one bucket and did not record which
+document a request belonged to, so the first hosted runs after this landed are
+the evidence that the rule catches the transient it was built for.
+
+Each failed request is recorded with its wall-clock time, resource type and
+whether it belonged to the document then showing (`current`) or to one a
+navigation was replacing (`previous`, ordinary teardown). A new document is
+counted when the main frame navigates after its navigation request has a
+response; a history change (`pushState`, `replaceState`, a hash change),
+including one the outgoing page makes while the next navigation is pending,
+is not a new document. The capture's asset
+diagnostics (`gallery/diagnostics/asset-network-v3.json`) give every declared
+screen its own bucket; the capture refuses to start when the gallery outgrows
+`GALLERY_ASSET_MAX_SCOPES` instead of sharing one.
+
+Report only, never failing a screen: the visible controls are read immediately
+before the screenshot and again as soon as the audit ends. `controlsAfterPhoto`
+lists names that appeared or disappeared, `controlMovement` counts same-name
+controls that moved more than half a pixel, with the largest displacement in CSS
+pixels and the control, and `windowMs` is how long the window actually was. The
+capture prints the ten screens that changed most. A change that arrives after
+the audit ends is not seen. Nor is: content that is not a control (a `button`,
+`[role="button"]` or `input[type="submit"]`), anything outside the viewport, or
+any control past the first 100 in document order. Controls are paired by name
+and by order among controls of that name, so two same-named controls that swap
+places read as two moves, and a renamed control reads as one removed and one
+added, not as a move. To look for a screen that moves later, set
+`STATION_E2E_GALLERY_SETTLE_WINDOW_MS` (an integer from 1 to 5000) on a local
+capture: the second read then waits until at least that long after the photo,
+the test timeout grows by that much per screen, and `capture.json` records
+`settleWindowMs`. It is off by default because a 1 s pad cost about a second on
+every screen (four minutes on a full capture) for report-only data. An earlier
+version used Chromium's `layout-shift` observer instead; it read zero when an
+80 px block was inserted right after the photo, so it was removed. Before
+anything gates on this record, a full hosted capture has to show which screens
+change by design and how stable the rest are run to run; there is no allowlist
+for it.
+
+To see all of this against the real app, a targeted local capture accepts
+`STATION_E2E_GALLERY_FAULTS`, a JSON array: `chunk` fails every request for the
+named chunk on the listed attempts (`mode` `abort`, `not-found`, or `poison`, a
+module that throws when evaluated; `"when": "after-screenshot"` holds the
+request until the photo is written), `fail-step` throws an ordinary error,
+`fail-cleanup` throws from the screen's cleanup, and `move-after-photo` inserts
+an 80 px block above `.app` `delayMs` after the photo. It is refused on GitHub
+Actions and whenever the selection covers every declared screen, and is recorded
+under `faultInjection` when used:
+
+```bash
+STATION_E2E_GALLERY_FAULTS='[{"screen":"run-setup-dark-412","kind":"chunk","chunk":"CoreUpdateLaunchCheck","attempts":[1]}]' \
+  npm run test:e2e:screenshot -- --screens=run-setup-dark-412
+```
 
 `npm run gate:for` names the gallery screens whose module graph loads each
 changed `.tsx`/`.css` under `src-ui/src` or `packages/*-pane/src`, and prints
@@ -3298,7 +3447,7 @@ hold an otherwise eligible PR. A demonstrated product defect still needs an
 explicit owner disposition. PR-head checks, synthesized merge-candidate checks,
 and exact-SHA promotion receipts establish different things.
 
-For asset-load failures, inspect `gallery/diagnostics/asset-network-v2.json`. Scoped request summaries are independent of the capped, sampled detail; detail remains nonexhaustive. Inspect summary, dictionary, pending, metadata-error and incomplete fields separately. Emitted-file hashes establish file identity; recognized literal references are a projection, not a complete import graph. `capture.json` reports retention and the post-write identity/budget check (2 MiB JSON, 4 MiB diagnostic folder); `RETAINED` does not mean complete diagnostics or a successful capture. These checks require a single writer and stable directory. Compare the bounded start/end checkout receipts with the hosted checkout record; `workflowEventSha` identifies the workflow event. Disk-cache use and UI-process lifecycle remain unknown. Preserve the original capture failure and avoid inferring its cause from a later passing run.
+For asset-load failures, inspect `gallery/diagnostics/asset-network-v3.json` and a failed screen's `appError` in `capture.json`. Each screen has its own scoped request summary; summaries are independent of the capped, sampled detail, which remains nonexhaustive. A sampled failed request carries `requestedAt`, `failedAt` (wall clock), `resourceType` and `document` (`current` or `previous`). Inspect summary, dictionary, pending, metadata-error and incomplete fields separately. Emitted-file hashes establish file identity; recognized literal references are a projection, not a complete import graph. `capture.json` reports retention and the post-write identity/budget check (2 MiB JSON, 4 MiB diagnostic folder); `RETAINED` does not mean complete diagnostics or a successful capture. These checks require a single writer and stable directory. Compare the bounded start/end checkout receipts with the hosted checkout record; `workflowEventSha` identifies the workflow event. Disk-cache use and UI-process lifecycle remain unknown. Preserve the original capture failure and avoid inferring its cause from a later passing run.
 
 Use `scripts/gallery-review-evidence.mjs` to link repeated visual review without
 reusing a verdict or skipping capture. Run it in the exact candidate checkout

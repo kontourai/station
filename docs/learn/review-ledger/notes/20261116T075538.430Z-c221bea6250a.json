@@ -1,0 +1,15 @@
+{
+  "revision": "0a9c147d0028d5198d57442ac7b11d5bc0b8954f",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Added the pull request agent feedback paragraph after Task tracker follow-ups; traced composePullRequestFeedbackRuntime, the store path, ownership rule, poller tick in runtime-route-support, delivery via submitStationFramedTurn and the placement chain in runtime-routes. Other module-map claims about runtime-routes, runtime-route-support and pairing scopes are unchanged by this branch's additive mount, binding, scope rows and tick line.","inputs":["docs/architecture/module-map.md","src-server/runtime/routes/runtime-route-support.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Added the Pull request agent feedback routes section; checked each status and code against routes/pull-requests/pull-request-feedback.ts (404 while preview off or for internal/delegation principals, 409 owned_elsewhere with details.owner, 409 not_linked, 409 not_paused) and the pairing rows. No other route documented here changed.","inputs":["docs/reference/api.md","packages/contracts/src/environment-security.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Added the pull-request-feedback subpath paragraph and the optional getFeedbackObservation provider method; checked against packages/contracts/src/pull-request-feedback.ts and pull-request-provider.ts. The new StationCapabilityFlags.pullRequestFeedback key is additive; existing contract claims unchanged.","inputs":["docs/reference/contracts.md","packages/contracts/package.json","packages/contracts/package.json#/exports","packages/contracts/src/environment-security.ts","packages/contracts/src/pull-request-provider.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Added the @kontourai/station-sdk/pull-request-feedback section; checked each named export against packages/sdk/src/client/pull-request-feedback.ts and the new package export. Other SDK sections unchanged.","inputs":["docs/reference/sdk.md","packages/sdk/package.json","packages/sdk/package.json#/exports","src-server/runtime/routes/runtime-route-support.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Added the pull-request-agent-feedback preview row; checked label, default-off, personal-only, idle-only send and 3-rounds pause against runtime-pull-request-feedback.ts and pull-request-feedback-delivery.ts. docs:feature-previews:check passes.","inputs":["docs/user/settings.md"]}
+  ]
+}
