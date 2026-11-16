@@ -78,6 +78,151 @@ Station-owned session using an external engine, or a new Station-owned
 continuation of an external transcript, keeps its ordinary notification
 behavior. Automation triggers are separate from this notification policy.
 
+## Finished alerts: one per completion episode
+
+"Your agent finished" means the work is done, not that one turn ended. The
+[completion producer](../../src-server/services/orchestration/turn-completion-notifications.ts)
+holds a `done` or `replied` outcome. It writes the record once nothing holds
+it and no turn has started for `FINISHED_ALERT_CONFIRM_MS` (5 s). This window
+avoids announcing completion between a finished turn and an immediately queued
+follow-up. One completion episode per thread gets one alert. A later turn's
+completion joins the episode and its turn id names the record. So a user turn
+followed by Claude's own reply after a background
+child settles is one "finished", not "finished" then "replied". An episode
+made only of engine-opened turns reads "replied".
+
+What holds it ([finished-alert-hold.ts](../../src-server/services/orchestration/finished-alert-hold.ts),
+read by `OrchestrationService.readFinishedAlertHold`, plus the inbox's
+`hasWaitingFollowUp` composed in
+[runtime-route-support.ts](../../src-server/runtime/routes/runtime-route-support.ts)):
+
+| Fact | Holds |
+| --- | --- |
+| A running child of kind `agent` (engine subagent or Station delegate) | Always |
+| A running `command` or `monitor` child | Only while not `backgrounded` |
+| An owned child session running, or a cascade stop pending | Always |
+| The adapter's `hasOpenEngineWork` | Only when the child-work record is not reported, absent, or lists nothing running |
+| Claude's `provider/follow-up-pending` (5 s) | Always |
+| A follow-up queued, being placed, or unconfirmed in the inbox | Always |
+
+Child-work carries no "the agent is awaiting this" signal. `backgrounded`
+("outlives the turn that spawned it") is the closest fact, so a dev server
+left running in the background never holds "finished". Claude counts every
+background shell task as open engine work, so the engine flag alone is not
+trusted when the record can classify what is running. A hold is read again
+on events that can release it (child-work, session exit and state, any
+turn terminal, a session projection update such as Claude's pending
+follow-up expiring) and every `FINISHED_ALERT_RECHECK_MS` (10 s) while held.
+A hold that cannot be read fails open and the alert is sent.
+
+Failures, stops, approvals and questions are not held: a failure or stop ends
+the episode and is pushed at once, and the held finish is never sent. A
+Station-delegated child whose result returns to its parent conversation
+(#3158's owner record) announces no finish of its own. The parent's own
+completion covers it, and the parent's finish is held while the child runs.
+Its failures, approvals and questions still notify.
+
+The record is written when the alert is decided, not earlier and later
+upgraded, so the in-app list never shows "finished" while work runs. The
+coordinator wake reads the same `NOTIFICATION_DELIVERED` frame, so it wakes on
+the settled finish.
+
+Each finish persists in `finished-alert-episodes.json` in the Station home as
+it moves through three states, at most one row of each per thread:
+
+- `held`: a hold or the confirmation window still applies.
+- `writing`: the release was decided. This row is saved before the record
+  is written, and nothing is announced if that save fails (the next recheck
+  tries again). A failed write keeps the row, gives the card no release, and
+  is retried after 10 s, doubling to at most 10 min, with each failure
+  logged.
+- `released`: the record exists. The row is saved before the card hears of
+  the release and is kept for the card's two-minute alert window. If that
+  save fails, the card is still told (the record exists), and a restart
+  reads the row as `writing`, finds the record and does not write it again.
+
+A restart replays the rows by state. A `released` row inside the window
+restores the card's release. A `held` row is read again with no turn open and
+sent once nothing holds it. A `writing` row is looked up by its dedupe tag
+before anything is written:
+
+- No record: it was either never written or cleared by the person, and the
+  saved state cannot tell the two apart. The replay is dropped and logged as
+  `replay_ambiguous`: no notification is written, no phone is pushed, the
+  coordinator is not woken, and the card gets no release. Without a record of
+  what the person cleared, this recovery is not exactly-once.
+- This producer's own record for that turn, still delivered and not leased,
+  with a reader for the thread: it is handed to the coordinator wake, whose
+  durable item dedupe drops a repeat. It is not rewritten, which would reset
+  its read state, and `NOTIFICATION_DELIVERED` is not emitted again, which
+  would push the phones again. A read record is still handed on: the person
+  reading it is not the coordinator seeing it.
+- Dismissed, actioned, expired, snoozed (`pending`), leased or readerless,
+  or another producer's record: the person's decision or the other owner
+  stands. Nothing is replayed and the card gets no release, so it reads Done
+  without an "Agent finished". A snoozed record is delivered by the
+  notification service when the snooze ends.
+
+Only that finish's own row ends: a newer held finish on the thread keeps the
+card held, and an earlier release is kept. A live write ends the same way,
+with no card release, when the session has lost its reader or is an external
+transcript before the record is written.
+
+A newer finish on a thread replaces an older one whose write failed, so an
+old turn never shadows the new one. A new turn takes a finish waiting on a
+write retry back as held with that turn open, and a failure or stop ends it.
+A finish a restart has not looked up yet is left to its lookup, so its record
+is never rewritten. A lookup that fails retries with the same backoff, and a
+dedupe tag another producer owns ends the finish without a record or a card
+release. A terminal for a turn the thread has moved
+past is already rejected by the turn anchor. The file holds at most 2,000
+rows. A new held finish is admitted only below that, after released rows give
+way (past the window first, then oldest first). When every row is held or
+writing, the new finish is refused: no row and no "finished", a warning
+(`finished-alert episodes full (2000); finish for <thread> not held`) and the
+`overflow` result on the turn-completion counter. Accepted finishes are kept,
+and the thread's next completion is admitted once the store drains. Failures,
+stops, approvals and questions never enter the store. An unreadable or
+oversized file replays nothing and is logged.
+
+One Station process writes a home. `station start` refuses a second instance
+on the same home
+([lifecycle.ts](../../packages/cli/src/commands/lifecycle.ts)), and the
+unsupported `--allow-shared-home` override already warns that two processes
+can lose each other's writes; this file shares that limit. The server holds no
+home lock of its own, so entry paths that bypass the CLI are not shown to be
+exclusive. A race reproduced on a supported path is a bug to fix.
+
+The agent-activity card reads the same episodes
+([finished-alert-episodes.ts](../../src-server/services/orchestration/finished-alert-episodes.ts)),
+not the hold facts, so the card and the push agree on one finish per episode,
+after confirmation. The producer marks a completed turn pending as the bus
+publishes it, before its queued task decides, so the card cannot read Done in
+between. An attached session with a pending episode reads Running
+(`finishHeld`). A detached one reads Done without an alert until the release.
+The release names the episode's last terminal event, the same key the card
+derives from the event log, and the card dates that Done from the release on
+every rebuild. A finish held past the two-minute alert window therefore still
+alerts once, even when the send waits out the per-phone floor. The Station
+notification is left to the card, so this is the phone's only alert. A
+change to the episodes flushes the card, so a hold that releases with no bus
+event updates it by the next recheck. A Done alerts only under its released
+key: a successful `session.exited` after the turn keeps the released entry
+rather than naming a second one, and a Done the producer never released (no
+turn terminal, a refused or dropped finish) shows without an alert. A
+Station-delegated
+child's Done raises no "Agent finished" on the card either. Its Failed and
+attention phases still alert.
+
+Focus is per session for these records. A focus report may list the sessions
+its document shows (`viewingSessionIds` in
+`@kontourai/station-contracts/presence`, at most four ids). The policy then
+counts a focused surface for a session-targeted `done` or `info` record only
+while that surface shows the record's session. A focused laptop showing
+another chat, or none, leaves the phone's alert in place and gets its own.
+Attention and failed keep surface-wide focus, and so does a surface whose
+client does not report what it shows.
+
 ## Approval actions in the running client
 
 The in-app approval toast sends the selected decision and opens its originating
@@ -503,7 +648,8 @@ The Station side mirrors Web Push (`push-routes.ts`, `WebPushChannel`):
   derives from an unresolved non-input `request.opened`) →
   `waiting_for_approval`, `needs_input` → `waiting_for_input`, `blocked` →
   `stale` (live, but not counted as attention: the phone's attention means an
-  approval or input request), `completed` → `completed`, `failed` → `failed`;
+  approval or input request), `completed` → `completed` (`running` while the
+  finish is held, see "Finished alerts" above), `failed` → `failed`;
   canceled sessions leave the card. Failed sessions leave after 15 minutes
   like any other finished one, and live phases require the session to be
   attached in this process.

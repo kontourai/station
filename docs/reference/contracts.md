@@ -1478,8 +1478,12 @@ background work finishes, is published as a turn whose `turn.started` and
 terminal carry `metadata.trigger: 'provider'`; `isProviderTriggeredTurn` in
 `runtime-events` is the one derivation consumers read. It has no prompt, moves
 the session lifecycle like any turn (reasons `provider_turn_started` /
-`provider_turn_completed`), and records a "Your agent replied" notification
-whose interruptions the delivery router decides by focus. A send while it runs is refused with the retryable code
+`provider_turn_completed`). Its completion joins the thread's completion
+episode: the episode's one alert reads "Your agent replied" when every turn in
+it was the engine's own, and "Your agent finished" when it follows a user turn
+whose finish was still held
+([finished alerts](../design/notification-delivery.md#finished-alerts-one-per-completion-episode)).
+The delivery router decides its interruptions by focus. A send while it runs is refused with the retryable code
 `provider_turn_in_progress`, and the client queues the message until it ends,
 unless the send asked Station to hold it (`whenBusy: 'queue'`, below).
 A send to an ACP session that is still starting (for a restored session,
@@ -1996,6 +2000,15 @@ be presented as current by inference.
 `TaskRecord.closeOnMerge` is optional and absent means off. It is a person's
 opt-in to move a Task to `done` when every pull request kept on it is merged;
 a Task store that carries it is refused by Station builds that predate it.
+
+`FocusReport.viewingSessionIds` (`@kontourai/station-contracts/presence`) is
+optional, and absent means the client does not say what it shows, so focus
+stays device-wide. A list (at most `FOCUS_VIEWING_SESSION_IDS_MAX`, each
+matching `FOCUS_VIEWING_SESSION_ID_PATTERN`; `[]` for no chat on screen) scopes
+a focused surface's quieting of `done`/`info` records to those sessions. A host
+built before the field refuses a report carrying it with 400. The client then
+drops the field for that document
+([notification delivery](../design/notification-delivery.md#finished-alerts-one-per-completion-episode)).
 
 `@kontourai/station-shared` still re-exports many of these types so older code can compile during convergence. That is a compatibility layer, not the canonical ownership model. New code should import the owning `@kontourai/station-contracts/*` module directly.
 

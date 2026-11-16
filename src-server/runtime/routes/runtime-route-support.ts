@@ -50,6 +50,11 @@ import {
   FileConversationAcknowledgementStore,
   ownerDevicePredicate,
 } from '../../services/orchestration/conversation-acknowledgement-store.js';
+import type { CoordinatorWakeDelivery } from '../../services/orchestration/coordinator-session.js';
+import {
+  createFileFinishedAlertEpisodeStore,
+  FinishedAlertEpisodes,
+} from '../../services/orchestration/finished-alert-episodes.js';
 import { UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION } from '../../services/orchestration/session-owner-attribution.js';
 import { createTaskLeadReader } from '../../services/orchestration/task-question-wake.js';
 import type { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
@@ -420,7 +425,16 @@ export function configureRuntimeSupportServices(
   options: {
     webPushEnabled?: boolean;
     threadInbox?: () =>
-      | Pick<ThreadInboxDelivery, 'submit' | 'entry'>
+      | Pick<ThreadInboxDelivery, 'submit' | 'entry' | 'hasWaitingFollowUp'>
+      | undefined;
+    /**
+     * The coordinator wake, once composed (absent on a hosted Station). A
+     * restart that finds a finish already written hands its record here
+     * instead of re-emitting NOTIFICATION_DELIVERED (see
+     * `onReplayedDelivery` in turn-completion-notifications.ts).
+     */
+    coordinatorWakes?: () =>
+      | Pick<CoordinatorWakeDelivery, 'observeNotification'>
       | undefined;
     /**
      * #2064 (D4): paused Survey/Flow gate review sessions for the attention
@@ -488,6 +502,16 @@ export function configureRuntimeSupportServices(
     getNotificationProviders(),
     context.logger,
   );
+  // Why a session's "finished" alert (and its phone card's Done) must wait:
+  // the service's facts plus a follow-up waiting in the conversation's inbox,
+  // which the service does not own (finished-alert-hold.ts).
+  const readFinishedAlertHold = (threadId: string): string[] => {
+    const reasons: string[] =
+      context.orchestrationService.readFinishedAlertHold(threadId);
+    if (options.threadInbox?.()?.hasWaitingFollowUp(threadId))
+      reasons.push('queued-follow-up');
+    return reasons;
+  };
   wireApprovalInboxNotifications(
     context.eventBus,
     approvalInboxProvider,
@@ -499,11 +523,24 @@ export function configureRuntimeSupportServices(
   // Whether it interrupts a surface (Web Push, native alert, desktop feed)
   // is the delivery router's focus/liveness decision below, not a check on
   // whether the owner holds any open `/events` stream.
+  // One record of each thread's completion episode: the listener below
+  // writes it, the phone card reads it, so both send one "finished" per
+  // episode, after confirmation (finished-alert-episodes.ts).
+  const finishedAlertEpisodes = new FinishedAlertEpisodes();
   wireTurnCompletionNotifications(
     context.eventBus,
     context.orchestrationService,
     notificationService,
     context.logger,
+    {
+      readFinishedAlertHold,
+      onReplayedDelivery: (notification) =>
+        options.coordinatorWakes?.()?.observeNotification(notification),
+      episodes: finishedAlertEpisodes,
+      episodeStore: createFileFinishedAlertEpisodeStore(
+        context.configLoader.getProjectHomeDir(),
+      ),
+    },
   );
   // station#3525 fix round FIX 1: the corrective half — see that function's
   // own docblock. Must be wired alongside `wireTurnCompletionNotifications`
@@ -897,6 +934,12 @@ export function configureRuntimeSupportServices(
         ),
       deviceHasOwnerStanding: (deviceId) =>
         context.environmentSecurityService.deviceHasOwnerStanding(deviceId),
+      finishedAlertHeld: (threadId) =>
+        finishedAlertEpisodes.isPending(threadId),
+      finishedAlertRelease: (threadId) =>
+        finishedAlertEpisodes.releaseFor(threadId),
+      isDelegatedChildSession: (threadId) =>
+        context.orchestrationService.isDelegatedChildSession(threadId),
       listSessionReadModel: (authority, options) =>
         context.orchestrationService.listSessionReadModel(authority, options),
       listProjectionEvents: (threadIds) => {
@@ -920,6 +963,10 @@ export function configureRuntimeSupportServices(
         ),
     }),
   });
+
+  // A held finish that settles, or a finish released after its window,
+  // changes the card without a lifecycle event of its own.
+  finishedAlertEpisodes.subscribe(() => agentActivityPublisher.requestFlush());
 
   const attentionProjection = new AttentionProjectionService(
     notificationService,

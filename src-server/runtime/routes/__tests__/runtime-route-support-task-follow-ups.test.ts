@@ -196,6 +196,7 @@ function compose(lead?: Lead) {
               return { outcome: 'queued', entry: {} } as never;
             },
             entry: () => undefined,
+            hasWaitingFollowUp: () => false,
           }),
         }
       : {}),

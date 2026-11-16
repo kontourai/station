@@ -3226,6 +3226,159 @@ describe('OrchestrationService', () => {
     }
   });
 
+  // A finished turn's alert (and phone card Done) waits for work that will
+  // produce more: a subagent always, a command only while not backgrounded,
+  // the engine's own open-work flag only when the child-work record cannot
+  // classify it. Read from the service's real child-work projection and
+  // adapter, the facts the idle park reads.
+  test('readFinishedAlertHold reads child work, engine work and delegation ownership', async () => {
+    const holdService = new OrchestrationService({
+      adapterRegistry: createRegistry([claude]),
+      eventBus,
+      eventStore,
+      flowRunService,
+      listProjects: () => configuredProjects,
+      workflowSidecarService,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    const threadId = 'held-finish-conversation';
+    const reporter = {
+      producer: 'engine-subagent' as const,
+      reporterThreadId: threadId,
+    };
+    const snapshot = async (running: Record<string, unknown>[]) => {
+      claude.events.push({
+        eventId: `child-work-${randomUUID()}`,
+        provider: 'claude',
+        threadId,
+        method: 'child-work.updated',
+        delta: { kind: 'snapshot', ...reporter, running },
+        createdAt: new Date().toISOString(),
+      } as unknown as CanonicalRuntimeEvent);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    };
+    const withOpenWork = claude as FakeAdapter & {
+      hasOpenEngineWork?: (threadId: string) => boolean;
+    };
+    try {
+      const started = await holdService.sessionCommands.execute(
+        {
+          type: 'start-session',
+          input: {
+            threadId,
+            provider: 'claude',
+            metadata: { userId: 'owner-user' },
+          },
+        },
+        { userId: 'owner-user' },
+      );
+      if (started.status !== 'accepted') throw new Error(started.message);
+      expect(holdService.readFinishedAlertHold(threadId)).toEqual([]);
+
+      await snapshot([
+        { ...reporter, childId: 'agent-1', status: 'running', workKind: 'agent' },
+      ]);
+      expect(holdService.readFinishedAlertHold(threadId)).toEqual([
+        'child-agent',
+      ]);
+
+      // A dev server left running: backgrounded, so it does not hold, even
+      // though the engine counts it as open work.
+      withOpenWork.hasOpenEngineWork = (id) => id === threadId;
+      await snapshot([
+        {
+          ...reporter,
+          childId: 'bash-1',
+          status: 'running',
+          workKind: 'command',
+          backgrounded: true,
+        },
+      ]);
+      expect(holdService.readFinishedAlertHold(threadId)).toEqual([]);
+
+      // A command the turn did not background still holds.
+      await snapshot([
+        {
+          ...reporter,
+          childId: 'bash-2',
+          status: 'running',
+          workKind: 'command',
+          backgrounded: false,
+        },
+      ]);
+      expect(holdService.readFinishedAlertHold(threadId)).toEqual([
+        'foreground-command',
+      ]);
+
+      // Nothing the record lists explains the engine's open work: it holds.
+      await snapshot([]);
+      expect(holdService.readFinishedAlertHold(threadId)).toEqual([
+        'engine-work',
+      ]);
+      withOpenWork.hasOpenEngineWork = undefined;
+      expect(holdService.readFinishedAlertHold(threadId)).toEqual([]);
+
+      // Claude says it is about to open a turn of its own after a
+      // background child settled: that pending follow-up holds.
+      claude.events.push({
+        eventId: `follow-up-${randomUUID()}`,
+        provider: 'claude',
+        threadId,
+        method: 'extension.notification',
+        namespace: 'claude-code',
+        type: 'provider/follow-up-pending',
+        payload: { pending: true },
+        createdAt: new Date().toISOString(),
+      } as unknown as CanonicalRuntimeEvent);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(holdService.readFinishedAlertHold(threadId)).toEqual([
+        'follow-up-pending',
+      ]);
+      // The provider's turn opens: the fact is spent.
+      claude.events.push({
+        eventId: `follow-up-turn-${randomUUID()}`,
+        provider: 'claude',
+        threadId,
+        method: 'turn.started',
+        turnId: 'provider-turn-1',
+        createdAt: new Date().toISOString(),
+      } as CanonicalRuntimeEvent);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(holdService.readFinishedAlertHold(threadId)).toEqual([]);
+
+      // A Station-delegated child session this one started, still starting:
+      // its result comes back here, so it holds.
+      claude.events.push({
+        eventId: `held-finish-started-${randomUUID()}`,
+        provider: 'claude',
+        threadId,
+        method: 'session.started',
+        sessionId: threadId,
+        createdAt: new Date().toISOString(),
+      } as CanonicalRuntimeEvent);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      eventStore.reserveOwnershipStart('held-finish-owned-child', {
+        stationDelegationProvenance: 'caller-derived',
+        delegation: { parentSessionId: threadId },
+      });
+      expect(holdService.readFinishedAlertHold(threadId)).toEqual([
+        'owned-session',
+      ]);
+
+      expect(holdService.isDelegatedChildSession(threadId)).toBe(false);
+      eventStore.delegationResultStore().arm({
+        childConversationId: threadId,
+        taskId: threadId,
+        parentConversationId: 'delegating-parent',
+        actor: { userId: 'owner-user', attribution: 'verified-bound' },
+      });
+      expect(holdService.isDelegatedChildSession(threadId)).toBe(true);
+    } finally {
+      withOpenWork.hasOpenEngineWork = undefined;
+      await holdService.shutdown();
+    }
+  });
+
   // #3157: Claude marks a failed turn's session `error` and refuses another
   // turn on it. A recovery replay into that Session parks the ended engine
   // first, so the replay's own send restarts it in place.
@@ -13064,11 +13217,14 @@ describe('OrchestrationService', () => {
       eventStore,
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
+    // No confirmation window: this test is about the stop suppression, and
+    // the finished push it expects is otherwise held for five seconds.
     wireTurnCompletionNotifications(
       notificationBus,
       restartService,
       notificationService,
       logger,
+      { confirmMs: 0 },
     );
     wireInternalStopRedispatchFailureNotifications(
       notificationBus,
@@ -13172,8 +13328,12 @@ describe('OrchestrationService', () => {
             event.payload.turnId === 'turn-2',
         ),
     );
-    await notificationService.drainAsyncDispatch();
-    const notifications = await notificationService.list();
+    let notifications = await notificationService.list();
+    for (let attempt = 0; attempt < 100 && notifications.length === 0; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      await notificationService.drainAsyncDispatch();
+      notifications = await notificationService.list();
+    }
     expect(notifications).toHaveLength(1);
     expect(notifications[0]).toEqual(
       expect.objectContaining({
