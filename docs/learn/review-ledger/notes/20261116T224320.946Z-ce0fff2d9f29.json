@@ -1,0 +1,7 @@
+{
+  "revision": "f18db47905491b9778f928a5f3ffd28960c667a7",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"ChatInputArea only changed the opening placeholder copy when drafting is allowed; the getting-started claims about sending and composer controls are unchanged.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/ChatInputArea.tsx"]}
+  ]
+}
