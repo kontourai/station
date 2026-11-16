@@ -11,14 +11,7 @@ import {
   PUBLIC_STATION_HANDSHAKE_PATH,
   type PublicStationHandshake,
 } from '@kontourai/station-contracts/environment-security';
-import {
-  expect,
-  type Frame,
-  type Locator,
-  type Page,
-  type Request,
-  type Route,
-} from '@playwright/test';
+import { expect, type Locator, type Page, type Route } from '@playwright/test';
 import { execFileSyncBounded } from '../scripts/lib/bounded-capture.mjs';
 import { buildLongSessionTurns } from './fixtures/long-session';
 import { assertGalleryScreenSourcesCover } from './gallery-screen-sources.mjs';
@@ -52,11 +45,12 @@ import {
   readGalleryLifecycle,
   retainGalleryAssetDiagnostics,
 } from './helpers/gallery-asset-diagnostics';
-import { createDocumentTracker } from './helpers/gallery-document-tracker';
 import {
-  attemptScreen,
-  captureScreen,
-  createRetryBudget,
+  createDocumentTracker,
+  observeGalleryRequests,
+} from './helpers/gallery-document-tracker';
+import {
+  captureScreens,
   MAX_SECOND_CAPTURES,
   readSettleWindow,
   type SecondCaptureRecord,
@@ -1929,6 +1923,11 @@ interface Screen {
    * be captured as the wrong tile).
    */
   afterGoto?: (page: Page) => Promise<void>;
+  /**
+   * Optional checks after the audit has passed its error-surface check (a
+   * post-shot interaction the photo must not show).
+   */
+  afterAudit?: (page: Page) => Promise<void>;
   /** Release screen fixtures after capture and interaction checks, even on failure. */
   cleanup?: () => Promise<void>;
   /**
@@ -6424,6 +6423,7 @@ const SCREENS: Screen[] = [
     path: '/?dock=open&chat=gallery-mismatch-conversation',
     viewport,
     ...overlayDockProjectMismatchHooks(true),
+    afterAudit: verifyConversationRecovery,
   })),
   ...[DESKTOP, { width: 412, height: 915 }].map(
     (viewport): Screen => ({
@@ -7028,37 +7028,12 @@ test('build gallery — capture key screens', async ({ page }) => {
     documents,
   );
   const failedRequests = createFailedRequestLog(origin, documents);
-  const onRequest = (request: Request) => {
-    let opensDocument = false;
-    try {
-      opensDocument =
-        request.isNavigationRequest() && request.frame() === page.mainFrame();
-    } catch {
-      /* a request without a frame opens no document */
-    }
-    documents.issued(request, opensDocument);
-    assets.request(request);
-  };
-  const onResponse = assets.response;
-  const onFinished = (request: Request) => {
-    assets.finished(request);
-    documents.settled(request, false);
-  };
-  const onFailed = (request: Request) => {
-    failedRequests.failed(request);
-    assets.failed(request);
-    documents.settled(request, true);
-  };
-  const onNavigated = (frame: Frame) => {
-    if (frame === page.mainFrame()) documents.committed();
-  };
-  page.on('request', onRequest);
-  page.on('response', onResponse);
-  page.on('requestfinished', onFinished);
-  page.on('requestfailed', onFailed);
-  page.on('framenavigated', onNavigated);
+  const stopObserving = observeGalleryRequests(page, {
+    documents,
+    failedRequests,
+    assets,
+  });
   const secondCaptures: SecondCaptureRecord[] = [];
-  const retryBudget = createRetryBudget();
   // The attempt the fault injection acts on, and the photo it may wait for.
   let faultAttempt: {
     screen: string;
@@ -7293,25 +7268,32 @@ test('build gallery — capture key screens', async ({ page }) => {
     }),
   );
 
+  // The screen being captured's diagnostics, set by its attempts' ports and
+  // read when its result is recorded.
+  let layout: Shot['layout'];
+  let rasterDiagnostic: Shot['rasterDiagnostic'];
+  let uiAudit: Shot['uiAudit'];
+  const screenFault = (
+    screen: Screen,
+    kind: GalleryFault['kind'],
+    attempt: number,
+  ) =>
+    faults.find(
+      (fault) =>
+        fault.screen === screen.name &&
+        fault.kind === kind &&
+        fault.attempts.includes(attempt),
+    );
   try {
-    for (const screen of selectedScreens) {
-      assets.screen(screen.name);
-      const file = `${screen.name}.png`;
-      const screenFault = (kind: GalleryFault['kind'], attempt: number) =>
-        faults.find(
-          (fault) =>
-            fault.screen === screen.name &&
-            fault.kind === kind &&
-            fault.attempts.includes(attempt),
-        );
-      let layout: Shot['layout'];
-      let rasterDiagnostic: Shot['rasterDiagnostic'];
-      let uiAudit: Shot['uiAudit'];
-      // One capture of this screen (gallery-screen-attempt.ts owns the order of
-      // the error-surface checks and the retry rule). Every attempt is a fresh
-      // navigation on the same instance; `beforeGoto` and `cleanup` run for
-      // each.
-      const runAttempt = (attempt: 1 | 2) => {
+    // gallery-screen-attempt.ts owns the loop over screens, the run's
+    // second-capture budget, the order of the error-surface checks and the
+    // retry rule. Every attempt is a fresh navigation on the same instance;
+    // `beforeGoto` and `cleanup` run for each.
+    await captureScreens(page, selectedScreens, {
+      screenStarted: (screen) => assets.screen(screen.name),
+      screenFinished: (screen) => assets.screenFinished(screen.name),
+      ports: (screen, attempt) => {
+        const file = `${screen.name}.png`;
         browserErrors.length = 0;
         failedRequests.reset();
         layout = undefined;
@@ -7330,7 +7312,7 @@ test('build gallery — capture key screens', async ({ page }) => {
         const faulted = chunkFaults.some(
           (fault) => fault.screen === screen.name,
         );
-        return attemptScreen<NonNullable<Shot['uiAudit']>>({
+        return {
           capture: async (photo) => {
             if (faulted) await evictFaultedChunks();
             await page.setViewportSize(screen.viewport);
@@ -7424,7 +7406,7 @@ test('build gallery — capture key screens', async ({ page }) => {
                   : () => assertGalleryConnectionChrome(page),
               hideVolatileChrome: () => hideVolatileChrome(page),
               screenshot: async () => {
-                if (screenFault('fail-step', attempt))
+                if (screenFault(screen, 'fail-step', attempt))
                   throw new Error(
                     'Gallery fault injection: an ordinary capture-step failure (fail-step).',
                   );
@@ -7533,7 +7515,7 @@ test('build gallery — capture key screens', async ({ page }) => {
               animations: 'disabled',
             });
             faultAttempt?.release();
-            const move = screenFault('move-after-photo', attempt);
+            const move = screenFault(screen, 'move-after-photo', attempt);
             if (move && move.kind === 'move-after-photo')
               await page.evaluate((delayMs) => {
                 setTimeout(() => {
@@ -7555,13 +7537,6 @@ test('build gallery — capture key screens', async ({ page }) => {
             }
             return uiAudit;
           },
-          afterAudit: async () => {
-            if (
-              screen.name === 'desktop-conversation-resync' ||
-              screen.name === 'mobile-conversation-resync'
-            )
-              await verifyConversationRecovery(page);
-          },
           // Capture whatever rendered so the broken state is still inspectable.
           fallbackScreenshot: async () => {
             await hideVolatileChrome(page);
@@ -7578,7 +7553,7 @@ test('build gallery — capture key screens', async ({ page }) => {
             } finally {
               if (faulted) await evictFaultedChunks();
             }
-            if (screenFault('fail-cleanup', attempt))
+            if (screenFault(screen, 'fail-cleanup', attempt))
               throw new Error(
                 'Gallery fault injection: the screen cleanup threw (fail-cleanup).',
               );
@@ -7594,27 +7569,24 @@ test('build gallery — capture key screens', async ({ page }) => {
               consoleErrors: [...browserErrors],
             };
           },
-        });
-      };
-      try {
-        const result = await captureScreen(
-          screen.name,
-          runAttempt,
-          retryBudget,
-          {
-            keepFirstImage: () => {
-              try {
-                mkdirSync(join(GALLERY_DIR, 'transients'), { recursive: true });
-                const kept = `transients/${screen.name}.attempt-1.png`;
-                copyFileSync(join(GALLERY_DIR, file), join(GALLERY_DIR, kept));
-                return kept;
-              } catch {
-                return null;
-              }
-            },
-            log: (line) => process.stdout.write(`${line}\n`),
-          },
-        );
+        };
+      },
+      keepFirstImage: (screen) => {
+        try {
+          mkdirSync(join(GALLERY_DIR, 'transients'), { recursive: true });
+          const kept = `transients/${screen.name}.attempt-1.png`;
+          copyFileSync(
+            join(GALLERY_DIR, `${screen.name}.png`),
+            join(GALLERY_DIR, kept),
+          );
+          return kept;
+        } catch {
+          return null;
+        }
+      },
+      log: (line) => process.stdout.write(`${line}\n`),
+      screenCaptured: (screen, result) => {
+        const file = `${screen.name}.png`;
         if (result.record) secondCaptures.push(result.record);
         const { final } = result;
         const shot: Shot = final.ok
@@ -7652,16 +7624,10 @@ test('build gallery — capture key screens', async ({ page }) => {
             };
         shot.attempts = result.attempts;
         shots.push(shot);
-      } finally {
-        assets.screenFinished(screen.name);
-      }
-    }
+      },
+    });
   } finally {
-    page.off('request', onRequest);
-    page.off('response', onResponse);
-    page.off('requestfinished', onFinished);
-    page.off('requestfailed', onFailed);
-    page.off('framenavigated', onNavigated);
+    stopObserving();
     try {
       const network = await assets.finish();
       const checkoutEnd = readGalleryCheckout();
@@ -7788,7 +7754,7 @@ test('build gallery — capture key screens', async ({ page }) => {
       const count = (second: SecondCaptureRecord['second']) =>
         secondCaptures.filter((record) => record.second === second).length;
       console.log(
-        `Gallery app error surfaces with a failed chunk request: ${secondCaptures.length} screen(s); ${count('passed')} passed a second capture (transient), ${secondCaptures.length - count('passed') - count('budget-exhausted')} failed it, ${count('budget-exhausted')} not captured again (budget of ${retryBudget.max}).`,
+        `Gallery app error surfaces with a failed chunk request: ${secondCaptures.length} screen(s); ${count('passed')} passed a second capture (transient), ${secondCaptures.length - count('passed') - count('budget-exhausted')} failed it, ${count('budget-exhausted')} not captured again (budget of ${MAX_SECOND_CAPTURES}).`,
       );
     }
   }

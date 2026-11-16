@@ -8,6 +8,7 @@ import {
   type AttemptOutcome,
   attemptScreen,
   captureScreen,
+  captureScreens,
   createRetryBudget,
   MAX_SECOND_CAPTURES,
   MAX_SETTLE_WINDOW_MS,
@@ -28,6 +29,7 @@ const box = (label: string, y: number): ControlBox => ({
 });
 const chunkFailure: FailedRequestRecord = {
   path: '/assets/CoreUpdateLaunchCheck-DDGWUae_.js',
+  appAsset: true,
   errorText: 'net::ERR_FAILED',
   resourceType: 'script',
   failedAt: 1,
@@ -298,6 +300,10 @@ describe('the second capture', () => {
       surfaceFailure([]),
       surfaceFailure([{ ...chunkFailure, document: 'previous' }]),
       surfaceFailure([{ ...chunkFailure, resourceType: 'fetch' }]),
+      // A cross-origin script is not one of the app's chunks.
+      surfaceFailure([
+        { ...chunkFailure, path: 'cdn.invalid/assets/x.js', appAsset: false },
+      ]),
       ordinaryFailure,
     ]) {
       const { result, attempts } = await run([first, passed]);
@@ -349,5 +355,112 @@ describe('the second capture', () => {
     await expect(run([new Error('cleanup failed')])).rejects.toThrow(
       'cleanup failed',
     );
+  });
+});
+
+describe('every screen of a run', () => {
+  /** Screens whose first attempt fails on a lost chunk download. */
+  async function runScreens(
+    screens: Array<{
+      name: string;
+      afterAudit?: (page: string) => Promise<void>;
+    }>,
+    options: { firstFails?: boolean; captureThrows?: string } = {},
+  ) {
+    const events: string[] = [];
+    const results = new Map<
+      string,
+      Awaited<ReturnType<typeof captureScreen>>
+    >();
+    const run = captureScreens('the-page', screens, {
+      ports: (screen, attempt) => {
+        const fail = options.firstFails && attempt === 1;
+        const { ports } = fakePorts({
+          surfaces: fail ? [row] : [],
+          failedRequests: fail ? [chunkFailure] : [],
+        });
+        const { afterAudit: _ignored, ...rest } = ports;
+        return {
+          ...rest,
+          capture: async (photo) => {
+            events.push(`${screen.name} attempt ${attempt}`);
+            if (options.captureThrows === screen.name) throw new Error('boom');
+            await photo();
+          },
+          cleanup: async () => {
+            if (options.captureThrows === screen.name)
+              throw new Error('cleanup failed');
+          },
+        };
+      },
+      keepFirstImage: (screen) => `transients/${screen.name}.attempt-1.png`,
+      log: (line) => events.push(line),
+      screenStarted: (screen) => events.push(`start ${screen.name}`),
+      screenCaptured: (screen, result) => results.set(screen.name, result),
+      screenFinished: (screen) => events.push(`finish ${screen.name}`),
+    });
+    return { run, events, results };
+  }
+
+  it(`shares one budget of ${MAX_SECOND_CAPTURES} second captures across the run`, async () => {
+    const screens = Array.from({ length: 7 }, (_, index) => ({
+      name: `screen-${index}`,
+    }));
+    const { run, results } = await runScreens(screens, { firstFails: true });
+    await run;
+    expect(
+      screens.map(({ name }) => results.get(name)?.record?.second),
+    ).toEqual([
+      'passed',
+      'passed',
+      'passed',
+      'passed',
+      'passed',
+      'budget-exhausted',
+      'budget-exhausted',
+    ]);
+  });
+
+  it("runs each screen's own afterAudit with the page, and fails the screen when it throws", async () => {
+    const seen: string[] = [];
+    const { run, results } = await runScreens([
+      {
+        name: 'checked',
+        afterAudit: async (page) => {
+          seen.push(page);
+        },
+      },
+      { name: 'plain' },
+      {
+        name: 'broken',
+        afterAudit: async () => {
+          throw new Error('recovery did not happen');
+        },
+      },
+    ]);
+    await run;
+    expect(seen).toEqual(['the-page']);
+    expect(results.get('checked')?.final.ok).toBe(true);
+    expect(results.get('plain')?.final.ok).toBe(true);
+    expect(results.get('broken')?.final).toMatchObject({
+      ok: false,
+      message: 'recovery did not happen',
+    });
+  });
+
+  it('finishes a screen whose first attempt throws, and stops there', async () => {
+    const { run, events } = await runScreens(
+      [{ name: 'a' }, { name: 'b' }, { name: 'c' }],
+      { captureThrows: 'b' },
+    );
+    await expect(run).rejects.toThrow('cleanup failed');
+    expect(events).toEqual([
+      'start a',
+      'a attempt 1',
+      'finish a',
+      'start b',
+      'b attempt 1',
+      'finish b',
+    ]);
   });
 });

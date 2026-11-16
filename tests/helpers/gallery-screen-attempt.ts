@@ -16,11 +16,14 @@ import {
 } from './gallery-app-error-state';
 
 /**
- * One Gallery screen's capture attempts, as a unit a test can drive: the
- * error-surface checks around the photo and the audit, and whether a failed
- * attempt earns a second capture. `tests/screenshots.spec.ts` supplies the
- * page operations as ports and keeps every mechanic; this module carries no
- * Playwright import, so its unit test drives it with fakes.
+ * The Gallery's screens and their capture attempts, as a unit a test can
+ * drive: the loop over screens and the run's second-capture budget
+ * (`captureScreens`), the error-surface checks around the photo and the audit,
+ * and whether a failed attempt earns a second capture.
+ * `tests/screenshots.spec.ts` supplies the page operations as ports and keeps
+ * every mechanic; this module carries no Playwright import, so its unit test
+ * drives it with fakes and `gallery-app-error-state.browser.test.ts` drives it
+ * against a real page.
  */
 export interface ScreenAttemptPorts<Audit> {
   /**
@@ -193,9 +196,10 @@ export async function attemptScreen<Audit>(
 }
 
 /**
- * Second captures allowed per run. Measured: about 2 to 3% of runs met a
- * transient, each on one screen; five leaves room for that while a systemic
- * break (every screen failing) adds at most five captures, not 242.
+ * Second captures allowed per run. Measured: 7 certain and 3 probable of 312
+ * finished runs between 2026-11-13 and 2026-11-15 met a transient, each on
+ * one screen; five leaves room for that while a systemic break (every screen
+ * failing) adds at most five captures, not 242.
  */
 export const MAX_SECOND_CAPTURES = 5;
 
@@ -351,4 +355,66 @@ export async function captureScreen<Audit>(
     errorLines: threw ? [identity, ...linesOf(second)] : linesOf(second),
     record,
   };
+}
+
+/** What `captureScreens` needs of a screen. */
+export interface CapturedScreen<P> {
+  name: string;
+  /**
+   * Screen-specific checks after the audit has passed its surface check
+   * (the `afterAudit` port).
+   */
+  afterAudit?: (page: P) => Promise<void>;
+}
+
+/**
+ * Every selected screen, in order, under one second-capture budget for the
+ * run. `ports` builds an attempt's page operations; the screen's own
+ * `afterAudit` is added here. A first attempt that throws stops the capture,
+ * as it always did, after `screenFinished` has run for that screen.
+ */
+export async function captureScreens<P, S extends CapturedScreen<P>, Audit>(
+  page: P,
+  screens: readonly S[],
+  options: {
+    ports(
+      screen: S,
+      attempt: 1 | 2,
+    ): Omit<ScreenAttemptPorts<Audit>, 'afterAudit'>;
+    keepFirstImage(screen: S): string | null;
+    log(line: string): void;
+    screenStarted(screen: S): void;
+    /**
+     * The screen's result, once its attempts are over; `result.record` is
+     * its second-capture record, when it has one.
+     */
+    screenCaptured(screen: S, result: ScreenResult<Audit>): void;
+    /** Runs for every started screen, whatever happened. */
+    screenFinished(screen: S): void;
+  },
+): Promise<void> {
+  const budget = createRetryBudget();
+  for (const screen of screens) {
+    options.screenStarted(screen);
+    try {
+      const result = await captureScreen(
+        screen.name,
+        (attempt) =>
+          attemptScreen({
+            ...options.ports(screen, attempt),
+            afterAudit: async () => {
+              await screen.afterAudit?.(page);
+            },
+          }),
+        budget,
+        {
+          keepFirstImage: () => options.keepFirstImage(screen),
+          log: options.log,
+        },
+      );
+      options.screenCaptured(screen, result);
+    } finally {
+      options.screenFinished(screen);
+    }
+  }
 }

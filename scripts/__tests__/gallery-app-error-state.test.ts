@@ -42,7 +42,9 @@ const request = (
   resourceType = 'script',
   errorText = 'net::ERR_ABORTED',
   failedAt = 1,
-) => ({ path, document, resourceType, errorText, failedAt });
+  // What createFailedRequestLog records for a same-origin path.
+  appAsset = path.startsWith('/assets/'),
+) => ({ path, appAsset, document, resourceType, errorText, failedAt });
 
 describe('app error identity', () => {
   it('names the surfaces and the live document failed chunks, hashes masked, on one line', () => {
@@ -158,6 +160,7 @@ describe('failed request log', () => {
     };
     const first = failing('/first', 'net::ERR_ABORTED', 'document');
     documents.issued(first, true);
+    documents.responded(first, 200);
     documents.committed();
     const stale = failing('/api/projects', 'net::ERR_ABORTED', 'fetch');
     documents.issued(stale, false);
@@ -168,6 +171,7 @@ describe('failed request log', () => {
     documents.issued(late, false);
     clock = 2_000;
     fail(stale); // before framenavigated
+    documents.responded(next, 200);
     documents.committed();
     fail(late); // after it
     const chunk = failing('/assets/CoreUpdateLaunchCheck-DDGWUae_.js?v=1#x');
@@ -176,6 +180,8 @@ describe('failed request log', () => {
     fail(chunk);
     // A history-API navigation commits no new document.
     documents.committed();
+    // A cross-origin script of the live page is recorded, but it is not one
+    // of the app's chunks.
     const elsewhere = failing('http://other.invalid/x.js?token=secret');
     documents.issued(elsewhere, false);
     fail(elsewhere);
@@ -199,6 +205,7 @@ describe('failed request log', () => {
     ]);
     expect(log.snapshot().records[2]).toEqual({
       path: '/assets/CoreUpdateLaunchCheck-DDGWUae_.js',
+      appAsset: true,
       errorText: 'net::ERR_ABORTED',
       resourceType: 'script',
       failedAt: 3_000,
@@ -206,6 +213,18 @@ describe('failed request log', () => {
     });
     expect(log.snapshot().records[0].failedAt).toBe(2_000);
     expect(JSON.stringify(log.snapshot())).not.toContain('secret');
+    const crossOrigin = log
+      .snapshot()
+      .records.filter(({ path }) => path === 'other.invalid/x.js');
+    expect(crossOrigin).toMatchObject([
+      { document: 'current', resourceType: 'script', appAsset: false },
+    ]);
+    // So it neither earns a second capture nor enters the identity.
+    const withCrossOrigin = observation({ failedRequests: crossOrigin });
+    expect(chunkLoadFailed(withCrossOrigin)).toBe(false);
+    expect(formatAppErrorIdentity(withCrossOrigin)).toBe(
+      'app-error-surface: lazy-boundary-row; no failed chunk request',
+    );
     // A request the tracker never saw is not guessed.
     log.failed(failing('/unseen'));
     expect(
@@ -239,6 +258,94 @@ describe('failed request log', () => {
         ),
     ).toBe(true);
     expect(log.snapshot().omitted).toBe(8);
+  });
+
+  it("only the app's own scripts are chunks: same origin as the page, under /assets/", () => {
+    const documents = createDocumentTracker();
+    const log = createFailedRequestLog(origin, documents, () => 0);
+    for (const url of [
+      `${origin}/assets/Chunk-abcdefgh.js`,
+      `${origin}/vendor/Chunk-abcdefgh.js`,
+      // Same host, another port or scheme: another origin.
+      'http://localhost:5315/assets/Chunk-abcdefgh.js',
+      'https://localhost:5314/assets/Chunk-abcdefgh.js',
+      'http://cdn.invalid/assets/Chunk-abcdefgh.js',
+    ])
+      log.failed(failing(url));
+    expect(
+      log.snapshot().records.map(({ path, appAsset }) => [path, appAsset]),
+    ).toEqual([
+      ['/assets/Chunk-abcdefgh.js', true],
+      ['/vendor/Chunk-abcdefgh.js', false],
+      ['localhost:5315/assets/Chunk-abcdefgh.js', false],
+      ['localhost:5314/assets/Chunk-abcdefgh.js', false],
+      ['cdn.invalid/assets/Chunk-abcdefgh.js', false],
+    ]);
+    const live = log
+      .snapshot()
+      .records.map((record) => ({ ...record, document: 'current' as const }));
+    expect(formatAppErrorIdentity(observation({ failedRequests: live }))).toBe(
+      'app-error-surface: lazy-boundary-row; failed chunk requests: /assets/Chunk-<hash>.js',
+    );
+  });
+});
+
+describe('document tracker', () => {
+  // Chromium's order, checked with Playwright: the outgoing document's
+  // history change fires `framenavigated` while `page.goto` is pending and
+  // before the navigation's response; the new document's comes after it.
+  it("does not take the outgoing document's history change for the commit", () => {
+    const documents = createDocumentTracker();
+    const previous = failing('/previous', 'net::ERR_ABORTED', 'document');
+    documents.issued(previous, true);
+    documents.responded(previous, 200);
+    documents.committed();
+    const next = failing('/next', 'net::ERR_ABORTED', 'document');
+    documents.issued(next, true);
+    documents.committed(); // the outgoing document's replaceState
+    // Issued by the outgoing document after its history change.
+    const stray = failing('/assets/Stray-abcdefgh.js');
+    documents.issued(stray, false);
+    documents.responded(next, 200);
+    documents.committed(); // the new document
+    expect(documents.classify(stray)).toBe('previous');
+    const live = failing('/assets/Live-abcdefgh.js');
+    documents.issued(live, false);
+    expect(documents.classify(live)).toBe('current');
+  });
+
+  it("keeps a live request current across the live document's own history change", () => {
+    const documents = createDocumentTracker();
+    const page = failing('/page', 'net::ERR_ABORTED', 'document');
+    documents.issued(page, true);
+    documents.responded(page, 200);
+    documents.committed();
+    const chunk = failing('/assets/Route-abcdefgh.js');
+    documents.issued(chunk, false);
+    documents.committed(); // the router's pushState while the chunk loads
+    expect(documents.classify(chunk)).toBe('current');
+  });
+
+  it('follows a redirect to the navigation that commits, and drops one that fails', () => {
+    const documents = createDocumentTracker();
+    const redirect = failing('/r', 'net::ERR_ABORTED', 'document');
+    documents.issued(redirect, true);
+    documents.responded(redirect, 302);
+    documents.committed(); // a history change before the redirect target
+    const old = failing('/assets/Old-abcdefgh.js');
+    documents.issued(old, false);
+    const target = failing('/b', 'net::ERR_ABORTED', 'document');
+    documents.issued(target, true);
+    documents.responded(target, 200);
+    documents.committed();
+    expect(documents.classify(old)).toBe('previous');
+    const refused = failing('/c', 'net::ERR_ABORTED', 'document');
+    documents.issued(refused, true);
+    documents.settled(refused, true);
+    const live = failing('/assets/Live-abcdefgh.js');
+    documents.issued(live, false);
+    documents.committed(); // a history change after the failed navigation
+    expect(documents.classify(live)).toBe('current');
   });
 });
 

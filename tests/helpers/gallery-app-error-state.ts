@@ -43,9 +43,10 @@ import { LAZY_BOUNDARY_ERROR_SELECTOR } from './lazy-surface-readiness';
  * (its condition lives in the Station details dialog), and a `LazyBoundary`
  * whose caller passes its own `unavailable` slot (several render nothing).
  *
- * No screen in `SCREENS` shows a detected surface on purpose (checked by grep
- * and by a full capture when this was written); a screen that starts to must
- * be exempted by name in `APP_ERROR_SURFACE_EXEMPT_SCREENS` with the reason.
+ * No screen in `SCREENS` shows a detected surface on purpose (checked by
+ * grep; no full capture has been run since `route-chunk-error` was added); a
+ * screen that starts to must be exempted by name in
+ * `APP_ERROR_SURFACE_EXEMPT_SCREENS` with the reason.
  */
 const APP_ERROR_SURFACES = {
   'lazy-boundary-row': LAZY_BOUNDARY_ERROR_SELECTOR,
@@ -93,6 +94,12 @@ export type AppErrorPhase =
 export interface FailedRequestRecord {
   /** Same-origin path (host prefixed when cross-origin); never a query. */
   path: string;
+  /**
+   * Whether the URL is one of the app's own build files: the origin of the
+   * page under capture and a path under `APP_ASSET_PATH`. Only such a script
+   * is a chunk (`failedChunkPaths`); a cross-origin script is not.
+   */
+  appAsset: boolean;
   errorText: string;
   resourceType: string;
   /** Wall-clock milliseconds since the epoch, taken when the failure arrived. */
@@ -142,9 +149,13 @@ export function hasAppErrorSurface(counts: AppErrorSurfaceCounts): boolean {
   return Object.values(counts).some((count) => (count ?? 0) > 0);
 }
 
+/** Where the UI build (Vite's default `assetsDir`) serves its files. */
+const APP_ASSET_PATH = '/assets/';
+
 /**
- * The live document's failed script requests, hash-masked, sorted and
- * deduplicated: the direct evidence that a chunk did not download.
+ * The live document's failed requests for the app's own scripts (same origin
+ * as the page, under `APP_ASSET_PATH`), hash-masked, sorted and deduplicated:
+ * the direct evidence that a chunk did not download.
  */
 function failedChunkPaths(observation: AppErrorObservation): string[] {
   return [
@@ -152,7 +163,9 @@ function failedChunkPaths(observation: AppErrorObservation): string[] {
       observation.failedRequests
         .filter(
           (request) =>
-            request.document === 'current' && request.resourceType === 'script',
+            request.document === 'current' &&
+            request.resourceType === 'script' &&
+            request.appAsset,
         )
         .map((request) => withoutAssetHash(request.path)),
     ),
@@ -208,7 +221,9 @@ type RequestLike = {
 
 /**
  * Failed requests of the page, per capture attempt, with the document they
- * belonged to (`createDocumentTracker`).
+ * belonged to (`createDocumentTracker`). `origin` is the origin of the page
+ * under capture (the spec passes its base URL's, which every screen's path
+ * resolves against).
  */
 export function createFailedRequestLog(
   origin: string,
@@ -220,13 +235,16 @@ export function createFailedRequestLog(
   let scripts: FailedRequestRecord[] = [];
   let others: FailedRequestRecord[] = [];
   let omitted = 0;
-  const host = new URL(origin).host;
+  const pageOrigin = new URL(origin).origin;
   return {
     failed(request: RequestLike) {
       let path: string;
+      let appAsset = false;
       try {
         const url = new URL(request.url());
-        path = url.host === host ? url.pathname : `${url.host}${url.pathname}`;
+        const sameOrigin = url.origin === pageOrigin;
+        path = sameOrigin ? url.pathname : `${url.host}${url.pathname}`;
+        appAsset = sameOrigin && url.pathname.startsWith(APP_ASSET_PATH);
       } catch {
         path = '<unparseable>';
       }
@@ -237,6 +255,7 @@ export function createFailedRequestLog(
       }
       records.push({
         path: bounded(path),
+        appAsset,
         errorText: bounded(request.failure()?.errorText ?? 'unknown'),
         resourceType: request.resourceType(),
         failedAt: now(),

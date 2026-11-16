@@ -159,6 +159,7 @@ it('gives every screen of a gallery larger than 242 its own bucket inside the su
     collector.screen(screens[screen]);
     const navigation = request(`/screen-${screen}`);
     documents.issued(navigation, true);
+    documents.responded(navigation, 200);
     documents.committed();
     // 600 distinct assets across the run, so each bitmask is as wide as a
     // real gallery's dictionary.

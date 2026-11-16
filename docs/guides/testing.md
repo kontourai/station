@@ -1776,14 +1776,20 @@ listed findings in the PR.
 When a lazily loaded part of the product fails, it shows an error surface and
 does not retry on its own. Photographed and audited, that state produced
 hit-target findings that attribution, which re-captures only on `main`, blamed
-on the pull request (about 2 to 3% of runs in the three days to 2026-11-15).
-`tests/screenshots.spec.ts` therefore checks every screen for the product's
-error surfaces immediately before the screenshot and again after the audit, the
-second check catching a surface that appeared after the photo. The order of the
-checks, the photo, the audit and the retry rule lives in
-`tests/helpers/gallery-screen-attempt.ts`, which the spec drives with its page
-operations and `scripts/__tests__/gallery-screen-attempt.test.ts` drives with
-fakes.
+on the pull request: 7 certain and 3 probable of 312 finished runs between
+2026-11-13 and 2026-11-15. `tests/screenshots.spec.ts` therefore checks every
+screen for the product's error surfaces immediately before the screenshot and
+again after the audit, the second check catching a surface that appeared after
+the photo. The loop over screens, the run's second-capture budget, the order of
+the checks, the photo, the audit and the retry rule live in
+`tests/helpers/gallery-screen-attempt.ts`, and the page listeners that record
+failed requests in `observeGalleryRequests`
+(`tests/helpers/gallery-document-tracker.ts`). The spec drives both with its
+page operations; `scripts/__tests__/gallery-screen-attempt.test.ts` drives them
+with fakes, and `scripts/__tests__/gallery-app-error-state.browser.test.ts`
+wires them as the spec does against a small real page in Chromium. That the two
+`*-conversation-resync` screens declare `afterAudit` and that the spec calls
+`failedRequests.reset()` for each attempt are seen only by reading the spec.
 
 Detected surfaces (`tests/helpers/gallery-app-error-state.ts`): the
 `LazyBoundary` row (`.lazy-boundary__error`), the extension-registry
@@ -1795,14 +1801,22 @@ any error its child throws, a render error included. NOT detected, because none
 has a shared hook: the `WorkspacePaneFrame` and `HomeRolePane` boundaries,
 `RequiredSlotHost` rendering nothing, `MonitoringErrorBoundary`,
 `DeferredCapabilityBoundary` in banner mode, and `LazyBoundary` callers with
-their own `unavailable` slot (several render nothing). No screen shows a
-detected surface on purpose; one that starts to must be exempted by name in
+their own `unavailable` slot (several render nothing). The route boundary's
+other error states, its authority failure (`route.authority.title`) and its
+render failure (`route.generic.title`), are not detected either. The route
+surface is matched by its en-US titles only, so a capture in another locale
+does not detect it. No screen shows a detected surface on purpose, checked by
+grep; no full capture has been run since route-chunk detection was added. A
+screen that starts to must be exempted by name in
 `APP_ERROR_SURFACE_EXEMPT_SCREENS`.
 
 A screen with a surface fails as `capture-failed`, and no layout findings are
-judged for that state. The first line of its error is its identity: the
-surfaces and the live document's failed script requests with hashes masked, for
-example `app-error-surface: lazy-boundary-row; failed chunk requests:
+judged for that state. A failed chunk request means a script request of the
+live document for one of the app's own build files: the same origin as the
+page under capture and a path under `/assets/`. A cross-origin script, or a
+same-origin script elsewhere, is recorded in `appError` (with `appAsset:
+false`) but is not a chunk. The first line of the error is its identity: the
+surfaces and the failed chunk requests with hashes masked, for example `app-error-surface: lazy-boundary-row; failed chunk requests:
 /assets/CoreUpdateLaunchCheck-<hash>.js`, or `no failed chunk request` when there
 was none (a render error, or a chunk that downloaded but threw). It leaves out
 what differs between two captures of one failure: requests of the document a
@@ -1811,8 +1825,8 @@ attempt and `ERR_FAILED` on another), whether it surfaced before or after the
 photo, counts, and a capture step's own error. All of that is in the screen's
 `appError` in `capture.json`, with the console errors.
 
-Only a surface with a failed script request of the live document, the direct
-evidence of a chunk download failing, earns a second capture: once, on the same
+Only a surface with a failed chunk request, the direct evidence of a chunk
+download failing, earns a second capture: once, on the same
 instance with a fresh navigation (`beforeGoto` and `cleanup` run again), and for
 at most `MAX_SECOND_CAPTURES` (5) screens a run, after which further screens fail
 without one and the log says so. That includes a capture step that threw while
@@ -1830,11 +1844,25 @@ capture that fails, fails the screen as before, so a pull request that breaks a
 chunk fails twice and attribution proceeds unchanged. A second capture that
 throws (a screen's `cleanup`, say) fails that one screen with both errors and the
 capture goes on. A screen whose fixture keeps state across `beforeGoto` calls
-can behave differently the second time.
+can behave differently the second time. The flip side: a pull request that makes
+chunk delivery fail intermittently, or only on a screen's first visit, passes
+each such screen as a transient with a warning, and fails only once more than
+five screens in one run need a second capture.
+
+Not verified: none of the four hosted runs this was built from (43751068714,
+43739274329, 43704347024, 43769487439) has been shown to have had a failed
+chunk request of the live document, which is what earns a second capture. Their
+asset diagnostics put screens 127 to 242 in one bucket and did not record which
+document a request belonged to, so the first hosted runs after this landed are
+the evidence that the rule catches the transient it was built for.
 
 Each failed request is recorded with its wall-clock time, resource type and
 whether it belonged to the document then showing (`current`) or to one a
-navigation was replacing (`previous`, ordinary teardown). The capture's asset
+navigation was replacing (`previous`, ordinary teardown). A new document is
+counted when the main frame navigates after its navigation request has a
+response; a history change (`pushState`, `replaceState`, a hash change),
+including one the outgoing page makes while the next navigation is pending,
+is not a new document. The capture's asset
 diagnostics (`gallery/diagnostics/asset-network-v3.json`) give every declared
 screen its own bucket; the capture refuses to start when the gallery outgrows
 `GALLERY_ASSET_MAX_SCOPES` instead of sharing one.
@@ -1845,7 +1873,12 @@ lists names that appeared or disappeared, `controlMovement` counts same-name
 controls that moved more than half a pixel, with the largest displacement in CSS
 pixels and the control, and `windowMs` is how long the window actually was. The
 capture prints the ten screens that changed most. A change that arrives after
-the audit ends is not seen. To look for a screen that moves later, set
+the audit ends is not seen. Nor is: content that is not a control (a `button`,
+`[role="button"]` or `input[type="submit"]`), anything outside the viewport, or
+any control past the first 100 in document order. Controls are paired by name
+and by order among controls of that name, so two same-named controls that swap
+places read as two moves, and a renamed control reads as one removed and one
+added, not as a move. To look for a screen that moves later, set
 `STATION_E2E_GALLERY_SETTLE_WINDOW_MS` (an integer from 1 to 5000) on a local
 capture: the second read then waits until at least that long after the photo,
 the test timeout grows by that much per screen, and `capture.json` records
