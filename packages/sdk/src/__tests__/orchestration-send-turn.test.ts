@@ -242,3 +242,38 @@ describe('orchestration lifecycle-control client', () => {
     );
   });
 });
+
+describe('listOrchestrationSessions limit', () => {
+  test.each([0, 1001, 1.5, Number.NaN, -3])(
+    'refuses limit %s before sending anything',
+    async (limit) => {
+      const fetchMock = vi.fn<typeof fetch>();
+      vi.stubGlobal('fetch', fetchMock);
+      const { listOrchestrationSessions } = await import(
+        '../client/orchestration'
+      );
+      await expect(
+        listOrchestrationSessions('http://station.test', undefined, { limit }),
+      ).rejects.toBeInstanceOf(RangeError);
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  test('sends an in-range limit as the query', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ success: true, data: [] }), {
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const { listOrchestrationSessions } = await import(
+      '../client/orchestration'
+    );
+    await listOrchestrationSessions('http://station.test', undefined, {
+      limit: 200,
+    });
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      'http://station.test/api/orchestration/sessions/read-model?limit=200',
+    );
+  });
+});

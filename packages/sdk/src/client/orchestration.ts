@@ -339,10 +339,13 @@ export async function listOrchestrationSessions<T = unknown[]>(
   opts?: ClientRequestOptions,
   query?: { limit?: number },
 ): Promise<T> {
-  const search =
-    query?.limit !== undefined
-      ? `?limit=${encodeURIComponent(query.limit)}`
-      : '';
+  const limit = query?.limit;
+  if (
+    limit !== undefined &&
+    (!Number.isSafeInteger(limit) || limit < 1 || limit > 1_000)
+  )
+    throw new RangeError('Session limit must be an integer from 1 to 1,000');
+  const search = limit !== undefined ? `?limit=${limit}` : '';
   const response = await getJson(
     `${apiBase}/api/orchestration/sessions/read-model${search}`,
     opts,

@@ -1893,9 +1893,15 @@ covers a remote that ignores `view=window-v1` and sends its whole detail. A
 current remote's window answers at most 64,000 bytes. These pages are
 refused, not truncated. It caps a page at the remote route's own 20-turn and
 512-character cursor bounds. The list asks the remote for its newest 200
-sessions (`limit=200`) and is capped at 8,388,608 bytes. That cap holds 200
-summaries at the largest measured size, or about 2,000 typical ones from an
-older remote that ignores `limit`. A remote's search answer is capped at
+sessions (`limit=200`) and is capped at 8,388,608 bytes, which holds 200
+summaries at the largest measured size. An older remote that ignores `limit`
+sends every session. The cap would hold about 2,000 typical ones, but the
+list's 2-second fetch deadline usually expires first on a remote that large,
+so such a remote mostly reads as unavailable. One Home list read fans out to
+at most 16 connected environments at once, and there is no server-side
+single-flight across overlapping reads. The accepted worst case is therefore
+16 × 8 MiB (128 MiB) of buffered remote answers per read in flight. A remote's
+search answer is capped at
 262,144 bytes. Past either cap the answer is not parsed. The existing status
 then reports the remote as unavailable (list) or unreachable (search), even
 though it did answer, and this Station logs the refusal by environment id

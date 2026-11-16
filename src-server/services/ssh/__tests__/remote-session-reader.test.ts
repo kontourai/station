@@ -1,7 +1,7 @@
 import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts';
 import { StationRequestTimeoutError } from '@kontourai/station-sdk/client';
 import { Hono } from 'hono';
-import { describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 /** The reader's own logger, so a refused oversized answer is observable. */
 const readerLog = vi.hoisted(() => ({ warn: vi.fn() }));
@@ -15,6 +15,10 @@ vi.mock('../../../utils/logger.js', async (importOriginal) => {
         ? { ...real.createLogger(options), warn: readerLog.warn }
         : real.createLogger(options),
   };
+});
+
+beforeEach(() => {
+  readerLog.warn.mockClear();
 });
 
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
@@ -928,6 +932,8 @@ describe('the relayed history page has a byte ceiling (security review M2)', () 
       envelopeOf(MAX_REMOTE_SESSION_HISTORY_RESPONSE_BYTES),
     );
     expect(atCeiling.ok).toBe(true);
+    // An answer at the ceiling is not a refusal, so nothing is logged.
+    expect(readerLog.warn).not.toHaveBeenCalled();
 
     const over = await readServing(
       envelopeOf(MAX_REMOTE_SESSION_HISTORY_RESPONSE_BYTES + 1),
@@ -939,6 +945,12 @@ describe('the relayed history page has a byte ceiling (security review M2)', () 
     expect(
       over.ok === false && (over.error as { reason?: string }).reason,
     ).toBe('too_large');
+    // Logged once, by environment id alone (no name, address or content).
+    expect(readerLog.warn).toHaveBeenCalledTimes(1);
+    expect(readerLog.warn).toHaveBeenCalledWith(
+      'Remote Station answer exceeded its byte ceiling',
+      { environmentId: 'env-1', read: 'session-history' },
+    );
   });
 });
 
@@ -997,6 +1009,8 @@ describe('the list and search fetchers have byte ceilings too (delta review)', (
       (service) => listConnectedRemoteSessions(service, undefined, peers),
     );
     expect(atCeiling.environments).toHaveLength(1);
+    // An answer at the ceiling is not a refusal, so nothing is logged.
+    expect(readerLog.warn).not.toHaveBeenCalled();
     const over = await serving(
       envelopeOf(MAX_REMOTE_SESSION_LIST_RESPONSE_BYTES + 1, list),
       (service) => listConnectedRemoteSessions(service, undefined, peers),
@@ -1037,6 +1051,8 @@ describe('the list and search fetchers have byte ceilings too (delta review)', (
         ),
     );
     expect(atCeiling.matches).toHaveLength(1);
+    // An answer at the ceiling is not a refusal, so nothing is logged.
+    expect(readerLog.warn).not.toHaveBeenCalled();
     const over = await serving(
       envelopeOf(MAX_REMOTE_MESSAGE_SEARCH_RESPONSE_BYTES + 1, matches),
       (service) =>
