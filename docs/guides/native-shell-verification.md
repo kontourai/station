@@ -571,11 +571,12 @@ the key-approval and grant-lifecycle lanes are explicit opt-ins. Harness
 availability is source evidence, not an executed platform result. Record the
 exact binary, revision, host and completed lane result when running it.
 
-The desktop sidecar starts Node with a home-scoped compile cache
+The desktop sidecar starts the server without a compile cache and removes
+any inherited `NODE_COMPILE_CACHE`
 ([desktop build](desktop-build.md#startup-cost-and-linux-graphics)). The first
 [server bootstrap import](../../src-server/runtime/bootstrap/server-compile-cache.ts)
 loads `.env`, then removes `NODE_COMPILE_CACHE` from the server environment
-after Node has consumed its startup setting, so dotenv cannot restore it for
+after Node has consumed any startup setting, so dotenv cannot restore it for
 generic child launchers. The server gives the home's cache directory only to
 the built-in station-control and station-knowledge children.
 Targeted child environment scrubs remain in place. The process supervisor keeps
