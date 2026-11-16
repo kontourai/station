@@ -410,44 +410,42 @@ describe('ProjectTaskBoard', () => {
   });
 
   test('pull request facts arriving late are not arrivals: no announcement, no jump to the top', () => {
+    // Needs you already holds a newer failed Task when the facts arrive and
+    // move an older merged Task into it. Seeded order puts the newer first;
+    // treating the facts as an arrival would put the merged Task on top.
     const tasks = [
-      task('a', { status: 'ready', updatedAt: '2026-11-10T00:00:00.000Z' }),
-      task('pr', {
-        sessionId: 'run-pr',
+      task('broke', {
+        sessionId: 'run-broke',
+        updatedAt: '2026-11-10T00:00:00.000Z',
+      }),
+      task('merged', {
+        sessionId: 'run-merged',
         updatedAt: '2026-11-01T00:00:00.000Z',
       }),
-      task('pr2', {
-        sessionId: 'run-pr2',
-        updatedAt: '2026-11-02T00:00:00.000Z',
-      }),
     ];
-    const finished = [
-      session('run-pr', { lifecycleState: 'completed' }),
-      session('run-pr2', { lifecycleState: 'completed' }),
+    const runs = [
+      session('run-broke', { lifecycleState: 'failed' }),
+      session('run-merged', { lifecycleState: 'completed' }),
     ];
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
-      given({ tasks, sessions: finished, factsPending: true });
+      given({ tasks, sessions: runs, factsPending: true });
       const { rerender } = render(<Harness tasks={tasks} />);
       // The board renders without facts once its short wait is over.
       act(() => {
         vi.advanceTimersByTime(2_000);
       });
-      expect(cardTitles('Idle')).toEqual(['Work a', 'Work pr2', 'Work pr']);
+      expect(cardTitles('Needs you')).toEqual(['Work broke']);
       given({
         tasks,
-        sessions: finished,
-        pullRequests: {
-          pr: [pr('7', { readiness: 'clean' })],
-          pr2: [pr('8', { readiness: 'clean' })],
-        },
+        sessions: runs,
+        pullRequests: { merged: [pr('7', { pullRequestState: 'MERGED' })] },
       });
       rerender(<Harness tasks={tasks} />);
     } finally {
       vi.useRealTimers();
     }
-    // Seeded order (most recent first), not "arrivals on top" in reverse.
-    expect(cardTitles('Ready to merge')).toEqual(['Work pr2', 'Work pr']);
+    expect(cardTitles('Needs you')).toEqual(['Work broke', 'Work merged']);
     expect(document.querySelector('[aria-live="polite"]')?.textContent).toBe(
       '',
     );
