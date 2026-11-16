@@ -15,9 +15,8 @@ import { createLogger } from '../../utils/logger.js';
  * environment at once (`adopt-compile-cache.ts`). Measured on those bundles,
  * a warm cache starts them faster and leaves them smaller.
  *
- * The server itself gets no cache from `station start`: measured on the
- * supervised server, a warm cache left it larger at rest and did not start
- * it measurably faster. The server still removes any inherited setting at
+ * The server itself gets no cache from `station start` or the desktop
+ * sidecar: measured on both launches, a warm cache left it larger at rest. The server still removes any inherited setting at
  * boot (`server-compile-cache.ts`), so generic child launchers never pass it
  * to third-party or user programs.
  */
@@ -219,7 +218,8 @@ export function scheduleStationCompileCachePrune(
         done(undefined);
         return;
       }
-      // The desktop sidecar's server runs with this home's cache.
+      // A server started with NODE_COMPILE_CACHE set by hand may be using
+      // this home's cache; its own Node-version directory is spared.
       const keep =
         activeDir && dirname(resolve(activeDir)) === root
           ? basename(activeDir)

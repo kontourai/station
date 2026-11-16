@@ -290,9 +290,11 @@ cache; the sidecar removes any `NODE_COMPILE_CACHE` it inherits. Measured on
 the supervised server, a warm cache left it larger at rest and did not make
 startup measurably faster. Measured on the sidecar launch on one 64 GB Mac
 (three alternating rounds, medians after a 45-second settle), the cache added
-about 120 MB to the idle server. Startup did not get consistently faster. The
-server does not enable a cache after loading its bundle either: that is too
-late to cache compilation of the entry point.
+about 120 MB to the idle server. Without the flag below, it started the server
+about 1.2 s sooner in every round; with the flag, it was faster in one round of
+three. Memory at rest wins that trade. The server does not enable a cache after
+loading its bundle either: that is too late to cache compilation of the entry
+point.
 
 The sidecar starts Node with `--max-semi-space-size=16`, the young-generation
 cap the process supervisor gives each core it forks
@@ -319,7 +321,7 @@ environment by design, and the rest were not measured as worth it.
 
 Node never prunes the cache. One minute after boot, the server removes any
 Node-version subdirectory that nothing has written to for 30 days, except the
-one its own process uses. It then removes the whole cache if that is still over
+one its own process uses when an operator started it with `NODE_COMPILE_CACHE`. It then removes the whole cache if that is still over
 256 MiB. A subdirectory that is only read ages too, and costs one cold start
 once it is removed. The prune never follows a link inside the cache: it ages
 only real directories, counts only regular files, and removing a link removes
