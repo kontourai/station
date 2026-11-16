@@ -1008,6 +1008,21 @@ class SqliteSchedulerLedger implements SchedulerLedger {
   }
 
   backfillJobOwners(owner: SchedulerAutomationCreator | undefined): number {
+    // A damaged ledger reports itself on its next read (naming the damage);
+    // the migration waits for the repaired one rather than adding a second,
+    // vaguer warning. Anything else still surfaces to the caller.
+    if (this.refuseIfCorrupt()) return 0;
+    try {
+      return this.backfillJobOwnersUnsafe(owner);
+    } catch (error) {
+      if (unavailableFrom(error).reason === 'corrupt') return 0;
+      throw error;
+    }
+  }
+
+  private backfillJobOwnersUnsafe(
+    owner: SchedulerAutomationCreator | undefined,
+  ): number {
     return this.transaction(() => {
       // Decided under the write lock: two instances over one home migrate
       // once between them.
