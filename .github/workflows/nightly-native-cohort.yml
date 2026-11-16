@@ -312,13 +312,15 @@ jobs:
           mv promotion-desktop-state.pending.json promotion-desktop-state.json
       # #3593: keeps the rolling release under GitHub's 1,000-asset cap. Runs
       # only after this cohort's publication is read back and its claims are
-      # recorded, and always prints its plan; it deletes only when the owner
-      # sets the repository variable STATION_NIGHTLY_DESKTOP_PRUNE to exactly
-      # `enabled`. Its failure is a warning, never this publication's outcome.
+      # recorded, and always prints its plan; it deletes only when
+      # vars.STATION_NIGHTLY_DESKTOP_PRUNE is exactly `enabled` (a native-release
+      # environment variable of that name wins over the repository's). Its
+      # failure is a warning, never this publication's outcome; its timeout is
+      # kept small because it counts against the job's 60 minutes.
       - name: Prune versioned desktop downloads past the retention window
         if: ${{ steps.publisher.outputs.desktop_needed == 'true' && steps.macos_provider_state.outcome == 'success' }}
         continue-on-error: true
-        timeout-minutes: 15
+        timeout-minutes: 5
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           STATION_NIGHTLY_DESKTOP_PRUNE: ${{ vars.STATION_NIGHTLY_DESKTOP_PRUNE }}

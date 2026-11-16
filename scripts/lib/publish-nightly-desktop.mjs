@@ -296,16 +296,31 @@ export function publishNightlyDesktop({
  * five exact shapes, with a canonical Nightly version, are ever candidates;
  * the fixed names, SHA256SUMS, latest.json, the legacy
  * `station-nightly-desktop-*` assets and anything else are kept untouched.
+ * A cohort with any asset that is not `uploaded` is kept whole, indefinitely:
+ * it may be an upload still in progress, which only its publisher may
+ * resolve. Two such `starter` uploads from 2026-09-17 (`2451.1`, `2451.2`)
+ * therefore stay on the release.
  */
 export const NIGHTLY_DESKTOP_RETAINED_COHORTS = 30;
 /** Five cohorts; a larger backlog is worked off oldest first over later runs. */
 export const NIGHTLY_DESKTOP_MAX_DELETIONS_PER_RUN = 25;
-/** Repository variable; only the exact value `enabled` deletes. */
+/**
+ * Read as `vars.<name>` in the native-release job, so an environment-level
+ * variable wins over the repository's. Only the exact value `enabled` deletes.
+ */
 export const NIGHTLY_DESKTOP_PRUNE_VARIABLE = 'STATION_NIGHTLY_DESKTOP_PRUNE';
+/** GitHub's per-release cap; a longer listing is refused, not truncated. */
+export const NIGHTLY_DESKTOP_MAX_RELEASE_ASSETS = 1000;
 const ASSET_PAGE_SIZE = 100;
-// GitHub caps a release at 1,000 assets, ten full pages. The eleventh page is
-// read only to refuse a listing that does not end there.
-const MAX_ASSET_PAGES = 11;
+// Ten full pages hold the cap. The eleventh page is read only to refuse a
+// listing that does not end there.
+const MAX_ASSET_PAGES =
+  NIGHTLY_DESKTOP_MAX_RELEASE_ASSETS / ASSET_PAGE_SIZE + 1;
+// The step's own timeout is 5 minutes of the job's 60. Each request is
+// bounded, and no request starts after the budget, so a hung GitHub call
+// ends the step as a warning well before the step or job timeout.
+const RETENTION_REQUEST_TIMEOUT_MS = 15_000;
+export const NIGHTLY_DESKTOP_RETENTION_BUDGET_MS = 180_000;
 const VERSIONED_DOWNLOADS = Object.freeze([
   'station-nightly-desktop-macos-aarch64.app.tar.gz',
   'station-nightly-desktop-macos-aarch64.app.tar.gz.sig',
@@ -318,6 +333,39 @@ const DOWNLOAD_PREFIX = `https://github.com/${repository}/releases/download/nigh
 /** `delete` only for the exact owner value; anything else reports. */
 function nightlyDesktopPruneMode(value) {
   return value === 'enabled' ? 'delete' : 'report';
+}
+
+/**
+ * The cohort a latest.json platform URL names. The URL must be exactly this
+ * release's download prefix and one versioned asset name: no query,
+ * fragment, encoding, dot or extra segment. Anything else throws, so the
+ * step plans nothing rather than dropping that protection.
+ */
+function manifestCohortOf(raw) {
+  if (typeof raw !== 'string' || !raw.startsWith(DOWNLOAD_PREFIX))
+    throw new Error('latest.json names a download outside nightly-desktop');
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error('latest.json names a download that is not a URL');
+  }
+  const name = raw.slice(DOWNLOAD_PREFIX.length);
+  const version = /^[A-Za-z0-9_-][A-Za-z0-9._-]*$/.test(name)
+    ? versionedCohortOf(name)
+    : undefined;
+  if (
+    url.href !== raw ||
+    url.search !== '' ||
+    url.hash !== '' ||
+    url.username !== '' ||
+    url.password !== '' ||
+    version === undefined
+  )
+    throw new Error(
+      'latest.json names a download that is not exactly one versioned asset of this release',
+    );
+  return version;
 }
 
 /** The cohort version of an exact versioned download name, else undefined. */
@@ -346,7 +394,8 @@ function versionedCohortOf(name) {
  * Which versioned downloads this run would delete. Pure: `assets` is the
  * complete listing, `manifest` the parsed live latest.json. The newest
  * `keepCohorts` cohorts, the cohort just published, every cohort latest.json
- * names, and any cohort with an asset that is not `uploaded` are kept. The
+ * names, and any cohort with an asset that is not `uploaded` (possibly an
+ * upload in progress, so kept indefinitely) are kept. The
  * remaining cohorts are selected whole, oldest first, while they fit in
  * `maxDeletions`.
  */
@@ -359,15 +408,14 @@ export function planNightlyDesktopRetention({
 }) {
   const protectedVersions = new Set([currentVersion, manifest?.version]);
   const platforms = manifest?.platforms;
-  if (!platforms || typeof platforms !== 'object')
+  if (
+    !platforms ||
+    typeof platforms !== 'object' ||
+    Object.keys(platforms).length === 0
+  )
     throw new Error('latest.json names no platforms');
-  for (const platform of Object.values(platforms)) {
-    const url = platform?.url;
-    if (typeof url !== 'string' || !url.startsWith(DOWNLOAD_PREFIX))
-      throw new Error('latest.json names a download outside nightly-desktop');
-    const version = versionedCohortOf(url.slice(DOWNLOAD_PREFIX.length));
-    if (version) protectedVersions.add(version);
-  }
+  for (const platform of Object.values(platforms))
+    protectedVersions.add(manifestCohortOf(platform?.url));
   // Throws on anything that is not a Nightly version.
   for (const version of protectedVersions) nightlyDesktopVersionParts(version);
   const cohorts = new Map();
@@ -506,9 +554,17 @@ export function retainNightlyDesktopAssets({
   keepCohorts = NIGHTLY_DESKTOP_RETAINED_COHORTS,
   // May lower the per-run bound, never raise it: a larger plan is refused.
   maxDeletions = NIGHTLY_DESKTOP_MAX_DELETIONS_PER_RUN,
-  run = github,
+  run: request = github,
   log = (line) => console.log(line),
+  now = Date.now,
 }) {
+  const deadline = now() + NIGHTLY_DESKTOP_RETENTION_BUDGET_MS;
+  /** @param {string[]} args */
+  const run = (args) => {
+    if (now() > deadline)
+      throw new Error('The retention time budget is spent; stopped');
+    return request(args, RETENTION_REQUEST_TIMEOUT_MS);
+  };
   const mode = nightlyDesktopPruneMode(switchValue);
   /** @type {{ mode: 'delete' | 'report', plan: ReturnType<typeof planNightlyDesktopRetention> | undefined, deleted: Array<{ id: number, name: string, url: string, version: string }>, warning: string | undefined }} */
   const result = { mode, plan: undefined, deleted: [], warning: undefined };

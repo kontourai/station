@@ -353,8 +353,8 @@ after a failed upload until the next build, can briefly find nothing):
   `https://github.com/kontourai/station/releases/download/nightly-desktop/station-nightly-windows-x86_64-setup.exe`
 
 The release also carries the same builds under versioned names
-(`station-<version>-…`), and versioned downloads of earlier builds, which
-may be removed after about two weeks. Its `SHA256SUMS` lists
+(`station-<version>-…`), and versioned downloads of earlier builds; older
+ones may be removed once 30 newer builds have been published. Its `SHA256SUMS` lists
 the newest build's downloads under both names. Download it next to the
 installer and check it, for example
 `shasum -a 256 --ignore-missing -c SHA256SUMS` on macOS,

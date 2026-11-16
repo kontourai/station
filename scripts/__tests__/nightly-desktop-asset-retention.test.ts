@@ -1,7 +1,10 @@
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
   NIGHTLY_DESKTOP_MAX_DELETIONS_PER_RUN,
+  NIGHTLY_DESKTOP_MAX_RELEASE_ASSETS,
   NIGHTLY_DESKTOP_RETAINED_COHORTS,
+  NIGHTLY_DESKTOP_RETENTION_BUDGET_MS,
   planNightlyDesktopRetention,
   retainNightlyDesktopAssets,
 } from '../lib/publish-nightly-desktop.mjs';
@@ -25,6 +28,8 @@ import {
  */
 
 type Asset = ReturnType<typeof asset>;
+const sha256 = (text: string) =>
+  createHash('sha256').update(text).digest('hex');
 const versionsOf = (names: string[]) => [
   ...new Set(
     names.map((name) => /^station-(.+?-nightly\.[\d.]+?)-/.exec(name)![1]),
@@ -152,7 +157,8 @@ it('refuses a run asked to delete more than the per-run bound', () => {
   const fake = realistic();
   const { result } = retain(fake, 'enabled', { maxDeletions: 100 });
   expect(result.plan!.deletions.length).toBeGreaterThan(25);
-  expect(result.warning).toContain('per-run bound is 25');
+  // `?? ''` keeps a missing warning a plain assertion failure.
+  expect(result.warning ?? '').toContain('per-run bound is 25');
   expect(deleteCalls(fake.calls)).toEqual([]);
 });
 
@@ -204,15 +210,193 @@ it('never selects the current cohort, the manifest cohort, fixed names, sums, ma
   for (const name of keptNames) expect(deleted).not.toContain(name);
 });
 
-it('protects the cohort latest.json names even when it is not the one just published', () => {
-  const current = '0.1.11-nightly.2449.2';
-  const plan = planNightlyDesktopRetention({
-    assets: [...cohort(current), ...cohort('0.1.11-nightly.2449.3')],
+const DOWNLOAD =
+  'https://github.com/kontourai/station/releases/download/nightly-desktop/';
+const twoCohorts = (current: string, other: string, manifest: object) =>
+  planNightlyDesktopRetention({
+    assets: [...cohort(current), ...cohort(other)],
     currentVersion: current,
-    manifest: JSON.parse(manifestBody('0.1.11-nightly.2449.3')),
+    manifest,
     keepCohorts: 0,
   });
-  expect(plan.deletions).toEqual([]);
+
+it('protects the cohort latest.json points its downloads at, on its own', () => {
+  const current = '0.1.11-nightly.2449.2';
+  // The version names this cohort; only the URLs name the other one.
+  const manifest = JSON.parse(manifestBody(current, '0.1.11-nightly.2449.3'));
+  expect(
+    twoCohorts(current, '0.1.11-nightly.2449.3', manifest).deletions,
+  ).toEqual([]);
+  // Control: without that URL the other cohort is selected.
+  expect(
+    twoCohorts(
+      current,
+      '0.1.11-nightly.2449.3',
+      JSON.parse(manifestBody(current)),
+    ).deletions,
+  ).toHaveLength(5);
+});
+
+it('protects the cohort latest.json names as its version, on its own', () => {
+  const current = '0.1.11-nightly.2449.2';
+  // The URLs name this cohort; only the version names the other one.
+  const manifest = JSON.parse(manifestBody('0.1.11-nightly.2449.3', current));
+  expect(
+    twoCohorts(current, '0.1.11-nightly.2449.3', manifest).deletions,
+  ).toEqual([]);
+});
+
+describe('plans nothing from a latest.json URL that is not exactly one versioned asset', () => {
+  const name = 'station-0.1.11-nightly.2449.3-macos-aarch64.app.tar.gz';
+  for (const url of [
+    `${DOWNLOAD}${name}?raw=1`,
+    `${DOWNLOAD}${name}#x`,
+    `${DOWNLOAD}${name.replace('2449.3', '2449%2E3')}`,
+    `${DOWNLOAD}x/../${name}`,
+    `${DOWNLOAD}./${name}`,
+    `${DOWNLOAD}whatever.bin`,
+    `${DOWNLOAD}latest.json`,
+    `${DOWNLOAD}station-nightly-desktop-macos-aarch64.app.tar.gz`,
+    'https://objects.githubusercontent.com/x',
+    `https://user@github.com/kontourai/station/releases/download/nightly-desktop/${name}`,
+  ])
+    it(url, () => {
+      const manifest = JSON.parse(manifestBody('0.1.11-nightly.2449.2'));
+      manifest.platforms['darwin-aarch64'].url = url;
+      expect(() =>
+        twoCohorts('0.1.11-nightly.2449.2', '0.1.11-nightly.2449.3', manifest),
+      ).toThrow(/latest\.json names a download/);
+    });
+  it('an empty platforms map', () => {
+    expect(() =>
+      twoCohorts('0.1.11-nightly.2449.2', '0.1.11-nightly.2449.3', {
+        version: '0.1.11-nightly.2449.2',
+        platforms: {},
+      }),
+    ).toThrow('latest.json names no platforms');
+  });
+  it('through the step: warns and deletes nothing', () => {
+    const { assets } = realisticListing();
+    const manifest = JSON.parse(manifestBody(CURRENT));
+    manifest.platforms['windows-x86_64'].url += '?raw=1';
+    const body = JSON.stringify(manifest);
+    const listed = assets.map((entry: Asset) =>
+      entry.name === 'latest.json'
+        ? { ...entry, size: body.length, digest: `sha256:${sha256(body)}` }
+        : entry,
+    );
+    const fake = createFakeRelease({ assets: listed, manifest: body });
+    const { result } = retain(fake, 'enabled');
+    expect(result.plan).toBeUndefined();
+    expect(result.warning ?? '').toContain('not exactly one versioned asset');
+    expect(deleteCalls(fake.calls)).toEqual([]);
+  });
+});
+
+describe('re-reads each asset by id before deleting it and stops on any difference', () => {
+  const cases: Array<[string, (found: Asset) => string]> = [
+    [
+      'the same id under another name',
+      (found) => JSON.stringify({ ...found, name: `${found.name}.x` }),
+    ],
+    [
+      'the same id and name at another download URL',
+      (found) =>
+        JSON.stringify({
+          ...found,
+          browser_download_url: `${found.browser_download_url}x`,
+        }),
+    ],
+    [
+      'an asset that is gone (404)',
+      () => {
+        throw new Error('gh: Not Found (HTTP 404)');
+      },
+    ],
+  ];
+  for (const [label, answer] of cases)
+    it(label, () => {
+      const { assets, manifest } = realisticListing();
+      const fake = createFakeRelease(
+        { assets, manifest },
+        {
+          before: (args: string[], state: { assets: Asset[] }) => {
+            const one = /\/releases\/assets\/(\d+)$/.exec(args[1] ?? '');
+            if (!one || args.length !== 2) return undefined;
+            return answer(
+              state.assets.find((entry) => entry.id === Number(one[1]))!,
+            );
+          },
+        },
+      );
+      const { result } = retain(fake, 'enabled');
+      expect(result.plan!.deletions).toHaveLength(25);
+      expect(result.warning ?? '').not.toBe('');
+      expect(deleteCalls(fake.calls)).toEqual([]);
+    });
+});
+
+it('refuses two assets with one name, even under different ids', () => {
+  const { assets, manifest } = realisticListing();
+  const twin = { ...assets[1], id: 999_999_999 };
+  const fake = createFakeRelease({ assets: [...assets, twin], manifest });
+  const { result } = retain(fake, 'enabled');
+  expect(result.plan).toBeUndefined();
+  expect(result.warning ?? '').toContain('duplicate');
+  expect(deleteCalls(fake.calls)).toEqual([]);
+});
+
+it('refuses to prune when this cohort is not fully published', () => {
+  const { assets, manifest } = realisticListing();
+  const missing = `station-${CURRENT}-windows-x86_64-setup.exe.sig`;
+  const fake = createFakeRelease({
+    assets: assets.filter((entry: Asset) => entry.name !== missing),
+    manifest,
+  });
+  const { result } = retain(fake, 'enabled');
+  expect(result.plan).toBeUndefined();
+  expect(result.warning ?? '').toContain('is not fully published');
+  expect(deleteCalls(fake.calls)).toEqual([]);
+});
+
+it('reads a listing of exactly 1,000 assets and refuses 1,001', () => {
+  expect(NIGHTLY_DESKTOP_MAX_RELEASE_ASSETS).toBe(1000);
+  const listing = (count: number) => {
+    const { assets, manifest } = realisticListing();
+    const pad = Array.from({ length: count - assets.length }, (_, index) =>
+      asset(`padding-${index}.txt`),
+    );
+    return createFakeRelease({ assets: [...assets, ...pad], manifest });
+  };
+  const full = listing(1000);
+  expect(full.state.assets).toHaveLength(1000);
+  const accepted = retain(full);
+  expect(accepted.result.warning).toBeUndefined();
+  expect(accepted.result.plan!.assets).toBe(1000);
+  const over = listing(1001);
+  const refused = retain(over, 'enabled');
+  expect(refused.result.plan).toBeUndefined();
+  expect(refused.result.warning ?? '').toContain('within 1,000 assets');
+  expect(deleteCalls(over.calls)).toEqual([]);
+});
+
+it('stops starting requests once its time budget is spent', () => {
+  expect(NIGHTLY_DESKTOP_RETENTION_BUDGET_MS).toBe(180_000);
+  const fake = realistic();
+  let clock = 0;
+  const { result } = retain(fake, 'enabled', {
+    // Each request appears to take ten seconds.
+    now: () => clock,
+    run: (args: string[]) => {
+      clock += 10_000;
+      return fake.run(args);
+    },
+  });
+  // Requests start at 0 s through 180 s: 19 of them, the release, seven
+  // pages and latest.json, then five re-read/delete pairs; the 20th is refused.
+  expect(result.warning ?? '').toContain('time budget is spent');
+  expect(deleteCalls(fake.calls)).toHaveLength(5);
+  expect(fake.calls).toHaveLength(19);
 });
 
 it('warns and keeps the publication when a delete fails, and the next run finishes the cohort', () => {
