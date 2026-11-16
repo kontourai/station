@@ -22,6 +22,7 @@ import {
   type TaskWorkspaceBinding,
 } from '@kontourai/station-contracts';
 import type { IPullRequestProvider } from '@kontourai/station-contracts/pull-request-provider';
+import type { TaskPullRequestWatchView } from '@kontourai/station-contracts/pull-request-watch';
 import {
   SESSION_INVENTORY_CURRENT_GROUP_IDS,
   type SessionInventoryRow,
@@ -297,6 +298,9 @@ function sameTaskWorkspaceBinding(
 }
 
 const taskCloseOnMergeSchema = z.object({ enabled: z.boolean() }).strict();
+const taskPullRequestWatchSchema = z
+  .object({ mode: z.enum(['on', 'off', 'project']) })
+  .strict();
 
 const taskStatusSchema = z.object({
   status: z.preprocess((value) => {
@@ -459,6 +463,16 @@ export function createTaskRoutes(
     pullRequestProviders?: () => IPullRequestProvider[];
     /** Exact-identity tracker reads (#4003). Personal mode only. */
     workItemObserver?: WorkItemObserver;
+    /**
+     * #5066: a Task's pull request watch. Personal mode only, and only once
+     * pull request feedback is composed; absent answers 404.
+     */
+    pullRequestWatch?: () =>
+      | {
+          view(task: TaskRecord): TaskPullRequestWatchView;
+          syncTask(task: TaskRecord): void;
+        }
+      | undefined;
     /**
      * The Project board's provider item with exactly this ref, if the board
      * lists it. Start Task observes only an item the board offered, never a
@@ -2575,6 +2589,44 @@ export function createTaskRoutes(
           resolveClientOriginForRequest(c.req.raw),
         );
         return c.json({ success: true, data });
+      } catch (error) {
+        return c.json({ success: false, error: errorMessage(error) }, 400);
+      }
+    },
+  );
+
+  // #5066: what this Task's pull request watch shows (its pull requests,
+  // fix attempts and refused agent actions), and a person's choice to watch
+  // or Stop watching. No station-control tool names either route, so the
+  // central authority guard refuses an agent's request to them.
+  app.get('/:taskId/pull-request-watch', (c) => {
+    if (hostedRequest(c.req.raw)) return hostedNotFound(c);
+    const host = options.pullRequestWatch?.();
+    if (!host) return hostedNotFound(c);
+    try {
+      const task = taskGraphService.readTask(param(c, 'taskId'));
+      if (!task)
+        return c.json({ success: false, error: 'Task not found' }, 404);
+      return c.json({ success: true, data: host.view(task) });
+    } catch (error) {
+      return c.json({ success: false, error: errorMessage(error) }, 500);
+    }
+  });
+  app.put(
+    '/:taskId/pull-request-watch',
+    validate(taskPullRequestWatchSchema),
+    async (c) => {
+      if (hostedRequest(c.req.raw)) return hostedNotFound(c);
+      const host = options.pullRequestWatch?.();
+      if (!host) return hostedNotFound(c);
+      try {
+        const task = await taskGraphService.setPullRequestWatch(
+          param(c, 'taskId'),
+          getBody(c).mode,
+          resolveClientOriginForRequest(c.req.raw),
+        );
+        host.syncTask(task);
+        return c.json({ success: true, data: host.view(task) });
       } catch (error) {
         return c.json({ success: false, error: errorMessage(error) }, 400);
       }

@@ -2775,6 +2775,241 @@ function stationSwitcherScreens(): Screen[] {
   });
 }
 
+/**
+ * #5066: a Task's pull request watch on its Overview, and the Project's
+ * Pull requests setting. The Task and Project are real; only the Task's watch
+ * read is routed, to a fixed view a real forge would take a day to produce
+ * (one pull request ready, one out of fix attempts, two refused actions).
+ */
+function pullRequestWatchScreens(): Screen[] {
+  return (['dark', 'light'] as const).flatMap((theme) =>
+    [DESKTOP, MOBILE].flatMap((viewport): Screen[] => {
+      const form = viewport.width === DESKTOP.width ? 'desktop' : 'mobile';
+      const preview = (page: Page) => {
+        const request = createAuthenticatedE2ERequest(page.request);
+        let previous: boolean | undefined;
+        return {
+          request,
+          async enable() {
+            const previews = await request.get(
+              `${resolveE2EApiBase()}/api/feature-previews`,
+            );
+            expect(previews.ok()).toBe(true);
+            const entry = (await previews.json()).data.find(
+              (item: { id: string }) =>
+                item.id === 'pull-request-agent-feedback',
+            );
+            expect(entry).toBeDefined();
+            previous = entry.enabled;
+            const enabled = await request.put(
+              `${resolveE2EApiBase()}/api/feature-previews/pull-request-agent-feedback`,
+              { data: { enabled: true } },
+            );
+            expect(enabled.ok()).toBe(true);
+          },
+          async restore() {
+            if (previous === undefined) return;
+            const restored = await request.put(
+              `${resolveE2EApiBase()}/api/feature-previews/pull-request-agent-feedback`,
+              { data: { enabled: previous } },
+            );
+            expect(restored.ok()).toBe(true);
+          },
+        };
+      };
+
+      const taskSlug = `gallery-pr-watch-${theme}-${viewport.width}`;
+      let taskFixture: ReturnType<typeof preview> | undefined;
+      let taskProject = false;
+      let pageForTask: Page | undefined;
+      const watchRoute = async (route: Route) => {
+        if (route.request().method() !== 'GET') return route.continue();
+        const taskId = decodeURIComponent(
+          new URL(route.request().url()).pathname.split('/')[3] ?? '',
+        );
+        const identity = (ref: string) => ({
+          provider: 'github',
+          host: 'github.com',
+          repository: { owner: 'acme', name: 'widgets' },
+          ref,
+        });
+        await route.fulfill({
+          json: {
+            success: true,
+            data: {
+              taskId,
+              watching: true,
+              source: 'project',
+              mode: 'project',
+              projectEnabled: true,
+              maxFixAttempts: 3,
+              available: true,
+              pullRequests: [
+                {
+                  identity: identity('42'),
+                  url: 'https://github.com/acme/widgets/pull/42',
+                  watch: {
+                    state: 'ready',
+                    headSha: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
+                    at: '2026-11-17T09:12:00.000Z',
+                  },
+                  fixAttempts: 1,
+                  maxFixAttempts: 3,
+                },
+                {
+                  identity: identity('57'),
+                  url: 'https://github.com/acme/widgets/pull/57',
+                  watch: {
+                    state: 'budget-spent',
+                    failing: ['ci / unit-tests', 'ci / lint'],
+                    headSha: 'b2c3d4e5f60718293a4b5c6d7e8f901234567890',
+                  },
+                  fixAttempts: 3,
+                  maxFixAttempts: 3,
+                },
+              ],
+              refusals: [
+                {
+                  id: 'refusal-2',
+                  at: '2026-11-17T09:05:00.000Z',
+                  kind: 'force-push',
+                  outcome: 'refused',
+                  toolName: 'Bash',
+                  detail: 'git push --force-with-lease origin topic',
+                },
+                {
+                  id: 'refusal-1',
+                  at: '2026-11-17T08:40:00.000Z',
+                  kind: 'arm-auto-merge',
+                  outcome: 'refused',
+                  toolName: 'Bash',
+                  detail: 'gh pr merge 42 --auto --squash',
+                },
+              ],
+            },
+          },
+        });
+      };
+      const taskScreen: Screen = {
+        name: `task-pr-watch-${theme}-${form}`,
+        title: `Task pull request watch — ${theme}, ${viewport.width}px`,
+        path: '/',
+        viewport,
+        captureTheme: theme,
+        async beforeGoto(page) {
+          pageForTask = page;
+          taskFixture = preview(page);
+          await taskFixture.enable();
+          const project = await taskFixture.request.post(
+            `${resolveE2EApiBase()}/api/projects`,
+            { data: { name: taskSlug, slug: taskSlug } },
+          );
+          expect(project.ok()).toBe(true);
+          taskProject = true;
+          const task = await taskFixture.request.post(
+            `${resolveE2EApiBase()}/api/tasks`,
+            {
+              data: {
+                projectId: taskSlug,
+                title: 'Fix the login redirect on Safari',
+                createdBy: 'user',
+              },
+            },
+          );
+          expect(task.ok()).toBe(true);
+          const created = await task.json();
+          taskScreen.path = `/tasks/${encodeURIComponent(created.data.id)}?taskView=overview`;
+          await page.route('**/api/tasks/*/pull-request-watch', watchRoute);
+        },
+        async afterGoto(page) {
+          const panel = page.getByRole('region', {
+            name: 'Pull request watch',
+          });
+          await expect(panel).toBeVisible();
+          await expect(panel.getByText('Ready for you')).toBeVisible();
+          await expect(
+            panel.getByText('Still failing: ci / unit-tests, ci / lint'),
+          ).toBeVisible();
+          await expect(
+            panel.getByRole('button', { name: 'Stop watching' }),
+          ).toBeVisible();
+          await panel
+            .getByRole('button', { name: 'Refused actions · 2' })
+            .click();
+          await expect(panel.getByText('Arm auto-merge')).toBeVisible();
+          await panel.scrollIntoViewIfNeeded();
+        },
+        async cleanup() {
+          try {
+            await pageForTask?.unroute(
+              '**/api/tasks/*/pull-request-watch',
+              watchRoute,
+            );
+            if (taskProject) {
+              const deleted = await taskFixture!.request.delete(
+                `${resolveE2EApiBase()}/api/projects/${taskSlug}`,
+              );
+              expect(deleted.ok()).toBe(true);
+            }
+          } finally {
+            await taskFixture?.restore();
+          }
+        },
+      };
+
+      const projectSlug = `gallery-pr-setting-${theme}-${viewport.width}`;
+      let projectFixture: ReturnType<typeof preview> | undefined;
+      let projectCreated = false;
+      const projectScreen: Screen = {
+        name: `project-pull-requests-${theme}-${form}`,
+        title: `Project pull request setting — ${theme}, ${viewport.width}px`,
+        path: `/projects/${projectSlug}/edit?section=pull-requests`,
+        viewport,
+        captureTheme: theme,
+        async beforeGoto(page) {
+          projectFixture = preview(page);
+          await projectFixture.enable();
+          const project = await projectFixture.request.post(
+            `${resolveE2EApiBase()}/api/projects`,
+            { data: { name: projectSlug, slug: projectSlug } },
+          );
+          expect(project.ok()).toBe(true);
+          projectCreated = true;
+          const set = await projectFixture.request.put(
+            `${resolveE2EApiBase()}/api/projects/${projectSlug}/pull-request-watch`,
+            { data: { enabled: true, maxFixAttempts: 3 } },
+          );
+          expect(set.ok()).toBe(true);
+        },
+        async afterGoto(page) {
+          const toggle = page.getByRole('switch', {
+            name: 'Watch Task pull requests',
+          });
+          await expect(toggle).toBeVisible();
+          await expect(toggle).toBeEnabled();
+          await expect(toggle).toBeChecked();
+          await expect(
+            page.getByRole('combobox', { name: 'Fix attempts' }),
+          ).toHaveValue('3');
+        },
+        async cleanup() {
+          try {
+            if (projectCreated) {
+              const deleted = await projectFixture!.request.delete(
+                `${resolveE2EApiBase()}/api/projects/${projectSlug}`,
+              );
+              expect(deleted.ok()).toBe(true);
+            }
+          } finally {
+            await projectFixture?.restore();
+          }
+        },
+      };
+      return [taskScreen, projectScreen];
+    }),
+  );
+}
+
 function taskCapabilityScreens(): Screen[] {
   return (['dark', 'light'] as const).flatMap((theme) =>
     [DESKTOP, MOBILE].map((viewport): Screen => {
@@ -6821,6 +7056,7 @@ const SCREENS: Screen[] = [
   ...childChatScreens(),
   ...stationSwitcherScreens(),
   ...taskCapabilityScreens(),
+  ...pullRequestWatchScreens(),
 ];
 
 async function statusRasterState(page: Page) {

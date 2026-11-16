@@ -211,7 +211,11 @@ export type PullRequestFeedbackStatus =
     }
   | {
       state: 'paused';
-      reason: 'round-limit' | 'repeated-failure';
+      /**
+       * `fix-budget` (#5066): a watching Task's pull request used every fix
+       * attempt its Project allows.
+       */
+      reason: 'round-limit' | 'repeated-failure' | 'fix-budget';
       headSha: string;
     }
   | { state: 'unavailable'; cause: PullRequestFeedbackUnavailableCause }

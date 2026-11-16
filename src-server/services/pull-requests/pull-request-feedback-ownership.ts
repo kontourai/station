@@ -186,6 +186,8 @@ export class PullRequestFeedbackOwnership {
     if (!this.ports.mayContinue(input.conversationId, input.viewer.userId))
       return { kind: 'not-permitted' };
     store.releaseClaim(prKey, new Date(this.now()).toISOString());
+    // A person turned it off here: a watching Task does not turn it on again.
+    if (claim.watch) store.setWatch(prKey, null);
     return {
       kind: 'ok',
       view: this.viewOf(

@@ -70,7 +70,8 @@ for the current supported model services and engines and their setup details.
 A Project's **Tasks board** files each Task by what is true of it now, never
 by a stored status: **Needs you** (its run asks for an approval or answer, the
 Task has an open question, the run failed, its pull requests merged and the
-Task can be marked done, or someone marked it blocked or for review),
+Task can be marked done, a watched pull request used every fix attempt, or
+someone marked it blocked or for review),
 **Running**, **In review** (an open pull request with changes requested,
 conflicts, checks not passing, a draft, a pending review, or an unknown
 state),
@@ -82,6 +83,21 @@ not read. A Task someone marked blocked stays in Needs you whatever its pull
 requests say.
 Each card shows one status line and one next action. The Project page's
 Tasks section switches between this board and a list.
+
+A Task can **watch the pull requests** kept on it, when its Project's
+**Pull requests** setting is on or the Task's own **Watch pull requests** is
+(behind the Pull request agent feedback Feature Preview). Station then wakes
+the Task's agent when CI fails or a reviewer writes, never on a timer of the
+agent's own, and each failure or comment wakes it once. The Task's **Pull
+request watch** panel shows each pull request as Watching, Fixing, or **Ready
+for you** once checks pass and reviews are answered. After the Project's
+number of fix attempts (3 unless changed) the Task moves to Needs you as **Fix
+attempts used**, with the failing checks named. Merging stays with you: the
+agent's attempts to merge, arm auto-merge or force-push are refused, a change
+to CI configuration asks you first, and each is listed under **Refused
+actions**. **Stop watching** turns it off for that Task. See
+[Task-owned pull requests](../decisions/task-owned-pull-requests.md) for what
+this does and does not cover.
 
 Example: “Explain this function” can be a direct chat. “Refactor this module,
 run its gates, and preserve the evidence” should be a Task. A Task can retain

@@ -84,6 +84,7 @@ import {
   type TaskOutputPromotion,
   TaskOutputsSection,
 } from './task-workspace/TaskOutputsSection';
+import { TaskPullRequestWatchPanel } from './task-workspace/TaskPullRequestWatchPanel';
 import { TaskRelationships } from './task-workspace/TaskRelationships';
 import {
   TaskRoomHeader,
@@ -755,6 +756,7 @@ function TaskWorkspaceContent({
         <TaskRelationships task={graph.task} kind="children" />
         <div id="task-deliverables">
           <TaskRoomResults task={graph.task} />
+          <TaskPullRequestWatchPanel task={graph.task} />
         </div>
       </div>
       <div

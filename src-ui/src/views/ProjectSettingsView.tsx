@@ -55,6 +55,7 @@ import { LayoutsSection } from './project-settings/LayoutsSection';
 import { NewChatDefaultsSection } from './project-settings/NewChatDefaultsSection';
 import { ProjectCheckoutFreshnessNotice } from './project-settings/ProjectCheckoutFreshnessNotice';
 import { ProjectSourcesSection } from './project-settings/ProjectSourcesSection';
+import { PullRequestWatchSection } from './project-settings/PullRequestWatchSection';
 import { ToolsSection } from './project-settings/ToolsSection';
 import type { ProjectForm } from './project-settings/types';
 import {
@@ -74,6 +75,7 @@ const PROJECT_SETTINGS_SECTIONS = [
   ['agents', 'Agents'],
   ['tools', 'Tools'],
   ['layouts', 'Layouts'],
+  ['pull-requests', 'Pull requests'],
   ['resources', 'Sources'],
   ['access', 'People and access'],
   ['knowledge', 'Project knowledge'],
@@ -806,6 +808,17 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             hidden={activeSection !== 'layouts'}
           >
             <LayoutsSection slug={slug} />
+          </div>
+
+          <div
+            className="project-settings__panel"
+            hidden={activeSection !== 'pull-requests'}
+          >
+            <PullRequestWatchSection
+              slug={slug}
+              settings={project?.pullRequestWatch}
+              onSaved={refetchProject}
+            />
           </div>
 
           <div

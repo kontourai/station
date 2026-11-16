@@ -6302,6 +6302,15 @@ another chat is read with `pullRequestFeedbackOwnerOf`. Gate the calls on
 preview is off. The [client](../../packages/sdk/src/client/pull-request-feedback.ts)
 calls the [routes](../../src-server/routes/pull-requests/pull-request-feedback.ts).
 
+`@kontourai/station-sdk/pull-request-watch` reads a Task's pull request watch
+(`getTaskPullRequestWatch`), sets the Task's own choice
+(`setTaskPullRequestWatch` with `on`, `off` or `project`) and sets a Project's
+setting (`setProjectPullRequestWatch`). Gate it like pull request feedback, on
+`readPullRequestFeedbackCapability`. The
+[client](../../packages/sdk/src/client/pull-request-watch.ts) calls the
+[Task routes](../../src-server/routes/orchestration/tasks.ts) and the
+[Project route](../../src-server/routes/projects/projects.ts).
+
 ## Files in answers to input requests
 
 `getInputReplyContext(apiBase, reference, options)` from

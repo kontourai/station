@@ -293,7 +293,10 @@ import {
   type AgentHooksDeps,
   createAgentHooks,
 } from '../agents/agent-hooks.js';
-import { createStagedPreToolPolicyEvaluator } from '../agents/pre-tool-policy.js';
+import {
+  createStagedPreToolPolicyEvaluator,
+  type PullRequestWatchPolicy,
+} from '../agents/pre-tool-policy.js';
 import {
   activatePreparedRuntimeAgentInstance,
   buildRuntimeAgentInstance,
@@ -670,6 +673,15 @@ const SESSION_RECOVERY_WARNING_MS = 5 * 60_000;
 export class StationRuntime {
   private readonly virtualApplicationConfiguration?: StationRuntimeOptions['virtualApplication'];
   private readonly virtualApplicationLifetime = new AbortController();
+  /**
+   * #5066: the watching-Task refusals, bound once the routes compose pull
+   * request feedback. Every agent's pre-tool policy reads it per call, so
+   * an agent built before that binding is still covered.
+   */
+  private readonly pullRequestWatchSlot: { current?: PullRequestWatchPolicy } =
+    {};
+  private readonly pullRequestWatchPolicy: PullRequestWatchPolicy = (input) =>
+    this.pullRequestWatchSlot.current?.(input);
   private virtualApplication?: VirtualApplicationIngress;
   private readonly relayInvitationOwner?: RelayInvitationOwner;
   private readonly selfHostedBrokerConfiguration?: StationRuntimeOptions['selfHostedBrokerConnector'];
@@ -1469,6 +1481,7 @@ export class StationRuntime {
     });
     return createStagedPreToolPolicyEvaluator({
       spec,
+      pullRequestWatchPolicy: this.pullRequestWatchPolicy,
       projectToolPolicy: () => {
         const policy = new ToolLibraryService(
           this.configLoader.getProjectHomeDir(),
@@ -5425,6 +5438,9 @@ export class StationRuntime {
       serverUpdate,
       analyticsMaintenance,
     } = configureRuntimeRoutes({
+      bindPullRequestWatchPolicy: (policy) => {
+        this.pullRequestWatchSlot.current = policy;
+      },
       discordGateway: this.discordGatewayService,
       retainProjectRoomRuntime: (runtime) => {
         this.projectRoomRuntime = runtime;
@@ -5755,6 +5771,7 @@ export class StationRuntime {
       observeModelContext: (
         observation: import('../types.js').ModelGenerationObservation,
       ) => recordManagedModelContext(this.orchestrationEventStore, observation),
+      pullRequestWatchPolicy: this.pullRequestWatchPolicy,
       agentSlug,
       validateProjectTools: (
         slug: string,
