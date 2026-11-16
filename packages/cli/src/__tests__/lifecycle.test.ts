@@ -5704,7 +5704,7 @@ describe('upgrade', () => {
       launcher: 'station-nightly',
     },
   ] as const)(
-    'delegates a signed packaged $runtimeChannel upgrade through the installer with the persisted release ring',
+    'enforces packaged $runtimeChannel upgrade admission before installer effects',
     async ({ runtimeChannel, releaseChannel, launcher }) => {
       const installRoot = join(TEST_ROOT, `portable-${runtimeChannel}`);
       const release = join(installRoot, 'releases', 'a'.repeat(64));
@@ -5771,6 +5771,14 @@ describe('upgrade', () => {
           spawnSync: staleSchedulingSpawnSync(unitPath),
         },
       });
+      if (runtimeChannel === 'beta') {
+        await expect(lifecycle.upgrade()).rejects.toThrow(
+          'packaged release provenance is invalid',
+        );
+        expect(execFileSync).not.toHaveBeenCalled();
+        expect(execSync).not.toHaveBeenCalled();
+        return;
+      }
       // What the CLI bootstrap writes into every CLI process: this
       // process's launch facts, never a request for the installed runtime.
       // The installer's own port variable is the caller's, and passes.
