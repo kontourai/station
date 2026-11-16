@@ -647,8 +647,15 @@ export function RoomConversation({
       setAnchorVersion((version) => version + 1);
       captureReader();
     }
+    // Reaching the end resumes following, unless the list made that scroll
+    // itself or a notification's message holds the view until the reader
+    // moves (#4799).
     if (distance <= FOLLOW_SLACK_PX) {
-      if (!following.current || unseen) setFollowing(true);
+      if (
+        (!following.current || unseen) &&
+        (reader || (!programmatic && !focusHold.current))
+      )
+        setFollowing(true);
     } else if (reader && following.current) setFollowing(false);
     if (reader && hasOlder && element.scrollTop <= OLDER_BAND_PX) loadOlder();
   };
