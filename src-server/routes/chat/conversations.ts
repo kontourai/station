@@ -777,6 +777,13 @@ export function createConversationRoutes(
    */
   stationControlDispatchScope?: StationControlDispatchScope,
   nativeForkStoredRead?: NativeForkStoredRoutePorts,
+  /**
+   * The paired Station an import comes from, read from the authenticated
+   * delegation Device, or `undefined` for any other caller (which is refused).
+   */
+  importCaller?: (
+    request: Request,
+  ) => { deviceId: string; stationName: string } | undefined,
 ) {
   const app = new Hono();
   const sessionSummaries =
@@ -887,6 +894,30 @@ export function createConversationRoutes(
         idempotent,
       },
     });
+
+  /**
+   * An import's answer, read from what was SAVED, so a same-key retry reports
+   * the first request's counts rather than whatever the sender reads now.
+   */
+  const importReply = (
+    c: Context,
+    snapshot: ConversationForkContextSnapshot,
+    idempotent: boolean,
+  ) => {
+    const pin = readConversationContextSeedPin(snapshot.seedPinJson);
+    const carried = (JSON.parse(snapshot.copiedMessagesJson) as unknown[])
+      .length;
+    return c.json({
+      success: true,
+      data: {
+        conversationId: snapshot.targetConversationId,
+        carriedMessages: carried,
+        omittedMessages: Math.max(0, pin.omission.totalMessages - carried),
+        nonTextMessages: pin.omission.nonTextMessages,
+        idempotent,
+      },
+    });
+  };
 
   const guardSavedNativeFork = (
     c: Context,
@@ -1486,13 +1517,24 @@ export function createConversationRoutes(
   );
 
   // Continue a conversation from a paired Station (`conversationStationHandoff`).
-  // The other Station sends its bounded text history; this one saves it as a
-  // fork context on a new conversation for `:slug`, exactly as a fork of a
-  // local conversation is saved, so its first `/chat` start and every later
-  // continuation carry it. The history is the sender's own record, shown and
-  // seeded as quoted context, never as this Station's provider output.
+  // Only an authenticated paired Station (a delegation Device) may import; its
+  // own Device record names it, never the body. It sends its bounded text
+  // history; this one saves it as a fork context on a new conversation for
+  // `:slug`, so its first `/chat` start and every later continuation carry it.
+  // The rows are that Station's claim: stored with `importedFrom`, and quoted
+  // line by line in the seed, but this Station's transcript views show them as
+  // ordinary user and assistant rows.
   app.post('/:slug/conversation-imports', async (c) => {
     try {
+      const sender = importCaller?.(c.req.raw);
+      if (!sender)
+        return c.json(
+          {
+            success: false,
+            error: 'Only a paired Station can continue a conversation here.',
+          },
+          403,
+        );
       let targetAgent: string;
       try {
         targetAgent = agentId(param(c, 'slug'));
@@ -1576,7 +1618,10 @@ export function createConversationRoutes(
             authority,
           )) != null,
       );
-      const sourceConversationId = importedSourceConversationId(body.source);
+      const sourceConversationId = importedSourceConversationId(
+        sender.deviceId,
+        body.source.conversationId,
+      );
       const previous = eventStore.readConversationForkContextForRequest(
         sourceConversationId,
         body.idempotencyKey,
@@ -1603,9 +1648,16 @@ export function createConversationRoutes(
           throw new ConversationForkContextError(
             'Saved import context is unavailable.',
           );
-        return previous.state === 'ready'
-          ? forkReply(c, saved, true)
-          : await finishSavedFork(c, saved, authority, actionOperationActor);
+        if (previous.state !== 'ready') {
+          const finished = await finishSavedFork(
+            c,
+            saved,
+            authority,
+            actionOperationActor,
+          );
+          if (!finished.ok) return finished;
+        }
+        return importReply(c, saved, true);
       }
       const ownedTargetProject =
         typeof resolvedTarget === 'object' ? resolvedTarget.project : undefined;
@@ -1652,8 +1704,16 @@ export function createConversationRoutes(
         targetAgent,
         ownerUserId: authority.userId,
         createdAt: new Date().toISOString(),
-        sourceTitle: `${body.source.title.trim() || 'Previous conversation'} (from ${body.source.stationName})`,
+        sourceTitle: body.source.title.trim() || 'Previous conversation',
         messages: importedConversationMessages(body),
+        imported: {
+          stationName: sender.stationName,
+          upstream: {
+            omittedMessages: body.omittedMessages,
+            nonTextMessages: body.nonTextMessages,
+            shortenedMessages: body.shortenedMessages,
+          },
+        },
         idempotencyKey: body.idempotencyKey,
         ...(authority.tenantExecutionContext
           ? { tenantId: authority.tenantExecutionContext.tenantId }
@@ -1662,11 +1722,26 @@ export function createConversationRoutes(
           ? { projectSlug, requestedProjectSlug: projectSlug }
           : {}),
       });
-      return await finishSavedFork(
+      const finished = await finishSavedFork(
         c,
         snapshot,
         authority,
         actionOperationActor,
+      );
+      if (!finished.ok) return finished;
+      const saved = eventStore.readConversationForkContextSnapshot(
+        snapshot.targetConversationId,
+        authority,
+      );
+      if (!saved)
+        throw new ConversationForkContextError(
+          'Saved import context is unavailable.',
+        );
+      return importReply(
+        c,
+        saved,
+        ((await finished.clone().json()) as { data?: { idempotent?: boolean } })
+          .data?.idempotent === true,
       );
     } catch (error: unknown) {
       return conversationRouteFailure(

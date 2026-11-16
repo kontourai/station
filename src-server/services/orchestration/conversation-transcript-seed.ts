@@ -1,5 +1,6 @@
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
 import { approxInjectedTokens } from '../../routes/chat/chat-context-injection.js';
+import { quotedLines } from './quoted-text.js';
 
 /**
  * #3164: the one provider-neutral transcript seed for every fresh engine
@@ -61,6 +62,19 @@ export interface TranscriptSeed {
   omittedMessages: number;
   /** The newest message alone exceeded the budget and its middle was cut. */
   newestShortened: boolean;
+  /** Rows with no text, including any the sender already left out. */
+  nonTextMessages: number;
+}
+
+/**
+ * What the sending Station already left out before the entries reached this
+ * builder (a conversation continued from another Station). The disclosure
+ * counts it, so a seed never says it holds everything when the sender cut.
+ */
+export interface TranscriptSeedUpstreamOmission {
+  omittedMessages: number;
+  nonTextMessages: number;
+  shortenedMessages: number;
 }
 
 /**
@@ -138,6 +152,7 @@ function disclosure(input: {
   omitted: number;
   nonText: number;
   shortened: boolean;
+  upstreamShortened?: number;
 }): string {
   const lines: string[] = [];
   const one = (count: number) => count === 1;
@@ -162,6 +177,11 @@ function disclosure(input: {
   if (input.shortened) {
     lines.push(
       'The most recent message was too long to include whole: its beginning and end are shown, and its middle is marked as omitted.',
+    );
+  }
+  if (input.upstreamShortened) {
+    lines.push(
+      `${input.upstreamShortened} included ${one(input.upstreamShortened) ? 'message was' : 'messages were'} cut by the sending Station: ${one(input.upstreamShortened) ? 'its' : 'their'} middle is marked as left out.`,
     );
   }
   return lines.join('\n');
@@ -237,6 +257,13 @@ export function buildTranscriptSeed(input: {
   entries: readonly TranscriptSeedEntry[];
   nonTextMessages?: number;
   budgetTokens?: number;
+  /** Counted in the disclosure; see {@link TranscriptSeedUpstreamOmission}. */
+  upstream?: TranscriptSeedUpstreamOmission;
+  /**
+   * Render each message body as quoted lines (`> `), so text another Station
+   * sent cannot pose as a `User:` or `Assistant:` line of this transcript.
+   */
+  quoteBodies?: boolean;
 }): TranscriptSeed {
   const budget = input.budgetTokens ?? TRANSCRIPT_SEED_DEFAULT_TOKEN_BUDGET;
   if (
@@ -248,14 +275,22 @@ export function buildTranscriptSeed(input: {
       `Transcript seed budget must be an integer from ${TRANSCRIPT_SEED_MIN_TOKEN_BUDGET} to ${TRANSCRIPT_SEED_MAX_TOKEN_BUDGET} estimated tokens; received ${budget}.`,
     );
   }
-  const entries = input.entries;
-  const total = entries.length;
-  const nonText = input.nonTextMessages ?? 0;
+  const entries = input.quoteBodies
+    ? input.entries.map((entry) => ({
+        ...entry,
+        text: quotedLines(entry.text).join('\n'),
+      }))
+    : input.entries;
+  const upstreamOmitted = input.upstream?.omittedMessages ?? 0;
+  const upstreamShortened = input.upstream?.shortenedMessages ?? 0;
+  const total = entries.length + upstreamOmitted;
+  const nonText =
+    (input.nonTextMessages ?? 0) + (input.upstream?.nonTextMessages ?? 0);
   // Reserve the widest disclosure (every counter at its maximum, every
   // notice, plus slack for singular/plural wording) so the real one can never
   // push the seed over the budget.
   const reserve = approxInjectedTokens(
-    `${input.heading}\n${disclosure({ total, included: total, omitted: total, nonText, shortened: true })}${' '.repeat(16)}\n\n`,
+    `${input.heading}\n${disclosure({ total, included: total, omitted: total, nonText, shortened: true, upstreamShortened })}${' '.repeat(16)}\n\n`,
   );
   if (reserve > budget) {
     throw new RangeError(
@@ -264,7 +299,7 @@ export function buildTranscriptSeed(input: {
   }
   let available = budget - reserve;
   const body: string[] = [];
-  for (let index = total - 1; index >= 0; index--) {
+  for (let index = entries.length - 1; index >= 0; index--) {
     const rendered = renderEntry(entries[index]!);
     const cost = approxInjectedTokens(`${rendered}\n\n`);
     if (cost > available) break;
@@ -272,8 +307,8 @@ export function buildTranscriptSeed(input: {
     available -= cost;
   }
   let shortened = false;
-  if (body.length === 0 && total > 0) {
-    const newest = shortenNewest(entries[total - 1]!, available);
+  if (body.length === 0 && entries.length > 0) {
+    const newest = shortenNewest(entries[entries.length - 1]!, available);
     if (newest !== null) {
       body.push(newest);
       shortened = true;
@@ -282,7 +317,14 @@ export function buildTranscriptSeed(input: {
   const omitted = total - body.length;
   const text = render(
     input.heading,
-    disclosure({ total, included: body.length, omitted, nonText, shortened }),
+    disclosure({
+      total,
+      included: body.length,
+      omitted,
+      nonText,
+      shortened,
+      upstreamShortened,
+    }),
     body,
   );
   return {
@@ -290,6 +332,7 @@ export function buildTranscriptSeed(input: {
     totalMessages: total,
     includedMessages: body.length,
     omittedMessages: omitted,
+    nonTextMessages: nonText,
     newestShortened: shortened,
   };
 }

@@ -4,6 +4,7 @@ import {
   type ConversationImportRequestV1,
   PEER_CONVERSATION_HANDOFF_MAX_MESSAGE_BYTES,
   PEER_CONVERSATION_HANDOFF_MAX_MESSAGES,
+  PEER_CONVERSATION_HANDOFF_MAX_REQUEST_BYTES,
   PEER_CONVERSATION_HANDOFF_MAX_TEXT_BYTES,
 } from '@kontourai/station-contracts/peer-chat';
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
@@ -17,33 +18,38 @@ import { transcriptSeedSource } from '../orchestration/conversation-transcript-s
  * output or attachment crosses.
  */
 
-function utf8Bytes(text: string): number {
-  return Buffer.byteLength(text, 'utf8');
+/**
+ * Bytes `text` takes inside a JSON string on the wire: control characters,
+ * quotes and backslashes are escaped, so this can be up to six times its
+ * UTF-8 size. Every bound here counts this, never the decoded size.
+ */
+export function encodedTextBytes(text: string): number {
+  return Buffer.byteLength(JSON.stringify(text), 'utf8') - 2;
 }
 
-/** Keep the head and tail of `text` within `maxBytes`, with a visible marker between. */
+/** Keep the head and tail of `text` within `maxBytes` encoded, with a visible marker between. */
 function cutMiddle(text: string, maxBytes: number): string {
   const characters = [...text];
   const marker = (left: number) =>
     `\n[… ${left} characters left out of this message …]\n`;
   // The marker's widest form: every character left out.
-  const budget = maxBytes - utf8Bytes(marker(characters.length));
+  const budget = maxBytes - encodedTextBytes(marker(characters.length));
   let headBytes = 0;
   let head = 0;
   while (
     head < characters.length &&
-    headBytes + utf8Bytes(characters[head]!) <= budget / 2
+    headBytes + encodedTextBytes(characters[head]!) <= budget / 2
   ) {
-    headBytes += utf8Bytes(characters[head]!);
+    headBytes += encodedTextBytes(characters[head]!);
     head += 1;
   }
   let tailBytes = 0;
   let tail = characters.length;
   while (
     tail > head &&
-    headBytes + tailBytes + utf8Bytes(characters[tail - 1]!) <= budget
+    headBytes + tailBytes + encodedTextBytes(characters[tail - 1]!) <= budget
   ) {
-    tailBytes += utf8Bytes(characters[tail - 1]!);
+    tailBytes += encodedTextBytes(characters[tail - 1]!);
     tail -= 1;
   }
   return `${characters.slice(0, head).join('')}${marker(tail - head)}${characters.slice(tail).join('')}`;
@@ -92,11 +98,12 @@ export function boundCarriedMessages(
   ) {
     const message = projected[index]!;
     const shortened =
-      utf8Bytes(message.text) > PEER_CONVERSATION_HANDOFF_MAX_MESSAGE_BYTES;
+      encodedTextBytes(message.text) >
+      PEER_CONVERSATION_HANDOFF_MAX_MESSAGE_BYTES;
     const text = shortened
       ? cutMiddle(message.text, PEER_CONVERSATION_HANDOFF_MAX_MESSAGE_BYTES)
       : message.text;
-    const size = utf8Bytes(text);
+    const size = encodedTextBytes(text);
     if (bytes + size > PEER_CONVERSATION_HANDOFF_MAX_TEXT_BYTES) break;
     bytes += size;
     if (shortened) shortenedMessages += 1;
@@ -111,7 +118,19 @@ export function boundCarriedMessages(
 }
 
 const count = z.number().int().min(0).max(1_000_000);
-const label = z.string().min(1).max(200);
+
+/**
+ * The import request as sent, or `null` when its encoding is one byte or more
+ * over {@link PEER_CONVERSATION_HANDOFF_MAX_REQUEST_BYTES}: the sender refuses
+ * it rather than send something the receiver's body ceiling would reject.
+ */
+export function encodeImportRequest(
+  request: ConversationImportRequestV1,
+  maxBytes = PEER_CONVERSATION_HANDOFF_MAX_REQUEST_BYTES,
+): string | null {
+  const body = JSON.stringify(request);
+  return Buffer.byteLength(body, 'utf8') > maxBytes ? null : body;
+}
 
 /**
  * The receiver's parse of an import. Every bound is checked by reading one
@@ -124,8 +143,6 @@ export const conversationImportRequestSchema: z.ZodType<ConversationImportReques
       idempotencyKey: z.string().min(1).max(128),
       source: z
         .object({
-          environmentId: label,
-          stationName: z.string().min(1).max(120),
           conversationId: z.string().min(1).max(256),
           title: z.string().max(500),
           agent: z.string().min(1).max(64),
@@ -143,7 +160,7 @@ export const conversationImportRequestSchema: z.ZodType<ConversationImportReques
                 .min(1)
                 .refine(
                   (text) =>
-                    utf8Bytes(text) <=
+                    encodedTextBytes(text) <=
                     PEER_CONVERSATION_HANDOFF_MAX_MESSAGE_BYTES,
                   'A carried message exceeds its byte bound.',
                 ),
@@ -155,7 +172,7 @@ export const conversationImportRequestSchema: z.ZodType<ConversationImportReques
         .refine(
           (messages) =>
             messages.reduce(
-              (total, message) => total + utf8Bytes(message.text),
+              (total, message) => total + encodedTextBytes(message.text),
               0,
             ) <= PEER_CONVERSATION_HANDOFF_MAX_TEXT_BYTES,
           'Carried history exceeds its byte bound.',
@@ -183,14 +200,17 @@ export const peerConversationHandoffRequestSchema = z
   .strict();
 
 /**
- * The fork-context source identity of an imported conversation. It names the
- * other Station, so it can never collide with a conversation of this one.
+ * The fork-context source identity of an imported conversation, keyed by the
+ * authenticated paired-Station Device that sent it (never a claim in the
+ * body), so it can never collide with a conversation of this Station or of
+ * another sender.
  */
 export function importedSourceConversationId(
-  source: ConversationImportRequestV1['source'],
+  senderDeviceId: string,
+  sourceConversationId: string,
 ): string {
   return `station:${createHash('sha256')
-    .update(JSON.stringify([source.environmentId, source.conversationId]))
+    .update(JSON.stringify([senderDeviceId, sourceConversationId]))
     .digest('hex')}`;
 }
 

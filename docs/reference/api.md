@@ -59,12 +59,16 @@ projection an Agent/engine handoff seeds from), bounds it to 400 messages and
 512 KB, newest first, cutting a message over 64 KB with a marker, and sends it
 with the saved peer credential to the receiver's
 `POST /agents/:slug/conversation-imports` (`ConversationImportRequestV1`). The
-receiver saves it as a fork context on a new conversation for the same Agent,
-in one of its own Projects. Answers: **200** `PeerConversationHandoffReceiptV1`
+bounds count JSON-encoded bytes, and the sender refuses (**413**) an encoded
+request over 768 KB rather than send it. The receiver accepts only an
+authenticated paired Station (**403** otherwise), names it from that credential,
+and saves the history as a fork context on a new conversation for the same
+Agent, in one of its own Projects. Its answer reports the counts it saved. Answers: **200** `PeerConversationHandoffReceiptV1`
 (no turn has run); **409** before sending (the receiver lacks
 `conversationStationHandoff`, nothing to carry, identity unconfirmed); **424**
-`peer_conversation_handoff_refused` when the receiver definitely refused (its
-text is not relayed); **502** with `outcome:'indeterminate'` once sent without a
+`peer_conversation_handoff_refused` when the receiver definitely refused, any
+4xx carrying its Station envelope, middleware refusals included (its text is
+not relayed); **409** when this Station cannot read or hand off its own chat; **502** with `outcome:'indeterminate'` once sent without a
 confirmed answer. A same-key retry returns the same conversation with
 `idempotent:true`. The client sends the first turn through the tunnel's `chat`
 leaf to the returned conversation. Both Stations advertise the

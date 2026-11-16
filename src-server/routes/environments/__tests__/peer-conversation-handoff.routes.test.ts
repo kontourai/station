@@ -4,6 +4,7 @@ import {
 } from '@kontourai/station-contracts/http';
 import {
   type ConversationImportRequestV1,
+  PEER_CONVERSATION_HANDOFF_MAX_REQUEST_BYTES,
   PEER_CONVERSATION_HANDOFF_REFUSAL_CODE,
 } from '@kontourai/station-contracts/peer-chat';
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
@@ -32,6 +33,7 @@ function fixture(
     source?:
       | { agentSlug: string; title: string; messages: ConversationMessage[] }
       | undefined;
+    readSourceError?: Error;
     owner?: boolean;
     preview?: boolean;
   } = {},
@@ -46,11 +48,12 @@ function fixture(
     updatedAt: 1,
   };
   const peers = { get: vi.fn(() => ({ ...peer })) };
-  const readSource = vi.fn(async () =>
-    'source' in options
+  const readSource = vi.fn(async () => {
+    if (options.readSourceError) throw options.readSourceError;
+    return 'source' in options
       ? options.source
-      : { agentSlug: 'helper', title: 'Move plan', messages: HISTORY },
-  );
+      : { agentSlug: 'helper', title: 'Move plan', messages: HISTORY };
+  });
   const app = createPeerChatRoutes({
     peers,
     remote: createRemoteStationForwarder({
@@ -63,10 +66,7 @@ function fixture(
       select: (branches) =>
         options.preview === false ? branches.disabled() : branches.enabled(),
     },
-    handoff: {
-      readSource,
-      sourceStation: async () => ({ environmentId: 'source', name: 'Laptop' }),
-    },
+    handoff: { readSource },
   });
   const fetch = vi.fn(
     async (input: string | URL | Request, _init?: RequestInit) => {
@@ -82,6 +82,9 @@ function fixture(
             success: true,
             data: {
               conversationId: 'conversation:import:abc',
+              carriedMessages: 2,
+              omittedMessages: 0,
+              nonTextMessages: 1,
               idempotent: false,
             },
           },
@@ -131,7 +134,6 @@ describe('continuing a conversation on a paired Station (source side)', () => {
         carriedMessages: 2,
         omittedMessages: 0,
         nonTextMessages: 1,
-        shortenedMessages: 0,
         idempotent: false,
       },
     });
@@ -151,9 +153,8 @@ describe('continuing a conversation on a paired Station (source side)', () => {
     expect(sent).toEqual({
       version: 1,
       idempotencyKey: 'key-1',
+      // Which Station sent it is not claimed: the receiver reads its credential.
       source: {
-        environmentId: 'source',
-        stationName: 'Laptop',
         conversationId: 'conversation-one',
         title: 'Move plan',
         agent: 'helper',
@@ -173,7 +174,7 @@ describe('continuing a conversation on a paired Station (source side)', () => {
     const { call, imports } = fixture({ flags: {} });
     const response = await call();
     expect(response.status).toBe(409);
-    expect((await response.json()).error).toBe(
+    expect(((await response.json()) as { error?: string }).error).toBe(
       'Update the paired Station to continue chats there.',
     );
     expect(imports()).toHaveLength(0);
@@ -221,7 +222,7 @@ describe('continuing a conversation on a paired Station (source side)', () => {
     });
     const response = await call();
     expect(response.status).toBe(424);
-    const body = await response.json();
+    const body = (await response.json()) as Record<string, unknown>;
     expect(body).toMatchObject({
       success: false,
       code: PEER_CONVERSATION_HANDOFF_REFUSAL_CODE,
@@ -262,5 +263,121 @@ describe('continuing a conversation on a paired Station (source side)', () => {
       success: false,
       outcome: 'indeterminate',
     });
+  });
+
+  test.each([
+    {
+      name: 'a scope refusal (403 insufficient_scope)',
+      status: 403,
+      body: { error: { code: 'insufficient_scope' } },
+    },
+    {
+      name: 'an origin refusal (403 origin_forbidden)',
+      status: 403,
+      body: { error: { code: 'origin_forbidden' } },
+    },
+    {
+      name: 'a body-size refusal (413 request_too_large)',
+      status: 413,
+      body: { error: { code: 'request_too_large', limit_bytes: 1048576 } },
+    },
+  ])(
+    "takes the receiver middleware's $name as definite, so a retry is not offered forever",
+    async ({ status, body: reply }) => {
+      const { call } = fixture({
+        importReply: () =>
+          Response.json(reply, {
+            status,
+            headers: {
+              [STATION_ENVELOPE_HEADER]: STATION_ENVELOPE_HEADER_VALUE,
+            },
+          }),
+      });
+      const response = await call();
+      expect(response.status).toBe(424);
+      const body = (await response.json()) as Record<string, unknown>;
+      expect(body).toMatchObject({
+        success: false,
+        code: PEER_CONVERSATION_HANDOFF_REFUSAL_CODE,
+      });
+      expect(body.outcome).toBeUndefined();
+    },
+  );
+
+  test('reports the counts the receiver saved, not the ones it read now', async () => {
+    const { call } = fixture({
+      importReply: () =>
+        Response.json(
+          {
+            success: true,
+            data: {
+              conversationId: 'conversation:import:abc',
+              carriedMessages: 5,
+              omittedMessages: 900,
+              nonTextMessages: 0,
+              idempotent: true,
+            },
+          },
+          {
+            headers: {
+              [STATION_ENVELOPE_HEADER]: STATION_ENVELOPE_HEADER_VALUE,
+            },
+          },
+        ),
+    });
+    expect(((await (await call()).json()) as { data: unknown }).data).toEqual({
+      version: 1,
+      environmentId: 'receiver',
+      conversationId: 'conversation:import:abc',
+      carriedMessages: 5,
+      omittedMessages: 900,
+      nonTextMessages: 0,
+      idempotent: true,
+    });
+  });
+
+  test("a failure reading this Station's own chat is said as such, before contacting the paired Station", async () => {
+    const portable = Object.assign(
+      new Error('This portable task cannot continue.'),
+      { code: 'receiver_execution_not_offered' },
+    );
+    const { call, fetch } = fixture({ readSourceError: portable });
+    const response = await call();
+    expect(response.status).toBe(409);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body).toEqual({
+      success: false,
+      error: "This chat can't be continued on another Station.",
+      code: 'receiver_execution_not_offered',
+    });
+    expect(body.outcome).toBeUndefined();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  test('bounds the history by its encoded size, so escaped text still fits the receiver body ceiling', async () => {
+    // 60 KB of a control character is 360 KB once JSON-escaped.
+    const escaped = '\u0001'.repeat(60 * 1024);
+    const { call, imports } = fixture({
+      source: {
+        agentSlug: 'helper',
+        title: 'Escapes',
+        messages: Array.from({ length: 8 }, (_, index) => ({
+          id: `m${index}`,
+          role: 'user' as const,
+          parts: [{ type: 'text', text: escaped }],
+        })),
+      },
+    });
+    expect((await call()).status).toBe(200);
+    const sent = String(imports()[0]![1]!.body);
+    expect(Buffer.byteLength(sent, 'utf8')).toBeLessThanOrEqual(
+      PEER_CONVERSATION_HANDOFF_MAX_REQUEST_BYTES,
+    );
+    expect(PEER_CONVERSATION_HANDOFF_MAX_REQUEST_BYTES).toBeLessThan(
+      1024 * 1024,
+    );
+    const parsed = JSON.parse(sent) as ConversationImportRequestV1;
+    expect(parsed.omittedMessages + parsed.messages.length).toBe(8);
+    expect(parsed.shortenedMessages).toBe(parsed.messages.length);
   });
 });

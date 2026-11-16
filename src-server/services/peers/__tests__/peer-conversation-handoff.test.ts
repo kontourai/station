@@ -1,6 +1,7 @@
 import {
   PEER_CONVERSATION_HANDOFF_MAX_MESSAGE_BYTES,
   PEER_CONVERSATION_HANDOFF_MAX_MESSAGES,
+  PEER_CONVERSATION_HANDOFF_MAX_REQUEST_BYTES,
   PEER_CONVERSATION_HANDOFF_MAX_TEXT_BYTES,
 } from '@kontourai/station-contracts/peer-chat';
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
@@ -8,6 +9,8 @@ import { describe, expect, test } from 'vitest';
 import {
   boundCarriedMessages,
   conversationImportRequestSchema,
+  encodedTextBytes,
+  encodeImportRequest,
 } from '../peer-conversation-handoff.js';
 
 const text = (id: string, body: string, role: 'user' | 'assistant' = 'user') =>
@@ -61,8 +64,6 @@ describe('the history a paired-Station handoff carries', () => {
         version: 1,
         idempotencyKey: 'k',
         source: {
-          environmentId: 's',
-          stationName: 'S',
           conversationId: 'c',
           title: '',
           agent: 'a',
@@ -88,5 +89,32 @@ describe('the history a paired-Station handoff carries', () => {
       { id: 'a', role: 'assistant', text: 'answer' },
     ]);
     expect(carried.nonTextMessages).toBe(1);
+  });
+
+  test('counts JSON escapes: a control character costs six bytes against every bound', () => {
+    expect(encodedTextBytes('\u0001')).toBe(6);
+    const carried = boundCarriedMessages([
+      text('esc', '\u0001'.repeat(PEER_CONVERSATION_HANDOFF_MAX_MESSAGE_BYTES)),
+    ]);
+    expect(carried.shortenedMessages).toBe(1);
+    expect(encodedTextBytes(carried.messages[0]!.text)).toBeLessThanOrEqual(
+      PEER_CONVERSATION_HANDOFF_MAX_MESSAGE_BYTES,
+    );
+  });
+
+  test('refuses an encoded request one byte over its ceiling and sends one exactly at it', () => {
+    const request = {
+      version: 1 as const,
+      idempotencyKey: 'k',
+      source: { conversationId: 'c', title: '', agent: 'a' },
+      messages: [{ id: 'm', role: 'user' as const, text: 'hello' }],
+      omittedMessages: 0,
+      nonTextMessages: 0,
+      shortenedMessages: 0,
+    };
+    const size = Buffer.byteLength(JSON.stringify(request), 'utf8');
+    expect(encodeImportRequest(request, size)).toBe(JSON.stringify(request));
+    expect(encodeImportRequest(request, size - 1)).toBeNull();
+    expect(PEER_CONVERSATION_HANDOFF_MAX_REQUEST_BYTES).toBe(768 * 1024);
   });
 });

@@ -16,7 +16,7 @@ import {
   PEER_CONVERSATION_HANDOFF_REFUSAL_CODE,
   type PeerChatConnectionV1,
   type PeerChatTargetRefusalV1,
-  type PeerConversationHandoffReceiptV1,
+  parsePeerConversationHandoffReceipt,
 } from '@kontourai/station-contracts/peer-chat';
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
 import { type Context, Hono } from 'hono';
@@ -25,6 +25,7 @@ import { requestMayBeAnAgent } from '../../security/coding-authority.js';
 import type { FeaturePreviewSelector } from '../../services/feature-previews/feature-preview-registry.js';
 import {
   boundCarriedMessages,
+  encodeImportRequest,
   peerConversationHandoffRequestSchema,
 } from '../../services/peers/peer-conversation-handoff.js';
 import type { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
@@ -61,8 +62,6 @@ export function createPeerChatRoutes(deps: {
         }
       | undefined
     >;
-    /** This Station, as the receiver records where the history came from. */
-    sourceStation: () => Promise<{ environmentId: string; name: string }>;
   };
 }) {
   const app = new Hono();
@@ -134,9 +133,27 @@ export function createPeerChatRoutes(deps: {
         now.updatedAt === peer.updatedAt
       );
     };
+    // Reading this Station's own chat fails here, definitely and before any
+    // contact with the paired Station: never as "could not reach" it.
+    let source: Awaited<ReturnType<typeof handoff.readSource>>;
+    try {
+      source = await handoff.readSource(c, body.conversationId);
+    } catch (error) {
+      const code =
+        error && typeof error === 'object' && 'code' in error
+          ? (error as { code?: unknown }).code
+          : undefined;
+      return c.json(
+        {
+          success: false,
+          error: "This chat can't be continued on another Station.",
+          ...(typeof code === 'string' ? { code } : {}),
+        },
+        409,
+      );
+    }
     let forwarded = false;
     try {
-      const source = await handoff.readSource(c, body.conversationId);
       if (!source)
         return c.json({ success: false, error: 'Conversation not found' }, 404);
       if (source.agentSlug !== body.targetAgent)
@@ -208,20 +225,26 @@ export function createPeerChatRoutes(deps: {
           },
           409,
         );
-      const station = await handoff.sourceStation();
-      const importBody: ConversationImportRequestV1 = {
+      const encoded = encodeImportRequest({
         version: 1,
         idempotencyKey: body.idempotencyKey,
         source: {
-          environmentId: station.environmentId,
-          stationName: station.name.slice(0, 120) || 'another Station',
           conversationId: body.conversationId,
           title: source.title.slice(0, 500),
           agent: source.agentSlug,
         },
         ...(body.projectSlug ? { projectSlug: body.projectSlug } : {}),
         ...carried,
-      };
+      } satisfies ConversationImportRequestV1);
+      if (encoded === null)
+        return c.json(
+          {
+            success: false,
+            error:
+              "This chat's history is too large to send to another Station.",
+          },
+          413,
+        );
       const headers = new Headers(target.requestOptions.headers);
       headers.set(
         CLIENT_PROTOCOL_HEADER,
@@ -239,7 +262,7 @@ export function createPeerChatRoutes(deps: {
         {
           method: 'POST',
           headers,
-          body: JSON.stringify(importBody),
+          body: encoded,
           signal: request.signal,
         },
         target.requestOptions.timeoutMs,
@@ -255,34 +278,26 @@ export function createPeerChatRoutes(deps: {
         replyRecord.data && typeof replyRecord.data === 'object'
           ? (replyRecord.data as Record<string, unknown>)
           : {};
-      if (
-        response.ok &&
-        replyRecord.success === true &&
-        typeof data.conversationId === 'string' &&
-        data.conversationId.length > 0 &&
-        data.conversationId.length <= 256
-      ) {
-        const receipt: PeerConversationHandoffReceiptV1 = {
-          version: 1,
-          environmentId: id,
-          conversationId: data.conversationId,
-          carriedMessages: carried.messages.length,
-          omittedMessages: carried.omittedMessages,
-          nonTextMessages: carried.nonTextMessages,
-          shortenedMessages: carried.shortenedMessages,
-          idempotent: data.idempotent === true,
-        };
+      // The receipt is the receiver's account of what it SAVED, so a
+      // same-key retry reports the first request's counts.
+      const receipt = response.ok
+        ? parsePeerConversationHandoffReceipt(
+            { ...data, version: 1, environmentId: id },
+            { environmentId: id },
+          )
+        : null;
+      if (receipt && replyRecord.success === true)
         return c.json({ success: true, data: receipt });
-      }
-      // A Station's own answer that it refused is definite; anything else
-      // after the request left (a gateway page, a 5xx, an unreadable body)
-      // leaves the import's outcome unknown, so the key must be retried.
+      // Any 4xx carrying the Station envelope is that Station's own refusal,
+      // whether a route's `{success:false}` or a middleware's `{error:{code}}`
+      // (scope, origin, body size): nothing was saved, so it is definite.
+      // Anything else after the request left (a gateway page, a 5xx, an
+      // unreadable success) leaves the outcome unknown; the key is retried.
       const definite =
         response.status >= 400 &&
         response.status < 500 &&
         response.headers.get(STATION_ENVELOPE_HEADER) ===
-          STATION_ENVELOPE_HEADER_VALUE &&
-        replyRecord.success === false;
+          STATION_ENVELOPE_HEADER_VALUE;
       if (!definite) throw new Error('Unconfirmed conversation import');
       return c.json(
         {

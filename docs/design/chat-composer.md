@@ -350,9 +350,12 @@ history with the caller's authority, through the lineage and text projection an
 Agent/engine handoff seeds from
 (`ConversationLineage.readConversationCarriedMessages`). It sends that history,
 bounded, to the receiver's [import](../../src-server/routes/chat/conversations.ts),
-which saves it as a fork context. That Station's first `/chat` start and every
-later continuation and handoff seed from it. Its own message reads include the
-copied rows, but the tunnel admits no conversation-messages read. A relayed tab
+which saves it as a fork context. Only an authenticated paired Station may
+import, and the receiver names it from that credential. That Station's first
+`/chat` start and every later continuation and handoff seed from it: the seed
+quotes each carried line and discloses what the sender left out. The copied
+rows carry `importedFrom` but its transcript views show them as ordinary rows;
+the tunnel admits no conversation-messages read. A relayed tab
 therefore shows messages from the handoff on, and the source chat keeps the
 earlier ones. The source conversation is left as it was.
 

@@ -22,6 +22,7 @@ import {
 import { transcriptSeedSource } from './conversation-transcript-seed.js';
 import type { EventStore } from './event-store.js';
 import type { SessionReadScope } from './orchestration-service.js';
+import { singleLine } from './quoted-text.js';
 
 const FORK_CONTEXT_MAX_BYTES = 2 * 1024 * 1024;
 const nativeForkId = z.string().min(1).max(512);
@@ -301,13 +302,16 @@ export function createConversationForkContext(
   > & {
     sourceTitle: string;
     messages: ConversationMessage[];
+    /** History another Station sent; see `buildForkTranscript`. */
+    imported?: Parameters<typeof buildForkTranscript>[0]['imported'];
   },
 ): ConversationForkContextSnapshot {
-  const { sourceTitle, messages, ...identity } = input;
+  const { sourceTitle, messages, imported, ...identity } = input;
   const seed = buildForkTranscript({
     sourceTitle,
     sourceAgent: input.sourceAgent,
     messages,
+    ...(imported ? { imported } : {}),
   });
   const seedPin = createConversationContextSeedPin({
     text: seed.text,
@@ -317,7 +321,7 @@ export function createConversationForkContext(
       includedMessages: seed.includedMessages,
       omittedMessages: seed.omittedMessages,
       newestShortened: seed.newestShortened,
-      nonTextMessages: transcriptSeedSource(messages).nonTextMessages,
+      nonTextMessages: seed.nonTextMessages,
     },
   });
   const copied = messages.map((message) => {
@@ -344,13 +348,20 @@ export function createConversationForkContext(
       id: createHash('sha256')
         .update(`${input.forkEventId}\0${message.id}`)
         .digest('hex'),
-      metadata: { ...message.metadata, forkSourceMessageId: message.id },
+      metadata: {
+        ...message.metadata,
+        forkSourceMessageId: message.id,
+        // Another Station's claim, not a row this Station recorded.
+        ...(imported ? { importedFrom: imported.stationName } : {}),
+      },
     };
   });
   const body = {
     ...identity,
     protocolVersion: 1 as const,
-    title: `Fork of ${sourceTitle}`,
+    title: imported
+      ? `${singleLine(sourceTitle) || 'Previous conversation'} (from ${singleLine(imported.stationName)})`
+      : `Fork of ${sourceTitle}`,
     copiedMessagesJson: JSON.stringify(copied),
     seedPinJson: JSON.stringify(seedPin),
   };
@@ -363,7 +374,11 @@ export function createConversationForkContext(
   return readConversationForkContext(json);
 }
 
-/** Stored bodies came from the unified serve-sanitized reader, not a request payload. */
+/**
+ * Stored bodies came from the unified serve-sanitized reader, or, for an
+ * import, from another Station's bounded request: those rows carry
+ * `importedFrom` and are that Station's claim, not this Station's record.
+ */
 function copiedForkMessages(
   snapshot: ConversationForkContextSnapshot,
 ): ConversationMessage[] {

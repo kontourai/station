@@ -120,7 +120,6 @@ const receipt = {
   carriedMessages: 4,
   omittedMessages: 0,
   nonTextMessages: 0,
-  shortenedMessages: 0,
   idempotent: false,
 };
 

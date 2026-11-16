@@ -10734,13 +10734,6 @@ export function configureRuntimeRoutes(
             conversationId,
             conversationReadAuthorityForContext(c),
           ),
-        sourceStation: async () => {
-          const handshake =
-            await context.environmentSecurityService.getPublicHandshake();
-          if (!handshake.environmentId)
-            throw new Error('This Station has no environment identity yet.');
-          return { environmentId: handshake.environmentId, name: hostname() };
-        },
       },
     }),
   );
@@ -11955,6 +11948,19 @@ export function configureRuntimeRoutes(
             ? nativeForkStoredReadMount
             : undefined,
         service: context.orchestrationService,
+      },
+      // A conversation import comes only from a paired Station: the caller's
+      // verified delegation Device, named as this Station's operator named
+      // it when pairing. Nothing in the request body can claim this.
+      (request) => {
+        const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+        if (principal?.deviceKind !== 'delegation' || !principal.deviceId)
+          return undefined;
+        const device = context.environmentSecurityService.identifyDevice(
+          principal.credential,
+        );
+        if (!device || device.id !== principal.deviceId) return undefined;
+        return { deviceId: device.id, stationName: device.name };
       },
     ),
   );

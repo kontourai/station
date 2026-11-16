@@ -1301,9 +1301,14 @@ on the host (`ui-bootstrap`):
   checks the saved peer grant. The exact leaf
   `POST /api/environments/peers/:id/conversation-handoffs`
   (`isPeerConversationHandoff`) is admitted the same way: it sends history the
-  caller can already read here, as that caller's own record, to the paired
-  Station under the saved peer grant, which saves it as a new conversation and
-  shows and seeds it as quoted context. Every other peer-family write (adding,
+  caller can already read here to the paired Station under the saved peer
+  grant. On that Station, `POST /agents/:slug/conversation-imports` accepts only
+  an authenticated delegation Device (another Station's grant at the operate
+  tier) and names the sender from that Device record, never from the body. The
+  imported rows are the sender's claim: the seed quotes each line so none can
+  pose as a turn, and stored rows carry `importedFrom`, but transcript views
+  show them as ordinary user and assistant rows. Pairing a Station therefore
+  lets it author a conversation's earlier history on this one. Every other peer-family write (adding,
   replacing, enrolling or removing outbound peer credentials) stays
   operator-only.
 

@@ -179,7 +179,13 @@ const CONSUMED_FLAGS: Record<
           ? Response.json(
               {
                 success: true,
-                data: { conversationId: 'conversation:import:one' },
+                data: {
+                  conversationId: 'conversation:import:one',
+                  carriedMessages: 1,
+                  omittedMessages: 0,
+                  nonTextMessages: 0,
+                  idempotent: false,
+                },
               },
               {
                 headers: {
@@ -212,7 +218,6 @@ const CONSUMED_FLAGS: Record<
               { id: 'm1', role: 'user', parts: [{ type: 'text', text: 'Hi' }] },
             ],
           }),
-          sourceStation: async () => ({ environmentId: 'source', name: 'S' }),
         },
       });
       const response = await app.request('/receiver/conversation-handoffs', {

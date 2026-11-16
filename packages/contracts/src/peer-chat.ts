@@ -137,10 +137,19 @@ export function parsePeerChatTargetRefusal(
 export const PEER_CONVERSATION_HANDOFF_REFUSAL_CODE =
   'peer_conversation_handoff_refused';
 export const PEER_CONVERSATION_HANDOFF_MAX_MESSAGES = 400;
-/** Total UTF-8 bytes of carried message text. */
+/**
+ * Bytes of carried message text AS JSON-ENCODED on the wire (escapes such as
+ * `\u0001` count six bytes), so the request stays under the receiver's body
+ * ceiling whatever the text holds.
+ */
 export const PEER_CONVERSATION_HANDOFF_MAX_TEXT_BYTES = 512 * 1024;
-/** UTF-8 bytes of one carried message; a longer one is cut with a marker. */
+/** Encoded bytes of one carried message; a longer one is cut with a marker. */
 export const PEER_CONVERSATION_HANDOFF_MAX_MESSAGE_BYTES = 64 * 1024;
+/**
+ * The whole encoded import request. Under the receiver's 1 MiB standard body
+ * ceiling; the sender refuses a request one byte over rather than send it.
+ */
+export const PEER_CONVERSATION_HANDOFF_MAX_REQUEST_BYTES = 768 * 1024;
 
 /** Browser to its own Station: `POST /api/environments/peers/:id/conversation-handoffs`. */
 export interface PeerConversationHandoffRequestV1 {
@@ -162,9 +171,11 @@ export interface ConversationImportMessageV1 {
 export interface ConversationImportRequestV1 {
   version: 1;
   idempotencyKey: string;
+  /**
+   * The sender's own conversation. Which Station sent it is not claimed here:
+   * the receiver takes it from the authenticated paired-Station credential.
+   */
   source: {
-    environmentId: string;
-    stationName: string;
     conversationId: string;
     title: string;
     agent: string;
@@ -179,6 +190,10 @@ export interface ConversationImportRequestV1 {
   shortenedMessages: number;
 }
 
+/**
+ * The receiver's answer, from what it SAVED: a same-key retry reports the
+ * first request's counts even when the source's history has grown since.
+ */
 export interface PeerConversationHandoffReceiptV1 {
   version: 1;
   environmentId: string;
@@ -187,7 +202,6 @@ export interface PeerConversationHandoffReceiptV1 {
   carriedMessages: number;
   omittedMessages: number;
   nonTextMessages: number;
-  shortenedMessages: number;
   /** The receiver already held this key's conversation. */
   idempotent: boolean;
 }
@@ -208,7 +222,6 @@ export function parsePeerConversationHandoffReceipt(
     !count(body.carriedMessages) ||
     !count(body.omittedMessages) ||
     !count(body.nonTextMessages) ||
-    !count(body.shortenedMessages) ||
     typeof body.idempotent !== 'boolean'
   )
     return null;
@@ -219,7 +232,6 @@ export function parsePeerConversationHandoffReceipt(
     carriedMessages: body.carriedMessages,
     omittedMessages: body.omittedMessages,
     nonTextMessages: body.nonTextMessages,
-    shortenedMessages: body.shortenedMessages,
     idempotent: body.idempotent,
   };
 }
