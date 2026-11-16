@@ -442,11 +442,18 @@ the remote first-frame credential check. Browser-shaped upgrades
 must present an allowed Station Origin, while non-browser local clients have
 no Origin requirement. This retained local path is distinct from protected HTTP
 authorization and is not a paired-Device scope boundary. Since #2377 slice D a
-session on that credential-free path is offered no Station tools: Station's own
-tools act only for a person, so a voice client that holds a credential presents
-it (a loopback client asks with `?authenticate=1`) and its session's tools act
-for the person that credential resolves to; a credential that verifies but
-resolves to no one is refused.
+session's Station tools act only for a person. A loopback upgrade carrying the
+local UI's HttpOnly device session cookie authenticates with it (parsed and
+verified as the HTTP boundary does), and only on loopback, where `verifyClient`
+has already held a browser-shaped upgrade to an allowed Station Origin, so
+another site's page cannot ride the browser's ambient cookie. A client holding
+a bearer credential presents it in the auth frame (a loopback one asks with
+`?authenticate=1`). Either way the session's tools act for the person the
+credential resolves to. A credential that verifies but names no person (an
+account-bound device or token), and a session with no credential, keep speech
+with no Station tools; only a credential that fails verification is refused.
+Accepted: a session's tools act with that person's full authority, not the
+presenting device's pairing scope, as an agent session's do.
 
 The public handshake is deliberately minimal and contains no credential,
 hostname, username, home directory, workspace, endpoint, process identity, or

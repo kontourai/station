@@ -93,9 +93,11 @@ Templates only ask for work an agent can do with its workspace and tools.
   runs in a chat, you must be able to send to that chat.
 - An automation acts as the person who created it; editing it does not change
   that. Its Station tools act for that person too.
+- Only an automation's owner, or an agent acting for them, can change, run,
+  turn on or off, or delete it.
 - On a personal Station, older automations created before Station recorded an
-  owner belong to you. On a shared or hosted Station such an automation shows
-  that it needs an owner, and its runs have no Station tools until someone
+  owner became yours once, when you updated. An automation without an owner
+  shows that it needs one, and its runs have no Station tools until someone
   re-creates it.
 - Start notifications are not sent; the old `notifyStart` setting is ignored.
 - GitHub event triggers are not part of Automations yet

@@ -5850,10 +5850,17 @@ changes `createdBy`. Re-enabling a disabled job resets its
 
 Every job records `createdBy`, the owner its runs act as, resolved from the
 creating request (an untargeted job too, since #2377 slice D): an untargeted
-run's Station tools act for that owner through a per-run `bound` caller. On a
-personal Station, jobs stored before owners were recorded are given the
-operator at start. Elsewhere such a job's view carries `ownerNeeded` (the
-reason), and its runs get no Station tools and are told so.
+run's Station tools act for that owner through a per-run `bound` caller, with
+that person's full authority (not a device's pairing scope). Editing, running,
+enabling, disabling or deleting a job with an owner is admitted against that
+owner, for a person and for an agent's `update_job`/`run_job`, as for a
+targeted automation. On a personal Station, the jobs stored before owners were
+recorded are given the operator once, by a recorded one-time ledger migration;
+a job stored without an owner afterwards stays ownerless. Such a job's view
+carries `ownerNeeded` (the reason). Its runs get no Station caller and the model
+is told so; the Station tools are still listed to it, and every call is
+refused. The scheduler routes answer 404 on a hosted Station, so hosted jobs
+are out of reach here.
 
 For a job that already has a `target`, every edit (any field), `run`,
 `enable`, `disable` and `DELETE` is admitted against the **stored** target
