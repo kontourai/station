@@ -86,8 +86,8 @@ export function ProjectSchedulesSection({
         />
       ) : jobs.length === 0 ? (
         <Empty
-          label="No schedules"
-          description="Run recurring work here as a Task, such as a Monday digest."
+          label="Schedule recurring work"
+          description="Each run starts a Task here, such as a Monday digest."
         />
       ) : (
         jobs.map((job) => (
