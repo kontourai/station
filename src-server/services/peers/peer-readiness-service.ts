@@ -9,12 +9,12 @@ import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 
 /** The handshake is a few hundred bytes; anything far larger is not one. */
 const MAX_HANDSHAKE_BYTES = 16_384;
-export const PEER_READINESS_TIMEOUT_MS = 2_500;
+const PEER_READINESS_TIMEOUT_MS = 2_500;
 /** How long an `online` answer is reused before the peer is probed again. */
-export const PEER_READINESS_ONLINE_TTL_MS = 10_000;
+const PEER_READINESS_ONLINE_TTL_MS = 10_000;
 /** A failure is reused only to absorb a burst of reads, never for long. */
-export const PEER_READINESS_FAILURE_TTL_MS = 2_000;
-export const PEER_READINESS_CONCURRENCY = 4;
+const PEER_READINESS_FAILURE_TTL_MS = 2_000;
+const PEER_READINESS_CONCURRENCY = 4;
 
 export interface PeerReadinessTarget {
   environmentId: string;

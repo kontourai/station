@@ -376,7 +376,7 @@ function mint(target: RemoteStationTarget): RemoteStationTarget {
  * `unconfirmed` answer that is not an identity mismatch is not refused here:
  * something answered, and the real call reports what it is.
  */
-export function peerReadinessRefusesDispatch(
+function peerReadinessRefusesDispatch(
   readiness: Pick<PeerStationReadiness, 'status' | 'reason'>,
 ): boolean {
   return (

@@ -43,8 +43,7 @@ afterAll(() => {
 
 describe('peer credential routes (station#1123 slice 2)', () => {
   test('the list answers without waiting on probes, then carries each peer\u2019s readiness, probed without its credential', async () => {
-    const homeDir = mkdtempSync(join(tmpdir(), 'station-peer-route-ready-'));
-    wireHomes.push(homeDir);
+    const homeDir = makeTempDir('station-peer-route-ready-');
     const store = new PeerCredentialStore(homeDir);
     const secret = 'readiness-route-secret-0123456789abcdef';
     for (const id of ['env-up', 'env-restarting'])
