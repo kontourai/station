@@ -1,7 +1,0 @@
-{
-  "revision": "0d93bb86c701292b6bf25f5f1efb56d750ce40ad",
-
-  "notes": [
-    {"path":"docs/glossary.md","note":"Cites the contracts reference, which gained the pull request feedback attention item paragraph; no glossary term or user-facing label is affected.","inputs":["docs/glossary.md","docs/reference/contracts.md"]}
-  ]
-}

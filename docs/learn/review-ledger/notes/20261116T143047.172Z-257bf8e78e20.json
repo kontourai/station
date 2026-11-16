@@ -1,7 +1,0 @@
-{
-  "revision": "0d93bb86c701292b6bf25f5f1efb56d750ce40ad",
-
-  "notes": [
-    {"path":"packages/sdk/AGENTS.md","note":"Routes to the SDK reference; the reference gained turnOffPullRequestFeedback. The routing guidance is unchanged.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "0d93bb86c701292b6bf25f5f1efb56d750ce40ad",
-
-  "notes": [
-    {"path":"docs/guides/integrating-station.md","note":"Cites the API, contracts and SDK references, which gained the pull-request-feedback attention item and turnOffPullRequestFeedback; the integration routes and guidance in this guide are unchanged.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/contracts.md","docs/reference/sdk.md"]}
-  ]
-}

@@ -1,7 +1,0 @@
-{
-  "revision": "0d93bb86c701292b6bf25f5f1efb56d750ce40ad",
-
-  "notes": [
-    {"path":"docs/reference/api.md","note":"Added that a paused pull request, or one whose chat's agent stopped with feedback waiting, appears in GET /api/attention as a pull-request-feedback item with viewerMayChange from the feedback routes' writer rule (pullRequestFeedbackWriterId, runtime viewerMayChange). Route list unchanged.","inputs":["docs/reference/api.md"]}
-  ]
-}

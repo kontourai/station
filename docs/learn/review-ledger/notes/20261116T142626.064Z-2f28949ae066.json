@@ -1,7 +1,0 @@
-{
-  "revision": "0d93bb86c701292b6bf25f5f1efb56d750ce40ad",
-
-  "notes": [
-    {"path":"docs/reference/contracts.md","note":"Adds PullRequestFeedbackAttentionItem (kind pull-request-feedback) to the AttentionItem union; not standing, not decision-resolved, so acknowledgeable. Checked citing pages: the attention subpath row and session-api's 'including' list remain accurate (not exhaustive); contracts.md now names the new item.","inputs":["packages/contracts/src/attention.ts"]}
-  ]
-}

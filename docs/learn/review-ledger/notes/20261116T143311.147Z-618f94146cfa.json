@@ -1,7 +1,0 @@
-{
-  "revision": "d0282be8a93c664ba098d518a822f3b44aab2d48",
-
-  "notes": [
-    {"path":"docs/guides/web-push-notifications.md","note":"Added pull request agent feedback to the categories WebPushChannel accepts: notification-priority now ranks pull-request-feedback as needs-input (24-hour TTL row unchanged). Rest of the guide unaffected.","inputs":["docs/guides/web-push-notifications.md","packages/shared/src/notification-priority.ts","src-server/runtime/routes/runtime-route-support.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/notifications/notification-service.ts","src-server/services/projects/attention-projection.ts"]}
-  ]
-}
