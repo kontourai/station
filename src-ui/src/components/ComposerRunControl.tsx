@@ -39,6 +39,8 @@ export function ComposerRunControl({
   engineId,
   children,
   loadingLabel,
+  notice,
+  description,
   closeHandle,
 }: {
   label: string;
@@ -48,6 +50,10 @@ export function ComposerRunControl({
   engineId?: EngineId | null;
   children: ReactNode;
   loadingLabel?: string;
+  /** A short fact the closed trigger states beside its label, which gives way first. */
+  notice?: string;
+  /** The trigger's accessible description: the sentence behind `notice`. */
+  description?: string;
   /**
    * Receives the panel's close, for a picker rendered outside the panel whose
    * choice opens a dialog that should replace it (an engine switch on a phone).
@@ -76,6 +82,7 @@ export function ComposerRunControl({
   // Effort qualifies a Model, so it is shown only beside one.
   const shownEffort = separator < 0 ? undefined : effort;
   const contentId = useId();
+  const descriptionId = useId();
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
   useEffect(() => {
@@ -136,6 +143,7 @@ export function ComposerRunControl({
       ...details,
       ...safety,
       ...(changed ? ['changed for this conversation'] : []),
+      ...(notice ? [notice] : []),
     ]),
   ].join('; ');
   return (
@@ -195,14 +203,31 @@ export function ComposerRunControl({
               )}
             </span>
           }
-          title={summary}
+          notice={
+            notice && (
+              <span className="composer-run-control__notice" aria-hidden="true">
+                {/* The separator collapses with the label it follows. */}
+                <span className="composer-run-control__notice-separator">
+                  {'· '}
+                </span>
+                {notice}
+              </span>
+            )
+          }
+          title={description ? `${summary}. ${description}` : summary}
           aria-label={summary}
+          aria-describedby={description ? descriptionId : undefined}
           data-testid="run-setup-trigger"
           aria-haspopup="dialog"
           aria-controls={contentId}
           aria-expanded={open}
           onClick={() => setOpen(true)}
         />
+      )}
+      {description && (
+        <span id={descriptionId} hidden>
+          {description}
+        </span>
       )}
       <ResponsiveDialogSurface
         open={open}

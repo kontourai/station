@@ -1,0 +1,7 @@
+{
+  "revision": "d09d29deb030b1f86786a3541d7f23ed77036134",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Rechecked the Run setup paragraph after the #4971 follow-up (move caption on its own line, Agent-name stub dropped beside the hint): the button still adds Agent moved and Engine & model names where; with an Agent icon the label is the model, as written.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}
