@@ -4,7 +4,6 @@
  * not owned, so the Task's lead is still woken for it. Real store file in a
  * temp home, the inbox harness's event store and inbox.
  */
-import { join } from 'node:path';
 import type { PullRequestLinkIdentity } from '@kontourai/station-contracts/conversation-pull-request-links';
 import { pullRequestFeedbackKey } from '@kontourai/station-contracts/pull-request-feedback';
 import { afterEach, describe, expect, it, vi } from 'vitest';

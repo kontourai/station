@@ -193,16 +193,16 @@ const AUTOLINKABLE =
  * syntax characters are backslash-escaped, which renders them as written.
  */
 export function inertMarkdown(text: string): string {
-  const escape = (part: string) =>
+  const escapeSyntax = (part: string) =>
     part.replace(/[\\[\]<>!`]/g, (character) => `\\${character}`);
   let out = '';
   let last = 0;
   for (const match of text.matchAll(AUTOLINKABLE)) {
-    out += escape(text.slice(last, match.index));
+    out += escapeSyntax(text.slice(last, match.index));
     out += `\`${match[0].replace(/`/g, "'")}\``;
     last = match.index + match[0].length;
   }
-  return out + escape(text.slice(last));
+  return out + escapeSyntax(text.slice(last));
 }
 
 /** Quoted excerpt lines under an item, or none when `max` is 0. */
