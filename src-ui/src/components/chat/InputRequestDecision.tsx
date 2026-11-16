@@ -37,10 +37,14 @@ function approvalActionForOption(
 export function DecisionButtons({
   body,
   busy,
+  inFlight = false,
+  chosen,
   onChoose,
 }: {
   body: InputRequestDecisionBody;
   busy: boolean;
+  inFlight?: boolean;
+  chosen?: ApprovalAction;
   onChoose: (action: ApprovalAction) => void;
 }) {
   useDecisionSurface('tool-approval-decision');
@@ -48,7 +52,8 @@ export function DecisionButtons({
     <DecisionActionRow
       body={body}
       busy={busy}
-      inFlight={false}
+      inFlight={inFlight}
+      chosen={chosen}
       onChoose={onChoose}
       overflowLabel="More ways to allow this request"
     />

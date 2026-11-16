@@ -3198,6 +3198,13 @@ export class CodexAdapter implements ProviderAdapterShape {
         updatedAt: this.now().toISOString(),
         model: input.modelId ?? record.session.model,
       };
+      // The mode this turn really runs at: Station's own bound-tool approvals
+      // read it, so full access asks nothing there either.
+      if (postured)
+        record.appliedApprovalMode = mapCodexKnobsToApprovalMode({
+          approvalPolicy: postured.knobs.approvalPolicy,
+          sandbox: postured.plan.applied,
+        });
 
       this.transport.publish({
         eventId: crypto.randomUUID(),
@@ -3696,6 +3703,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       : 'station-control';
     const name = `mcp__${server}__${tool}`;
     if (!policy || !input.agent || !current()) return false;
+    const fullAccess = record.appliedApprovalMode === 'never';
     const rawDelegation = input.metadata?.delegation;
     const delegation =
       rawDelegation && typeof rawDelegation === 'object'
@@ -3714,6 +3722,7 @@ export class CodexAdapter implements ProviderAdapterShape {
           {
             interaction: 'external',
             identity: externalPreToolPolicyIdentity(name),
+            ...(fullAccess ? { fullAccess } : {}),
           },
         ),
         AbortSignal.timeout(5_000),
@@ -3723,7 +3732,12 @@ export class CodexAdapter implements ProviderAdapterShape {
     }
     if (!current() || decision.behavior === 'deny') return false;
     if (decision.behavior === 'allow') return true;
-    if (decision.behavior === 'defer' && record.approvedTools.has(name))
+    // Full access answers what Station's policy leaves open (`defer`); a
+    // required ask (a tool that changes authority) still reaches a person.
+    if (
+      decision.behavior === 'defer' &&
+      (fullAccess || record.approvedTools.has(name))
+    )
       return true;
     if (delegation?.denyApprovals) return false;
     record.boundToolApprovals ??= new Map();

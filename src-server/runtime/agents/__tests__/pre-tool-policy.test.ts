@@ -6,6 +6,10 @@ import {
   GuardianDenialLedger,
   NO_PERSON_INTENT,
 } from '../../../services/approvals/guardian-conversation.js';
+import {
+  gateMediatedMcpCall,
+  resetPersonApprovedCalls,
+} from '../../../services/plugins/mediated-untrusted-content-gate.js';
 import { builtinStationControlServerPath } from '../../bootstrap/station-control-runtime-env.js';
 import { isAutoApprovedExternalTool } from '../../tools/tool-executor.js';
 import { createStagedPreToolPolicyEvaluator } from '../pre-tool-policy.js';
@@ -75,6 +79,107 @@ describe('createStagedPreToolPolicyEvaluator', () => {
         hasInteractiveApproval: true,
       }),
     ).resolves.toEqual({ behavior: 'ask' });
+  });
+
+  // Owner decision (2026-11-16): full access means no prompts. A browser
+  // snapshot marked the turn untrusted, and every later browser call asked
+  // through the hook even though the engine ran at bypassPermissions.
+  test('full access does not raise the untrusted-content ask; a refusal still applies', async () => {
+    const browserTool = {
+      toolName: 'mcp__station-browser__browser_evaluate',
+      toolCallId: 'tool-2',
+      toolArgs: { expression: '1' },
+    };
+    const asking = createEvaluator({
+      untrustedContentPermission: vi.fn(async () => 'ask' as const),
+    });
+    await expect(
+      asking(browserTool, invocation, { interaction: 'external' }),
+    ).resolves.toEqual({ behavior: 'ask', required: true });
+    // Without full access the seam would refuse the call: nobody approved it.
+    const sendTool = {
+      toolName: 'mcp__station-control__send_message',
+      toolCallId: 'tool-3',
+      toolArgs: {},
+    };
+    const seam = () =>
+      gateMediatedMcpCall({
+        conversationIds: [invocation.conversationId],
+        serverId: 'station-control',
+        toolNames: ['send_message'],
+        definition: async () => undefined,
+        ledger: {
+          conversationHasRead: async () => true,
+        } as never,
+      });
+    expect((await seam()).allowed).toBe(false);
+    await expect(
+      asking(browserTool, invocation, {
+        interaction: 'external',
+        fullAccess: true,
+      }),
+    ).resolves.toEqual({ behavior: 'defer' });
+    // Full access is the person's answer, so the seam carrying the call
+    // passes it rather than turning the skipped prompt into a refusal.
+    await asking(sendTool, invocation, {
+      interaction: 'external',
+      fullAccess: true,
+    });
+    expect((await seam()).allowed).toBe(true);
+    resetPersonApprovedCalls();
+
+    const refusing = createEvaluator({
+      untrustedContentPermission: vi.fn(async () => 'deny' as const),
+    });
+    await expect(
+      refusing(browserTool, invocation, {
+        interaction: 'external',
+        fullAccess: true,
+      }),
+    ).resolves.toMatchObject({ behavior: 'deny' });
+  });
+
+  // Owner decision (2026-11-16): full access trusts an agent with the work,
+  // never with widening its own trust.
+  test('a tool that changes authority asks a person even under full access and a matching grant', async () => {
+    const evaluator = createEvaluator({ isGranted: () => true });
+    for (const toolName of [
+      'mcp__station-control__update_config',
+      'mcp__station-control__update_agent',
+    ])
+      await expect(
+        evaluator({ ...tool, toolName }, invocation, {
+          interaction: 'external',
+          fullAccess: true,
+        }),
+      ).resolves.toEqual({ behavior: 'ask', required: true });
+    // The Station engine's runtime name is matched through its provenance.
+    await expect(
+      createEvaluator({
+        isGranted: () => true,
+        toolNameMapping: new Map([
+          [
+            'sc_cfg',
+            {
+              provenance: {
+                integrationId: 'station-control',
+                originalToolName: 'update_config',
+              },
+            },
+          ],
+        ]),
+      })({ ...tool, toolName: 'sc_cfg' }, invocation, {
+        interaction: 'managed',
+        hasInteractiveApproval: true,
+      }),
+    ).resolves.toEqual({ behavior: 'ask', required: true });
+    // An ordinary station-control tool is untouched.
+    await expect(
+      evaluator(tool, invocation, {
+        interaction: 'external',
+        fullAccess: true,
+      }),
+    ).resolves.toEqual({ behavior: 'allow', toolGrant: true });
   });
 
   test('explicit Ask me takes precedence over automatic, guardian and unattended allows', async () => {
