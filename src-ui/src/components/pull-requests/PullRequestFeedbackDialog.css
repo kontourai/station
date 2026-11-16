@@ -1,22 +1,22 @@
 .pr-feedback-dialog__body {
   display: grid;
-  gap: var(--space-4);
+  gap: var(--k-space-4);
   min-width: 0;
 }
 .pr-feedback-dialog__status {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2) var(--space-3);
+  gap: var(--k-space-2) var(--k-space-3);
   min-width: 0;
 }
 .pr-feedback-dialog__line {
   font-size: var(--k-text-sm);
-  color: var(--text-secondary);
+  color: var(--k-text-muted);
   overflow-wrap: anywhere;
 }
 .pr-feedback-dialog__line time {
-  color: var(--text-tertiary);
+  color: var(--k-text-faint);
   font-variant-numeric: tabular-nums;
 }
 .pr-feedback-dialog__owner {
@@ -24,16 +24,16 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md);
-  background: var(--bg-secondary);
+  gap: var(--k-space-3);
+  padding: var(--k-space-3);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel-raised);
 }
 .pr-feedback-dialog__owner p {
   margin: 0;
   font-size: var(--k-text-sm);
-  color: var(--text-primary);
+  color: var(--k-text);
   overflow-wrap: anywhere;
 }
 .pr-feedback-dialog__switches {
@@ -46,10 +46,10 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--k-space-4);
   min-height: 44px;
-  padding: var(--space-3) 0;
-  border-bottom: 1px solid var(--border-primary);
+  padding: var(--k-space-3) 0;
+  border-bottom: var(--k-border-thin) solid var(--k-line);
 }
 .pr-feedback-dialog__switch:last-child {
   border-bottom: 0;
@@ -60,22 +60,22 @@
   min-width: 0;
 }
 .pr-feedback-dialog__label {
-  font-size: var(--text-md);
+  font-size: var(--k-text-md);
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--k-text);
 }
 .pr-feedback-dialog__description {
   font-size: var(--k-text-sm);
-  color: var(--text-secondary);
+  color: var(--k-text-muted);
 }
 .pr-feedback-dialog__error {
   margin: 0;
   font-size: var(--k-text-sm);
-  color: var(--error-text);
+  color: var(--k-negative);
 }
 .pr-feedback-dialog__history {
   display: grid;
-  gap: var(--space-2);
+  gap: var(--k-space-2);
 }
 .pr-feedback-dialog__rows {
   display: grid;
@@ -87,31 +87,31 @@
   display: grid;
   grid-template-columns: 3.5em minmax(0, 1fr) auto auto;
   align-items: baseline;
-  gap: var(--space-3);
-  padding: var(--space-2) 0;
+  gap: var(--k-space-3);
+  padding: var(--k-space-2) 0;
   font-size: var(--k-text-sm);
-  color: var(--text-secondary);
-  border-bottom: 1px solid var(--border-primary);
+  color: var(--k-text-muted);
+  border-bottom: var(--k-border-thin) solid var(--k-line);
 }
 .pr-feedback-dialog__rows li:last-child {
   border-bottom: 0;
 }
 .pr-feedback-dialog__rows time {
-  color: var(--text-tertiary);
+  color: var(--k-text-faint);
   font-variant-numeric: tabular-nums;
 }
 .pr-feedback-dialog__rows code {
   font-size: var(--k-text-xs, var(--k-text-sm));
-  color: var(--text-tertiary);
+  color: var(--k-text-faint);
 }
 .pr-feedback-dialog__state {
-  color: var(--text-primary);
+  color: var(--k-text);
 }
 .pr-feedback-dialog__state[data-state="refused"] {
-  color: var(--error-text);
+  color: var(--k-negative);
 }
 .pr-feedback-dialog__fine {
   margin: 0;
   font-size: var(--k-text-sm);
-  color: var(--text-tertiary);
+  color: var(--k-text-faint);
 }
