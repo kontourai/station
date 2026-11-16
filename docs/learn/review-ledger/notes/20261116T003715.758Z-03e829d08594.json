@@ -1,0 +1,7 @@
+{
+  "revision": "e4fc7c1bdbfe5cad055fe08c313a7c9ce9fd1c3a",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Revised the Claude discovery paragraph for the new traversal bound accounting (4,096 default, charged opens and stats, 4x skipped-entry bound), previous-pass ranking, and the residual for folders the previous pass did not reach; checked against claude-transcript-session-source.ts and its discovery tests.","inputs":["docs/reference/session-api.md"]}
+  ]
+}
