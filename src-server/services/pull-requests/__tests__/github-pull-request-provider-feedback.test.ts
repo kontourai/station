@@ -4,15 +4,14 @@
  * recorded GraphQL answer (scrubbed to `acme/widgets`; every key and type is
  * GitHub's own, from a live `gh api graphql` of this query).
  */
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { GITHUB_FEEDBACK_QUERY } from '../github-feedback-observation.js';
 import { GitHubPullRequestProvider } from '../github-pull-request-provider.js';
+import recordedFixture from './fixtures/github-feedback-observation.json' with {
+  type: 'json',
+};
 
-const recorded = readFileSync(
-  new URL('./fixtures/github-feedback-observation.json', import.meta.url),
-  'utf8',
-);
+const recorded = JSON.stringify(recordedFixture);
 const CONTEXT = {
   host: 'github.com',
   repository: { owner: 'acme', name: 'widgets' },

@@ -35,7 +35,6 @@
                         "conclusion": "FAILURE",
                         "detailsUrl": "https://github.com/acme/widgets/actions/runs/1001/job/2001",
                         "title": "Process completed with exit code 1.",
-                        "summary": null,
                         "isRequired": true,
                         "checkSuite": {
                           "workflowRun": {
@@ -52,7 +51,6 @@
                         "conclusion": null,
                         "detailsUrl": "https://github.com/acme/widgets/actions/runs/1001/job/2002",
                         "title": null,
-                        "summary": null,
                         "isRequired": false,
                         "checkSuite": {
                           "workflowRun": {
@@ -69,7 +67,6 @@
                         "conclusion": "SUCCESS",
                         "detailsUrl": "https://github.com/acme/widgets/actions/runs/1001/job/2003",
                         "title": null,
-                        "summary": null,
                         "isRequired": true,
                         "checkSuite": {
                           "workflowRun": {
@@ -86,7 +83,6 @@
                         "conclusion": "CANCELLED",
                         "detailsUrl": "https://github.com/acme/widgets/actions/runs/1001/job/2004",
                         "title": null,
-                        "summary": null,
                         "isRequired": false,
                         "checkSuite": {
                           "workflowRun": {

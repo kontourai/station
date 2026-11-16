@@ -37,6 +37,9 @@ const defaultGitHubTransport = (
     timeout: 10_000,
     encoding: 'utf8',
     windowsHide: true,
+    // Explicit, not the 1 MB default: a feedback read of a busy pull request
+    // (100 checks, 50 threads) must not fail on its size.
+    maxBuffer: 8 * 1024 * 1024,
   });
 
 const offeredCapabilities: PullRequestCapabilities = {

@@ -50,7 +50,6 @@ export const GITHUB_FEEDBACK_QUERY = `query($owner: String!, $name: String!, $nu
                     conclusion
                     detailsUrl
                     title
-                    summary
                     isRequired(pullRequestNumber: $number)
                     checkSuite { workflowRun { workflow { name } } }
                   }
@@ -90,6 +89,18 @@ export const GITHUB_FEEDBACK_QUERY = `query($owner: String!, $name: String!, $nu
 }`;
 
 const NUMBER = /^[1-9]\d{0,9}$/;
+/**
+ * Forge text is cut as it is read, so neither gh's output nor the stored
+ * observation grows with whatever a reviewer or CI wrote: a message quotes
+ * at most 600 characters of any of it.
+ */
+const BODY_CHARS = 1000;
+const EXCERPT_CHARS = 600;
+const NAME_CHARS = 300;
+const capped = <T extends string | undefined>(value: T, max: number): T =>
+  (value !== undefined && value.length > max
+    ? `${value.slice(0, max - 1)}…`
+    : value) as T;
 const NAME = /^[A-Za-z0-9._-]{1,100}$/;
 const HOST = /^[a-z0-9.-]{1,253}(?::\d{1,5})?$/;
 
@@ -135,11 +146,13 @@ function normalizeCheck(node: any): PullRequestFeedbackCheck | undefined {
     const job = text(node.name);
     if (!job) return undefined;
     const workflow = text(node.checkSuite?.workflowRun?.workflow?.name);
-    const excerpt = [text(node.title), text(node.summary)]
-      .filter((part): part is string => !!part?.trim())
-      .join('\n');
+    // The title only: a summary can run to 64 KB, times a hundred checks.
+    const excerpt = capped(text(node.title)?.trim(), EXCERPT_CHARS);
     return {
-      name: workflow && !workflow.includes('/') ? `${workflow} / ${job}` : job,
+      name: capped(
+        workflow && !workflow.includes('/') ? `${workflow} / ${job}` : job,
+        NAME_CHARS,
+      ),
       conclusion: text(node.conclusion)?.toUpperCase() ?? null,
       completed: node.status === 'COMPLETED',
       required: node.isRequired === true,
@@ -159,7 +172,9 @@ function normalizeCheck(node: any): PullRequestFeedbackCheck | undefined {
       completed: !pending,
       required: node.isRequired === true,
       ...(text(node.targetUrl) ? { url: node.targetUrl } : {}),
-      ...(text(node.description)?.trim() ? { excerpt: node.description } : {}),
+      ...(text(node.description)?.trim()
+        ? { excerpt: capped(node.description.trim(), EXCERPT_CHARS) }
+        : {}),
     };
   }
   return undefined;
@@ -179,7 +194,7 @@ function normalizeThread(node: any): PullRequestReviewThread | undefined {
           {
             id: commentId,
             author: login(comment.author),
-            body: text(comment.body) ?? '',
+            body: capped(text(comment.body), BODY_CHARS) ?? '',
             ...(text(comment.url) ? { url: comment.url } : {}),
             createdAt,
           },
@@ -213,7 +228,7 @@ function normalizeReview(node: any): PullRequestFeedbackReview | undefined {
     id: reviewId,
     author: login(node.author),
     state: state.toUpperCase(),
-    body: text(node.body) ?? '',
+    body: capped(text(node.body), BODY_CHARS) ?? '',
     ...(text(node.submittedAt) ? { submittedAt: node.submittedAt } : {}),
     ...(text(node.url) ? { url: node.url } : {}),
   };
