@@ -1,6 +1,7 @@
 import type { PullRequestLinkIdentity } from '@kontourai/station-contracts/conversation-pull-request-links';
 import type {
   ConversationPullRequestFeedback,
+  ProjectPullRequestFeedbackDefaults,
   PullRequestFeedbackOwner,
   PullRequestFeedbackSettings,
   PullRequestFeedbackView,
@@ -134,5 +135,81 @@ export async function turnOffPullRequestFeedback(
     await mutateJson(path(apiBase, conversationId), 'DELETE', options, {
       identity,
     }),
+  );
+}
+
+const defaultsPath = (apiBase: string, projectSlug: string) => {
+  if (!projectSlug) throw new Error('Project identity is required');
+  return `${apiBase}/api/pull-request-feedback/projects/${encodeURIComponent(projectSlug)}/defaults`;
+};
+
+function projectDefaultsOf(
+  value: ProjectPullRequestFeedbackDefaults,
+  projectSlug: string,
+): ProjectPullRequestFeedbackDefaults {
+  if (value.projectSlug !== projectSlug || !value.settings)
+    throw new Error('Pull request feedback response has the wrong identity');
+  return value;
+}
+
+/** A Project's agent feedback defaults, and whether the reader may change them. */
+export async function getProjectPullRequestFeedbackDefaults(
+  apiBase: string,
+  projectSlug: string,
+  options?: ClientRequestOptions,
+): Promise<ProjectPullRequestFeedbackDefaults> {
+  return projectDefaultsOf(
+    await read<ProjectPullRequestFeedbackDefaults>(
+      await getJson(defaultsPath(apiBase, projectSlug), options),
+    ),
+    projectSlug,
+  );
+}
+
+/**
+ * Set a Project's defaults (this Station's owner only). They apply to pull
+ * requests set up from now on, never to one already set up.
+ */
+export async function writeProjectPullRequestFeedbackDefaults(
+  apiBase: string,
+  projectSlug: string,
+  settings: Pick<
+    PullRequestFeedbackSettings,
+    'fixFailingChecks' | 'addressReviewComments'
+  >,
+  options?: ClientRequestOptions,
+): Promise<ProjectPullRequestFeedbackDefaults> {
+  return projectDefaultsOf(
+    await read<ProjectPullRequestFeedbackDefaults>(
+      await mutateJson(defaultsPath(apiBase, projectSlug), 'PUT', options, {
+        settings: {
+          fixFailingChecks: settings.fixFailingChecks,
+          addressReviewComments: settings.addressReviewComments,
+        },
+      }),
+    ),
+    projectSlug,
+  );
+}
+
+/**
+ * Remove a pull request found on the chat's Task branch from the chat, for
+ * good: its feedback stops unless it is also linked or kept there.
+ */
+export async function removeDerivedPullRequest(
+  apiBase: string,
+  conversationId: string,
+  identity: PullRequestLinkIdentity,
+  options?: ClientRequestOptions,
+): Promise<void> {
+  await read<{ conversationId: string }>(
+    await mutateJson(
+      path(apiBase, conversationId, '/derived'),
+      'DELETE',
+      options,
+      {
+        identity,
+      },
+    ),
   );
 }
