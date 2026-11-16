@@ -16,7 +16,15 @@ import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
-import { afterAll, afterEach, beforeAll, expect, test, vi } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  test,
+  vi,
+} from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { createInvokeRoutes } from '../../../routes/agents/invoke.js';
 import { createStationControlAuthorityGuard } from '../../../security/station-control-authority-guard.js';
@@ -56,6 +64,10 @@ import {
   createRequestStationControlMiddleware,
   REQUEST_STATION_CONTROL_PATHS,
 } from '../request-station-control.js';
+import {
+  createScheduledTurnAdapter,
+  JOB_OWNER_NEEDED_MODEL_NOTE,
+} from '../runtime-route-support.js';
 
 const OPERATOR_CREDENTIAL = 'test-only-operator-credential-request-runs';
 const makeTempDir = trackTempDirs();
@@ -307,4 +319,67 @@ test('an internal request never opens a run, even Station’s own server code', 
     'Station tools need a verified calling session',
   );
   expect(seen).toEqual([]);
+});
+
+// #2377 slice D (owner decision 2026-11-16): an untargeted scheduled job runs
+// as its recorded owner; one with no owner gets no caller and is told so.
+describe('scheduled jobs', () => {
+  const generateText = vi.fn(async (prompt: string) => ({
+    text: JSON.stringify({
+      prompt,
+      tool: await updateConfig.execute({ updates: { theme: 'dark' } }),
+    }),
+  }));
+  const adapter = createScheduledTurnAdapter(
+    new Map([['helper', { generateText }]]) as never,
+  );
+  const runJob = async (createdBy?: { userId: string }) => {
+    const outcome = await adapter.invoke({
+      agentSlug: 'helper',
+      prompt: 'tidy the config',
+      receipt: {
+        id: 'run-1',
+        jobId: 'job-1',
+        job: { name: 'nightly', ...(createdBy ? { createdBy } : {}) },
+        startedAt: new Date().toISOString(),
+        manual: true,
+        missedCount: 0,
+      } as never,
+      approval: 'unattended-deny',
+      principal: { kind: 'scheduled-job', jobId: 'job-1', runId: 'run-1' },
+      signal: new AbortController().signal,
+    });
+    expect(outcome.kind).toBe('completed');
+    const output = JSON.parse((outcome as { output: string }).output) as {
+      prompt: string;
+      tool: { content: { text: string }[] };
+    };
+    return {
+      prompt: output.prompt,
+      tool: JSON.parse(output.tool.content[0]!.text) as {
+        success: boolean;
+        code?: string;
+      },
+    };
+  };
+
+  test('an owned job runs as its owner: an operator-only write reaches its route as a bound operator', async () => {
+    const { prompt, tool } = await runJob({
+      userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+    });
+    expect(prompt).toBe('tidy the config');
+    expect(tool).toEqual({ success: true });
+    expect(seen).toHaveLength(1);
+    expectBoundOperator(seen[0]);
+  });
+
+  test('a job with no owner has no caller, and its model is told it has no Station tools', async () => {
+    const { prompt, tool } = await runJob();
+    expect(prompt).toContain(JOB_OWNER_NEEDED_MODEL_NOTE);
+    expect(tool).toMatchObject({
+      success: false,
+      code: 'station_control_caller_required',
+    });
+    expect(seen).toEqual([]);
+  });
 });

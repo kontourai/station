@@ -235,8 +235,17 @@ export interface SchedulerJob {
   agent?: string;
   /** Where each run lands; absent is a legacy Station-engine file run. */
   target?: SchedulerAutomationTarget;
-  /** Server-recorded creator a targeted run acts as. Read-only. */
+  /**
+   * Server-recorded creator every run acts as (#2377 slice D: untargeted
+   * jobs too). Read-only.
+   */
   createdBy?: Readonly<{ userId: string }>;
+  /**
+   * #2377 slice D: present when the job has no recorded owner (a job created
+   * before owners were recorded, on a shared or hosted Station). Its runs
+   * have no Station tools until a person re-creates it. Read-only.
+   */
+  ownerNeeded?: string;
   /** Failed runs since the last success, newest first. Read-only. */
   consecutiveFailures?: number;
   /** When the last successful run completed. Read-only. */
@@ -305,8 +314,8 @@ export interface AddJobOpts {
 }
 
 /**
- * Who a targeted automation acts as when it runs: the admitted creator, as
- * the create route resolved them. Replayed exactly, never strengthened.
+ * Who an automation acts as when it runs: the admitted creator, as the
+ * create route resolved them. Replayed exactly, never strengthened.
  */
 export type SchedulerAutomationCreator = Readonly<{
   userId: string;

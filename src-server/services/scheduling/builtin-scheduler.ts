@@ -2,6 +2,7 @@ import { type Schedule, validateSchedule } from '@kontourai/ephemeris';
 import {
   AUTOMATION_RUN_POLICY,
   SCHEDULER_EXECUTION_LIMITS,
+  type SchedulerAutomationCreator,
   type SchedulerAutomationTarget,
   type SchedulerConcurrencyDisposition,
   type SchedulerEvent,
@@ -231,6 +232,13 @@ export interface BuiltinSchedulerOptions {
   ledger?: SchedulerLedger;
   turnAdapter: ScheduledTurnAdapter;
   /**
+   * #2377 slice D: on a personal Station only, the operator, recorded as the
+   * owner of every stored job that has none (jobs created before owners were
+   * recorded). Absent on shared and hosted Stations, where such a job keeps
+   * no owner and runs without Station tools (`ownerNeeded`).
+   */
+  personalJobOwner?: SchedulerAutomationCreator;
+  /**
    * Runs jobs that target a conversation (any engine). Absent: such a job
    * fails without invoking anything (hosted, or no inbox).
    */
@@ -398,6 +406,25 @@ export class BuiltinScheduler implements ISchedulerProvider {
             },
           ),
       });
+    if (options.personalJobOwner) {
+      try {
+        const backfilled = this.ledger.backfillJobOwners(
+          options.personalJobOwner,
+        );
+        if (backfilled > 0)
+          this.options.logger?.info(
+            'Recorded the operator as owner of older jobs',
+            {
+              count: backfilled,
+            },
+          );
+      } catch (error) {
+        // A ledger that cannot be written reports itself on its next read.
+        this.options.logger?.warn('Could not record owners of older jobs', {
+          error,
+        });
+      }
+    }
     this.announcementOutbox = this.ledger.announcementOutbox();
     this.monitorTerminalOutbox =
       this.ledger.monitorTerminalAnnouncementOutbox();
@@ -1810,7 +1837,9 @@ export class BuiltinScheduler implements ISchedulerProvider {
       notifyStart: opts.notifyStart,
       retryCount: opts.retryCount,
       retryDelaySecs: opts.retryDelaySecs,
-      ...(target ? { target, createdBy: opts.createdBy } : {}),
+      ...(target ? { target } : {}),
+      // #2377 slice D: every job records who its runs act as.
+      ...(opts.createdBy ? { createdBy: opts.createdBy } : {}),
       monitor: opts.monitor
         ? {
             ...opts.monitor,

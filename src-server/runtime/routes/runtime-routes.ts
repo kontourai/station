@@ -12952,6 +12952,7 @@ export function configureRuntimeRoutes(
       admitAutomationJob: agentSchedule.admitAutomationJob,
       mayReadAutomationJob: agentSchedule.mayReadAutomationJob,
       mayReadAutomationRun: agentSchedule.mayReadAutomationRun,
+      jobOwner: agentSchedule.jobOwner,
       ...(scheduledConversationRuns
         ? { admitAutomationTarget: agentSchedule.admitAutomationTarget }
         : {}),

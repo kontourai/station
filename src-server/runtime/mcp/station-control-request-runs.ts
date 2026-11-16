@@ -3,9 +3,10 @@
  *
  * Station's own engine also runs outside any orchestration session: the
  * invoke endpoints (`/agents/:slug/invoke`, `/agents/:slug/invoke/stream`,
- * `/invoke`) and the raw tool call (`POST /agents/:slug/tools/:toolName`).
- * Those are authenticated HTTP requests, so the run acts for the request's
- * resolved principal. A run is given its own opaque id (never a session id a
+ * `/invoke`), the raw tool call (`POST /agents/:slug/tools/:toolName`), a
+ * direct chat stream, and an untargeted scheduled job. The HTTP runs act for
+ * the request's resolved principal; a scheduled job's run acts for the
+ * owner recorded when it was created. A run is given its own opaque id (never a session id a
  * client can name) and the principal Station resolved for the request, and
  * the caller-record resolver answers for it exactly as it answers for a
  * session's recorded owner (`createStationControlCallerRecordResolver`).

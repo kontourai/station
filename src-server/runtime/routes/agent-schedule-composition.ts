@@ -11,6 +11,7 @@ import type {
 } from '@kontourai/station-contracts/agent-schedule';
 import type { RunSummary } from '@kontourai/station-contracts/runs';
 import type {
+  SchedulerAutomationCreator,
   SchedulerAutomationTarget,
   SchedulerJob,
   SchedulerLogEntry,
@@ -144,6 +145,8 @@ export interface AgentScheduleComposition {
   readonly jobProposals: JobProposalApproval;
   /** The scheduler create/edit routes' rule for a job `target`. */
   readonly admitAutomationTarget: AutomationTargetAdmission;
+  /** #2377 slice D: who an untargeted job created by this request runs as. */
+  readonly jobOwner: (c: Context) => SchedulerAutomationCreator | undefined;
   /** The scheduler routes' rule for acting on a job with a stored target. */
   readonly admitAutomationJob: AutomationJobAdmission;
   readonly mayReadAutomationRun: (
@@ -250,6 +253,33 @@ function admitAutomationTargetFor(
         error: 'Conversation not found.',
       };
     return { ok: true, createdBy: { userId: requester.userId } };
+  };
+}
+
+/**
+ * #2377 slice D: who an untargeted job's runs act as. An agent's request
+ * records its dispatch actor, as a targeted automation does; a person's
+ * records that person. Neither resolved: no owner.
+ */
+function jobOwnerFor(
+  deps: Pick<AgentScheduleCompositionDeps, 'dispatchActor'>,
+  person: (c: Context) => AgentSchedulePerson | undefined,
+): (c: Context) => SchedulerAutomationCreator | undefined {
+  return (c) => {
+    if (requestMayBeAnAgent(c.req.raw)) {
+      if (stationControlRequestAuthority(c.req.raw)?.kind !== 'caller')
+        return undefined;
+      const actor = deps.dispatchActor(c);
+      return {
+        userId: actor.userId,
+        ...(actor.principal ? { principal: actor.principal } : {}),
+        ...(actor.ownerAttribution
+          ? { ownerAttribution: actor.ownerAttribution }
+          : {}),
+      };
+    }
+    const requester = person(c);
+    return requester ? { userId: requester.userId } : undefined;
   };
 }
 
@@ -525,6 +555,7 @@ export function composeAgentSchedule(
     automationProposalRouteDeps,
     person,
     admitAutomationTarget: admitAutomationTargetFor(deps, person),
+    jobOwner: jobOwnerFor(deps, person),
     admitAutomationJob: admitAutomationJobFor(person),
     mayReadAutomationJob: (c, job) => {
       if (requestMayBeAnAgent(c.req.raw)) {

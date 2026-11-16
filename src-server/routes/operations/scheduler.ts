@@ -232,6 +232,13 @@ export function createSchedulerRoutes(
     jobProposals?: JobProposalApproval;
     /** Absent: a body with a `target` is refused (no conversation runs). */
     admitAutomationTarget?: AutomationTargetAdmission;
+    /**
+     * #2377 slice D: who an untargeted job's runs act as, resolved from the
+     * creating request (a person, or an agent's dispatch actor). Absent or
+     * unresolved: the job is stored with no owner and its runs have no
+     * Station tools (`ownerNeeded`).
+     */
+    jobOwner?: (c: Context) => SchedulerAutomationCreator | undefined;
     /** Absent: every action on a job with a stored target is refused. */
     admitAutomationJob?: AutomationJobAdmission;
     mayReadAutomationJob?: (c: Context, job: SchedulerJob) => boolean;
@@ -550,9 +557,15 @@ export function createSchedulerRoutes(
         return admitted.refused;
       }
       schedulerJobRuns.add(1, { op: 'create_job' });
+      // #2377 slice D: an untargeted job records its owner too.
+      const owner = body.target ? undefined : options.jobOwner?.(c);
       let output: Awaited<ReturnType<SchedulerService['addJob']>>;
       try {
-        output = await schedulerService.addJob({ ...body, ...admitted });
+        output = await schedulerService.addJob({
+          ...body,
+          ...admitted,
+          ...(owner ? { createdBy: owner } : {}),
+        });
       } catch (error) {
         approval?.revert();
         throw error;

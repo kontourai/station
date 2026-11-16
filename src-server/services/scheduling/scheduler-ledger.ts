@@ -88,7 +88,10 @@ export interface StoredSchedulerJob {
   monitorState?: ExternalMonitorState;
   /** Where each run lands; absent is a legacy Station-engine file run. */
   target?: SchedulerAutomationTarget;
-  /** The admitted creator a targeted run acts as. Never changed by an edit. */
+  /**
+   * The admitted creator every run acts as (targeted and, since #2377 slice
+   * D, untargeted). Never changed by an edit.
+   */
   createdBy?: SchedulerAutomationCreator;
   /**
    * Set when a person turns a disabled job back on: runs that ended at or
@@ -464,6 +467,10 @@ export const ANNOUNCEMENT_LEASE_MS = 60_000;
 /** Records that the pre-outbox backfill has run to completion, exactly once. */
 export const ANNOUNCEMENT_OUTBOX_MIGRATION_KEY = 'announcement-outbox-migrated';
 
+/** #2377 slice D: why a job with no recorded owner has no Station tools. */
+export const JOB_OWNER_NEEDED_REASON =
+  'This job has no recorded owner, so its runs have no Station tools. Re-create it to make you its owner.';
+
 /**
  * What a caller may do about one run's announcement.
  *
@@ -562,6 +569,12 @@ export interface SchedulerOwedAnnouncements {
 
 export interface SchedulerLedger {
   create(job: StoredSchedulerJob): SchedulerCreateOutcome;
+  /**
+   * #2377 slice D: record `owner` on every stored job that has none. The
+   * caller decides when that is true (a personal Station's operator only).
+   * Returns how many jobs it changed.
+   */
+  backfillJobOwners(owner: SchedulerAutomationCreator): number;
   update(name: string, update: Record<string, unknown>): SchedulerUpdateOutcome;
   remove(name: string): SchedulerRemoveOutcome;
   list(): SchedulerReadOutcome<StoredSchedulerJob[]>;
@@ -985,6 +998,26 @@ class SqliteSchedulerLedger implements SchedulerLedger {
       : undefined;
   }
 
+  backfillJobOwners(owner: SchedulerAutomationCreator): number {
+    return this.transaction(() => {
+      const rows = this.db
+        .prepare('SELECT name, data FROM scheduler_jobs')
+        .all() as Array<{ name: string; data: string }>;
+      let changed = 0;
+      for (const row of rows) {
+        const job = parseStoredJob(row.data);
+        if (job.createdBy) continue;
+        this.db
+          .prepare(
+            'UPDATE scheduler_jobs SET data = ?, revision = revision + 1 WHERE name = ?',
+          )
+          .run(JSON.stringify({ ...job, createdBy: owner }), row.name);
+        changed += 1;
+      }
+      return changed;
+    });
+  }
+
   create(job: StoredSchedulerJob): SchedulerCreateOutcome {
     const refused = this.refuseIfCorrupt();
     if (refused) return refused;
@@ -1202,7 +1235,9 @@ class SqliteSchedulerLedger implements SchedulerLedger {
         return {
           ...rest,
           // Only who created it is public; the replayed actor stays private.
-          ...(createdBy ? { createdBy: { userId: createdBy.userId } } : {}),
+          ...(createdBy
+            ? { createdBy: { userId: createdBy.userId } }
+            : { ownerNeeded: JOB_OWNER_NEEDED_REASON }),
           consecutiveFailures: countConsecutiveFailures(
             this.finalizedLogsUnsafe(job.name),
             failureCountResetAt,
