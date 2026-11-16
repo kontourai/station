@@ -557,39 +557,38 @@ describe('heavy checks that take their own slot (#5080)', () => {
       );
   });
 
-  test.each(FALLOW_ENTRY_POINTS)(
-    '$args.0 $args.1 queues for the slot as "$label" before any analysis',
-    ({ label, args }) => {
-      const w = workspace();
-      // Run from an empty directory: anything that slipped past the slot
-      // would analyse it, never this repository.
-      const project = join(w.root, 'project');
-      mkdirSync(project);
-      holdSlot(w.slotDir, 'another worktree');
-      const result = spawnSync(
-        process.execPath,
-        args.map((arg) =>
-          /^(scripts|node_modules)\//.test(arg) ? resolve(arg) : arg,
-        ),
-        {
-          cwd: project,
-          env: {
-            ...poolEnv(w.slotDir, { STATION_HEAVY_CHECK_SLOT_WAIT_MS: '0' }),
-            GIT_CEILING_DIRECTORIES: w.root,
-          },
-          encoding: 'utf8',
-          windowsHide: true,
-          timeout: 30_000,
+  test.each(
+    FALLOW_ENTRY_POINTS.map((entry) => [entry.args.join(' '), entry] as const),
+  )('%s queues for the slot before any analysis', (_name, { label, args }) => {
+    const w = workspace();
+    // Run from an empty directory: anything that slipped past the slot
+    // would analyse it, never this repository.
+    const project = join(w.root, 'project');
+    mkdirSync(project);
+    holdSlot(w.slotDir, 'another worktree');
+    const result = spawnSync(
+      process.execPath,
+      args.map((arg) =>
+        /^(scripts|node_modules)\//.test(arg) ? resolve(arg) : arg,
+      ),
+      {
+        cwd: project,
+        env: {
+          ...poolEnv(w.slotDir, { STATION_HEAVY_CHECK_SLOT_WAIT_MS: '0' }),
+          GIT_CEILING_DIRECTORIES: w.root,
         },
-      );
-      expect(result.status, result.stderr).not.toBe(0);
-      expect(result.stderr).toContain(
-        `FAIL: waited 0s for a heavy-check slot for ${label}; all 1 are held: pid ${process.pid} (another worktree)`,
-      );
-      expect(result.stdout).toBe('');
-      expect(readdirSync(project)).toEqual([]);
-    },
-  );
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 30_000,
+      },
+    );
+    expect(result.status, result.stderr).not.toBe(0);
+    expect(result.stderr).toContain(
+      `FAIL: waited 0s for a heavy-check slot for ${label}; all 1 are held: pid ${process.pid} (another worktree)`,
+    );
+    expect(result.stdout).toBe('');
+    expect(readdirSync(project)).toEqual([]);
+  });
 
   test('a code-health gate runs once the holder releases its slot', async () => {
     const w = workspace();
