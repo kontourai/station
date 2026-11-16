@@ -1915,16 +1915,19 @@ scope contract rather than assuming every SDK query is interchangeable.
 
 ### Remote session history
 
-`fetchRemoteSessionHistory(environmentId, threadId, { cursor?, turnLimit? })`
-reads one read-only history page of a session on a connected SSH
-environment's Station. These are the rows `useRemoteSessionsQuery` lists.
+`fetchRemoteSessionHistory(environmentId, threadId, { cursor?, turnLimit? },
+{ apiBase?, requestScope?, signal? })` reads one read-only history page of a
+session on a connected SSH environment's Station. A conversation surface
+passes its owning connection's `apiBase` and `requestScope`; without them
+the host's configured Station is used. These are the rows `useRemoteSessionsQuery` lists.
 This Station relays the remote's bounded `window-v1` read over the
 environment's tunnel and peer bearer, and labels the page with its own
 `environmentName`. `readRemoteSessionHistoryCapability(apiBase)` reports the
 `remoteSessionHistory` handshake flag. Ask it before offering to open a
-remote row, because an older host answers the path 404. Failures throw with
-the server's sentence: not connected, needs a repaired credential, not found,
-did not answer, or a page larger than the Station relays. A caller who is not
+remote row, because an older host answers the path 404. Failures reject with
+`StationHttpError` carrying the route's `code`: `environment_unavailable`,
+`authentication_required`, `not_found`, `unreachable`, `too_large` or
+`invalid_response`. Show fixed copy for a code, not the server's sentence. A caller who is not
 the Station's bound owner gets `Forbidden`, and so does any agent request. The
 page is view-only and carries no continuation.
 

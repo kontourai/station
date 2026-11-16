@@ -5,8 +5,9 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { _getApiBase } from '../api';
 import { apiErrorMessage } from '../api-core';
+import { envelopeError } from '../client/api-error-message';
 import { hasCapability } from '../client/capability';
-import { authenticatedFetch } from '../client/http';
+import { authenticatedFetch, type ClientRequestOptions } from '../client/http';
 import { fetchPublicStationCapabilities } from '../client/publicStationCapabilities';
 import type { QueryConfig } from '../query-core';
 import type { OrchestrationSessionSummary } from './chatRuntimeTypes';
@@ -269,19 +270,41 @@ export interface RemoteSessionHistoryPage {
   window: OrchestrationSessionEventWindow;
 }
 
-/** `GET /api/environments/ssh/sessions/:environmentId/:threadId/history`. */
+/**
+ * `GET /api/environments/ssh/sessions/:environmentId/:threadId/history`.
+ * `options.apiBase` and `options.requestScope` name the Station that relays
+ * the read (a conversation surface passes its owning connection's); absent,
+ * the host's configured Station is used. A refusal rejects with
+ * `StationHttpError`, keeping the route's status and `code`
+ * (`environment_unavailable`, `authentication_required`, `not_found`,
+ * `unreachable`, `too_large`, `invalid_response`).
+ */
 export async function fetchRemoteSessionHistory(
   environmentId: string,
   threadId: string,
   input: { cursor?: string; turnLimit?: number } = {},
+  options: Pick<ClientRequestOptions, 'signal' | 'requestScope'> & {
+    apiBase?: string;
+  } = {},
 ): Promise<RemoteSessionHistoryPage> {
   const query = new URLSearchParams();
   if (input.cursor !== undefined) query.set('cursor', input.cursor);
   if (input.turnLimit !== undefined)
     query.set('turnLimit', String(input.turnLimit));
-  const page = await request<RemoteSessionHistoryPage>(
-    `/sessions/${encodeURIComponent(environmentId)}/${encodeURIComponent(threadId)}/history${query.size ? `?${query}` : ''}`,
+  const { apiBase = await _getApiBase(), ...requestOptions } = options;
+  const response = await authenticatedFetch(
+    `${apiBase}/api/environments/ssh/sessions/${encodeURIComponent(environmentId)}/${encodeURIComponent(threadId)}/history${query.size ? `?${query}` : ''}`,
+    requestOptions,
   );
+  let body: ApiEnvelope<RemoteSessionHistoryPage> | undefined;
+  try {
+    body = (await response.json()) as ApiEnvelope<RemoteSessionHistoryPage>;
+  } catch {
+    body = undefined;
+  }
+  if (!response.ok || !body?.success || body.data === undefined)
+    throw envelopeError(response, body, 'Remote session history unavailable');
+  const page = body.data;
   return {
     ...page,
     window: {

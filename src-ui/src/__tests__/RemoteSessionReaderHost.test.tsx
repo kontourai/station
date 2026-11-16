@@ -2,14 +2,18 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, render, screen, within } from '@testing-library/react';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { PreviewProvider } from '../contexts/PreviewContext';
 import { ToastProvider } from '../contexts/ToastContext';
 
 vi.mock('../components/icons/UserIcon', () => ({ UserIcon: () => null }));
-vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../contexts/ApiBaseContext')>()),
-  useApiBase: () => ({ apiBase: 'http://station.test' }),
+// The shell resolves this Station as the reader's owning connection.
+const registry = vi.hoisted(() => ({
+  resolve: vi.fn(),
+  release: vi.fn(),
+}));
+vi.mock('../connections/StationConnectionsContext', () => ({
+  useStationConnectionsOptional: () => registry,
 }));
 
 const sdk = vi.hoisted(() => ({
@@ -22,6 +26,8 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   fetchRemoteSessionHistory: sdk.fetchRemoteSessionHistory,
 }));
 
+import { StationHttpError } from '@kontourai/station-sdk/client';
+import { conversationConnection } from '../components/conversation/__tests__/fixtures';
 import { RemoteSessionReaderHost } from '../components/remote-session/RemoteSessionReaderHost';
 import { remoteSessionReaderStore } from '../contexts/remote-session-reader-store';
 
@@ -63,7 +69,18 @@ function openReader() {
   });
 }
 
+const STATION = conversationConnection('host');
+
+beforeEach(() => {
+  registry.resolve.mockResolvedValue({
+    connection: STATION,
+    release: registry.release,
+  });
+});
+
 afterEach(() => {
+  registry.resolve.mockReset();
+  registry.release.mockReset();
   const open = remoteSessionReaderStore.getSnapshot();
   if (open) act(() => remoteSessionReaderStore.close(open));
   sdk.capable = true;
@@ -107,11 +124,19 @@ describe('RemoteSessionReaderHost', () => {
 
     const reader = await screen.findByTestId('remote-session-reader');
     expect(await within(reader).findByText('Here are the files.')).toBeTruthy();
+    // Read through the owning connection's Station and authority, never an
+    // ambient host.
     expect(sdk.fetchRemoteSessionHistory).toHaveBeenCalledWith(
       'env-a',
       THREAD,
       { turnLimit: 10 },
+      {
+        apiBase: STATION.targetApiBase,
+        requestScope: STATION.requestScope,
+        signal: expect.any(AbortSignal),
+      },
     );
+    expect(registry.resolve).toHaveBeenCalledWith({});
     expect(screen.getByText('On Home media · Read only')).toBeTruthy();
     const composer = within(reader).getByRole('textbox');
     expect((composer as HTMLTextAreaElement).disabled).toBe(true);
@@ -132,15 +157,37 @@ describe('RemoteSessionReaderHost', () => {
     expect(sdk.fetchRemoteSessionHistory).not.toHaveBeenCalled();
   });
 
-  test("a refused read shows the server's reason instead of an empty transcript", async () => {
+  test('a refusal the relay names by code shows fixed copy, not the server sentence', async () => {
     sdk.fetchRemoteSessionHistory.mockRejectedValue(
-      new Error('That computer is not connected. Connect it, then try again.'),
+      new StationHttpError(409, 'server-chosen sentence that must not show', {
+        code: 'environment_unavailable',
+      }),
     );
     renderHost();
     openReader();
     expect(
       (await screen.findByTestId('remote-session-error')).textContent,
     ).toBe('That computer is not connected. Connect it, then try again.');
+  });
+
+  test('any other failure goes through the Station failure translator', async () => {
+    sdk.fetchRemoteSessionHistory.mockRejectedValue(
+      new Error('raw diagnostic text that must not show'),
+    );
+    renderHost();
+    openReader();
+    const shown = (await screen.findByTestId('remote-session-error'))
+      .textContent;
+    expect(shown).not.toContain('raw diagnostic');
+    expect(shown).toBe('Try again in a moment.');
+  });
+
+  test('without a resolvable Station the reader reads nothing and offers a retry', async () => {
+    registry.resolve.mockRejectedValue(new Error('no Station'));
+    renderHost();
+    openReader();
+    expect(await screen.findByText('Station unavailable')).toBeTruthy();
+    expect(sdk.fetchRemoteSessionHistory).not.toHaveBeenCalled();
   });
 });
 
