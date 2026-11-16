@@ -10,10 +10,8 @@
   min-width: 0;
 }
 
-.project-task-board__notice {
-  margin: 0;
-  color: var(--k-text-muted);
-  font-size: var(--k-text-sm);
+.project-task-board__checking .skeleton {
+  height: 4px;
 }
 
 .project-task-board__lanes {
@@ -30,6 +28,16 @@
 @container (min-width: 880px) {
   .project-task-board__lanes {
     grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .project-task-board__nothing {
+    display: block;
+  }
+
+  .project-task-board__lane[data-empty="true"]
+    .project-task-board__lane-header {
+    color: var(--k-text);
+    font-weight: 600;
   }
 }
 
@@ -75,11 +83,17 @@
   font-weight: 400;
 }
 
-.project-task-board__empty {
-  margin: 0;
-  padding-block: var(--k-space-2);
+/* An empty lane: on a narrow board just its header row ("Ready to merge
+   0"); five across, a quiet note under the header. */
+.project-task-board__nothing {
+  display: none;
   color: var(--k-text-faint);
   font-size: var(--k-text-sm);
+}
+
+.project-task-board__lane[data-empty="true"] .project-task-board__lane-header {
+  color: var(--k-text-muted);
+  font-weight: 400;
 }
 
 .project-task-board__cards {
@@ -175,15 +189,6 @@
   border-radius: inherit;
 }
 
-.task-card__title:focus-visible {
-  outline: none;
-}
-
-.task-card:has(.task-card__title:focus-visible) {
-  outline: var(--k-focus-ring-width) solid var(--k-focus);
-  outline-offset: var(--k-focus-ring-offset);
-}
-
 /* The footer carries the meta line and the one action. The action always
    takes its space, so nothing reflows when it appears; a fine pointer
    reveals it on hover or focus. */
@@ -204,6 +209,11 @@
   flex-shrink: 0;
 }
 
+/* The shared touch floor: 44px wherever the shell sets it, no query here. */
+.task-card__action .button {
+  min-height: var(--touch-target-min, auto);
+}
+
 /* A fine pointer on a wide board: the action takes no layout space at all
    (so neither the title nor the meta line ever reflows) and appears over
    the footer's end on hover or focus, on the card's own surface. */
@@ -220,12 +230,6 @@
   .task-card:hover .task-card__action,
   .task-card:focus-within .task-card__action {
     visibility: visible;
-  }
-}
-
-@media (pointer: coarse), (max-width: 720px) {
-  .task-card__action .button {
-    min-height: 44px;
   }
 }
 
@@ -315,24 +319,6 @@
 .project-task-board__shelf > .project-task-board__cards {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
   padding-bottom: var(--k-space-3);
-}
-
-/* Phone: one column; an empty lane is just its header row. */
-@media (max-width: 720px) {
-  .project-task-board__lanes {
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--k-space-3);
-  }
-
-  .project-task-board__lane[data-empty="true"] .project-task-board__empty {
-    display: none;
-  }
-
-  .project-task-board__lane[data-empty="true"]
-    .project-task-board__lane-header {
-    color: var(--k-text-muted);
-    font-weight: 400;
-  }
 }
 
 /* Board presentation in the Project page grid: the board takes the row and

@@ -21,6 +21,10 @@
       "count": 1,
       "reason": "The shared path field's dropdown drops absolute positioning on touch so it cannot open off-screen."
     },
+    "src-ui/src/components/ProjectTaskBoard.css": {
+      "count": 2,
+      "reason": "The Project Tasks board's own geometry: one container query puts five lanes across only when the board itself is wide enough (the Project page's navigation column makes viewport width the wrong measure), and one hover/fine-pointer query reveals a card's action without reflowing it. No shared primitive owns a lane board."
+    },
     "src-ui/src/components/TasksLayout.css": {
       "count": 1,
       "reason": "One tighter page gutter at 640px."

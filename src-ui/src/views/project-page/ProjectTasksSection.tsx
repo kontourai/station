@@ -801,9 +801,13 @@ export function ProjectTasksSection({
                       }
                       pendingTaskIds={pendingTaskIds}
                       notice={
-                        board.pullRequests.checking
-                          ? 'Checking pull requests…'
-                          : undefined
+                        board.pullRequests.checking ? (
+                          <SkeletonBlock
+                            count={1}
+                            label="Checking pull requests"
+                            className="project-task-board__checking"
+                          />
+                        ) : undefined
                       }
                       onOpenTask={openTask}
                       onAction={(taskId, action) =>

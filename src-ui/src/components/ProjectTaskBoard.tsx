@@ -33,6 +33,7 @@ import {
   PullRequestGlyph,
   PullRequestMergedGlyph,
 } from './icons/Glyph';
+import { Empty } from './state';
 import { LiveStatusGlyph } from './status/LiveStatusGlyph';
 import { TaskPlanProgressLine, useTaskPlanProgress } from './TaskPlanProgress';
 import './ProjectTaskBoard.css';
@@ -148,7 +149,7 @@ export function ProjectTaskBoard({
       ref={boardRef}
       onFocusCapture={rememberFocus}
     >
-      {notice ? <p className="project-task-board__notice">{notice}</p> : null}
+      {notice}
       <div className="project-task-board__lanes">
         {partition.lanes.map((lane) => {
           const headingId = `project-task-lane-${lane.id}`;
@@ -175,7 +176,10 @@ export function ProjectTaskBoard({
                   {lane.taskIds.map(card)}
                 </ul>
               ) : (
-                <p className="project-task-board__empty">Nothing here</p>
+                <Empty
+                  label="Nothing here"
+                  className="project-task-board__nothing"
+                />
               )}
             </section>
           );
