@@ -106,7 +106,7 @@ async function setup() {
     digest: JSON.stringify(observation),
   });
   seed.close();
-  const state = { enabled: true, reads: true };
+  const state = { enabled: true, reads: true, current: true };
   runtime = composePullRequestFeedbackRuntime({
     homeDir,
     hosted: false,
@@ -126,7 +126,7 @@ async function setup() {
     links: { list: () => [PR] } as never,
     keptForSessions: () => [],
     access: {
-      current: () => true,
+      current: () => state.current,
       canRead: (request, id) =>
         request === REQUEST && id === CONVERSATION && state.reads,
       operator: () => OWNER,
@@ -137,13 +137,15 @@ async function setup() {
   const composed = runtime;
   closers.push(() => composed.close());
   const delivery = composed.routeArgs[1]()!;
-  return { h, runtime: composed, delivery, state };
+  // The Task whose run is the owning chat (`TaskRecord.sessionId`).
+  const run = h.service.currentConversationSessionId(CONVERSATION);
+  return { h, runtime: composed, delivery, state, run };
 }
 
 describe('the composed Task board feedback fact', () => {
   it('fixing while the turn Station started for the failing checks runs, then sent', async () => {
-    const { h, runtime, delivery } = await setup();
-    expect(runtime.factFor(PR, REQUEST)).toEqual({
+    const { h, runtime, delivery, run } = await setup();
+    expect(runtime.factFor(PR, REQUEST, run)).toEqual({
       state: 'watching',
       headSha: HEAD,
     });
@@ -154,18 +156,23 @@ describe('the composed Task board feedback fact', () => {
     await eventually(() => expect(h.inbox.mustQueue(CONVERSATION)).toBe(true));
     // The turn that runs carries the batch's key as its clientTurnId.
     await eventually(() =>
-      expect(runtime.factFor(PR, REQUEST)).toEqual({
+      expect(runtime.factFor(PR, REQUEST, run)).toEqual({
         state: 'fixing',
         headSha: HEAD,
       }),
     );
     expect(key.startsWith('prf-')).toBe(true);
+    // The same pull request kept on another Task, whose run is another
+    // chat (or where feedback moved away from it), or a Task with no run:
+    // that card is not fixing anything.
+    for (const other of ['task-other-run', undefined])
+      expect(runtime.factFor(PR, REQUEST, other)?.state).not.toBe('fixing');
     h.adapter.complete();
     await eventually(() => expect(h.inbox.mustQueue(CONVERSATION)).toBe(false));
     // The next run settles the placed message as sent.
     await delivery.deliver(CONVERSATION);
     await eventually(() =>
-      expect(runtime.factFor(PR, REQUEST)).toMatchObject({
+      expect(runtime.factFor(PR, REQUEST, run)).toMatchObject({
         state: 'sent',
         headSha: HEAD,
         at: expect.any(String),
@@ -173,22 +180,28 @@ describe('the composed Task board feedback fact', () => {
     );
   });
 
-  it('a person’s own turn is not fixing', async () => {
-    const { h, runtime } = await setup();
+  it('the Task’s own run doing other work (a person’s turn) is not fixing', async () => {
+    const { h, runtime, run } = await setup();
     h.adapter.holdTurns = true;
     const mine = await h.send('mine', 'look at something else');
     expect(mine.status, await mine.clone().text()).toBe(200);
     await eventually(() => expect(h.inbox.mustQueue(CONVERSATION)).toBe(true));
-    expect(runtime.factFor(PR, REQUEST)?.state).not.toBe('fixing');
+    expect(runtime.factFor(PR, REQUEST, run)).toEqual({
+      state: 'watching',
+      headSha: HEAD,
+    });
     h.adapter.complete();
   });
 
-  it('nothing for a reader who may not read the owning chat, or while the preview is off', async () => {
+  it('nothing for a reader who may not read the owning chat, a requester who lost standing, or while the preview is off', async () => {
     const { runtime, state } = await setup();
     expect(runtime.factFor(PR, REQUEST)).toBeDefined();
     state.reads = false;
     expect(runtime.factFor(PR, REQUEST)).toBeUndefined();
     state.reads = true;
+    state.current = false;
+    expect(runtime.factFor(PR, REQUEST)).toBeUndefined();
+    state.current = true;
     state.enabled = false;
     expect(runtime.factFor(PR, REQUEST)).toBeUndefined();
   });

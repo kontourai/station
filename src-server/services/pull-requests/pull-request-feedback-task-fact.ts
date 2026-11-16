@@ -20,13 +20,25 @@ export function pullRequestFeedbackTaskFact(input: {
    * has started and not ended.
    */
   openTurnKey(conversationId: string): string | undefined;
+  /**
+   * The conversation of the Task's own run (its `sessionId`), when it has
+   * one: only that run can be fixing for this card.
+   */
+  taskConversationId?: string;
 }): TaskPullRequestFeedbackFact | undefined {
   const { view, store } = input;
   if (!view.owner?.readable || !view.status) return undefined;
   const prKey = pullRequestFeedbackKey(view.identity);
-  // Fixing: the running turn is the one Station started to send this pull
-  // request's failing checks. A turn about its review threads alone is not.
-  const turnKey = input.openTurnKey(view.owner.conversationId);
+  // Fixing: feedback goes to this Task's own run, and its running turn is
+  // the one Station started to send this pull request's failing checks. A
+  // turn about review threads alone, another Task's run, or another chat is
+  // not this card fixing anything.
+  const ownRun =
+    input.taskConversationId !== undefined &&
+    input.taskConversationId === view.owner.conversationId;
+  const turnKey = ownRun
+    ? input.openTurnKey(view.owner.conversationId)
+    : undefined;
   const batch = turnKey ? store.batch(turnKey) : undefined;
   const carried =
     batch && batch.state !== 'refused' && batch.state !== 'cancelled'
@@ -45,6 +57,7 @@ export function pullRequestFeedbackTaskFact(input: {
   if (!head) return undefined;
   if (status.state === 'held' && status.reason === 'checks-running')
     return { state: 'waiting-on-checks', headSha: head };
+  // `last` is already the newest send about the observed head.
   if (view.last?.state === 'sent' && view.last.headSha === head)
     return { state: 'sent', headSha: head, at: view.last.at };
   // Busy or waiting on a person: feedback still goes when it can. A

@@ -468,6 +468,7 @@ export function createTaskRoutes(
     pullRequestFeedbackFor?: (
       identity: PullRequestLinkIdentity,
       request: Request,
+      taskSessionId?: string,
     ) => TaskPullRequestFeedbackFact | undefined;
     /** Exact-identity tracker reads (#4003). Personal mode only. */
     workItemObserver?: WorkItemObserver;
@@ -840,8 +841,8 @@ export function createTaskRoutes(
       canRead: (sessionId) =>
         Boolean(authority && options.canReadSession?.(sessionId, authority)),
       providers: options.pullRequestProviders ?? (() => []),
-      feedbackFor: (identity) =>
-        options.pullRequestFeedbackFor?.(identity, c.req.raw),
+      feedbackFor: (identity, taskSessionId) =>
+        options.pullRequestFeedbackFor?.(identity, c.req.raw, taskSessionId),
     });
     // The provider reads take time; the requester may have lost the
     // standing it started with. Still a non-disclosing 404, with a code so a

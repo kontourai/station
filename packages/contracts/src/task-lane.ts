@@ -109,7 +109,10 @@ export interface TaskPullRequestFact extends PullRequestLinkIdentity {
 
 /**
  * Where a pull request's agent feedback stands, for a Task card. `fixing`:
- * the Task's run is the turn Station started to send its failing checks.
+ * the feedback goes to this Task's own run, and its open turn is the one
+ * Station started to send this pull request's failing checks. Computed per
+ * Task, so the same pull request kept on two Tasks is fixing on at most the
+ * one whose run is doing it.
  */
 export interface TaskPullRequestFeedbackFact {
   state: 'watching' | 'waiting-on-checks' | 'sent' | 'fixing' | 'paused';
@@ -348,6 +351,9 @@ const IN_REVIEW_FEEDBACK_NOTES: Partial<
   'waiting-on-checks': 'waiting on checks',
   sent: 'sent',
   paused: 'auto-fix paused',
+  // The run is fixing, but the card read it as not running (a run list
+  // older than the facts): still say so rather than nothing.
+  fixing: 'fixing checks',
 };
 
 /** An In review card's feedback note, for the pull request it names. */

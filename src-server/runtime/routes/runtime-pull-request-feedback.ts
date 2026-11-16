@@ -180,6 +180,8 @@ export interface PullRequestFeedbackRuntime {
   factFor(
     identity: PullRequestLinkIdentity,
     request: Request,
+    /** The Task's own run (`TaskRecord.sessionId`): only it can be fixing. */
+    taskSessionId?: string,
   ): TaskPullRequestFeedbackFact | undefined;
   /** The scheduler tick: started, never awaited. */
   tick(input: { now: number; signal: AbortSignal }): void;
@@ -215,6 +217,7 @@ export function createFeedbackSessionReaders(deps: {
     | 'readSessionByThread'
     | 'listEventPayloads'
     | 'listEventsByMethods'
+    | 'latestEventByMethods'
   >;
   orchestration: PullRequestFeedbackRuntimeDeps['orchestration'];
   inbox: Pick<ThreadInboxDelivery, 'mustQueue'>;
@@ -279,17 +282,19 @@ export function createFeedbackSessionReaders(deps: {
     }
     return windows;
   };
-  const lastTurnAt = (conversationId: string) => {
-    const last = turnEvents(
+  /** Only the newest turn event of the conversation's current Session. */
+  const lastTurnEvent = (conversationId: string) =>
+    eventStore.latestEventByMethods(
       orchestration.currentConversationSessionId(conversationId),
-    ).at(-1);
+      TURN_METHODS,
+    )?.payload as CanonicalRuntimeEvent | undefined;
+  const lastTurnAt = (conversationId: string) => {
+    const last = lastTurnEvent(conversationId);
     return last ? Date.parse(last.createdAt) : undefined;
   };
   /** The send key of the current Session's turn, while it has not ended. */
   const openTurnKey = (conversationId: string) => {
-    const last = turnEvents(
-      orchestration.currentConversationSessionId(conversationId),
-    ).at(-1);
+    const last = lastTurnEvent(conversationId);
     return last?.method === 'turn.started' ? last.clientTurnId : undefined;
   };
   return {
@@ -534,16 +539,23 @@ export function composePullRequestFeedbackRuntime(
       access,
     ],
     placementRefusal: (input) => delivery.placementRefusal(input),
-    factFor: (identity, request) => {
+    factFor: (identity, request, taskSessionId) => {
       const store = enabled() ? holder.forRead() : undefined;
       if (!store || !deps.access.current(request)) return undefined;
       return pullRequestFeedbackTaskFact({
-        view: ownership.byPullRequest(identity, {
-          canRead: (conversationId) =>
-            deps.access.canRead(request, conversationId),
-        }),
+        view: ownership.byPullRequest(
+          identity,
+          {
+            canRead: (conversationId) =>
+              deps.access.canRead(request, conversationId),
+          },
+          { sentChecks: false },
+        ),
         store,
         openTurnKey,
+        ...(taskSessionId
+          ? { taskConversationId: conversationOf(taskSessionId) }
+          : {}),
       });
     },
     tick: (input) => poller.tick(input),

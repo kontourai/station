@@ -393,8 +393,30 @@ describe('readTaskPullRequestFacts', () => {
       feedback: { state: 'sent', headSha: HEAD },
     });
     expect(facts.tasks.b!.pullRequests[1]).not.toHaveProperty('feedback');
-    // Two Tasks keep #7: asked once.
+    // Two Tasks with no run keep #7: asked once for it.
     expect(feedbackFor).toHaveBeenCalledTimes(2);
+  });
+
+  test('a pull request kept on two Tasks is asked about once per Task run', async () => {
+    const HEAD = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678';
+    // Only run-a is the run feedback goes to, and it is fixing.
+    const feedbackFor = vi.fn((_identity: unknown, run: string | undefined) =>
+      run === 'run-a'
+        ? { state: 'fixing' as const, headSha: HEAD }
+        : { state: 'watching' as const, headSha: HEAD },
+    );
+    const facts = await read(
+      [task('a', { sessionId: 'run-a' }), task('b', { sessionId: 'run-b' })],
+      [keep('a', '7'), keep('b', '7')],
+      [provider(async (ref) => pullRequest(ref, { headSha: HEAD }))],
+      { feedbackFor },
+    );
+    expect(feedbackFor.mock.calls.map(([, run]) => run).sort()).toEqual([
+      'run-a',
+      'run-b',
+    ]);
+    expect(facts.tasks.a!.pullRequests[0]?.feedback?.state).toBe('fixing');
+    expect(facts.tasks.b!.pullRequests[0]?.feedback?.state).toBe('watching');
   });
 
   test('a pull request that could not be read carries no feedback', async () => {

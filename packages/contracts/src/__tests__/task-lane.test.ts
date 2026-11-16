@@ -731,7 +731,7 @@ describe('agent feedback adds a note, never a lane', () => {
       ).toBeUndefined();
   });
 
-  test('fixing shows only on a Running card, naming the pull request', () => {
+  test('fixing names the pull request on a Running card, and still shows on an In review one', () => {
     const fixing = withFeedback({ state: 'fixing', headSha: HEAD });
     const running = derive({
       session: session({ ...RUNNING }),
@@ -741,9 +741,11 @@ describe('agent feedback adds a note, never a lane', () => {
     expect(running.rung).toBe('running');
     expect(running.tone).toBe('active');
     expect(running.feedbackNote).toEqual({ text: 'fixing checks on #42' });
+    // The facts say this Task's run is fixing, but the run list read it as
+    // finished: the In review card still says so instead of hiding it.
     const idle = derive({ pullRequests: [fixing] });
     expect(placed(idle)).toBe('lane:in_review');
-    expect(idle.feedbackNote).toBeUndefined();
+    expect(idle.feedbackNote).toEqual({ text: 'fixing checks' });
     // A Running card says nothing for feedback that is not a fix in flight.
     expect(
       derive({

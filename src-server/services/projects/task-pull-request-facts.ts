@@ -69,7 +69,11 @@ export async function readTaskPullRequestFacts(input: {
    * A pull request's agent feedback, as this request may see it: undefined
    * unless the preview is on and the reader may read the chat that gets it.
    */
-  feedbackFor?: (identity: Identity) => TaskPullRequestFeedbackFact | undefined;
+  feedbackFor?: (
+    identity: Identity,
+    /** The Task's own run: only it can be fixing on this card. */
+    taskSessionId: string | undefined,
+  ) => TaskPullRequestFeedbackFact | undefined;
   deadlineMs?: number;
   now?: () => Date;
 }): Promise<TaskPullRequestFactsProjection> {
@@ -117,11 +121,13 @@ export async function readTaskPullRequestFacts(input: {
     now,
   );
 
-  // Once per pull request, read after the provider so it is as fresh.
+  // Once per pull request and Task run, read after the provider so it is
+  // as fresh.
   const feedback = new Map<string, TaskPullRequestFeedbackFact | undefined>();
-  const feedbackOf = (keep: Identity) => {
-    const key = identityKey(keep);
-    if (!feedback.has(key)) feedback.set(key, input.feedbackFor?.(keep));
+  const feedbackOf = (keep: Identity, taskSessionId: string | undefined) => {
+    const key = `${identityKey(keep)}\u0000${taskSessionId ?? ''}`;
+    if (!feedback.has(key))
+      feedback.set(key, input.feedbackFor?.(keep, taskSessionId));
     return feedback.get(key);
   };
   const tasks: TaskPullRequestFactsProjection['tasks'] = {};
@@ -144,7 +150,9 @@ export async function readTaskPullRequestFacts(input: {
         keyof Identity
       >;
       const fed =
-        read.status.state === 'current' ? feedbackOf(keep) : undefined;
+        read.status.state === 'current'
+          ? feedbackOf(keep, task.sessionId?.trim() || undefined)
+          : undefined;
       return { ...identity, ...read, ...(fed ? { feedback: fed } : {}) };
     });
     tasks[task.id] = {
