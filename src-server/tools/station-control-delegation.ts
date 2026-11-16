@@ -96,6 +96,7 @@ import { isHostedTenantExecutionRequired } from '../runtime/bootstrap/runtime-te
 import type { FullAccessGrant } from '../security/coding-authority.js';
 import { WORKING_DIRECTORY_NOT_GRANTED_CODE } from '../security/coding-authority.js';
 import { readConfinementRecord } from '../security/confinement/confinement-provider.js';
+import { managedEngineRefusalFor } from '../security/managed-engine-limits.js';
 import {
   assertPreparationRequirementSupported,
   verifyPreparedCheckout,
@@ -3013,6 +3014,14 @@ async function readConnection(
     );
   }
   const connection = response.data;
+  if (target.kind === 'current' && connection.kind === 'agent') {
+    const refusal = managedEngineRefusalFor(
+      typeof connection.config.provider === 'string'
+        ? connection.config.provider
+        : connection.type,
+    );
+    if (refusal) throw refusal;
+  }
   if (connection.kind !== 'agent') {
     throw new Error(`Connection '${id}' is not an engine connection`);
   }
