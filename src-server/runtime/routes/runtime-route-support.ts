@@ -82,6 +82,7 @@ import {
   TaskFollowUpWake,
   type TaskFollowUpWakePorts,
 } from '../../services/work-item-providers/task-follow-up-wake.js';
+import { stationSetupRequirementProbeOutcomes } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
 import { isExternalEngineBoundAgent } from '../agents/agent-engine-classification.js';
@@ -358,41 +359,99 @@ const BUILTIN_STATION_AGENT_SLUG = 'station';
  * Agent the person authored on Station's own engine still projects, because
  * they did ask for it.
  */
+type StationSetupRequirement = {
+  agentSlug: string;
+  agentName: string;
+  reason: string;
+};
+
+/**
+ * One owner's setup-requirement probe. It answers exactly as
+ * {@link readStationSetupRequirement}, and additionally remembers the last
+ * failure it reported (#4995): `/api/attention` polls this every few seconds,
+ * so a probe that cannot answer for the same reason on every poll used to
+ * write the same warning ~240 times a morning. It now warns once per change
+ * of failure identity (the error message) and logs once when reads recover.
+ * The state lives in this closure, owned by whoever composed the probe — the
+ * runtime support services — never in module scope.
+ */
+export function createStationSetupRequirementProbe(
+  context: ConfigureRuntimeRoutesContext,
+): () => Promise<StationSetupRequirement | null> {
+  let reportedFailure: string | undefined;
+  return async () => {
+    let requirement: StationSetupRequirement | null;
+    try {
+      requirement = await deriveStationSetupRequirement(context);
+    } catch (error) {
+      const failure = errorMessage(error);
+      stationSetupRequirementProbeOutcomes.add(1, { outcome: 'failed' });
+      if (failure !== reportedFailure) {
+        reportedFailure = failure;
+        // A read that could not answer is not a claim that setup is
+        // incomplete.
+        context.logger.warn('Station setup requirement probe failed', {
+          error: failure,
+        });
+      }
+      return null;
+    }
+    stationSetupRequirementProbeOutcomes.add(1, {
+      outcome: requirement ? 'blocked' : 'ready',
+    });
+    if (reportedFailure !== undefined) {
+      context.logger.info('Station setup requirement probe recovered', {
+        previousError: reportedFailure,
+      });
+      reportedFailure = undefined;
+    }
+    return requirement;
+  };
+}
+
+/**
+ * A single, stateless probe read. Long-lived callers compose
+ * {@link createStationSetupRequirementProbe} instead so a repeating failure is
+ * reported once.
+ */
 export async function readStationSetupRequirement(
   context: ConfigureRuntimeRoutesContext,
-): Promise<{ agentSlug: string; agentName: string; reason: string } | null> {
-  try {
-    const agents = await context.agentService.listAgents();
-    // Review L4: the subject has to be DETERMINISTIC — the item's id embeds
-    // this slug, and its first-observed timestamp is keyed by it, so a subject
-    // that varied with store order would re-mint the row. And taking
-    // `agents[0]` unconditionally silenced the notice whenever the agent that
-    // happened to sort first was external-engine bound, even with a blocked
-    // Station-engine agent right behind it. The first Station-engine
-    // candidate by slug, never the optional built-in Agent (#4388).
-    const candidates = [...agents]
-      .filter((agent) => agent.slug !== BUILTIN_STATION_AGENT_SLUG)
-      .sort((left, right) => left.slug.localeCompare(right.slug));
-    const readAvailability = createStationEngineAvailabilityReader(context);
-    for (const metadata of candidates) {
-      const spec = await context.agentService.getAgent(metadata.slug);
-      if (isExternalEngineBoundAgent(spec)) continue;
-      const reason = readAvailability(spec);
-      if (!reason) return null;
-      return {
-        agentSlug: metadata.slug,
-        agentName: metadata.name ?? spec.name ?? metadata.slug,
-        reason,
-      };
-    }
-    return null;
-  } catch (error) {
-    // A read that could not answer is not a claim that setup is incomplete.
-    context.logger.warn('Station setup requirement probe failed', {
-      error: errorMessage(error),
-    });
-    return null;
+): Promise<StationSetupRequirement | null> {
+  return createStationSetupRequirementProbe(context)();
+}
+
+async function deriveStationSetupRequirement(
+  context: ConfigureRuntimeRoutesContext,
+): Promise<StationSetupRequirement | null> {
+  const agents = await context.agentService.listAgents();
+  // Review L4: the subject has to be DETERMINISTIC — the item's id embeds
+  // this slug, and its first-observed timestamp is keyed by it, so a subject
+  // that varied with store order would re-mint the row. And taking
+  // `agents[0]` unconditionally silenced the notice whenever the agent that
+  // happened to sort first was external-engine bound, even with a blocked
+  // Station-engine agent right behind it. The first Station-engine
+  // candidate by slug, never the optional built-in Agent (#4388).
+  const candidates = [...agents]
+    .filter((agent) => agent.slug !== BUILTIN_STATION_AGENT_SLUG)
+    .sort((left, right) => left.slug.localeCompare(right.slug));
+  const readAvailability = createStationEngineAvailabilityReader(context);
+  for (const metadata of candidates) {
+    // #4995: the listing includes registry-default Agents (`claude`,
+    // `muse`, …) that never have an `agent.json`. Each is an engine
+    // connection, so it is external-engine bound and would be skipped below
+    // anyway; reading its absent file instead failed the whole probe. Skipping
+    // an absent spec keeps the order — and so the chosen subject — unchanged.
+    const spec = await context.agentService.findAgent(metadata.slug);
+    if (!spec || isExternalEngineBoundAgent(spec)) continue;
+    const reason = readAvailability(spec);
+    if (!reason) return null;
+    return {
+      agentSlug: metadata.slug,
+      agentName: metadata.name ?? spec.name ?? metadata.slug,
+      reason,
+    };
   }
+  return null;
 }
 
 /**
@@ -996,7 +1055,7 @@ export function configureRuntimeSupportServices(
     // row says "Needs: No enabled LLM provider connection is configured" is
     // reading a fact nobody projected, not a quiet Station; the two reading
     // different app configs (review H2) is that same disagreement inverted.
-    memoizeStationSetupRequirement(() => readStationSetupRequirement(context)),
+    memoizeStationSetupRequirement(createStationSetupRequirementProbe(context)),
     // #2064 (D4): the inbox widens to carry every item meaning "a human must
     // decide". Both sources are the SAME ones `/review-queue` reads, so the
     // bell's count and the Review page cannot disagree about what is pending.

@@ -1,9 +1,74 @@
+import { randomUUID } from 'node:crypto';
+import { existsSync, utimesSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { fileMutationLockOrphanTemporaries } from '../../../telemetry/metrics.js';
 import {
   getActiveRuntimeProjectSlug,
   prepareRuntimeStartup,
   seedRuntimeDefaultProviderConnection,
+  sweepRuntimeOrphanedMutationTemporaries,
 } from '../runtime-startup.js';
+
+const makeTempDir = trackTempDirs();
+
+/**
+ * #4995: a live home held zero-byte `notifications.json.mutation.<uuid>.tmp`
+ * files 13 days old. Startup reclaims them through the lock module's sweep.
+ */
+describe('sweepRuntimeOrphanedMutationTemporaries (#4995)', () => {
+  test('removes an old orphan from the real home, counts it, and logs once', async () => {
+    const home = makeTempDir('station-startup-sweep-');
+    const orphan = join(
+      home,
+      `notifications.json.mutation.${randomUUID()}.tmp`,
+    );
+    writeFileSync(orphan, '');
+    const old = new Date(Date.now() - 13 * 24 * 60 * 60_000);
+    utimesSync(orphan, old, old);
+    const fresh = join(home, `jobs.json.mutation.${randomUUID()}.tmp`);
+    writeFileSync(fresh, '');
+    const add = vi.spyOn(fileMutationLockOrphanTemporaries, 'add');
+    const logger = { info: vi.fn(), warn: vi.fn() };
+    try {
+      await sweepRuntimeOrphanedMutationTemporaries(home, logger);
+
+      expect(existsSync(orphan)).toBe(false);
+      expect(existsSync(fresh)).toBe(true);
+      expect(add.mock.calls).toEqual([[1, { outcome: 'removed' }]]);
+      expect(logger.info).toHaveBeenCalledTimes(1);
+      expect(logger.info).toHaveBeenCalledWith(
+        'Swept orphaned mutation lock temporaries',
+        { removed: 1, retainedLive: 0, failed: 0, truncated: false },
+      );
+
+      // Nothing left to find: silent, and nothing counted.
+      add.mockClear();
+      logger.info.mockClear();
+      await sweepRuntimeOrphanedMutationTemporaries(home, logger);
+      expect(add).not.toHaveBeenCalled();
+      expect(logger.info).not.toHaveBeenCalled();
+    } finally {
+      add.mockRestore();
+    }
+  });
+
+  test('a sweep that throws is reported, never a startup failure', async () => {
+    const logger = { info: vi.fn(), warn: vi.fn() };
+    await sweepRuntimeOrphanedMutationTemporaries(
+      '/nowhere',
+      logger,
+      async () => {
+        throw new Error('EIO');
+      },
+    );
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Orphaned mutation lock temporary sweep failed',
+      { error: 'EIO' },
+    );
+  });
+});
 
 describe('getActiveRuntimeProjectSlug', () => {
   test('returns the first configured project slug', () => {
@@ -175,6 +240,12 @@ describe('prepareRuntimeStartup', () => {
     const provider = { id: 'default-skill-provider' };
     const registerSkillRegistryProvider = vi.fn();
     const runStartupMigrations = vi.fn(async () => {});
+    const sweepOrphanedMutationTemporaries = vi.fn(async () => ({
+      removed: 0,
+      retainedLive: 0,
+      failed: 0,
+      truncated: false,
+    }));
     const fullRescan = vi.fn(async () => {});
     const usageAggregator = { fullRescan } as any;
 
@@ -188,6 +259,7 @@ describe('prepareRuntimeStartup', () => {
       timers,
       createUsageAggregator: () => usageAggregator,
       runStartupMigrations,
+      sweepOrphanedMutationTemporaries,
       createDefaultSkillRegistryProvider: async () => provider,
       registerSkillRegistryProvider,
     });
@@ -198,6 +270,9 @@ describe('prepareRuntimeStartup', () => {
     );
     expect(registerSkillRegistryProvider).toHaveBeenCalledWith(provider);
     expect(runStartupMigrations).toHaveBeenCalledWith('/tmp/project');
+    expect(sweepOrphanedMutationTemporaries).toHaveBeenCalledWith(
+      '/tmp/project',
+    );
     expect(result).toBe(usageAggregator);
     expect(timers).toHaveLength(1);
     // An immediate rescan, then one every 30 minutes.

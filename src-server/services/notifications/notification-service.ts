@@ -300,6 +300,7 @@ export class NotificationService {
         onCorruption: 'throw',
         durableAtomicWrite: true,
         maxReadBytes: PRINCIPAL_FEED_MAX_BYTES,
+        metricStore: 'principal-notifications',
       },
     );
     this.projectMembership = options.projectMembership;
@@ -313,6 +314,9 @@ export class NotificationService {
         // would silently erase it (and every other notification).
         onCorruption: 'throw',
         durableAtomicWrite: true,
+        // #4995: the feed has no retention, so every change rewrites it
+        // and its `.previous` copy whole; this makes that cost visible.
+        metricStore: 'notifications',
       });
     this.beforeActionDispatch = options.beforeActionDispatch;
     this.onAsyncDispatchError = options.onAsyncDispatchError;

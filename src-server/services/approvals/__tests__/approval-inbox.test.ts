@@ -24,6 +24,7 @@ vi.mock('../../../telemetry/metrics.js', () => ({
   attentionProjectionLoads: { add: vi.fn() },
   attentionProjectionResults: { record: vi.fn() },
   notificationOps: { add: vi.fn() },
+  jsonFileStoreWriteBytes: { record: vi.fn() },
 }));
 
 const logger = {

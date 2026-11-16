@@ -3247,6 +3247,18 @@ its failure does not turn already published bytes into a retryable failed write,
 and the directory-sync helper is a no-op on Windows. This is not a tested
 power-loss guarantee for every filesystem.
 
+The `${path}.mutation` lock is published by hard-linking a
+`${path}.mutation.<uuid>.tmp` owner record onto it
+([lock protocol](../../packages/shared/src/lifecycle-events.ts)). Every exit of
+an acquisition, including a thrown error, removes that temporary. A process
+that dies mid-acquisition can still leave one, so server startup runs
+`sweepOrphanedFileMutationLockTemporaries` over the Station home
+([startup](../../src-server/runtime/bootstrap/runtime-startup.ts)). It walks
+three levels and at most 20,000 entries, and removes only exactly-named
+temporaries at least 24 hours old that are not hard-linked as a lock and name
+no live owner. Results are counted as `station.file_mutation_lock.orphan_temporaries`
+and logged once when anything is found.
+
 A caller-supplied `maxBytes` limits the serialized document; there is no default
 byte cap. Serialization happens before that size check. Schema validation,
 path/root authority and appropriate input limits remain with the owning service.
