@@ -2653,8 +2653,11 @@ input. `useChildWorkTranscriptTailQuery` reads a child transcript the way a
 chat reads: the latest messages first (`tail`), older ones through
 `fetchPreviousPage`, and, while `running`, only the messages past its last
 `endOffset` every two seconds; `refreshLatest` reads past that cursor now and
-`reload` starts again from the latest messages. `useChildWorkTranscriptQuery`
-pages forward from the first message.
+`reload` starts again from the latest messages; a cursor the transcript has
+shrunk behind also starts again there. Against a Station from before page
+ranges (pages without `endOffset`), it pages forward by `nextOffset`
+(`hasLaterPage`, `fetchNextPage`) and re-reads its pages while `running`.
+`useChildWorkTranscriptQuery` pages forward from the first message.
 `useChildWorkTranscriptQuery` also accepts `requestScope` in its input
 and the target API base as its second argument. Its optional `running` input
 refreshes a visible engine transcript every two seconds through React Query.

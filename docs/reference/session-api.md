@@ -2157,7 +2157,8 @@ read names no offset; `400` otherwise). The response's `data` is a
 results; inline image data replaced by a placeholder, then each text cut at
 4,000 characters and flagged), `offset` and `endOffset` (the message indexes
 where the page starts and just past where it ends, so a reader continues from
-`endOffset`), and `nextOffset` when another page follows an offset read.
+`endOffset`; a read from past the end names the end as both), and
+`nextOffset` when another page follows an offset read.
 Tool calls and results carry an optional engine-issued `toolCallId`. Readers join
 only matching IDs; legacy entries without IDs remain readable without assuming
 that adjacent records belong to the same call.

@@ -2992,4 +2992,5 @@ Child transcript tool calls and results carry an optional engine-issued `toolCal
 readers join only matching IDs, leaving legacy unkeyed results readable.
 A `ChildWorkTranscriptPage` names its message range with `offset` and
 `endOffset`, so a tail read (the latest messages) and a read from a cursor
-compose without re-reading earlier pages.
+compose without re-reading earlier pages; a read from past the end names the
+end, so a reader can tell the transcript is shorter than its cursor.
