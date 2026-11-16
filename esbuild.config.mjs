@@ -10,6 +10,7 @@ import { authorTelemetryEndpoint } from './scripts/lib/author-telemetry-build.mj
 import { deriveServerBuildIdentity } from './scripts/lib/desktop-build-manifest.mjs';
 import { STATION_SERVER_EXTERNALS } from './scripts/lib/server-build-config.mjs';
 import { assertAsciiServerBundles } from './scripts/lib/server-bundle-ascii.mjs';
+import { assertNoBootDeniedStaticImports } from './scripts/lib/server-static-imports.mjs';
 
 // jsonc-parser exposes its CommonJS UMD entry as `main` and its fully
 // statically-importable implementation as `module`. esbuild's Node defaults
@@ -220,3 +221,4 @@ await Promise.all([
 ]);
 
 assertAsciiServerBundles(serverDir, { sinceMs: buildStartedMs });
+await assertNoBootDeniedStaticImports(`${serverDir}/command-station.js`);

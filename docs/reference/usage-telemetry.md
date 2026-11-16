@@ -309,7 +309,14 @@ Inline tier-lowering reasons and standalone feedback share one persisted budget 
 publisher, tier, timestamp, sent/dropped outcome, and classified reason. The ledger
 is `STATION_HOME/config/telemetry-outbox.json`, retained for at most 30 days and
 5 MiB of actual serialized bytes, oldest first. Reads also enforce retention. The HTTP API returns the newest 50 records by default; `limit` accepts integers from 1 to 200 and rejects values outside that range with 400. Publisher filtering happens before the limit. Settings requests 50 and uses the same authority scope as its status read.
-It is an audit log, not a retry spool. Dropped Full observations are coalesced
+It is an audit log, not a retry spool. A Full batch is recorded once, when it
+leaves the queue: `sent`/`acknowledged` on a commit receipt, or `dropped` with
+reason `rejected` (a permanent refusal), `off` (consent withdrawn, telemetry
+disabled or the destination changed), `overflow` (the oldest event evicted from
+a full buffer) or `transport` (still queued when shutdown ends). A retryable
+failure that keeps the batch queued writes no record; attempt history lives in
+the delivery status counts and the `station.usage_telemetry.batches` metric.
+Dropped Full observations are coalesced
 in memory, then published at the flush interval, on outbox reads, and at shutdown
 as `telemetry_dropped` counts per publisher, reason and UTC day. A process crash
 before that publication can lose pending dropped counts. Suppressed traffic
@@ -376,7 +383,10 @@ for the current workflow and remaining acceptance limits.
 
 Settings → Privacy & sharing → Advanced shows the connected Station's current-process queue,
 acknowledged observations, failed attempts and discarded observations. These
-are process counters, not lifetime accounting or a durable spool. A product
+are process counters, not lifetime accounting or a durable spool. Failed
+attempts count every unsuccessful request, so one batch retried three times
+adds three; rejected, overflow and discarded (withdrawal or shutdown)
+observations count each event once, when it leaves the queue. A product
 batch leaves the queue only after a matching `station-product-commit/v1`
 receipt covers its exact event IDs and counts. Generic 2xx responses, malformed
 receipts, refused redirects and bounded-response failures retain the batch for
@@ -488,7 +498,9 @@ are assigned once and preserved on retry, so a receiver can deduplicate a
 lost-response retry. The sender alone provides no exactly-once guarantee; the
 receiver must commit and deduplicate by source/event identity. Disabling telemetry clears buffered events and aborts an active request;
 it cannot retract data the endpoint already accepted. Shutdown attempts a
-bounded flush and can drop unsent events.
+bounded flush and can drop unsent events; those count once as shutdown drops
+(the `shutdown_dropped` outcome and a `transport` ledger record), not once per
+failed attempt.
 
 The v1 batch and event shapes are published on
 `@kontourai/station-contracts/product-telemetry`. The Node-only shared

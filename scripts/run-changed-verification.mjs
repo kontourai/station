@@ -75,6 +75,7 @@ import {
   isEscalationPath,
   matches,
   mergeQueueRegressionPaths,
+  NATIVE_LITERAL_PIN_REASON,
   TEST_IMPACT_MANIFEST,
   validateTestImpactManifest,
 } from './test-impact-manifest.mjs';
@@ -1893,6 +1894,18 @@ export function prepareChangedSelection(
   const deferredOnly = preserveMappedTargets
     ? new Set((selection.supplementalDeferrals ?? []).map(({ path }) => path))
     : supplementalOnlyDeferredPaths(selection);
+  // The local profile runs an escalated diff's explicit tests only up to 32
+  // of them. A test that only a derived native-literal edge selected is the
+  // first to go, so those edges cannot push a diff over the bound and leave
+  // local feedback with none; the hosted plan keeps every one.
+  const withoutNativeOnly = selection.tests.filter(
+    (entry) =>
+      !entry.reasons.every((reason) =>
+        reason.startsWith(NATIVE_LITERAL_PIN_REASON),
+      ),
+  );
+  const localTests =
+    selection.tests.length <= 32 ? selection.tests : withoutNativeOnly;
   const executionSelection =
     selection.lanes.length === 0
       ? selection
@@ -1912,9 +1925,12 @@ export function prepareChangedSelection(
                   (!preserveMappedTargets || pathExists(resolve(root, path))),
               )
             : selection.ownedRelatedPaths,
-          tests:
-            preserveMappedTargets || selection.tests.length <= 32
-              ? selection.tests.filter((entry) =>
+          tests: preserveMappedTargets
+            ? selection.tests.filter((entry) =>
+                pathExists(resolve(root, entry.path)),
+              )
+            : localTests.length <= 32
+              ? localTests.filter((entry) =>
                   pathExists(resolve(root, entry.path)),
                 )
               : [],
