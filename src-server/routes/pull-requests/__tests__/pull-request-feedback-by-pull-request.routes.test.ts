@@ -145,6 +145,7 @@ function setup() {
       operator: () => 'owner',
       readerOf: () => (id) => id === 'chat-b' || state.reads.has(id),
       isPerson: () => true,
+      mayContinue: () => true,
     }),
   );
   store.writeClaim({
