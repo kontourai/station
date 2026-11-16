@@ -1,13 +1,10 @@
-import { getConversationTurnDirectory } from '@kontourai/station-sdk/client';
-import { useInfiniteQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
-import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
-import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
 import { CheckGlyph, TimeGlyph, WarningGlyph } from '../icons/Glyph';
 import { Empty, ErrorState, SkeletonList } from '../state';
 import type { TranscriptTurnLandmark } from './transcriptTurnLandmarks';
+import { useTranscriptTurnDirectory } from './useTranscriptTurnDirectory';
 import './TranscriptTurnBrowser.css';
 
 export function TranscriptTurnBrowser({
@@ -23,30 +20,11 @@ export function TranscriptTurnBrowser({
   onLoadTurn?: (turnId: string, signal: AbortSignal) => Promise<boolean>;
   onClose(): void;
 }) {
-  const scope = useHostRequestAuthorityScope();
-  const directoryEnabled = useSurfaceVisibilityFlags().has('session-cli-reads');
   const [pending, setPending] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const controller = useRef<AbortController | null>(null);
   useEffect(() => () => controller.current?.abort(), []);
-  const directory = useInfiniteQuery({
-    queryKey: [
-      'conversation-turn-directory',
-      scope?.apiBase,
-      scope?.authorityKey,
-      conversationId,
-    ],
-    initialPageParam: undefined as string | undefined,
-    queryFn: ({ signal, pageParam }) =>
-      getConversationTurnDirectory(scope!.apiBase, conversationId!, pageParam, {
-        signal,
-        requestScope: scope!,
-      }),
-    getNextPageParam: (page) => page?.nextCursor ?? undefined,
-    enabled: directoryEnabled && !!conversationId && !!scope?.isCurrent(),
-    retry: false,
-    staleTime: 10_000,
-  });
+  const directory = useTranscriptTurnDirectory(conversationId);
   const indexed = directory.data?.pages[0] != null;
   const turns =
     directory.data?.pages.flatMap((page) => page?.turns ?? []) ?? [];
@@ -72,8 +50,11 @@ export function TranscriptTurnBrowser({
             'Could not reach this turn yet. Try again to continue loading.',
           );
       }
-    } catch {
-      if (!request.signal.aborted)
+    } catch (error) {
+      if (
+        !request.signal.aborted &&
+        !(error instanceof DOMException && error.name === 'AbortError')
+      )
         setFailure('Could not load this turn. Try again.');
     } finally {
       if (!request.signal.aborted) setPending(null);

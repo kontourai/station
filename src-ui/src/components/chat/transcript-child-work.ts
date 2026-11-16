@@ -34,6 +34,7 @@ export interface TranscriptChild {
   toolAnchor: boolean;
   /** The engine of the session that reported the child (its event envelope). */
   provider?: string;
+  stationName?: string;
 }
 
 export type TranscriptChildren = ReadonlyMap<string, TranscriptChild>;
