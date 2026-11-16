@@ -53,7 +53,10 @@ remains available in its original app. When the server reads the original as
 still mid-turn (`attachedSourceActivity` is `active`), or refuses the
 continuation for that reason, the action row becomes an inline caution,
 "Still running in Claude Code — continuing now forks it", with **Continue
-anyway** and **Wait**; it is not a dialog. Station offers no take-over: it cannot
+anyway** and **Not now**; it is not a dialog. Focus moves to **Continue anyway**,
+which the caution describes, and returns to **Continue in Station** on **Not
+now**; the caution is a status announcement, so a refusal of a stale read is
+heard too. Station offers no take-over: it cannot
 stop the original app. A failed opening retains the reader and offers a
 retry that does not create another continuation. Metadata is available through
 an explicit Details action.

@@ -1267,11 +1267,14 @@ no message is needed. If you typed one, it is sent there once the
 continuation opens, and pressing Send continues the same way. Claude and Codex create independent child
 Sessions; the original terminal Session can keep running.
 
-If the conversation is still mid-turn in its terminal (its transcript changed in
-the last five minutes and the turn has not finished), Station says **Still
+If the conversation is still mid-turn in its terminal, Station says **Still
 running in Claude Code — continuing now forks it** instead of continuing.
-Choose **Wait** and continue once it finishes, or **Continue anyway** to fork it
-now. A fork does not see anything the terminal Session writes afterwards.
+Mid-turn means its latest turn has not finished and Station saw it written in
+the last five minutes: for Claude Code, its transcript or a subagent's (while
+the conversation's own transcript changed in the last two hours); for Codex, the
+latest record Station imported. A single command that runs silently for longer
+than five minutes is not seen as running. Choose **Not now** and continue once
+it finishes, or **Continue anyway** to fork it now. A fork does not see anything the terminal Session writes afterwards.
 Station cannot stop the terminal Session for you. To hand the conversation over
 completely, finish or quit it in the terminal first. OpenCode and Grok
 conversations are read only: the message box shows why it is unavailable.

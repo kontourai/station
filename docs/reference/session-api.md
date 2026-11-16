@@ -1388,12 +1388,24 @@ process.
 A read-only attached session's summary carries `attachedSourceActivity`
 (`{ state: 'active' | 'quiet' | 'idle', lastWriteAt? }`), derived at read time
 by [`deriveAttachedSourceActivity`](../../src-server/services/orchestration/attached-source-activity.ts)
-from the imported transcript only. `active` means the latest turn has no
-completion and the transcript was written within
+from what Station observed of the transcript. `active` means the latest turn has no
+completion and the session was written within
 `ATTACHED_SOURCE_ACTIVE_WINDOW_MS` (five minutes). `quiet` means a turn is open
 but nothing was written for longer than that, so it was interrupted, crashed, or is running a
 silent tool; Station cannot tell which. `idle` means the latest turn ended.
-`lastWriteAt` is the newest imported event's source time. Station does not
+`lastWriteAt` is the later of the newest imported event's source time and
+`attachedSource.lastWriteAt`, the newest write the source itself reported
+(recorded in 30-second steps), which covers writes that produce no event:
+
+- Claude Code: the transcript's modification time and, while that changed in
+  the last two hours, the newest `<session>/subagents/*.jsonl` (a directory
+  past 512 entries is not read).
+- OpenCode: the session row, the messages read, and the parts of a message
+  still being written (`time_updated`).
+- Codex and Grok report none; their imported records' times are used.
+
+A write dated more than `ATTACHED_SOURCE_CLOCK_SKEW_MS` (one minute) after the
+read is not counted. Station does not
 read process state: Claude Code holds no handle on its transcript, and a Codex
 app-server holds every loaded rollout open whether it is working or not.
 
