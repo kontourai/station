@@ -110,6 +110,24 @@ describe('pull request feedback ownership', () => {
       viewer(() => false),
     );
     expect(unseen.pullRequests[0]?.owner).toEqual({});
+    // Nor its switches or status (here `watching` with checks on): one rule
+    // with the by-pull-request read.
+    expect(unseen.pullRequests[0]).toMatchObject({
+      ownedHere: false,
+      settings: {
+        fixFailingChecks: false,
+        addressReviewComments: false,
+        reviewEachHead: false,
+      },
+      status: { state: 'off' },
+      history: [],
+    });
+    expect(unseen.pullRequests[0]).not.toHaveProperty('last');
+    // A reader of the owner still sees them.
+    expect(seen.pullRequests[0]).toMatchObject({
+      settings: { fixFailingChecks: true },
+      status: { state: 'watching' },
+    });
   });
 
   it('a move bumps the generation and the old queued message is refused at placement', async () => {

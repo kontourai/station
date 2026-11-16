@@ -244,16 +244,21 @@ export class PullRequestFeedbackOwnership {
       };
     const ownedHere = claim.conversationId === conversationId;
     const history = ownedHere ? this.history(store, claim) : [];
+    const owner = pullRequestFeedbackSends(claim.settings)
+      ? ownedHere
+        ? { conversationId }
+        : this.ownerFor(claim.conversationId, viewer)
+      : null;
+    // The by-pull-request read's rule: a reader who may not read the owning
+    // chat learns only that another chat owns it, never its switches or
+    // status (a pause's head and time, a stopped agent).
+    const hidden = !ownedHere && owner !== null && !owner.conversationId;
     return {
       identity,
       ownedHere,
-      owner: pullRequestFeedbackSends(claim.settings)
-        ? ownedHere
-          ? { conversationId }
-          : this.ownerFor(claim.conversationId, viewer)
-        : null,
-      settings: claim.settings,
-      status: this.status(store, claim),
+      owner,
+      settings: hidden ? { ...PULL_REQUEST_FEEDBACK_OFF } : claim.settings,
+      status: hidden ? { state: 'off' } : this.status(store, claim),
       ...(history[0] ? { last: history[0] } : {}),
       history,
     };
