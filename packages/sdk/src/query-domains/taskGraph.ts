@@ -19,7 +19,10 @@ import type {
 } from '@kontourai/station-contracts';
 import type { TaskWorkChatPresentation } from '@kontourai/station-contracts/task-graph';
 import type { TaskPullRequestFactsProjection } from '@kontourai/station-contracts/task-lane';
-import type { TaskMemoryAttention } from '@kontourai/station-contracts/task-memory';
+import type {
+  TaskLatestReportPresentation,
+  TaskMemoryAttention,
+} from '@kontourai/station-contracts/task-memory';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getTaskAnswerSupportCards,
@@ -152,11 +155,13 @@ export async function fetchTasks(
 }
 
 /**
- * A Tasks-list row: the Task, and (#4003) its open Task-memory question
- * count when it has any, which Home and the inbox read for "Needs you".
+ * A Tasks-list row: the Task, (#4003) its open Task-memory question count
+ * when it has any, which Home and the inbox read for "Needs you", and
+ * (#5064) its summary's first line, which the Project Overview prints.
  */
 export type TaskListRecord = TaskRecord &
   Partial<TaskMemoryAttention> &
+  TaskLatestReportPresentation &
   TaskWorkChatPresentation;
 
 /**
@@ -264,6 +269,53 @@ export async function updateTaskStatus(input: {
     },
   );
   return readApiResult<TaskRecord>(response);
+}
+
+/** A host older than the Overview's reopen answers its route 404. */
+export class TaskOverviewReopenUnsupportedError extends Error {
+  constructor() {
+    super('This Station cannot reopen Tasks from the Overview yet.');
+    this.name = 'TaskOverviewReopenUnsupportedError';
+  }
+}
+
+/**
+ * #5064: reopen a Task the Project Overview auto-resolved. The host restarts
+ * its quiet clock; the Task returns to the group its facts place it in.
+ */
+export async function reopenTaskOnOverview(input: {
+  taskId: string;
+  apiBase?: string;
+}): Promise<TaskRecord> {
+  const resolvedApiBase = await resolveApiBase(input.apiBase);
+  const response = await authenticatedFetch(
+    `${resolvedApiBase}/api/tasks/${encodeURIComponent(input.taskId)}/overview-reopen`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    },
+  );
+  // An older host has no such route. A refusal it does send carries an
+  // envelope, which `readApiResult` reports as itself.
+  if (response.status === 404 && !(await hasEnvelope(response.clone())))
+    throw new TaskOverviewReopenUnsupportedError();
+  return readApiResult<TaskRecord>(response);
+}
+
+async function hasEnvelope(response: Response): Promise<boolean> {
+  try {
+    const body: unknown = await response.json();
+    return typeof body === 'object' && body !== null && 'success' in body;
+  } catch {
+    return false;
+  }
+}
+
+export function useReopenTaskOnOverviewMutation() {
+  return useApiMutation(reopenTaskOnOverview, {
+    invalidateKeys: [['tasks']],
+  });
 }
 
 export async function dispatchTask(input: {

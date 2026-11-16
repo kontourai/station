@@ -240,6 +240,7 @@ function toFact(
       ...(pullRequest.mergeReadiness
         ? { readiness: pullRequest.mergeReadiness }
         : {}),
+      ...(pullRequest.landing ? { landing: pullRequest.landing } : {}),
     },
   };
 }

@@ -15,6 +15,7 @@ import {
   PROJECT_CHAT_APPROVAL_POSTURES,
   PROJECT_CHAT_DEFAULT_SELECTIONS,
 } from '@kontourai/station-contracts/project-chat-defaults';
+import { TASK_OVERVIEW_AUTO_RESOLVE_MAX_DAYS } from '@kontourai/station-contracts/task-overview';
 import { isSafeToolServerId } from '@kontourai/station-contracts/tool';
 import { z } from 'zod';
 import type { ConversationRecord, DocumentRecord } from './storage-adapter.js';
@@ -105,6 +106,12 @@ const projectSchema = z
       .enum(['off', 'project-panes', 'allowed-plugins'])
       .optional(),
     personalLayoutAllowedPlugins: z.array(nonEmptyString).optional(),
+    overviewAutoResolveDays: z
+      .number()
+      .int()
+      .min(0)
+      .max(TASK_OVERVIEW_AUTO_RESOLVE_MAX_DAYS)
+      .optional(),
     position: z.number().int().nonnegative().optional(),
     createdAt: timestamp,
     updatedAt: timestamp,

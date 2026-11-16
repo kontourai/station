@@ -577,6 +577,32 @@ holds the Project's context. To change where new Agent work starts, open the
 workspace controls under Files & connections. A local folder is execution
 configuration rather than the Project's identity.
 
+With the **Project Overview** [feature preview](settings.md#feature-previews)
+on, Overview lists the Project's Tasks under what each needs next:
+
+| Group | Contains |
+| --- | --- |
+| **Waiting on you** | The run needs input or approval, failed, or the Task is marked blocked or asks a question |
+| **Ready for review** | A pull request or result to review. A ready pull request nobody armed to merge says **Not queued** |
+| **Working** | The run is moving |
+| **Landing** | Every open pull request has auto-merge on or is in the merge queue, or is approved and waiting on checks |
+| **Idle** | The agent finished its turn and nothing is pending |
+| **Resolved** | Done, canceled, every pull request merged, or Idle for 7 days (folded; open it to see the list) |
+
+Each row shows the Task, its Agent, the first line of its Task summary, and
+its pull request with its checks. Select the row to open the Task, or the pull
+request to open it. A Task that was resolved for being idle has a **⋯** menu
+with **Reopen**, which puts it back in its group and restarts the 7 days. A dot
+on the Project in the sidebar and in the Room header means something is
+Waiting on you. Not-started Tasks stay on the **Tasks** board.
+
+Project settings → **Overview and notifications** sets how long an Idle Task
+waits before it resolves (or **Never**), and when this Project notifies you:
+**Only when blocked** (a Task needs input or approval, or fails), **Everything**
+(also each finished turn), **Off**, or your Station settings. The inbox keeps
+every notification whatever you choose. A device that has the Project open is
+not interrupted for that Project's finished turns.
+
 Choosing on a chip starts nothing, and Station remembers it. The Agent is
 remembered for each project and for **No project** on this browser and
 Station access, and the Model for each Agent. The project is remembered as the

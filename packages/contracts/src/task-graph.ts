@@ -687,6 +687,13 @@ export interface TaskRecord {
    * Absent means off.
    */
   closeOnMerge?: boolean;
+  /**
+   * When a person last reopened this Task on the Project Overview (#5064).
+   * The Overview auto-resolves an Idle Task after its Project's quiet
+   * period; that clock restarts here. Only a person sets it
+   * (`POST /api/tasks/:taskId/overview-reopen`). Absent: never reopened.
+   */
+  overviewReopenedAt?: string;
   /** Deliverable hierarchy, independent of execution Sessions and status. */
   parent?: TaskIdentity;
   relationshipRevision?: number;

@@ -39,6 +39,7 @@ import {
   projectLiveLabel,
   projectLiveLanesBySlug,
 } from '../../views/project-page/project-live-work-model';
+import { useProjectsWaitingOnYou } from '../../views/project-page/useProjectsWaitingOnYou';
 import { HomeGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import { Skeleton } from '../state';
@@ -187,6 +188,7 @@ function ProjectSidebarImpl() {
   // list it sends the reader to cannot disagree. The badge previously folded
   // the conversation inventory here inline; see that module for what changed
   // and why.
+  const waitingOnYouBySlug = useProjectsWaitingOnYou();
   const liveLanesByProject = useMemo(
     () =>
       projectLiveLanesBySlug({
@@ -428,6 +430,7 @@ function ProjectSidebarImpl() {
                   accent={accentBySlug.get(project.slug)}
                   liveCount={projectLiveCount(liveLanes)}
                   liveLabel={projectLiveLabel(liveLanes)}
+                  waitingOnYou={waitingOnYouBySlug.get(project.slug) ?? 0}
                 />
               );
             })}

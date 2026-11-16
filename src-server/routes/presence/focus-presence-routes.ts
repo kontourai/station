@@ -110,15 +110,20 @@ export function createFocusPresenceRoutes(deps: FocusPresenceRouteDeps) {
     const record = body as Record<string, unknown>;
     const { clientSessionId, state, seq } = record;
     const viewingSessionIds = parseViewingSessionIds(record.viewingSessionIds);
+    const viewingProjectId = record.viewingProjectId;
     if (
       Object.keys(record).some(
         (key) =>
           key !== 'clientSessionId' &&
           key !== 'state' &&
           key !== 'seq' &&
-          key !== 'viewingSessionIds',
+          key !== 'viewingSessionIds' &&
+          key !== 'viewingProjectId',
       ) ||
       viewingSessionIds === null ||
+      (viewingProjectId !== undefined &&
+        (typeof viewingProjectId !== 'string' ||
+          !FOCUS_VIEWING_SESSION_ID_PATTERN.test(viewingProjectId))) ||
       typeof seq !== 'number' ||
       !Number.isSafeInteger(seq) ||
       seq < 1 ||
@@ -159,6 +164,7 @@ export function createFocusPresenceRoutes(deps: FocusPresenceRouteDeps) {
       state,
       seq,
       viewingSessionIds,
+      viewingProjectId as string | undefined,
     );
     if (!result.accepted) {
       c.header(

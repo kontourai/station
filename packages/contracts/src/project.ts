@@ -135,6 +135,12 @@ export interface ProjectConfig {
   knowledgeNamespaces?: KnowledgeNamespaceConfig[];
   toolDefaults?: ProjectToolDefaults;
   /**
+   * Days without activity before the Project Overview moves an Idle Task to
+   * Resolved (#5064). `0` never does. Absent: the default,
+   * `TASK_OVERVIEW_AUTO_RESOLVE_DEFAULT_DAYS` in `task-overview`.
+   */
+  overviewAutoResolveDays?: number;
+  /**
    * Server-owned explicit sidebar position (station#3315). Assigned by the
    * reorder operation; projects without one list after positioned ones, in
    * name order, so an unordered workspace stays deterministic.

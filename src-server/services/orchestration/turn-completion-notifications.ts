@@ -135,6 +135,12 @@ interface TurnCompletionOrchestrationService {
 type Cancel = () => void;
 
 export interface TurnCompletionNotificationOptions {
+  /**
+   * #5072: the local Project (`ProjectConfig.id`) the session recorded at
+   * its start, stamped on the record so the Project's notification level and
+   * foreground suppression apply. Absent or `undefined`: no Project.
+   */
+  resolveProjectId?: (threadId: string) => string | undefined;
   /** See {@link TurnCompletionOrchestrationService.readFinishedAlertHold}. */
   readFinishedAlertHold?: (threadId: string) => readonly string[];
   /** Defaults to {@link FINISHED_ALERT_CONFIRM_MS}. */
@@ -291,6 +297,7 @@ async function deliverTurnCompletionPush(input: {
    * not a terminal event the card folds.
    */
   onActivityCard?: boolean;
+  resolveProjectId?: (threadId: string) => string | undefined;
 }): Promise<'scheduled' | 'skipped_no_recipient' | 'skipped_external'> {
   const {
     orchestrationService,
@@ -300,6 +307,14 @@ async function deliverTurnCompletionPush(input: {
     outcome,
     onActivityCard,
   } = input;
+  // Decoration only: a lookup that throws leaves the record Project-less,
+  // never undelivered.
+  let projectId: string | undefined;
+  try {
+    projectId = input.resolveProjectId?.(threadId) || undefined;
+  } catch {
+    projectId = undefined;
+  }
   if (orchestrationService.isReadOnlyAttachedSession(threadId))
     return 'skipped_external';
   const presenceSubject =
@@ -318,7 +333,11 @@ async function deliverTurnCompletionPush(input: {
   // mutes, which apply to what an agent chose to send, off these records.
   const envelope: NotificationEnvelopeV1 = {
     v: 1,
-    source: { kind: 'system', subsystem: TURN_COMPLETION_SOURCE },
+    source: {
+      kind: 'system',
+      subsystem: TURN_COMPLETION_SOURCE,
+      ...(projectId ? { projectId } : {}),
+    },
     audience: { kind: 'session-readers', sessionId: threadId },
     // The urgency the legacy category already ranked as
     // (`classifyNotificationCategory`): a stop is quiet like a finish.
@@ -801,6 +820,7 @@ export function wireTurnCompletionNotifications(
         turnId: writing.turnId,
         outcome: writing.outcome,
         onActivityCard: writing.onActivityCard,
+        resolveProjectId: options.resolveProjectId,
       });
     } catch (error) {
       if (writingFinishes.get(threadId) !== writing) return;
@@ -1362,6 +1382,7 @@ export function wireTurnCompletionNotifications(
               orchestrationService,
               event,
             ),
+            resolveProjectId: options.resolveProjectId,
           });
           turnCompletionNotificationOps.add(1, { outcome, result });
         } catch (error) {
@@ -1511,6 +1532,7 @@ export function wireInternalStopRedispatchFailureNotifications(
   orchestrationService: TurnCompletionOrchestrationService,
   notificationService: NotificationService,
   logger: TurnCompletionLogger,
+  options: Pick<TurnCompletionNotificationOptions, 'resolveProjectId'> = {},
 ): () => void {
   return eventBus.subscribe((message: TurnCompletionEventMessage) => {
     notificationService.dispatch(
@@ -1530,6 +1552,7 @@ export function wireInternalStopRedispatchFailureNotifications(
             threadId: message.data.threadId,
             turnId: message.data.turnId,
             outcome: 'failed',
+            resolveProjectId: options.resolveProjectId,
           });
           turnCompletionNotificationOps.add(1, { outcome: 'failed', result });
         } catch (error) {

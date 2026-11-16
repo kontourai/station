@@ -647,6 +647,8 @@ export interface ProjectConfig extends ProjectMetadata {
   similarityThreshold?: number;
   topK?: number;
   agents?: AgentId[];
+  /** See `ProjectConfig` in `@kontourai/station-contracts/project`. */
+  overviewAutoResolveDays?: number;
   createdAt: string;
   updatedAt: string;
 }

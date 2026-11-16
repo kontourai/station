@@ -48,11 +48,13 @@ import { useDevicePresentation } from '../hooks/useDevicePresentation';
 import { useSectionNavigation } from '../hooks/useSectionNavigation';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { userFacingErrorMessage } from '../utils/errorText';
+import { useProjectOverviewPreview } from './project-page/projectOverviewPreview';
 import { AccessSection } from './project-settings/AccessSection';
 import { AgentsSection } from './project-settings/AgentsSection';
 import { KnowledgeSection } from './project-settings/KnowledgeSection';
 import { LayoutsSection } from './project-settings/LayoutsSection';
 import { NewChatDefaultsSection } from './project-settings/NewChatDefaultsSection';
+import { OverviewNotificationsSection } from './project-settings/OverviewNotificationsSection';
 import { ProjectCheckoutFreshnessNotice } from './project-settings/ProjectCheckoutFreshnessNotice';
 import { ProjectSourcesSection } from './project-settings/ProjectSourcesSection';
 import { ToolsSection } from './project-settings/ToolsSection';
@@ -70,6 +72,7 @@ const PROJECT_SETTINGS_SECTIONS = [
   ['basic-info', 'Basic info'],
   ['model', 'Model'],
   ['new-chat', 'New chats'],
+  ['overview', 'Overview and notifications'],
   ['thread-execution', 'Chat workspace'],
   ['agents', 'Agents'],
   ['tools', 'Tools'],
@@ -176,6 +179,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const projectOverviewOn = useProjectOverviewPreview();
   const { activeSection, hrefForSection, navigateToSection } =
     useSectionNavigation(
       PROJECT_SETTINGS_SECTIONS.map(([id]) => id),
@@ -402,7 +406,9 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
         <SectionNavigation
           label="Project settings sections"
           pickerLabel="Project settings section"
-          items={PROJECT_SETTINGS_SECTIONS.map(([id, label]) => ({
+          items={PROJECT_SETTINGS_SECTIONS.filter(
+            ([id]) => id !== 'overview' || projectOverviewOn,
+          ).map(([id, label]) => ({
             key: id,
             label,
             href: hrefForSection(id),
@@ -799,6 +805,19 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             hidden={activeSection !== 'tools'}
           >
             <ToolsSection slug={slug} form={form} setForm={setForm} />
+          </div>
+
+          <div
+            className="project-settings__panel"
+            hidden={activeSection !== 'overview'}
+          >
+            {projectOverviewOn && (
+              <OverviewNotificationsSection
+                slug={slug}
+                projectId={project?.id}
+                autoResolveDays={project?.overviewAutoResolveDays}
+              />
+            )}
           </div>
 
           <div

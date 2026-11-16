@@ -28,6 +28,7 @@ import { composeGitHubAutomationObservation } from '../../services/automation/gi
 import { IsolatedRepairController } from '../../services/automation/repair-controller.js';
 import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
 import { createStationRoutesResolver } from '../../services/connections/station-routes.js';
+import type { FeaturePreviewSelector } from '../../services/feature-previews/feature-preview-registry.js';
 import type { FlowRunService } from '../../services/flow/flow-run-service.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import { createEnvironmentRuntimeResourcePostureProbe } from '../../services/infra/resource-posture.js';
@@ -90,6 +91,10 @@ import { runWithUnattendedPrincipal } from '../agents/unattended-principal-conte
 import { createAutomationActionsRuntime } from '../automation-actions-runtime.js';
 import { isHostedTenantExecutionRequired } from '../bootstrap/runtime-tenant-context.js';
 import { canUseTaskSource } from '../context-efficiency-runtime.js';
+import {
+  createStationControlCallerRecordResolver,
+  stationControlCallerRecordSources,
+} from '../mcp/station-control-caller.js';
 import {
   createStationEngineAvailabilityReader,
   resolveManagedChatBinding,
@@ -516,6 +521,11 @@ export function configureRuntimeSupportServices(
     focus?: FocusSource;
     inAppLiveness?: InAppLiveness;
     /**
+     * #5072: the `project-overview` Feature Preview, which turns on
+     * per-Project notification settings. Absent: off.
+     */
+    projectOverviewPreview?: FeaturePreviewSelector;
+    /**
      * Runs automations that target a conversation, through its inbox.
      * Absent (hosted, or no inbox): such a job fails without invoking.
      */
@@ -541,9 +551,22 @@ export function configureRuntimeSupportServices(
         }),
     },
   );
+  // #5072: the local Project a session recorded at its start, the same
+  // record station-control callers resolve, so a Project's notification
+  // level reaches its turn and approval notifications.
+  const resolveSessionRecord = createStationControlCallerRecordResolver(
+    stationControlCallerRecordSources({
+      orchestrationService: context.orchestrationService,
+      getProject: (slug) => context.storageAdapter.getProject(slug),
+      coordinatorEnabled: () => false,
+    }),
+  );
+  const resolveSessionProjectId = (threadId: string) =>
+    resolveSessionRecord(threadId).localProjectId;
   const approvalInboxProvider = new ApprovalInboxNotificationProvider({
     approvalRegistry: context.approvalRegistry,
     orchestrationService: context.orchestrationService,
+    resolveSessionProjectId,
   });
   notificationService.addProvider(approvalInboxProvider);
   // An inbound pairing request used to surface only inside the Connections
@@ -598,6 +621,7 @@ export function configureRuntimeSupportServices(
     notificationService,
     context.logger,
     {
+      resolveProjectId: resolveSessionProjectId,
       readFinishedAlertHold,
       onReplayedDelivery: (notification) =>
         options.coordinatorWakes?.()?.observeNotification(notification),
@@ -617,6 +641,7 @@ export function configureRuntimeSupportServices(
     context.orchestrationService,
     notificationService,
     context.logger,
+    { resolveProjectId: resolveSessionProjectId },
   );
   notificationService.dispatch('service-start', () =>
     notificationService.start(),
@@ -976,6 +1001,11 @@ export function configureRuntimeSupportServices(
       : {}),
     ...(options.focus ? { focus: options.focus } : {}),
     ...(options.inAppLiveness ? { inAppLiveness: options.inAppLiveness } : {}),
+    projectNotificationSettings: () =>
+      options.projectOverviewPreview?.select({
+        enabled: () => true,
+        disabled: () => false,
+      }) === true,
   });
 
   const agentActivityPublisher = wireAgentActivityPublisher({

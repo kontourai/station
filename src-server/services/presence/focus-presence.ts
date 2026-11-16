@@ -97,6 +97,8 @@ interface SessionReport {
   seq: number;
   /** What the document shows; absent when it did not say (older client). */
   viewingSessionIds?: readonly string[];
+  /** The Project the document has in the foreground (#5072). */
+  viewingProjectId?: string;
 }
 
 interface SurfaceRecord {
@@ -139,6 +141,7 @@ export class FocusPresence {
     state: FocusState,
     seq: number,
     viewingSessionIds?: readonly string[],
+    viewingProjectId?: string,
   ): FocusReportResult {
     const now = this.#now();
     this.#expire(now);
@@ -190,6 +193,7 @@ export class FocusPresence {
       ...(viewingSessionIds !== undefined
         ? { viewingSessionIds: [...viewingSessionIds] }
         : {}),
+      ...(viewingProjectId !== undefined ? { viewingProjectId } : {}),
     });
     return { accepted: true, surfaceId, applied: true };
   }
@@ -217,12 +221,17 @@ export class FocusPresence {
           best.state === 'focused'
             ? focusedViewing(surface.sessions.values())
             : undefined;
+        const projects =
+          best.state === 'focused'
+            ? focusedProjects(surface.sessions.values())
+            : [];
         result.set(surfaceId, {
           surfaceId,
           principalId: surface.principalId,
           state: best.state,
           reportedAt: best.reportedAt,
           ...(viewing ? { viewingSessionIds: viewing } : {}),
+          ...(projects.length ? { viewingProjectIds: projects } : {}),
         });
       }
     }
@@ -302,6 +311,15 @@ function focusedViewing(
     if (report.viewingSessionIds === undefined) return undefined;
     for (const id of report.viewingSessionIds) ids.add(id);
   }
+  return [...ids];
+}
+
+/** The Projects a surface's focused documents have in the foreground. */
+function focusedProjects(reports: Iterable<SessionReport>): string[] {
+  const ids = new Set<string>();
+  for (const report of reports)
+    if (report.state === 'focused' && report.viewingProjectId)
+      ids.add(report.viewingProjectId);
   return [...ids];
 }
 

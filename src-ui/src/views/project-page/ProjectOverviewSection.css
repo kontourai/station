@@ -1,0 +1,145 @@
+/* #5064: the Project Overview's Tasks, grouped by what each needs next. */
+.project-overview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-4);
+  margin-bottom: var(--k-space-6);
+}
+
+.project-overview .project-page__section-label {
+  margin: 0;
+}
+
+.project-overview__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+}
+
+.project-overview__heading {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  margin: 0;
+  font-size: var(--k-text-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.project-overview__count {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.project-overview__rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.project-overview__row {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-3);
+  padding: var(--k-space-2) var(--k-space-3);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-left: 3px solid var(--border-primary);
+  border-radius: var(--k-radius-md);
+}
+
+/* The group that asks something of the reader carries the accent rail. */
+.project-overview__group--waiting_on_you .project-overview__row {
+  border-left-color: var(--accent-primary);
+}
+
+.project-overview__open {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.project-overview__open:focus-visible,
+.project-overview__pull-request:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+  border-radius: var(--k-radius-sm);
+}
+
+.project-overview__title {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-overview__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  color: var(--text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.project-overview__agent {
+  padding: 0 var(--k-space-2);
+  border: 1px solid var(--border-primary);
+  border-radius: 999px;
+  color: var(--text-secondary);
+}
+
+.project-overview__report {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--k-text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-overview__trailing {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+
+.project-overview__pull-request {
+  min-height: 32px;
+  padding: 0 var(--k-space-2);
+  background: none;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--k-radius-sm);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--k-text-sm);
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .project-overview__row {
+    flex-wrap: wrap;
+  }
+
+  .project-overview__trailing {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .project-overview__pull-request {
+    min-height: 44px;
+  }
+}
