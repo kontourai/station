@@ -1,0 +1,9 @@
+{
+  "revision": "8cbe9bbfd1addb45446dce86d51850f87b118b7a",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"A failed Continue anyway now leaves focus on Continue in Station; starter-work and pane-relationships claims about the reader are unchanged.","inputs":["src-ui/src/components/session-detail/AttachedSessionDetail.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"A failed Continue anyway now leaves focus on Continue in Station; starter-work and pane-relationships claims about the reader are unchanged.","inputs":["src-ui/src/components/session-detail/AttachedSessionDetail.tsx"]}
+  ]
+}
