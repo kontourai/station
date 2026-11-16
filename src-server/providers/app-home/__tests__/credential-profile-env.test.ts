@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { appHomeProfileDir } from '../app-home-profiles.js';
@@ -6,12 +6,14 @@ import {
   CredentialProfileEnvUnavailableError,
   configuredEngineHomes,
   createCredentialProfileAppHomeEnvResolver,
+  credentialProfileEnvForHome,
   credentialProfileRoutingFingerprint,
   credentialProfilesRouteAlike,
 } from '../credential-profile-env.js';
 import {
   credentialProfileAppHomeDir,
   credentialProfileStorageId,
+  ensureCredentialProfileAppHome,
 } from '../credential-profile-registry.js';
 
 const makeTempDir = trackTempDirs();
@@ -229,5 +231,73 @@ describe('configuredEngineHomes', () => {
         loadConnectionSettings: async () => undefined,
       }),
     ).toEqual([]);
+  });
+});
+
+describe('credentialProfileEnvForHome', () => {
+  test('maps a profile home back to its overlay, and no other home to one', async () => {
+    const homeDir = await tempHome();
+    const settings = {
+      credentialRecovery: {
+        profiles: [
+          {
+            ref: 'proxy',
+            env: { OPENAI_BASE_URL: 'http://127.0.0.1:9', OPENAI_API_KEY: '' },
+          },
+          { ref: 'plain' },
+        ],
+      },
+    };
+    const loadConnectionSettings = vi.fn(async () => settings);
+    const options = {
+      engine: 'codex' as const,
+      homeDir,
+      loadConnectionSettings,
+    };
+    const proxyHome = (
+      await ensureCredentialProfileAppHome('codex', 'proxy', { homeDir })
+    ).dir;
+    const plainHome = (
+      await ensureCredentialProfileAppHome('codex', 'plain', { homeDir })
+    ).dir;
+
+    expect(
+      await credentialProfileEnvForHome(options, realpathSync(proxyHome)),
+    ).toEqual({
+      OPENAI_BASE_URL: 'http://127.0.0.1:9',
+      OPENAI_API_KEY: '',
+    });
+    expect(
+      await credentialProfileEnvForHome(options, realpathSync(plainHome)),
+    ).toEqual({});
+    loadConnectionSettings.mockClear();
+    // The default home is no profile's: answered without reading configuration.
+    expect(
+      await credentialProfileEnvForHome(options, '/Users/someone/.codex'),
+    ).toBeUndefined();
+    expect(loadConnectionSettings).not.toHaveBeenCalled();
+  });
+
+  test('an invalid saved overlay refuses rather than running on the bare home', async () => {
+    const homeDir = await tempHome();
+    const home = (
+      await ensureCredentialProfileAppHome('codex', 'broken', { homeDir })
+    ).dir;
+    await expect(
+      credentialProfileEnvForHome(
+        {
+          engine: 'codex',
+          homeDir,
+          loadConnectionSettings: async () => ({
+            credentialRecovery: {
+              profiles: [
+                { ref: 'broken', env: { OPENAI_API_KEY: 'not-a-real-key' } },
+              ],
+            },
+          }),
+        },
+        realpathSync(home),
+      ),
+    ).rejects.toBeInstanceOf(CredentialProfileEnvUnavailableError);
   });
 });

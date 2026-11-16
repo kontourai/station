@@ -17,6 +17,9 @@
  * login/enrolment children (they only write the profile home's own
  * credentials).
  */
+
+import { realpathSync } from 'node:fs';
+import { relative, sep } from 'node:path';
 import {
   appHomeActive,
   type ConnectionEnvEngine,
@@ -25,6 +28,7 @@ import {
 } from '../../services/connections/connection-env.js';
 import { errorMessage } from '../../utils/error-message.js';
 import {
+  appHomesRootDir,
   CredentialProfileEnvironmentError,
   claudeAppHomeEnv,
   codexAppHomeEnv,
@@ -214,6 +218,59 @@ export async function configuredEngineHomes(
     } catch {}
   }
   return homes;
+}
+
+/**
+ * The env overlay of the credential profile whose home is `canonicalHome`
+ * (a real path), for running a session discovered in that home: the same
+ * overlay a profile spawn applies, so the profile's credentials meet the
+ * profile's endpoint. `undefined` for a home that is no profile's (the
+ * default home, a connection config home, the legacy app home); a home
+ * outside Station's app homes is answered without reading configuration.
+ * Throws {@link CredentialProfileEnvUnavailableError} for an invalid overlay.
+ */
+export async function credentialProfileEnvForHome(
+  options: Pick<
+    CredentialProfileAppHomeEnvOptions,
+    'loadConnectionSettings' | 'homeDir'
+  > & { engine: CredentialProfileAppHomeEngine },
+  canonicalHome: string,
+): Promise<Record<string, string> | undefined> {
+  let root: string;
+  try {
+    root = realpathSync(appHomesRootDir(options.homeDir));
+  } catch {
+    return undefined;
+  }
+  const inside = relative(root, canonicalHome);
+  if (!inside || inside === '..' || inside.startsWith(`..${sep}`))
+    return undefined;
+  const settings = await options.loadConnectionSettings();
+  const homeOptions = options.homeDir ? { homeDir: options.homeDir } : {};
+  for (const profile of normalizeCredentialProfileRegistry(
+    settings?.credentialRecovery,
+  ).profiles) {
+    let dir: string;
+    try {
+      dir = realpathSync(
+        (
+          await locateCredentialProfileAppHome(
+            options.engine,
+            profile.ref,
+            homeOptions,
+          )
+        ).dir,
+      );
+    } catch {
+      continue;
+    }
+    if (dir === canonicalHome)
+      return credentialProfileOverlayEnv(
+        settings?.credentialRecovery,
+        profile.ref,
+      );
+  }
+  return undefined;
 }
 
 export interface CredentialProfileAppHomeEnvOptions {

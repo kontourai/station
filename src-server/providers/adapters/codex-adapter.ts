@@ -267,6 +267,15 @@ interface CodexAdapterOptions {
     affinity: ProviderSessionSourceAffinity,
   ) => string | null;
   /**
+   * The env overlay a resolved source home requires: a credential profile's
+   * routing overlay when the home is that profile's, else undefined. A
+   * rejection refuses the continuation; it never falls back to the bare home,
+   * which would pair the profile's credentials with another endpoint.
+   */
+  resolveSourceHomeEnv?: (
+    sourceHome: string,
+  ) => Promise<Record<string, string> | undefined>;
+  /**
    * archive#1195: mints a per-session, short-lived, station-control-scoped
    * bearer credential delivered only through private thread configuration — called ONLY when the resolved agent's
    * `toolServers` includes the canonical built-in station-control server
@@ -1842,6 +1851,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     if (!boundedFilesystemPath(sourceHome) || !isAbsolute(sourceHome)) {
       throw new Error('Codex source-home affinity is no longer available.');
     }
+    const sourceHomeEnv = await this.options.resolveSourceHomeEnv?.(sourceHome);
     const transport = new CodexAdapterTransport(this.now);
     const externalThreadId = `codex-maintenance:${crypto.randomUUID()}`;
     // station#2072: routing keys ride this maintenance child; the source
@@ -1851,6 +1861,7 @@ export class CodexAdapter implements ProviderAdapterShape {
       externalThreadId,
       process: this.processFactory({
         ...connectionEnvForMaintenance,
+        ...sourceHomeEnv,
         CODEX_HOME: sourceHome,
       }),
       provider: this.provider,
@@ -2105,7 +2116,11 @@ export class CodexAdapter implements ProviderAdapterShape {
       if (!boundedFilesystemPath(sourceHome) || !isAbsolute(sourceHome)) {
         throw new Error('Codex source-home affinity is no longer available.');
       }
-      appHomeEnv = { CODEX_HOME: sourceHome };
+      // Same precedence as a profile spawn: overlay, then the home key.
+      appHomeEnv = {
+        ...(await this.options.resolveSourceHomeEnv?.(sourceHome)),
+        CODEX_HOME: sourceHome,
+      };
       appHome = 'source';
     } else {
       resolvedHome = await this.resolveAppHomeEnv(input.credentialProfileRef);

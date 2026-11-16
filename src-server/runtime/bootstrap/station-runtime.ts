@@ -181,6 +181,7 @@ import {
   configuredEngineHomes,
   createCredentialProfileAppHomeEnvPeek,
   createCredentialProfileAppHomeEnvResolver,
+  credentialProfileEnvForHome,
 } from '../../providers/app-home/credential-profile-env.js';
 import { BedrockModelCatalog } from '../../providers/llm/bedrock-models.js';
 import { disposeRetainedPreparedPluginProviders } from '../../providers/registries/registry.js';
@@ -1084,6 +1085,17 @@ export class StationRuntime {
     },
     resolveSourceHome: (affinity) =>
       this.codexRolloutSource.resolveSourceHome(affinity),
+    // A session found in a credential-profile home runs with that profile's
+    // overlay too, as a profile spawn would (proxy URL, masked ambient keys).
+    resolveSourceHomeEnv: (sourceHome) =>
+      credentialProfileEnvForHome(
+        {
+          engine: 'codex',
+          loadConnectionSettings: async () =>
+            (await this.configLoader.loadAppConfig()).agentConnections?.codex,
+        },
+        sourceHome,
+      ),
     // App-home profile opt-in (archive#896 wave 2, agent-engine-unification.md
     // §6.1's overlay model, channel 2) — mirrors claudeAdapter's
     // getAppHomeEnv closure above; codex has no `getProvideSkills` analog
