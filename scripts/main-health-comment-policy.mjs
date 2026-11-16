@@ -463,3 +463,180 @@ export function decideMainHealthComment({
     state,
   };
 }
+
+/**
+ * Labels every tracker carries. `ci:red` is the filter the owner and, later,
+ * agent intake read: every issue it marks is one watched workflow that is red
+ * on main right now, opened and closed by `main-health.yml` alone.
+ */
+export const MAIN_HEALTH_LABELS = Object.freeze(['bug', 'P1', 'ci:red']);
+
+/** Unsuccessful jobs whose annotations are read, so one red run costs a bounded number of calls. */
+export const MAX_ANNOTATED_JOBS = 5;
+
+/** Bounds on the failing lines quoted into a tracker body. */
+export const MAX_FAILING_LINES = 15;
+export const MAX_FAILING_LINE_LENGTH = 300;
+
+/**
+ * The jobs whose annotations are worth reading: anything that did not pass,
+ * in the order GitHub listed them, bounded.
+ *
+ * @param {{id?: unknown, conclusion?: unknown}[]} jobs
+ */
+export function unsuccessfulJobs(jobs = []) {
+  return (jobs ?? [])
+    .filter(
+      (job) =>
+        UNSUCCESSFUL_CONCLUSIONS.has(String(job?.conclusion)) &&
+        Number.isSafeInteger(job?.id),
+    )
+    .slice(0, MAX_ANNOTATED_JOBS);
+}
+
+/**
+ * Who cancelled a run, from its jobs' check-run annotations. GitHub records
+ * the cause only there; the run and job objects say `cancelled` either way.
+ *
+ * - `person`: "The run was canceled by @login." Never reported: someone chose it.
+ * - `superseded`: a newer run in the same concurrency group took the slot.
+ *   Never reported: the newer run carries the verdict.
+ * - `infrastructure`: GitHub gave up on the job: no runner acquired it, the
+ *   runner was lost, or it waited out the queue limit. Reported, because
+ *   the work never ran and nothing else will say so.
+ * - `unknown`: none of the above. Not reported, but logged as a warning on
+ *   the main-health run; a run cancelled before any job existed lands here.
+ *
+ * A person's cancel wins over everything else in the same run: cancelling a
+ * run that was stuck waiting for a runner is still a person's decision.
+ *
+ * @param {{message?: unknown}[]} annotations
+ * @returns {'person' | 'superseded' | 'infrastructure' | 'unknown'}
+ */
+export function classifyCancellation(annotations = []) {
+  const messages = (annotations ?? []).map((annotation) =>
+    String(annotation?.message ?? ''),
+  );
+  if (messages.some((message) => /\bcancell?ed by @/i.test(message)))
+    return 'person';
+  if (
+    messages.some((message) =>
+      /higher priority waiting request|canceling since a higher priority/i.test(
+        message,
+      ),
+    )
+  )
+    return 'superseded';
+  if (
+    messages.some((message) =>
+      /not acquired by runner|lost communication with the server|while awaiting a runner|runner has received a shutdown signal/i.test(
+        message,
+      ),
+    )
+  )
+    return 'infrastructure';
+  return 'unknown';
+}
+
+/**
+ * Normalize one annotation line for a fenced block: no control characters,
+ * no fence-closing backtick runs, bounded length.
+ *
+ * @param {unknown} value
+ */
+function quotedLine(value) {
+  return (
+    String(value ?? '')
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: annotation text is remote data.
+      .replace(/[\u0000-\u0008\u000b-\u001f\u007f]+/g, ' ')
+      .replace(/`{3,}/g, "'''")
+      .trimEnd()
+      .slice(0, MAX_FAILING_LINE_LENGTH)
+  );
+}
+
+/**
+ * The first failing lines of a run: its failure-level annotations (the
+ * `##[error]` lines a reader sees in the log), prefixed with their job.
+ *
+ * @param {{message?: unknown, annotation_level?: unknown, job?: unknown}[]} annotations
+ * @returns {string[]}
+ */
+export function failingLines(annotations = []) {
+  const lines = [];
+  for (const annotation of annotations ?? []) {
+    if (annotation?.annotation_level !== 'failure') continue;
+    for (const line of String(annotation?.message ?? '').split(/\r?\n/)) {
+      if (!line.trim()) continue;
+      lines.push(quotedLine(`${annotation?.job ?? 'job'}: ${line}`));
+      if (lines.length >= MAX_FAILING_LINES) return lines;
+    }
+  }
+  return lines;
+}
+
+/**
+ * The tracker body: everything a person or an agent needs to start on the
+ * red without opening the Actions tab. Rewritten for every reported run, so it
+ * always describes the newest one.
+ *
+ * @param {{
+ *   workflowName: string,
+ *   runUrl: string,
+ *   headSha: string,
+ *   event?: string,
+ *   conclusion?: string,
+ *   failures?: string[],
+ *   lines?: string[],
+ *   detailsError?: string | null,
+ *   notes?: string[],
+ * }} input
+ */
+export function renderTrackerBody({
+  workflowName,
+  runUrl,
+  headSha,
+  event,
+  conclusion,
+  failures = [],
+  lines = [],
+  detailsError = null,
+  notes = [],
+}) {
+  const lead =
+    conclusion === 'cancelled'
+      ? 'A watched workflow never completed on main: GitHub cancelled it (no runner took the job, or the runner was lost).'
+      : 'A watched workflow failed on main.';
+  const shown = normalizeFailures(failures);
+  const sections = [
+    lead,
+    '',
+    `Workflow: ${workflowName}`,
+    `Run: ${runUrl}`,
+    `Head SHA: ${headSha}`,
+    `Trigger: ${event || 'unknown'}`,
+    `Conclusion: ${conclusion || 'unknown'}`,
+  ];
+  if (shown.length > 0) {
+    sections.push('', 'Failing:');
+    for (const failure of shown.slice(0, MAX_TRACKED_FAILURES))
+      sections.push(`- ${failure}`);
+    if (shown.length > MAX_TRACKED_FAILURES)
+      sections.push(`- …and ${shown.length - MAX_TRACKED_FAILURES} more`);
+  }
+  if (lines.length > 0) {
+    sections.push('', 'First failing lines:', '', '```text', ...lines, '```');
+  }
+  if (detailsError) {
+    sections.push(
+      '',
+      `Run details unavailable: ${quotedLine(detailsError)}. Open the run above.`,
+    );
+  }
+  if (notes.length > 0) sections.push('', ...notes);
+  sections.push(
+    '',
+    'This issue is updated in place while the workflow stays red and closed by the next fully green run.',
+  );
+  return sections.join('\n');
+}

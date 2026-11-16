@@ -442,6 +442,31 @@ queue. `PR: Secret scan` keeps its push trigger: it has no merge-group run,
 it is the only scan of main's own history (including bot ledger commits that
 bypass the queue), and `Main: Health` tracks its main-push result.
 
+### Scheduled workflow failures
+
+Every scheduled workflow's red run opens or updates one issue. `Main: Health`
+is the only reporter: it watches each scheduled workflow by name and keeps one
+tracker per workflow, titled `Main pipeline red: <workflow name>` and labelled
+`bug`, `P1` and `ci:red`. The tracker body is rewritten for each red run with
+the run URL, trigger, head SHA, failing jobs and steps, and up to 15 failing
+annotation lines, so an agent can start from the issue alone. Comments follow
+the [comment policy](../../scripts/main-health-comment-policy.mjs): a new
+comment only when the failure changes, the tracker reopens, or a day has
+passed. The next fully green run closes it. A run GitHub cancelled because no
+runner took the job, or the runner was lost, is reported; a person's cancel
+and a run superseded in its concurrency group are not. Push and dispatch runs
+on `main` of a watched workflow report too. Main pushes of `Main: Container
+smoke` and `Nightly: iOS Rust cache` are the only push runs among the
+scheduled set; the push-only `Main: Seatbelt kernel legs` is watched too.
+
+`scripts/__tests__/scheduled-failure-reporting.test.ts` refuses a scheduled
+workflow that is neither watched nor on its justified allowlist: `Main:
+Qualification` (its repair episode and health trackers report it) and `Repo:
+Duplicate sweep` (its scheduled output has no reader). Only `Main:
+Qualification health` checks that `Main: Qualification` and `Nightly`
+actually ran; a schedule that stops firing for any other workflow is not yet
+detected.
+
 The sidebar names below describe the primary trigger or delivery family.
 `PR:` checks can also run on main pushes or a main schedule; `Main:` qualification runs after main
 pushes, every six hours, or by manual dispatch. `Repo:` identifies housekeeping even when scheduled
@@ -488,7 +513,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`ios-rust-cache-warm.yml`](../../.github/workflows/ios-rust-cache-warm.yml) | Warm iOS Rust build cache | **Nightly: iOS Rust cache** | main pushes (path filtered); UTC schedule: `23 5 * * *`; manual dispatch. |
 | [`issue-lifecycle.yml`](../../.github/workflows/issue-lifecycle.yml) | Issue lifecycle | **Repo: Issue lifecycle** | issue events: opened, reopened, labeled; new comments on issues (pull-request comments skip at job level). |
 | [`landing-automation.yml`](../../.github/workflows/landing-automation.yml) | Landing automation | **Repo: Landing automation** | PR events; after `PR: CI`. |
-| [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `PR: Security analysis`, `Main: Android tests`, `PR: iOS build`, `Repo: Docs freshness sweep`, `Repo: CI throughput health`, filtered to runs on `main`. |
+| [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Qualification health`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `PR: Security analysis`, `Main: Android tests`, `PR: iOS build`, `Repo: Docs freshness sweep`, `Repo: CI throughput health`, `Repo: Backlog policy`, `Repo: Dated TODO sweep`, `Repo: Starved PR report`, `Nightly: Fresh-home walkthrough`, `Nightly: iOS Rust cache`, `Main: Seatbelt kernel legs`, filtered to runs on `main`. |
 | [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | main pushes (source qualification only); UTC schedule: `17 */6 * * *`; manual dispatch. |
 | [`merge-queue-regression.yml`](../../.github/workflows/merge-queue-regression.yml) | Merge integration | **Diagnostic (manual): Merge integration** | manual full-corpus diagnosis, never a required check; automatic integration belongs to `PR: CI`. |
 | [`native-store-preflight.yml`](../../.github/workflows/native-store-preflight.yml) | Native store credential preflight | **Tool: Native store preflight** | manual dispatch. |

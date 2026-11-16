@@ -410,6 +410,16 @@ describe('CI verification workflow contracts', () => {
       // weeks (#4270), CI throughput health on most windows.
       '.github/workflows/docs-freshness-sweep.yml',
       '.github/workflows/ci-throughput-health.yml',
+      // Every other scheduled workflow (owner decision: a scheduled red must
+      // open an issue). scheduled-failure-reporting.test.ts holds the whole
+      // scheduled set to this list or a justified allowlist.
+      '.github/workflows/backlog-priority-policy.yml',
+      '.github/workflows/dated-todo-sweep.yml',
+      '.github/workflows/starved-pr-report.yml',
+      '.github/workflows/fresh-home-walkthrough.yml',
+      '.github/workflows/ios-rust-cache-warm.yml',
+      // Push-only, path-filtered; its main push run is the only Seatbelt run.
+      '.github/workflows/seatbelt-kernel.yml',
     ];
     const intendedTargetNames = intendedTargetFiles.map((targetFile) => {
       const target = workflowDocuments.find(({ file }) => file === targetFile)
@@ -441,14 +451,18 @@ describe('CI verification workflow contracts', () => {
     // Pinned as an exact object rather than a `not.toContain`, so the next
     // scope added to this privileged workflow_run handler is a visible edit
     // here and not a silently passing absence check.
+    // `checks: read` reads annotations: the failing lines the tracker
+    // quotes and who cancelled a run.
     expect(parsedMainHealth?.permissions).toEqual({
       actions: 'read',
+      checks: 'read',
       contents: 'read',
       issues: 'write',
     });
     expect(failureJob).toContain(
       "github.event.workflow_run.conclusion == 'failure'",
     );
+    expect(failureJob).toContain('classifyCancellation(annotations)');
     expect(successJob).toContain(
       "github.event.workflow_run.conclusion == 'success'",
     );
@@ -464,7 +478,7 @@ describe('CI verification workflow contracts', () => {
       expect(job).toContain('github.event.workflow_run.head_sha');
       expect(job).toContain('Main pipeline red: $' + '{workflowName}');
     }
-    expect(failureJob).toContain("labels: ['bug', 'P1']");
+    expect(failureJob).toContain('labels: [...MAIN_HEALTH_LABELS]');
     expect(failureJob).toContain("state: 'all'");
     expect(failureJob).toContain("state: 'open'");
     expect(failureJob).toContain(
