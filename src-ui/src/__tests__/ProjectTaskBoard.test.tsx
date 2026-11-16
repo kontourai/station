@@ -102,8 +102,10 @@ function Harness({
   tasks,
   onAction = vi.fn(),
   onOpenTask = vi.fn(),
+  readPullRequests = true,
 }: {
   tasks: TaskRecord[];
+  readPullRequests?: boolean;
   onAction?: (...args: unknown[]) => void;
   onOpenTask?: (taskId: string) => void;
 }) {
@@ -112,7 +114,7 @@ function Harness({
     tasks,
     tasksSettled: true,
     agents: [],
-    readPullRequests: true,
+    readPullRequests,
   });
   if (model.status === 'loading') return <p>loading</p>;
   return (
@@ -346,40 +348,44 @@ describe('ProjectTaskBoard', () => {
     });
   });
 
-  test('focus the reader moved off the board stays where they put it', () => {
-    const tasks = [task('moving', { sessionId: 'run-m' })];
-    given({
-      tasks,
-      sessions: [
-        session('run-m', { lifecycleState: 'running', hasActiveTurn: true }),
-      ],
-    });
-    const { rerender } = render(
-      <>
-        <button type="button">elsewhere</button>
-        <Harness tasks={tasks} />
-      </>,
-    );
+  const movingTask = [task('moving', { sessionId: 'run-m' })];
+  const runningRun = [
+    session('run-m', { lifecycleState: 'running', hasActiveTurn: true }),
+  ];
+  const owedRun = [
+    session('run-m', { lifecycleState: 'review_pending', pendingReview: true }),
+  ];
+
+  test('focus the reader took off the board stays off it, even after that control is gone', async () => {
+    given({ tasks: movingTask, sessions: runningRun });
+    const outside = document.createElement('button');
+    outside.textContent = 'elsewhere';
+    document.body.append(outside);
+    const { rerender } = render(<Harness tasks={movingTask} />);
     act(() => screen.getByRole('link', { name: 'Work moving' }).focus());
-    const elsewhere = screen.getByRole('button', { name: 'elsewhere' });
-    act(() => elsewhere.focus());
-    given({
-      tasks,
-      sessions: [
-        session('run-m', {
-          lifecycleState: 'review_pending',
-          pendingReview: true,
-        }),
-      ],
-    });
-    rerender(
-      <>
-        <button type="button">elsewhere</button>
-        <Harness tasks={tasks} />
-      </>,
-    );
+    act(() => outside.focus());
+    // The control the reader went to disappears: focus falls to the body.
+    act(() => outside.remove());
+    await act(async () => {});
+    expect(document.activeElement).toBe(document.body);
+    given({ tasks: movingTask, sessions: owedRun });
+    rerender(<Harness tasks={movingTask} />);
     expect(cardTitles('Needs you')).toEqual(['Work moving']);
-    expect(document.activeElement).toBe(elsewhere);
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  test('blurring a card to blank space is a choice: moving the card later does not pull focus back', async () => {
+    given({ tasks: movingTask, sessions: runningRun });
+    const { rerender } = render(<Harness tasks={movingTask} />);
+    const title = screen.getByRole('link', { name: 'Work moving' });
+    act(() => title.focus());
+    // A click on blank space: focus goes to the body with no relatedTarget.
+    act(() => title.blur());
+    await act(async () => {});
+    given({ tasks: movingTask, sessions: owedRun });
+    rerender(<Harness tasks={movingTask} />);
+    expect(cardTitles('Needs you')).toEqual(['Work moving']);
+    expect(document.activeElement).toBe(document.body);
   });
 
   test('focus on a moved card’s action returns to its action, not its title', () => {
@@ -449,6 +455,34 @@ describe('ProjectTaskBoard', () => {
     expect(document.querySelector('[aria-live="polite"]')?.textContent).toBe(
       '',
     );
+  });
+
+  test('opening the board after the list still waits for its first facts', () => {
+    const tasks = [task('pr', { sessionId: 'run-pr' })];
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      given({
+        tasks,
+        sessions: [session('run-pr', { lifecycleState: 'completed' })],
+        factsPending: true,
+      });
+      const { rerender } = render(
+        <Harness tasks={tasks} readPullRequests={false} />,
+      );
+      // The list has no wait: it does not read pull requests.
+      expect(screen.queryByText('loading')).toBeNull();
+      act(() => {
+        vi.advanceTimersByTime(5_000);
+      });
+      rerender(<Harness tasks={tasks} readPullRequests />);
+      expect(screen.getByText('loading')).toBeTruthy();
+      act(() => {
+        vi.advanceTimersByTime(2_000);
+      });
+      expect(screen.queryByText('loading')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test('a later move into Ready to merge is announced once', () => {

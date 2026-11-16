@@ -74,14 +74,18 @@ export function useTaskBoardModel({
   const factsQuery = useTaskPullRequestFactsQuery(projectSlug, {
     enabled: tasksSettled && readPullRequests,
   });
-  const [waitedForFacts, setWaitedForFacts] = useState(!readPullRequests);
+  // The short wait for first facts starts when the board is first shown,
+  // not when the section mounts: opening the list and then the board still
+  // waits, rather than flashing cards that move once the facts land.
+  const [waitedForFacts, setWaitedForFacts] = useState(false);
   useEffect(() => {
+    if (!readPullRequests || waitedForFacts) return;
     const timer = setTimeout(
       () => setWaitedForFacts(true),
       FIRST_FACTS_WAIT_MS,
     );
     return () => clearTimeout(timer);
-  }, []);
+  }, [readPullRequests, waitedForFacts]);
 
   const sessionsFailed = sessionsQuery.isError && !sessionsQuery.data;
   const sessionsById = useMemo(

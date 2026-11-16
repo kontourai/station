@@ -138,9 +138,16 @@ export function ProjectTaskBoard({
       : null;
   };
   const forgetFocus = (event: FocusEvent<HTMLDivElement>) => {
-    const next = event.relatedTarget as Node | null;
-    // Focus left the board for somewhere real: the reader chose it.
-    if (next && !boardRef.current?.contains(next)) focused.current = null;
+    const left = event.target as HTMLElement;
+    // Decide once the blur has settled. If the control is still in the page,
+    // the reader moved focus away (to another control, or by clicking blank
+    // space, which leaves no relatedTarget): forget it, so a later move of
+    // the card never pulls focus back. Only a control that vanished (its
+    // card moved lanes) is restored.
+    queueMicrotask(() => {
+      if (left.isConnected && focused.current?.element === left)
+        focused.current = null;
+    });
   };
 
   const card = (taskId: string) => {
