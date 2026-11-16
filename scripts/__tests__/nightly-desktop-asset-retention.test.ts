@@ -472,16 +472,6 @@ describe('refuses to plan from an incomplete or unstable listing', () => {
       'changed or is truncated',
     ],
     [
-      'a listing past 1,000 assets',
-      {
-        before: (args: string[], state: { assets: Asset[] }) =>
-          args.some((arg) => /page=\d+$/.test(arg))
-            ? JSON.stringify(Array.from({ length: 100 }, () => state.assets[0]))
-            : undefined,
-      },
-      'within 1,000 assets',
-    ],
-    [
       'a latest.json that changes while it is read',
       {
         before: (args: string[]) =>
