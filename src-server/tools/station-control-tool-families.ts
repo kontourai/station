@@ -124,8 +124,10 @@ export const STATION_TOOL_FAMILY_MEMBERS = {
     'get_project',
     'list_personal_boards',
     'list_project_layouts',
+    'list_project_library',
     'list_projects',
     'propose_personal_board',
+    'read_project_library_file',
   ],
   Scheduling: [
     'add_job',

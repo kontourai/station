@@ -1165,6 +1165,16 @@ export const STATION_CONTROL_TOOL_POLICY = {
     ...SELF_READ,
     routes: [get('/api/orchestration/station-control/task-brief')],
   },
+  // #5067: the caller's OWN Project Library. The route reads the Project
+  // Station recorded for the verified caller's Session; no argument names it.
+  list_project_library: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/station-control/project-library')],
+  },
+  read_project_library_file: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/station-control/project-library/file')],
+  },
   // #4003: write the Task memory of the caller's OWN Session's Task: one
   // summary revision, or one keyed record version. The routes read the
   // Session from the verified caller and the Task from its immutable room
@@ -2134,6 +2144,8 @@ export const RESTRICTED_NETWORK_STATION_CONTROL_TOOLS: ReadonlySet<string> =
     'read_pull_request_guide',
     'declare_pull_request',
     'get_task_brief',
+    'list_project_library',
+    'read_project_library_file',
     'task_summary_update',
     'task_record',
     'task_thread_list',

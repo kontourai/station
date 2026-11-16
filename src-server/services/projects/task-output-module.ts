@@ -185,6 +185,59 @@ export class TaskOutputModule {
       }));
   }
 
+  /**
+   * Project Library (#5067): every output a Task of this Project kept,
+   * including outputs whose Task was since deleted. A Task names its Project
+   * by slug or id, so the caller passes every key the Project answers to. It
+   * reads, never copies; `taskCreatedAt` lets the caller tell a deleted Task
+   * from a newer Task that reuses its id.
+   */
+  async listForProject(projectKeys: readonly string[]): Promise<
+    readonly (TaskOutputRecord & {
+      taskCreatedAt?: string;
+      declaredBy?: TaskOutputDeclarationSource;
+    })[]
+  > {
+    this.assertPersonal();
+    const { store } = await this.withLock(() => this.reconcileStoreLocked());
+    return store.outputs
+      .filter((output) => projectKeys.includes(output.projectId))
+      .map((output) => ({
+        ...stripStoredOutput(output),
+        ...(output.taskCreatedAt
+          ? { taskCreatedAt: output.taskCreatedAt }
+          : {}),
+        ...(output.declaredBy ? { declaredBy: { ...output.declaredBy } } : {}),
+      }));
+  }
+
+  /**
+   * Project Library content read: the Project, not the Task, is the scope,
+   * so an output whose Task was deleted stays readable. Bytes are re-hashed
+   * exactly as {@link readContent} does.
+   */
+  async readContentForProject(
+    projectKeys: readonly string[],
+    outputId: string,
+  ): Promise<{ output: TaskOutputRecord; bytes: Buffer }> {
+    this.assertPersonal();
+    return this.withLock(() => {
+      const { store } = this.reconcileStoreLocked();
+      const output = store.outputs.find(
+        (candidate) =>
+          projectKeys.includes(candidate.projectId) &&
+          candidate.id === outputId,
+      );
+      if (!output) throw new TaskOutputNotFoundError('Task output not found');
+      if (!output.materialization.contentAvailable)
+        throw new TaskOutputUnavailableError('Task output content unavailable');
+      const bytes = this.readVerifiedSnapshot(output.materialization.digest);
+      if (!bytes || bytes.length !== output.materialization.byteLength)
+        throw new TaskOutputUnavailableError('Task output content unavailable');
+      return { output: stripStoredOutput(output), bytes };
+    });
+  }
+
   async read(taskId: string, outputId: string): Promise<TaskOutputRecord> {
     this.assertPersonal();
     const task = this.captureTask(taskId);

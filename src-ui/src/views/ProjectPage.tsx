@@ -42,6 +42,7 @@ import {
   ProjectAddLayoutModal,
   ProjectLayoutsSection,
 } from './project-page/ProjectLayoutsSection';
+import { ProjectLibrarySection } from './project-page/ProjectLibrarySection';
 import { ProjectLiveWorkSection } from './project-page/ProjectLiveWorkSection';
 import {
   ProjectNavigation,
@@ -53,6 +54,7 @@ import type { ProjectRoomProps } from './project-page/ProjectRoom';
 import { ProjectRoom } from './project-page/ProjectRoom';
 import { ProjectTasksSection } from './project-page/ProjectTasksSection';
 import { useProjectSearch } from './project-page/project-room-navigation';
+import { SetupRecommendationsCard } from './project-page/SetupRecommendationsCard';
 import type { AvailableLayout } from './project-page/types';
 import { useListScrollMemory } from './project-page/useListScrollMemory';
 import { ProjectSourcesSection } from './project-settings/ProjectSourcesSection';
@@ -399,6 +401,19 @@ function ProjectOperatorPage({
                   }}
                 />
               )}
+              <SetupRecommendationsCard
+                project={{
+                  id: project.id,
+                  slug,
+                  name: project.name || slug,
+                  ...(project.description
+                    ? { description: project.description }
+                    : {}),
+                }}
+                hasRepository={Boolean(
+                  gitStatus?.isRepo || project.repositorySource,
+                )}
+              />
               <div className="project-page__operator-actions">
                 <Button
                   variant="primary"
@@ -579,6 +594,7 @@ function ProjectOperatorPage({
               hidden={destination !== 'sources'}
               aria-label="Files and connections"
             >
+              <ProjectLibrarySection slug={slug} />
               <ProjectSourcesSection slug={slug} projectId={project.id} />
               {namespacesQuery.isError && (
                 <ErrorState

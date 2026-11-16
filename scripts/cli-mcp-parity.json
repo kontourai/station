@@ -1353,6 +1353,14 @@
       "exempt": "agent-self",
       "reason": "Brief for the caller's own dispatched session (route uses authority.caller.sessionId)."
     },
+    "list_project_library": {
+      "exempt": "agent-self",
+      "reason": "The caller's own Project Library (route uses authority.caller's recorded Project). People use the Project page's Files & connections."
+    },
+    "read_project_library_file": {
+      "exempt": "agent-self",
+      "reason": "One file from the caller's own Project Library (route uses authority.caller's recorded Project)."
+    },
     "get_task_events": {
       "cli": ["delegate events"]
     },

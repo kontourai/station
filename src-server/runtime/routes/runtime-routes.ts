@@ -1158,6 +1158,7 @@ import {
   mayAnswerDelegatedRequest,
   runtimeAttentionRouteOptions,
 } from './runtime-attention-route-options.js';
+import { composeProjectLibraryRoutes } from './runtime-project-library.js';
 import { composePullRequestFeedbackRuntime } from './runtime-pull-request-feedback.js';
 import {
   configureRuntimeSupportServices,
@@ -9406,6 +9407,63 @@ export function configureRuntimeRoutes(
         },
       }),
     );
+  }
+
+  // #5067: the Project Library. Personal Stations only: uploads live in the
+  // Station home, and Task outputs are a personal-home store.
+  const projectLibrary = composeProjectLibraryRoutes({
+    hosted: isHostedTenantExecutionRequired(),
+    homeDir: context.configLoader.getProjectHomeDir(),
+    preview: context.featurePreviews.bind({
+      id: 'project-library',
+      label: 'Project Library',
+      description:
+        'List the files people add to a Project and the files its Tasks keep, and let every chat in the Project read them.',
+    }),
+    outputs: taskOutputs,
+    readTask: (taskId) => context.taskGraphService.readTask(taskId),
+    isInternalRequest: isStationInternalRequest,
+    projectById: (projectId) => {
+      const project = context.projectService
+        .listProjects()
+        .find((entry) => entry.id === projectId);
+      return project ? { id: project.id, slug: project.slug } : undefined;
+    },
+    authorize: async (request, slug) => {
+      const projectIdFor = () =>
+        context.projectService
+          .listProjects()
+          .find((entry) => entry.slug === slug)?.id;
+      const projectId = projectIdFor();
+      if (!projectId) return undefined;
+      const authority = projectMembershipAuthority(request);
+      try {
+        await authority.operator();
+        const actor = await authority.current();
+        return {
+          project: { id: projectId, slug },
+          isCurrent: async () => {
+            if (request.signal.aborted || projectIdFor() !== projectId)
+              return false;
+            try {
+              await authority.operator();
+              return (
+                (await authority.current()).principal.id === actor.principal.id
+              );
+            } catch {
+              return false;
+            }
+          },
+        };
+      } catch (error) {
+        if (error instanceof ProjectMembershipRefusal) return undefined;
+        throw error;
+      }
+    },
+  });
+  if (projectLibrary) {
+    context.app.route('/api/projects', projectLibrary.projectRoutes);
+    context.app.route('/api/orchestration', projectLibrary.sessionRoutes);
   }
 
   /**

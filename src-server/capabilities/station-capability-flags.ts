@@ -164,6 +164,10 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // fact; the off `pull-request-agent-feedback` preview answers 404. Hosted
   // deployments withdraw it: see servesPullRequestFeedback.
   pullRequestFeedback: true,
+  // #5067: the Project Library, `/api/projects/:slug/library…`
+  // (src-server/routes/projects/project-library-routes.ts). Hosted
+  // deployments withdraw it: see servesProjectLibrary.
+  projectLibrary: true,
 };
 
 /** Deployment facts that decide whether a build-supported route can serve. */
@@ -254,6 +258,13 @@ export function servesRemoteSessionReads(
   return !deployment.hosted;
 }
 
+/** Library uploads and Task outputs are personal-home stores; hosted mounts neither. */
+function servesProjectLibrary(
+  deployment: StationCapabilityDeployment,
+): boolean {
+  return !deployment.hosted;
+}
+
 /** Flags whose route serves only in some deployment modes. */
 const DEPLOYMENT_SERVED_FLAGS: Readonly<
   Partial<
@@ -275,6 +286,7 @@ const DEPLOYMENT_SERVED_FLAGS: Readonly<
   followUpAttachments: servesFollowUpAttachments,
   pullRequestFeedback: servesPullRequestFeedback,
   remoteSessionHistory: servesRemoteSessionReads,
+  projectLibrary: servesProjectLibrary,
 };
 
 /**

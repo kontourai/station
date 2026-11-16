@@ -1220,6 +1220,11 @@ export interface EnvironmentSecurityRecord {
  * or the service.
  */
 export interface StationCapabilityFlags {
+  /**
+   * #5067: the Project Library (`/api/projects/:slug/library…`): uploads and
+   * kept Task outputs in one list. Absent on hosted deployments.
+   */
+  projectLibrary?: boolean;
   peerChatTunnelV1?: boolean;
   delegationLocalConversationV1?: boolean;
   /** Child steering and its separately paged instruction history. */
