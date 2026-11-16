@@ -13,7 +13,7 @@
 }
 
 .project-lifecycle__counts dt {
-  font-weight: var(--k-weight-semibold);
+  font-weight: var(--weight-semibold);
 }
 
 .project-lifecycle__counts dd {
