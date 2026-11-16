@@ -264,7 +264,7 @@
   background: var(--k-action);
   color: var(--k-action-contrast);
   font: inherit;
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-variant-numeric: tabular-nums;
   line-height: 18px;
   cursor: pointer;
