@@ -9,6 +9,7 @@ import { envelopeError } from '../client/api-error-message';
 import { hasCapability } from '../client/capability';
 import { authenticatedFetch, type ClientRequestOptions } from '../client/http';
 import { fetchPublicStationCapabilities } from '../client/publicStationCapabilities';
+import { rethrowDeadline } from '../client/request-deadline';
 import type { QueryConfig } from '../query-core';
 import type { OrchestrationSessionSummary } from './chatRuntimeTypes';
 export interface ResolvedOpenSshHost {
@@ -299,7 +300,8 @@ export async function fetchRemoteSessionHistory(
   let body: ApiEnvelope<RemoteSessionHistoryPage> | undefined;
   try {
     body = (await response.json()) as ApiEnvelope<RemoteSessionHistoryPage>;
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     body = undefined;
   }
   if (!response.ok || !body?.success || body.data === undefined)
