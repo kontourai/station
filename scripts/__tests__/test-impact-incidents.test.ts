@@ -283,6 +283,20 @@ describe('#3251: CLI service entry points that compose shared modules', () => {
     expect(executed(result)).toContain(ENTRY_POINTS);
   });
 
+  // #4891's derived edges add ten suites for this diff's `lib.rs` change,
+  // which takes it past the local profile's bound of 32 explicit tests.
+  test('locally the suites only a native-literal edge selected go first; the hosted plan keeps them', () => {
+    const NATIVE_ONLY = 'scripts/__tests__/native-release-config.test.ts';
+    const local = select(incidents['3251'].paths);
+    expect(selected(local).length).toBeGreaterThan(32);
+    expect(selected(local)).toContain(NATIVE_ONLY);
+    expect(executed(local)).not.toContain(NATIVE_ONLY);
+    expect(executed(local).length).toBeGreaterThan(0);
+    expect(
+      executed(select(incidents['3251'].paths, undefined, true)),
+    ).toContain(NATIVE_ONLY);
+  });
+
   test('a shared host-owner claim change alone runs it', () => {
     const result = select(['packages/shared/src/instance-registry.ts']);
     expect(executed(result)).toContain(ENTRY_POINTS);
