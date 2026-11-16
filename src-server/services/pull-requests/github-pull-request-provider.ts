@@ -188,8 +188,12 @@ const GITHUB_PULL_REQUEST_FIELDS =
 const GITHUB_PULL_REQUEST_STATUS_FIELDS =
   'number,url,title,state,headRefName,baseRefName,headRefOid,mergeable,mergeStateStatus,isDraft,reviewDecision';
 
-/** How long a status read is shared; a write to the repository clears it. */
-export const GITHUB_STATUS_READ_CACHE_TTL_MS = 60_000;
+/**
+ * How long a status read is shared; a write to the repository through
+ * Station clears it. Longer than the board's 120 s refresh, so a periodic
+ * refresh finds the previous sweep's reads warm instead of starting cold.
+ */
+export const GITHUB_STATUS_READ_CACHE_TTL_MS = 150_000;
 
 /** `mergeStateStatus` in the board's vocabulary; absent when not reported. */
 const githubMergeReadiness = (
@@ -323,7 +327,9 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
       options.statusReadCacheTtlMs ?? GITHUB_STATUS_READ_CACHE_TTL_MS,
       options.now ?? Date.now,
     );
+    this.now = options.now ?? Date.now;
   }
+  private readonly now: () => number;
   private readonly reads: ForgeReadCache;
   /**
    * Status reads for the Task board: one in-flight `gh pr view` per pull
@@ -668,7 +674,7 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
   async getPullRequestStatusByIdentity(
     c: PullRequestRepositoryIdentityContext,
     ref: string,
-  ): Promise<PullRequestResult<PullRequest>> {
+  ): Promise<PullRequestResult<PullRequest> & { observedAt?: string }> {
     const repository =
       `${c.host}/${c.repository.owner}/${c.repository.name}`.toLowerCase();
     const args = [
@@ -684,7 +690,11 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
     const result = await this.statusReads.read(
       `status ${JSON.stringify(args)}`,
       repository,
-      () => this.callByIdentity(c, args),
+      // Stamped when gh is asked, so a cached answer carries its own age.
+      async () => {
+        const observedAt = new Date(this.now()).toISOString();
+        return { ...(await this.callByIdentity(c, args)), observedAt };
+      },
       (value) => value.available,
     );
     return structuredClone(result);

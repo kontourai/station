@@ -326,14 +326,17 @@ export interface IPullRequestProvider {
   /**
    * The same exact read, narrowed to what a status surface (the Task board)
    * reads: state, title, branches, mergeability, draft, review decision and
-   * readiness. `body` is null and `commits`/`comments` are 0, not observed.
+   * readiness. These are placeholders, not observations: `body` null,
+   * `commits` and `comments` 0, `author.login` '' and `reviewStatus` 'NONE'.
    * Concurrent reads of one pull request share one forge call, and an answer
-   * may be served from a short cache that a write to the repository clears.
+   * may be served from a short cache that a write to the repository clears;
+   * `observedAt` is when the forge was actually read, so a cached answer
+   * says how old it is.
    */
   getPullRequestStatusByIdentity?(
     context: PullRequestRepositoryIdentityContext,
     ref: string,
-  ): Promise<PullRequestResult<PullRequest>>;
+  ): Promise<PullRequestResult<PullRequest> & { observedAt?: string }>;
   openPullRequest(
     context: PullRequestRepositoryContext,
     input: PullRequestOpenInput,

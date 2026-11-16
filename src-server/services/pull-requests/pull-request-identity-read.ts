@@ -12,7 +12,12 @@ interface PullRequestIdentityQuery {
 }
 
 type PullRequestIdentityRead =
-  | { kind: 'current'; pullRequest: PullRequest }
+  | {
+      kind: 'current';
+      pullRequest: PullRequest;
+      /** When the forge was read, when the provider reports it (cached). */
+      observedAt?: string;
+    }
   | { kind: 'unsupported' }
   /** `thrown`: the provider call failed outright, rather than answering no. */
   | { kind: 'unavailable'; thrown: boolean; reason?: string };
@@ -49,7 +54,13 @@ export async function readPullRequestByIdentity(
       identity.ref,
     );
     return result.available && result.data
-      ? { kind: 'current', pullRequest: result.data }
+      ? {
+          kind: 'current',
+          pullRequest: result.data,
+          ...('observedAt' in result && typeof result.observedAt === 'string'
+            ? { observedAt: result.observedAt }
+            : {}),
+        }
       : {
           kind: 'unavailable',
           thrown: false,

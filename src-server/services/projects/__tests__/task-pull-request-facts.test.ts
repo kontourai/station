@@ -220,22 +220,24 @@ describe('readTaskPullRequestFacts', () => {
         updatedAt: `2026-11-10T00:00:${String(59 - i).padStart(2, '0')}.000Z`,
       }),
     );
-    // Two pull requests per Task, newest Task first: 62 in all.
-    const keeps = tasks.flatMap((t, i) => [
-      keep(t.id, `${i}a`),
-      keep(t.id, `${i}b`),
-    ]);
+    // Two pull requests per Task, newest Task first: 62 in all. The last
+    // Task, past the bound, also keeps the first Task's pull request again.
+    const keeps = [
+      ...tasks.flatMap((t, i) => [keep(t.id, `${i}a`), keep(t.id, `${i}b`)]),
+      { ...keep('t30', '0a'), keptAt: '2026-11-10T00:00:00.000Z' },
+    ];
     const facts = await read(tasks, keeps, [provider(getPullRequest)]);
     expect(getPullRequest).toHaveBeenCalledTimes(60);
     expect(facts.tasks.t00).not.toHaveProperty('partial');
     expect(facts.tasks.t30).toMatchObject({
       partial: true,
       pullRequests: [
-        { status: { state: 'unavailable' } },
-        { status: { state: 'unavailable' } },
+        // Already read for t00: its answer is shared, not refused.
+        { ref: '0a', status: { state: 'current' } },
+        { ref: '30a', status: { state: 'unavailable' } },
+        { ref: '30b', status: { state: 'unavailable' } },
       ],
     });
-    // A pull request kept again after the bound is still read once.
     expect(facts.tasks.t29).not.toHaveProperty('partial');
   });
 
@@ -286,6 +288,55 @@ describe('readTaskPullRequestFacts', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  test('reads not started by the deadline still start afterwards, so the next request finds them', async () => {
+    const started: string[] = [];
+    const slow = provider(async (ref) => {
+      started.push(ref);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      return pullRequest(ref);
+    });
+    const refs = Array.from({ length: 12 }, (_, i) => `${i + 10}`);
+    const facts = await read(
+      [task('a')],
+      refs.map((ref) => keep('a', ref)),
+      [slow],
+      {
+        deadlineMs: 45,
+      },
+    );
+    const states = facts.tasks.a?.pullRequests.map((fact) => fact.status.state);
+    expect(states?.filter((state) => state === 'current')).toHaveLength(4);
+    expect(states?.filter((state) => state === 'unavailable')).toHaveLength(8);
+    // Eight had started by the deadline; the last four start after it.
+    expect(started.length).toBeLessThan(12);
+    await vi.waitFor(() => expect(started).toHaveLength(12), {
+      timeout: 1_000,
+    });
+  });
+
+  test('a shared answer keeps the time the forge was read', async () => {
+    const readAt = '2026-11-15T11:58:30.000Z';
+    const facts = await read(
+      [task('a')],
+      [keep('a', '7')],
+      [
+        {
+          id: 'github',
+          canServeHost: () => true,
+          getPullRequestStatusByIdentity: async (_c: unknown, ref: string) => ({
+            available: true,
+            data: pullRequest(ref),
+            observedAt: readAt,
+            effectiveCapabilities: {},
+            effectiveMergeMethods: [],
+            mergeMethodsSource: 'provider-default',
+          }),
+        } as unknown as IPullRequestProvider,
+      ],
+    );
+    expect(facts.tasks.a?.pullRequests[0]?.observedAt).toBe(readAt);
   });
 
   test('a provider that throws yields unavailable, and its siblings still read', async () => {

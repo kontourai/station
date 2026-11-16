@@ -13,9 +13,17 @@
  * four at a time, within one deadline. Tasks with nothing kept cost nothing.
  * Anything past the bound is still listed, as `unavailable`, and its Task is
  * marked `partial`. Reads use the provider's narrow status read, which
- * shares one in-flight forge call per pull request and retains it briefly
- * (GitHub); gh cannot be cancelled, so a read past the deadline is left to
- * finish and the next request joins it instead of starting another.
+ * shares one in-flight forge call per pull request and retains it for 150 s
+ * (GitHub), longer than the board's 120 s refresh.
+ *
+ * The deadline bounds the answer, not the reads. gh cannot be cancelled, and
+ * a read that has not started by the deadline is still started afterwards,
+ * four at a time in the background, so the cache is warm for the next
+ * request: a board with more pull requests than one deadline can read
+ * answers some of them `unavailable` once, then all of them on the next
+ * refresh. A later request joins those reads rather than repeating them,
+ * so refreshes do not pile reads up. Each fact's `observedAt` is when the
+ * forge was read, which for a shared answer can be earlier than the request.
  */
 import type { TaskKeptDeclaredPullRequest } from '@kontourai/station-contracts';
 import type { IPullRequestProvider } from '@kontourai/station-contracts/pull-request-provider';
@@ -135,7 +143,11 @@ export async function readTaskPullRequestFacts(input: {
   return { observedAt: now().toISOString(), tasks };
 }
 
-/** Reads every identity, {@link READ_CONCURRENCY} at a time, by one deadline. */
+/**
+ * Reads every identity, {@link READ_CONCURRENCY} at a time, and answers with
+ * whatever has been read by the deadline. The workers keep going after it,
+ * so every read is eventually made (see the module comment).
+ */
 async function readBounded(
   entries: readonly [string, Identity][],
   providers: () => IPullRequestProvider[],
@@ -143,53 +155,47 @@ async function readBounded(
   now: () => Date,
 ): Promise<Map<string, Omit<TaskPullRequestFact, keyof Identity>>> {
   const results = new Map<string, Omit<TaskPullRequestFact, keyof Identity>>();
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let expired = false;
-  const deadline = new Promise<'timeout'>((resolve) => {
-    timer = setTimeout(() => {
-      expired = true;
-      resolve('timeout');
-    }, deadlineMs);
-  });
   let next = 0;
   const worker = async () => {
     while (next < entries.length) {
       const [key, identity] = entries[next++] as [string, Identity];
-      if (expired) {
-        results.set(key, {
-          observedAt: now().toISOString(),
-          status: { state: 'unavailable', reason: TIMED_OUT },
-        });
-        continue;
-      }
-      const read = await Promise.race([
-        readPullRequestByIdentity(providers, identity, { status: true }),
-        deadline,
-      ]);
+      // Never rejects: a provider failure is an `unavailable` read.
+      const read = await readPullRequestByIdentity(providers, identity, {
+        status: true,
+      });
       results.set(key, toFact(read, identity, now));
     }
   };
-  try {
-    await Promise.all(
-      Array.from(
-        { length: Math.min(READ_CONCURRENCY, entries.length) },
-        worker,
-      ),
-    );
-  } finally {
-    clearTimeout(timer);
-  }
-  return results;
+  const all = Promise.all(
+    Array.from({ length: Math.min(READ_CONCURRENCY, entries.length) }, worker),
+  );
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([
+    all,
+    new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, deadlineMs);
+    }),
+  ]);
+  clearTimeout(timer);
+  // A snapshot: reads that finish later land in the provider's cache.
+  const answered = new Map(results);
+  for (const [key] of entries)
+    if (!answered.has(key))
+      answered.set(key, {
+        observedAt: now().toISOString(),
+        status: { state: 'unavailable', reason: TIMED_OUT },
+      });
+  return answered;
 }
 
 function toFact(
-  read: Awaited<ReturnType<typeof readPullRequestByIdentity>> | 'timeout',
+  read: Awaited<ReturnType<typeof readPullRequestByIdentity>>,
   identity: Identity,
   now: () => Date,
 ): Omit<TaskPullRequestFact, keyof Identity> {
-  const observedAt = now().toISOString();
-  if (read === 'timeout')
-    return { observedAt, status: { state: 'unavailable', reason: TIMED_OUT } };
+  // When the forge answered: the provider's stamp for a shared read.
+  const observedAt =
+    (read.kind === 'current' && read.observedAt) || now().toISOString();
   if (read.kind === 'unsupported')
     return {
       observedAt,

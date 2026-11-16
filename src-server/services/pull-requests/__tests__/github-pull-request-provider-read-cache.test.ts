@@ -492,9 +492,29 @@ describe('GitHubPullRequestProvider status reads for the Task board', () => {
     const afterWrite = gh.count('pr view');
     await provider.getPullRequestStatusByIdentity(identity, '7');
     expect(gh.count('pr view')).toBe(afterWrite + 1);
-    clock.now += 60_001;
+    clock.now += 150_001;
     await provider.getPullRequestStatusByIdentity(identity, '7');
     expect(gh.count('pr view')).toBe(afterWrite + 2);
+  });
+
+  test('a shared status read reports when gh was actually asked', async () => {
+    const gh = fakeGh();
+    const { provider, clock } = providerWith(gh);
+    const first = await provider.getPullRequestStatusByIdentity(identity, '7');
+    clock.now += 100_000;
+    const shared = await provider.getPullRequestStatusByIdentity(identity, '7');
+    expect(gh.count('pr view')).toBe(1);
+    expect(shared.observedAt).toBe(new Date(1_000_000).toISOString());
+    expect(shared.observedAt).toBe(first.observedAt);
+  });
+
+  test('the status cache outlives the board’s 120 s refresh', async () => {
+    const gh = fakeGh();
+    const { provider, clock } = providerWith(gh);
+    await provider.getPullRequestStatusByIdentity(identity, '7');
+    clock.now += 120_000;
+    await provider.getPullRequestStatusByIdentity(identity, '7');
+    expect(gh.count('pr view')).toBe(1);
   });
 
   test('a failed status read is not retained', async () => {
