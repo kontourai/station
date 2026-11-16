@@ -178,7 +178,7 @@ class UnauthenticatedVoiceConnections {
  * it, a loopback connection stays credential-free: speech only, no Station
  * tools.
  */
-export const VOICE_AUTHENTICATE_QUERY = 'authenticate';
+const VOICE_AUTHENTICATE_QUERY = 'authenticate';
 
 function acceptVoiceSession(
   ws: WebSocket,
