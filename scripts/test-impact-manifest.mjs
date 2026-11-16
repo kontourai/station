@@ -802,6 +802,36 @@ const COMPOSITION_EDGES = Object.freeze([
       'Agent audience enforcement through the production route composition; ' +
       'kept explicit so an escalated diff still runs its caller suite (#3149)',
   }),
+  // The seed must decide every root this registry declares. The suite imports
+  // the registry, but `packages/shared/` escalates and an escalated diff
+  // drops related discovery: #4935 and #4999 each added a root and reached
+  // main with the suite failing.
+  Object.freeze({
+    pattern: 'packages/shared/src/station-home-store-registry.ts',
+    supplemental: true,
+    tests: Object.freeze(['scripts/__tests__/seed-dev-home.test.ts']),
+    reason:
+      'the dev-home seed decides every root this registry declares; ' +
+      'kept explicit so an escalated diff still runs it (#3149)',
+  }),
+  // These suites boot the server entry point as a child process and assert
+  // the status it exits with when it refuses to start. #4752 changed that
+  // status in the two files below and two of the suites failed first on main.
+  ...['src-server/index.ts', 'packages/supervisor/src/protocol.ts'].map(
+    (pattern) =>
+      Object.freeze({
+        pattern,
+        supplemental: true,
+        tests: Object.freeze([
+          'src-server/__tests__/managed-approval-ceiling.process.test.ts',
+          'src-server/__tests__/managed-policy-startup.process.test.ts',
+          'src-server/__tests__/managed-remote-clients.process.test.ts',
+        ]),
+        reason:
+          'boots the server entry point as a child process and asserts its ' +
+          'startup-refused exit status; kept explicit so the diff runs it (#3149)',
+      }),
+  ),
 ]);
 
 /**
