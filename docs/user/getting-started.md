@@ -1198,8 +1198,9 @@ transcript in the chat pane, laid out like any chat: the subagent's prompt,
 then its tool calls and answers. The title becomes **Parent chat / Subagent**;
 choose an ancestor to return to that chat without losing its draft or reading
 position. Escape returns one level. On a phone, the title names the subagent;
-use the back button or swipe from the left edge. Engine transcripts are read
-only and refresh while running.
+use the back button or swipe from the left edge. The reader opens on the
+latest messages; earlier ones load as you scroll up. Engine transcripts are
+read only and refresh while running.
 
 If a tool result has no recorded text, the reader says **Text output unavailable.**
 This does not mean the tool produced no output.
