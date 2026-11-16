@@ -458,5 +458,199 @@
         "Tests  87 passed (87)"
       ]
     }
-  ]
+  ],
+  "merged_tree": {
+    "head": "13523c593e23c265479d431fe4c548ff70e5b606",
+    "note": "re-verified after merging #4852 44deb5ae and main b36b3cae; preimage restored byte-exact (sha256) each time",
+    "injections": [
+      {
+        "id": "per-frame-revocation (guard terminal)",
+        "file": "src-server/routes/projects/project-room-live.ts",
+        "test": "src-server/routes/projects/project-room-routes.test.ts",
+        "injected_exit": 1,
+        "injected_failures": [
+          "× live (#4798): a member revoked mid-stream gets revoked and nothing after it: no typing, presence or messages 719ms"
+        ],
+        "injected_errors": [
+          "Error: lifecycle journal lock is held by a live process",
+          "AssertionError: expected [] to deeply equal [ 'revoked' ]"
+        ],
+        "injected_summary": [
+          "Tests  1 failed | 85 passed (86)"
+        ],
+        "preimage_sha256": "a2d58d7aea843440531b31abdf7c8aad6d1e0f01f1d3240d64e0567cdb08439e",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "Tests  86 passed (86)"
+        ],
+        "tree_clean_after": true
+      },
+      {
+        "id": "per-frame-revocation (loop and guard)",
+        "file": "src-server/routes/projects/project-room-live.ts",
+        "test": "src-server/routes/projects/project-room-routes.test.ts",
+        "injected_exit": 1,
+        "injected_failures": [
+          "× live (#4798): a member revoked mid-stream gets revoked and nothing after it: no typing, presence or messages 521ms"
+        ],
+        "injected_errors": [
+          "Error: lifecycle journal lock is held by a live process",
+          "AssertionError: expected [ 'presence', 'typing' ] to deeply equal [ 'revoked' ]"
+        ],
+        "injected_summary": [
+          "Tests  1 failed | 85 passed (86)"
+        ],
+        "preimage_sha256": "a2d58d7aea843440531b31abdf7c8aad6d1e0f01f1d3240d64e0567cdb08439e",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "Tests  86 passed (86)"
+        ],
+        "tree_clean_after": true
+      },
+      {
+        "id": "member-directory fields",
+        "file": "src-server/services/projects/project-room-service.ts",
+        "test": "src-server/routes/projects/project-room-routes.test.ts",
+        "injected_exit": 1,
+        "injected_failures": [
+          "× members (#4799): only a current room reader may list, and the list is active people with id, name and kind only 203ms"
+        ],
+        "injected_errors": [
+          "Error: lifecycle journal lock is held by a live process",
+          "AssertionError: expected '{\"success\":true,\"data\":{\"members\":[{\"…' not to contain 'example.invalid'"
+        ],
+        "injected_summary": [
+          "Tests  1 failed | 85 passed (86)"
+        ],
+        "preimage_sha256": "fa18124c689ac8582aafeb7b1731deaaaf651d95523a0293de1bc02e49d1518a",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "Tests  86 passed (86)"
+        ],
+        "tree_clean_after": true
+      },
+      {
+        "id": "non-member refusal",
+        "file": "src-server/services/projects/project-membership-store.ts",
+        "test": "src-server/routes/projects/project-room-routes.test.ts",
+        "injected_exit": 1,
+        "injected_failures": [
+          "× members (#4799): only a current room reader may list, and the list is active people with id, name and kind only 348ms"
+        ],
+        "injected_errors": [
+          "Error: lifecycle journal lock is held by a live process",
+          "AssertionError: /api/projects/example/room/members: expected 503 to be 403 // Object.is equality"
+        ],
+        "injected_summary": [
+          "Tests  1 failed | 85 passed (86)"
+        ],
+        "preimage_sha256": "253e382b5c0282997c467551eba597f386c5411621bddc7644fbf8b3c96bceaf",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "Tests  86 passed (86)"
+        ],
+        "tree_clean_after": true
+      },
+      {
+        "id": "revoked refusal",
+        "file": "src-server/services/projects/project-membership-store.ts",
+        "test": "src-server/routes/projects/project-room-routes.test.ts",
+        "injected_exit": 1,
+        "injected_failures": [
+          "× SSE checkpoints are guarded at queued delivery and terminate with revoked while presence is removed 370ms",
+          "× idle SSE periodically notices membership revocation and shutdown clears its timers 20893ms",
+          "× live (#4798): losing access ends that room with revoked, and a viewer cannot type 417ms",
+          "× members (#4799): only a current room reader may list, and the list is active people with id, name and kind only 518ms",
+          "× live (#4798): a member revoked mid-stream gets revoked and nothing after it: no typing, presence or messages 5903ms"
+        ],
+        "injected_errors": [
+          "Error: lifecycle journal lock is held by a live process",
+          "AssertionError: expected 'event: presence\\ndata: {\"participants…' to contain 'event: revoked'"
+        ],
+        "injected_summary": [
+          "Tests  5 failed | 81 passed (86)"
+        ],
+        "preimage_sha256": "253e382b5c0282997c467551eba597f386c5411621bddc7644fbf8b3c96bceaf",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "Tests  86 passed (86)"
+        ],
+        "tree_clean_after": true
+      },
+      {
+        "id": "live capability admission (enabled guard)",
+        "file": "packages/sdk/src/query-domains/projectRooms.ts",
+        "test": "src-ui/src/views/native-relay/__tests__/NativeRelayMemberShell.test.tsx",
+        "injected_exit": 1,
+        "injected_failures": [
+          "× reads published task content through the real member SDK without starting operator resources 212ms"
+        ],
+        "injected_errors": [
+          "AssertionError: expected [ '/.well-known/station/v1', …(10) ] to deeply equal [ '/api/auth/authority', …(9) ]"
+        ],
+        "injected_summary": [
+          "Tests  1 failed | 4 passed (5)"
+        ],
+        "preimage_sha256": "f14ca9563f90b157fccd15130e9521d860a54902fb227d8e385595ccf2c3e900",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "Tests  5 passed (5)"
+        ],
+        "tree_clean_after": true
+      },
+      {
+        "id": "handshake literal (flag withdrawn)",
+        "file": "src-server/capabilities/station-capability-flags.ts",
+        "test": "src-server/services/ssh/__tests__/handshake-compatibility.test.ts",
+        "injected_exit": 1,
+        "injected_failures": [
+          "× a personal deployment advertises served flags and withholds the disabled chat preview 176ms",
+          "× server route test: the live HTTP response includes the seeded flags 134ms"
+        ],
+        "injected_errors": [
+          "AssertionError: expected { …(24) } to deeply equal { …(25) }",
+          "AssertionError: expected { …(24) } to deeply equal { …(25) }"
+        ],
+        "injected_summary": [
+          "Tests  2 failed | 4 passed (6)"
+        ],
+        "preimage_sha256": "d5db5e17ffe6edee7829c1538af87a82a79865bb0a620bbf0424fe00cb193bcb",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "Tests  6 passed (6)"
+        ],
+        "tree_clean_after": true
+      },
+      {
+        "id": "#4852 R10 revoked retry (replay skips authority)",
+        "file": "src-server/services/projects/project-room-store.ts",
+        "test": "src-server/routes/projects/project-room-routes.test.ts",
+        "injected_exit": 1,
+        "injected_failures": [
+          "× message files: an accepted send retried after the sender loses room access is refused (#4852 review) 839ms"
+        ],
+        "injected_errors": [
+          "Error: lifecycle journal lock is held by a live process",
+          "AssertionError: expected { status: 200, code: undefined } to deeply equal { status: 403, …(1) }"
+        ],
+        "injected_summary": [
+          "Tests  1 failed | 85 passed (86)"
+        ],
+        "preimage_sha256": "d1aa8dc6f33fc874e75674810bbbd38be80e0e0f43c53bc13503a05d71712efa",
+        "restored_byte_exact": true,
+        "restored_exit": 0,
+        "restored_summary": [
+          "Tests  86 passed (86)"
+        ],
+        "tree_clean_after": true
+      }
+    ]
+  }
 }
