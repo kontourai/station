@@ -6,6 +6,7 @@ import type {
   PullRequestCapabilities,
   PullRequestMergeInput,
   PullRequestMergeMethod,
+  PullRequestMergeReadiness,
   PullRequestMergeResult,
   PullRequestRepositoryContext,
   PullRequestRepositoryIdentityContext,
@@ -169,6 +170,47 @@ const githubMergeability = (value: unknown): PullRequest['mergeability'] =>
       ? 'conflicting'
       : 'unknown';
 
+/**
+ * One field list for every full pull request read (list, view, view by
+ * identity), so a field the normalizer reads cannot be missing from one of
+ * them.
+ */
+const GITHUB_PULL_REQUEST_FIELDS =
+  'number,url,title,body,state,author,headRefName,baseRefName,headRefOid,commits,reviews,comments,mergeable,mergeStateStatus,isDraft,reviewDecision';
+
+/** `mergeStateStatus` in the board's vocabulary; absent when not reported. */
+const githubMergeReadiness = (
+  value: unknown,
+): PullRequestMergeReadiness | undefined => {
+  if (typeof value !== 'string' || !value) return undefined;
+  switch (value) {
+    case 'CLEAN':
+    case 'HAS_HOOKS':
+      return 'clean';
+    case 'BLOCKED':
+      return 'blocked';
+    case 'UNSTABLE':
+      return 'checks-failing';
+    case 'DIRTY':
+      return 'conflicting';
+    case 'BEHIND':
+      return 'behind';
+    case 'DRAFT':
+      return 'draft';
+    default:
+      return 'unknown';
+  }
+};
+
+const githubReviewDecision = (value: unknown): PullRequest['reviewDecision'] =>
+  value === 'APPROVED'
+    ? 'approved'
+    : value === 'CHANGES_REQUESTED'
+      ? 'changes_requested'
+      : value === 'REVIEW_REQUIRED'
+        ? 'review_required'
+        : undefined;
+
 const canonicalHost = (host: string) =>
   host.toLowerCase().replace(/:\d+$/, '').replace(/\.$/, '');
 
@@ -210,6 +252,13 @@ export function normalizeGitHubPullRequest(
     comments: Array.isArray(value.comments) ? value.comments.length : 0,
     nativeId: String(value.number),
     mergeability: githubMergeability(value.mergeable),
+    ...(typeof value.isDraft === 'boolean' ? { draft: value.isDraft } : {}),
+    ...(githubReviewDecision(value.reviewDecision)
+      ? { reviewDecision: githubReviewDecision(value.reviewDecision) }
+      : {}),
+    ...(githubMergeReadiness(value.mergeStateStatus)
+      ? { mergeReadiness: githubMergeReadiness(value.mergeStateStatus) }
+      : {}),
   };
 }
 
@@ -519,7 +568,7 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
         '--repo',
         `${host}/${c.repository.owner}/${c.repository.name}`,
         '--json',
-        'number,url,title,body,state,author,headRefName,baseRefName,headRefOid,commits,reviews,comments,mergeable,mergeStateStatus',
+        GITHUB_PULL_REQUEST_FIELDS,
         ...(q.state ? ['--state', q.state.toLowerCase()] : []),
         ...(q.limit ? ['--limit', String(q.limit)] : []),
       ],
@@ -574,7 +623,7 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
       '--repo',
       `${host}/${c.repository.owner}/${c.repository.name}`,
       '--json',
-      'number,url,title,body,state,author,headRefName,baseRefName,headRefOid,commits,reviews,comments,mergeable,mergeStateStatus',
+      GITHUB_PULL_REQUEST_FIELDS,
     ]);
   }
   getPullRequestByIdentity(
@@ -588,7 +637,7 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
       '--repo',
       `${c.host}/${c.repository.owner}/${c.repository.name}`,
       '--json',
-      'number,url,title,body,state,author,headRefName,baseRefName,headRefOid,commits,reviews,comments,mergeable,mergeStateStatus',
+      GITHUB_PULL_REQUEST_FIELDS,
     ]);
   }
   openPullRequest(c: PullRequestRepositoryContext, input: any) {
