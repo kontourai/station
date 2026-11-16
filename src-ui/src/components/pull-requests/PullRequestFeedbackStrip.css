@@ -26,7 +26,8 @@
 }
 .pr-feedback-strip__owner {
   min-width: 0;
-  max-width: 28ch;
+  /* The strip sits in a narrow side pane at every viewport width. */
+  max-width: 22ch;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -42,19 +43,10 @@
   color: var(--k-text-faint);
   font-variant-numeric: tabular-nums;
 }
+.pr-feedback-strip__actions {
+  display: inline-flex;
+  align-items: center;
+}
 .pr-feedback-strip__gear {
   margin-left: auto;
-}
-@media (pointer: coarse) {
-  .pr-feedback-strip__gear {
-    --icon-button-size: 44px;
-  }
-  .pr-feedback-strip .button--link {
-    min-height: 44px;
-  }
-}
-@media (max-width: 480px) {
-  .pr-feedback-strip__owner {
-    max-width: 18ch;
-  }
 }

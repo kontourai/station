@@ -74,9 +74,12 @@ export function PullRequestFeedbackStrip({
         <Separator />
         <span>Off</span>
         <Separator />
-        <Button variant="link" size="sm" onClick={settings}>
-          Turn on…
-        </Button>
+        {/* An __actions row: the shared touch floor sizes it on phones. */}
+        <span className="pr-feedback-strip__actions">
+          <Button variant="link" size="sm" onClick={settings}>
+            Turn on…
+          </Button>
+        </span>
       </>
     );
   } else if (!data.owner.readable) {
@@ -202,13 +205,12 @@ function ReadableOwner({
           <RelativeTime iso={last.at} now={now} />
         </span>
       )}
-      <IconButton
-        className="pr-feedback-strip__gear"
-        aria-label="Agent feedback settings"
-        onClick={onSettings}
-      >
-        <SettingsGlyph />
-      </IconButton>
+      {/* An __actions row: the shared touch floor sizes it on phones. */}
+      <span className="pr-feedback-strip__actions pr-feedback-strip__gear">
+        <IconButton aria-label="Agent feedback settings" onClick={onSettings}>
+          <SettingsGlyph />
+        </IconButton>
+      </span>
     </>
   );
 }
