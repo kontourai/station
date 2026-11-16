@@ -135,6 +135,21 @@ class ProjectRoomLiveHub {
   >();
   private connection: FetchSseConnection | undefined;
   private connected = new Set<string>();
+  /**
+   * Where each announced room stands on the open connection, and its latest
+   * typing, presence and Agent frames, for a listener that joins after the
+   * room was announced (the sidebar opens the connection; the room hook joins
+   * once it has discovered its room).
+   */
+  private latest = new Map<
+    string,
+    {
+      subscribed: Extract<ProjectRoomLiveFrame, { kind: 'subscribed' }>;
+      typing?: ProjectRoomLiveFrame;
+      presence?: ProjectRoomLiveFrame;
+      agents?: ProjectRoomLiveFrame;
+    }
+  >();
   private timer: ReturnType<typeof setTimeout> | undefined;
   private current = '';
   constructor(
@@ -153,6 +168,16 @@ class ProjectRoomLiveHub {
     set.add(listener);
     this.schedule();
     let active = true;
+    // Joining a room already announced on the open connection: replay where
+    // it stands, so the listener can detect a gap in what comes next.
+    if (this.connected.has(key))
+      queueMicrotask(() => {
+        const state = this.latest.get(key);
+        if (!active || !state || !this.connected.has(key)) return;
+        listener({ ...state.subscribed });
+        for (const frame of [state.typing, state.presence, state.agents])
+          if (frame) listener(frame);
+      });
     return () => {
       if (!active) return;
       active = false;
@@ -195,6 +220,7 @@ class ProjectRoomLiveHub {
       for (const key of this.connected)
         this.emit(key, { kind: 'disconnected', key });
       this.connected.clear();
+      this.latest.clear();
     };
     this.connection = fetchSSE(url, {
       requestScope: this.scope,
@@ -215,10 +241,41 @@ class ProjectRoomLiveHub {
         if (frame.kind === 'subscribed') this.connected.add(frame.key);
         if (frame.kind === 'revoked' || frame.kind === 'unavailable')
           this.connected.delete(frame.key);
+        this.remember(frame);
         this.emit(frame.key, frame);
         return true;
       },
     });
+  }
+  /** Keeps each room's position and latest state for late listeners. */
+  private remember(frame: ProjectRoomLiveFrame) {
+    if (frame.kind === 'revoked' || frame.kind === 'unavailable') {
+      this.latest.delete(frame.key);
+      return;
+    }
+    if (frame.kind === 'subscribed') {
+      this.latest.set(frame.key, { subscribed: frame });
+      return;
+    }
+    const state = this.latest.get(frame.key);
+    if (!state) return;
+    const at = state.subscribed;
+    if (frame.kind === 'append')
+      state.subscribed = {
+        ...at,
+        lastSeq: Math.max(at.lastSeq, frame.message.seq),
+      };
+    else if (frame.kind === 'update')
+      state.subscribed = { ...at, activity: frame.activity };
+    else if (frame.kind === 'resync')
+      state.subscribed = {
+        ...at,
+        lastSeq: frame.lastSeq,
+        activity: frame.activity,
+      };
+    else if (frame.kind === 'typing') state.typing = frame;
+    else if (frame.kind === 'presence') state.presence = frame;
+    else if (frame.kind === 'agents') state.agents = frame;
   }
   private close() {
     this.connection?.close();
@@ -226,6 +283,7 @@ class ProjectRoomLiveHub {
     for (const key of this.connected)
       this.emit(key, { kind: 'disconnected', key });
     this.connected.clear();
+    this.latest.clear();
   }
 }
 const hubs = new Map<string, ProjectRoomLiveHub>();

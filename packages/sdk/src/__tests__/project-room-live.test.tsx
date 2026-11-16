@@ -336,3 +336,58 @@ test('agent activity comes from the stream’s request records', async () => {
     ]),
   );
 });
+
+test('a room opened after the sidebar already holds the connection still backfills a gap, never skips it', async () => {
+  // The sidebar's index opens the Project's one connection, and the server
+  // announces the room before the room hook (which waits for discovery)
+  // joins. The room must still learn where the stream stands.
+  seed(2);
+  const index = renderHook(
+    () =>
+      useProjectRoomLiveIndex(
+        { apiBase, authorityKey: 'one' },
+        'team',
+        [roomId],
+        true,
+      ),
+    { wrapper: wrapper() },
+  );
+  await waitFor(() => expect(connections).toHaveLength(1));
+  const { lastSeq } = store.history(scope).checkpoint;
+  push('subscribed', { key: roomId, roomId, lastSeq, activity: 0 });
+  push('typing', { key: roomId, actors: [other] });
+  await waitFor(() =>
+    expect(index.result.current.get(roomId)?.typing).toEqual([other]),
+  );
+  const room = renderHook(
+    () => {
+      const value = useProjectRoom(
+        { apiBase, authorityKey: 'one' },
+        'team',
+        scope.localProjectId,
+      );
+      void [value.history.status, value.history.data, value.history.isFetching];
+      return value;
+    },
+    { wrapper: wrapper() },
+  );
+  await waitFor(() => expect(room.result.current.history.isSuccess).toBe(true));
+  // The connection was not reopened for the room, and the room knows the
+  // stream's position and who is typing.
+  await waitFor(() => expect(room.result.current.lastSeq).toBe(lastSeq));
+  await waitFor(() => expect(room.result.current.typing).toEqual([other]));
+  expect(connections).toHaveLength(1);
+  await waitFor(() =>
+    expect(room.result.current.history.isFetching).toBe(false),
+  );
+  const before = reads.length;
+  append('missed three');
+  const four = append('four');
+  push('append', { key: roomId, message: four });
+  await waitFor(() =>
+    expect(
+      room.result.current.history.data?.pages[0]?.messages.map((m) => m.seq),
+    ).toEqual([1, 2, 3, 4]),
+  );
+  expect(reads.slice(before)).toEqual([{ after: 2, limit: 1 }]);
+});
