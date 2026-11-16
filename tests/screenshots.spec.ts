@@ -7158,6 +7158,19 @@ function readGalleryCheckout() {
     };
   }
 }
+/** One line per failed screen, naming a lost lazy chunk as such (#5028). */
+function failedShotReasons(shots: Shot[]): string[] {
+  return shots
+    .filter((shot) => !shot.ok)
+    .map((shot) =>
+      failedScreenReason(
+        shot.screen.name,
+        shot.error ?? 'screen did not render',
+        shot.appError,
+      ),
+    );
+}
+
 test('build gallery — capture key screens', async ({ page }) => {
   const browserErrors: string[] = [];
   page.on('console', (message) => {
@@ -7966,17 +7979,7 @@ test('build gallery — capture key screens', async ({ page }) => {
     }
   }
 
-  const failedReasons = shots.flatMap((shot) =>
-    shot.ok
-      ? []
-      : [
-          failedScreenReason(
-            shot.screen.name,
-            shot.error ?? 'screen did not render',
-            shot.appError,
-          ),
-        ],
-  );
+  const failedReasons = failedShotReasons(shots);
   for (const reason of failedReasons) console.log(reason);
   const ok = shots.filter((shot) => shot.ok).length;
   expect(
