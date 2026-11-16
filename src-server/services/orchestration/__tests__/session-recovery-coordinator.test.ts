@@ -1213,6 +1213,14 @@ describe('SessionRecoveryCoordinator', () => {
         Date.parse(RESET_AT) - STOPPED_AT.getTime() - 1,
       );
       const stopId = stopIdOf(coordinator);
+      // The restart is still in flight when the reset passes, so the timer
+      // fires in the middle of the click's dispatch.
+      let resetPassedMidDispatch = false;
+      restartResume.mockImplementationOnce(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 30_000));
+        resetPassedMidDispatch = Date.now() > Date.parse(RESET_AT);
+        return { turnId: 'profile-turn' };
+      });
 
       const click = coordinator.continueUsageLimitOnProfile(
         THREAD,
@@ -1222,6 +1230,7 @@ describe('SessionRecoveryCoordinator', () => {
       await vi.advanceTimersByTimeAsync(60_000);
       await click;
 
+      expect(resetPassedMidDispatch).toBe(true);
       expect(restartResume.mock.calls.length + sendTurn.mock.calls.length).toBe(
         1,
       );
