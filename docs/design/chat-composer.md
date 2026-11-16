@@ -22,9 +22,12 @@ Start on the right. The reply's next-turn destination notice and conversation
 status/resync action stay above the box when present.
 
 Run setup is a quiet ghost pill with overlapping Agent and engine marks, a
-secondary-weight Agent · model label, and the shared caret. Safety warnings stay
-on the marks. The Agent name truncates first; in narrow composers the label
-hides, keeping marks and caret. On phones, More draft options groups Saved drafts
+secondary-weight model label, and the shared caret. The Agent mark names the
+Agent, so the label spends its text on the model; without an Agent mark it reads
+Agent · model and the Agent name truncates first. A requested reasoning effort
+follows the model ("Opus · High") and truncates before it; with no effort
+requested the engine default applies and no level is named. Safety warnings stay
+on the marks, and the open panel repeats the mark on the choice that raised it. In narrow composers the label hides, keeping marks and caret. On phones, More draft options groups Saved drafts
 and Clear message to preserve the toolbar targets. The full summary remains in the accessible name
 and hover title, and the touch target stays at least 44px. The existing setup
 owner opens above the toolbar on desktop and as a bottom sheet on phones.
@@ -42,11 +45,12 @@ conversations discovered in another coding app. A quiet "Started in Claude Code"
 work; history uses source-event time and remains separate from active work.
 
 Opening a conversation or typing does not migrate it. One compact
-**Continue in Station** action sits above the conversation and needs no
-message; a conversation no project claims states its own-folder choice beside
-it, with **Add a project instead**. The composer accepts a normal draft, and
-Send (or the configured Return shortcut, except during IME composition)
-continues with it; Shift+Return adds a line. Either way the continuation opens
+**Continue in Station** action sits with the origin (the dock title bar, a
+phone's origin row, or the Activity header) and needs no message; its reason
+when unavailable, or a conversation's own-folder choice with **Add a project
+instead**, follows on one quiet line. The composer is the plain **Message…**
+with **Send**: Send (or the configured Return shortcut, except during IME
+composition) continues with the draft; Shift+Return adds a line. Either way the continuation opens
 through the normal dock controller, and a draft, when there is one, goes to the
 normal sender once. The original conversation
 remains available in its original app. When the server reads the original as
@@ -214,11 +218,13 @@ execution binding. It retains the authored profile rather than substituting the
 coding app's default profile, and does not edit saved Agent defaults. Known
 capability incompatibilities remain visible with a refusal reason; live resource
 and adapter delivery checks still decide admission. In an existing conversation,
-changing or resetting the engine opens a compact handoff picker. Its one
-action switches now, sending the composer's draft as the first turn, prepared
-like any send (mentions, quotes and the size limit), or, with no draft, a
-fixed catch-up turn (the route starts the target Session with a real turn, so
-nothing is switched without one). A retried earlier request leaves a newer
+changing or resetting the engine opens a compact **Switch engine** (or
+**Switch agent**) picker; on a phone it replaces Run setup. Its one action
+switches now, sending the composer's draft as the first turn, prepared like
+any send (mentions, quotes and the size limit), or, with no draft, a fixed
+catch-up turn (the route starts the target Session with a real turn, so
+nothing is switched without one); attachments are never carried and stay in
+the composer. A busy current agent is refused with a reason saying to wait. A retried earlier request leaves a newer
 draft in the composer. The first message (including the exact catch-up text)
 and what carries over and resets are under **Details**. There the picker lists
 only the other engines this client can start (an unready or incompatible one is
@@ -348,8 +354,11 @@ action, which confirms continuation into an owned child.
 Owner, member and guest Task histories share record rendering and pagination;
 publication removal still clears a member's readable records. Desktop and mobile
 Inbox share search, activation currency, snooze, dismissal and Undo.
-Child-work notices retain their Station and result source. A structured tool
-return updates an earlier provider summary without adding a duplicate notice.
+Child-work results retain their Station and result source inside the shared
+subagent expander. When a spawn is outside loaded history, its completion uses
+the same expander without a dismissible message wrapper. A structured tool
+return updates the earlier provider summary. Successfully finished groups and
+cards use a quieter surface; failures and unknown outcomes retain their warnings.
 
 Request failures use the owning Station's shared translator. Source and target
 access failures name the appropriate Station; provider repair hints keep their
@@ -487,7 +496,7 @@ immediately to the right of that status and moves with it as the draft grows.
 When the chat pane is narrow, the status and scroll control are centered
 together in a row above the settings. In a dock too short to show the transcript
 (the composer has priority), there is nothing to scroll back to, so Scroll to
-bottom is not shown and a row left with no status takes no height. Scroll-button hover changes its background
+bottom is not shown and a row left with no status or scheduled notes takes no height. Scroll-button hover changes its background
 without enlarging its target. The desktop header exposes Hide inbox /
 Show inbox directly, as an icon button whose pressed state is available to assistive technology; its one labelled action is New, and "Open chat…" is the first row of its ⋯ menu.
 
@@ -752,19 +761,29 @@ These controls are owned by [ChatInputArea](../../src-ui/src/components/chat/Cha
 
 ### Turn navigation
 
+An armed check-back shares the composer activity row with **Scroll to bottom**.
+It takes the available width without moving that button to a second row.
+The shared work-status selector keeps a settled conversation with an armed
+check-back in **Working**, labelled **Waiting**. Running work, failures and
+requests for the person retain their existing priority; an unapproved proposal
+does not claim that the conversation will resume.
+
 A live transcript gets turn navigation from its first user turn (#342;
 [TranscriptTurnRail](../../src-ui/src/components/chat/TranscriptTurnRail.tsx)).
-Its user turns are derived from the whole transcript row model
-([transcriptTurnLandmarks](../../src-ui/src/components/chat/transcriptTurnLandmarks.ts)),
-so a virtualized transcript's unmounted turns are included; only the loaded
-window is mapped, and earlier history joins the map as it loads. Every user
-message row starts a turn.
+Its full turn map comes from the owning Station's paged turn directory,
+independent of loaded transcript bodies. Each page reads at most 100 prompt
+excerpts and outcomes through indexed queries. The first page counts turns;
+subsequent pages reuse that authorized count snapshot without recounting history. The rail and **Browse turns**
+share one authority-scoped query. The loaded row model
+([transcriptTurnLandmarks](../../src-ui/src/components/chat/transcriptTurnLandmarks.ts))
+still locates the reader and supplies previews for loaded replies. Older hosts
+without the directory retain the explicitly labelled loaded-window map.
 
 - **Turn rail.** A 16px gutter over the transcript's right edge, inside its
-  scrollbar, with one tick per user turn placed by the turn's position among
-  the rows. The rows on screen are drawn as a band, and their turns' ticks are
+  scrollbar, with one tick per indexed turn placed by its ordinal position. The loaded
+  fallback places ticks by their positions among transcript rows. The rows on screen are drawn as a band, and their turns' ticks are
   highlighted; both are written from the scroll handler, once per frame. Hover
-  or keyboard focus previews a turn: its prompt and the start of its first
+  or keyboard focus previews a turn: its prompt and, when loaded, the start of its first
   reply. Escape dismisses the preview without moving focus or the pointer:
   while it shows, the preview carries `data-escape-owner`, so the app's
   shortcuts (such as "Go up one level") leave that Escape to it. Pointing at
@@ -775,9 +794,9 @@ message row starts a turn.
   (measured on the column, not the viewport); a hidden rail unmounts its
   preview, so no Escape is spent on a preview nobody can see. A chat switch
   starts the rail over, dropping any hover, focus or dismissed preview.
-- **Markers.** A tick carries at most one marker, from facts the rows already
-  hold: a reply carrying the projected runtime error (`runtimeError`) marks
-  the turn as ended with an error; otherwise a standalone sub-agent row marks
+- **Markers.** A tick carries at most one marker. An indexed failed outcome,
+  or a loaded reply carrying the projected runtime error (`runtimeError`),
+  marks the turn as ended with an error; otherwise a loaded standalone sub-agent row marks
   it as having started a sub-agent. Sub-agents shown inside a reply's tool
   call, and interrupted turns, are not marked.
 - **Previous turn / Next turn.** Previous and next controls sit at the top and bottom of the turn rail.
@@ -792,9 +811,9 @@ message row starts a turn.
   is bounded to 64 pages; a retry continues from the retained cursor. Switching
   conversations or closing the browser cancels further page requests.
 
-- **Positions.** A turn is named "Turn N of M". While older history is not
-  loaded, the map covers only the loaded window, so it is named "Loaded turn
-  N of M" instead, and the numbers change as earlier history loads.
+- **Positions.** A turn is named "Turn N of M". The indexed map includes older turns before their bodies load. While the
+  directory is loading or unavailable on an older host, the fallback map is
+  named "Loaded turn N of M".
 - **Jumping.** A jump reveals the turn's prompt row, centred, through the same
   path a message link uses (`revealRowId`, then the virtualizer's
   `scrollToIndex`); a short transcript, with every row mounted, is scrolled
@@ -873,19 +892,22 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 ### 3.1 Provider and model picker
 
 - Chat replies, Home and dock starts share one **Run setup** button, with the
-  Agent and engine marks and a compact Agent/model label. Identical marks appear
+  Agent and engine marks and a compact model label (Agent · model when no
+  Agent mark is shown). Identical marks appear
   once; different marks overlap with the smaller engine mark underneath. A missing
-  Agent mark uses the generic Agent glyph. Its accessible name starts with the visible Agent/model label and adds only
+  Agent mark uses the generic Agent glyph. Its accessible name starts with the full Agent · model label and adds only
   available approval and mode values. The trigger has no setup caption. Full access,
   pending or refused approval changes add a corner warning badge with matching
-  accessible text. Conversation overrides use a neutral dot, announced as
+  accessible text; inside the open panel the same mark follows that choice's
+  value, outside its visible label so Label in Name still holds. The trigger and Model row name a requested reasoning effort after the
+  model only when the model reports that level. Conversation overrides use a neutral dot, announced as
   "changed for this conversation". ACP uses the connection engine mark when its
   command resolves a known engine; unknown engines omit the engine mark. It opens a sheet on phones
   and a popover on desktop containing the existing Agent, Model, Approval and
   advertised Mode controls. Picker ownership, unavailable reasons, pending
   approval states and engine-owned approval disclosures are preserved.
-  The Agent name truncates first to keep the model visible inside the button;
-  the full values remain accessible.
+  When the Agent name is visible it truncates first to keep the model visible
+  inside the button; the full values remain accessible.
   Once a chat has a Session, the Engine & model
   caption names the engine that Session runs on (its own connection for a generic ACP
   engine), not the Agent's current connection: repointing an Agent does not move an
@@ -999,11 +1021,12 @@ During a turn the mode picker is the trailing segment of Send, one split
 control that takes Send's accent while Send is ready. With no turn, Send alone
 sits at the row's trailing edge. On mobile, Send is an arrow and its mode
 picker a chevron. They appear once the
-composer holds text, an attachment or quoted context; their geometry stays
-reserved while hidden, so editing does not move Stop or the other toolbar
-controls. On mobile, Stop therefore follows them, at the row's trailing edge;
-before them it sat beside an empty reserved gap. At 390px a running turn's full
-row (Clear, Send, mode picker and Stop) still wraps to a second line. Names and the selected mode remain accessible, and the opened picker
+composer holds text, an attachment or quoted context. Until then they take no
+room, so Run setup keeps the width an empty draft has no use for. On mobile,
+Stop follows them at the row's trailing edge, so it does not move when they
+appear; Run setup narrows instead. At 390px a running turn's full row (Clear,
+Send, mode picker and Stop) still wraps to a second line once the draft holds
+text. Names and the selected mode remain accessible, and the opened picker
 uses explicit Queue and Steer labels. Stop stays visible throughout the turn. Its mode
 picker defaults to **Steer** where the selected engine can prove native mid-turn
 input, and to **Queue** (a new turn after the entire current turn finishes)

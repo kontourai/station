@@ -625,18 +625,18 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
     await agentTrigger.focus();
     await page.keyboard.press('Enter');
     const dialog = page.getByRole('dialog', {
-      name: 'Continue with another agent',
+      name: 'Switch agent',
     });
     await expect(dialog).toBeVisible({ timeout: 10_000 });
     await dialog.getByRole('radio', { name: /Codex Runtime/ }).check();
     // What carries over is under Details, not on the main path.
-    await expect(dialog).not.toContainText('Provider-native cursor');
+    // What carries over is under Details, in plain words.
+    await expect(dialog).not.toContainText('Recent messages');
     await dialog.getByRole('button', { name: 'Details' }).click();
-    await expect(dialog).toContainText('Recent conversation messages');
-    await expect(dialog).toContainText('Provider-native cursor');
-    await expect(dialog).toContainText('Tool state');
-    await expect(dialog).toContainText('Session approvals');
-    await expect(dialog).toContainText('Queued requests');
+    await expect(dialog).toContainText(
+      'Recent messages, the workspace, and the agent and model you chose.',
+    );
+    await expect(dialog).toContainText('approvals given in this chat');
     // No message to write: with an empty composer the handoff opens with
     // its catch-up turn.
     await expect(dialog.getByRole('textbox')).toHaveCount(0);

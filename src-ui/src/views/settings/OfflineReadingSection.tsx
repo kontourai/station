@@ -77,11 +77,8 @@ function VerifiedOfflineReadingSection({ namespace }: { namespace: string }) {
     <div>
       <h3>Offline reading on this device</h3>
       <p>
-        Off by default. Saves text from the last 20 conversations opened here,
-        up to 10 recent turns, 256 KiB each and 2 MiB total for 24 hours. Text
-        may contain pasted secrets and is stored without additional encryption.
-        Tools and attachments are excluded. Anyone with access to this browser
-        profile can read the saved copies while offline.
+        Saves recent chat text here for 24 hours, unencrypted. Anyone using this
+        browser profile can read it, including pasted secrets.
       </p>
       <Toggle
         label="Save offline reading copies"
@@ -99,6 +96,17 @@ function VerifiedOfflineReadingSection({ namespace }: { namespace: string }) {
       <Button disabled={!namespace || busy} onClick={() => void change(false)}>
         Clear offline copies
       </Button>
+      <details className="editor-disclosure">
+        <summary>Details</summary>
+        <ul>
+          <li>Off by default.</li>
+          <li>
+            Keeps the last 20 chats opened here, up to 10 recent turns each.
+          </li>
+          <li>Up to 256 KiB per chat and 2 MiB in total.</li>
+          <li>Tools and attachments are left out.</li>
+        </ul>
+      </details>
       <p>
         Clearing also turns off saving. Sign-out or switching authority removes
         copies.

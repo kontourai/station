@@ -3,9 +3,7 @@ import {
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
 import {
-  CONVERSATION_HANDOFF_CARRIED_FIELDS,
-  CONVERSATION_HANDOFF_DISCLOSURE_LABELS,
-  CONVERSATION_HANDOFF_RESET_FIELDS,
+  CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
   type ConversationHandoffEffectStatus,
 } from '@kontourai/station-contracts/orchestration';
 import {
@@ -40,6 +38,7 @@ import {
 } from '../ResponsiveDialogSurface';
 import { Empty } from '../state';
 import '../chat/ConversationHandoff.css';
+import type { PreparedOutgoingText } from '../../hooks/useChatInput';
 import { type DraftQuote, parseDraftQuote } from '../../utils/answer-quotes';
 import { userFacingErrorMessage } from '../../utils/errorText';
 
@@ -67,6 +66,9 @@ export interface AcceptedConversationHandoff {
  */
 export const HANDOFF_CATCH_UP_MESSAGE =
   'You are taking over this conversation. Briefly summarize where things stand and what you would do next, then wait for my reply.';
+/** The same request for an engine switch, where the Agent stays the same. */
+export const ENGINE_SWITCH_CATCH_UP_MESSAGE =
+  'This conversation now runs on a different engine. Briefly summarize where things stand and what you would do next, then wait for my reply.';
 
 interface ConversationHandoffDialogProps {
   apiBase: string;
@@ -85,11 +87,14 @@ interface ConversationHandoffDialogProps {
    * checks). The dialog's own Continue runs it so a typed draft leaves the
    * same way an ordinary send would.
    */
-  prepareDraft?: () => Promise<{
-    text: string;
-    draft: string;
-    quotes: readonly DraftQuote[];
-  } | null>;
+  prepareDraft?: () => Promise<
+    PreparedOutgoingText | { refused: string } | null
+  >;
+  /**
+   * The client turn id this chat is busy with, if any. A busy chat refuses a
+   * new handoff; only this request's own dispatch (`handoff:<key>`) does not.
+   */
+  busyTurnId?: string;
   /** The composer's quotes, which are part of its draft. */
   draftQuotes?: readonly DraftQuote[];
   onAccepted: (result: AcceptedConversationHandoff) => void;
@@ -224,6 +229,32 @@ function quoteKeys(quotes: readonly DraftQuote[]): string {
   return JSON.stringify(quotes);
 }
 
+/**
+ * Station's reason for a refused handoff, in words the person can act on
+ * where Station says which refusal it is.
+ */
+function handoffRefusalFeedback(error: unknown): string {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { code?: unknown }).code ===
+      CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE
+  )
+    return 'The current agent is still working. Wait for it to finish, then try again.';
+  return error instanceof Error ? userFacingErrorMessage(error) : String(error);
+}
+
+/**
+ * What a handoff keeps and resets, in plain words. Each sentence covers its
+ * contract field list (`CONVERSATION_HANDOFF_CARRIED_FIELDS` and
+ * `..._RESET_FIELDS`); a test pins those lists so a change there revisits
+ * these.
+ */
+export const HANDOFF_KEEPS_SUMMARY =
+  'Recent messages, the workspace, and the agent and model you chose.';
+export const HANDOFF_STARTS_FRESH_SUMMARY =
+  "The previous engine's own session and tools, approvals given in this chat, its task links, and anything queued or running.";
+
 export function ConversationHandoffDialog({
   apiBase,
   conversationId,
@@ -238,6 +269,7 @@ export function ConversationHandoffDialog({
   blockedReason,
   prepareDraft,
   draftQuotes = NO_QUOTES,
+  busyTurnId,
   onAccepted,
   onDispatchStarted,
   onDefiniteFailure,
@@ -315,18 +347,23 @@ export function ConversationHandoffDialog({
   // draft is not part of it and stays in the composer.
   const composerDraft = initialMessage.trim();
   const composerHasDraft = Boolean(composerDraft) || draftQuotes.length > 0;
+  const catchUpMessage = executionPreset
+    ? ENGINE_SWITCH_CATCH_UP_MESSAGE
+    : HANDOFF_CATCH_UP_MESSAGE;
+  // The request this dialog holds (restored after a reload, or made in this
+  // open and left uncertain). Read each render: every change to it comes
+  // with a state change.
+  const retained = retainedIntent.current;
   // Like for like: the composer's raw draft and quotes against the raw draft
   // and quotes the retained request was prepared from (an older request
   // without them is compared by its sent text).
   const displacesDraft = Boolean(
-    restoredIntent &&
+    retained &&
       composerHasDraft &&
-      (initialMessage.trim() !==
-        (restoredIntent.draft ?? restoredIntent.message).trim() ||
-        quoteKeys(draftQuotes) !== quoteKeys(restoredIntent.quotes ?? [])),
+      (initialMessage.trim() !== (retained.draft ?? retained.message).trim() ||
+        quoteKeys(draftQuotes) !== quoteKeys(retained.quotes ?? [])),
   );
-  const message =
-    restoredIntent?.message ?? (composerDraft || HANDOFF_CATCH_UP_MESSAGE);
+  const message = retained?.message ?? (composerDraft || catchUpMessage);
   const sentQuotes = useRef<readonly DraftQuote[]>(
     restoredIntent?.quotes ?? NO_QUOTES,
   );
@@ -361,15 +398,20 @@ export function ConversationHandoffDialog({
   // never offers an action it would refuse. An uncertain request whose
   // retained target no longer resolves here cannot be retried as-is either;
   // say so rather than leave "Retry safely" greyed out without a reason.
-  // An uncertain request (being retried or checked) is not a new turn: its
-  // own dispatch is what makes the chat read busy, and a same-key retry only
-  // ever answers with that request's receipt. Only that state is exempt; a
-  // send the queue fence refused was never made and is guarded like any.
-  const effectiveBlockedReason =
-    state === 'indeterminate' ? undefined : blockedReason;
+  // An uncertain request is not a new turn: its own dispatch is what makes
+  // the chat read busy, and a same-key retry only ever answers with that
+  // request's receipt. A send the queue fence refused was never made, and a
+  // chat busy with any other turn is guarded like any.
+  // A retry resends the stored request as it was made: the chat being busy
+  // with that very request, or holding attachments it never carried, does
+  // not block it.
+  const ownTurnBusy = Boolean(
+    retained && busyTurnId === `handoff:${idempotencyKey.current}`,
+  );
+  const effectiveBlockedReason = ownTurnBusy ? undefined : blockedReason;
   const preconditionReason =
     effectiveBlockedReason ??
-    (attachments.length > 0
+    (attachments.length > 0 && !retained
       ? `Send or remove attachments before ${changeLabel}.`
       : state === 'indeterminate' && !retryEligible
         ? 'This request’s agent, engine or model isn’t available here. Restore that setup to retry.'
@@ -412,12 +454,12 @@ export function ConversationHandoffDialog({
 
   const runHandoff = async () => {
     if (!targetId || state === 'pending' || starting.current) return;
-    if (blockedReason && state !== 'indeterminate') {
+    if (effectiveBlockedReason) {
       setState('error');
-      setFeedback(blockedReason);
+      setFeedback(effectiveBlockedReason);
       return;
     }
-    if (attachments.length > 0) {
+    if (attachments.length > 0 && !retainedIntent.current) {
       setState('error');
       setFeedback(`Send or remove attachments before ${changeLabel}.`);
       return;
@@ -441,16 +483,34 @@ export function ConversationHandoffDialog({
         return;
       }
       if (prepareDraft) {
+        // Mentions can take a moment to read: show the request as going.
         starting.current = true;
+        setState('pending');
+        setFeedback(undefined);
         let prepared: Awaited<ReturnType<typeof prepareDraft>>;
         try {
           prepared = await prepareDraft();
+        } catch {
+          // Nothing was sent and the draft stays in the composer; the
+          // dialog must not stay locked in "Continuing…".
+          setState('error');
+          setFeedback(
+            "Your draft couldn't be prepared, so nothing was sent. Try again.",
+          );
+          return;
         } finally {
           starting.current = false;
         }
-        // Refused (the reason is already shown) or changed underneath.
-        if (!prepared) return;
-        firstMessage = prepared.text.trim() || HANDOFF_CATCH_UP_MESSAGE;
+        if (!prepared || 'refused' in prepared) {
+          setState('error');
+          setFeedback(
+            prepared
+              ? prepared.refused
+              : 'Your draft changed while it was being prepared. Try again.',
+          );
+          return;
+        }
+        firstMessage = prepared.text.trim() || catchUpMessage;
         firstDraft = prepared.draft;
         sentQuotes.current = prepared.quotes;
       }
@@ -564,11 +624,7 @@ export function ConversationHandoffDialog({
         retainedIntent.current = null;
         onDefiniteFailure(clientTurnId);
         setState('error');
-        setFeedback(
-          error instanceof Error
-            ? userFacingErrorMessage(error)
-            : String(error),
-        );
+        setFeedback(handoffRefusalFeedback(error));
       }
     }
   };
@@ -652,15 +708,13 @@ export function ConversationHandoffDialog({
   return (
     <ResponsiveDialogSurface
       layer="dialog"
-      ariaLabel={
-        executionPreset ? 'Change chat engine' : 'Continue with another agent'
-      }
+      ariaLabel={executionPreset ? 'Switch engine' : 'Switch agent'}
       panelClassName="conversation-handoff-dialog"
       overlayClassName="conversation-handoff-dialog__overlay"
       onClose={closeLocked ? () => {} : onClose}
     >
       <div className="conversation-handoff-dialog__header">
-        <h3>{executionPreset ? 'Change engine' : 'Continue with…'}</h3>
+        <h3>{executionPreset ? 'Switch engine' : 'Switch agent'}</h3>
         <ResponsiveDialogCloseButton
           label={
             executionPreset ? 'Cancel engine change' : 'Cancel agent handoff'
@@ -775,7 +829,7 @@ export function ConversationHandoffDialog({
             <span>
               {displacesDraft
                 ? 'Retries the earlier request. Your new draft stays in the composer.'
-                : restoredIntent
+                : retained
                   ? 'Retries the earlier request.'
                   : composerHasDraft
                     ? 'Your draft is sent as the first message.'
@@ -796,22 +850,14 @@ export function ConversationHandoffDialog({
             >
               <dt>First message</dt>
               <dd>
-                {restoredIntent || !composerHasDraft
+                {retained || !composerHasDraft
                   ? message
                   : 'Your draft from the composer'}
               </dd>
-              <dt>Carried</dt>
-              <dd>
-                {CONVERSATION_HANDOFF_CARRIED_FIELDS.map(
-                  (field) => CONVERSATION_HANDOFF_DISCLOSURE_LABELS[field],
-                ).join(' · ')}
-              </dd>
-              <dt>Reset</dt>
-              <dd>
-                {CONVERSATION_HANDOFF_RESET_FIELDS.map(
-                  (field) => CONVERSATION_HANDOFF_DISCLOSURE_LABELS[field],
-                ).join(' · ')}
-              </dd>
+              <dt>Keeps</dt>
+              <dd>{HANDOFF_KEEPS_SUMMARY}</dd>
+              <dt>Starts fresh</dt>
+              <dd>{HANDOFF_STARTS_FRESH_SUMMARY}</dd>
             </dl>
           )}
           {preconditionReason && (

@@ -1387,6 +1387,12 @@ export {
   useCodingFileMentionCandidatesQuery,
 } from './query-domains/chatRuntimeCoding.js';
 export {
+  type CustomAppearanceAction,
+  customAppearanceKey,
+  useCustomAppearanceMutation,
+  useCustomAppearanceQuery,
+} from './query-domains/customAppearance';
+export {
   confirmDevicePairingRequest,
   DevicePairingRequestActionError,
   denyDevicePairingRequest,
@@ -1540,6 +1546,11 @@ export type {
   SetupImportPreview,
   SetupImportReceipt,
 } from './query-domains/setupImports';
+export {
+  taskCodeReviewQueryKey,
+  useRequestTaskCodeReviewMutation,
+  useTaskCodeReviewQuery,
+} from './query-domains/taskCodeReview.js';
 export {
   fetchTaskCaptureContent,
   fetchTaskCaptureSessions,

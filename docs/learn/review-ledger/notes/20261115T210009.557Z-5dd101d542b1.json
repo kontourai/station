@@ -1,0 +1,7 @@
+{
+  "revision": "648c125c9ee583f7c059a11723c85fbfa9659850",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"telemetry-delivery and product-telemetry rows re-read for #4994: additive optional TelemetryRequestFailure.detail and outbox reason 'rejected' fit the existing 'queue/failure status' and ledger descriptions; no stated shape is contradicted.","inputs":["docs/reference/contracts.md","packages/contracts/src/product-telemetry.ts","packages/contracts/src/telemetry-delivery.ts"]}
+  ]
+}

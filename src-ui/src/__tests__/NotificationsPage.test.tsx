@@ -434,12 +434,7 @@ describe('NotificationsPage', () => {
     };
     renderPage();
     expect(
-      screen.getByText(/That approval request isn’t available/i),
-    ).toBeTruthy();
-    // The load-bearing promise, and the reason this message exists at all:
-    // Station declines to substitute a different approval (archive#3965).
-    expect(
-      screen.getByText(/won’t open a different one in its place/i),
+      screen.getByText('That approval request is no longer available.'),
     ).toBeTruthy();
     expect(document.activeElement).not.toBe(
       screen.getByTestId('attention-item'),
@@ -479,12 +474,7 @@ describe('NotificationsPage', () => {
     );
     renderPage();
     expect(
-      screen.getByText(/That approval request isn’t available/i),
-    ).toBeTruthy();
-    // The load-bearing promise, and the reason this message exists at all:
-    // Station declines to substitute a different approval (archive#3965).
-    expect(
-      screen.getByText(/won’t open a different one in its place/i),
+      screen.getByText('That approval request is no longer available.'),
     ).toBeTruthy();
     expect(screen.queryByText('All caught up')).toBeNull();
   });

@@ -1,0 +1,7 @@
+{
+  "revision": "6ba7d2563eb634b289aab9c418ca0786b2e2613e",
+
+  "notes": [
+    {"path":"docs/reference/metrics.md","note":"Regenerated from metrics.ts with the three session_read_model instruments (#4992); docs:metrics:check passes.","inputs":["docs/reference/metrics.md"]}
+  ]
+}

@@ -334,26 +334,37 @@
   overflow-wrap: anywhere;
 }
 
-/* The one way to continue an external conversation: a compact row pinned
-   above it, with the No project choice stated beside the action. */
-.sessions-detail__continue-bar {
+/* The one way to continue an external conversation sits with its origin:
+   in the host's header row when there is one, else in this compact row.
+   Anything that explains it (a reason, the No project choice, a failure)
+   follows in one quiet line. */
+.sessions-detail__origin-row {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-3);
+  margin: var(--k-space-2) var(--chat-message-gutter) 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.sessions-detail__continue-notice {
   flex: 0 0 auto;
   display: grid;
   gap: var(--k-space-1);
-  margin: var(--k-space-2) var(--chat-message-gutter) 0;
-}
-
-.sessions-detail__continue-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--k-space-1) var(--k-space-3);
+  margin: var(--k-space-1) var(--chat-message-gutter) 0;
 }
 
 .sessions-detail__continue-note {
+  margin: 0;
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
   overflow-wrap: anywhere;
+}
+
+.sessions-detail__continue-notice p {
+  margin: 0;
 }
 
 /* Link-styled, underlined so it does not read as a link by colour alone. */
@@ -365,23 +376,35 @@
   text-underline-offset: 3px;
 }
 
-.sessions-detail__continue-bar p {
-  margin: 0;
+.sessions-detail__continue-action {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
-/* The source is still running: a caution line with its two choices, in the
-   row the Continue button occupies, not a dialog. */
+/* The source is still running: its caution and two choices take a full row
+   under the header, where the continuation notice sits, not a dialog and not
+   the header's action slot. */
+.sessions-detail__source-active {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-1) var(--k-space-3);
+  margin: var(--k-space-1) var(--chat-message-gutter) 0;
+}
+
 .sessions-detail__source-active-text {
   flex: 1 1 16rem;
+  margin: 0;
   color: var(--k-caution);
   font-size: var(--k-text-sm);
   overflow-wrap: anywhere;
 }
 
-@media (pointer: coarse) {
-  .sessions-detail__continue-row .button {
-    min-height: 44px;
-  }
+.sessions-detail__source-active-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--k-space-2);
 }
 
 .sessions-detail__adoption-reason {

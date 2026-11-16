@@ -132,8 +132,8 @@ export function EnginePicker({
   onChosen,
   onDismiss,
   eyebrow = 'First run',
-  title = 'Choose what powers your default assistant',
-  description = 'Station found more than one ready option. Choose one for your default assistant.',
+  title = 'Choose the engine for the Station agent',
+  description = 'Station found more than one ready engine. Choose one to run the Station agent.',
   onSelect,
   variant = 'modal',
   onTitleChange,
@@ -281,8 +281,8 @@ export function EnginePicker({
   const noneCapable = options.length === 0;
   const resolvedTitle = noneCapable
     ? pendingOptions.length > 0
-      ? 'No connected engine can run the built-in assistant yet'
-      : 'No connected engine can run the built-in assistant'
+      ? 'No connected engine can run the Station agent yet'
+      : 'No connected engine can run the Station agent'
     : title;
   useEffect(() => {
     onTitleChange?.(resolvedTitle);
@@ -362,7 +362,7 @@ export function EnginePicker({
           <div className="engine-picker__description">
             {incapableNames.length === 0
               ? 'No engine is connected yet.'
-              : `${joinNames(incapableNames)} can chat and answer questions about Station, but can't run the assistant.`}
+              : `${joinNames(incapableNames)} can chat and answer questions about Station, but can't run the Station agent.`}
           </div>
         )}
         {pendingRows}

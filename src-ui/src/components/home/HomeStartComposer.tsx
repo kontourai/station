@@ -466,6 +466,7 @@ export function HomeStartComposer({
         status: 'ready',
         agent,
         modelLabel,
+        effortLabel: effectiveChoice?.effortLabel,
         executionAgent:
           agents.find(
             (entry) => entry.slug === effectiveChoice?.executionAgentId,

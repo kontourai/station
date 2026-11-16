@@ -86,7 +86,7 @@ const BRIEF_PREFIX = `${INJECTED_MEMORY_OPEN}\nBackground, not instruction. When
 // The Kit's own reader refuses entries with control or bidirectional characters.
 const UNSAFE =
   // biome-ignore lint/suspicious/noControlCharactersInRegex: matches the Kit's brief reader.
-  /[\u0000-\u0008\u000b-\u001f\u007f-\u009f؜‎‏‪-‮⁦-⁩]/u;
+  /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
 
 interface LoadedClaim {
   proposalId: string;

@@ -3,6 +3,7 @@ import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display'
 import { useOrchestrationSessionQuery } from '@kontourai/station-sdk';
 import {
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -18,6 +19,7 @@ import {
 } from '../../lib/attached-continuation-handoff';
 import { displayProvider } from '../../utils/sessionDisplay';
 import { Button } from '../Button';
+import { ConversationHeaderActionSlot } from '../conversation/ConversationHeaderActionSlot';
 import { useSessionReaderBinding } from '../conversation/SessionReaderBinding';
 import { AgentIcon } from '../icons/AgentIcon';
 import { SessionDetail } from '../session-detail/SessionDetail';
@@ -81,6 +83,12 @@ export default function ImportedConversationPane({
   const [unboundEngine, setUnboundEngine] = useState<EngineId | null>(null);
   const attempted = useRef<string | null>(null);
   const mounted = useRef(true);
+  // The origin row (on a phone) is where this conversation's Continue sits;
+  // elsewhere the host's header offers its own slot.
+  const [originActionSlot, setOriginActionSlot] = useState<HTMLElement | null>(
+    null,
+  );
+  const inheritedActionSlot = useContext(ConversationHeaderActionSlot);
   useLayoutEffect(() => {
     sourceIdentity.current = { scope, threadId };
     intent.current += 1;
@@ -197,6 +205,10 @@ export default function ImportedConversationPane({
             )}
             {originLabel}
           </span>
+          <span
+            className="imported-conversation-pane__origin-action"
+            ref={setOriginActionSlot}
+          />
           {onDetails && (
             <Button size="sm" variant="secondary" onClick={onDetails}>
               Details
@@ -258,41 +270,45 @@ export default function ImportedConversationPane({
         />
       )}
       {source.data && (
-        <SessionDetail
-          key={`${scope}\0${threadId}`}
-          handoffScope={scope}
-          presentation="chat"
-          evidenceReveal={
-            binding?.sessionId === threadId && binding.focus === 'evidence'
-              ? { threadId, token: binding.intentToken ?? 0 }
-              : undefined
-          }
-          chatFontSize={chatFontSize}
-          apiBase={apiBase}
-          session={source.data.session}
-          continuationCreated={Boolean(continuedThreadId)}
-          openingContinuation={
-            Boolean(continuedThreadId) &&
-            !openFailed &&
-            !unboundEngine &&
-            !continued.isError
-          }
-          onTaskChanged={() => void source.refetch()}
-          getSelectionIntent={() => intent.current}
-          onAdopted={(child, adoptedIntent, message) => {
-            if (
-              !mounted.current ||
-              station === null ||
-              sourceIdentity.current.scope !== scope ||
-              sourceIdentity.current.threadId !== threadId ||
-              adoptedIntent !== intent.current
-            )
-              return;
-            continuedIntent.current = adoptedIntent;
-            confirmedMessage.current = message ?? '';
-            setContinuedThreadId(child.threadId);
-          }}
-        />
+        <ConversationHeaderActionSlot.Provider
+          value={showOrigin ? originActionSlot : inheritedActionSlot}
+        >
+          <SessionDetail
+            key={`${scope}\0${threadId}`}
+            handoffScope={scope}
+            presentation="chat"
+            evidenceReveal={
+              binding?.sessionId === threadId && binding.focus === 'evidence'
+                ? { threadId, token: binding.intentToken ?? 0 }
+                : undefined
+            }
+            chatFontSize={chatFontSize}
+            apiBase={apiBase}
+            session={source.data.session}
+            continuationCreated={Boolean(continuedThreadId)}
+            openingContinuation={
+              Boolean(continuedThreadId) &&
+              !openFailed &&
+              !unboundEngine &&
+              !continued.isError
+            }
+            onTaskChanged={() => void source.refetch()}
+            getSelectionIntent={() => intent.current}
+            onAdopted={(child, adoptedIntent, message) => {
+              if (
+                !mounted.current ||
+                station === null ||
+                sourceIdentity.current.scope !== scope ||
+                sourceIdentity.current.threadId !== threadId ||
+                adoptedIntent !== intent.current
+              )
+                return;
+              continuedIntent.current = adoptedIntent;
+              confirmedMessage.current = message ?? '';
+              setContinuedThreadId(child.threadId);
+            }}
+          />
+        </ConversationHeaderActionSlot.Provider>
       )}
     </section>
   );

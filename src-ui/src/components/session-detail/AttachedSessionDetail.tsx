@@ -17,6 +17,7 @@ import {
 import { useMutation } from '@tanstack/react-query';
 import {
   useCallback,
+  useContext,
   useEffect,
   useId,
   useLayoutEffect,
@@ -25,6 +26,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import { navigationStore } from '../../contexts/navigation-store';
 import { useToast } from '../../contexts/ToastContext';
@@ -45,6 +47,7 @@ import { sessionProjectKeys } from '../../views/sessions/sessions-lane-model';
 import { Button } from '../Button';
 import { ConversationBody } from '../conversation/ConversationBody';
 import { useOptionalConversationConnection } from '../conversation/ConversationConnectionContext';
+import { ConversationHeaderActionSlot } from '../conversation/ConversationHeaderActionSlot';
 
 function hasCanonicalEventId(
   event: OrchestrationEvent,
@@ -208,6 +211,7 @@ export function AttachedSessionDetail({
     continuationStore.current = browserAttachedSessionContinuationStore();
   }
   const inheritedConnection = useOptionalConversationConnection();
+  const actionSlot = useContext(ConversationHeaderActionSlot);
   const connection = inheritedConnection ?? { apiBase };
   const [localDraft, setLocalDraft] = useState('');
   const savedDraft = useSyncExternalStore(chatDraftsStore.subscribe, () =>
@@ -616,6 +620,109 @@ export function AttachedSessionDetail({
     focusContinueOnFailure.current = false;
     continueActionRef.current?.focus();
   }, [adoptionFailed]);
+  // Why continuing is unavailable, said once, beside the action it explains.
+  const continueBlockedReason = !continuationSupported
+    ? continuationSupport.reason
+    : connection.station &&
+        connection.station.capabilities.continue.state !== 'allowed'
+      ? connection.station.capabilities.continue.reason ===
+        'permission-required'
+        ? "You don't have permission to continue this conversation."
+        : "This Station can't continue this conversation right now."
+      : undefined;
+  const continueReasonId = useId();
+  const continueAction = continued ? null : (
+    <Button
+      ref={continueActionRef}
+      variant="secondary"
+      size="sm"
+      className="sessions-detail__continue-action"
+      disabled={adoptionDisabled || composerDisabled}
+      aria-describedby={continueBlockedReason ? continueReasonId : undefined}
+      onClick={() => void requestSend({ allowEmpty: true })}
+    >
+      {adoption.isPending || openingContinuation || handoffPending
+        ? 'Continuing…'
+        : 'Continue in Station'}
+    </Button>
+  );
+  const continuationNotice =
+    !continued &&
+    (continueBlockedReason ||
+      outsideProjects ||
+      (adoption.error && !adoptionSourceActive)) ? (
+      <div
+        className="sessions-detail__continue-notice"
+        data-testid="attached-continue-notice"
+      >
+        {continueBlockedReason && (
+          <p id={continueReasonId} className="sessions-detail__continue-note">
+            {continueBlockedReason}
+          </p>
+        )}
+        {outsideProjects && !continueBlockedReason && (
+          <p
+            className="sessions-detail__continue-note"
+            data-testid="attached-continuation-no-project"
+          >
+            {noProjectExplanation}
+            {addProjectForFolder && (
+              <>
+                {' '}
+                <Button
+                  variant="link"
+                  disabled={adoption.isPending}
+                  onClick={addProjectForFolder}
+                >
+                  Add a project instead
+                </Button>
+              </>
+            )}
+          </p>
+        )}
+        {continuationFeedback}
+      </div>
+    ) : null;
+  // The source is still running: its caution and two choices take a full
+  // row of the content area, under the header, not the header's action slot
+  // (too narrow for a sentence and two buttons, and on a phone the origin
+  // row is one line). Continue in Station stays where it is.
+  const sourceActiveCaution = cautionShown ? (
+    <div
+      className="sessions-detail__source-active"
+      data-testid="attached-source-active"
+    >
+      <p
+        id={sourceActiveNoteId}
+        role="status"
+        className="sessions-detail__source-active-text"
+      >
+        Still running in {displayProvider(session)} — continuing now forks it
+      </p>
+      <div className="sessions-detail__source-active-actions">
+        <Button
+          ref={continueAnywayRef}
+          variant="primary"
+          size="sm"
+          aria-describedby={sourceActiveNoteId}
+          disabled={adoptionDisabled || composerDisabled}
+          onClick={() => startContinuation({ override: true })}
+        >
+          Continue anyway
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => {
+            focusAfterSwap.current = 'continue';
+            setSourceActiveWarning(false);
+          }}
+        >
+          Not now
+        </Button>
+      </div>
+    </div>
+  ) : null;
 
   return (
     <section
@@ -632,6 +739,7 @@ export function AttachedSessionDetail({
               {session.model && <span> · {session.model}</span>}
             </p>
           </div>
+          {!continued && continueAction}
           <details className="sessions-detail__details">
             <summary>Details</summary>
             <div className="sessions-detail__details-body">
@@ -687,83 +795,22 @@ export function AttachedSessionDetail({
         ))
       )}
 
-      {!continued && (
+      {!showHeader && !actionSlot && !continued && (
         <div
-          className="sessions-detail__continue-bar"
+          className="sessions-detail__origin-row"
           data-testid="attached-continue-bar"
         >
-          {sourceActiveWarning && !adoption.isPending ? (
-            <div
-              className="sessions-detail__continue-row sessions-detail__source-active"
-              data-testid="attached-source-active"
-            >
-              <p
-                id={sourceActiveNoteId}
-                role="status"
-                className="sessions-detail__source-active-text"
-              >
-                Still running in {displayProvider(session)} — continuing now
-                forks it
-              </p>
-              <Button
-                ref={continueAnywayRef}
-                variant="primary"
-                size="sm"
-                aria-describedby={sourceActiveNoteId}
-                disabled={adoptionDisabled || composerDisabled}
-                onClick={() => startContinuation({ override: true })}
-              >
-                Continue anyway
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  focusAfterSwap.current = 'continue';
-                  setSourceActiveWarning(false);
-                }}
-              >
-                Not now
-              </Button>
-            </div>
-          ) : (
-            <div className="sessions-detail__continue-row">
-              <Button
-                ref={continueActionRef}
-                variant="primary"
-                size="sm"
-                disabled={adoptionDisabled || composerDisabled}
-                onClick={() => void requestSend({ allowEmpty: true })}
-              >
-                {adoption.isPending || openingContinuation || handoffPending
-                  ? 'Continuing…'
-                  : 'Continue in Station'}
-              </Button>
-              {outsideProjects && (
-                <span
-                  className="sessions-detail__continue-note"
-                  data-testid="attached-continuation-no-project"
-                >
-                  {noProjectExplanation}
-                  {addProjectForFolder && (
-                    <>
-                      {' '}
-                      <Button
-                        variant="link"
-                        disabled={adoption.isPending}
-                        onClick={addProjectForFolder}
-                      >
-                        Add a project instead
-                      </Button>
-                    </>
-                  )}
-                </span>
-              )}
-            </div>
-          )}
-          {continuationFeedback}
+          <span className="sessions-detail__origin-label">
+            Started in {displayProvider(session)}
+          </span>
+          {continueAction}
         </div>
       )}
+      {actionSlot && !showHeader && continueAction
+        ? createPortal(continueAction, actionSlot)
+        : null}
+      {sourceActiveCaution}
+      {continuationNotice}
 
       <ConversationBody
         density="record"
@@ -785,16 +832,12 @@ export function AttachedSessionDetail({
           retry: onLoadOlder ?? onRetryCapabilityRecovery,
         }}
         composer={{
-          submitAction: {
-            label: 'Send and continue',
-            placeholder: 'Continue in Station from this history…',
-          },
+          // Sending continues the conversation in Station, so the action
+          // reads as the ordinary Send.
+          submitAction: { label: 'Send', placeholder: 'Message…' },
           input: draft,
           onInputChange: setDraft,
           disabled: composerDisabled,
-          reason: continuationSupported
-            ? undefined
-            : continuationSupport.reason,
           onSubmit: () => requestSend(),
           textareaRef: composerRef,
         }}

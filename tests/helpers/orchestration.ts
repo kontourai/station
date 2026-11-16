@@ -812,7 +812,7 @@ export async function dismissSetupLauncher(page: Page): Promise<void> {
   const launcher = page.getByTestId('setup-launcher');
   if (await launcher.isVisible()) {
     await launcher
-      .getByRole('button', { name: 'Dismiss setup launcher', exact: true })
+      .getByRole('button', { name: 'Dismiss setup reminder', exact: true })
       .click();
     await expect(launcher).toBeHidden();
   }

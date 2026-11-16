@@ -1,5 +1,6 @@
 import type { ChatHostImageMap } from '@kontourai/station-contracts/chat-host-images';
 import type {
+  ChildWorkItem,
   ChildWorkKind,
   ChildWorkModel,
   ChildWorkSummarySource,
@@ -257,6 +258,7 @@ export type ChatMessage = {
  * when the registry has none.
  */
 export interface BackgroundTaskNotice {
+  child?: ChildWorkItem;
   status: ChildWorkTerminalDisplayStatus;
   title?: string;
   summary?: string;

@@ -63,6 +63,7 @@ const MINIMAL_ARGS: Record<string, Record<string, unknown>> = {
       sections: [],
     },
   },
+  propose_appearance: { revision: 'r', name: 'Quiet', css: '' },
   continue_task: { taskId: 'task:1', message: 'One more thing' },
   propose_plugin_install: { source: '/tmp/plugin', rationale: 'Needed.' },
   validate_plugin: { source: '/tmp/plugin' },

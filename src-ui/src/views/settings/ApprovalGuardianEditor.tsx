@@ -34,11 +34,9 @@ export function ApprovalGuardianEditor({
           <>
             {definition.label}
             <InfoTip label={definition.label}>
-              The guardian judges each call against what you typed in the
-              conversation, never against tool output. Review asks you to decide
-              when it objects. Enforce blocks those calls, and after three
-              blocks in a row asks you about the next. Either mode adds a
-              separate model request whenever a tool call needs approval.
+              Judges each call against what you typed, never tool output. Review
+              asks you when it objects; Enforce blocks the call and asks you
+              after three blocks in a row.
             </InfoTip>
           </>
         }

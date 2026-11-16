@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import { CHAT_HOST_IMAGES_PREVIEW_ID } from '@kontourai/station-contracts/chat-host-images';
+import { ACP_SESSION_STARTED_FRESH_CODE } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { Hono } from 'hono';
@@ -376,6 +377,56 @@ describe('chat-host-images through OrchestrationService', () => {
     expect(context).toContain(
       hostImageAgentInstruction({ workingFolder: true, tmpdir: false }),
     );
+  });
+
+  test('an engine that started a new session (acp.session-started-fresh) is told about host images again', async () => {
+    await previews.setEnabled(CHAT_HOST_IMAGES_PREVIEW_ID, true);
+    await replyTurn('thread-images-fresh', 'nothing');
+    const instruction = hostImageAgentInstruction({
+      workingFolder: true,
+      tmpdir: false,
+    });
+    expect(adapter.turns[0].ambientContext ?? '').toContain(instruction);
+    // The new engine session never received the first turn's line.
+    adapter.events.push({
+      provider: 'codex',
+      threadId: 'thread-images-fresh',
+      eventId: 'thread-images-fresh-started-fresh',
+      createdAt: new Date().toISOString(),
+      method: 'runtime.warning',
+      severity: 'warning',
+      code: ACP_SESSION_STARTED_FRESH_CODE,
+      message: 'The engine started a new session.',
+    });
+    await waitUntil(() =>
+      store.latestEventByMethod('thread-images-fresh', 'runtime.warning'),
+    );
+    await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: 'thread-images-fresh', input: 'again' },
+    });
+    expect(adapter.turns[1].ambientContext ?? '').toContain(instruction);
+    // Once: the turn after that has started under the new engine session.
+    adapter.events.push({
+      provider: 'codex',
+      threadId: 'thread-images-fresh',
+      turnId: 'turn-images-fresh-second',
+      eventId: 'thread-images-fresh-second-start',
+      createdAt: new Date().toISOString(),
+      method: 'turn.started',
+    });
+    await waitUntil(
+      () =>
+        store
+          .listEvents('thread-images-fresh')
+          .filter((event) => event.method === 'turn.started').length === 2 ||
+        undefined,
+    );
+    await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: 'thread-images-fresh', input: 'once more' },
+    });
+    expect(adapter.turns[2].ambientContext ?? '').not.toContain(instruction);
   });
 
   test('preview off: nothing is read or stored, and the agent is not told', async () => {

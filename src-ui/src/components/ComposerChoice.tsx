@@ -5,7 +5,10 @@ import {
   useId,
   useLayoutEffect,
 } from 'react';
-import { ComposerChoiceSummary } from './ComposerChoiceSummary';
+import {
+  ComposerChoiceSummary,
+  ComposerRunSetupClose,
+} from './ComposerChoiceSummary';
 import { ArrowDownGlyph } from './icons/Glyph';
 import './ComposerChoice.css';
 
@@ -20,6 +23,8 @@ type ComposerChoiceProps = Omit<
   valueClassName?: string;
   safetyLabel?: string;
   changedForConversation?: boolean;
+  /** Close the Run setup panel this choice sits in when it is chosen. */
+  closesRunSetup?: boolean;
 };
 
 /** Shared presentation; the caller owns the selected value and picker. */
@@ -31,9 +36,12 @@ export function ComposerChoice({
   icon,
   valueClassName,
   className = '',
+  closesRunSetup = false,
   ...props
 }: ComposerChoiceProps) {
   const publish = useContext(ComposerChoiceSummary);
+  const closeRunSetup = useContext(ComposerRunSetupClose);
+  const { onClick } = props;
   const id = useId();
   const label = props['aria-label'];
   useLayoutEffect(() => {
@@ -44,6 +52,14 @@ export function ComposerChoice({
     <button
       type="button"
       {...props}
+      onClick={
+        onClick && closesRunSetup
+          ? (event) => {
+              closeRunSetup?.();
+              onClick(event);
+            }
+          : onClick
+      }
       className={`choice-trigger composer-choice ${className}`}
     >
       {icon && (
@@ -57,6 +73,18 @@ export function ComposerChoice({
           {value}
         </span>
       </span>
+      {/* The same mark the closed Run setup trigger carries, so the open
+          panel shows which choice raised it. Outside the value, so the
+          visible label (and its Label-in-Name match) stays the value alone. */}
+      {safetyLabel && (
+        <span
+          className="composer-choice__safety"
+          aria-hidden="true"
+          title={safetyLabel}
+        >
+          ⚠
+        </span>
+      )}
       <ArrowDownGlyph className="choice-caret" />
     </button>
   );

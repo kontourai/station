@@ -1,0 +1,11 @@
+{
+  "revision": "52ed0aa6aabf748c9ee05e71166d5643f077e086",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked the diff: non-ASCII characters inside a regular expression literal rewritten as the equivalent \\u escapes so the server bundle stays ASCII; the expression matches exactly the same characters, so no documented behavior changes.","inputs":["src-server/services/walkthroughs/frame-selection.ts"]},
+
+    {"path":"docs/design/walkthroughs.md","note":"Checked the diff: non-ASCII characters inside a regular expression literal rewritten as the equivalent \\u escapes so the server bundle stays ASCII; the expression matches exactly the same characters, so no documented behavior changes.","inputs":["src-server/services/walkthroughs/frame-selection.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Checked the diff: non-ASCII characters inside a regular expression literal rewritten as the equivalent \\u escapes so the server bundle stays ASCII; the expression matches exactly the same characters, so no documented behavior changes.","inputs":["src-server/services/walkthroughs/frame-selection.ts"]}
+  ]
+}
