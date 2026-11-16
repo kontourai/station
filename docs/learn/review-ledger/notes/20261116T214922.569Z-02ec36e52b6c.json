@@ -1,0 +1,7 @@
+{
+  "revision": "df2598a20ba7dc82a2ed14255425b4e3efb43682",
+
+  "notes": [
+    {"path":"docs/privacy-policy.md","note":"#5087: the product-usage-telemetry inventory sentence claimed Full maps beta to preview; since #5010 mapRuntimeChannelToTelemetryChannel (packages/shared/src/product-telemetry.ts) passes only an exact TELEMETRY_CHANNELS value (stable, preview, nightly, dev, source-checkout) and Full omits anything else, including beta; Lite serializes the same mismatch as unknown (telemetry-publisher-service seed). Corrected the sentence and regenerated this artifact from the renderer; the rest of the row is byte-identical. Wording only: PRODUCT_TELEMETRY_DATA_INVENTORY_REVISION, FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION and the Lite revision hash contracts data, not this prose, so no revision or receipt changes. The public kontourai.io page still needs a separate sync.","inputs":["docs/privacy-policy.md","src-server/services/__tests__/privacy-inventory.test.ts","src-server/services/privacy-inventory.ts"]}
+  ]
+}
