@@ -171,7 +171,7 @@ export interface TurnCompletionNotificationOptions {
  * How long a finish must stay settled (no new turn, nothing holding it)
  * before its alert goes out. An engine can end a turn moments before it
  * opens its own follow-up turn, as Claude does after a background child
- * settles. The same window t3code's agent-awareness relay uses.
+ * settles.
  */
 export const FINISHED_ALERT_CONFIRM_MS = 5_000;
 /**

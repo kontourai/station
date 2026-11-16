@@ -83,10 +83,11 @@ behavior. Automation triggers are separate from this notification policy.
 "Your agent finished" means the work is done, not that one turn ended. The
 [completion producer](../../src-server/services/orchestration/turn-completion-notifications.ts)
 holds a `done` or `replied` outcome. It writes the record once nothing holds
-it and no turn has started for `FINISHED_ALERT_CONFIRM_MS` (5 s, the window
-t3code's agent-awareness relay uses). One completion episode per thread gets
-one alert. A later turn's completion joins the episode and its turn id names
-the record. So a user turn followed by Claude's own reply after a background
+it and no turn has started for `FINISHED_ALERT_CONFIRM_MS` (5 s). This window
+avoids announcing completion between a finished turn and an immediately queued
+follow-up. One completion episode per thread gets one alert. A later turn's
+completion joins the episode and its turn id names the record. So a user turn
+followed by Claude's own reply after a background
 child settles is one "finished", not "finished" then "replied". An episode
 made only of engine-opened turns reads "replied".
 
