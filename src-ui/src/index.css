@@ -4044,7 +4044,9 @@ button:hover {
 }
 
 /* Backgrounded work that outlives the assistant turn: the strip's card holds
-   its count line and the running tasks the transcript does not card. */
+   its count line and the running tasks the transcript does not show. It does
+   not clip its content, so the product-wide focus ring (offset outside the
+   button) stays whole. */
 .background-tasks-strip {
   margin: 8px 0;
   border: 1px solid color-mix(in srgb, var(--k-brand) 18%, transparent);
@@ -4097,12 +4099,6 @@ button.background-tasks-banner {
 button.background-tasks-banner:hover,
 button.background-tasks-banner:focus-visible {
   background: color-mix(in srgb, var(--k-brand) 10%, transparent);
-}
-
-/* Inside the card's edge, so the card never hides the focus ring. */
-button.background-tasks-banner:focus-visible {
-  outline: 2px solid var(--accent-primary);
-  outline-offset: -2px;
 }
 
 /* archive#1301: visually-hidden live-region sibling
