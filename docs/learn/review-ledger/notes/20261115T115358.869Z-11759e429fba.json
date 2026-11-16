@@ -1,0 +1,7 @@
+{
+  "revision": "37151b9c1a05751c14f8649e724ada5574e5dc53",
+
+  "notes": [
+    {"path":"docs/pages/README.md","note":"Checked against scripts/check-generated-pages-links.mjs: target files are still required, and a fragment on a link into another page now must match an element id there (directory links resolve to index.html); same-page fragments stay unchecked. The docs header now links to the home page's #how via build-github-pages.mjs howHref. Gallery screen list and media copy are unchanged.","inputs":["docs/pages/README.md","scripts/build-github-pages.mjs","scripts/check-generated-pages-links.mjs"]}
+  ]
+}
