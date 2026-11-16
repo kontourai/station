@@ -100,6 +100,7 @@ export const ROOT_DECISIONS = Object.freeze({
   'create-request-claims.json': 'pending-work',
   'delegation-attempt-claims.json': 'pending-work',
   'notifications.json': 'pending-work',
+  'finished-alert-episodes.json': 'pending-work',
   'principal-notifications.json': 'pending-work',
   'operator-setup': 'pending-work',
   'project-creation-requests': 'pending-work',
