@@ -88,6 +88,13 @@ const AUTH_CAPACITY_CLOSE = [4429, 'authentication_capacity_exceeded'] as const;
 export interface VoiceWebSocketAuthOptions {
   classifyPeer?: (address: string | undefined) => RuntimePeerClass;
   verifyCredential: (credential: string) => boolean | Promise<boolean>;
+  /**
+   * #2377 slice D: the person an authenticated credential resolves to, by
+   * the same rules as an HTTP request (`credentialPrincipal`). That person
+   * is the caller of the voice session's Station tools. When set, a
+   * credential that verifies but resolves to no one is refused.
+   */
+  resolvePrincipal?: (credential: string) => string | undefined;
   authTimeoutMs?: number;
   maxAuthFrameBytes?: number;
   maxAuthFailures?: number;
@@ -165,13 +172,25 @@ class UnauthenticatedVoiceConnections {
   }
 }
 
+/**
+ * #2377 slice D: a loopback client that holds a credential asks to present
+ * it with this query flag (never the credential itself in the URL). Without
+ * it, a loopback connection stays credential-free: speech only, no Station
+ * tools.
+ */
+export const VOICE_AUTHENTICATE_QUERY = 'authenticate';
+
 function acceptVoiceSession(
   ws: WebSocket,
   url: URL,
   voiceService: VoiceSessionService,
+  principalId?: string,
 ): void {
   const agentSlug = url.searchParams.get('agent') ?? undefined;
-  voiceService.createSession(ws, { agentSlug });
+  voiceService.createSession(ws, {
+    ...(agentSlug ? { agentSlug } : {}),
+    ...(principalId ? { principalId } : {}),
+  });
 }
 
 function authenticateRemoteVoiceSession(
@@ -252,13 +271,25 @@ function authenticateRemoteVoiceSession(
       return;
     }
 
+    // #2377 slice D: the person this credential is, as an HTTP request with
+    // it would resolve. A credential that names no one is refused.
+    const principalId =
+      decoded.ok && auth.resolvePrincipal
+        ? auth.resolvePrincipal(decoded.credential)
+        : undefined;
+    if (auth.resolvePrincipal && !principalId) {
+      auditVoiceFailure(auth, peerClass, 'principal_unresolved');
+      limiter.recordFailure(limiterKey);
+      closeBeforeAuthentication(...WEBSOCKET_AUTH_CLOSE.required);
+      return;
+    }
     settled = true;
     clearAuthTimeout();
     ws.off('message', onAuthMessage);
     releaseAdmission();
     limiter.clear(limiterKey);
     ws.send(authenticatedWebSocketAck());
-    acceptVoiceSession(ws, url, voiceService);
+    acceptVoiceSession(ws, url, voiceService, principalId);
   };
   ws.on('message', onAuthMessage);
 }
@@ -337,7 +368,14 @@ export function attachVoiceWebSocket(
       return;
     }
 
-    if (!auth || peerClass === 'loopback') {
+    // A loopback client without a credential keeps speech with no Station
+    // tools; one that asks to authenticate goes through the same handshake
+    // as a remote client, so its person can be its tools' caller.
+    if (
+      !auth ||
+      (peerClass === 'loopback' &&
+        url.searchParams.get(VOICE_AUTHENTICATE_QUERY) !== '1')
+    ) {
       acceptVoiceSession(ws, url, voiceService);
       return;
     }

@@ -164,6 +164,7 @@ import {
 } from '../work-item-capture.js';
 import { acpResumeCursorSupport } from './acp-resume-cursor-support.js';
 import { composeAgentExecutionConfigLoader } from './agent-execution-config-loader.js';
+import { credentialPrincipal } from './orchestration-request-principal.js';
 import {
   scheduleRuntimeDailyReload,
   scheduleRuntimeEngineSpawnTmpReaping,
@@ -225,6 +226,10 @@ export interface InitializeRuntimeDeps {
     // #3429: this Station's Environment, which a continued attached
     // conversation records as its execution binding.
     | 'readExistingRecord'
+    // #2377 slice D: the voice socket's credential resolves to its person.
+    | 'verifyOperatorCredential'
+    | 'credentialLocality'
+    | 'credentialHasOwnerStanding'
   >;
   timers: NodeJS.Timeout[];
   configLoader: {
@@ -1393,6 +1398,16 @@ export async function initializeRuntime(
         PAIRING_WS_SCOPES.voice,
         credential,
       ),
+    // #2377 slice D: the person the credential is becomes the caller of the
+    // session's Station tools. Personal Stations only: a hosted credential's
+    // tenant has no request here to read, so its sessions get no tools.
+    ...(isHostedTenantExecutionRequired()
+      ? {}
+      : {
+          resolvePrincipal: (credential: string) =>
+            credentialPrincipal(credential, deps.environmentSecurityService)
+              ?.id,
+        }),
     limiter: new RuntimeAuthFailureLimiter(),
     browserOrigins: stationOriginPolicy({ port, host }),
     audit: (record) => logger.warn('Voice authentication denied', record),
