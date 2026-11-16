@@ -877,6 +877,33 @@ worktree was not removed (`policy`, `uncommitted`, `unpushed`,
 `session-running` or `failed`). See [Task dispatch](../design/task-dispatcher.md#workspace-isolation)
 (#4507).
 
+`GET /api/tasks?projectId=` carries the same `taskWorktree` (or
+`taskWorktreeUnknown: true` when the worktree record cannot be read and a
+worktree exists on disk) on each row, from one record read per list. A row's
+`workspaceBinding` stays as recorded at creation; a reader shows
+`taskWorktree` first. A worktree record left by an earlier Task with the same
+id is not projected.
+
+## Pull request facts for the Task board
+
+`GET /api/tasks/pull-request-facts?projectId=` answers
+`{observedAt, tasks: {[taskId]: {taskCreatedAt, pullRequests, partial?}}}`
+for the Project's live Tasks (not done or canceled). Each entry lists the
+pull requests kept on that Task whose declaring session the requester may
+read, each read from its provider at its exact identity:
+`status: {state: "current", pullRequestState, title, draft?, reviewDecision?,
+readiness?, mergeability, sourceBranch}` or `{state: "unavailable" |
+"unsupported", reason}`. `readiness` is `clean`, `blocked`, `checks-failing`,
+`conflicting`, `behind`, `draft` or `unknown`; absent means the provider did
+not report it. At most 40 Tasks (most recently updated first) and 5 pull
+requests per Task are read, 4 at a time, within 8 seconds; anything past a
+bound or the deadline is listed `unavailable` and its Task is `partial`. The
+read moves no Task (close-on-merge is separate) and is `Cache-Control:
+private, no-store`. A hosted request answers `tasks: {}`; a requester whose
+standing changed during the reads gets `404`. The board derives its lanes
+from these facts with `deriveTaskLane`
+([`task-lane`](../../packages/contracts/src/task-lane.ts)).
+
 ## Start a Task from a tracker item
 
 `POST /api/tasks/from-work-item` takes `{projectId, workItemRef, agentId?,
