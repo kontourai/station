@@ -1,0 +1,25 @@
+{
+  "revision": "640dbc64665aa015b6321f599ceefb123b4e60ea",
+
+  "notes": [
+    {"path":"deploy/public-ingress/README.md","note":"#2377 slice D follow-up: the in-process station-control branch again records the integration's transport and tool count for agent health, as the child path did. No citing doc describes that metadata differently.","inputs":["src-server/runtime/mcp/mcp-manager.ts"]},
+
+    {"path":"docs/architecture.md","note":"#2377 slice D follow-up: the in-process station-control branch again records the integration's transport and tool count for agent health, as the child path did. No citing doc describes that metadata differently.","inputs":["src-server/runtime/mcp/mcp-manager.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#2377 slice D follow-up: the in-process station-control branch again records the integration's transport and tool count for agent health, as the child path did. No citing doc describes that metadata differently.","inputs":["src-server/runtime/mcp/mcp-manager.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"#2377 slice D follow-up: the in-process station-control branch again records the integration's transport and tool count for agent health, as the child path did. No citing doc describes that metadata differently.","inputs":["src-server/runtime/mcp/mcp-manager.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#2377 slice D follow-up: the in-process station-control branch again records the integration's transport and tool count for agent health, as the child path did. No citing doc describes that metadata differently.","inputs":["src-server/runtime/mcp/mcp-manager.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"#2377 slice D follow-up: the in-process station-control branch again records the integration's transport and tool count for agent health, as the child path did. No citing doc describes that metadata differently.","inputs":["src-server/runtime/mcp/mcp-manager.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#2377 slice D follow-up: the in-process station-control branch again records the integration's transport and tool count for agent health, as the child path did. No citing doc describes that metadata differently.","inputs":["src-server/runtime/mcp/mcp-manager.ts"]},
+
+    {"path":"docs/reference/config.md","note":"#2377 slice D follow-up: the in-process station-control branch again records the integration's transport and tool count for agent health, as the child path did. No citing doc describes that metadata differently.","inputs":["src-server/runtime/mcp/mcp-manager.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"#2377 slice D follow-up: the in-process station-control branch again records the integration's transport and tool count for agent health, as the child path did. No citing doc describes that metadata differently.","inputs":["src-server/runtime/mcp/mcp-manager.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"#2377 slice D follow-up: the in-process station-control branch again records the integration's transport and tool count for agent health, as the child path did. No citing doc describes that metadata differently.","inputs":["src-server/runtime/mcp/mcp-manager.ts"]}
+  ]
+}
