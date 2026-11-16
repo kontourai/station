@@ -190,7 +190,9 @@ export function InlineBrowserActivity({
       {!(session && !floating && visible && control) && heading}
       {!active && !showCurrent && browserSessionId && (
         <details>
-          <summary>Current session</summary>
+          <summary className="inline-browser-activity__control">
+            Current session
+          </summary>
           <Button variant="secondary" onClick={() => setShowCurrent(true)}>
             Open current session
           </Button>

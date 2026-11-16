@@ -83,3 +83,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.inline-browser-activity summary.inline-browser-activity__control {
+  align-content: center;
+}
