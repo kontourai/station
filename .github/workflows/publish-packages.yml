@@ -541,19 +541,27 @@ jobs:
         id: version-current
         if: github.event_name == 'push' && steps.version-operation.outputs.version-pr == 'true'
         continue-on-error: true
-        # The probe bounds the version script at 3 minutes; this bounds the
-        # step, so a hang fails the step (and regenerates) instead of the job.
+        # Unreachable by construction: the PR listing is bounded at 30 s, the
+        # version script at 180 s, the wait for its process group at 10 s,
+        # and the git reads and restore take seconds, so the worst case is
+        # about 4 minutes against this 6-minute ceiling.
         timeout-minutes: 6
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/version-pr-current.mjs
 
       # The probe restores the checkout itself; this proves it before the
-      # action commits every non-ignored file in the working tree.
+      # action commits every non-ignored file in the working tree. Unless the
+      # probe confirmed the version script's process group is gone, something
+      # may still write here, so the job stops: a red run that regenerates
+      # nothing is safer than a stray change in a version commit.
       - name: Require a clean checkout after the version probe
         if: steps.version-current.outcome != 'skipped'
+        env:
+          PROBE_SETTLED: ${{ steps.version-current.outputs.settled }}
         run: |
           set -euo pipefail
+          [ "$PROBE_SETTLED" = 'true' ] || { echo '::error::The version probe could not confirm its version script has exited'; exit 1; }
           git reset -q --hard HEAD
           git clean -fdq
           test -z "$(git status --porcelain)" || { echo '::error::The version probe left the checkout dirty'; exit 1; }

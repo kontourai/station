@@ -6,9 +6,14 @@ import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { execFileSyncBounded } from '../lib/bounded-capture.mjs';
 import {
   decideVersionPrCurrent,
+  fetchOpenVersionPulls,
+  LISTING_TIMEOUT_MS,
   probeVersionPrCurrent,
   selectVersionPr,
+  settleVersionGroup,
+  VERSION_SETTLE_MS,
   VERSION_TIMEOUT_MS,
+  VersionGroupSurvivedError,
 } from '../version-pr-current.mjs';
 import { runWorkflowShell } from './fixtures/workflow-shell.js';
 
@@ -265,6 +270,76 @@ describe('version PR currency probe on real git and changesets', () => {
     });
     expect(Date.now() - started).toBeLessThan(30_000);
     expect(git(root, 'status', '--porcelain')).toBe('');
+  });
+
+  // The verifier's shape: the version script hangs after starting a child
+  // that writes into the checkout later. The whole group must be gone before
+  // the probe restores and returns.
+  test("kills the version script's whole process group before restoring", async () => {
+    const { root, head } = fixtureRepo();
+    onMain(root, { 'src/app.txt': 'two\n' });
+    const pidFile = join(makeTempDir('station-version-pr-pgid-'), 'pid');
+    const decision = await probe(root, [versionPull(head)], {
+      versionTimeoutMs: 1_500,
+      versionCommand: [
+        process.execPath,
+        '-e',
+        `const fs=require('node:fs');fs.writeFileSync(${JSON.stringify(pidFile)},String(process.pid));fs.writeFileSync('stray.txt','x');require('node:child_process').spawn('sh',['-c','sleep 3; echo late > late.txt; echo x >> src/app.txt'],{stdio:'ignore'});setInterval(()=>{},1000)`,
+      ],
+    });
+    expect(decision).toEqual({
+      current: false,
+      reason: 'unreadable state: version command timed out after 1500 ms',
+    });
+    expect(git(root, 'status', '--porcelain')).toBe('');
+    const pgid = Number(readFileSync(pidFile, 'utf8'));
+    expect(() => process.kill(-pgid, 0)).toThrow(
+      expect.objectContaining({ code: 'ESRCH' }),
+    );
+    // Past the grandchild's delay: nothing wrote after the restore.
+    await new Promise((resolve) => setTimeout(resolve, 5_000));
+    expect(git(root, 'status', '--porcelain')).toBe('');
+  }, 30_000);
+
+  test('reports an unsettled group instead of restoring under a live writer', async () => {
+    const alive = {
+      child: { pid: 4242 },
+      forceTerminate: async () => {},
+      isAlive: () => true,
+    };
+    await expect(
+      settleVersionGroup(alive, { deadlineMs: 100, pollMs: 10 }),
+    ).rejects.toBeInstanceOf(VersionGroupSurvivedError);
+    let alivePolls = 2;
+    const exiting = {
+      child: { pid: 4243 },
+      forceTerminate: async () => {},
+      isAlive: () => alivePolls-- > 0,
+    };
+    await expect(
+      settleVersionGroup(exiting, { deadlineMs: 1_000, pollMs: 10 }),
+    ).resolves.toBeUndefined();
+  });
+
+  test('regenerates when the PR listing never answers, within its bound', async () => {
+    const { root } = fixtureRepo();
+    const never = (_url: string, init: { signal: AbortSignal }) =>
+      new Promise((_resolve, reject) => {
+        init.signal.addEventListener('abort', () => reject(init.signal.reason));
+      });
+    const started = Date.now();
+    const decision = await probe(root, undefined, {
+      listPulls: () =>
+        fetchOpenVersionPulls({
+          repository: REPO,
+          token: 'fixture',
+          fetchImpl: never as unknown as typeof fetch,
+          timeoutMs: 200,
+        }),
+    });
+    expect(decision.current).toBe(false);
+    expect(decision.reason).toMatch(/^unreadable state: .*timeout/i);
+    expect(Date.now() - started).toBeLessThan(10_000);
   });
 
   test('gives the version script no GitHub token', async () => {
@@ -582,7 +657,12 @@ describe('publish workflow wiring', () => {
     const { root } = fixtureRepo();
     write(root, 'src/app.txt', 'dirty\n');
     write(root, 'stray.txt', 'stray\n');
-    const result = runWorkflowShell(clean!.run!, root, {}, 10_000);
+    const result = runWorkflowShell(
+      clean!.run!,
+      root,
+      { PROBE_SETTLED: 'true' },
+      10_000,
+    );
     expect(result.status).toBe(0);
     expect(git(root, 'status', '--porcelain')).toBe('');
     // node_modules must survive: the action runs the version script next.
@@ -591,6 +671,26 @@ describe('publish workflow wiring', () => {
     );
     expect(readFileSync(join(root, 'build.log'), 'utf8')).toBe('kept\n');
   });
+
+  test.each([['false'], ['']])(
+    'the clean step stops the job when the probe did not confirm its children exited (%j)',
+    (settled) => {
+      const { root } = fixtureRepo();
+      expect(clean!.env).toEqual({
+        PROBE_SETTLED: '${{ steps.version-current.outputs.settled }}',
+      });
+      const result = runWorkflowShell(
+        clean!.run!,
+        root,
+        { PROBE_SETTLED: settled },
+        10_000,
+      );
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain(
+        'could not confirm its version script has exited',
+      );
+    },
+  );
 
   test('a hung probe fails its own step, not the job, and regenerates', () => {
     const job = (
@@ -602,6 +702,13 @@ describe('publish workflow wiring', () => {
     // Above the probe's 3-minute child bound, below the job's 60.
     expect(stepLimit).toBe(6);
     expect(stepLimit * 60_000).toBeGreaterThan(VERSION_TIMEOUT_MS);
+    // Worst case: listing + version script + group settle, with a minute
+    // for the git reads and restore, stays under the step limit.
+    expect(LISTING_TIMEOUT_MS).toBe(30_000);
+    expect(VERSION_SETTLE_MS).toBe(10_000);
+    expect(
+      LISTING_TIMEOUT_MS + VERSION_TIMEOUT_MS + VERSION_SETTLE_MS + 60_000,
+    ).toBeLessThan(stepLimit * 60_000);
     expect(stepLimit).toBeLessThan(job);
     expect(VERSION_TIMEOUT_MS).toBe(180_000);
     // A timed-out step leaves no `current` output, so the action runs.

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { spawn } from 'node:child_process';
 /**
  * Decides whether a push to main may leave the open version PR alone.
  *
@@ -21,6 +22,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { executeOwnedProcess } from './lib/owned-process.mjs';
 
 export const VERSION_BRANCH = 'changeset-release/main';
 export const VERSION_BASE = 'main';
@@ -31,6 +33,11 @@ export const VERSION_PR_AUTHOR_ID = 335214120;
 // `version-packages` took 24 s in run 43942898848; a hung one must not run
 // to the job limit, which would fail the job instead of regenerating.
 export const VERSION_TIMEOUT_MS = 180_000;
+// After SIGKILL the group should vanish at once; this only bounds the wait.
+export const VERSION_SETTLE_MS = 10_000;
+// One small request; undici's own defaults would allow 300 s each for headers
+// and body.
+export const LISTING_TIMEOUT_MS = 30_000;
 
 const OBJECT_ID = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
 
@@ -185,22 +192,62 @@ function mergeTree(cwd, sha) {
   };
 }
 
-function regeneratedTree(cwd, versionCommand, timeoutMs) {
+/** Something the version script started may still write into the checkout. */
+export class VersionGroupSurvivedError extends Error {}
+
+/**
+ * Kills whatever is left of the version script's process group and waits
+ * until the group is gone. Descendants (pnpm, changeset) can outlive the
+ * leader, so this runs on every exit path, not only on a timeout.
+ */
+export async function settleVersionGroup(
+  execution,
+  { deadlineMs = VERSION_SETTLE_MS, pollMs = 50 } = {},
+) {
+  try {
+    await execution.forceTerminate();
+  } catch {
+    // An unsignallable group is judged by the liveness poll below.
+  }
+  const deadline = Date.now() + deadlineMs;
+  while (execution.isAlive()) {
+    if (Date.now() >= deadline)
+      throw new VersionGroupSurvivedError(
+        `version command process group ${execution.child.pid} is still alive after SIGKILL`,
+      );
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+}
+
+async function runVersionCommand(cwd, versionCommand, timeoutMs, settleMs) {
   const [command, ...args] = versionCommand;
   // The token is for this probe's own PR read; the version script gets none.
   const { GH_TOKEN: _gh, GITHUB_TOKEN: _github, ...env } = process.env;
-  const run = spawnSyncBounded(command, args, {
-    cwd,
-    env,
-    stdio: 'inherit',
-    timeout: timeoutMs,
-    killSignal: 'SIGKILL',
+  // Its own process group (owned-process spawns detached), so a timeout or
+  // an early exit can kill every descendant, not only the leader.
+  const execution = executeOwnedProcess(
+    command,
+    args,
+    spawn,
+    'version script',
+    { cwd, env, stdio: 'inherit' },
+  );
+  let timer;
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(() => resolve('timeout'), timeoutMs);
   });
-  if (run.error?.code === 'ETIMEDOUT')
+  const result = await Promise.race([execution.completion, timeout]);
+  clearTimeout(timer);
+  await settleVersionGroup(execution, { deadlineMs: settleMs });
+  if (result === 'timeout')
     throw new Error(`version command timed out after ${timeoutMs} ms`);
-  if (run.error) throw run.error;
-  if (run.status !== 0)
-    throw new Error(`version command exited ${run.status ?? run.signal}`);
+  if (result.error) throw result.error;
+  if (result.status !== 0)
+    throw new Error(`version command exited ${result.status ?? result.signal}`);
+}
+
+async function regeneratedTree(cwd, versionCommand, timeoutMs, settleMs) {
+  await runVersionCommand(cwd, versionCommand, timeoutMs, settleMs);
   // A throwaway index records the working tree as the action's commit would
   // (tracked and untracked, ignored files excluded) without touching the
   // checkout's own index.
@@ -225,6 +272,7 @@ export async function fetchOpenVersionPulls({
   token,
   apiUrl = 'https://api.github.com',
   fetchImpl = fetch,
+  timeoutMs = LISTING_TIMEOUT_MS,
 }) {
   const owner = repository.split('/')[0];
   const query = new URLSearchParams({
@@ -240,6 +288,8 @@ export async function fetchOpenVersionPulls({
         accept: 'application/vnd.github+json',
         authorization: `Bearer ${token}`,
       },
+      // Covers the body read below too.
+      signal: AbortSignal.timeout(timeoutMs),
     },
   );
   if (!response.ok)
@@ -259,6 +309,7 @@ export async function probeVersionPrCurrent({
   listPulls,
   versionCommand = ['npm', 'run', 'version-packages'],
   versionTimeoutMs = VERSION_TIMEOUT_MS,
+  versionSettleMs = VERSION_SETTLE_MS,
 }) {
   try {
     if (eventName !== 'push' || ref !== `refs/heads/${VERSION_BASE}`)
@@ -275,10 +326,20 @@ export async function probeVersionPrCurrent({
     const merge = head.sha ? mergeTree(cwd, head.sha) : undefined;
     let tree;
     try {
-      tree = regeneratedTree(cwd, versionCommand, versionTimeoutMs);
-    } finally {
+      tree = await regeneratedTree(
+        cwd,
+        versionCommand,
+        versionTimeoutMs,
+        versionSettleMs,
+      );
+    } catch (error) {
+      // Restoring under a live writer proves nothing; the workflow must stop.
+      if (error instanceof VersionGroupSurvivedError)
+        return { current: false, reason: error.message, unsettled: true };
       restore(cwd);
+      throw error;
     }
+    restore(cwd);
     return decideVersionPrCurrent({
       pulls,
       repository,
@@ -318,7 +379,7 @@ if (invokedDirectly(import.meta.url)) {
   } else {
     appendFileSync(
       output,
-      `current=${decision.current}\npr-number=${decision.number ?? ''}\n`,
+      `current=${decision.current}\npr-number=${decision.number ?? ''}\nsettled=${decision.unsettled !== true}\n`,
     );
   }
 }
