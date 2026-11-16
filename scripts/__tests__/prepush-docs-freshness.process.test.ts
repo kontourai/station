@@ -44,7 +44,6 @@ const RECORDED_GATES = [
   'scripts/check-prepush-orchestration-transfer.mjs',
   'scripts/check-prepush-static-gates.mjs',
   'scripts/check-prepush-sdk-barrel.mjs',
-  'scripts/check-prepush-code-health.mjs',
 ];
 
 function hookFixture() {
@@ -127,7 +126,7 @@ if (args[0] === 'scripts/commit-message-gate.mjs') {
     { mode: 0o755 },
   );
 
-  const push = () => {
+  const push = (extraEnv: Record<string, string> = {}) => {
     writeFileSync(report, '');
     const env: NodeJS.ProcessEnv = {
       ...(withoutFreshnessEnv(
@@ -135,6 +134,7 @@ if (args[0] === 'scripts/commit-message-gate.mjs') {
       ) as NodeJS.ProcessEnv),
       PATH: `${bin}:${process.env.PATH ?? ''}`,
       STATION_HEAVY_CHECK_SLOT_DIR: join(root, 'heavy-check-slots'),
+      ...extraEnv,
     };
     for (const key of [
       'CI',
@@ -186,7 +186,20 @@ if (args[0] === 'scripts/commit-message-gate.mjs') {
       join(repo, 'scripts/check-documentation-freshness.mjs'),
       "console.error('TypeError: simulated crash');\nprocess.exit(1);\n",
     );
-  return { ...f, repo, push, remoteHas, brokenCheck, installRealCheck };
+  const writeCheck = (source: string) =>
+    writeFileSync(
+      join(repo, 'scripts/check-documentation-freshness.mjs'),
+      source,
+    );
+  return {
+    ...f,
+    repo,
+    push,
+    remoteHas,
+    brokenCheck,
+    installRealCheck,
+    writeCheck,
+  };
 }
 
 const TIMEOUT = 120_000;
@@ -288,6 +301,62 @@ describe.skipIf(process.platform === 'win32')(
         );
         expect(result.output).not.toContain('needs refresh');
         expect(result.output).not.toContain("WARNING: CI's statics job");
+      },
+      TIMEOUT,
+    );
+
+    it(
+      'refuses, naming the bound, when the check does not finish in time',
+      () => {
+        const f = hookFixture();
+        changeSource(f, 'export const a = 2;\n');
+        f.writeCheck('setTimeout(() => {}, 30_000);\n');
+        // The hook scales the bound by host pressure (at most 8x), so a
+        // 1s base stays far below the stub's 30s.
+        const result = f.push({
+          STATION_PREPUSH_DOCS_FRESHNESS_TIMEOUT_MS: '1000',
+        });
+        expect(result.status).not.toBe(0);
+        expect(f.remoteHas('feat')).toBe('');
+        expect(result.output).toMatch(
+          /FAIL: the documentation freshness check could not run \(did not finish within [1-8]s\)/,
+        );
+        expect(result.output).not.toContain('needs refresh');
+      },
+      TIMEOUT,
+    );
+
+    it(
+      'refuses stale entries when there is no origin/main to tell whether the branch records reviews',
+      () => {
+        const f = hookFixture();
+        changeSource(f, 'export const a = 2;\n');
+        git(f.repo, ['update-ref', '-d', 'refs/remotes/origin/main']);
+        const result = f.push();
+        expect(result.status).not.toBe(0);
+        expect(f.remoteHas('feat')).toBe('');
+        expect(result.output).toContain('review docs/a.md; changed: src/a.ts');
+        expect(result.output).toContain(
+          'FAIL: could not tell whether this branch records documentation reviews (no merge base with origin/main)',
+        );
+      },
+      TIMEOUT,
+    );
+
+    it(
+      "says so when the check's human report does not repeat its stale verdict",
+      () => {
+        const f = hookFixture();
+        changeSource(f, 'export const a = 2;\n');
+        // Stale in its JSON form, then clean when re-run for the report.
+        f.writeCheck(
+          `if (process.argv.includes('--json')) {\n  console.log(JSON.stringify({ mode: 'scoped', reason: 'fixture', base: 'origin/main', mergeBase: null, reviews: 1, captures: 0, blocking: [{ kind: 'review', path: 'docs/a.md', changed: ['src/a.ts'], rule: 'stale' }], advisory: [] }));\n  process.exit(1);\n}\nconsole.log('Documentation freshness (scoped): fine');\n`,
+        );
+        const result = f.push();
+        expect(result.status, result.output).toBe(0);
+        expect(result.output).toContain(
+          "(The check's human report did not repeat the stale verdict: exit 0. Run npm run docs:freshness:check.)",
+        );
       },
       TIMEOUT,
     );

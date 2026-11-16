@@ -38,6 +38,22 @@ const BASE_REF = process.env.STATION_BASE_REF ?? 'origin/main';
 const ZERO = /^0+$/;
 /** A liveness bound on the check (~5-8s here), not a performance budget. */
 const CHECK_TIMEOUT_BASE_MS = 120_000;
+/**
+ * Test-only: replaces the base of that bound so a test can prove the timeout
+ * path without a two-minute wait. Anything but a positive integer refuses.
+ */
+const TIMEOUT_OVERRIDE_ENV = 'STATION_PREPUSH_DOCS_FRESHNESS_TIMEOUT_MS';
+
+function checkTimeoutMs(env = process.env) {
+  const raw = env[TIMEOUT_OVERRIDE_ENV];
+  if (raw === undefined || raw === '')
+    return scaleLivenessMs(CHECK_TIMEOUT_BASE_MS, env);
+  if (!/^[1-9][0-9]*$/.test(raw))
+    throw new Error(
+      `${TIMEOUT_OVERRIDE_ENV} must be a positive integer of milliseconds, not '${raw.slice(0, 32)}'`,
+    );
+  return scaleLivenessMs(Number(raw), env);
+}
 const CHECK = fileURLToPath(
   new URL('./check-documentation-freshness.mjs', import.meta.url),
 );
@@ -77,7 +93,7 @@ function ledgerChanges(sha) {
 }
 
 function runCheck() {
-  const timeout = scaleLivenessMs(CHECK_TIMEOUT_BASE_MS);
+  const timeout = checkTimeoutMs();
   const result = spawnSync(process.execPath, [CHECK, '--json'], {
     encoding: 'utf8',
     windowsHide: true,
@@ -130,7 +146,7 @@ function checkReport() {
     encoding: 'utf8',
     windowsHide: true,
     maxBuffer: CAPTURE_MAX_BYTES,
-    timeout: scaleLivenessMs(CHECK_TIMEOUT_BASE_MS),
+    timeout: checkTimeoutMs(),
     killSignal: 'SIGKILL',
   });
   const text = `${result.stdout ?? ''}${result.stderr ?? ''}`.trim();
@@ -222,5 +238,12 @@ function main(stdinText) {
 }
 
 if (invokedDirectly(import.meta.url)) {
-  process.exitCode = main(readFileSync(0, 'utf8'));
+  try {
+    process.exitCode = main(readFileSync(0, 'utf8'));
+  } catch (error) {
+    console.error(
+      `FAIL: the documentation freshness step could not run (${error instanceof Error ? error.message : error}), so this push is refused.`,
+    );
+    process.exitCode = 1;
+  }
 }
