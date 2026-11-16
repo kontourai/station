@@ -1405,7 +1405,9 @@ proceeds. A retry that names an existing continuation's idempotency key still
 returns that continuation. Continuing never stops the original: the child is an
 independent native session that misses whatever the original writes later.
 Station has no "take over" action because it does not own, and cannot
-reliably identify, the process that writes the transcript. The engine capability matrix declares independent continuation support;
+reliably identify, the process that writes the transcript.
+
+The engine capability matrix declares independent continuation support;
 known unsupported and unknown engines keep the conversation's message box
 disabled with a reason. The adoption owner enforces the same declaration before
 invoking an adapter, then checks current source, Project, ownership, and runtime
