@@ -193,7 +193,7 @@ const GITHUB_PULL_REQUEST_STATUS_FIELDS =
  * Station clears it. Longer than the board's 120 s refresh, so a periodic
  * refresh finds the previous sweep's reads warm instead of starting cold.
  */
-export const GITHUB_STATUS_READ_CACHE_TTL_MS = 150_000;
+const GITHUB_STATUS_READ_CACHE_TTL_MS = 150_000;
 
 /** `mergeStateStatus` in the board's vocabulary; absent when not reported. */
 const githubMergeReadiness = (
