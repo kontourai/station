@@ -702,8 +702,20 @@ describe('UsageLimitBanner (#3157)', () => {
         "Couldn't switch accounts. This conversation is still waiting.",
       );
       expect(button('Resume now')).not.toBeNull();
-      // Another action on the stop drops the stale switch message.
+      // Another action on the stop drops the stale switch message, even when
+      // the stop reads back still waiting.
+      answers.resume = () => ({
+        result: { kind: 'not-waiting' },
+        recovery: projection({
+          decision: 'manual',
+          outcome: 'manual',
+          dueAt: undefined,
+        }),
+      });
       fireEvent.click(button('Resume now') as HTMLElement);
+      await waitFor(() =>
+        expect(posts().some((call) => call.url.endsWith('/resume'))).toBe(true),
+      );
       await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
     });
 
