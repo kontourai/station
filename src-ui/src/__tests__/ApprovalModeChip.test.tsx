@@ -184,7 +184,9 @@ describe('ApprovalModeChip', () => {
     );
     await openSheet();
     expect(
-      screen.getByText(/handles its own approvals; Station's rules aren't used/),
+      screen.getByText(
+        /handles its own approvals; Station's rules aren't used/,
+      ),
     ).toBeTruthy();
   });
 
@@ -291,9 +293,7 @@ describe('ApprovalModeChip', () => {
     );
 
     await openSheet();
-    expect(
-      option(/^Full access/).getAttribute('aria-checked'),
-    ).toBe('true');
+    expect(option(/^Full access/).getAttribute('aria-checked')).toBe('true');
   });
 
   test('an engine-reported applied mode labels the chip without selecting a Station override (station#1950)', async () => {

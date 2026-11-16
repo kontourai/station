@@ -163,7 +163,8 @@ function ComposerModeSheetContent({
             a change lands: one fact per line. */}
         {activeMode ? (
           <p className="composer-mode-sheet__status">
-            In effect: <strong>{activeMode}</strong>, confirmed by {engineProduct ?? 'the engine'}
+            In effect: <strong>{activeMode}</strong>, confirmed by{' '}
+            {engineProduct ?? 'the engine'}
           </p>
         ) : sourceNote ? (
           <p className="composer-mode-sheet__status">{sourceNote}</p>

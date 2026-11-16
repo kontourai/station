@@ -2089,7 +2089,8 @@
       calc(100vw - var(--responsive-boundary-right, calc(100vw - 12px))),
       var(--responsive-anchor-right, 12px),
       calc(
-        100vw - var(--responsive-boundary-left, 12px) -
+        100vw -
+        var(--responsive-boundary-left, 12px) -
         var(--composer-popover-width)
       )
     ),
