@@ -7,21 +7,14 @@
     "src-ui/src/components/Checkbox.css": {
       "hex-color": 1
     },
+    "src-ui/src/components/ComposerRunControl.css": {
+      "numeric-z-index": 1
+    },
     "src-ui/src/components/DetailHeader.css": {
       "numeric-z-index": 1
     },
-    "src-ui/src/components/EnginePicker.css": {
-      "gradient": 2,
-      "backdrop-blur": 1
-    },
     "src-ui/src/components/GuidedConnect.css": {
       "numeric-z-index": 1
-    },
-    "src-ui/src/components/OnboardingGate.css": {
-      "gradient": 1
-    },
-    "src-ui/src/components/PathAutocomplete.css": {
-      "gradient": 1
     },
     "src-ui/src/components/PdfCanvasViewer.css": {
       "hex-color": 2
@@ -36,9 +29,6 @@
       "gradient": 1,
       "infinite-animation": 1
     },
-    "src-ui/src/components/chat/ConversationHandoff.css": {
-      "backdrop-blur": 1
-    },
     "src-ui/src/components/chat/ConversationTimeline.css": {
       "numeric-z-index": 1
     },
@@ -46,13 +36,12 @@
       "infinite-animation": 1
     },
     "src-ui/src/components/chat/TranscriptTurnRail.css": {
-      "numeric-z-index": 1,
-      "backdrop-blur": 1
+      "numeric-z-index": 1
     },
     "src-ui/src/components/chat/chat.css": {
-      "gradient": 5,
-      "infinite-animation": 3,
-      "hex-color": 2
+      "infinite-animation": 2,
+      "hex-color": 2,
+      "gradient": 1
     },
     "src-ui/src/components/coding-layout/BranchToolbar.css": {
       "numeric-z-index": 1
@@ -71,14 +60,6 @@
     },
     "src-ui/src/components/inbox-row/InboxRow.css": {
       "infinite-animation": 1
-    },
-    "src-ui/src/components/modals/FolderBrowserModal.css": {
-      "backdrop-blur": 1,
-      "gradient": 1
-    },
-    "src-ui/src/components/modals/NewProjectModal.css": {
-      "backdrop-blur": 1,
-      "gradient": 2
     },
     "src-ui/src/components/monitoring/InsightsDashboard.css": {
       "infinite-animation": 1
@@ -120,34 +101,23 @@
       "numeric-z-index": 4
     },
     "src-ui/src/views/MonitoringWidgets.css": {
-      "infinite-animation": 5,
+      "infinite-animation": 4,
       "numeric-z-index": 1
     },
     "src-ui/src/views/PluginManagementView.css": {
-      "backdrop-blur": 1,
       "infinite-animation": 1
     },
-    "src-ui/src/views/ProjectSettingsView.css": {
-      "gradient": 1
-    },
     "src-ui/src/views/ScheduleView.css": {
-      "gradient": 13,
       "infinite-animation": 2
     },
     "src-ui/src/views/SessionsView.css": {
       "numeric-z-index": 1
-    },
-    "src-ui/src/views/SortableTable.css": {
-      "gradient": 2
     },
     "src-ui/src/views/TaskWorkspaceView.css": {
       "infinite-animation": 1
     },
     "src-ui/src/views/page-layout.css": {
       "numeric-z-index": 1
-    },
-    "src-ui/src/workspace-panes/SessionInventory.css": {
-      "gradient": 1
     },
     "src-ui/src/workspace-panes/WorkspacePaneHost.css": {
       "numeric-z-index": 1

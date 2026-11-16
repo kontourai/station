@@ -11,10 +11,6 @@
       "long-copy:text:p": 1,
       "multi-sentence:text:p": 1
     },
-    "src-ui/src/components/OfflineReadingBoundary.tsx": {
-      "multi-sentence:text:p": 1,
-      "long-copy:text:p": 1
-    },
     "src-ui/src/components/PendingPairingReconciler.tsx": {
       "multi-sentence:literal:call:finish": 1
     },
@@ -27,8 +23,8 @@
       "multi-sentence:text:PageCallout": 1
     },
     "src-ui/src/components/UsageTelemetryDisclosure.tsx": {
-      "long-copy:text:p": 3,
-      "multi-sentence:text:p": 3
+      "long-copy:text:p": 1,
+      "multi-sentence:text:p": 2
     },
     "src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx": {
       "long-copy:text:p": 1
@@ -36,31 +32,20 @@
     "src-ui/src/components/badges/EngineApprovalDisclosureSheet.tsx": {
       "long-copy:text:p": 1
     },
-    "src-ui/src/components/chat-dock/ConversationContextResetDialog.tsx": {
-      "long-copy:text:p": 1
-    },
     "src-ui/src/components/chat-dock/DelegationLauncher.tsx": {
       "long-copy:literal:const": 1
     },
     "src-ui/src/components/chat/ChatSettingsPanel.tsx": {
-      "multi-sentence:text:p": 1,
       "long-copy:text:p": 1
     },
     "src-ui/src/components/chat/CheckpointRestoreButton.tsx": {
       "multi-sentence:literal:return": 1
     },
-    "src-ui/src/components/chat/ContextInjectionDisclosure.tsx": {
-      "long-copy:text:p": 1
-    },
     "src-ui/src/components/chat/FullAccessRefusalCard.tsx": {
       "long-copy:text:p": 1
     },
-    "src-ui/src/components/chat/MessageBubble.tsx": {
-      "long-copy:text:p": 1
-    },
     "src-ui/src/components/chat/ShareAnswerPairingPrompt.tsx": {
-      "long-copy:text:span": 1,
-      "long-copy:text:fragment": 1
+      "long-copy:text:span": 1
     },
     "src-ui/src/components/chat/TaskProposalCard.tsx": {
       "multi-sentence:literal:call:setFailure": 1
@@ -75,16 +60,9 @@
       "long-copy:text:p": 1,
       "long-copy:text:div": 1
     },
-    "src-ui/src/components/first-run/AboutYouStep.tsx": {
-      "long-copy:text:p": 2,
-      "multi-sentence:text:p": 2
-    },
     "src-ui/src/components/first-run/UnpairedSampleWorkspace.tsx": {
       "long-copy:literal:prop:content": 1,
       "multi-sentence:literal:prop:content": 1
-    },
-    "src-ui/src/components/first-run/tour-steps.ts": {
-      "long-copy:prop:body": 3
     },
     "src-ui/src/components/mcp-ui/MCPToolUIFrame.tsx": {
       "long-copy:literal:attr:reason": 1
@@ -110,7 +88,7 @@
     },
     "src-ui/src/components/registry/MarketplaceSources.tsx": {
       "long-copy:text:p": 2,
-      "multi-sentence:text:p": 2
+      "multi-sentence:text:p": 1
     },
     "src-ui/src/components/registry/StationExtensionsAccess.tsx": {
       "long-copy:attr:message": 2,
@@ -171,9 +149,6 @@
     "src-ui/src/utils/steerTurn.ts": {
       "long-copy:literal:return": 1
     },
-    "src-ui/src/views/EngineAccountOverview.tsx": {
-      "long-copy:text:details": 1
-    },
     "src-ui/src/views/EngineProxySettings.tsx": {
       "multi-sentence:text:p": 1
     },
@@ -203,18 +178,12 @@
     "src-ui/src/views/TaskWorkspaceView.tsx": {
       "long-copy:text:p": 1
     },
-    "src-ui/src/views/account/GuestProjectAccessView.tsx": {
-      "long-copy:literal:return": 1,
-      "long-copy:literal:call:setBanner": 1,
-      "long-copy:literal:const": 2
-    },
     "src-ui/src/views/agent-editor/AgentEditorApprovalDefault.tsx": {
       "long-copy:text:span": 1,
       "multi-sentence:text:span": 1
     },
     "src-ui/src/views/agent-editor/AgentEditorCredentialProfile.tsx": {
-      "long-copy:text:div": 1,
-      "long-copy:text:span": 1
+      "long-copy:text:div": 1
     },
     "src-ui/src/views/agent-editor/AgentEditorPromptTab.tsx": {
       "long-copy:literal:const": 1
@@ -222,19 +191,13 @@
     "src-ui/src/views/agent-editor/utils.ts": {
       "multi-sentence:literal:return": 1
     },
-    "src-ui/src/views/connections-hub/AddMachineModal.tsx": {
-      "long-copy:text:button": 1
-    },
-    "src-ui/src/views/connections-hub/BrowserRelayEnrollmentDialog.tsx": {
-      "long-copy:text:p": 1
-    },
     "src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx": {
       "long-copy:text:p": 2,
       "multi-sentence:attr:subtitle": 1
     },
     "src-ui/src/views/connections-hub/BrowserStationTrustApproval.tsx": {
-      "long-copy:text:p": 2,
-      "multi-sentence:text:p": 2,
+      "long-copy:text:p": 1,
+      "multi-sentence:text:p": 1,
       "long-copy:text:div": 1,
       "long-copy:text:label": 1
     },
