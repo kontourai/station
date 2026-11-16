@@ -1765,6 +1765,31 @@ describe('Station orchestration instructions (resolution receipt)', () => {
     expect(off.firstTurnText).not.toContain('device_open');
   });
 
+  test('Codex on the bound catalog is told the bound tools it is offered; on the header channel, only delegated ones', async () => {
+    const bound = receiptOf(
+      await resolverFor(
+        { prompt: '' },
+        { codexBound: () => true },
+      )(baseInput({ provider: 'codex' })),
+    );
+    // `list_delegation_targets` is bound-only: the bound catalog offers it,
+    // the header token cannot call it.
+    expect(
+      effectiveStationControlTools({}, catalog(), 'delegated-custody').has(
+        'list_delegation_targets',
+      ),
+    ).toBe(false);
+    expect(bound.firstTurnText).toContain('`list_delegation_targets`');
+    const header = receiptOf(
+      await resolverFor(
+        { prompt: '' },
+        { codexBound: () => false },
+      )(baseInput({ provider: 'codex' })),
+    );
+    expect(header.firstTurnText).not.toContain('list_delegation_targets');
+    expect(header.firstTurnText).toContain('`list_agents`');
+  });
+
   test('no station-control means no receipt and no stationInstructions', async () => {
     const result = await resolverFor({
       prompt: 'Authored.',

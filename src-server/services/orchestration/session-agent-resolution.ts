@@ -327,7 +327,15 @@ function resolveStationInstructions(args: {
   );
   if (!control) return;
   const provider = input.provider;
-  const assurance = stationControlAssuranceFor(provider);
+  const boundChannel =
+    provider === 'codex' && options.codexBoundToolsEnabled?.() === true;
+  // #2376 slice 2: with the bound channel on, a new Codex thread gets the
+  // whole station-control catalog there, at `bound` (`CodexAdapter`'s
+  // `boundCatalog`), unless its control server is coordinator-derived. Only
+  // a new thread is told anything (a resumed one returns below), so the
+  // resume fallback never reaches this.
+  const codexBoundCatalog = boundChannel && !control.coordinatorDerived;
+  const assurance = stationControlAssuranceFor(provider, codexBoundCatalog);
   if (!assurance) return;
   const catalog = stationControlToolCatalog().map((tool) => tool.name);
   const controlTools = effectiveStationControlTools(
@@ -335,8 +343,6 @@ function resolveStationInstructions(args: {
     catalog,
     assurance,
   );
-  const boundChannel =
-    provider === 'codex' && options.codexBoundToolsEnabled?.() === true;
   const browserAllowed = definition.browserTools !== false;
   // An engine running saved ACP connections (`opencode`) is told what an
   // ACP engine is told.
@@ -345,23 +351,13 @@ function resolveStationInstructions(args: {
     : provider === 'claude' || provider === 'codex' || provider === 'muse'
       ? provider
       : 'other';
-  // Device tools are bound-only, so the custody-filtered `controlTools` never
-  // holds them. Codex gets them through its own bound channel
-  // (`station-bound-tools`, offered at thread start unless the control server
-  // is coordinator-derived), narrowed by the same allow/disable lists; name
-  // exactly those, and only when that channel is on.
-  const channelDeviceTools =
-    boundChannel && !control.coordinatorDerived
-      ? [...effectiveStationControlTools(control, catalog, 'bound')].filter(
-          (name) => name.startsWith('device_'),
-        )
-      : [];
+  // Device tools are bound-only, so they are in `controlTools` exactly when
+  // the session's station-control is `bound` (Claude, or Codex's bound
+  // catalog), narrowed by the same allow/disable lists.
   const composed = composeStationInstructions({
-    controlTools: new Set([...controlTools, ...channelDeviceTools]),
+    controlTools,
     browser: browserAllowed && (provider === 'claude' || boundChannel),
-    devices: boundChannel
-      ? channelDeviceTools.includes('device_open')
-      : controlTools.has('device_open'),
+    devices: controlTools.has('device_open'),
     delegated: Boolean(input.metadata?.delegation),
     harness,
     // Only when Station itself turns tool search on: under the harness
