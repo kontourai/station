@@ -16,6 +16,7 @@ import { PullRequestFeedbackDelivery } from '../pull-request-feedback-delivery.j
 import {
   PullRequestFeedbackOwnership,
   type PullRequestFeedbackViewer,
+  pullRequestFeedbackSendsKind,
 } from '../pull-request-feedback-ownership.js';
 import { PullRequestFeedbackStore } from '../pull-request-feedback-store.js';
 
@@ -240,5 +241,81 @@ describe('pull request feedback ownership', () => {
     expect(store.claim(pullRequestFeedbackKey(PR))?.conversationId).toBe(
       'chat-b',
     );
+  });
+
+  it('a pull request unlinked since can still be turned off from its chat', async () => {
+    const { ownership, store, viewer } = setup();
+    await ownership.write({
+      conversationId: 'chat-a',
+      identity: PR,
+      settings: ON,
+      viewer: viewer(),
+    });
+    const unlinked = new PullRequestFeedbackOwnership({
+      store: () => store,
+      readStore: () => store,
+      linkedIdentities: async () => [],
+      session: () => ({ state: 'idle', ownerUserId: 'owner' }),
+      mayContinue: (_id, userId) => userId === 'owner',
+      title: () => undefined,
+    });
+    expect(
+      await unlinked.off({
+        conversationId: 'chat-a',
+        identity: PR,
+        viewer: viewer(),
+      }),
+    ).toMatchObject({ kind: 'ok', view: { status: { state: 'off' } } });
+    expect(store.claim(pullRequestFeedbackKey(PR))?.settings).toEqual({
+      fixFailingChecks: false,
+      addressReviewComments: false,
+      reviewEachHead: false,
+    });
+    // Only from the chat that owns it.
+    expect(
+      await unlinked.off({
+        conversationId: 'chat-b',
+        identity: PR,
+        viewer: viewer(),
+      }),
+    ).toEqual({ kind: 'not-linked' });
+  });
+});
+
+describe('the Task follow-up hand-off (#4508)', () => {
+  const claim = (
+    settings: Partial<typeof ON>,
+    condition?: Parameters<typeof pullRequestFeedbackSendsKind>[0]['condition'],
+  ) => ({
+    settings: { ...ON, fixFailingChecks: false, ...settings },
+    ...(condition ? { condition } : {}),
+  });
+
+  it('owns a kind only while its own switch is on', () => {
+    const checks = claim({ fixFailingChecks: true });
+    expect(pullRequestFeedbackSendsKind(checks, 'check_run')).toBe(true);
+    expect(pullRequestFeedbackSendsKind(checks, 'review')).toBe(false);
+    expect(pullRequestFeedbackSendsKind(checks, 'review_comment')).toBe(false);
+    const reviews = claim({ addressReviewComments: true });
+    expect(pullRequestFeedbackSendsKind(reviews, 'check_run')).toBe(false);
+    expect(pullRequestFeedbackSendsKind(reviews, 'review')).toBe(true);
+    expect(pullRequestFeedbackSendsKind(reviews, 'review_comment')).toBe(true);
+    expect(pullRequestFeedbackSendsKind(reviews, 'comment')).toBe(false);
+  });
+
+  it('owns nothing while paused, unavailable or closed', () => {
+    const both = { fixFailingChecks: true, addressReviewComments: true };
+    for (const condition of [
+      { state: 'paused', reason: 'round-limit', headSha: 'a' },
+      { state: 'unavailable', cause: 'credentials' },
+      { state: 'closed', at: '2026-11-10T00:00:00Z' },
+    ] as const) {
+      expect(
+        pullRequestFeedbackSendsKind(claim(both, condition), 'check_run'),
+      ).toBe(false);
+      expect(
+        pullRequestFeedbackSendsKind(claim(both, condition), 'review'),
+      ).toBe(false);
+    }
   });
 });

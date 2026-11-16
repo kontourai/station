@@ -31,6 +31,24 @@ import type {
 } from './pull-request-feedback-store.js';
 
 const HISTORY_LIMIT = 20;
+
+/**
+ * #4508 hand-off: whether this claim sends a Task follow-up of this kind
+ * itself (failing checks under "Fix failing checks", reviews under "Address
+ * review comments"), so the Task's lead is not also woken for it. While the
+ * claim is paused, unavailable or closed it sends nothing, and the Task
+ * follow-up wake keeps waking.
+ */
+export function pullRequestFeedbackSendsKind(
+  claim: Pick<PullRequestFeedbackClaim, 'settings' | 'condition'>,
+  kind: string,
+): boolean {
+  if (claim.condition) return false;
+  if (kind === 'check_run') return claim.settings.fixFailingChecks;
+  if (kind === 'review' || kind === 'review_comment')
+    return claim.settings.addressReviewComments;
+  return false;
+}
 const REVIEWER_CONVERSATION = /^review-/;
 
 export interface PullRequestFeedbackOwnershipPorts {
@@ -155,15 +173,25 @@ export class PullRequestFeedbackOwnership {
     identity: PullRequestLinkIdentity;
     viewer: PullRequestFeedbackViewer;
   }): Promise<PullRequestFeedbackEnableResult> {
+    // Found by its key, not through the chat's links: a pull request
+    // unlinked since must still be possible to turn off.
     const prKey = pullRequestFeedbackKey(input.identity);
-    const claim = this.ports.readStore()?.claim(prKey);
-    if (!claim || claim.conversationId !== input.conversationId)
+    const store = this.ports.store();
+    const claim = store?.claim(prKey);
+    if (!store || !claim || claim.conversationId !== input.conversationId)
       return { kind: 'not-linked' };
-    return this.write({
-      ...input,
-      identity: claim.identity,
-      settings: { ...PULL_REQUEST_FEEDBACK_OFF },
-    });
+    if (!this.ports.mayContinue(input.conversationId, input.viewer.userId))
+      return { kind: 'not-permitted' };
+    store.releaseClaim(prKey, new Date(this.now()).toISOString());
+    return {
+      kind: 'ok',
+      view: this.viewOf(
+        store,
+        claim.identity,
+        input.conversationId,
+        input.viewer,
+      ),
+    };
   }
 
   /** Every linked pull request's feedback, as this conversation's reader sees it. */

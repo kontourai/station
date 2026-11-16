@@ -108,7 +108,7 @@ export interface StoredBatch {
   generation: number;
   state: StoredBatchState;
   message: string;
-  actor: { userId: string; attribution?: unknown };
+  actor: { userId: string };
   reasonCode?: string;
   createdAt: string;
   settledAt?: string;
@@ -383,6 +383,33 @@ export class PullRequestFeedbackStore {
     });
   }
 
+  /**
+   * Stop a claim without forgetting it: every switch off, its waiting
+   * feedback superseded, history kept (pruned with off claims later).
+   */
+  releaseClaim(prKey: string, now: string): void {
+    this.transaction(() => {
+      this.db
+        .prepare(
+          'UPDATE claims SET settings = ?, enabled_at = ?, condition = NULL WHERE pr_key = ?',
+        )
+        .run(
+          JSON.stringify({
+            fixFailingChecks: false,
+            addressReviewComments: false,
+            reviewEachHead: false,
+          }),
+          now,
+          prKey,
+        );
+      this.db
+        .prepare(
+          "UPDATE deliveries SET state = 'superseded', settled_at = ? WHERE pr_key = ? AND state = 'pending'",
+        )
+        .run(now, prKey);
+    });
+  }
+
   setCondition(prKey: string, condition: StoredClaimCondition | null): void {
     this.db
       .prepare('UPDATE claims SET condition = ? WHERE pr_key = ?')
@@ -476,13 +503,22 @@ export class PullRequestFeedbackStore {
         input.now,
       );
     // Feedback that stopped showing and came back is pending again (a
-    // check re-run that failed the same way), for whoever owns it now.
+    // check re-run that failed the same way), and feedback still pending
+    // for a previous owner (its message was refused after a move) is now
+    // the current owner's.
     this.db
       .prepare(
         `UPDATE deliveries SET state = 'pending', settled_at = NULL, conversation_id = ?
-         WHERE pr_key = ? AND category = ? AND signature = ? AND state = 'superseded'`,
+         WHERE pr_key = ? AND category = ? AND signature = ?
+           AND (state = 'superseded' OR (state = 'pending' AND conversation_id != ?))`,
       )
-      .run(input.conversationId, input.prKey, input.category, input.signature);
+      .run(
+        input.conversationId,
+        input.prKey,
+        input.category,
+        input.signature,
+        input.conversationId,
+      );
     return readDelivery(
       this.db
         .prepare(
@@ -537,6 +573,17 @@ export class PullRequestFeedbackStore {
   }
 
   // Batches ------------------------------------------------------------------
+
+  /** Messages not yet settled by the inbox that carry this pull request. */
+  openBatchKeysFor(prKey: string): string[] {
+    return this.db
+      .prepare(
+        `SELECT DISTINCT batch_key FROM deliveries
+         WHERE pr_key = ? AND state IN ('submitting', 'queued') AND batch_key IS NOT NULL`,
+      )
+      .all(prKey)
+      .map((row) => str(row, 'batch_key'));
+  }
 
   /** The conversation's message not yet settled by the inbox, if any. */
   openBatch(conversationId: string): StoredBatch | undefined {
@@ -690,9 +737,14 @@ export class PullRequestFeedbackStore {
   prune(now: number): void {
     this.transaction(() => {
       for (const claim of this.allClaims()) {
+        const off =
+          !claim.settings.fixFailingChecks &&
+          !claim.settings.addressReviewComments &&
+          !claim.settings.reviewEachHead;
         if (
-          claim.condition?.state === 'closed' &&
-          now - Date.parse(claim.condition.at) > CLOSED_CLAIM_RETENTION_MS
+          (claim.condition?.state === 'closed' &&
+            now - Date.parse(claim.condition.at) > CLOSED_CLAIM_RETENTION_MS) ||
+          (off && now - Date.parse(claim.enabledAt) > CLOSED_CLAIM_RETENTION_MS)
         ) {
           for (const table of [
             'claims',

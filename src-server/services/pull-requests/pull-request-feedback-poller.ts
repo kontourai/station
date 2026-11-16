@@ -15,18 +15,24 @@
  * minutes once nothing changed for an hour; otherwise every 10. When the
  * owning agent's turn ends, that conversation's pull requests are read
  * again at once, at most once a minute each, so a push is seen before
- * anything stale is sent. A closed or merged pull request is read no more.
+ * anything stale is sent. A closed or merged pull request is read every six
+ * hours, and watched again if it reopens. A claim whose pull request is no
+ * longer linked to its conversation is released, not read.
  *
  * Not signed in to the forge: that host backs off 15 minutes (in memory)
  * and the claim reads `unavailable`; switches stay on. Rate limited: every
  * read backs off 15 minutes.
  */
 import { createHash } from 'node:crypto';
+import type { PullRequestLinkIdentity } from '@kontourai/station-contracts/conversation-pull-request-links';
 import type {
   PullRequestFeedbackObservation,
   PullRequestFeedbackObservationResult,
 } from '@kontourai/station-contracts/pull-request-feedback';
-import { pullRequestFeedbackSends } from '@kontourai/station-contracts/pull-request-feedback';
+import {
+  pullRequestFeedbackKey,
+  pullRequestFeedbackSends,
+} from '@kontourai/station-contracts/pull-request-feedback';
 import type { IPullRequestProvider } from '@kontourai/station-contracts/pull-request-provider';
 import { errorMessage } from '../../utils/error-message.js';
 import type {
@@ -48,8 +54,8 @@ const QUIET_INTERVAL_MS = 15 * MINUTE;
 const DEFAULT_INTERVAL_MS = 10 * MINUTE;
 const QUIET_AFTER_MS = 60 * MINUTE;
 const TURN_END_DEBOUNCE_MS = MINUTE;
-/** Never read again (a closed pull request). */
-const NEVER = Number.MAX_SAFE_INTEGER;
+/** A closed or merged pull request is read this rarely, in case it reopens. */
+const CLOSED_INTERVAL_MS = 6 * 60 * MINUTE;
 
 export interface PullRequestFeedbackPollerPorts {
   enabled(): boolean;
@@ -59,6 +65,8 @@ export interface PullRequestFeedbackPollerPorts {
   /** When the owning conversation's newest turn started or ended. */
   lastTurnAt(conversationId: string): number | undefined;
   delivery(): PullRequestFeedbackDelivery | undefined;
+  /** As the delivery's: a claim no longer linked is released, not read. */
+  linked?(conversationId: string): Promise<readonly PullRequestLinkIdentity[]>;
   readonly logger: {
     warn(message: string, meta?: Record<string, unknown>): void;
   };
@@ -116,12 +124,50 @@ export class PullRequestFeedbackPoller {
     await this.settled();
   }
 
+  /** Whether a claim is read at all; the lifecycle read is last (it costs most). */
   private polled(claim: PullRequestFeedbackClaim): boolean {
     return (
       pullRequestFeedbackSends(claim.settings) &&
-      claim.condition?.state !== 'closed' &&
       this.ports.session(claim.conversationId).state !== 'stopped'
     );
+  }
+
+  /** Whether the claim's pull request is still linked to its conversation. */
+  private async stillLinked(
+    store: PullRequestFeedbackStore,
+    claim: PullRequestFeedbackClaim,
+    cache: Map<string, Set<string>>,
+    now: number,
+  ): Promise<boolean> {
+    if (!this.ports.linked) return true;
+    let keys = cache.get(claim.conversationId);
+    if (!keys) {
+      keys = new Set(
+        (await this.ports.linked(claim.conversationId)).map(
+          pullRequestFeedbackKey,
+        ),
+      );
+      cache.set(claim.conversationId, keys);
+    }
+    if (keys.has(claim.prKey)) return true;
+    store.releaseClaim(claim.prKey, new Date(now).toISOString());
+    return false;
+  }
+
+  /** One read, unless another read of the same pull request is running. */
+  private async readOnce(
+    store: PullRequestFeedbackStore,
+    claim: PullRequestFeedbackClaim,
+    now: number,
+    signal: AbortSignal,
+  ): Promise<'observed' | 'unavailable' | 'rate-limited' | 'busy'> {
+    if (this.refreshing.has(claim.prKey)) return 'busy';
+    this.refreshing.add(claim.prKey);
+    try {
+      return await this.read(store, claim, now, signal);
+    } finally {
+      this.refreshing.delete(claim.prKey);
+    }
   }
 
   async poll(input: {
@@ -140,16 +186,20 @@ export class PullRequestFeedbackPoller {
     const signal = AbortSignal.any([input.signal, deadline]);
     const due = store
       .allClaims()
-      .filter((claim) => this.polled(claim))
+      .filter((claim) => pullRequestFeedbackSends(claim.settings))
       .map((claim) => ({ claim, at: store.nextDueAt(claim.prKey) }))
       .filter(({ at }) => at <= input.now)
       .sort((a, b) => a.at - b.at)
+      .filter(({ claim }) => this.polled(claim))
       .slice(0, MAX_PER_TICK);
     const touched = new Set<string>();
+    const linked = new Map<string, Set<string>>();
     let read = 0;
     for (const { claim } of due) {
       if (signal.aborted) break;
-      const outcome = await this.read(store, claim, input.now, signal);
+      if (!(await this.stillLinked(store, claim, linked, input.now))) continue;
+      const outcome = await this.readOnce(store, claim, input.now, signal);
+      if (outcome === 'busy') continue;
       read += 1;
       touched.add(claim.conversationId);
       if (outcome === 'rate-limited') {
@@ -186,25 +236,22 @@ export class PullRequestFeedbackPoller {
         await this.ports.delivery()?.deliver(conversationId);
         return;
       }
+      const linked = new Map<string, Set<string>>();
       for (const claim of store.claimsForConversation(conversationId)) {
-        if (!this.polled(claim) || this.refreshing.has(claim.prKey)) continue;
+        if (!this.polled(claim)) continue;
+        if (!(await this.stillLinked(store, claim, linked, now))) continue;
         const last = store.observation(claim.prKey);
         if (last && now - Date.parse(last.observedAt) < TURN_END_DEBOUNCE_MS)
           continue;
-        this.refreshing.add(claim.prKey);
-        try {
-          await this.read(
-            store,
-            claim,
-            now,
-            AbortSignal.any([
-              this.closing.signal,
-              AbortSignal.timeout(this.ports.deadlineMs ?? TICK_DEADLINE_MS),
-            ]),
-          );
-        } finally {
-          this.refreshing.delete(claim.prKey);
-        }
+        await this.readOnce(
+          store,
+          claim,
+          now,
+          AbortSignal.any([
+            this.closing.signal,
+            AbortSignal.timeout(this.ports.deadlineMs ?? TICK_DEADLINE_MS),
+          ]),
+        );
       }
       await this.ports.delivery()?.deliver(conversationId);
     } catch (error) {
@@ -273,9 +320,15 @@ export class PullRequestFeedbackPoller {
     const observedAt = new Date(now).toISOString();
     const unchangedSince =
       prior && prior.digest === digest ? prior.unchangedSince : observedAt;
-    if (claim.condition?.state === 'unavailable')
+    // A read that started earlier than one already stored says less.
+    const latest = store.observation(claim.prKey);
+    if (latest && Date.parse(latest.observedAt) > now) return 'observed';
+    if (
+      claim.condition?.state === 'unavailable' ||
+      (claim.condition?.state === 'closed' && observation.state === 'OPEN')
+    )
       store.setCondition(claim.prKey, null);
-    if (observation.state !== 'OPEN')
+    if (observation.state !== 'OPEN' && claim.condition?.state !== 'closed')
       store.setCondition(claim.prKey, { state: 'closed', at: observedAt });
     const lastTurn = this.ports.lastTurnAt(claim.conversationId);
     const waiting =
@@ -285,7 +338,7 @@ export class PullRequestFeedbackPoller {
       !!store.openBatch(claim.conversationId);
     const interval =
       observation.state !== 'OPEN'
-        ? NEVER - now
+        ? CLOSED_INTERVAL_MS
         : waiting ||
             (lastTurn !== undefined && now - lastTurn < ACTIVE_WINDOW_MS)
           ? ACTIVE_INTERVAL_MS

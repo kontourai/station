@@ -3,7 +3,6 @@
  * a provider whose one feedback read is scripted, and the real delivery
  * (with no inbox it only records and holds).
  */
-import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { PullRequestLinkIdentity } from '@kontourai/station-contracts/conversation-pull-request-links';
 import {
@@ -23,13 +22,11 @@ import {
   PullRequestFeedbackPoller,
 } from '../pull-request-feedback-poller.js';
 import { PullRequestFeedbackStore } from '../pull-request-feedback-store.js';
+import recordedFixture from './fixtures/github-feedback-observation.json' with {
+  type: 'json',
+};
 
-const recorded = JSON.parse(
-  readFileSync(
-    new URL('./fixtures/github-feedback-observation.json', import.meta.url),
-    'utf8',
-  ),
-);
+const recorded = structuredClone(recordedFixture) as any;
 const NOW = Date.parse('2026-11-10T12:00:00.000Z');
 const MINUTE = 60_000;
 const ON = {
@@ -91,7 +88,9 @@ function setup() {
     logger: { warn: vi.fn() },
   });
   let clock = NOW;
+  const links: { list?: PullRequestLinkIdentity[] } = {};
   const poller = new PullRequestFeedbackPoller({
+    linked: async () => links.list ?? [pr('1'), pr('2')],
     enabled: () => state.enabled,
     store: () => store,
     providers: () => [provider],
@@ -122,6 +121,7 @@ function setup() {
     turns,
     state,
     poller,
+    links,
     claim,
     poll,
     setClock: (at: number) => {
@@ -164,6 +164,7 @@ describe('pull request feedback detection', () => {
   it('a tick reads at most MAX_PER_TICK, oldest due first', async () => {
     const t = setup();
     expect(MAX_PER_TICK).toBe(20);
+    t.links.list = Array.from({ length: 25 }, (_, i) => pr(String(i + 1)));
     for (let ref = 1; ref <= 25; ref += 1)
       t.claim(pr(String(ref)), `chat-${ref}`);
     expect((await t.poll(NOW)).read).toBe(20);
@@ -262,5 +263,66 @@ describe('pull request feedback detection', () => {
     expect(await t.poll(NOW)).toEqual({ outcome: 'disabled', read: 0 });
     await t.poller.refresh('chat-a');
     expect(t.reads).toEqual([]);
+  });
+
+  it('a claim whose pull request is no longer linked is released, not read', async () => {
+    const t = setup();
+    t.claim(pr('1'), 'chat-a');
+    t.links.list = [];
+    await t.poll(NOW);
+    expect(t.reads).toEqual([]);
+    expect(t.store.claim(pullRequestFeedbackKey(pr('1')))?.settings).toEqual({
+      fixFailingChecks: false,
+      addressReviewComments: false,
+      reviewEachHead: false,
+    });
+  });
+
+  it('a closed pull request is read again hours later, and watched again when it reopened', async () => {
+    const t = setup();
+    const merged = structuredClone(recorded);
+    merged.data.repository.pullRequest.state = 'CLOSED';
+    t.claim(pr('1'), 'chat-a');
+    t.answers.set('1', () => ({
+      state: 'observed',
+      observation: normalizeGitHubFeedbackObservation(
+        merged,
+        pr('1'),
+        new Date(NOW).toISOString(),
+      )!,
+    }));
+    await t.poll(NOW);
+    const key = pullRequestFeedbackKey(pr('1'));
+    expect(t.store.claim(key)?.condition).toMatchObject({ state: 'closed' });
+    t.answers.delete('1');
+    await t.poll(NOW + 6 * 60 * MINUTE);
+    expect(t.reads).toHaveLength(2);
+    expect(t.store.claim(key)?.condition).toBeUndefined();
+  });
+
+  it('a read that started earlier never replaces a newer stored head', async () => {
+    const t = setup();
+    t.claim(pr('1'), 'chat-a');
+    const key = pullRequestFeedbackKey(pr('1'));
+    const observed = normalizeGitHubFeedbackObservation(
+      recorded,
+      pr('1'),
+      new Date(NOW).toISOString(),
+    )!;
+    // The turn-end refresh stored a newer head while the tick's read (which
+    // started at NOW) was still running.
+    t.store.writeObservation(key, {
+      observation: { ...observed, headSha: 'newer' },
+      observedAt: new Date(NOW + MINUTE).toISOString(),
+      unchangedSince: new Date(NOW + MINUTE).toISOString(),
+      digest: 'newer',
+    });
+    t.answers.set('1', () => ({
+      state: 'observed',
+      observation: { ...observed, headSha: 'older' },
+    }));
+    await t.poll(NOW);
+    expect(t.reads).toEqual(['github.com#1']);
+    expect(t.store.observation(key)?.observation.headSha).toBe('newer');
   });
 });
