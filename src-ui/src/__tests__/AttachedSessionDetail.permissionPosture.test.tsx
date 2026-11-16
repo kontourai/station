@@ -1583,6 +1583,28 @@ describe('a source still running in its own harness', () => {
     }
   });
 
+  // Review: with the caution already showing, Continue again moves focus
+  // back into it rather than doing nothing visible.
+  test('pressing Continue again while the caution shows moves focus into it', async () => {
+    window.localStorage.clear();
+    adoptOrchestrationSession.mockReset();
+    await renderAttached({
+      presentation: 'chat',
+      session: { attachedSourceActivity: { state: 'active' } },
+    });
+    fireEvent.click(continueButton());
+    const warning = await screen.findByTestId('attached-source-active');
+    const anyway = within(warning).getByRole('button', {
+      name: 'Continue anyway',
+    });
+    await waitFor(() => expect(document.activeElement).toBe(anyway));
+    continueButton().focus();
+    expect(document.activeElement).toBe(continueButton());
+    fireEvent.click(continueButton());
+    await waitFor(() => expect(document.activeElement).toBe(anyway));
+    expect(adoptOrchestrationSession).not.toHaveBeenCalled();
+  });
+
   test('a refusal of a stale read is announced and takes focus', async () => {
     window.localStorage.clear();
     vi.spyOn(console, 'error').mockImplementation(() => undefined);

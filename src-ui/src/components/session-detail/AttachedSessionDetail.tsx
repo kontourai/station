@@ -257,9 +257,10 @@ export function AttachedSessionDetail({
   // opens this same warning when the read here was stale.
   const sourceActive = session.attachedSourceActivity?.state === 'active';
   const [sourceActiveWarning, setSourceActiveWarning] = useState(false);
-  // The caution replaces the button that had focus, and its dismissal puts
-  // that button back, so focus follows each swap rather than falling to the
-  // page. Set beside the state change; applied once the swap has rendered.
+  // The caution is its own row under the origin, apart from Continue in
+  // Station. Opening it (or pressing Continue again while it shows) moves
+  // focus to Continue anyway; Not now moves it back to Continue. Set beside
+  // the state change; applied once the caution has rendered or gone.
   const focusAfterSwap = useRef<'caution' | 'continue' | null>(null);
   // Continue anyway removes the caution that had focus; if that request then
   // fails, focus goes to the retry rather than the page.
@@ -268,6 +269,11 @@ export function AttachedSessionDetail({
   const continueAnywayRef = useRef<HTMLButtonElement>(null);
   const sourceActiveNoteId = useId();
   const showSourceActiveWarning = useCallback(() => {
+    // Already showing: nothing re-renders, so focus moves now.
+    if (continueAnywayRef.current) {
+      continueAnywayRef.current.focus();
+      return;
+    }
     focusAfterSwap.current = 'caution';
     setSourceActiveWarning(true);
   }, []);

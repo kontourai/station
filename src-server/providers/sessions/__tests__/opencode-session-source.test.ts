@@ -345,6 +345,38 @@ describe('OpenCodeSessionSource', () => {
     expect(after.sourceWriteAt).toBe(new Date(streamed).toISOString());
   });
 
+  // Review: each write input stands alone, with no part row moving.
+  test("reports a streaming message row's own write and a session row's own write", async () => {
+    const dataDir = join(fixtureRoot(), 'opencode');
+    const store = writer(dataDir);
+    store.session('ses_main', '/workspace/project');
+    const user = store.user('ses_main', ['Long task']);
+    const running = store.assistant('ses_main', user, { completed: false });
+    const source = new OpenCodeSessionSource({ dataDir });
+    const session = (await source.discover()).sessions[0]!;
+    const before = await source.read(session);
+    expect(before.outcome).toBe('incomplete_tail');
+
+    const messageWrite = store.tick();
+    store.db
+      .prepare('UPDATE message SET time_updated = ? WHERE id = ?')
+      .run(messageWrite, running);
+    const afterMessage = await source.read(session, before.cursor);
+    expect(afterMessage.events).toEqual([]);
+    expect(afterMessage.sourceWriteAt).toBe(
+      new Date(messageWrite).toISOString(),
+    );
+
+    const sessionWrite = store.tick();
+    store.db
+      .prepare('UPDATE session SET time_updated = ? WHERE id = ?')
+      .run(sessionWrite, 'ses_main');
+    const afterSession = await source.read(session, afterMessage.cursor);
+    expect(afterSession.sourceWriteAt).toBe(
+      new Date(sessionWrite).toISOString(),
+    );
+  });
+
   test('a prompt queued during a reply does not settle the reply early', async () => {
     const dataDir = join(fixtureRoot(), 'opencode');
     const store = writer(dataDir);

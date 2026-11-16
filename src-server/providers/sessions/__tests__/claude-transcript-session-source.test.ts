@@ -136,6 +136,51 @@ describe('ClaudeTranscriptSessionSource', () => {
       expect((await past.read(again!)).sourceWriteAt).toBe(main.toISOString());
     });
 
+    // Review: subagent transcripts are read only inside the projects root.
+    // A session folder, or its subagents folder, linked elsewhere is not read.
+    test('a session or subagents folder linked outside the projects root is not read', async () => {
+      const now = Date.now();
+      for (const linked of ['session', 'subagents'] as const) {
+        const root = fixtureDir();
+        const outside = fixtureDir();
+        const directory = join(root, 'projects', 'encoded-project');
+        mkdirSync(directory, { recursive: true });
+        const transcript = join(directory, 'session-a.jsonl');
+        writeFileSync(
+          transcript,
+          record({
+            type: 'user',
+            uuid: 'user-1',
+            sessionId: 'session-a',
+            cwd: '/workspace/project',
+            timestamp: '2026-07-22T00:00:00.000Z',
+            message: { role: 'user', content: 'delegate' },
+          }),
+        );
+        const main = new Date(now - 10 * 60_000);
+        stamp(transcript, main);
+        const outsideSubagents = join(outside, 'subagents');
+        mkdirSync(outsideSubagents, { recursive: true });
+        subagent(outsideSubagents, 'agent-0', new Date(now - 30_000));
+        if (linked === 'session') {
+          symlinkSync(outside, join(directory, 'session-a'), 'dir');
+        } else {
+          mkdirSync(join(directory, 'session-a'), { recursive: true });
+          symlinkSync(
+            outsideSubagents,
+            join(directory, 'session-a', 'subagents'),
+            'dir',
+          );
+        }
+        const source = new ClaudeTranscriptSessionSource({ configDir: root });
+        const [session] = (await source.discover()).sessions;
+        expect(
+          (await source.read(session!)).sourceWriteAt,
+          `${linked} folder linked outside`,
+        ).toBe(main.toISOString());
+      }
+    });
+
     test('a scan is reused while the directory is unchanged, for 25 seconds', async () => {
       const root = fixtureDir();
       let clock = Date.now();
