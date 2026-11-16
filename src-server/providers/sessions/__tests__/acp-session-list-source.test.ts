@@ -152,6 +152,44 @@ describe('AcpSessionListSource', () => {
     await manager.shutdown();
   });
 
+  test('the follower does not import a listed session Station itself runs', async () => {
+    vi.stubEnv(ACP_SESSION_LISTING_ENV, '1');
+    const { manager } = await managerWith('antigravity-1.5.8');
+    const captured = capturedAgent('antigravity-1.5.8').list!.result!
+      .sessions as Array<{ sessionId: string }>;
+    const owned = captured[0]!.sessionId;
+    // Station's own ACP session: its resume cursor names the agent session.
+    store.upsertSession({
+      threadId: 'station-owned-acp',
+      provider: 'acp',
+      status: 'ready',
+      resumeCursor: { acpSessionId: owned },
+      createdAt: '2026-10-01T12:00:00.000Z',
+      updatedAt: '2026-10-01T12:00:00.000Z',
+    });
+    const source = new AcpSessionListSource({
+      listings: () => manager.sessionListings(),
+    });
+    const ownedThread = (await source.discover()).sessions.find(
+      (s) => s.sessionId === owned,
+    )!.threadId;
+
+    await new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus: new EventBus(),
+      listProjects: () => [],
+    }).pollNow();
+    const attached = store
+      .readSessions()
+      .filter((session) => session.controlMode === 'read-only-attached');
+    expect(attached).toHaveLength(captured.length - 1);
+    expect(attached.map((session) => session.threadId)).not.toContain(
+      ownedThread,
+    );
+    await manager.shutdown();
+  });
+
   test('lists nothing unless opted in, and nothing for an agent that does not advertise session/list', async () => {
     const off = await managerWith('antigravity-1.5.8');
     expect(off.double.extMethod).not.toHaveBeenCalled();
