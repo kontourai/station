@@ -58,7 +58,7 @@ whitespace, test temp-dir, documentation-freshness and commit checks plus
 scoped transfer, static and SDK checks; the new-export check only warns.
 
 Of the steps this hook gained in 2026-11, three can refuse a push, each only
-on a finding in the pushed commit, reported with a dedicated exit status (10):
+on a finding in the pushed commit, reported with a dedicated exit status (40):
 trailing whitespace or a conflict marker, a raw `mkdtemp` in a test file, and
 a stale recorded review on a clean checkout of the pushed commit. The
 new-export check and the main-conflict check only warn, and so does every
