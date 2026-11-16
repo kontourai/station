@@ -1429,16 +1429,20 @@ work, with Settled at the bottom by default. Shelf menus offer Move up and
 Move down; that order is saved on this device within expanded and collapsed
 shelves. The inbox header is one line: search, the
 work scope picker (its "Show work" label kept for assistive technology), and
-New chat; a notice under it appears only while the scope hides work that needs
-the person (2026-11-15). Search also finds dismissed work; there is no Dismissed shelf in
+New chat. Work the scope hides that needs the person is a count badge on the
+picker, which shows all work (2026-11-16); the phone keeps its "Show all"
+notice. Search also finds dismissed work; there is no Dismissed shelf in
 the normal list. Third-party sessions can be hidden without stopping the
 external harness, and stay hidden through its status updates. Adoption into
 Station restores their normal status handling. Task family summaries use an
 explicit Open task control; chat rows open chats. Browse all conversations
 sits at the end of the list and retains paginated history, rename and delete.
 The inbox has no overflow menu: a failed read offers Retry, disabled while the
-re-read runs. A card row reads its title and time first, then its status line,
-then agent and project. Dismissal offers a
+re-read runs. A card row reads its title and time first. On a hover row the
+second and last line is the agent's mark, the status and the project (the
+project gives way first); the mark's tooltip and the hover card name the
+agent, and a row with no mark keeps the agent in words. A touch row keeps
+the agent named in words beside its mark (#4266). Dismissal offers a
 transient Undo toast and the configurable inbox Undo shortcut. Native editor
 and terminal undo retain their keys.
 
