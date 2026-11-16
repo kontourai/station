@@ -51,13 +51,28 @@ test('a narrow side region keeps the selected tab’s name readable beside its b
   try {
     const out = resolve('.kontourai/shell-chrome');
     mkdirSync(out, { recursive: true });
-    for (const width of [400, 320, 240]) {
+    // The shell's own fonts, and a wide face standing in for the wider
+    // fallback metrics a Linux runner draws with (DejaVu Sans): the names
+    // must stay readable under both.
+    for (const [face, width] of [
+      ['default', 400],
+      ['default', 320],
+      ['default', 240],
+      ['wide', 320],
+      ['wide', 240],
+    ] as const) {
+      const label = `${width}px ${face}`;
       await page.goto(`http://station.test/?w=${width}`);
       await page.addStyleTag({
         content: resolveCssImports(
           resolve(import.meta.dirname, '../index.css'),
         ),
       });
+      if (face === 'wide')
+        await page.addStyleTag({
+          content:
+            ".region-chrome, .region-chrome * { font-family: Verdana, 'DejaVu Sans', sans-serif !important; }",
+        });
       await page.evaluate(() =>
         document.documentElement.setAttribute('data-theme', 'dark'),
       );
@@ -69,27 +84,34 @@ test('a narrow side region keeps the selected tab’s name readable beside its b
       );
       await page
         .locator('.region-chrome')
-        .screenshot({ path: `${out}/region-tabs-${width}-dark.png` });
+        .screenshot({ path: `${out}/region-tabs-${width}-${face}-dark.png` });
       const geometry = await page.evaluate(() => {
         const strip = document.querySelector('.region-tabs')!;
         const tab = document.querySelector<HTMLElement>(
           '[role="tab"][aria-selected="true"]',
         )!;
+        const other = document
+          .querySelector('[role="tab"][aria-selected="false"]')!
+          .closest('.region-tabs__item')!;
         const s = strip.getBoundingClientRect();
         const t = tab.getBoundingClientRect();
+        const em = Number.parseFloat(getComputedStyle(other).fontSize);
         return {
           scrolls: strip.scrollWidth > strip.clientWidth + 1,
           clipped: tab.scrollWidth > tab.clientWidth + 1,
           inside: t.left >= s.left - 0.5 && t.right <= s.right + 0.5,
+          // The other tab, against the 4em it may shrink to.
+          otherAtFloor: other.getBoundingClientRect().width <= 4 * em + 1,
         };
       });
-      expect(geometry.clipped, `${width}px`).toBe(false);
-      expect(geometry.inside, `${width}px`).toBe(true);
-      // At the side region's usual widths the other tab gives way instead of
-      // the strip scrolling; only a bar narrower than that scrolls, and then
-      // to the selected tab.
-      if (width >= 320) expect(geometry.scrolls, `${width}px`).toBe(false);
-      else expect(geometry.scrolls, `${width}px`).toBe(true);
+      // Whatever the font: the selected tab's name is whole and in view.
+      expect(geometry.clipped, label).toBe(false);
+      expect(geometry.inside, label).toBe(true);
+      // The other tab gives way first: the strip scrolls only once it has
+      // shrunk to its floor, and at the side region's usual widths it never
+      // needs to.
+      if (geometry.scrolls) expect(geometry.otherAtFloor, label).toBe(true);
+      if (width >= 320) expect(geometry.scrolls, label).toBe(false);
     }
     expect(errors).toEqual([]);
   } finally {

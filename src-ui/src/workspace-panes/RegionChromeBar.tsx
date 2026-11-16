@@ -487,10 +487,13 @@ function RegionTabStrip({
       if (!item) return;
       const bounds = strip.getBoundingClientRect();
       const box = item.getBoundingClientRect();
-      if (box.right > bounds.right)
-        strip.scrollLeft += box.right - bounds.right;
-      else if (box.left < bounds.left)
+      // A tab wider than the strip (its name plus its close button, with
+      // wide font metrics) shows from its start, so its name is the part in
+      // view; otherwise the whole tab comes into view.
+      if (box.width > bounds.width || box.left < bounds.left)
         strip.scrollLeft -= bounds.left - box.left;
+      else if (box.right > bounds.right)
+        strip.scrollLeft += box.right - bounds.right;
     };
     reveal();
     if (typeof ResizeObserver === 'undefined') return;
