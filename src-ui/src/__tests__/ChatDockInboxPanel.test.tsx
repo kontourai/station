@@ -1086,15 +1086,94 @@ describe('ChatDockInboxPanel exit presentation (#3309)', () => {
       expect(onRefresh).toHaveBeenCalledOnce();
     });
 
-    it('shows a running resync and does not start a second one', () => {
+    it('a failed read that is already re-reading offers no second Retry', () => {
+      const onRefresh = vi.fn();
+      renderPanel({ sync: { failed: true, refreshing: true, onRefresh } });
+      const retry = screen.getByRole('button', { name: 'Retrying…' });
+      expect(retry).toHaveProperty('disabled', true);
+      fireEvent.click(retry);
+      expect(onRefresh).not.toHaveBeenCalled();
+    });
+
+    it('a retry whose start clears the failure keeps its notice until the re-read settles', () => {
       const onRefresh = vi.fn();
       renderPanel({ sync: { failed: false, refreshing: true, onRefresh } });
-      fireEvent.click(screen.getByRole('button', { name: 'Inbox actions' }));
-      const refresh = screen.getByRole('menuitem', { name: 'Refreshing…' });
-      expect(refresh).toHaveProperty('disabled', true);
-      fireEvent.click(refresh);
-      expect(onRefresh).not.toHaveBeenCalled();
-      expect(screen.queryByText(/Couldn't refresh/)).toBeNull();
+      expect(screen.getByRole('alert').textContent).toContain(
+        'Showing the last known list.',
+      );
+      expect(screen.getByRole('button', { name: 'Retrying…' })).toHaveProperty(
+        'disabled',
+        true,
+      );
     });
+
+    it('a healthy list shows no refresh control at all', () => {
+      renderPanel({
+        sync: { failed: false, refreshing: false, onRefresh: vi.fn() },
+      });
+      expect(
+        screen.queryByRole('button', { name: /Retry|Refresh/ }),
+      ).toBeNull();
+    });
+  });
+
+  describe('toolbar and footer', () => {
+    it('search, scope and New chat share one toolbar line, with no Inbox ⋯ menu', () => {
+      renderPanel({ onNewChat: vi.fn() });
+      const toolbar = document.querySelector(
+        '.chat-dock-inbox__toolbar',
+      ) as HTMLElement;
+      expect(
+        within(toolbar).getByRole('searchbox', { name: 'Search inbox' }),
+      ).toBeTruthy();
+      expect(
+        within(toolbar).getByRole('combobox', { name: 'Inbox scope' }),
+      ).toBeTruthy();
+      expect(
+        within(toolbar).getByRole('button', { name: 'New chat' }),
+      ).toBeTruthy();
+      expect(
+        screen.queryByRole('button', { name: 'Inbox actions' }),
+      ).toBeNull();
+      // The scope's visible label gave its width to search; its name stays.
+      expect(
+        toolbar.querySelector('.chat-dock-inbox__scope label > span')
+          ?.className,
+      ).toBe('sr-only');
+    });
+
+    it('Browse all conversations closes the list and opens history', () => {
+      const { props } = renderPanel();
+      const browse = screen.getByRole('button', {
+        name: 'Browse all conversations',
+      });
+      // At the end of the list, after the last group.
+      const scroll = document.querySelector('.chat-dock-inbox__scroll')!;
+      expect(scroll.lastElementChild).toBe(browse);
+      fireEvent.click(browse);
+      expect(props.onOpenHistory).toHaveBeenCalledOnce();
+    });
+  });
+
+  it('a row reads what, then its state, then who: title and time lead', () => {
+    renderPanel();
+    const row = screen
+      .getByRole('button', { name: /^active title/ })
+      .closest('.inbox-row__open') as HTMLElement;
+    const lines = Array.from(row.children).map((child) => child.className);
+    expect(lines.slice(0, 3)).toEqual([
+      'inbox-row__headline',
+      expect.stringContaining('inbox-row__status'),
+      'inbox-row__meta',
+    ]);
+    const headline = row.querySelector('.inbox-row__headline')!;
+    expect(headline.querySelector('.inbox-row__title')?.textContent).toBe(
+      'active title',
+    );
+    expect(headline.querySelector('.inbox-row__time')?.textContent).toBe('1m');
+    expect(row.querySelector('.inbox-row__meta .inbox-row__time')).toBeNull();
+    expect(row.querySelector('.inbox-row__agent')?.textContent).toBe(
+      'active agent',
+    );
   });
 });

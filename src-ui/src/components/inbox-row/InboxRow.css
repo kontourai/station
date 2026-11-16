@@ -2,11 +2,13 @@
  * The shared inbox row (#3043): the dock inbox, the mobile sheet, Home's work
  * lanes and the sidebar's open chats all render this.
  *
- * Fixed line budget: meta, title, one status line, and a chip line that
- * exists only when a chip does. Every line is a single non-wrapping line, so
- * a row's height is decided by which lines it has and never by their text.
+ * Fixed line budget: the headline (title and time), one status line, the
+ * meta line (agent and project), and a chip line that exists only when a chip
+ * does. Every line is a single non-wrapping line, so a row's height is decided
+ * by which lines it has and never by their text. What the row is about comes
+ * first; who and where, last.
  *
- * The time at the end of the meta line and the hover/focus actions share one
+ * The time at the end of the headline and the hover/focus actions share one
  * slot. The actions are absolutely positioned over that slot, so revealing
  * them moves nothing: no reflow, no height change, no text shift.
  */
@@ -85,7 +87,22 @@
   outline-offset: -2px;
 }
 
-/* Meta line: agent mark, agent and project, then the time slot. */
+/* Headline: the title, then the time slot the hover actions cover. */
+.inbox-row__headline {
+  display: flex;
+  min-width: 0;
+  /* One line tall, like the meta line it replaced at the top: the hover
+     actions' offset (--inbox-row-action-top) centres them on this line. */
+  height: var(--inbox-row-line);
+  align-items: center;
+  gap: var(--k-space-2);
+}
+.inbox-row__headline > .inbox-row__title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Meta line: agent mark, agent and project. */
 .inbox-row__meta {
   display: flex;
   min-width: 0;

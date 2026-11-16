@@ -1371,23 +1371,16 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
           page.getByText('Couldn’t refresh the inbox.', { exact: true }),
         ).toBeVisible();
         const inbox = page.getByRole('complementary', { name: 'Inbox chats' });
-        await inbox
-          .getByRole('button', { name: 'Inbox actions', exact: true })
-          .click();
-        await page
-          .getByRole('menuitem', { name: 'Refresh inbox', exact: true })
-          .click();
-        await inbox
-          .getByRole('button', { name: 'Inbox actions', exact: true })
-          .click();
-        const refreshing = page.getByRole('menuitem', {
-          name: 'Refreshing…',
+        // The failed read's Retry is the inbox's refresh (#5029).
+        await inbox.getByRole('button', { name: 'Retry', exact: true }).click();
+        const refreshing = inbox.getByRole('button', {
+          name: 'Retrying…',
           exact: true,
         });
         await expect(refreshing).toBeVisible();
         await expect(refreshing).toBeDisabled();
         await expect.poll(() => inventoryReads).toBe(1);
-        // Each attempt reaches the real disabled menu item and must fail
+        // Each attempt reaches the real disabled Retry and must fail
         // actionability for that reason, without issuing another read.
         for (let i = 0; i < 5; i++) {
           await expect(refreshing.click({ timeout: 200 })).rejects.toThrow(
@@ -1399,10 +1392,10 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
         await expect(
           page.getByText('Couldn’t refresh the inbox.', { exact: true }),
         ).toBeHidden();
-        await expect(
-          page.getByRole('menuitem', { name: 'Refresh inbox', exact: true }),
-        ).toBeEnabled();
-        await page.keyboard.press('Escape');
+        // A healthy list offers no refresh control at all.
+        await expect(inbox.getByRole('button', { name: /^Retry/ })).toHaveCount(
+          0,
+        );
         const row = page
           .locator('.chat-dock-inbox [data-testid="inbox-row"]')
           .filter({ hasText: 'Mismatch demo chat' });
@@ -1599,7 +1592,10 @@ function overlayDockProjectMismatchHooks(
           await expect(
             page
               .getByRole('complementary', { name: 'Inbox chats' })
-              .getByRole('button', { name: 'Inbox actions', exact: true }),
+              .getByRole('button', {
+                name: 'Browse all conversations',
+                exact: true,
+              }),
           ).toBeVisible();
           await expect(
             page.getByText('Couldn’t refresh the inbox.', { exact: true }),
