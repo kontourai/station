@@ -1425,7 +1425,9 @@ continues to follow its existing close-on-merge setting. Linked pull requests
 alone do not automatically settle standalone conversations.
 
 Every populated shelf can be collapsed; collapsed shelves sit below expanded
-work, with Settled at the bottom by default. Shelf menus offer Move up and
+work, with Settled at the bottom by default. With no shelf expanded they stack
+from the top of the list. A collapsed shelf still lists the row of the chat on
+screen, so the open chat is never hidden from the inbox. Shelf menus offer Move up and
 Move down; that order is saved on this device within expanded and collapsed
 shelves. The inbox header is one line: search, the
 work scope picker (its "Show work" label kept for assistive technology), and

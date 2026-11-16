@@ -1776,8 +1776,23 @@ button:hover {
 
 .region-tabs__item {
   display: flex;
-  flex: 0 0 auto;
+  /* Unselected tabs give way first, down to a few letters with an ellipsis,
+     so a narrow side bar keeps the selected pane's name whole instead of
+     scrolling it out behind the bar's buttons ("Agen"). */
+  flex: 0 1 auto;
+  min-width: 4em;
   align-items: center;
+}
+
+.region-tabs__item:has(> [aria-selected="true"]) {
+  flex-shrink: 0;
+  min-width: max-content;
+}
+
+.region-tabs__item > .region-tabs__tab {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .region-tabs__tab {

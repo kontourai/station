@@ -471,6 +471,33 @@ function RegionTabStrip({
   onOpenMove: (tab: RegionChromeTab, anchor: RegionMoveState['anchor']) => void;
 }) {
   const [dragging, setDragging] = useState<string | null>(null);
+  // The strip scrolls when the bar is too narrow for every tab; it keeps the
+  // selected tab in view, so the name of the pane on screen is never the one
+  // cut off behind the bar's buttons ("Agen").
+  const stripRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const strip = stripRef.current;
+    if (!strip || selectedSurfaceId === undefined || tabs.length === 0) return;
+    const reveal = () => {
+      const item = Array.from(
+        strip.querySelectorAll<HTMLElement>('[data-region-tab]'),
+      )
+        .find((tab) => tab.dataset.regionTab === selectedSurfaceId)
+        ?.closest('.region-tabs__item');
+      if (!item) return;
+      const bounds = strip.getBoundingClientRect();
+      const box = item.getBoundingClientRect();
+      if (box.right > bounds.right)
+        strip.scrollLeft += box.right - bounds.right;
+      else if (box.left < bounds.left)
+        strip.scrollLeft -= bounds.left - box.left;
+    };
+    reveal();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(reveal);
+    observer.observe(strip);
+    return () => observer.disconnect();
+  }, [selectedSurfaceId, tabs]);
   const tabAt = (x: number, y: number): number => {
     const element = document.elementFromPoint(x, y);
     const target =
@@ -515,6 +542,7 @@ function RegionTabStrip({
   const endDrag = () => setDragging(null);
   return (
     <div
+      ref={stripRef}
       role="tablist"
       aria-label="Region panes"
       className="region-tabs"
