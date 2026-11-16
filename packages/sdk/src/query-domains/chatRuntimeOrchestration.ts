@@ -1,4 +1,8 @@
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
+import {
+  CHILD_WORK_TRANSCRIPT_PAGE_MAX,
+  type ChildWorkTranscriptPage,
+} from '@kontourai/station-contracts/child-work';
 import type { ConversationContextBoundaryProjection } from '@kontourai/station-contracts/conversation-context-boundary';
 import type { EngineCommandOutcome } from '@kontourai/station-contracts/engine-commands';
 import type { HarnessQuestionAnswers } from '@kontourai/station-contracts/harness-questions';
@@ -19,8 +23,14 @@ import type {
   SessionRewindOutcome,
 } from '@kontourai/station-contracts/provider';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
-import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
-import { useContext } from 'react';
+import {
+  type InfiniteData,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
+import { useCallback, useContext, useEffect, useMemo } from 'react';
 import { apiErrorMessage } from '../api-core';
 import { StationHttpError } from '../client/api-error-message';
 import { ChatHttpError } from '../client/chatHttpError';
@@ -737,6 +747,164 @@ export function useChildWorkTranscriptQuery(
     staleTime: 30_000,
     refetchInterval: input.running ? 2_000 : false,
   });
+}
+
+/** Where a page of a child's transcript is read from. */
+type ChildTranscriptPageParam =
+  | { kind: 'tail' }
+  | { kind: 'before'; end: number }
+  | { kind: 'range'; offset: number; end: number };
+
+/**
+ * An engine subagent's transcript read the way a chat reads: the latest
+ * messages first, older ones on request (`fetchPreviousPage`, shown above),
+ * and, while the child runs, only what follows the last message read. A
+ * poll reads from that cursor and appends; it never re-reads loaded pages.
+ * `refreshLatest` reads past the cursor now (for a reported change, or the
+ * settle that carries the last messages); `reload` starts again from the
+ * latest messages.
+ */
+export function useChildWorkTranscriptTailQuery(
+  input: {
+    threadId: string;
+    childId: string;
+    enabled?: boolean;
+    /** Poll past the cursor every two seconds while the child runs. */
+    running?: boolean;
+    requestScope?: ApiRequestScope;
+  },
+  apiBase?: string,
+) {
+  const client = useQueryClient();
+  const enabled =
+    (input.enabled ?? true) &&
+    input.threadId.length > 0 &&
+    input.childId.length > 0;
+  const authorityKey = input.requestScope?.authorityKey ?? null;
+  const key = useMemo(
+    () => [
+      'orchestration-child-work-transcript-tail',
+      apiBase ?? 'default',
+      input.threadId,
+      input.childId,
+      authorityKey,
+    ],
+    [apiBase, input.threadId, input.childId, authorityKey],
+  );
+  const read = async (
+    page: { offset?: number; limit: number; tail?: boolean },
+    signal: AbortSignal,
+  ) =>
+    getChildWorkTranscript(
+      await resolveApiBase(apiBase),
+      input.threadId,
+      input.childId,
+      page,
+      {
+        signal,
+        ...(input.requestScope ? { requestScope: input.requestScope } : {}),
+      },
+    );
+  const history = useInfiniteQuery<
+    ChildWorkTranscriptPage,
+    Error,
+    InfiniteData<ChildWorkTranscriptPage, ChildTranscriptPageParam>,
+    unknown[],
+    ChildTranscriptPageParam
+  >({
+    queryKey: key,
+    enabled,
+    initialPageParam: { kind: 'tail' },
+    queryFn: ({ pageParam, signal }) => {
+      if (pageParam.kind === 'tail')
+        return read(
+          { tail: true, limit: CHILD_WORK_TRANSCRIPT_PAGE_SIZE },
+          signal,
+        );
+      if (pageParam.kind === 'range')
+        return read(
+          {
+            offset: pageParam.offset,
+            limit: Math.max(1, pageParam.end - pageParam.offset),
+          },
+          signal,
+        );
+      const offset = Math.max(
+        0,
+        pageParam.end - CHILD_WORK_TRANSCRIPT_PAGE_SIZE,
+      );
+      return read({ offset, limit: pageParam.end - offset }, signal);
+    },
+    // Older messages are the previous pages: they render above.
+    getPreviousPageParam: (first) =>
+      first.offset !== undefined && first.offset > 0
+        ? { kind: 'before', end: first.offset }
+        : undefined,
+    // Later messages arrive through the cursor read below, never by
+    // re-reading pages.
+    getNextPageParam: () => undefined,
+    retry: false,
+    staleTime: Number.POSITIVE_INFINITY,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+  const pages = history.data?.pages;
+  const cursor = pages?.[pages.length - 1]?.endOffset;
+  const since = useQuery({
+    queryKey: [...key, 'since', cursor ?? null],
+    // Also read once per mount and on window focus, so a reopened reader,
+    // or one whose `running` is stale, still catches up past its cursor.
+    enabled: enabled && cursor !== undefined,
+    queryFn: ({ signal }) =>
+      read({ offset: cursor!, limit: CHILD_WORK_TRANSCRIPT_PAGE_MAX }, signal),
+    retry: false,
+    staleTime: 0,
+    gcTime: 0,
+    refetchInterval: input.running ? 2_000 : false,
+  });
+  const latest = since.data;
+  useEffect(() => {
+    if (
+      !latest ||
+      latest.offset === undefined ||
+      latest.endOffset === undefined ||
+      latest.endOffset <= latest.offset
+    )
+      return;
+    const { offset, endOffset } = latest;
+    client.setQueryData<
+      InfiniteData<ChildWorkTranscriptPage, ChildTranscriptPageParam>
+    >(key, (data) =>
+      data && data.pages[data.pages.length - 1]?.endOffset === offset
+        ? {
+            pages: [...data.pages, latest],
+            pageParams: [
+              ...data.pageParams,
+              {
+                kind: 'range',
+                offset,
+                end: endOffset,
+              },
+            ],
+          }
+        : data,
+    );
+  }, [latest, client, key]);
+  const { refetch: refetchSince } = since;
+  const refreshLatest = useCallback(() => {
+    if (cursor !== undefined) void refetchSince();
+  }, [cursor, refetchSince]);
+  const reload = useCallback(
+    () => void client.resetQueries({ queryKey: key, exact: true }),
+    [client, key],
+  );
+  return {
+    ...history,
+    /** The cursor read failed; loaded messages stay. */
+    latestError: since.error,
+    refreshLatest,
+    reload,
+  };
 }
 
 export function useChildWorkInstructionsQuery(

@@ -446,12 +446,14 @@ export async function getChildWorkTranscript(
   apiBase: string,
   threadId: string,
   childId: string,
-  page: { offset?: number; limit?: number } = {},
+  /** `tail` reads the latest `limit` messages and names no offset. */
+  page: { offset?: number; limit?: number; tail?: boolean } = {},
   opts?: ClientRequestOptions,
 ): Promise<ChildWorkTranscriptPage> {
   const query = new URLSearchParams();
   if (page.offset !== undefined) query.set('offset', String(page.offset));
   if (page.limit !== undefined) query.set('limit', String(page.limit));
+  if (page.tail) query.set('tail', '1');
   const suffix = query.size > 0 ? `?${query}` : '';
   const response = await getJson(
     `${apiBase}/api/orchestration/sessions/${encodeURIComponent(threadId)}/child-work/${encodeURIComponent(childId)}/transcript${suffix}`,

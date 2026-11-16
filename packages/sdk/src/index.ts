@@ -1005,6 +1005,7 @@ export {
   useCheckACPConnectionMutation,
   useChildWorkInstructionsQuery,
   useChildWorkTranscriptQuery,
+  useChildWorkTranscriptTailQuery,
   useClearAppHomeProfileMutation,
   useClearFeedbackAnalysisMutation,
   useClearNotificationActivityMutation,
