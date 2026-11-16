@@ -671,6 +671,7 @@ import {
   type PairingScopeContextStore,
   refusedOnWebSocket,
 } from '../../security/pairing-route-scopes.js';
+import { runtimeRemoteStationReadAuthority } from '../../security/remote-station-read-authority.js';
 import {
   attestedBrowserVisibleHost,
   attestedProxyPeerAddress,
@@ -979,7 +980,7 @@ import {
   type NativeDeviceProofBindingService,
   NativeDeviceProofOperatorAuthority,
 } from '../../services/ssh/native-device-proof-binding-service.js';
-import { searchConnectedRemoteMessages } from '../../services/ssh/remote-session-reader.js';
+import { runtimeRemoteMessageSearch } from '../../services/ssh/remote-session-reader.js';
 import type { SshEnvironmentService } from '../../services/ssh/ssh-environment-service.js';
 import {
   createStarterOwnerAdapter,
@@ -10757,6 +10758,9 @@ export function configureRuntimeRoutes(
       context.sshEnvironmentService,
       undefined,
       peerCredentialStore,
+      undefined,
+      undefined,
+      runtimeRemoteStationReadAuthority(context.environmentSecurityService),
     ),
   );
   // station#1123 slice 2: outbound peer-credential admin routes. Gated to
@@ -12441,14 +12445,11 @@ export function configureRuntimeRoutes(
       conversationAcknowledgements,
       conversationReadAuthorityForRequest,
       context.orchestrationService,
-      (query, signal) =>
-        searchConnectedRemoteMessages(
-          context.sshEnvironmentService,
-          query,
-          signal,
-          undefined,
-          peerCredentialStore,
-        ),
+      runtimeRemoteMessageSearch(
+        runtimeRemoteStationReadAuthority(context.environmentSecurityService),
+        context.sshEnvironmentService,
+        peerCredentialStore,
+      ),
       context.environmentSecurityService,
       readMarkers,
     ),

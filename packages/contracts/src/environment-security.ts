@@ -1237,6 +1237,14 @@ export interface StationCapabilityFlags {
   /** SSH environment management (`src-server/services/ssh/`, `/api/ssh-environments`). */
   sshEnvironments?: boolean;
   /**
+   * `GET /api/environments/ssh/sessions/:environmentId/:threadId/history`
+   * relays one bounded, read-only history page of a session that lives on a
+   * connected SSH environment's Station. A host without it answers 404 for
+   * that path, which a client cannot tell from a missing session, so clients
+   * gate opening a remote session on this flag.
+   */
+  remoteSessionHistory?: boolean;
+  /**
    * Review, recall and briefing for private memory
    * (`/api/knowledge/memory/queue|recall|brief|measurement`). The routes also
    * need the `private-memory` preview; absent on hosted deployments, which

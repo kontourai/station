@@ -470,6 +470,13 @@ sessions and OpenCode's session database through its Session sources. A
 external process. Missing files or stale observations do not prove that
 the external engine is live or controllable.
 
+Each Station reads only its own computer's provider files. Sessions on another
+computer reach this Station through that computer's own Station over a
+connected SSH environment: the [remote session reader](../src-server/services/ssh/remote-session-reader.ts)
+lists them and relays one bounded, read-only history page when a row is
+opened. No transcript path or source handle crosses that connection, and no
+per-computer daemon runs.
+
 Command ownership checks refuse mutations of the original attached execution.
 Adoption is a deliberate exception that can create an independently authorized
 child Session; it does not confer control over the original process. Follow

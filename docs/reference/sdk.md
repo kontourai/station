@@ -1913,6 +1913,36 @@ explicit captured scope. The generic wrapper does not add authority, validate a
 response, or partition an arbitrary caller-supplied key. Follow each operation's
 scope contract rather than assuming every SDK query is interchangeable.
 
+### Remote session history
+
+`fetchRemoteSessionHistory(environmentId, threadId, { cursor?, turnLimit? },
+{ apiBase?, requestScope?, signal? })` reads one read-only history page of a
+session on a connected SSH environment's Station. A conversation surface
+passes its owning connection's `apiBase` and `requestScope`; without them
+the host's configured Station is used. These are the rows `useRemoteSessionsQuery` lists.
+This Station relays the remote's bounded `window-v1` read over the
+environment's tunnel and peer bearer, and labels the page with its own
+`environmentName`. `readRemoteSessionHistoryCapability(apiBase)` reports the
+`remoteSessionHistory` handshake flag. Ask it before offering to open a
+remote row, because an older host answers the path 404. Failures reject with
+`StationHttpError` carrying the route's `code`: `environment_unavailable`,
+`authentication_required`, `not_found`, `unreachable`, `too_large` or
+`invalid_response`. Show fixed copy for a code, not the server's sentence. A caller who is not
+the Station's bound owner gets `Forbidden`, and so does any agent request. The
+page is view-only and carries no continuation.
+
+A request made with `maxResponseBytes` whose body passes it rejects with
+`StationResponseTooLargeError`, from `@kontourai/station-sdk/client`. The
+orchestration readers and `searchConversationMessages` keep that error as the
+`cause` of their unreadable-body error.
+`getOrchestrationSessionDetailWindow` rejects with
+`SessionDetailWindowUnsupportedError` (also exported from the agent entry)
+when the host answers without a `window-v1` page, as an older host does.
+`listOrchestrationSessions(apiBase, opts, { limit })` asks for only the
+newest `limit` sessions, still oldest first; an older host ignores it and
+answers every session. A `limit` that is not an integer from 1 to 1,000
+rejects with `RangeError` before any request is sent.
+
 ### `useAgentsQuery(config?)`
 
 Reads the Agent catalog under `['agents']`. `data` projects its Agent array;
