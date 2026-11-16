@@ -28,6 +28,7 @@ afterEach(async () => {
 async function connect(
   profile: 'station-control' | 'station-knowledge' | 'station-browser',
   disclosure?: StationControlDisclosure,
+  assurance: 'bound' | 'delegated-custody' = 'bound',
 ) {
   const server =
     profile === 'station-browser'
@@ -36,7 +37,7 @@ async function connect(
           undefined,
           undefined,
           profile,
-          'bound',
+          assurance,
           disclosure,
         );
   const [clientTransport, serverTransport] =
@@ -113,7 +114,14 @@ test('no listing offers an argument only Station’s runtime writes, though the 
     ...(await (await connect('station-knowledge')).listTools()).tools,
     ...(await (await connect('station-browser')).listTools()).tools,
   ];
-  for (const tool of listed) {
+  // What Codex and ACP list: the delegated-custody subset.
+  const delegated = (
+    await (
+      await connect('station-control', undefined, 'delegated-custody')
+    ).listTools()
+  ).tools;
+  expect(delegated.map((tool) => tool.name)).toContain('delegate_task');
+  for (const tool of [...listed, ...delegated]) {
     const names = [...propertyNames(tool.inputSchema)];
     // A leading underscore marks an argument the runtime writes; a new one
     // belongs in STATION_INJECTED_TOOL_ARGUMENTS, or needs another name.

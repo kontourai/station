@@ -12,7 +12,11 @@ import type { StandardSchemaWithJSON } from '@modelcontextprotocol/server';
  * judged exactly as before. The routes derive the user from the verified
  * caller, keep a delegation context only with Station's HMAC attestation
  * (`delegation-attestation.ts`), and the plugin-proposal stamp carries its
- * own attestation (`plugin-proposal-provenance.ts`).
+ * own attestation (`plugin-proposal-provenance.ts`). The exception is
+ * `update_skill`'s `_sourceContext`: it is unattested, and where no wrapper
+ * runs (Claude in-process, Codex) a model-written one still sets the skill's
+ * `provenance.updatedFrom` label, as the route's public `provenance` field
+ * already lets any caller do. It is a label, not authority.
  */
 export const STATION_INJECTED_TOOL_ARGUMENTS: ReadonlySet<string> = new Set([
   '_userId',
