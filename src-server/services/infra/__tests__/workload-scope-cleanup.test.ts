@@ -132,9 +132,12 @@ describe('workload scope cleanup retries (fake systemd manager)', () => {
     log.warn.mock.calls.filter(([text]) => String(text).startsWith(message));
 
   const metricCalls = () =>
-    vi
-      .mocked(workloadScopeCleanupAttempts.add)
-      .mock.calls.map(([value, attributes]) => ({ value, ...attributes }));
+    vi.mocked(workloadScopeCleanupAttempts.add).mock.calls.map(
+      ([value, attributes]): Record<string, unknown> => ({
+        value,
+        ...attributes,
+      }),
+    );
 
   test('a repeated failure backs off exponentially instead of retrying every poll', async () => {
     const unit = await orphanScope();
