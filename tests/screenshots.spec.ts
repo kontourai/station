@@ -2661,16 +2661,64 @@ function stationSwitcherScreens(): Screen[] {
       viewport,
       theme,
       armed: false,
+      forgotten: undefined as 'keyboard' | 'pointer' | undefined,
+      extra: false,
     })),
   );
-  shots.push({ viewport: DESKTOP, theme: 'dark', armed: true });
-  return shots.map(({ viewport, theme, armed }): Screen => {
+  shots.push({
+    viewport: DESKTOP,
+    theme: 'dark',
+    armed: true,
+    forgotten: undefined,
+    extra: false,
+  });
+  // Forgetting a Station never closes the menu: from exactly five Stations
+  // the filter field unmounts with focus on it; from six it stays. Each
+  // theme/device pair is shot once after the forget.
+  shots.push(
+    {
+      viewport: DESKTOP,
+      theme: 'dark',
+      armed: true,
+      forgotten: 'keyboard',
+      extra: false,
+    },
+    {
+      viewport: MOBILE,
+      theme: 'light',
+      armed: true,
+      forgotten: 'keyboard',
+      extra: false,
+    },
+    {
+      viewport: DESKTOP,
+      theme: 'light',
+      armed: true,
+      forgotten: 'pointer',
+      extra: false,
+    },
+    {
+      viewport: MOBILE,
+      theme: 'dark',
+      armed: true,
+      forgotten: 'pointer',
+      extra: false,
+    },
+    {
+      viewport: DESKTOP,
+      theme: 'dark',
+      armed: true,
+      forgotten: 'keyboard',
+      extra: true,
+    },
+  );
+  return shots.map(({ viewport, theme, armed, forgotten, extra }): Screen => {
     const device = viewport === MOBILE ? 'mobile' : 'desktop';
-    const name = `station-switcher${armed ? '-forget' : ''}-${theme}-${device}`;
+    const name = `station-switcher${armed ? '-forget' : ''}${forgotten ? `-after-${forgotten}${extra ? '-six' : ''}` : ''}-${theme}-${device}`;
     let cleanups: (() => Promise<void>)[] = [];
     return {
       name,
-      title: `Station switcher${armed ? ' — forget' : ''}, ${theme} (${device})`,
+      title: `Station switcher${armed ? ' — forget' : ''}${forgotten ? ` — after forgetting by ${forgotten}${extra ? ' from six' : ' from five'}` : ''}, ${theme} (${device})`,
       path: '/?gallery=station-switcher',
       viewport,
       beforeGoto: async (page) => {
@@ -2728,6 +2776,9 @@ function stationSwitcherScreens(): Screen[] {
               ['media', 'Media server', online],
               ['laptop', 'Laptop', offline],
               ['dev', 'Old dev instance', `${offline}/dev`],
+              ...(extra
+                ? ([['spare', 'Spare box', `${online}/spare`]] as const)
+                : []),
             ],
           },
         );
@@ -2763,9 +2814,39 @@ function stationSwitcherScreens(): Screen[] {
           await menu
             .getByRole('menuitemradio', { name: /^Old dev instance/ })
             .press('Delete');
-          await expect(
-            menu.getByRole('menuitem', { name: 'Forget Old dev instance' }),
-          ).toBeFocused();
+          const confirm = menu.getByRole('menuitem', {
+            name: 'Forget Old dev instance',
+          });
+          await expect(confirm).toBeFocused();
+          if (forgotten) {
+            if (forgotten === 'keyboard') await confirm.press('Enter');
+            else await confirm.click();
+            await expect(
+              menu.getByRole('menuitemradio', { name: /^Old dev instance/ }),
+            ).toHaveCount(0);
+            // The menu stays open and focus sits on a visible item inside it,
+            // not on a removed element or <body>. Asserted after a settle
+            // tick: a menu that closes on focus loss does so asynchronously.
+            await page.waitForTimeout(300);
+            await expect(menu).toBeVisible();
+            const focus = await page.evaluate(() => {
+              const active = document.activeElement;
+              const box = active?.getBoundingClientRect();
+              return {
+                inMenu: Boolean(
+                  active?.closest('.app-toolbar__station-switcher'),
+                ),
+                visible: Boolean(box && box.width > 0 && box.height > 0),
+              };
+            });
+            expect(focus.inMenu).toBe(true);
+            expect(focus.visible).toBe(true);
+            expect(
+              await page
+                .getByRole('searchbox', { name: 'Find a Station' })
+                .count(),
+            ).toBe(extra ? 1 : 0);
+          }
         }
       },
       cleanup: async () => {
