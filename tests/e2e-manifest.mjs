@@ -463,6 +463,9 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/station-connection-chat.spec.ts',
     // Creates real Projects, channels and read markers on the instance.
     'tests/project-channel-navigation.spec.ts',
+    // Starts its own Station with local accounts and sharing, pairs browsers
+    // and approves an account-bound device, as device-pairing-mobile does.
+    'tests/project-room-message-actions.spec.ts',
     'tests/conversation-surfaces.spec.ts',
     'tests/owned-work-custody.spec.ts',
     // Owns its HTTPS listeners, private home, virtual authenticator and CLI child.
@@ -1201,6 +1204,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/project-room-message-actions.spec.ts',
+    bucket: 'product',
+    surface: 'Project channels',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      '#4796/#4797/#4812 on a real isolated Station: two paired operator browsers see a reaction and its removal, an edit and a delete (both kept after reload); a file uploaded on one downloads byte for byte on the other; an oversize file is refused in the composer; a 900px desktop keeps row actions and the picker on screen; an invited contributor, through their own account-bound session, is refused edit and delete of the operator message (and the operator theirs), and their message offers no Edit or Delete. The contributor room UI is not exercised: a browser guest is shown Available Projects, not the room.',
+    exceptions: [],
+  },
+  {
     path: 'tests/project-channel-navigation.spec.ts',
     bucket: 'product',
     surface: 'Project channels',
@@ -1901,6 +1914,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/task-code-review.spec.ts',
+    bucket: 'extended',
+    surface: 'Task code review',
+    tierTarget: 'full',
+    primary: false,
+    rationale:
+      'Real Task checkout observation plus explicitly controlled review transport-loss, freshness and failed-reviewer UI states; captures desktop and mobile in both themes without invoking a provider.',
+    exceptions: [],
+  },
+  {
     path: 'tests/basis-answer-lifecycle.spec.ts',
     bucket: 'extended',
     surface: 'Basis / exact answer retention',
@@ -2256,7 +2279,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "station#3027 + UX audit RT-02/SHELL-12: the 'Which agents do you use?' chapter in a browser. Proves WHERE it renders (inside Home's route content, on the shared dialog surface, never on another route) and WHEN (the durable AppConfig.firstRun record: pending opens it, skipped leaves only Home's card and stays closed for ten seconds, completed offers nothing, and the connect launcher still goes first), that each externalEngines row maps to its rendered state (available pre-ticked and tickable, already-enabled shown as ready with no control, blocked with the server's reason, undetected collapsed), that a confirm issues exactly one create per newly ticked engine and none for an already-bound one, that a failing create does not abort the rest of the batch, and that 'Not now' creates nothing and writes the deferral. Declared after first-run-live.spec.ts so that spec still observes the pristine temp-home boot state; this one is browser-local (route-patched status/agent catalog/app config) and mutates no server state.",
+      "station#3027 + UX audit RT-02/SHELL-12: the 'Which engines do you use?' chapter in a browser. Proves WHERE it renders (inside Home's route content, on the shared dialog surface, never on another route) and WHEN (the durable AppConfig.firstRun record: pending opens it, skipped leaves only Home's card and stays closed for ten seconds, completed offers nothing, and the connect launcher still goes first), that each externalEngines row maps to its rendered state (available pre-ticked and tickable, already-enabled shown as ready with no control, blocked with the server's reason, undetected collapsed), that a confirm issues exactly one create per newly ticked engine and none for an already-bound one, that a failing create does not abort the rest of the batch, and that 'Not now' creates nothing and writes the deferral. Declared after first-run-live.spec.ts so that spec still observes the pristine temp-home boot state; this one is browser-local (route-patched status/agent catalog/app config) and mutates no server state.",
     exceptions: [],
   },
   {

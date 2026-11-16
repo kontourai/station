@@ -4,11 +4,13 @@ import type {
 } from '@kontourai/station-connect';
 import { PUBLIC_STATION_HANDSHAKE_PATH } from '@kontourai/station-contracts/environment-security';
 import { relativeTime } from '../utils/relativeTime';
+import { isStationUiProxyUnavailableResponse } from './station-ui-proxy';
 
 const RECENT_KEY = 'station.switcher.recent';
 const RECENT_LIMIT = 20;
 export const PROBE_TIMEOUT_MS = 2_500;
-const PROBE_FRESH_MS = 30_000;
+/** How long an `online` answer is reused; the open menu re-checks after it. */
+const PROBE_FRESH_MS = 10_000;
 
 /** Saved Station ids, most recently used first. */
 export function readRecentStations(): string[] {
@@ -64,7 +66,20 @@ export function matchesStationFilter(
   return `${connection.name} ${connection.url}`.toLowerCase().includes(needle);
 }
 
-export type StationReachability = 'online' | 'unreachable';
+/**
+ * What a Station's public handshake said, read without credentials:
+ * - `online`: a Station handshake answered, so its host is serving.
+ * - `recovering`: its UI proxy answered that the host behind it is down or
+ *   restarting, so switching now would fail.
+ * - `unconfirmed`: something answered, but not a readable Station handshake
+ *   (this page's origin is not admitted, or another server is at the address).
+ * - `unreachable`: nothing answered before the deadline.
+ */
+export type StationReachability =
+  | 'online'
+  | 'recovering'
+  | 'unconfirmed'
+  | 'unreachable';
 
 const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
@@ -103,37 +118,97 @@ const probeCache = new Map<
   { at: number; result: Promise<StationProbe> }
 >();
 
+function isTimeout(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'TimeoutError';
+}
+
+function unreachable(error: unknown): StationProbe {
+  return {
+    reachability: 'unreachable',
+    checkedAt: Date.now(),
+    failure: isTimeout(error) ? 'timeout' : 'network',
+  };
+}
+
+function isStationHandshake(body: unknown): boolean {
+  if (typeof body !== 'object' || body === null) return false;
+  const handshake = body as {
+    schemaVersion?: unknown;
+    environmentId?: unknown;
+  };
+  return (
+    handshake.schemaVersion === 1 &&
+    typeof handshake.environmentId === 'string' &&
+    handshake.environmentId.length > 0
+  );
+}
+
+async function readStationProbe(url: string): Promise<StationProbe> {
+  const target = new URL(PUBLIC_STATION_HANDSHAKE_PATH, url);
+  const signal = AbortSignal.timeout(PROBE_TIMEOUT_MS);
+  const init = {
+    credentials: 'omit',
+    cache: 'no-store',
+    signal,
+  } as const satisfies RequestInit;
+  let response: Response;
+  try {
+    response = await fetch(target, {
+      ...init,
+      mode: 'cors',
+      headers: { Accept: 'application/json' },
+    });
+  } catch (error) {
+    if (isTimeout(error)) return unreachable(error);
+    // A readable request fails the same way for a dead address, a refused
+    // origin, and a UI proxy whose host is down (its 503 carries no CORS
+    // headers). An opaque request tells "nothing answered" apart from the
+    // rest, but an opaque answer says nothing about the host behind it.
+    try {
+      await fetch(target, { ...init, mode: 'no-cors' });
+      return { reachability: 'unconfirmed', checkedAt: Date.now() };
+    } catch (opaqueError) {
+      return unreachable(opaqueError);
+    }
+  }
+  try {
+    if (response.ok) {
+      const body: unknown = await response.json().catch(() => null);
+      return {
+        reachability: isStationHandshake(body) ? 'online' : 'unconfirmed',
+        checkedAt: Date.now(),
+      };
+    }
+    return {
+      reachability: (await isStationUiProxyUnavailableResponse(response))
+        ? 'recovering'
+        : 'unconfirmed',
+      checkedAt: Date.now(),
+    };
+  } catch (error) {
+    // The body stopped arriving: the deadline, or a responder that hung up.
+    return unreachable(error);
+  }
+}
+
 /**
- * Whether anything answers at a Station's public handshake. Any HTTP response
- * counts as online; only a network failure or the deadline is unreachable.
- * An answer is reused briefly so reopening the switcher shows it at once; a
- * failure is not, so a Station that just came back is never shown stale.
+ * Whether a Station's public handshake says its host is serving. Only a
+ * readable Station handshake is `online`: an answer from a UI proxy whose host
+ * is down, or one this page cannot read, is not, so a row never shows healthy
+ * for a Station that would fail as soon as it was chosen. An `online` answer is
+ * reused briefly so reopening the switcher shows it at once; anything else is
+ * not, so a Station that just came back is never shown stale.
  */
 export function probeStation(url: string): Promise<StationProbe> {
   const cached = probeCache.get(url);
   if (cached && Date.now() - cached.at < PROBE_FRESH_MS) return cached.result;
   const entry = {
     at: Date.now(),
-    result: fetch(new URL(PUBLIC_STATION_HANDSHAKE_PATH, url), {
-      mode: 'no-cors',
-      credentials: 'omit',
-      cache: 'no-store',
-      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
-    }).then(
-      (): StationProbe => ({ reachability: 'online', checkedAt: Date.now() }),
-      (error: unknown): StationProbe => {
-        if (probeCache.get(url) === entry) probeCache.delete(url);
-        return {
-          reachability: 'unreachable',
-          checkedAt: Date.now(),
-          // A no-cors fetch hides everything else about a failure.
-          failure:
-            error instanceof DOMException && error.name === 'TimeoutError'
-              ? 'timeout'
-              : 'network',
-        };
-      },
-    ),
+    result: readStationProbe(url).then((probe) => {
+      if (probe.reachability !== 'online' && probeCache.get(url) === entry)
+        probeCache.delete(url);
+      return probe;
+    }),
   };
   probeCache.set(url, entry);
   return entry.result;
@@ -260,6 +335,26 @@ export function describeStationRow({
   }
   if (probe?.reachability === 'online')
     return { label: 'Online', detail: `checked ${ago(probe.checkedAt, now)}` };
+  if (probe?.reachability === 'recovering') {
+    return {
+      label: 'Recovering',
+      detail: join(
+        'server down or restarting',
+        `checked ${ago(probe.checkedAt, now)}`,
+        lastConnected,
+      ),
+    };
+  }
+  if (probe?.reachability === 'unconfirmed') {
+    return {
+      label: 'Not confirmed',
+      detail: join(
+        'answered, but not as a Station this page can read',
+        `checked ${ago(probe.checkedAt, now)}`,
+        lastConnected,
+      ),
+    };
+  }
   if (probe?.reachability === 'unreachable') {
     return {
       label: 'Unreachable',

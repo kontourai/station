@@ -227,7 +227,7 @@ test('a real worker update and offline-reading action coexist and reload the new
     await reload.waitFor({ state: 'visible' });
     await context.setOffline(true);
     const read = page.getByRole('button', {
-      name: 'Read offline copies',
+      name: 'Read saved copies',
       exact: true,
     });
     await read.waitFor({ state: 'visible' });
@@ -243,6 +243,17 @@ test('a real worker update and offline-reading action coexist and reload the new
     expect(reloadHit).toBe(true);
     await read.click();
     await page.getByRole('heading', { name: 'Station is offline' }).waitFor();
+    // An open workspace is still behind the reader, so returning is primary.
+    expect(
+      await page
+        .getByRole('button', { name: 'Back to workspace' })
+        .getAttribute('class'),
+    ).toContain('button--primary');
+    expect(
+      await page
+        .getByRole('button', { name: 'Reconnect' })
+        .getAttribute('class'),
+    ).not.toContain('button--primary');
     await page.getByRole('button', { name: 'Back to workspace' }).click();
     await read.waitFor({ state: 'visible' });
     await context.setOffline(false);
@@ -373,20 +384,16 @@ test('opt-in text survives an offline reload under CSP, stays read-only, and cle
       copies: [{ conversationId: 'conversation-a' }],
     });
     await context.setOffline(true);
-    await page.getByRole('button', { name: 'Read offline copies' }).click();
-    await page
-      .getByText('Conversation conversation-a', { exact: true })
-      .waitFor();
+    await page.getByRole('button', { name: 'Read saved copies' }).click();
+    await page.getByText('Chat conversation-a', { exact: true }).waitFor();
     expect(await page.getByRole('main').count()).toBe(1);
     await page.reload();
     await page.getByRole('heading', { name: 'Station is offline' }).waitFor();
     expect(await page.getByRole('main').count()).toBe(1);
-    await page
-      .getByText('Conversation conversation-a', { exact: true })
-      .click();
+    await page.getByText('Chat conversation-a', { exact: true }).click();
     await page.getByText('Saved answer', { exact: true }).waitFor();
     expect(await page.getByRole('textbox').count()).toBe(0);
-    expect(await page.getByText(/Read-only offline copy from/).count()).toBe(1);
+    expect(await page.getByText(/Read-only copy saved/).count()).toBe(1);
     expect(await page.locator('body').textContent()).not.toMatch(
       /tool-secret|private ambient/,
     );
@@ -410,10 +417,10 @@ test('opt-in text survives an offline reload under CSP, stays read-only, and cle
         .every((r) => !r.cookie),
     ).toBe(true);
     expect(errors).toEqual([]);
-    await page.getByRole('button', { name: 'Clear offline copies' }).click();
-    await page.getByText('Offline copies cleared.', { exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Clear saved copies' }).click();
+    await page.getByText('Saved copies cleared.', { exact: true }).waitFor();
     await page.reload();
-    await page.getByText(/No offline copies available/).waitFor();
+    await page.getByText(/No saved copies/).waitFor();
     await page.waitForFunction(() => window.fixtureMounted);
     expect(
       await page.evaluate(
@@ -651,23 +658,23 @@ test('changing the selected authority clears local text instead of revealing it 
       );
     });
     await context.setOffline(true);
-    await page.getByRole('button', { name: 'Read offline copies' }).click();
+    await page.getByRole('button', { name: 'Read saved copies' }).click();
     await page
-      .getByText('Conversation private-conversation', { exact: true })
+      .getByText('Chat private-conversation', { exact: true })
       .waitFor();
     await page.evaluate(() => {
       const c = window.connections;
       c.setCredential(c.activeConnection!.id, 'replacement-credential');
     });
-    await page.getByText(/No offline copies available/).waitFor();
+    await page.getByText(/No saved copies/).waitFor();
     await page.evaluate(() => {
       const c = window.connections;
       c.removeCredential(c.activeConnection!.id);
     });
-    await page.getByText(/No offline copies available/).waitFor();
+    await page.getByText(/No saved copies/).waitFor();
     expect(
       await page
-        .getByText('Conversation private-conversation', { exact: true })
+        .getByText('Chat private-conversation', { exact: true })
         .count(),
     ).toBe(0);
   } finally {
@@ -710,12 +717,16 @@ test.each(['disconnect', 'unavailable'] as const)(
       await page.reload();
       expect(await page.evaluate(() => navigator.onLine)).toBe(true);
       await page.getByRole('heading', { name: 'Station is offline' }).waitFor();
-      await page
-        .getByText('Conversation route-offline', { exact: true })
-        .click();
+      // The reload-time shell has no live workspace behind it: reload is primary.
+      expect(
+        await page
+          .getByRole('button', { name: 'Reconnect' })
+          .getAttribute('class'),
+      ).toContain('button--primary');
+      await page.getByText('Chat route-offline', { exact: true }).click();
       await page.getByText('Route offline copy', { exact: true }).waitFor();
       navigationFailure = undefined;
-      await page.getByRole('button', { name: 'Retry connection' }).click();
+      await page.getByRole('button', { name: 'Reconnect' }).click();
       await page.getByRole('heading', { name: 'Live app' }).waitFor();
       expect(
         await page.getByText('Route offline copy', { exact: true }).count(),

@@ -124,9 +124,9 @@ function decideTrust(
   if (status === 'mismatch')
     return {
       status,
-      label: 'Station enrollment mismatch',
+      label: 'A different setup is stored for this Station',
       detail:
-        'A different enrollment is already stored for this Station ID. This form cannot reset or replace that enrollment.',
+        "This browser already trusts a different setup for this Station ID, and this form can't replace it.",
       canApprove: false,
     };
   if (record.status === 'revoked') {
@@ -139,8 +139,8 @@ function decideTrust(
       status: 'revoked',
       label: 'Station trust is revoked',
       detail: canApprove
-        ? 'This newer key can restore trust after a separate fingerprint comparison.'
-        : 'A revoked key cannot be restored at the same or an older generation. Ask the operator for a higher-generation report with a new signing key.',
+        ? 'This newer key can restore trust after you compare its fingerprint.'
+        : "This key was revoked and can't be approved again. Ask the Station operator for a new key.",
       canApprove,
     };
   }
@@ -148,8 +148,7 @@ function decideTrust(
     return {
       status: 'approved',
       label: 'This Station key is already approved',
-      detail:
-        'The exact enrollment, generation and public key are trusted here.',
+      detail: 'This browser already trusts this exact key.',
       canApprove: false,
     };
   const rotatedKey =
@@ -161,10 +160,10 @@ function decideTrust(
     status: canApprove ? 'untrusted' : 'mismatch',
     label: canApprove
       ? 'A newer Station key needs approval'
-      : 'Station key generation mismatch',
+      : "This key can't replace the trusted one",
     detail: canApprove
-      ? 'Station signing keys changed. Compare this new key ID independently before approving the rotation.'
-      : 'The supplied key does not advance the generation with a new signing key. This form will not replace trust with an older or conflicting key.',
+      ? "The Station's key changed. Compare the new key ID before approving it."
+      : "It isn't newer than the key this browser trusts. Ask the Station operator for a new key.",
     canApprove,
   };
 }
@@ -446,10 +445,8 @@ export function BrowserStationTrustApproval() {
         </p>
       )}
       <p className="connections-computers__note">
-        Rotation requires a higher key generation for the same enrollment.
-        Revoked trust stays revoked until a higher-generation key is approved.
-        This approval only pins the Station transport key on this browser; it
-        does not sign in, approve a Device or grant Project access.
+        Approving trusts this Station's key in this browser only. It doesn't
+        sign you in, approve a device or grant Project access.
       </p>
     </section>
   );

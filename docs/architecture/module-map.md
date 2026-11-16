@@ -3094,8 +3094,10 @@ every other engine-to-client Kiro extension (requests and
 `ENGINE_EXTENSION_BINDINGS`: each names its exact wire shape, its basis
 (`declared`, `client-announced` or `undeclared-engine`), what it was observed
 against (the scrubbed kiro-cli 2.35.0 capture in
-`src-server/services/acp/__tests__/fixtures/`, or a kirodotdev/kirocrew
-fixture path) and its consumer. A row's notification tuple binds only once
+`src-server/services/acp/__tests__/fixtures/`, a kirodotdev/kirocrew
+fixture path, or, for another engine's row, the vendor's own source at a
+named commit) and its consumer. Qwen Code's subagent marker is such a row:
+a `tool-call-meta-field` wire (top-level `_meta.provenance: 'subagent'`). A row's notification tuple binds only once
 `ENGINE_EXTENSION_CONSUMERS` marks its consumer implemented, and never over a
 tuple the table above already binds. Today eleven bind: Kiro v2's
 `mcp/server_initialized` and `mcp/server_init_failure` (`engine-mcp.status`)
@@ -3106,9 +3108,10 @@ should replace it. The `child-work` consumer is implemented in
 [`acp-child-work.ts`](../../src-server/providers/adapters/acp-child-work.ts):
 kiro-cli's `subagent/list_update` keeps its host-chrome notification row while
 its engine row reads the roster into `child-work.updated`, and a `tool_call`
-whose `_meta.kiro.kind` is `agent-subtask` is read the same way. An ACP
-engine whose handshake names neither reporter publishes `not-reported` at
-session start. History replay (`child-work-history.ts`) restores the
+whose `_meta.kiro.kind` is `agent-subtask` is read the same way. Qwen Code's
+nested subagent tool calls list the subagent under the Agent tool call that
+runs it, until that call ends. An ACP engine whose handshake names no reporter
+publishes `not-reported` at session start. History replay (`child-work-history.ts`) restores the
 statement of a session that never exited (an unclean shutdown), so it does
 not read "nothing running"; a later `session.started` on the thread clears it,
 live or replayed, because the new start states its reporting afresh. The matrix cell's `perConnection` reason is what
@@ -3813,7 +3816,36 @@ is created; otherwise tables are created and every channel-less room is adopted 
 `#general` under the writer lock, after re-reading the version there, so a racing
 newer Station's upgrade is never overwritten. A room whose stored record does not
 match its row is not adopted, and it refuses its channels as it refuses its reads. Channel limits, unique names and
-archived read-only state are enforced in the store transaction. Persisted records are validated
+archived read-only state are enforced in the store transaction. Schema version 2
+adds message activity in separate tables: reactions (one per person and emoji),
+superseding edit and delete revisions, the files each message links, and a
+per-room activity counter. History projects the latest revision and the
+reactions onto each stored message, which is never rewritten. The live
+checkpoint counts activity so reactions and edits wake readers, while
+`lastSeq`, the read-state version, moves only with new messages. Only a
+message's person author may edit or delete it, and Agent messages are never
+edited. Message files are stored by `ProjectRoomAttachments` (over the
+`RoomAttachments` store Task rooms use) under a binding of Station, Project
+incarnation, room and uploader. Deleting a message releases its files, and an
+upload first releases its uploader's day-old unsent files. Uploads, releases
+and messages naming files hold one store-wide cross-process file lock (the
+yielding form, taken before the request's authority check so access revoked
+while waiting refuses). Records are written whole (staging, then rename), and
+a failed write removes only the staging file it created. A
+release reads every record first, never deletes
+bytes another record names, and keeps a record, its quota charge and its
+retry until its bytes' deletion is confirmed (an unlink, or `ENOENT`). A
+damaged record counts only with one whole `blobRef` hash; any record whose
+reference cannot be known fails the release closed. Every upload re-derives
+the store's health under the lock with the same scan (no cached state), and
+any unknown record or unreadable or linked `bindings/` level refuses it with
+`project_room_files_unavailable`, as does a failed write (typed as
+`RoomStorageFailure`); the marker is a diagnostic only. Repair is offline
+only: with every Station process stopped, fix or remove the damaged record
+under `bindings/`. A non-empty, linked or unreadable `repair/` (an earlier
+build's inbox) blocks uploads and releases and is never applied or deleted. The store never
+evicts by age or size. Task rooms keep age and size retention (#4947) and
+share only the whole-record write. Persisted records are validated
 against their row identities before use. History reads use a deferred transaction;
 discovery is lookup-only. Explicit opening requires current discussion authority.
 
@@ -4050,6 +4082,16 @@ ceiling; an observed external commit restores 250 ms sampling. Unsubscribing the
 last watcher cancels sampling. Idle external edits can therefore take up to two
 seconds plus scheduling delays to notify readers; this polling runs in the
 worker, separately from the server event loop.
+
+**Worker lifecycle.** The [working-state](../../src-server/services/orchestration/project-task-room-working-state.ts)
+and [history](../../src-server/services/orchestration/project-task-room-history.ts)
+workers are each a V8 isolate and start on their first request, not at
+composition. Each is retired after 60 seconds with no request in flight (and,
+for working state, no watcher), and the next request starts a fresh one over
+the same database. Every reply follows its commit and the workers keep no
+durable state in memory, so retirement is not a failure: it neither makes
+working state terminal nor starts the history worker's failure cooldown. A
+worker that fails is handled as before.
 
 ## SharedWorkingStateEditingCapability
 
@@ -4814,12 +4856,24 @@ inventory at 256 and materialize the newest 512 receipts. They may repair the
 reference index under its lock. Unreadable/contended Projects are reported;
 a missing workspace contributes no receipts rather than proving it has none.
 
-Confirmed-start shutdown failure and executor timeout retain the workspace.
-There is a current exception: if Session start returns an indeterminate outcome
-by throwing, the executor has not set its `started` flag, reports the workspace
-safe and skips stop. The module can then close that workspace despite possible
-live reviewer work. This path needs uncertainty propagation and confirmed
-cleanup before the general retention guarantee can be claimed.
+Confirmed-start shutdown failure, executor timeout and an unconfirmed Session
+start retain the workspace. A start invocation whose reply throws or lacks a
+confirmed Session does not classify its checkout as safe to remove.
+
+**Task association.** [TaskCodeReviewModule](../../src-server/services/evidence/task-code-review-module.ts)
+projects the submission owner's server-derived Task/Project incarnation binding.
+The association is published with request admission, before reviewer invocation;
+it is not guessed from titles, commits or receipt content. Requests retain the
+original Project ID and creation time as equality preconditions. Recreating a
+Project with the same slug and checkout cannot rebind a saved request.
+Receipt publication retains the admitted storage identity and rechecks authority
+at commit. Project and aggregate readers keep Task-associated evidence behind
+the same personal-only boundary; delta ancestry cannot drop that association.
+The personal-host [Task code-review routes](../../src-server/routes/evidence/task-code-reviews.ts)
+recheck current Task authority and keep checkout observation, revision freshness
+and reviewer outcomes separate. The [Overview panel](../../src-ui/src/views/task-workspace/TaskCodeReviewPanel.tsx)
+uses Project-scoped SDK queries and preserves the original request across response
+loss. Task checkout facts do not prove placement parity for independent room requests.
 
 **Consumers and evidence.** API, SDK client, CLI and station-control MCP share
 `REVIEW_EVIDENCE_OPERATOR_SURFACE`. Project Review UI uses that client; the old
@@ -4954,7 +5008,9 @@ normally killed). Orchestration's first-turn composition adds the
 budget statement for adapters declaring `workloadScope: 'engine-process'`
 (omitted, with the chat-images line, when the Session's `session.started`
 records that its engine resumed an existing native transcript, which already
-holds them) and
+holds them; delivered again, with the prompt, Station instructions and Task
+brief, on the first turn after an `acp.session-started-fresh` warning, whose
+new engine session holds none of them) and
 the [memory-exhaustion recovery note](../../src-server/services/orchestration/memory-exhaustion-recovery.ts)
 for a successor of a memory-killed Session. Otherwise, the first turn after any
 engine ended with work still running gets the

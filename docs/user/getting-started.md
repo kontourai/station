@@ -42,10 +42,10 @@ without adding a model API key:
    select **Station Assistant**. Ask it to list your projects to exercise a read-only
    Station tool as well as chat.
 
-For a customized Codex Agent, open **Customize → Agents → New agent → Use an
-AI app**, enter a name, select **Codex**, and choose its model and Project.
+For a customized Codex Agent, open **Customize → Agents → New agent → Use a
+connected engine**, enter a name, select **Codex**, and choose its model and Project.
 In **Tools**, choose **Station** to add read-only controls; expand the row to
-inspect the selection. Save with **Create Agent**, then choose it in a new chat.
+inspect the selection. Save with **Create agent**, then choose it in a new chat.
 Codex receives your instructions with the first message in each new chat, at
 the same priority as that message. (With the **Station orchestration instructions** Feature Preview on, an Agent that has Station controls also gets Station's own guidance on using them in that first message.) You can edit or clear them before saving. See the [Agents guide](https://github.com/kontourai/station/blob/main/docs/guides/agent-configuration.md#mcp-tool-configuration)
 for tool selection and approval details.
@@ -137,7 +137,8 @@ configured. Both devices still need access to that address.
 
 For local network access, enable **Settings → Pairing → Discover this Station
 nearby** on the computer, then choose **Find nearby Stations** on the native phone
-app (on the welcome screen it is under **More connection options**). Discovery is off by default and shows names and local addresses without
+app (on the welcome screen it is under **More ways to connect**). Discovery is
+off by default and shows names and local addresses without
 granting access. Select the intended computer, confirm the exact address and any
 unencrypted HTTP warning, request access, and approve on the computer. Android
 versions before Android 14 offer QR and manual address entry instead. Browser
@@ -239,7 +240,7 @@ outside a sandbox, needs a restart.
 
 ## Read recent conversations offline
 
-In the browser, open **Settings → Privacy & sharing** and enable **Save offline
+In the browser, open **Settings › Privacy & sharing** and enable **Save offline
 reading copies**. It starts off. Then open conversations while connected to save
 text from their most recent history read: at most 20 conversations, 10 recent
 turns per conversation, 256 KiB per conversation and 2 MiB in total. Copies expire
@@ -256,9 +257,9 @@ copies. A build change also turns saving off with the expired copies, so enable 
 again after an update. Reachability failures leave saved copies and the saving
 preference intact.
 
-A browser reload while the Station route is unavailable shows a separate, read-only reader with an **offline
-copy from** timestamp. If you lose connectivity in an already open workspace,
-choose **Read offline copies**; **Back to workspace** keeps drafts and the existing
+A browser reload while the Station route is unavailable shows a separate, read-only reader with a **Read-only
+copy saved** timestamp. If you lose connectivity in an already open workspace,
+choose **Read saved copies**; **Back to workspace** keeps drafts and the existing
 outbox available. Reconnecting leaves the reader, verifies live access and uses
 server data. Local copies never enter the live transcript or authorize actions.
 
@@ -477,7 +478,9 @@ would. Write what you want done
 and choose **Start**. You do not need to choose anything first; the controls
 show what **Start** will use:
 
-- The combined **Agent · Model** button opens **Run setup**. Its Agent choice
+- The combined Run setup button shows the Agent's icon and the Model's name,
+  followed by the thinking effort when you chose one (for example
+  **Opus · High**). It opens **Run setup**. Its Agent choice
   lists **Station**, **Coding apps**, and **My agents**, with readiness and setup
   actions. Its Model choice opens the
   **Engine & model** picker, which also offers alternative engines when they
@@ -492,7 +495,8 @@ show what **Start** will use:
   **Use Agent defaults** for an engine override. In an existing conversation,
   changing or resetting the engine opens a handoff confirmation that keeps your draft.
   Full access, a pending or refused approval change, and a conversation override
-  add a warning glyph to the combined button; open Run setup for details.
+  add a warning glyph to the combined button; open Run setup to see the same
+  glyph on the choice that raised it.
   In the model picker, while a reply you sent is still running, the other
   engines and **Use Agent defaults** are shown but unavailable until it
   finishes. When Station reports that the conversation can't be changed right
@@ -553,7 +557,10 @@ the control is plain text.
 The Project page opens on **Overview**. **Room** is shared discussion with
 people in that Project, in named channels starting with `#general`; choose the
 channel name to switch, and people who can edit can add, rename or archive
-channels. Use **Bring an Agent** for an explicit request whose answer returns
+channels. React to a message with an emoji, and tap a reaction to add or take
+back yours. You can edit or delete your own messages (press ↑ in an empty
+composer to edit your last one); a deleted message leaves "Message deleted" so
+replies still make sense. Use **Bring an Agent** for an explicit request whose answer returns
 to the channel. Direct Agent conversations stay in the chat
 dock. **Tasks** separates current work, backlog and history; **Files & connections**
 holds the Project's context. To change where new Agent work starts, open the
@@ -665,16 +672,17 @@ restarted; the dialog says why. On Grok Build, if you changed a file since that
 message that the rewind would restore, nothing is rewound and the dialog names
 the file.
 
-The usage disclosure ends after your usage decision. **Personalize Station**
-opens optional preferences after the work entry; it is not a prerequisite for a
-chat.
+The usage disclosure ends after your usage decision. **Open setup** on the
+**Finish setup** card opens optional preferences after the work entry; it is not
+a prerequisite for a chat.
 Closing preparation prevents a late response from starting work. The request stays
 in the Home field while that Home view remains mounted and through the temporary
 setup-return flow; changing Stations or authorization ends that flow.
 
 When creating an agent, choose **Use a model connection** for Station's engine
-or **Use an AI app** for Claude Code, Codex, or another connected engine. Those
-apps run on the computer hosting your Station, including when you use a phone.
+or **Use a connected engine** for Claude Code, Codex, or another connected
+engine. Those engines run on the computer hosting your Station, including when
+you use a phone.
 An agent's setup warning names that agent; other ready agents can still run.
 
 At the end of first-run setup, choose **Start your first chat**. Station saves
@@ -1103,11 +1111,14 @@ a screenshot into the text field (Ctrl/Cmd+V on desktop). On a phone, use **Atta
 you can also share images from another app to Station, then pick a
 conversation or **New chat** in a project. Review its thumbnail and remove it
 before sending if needed.
-The existing Task room and agent-thread replies accept images the same way,
-including messages with only an image; their room composer also retains **Paste image** on supported touch devices. You can attach up to five files, 5 MiB
+The existing Task room, Project channels and agent-thread replies accept
+images the same way, including messages with only an image; their room composer also retains **Paste image** on supported touch devices. You can attach up to five files, 5 MiB
 each and 15 MiB combined. Keep unsent local files in the open draft; reloading
-does not restore them. An older image in history may become unavailable after
-the server's attachment retention expires.
+does not restore them. In chats and the Task room, an older image in history may
+become unavailable after the server's attachment retention expires; a Project
+channel keeps a file for as long as its message stands. If a Project channel
+pauses attachments while its file store is repaired, it says so; remove the
+files and your text still sends.
 
 An existing chat can become a Task through **New Task from this** in its More menu.
 The **Add to Task** picker also offers **New Task from this** for an answer or input.
@@ -1129,7 +1140,9 @@ and agents have square avatars where people have round ones. New messages
 follow the newest message while you are at the bottom; if you scroll up, the
 room keeps your place, marks where new messages start, and **N new messages**
 returns you to the latest. **Load earlier messages** appears above the visible
-history. A failed agent request stays in the room
+history. A Project channel keeps the latest 500 messages in view: at that point
+it says so instead of offering more, and when new messages unload older ones,
+a note says so above **Load earlier messages**. A failed agent request stays in the room
 with **Retry** and **Open run**. The Brief is shared with agent requests unless
 you turn off **Brief attached**. Saved answers appear in Results, with their
 source and evidence available through **Answer details**. For engines that can resume, idle agent threads remain available after restarting Station. Ended or replaced runs still require a new agent request.
@@ -1331,7 +1344,7 @@ configured Projects.
 
 ## Run A Scheduled Readiness Check
 
-An automation that runs in a chat can use any agent, including AI app agents
+An automation that runs in a chat can use any agent, including agents that use an engine
 such as Claude Code or Codex, when your Station supports it (see
 [Automations](https://github.com/kontourai/station/blob/main/docs/user/automations.md)). The older output-file run needs an agent with
 a model connection (Station's engine); if none is ready, the form offers **Set

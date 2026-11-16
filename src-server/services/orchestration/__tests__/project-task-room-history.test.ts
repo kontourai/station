@@ -1780,6 +1780,34 @@ describe('ProjectTaskRoomHistory v2', () => {
     }
   });
 
+  it('retires an idle real worker and starts a fresh one over durable history on the next request', async () => {
+    const room = history(databasePath(), { idleRetireMs: 50 });
+    const terminate = vi.spyOn(Worker.prototype, 'terminate');
+    try {
+      await room.open({ grant: grant('discover') });
+      await expect(room.append(message('before-idle'))).resolves.toMatchObject({
+        kind: 'committed',
+      });
+      const constructions = workerConstructions.count;
+      await vi.waitFor(() => expect(terminate).toHaveBeenCalledTimes(1), {
+        timeout: 2_000,
+      });
+      await expect(
+        room.read({ grant: grant('history-read') }),
+      ).resolves.toMatchObject({
+        kind: 'available',
+        records: [{ envelope: { proposal: { proposalId: 'before-idle' } } }],
+      });
+      expect(workerConstructions.count).toBe(constructions + 1);
+      await expect(room.append(message('after-idle'))).resolves.toMatchObject({
+        kind: 'committed',
+      });
+    } finally {
+      terminate.mockRestore();
+      await expect(room.close()).resolves.toEqual({ kind: 'closed' });
+    }
+  });
+
   it('does not construct a replacement until the retired real worker finishes terminating', async () => {
     const room = history();
     await room.open({ grant: grant('discover') });
