@@ -3,6 +3,7 @@
 import { CHAT_INPUT_MAX_CHARS } from '@shared/chat-input-limits';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -2496,3 +2497,52 @@ test('on a phone, choosing another engine closes Run setup; another model of the
     }));
   }
 }, 7_500);
+
+test('a draft sized while hidden is measured again once it shows, not pinned at zero height', async () => {
+  let measured = 0;
+  const scrollHeight = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    'scrollHeight',
+  );
+  Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+    configurable: true,
+    get() {
+      return this instanceof HTMLTextAreaElement ? measured : 0;
+    },
+  });
+  const callbacks: Array<() => void> = [];
+  const previousObserver = globalThis.ResizeObserver;
+  globalThis.ResizeObserver = class {
+    constructor(callback: () => void) {
+      callbacks.push(callback);
+    }
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as never;
+  try {
+    renderChatInputArea({ input: '' });
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    // Hidden at mount: nothing measurable, so nothing is pinned.
+    expect(textarea.style.height).not.toBe('0px');
+    // Shown: the next resize measures it.
+    measured = 46;
+    await act(async () => {
+      for (const callback of callbacks) callback();
+      await new Promise((resolve) =>
+        requestAnimationFrame(() => resolve(null)),
+      );
+    });
+    expect(textarea.style.height).toBe('46px');
+  } finally {
+    globalThis.ResizeObserver = previousObserver;
+    if (scrollHeight)
+      Object.defineProperty(
+        HTMLElement.prototype,
+        'scrollHeight',
+        scrollHeight,
+      );
+    else
+      delete (HTMLElement.prototype as { scrollHeight?: number }).scrollHeight;
+  }
+});
