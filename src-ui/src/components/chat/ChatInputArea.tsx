@@ -1724,6 +1724,9 @@ export function ChatInputArea({
               {onOpenAgentHandoff && (
                 <ComposerChoice
                   ref={agentHandoffTriggerRef}
+                  // On a phone the handoff dialog replaces Run setup rather
+                  // than stacking over it.
+                  closesRunSetup={isMobile}
                   className="chat-input__agent-btn"
                   onClick={
                     agentHandoffDisabled ? undefined : onOpenAgentHandoff

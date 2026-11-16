@@ -59,7 +59,7 @@ import { CHAT_INPUT_MAX_CHARS } from '@shared/chat-input-limits';
 import { mentionToken } from '../components/chat/composer-mentions';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { chatDraftsStore } from '../contexts/chat-drafts-store';
-import { useChatInput } from '../hooks/useChatInput';
+import { type PreparedOutgoingText, useChatInput } from '../hooks/useChatInput';
 
 const CHAT = 'codex:client-turn-id';
 
@@ -127,9 +127,13 @@ describe('prepareOutgoingText', () => {
     await act(async () => {
       prepared = await result.current.prepareOutgoingText('');
     });
-    expect(prepared!.text).toContain('the quoted answer');
-    expect(prepared!.draft).toBe('');
-    expect(prepared!.quotes).toHaveLength(1);
+    expect((prepared as unknown as PreparedOutgoingText).text).toContain(
+      'the quoted answer',
+    );
+    expect((prepared as unknown as PreparedOutgoingText).draft).toBe('');
+    expect((prepared as unknown as PreparedOutgoingText).quotes).toHaveLength(
+      1,
+    );
     expect(send).not.toHaveBeenCalled();
   });
 
@@ -140,11 +144,11 @@ describe('prepareOutgoingText', () => {
     await act(async () => {
       prepared = await result.current.prepareOutgoingText('hi');
     });
-    expect(prepared).toBeNull();
-    expect(showToast).toHaveBeenCalledWith(
-      expect.stringContaining('another Station'),
-      'error',
-    );
+    // The reason comes back for the caller to show; nothing is toasted here.
+    expect(prepared).toEqual({
+      refused: expect.stringContaining('another Station'),
+    });
+    expect(showToast).not.toHaveBeenCalled();
   });
 
   test('a draft over the message limit is refused', async () => {
@@ -155,7 +159,9 @@ describe('prepareOutgoingText', () => {
         'x'.repeat(CHAT_INPUT_MAX_CHARS + 1),
       );
     });
-    expect(prepared).toBeNull();
+    expect(prepared).toEqual({
+      refused: expect.stringContaining('message limit'),
+    });
   });
 
   test('a file mention is expanded to its workspace path; the raw draft is kept', async () => {
@@ -175,8 +181,25 @@ describe('prepareOutgoingText', () => {
         `Read ${token} please`,
       );
     });
-    expect(prepared!.text).toBe('Read @"/work/app/docs/notes.md" please');
-    expect(prepared!.draft).toBe(`Read ${token} please`);
+    expect((prepared as unknown as PreparedOutgoingText).text).toBe(
+      'Read @"/work/app/docs/notes.md" please',
+    );
+    expect((prepared as unknown as PreparedOutgoingText).draft).toBe(
+      `Read ${token} please`,
+    );
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  test('an ordinary send still shows a refusal, as a toast', async () => {
+    chatDraftsStore.addQuote(CHAT, quote('http://other.test'));
+    const { result } = renderChatInput();
+    await act(async () => {
+      await result.current.handleSend('hi', []);
+    });
+    expect(showToast).toHaveBeenCalledWith(
+      expect.stringContaining('another Station'),
+      'error',
+    );
     expect(send).not.toHaveBeenCalled();
   });
 });

@@ -64,6 +64,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
 
 import { AdoptSessionError } from '@kontourai/station-sdk';
 import * as conversationClient from '@kontourai/station-sdk/client';
+import { ConversationHeaderActionSlot } from '../components/conversation/ConversationHeaderActionSlot';
 import { AttachedSessionDetail } from '../components/session-detail/AttachedSessionDetail';
 import { ToastProvider, toastStore } from '../contexts/ToastContext';
 import {
@@ -195,7 +196,7 @@ function sendFromComposer(message = 'carry on') {
   fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
     target: { value: message },
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Send and continue' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
 }
 
 /** The one Continue action, pinned above the conversation; needs no message. */
@@ -213,10 +214,10 @@ test('a read-only attached composer continues in Station and cannot issue a dire
   );
   try {
     await renderAttached();
-    expect(screen.queryByRole('button', { name: /^Send$/ })).toBeNull();
-    expect(
-      screen.getByPlaceholderText('Continue in Station from this history…'),
-    ).toBeTruthy();
+    // Send is the ordinary Send: it continues in Station, never replies to
+    // the source directly.
+    expect(screen.getByRole('button', { name: /^Send$/ })).toBeTruthy();
+    expect(screen.getByPlaceholderText('Message…')).toBeTruthy();
     adoptOrchestrationSession.mockResolvedValueOnce({ threadId: 'continued' });
     sendFromComposer('A new owned continuation');
     await waitFor(() => expect(adoptOrchestrationSession).toHaveBeenCalled());
@@ -999,12 +1000,19 @@ describe('a conversation no project claims (#3386)', () => {
     });
     // The choice is stated beside the one Continue action, before anything
     // is requested; there is no confirmation to read it in.
+    // The inspector's header carries the action; the choice sits right
+    // under it, in the one notice line.
     const note = screen.getByTestId('attached-continuation-no-project');
     expect(
-      within(screen.getByTestId('attached-continue-bar')).getByTestId(
+      within(screen.getByTestId('attached-continue-notice')).getByTestId(
         'attached-continuation-no-project',
       ),
     ).toBe(note);
+    expect(
+      within(
+        document.querySelector('.sessions-detail__chat-header') as HTMLElement,
+      ).getByRole('button', { name: 'Continue in Station' }),
+    ).toBeTruthy();
     expect(note.textContent).toContain(
       'No project: the agent works only in /work/scratch/app.',
     );
@@ -1051,9 +1059,9 @@ describe('a conversation no project claims (#3386)', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
       target: { value: 'carry on' },
     });
-    expect(screen.getByTestId('attached-continue-bar').textContent).toContain(
-      'the agent works only in /work/scratch/app.',
-    );
+    expect(
+      screen.getByTestId('attached-continue-notice').textContent,
+    ).toContain('the agent works only in /work/scratch/app.');
     expect(adoptOrchestrationSession).not.toHaveBeenCalled();
     fireEvent.click(continueButton());
     await waitFor(() => expect(onAdopted).toHaveBeenCalled());
@@ -1094,7 +1102,7 @@ describe('a conversation no project claims (#3386)', () => {
     expect(
       screen.queryByRole('button', { name: 'Continue in Station' }),
     ).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Send and continue' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1);
   });
 
@@ -1289,5 +1297,79 @@ describe('a handed-over draft obeys the Continue guards', () => {
     );
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the Continue action sits with the conversation’s origin', () => {
+  test('a host header slot receives the action; no row of its own is drawn', async () => {
+    const slot = document.createElement('span');
+    document.body.append(slot);
+    try {
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      render(
+        <QueryClientProvider client={queryClient}>
+          <PreviewProvider>
+            <ToastProvider>
+              <ConversationHeaderActionSlot.Provider value={slot}>
+                <AttachedSessionDetail
+                  apiBase="http://station.test"
+                  session={
+                    {
+                      threadId: 'external:claude:raw-thread-id',
+                      provider: 'claude',
+                      controlMode: 'read-only-attached',
+                      attachedSource: {
+                        kind: 'claude-transcript',
+                        externalSessionId: 'fixture-native-source',
+                        affinity: {
+                          kind: 'fixture-home',
+                          ref: 'verified-fixture-home',
+                        },
+                      },
+                      createdAt: '2026-06-27T00:00:00.000Z',
+                      updatedAt: '2026-06-27T00:00:00.000Z',
+                      projectSlug: 'station',
+                    } as any
+                  }
+                  onAdopted={vi.fn()}
+                  getSelectionIntent={() => 0}
+                  events={[]}
+                  connected
+                  historyLoaded
+                  visualViewport={{ style: {} } as any}
+                />
+              </ConversationHeaderActionSlot.Provider>
+            </ToastProvider>
+          </PreviewProvider>
+        </QueryClientProvider>,
+      );
+      await waitFor(() =>
+        expect(
+          within(slot).getByRole('button', { name: 'Continue in Station' }),
+        ).toBeTruthy(),
+      );
+      expect(screen.queryByTestId('attached-continue-bar')).toBeNull();
+    } finally {
+      slot.remove();
+    }
+  });
+
+  test('a disabled Continue names its reason beside it', async () => {
+    await renderAttached({ session: { provider: 'bedrock' } });
+    const action = continueButton();
+    expect(action.disabled).toBe(true);
+    const reason = document.getElementById(
+      action.getAttribute('aria-describedby') ?? '',
+    );
+    expect(reason?.textContent).toBe(
+      'Station has not established independent continuation support for this engine.',
+    );
+    expect(
+      within(screen.getByTestId('attached-continue-notice')).getByText(
+        'Station has not established independent continuation support for this engine.',
+      ),
+    ).toBe(reason);
   });
 });

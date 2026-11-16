@@ -244,6 +244,8 @@ describe('dock handoff wiring', () => {
       '> the quoted answer\n\nPick this up',
     );
     expect(pane.chatInput.handleClearInput).toHaveBeenCalledOnce();
+    // A handoff never carries attachments: they (and uploads) stay put.
+    expect(pane.chatInput.handleClearAttachments).not.toHaveBeenCalled();
     expect(chatDraftsStore.getQuotes('chat-a')).toHaveLength(0);
   });
 

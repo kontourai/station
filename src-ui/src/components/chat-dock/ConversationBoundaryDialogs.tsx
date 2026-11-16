@@ -6,8 +6,11 @@ import {
   useOrchestrationSessionsQuery,
 } from '@kontourai/station-sdk';
 import type { RefObject } from 'react';
-import type { useActiveChatActions } from '../../contexts/ActiveChatsContext';
-import { activeChatsStore } from '../../contexts/ActiveChatsContext';
+import {
+  activeChatsStore,
+  type useActiveChatActions,
+  useActiveChatSelector,
+} from '../../contexts/ActiveChatsContext';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
@@ -70,7 +73,6 @@ export function ConversationBoundaryDialogs({
     | 'textareaRef'
     | 'prepareOutgoingText'
     | 'handleClearInput'
-    | 'handleClearAttachments'
   >;
   composerMenuTriggerRef: RefObject<HTMLButtonElement | null>;
   updateChat: ReturnType<typeof useActiveChatActions>['updateChat'];
@@ -94,6 +96,12 @@ export function ConversationBoundaryDialogs({
     hasLocalDeferredMessages,
   } = dialogs;
   const handoffIsActive = handoffSession?.id === activeSession?.id;
+  // The client turn this chat is busy with (the handoff's own dispatch marks
+  // it `handoff:<key>`), read live from the chat store.
+  const handoffBusyTurnId = useActiveChatSelector(
+    handoffSession?.id ?? '',
+    (chat) => chat?.pendingClientTurnId,
+  );
   return (
     <>
       {handoffSource && handoffSession?.conversationId && (
@@ -109,6 +117,7 @@ export function ConversationBoundaryDialogs({
             handoffIsActive ? chatInput.prepareOutgoingText : undefined
           }
           draftQuotes={handoffIsActive ? chatInput.quotes : undefined}
+          busyTurnId={handoffBusyTurnId}
           projectSlug={handoffSession.projectSlug}
           agents={agents}
           projects={projects}
@@ -144,11 +153,15 @@ export function ConversationBoundaryDialogs({
           onClose={() => {
             setHandoffSource(null);
             // The engine picker has no trigger to return to: the composer.
-            requestAnimationFrame(() =>
-              (
-                handoffReturnFocusRef.current ?? chatInput.textareaRef.current
-              )?.focus(),
-            );
+            requestAnimationFrame(() => {
+              // The trigger can be gone (Run setup closed on a phone, or the
+              // engine picker has none): fall back to the composer.
+              const trigger = handoffReturnFocusRef.current;
+              (trigger?.isConnected
+                ? trigger
+                : chatInput.textareaRef.current
+              )?.focus();
+            });
           }}
           onAccepted={({
             receipt,
@@ -170,9 +183,10 @@ export function ConversationBoundaryDialogs({
               ),
             );
             if (handoffIsActive) {
+              // A handoff never carries attachments, so they (and any still
+              // uploading) stay in the composer.
               if (clearsComposer) {
                 chatInput.handleClearInput();
-                chatInput.handleClearAttachments();
                 chatDraftsStore.consumeQuotes(handoffSession.id, sentQuotes);
               }
             } else {
@@ -181,11 +195,15 @@ export function ConversationBoundaryDialogs({
             invalidate(orchestrationQueries.sessions().queryKey);
             invalidate(conversationQueries.inventory().queryKey);
             setHandoffSource(null);
-            requestAnimationFrame(() =>
-              (
-                handoffReturnFocusRef.current ?? chatInput.textareaRef.current
-              )?.focus(),
-            );
+            requestAnimationFrame(() => {
+              // The trigger can be gone (Run setup closed on a phone, or the
+              // engine picker has none): fall back to the composer.
+              const trigger = handoffReturnFocusRef.current;
+              (trigger?.isConnected
+                ? trigger
+                : chatInput.textareaRef.current
+              )?.focus();
+            });
             showToast(
               `Continuing with ${target?.name ?? `deleted Agent “${targetId}”`}`,
               'success',

@@ -4,12 +4,20 @@ import {
   agentId,
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
+import {
+  CONVERSATION_HANDOFF_CARRIED_FIELDS,
+  CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
+  CONVERSATION_HANDOFF_RESET_FIELDS,
+} from '@kontourai/station-contracts/orchestration';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type React from 'react';
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   ConversationHandoffDialog,
+  ENGINE_SWITCH_CATCH_UP_MESSAGE,
   HANDOFF_CATCH_UP_MESSAGE,
+  HANDOFF_KEEPS_SUMMARY,
+  HANDOFF_STARTS_FRESH_SUMMARY,
   handoffStatusFeedback,
 } from '../components/chat-dock/ConversationHandoffDialog';
 import { acceptConversationHandoffUiState } from '../components/chat-dock/conversationHandoffUiState';
@@ -1389,9 +1397,11 @@ test('a request already made is not blocked by its own turn: Retry safely stays 
   );
   await waitFor(() => screen.getByRole('button', { name: 'Check status' }));
   first.unmount();
-  // The dispatch marked the chat as sending, so the chat now reads busy.
+  // The dispatch marked the chat as busy with this very request's turn.
+  const key = handoffExecutionMessage.mock.calls[0][2].idempotencyKey;
   const view = renderDialog('claude', undefined, undefined, undefined, {
     blockedReason: 'Wait for the current turn to finish.',
+    busyTurnId: `handoff:${key}`,
   });
   const retry = screen.getByRole('button', {
     name: 'Retry safely',
@@ -1507,4 +1517,173 @@ test('after the queue fence refuses a send, the next Continue sends the current 
   );
   await waitFor(() => expect(props.onAccepted).toHaveBeenCalledOnce());
   expect(handoffExecutionMessage.mock.calls[0][2].message).toBe('new draft');
+});
+
+describe('handoff polish-round fixes', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    handoffExecutionMessage.mockReset();
+    getConversationHandoffStatus.mockReset();
+    sessionStorage.clear();
+    useNewChatSelectionModel.mockReturnValue({
+      agentConnections: connections,
+      selectedProjectConfig: { agents: ['claude', 'codex', 'offline'] },
+      modelsForAgent: () => [{ id: 'gpt-5', name: 'GPT-5' }],
+      defaultEffectiveModelForAgent: () => ({ id: 'gpt-5' }),
+    });
+  });
+
+  async function leaveUncertain(extra = {}) {
+    handoffExecutionMessage.mockRejectedValueOnce(
+      new TypeError('response lost'),
+    );
+    const view = renderDialog('claude', undefined, undefined, undefined, extra);
+    fireEvent.click(screen.getByRole('radio', { name: /Codex reviewer/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
+    );
+    await waitFor(() => screen.getByRole('button', { name: 'Check status' }));
+    return view;
+  }
+
+  test('a chat busy with another turn keeps an earlier request from being retried', async () => {
+    const first = await leaveUncertain();
+    first.unmount();
+    renderDialog('claude', undefined, undefined, undefined, {
+      blockedReason: 'Wait for the current turn to finish.',
+      busyTurnId: 'some-other-turn',
+    });
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Retry safely',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(screen.getByRole('status').textContent).toBe(
+      'Wait for the current turn to finish.',
+    );
+  });
+
+  test('attachments in the composer do not block retrying or checking an earlier request', async () => {
+    const first = await leaveUncertain();
+    first.unmount();
+    renderDialog('claude', undefined, undefined, undefined, {
+      attachments: [{ name: 'a.png' }] as never,
+    });
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Retry safely',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Check status',
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+    expect(screen.queryByText(/remove attachments/)).toBeNull();
+  });
+
+  test('while the draft is prepared the request shows as going, and a refusal says why', async () => {
+    let refuse: (value: { refused: string }) => void = () => {};
+    renderDialog('claude', undefined, undefined, undefined, {
+      prepareDraft: () =>
+        new Promise((resolve) => {
+          refuse = resolve;
+        }),
+    });
+    fireEvent.click(screen.getByRole('radio', { name: /Codex reviewer/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
+    );
+    expect(screen.getByRole('button', { name: 'Continuing…' })).toBeTruthy();
+    refuse({ refused: 'A file mention is damaged.' });
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toBe(
+        'A file mention is damaged.',
+      ),
+    );
+    expect(handoffExecutionMessage).not.toHaveBeenCalled();
+  });
+
+  test('after an uncertain request in the same open, the note and Details describe that request', async () => {
+    await leaveUncertain({
+      prepareDraft: async () => ({
+        text: '> q\n\nfollow up',
+        draft: 'follow up',
+        quotes: [],
+      }),
+    });
+    expect(screen.getByText('Retries the earlier request.')).toBeTruthy();
+    expect(
+      screen.queryByText('Your draft is sent as the first message.'),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    expect(screen.getByText(/> q\s+follow up/)).toBeTruthy();
+  });
+
+  test('a refusal because the current agent is busy reads as what to do', async () => {
+    handoffExecutionMessage.mockRejectedValueOnce(
+      Object.assign(new Error('An Agent/engine handoff requires ...'), {
+        status: 409,
+        code: CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
+      }),
+    );
+    renderDialog();
+    fireEvent.click(screen.getByRole('radio', { name: /Codex reviewer/ }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toBe(
+        'The current agent is still working. Wait for it to finish, then try again.',
+      ),
+    );
+  });
+
+  test('an engine switch asks for a catch-up without saying the conversation was taken over', async () => {
+    handoffExecutionMessage.mockResolvedValueOnce(receipt());
+    renderDialog('claude', undefined, undefined, undefined, {
+      initialMessage: '',
+      executionPreset: { executionAgentId: 'codex', modelId: 'gpt-5' },
+    });
+    expect(screen.getByRole('dialog', { name: 'Switch engine' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^Switch to / }));
+    await waitFor(() => expect(handoffExecutionMessage).toHaveBeenCalled());
+    expect(handoffExecutionMessage.mock.calls[0][2].message).toBe(
+      ENGINE_SWITCH_CATCH_UP_MESSAGE,
+    );
+    expect(ENGINE_SWITCH_CATCH_UP_MESSAGE).not.toMatch(/taking over/);
+  });
+
+  test('the plain-language Details cover exactly the contract’s carried and reset fields', () => {
+    // These sentences summarize these lists; a change to either list must
+    // revisit HANDOFF_KEEPS_SUMMARY / HANDOFF_STARTS_FRESH_SUMMARY.
+    expect([...CONVERSATION_HANDOFF_CARRIED_FIELDS]).toEqual([
+      'authorizedTranscript',
+      'ownerTenantWorkspace',
+      'targetAgentModel',
+    ]);
+    expect([...CONVERSATION_HANDOFF_RESET_FIELDS]).toEqual([
+      'providerNativeCursor',
+      'toolState',
+      'sessionApprovals',
+      'mcpAndEngineConfiguration',
+      'activeTurnsAndInterrupts',
+      'queuedRequests',
+      'sessionLocalGrants',
+      'taskWorkflowReferences',
+    ]);
+    renderDialog();
+    expect(screen.getByRole('dialog', { name: 'Switch agent' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('radio', { name: /Codex reviewer/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    expect(screen.getByText(HANDOFF_KEEPS_SUMMARY)).toBeTruthy();
+    expect(screen.getByText(HANDOFF_STARTS_FRESH_SUMMARY)).toBeTruthy();
+    expect(screen.queryByText(/Provider-native cursor/)).toBeNull();
+  });
 });

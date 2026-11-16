@@ -12,7 +12,10 @@ import {
   useState,
 } from 'react';
 import { ComposerChoice } from './ComposerChoice';
-import { ComposerChoiceSummary } from './ComposerChoiceSummary';
+import {
+  ComposerChoiceSummary,
+  ComposerRunSetupClose,
+} from './ComposerChoiceSummary';
 import { AgentIcon } from './icons/AgentIcon';
 import {
   BrandIcon,
@@ -62,6 +65,7 @@ export function ComposerRunControl({
   const separator = label.lastIndexOf(' · ');
   const contentId = useId();
   const [open, setOpen] = useState(false);
+  const close = useCallback(() => setOpen(false), []);
   const trigger = useRef<HTMLButtonElement>(null);
   const [summaries, setSummaries] = useState<
     Record<string, { label: string; safety?: string; changed?: boolean }>
@@ -187,9 +191,11 @@ export function ComposerRunControl({
           onClose={() => setOpen(false)}
         />
         <ComposerChoiceSummary.Provider value={publish}>
-          <div id={contentId} className="composer-run-panel__choices">
-            {children}
-          </div>
+          <ComposerRunSetupClose.Provider value={close}>
+            <div id={contentId} className="composer-run-panel__choices">
+              {children}
+            </div>
+          </ComposerRunSetupClose.Provider>
         </ComposerChoiceSummary.Provider>
       </ResponsiveDialogSurface>
     </>

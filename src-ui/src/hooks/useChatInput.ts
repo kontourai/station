@@ -190,6 +190,13 @@ interface UseChatInputOptions {
   mentionAuthority?: string | null;
 }
 
+/** A composer draft as a send carries it (see `prepareOutgoingText`). */
+export interface PreparedOutgoingText {
+  text: string;
+  draft: string;
+  quotes: readonly DraftQuote[];
+}
+
 export function useChatInput({
   apiBase,
   sessionId,
@@ -492,18 +499,15 @@ export function useChatInput({
   /**
    * The text a send carries, from the composer draft (or `overrideText`):
    * mentions expanded, quotes composed in, the size limit and the quote's
-   * Station checked. `null` when the send is refused (the reason is toasted)
-   * or the draft changed while mentions were being read. Every send path that
+   * Station checked. A refusal comes back as `{ refused }` with its reason,
+   * for the caller to show where the person is looking; `null` means the
+   * draft changed while mentions were being read. Every send path that
    * leaves this composer uses it, so none skips a check.
    */
   const prepareOutgoingText = useCallback(
     async (
       overrideText?: string,
-    ): Promise<{
-      text: string;
-      draft: string;
-      quotes: readonly DraftQuote[];
-    } | null> => {
+    ): Promise<PreparedOutgoingText | { refused: string } | null> => {
       if (!sessionId) return null;
       // An override lets callers (e.g. context-composing send) supply the exact
       // text to send synchronously, avoiding a stale-closure read of `input`
@@ -511,13 +515,11 @@ export function useChatInput({
       // Explicit overrides bypass the persisted composer value, so sanitize at
       // the shared send boundary as well as on ordinary input updates.
       const submittedQuotes = chatDraftsStore.getQuotes(sessionId);
-      if (submittedQuotes.some((quote) => quote.origin !== apiBase)) {
-        showToast(
-          'A quote belongs to another Station. Remove it or return to that Station before sending.',
-          'error',
-        );
-        return null;
-      }
+      if (submittedQuotes.some((quote) => quote.origin !== apiBase))
+        return {
+          refused:
+            'A quote belongs to another Station. Remove it or return to that Station before sending.',
+        };
       const canonicalDraft = sanitizeChatInput(
         overrideText !== undefined ? overrideText : input,
       );
@@ -542,27 +544,21 @@ export function useChatInput({
           mentionAuthority,
         );
       }
-      if (expanded.error) {
-        showToast(expanded.error, 'error');
-        return null;
-      }
+      if (expanded.error) return { refused: expanded.error };
       const text = sanitizeChatInput(
         composeQuotedReply(expanded.text ?? canonicalDraft, submittedQuotes),
       );
-      if (text.length > CHAT_INPUT_MAX_CHARS) {
-        showToast(
-          'The reply and quoted context exceed the message limit. Shorten the reply or remove a quote.',
-          'error',
-        );
-        return null;
-      }
+      if (text.length > CHAT_INPUT_MAX_CHARS)
+        return {
+          refused:
+            'The reply and quoted context exceed the message limit. Shorten the reply or remove a quote.',
+        };
       return { text, draft: canonicalDraft, quotes: submittedQuotes };
     },
     [
       sessionId,
       apiBase,
       input,
-      showToast,
       workingDirectory,
       mentionRequestScope,
       mentionAuthority,
@@ -589,6 +585,10 @@ export function useChatInput({
       const submittedExperienceDraft = activeChatState?.skillExperienceDraft;
       const prepared = await prepareOutgoingText(overrideText);
       if (!prepared) return;
+      if ('refused' in prepared) {
+        showToast(prepared.refused, 'error');
+        return;
+      }
       const { text, draft: canonicalDraft, quotes: submittedQuotes } = prepared;
       let selectedAttachments = overrideAttachments ?? attachments;
       if (
