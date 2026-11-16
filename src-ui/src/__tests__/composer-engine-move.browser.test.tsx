@@ -175,15 +175,11 @@ test('a phone composer keeps "Agent moved" visible ahead of a long engine name',
       unclipped,
       '.composer-run-control__notice',
     );
-    expect(hint).toMatchObject({
-      found: true,
-      text: '· Agent moved',
-      inViewport: true,
-      clippedBy: null,
-    });
+    expect(hint).toMatchObject({ found: true, text: '· Agent moved' });
     expect(hint.display).not.toBe('none');
     expect(hint.width).toBeGreaterThan(0);
     expect(hint.ownOverflow).toBeLessThanOrEqual(0);
+    expect(hint).toMatchObject({ inViewport: true, clippedBy: null });
     // The run summary beside it (Agent · model) is what gave way.
     const summary = await page.evaluate(
       unclipped,
