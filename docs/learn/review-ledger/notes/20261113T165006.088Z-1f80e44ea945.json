@@ -1,0 +1,7 @@
+{
+  "revision": "d048111291fa8a6a00f83348f505c2696d8a41f1",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Checked: acp-adapter.test.ts gained steer and attachment-free tests only; development workflow claims unaffected. No claim changed.","inputs":["docs/guides/development.md","src-server/providers/__tests__/acp-adapter.test.ts"]}
+  ]
+}

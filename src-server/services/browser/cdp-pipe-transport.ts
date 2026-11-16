@@ -37,6 +37,23 @@ export interface CdpPipeReadable {
 
 export interface CdpPipeTransportOptions {
   maxMessageBytes?: number;
+  onTerminal?: (event: CdpPipeTerminal) => void;
+}
+
+export interface CdpPipeTerminal {
+  origin:
+    | 'caller-close'
+    | 'readable-end'
+    | 'readable-close'
+    | 'read-error'
+    | 'write-error'
+    | 'write-throw'
+    | 'frame-too-large'
+    | 'malformed-json'
+    | 'nonobject-frame';
+  pending: number;
+  remaining: number;
+  saturated: boolean;
 }
 
 /** A CDP command the browser answered with an `error` object. */
@@ -88,7 +105,7 @@ export class CdpPipeTransport implements CdpTransport {
   constructor(
     private readonly writable: CdpPipeWritable,
     private readonly readable: CdpPipeReadable,
-    options: CdpPipeTransportOptions = {},
+    private readonly options: CdpPipeTransportOptions = {},
   ) {
     this.maxMessageBytes =
       options.maxMessageBytes ?? DEFAULT_CDP_MAX_MESSAGE_BYTES;
@@ -96,13 +113,13 @@ export class CdpPipeTransport implements CdpTransport {
       this.resolveClosed = resolve;
     });
     readable.on('data', (chunk: Buffer) => this.onData(chunk));
-    readable.on('end', () => this.shutdown('pipe ended'));
-    readable.on('close', () => this.shutdown('pipe closed'));
+    readable.on('end', () => this.shutdown('pipe ended', 'readable-end'));
+    readable.on('close', () => this.shutdown('pipe closed', 'readable-close'));
     readable.on('error', (error: Error) =>
-      this.shutdown(`pipe read error: ${error.message}`),
+      this.shutdown(`pipe read error: ${error.message}`, 'read-error'),
     );
     writable.on('error', (error: Error) =>
-      this.shutdown(`pipe write error: ${error.message}`),
+      this.shutdown(`pipe write error: ${error.message}`, 'write-error'),
     );
   }
 
@@ -140,7 +157,10 @@ export class CdpPipeTransport implements CdpTransport {
           Buffer.concat([Buffer.from(JSON.stringify(message)), Buffer.of(0)]),
         );
       } catch (error) {
-        this.shutdown(`pipe write threw: ${(error as Error).message}`);
+        this.shutdown(
+          `pipe write threw: ${(error as Error).message}`,
+          'write-throw',
+        );
       }
     });
   }
@@ -169,11 +189,11 @@ export class CdpPipeTransport implements CdpTransport {
   }
 
   async close(): Promise<void> {
-    this.shutdown('closed by caller');
+    this.shutdown('closed by caller', 'caller-close');
     await this.closed;
   }
 
-  private shutdown(reason: string): void {
+  private shutdown(reason: string, origin: CdpPipeTerminal['origin']): void {
     if (this.closeReasonValue !== undefined) return;
     this.closeReasonValue = reason;
     const pending = [...this.pending.values()];
@@ -194,6 +214,16 @@ export class CdpPipeTransport implements CdpTransport {
       // Same: nothing left to release.
     }
     this.resolveClosed();
+    try {
+      this.options.onTerminal?.({
+        origin,
+        pending: Math.min(pending.length, 65535),
+        remaining: this.pending.size,
+        saturated: pending.length > 65535,
+      });
+    } catch {
+      // Diagnostics cannot change channel settlement.
+    }
   }
 
   private onData(chunk: Buffer): void {
@@ -206,6 +236,7 @@ export class CdpPipeTransport implements CdpTransport {
       if (this.bufferedBytes + piece.length > this.maxMessageBytes) {
         this.shutdown(
           `incoming CDP message exceeded ${this.maxMessageBytes} bytes`,
+          'frame-too-large',
         );
         return;
       }
@@ -224,6 +255,7 @@ export class CdpPipeTransport implements CdpTransport {
     if (this.bufferedBytes + rest.length > this.maxMessageBytes) {
       this.shutdown(
         `incoming CDP message exceeded ${this.maxMessageBytes} bytes`,
+        'frame-too-large',
       );
       return;
     }
@@ -237,11 +269,14 @@ export class CdpPipeTransport implements CdpTransport {
     try {
       message = JSON.parse(frame.toString('utf8'));
     } catch {
-      this.shutdown('received a CDP frame that is not JSON');
+      this.shutdown('received a CDP frame that is not JSON', 'malformed-json');
       return;
     }
     if (!isRecord(message)) {
-      this.shutdown('received a CDP frame that is not an object');
+      this.shutdown(
+        'received a CDP frame that is not an object',
+        'nonobject-frame',
+      );
       return;
     }
     const sessionId =

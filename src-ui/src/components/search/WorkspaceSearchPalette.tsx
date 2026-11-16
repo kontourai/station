@@ -101,7 +101,7 @@ export default function WorkspaceSearchPalette({
             }
           : undefined;
     if (!locator) {
-      setNotice('This result has no supported exact open target.');
+      setNotice('This result can’t be opened.');
       return;
     }
     const captured = scope;
@@ -142,16 +142,16 @@ export default function WorkspaceSearchPalette({
         );
         if (committed) onClose();
         else if (current(captured, controller))
-          setNotice('Task opening was cancelled or is no longer available.');
+          setNotice('This Task didn’t open. It may no longer be available.');
       } else if (await resolve()) {
         setSelected({ locator, scope: captured });
       } else if (current(captured, controller))
         setNotice(
-          'This exact message is unavailable. No other Session was opened.',
+          'Couldn’t open this message. You may no longer have access to it.',
         );
     } catch {
       if (current(captured, controller))
-        setNotice('This result could not be opened.');
+        setNotice('Couldn’t open this result.');
     } finally {
       if (flight.current === controller) {
         flight.current = null;
@@ -176,17 +176,13 @@ export default function WorkspaceSearchPalette({
     );
   return (
     <Dialog
-      title={projectId ? 'Search Project' : 'Workspace search (this Station)'}
+      title={projectId ? 'Search Project' : 'Search this Station'}
       initialFocusRef={inputRef}
       initialFocusPolicy="always"
-      closeLabel="Close workspace search"
+      closeLabel="Close search"
       onClose={onClose}
       size="lg"
-      subtitle={
-        projectId
-          ? 'Tasks and indexed messages'
-          : 'Interim local search: Tasks and indexed messages. Other sources remain in command and legacy search.'
-      }
+      subtitle="Tasks and messages"
       footer={
         <Button
           variant="secondary"
@@ -195,7 +191,7 @@ export default function WorkspaceSearchPalette({
             onCommands();
           }}
         >
-          Commands and legacy message search
+          Back to commands
         </Button>
       }
     >
@@ -234,25 +230,25 @@ export default function WorkspaceSearchPalette({
       {notice && <p role="status">{notice}</p>}
       {!scope?.isCurrent() ? (
         <ErrorState
-          title="Workspace search unavailable"
-          description="Authorize this Station before searching its work."
+          title="Search unavailable"
+          description="Sign in to this Station to search its work."
         />
       ) : search.isError ? (
         <ErrorState
-          title="Workspace search unavailable"
-          description="This Station may require an update or a repaired connection. Command search remains available."
+          title="Search unavailable"
+          description="Couldn't search this Station. Update Station or reconnect, then try again."
         />
       ) : search.isFetching || opening ? (
         <SkeletonBlock
           count={1}
-          label={opening ? 'Resolving exact result' : 'Searching this Station'}
+          label={opening ? 'Opening result' : 'Searching this Station'}
         />
       ) : null}
       {ready &&
         search.data?.sources.map((source) => (
           <p role="status" key={source.providerId}>
             {sourceLabel(source.providerId)}: {source.state}
-            {source.state === 'partial' ? ' — bounded result window' : ''}
+            {source.state === 'partial' ? ' (first results only)' : ''}
           </p>
         ))}
       {ready &&

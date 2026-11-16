@@ -207,7 +207,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
         ),
       ).toBeNull();
       // What the panel is for when nothing exists: the way out.
-      expect(screen.getByText('Quick Setup')).toBeTruthy();
+      expect(screen.getByText('Quick setup')).toBeTruthy();
       expect(screen.getAllByText('No model connections yet')).toHaveLength(1);
     });
 
@@ -240,9 +240,9 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     test('the model-connections description does not point at the page it is on', () => {
       render(<ProviderSettingsView onNavigate={onNavigate} />);
 
-      const description = screen.getByText(/Connections used by Station/);
+      const description = screen.getByText(/Used by Station's engine/);
       expect(description.textContent).toContain(
-        'Engine connections are under the Engines tab.',
+        'Other engines are on the Engines tab.',
       );
       // Review L8: the JSX-newline form could never appear in rendered text,
       // so asserting its absence proved nothing. The rendered sentence is what
@@ -417,9 +417,20 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
         },
       },
     ];
-    render(<ProviderSettingsView onNavigate={onNavigate} />);
+    const { container } = render(
+      <ProviderSettingsView onNavigate={onNavigate} />,
+    );
 
-    expect(screen.getByText(/Saved — not verified · LLM/)).toBeTruthy();
+    // The readiness is the row's badge; the subtitle holds facts only, and
+    // the row no longer paints an inline status dot as its icon.
+    const row = container.querySelector('.split-pane__item')!;
+    expect(row.querySelector('.resource-status__badge')?.textContent).toBe(
+      'Saved — not verified',
+    );
+    const subtitle = row.querySelector('.split-pane__item-subtitle');
+    expect(subtitle?.textContent).toContain('LLM');
+    expect(subtitle?.textContent).not.toContain('Saved');
+    expect(row.querySelector('.split-pane__item-icon')).toBeNull();
   });
 
   // RT-17 — agent delete has always opened a confirm modal; provider delete

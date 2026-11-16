@@ -260,6 +260,35 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   'tests/builder-delivery-viewer.spec.ts',
   'tests/session-inventory-mcp-interop.spec.ts',
   'tests/survey-review-workbench.spec.ts',
+  // Kiro parity suites read the fake ACP agent's request record from a
+  // trackTempDirs directory and captured handshake frames under fixtures/
+  // (test data, excluded from source pins). Their direct adapter, probe and
+  // handshake-fact imports select them for changes.
+  'src-server/providers/__tests__/acp-engine-extension-events.test.ts',
+  'src-server/providers/__tests__/acp-host-auth.process.test.ts',
+  'src-server/providers/__tests__/acp-kiro-announce.process.test.ts',
+  'src-server/providers/__tests__/acp-kiro-parity.process.test.ts',
+  'src-server/providers/__tests__/acp-kiro-parity.test.ts',
+  'src-server/providers/__tests__/acp-session-answers.process.test.ts',
+  'src-server/services/acp/__tests__/acp-client-announcements.process.test.ts',
+  'src-server/services/acp/__tests__/acp-handshake-facts.test.ts',
+  'src-server/services/acp/__tests__/acp-probe-terminal-facts.process.test.ts',
+  // Grok suites read only the scrubbed grok 1.0.77 capture under fixtures/
+  // (test data, excluded from source pins). Their direct adapter, reader and
+  // binding imports select them for changes.
+  'src-server/providers/__tests__/acp-adapter-grok.test.ts',
+  'src-server/providers/__tests__/acp-engine-extension-events.grok.test.ts',
+  // The steer suite reads only the scrubbed Antigravity 1.5.8 capture under
+  // services/acp/__tests__/fixtures/ (test data, excluded from source pins).
+  // Its direct acp-steer import selects it for changes.
+  'src-server/providers/__tests__/acp-steer.test.ts',
+  // OpenCode native suites read only the scrubbed opencode serve 2.3.0
+  // captures (and its served openapi.json) under fixtures/ (test data,
+  // excluded from source pins). Their direct client, fingerprint and
+  // replay-harness imports select them for changes.
+  'src-server/providers/__tests__/opencode-serve-client.test.ts',
+  'src-server/providers/__tests__/opencode-serve-fingerprint.test.ts',
+  'src-server/providers/__tests__/opencode-serve-fixtures.test.ts',
 ]);
 
 /**
@@ -579,13 +608,20 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'lists src-ui/public/color-themes, its own generated output, to refuse a sheet the catalog no longer renders; the color-theme edges in scripts/test-impact-manifest.mjs select it',
   'packages/contracts/src/__tests__/channel-fixture-corpus.test.ts':
     'walks its own fixture directory',
+  'src-server/providers/__tests__/opencode-serve-fixtures.test.ts':
+    'lists its own fixtures/ directory for the opencode serve 2.3.0 captures, to check each is scrubbed of host paths and secrets',
   // The heavy-check slot queue lives under a makeTempDir root reached through
   // the workspace or temp fixture object.
   'scripts/__tests__/heavy-check-slots.test.ts': TEMP_VIA_FIXTURE,
   'scripts/__tests__/verification-coordinator.test.ts': TEMP_VIA_FIXTURE,
   // Walks fixture homes that `buildSourceHome()` creates under trackTempDirs.
   'scripts/__tests__/seed-dev-home.test.ts': TEMP_VIA_FIXTURE,
+  // Lists the trackTempDirs scratch directory a producer CLI ran in, to
+  // prove it wrote no manifest there.
+  'scripts/__tests__/qualification-failure-manifest.test.ts': TEMP_VIA_FIXTURE,
   'scripts/__tests__/ci-event-environment.test.ts':
+    'lists .github/workflows; the .github/workflows/** edge selects it',
+  'scripts/__tests__/promotion-full-regression-workflow.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',
   'scripts/__tests__/test-impact-incidents.test.ts':
     'lists src-server/runtime/bootstrap to pin every gate module to its impact edge; asserts nothing about their content',
@@ -595,6 +631,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'lists the versions directory of the temporary install root its harness creates',
   'scripts/__tests__/service-launcher-e2e.test.ts':
     'lists the archive directory of the temporary install it builds, to read the signed archive size',
+  'src-server/routes/projects/project-room-routes.test.ts':
+    'lists the attachment bindings directory under its temporary Station home to prove a deleted message and an expired unsent upload free their files (#4852)',
   'src-server/services/infra/__tests__/workload-budget.test.ts':
     'lists the config directory under its temporary Station home to prove a refused settings save leaves no temporary file beside workload-budgets.json',
   'src-server/security/confinement/__tests__/confinement-preflight-factory.test.ts':

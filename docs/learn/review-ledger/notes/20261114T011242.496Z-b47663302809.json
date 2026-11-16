@@ -1,0 +1,7 @@
+{
+  "revision": "aac3c60768bd001e27b57bf3d9b1e304ca2bb5b8",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked: run-test-mutations.mjs only re-targets the fast-checks shard-threshold mutation to the new 100-file constant; no module ownership claim changes.","inputs":["docs/architecture/module-map.md","scripts/run-test-mutations.mjs"]}
+  ]
+}

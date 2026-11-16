@@ -1,7 +1,0 @@
-{
-  "revision": "d4dd544f8ebb5da7bc33520ca331f1c08dcfabc1",
-
-  "notes": [
-    {"path":"docs/design/notification-delivery.md","note":"Added touch swipe-to-dismiss sentence. Traced NotificationContainer: transient-stack ToastCard gets swipeToDismiss (useSwipeToDismiss: touch/pen, 12px slop, horizontal lock, threshold or fling, click suppressed); approval-queue cards do not. Troubleshoot-on-error-toast claim unchanged.","inputs":["docs/design/notification-delivery.md","src-ui/src/components/notifications/NotificationContainer.tsx"]}
-  ]
-}

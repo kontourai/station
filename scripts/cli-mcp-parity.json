@@ -1287,6 +1287,10 @@
       "exempt": "agent-self",
       "reason": "Machine-produced Surface trust bundle for an answer; no person workflow publishes one."
     },
+    "get_appearance": {
+      "exempt": "agent-proposal",
+      "reason": "An agent reads the person's custom appearance to propose a change; the person previews and keeps it in the Appearance page."
+    },
     "get_basis": {
       "cli": ["tasks basis"],
       "note": "CLI covers only the Task leaf (GET /api/tasks/:taskId/basis); the per-turn leaf GET /api/orchestration/sessions/:id/turns/:turnId/basis has no CLI action (SDK answer-basis.ts has the fetcher)."
@@ -1398,6 +1402,10 @@
       "cli": ["agents list"],
       "note": "Different route: MCP GET /agents, CLI GET /api/agents."
     },
+    "list_automation_proposals": {
+      "exempt": "agent-self",
+      "reason": "Lists the caller's own Automation proposals."
+    },
     "list_conversations": {
       "cli": ["agents conversations"]
     },
@@ -1502,6 +1510,18 @@
     },
     "preview_schedule": {
       "cli": ["schedule preview"]
+    },
+    "propose_appearance": {
+      "exempt": "agent-proposal",
+      "reason": "An agent proposes, the person previews and keeps or discards it in the Appearance page."
+    },
+    "propose_automation_rule": {
+      "exempt": "agent-proposal",
+      "reason": "Agent asks a person; the operator creates rules directly through the Automation operator API."
+    },
+    "propose_automation_source": {
+      "exempt": "agent-proposal",
+      "reason": "Agent asks a person; the operator creates sources directly through the Automation operator API."
     },
     "propose_job": {
       "exempt": "agent-proposal",

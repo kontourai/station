@@ -1,0 +1,7 @@
+{
+  "revision": "6c83a4dda393952f3bcc8ab18441af9354e84c9c",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Added the repair and health paragraphs on manifest download, the failure classification, report mode by default and what enforce mode changes (known-only opens no episode, never closes one, health replaces staleness with the known-only-since line within 24 hours). Verified against qualification-repair.mjs, qualification-health.mjs, qualification-failure-signal.mjs and both workflows.","inputs":["docs/guides/releasing.md",".github/workflows/full-regression.yml",".github/workflows/qualification-health.yml",".github/workflows/qualification-repair.yml","scripts/qualification-health.mjs","scripts/qualification-repair.mjs"]}
+  ]
+}

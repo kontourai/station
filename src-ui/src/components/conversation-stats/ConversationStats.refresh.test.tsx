@@ -40,6 +40,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     isPending: false,
     fetchStatus: 'idle',
   }),
+  useReconnectEngineMcpServerMutation: () => ({ mutateAsync: vi.fn() }),
 }));
 
 vi.mock('./ConversationStatsModal', () => ({

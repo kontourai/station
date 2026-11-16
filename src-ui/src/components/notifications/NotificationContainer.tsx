@@ -32,6 +32,7 @@ import {
 } from '../status/approvalReveal';
 import { TroubleshootAction } from '../troubleshoot/TroubleshootAction';
 import './NotificationContainer.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { selectToastStackItems } from './toast-stack-layout';
 
 type Notification = ReturnType<typeof useNotificationHistory>[number];
@@ -70,6 +71,13 @@ function ToastCard({
   const isActivity = notification.type === 'tool-activity';
   const isTurn = notification.type === 'turn-activity';
   const isPairing = notification.type === 'pairing-request';
+  // Any notification that carries actions can be a decision (a tool approval,
+  // a pairing request, or a decision a newer server sends), so all of them
+  // hold custom CSS off while shown.
+  useDecisionSurface(
+    'approval-toast',
+    isApproval || isPairing || (notification.actions?.length ?? 0) > 0,
+  );
   const cardRef = useRef<HTMLElement>(null);
   const swipe = useSwipeToDismiss(swipeToDismiss, () =>
     dismissToast(notification.id),
@@ -202,20 +210,16 @@ function ToastCard({
           {(isApproval || isPairing || isActivity || isTurn) && (
             <div className="toast-card__meta">
               {isApproval && (
-                <span className="toast-card__eyebrow">
-                  Tool Approval Request
-                </span>
+                <span className="toast-card__eyebrow">Approval request</span>
               )}
               {isActivity && (
-                <span className="toast-card__eyebrow">Tool Activity</span>
+                <span className="toast-card__eyebrow">Tool activity</span>
               )}
               {isTurn && (
                 <span className="toast-card__eyebrow">Agent turn</span>
               )}
               {isPairing && (
-                <span className="toast-card__eyebrow">
-                  Device Pairing Request
-                </span>
+                <span className="toast-card__eyebrow">Pairing request</span>
               )}
               <time className="toast-card__time">
                 {relativeTime(notification.timestamp, Date.now())}

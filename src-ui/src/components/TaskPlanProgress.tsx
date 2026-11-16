@@ -1,13 +1,13 @@
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { useOrchestrationSessionActivityQuery } from '@kontourai/station-sdk';
 import { useMemo } from 'react';
-import type { HomeLifecycleLabel } from '../utils/lifecycle-priority';
 import {
   projectTaskPlanProgress,
   sessionPlanProgressRead,
   type TaskPlanProgress,
   taskPlanProgressLabel,
 } from '../utils/taskPlanProgress';
+import type { WorkStatus } from '../views/home/work-status';
 import './TaskPlanProgress.css';
 
 /** Tasks whose Session may still be revising its plan. */
@@ -131,21 +131,22 @@ export function TaskPlanProgressForTask({
 }
 
 /**
- * A Session row on Home or in Activity. The row's own lifecycle label decides
- * the read: none for a Draft (no read is mounted), a 5 s refresh while running
- * or waiting on someone, one read otherwise.
+ * A Session row on Home or in Activity. The row's status-ladder status (the
+ * one its status line already shows) decides the read: none for a Draft (no
+ * read is mounted), a 5 s refresh while running or needing someone, one read
+ * otherwise.
  */
 export function SessionPlanProgress({
-  lifecycleLabel,
+  status,
   ...props
 }: {
   sessionId: string;
-  lifecycleLabel: HomeLifecycleLabel;
+  status: Pick<WorkStatus, 'lane'>;
   apiBase?: string;
   className?: string;
   announce?: 'img' | 'text';
 }) {
-  const read = sessionPlanProgressRead(lifecycleLabel);
+  const read = sessionPlanProgressRead(status);
   return read === 'skip' ? null : (
     <SessionPlanProgressRead {...props} live={read === 'live'} />
   );

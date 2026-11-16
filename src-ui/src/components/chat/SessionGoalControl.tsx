@@ -1,4 +1,7 @@
-import type { SessionGoalCommand } from '@kontourai/station-contracts/session-goal';
+import type {
+  SessionGoal,
+  SessionGoalCommand,
+} from '@kontourai/station-contracts/session-goal';
 import {
   useSessionGoalMutation,
   useSessionGoalQuery,
@@ -10,6 +13,23 @@ import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags
 import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
 import { ErrorState, SkeletonBlock } from '../state';
+
+/**
+ * The usage line, from only what the implementation reported: an absent
+ * figure is left out, never shown as zero (Muse reports none of them).
+ */
+function goalUsage(goal: SessionGoal): string | undefined {
+  const parts = [
+    ...(goal.tokensUsed !== undefined
+      ? [`${goal.tokensUsed} tokens used`]
+      : []),
+    ...(goal.tokenBudget !== undefined
+      ? [`${goal.tokenBudget ?? 'No'} token budget`]
+      : []),
+    ...(goal.timeUsedSeconds !== undefined ? [`${goal.timeUsedSeconds}s`] : []),
+  ];
+  return parts.length > 0 ? parts.join(' · ') : undefined;
+}
 
 export function SessionGoalControl({ sessionId }: { sessionId: string }) {
   const flags = useSurfaceVisibilityFlags();
@@ -67,7 +87,7 @@ function GoalSurface({
     <section className="chat-settings-modal__section" aria-label="Session goal">
       <h4>Session goal</h4>
       {query.isFetching || query.isPending ? (
-        <SkeletonBlock count={1} label="Reading Goal" />
+        <SkeletonBlock count={1} label="Loading goal" />
       ) : query.error ? (
         <ErrorState
           variant="compact"
@@ -92,17 +112,15 @@ function GoalSurface({
           {data.goal && (
             <>
               <p>{data.goal.objective}</p>
-              <p>
-                {data.goal.tokensUsed} tokens used ·{' '}
-                {data.goal.tokenBudget ?? 'No'} token budget ·{' '}
-                {data.goal.timeUsedSeconds}s
-              </p>
+              {goalUsage(data.goal) && <p>{goalUsage(data.goal)}</p>}
             </>
           )}
-          <p>
-            Save a paused objective. Automatic goal execution is not available
-            in Station yet.
-          </p>
+          {data.capability.operations.includes('set') && (
+            <p>
+              Save a paused objective. Automatic goal execution is not available
+              in Station yet.
+            </p>
+          )}
           {editing ? (
             <form
               onSubmit={(event) => {
@@ -127,16 +145,20 @@ function GoalSurface({
                 required
                 onChange={(event) => setObjective(event.target.value)}
               />
-              <label htmlFor={budgetId}>Token budget (optional)</label>
-              <input
-                id={budgetId}
-                className="editor-input"
-                type="number"
-                min="1"
-                step="1"
-                value={budget}
-                onChange={(event) => setBudget(event.target.value)}
-              />
+              {data.capability.tokenBudget !== 'unsupported' && (
+                <>
+                  <label htmlFor={budgetId}>Token budget (optional)</label>
+                  <input
+                    id={budgetId}
+                    className="editor-input"
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={budget}
+                    onChange={(event) => setBudget(event.target.value)}
+                  />
+                </>
+              )}
               <div className="chat-settings-modal__control">
                 <Button
                   type="submit"

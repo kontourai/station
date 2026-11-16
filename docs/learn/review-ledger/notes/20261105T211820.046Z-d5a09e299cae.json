@@ -1,7 +1,0 @@
-{
-  "revision": "61fa66afe0f498377c2aa1e1e40fb32b8b563a7c",
-
-  "notes": [
-    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the source-layer merge against the actual sidebar CSS: workspace, disclosure and reorder controls occupy separate flex slots and coarse-pointer targets retain the 44px floor. The parent four-owner batch passed 32 tests; restoring the prior two CSS files produced the intended overlap and contrast failures, and exact restoration passed the six affected tests. Sources header/scrollport and dock-reservation behavior stays covered by the existing child gallery assertions. The merged cross-runtime browser setup retains its 320/390/412px observations. No breakpoint, navigation authority, input behavior or physical-device qualification changes; prior captures remain dated evidence.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/project-sidebar/ProjectSidebar.css"]}
-  ]
-}

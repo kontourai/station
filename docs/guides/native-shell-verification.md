@@ -571,23 +571,29 @@ the key-approval and grant-lifecycle lanes are explicit opt-ins. Harness
 availability is source evidence, not an executed platform result. Record the
 exact binary, revision, host and completed lane result when running it.
 
-The desktop sidecar starts Node with a home-scoped compile cache. The first
+The desktop sidecar starts Node with a home-scoped compile cache
+([desktop build](desktop-build.md#startup-cost-and-linux-graphics)). The first
 [server bootstrap import](../../src-server/runtime/bootstrap/server-compile-cache.ts)
 loads `.env`, then removes `NODE_COMPILE_CACHE` from the server environment
 after Node has consumed its startup setting, so dotenv cannot restore it for
-generic child launchers.
+generic child launchers. The server gives the home's cache directory only to
+the built-in station-control and station-knowledge children.
 Targeted child environment scrubs remain in place. The process supervisor keeps
 the setting when launching replacement Station server generations; each enters
 through the same server bootstrap. The
 [process regression](../../src-server/runtime/bootstrap/__tests__/server-compile-cache.process.test.ts)
 checks Node's active cache across two starts and executes real stdio MCP,
-Strands, Flow Agents, Veritas and login-shell child paths. Its first-import
+Strands, Flow Agents, Veritas and login-shell child paths. Through the real
+stdio transport, the built-in station-control environment carries the home's
+cache and a third-party server's does not. Its first-import
 ordering assertion is a source-only wiring guard, separate from packaged-shell
 startup evidence. A second regression builds the real server entry and runs it
 from a working directory whose `.env` contains the cache setting. It verifies
 that dotenv loaded, reaches a deliberate invalid-port refusal, and observes a
-real child without that variable, both with and without a startup cache.
-External ESM dependencies evaluate before the bundled bootstrap. The regression
+real child without that variable, both with and without a startup cache. It
+then runs the built station-control bundle: its cache is on disk while it still
+runs, before a signal ends it, and its own environment no longer carries the
+setting. External ESM dependencies evaluate before the bundled bootstrap. The regression
 observes no Node child-process launches during evaluation of the installed
 dependency graph; this evidence is specific to those dependency versions.
 
@@ -704,10 +710,13 @@ sidecar supervisor itself has no boot or handshake timeout; it waits for the
 generation-tagged handshake or child exit.
 
 On macOS, pending activation may present a native-owned cover so the WebView
-can render while the proof proceeds. It shows the application icon and
-**Starting Station**; when the epoch becomes overdue it switches in place to
-**Station is taking longer than usual to start.** with native **Restart**
-(default) and **Quit** buttons, replacing the former modal alert. The read-only
+can render while the proof proceeds. It is drawn like the renderer startup
+screen at rest (palette for the window's appearance, channel mark and Fraunces
+wordmark, river track) with **Starting Station**; when the epoch becomes
+overdue it switches in place to **Station is taking longer than usual to
+start.**, the detail **It opens on its own when ready. A one-time upgrade after
+an update can take a few minutes.**, and native **Restart** (default) and
+**Quit** buttons, replacing the former modal alert. The read-only
 `startup_window_admitted` observation waits for a visible window and, on macOS,
 checks the main-thread view hierarchy for actual cover removal and restored
 WebView opacity. The readiness phase alone can precede that cover task. The

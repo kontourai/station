@@ -375,7 +375,7 @@ describe('primary CI workflow governance', () => {
     );
     expect(classify?.if).toBe(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.
-      "${{ github.event_name != 'pull_request_target' }}",
+      "${{ github.event_name != 'pull_request_target' && github.event_name != 'merge_group' }}",
     );
     expect(classify?.['runs-on']).toBe('ubuntu-22.04');
     expect(fastChecks?.if).toBe(

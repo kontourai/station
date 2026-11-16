@@ -183,7 +183,11 @@ The `hygiene` job of
 using the same single-issue pattern as the documentation freshness sweep. The
 issue stays open while anything is reported or NOT_VERIFIED and closes when
 nothing is. A NOT_VERIFIED run also fails the `hygiene` job. Neither job is a
-required check.
+required check. Because the report comes from a job that installs
+dependencies, the issue job writes only to an issue the workflow bot opened,
+posts only a report stamped with its own checkout's revision (current, not
+proof of who wrote it), breaks every `@` mention including entity-encoded
+ones, and refuses posted text over GitHub's body limit.
 
 ## Promote a check
 

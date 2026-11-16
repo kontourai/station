@@ -63,6 +63,9 @@ checked>"` rather than editing its files; commit the reviewed bytes first.
 `--show-delta <path>` prints the input diff since the history baseline.
 `--rereview` remains accepted for a deliberate review of unchanged inputs.
 Drop a citation with `--drop-source`; the command records its review note.
+For a changed source that many records cite, `--input <source> --note "..."`
+writes the same note for every citing document after you check each of them;
+an edited document or record still needs its own note.
 Keep document classification separate from source review. A changed document
 or supporting source needs an explicit note about the inspected claims.
 

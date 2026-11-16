@@ -1,0 +1,7 @@
+{
+  "revision": "e0502b34cf5c64b289e724e99f1b7535286896bf",
+
+  "notes": [
+    {"path":".github/codex/qualification-repair.md","note":"Checked the repair prompt against qualification-repair.mjs: repair-context.json, base, issue and claim flow are unchanged. The only change is that a red run whose corpus was skipped (skip_failed_source) now leaves the episode untouched before any claim.","inputs":[".github/codex/qualification-repair.md","scripts/__tests__/qualification-repair.test.ts","scripts/qualification-repair.mjs"]}
+  ]
+}

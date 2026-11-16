@@ -147,6 +147,19 @@ const starterQueryClient = vi.hoisted(() => ({
 }));
 vi.mock('@kontourai/station-sdk', () => ({
   useFeaturePreviewsQuery: () => ({ data: featurePreviews }),
+  useTaskCodeReviewQuery: () => ({
+    data: undefined,
+    error: new Error('Code review is unavailable in this Task-view fixture.'),
+    isFetching: false,
+    refetch: vi.fn(),
+  }),
+  useRequestTaskCodeReviewMutation: () => ({
+    isPending: false,
+    isError: false,
+    mutateAsync: vi.fn(async () => {
+      throw new Error('Code review execution is outside this fixture.');
+    }),
+  }),
   telemetry: { track: vi.fn() },
   getJson: vi.fn(
     async () => new Response(JSON.stringify({ success: true, data: [] })),
@@ -188,6 +201,8 @@ vi.mock('@kontourai/station-sdk', () => ({
     });
   },
   useDiffCommentsQuery: () => ({ data: [] }),
+  // The Task room marks itself read through the server read markers (#4795).
+  useMarkReadMutation: () => ({ mutate: vi.fn() }),
   useCreateDiffCommentMutation: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteDiffCommentMutation: () => ({ mutate: vi.fn(), isPending: false }),
   bindStarterWork: (...args: unknown[]) => bindStarterWork(...args),

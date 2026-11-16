@@ -25,6 +25,7 @@ import {
 } from '../hooks/useRecoveryConfig';
 import { useTelemetryNotice } from '../hooks/useTelemetryNotice';
 import { useTelemetryStatus } from '../hooks/useTelemetryStatus';
+import { useDecisionSurface } from '../lib/custom-appearance/decision-surfaces';
 import {
   afterInitialStartup,
   initialStartupIsActive,
@@ -56,6 +57,7 @@ export function UsageSharingPrompt({
   dismissNoticeRef?: Ref<() => void>;
   initialChoiceRef?: RefObject<HTMLInputElement | null>;
 }) {
+  useDecisionSurface('usage-sharing-prompt');
   const scope = useOptionalRecoveryScope();
   const { apiBase: protectedBase } = useApiBase();
   const apiBase = scope?.apiBase ?? protectedBase;

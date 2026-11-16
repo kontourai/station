@@ -435,12 +435,6 @@
       "reason": "legacy-cast"
     },
     {
-      "file": "packages/contracts/src/runtime.ts",
-      "rule": "as-unknown",
-      "fingerprint": "a984f66af197d3bdba5b5d0d49acc255ffae39c5c0311b267bcc1f989730faad",
-      "reason": "legacy-cast"
-    },
-    {
       "file": "packages/contracts/src/session-inventory.ts",
       "rule": "as-unknown",
       "fingerprint": "7ba892e07cf83a50db344651f51cf61b50a4e6de9f753cff7193cf847154206e",
@@ -1506,12 +1500,6 @@
       "file": "src-server/services/agents/skill-service.ts",
       "rule": "as-unknown",
       "fingerprint": "f2e38ebdcedb3a4b16edcaabff8221a07e6ee680467d3850e916b1bda07f3f8d",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/services/browser/chromium-acquisition.ts",
-      "rule": "as-unknown",
-      "fingerprint": "f79afb9e2784796f0c64b2c7e3411fab059ce52a92301f5a8f5eb9075187b3bf",
       "reason": "legacy-cast"
     },
     {

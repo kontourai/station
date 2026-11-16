@@ -307,7 +307,7 @@ interface ProviderCatalogInputBase {
  * callers may attach the one discovery fact the row actually observed, but
  * may not synthesize a three-state setup tuple from it.
  */
-type ProviderCatalogInput =
+export type ProviderCatalogInput =
   | (ProviderCatalogInputBase & {
       setup: AgentConnectionView['setup'];
       discovery?: never;
@@ -660,7 +660,7 @@ export function resolveProviderPresentation(
           readiness: 'Reachable — no model catalog',
           tone: 'warn',
           detail:
-            'The service answered but offers no model list. Run Test Connection or start a chat to verify it can actually run work.',
+            'The service answered but offers no model list. Run Test connection or start a chat to verify it can actually run work.',
           actionLabel: 'Test connection',
         };
       }
@@ -747,10 +747,11 @@ export function resolveProviderChoicePresentation(
  * list row and the summary card both read this, so they cannot disagree about
  * whether the same connection is ready.
  */
-export function modelConnectionPresentation(
+/** The catalog input for a model connection; the one shape every reader uses. */
+export function modelCatalogInput(
   connection: ProviderConnection,
-): ProviderPresentation {
-  return resolveProviderPresentation({
+): ProviderCatalogInput {
+  return {
     id: connection.id,
     kind: 'model',
     type: connection.type,
@@ -763,7 +764,13 @@ export function modelConnectionPresentation(
       : {}),
     setup: null,
     href: '',
-  });
+  };
+}
+
+export function modelConnectionPresentation(
+  connection: ProviderConnection,
+): ProviderPresentation {
+  return resolveProviderPresentation(modelCatalogInput(connection));
 }
 
 /**

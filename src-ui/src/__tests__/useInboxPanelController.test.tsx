@@ -42,6 +42,7 @@ beforeEach(() => {
   localStorage.clear();
   deviceSettingsStore.reloadFromStorage();
   window.history.replaceState(null, '', '/');
+  navigationStore.navigate('/');
 });
 afterEach(() => {
   clients.splice(0).forEach((client) => client.clear());
@@ -56,6 +57,7 @@ function Harness({
   failures,
   acknowledge,
   closeDuringOpen = false,
+  bindDuringOpen = false,
 }: {
   layout: 'desktop' | 'mobile';
   loadError: boolean;
@@ -63,7 +65,10 @@ function Harness({
   failures: (message: string) => void;
   acknowledge: (item: HomeWorkItem) => void;
   closeDuringOpen?: boolean;
+  /** Opening binds a dock chat to the row, as the dock does (#4814). */
+  bindDuringOpen?: boolean;
 }) {
+  const [rows, setRows] = useState(items);
   const [open, setOpen] = useState(true),
     [station, setStation] = useState('station-a'),
     [failed, setFailed] = useState(loadError);
@@ -76,9 +81,16 @@ function Harness({
     authority,
     activeChatSessionId: null,
     openChatSessionIds: [],
+    // Focusing a chat sets ?chat= on the current page, as useChatDockActions does.
     onFocusChat: (id: string) =>
-      navigationStore.navigate('/projects/workshop', { chat: id }),
+      navigationStore.navigate(window.location.pathname, { chat: id }),
     onOpenConversation: (...args: Parameters<Open>) => {
+      if (bindDuringOpen)
+        setRows((current) =>
+          current.map((row) =>
+            row.id === args[0] ? { ...row, chatSessionId: 'dock-chat' } : row,
+          ),
+        );
       const outcome = openConversation(...args);
       if (closeDuringOpen) setOpen(false);
       return outcome;
@@ -120,7 +132,7 @@ function Harness({
       {layout === 'desktop' ? (
         <ChatDockInboxPanel
           {...common}
-          items={items}
+          items={rows}
           exiting={!open}
           onCloseChat={() => {}}
           onOpenHistory={() => {}}
@@ -133,7 +145,7 @@ function Harness({
       ) : (
         <MobileInboxPanel
           {...common}
-          tasks={items}
+          tasks={rows}
           open={open}
           triggerRef={triggerRef}
           onClose={() => setOpen(false)}
@@ -151,6 +163,7 @@ function mount(
   namespace = 'principal-a',
   loadError = false,
   closeDuringOpen = false,
+  bindDuringOpen = false,
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -170,6 +183,7 @@ function mount(
           failures={failures}
           acknowledge={acknowledge}
           closeDuringOpen={closeDuringOpen}
+          bindDuringOpen={bindDuringOpen}
         />
       </AuthorityPersistenceContext.Provider>
     </QueryClientProvider>,
@@ -188,7 +202,9 @@ test('mobile search focuses when mounted and never steals a later keyboard selec
   fireEvent.click(screen.getByRole('button', { name: 'Search inbox' }));
   const search = screen.getByRole('searchbox');
   expect(document.activeElement).toBe(search);
-  const row = screen.getByRole('button', { name: 'First selection, Workshop' });
+  const row = screen.getByRole('button', {
+    name: 'First selection, Workshop, Station: Receiver Station',
+  });
   row.focus();
   act(() =>
     frames.splice(0).forEach((callback) => callback(performance.now())),
@@ -197,6 +213,23 @@ test('mobile search focuses when mounted and never steals a later keyboard selec
   await userEvent.setup().keyboard('{Enter}');
   expect(open).toHaveBeenCalledTimes(1);
   expect(open.mock.calls[0]?.[0]).toBe('first');
+});
+
+test("following the project page keeps another Station's same-slug project out", () => {
+  // A peer slug names that Station's project, not the one on screen.
+  navigationStore.navigate('/projects/workshop');
+  mount(
+    'desktop',
+    vi.fn<Open>(async () => true),
+  );
+  expect(
+    screen.getByRole('button', { name: 'Second selection, Workshop' }),
+  ).toBeTruthy();
+  expect(
+    screen.queryByRole('button', {
+      name: 'First selection, Workshop, Station: Receiver Station',
+    }),
+  ).toBeNull();
 });
 
 test('mobile restores focus when the host closes Inbox while opening its reader', async () => {
@@ -236,7 +269,9 @@ for (const layout of ['desktop', 'mobile'] as const) {
           new Promise<Awaited<ReturnType<Open>>>((resolve) => {
             resolves.set(id, () => {
               if (activation?.isCurrent?.() && activation.beforeFocus?.()) {
-                navigationStore.navigate('/projects/workshop', { chat: id });
+                navigationStore.navigate(window.location.pathname, {
+                  chat: id,
+                });
                 resolve(true);
               } else resolve('cancelled');
             });
@@ -244,7 +279,9 @@ for (const layout of ['desktop', 'mobile'] as const) {
       );
       const { acknowledge } = mount(layout, open);
       fireEvent.click(
-        screen.getByRole('button', { name: 'First selection, Workshop' }),
+        screen.getByRole('button', {
+          name: 'First selection, Workshop, Station: Receiver Station',
+        }),
       );
       fireEvent.click(
         screen.getByRole('button', { name: 'Second selection, Workshop' }),
@@ -277,14 +314,18 @@ for (const layout of ['desktop', 'mobile'] as const) {
       );
       const { failures, acknowledge } = mount(layout, open);
       fireEvent.click(
-        screen.getByRole('button', { name: 'First selection, Workshop' }),
+        screen.getByRole('button', {
+          name: 'First selection, Workshop, Station: Receiver Station',
+        }),
       );
       fireEvent.click(screen.getByRole('button', { name: 'Toggle panel' }));
       fireEvent.click(screen.getByRole('button', { name: 'Toggle panel' }));
       await act(async () => resolves[0]!(false));
       expect(window.location.search).toBe('');
       fireEvent.click(
-        screen.getByRole('button', { name: 'First selection, Workshop' }),
+        screen.getByRole('button', {
+          name: 'First selection, Workshop, Station: Receiver Station',
+        }),
       );
       fireEvent.click(screen.getByRole('button', { name: 'Switch Station' }));
       await act(async () => resolves[1]!(false));
@@ -304,7 +345,9 @@ for (const layout of ['desktop', 'mobile'] as const) {
         await user.click(screen.getByRole('button', { name: 'Search inbox' }));
       await user.type(screen.getByRole('searchbox'), 'second');
       expect(
-        screen.queryByRole('button', { name: 'First selection, Workshop' }),
+        screen.queryByRole('button', {
+          name: 'First selection, Workshop, Station: Receiver Station',
+        }),
       ).toBeNull();
       expect(
         screen.getByRole('button', { name: 'Second selection, Workshop' }),
@@ -312,17 +355,23 @@ for (const layout of ['desktop', 'mobile'] as const) {
       await user.clear(screen.getByRole('searchbox'));
       await user.type(screen.getByRole('searchbox'), 'reviewer');
       expect(
-        screen.getByRole('button', { name: 'First selection, Workshop' }),
+        screen.getByRole('button', {
+          name: 'First selection, Workshop, Station: Receiver Station',
+        }),
       ).toBeTruthy();
       await user.clear(screen.getByRole('searchbox'));
       await user.type(screen.getByRole('searchbox'), 'Workshop');
       expect(
-        screen.getByRole('button', { name: 'First selection, Workshop' }),
+        screen.getByRole('button', {
+          name: 'First selection, Workshop, Station: Receiver Station',
+        }),
       ).toBeTruthy();
       await user.clear(screen.getByRole('searchbox'));
       await user.type(screen.getByRole('searchbox'), 'Receiver Station');
       expect(
-        screen.getByRole('button', { name: 'First selection, Workshop' }),
+        screen.getByRole('button', {
+          name: 'First selection, Workshop, Station: Receiver Station',
+        }),
       ).toBeTruthy();
       expect(
         screen.queryByRole('button', { name: 'Second selection, Workshop' }),
@@ -331,8 +380,58 @@ for (const layout of ['desktop', 'mobile'] as const) {
       await user.type(screen.getByRole('searchbox'), 'missing');
       expect(screen.getByRole('button', { name: 'Clear filter' })).toBeTruthy();
       expect(
-        screen.queryByRole('button', { name: 'First selection, Workshop' }),
+        screen.queryByRole('button', {
+          name: 'First selection, Workshop, Station: Receiver Station',
+        }),
       ).toBeNull();
+    },
+  );
+
+  test(
+    layout +
+      ' keeps the selection current when the open binds a chat to its row (#4814)',
+    async () => {
+      // The dock binds its new chat to the row before focusing it; the
+      // row's chatSessionId changes under the selection.
+      const open = vi.fn<Open>(async (...args) => {
+        // Let the bind re-render the panel before the dock focuses.
+        await new Promise((settle) => setTimeout(settle, 20));
+        return args[7]?.beforeFocus?.() === false ? 'unavailable' : true;
+      });
+      const { failures, acknowledge } = mount(
+        layout,
+        open,
+        'principal-a',
+        false,
+        false,
+        true,
+      );
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: 'First selection, Workshop, Station: Receiver Station',
+        }),
+      );
+      await waitFor(() => expect(acknowledge).toHaveBeenCalledOnce());
+      expect(acknowledge.mock.calls[0]?.[0]).toMatchObject({ id: 'first' });
+      expect(failures).not.toHaveBeenCalled();
+    },
+  );
+
+  test(
+    layout + ' reports an open that ends unavailable while still current',
+    async () => {
+      const { failures, acknowledge } = mount(
+        layout,
+        async () => 'unavailable' as const,
+      );
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: 'First selection, Workshop, Station: Receiver Station',
+        }),
+      );
+      await waitFor(() => expect(failures).toHaveBeenCalledOnce());
+      expect(failures.mock.calls[0]?.[0]).toEqual(expect.any(String));
+      expect(acknowledge).not.toHaveBeenCalled();
     },
   );
 
@@ -344,7 +443,9 @@ for (const layout of ['desktop', 'mobile'] as const) {
         throw new Error('unsafe-secret-machine-diagnostic');
       });
       fireEvent.click(
-        screen.getByRole('button', { name: 'First selection, Workshop' }),
+        screen.getByRole('button', {
+          name: 'First selection, Workshop, Station: Receiver Station',
+        }),
       );
       await waitFor(() => expect(failures).toHaveBeenCalledOnce());
       expect(failures.mock.calls[0]?.[0]).not.toContain('unsafe-secret');
@@ -403,12 +504,16 @@ for (const layout of ['desktop', 'mobile'] as const) {
       await user.click(screen.getByRole('button', { name: 'Undo dismissal' }));
       expect(readInboxDismissals('principal-a')).toEqual({});
       expect(
-        screen.getByRole('button', { name: 'First selection, Workshop' }),
+        screen.getByRole('button', {
+          name: 'First selection, Workshop, Station: Receiver Station',
+        }),
       ).toBeTruthy();
       view.unmount();
       view = mount(layout, async () => true, 'principal-b');
       expect(
-        screen.getByRole('button', { name: 'First selection, Workshop' }),
+        screen.getByRole('button', {
+          name: 'First selection, Workshop, Station: Receiver Station',
+        }),
       ).toBeTruthy();
     },
   );
@@ -421,14 +526,18 @@ for (const layout of ['desktop', 'mobile'] as const) {
     async () => {
       mount(layout, async () => true, 'principal-a', true);
       expect(
-        screen.getByRole('button', { name: 'First selection, Workshop' }),
+        screen.getByRole('button', {
+          name: 'First selection, Workshop, Station: Receiver Station',
+        }),
       ).toBeTruthy();
       fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
       await waitFor(() =>
         expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull(),
       );
       expect(
-        screen.getByRole('button', { name: 'First selection, Workshop' }),
+        screen.getByRole('button', {
+          name: 'First selection, Workshop, Station: Receiver Station',
+        }),
       ).toBeTruthy();
     },
   );

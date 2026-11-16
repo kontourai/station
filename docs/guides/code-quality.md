@@ -62,6 +62,9 @@ and ordinary helpers named `describe`; review them before changing code.
 Existing error-level lint rules remain enforced.
 The accessibility ratchet recognizes the `recommended` and `all` group presets;
 an explicit preset takes precedence over the deprecated `recommended` boolean.
+When Biome ends without its `Checked N files` summary, the ratchet fails rather
+than report a clean tree, and names how Biome ended (its exit status or signal)
+with the last 20 lines it wrote.
 
 The hook runs the transfer, static and SDK checks through
 `node scripts/heavy-check-slot.mjs <label> <script>`. Each one first waits for a
@@ -455,7 +458,8 @@ pre-push checks. Follow
 [Landing a pull request](development.md#landing-a-pull-request) for the merge
 queue and [AGENTS.md](../../AGENTS.md) for handoff rules; do not manually merge
 or arm another lane's pull request.
-For the merge queue, arm and confirm once, then stop polling it. When checking
+For the merge queue, arm and confirm once, then stop polling it; the pull
+request is done only when it reads `MERGED`. When checking
 CI, inspect the actual job and failure before deciding what to rerun; silence is
 not success. Follow the task's required verification through its real outcome.
 Focused checks remain diagnostic; the hosted exact-revision completion receipt

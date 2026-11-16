@@ -275,11 +275,15 @@ export {
   type OrchestrationSessionDetail,
   type OrchestrationSessionSummary,
   type ProviderCommandDescriptor,
+  type ReconnectEngineMcpServerInput,
+  type RewindSessionToTurnInput,
+  reconnectOrchestrationEngineMcpServer,
   regenerateConversationTitle,
   registerNativePush,
   renameCodingFile,
   renameConversation,
   resolveOrchestrationRequest,
+  rewindOrchestrationSessionToTurn,
   SESSION_SUMMARY_GENERATE_MUTATION_KEY,
   type SessionBoardItem,
   type SessionBoardLifecycleState,
@@ -329,11 +333,14 @@ export {
   useOrchestrationSessionsQuery,
   useProjectSessionBoardQuery,
   useProviderCommandsQuery,
+  useReconnectEngineMcpServerMutation,
   useRegenerateConversationTitleMutation,
   useRenameCodingFileMutation,
   useRenameConversationMutation,
+  useRewindSessionToTurnMutation,
   useSessionBuilderRunQuery,
   useSessionFlowRunQuery,
+  useSessionLiveContinuityQuery,
   useSessionSummaryQuery,
   useShowSessionSummaryMutation,
   useSteerChildWorkMutation,
@@ -341,6 +348,12 @@ export {
   useTerminalProcessesQuery,
   useTerminalProcessQuery,
 } from './query-domains/chatRuntime';
+export {
+  type CustomAppearanceAction,
+  customAppearanceKey,
+  useCustomAppearanceMutation,
+  useCustomAppearanceQuery,
+} from './query-domains/customAppearance';
 export {
   fetchPairedDevices,
   pairedDeviceQueries,
@@ -790,6 +803,11 @@ export {
   verifyBedrockConnection,
   verifyManagedRuntimeConnection,
 } from './query-domains/systemRuntime';
+export {
+  taskCodeReviewQueryKey,
+  useRequestTaskCodeReviewMutation,
+  useTaskCodeReviewQuery,
+} from './query-domains/taskCodeReview';
 export {
   type CreateTaskReferenceInput,
   type CreateTaskUserInputReferenceInput,

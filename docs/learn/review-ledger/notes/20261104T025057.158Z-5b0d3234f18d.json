@@ -1,7 +1,0 @@
-{
-  "revision": "55bd1a4273d575fca6293f7376dab99553ff7a6d",
-
-  "notes": [
-    {"path":"docs/conformance/tool-policy-delivery.md","note":"Rechecked after packages/shared/src/redaction.ts added manualcode, pairingcode, linkcode and chatlinkcode to WHOLE_NAME_SECRET_KEYS (bare code stays unredacted). The change only widens which key names are treated as secrets; this document's claims about the shared redactor still hold and it names none of these keys.","inputs":["docs/conformance/tool-policy-delivery.md","packages/shared/src/redaction.ts"]}
-  ]
-}

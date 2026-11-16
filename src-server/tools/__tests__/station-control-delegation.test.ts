@@ -257,6 +257,9 @@ function localService() {
     currentConversationSessionId: vi.fn(
       (conversationId: string) => conversationId,
     ),
+    // Every conversation a test names already has a Session, unless a test
+    // says it is new.
+    conversationSessionIds: vi.fn((conversationId: string) => [conversationId]),
     // #4512: an ordinary conversation's Session works for its person.
     sessionDispatchFacts: vi.fn((_threadId: string) => ({
       taskBound: false,
@@ -709,6 +712,130 @@ describe('Station Control canonical Environment + Agent execution', () => {
     expect(catalog.targets[0]?.capabilities.modelSelection).toBe(true);
     expect(catalog.targets[0]?.engineId).toBe('station');
     expect(JSON.stringify(catalog)).not.toContain('must-not-leak');
+  });
+
+  // #2266: a Muse connection whose catalog is empty can still apply an
+  // explicit selector. Discovery reads that from the adapter's declared
+  // launch capability, carried on the connection view the real inspector
+  // builds over a real (serve) MuseAdapter whose `model/list` was empty.
+  test('a Muse target with an empty live catalog still offers model selection (#2266)', async () => {
+    const { MuseAdapter } = await import(
+      '../../providers/adapters/muse-adapter.js'
+    );
+    const { FakeMuseServeHost, loadMuseServeCapture } = await import(
+      '../../providers/__tests__/muse-serve-replay.js'
+    );
+    const { createConnectionInspector } = await import(
+      '../../services/connections/connection-inspector.js'
+    );
+    const { setProviderAdapterRegistrationProvenance } = await import(
+      '../../providers/adapter-shape.js'
+    );
+    const { engineConnectionId } = await import(
+      '@kontourai/station-contracts/agent-identity'
+    );
+    const initialize = loadMuseServeCapture('steer').find(
+      (frame) =>
+        frame.dir === 's2c' &&
+        (frame.msg.result as { schema?: unknown } | undefined)?.schema,
+    )!.msg.result;
+    const muse = new MuseAdapter({
+      serve: {
+        spawnHost: () => {
+          const host = new FakeMuseServeHost(['serve']);
+          void (async () => {
+            const consumed = new Set<unknown>();
+            for (const [method, result] of [
+              ['initialize', initialize],
+              [
+                'model/list',
+                {
+                  providerId: 'meta',
+                  profileId: null,
+                  source: 'bundledCatalog',
+                  models: [],
+                },
+              ],
+            ] as const) {
+              const request = await host.nextRequest(
+                method,
+                consumed as Set<never>,
+              );
+              consumed.add(request);
+              host.writeFrame({ jsonrpc: '2.0', id: request.id, result });
+            }
+          })().catch(() => {});
+          return { process: host };
+        },
+        terminateHost: async (spawned) => {
+          (spawned.process as InstanceType<typeof FakeMuseServeHost>).exit(0);
+        },
+      },
+      findBinary: () => '/usr/local/bin/muse',
+      runCommand: async () => ({ code: 0, stdout: 'muse 1.4.18', stderr: '' }),
+      credentialFileExists: () => true,
+      env: {},
+    });
+    setProviderAdapterRegistrationProvenance(muse, 'builtin');
+    const inspection = (await createConnectionInspector({
+      adapters: () => [muse],
+      appConfig: () => ({ agentConnections: {} }) as never,
+      acpConnections: () => [],
+      acpStatus: () => ({}),
+      publicConnection: (runtimeId) => ({
+        id: engineConnectionId('muse'),
+        engineId: runtimeId,
+      }),
+      now: () => Date.parse('2026-11-13T00:00:00.000Z'),
+    }).inspect({ kind: 'runtime-capability-inventory' })) as unknown as {
+      connections: Array<Record<string, unknown>>;
+    };
+    const view = inspection.connections[0]!;
+    expect(view.runtimeCatalog).toMatchObject({ source: 'live', models: [] });
+    expect(view.modelLaunch).toMatchObject({ overrideAtStart: true });
+
+    const discover = async (connection: Record<string, unknown>) => {
+      installRemoteStationFetch(
+        '/api/orchestration/delegations',
+        {},
+        { workingDirectory: '/srv/station' },
+      );
+      const original = fetchMock.getMockImplementation()!;
+      fetchMock.mockImplementation(async (input, init) => {
+        const url = String(input);
+        if (url === `${REMOTE_API}/api/connections/agents`)
+          return json({
+            success: true,
+            data: [{ ...connection, status: 'ready', enabled: true }],
+          });
+        if (url === `${REMOTE_API}/api/agents`)
+          return json({
+            success: true,
+            data: [
+              {
+                slug: 'muse',
+                name: 'Muse',
+                execution: { agentConnectionId: 'muse' },
+              },
+            ],
+          });
+        return original(input, init);
+      });
+      const { discoverDelegationOptions } = await import(
+        '../station-control-delegation.js'
+      );
+      return (
+        await discoverDelegationOptions({ environmentId: 'environment-remote' })
+      ).targets[0];
+    };
+    const viewJson = JSON.parse(JSON.stringify(view));
+    const target = await discover(viewJson);
+    expect(target?.models).toEqual([]);
+    expect(target?.capabilities.modelSelection).toBe(true);
+    // An older host's view carries no declaration: the catalog decides.
+    const { modelLaunch: _absent, ...olderView } = viewJson;
+    const older = await discover(olderView);
+    expect(older?.capabilities.modelSelection).toBe(false);
   });
 
   test('rejects a tilde suffix collision while discovering remote delegation options', async () => {
@@ -2052,6 +2179,82 @@ describe('Station Control canonical Environment + Agent execution', () => {
   // only the project shape was rebuilt. Swapping the session-cwd read for a
   // field nothing writes leaves the pure tests green and restores the bug, so
   // the seam needs its own proof.
+  test.each([
+    ['opencode', 'opencode'],
+    ['acp', 'acp'],
+  ] as const)(
+    'a follow-up keeps the provider its current session runs on (stored %s, R2)',
+    async (stored, expected) => {
+      fetchMock.mockImplementation(async (input) => {
+        const url = String(input);
+        if (url === `${CURRENT_API}/.well-known/station/v1`)
+          return json({ environmentId: 'environment-current' });
+        if (url === `${CURRENT_API}/api/agents/opencode-agent`)
+          return json({
+            success: true,
+            data: {
+              slug: 'opencode-agent',
+              available: true,
+              execution: { agentConnectionId: 'opencode' },
+            },
+          });
+        if (url === `${CURRENT_API}/api/connections/opencode`)
+          return json({
+            success: true,
+            data: {
+              id: 'opencode',
+              kind: 'agent',
+              type: 'acp',
+              name: 'OpenCode',
+              enabled: true,
+              status: 'ready',
+              capabilities: ['agent-runtime', 'acp'],
+              prerequisites: [],
+              // The preview is now off: a new chat would get `acp`.
+              config: { engineId: 'acp', provider: 'acp' },
+            },
+          });
+        throw new Error(`Unexpected request: ${url}`);
+      });
+      const orchestrationService = localService();
+      const resolveConversationContinuation = vi.fn(async () => ({
+        sessionId: 'conversation:opencode:session:2',
+        startRequired: true,
+      }));
+      Object.assign(orchestrationService, { resolveConversationContinuation });
+      orchestrationService.readSession.mockResolvedValue({
+        session: { cwd: '/srv/scratch', provider: stored },
+        events: [
+          {
+            method: 'session.configured',
+            metadata: {
+              environmentId: 'environment-current',
+              targetKind: 'agent',
+              targetId: 'opencode-agent',
+              connectionId: 'opencode',
+            },
+          },
+        ],
+      } as never);
+      const { continueExecutionTargetMessage } = await import(
+        '../station-control-delegation.js'
+      );
+      await continueExecutionTargetMessage(
+        {
+          userId: 'test-user',
+          conversationId: 'conversation:opencode',
+          message: 'Keep going',
+        },
+        orchestrationService as never,
+      ).catch(() => undefined);
+      expect(resolveConversationContinuation).toHaveBeenCalledWith(
+        'conversation:opencode',
+        expect.anything(),
+        expect.objectContaining({ provider: expected }),
+      );
+    },
+  );
+
   test('continues local work for a conversation bound to a directory rather than a project', async () => {
     fetchMock.mockImplementation(async (input) => {
       const url = String(input);
@@ -2424,6 +2627,68 @@ describe('Station Control canonical Environment + Agent execution', () => {
       (call: unknown[]) => (call[0] as { type?: string }).type === 'sendTurn',
     );
     expect(sendTurn?.[2]).toMatchObject({ dispatchOrigin: 'delegation' });
+  });
+
+  test('#4830: a delegated send naming a fresh conversation id is delegation, not unknown', async () => {
+    installCurrentStationFetch();
+    const service = localService();
+    // No Session holds the id yet: the send starts the delegated child.
+    service.conversationSessionIds.mockImplementation(() => []);
+    const { executeExecutionTargetMessage } = await import(
+      '../station-control-delegation.js'
+    );
+    await executeExecutionTargetMessage(
+      {
+        userId: 'test-user',
+        target: currentTarget(),
+        message: 'Delegated to a named new conversation',
+        conversationId: 'conversation-fresh',
+        delegation: {
+          mode: 'isolated-child',
+          depth: 1,
+          maxDepth: 2,
+          parentAgentSlug: 'parent' as never,
+          rootAgentSlug: 'root' as never,
+        },
+        delegationProvenance: 'caller-derived',
+        readAuthority: hostedAuthority('alpha'),
+      },
+      service as never,
+    );
+    const sendTurn = service.dispatchWithReceipt.mock.calls.find(
+      (call: unknown[]) => (call[0] as { type?: string }).type === 'sendTurn',
+    );
+    expect(sendTurn?.[2]).toMatchObject({ dispatchOrigin: 'delegation' });
+  });
+
+  test("#4830: a delegated send into a person's existing chat keeps that chat the person's", async () => {
+    installCurrentStationFetch();
+    const service = localService();
+    const { executeExecutionTargetMessage } = await import(
+      '../station-control-delegation.js'
+    );
+    await executeExecutionTargetMessage(
+      {
+        userId: 'test-user',
+        target: currentTarget(),
+        message: 'A message into a person chat',
+        conversationId: 'conversation-person',
+        delegation: {
+          mode: 'isolated-child',
+          depth: 1,
+          maxDepth: 2,
+          parentAgentSlug: 'parent' as never,
+          rootAgentSlug: 'root' as never,
+        },
+        delegationProvenance: 'caller-derived',
+        readAuthority: hostedAuthority('alpha'),
+      },
+      service as never,
+    );
+    const sendTurn = service.dispatchWithReceipt.mock.calls.find(
+      (call: unknown[]) => (call[0] as { type?: string }).type === 'sendTurn',
+    );
+    expect(sendTurn?.[2]).toMatchObject({ dispatchOrigin: 'unknown' });
   });
 
   test("#4512: a requester's own delegation claim does not classify the turn as delegation", async () => {
@@ -5298,7 +5563,9 @@ describe('#225 a delegated task usage event keeps every canonical usage field', 
       serviceTier: 'standard',
       contextTokens: 62000,
       contextWindowTokens: 200000,
+      contextPercent: 31,
       reportedCostUsd: 0.42,
+      reportedCost: { amount: 0.07, unit: 'credit', scope: 'turn' },
       pricingSnapshot: {
         id: 'catalog-1',
         capturedAt: '2026-10-11T00:00:00.000Z',
@@ -5326,7 +5593,11 @@ describe('#225 a delegated task usage event keeps every canonical usage field', 
       serviceTier: 'standard',
       contextTokens: 62000,
       contextWindowTokens: 200000,
+      contextPercent: 31,
     });
+    expect(
+      projectDelegatedTaskEvent(11, { ...usageEvent, contextPercent: 100.5 }),
+    ).not.toHaveProperty('contextPercent');
 
     const longTier = projectDelegatedTaskEvent(8, {
       ...usageEvent,

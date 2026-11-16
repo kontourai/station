@@ -1279,6 +1279,13 @@ export interface StationCapabilityFlags {
    */
   readMarkers?: boolean;
   /**
+   * #4796, #4797, #4812: Project room messages take reactions, edits,
+   * deletes and attachments (`/messages/:messageId/{reactions,edit,delete}`
+   * and `/attachments` under a room or channel). A host without them answers
+   * 404, so a client offers those actions only with this flag.
+   */
+  projectRoomMessageActions?: boolean;
+  /**
    * Scoped pairing (archive#1098): pairing grants and device sessions carry
    * an OAuth-style scope string, enforced by a single route -> required-scope
    * table (`src-server/security/pairing-route-scopes.ts`).
@@ -1408,6 +1415,15 @@ export interface StationCapabilityFlags {
    * agent" only on this flag.
    */
   troubleshootPrepare?: boolean;
+  /**
+   * #4710: `GET /api/analytics/usage-rollup` honours local `connectionId`
+   * and `modelConnectionId` filters and groupings, and accepts every provider
+   * kind with declared usage semantics as `provider`. An older host silently
+   * ignores the connection filters (answering unfiltered totals) and refuses
+   * engines other than `claude` and `codex`, so a client sends those filters
+   * only on this flag.
+   */
+  usageConnectionFilters?: boolean;
   /**
    * A `/chat` send with files to a busy conversation (`whenBusy: 'queue'`)
    * is held in its inbox with them: the bytes wait in the attachment blob

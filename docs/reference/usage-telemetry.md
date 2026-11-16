@@ -203,7 +203,7 @@ Settings exposes a collapsed **What was sent to {publisher}** section below each
 the newest 50 records for that publisher and an explicit empty/error state.
 Sent entries have a collapsible JSON viewer. Unsent entries expose only their
 reason and observation count, with Off/DNT/disclosure/notice/unconfigured
-classified as suppressed and transport/overflow/expired as dropped. There is no
+classified as suppressed and transport/rejected/overflow/expired as dropped. There is no
 payload viewer for either unsent category. Refresh reads the current ledger.
 Opening status/outbox views refetches their current data. Tier writes refresh
 both views, including after a partial Settings failure; Full acknowledgement
@@ -380,8 +380,14 @@ are process counters, not lifetime accounting or a durable spool. A product
 batch leaves the queue only after a matching `station-product-commit/v1`
 receipt covers its exact event IDs and counts. Generic 2xx responses, malformed
 receipts, refused redirects and bounded-response failures retain the batch for
-retry with the same IDs. The latest failed attempt remains visible alongside
-historical success. Refreshing or unavailable status hides cached success.
+retry with the same IDs. A 4xx refusal other than 408 or 429 cannot succeed on
+resend, so it drops that batch at once: its events count as `rejected`, the
+ledger records them with reason `rejected`, and the next batch is not delayed.
+The latest failed attempt remains visible alongside historical success; for a
+refusal, `lastFailure.detail` carries the receiver's stated reason (its JSON
+`error`/`code`/`message`/`reason` strings, or plain text), at most 200
+characters with installation hashes, event IDs, receiver keys, URLs and paths
+masked. It is never logged. Refreshing or unavailable status hides cached success.
 
 An operator's **Check connection** calls a separate
 `station-product-probe/v1` source-key endpoint when the configured address has
@@ -464,7 +470,19 @@ separate existing identity and is unaffected by this Full rotation.
 accepts only the inventory's event/property vocabulary. Its memory buffer holds
 100 events, dropping the oldest on overflow. It flushes batches of 20 at a
 10-second interval or when a batch fills. A request has a one-second timeout;
-failed batches remain in memory for a later attempt. There is no durable queue. Observation IDs and their producer times/build metadata
+failed batches remain in memory for a later attempt. There is no durable queue.
+After a retryable failure (a network error, timeout, 5xx, 408, 429, or a 2xx
+without a matching receipt) neither trigger sends again until a backoff
+elapses: one flush interval, doubling per consecutive failure up to 15
+minutes, with equal jitter. A `Retry-After` on a 429 or 503 is a floor on that
+delay, bounded at one hour. An acknowledgement, a permanent refusal or a
+destination change resets it; shutdown's bounded flush ignores it. The first
+failure of a given code and HTTP status logs a warning naming the publisher;
+identical repeats log at debug until the failure changes or a batch is
+acknowledged. `station.usage_telemetry.batches` counts batches by publisher,
+outcome (`acknowledged`, `rejected`, `retry_scheduled`), failure code and
+status class, and `station.usage_telemetry.suppressed_warnings` counts the
+repeats. Observation IDs and their producer times/build metadata
 are assigned once and preserved on retry, so a receiver can deduplicate a
 lost-response retry. The sender alone provides no exactly-once guarantee; the
 receiver must commit and deduplicate by source/event identity. Disabling telemetry clears buffered events and aborts an active request;
@@ -524,6 +542,10 @@ controlled endpoints; a live ingestion deployment needs its own delivery evidenc
 # Event inventory
 
 The contracts/product-telemetry inventory declares event and envelope fields; shared/product-telemetry renders and fingerprints them. The Full revision includes envelope and Full events. Lite has its own revision over every field and bound. Neither revision can substitute for the other.
+
+An `engine` value names an engine family, not each engine: a turn on the
+`opencode` engine reports `acp`, as OpenCode chats did before that engine
+existed (`terminalEngineFamily`).
 
 ## Version 1 envelope
 

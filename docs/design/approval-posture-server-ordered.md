@@ -12,7 +12,9 @@
 > those current authority and engine boundaries.
 
 > The later `steerChildWork` command also checks the parent turn's current
-> confinement before dispatch. It is a separate child-targeted command; the
+> confinement before dispatch (for a child that outlives its launching turn,
+> which only an adapter declaring `childSteerOutlivesParentTurn` allows, the
+> launching turn's). It is a separate child-targeted command; the
 > historical `steerTurn` discussion below does not describe its receipt or
 > instruction history. See the [Session API](../reference/session-api.md) and
 > [remote access threat model](../security/remote-access-threat-model.md) for

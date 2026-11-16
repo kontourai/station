@@ -188,7 +188,11 @@ function isEngineSignInLeaf(request: {
     (['GET', 'DELETE'].includes(request.method) &&
       /^\/acp\/connections\/[^/]+\/sign-in\/attempt$/.test(path)) ||
     (['PUT', 'DELETE'].includes(request.method) &&
-      /^\/acp\/connections\/[^/]+\/credentials\/[^/]+$/.test(path))
+      /^\/acp\/connections\/[^/]+\/credentials\/[^/]+$/.test(path)) ||
+    (['GET', 'POST', 'DELETE'].includes(request.method) &&
+      /^\/acp\/connections\/[^/]+\/host-auth\/login$/.test(path)) ||
+    (request.method === 'POST' &&
+      /^\/acp\/connections\/[^/]+\/host-auth\/sign-out$/.test(path))
   );
 }
 
@@ -1858,6 +1862,29 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     method: '*',
     prefix: '/acp/connections/:id/credentials',
     scope: PAIRING_SCOPE_ENGINE_LOGIN,
+    origin: 'explicit',
+  },
+  // Station-run engine sign-in (acp-sign-in.ts): starting, reading (it
+  // carries the device code) or cancelling one, and signing out, are the
+  // `engine:login` decision like the engine's own sign-in above.
+  ...(['host-auth/login', 'host-auth/sign-out'] as const).map(
+    (leaf): PairingScopeRouteRule => ({
+      id: `/acp/connections/:id/${leaf}:engine-login`,
+      method: '*',
+      prefix: `/acp/connections/:id/${leaf}`,
+      exact: true,
+      scope: PAIRING_SCOPE_ENGINE_LOGIN,
+      origin: 'explicit',
+    }),
+  ),
+  // Installing a managed engine downloads and lays down code Station runs:
+  // an operate-tier action, with explicit consent in the body.
+  {
+    id: '/acp/connections/:id/managed-install:operate',
+    method: 'POST',
+    prefix: '/acp/connections/:id/managed-install',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
     origin: 'explicit',
   },
   // Re-detecting engines re-runs the host user's login shell (bounded and
@@ -3717,6 +3744,22 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'POST',
       path: '/api/orchestration/station-control/job-proposals',
     },
+    // #4830 `propose_automation_source`, `propose_automation_rule` and
+    // `list_automation_proposals`: internal-only at the route like the leaves
+    // above, on the verified caller's own conversation. A proposal creates
+    // nothing; a person's Confirm below does.
+    {
+      method: 'POST',
+      path: '/api/orchestration/station-control/automation-proposals/sources',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/station-control/automation-proposals/rules',
+    },
+    {
+      method: 'GET',
+      path: '/api/orchestration/station-control/automation-proposals',
+    },
     // `terminal_run` and `terminal_read` (#3994): internal-only at the route
     // (404 otherwise), on the verified caller's own conversation. A request
     // runs nothing until a person approves it on `/api/terminal/runs`.
@@ -3756,6 +3799,19 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'POST',
       path: '/api/orchestration/agent-schedule/:conversationId/job-proposals/:proposalId/decline',
     },
+    // #4830: a person's Confirm and Decline of an agent's Automation
+    // proposal. The same gate as the job proposal's Decline (sending to the
+    // conversation, never a request that may be an agent's); Confirm also
+    // requires the Station operator in person, because it creates
+    // Station-wide configuration.
+    {
+      method: 'POST',
+      path: '/api/orchestration/agent-schedule/:conversationId/automation-proposals/:proposalId/confirm',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/agent-schedule/:conversationId/automation-proposals/:proposalId/decline',
+    },
     // #3628: the person's own coordinator designation. Every leaf reads or
     // writes only the request principal's record and refuses a request that
     // may be an agent's; designating also needs sending to the conversation.
@@ -3777,6 +3833,15 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // no other principal's records, so none is more sensitive than the family.
     { method: 'GET', path: '/api/me/preferences' },
     { method: 'PATCH', path: '/api/me/preferences' },
+    // The person's own custom appearance: every leaf reads or writes only the
+    // request principal's document. Keep, save, dismiss and report also
+    // refuse a request that may be an agent's.
+    { method: 'GET', path: '/api/me/appearance' },
+    { method: 'PUT', path: '/api/me/appearance' },
+    { method: 'POST', path: '/api/me/appearance/proposal' },
+    { method: 'DELETE', path: '/api/me/appearance/proposal' },
+    { method: 'POST', path: '/api/me/appearance/proposal/keep' },
+    { method: 'POST', path: '/api/me/appearance/proposal/report' },
     { method: 'GET', path: '/api/me/notifications' },
     { method: 'POST', path: '/api/me/notifications/:id/read' },
     { method: 'DELETE', path: '/api/me/notifications/:id' },
@@ -3877,6 +3942,8 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // through the lead conversation inbox.
     { method: 'GET', path: '/api/tasks/:taskId/write-back' },
     { method: 'GET', path: '/api/tasks/:taskId/review' },
+    { method: 'GET', path: '/api/tasks/:taskId/review/code' },
+    { method: 'POST', path: '/api/tasks/:taskId/review/code' },
     { method: 'GET', path: '/api/tasks/:taskId/review/capture-sessions' },
     { method: 'GET', path: '/api/tasks/:taskId/review/walkthroughs' },
     {
@@ -4344,6 +4411,9 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'GET',
       path: '/integrations/untrusted-content/conversations/:conversationId',
     },
+    // #4828: per-engine coverage of native web reads; Station's own
+    // derivation, read like the mark above.
+    { method: 'GET', path: '/integrations/untrusted-content/coverage' },
     {
       method: 'POST',
       path: '/integrations/untrusted-content/conversations/:conversationId/clear',
@@ -4623,6 +4693,31 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'POST',
       path: '/api/orchestration/sessions/:threadId/provider-tasks/:taskId/stop',
     },
+    // Restart (or sign in to) one MCP server the Session's ENGINE runs, in
+    // a Session the caller already reaches through this family. Like the
+    // usage-limit actions below it is the person's act on their own Session
+    // (`canUserMutateSession`, the authority of sending the next turn). It
+    // returns only the engine's outcome; a sign-in link it starts arrives
+    // as an input request this family already reads.
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/mcp-servers/:serverName/reconnect',
+    },
+    // A Session's live continuity (which engine-native actions its engine
+    // declared) and the person's in-place rewind of that engine's context.
+    // The read returns only two declared mechanism names under the same
+    // session-read gate as its siblings; the rewind is the person's act on
+    // their own Session (`canUserMutateSession`, the authority of sending the
+    // next turn) and edits no transcript, so it takes the operate tier like
+    // the MCP reconnect above.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/continuity',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/rewind',
+    },
     // #3157: the usage-limit banner's recovery read and its two person-owned
     // actions (Resume now, Cancel auto-resume). Deliberate family inheritance:
     // the GET returns only the Session's recovery projection under the same
@@ -4832,6 +4927,28 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'PUT', path: '/api/projects/:slug/room/note' },
     { method: 'POST', path: '/api/projects/:slug/room/presence' },
     { method: 'GET', path: '/api/projects/:slug/room/events' },
+    // Reactions, edits and deletes (#4796, #4797) compose the room's discuss
+    // tier; the room refuses edits and deletes of anyone else's message.
+    // Files (#4812): upload is discuss, a read is the room's view tier. Unlike
+    // Task-room files, they never feed an Agent request, and each is bound to
+    // its uploader (see account-bound-device-gate.ts isAccountBoundRoomLeaf).
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/room/messages/:messageId/reactions',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/room/messages/:messageId/edit',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/room/messages/:messageId/delete',
+    },
+    { method: 'POST', path: '/api/projects/:slug/room/attachments' },
+    {
+      method: 'GET',
+      path: '/api/projects/:slug/room/attachments/:attachmentId',
+    },
     { method: 'POST', path: '/api/projects/:slug/room/agents' },
     { method: 'GET', path: '/api/projects/:slug/room/agents/:requestId' },
     {
@@ -4862,6 +4979,26 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       path: '/api/projects/:slug/channels/:channelId/presence',
     },
     { method: 'GET', path: '/api/projects/:slug/channels/:channelId/events' },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/messages/:messageId/reactions',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/messages/:messageId/edit',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/messages/:messageId/delete',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/attachments',
+    },
+    {
+      method: 'GET',
+      path: '/api/projects/:slug/channels/:channelId/attachments/:attachmentId',
+    },
     {
       method: 'POST',
       path: '/api/projects/:slug/channels/:channelId/agents',

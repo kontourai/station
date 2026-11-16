@@ -48,6 +48,7 @@ import {
   type BuildProvenanceSnapshot,
   readBuildProvenanceSnapshot,
 } from '../../routes/system/build-provenance.js';
+import type { EventStore } from '../orchestration/event-store.js';
 
 /** The orchestration and chat routes accept at most 4000 ambient characters. */
 export const MAX_TROUBLESHOOT_AMBIENT_CONTEXT_LENGTH = 3_600;
@@ -81,7 +82,18 @@ export interface TroubleshootServiceDeps {
   nodeVersion: string;
   platform: string;
   buildProvenanceSnapshot?: BuildProvenanceSnapshot;
+  /**
+   * This Station's conversation lineage (the orchestration event store),
+   * read to tell whether the seeded conversation is stored here. A
+   * conversation run on a paired Station is not, and neither are its logs,
+   * monitoring or doctor facts. Absent when this Station has no event store,
+   * and then nothing is said either way.
+   */
+  conversations?: Pick<EventStore, 'conversationSessions'>;
 }
+
+/** Where the seeded conversation is, as far as this Station can tell. */
+type SeedConversationLocation = 'here' | 'not-here' | 'unknown';
 
 function clip(value: string, limit: number): string {
   return sanitizeFreeText(value, limit);
@@ -103,6 +115,7 @@ async function hasEntries(directory: string | undefined): Promise<boolean> {
  */
 function renderTroubleshootAmbientContext(
   context: TroubleshootContext,
+  conversationLocation: SeedConversationLocation,
 ): string {
   const { station, caller, doctor, logs, seed } = context;
   const doctorLine =
@@ -146,6 +159,13 @@ function renderTroubleshootAmbientContext(
       : seed.turnId
         ? [`- Turn: ${seed.turnId}`]
         : []),
+    // The person can open a paired Station's conversation from this one, so
+    // the failure, its logs and its monitoring may live on that Station.
+    ...(conversationLocation === 'not-here'
+      ? [
+          '- Conversation location: not on this Station. It probably ran on a paired Station, which holds its logs and monitoring; the facts above do not cover it. Ask which Station ran it before searching here.',
+        ]
+      : []),
   ];
   const text = lines.join('\n');
   if (text.length > MAX_TROUBLESHOOT_AMBIENT_CONTEXT_LENGTH)
@@ -173,6 +193,20 @@ export class TroubleshootService {
       platform,
       ...deps,
     };
+  }
+
+  private conversationLocation(
+    conversationId: string | null,
+  ): SeedConversationLocation {
+    const conversations = this.deps.conversations;
+    if (!conversationId || !conversations) return 'unknown';
+    try {
+      return conversations.conversationSessions(conversationId).length > 0
+        ? 'here'
+        : 'not-here';
+    } catch {
+      return 'unknown';
+    }
   }
 
   private async doctorFacts(): Promise<TriageDoctorFacts> {
@@ -256,7 +290,10 @@ export class TroubleshootService {
     };
     validateTroubleshootContext(context);
     const serialized = serializeTriageContext(context);
-    const ambientContext = renderTroubleshootAmbientContext(context);
+    const ambientContext = renderTroubleshootAmbientContext(
+      context,
+      this.conversationLocation(seed.conversationId),
+    );
     const runDir = createTriageRunDirectory(runId, this.deps.stationRoot);
     writeTriageOwnerFile(join(runDir, 'context.json'), serialized);
     writeTriageOwnerFile(join(runDir, 'playbook.md'), TROUBLESHOOT_PLAYBOOK);

@@ -276,17 +276,19 @@ from its icon without opening the keyboard on Inbox entry. The dock header
 owns New chat. This Inbox replaces the title-triggered Chats and tasks sheet
 and shares the desktop Inbox's scope and history preferences. It stays mounted
 behind a conversation, retaining its search and list position.
-The project picker retains [PickerCreateAction](../../src-ui/src/components/PickerCreateAction.tsx)
-for its 52px add button. Chat creation shares [NewChatAction](../../src-ui/src/components/NewChatAction.tsx)
+Project choice belongs to the start composer on phone and desktop; the dock
+header has no project picker, including while empty or showing Inbox. Chat creation shares [NewChatAction](../../src-ui/src/components/NewChatAction.tsx)
 across the desktop inbox, the collapsed dock bar (icon only) and
 the open, empty dock. The mobile bar composes the same conversation-plus glyph
 with its toolbar button styles. Both forms retain a 44px minimum target and
 an accessible name. It opens the start composer, in the dock as a draft in the
-dock body (full screen on a phone). New-chat and running-chat selectors share [ComposerChoice](../../src-ui/src/components/ComposerChoice.tsx) for their presentation. Its chips (in the dock's draft also the
-Project control, and **Run a task…** when there is more than one Station) wrap
-rather than overflow, and attach, mic and the overflow sit with Start, so a
-phone gets the chips first and [attach mic ⋯ … Start] on the next row with no
-viewport query; every target is 44px, and the chip menus are edge sheets on a phone with their own
+dock body (full screen on a phone). New-chat and running-chat controls share
+[ComposerRunControl](../../src-ui/src/components/ComposerRunControl.tsx): one
+Agent/model trigger opens Run setup, containing the existing
+[ComposerChoice](../../src-ui/src/components/ComposerChoice.tsx) controls. Long
+trigger labels truncate; the sheet owns the full choices. Attach, mic and Start
+share the phone action row. Targets remain at least 44px; picker menus are edge
+sheets on phones with their own
 scrolling list. Creation controls remain outside the scrolling lists. The mobile Inbox presents
 Input/Approval compactly and keeps reasons readable in full through details;
 Git and PR data are read only when that details surface opens.
@@ -311,8 +313,9 @@ rechecks on foreground or network return. A refused credential waits for explici
 pairing; Request access opens the selected Station directly. Pairing inputs keep
 a 16px floor on phones to avoid Safari zoom, and the dialog includes its padding
 inside the available width. A disconnected
-phone starts with pairing and a computer-setup handoff. Host addresses and broker
-routes are under **Other ways to connect**. Native capability and coarse-pointer
+phone starts with pairing and a computer-setup handoff. **Enter a pairing code**
+and **Enter Station address** sit under the QR action; nearby discovery and saved
+Stations are under **More ways to connect**. Native capability and coarse-pointer
 presentation determine that screen; narrow desktop browsers retain access to
 their current Station.
 

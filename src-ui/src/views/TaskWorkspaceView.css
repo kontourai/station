@@ -828,10 +828,12 @@
   width: min(100%, 28rem);
 }
 
-@media (max-width: 640px) {
+/* The Task room and its workspace on a phone: the one mobile breakpoint
+   (`MOBILE_MEDIA_QUERY`, #4795). The thread summary's floor lives with it
+   (RoomThreadSummary.css). */
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
   .task-room-message-actions > .button,
   .task-room-running__actions .button,
-  .task-room-thread-summary .button,
   .task-room-expand {
     min-height: calc(var(--k-space-6) + var(--k-space-3));
   }
@@ -1974,45 +1976,6 @@
 .task-room-answer pre {
   overflow: auto;
   max-width: 100%;
-}
-.task-room-thread-summary {
-  display: inline-flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--k-space-2);
-  margin-top: var(--k-space-1);
-  padding: 2px var(--k-space-2) 2px 2px;
-  border: var(--k-border-thin) solid var(--k-line);
-  border-radius: var(--k-radius-sm);
-  background: color-mix(in oklab, var(--k-panel) 70%, transparent);
-}
-.task-room-thread-summary__faces {
-  --room-avatar-size: calc(var(--k-space-5) - var(--k-space-1));
-  display: inline-flex;
-  gap: 2px;
-}
-.task-room-thread-summary__faces > .task-room-avatar {
-  font-size: calc(var(--k-text-xs) - 2px);
-}
-.task-room-thread-summary .button.task-room-thread-summary__count {
-  min-height: calc(var(--k-space-5) + var(--k-space-1));
-  padding: 0 var(--k-space-1);
-  border: 0;
-  background: transparent;
-  color: var(--k-action);
-  font-size: var(--k-text-sm);
-  font-weight: 600;
-}
-.room-conversation--compact
-  .task-room-thread-summary
-  .button.task-room-thread-summary__count {
-  /* The base rule above is more specific than the phone floor (#4810 review 6). */
-  min-height: 44px;
-  min-width: 44px;
-}
-.task-room-thread-summary__last {
-  color: var(--k-text-faint);
-  font-size: var(--k-text-sm);
 }
 .task-room-live {
   display: flex;

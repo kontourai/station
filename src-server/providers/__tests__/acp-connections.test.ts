@@ -13,9 +13,11 @@ describe('BuiltinACPConnectionRegistryProvider', () => {
     ).listAvailable();
     const byId = Object.fromEntries(entries.map((entry) => [entry.id, entry]));
 
+    // v2 pinned explicitly: kiro-cli's bare `acp` default moves to v3, which
+    // is the separate `kiro-kas` entry.
     expect(byId.kiro).toMatchObject({
       command: 'kiro-cli',
-      args: ['acp'],
+      args: ['acp', '--agent-engine', 'v2'],
       detected: true,
     });
     expect(byId.cursor).toMatchObject({
@@ -87,13 +89,18 @@ describe('BuiltinACPConnectionRegistryProvider', () => {
     ).listAvailable();
     for (const entry of entries) {
       expect(validateACPEngineDescriptor(entry), entry.id).toEqual([]);
+      // Station installs a managed-runtime engine itself (with consent, from
+      // its sign-in panel), so it carries no command for a person to run.
       expect(Object.keys(entry.install ?? {}).sort(), entry.id).toEqual(
-        [...ACP_ENGINE_INSTALL_PLATFORMS].sort(),
+        entry.managedRuntime ? [] : [...ACP_ENGINE_INSTALL_PLATFORMS].sort(),
       );
     }
+    expect(
+      entries.filter((entry) => entry.managedRuntime).map((entry) => entry.id),
+    ).toEqual(['kiro-kas-bundle']);
   });
 
-  test('lists the added engines with their launch commands, and never Gemini CLI', () => {
+  test('lists the added engines with their launch commands', () => {
     const entries = new BuiltinACPConnectionRegistryProvider(
       () => false,
       () => false,
@@ -105,7 +112,7 @@ describe('BuiltinACPConnectionRegistryProvider', () => {
       ]),
     );
     expect(launch).toMatchObject({
-      antigravity: ['agy_acp_server.par'],
+      antigravity: ['agy', 'acp', '--process-per-session'],
       'factory-droid': ['droid', 'exec', '--output-format', 'acp-daemon'],
       hermes: ['hermes', 'acp'],
       pi: ['pi-acp'],
@@ -114,13 +121,39 @@ describe('BuiltinACPConnectionRegistryProvider', () => {
       kimi: ['kimi', 'acp'],
       kilo: ['kilo', 'acp'],
       junie: ['junie', '--acp=true'],
+      // `--experimental-acp` is deprecated (gemini-cli config.ts).
+      gemini: ['gemini', '--acp'],
     });
-    expect(Object.keys(launch)).not.toContain('gemini');
-    expect(entries.map((entry) => entry.command)).not.toContain('gemini');
     // No built-in launches through a package runner that downloads code.
     expect(entries.map((entry) => entry.command)).not.toEqual(
       expect.arrayContaining(['npx', 'uvx']),
     );
+  });
+
+  test('Gemini CLI takes a Gemini API key and offers its Google login with its terms', () => {
+    const gemini = new BuiltinACPConnectionRegistryProvider(
+      () => false,
+      () => false,
+    )
+      .listAvailable()
+      .find((entry) => entry.id === 'gemini');
+    // GOOGLE_API_KEY is Vertex AI only, which needs a second variable.
+    expect(gemini?.auth?.credentialEnvVars).toEqual(['GEMINI_API_KEY']);
+    // Nothing is hidden: with a Google login saved, Gemini CLI ignores the
+    // key until `gemini-api-key` is chosen, so the key field does not
+    // replace that method.
+    expect(gemini?.auth?.hiddenAuthMethodIds).toBeUndefined();
+    expect(gemini?.auth?.subscriptionTermsNotices).toEqual([
+      {
+        provider: 'Google',
+        termsUrl:
+          'https://github.com/google-gemini/gemini-cli/blob/main/docs/resources/tos-privacy.md',
+        authMethodIds: ['oauth-personal'],
+      },
+    ]);
+    // Who Google still serves since 2026-06-18 is said up front.
+    expect(gemini?.description).toMatch(/paid Gemini API keys/);
+    expect(gemini?.description).toMatch(/Code Assist Standard or Enterprise/);
   });
 
   test('Cursor is detected and launched as cursor-agent, never the bare agent alias', () => {
@@ -179,16 +212,25 @@ describe('BuiltinACPConnectionRegistryProvider', () => {
     ).toEqual({ GOOSE_DISABLE_KEYRING: '1' });
   });
 
-  test('Antigravity launches only on macOS: Linux and Windows carry a note, no install command', () => {
+  test('Antigravity runs from the agy CLI on every platform, with a version floor', () => {
     const antigravity = new BuiltinACPConnectionRegistryProvider(
       () => true,
       () => false,
     )
       .listAvailable()
       .find((entry) => entry.id === 'antigravity');
-    expect(antigravity?.platforms).toEqual(['darwin']);
-    expect(antigravity?.install?.linux?.command).toBeUndefined();
-    expect(antigravity?.install?.linux?.note).toMatch(/Linux/);
-    expect(antigravity?.install?.win32?.command).toBeUndefined();
+    // Google publishes the CLI and its installers for macOS, Linux and Windows.
+    expect(antigravity?.platforms).toBeUndefined();
+    expect(antigravity?.install?.darwin?.command).toBe(
+      'curl -fsSL https://antigravity.google/cli/install.sh | bash',
+    );
+    expect(antigravity?.install?.win32?.command).toBe(
+      'irm https://antigravity.google/cli/install.ps1 | iex',
+    );
+    // `agy acp` first shipped in 1.5.0.
+    expect(antigravity?.minimumVersion).toMatchObject({
+      versionCommand: ['agy', '--version'],
+      minimum: '1.5.0',
+    });
   });
 });

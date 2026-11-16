@@ -37,8 +37,10 @@ members or choose a person's account by fallback. See [the S3 source guide](know
 
 ## Read the connection list
 
-Each row shows one readiness state and a next action. Model connections distinguish
-saved settings from a check that actually reached the provider:
+Each Model and Engine row shows one readiness badge beside its name; the line
+under the name holds facts, not the state. An engine whose first add failed is
+listed as **Not connected yet** instead. Model connections distinguish saved
+settings from a check that actually reached the provider:
 
 - **Ready** — the current readiness evidence permits selection; it does not prove every model or tool capability.
 - **Sign in required**, **API key required**, or **Credentials required** — complete the named authentication step.
@@ -48,9 +50,23 @@ saved settings from a check that actually reached the provider:
 - **Unreachable — retrying** or **Cannot reach provider** — the latest reachability check failed; the former retains a recent pass within the retry grace period.
 - **Found, not connected** — Station observed a service-specific setup signal; connect it to Station.
 - **Setup required** — finish the remaining setup.
-- **Limited** — usable with reduced capabilities; review the details.
+- **Limited** — reduced capabilities; review the details. An engine in this state does not run agents until it reports ready again.
 - **Disabled** — configured but turned off.
+- **Not allowed** — the managed policy does not allow this engine. It is its own state, not **Disabled**, because there is nothing to turn on.
 - **Unreachable** — configured, but Station cannot reach it.
+
+The engine page's Status, its **Ready** step and its readiness notice show the
+same state as its row. A section tab carries an attention mark when an engine
+cannot run agents for a reason you can fix, a model connection
+is turned off, is missing a required key or sign-in, was refused by its last
+check, or cannot be reached after retrying; a tool server's last check
+failed; or Knowledge has no vector store. Engines the managed policy refuses,
+saved-but-untested model connections, Knowledge without an embedding model, and
+computers that are not connected carry no mark. Opening `/connections` shows a loading state until these lists load, or
+for up to 1.5 seconds, then opens the first section that needs
+attention, or Models when none does. The rows, the engine page, the marks and
+that redirect share one [readiness
+derivation](../../src-ui/src/views/connections-hub/connection-health.ts).
 
 Select the action on the row. Station keeps transport, process, and connection-kind details
 out of the overview; they remain available only where setup or diagnosis needs them.
@@ -67,7 +83,7 @@ that server's authentication requirements; some permit anonymous access or
 host-managed credentials. Blank fields alone do not establish readiness. A
 refused check retains its reason so you can correct the settings and retry.
 
-**Test Connection** first requests the model catalog. If no usable catalog is
+**Test connection** first requests the model catalog. If no usable catalog is
 available, it can send one minimal chat request using the connection's default
 model; that request may be billable. A successful catalog check alone does not
 prove chat, tool calling, images, or other model features. See the
@@ -78,7 +94,7 @@ and [connection form](../../src-ui/src/views/provider-settings/ProviderConnectio
 
 ## Sign an engine profile in from a device
 
-Open **Connections → Engines → Codex** or **Claude**. The account picker shows
+Open **Connections → Engines → Codex**, **Claude** or **Muse**. The account picker shows
 saved accounts and marks the account currently in use. Picking an account changes
 what you view; it does not change the account used by runs. Existing account
 application controls remain under **Advanced**.
@@ -90,6 +106,28 @@ and select **Finish sign-in**. Station reports completion only after the engine
 confirms authentication. **Cancel** stops a pending login. Returning to the
 account resumes status checks. Login capabilities come from the installed CLI;
 unsupported or unreadable installations remain unavailable.
+
+Muse Code (#1942) signs in with a device code too: Station runs the bare
+`muse login`, offered only while `muse login --help` still says "approve a code
+in your browser", and relays its link and code. Sign-in state comes from
+`muse usage --json`: its JSON answer is signed in, "not logged in" is signed
+out, and anything else is unknown. API-key sign-in is not offered for a
+profile, and a profile never inherits `META_API_KEY` from Station's
+environment: Muse honours that key under any config home, so Station keeps it
+for the default account only. A Muse profile is an XDG config root: sessions, `muse serve` hosts
+and exec turns run with `XDG_CONFIG_HOME` set to the profile, where Muse reads
+its `muse/` folder, and a named profile that cannot be prepared refuses the
+start. Import copies `settings.json` and `skills/`, `auth.json` only when you
+tick the credential box, and never `trust.json` (folder trust is your decision,
+not the profile's). `XDG_DATA_HOME` is not moved, so sessions resume under any
+profile. Because `XDG_CONFIG_HOME` is not private to Muse, tools a profile
+session runs inherit it: a tool that reads its configuration from
+`XDG_CONFIG_HOME` when that is set (for example the GitHub CLI's
+`gh/hosts.yml`) looks in the profile instead and does not find it there. Per-profile
+allowance for Muse reads unavailable: the account it was observed on reported
+no allowance, so Station has no real shape to map. The device-code relay was
+checked live against Muse Code 1.4.18 up to the code, then cancelled before
+approval.
 
 Relayed login applies to saved credential profiles. The default account follows
 the connection's configured home and environment and is managed by the host CLI;
@@ -124,11 +162,13 @@ provider's dated breakdown and active/group/model/surface annotations.
 Unavailable fields remain **Not reported**. An unavailable quota percentage does
 not discard readable account/credit details.
 
-**Data captured** shows the reading's source, credential storage kind, storage policy, unmapped non-null
-field paths and deliberate exclusions. Only field names leave the server for
-unmapped values. This bounded shape audit excludes null/empty fields, value
-validation, credential stores and other endpoints; “none in this response” does
-not establish complete provider coverage. The full quota response remains a live projection. **Allowance history** retains
+**Data captured** lists the reading's source, **Stored in** (secure store or
+credential file), **History**, **Fields Station didn't recognize**,
+**Excluded fields** and **Complete** (No when the response was too large to
+check). Only field names leave the server for unrecognized values, and the panel
+ends with “Values and credentials are never shown.” This bounded check excludes
+null/empty fields, value validation, credential stores and other endpoints;
+**None** does not establish complete provider coverage. The full quota response remains a live projection. **Allowance history** retains
 only window labels, percentages, durations, reset times and observation timestamps.
 It saves a 30-day window of the latest observation per UTC hour, at most 720 observations
 and 32 windows per observation, under this Station's `analytics/engine-allowance/`.
@@ -174,12 +214,16 @@ and extra-usage shapes are live-observed as well as fixture-validated. Other pla
 older activity remains visible. **Activity for** switches
 between the selected credential profile and all accounts of this engine. New
 Claude and Codex sessions record an opaque account key from the profile actually
-resolved for the process. Raw profile references are not published in runtime
+resolved for the process; Muse sessions record none yet, so their receipts stay
+unattributed. Raw profile references are not published in runtime
 events. Source-home continuations and older events without this observation
 remain unattributed. A process restart does not inherit a previous process's
 account observation. Account filtering excludes unattributed receipts; it never
 assigns old costs to today's active account. Capture counts still describe the
-engine, and account results disclose this attribution gap.
+engine, and account results disclose this attribution gap. Engine activity is
+selected inside Station's bounded observation window, so a busy engine does not
+crowd a quiet one out, and an engine with no usage in the window reports unknown
+capture rather than another engine's coverage.
 
 Reported costs and estimates remain separate. **Tokens**, **Reported cost** and
 **Estimated cost** select the daily chart measure. A cost measure with no values
@@ -278,8 +322,8 @@ Project access administration still requires Project IAM. See the
 
 Choose **Manage Stations**, then **Connect a Station**; a phone with no saved
 Station also offers **Enter Station address** on its welcome screen, beside
-**Enter a pairing code**, with **Find nearby Stations** under **More connection
-options**. Enter its address, a pairing code,
+**Enter a pairing code**, with **Find nearby Stations** and **Manage Stations**
+under **More ways to connect**. Enter its address, a pairing code,
 or scan a QR code. Return in the address field continues. Without a controlling
 Station there is no peer option to weigh, so the destination goes straight to
 its one Device request instead of a second **Request selected access** step.
@@ -363,12 +407,18 @@ uses the name the chip shows. Holding the phone's chip shows the full name
 without switching or opening the chooser. On a phone the chooser offers
 **Connect another device** where a computer offers **Pair phone**.
 
-Opening the chooser checks whether each other Station answers its public
-handshake, from this device, without credentials. Each row reads **Checking…**
-until its answer arrives, then **Online** or **Unreachable**, with why and
-when: "no answer in time" or "nothing answered", "checked just now", and when
-this device last connected to it. Answering proves only that the address
-responds, not that this device still has access. Stations reached through a
+Opening the chooser checks each other Station's public handshake, from this
+device, without credentials, and checks again every 15 seconds while it stays
+open. Each row reads **Checking…** until its answer arrives, then **Online**
+only when a Station handshake answered; **Recovering** when the Station's own
+proxy answered that its server is down or restarting; **Not confirmed** when
+something answered but not as a Station this page can read (its address does
+not admit this app, or something else answers there); or **Unreachable**. Each
+says why and when: "no answer in time" or "nothing answered", "checked just
+now", and when this device last connected to it. **Recovering** and
+**Unreachable** rows are greyed out and cannot be chosen until a later check
+finds them answering; they can still be forgotten. **Online** proves only that
+the server is serving, not that this device still has access. Stations reached through a
 broker route are not checked, nor, from an HTTPS page, a plain-HTTP address
 other than loopback, which the browser would block; those rows show the last
 failure this device saved and how old it is, or **Not checked**. A Station that
@@ -382,8 +432,11 @@ manual retry, a credential change or the network returning. It also checks
 whenever the app returns to the foreground. The app's own supervised local
 Station is not probed, so its row has no check time.
 
-After you choose a Station, the app names it, its address and the step it is
-on while it verifies access. If that takes longer than six seconds, it says it
+After you choose a Station, the app shows the launch screen's mark and
+animation with "Connecting to" the Station's name, its address, and the step it
+is on: checking access, then (in the desktop and phone apps) loading its data,
+then any later preparation such as loading your preferences, each named as it
+starts. If checking access takes longer than six seconds, it says it
 has had no answer and offers **Try again**, **Back to** the Station most
 recently used before it, and **Manage Stations**, instead of waiting out the
 request deadline. In the desktop and phone apps, a Station that answered but is
@@ -456,7 +509,7 @@ and is not yet verified; inspect it under **Connection details**. Saving does
 not connect, sign in, approve a Device, or grant Project access.
 
 Choose **Share device details**, then **Copy device details**, and send them to
-the Station owner for approval. These are public installation details, not a
+the Station operator for approval. These are public installation details, not a
 password or private key. This action is available even when the Station is
 already confirmed. It does not rotate trust or issue an invitation.
 
@@ -625,7 +678,7 @@ For a native signing-key approval, select the saved broker route and choose
 **Share device details**. Station creates or reopens this install's
 proof key in the OS keyring and shows only its public key, thumbprint, client
 instance, app/channel, and selected route. Choose **Copy device details** and
-send this public installation proof to the Station owner. On the owner's machine, with the self-hosted connector
+send this public installation proof to the Station operator. On the operator's machine, with the self-hosted connector
 configured and online, save that JSON to a private file and run:
 
 ```sh
@@ -818,7 +871,8 @@ on this computer's `PATH`; detection does not mean it is signed in or ready.
 | GitHub Copilot | `copilot --acp` | Agent Client Protocol |
 | Grok Build | `grok agent stdio` | Agent Client Protocol |
 | Mistral Vibe | `vibe-acp` | Agent Client Protocol |
-| Google Antigravity | `agy_acp_server.par` | Agent Client Protocol, macOS only; Google ships the server as a download, so put it on `PATH` yourself |
+| Google Antigravity | `agy acp --process-per-session` | Agent Client Protocol; needs Antigravity CLI 1.5.0 or later, and Station names an older install and says to run `agy update` |
+| Gemini CLI | `gemini --acp` | Agent Client Protocol. Since June 18, 2026 Google serves Gemini CLI only to paid Gemini API keys and Gemini Code Assist Standard or Enterprise. Sign in with Google (Station shows Gemini CLI's terms beside it) or save a `GEMINI_API_KEY`. Gemini CLI uses its saved sign-in first and the key only when none is saved |
 | Factory Droid | `droid exec --output-format acp-daemon` | Agent Client Protocol |
 | Hermes Agent | `hermes acp` | Agent Client Protocol |
 | pi | `pi-acp` | Agent Client Protocol through the community `pi-acp` bridge, which does not pass Station tool servers and has no model switching |
@@ -840,6 +894,15 @@ each engine can receive from Station (system prompt, tools, skills, images) is
 recorded per engine in the
 [engine capability matrix](../../packages/contracts/src/engine-capability-matrix.ts);
 the [ACP guide](acp.md) covers protocol details.
+
+OpenCode is still added and saved as an Agent Client Protocol engine. With the
+**OpenCode native engine** Feature Preview on (Settings → Advanced → Feature
+previews), new chats on it run on Station's `opencode` engine instead. That
+engine drives OpenCode 2 through its own local server (`opencode serve`) when
+Station has verified that version's API, and over the Agent Client Protocol
+otherwise. A chat keeps the engine it started with. The connection's engine
+reads `opencode` only while the preview is on. See
+[the decision](../decisions/opencode-native-transport.md).
 
 An engine Station did not find reads **Not installed**. Its card shows the
 vendor's install command for the operating system Station runs on, with a copy
@@ -889,8 +952,9 @@ opens on that entry's first step.
    New chat uses the dock's current Project, or no Project when none is open.
    Choose **Done** to finish without opening a chat.
 
-A configured engine that reads **Setup required** offers **Retry check** on its
-engine page; a Ready engine offers **Check connection** instead.
+A configured command-backed engine that is not ready offers **Retry check** on its
+engine page, except one the managed policy refuses (**Not allowed**), which has
+no repair; a Ready engine offers **Check connection** instead.
 An engine whose first check never succeeded is saved but has no Agent yet; it
 is listed on the Engines page and at the top of Add engine as **Not connected
 yet**, and its page offers **Retry check**, **Remove**, and, for a custom
@@ -934,6 +998,37 @@ installed on your machine and the Claude Code bundled with the Claude Agent SDK:
 
 The Engine's readiness detail names the executable Station will launch and whichever versions it
 was able to read.
+
+A Claude session loads the repository's `AGENTS.md` files as well as its `CLAUDE.md` files.
+On its own, Claude Code loads `AGENTS.md` only in a project that has no `CLAUDE.md`. For each
+session, Station sets Claude Code's `instructionFiles` option for its built-in `agents-md`
+plugin to `claude-md-and-agents-md`
+([source](../../src-server/providers/adapters/claude-instruction-files.ts)). Claude Code then
+loads each `AGENTS.md` wherever it would load a `CLAUDE.md`, at the root and in nested folders,
+in the same way. It does not load an `AGENTS.md` twice when a `CLAUDE.md` imports it
+(`@AGENTS.md`) or links to it. Station reads no instruction file itself.
+
+Station sets the option only for the session, as a `--settings` value, and never writes your
+settings. It leaves the option out when any settings file it can read already sets
+`instructionFiles`, or its older name `projectInstructions`, under
+`pluginConfigs["agents-md@builtin"].options`. It reads `settings.json` in the session's Claude
+configuration directory, resolving a relative `CLAUDE_CONFIG_DIR` against the session's working
+folder as Claude Code does. It also reads this machine's `managed-settings.json` and the drop-ins
+in `managed-settings.d` that Claude Code reads (files whose names end in `.json` and do not start
+with a dot), in Claude Code's managed settings folder
+(`/Library/Application Support/ClaudeCode` on macOS, `/etc/claude-code` on Linux,
+`C:\Program Files\ClaudeCode` on Windows). It also leaves the option out when it cannot read
+one of those files as a regular JSON file of at most 1 MiB, or when `managed-settings.d` holds
+more than 256 such drop-ins. Then Claude Code's own setting applies.
+
+Managed settings that your organization delivers by MDM (a macOS configuration profile or the
+Windows policy registry) or from the server are not files Station can read. An
+`instructionFiles` value set there still takes precedence over the session's option. A
+`projectInstructions` value set only there does not, because Claude Code reads that older name
+only while `instructionFiles` is unset or at its default. Claude Code reports that older name as
+honoured only for now and asks for `instructionFiles` in its place, so set `instructionFiles` to
+keep a managed choice. A Claude Code version without the option ignores it and loads `CLAUDE.md`
+alone.
 
 ### Engines from the public registry
 
@@ -1072,6 +1167,110 @@ an engine's own credentials (see
 Live sign-in against real vendor accounts has not been verified; the flows are
 tested against a stand-in engine that speaks the same protocol.
 
+### Sign in to Kiro without kiro-cli
+
+Station lists three Kiro engines:
+
+| Engine | Runs | Who keeps the sign-in |
+|---|---|---|
+| **Kiro CLI** | `kiro-cli acp --agent-engine v2` | kiro-cli (`kiro-cli login`) |
+| **Kiro (KAS)** | `kiro-cli acp --agent-engine v3 --auth-method cli` | kiro-cli (`kiro-cli login`) |
+| **Kiro (KAS, no CLI)** | Kiro's agent service, installed by Station | Station |
+
+Both kiro-cli engines read their status from `kiro-cli whoami`, since it is
+the one login they share, and run with `KIRO_CLI_CLIENT_APPLICATION=station`.
+A saved `kiro` connection keeps its own arguments.
+
+**Kiro (KAS, no CLI)** needs neither kiro-cli nor a login on the computer:
+
+1. **Install.** Its Sign-in panel has **Install**, which says what is
+   downloaded. Station fetches the pinned manifest for Kiro's agent service
+   (`@kiro/agent` 0.66.104) and refuses it unless its sha256 matches the pin
+   recorded in Station, before fetching anything else. It then downloads the
+   engine and the Node runtime the manifest names for this computer, checks
+   each one's size and sha256, refuses any archive entry with an absolute
+   path, a `..` segment, a link out of the archive, or a path or link target
+   that passes through another link in the archive (a link target may still
+   use `..` inside the archive, as the Node runtime's `bin/npm` does), checks
+   the unpacked files again, and installs them read-only under
+   `<Station home>/engines/kiro-kas/0.66.104/`. A download that cannot be
+   written (a full disk, an unwritable directory) fails the install and
+   leaves nothing staged. Nothing updates on its own: a new version arrives
+   with a Station release. `station home backup` and update rollback skip
+   `engines/`, because each pinned version can be downloaded again. Until it
+   is installed, a chat and the engine's
+   **Not connected yet** card say "Kiro (KAS, no CLI) isn't installed yet".
+   Installing needs permission to operate Station on a paired device.
+   Until you sign in, a chat on this engine is held with **Sign in to Kiro
+   (KAS, no CLI) from its sign-in panel in Connections**, and the engines
+   list shows it as **Sign in required** even though the engine answers its
+   handshake. If Station cannot read that readiness, the row says it could
+   not verify the engine; other engines still list. Station's readiness reads the installed
+   runtime, not `PATH`. Removing the connection during a sign-in cancels it,
+   and nothing it was finishing is kept.
+2. **Sign in.** Choose **AWS Builder ID**, **IAM Identity Center** with
+   your company's start URL (`https://your-company.awsapps.com/start`) and
+   region, or **Google or GitHub**.
+   - Builder ID and Identity Center show a code and a link; open the link on
+     any device, enter the code and approve. Station registers its own AWS
+     sign-in client. For Identity Center, Station looks up the Kiro profile
+     the account may use.
+   - **Google or GitHub** opens Kiro's sign-in page, where you pick the
+     provider. The page sends the browser back to `http://localhost:<port>`
+     on the computer Station runs on, so it is offered only when your browser
+     is on that computer. Station decides from the request, as it does for
+     the operator's own browser: a loopback request that addressed loopback,
+     directly or through Station's UI proxy, counts; a forwarded, tailnet or
+     off-machine request does not, and the panel then says so and offers the
+     other two. A tunnel that re-dials loopback without forwarding headers
+     (an SSH forward) looks local, and its sign-in times out. Station listens on
+     `127.0.0.1` and `::1` for one answer, on the first of the ten ports Kiro
+     accepts (3128, 4649, 6588, 8008, 9091, 49153, 50153, 51153, 52153,
+     53153) that no other program holds on either address, so the browser's
+     `localhost` cannot reach another program. Only a request carrying this
+     attempt's state can end it, and it must come to Kiro's callback path;
+     any other request gets a 404 and the wait goes on. Station stops
+     listening once it has an answer, after five minutes, when you cancel, or
+     if the listening socket fails. It then exchanges the code (PKCE) at
+     Kiro's sign-in service and refreshes there. Station sends its own
+     User-Agent and no client id; the `redirect_from=kirocli` it puts on the
+     sign-in link is the portal's own parameter for this loopback flow. When
+     every port is in use, nothing comes back in time, or Kiro turns the
+     sign-in down, the panel says which.
+3. **Use it.** When the engine asks for a token, Station gives it the access
+   token and its expiry, never the refresh token, refreshing the token first
+   when fewer than three minutes are left. Requests for one connection share
+   one refresh, even across Station processes, and each request to AWS gives
+   up after 15 seconds. At most 30 issues an hour per connection may refresh
+   or hand out a new token; handing the engine the token it already has again
+   (every availability check and restart asks once) is not counted.
+   The sign-in is kept per connection, not per credential profile: a chat
+   started with another credential profile on this engine is refused.
+
+Station keeps this sign-in in `security/engine-host-auth.json` under the
+Station home (readable only by its owner), separate from engine keys, and
+records each sign-in, sign-out, issue and refusal without any value in
+`security/engine-host-auth-audit.jsonl`. The panel reads **Signed in**
+from that store without starting the engine, and does not repeat that the
+engine keeps its own sign-in on the computer. If Kiro stops accepting the
+saved sign-in, the panel says to sign in again. **Sign out** removes it.
+Removing the connection removes its sign-in and the MCP sign-ins the engine
+asked Station to keep (`_kiro/secret/*`). A [managed policy](managed-policy.md#engines)
+can turn this off with `limits.engines.engineHostAuth: "off"`.
+
+Starting, reading or cancelling the sign-in and signing out need
+`engine:login`, like any engine sign-in. Station only answers an engine's
+token request for a built-in engine launched with the arguments that make it
+ask; a custom command running the same program gets no token (see
+[the decision](../decisions/engine-credential-provider.md)).
+
+A real install was run on 2026-11-13 (macOS, Apple silicon): about 55 MB
+downloaded (the engine and the Node runtime), both matching the pinned
+manifest, installed read-only, and the engine answered `initialize`. Not
+verified: a real Kiro sign-in with any identity, including whether Kiro's
+sign-in service accepts Station's User-Agent for Google or GitHub. Sign-in is
+tested against local stand-ins for AWS sign-in and Kiro's portal and service.
+
 ---
 
 ## Route an engine through a model proxy
@@ -1084,6 +1283,13 @@ the engine answered. A failed check is shown as **Check failed**; a model catalo
 alone does not override that result. **Refresh models** refreshes the catalog.
 
 Model requests use the proxy; the engine and its tools still run on this Station.
+
+A proxy's HTTP 429 or rate-limit cooldown does not mean its key is invalid and
+does not create a retained sign-in failure. Wait for the provider's reset or
+repair the proxy, then retry. If Station has already retained a sign-in failure,
+fix the credentials or proxy and run **Check connection** on the engine page.
+Only a successful chat turn clears that failure; refreshing the model catalog
+or running the CLI's prerequisite-only `connections test` does not prove recovery.
 
 A routed connection authenticates with that proxy key: readiness reports the
 saved key as the engine's credential (shown as **Proxy key**) and does not
@@ -1356,8 +1562,9 @@ server's environment, the connection `env`, the profile overlay, the profile's
 own config-home key, then Station's engine temp directory
 ([resolver](../../src-server/providers/app-home/credential-profile-env.ts)). The profile is the
 one an Agent pins, the one credential recovery is trying, or else the
-connection's active profile. The overlay reaches Claude Code and Codex session
-starts and Codex quota reads for that profile. It is not applied to model
+connection's active profile. The overlay reaches Claude Code, Codex and Muse
+session starts and Codex quota reads for that profile. Muse has no connection
+`env` layer, and its profile's config-home key is `XDG_CONFIG_HOME`. It is not applied to model
 discovery, adopted sessions and source-home resumes, login readiness checks,
 login/enrolment into the profile, or the per-profile usage read
 (`GET /api/connections/agent/<engine>/credential-usage`), which reads the
@@ -1822,6 +2029,45 @@ carried safely; see the
 An unconfirmed MCP prompt send is not automatically replayed; inspect the
 conversation before running it again. Prompt receipts expire after ten minutes
 or a Station restart, so an expired prompt must be run again.
+
+Reading the web counts too. A conversation is marked when Claude Code's
+`WebFetch` or `WebSearch` returns, when Codex completes a web search, when an
+ACP engine runs a tool it labels as a fetch, when the Station engine's HTTP
+request returns, and when an agent reads or drives a page with Station's
+browser tools. muse web reads are not seen, and no engine's shell downloads
+(`curl`, `wget`) are. `GET /api/integrations/untrusted-content/coverage`
+lists this per engine.
+
+After the mark, Station denies writes to known instruction-file and git-hook
+locations by path, as a best-effort early check. In that conversation and the
+conversations it delegates to, it refuses writes, moves and copies into:
+
+- `AGENTS.md`, `CLAUDE.md` and their local or override forms, at any depth;
+- anything under `.agents/`, `.claude/` or `.codex/`;
+- `.mcp.json`;
+- a repository's hooks and configuration (`.git/hooks`, `.git/config`,
+  `.githooks`, `.husky`, and the folder git reports as `core.hooksPath`).
+
+A shell command that names one of these, changes git configuration, or gives
+git an option that configures it or points it at another repository asks you
+first. A delegated agent that reads the web marks the agent that delegated to
+it when its result comes back. To make such a change yourself, edit the file
+directly or clear the mark.
+
+**This does not contain git hook execution.** Each of these ways around it has
+run a planted hook after a mark:
+
+- a `core.hooksPath` that points outside the repository;
+- a bare repository;
+- a repository nested inside a hooks folder;
+- a hooks folder reached through a symlink;
+- a writable `[include]` file that changes `core.hooksPath`;
+- git run inside a quoted `sh -c "…"` command or through a shell alias.
+
+Codex's own file edits and commands are not checked at all. Enforcement at the
+operating-system level is tracked in
+[#4860](https://github.com/kontourai/station/issues/4860); see the
+[coverage notes](../design/mcp-subregistry-curation.md#coverage-and-gaps).
 
 ## Connect an OAuth MCP server to an Agent
 
@@ -2306,7 +2552,11 @@ corrects two source-confirmed lifecycle errors in that exact upstream release:
 rejected goodbye could skip socket shutdown. The patch propagates probe and
 announcement failure (including empty or partially failed send sets) to the caller,
 closes sockets in shutdown's `finally`, and prevents pending binds from escaping
-shutdown. An owner withdraws its own service before releasing a shared responder.
+shutdown. It also removes the package's import-time `source-map-support/register`,
+which replaced the server's stack-trace formatter: the first stack read then
+parsed and cached the whole server bundle's source map, about 690 MB of heap
+held for the life of the process
+([test](../../src-server/services/connections/__tests__/ciao-stack-trace.test.ts)). An owner withdraws its own service before releasing a shared responder.
 The [installed-package UDP tests](../../src-server/services/connections/__tests__/ciao-lifecycle.test.ts)
 exercise those contracts through the real dependency. No runtime private fields
 or DNS record overrides are used. Interface changes are checked every five

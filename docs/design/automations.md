@@ -314,13 +314,23 @@ Four findings shape the design.
   (`InboundWebhookToken.starts`; omitted means no authority). Route:
   [`inbound-webhooks.ts`](../../src-server/routes/webhooks/inbound-webhooks.ts)
   with headers `x-station-webhook-token`, `-timestamp`, `-nonce` and
-  `-signature`; HMAC over `ts\nnonce\nbody`; a 256 KB cap; a per-token
-  limiter and a global budget of 300 unauthenticated attempts; and 202 only
-  after the turn starts.
-  [Authorization](../../src-server/services/webhooks/inbound-webhook-authorization.ts).
+  `-signature`. Station keeps the route and hands each request to a
+  `webhook` source of [Telltale](https://github.com/kontourai/telltale)
+  (`@kontourai/telltale`), which verifies it: a per-token limiter and a
+  global budget of 300 unauthenticated attempts, the credential, freshness,
+  a 256 KB cap, HMAC over `ts\nnonce\nbody` on the raw bytes, then the
+  replay reservation. Telltale stamps the event `untrusted`, from the route
+  it entered by. Before Telltale commits the replay key, Station checks the
+  payload shape and the token's grants (bound to the token its own lookup
+  returned) and emits only the fields it uses; a refusal releases the key.
+  Station then starts the turn and answers 202 only after the turn starts.
+  [Authorization](../../src-server/services/webhooks/inbound-webhook-authorization.ts)
+  supplies Telltale's credential, replay and audit bindings and keeps the
+  grant check.
   [Store](../../src-server/services/webhooks/inbound-webhook-store.ts):
   `security/inbound-webhooks.json` at mode 0600, re-read per request,
-  secrets of at least 32 characters, a 5-minute replay ledger and a
+  secrets of at least 32 characters, a 5-minute replay ledger (Telltale's
+  reserve/extend/commit/release contract, refusing when full) and a
   256-entry audit.
   [Turn starter](../../src-server/routes/webhooks/webhook-turn-starter.ts)
   runs as `LOCAL_OPERATOR_PRINCIPAL_ID` with
@@ -471,6 +481,14 @@ This is the owner-recommended first source (section 9, decision 1). It is a
 monitor kind over the existing external monitor and feeds the same
 normalizer. It needs no ingress.
 
+Station's scheduler tick still owns timing, preview gating and the ledger's
+poll state; the listing goes through the external monitor's transport and
+credential path. Telltale owns the rest: `githubPollStep` picks the runs in
+the window and the next cursor, and `normalizeGitHubWorkflowRun` checks each
+run. Overlap re-reads still reach Station's ledger, which records them as
+`duplicate`. Handing timing to Telltale's own `github-poll` source is a
+later slice.
+
 ### The qualification rule
 
 - `workflow.path` is `.github/workflows/main-qualification.yml`. Match the
@@ -503,13 +521,43 @@ text. The agent fetches logs itself with `gh`.
   unattended-grant store, keyed by this principal.
 - **Two keys.** The rule's `(projectId, agentId, action)` must appear in its
   source's `grants`.
-- **Who can create rules.** Only authenticated operator surfaces create
-  rules. Never the station-control MCP and never an agent session, so an
-  agent cannot widen its own triggers.
+- **Who can create rules: an agent proposes, a person confirms.** This
+  reverses the earlier rule, which allowed only operator surfaces (owner
+  decision 2026-11-12,
+  [#4830](https://github.com/kontourai/station/issues/4830); see
+  [the decision record](../decisions/agent-proposed-automations.md)). An
+  agent in a person's chat may call `propose_automation_source` or
+  `propose_automation_rule`. Station validates the proposal and writes a plain
+  description: what it watches, what it opens, which agent it wakes and with
+  what authority. Nothing is created until a person confirms the card in that
+  chat. Confirming needs the Station operator in person. It decides the
+  proposing chat's scope again, and requires each Agent named to be
+  unchanged (slug, Project, definition digest), inside the store's lock. It
+  creates the source or rule through the ordinary store, under an id derived
+  from the proposal so a retry never duplicates it
+  ([routes](../../src-server/routes/orchestration/automation-proposals.ts),
+  [validation](../../src-server/services/automation/automation-proposals.ts)).
+  A proposal never grants more than the proposing chat holds:
+  - every Project/Agent pair it names must pass that chat's dispatch scope
+    rule;
+  - it may name only `dispatch-task`;
+  - a rule never pins `auto` approval;
+  - `fullAccessGrant`, a credential, a secret, `enabled` and `mode` are
+    refused as escalations;
+  - only credential-free `github-poll` sources can be proposed.
+
+  A proposal from a conversation that had read untrusted content
+  ([#3483](https://github.com/kontourai/station/issues/3483)) is labelled
+  so on the card. Sources are moving to
+  [Telltale](https://github.com/kontourai/telltale)
+  ([#4832](https://github.com/kontourai/station/issues/4832)). A Telltale
+  source type's `plan()` should then write the "watches" text. Today's
+  proposals use Station's own GitHub poll.
 - **Default deny.** Sources are created disabled and rules in `observe`
-  mode, which records decisions but never acts. No grants means
-  no actions. A corrupt config or ledger fails closed with
-  `policy_unavailable`.
+  mode, which records decisions but never acts. This also holds for a
+  confirmed proposal, unless the person ticks "Turn it on now" in the same
+  confirmation. No grants means no actions. A corrupt config or ledger fails
+  closed with `policy_unavailable`.
 - **Rate limits.** A per-source attempt limiter plus the global
   unauthenticated budget; per rule `maxStartsPerHour` (default 2) and
   `maxActive` 1; a global `AUTOMATION_EXECUTION_LIMITS.maxConcurrentActions`;
@@ -521,7 +569,22 @@ text. The agent fetches logs itself with `gh`.
   standing grant.
 - **Never.** Merge, arm auto-merge, push to main, edit protected paths (port
   the list from `qualification-repair.mjs`), or change automations or
-  grants.
+  grants. This includes proposing them. Proposals are gated on the calling
+  turn being person-authored: it must carry the shared person-authorship
+  mark (#4848), meaning a person typed it into Station's composer. Station
+  infers the calling turn from Session state (the running turn by its
+  persisted lifecycle fold); a start not yet stored refuses, and the
+  decision is made again in the transaction that writes the proposal.
+  Everything else refuses, including a delegated child's result that
+  continues in the person's chat with `dispatchOrigin: interactive`.
+  - **Known race.** A concurrent steer, failed or accepted, clears an
+    in-flight delegated continuation's pending reservation, so an agent
+    continuation can create a proposal card. The operator's in-person
+    confirmation remains required and is the authority boundary.
+  - **Known false refusal.** An invocationless legacy start can leave the
+    Session stuck `pending`, refusing proposals until it exits.
+  - The fix for both is a turn-bound station-control credential
+    ([#4882](https://github.com/kontourai/station/issues/4882)).
 - **Honest limit.** Station cannot police an external engine's use of
   ambient host credentials. "Never merge" is real only if the Station OS
   user has no GitHub write credential. Publishing is therefore a

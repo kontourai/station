@@ -681,6 +681,30 @@ describe('AgentConnectionView', () => {
   // The section frame owns this section's single add action and reaches the
   // catalogue by route (`/connections/engines/new`), not by an in-view button
   // so the route is what these two drive now.
+  test('a connected ACP engine row draws its saved icon, not initials', async () => {
+    agentConnections = [
+      {
+        id: 'kiro-kas',
+        kind: 'agent',
+        type: 'acp',
+        name: 'Kiro (KAS)',
+        enabled: true,
+        status: 'ready',
+        capabilities: ['agent-runtime'],
+        prerequisites: [],
+        // What connection-inspector projects for a saved built-in.
+        config: { engineId: 'acp', icon: 'brand:kiro' },
+        setup: { state: 'ready', detected: true, configured: true },
+      },
+    ];
+    const { container } = await render(
+      <AgentConnectionView onNavigate={vi.fn()} />,
+    );
+    expect(screen.getByText('Kiro (KAS)')).toBeTruthy();
+    expect(container.querySelector('.brand-icon--kiro')).toBeTruthy();
+    expect(screen.queryByText('KK')).toBeNull();
+  });
+
   test('keeps available apps in Add and shows the Station engine returned by the API', async () => {
     const { rerender } = await render(
       <AgentConnectionView onNavigate={vi.fn()} />,
@@ -2064,16 +2088,14 @@ describe('AgentConnectionView', () => {
     );
 
     fireEvent.click(screen.getByText('Advanced'));
-    expect(
-      screen.getByRole('heading', { name: 'Credential entries' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Accounts' })).toBeTruthy();
     expect(screen.getByText('Active: primary-profile')).toBeTruthy();
     const automatic = screen.getByRole('checkbox', {
-      name: /Automatically try an enrolled credential entry/,
+      name: /Switch to a backup account when this one hits/,
     }) as HTMLInputElement;
     expect(automatic.checked).toBe(false);
     const enrollment = screen.getByRole('checkbox', {
-      name: 'Allow automatic recovery selection',
+      name: 'Use as backup',
     }) as HTMLInputElement;
     expect(enrollment.checked).toBe(false);
 
@@ -2092,7 +2114,7 @@ describe('AgentConnectionView', () => {
     // Every form control has an accessible label, and the profile ref is
     // displayed as an opaque handle rather than a filesystem location.
     expect(
-      screen.getByRole('textbox', { name: 'Credential entry reference' }),
+      screen.getByRole('textbox', { name: 'Account reference' }),
     ).toBeTruthy();
     expect(
       screen.getByRole('textbox', { name: 'Label for backup-profile' }),
@@ -2102,16 +2124,16 @@ describe('AgentConnectionView', () => {
     ).toBeNull();
     expect(
       screen.getByRole('status', {
-        name: 'Credential entry provisioning import result',
+        name: 'Import result',
       }).textContent,
     ).toContain(
-      'Provisioning import completed: 2 items copied; 1 item skipped. This credential entry is marked as imported.',
+      'Import finished: 2 items copied, 1 item skipped. This account is marked as imported.',
     );
     expect(screen.queryByText('settings.json')).toBeNull();
     expect(screen.queryByText('credentials.json')).toBeNull();
 
     const includeCredentials = screen.getByRole('checkbox', {
-      name: 'Include selected credential entry sign-in credentials',
+      name: 'Also copy sign-in credentials into the account',
     }) as HTMLInputElement;
     expect(includeCredentials.checked).toBe(false);
     fireEvent.click(
@@ -2143,14 +2165,12 @@ describe('AgentConnectionView', () => {
       <AgentConnectionView selectedRuntimeId="codex" onNavigate={vi.fn()} />,
     );
 
-    expect(
-      screen.getByRole('heading', { name: 'Credential entries' }),
-    ).toBeTruthy();
-    expect(screen.getByText('No credential entries added yet.')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Accounts' })).toBeTruthy();
+    expect(screen.getByText('None added yet.')).toBeTruthy();
     expect(
       (
         screen.getByRole('checkbox', {
-          name: /Automatically try an enrolled credential entry/,
+          name: /Switch to a backup account when this one hits/,
         }) as HTMLInputElement
       ).disabled,
     ).toBe(true);
@@ -2179,10 +2199,10 @@ describe('AgentConnectionView', () => {
       <AgentConnectionView selectedRuntimeId="codex" onNavigate={vi.fn()} />,
     );
 
-    expect(screen.getByText("Couldn't load credential entries")).toBeTruthy();
+    expect(screen.getByText("Couldn't load accounts")).toBeTruthy();
     expect(screen.getByText('Try again in a moment.')).toBeTruthy();
     expect(screen.queryByText('credential recovery unavailable')).toBeNull();
-    expect(screen.queryByText('No credential entries added yet.')).toBeNull();
+    expect(screen.queryByText('None added yet.')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(refetchCredentialRecovery).toHaveBeenCalledTimes(1);
@@ -2241,20 +2261,20 @@ describe('AgentConnectionView', () => {
       expect(
         (
           screen.getByRole('checkbox', {
-            name: /Automatically try an enrolled credential entry/,
+            name: /Switch to a backup account when this one hits/,
           }) as HTMLInputElement
         ).disabled,
       ).toBe(true);
       expect(
         (
           screen.getByRole('button', {
-            name: 'Apply manually',
+            name: 'Switch to this account',
           }) as HTMLButtonElement
         ).disabled,
       ).toBe(true);
       if (explains) {
         expect(
-          screen.getByText(/does not declare a safe application capability/),
+          screen.getByText("This engine can't switch accounts automatically."),
         ).toBeTruthy();
       }
     },
@@ -2284,10 +2304,16 @@ describe('AgentConnectionView', () => {
       <AgentConnectionView selectedRuntimeId="claude" onNavigate={vi.fn()} />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Apply manually' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Switch to this account' }),
+    );
     expect(applyMutate).not.toHaveBeenCalled();
-    expect(screen.getByText(/potentially billable engine turn/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Apply and verify' }));
+    expect(
+      screen.getByText(
+        /One engine turn checks this account first and may be billed/,
+      ),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Check and switch' }));
     expect(applyMutate).toHaveBeenCalledWith({
       id: 'claude',
       ref: 'backup-profile',
@@ -2295,34 +2321,43 @@ describe('AgentConnectionView', () => {
     });
   });
 
-  test('a rolled-back outcome is announced as failure rather than success', async () => {
-    connectionQueryData = {
-      id: 'claude',
-      kind: 'agent',
-      type: 'claude',
-      name: 'Claude Code',
-      enabled: true,
-      status: 'ready',
-      capabilities: ['agent-runtime'],
-      prerequisites: [],
-      config: { useAppHome: true },
-      setup: { state: 'ready', detected: true, configured: false },
-    };
-    credentialRecoveryQueryData = {
-      profiles: [],
-      group: { profileRefs: [], enrolledProfileRefs: [] },
-      policy: { automatic: false },
-      application: { capability: 'restart_resume', outcome: 'rolled_back' },
-    };
+  test.each([
+    ['rolled_back', 'Account not changed. The switch was undone.'],
+    [
+      'failed',
+      "Station couldn't confirm the switch. Check which account is active before trying again.",
+    ],
+    ['rejected', "Account not changed. The switch didn't finish."],
+    ['unsupported', "Account not changed. The switch didn't finish."],
+  ])(
+    'a %s outcome is announced as failure with what is known',
+    async (outcome, message) => {
+      connectionQueryData = {
+        id: 'claude',
+        kind: 'agent',
+        type: 'claude',
+        name: 'Claude Code',
+        enabled: true,
+        status: 'ready',
+        capabilities: ['agent-runtime'],
+        prerequisites: [],
+        config: { useAppHome: true },
+        setup: { state: 'ready', detected: true, configured: false },
+      };
+      credentialRecoveryQueryData = {
+        profiles: [],
+        group: { profileRefs: [], enrolledProfileRefs: [] },
+        policy: { automatic: false },
+        application: { capability: 'restart_resume', outcome },
+      };
 
-    await render(
-      <AgentConnectionView selectedRuntimeId="claude" onNavigate={vi.fn()} />,
-    );
+      await render(
+        <AgentConnectionView selectedRuntimeId="claude" onNavigate={vi.fn()} />,
+      );
 
-    expect(screen.getByRole('alert').textContent).toContain(
-      'Credential application was rolled back; the active credential was not changed.',
-    );
-  });
+      expect(screen.getByRole('alert').textContent).toContain(message);
+    },
+  );
 
   test('deduplicates safe feedback from simultaneous credential-profile mutation failures', async () => {
     connectionQueryData = {
@@ -2374,30 +2409,18 @@ describe('AgentConnectionView', () => {
   test.each([
     [
       { resume: 'same-session', fork: 'replay-seed', rewind: 'none' },
-      [
-        'Can continue this execution session',
-        'Can start a new conversation from Station’s transcript.',
-        'Cannot rewind an execution session in place.',
-      ],
+      { Resume: 'Yes', Branch: 'Copies the transcript only', Rewind: 'No' },
     ],
     [
       { resume: 'none', fork: 'native', rewind: 'in-place' },
-      [
-        'Cannot resume an existing execution session.',
-        'Can create an engine-native conversation branch.',
-        'Can rewind this execution session in place.',
-      ],
+      { Resume: 'No', Branch: 'Yes', Rewind: 'Yes' },
     ],
     [
       { resume: 'none', fork: 'none', rewind: 'none' },
-      [
-        'Cannot resume an existing execution session.',
-        'Cannot create an engine-native branch.',
-        'Cannot rewind an execution session in place.',
-      ],
+      { Resume: 'No', Branch: 'No', Rewind: 'No' },
     ],
   ])(
-    'renders continuity dimensions as explanatory detail',
+    'renders continuity dimensions as a facts list',
     async (continuity, expected) => {
       connectionQueryData = {
         id: 'claude',
@@ -2415,15 +2438,178 @@ describe('AgentConnectionView', () => {
       await render(
         <AgentConnectionView selectedRuntimeId="claude" onNavigate={vi.fn()} />,
       );
-      const rendered =
-        screen.getByText('Continuity').parentElement?.textContent;
-      for (const sentence of expected) expect(rendered).toContain(sentence);
-      if (continuity.fork === 'replay-seed')
-        expect(
-          screen.getByText(/engine cursor, tool, or approval state/),
-        ).toBeTruthy();
+      const field = screen.getByText('Continuity').parentElement!;
+      const facts = Object.fromEntries(
+        Array.from(field.querySelectorAll('dt')).map((term) => [
+          term.textContent,
+          term.nextElementSibling?.textContent,
+        ]),
+      );
+      expect(facts).toEqual(expected);
     },
   );
+
+  // The row's status is a badge from the one connection verdict; the
+  // subtitle carries facts. A configured engine the server reports as
+  // failing read "Setup required" in the subtitle before.
+  test('engine rows show the verdict as a badge, not subtitle text', async () => {
+    agentConnections = [
+      ...DEFAULT_AGENT_CONNECTIONS,
+      {
+        id: 'muse',
+        kind: 'agent',
+        type: 'muse',
+        name: 'Muse',
+        enabled: true,
+        status: 'error',
+        capabilities: ['agent-runtime'],
+        prerequisites: [],
+        config: {},
+        setup: { state: 'configured', detected: true, configured: true },
+      },
+    ];
+    const { container } = await render(
+      <AgentConnectionView onNavigate={vi.fn()} />,
+    );
+    const rowFor = (name: string) =>
+      [...container.querySelectorAll('.split-pane__item')].find(
+        (row) =>
+          row.querySelector('.split-pane__item-name-text')?.textContent ===
+          name,
+      )!;
+    const badge = (name: string) =>
+      rowFor(name).querySelector('.resource-status__badge');
+    expect(badge('Codex')?.textContent).toBe('Ready');
+    expect(badge('Muse')?.textContent).toBe('Unreachable');
+    expect(badge('Muse')?.classList.contains('tone-negative')).toBe(true);
+    for (const name of ['Codex', 'Muse']) {
+      const subtitle =
+        rowFor(name).querySelector('.split-pane__item-subtitle')?.textContent ??
+        '';
+      expect(subtitle).not.toMatch(/Ready|Unreachable|Setup required/);
+    }
+  });
+
+  /** The detail's Status tile and Ready step. */
+  const detailStatus = (container: HTMLElement) => ({
+    tile: [...container.querySelectorAll('.provider-detail__summary > div')]
+      .find((tile) => tile.textContent?.startsWith('Status'))
+      ?.querySelector('strong')?.textContent,
+    readyStep: [
+      ...container.querySelectorAll('.provider-detail__progress-step'),
+    ].find((step) => step.textContent === 'Ready'),
+  });
+
+  // The detail read the resolver directly, which put "Ready" on a degraded
+  // engine the row (and dispatch) already refused.
+  test('a degraded engine detail is not Ready anywhere on the page', async () => {
+    const muse = {
+      id: 'muse',
+      kind: 'agent',
+      type: 'muse',
+      name: 'Muse',
+      enabled: true,
+      status: 'degraded',
+      capabilities: ['agent-runtime'],
+      prerequisites: [],
+      config: {},
+      setup: { state: 'ready', detected: true, configured: true },
+    };
+    agentConnections = [...DEFAULT_AGENT_CONNECTIONS, muse];
+    connectionQueryData = muse;
+    const { container } = await render(
+      <AgentConnectionView selectedRuntimeId="muse" onNavigate={vi.fn()} />,
+    );
+    const { tile, readyStep } = detailStatus(container);
+    expect(tile).toBe('Limited');
+    expect(
+      readyStep?.classList.contains('provider-detail__progress-step--complete'),
+    ).toBe(false);
+    expect(
+      container.querySelector('.provider-detail__notice strong')?.textContent,
+    ).toBe('Limited');
+  });
+
+  test('a policy-refused engine reads Not allowed in its row and its detail', async () => {
+    managedPolicy.summary = {
+      organization: 'Acme',
+      supportUrl: null,
+      lockedSettings: [],
+      limits: {},
+      engines: { allowed: ['claude'], acpRegistryAgents: true, pinned: [] },
+    };
+    // The policy names engines by `config.engineId`, as the server writes it.
+    const codex = {
+      ...(DEFAULT_AGENT_CONNECTIONS[0] as Record<string, unknown>),
+      config: { executionClass: 'connected', engineId: 'codex' },
+    };
+    agentConnections = [codex, DEFAULT_AGENT_CONNECTIONS[1]];
+    connectionQueryData = codex;
+    const { container } = await render(
+      <AgentConnectionView selectedRuntimeId="codex" onNavigate={vi.fn()} />,
+    );
+    const row = [...container.querySelectorAll('.split-pane__item')].find(
+      (item) =>
+        item.querySelector('.split-pane__item-name-text')?.textContent ===
+        'Codex',
+    )!;
+    expect(row.querySelector('.resource-status__badge')?.textContent).toBe(
+      'Not allowed',
+    );
+    expect(detailStatus(container).tile).toBe('Not allowed');
+  });
+
+  // Retry check repairs a failed check; it cannot lift a policy refusal.
+  test('a policy-refused engine that is otherwise ready offers no Retry check', async () => {
+    managedPolicy.summary = {
+      organization: 'Acme',
+      supportUrl: null,
+      lockedSettings: [],
+      limits: {},
+      engines: { allowed: ['claude'], acpRegistryAgents: true, pinned: [] },
+    };
+    acpBridgeConnections = [{ id: 'opencode', name: 'OpenCode' }];
+    const opencode = {
+      id: 'opencode',
+      kind: 'agent',
+      type: 'acp',
+      name: 'OpenCode',
+      enabled: true,
+      status: 'ready',
+      capabilities: ['agent-runtime'],
+      prerequisites: [],
+      config: { engineId: 'acp' },
+      setup: { state: 'ready', detected: true, configured: true },
+    };
+    agentConnections = [...DEFAULT_AGENT_CONNECTIONS, opencode];
+    connectionQueryData = opencode;
+    const { container } = await render(
+      <AgentConnectionView selectedRuntimeId="opencode" onNavigate={vi.fn()} />,
+    );
+    expect(detailStatus(container).tile).toBe('Not allowed');
+    expect(screen.queryByRole('button', { name: 'Retry check' })).toBeNull();
+  });
+
+  test('says continuity is not reported when the connection declares none', async () => {
+    connectionQueryData = {
+      id: 'claude',
+      kind: 'agent',
+      type: 'claude',
+      name: 'Claude Code',
+      enabled: true,
+      status: 'ready',
+      capabilities: ['agent-runtime'],
+      prerequisites: [],
+      config: {},
+      setup: { state: 'ready', detected: true, configured: false },
+    };
+    await render(
+      <AgentConnectionView selectedRuntimeId="claude" onNavigate={vi.fn()} />,
+    );
+    expect(screen.getByText('Continuity').parentElement?.textContent).toContain(
+      'Not reported',
+    );
+  });
 });
 
 test('guided proxy setup saves a reference and checks only saved settings', async () => {
@@ -2483,4 +2669,16 @@ test('guided proxy setup saves a reference and checks only saved settings', asyn
   expect(stored.connection.config).not.toHaveProperty('apiKey');
   expect(stored.connection.config).not.toHaveProperty('env');
   modelConnections = [];
+});
+
+// Hoisted by Vitest; kept at the end so recorded fixture line numbers hold.
+const managedPolicy = vi.hoisted(() => ({ summary: undefined as unknown }));
+vi.mock('../contexts/ManagedPolicyContext', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../contexts/ManagedPolicyContext')
+  >()),
+  useManagedPolicySummary: () => managedPolicy.summary,
+}));
+afterEach(() => {
+  managedPolicy.summary = undefined;
 });

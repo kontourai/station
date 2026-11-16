@@ -4,6 +4,7 @@ import type { ReactNode, RefObject } from 'react';
 import { useState } from 'react';
 import { useAccountPreferences } from '../../contexts/AccountPreferencesContext';
 import { useManagedApprovalCeiling } from '../../contexts/ManagedPolicyContext';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import {
   APPROVAL_MODE_OPTIONS,
   type ApprovalMode,
@@ -41,6 +42,8 @@ interface ComposerModeSheetProps {
   onClose: () => void;
   onSelect: (mode: ApprovalMode) => void;
   sourceNote?: string;
+  /** Whether Station's own approvals reach this engine's tool calls. */
+  policyNote?: string;
   pendingNote?: string;
   activeMode?: string;
   isNewSession?: boolean;
@@ -83,6 +86,7 @@ function ComposerModeSheetContent({
   onClose,
   onSelect,
   sourceNote,
+  policyNote,
   pendingNote,
   activeMode,
   isNewSession,
@@ -147,6 +151,9 @@ function ComposerModeSheetContent({
       <div className="composer-mode-sheet__notes">
         <ManagedApprovalCeilingNote className="composer-mode-sheet__confirm-body" />
         <p className="composer-mode-sheet__confirm-body">{sourceNote}</p>
+        {policyNote && (
+          <p className="composer-mode-sheet__confirm-body">{policyNote}</p>
+        )}
         <p className="composer-mode-sheet__confirm-body">
           {pendingNote?.includes('restart')
             ? 'Restart required'
@@ -274,6 +281,7 @@ function ComposerModeSheetContent({
 }
 
 export function ComposerModeSheet(props: ComposerModeSheetProps) {
+  useDecisionSurface('approval-mode');
   return (
     <ConversationManagedPolicyProvider>
       <ComposerModeSheetContent {...props} />

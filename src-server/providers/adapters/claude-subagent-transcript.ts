@@ -104,11 +104,17 @@ function blockEntry(
     case 'tool_use': {
       if (typeof record.name !== 'string') return undefined;
       if (record.input === undefined)
-        return { message, kind: 'tool-call', name: record.name };
+        return {
+          message,
+          kind: 'tool-call',
+          ...(typeof record.id === 'string' ? { toolCallId: record.id } : {}),
+          name: record.name,
+        };
       const cut = bounded(JSON.stringify(record.input));
       return {
         message,
         kind: 'tool-call',
+        ...(typeof record.id === 'string' ? { toolCallId: record.id } : {}),
         name: record.name,
         input: cut.text,
         ...(cut.truncated ? { truncated: true as const } : {}),
@@ -120,6 +126,9 @@ function blockEntry(
       return {
         message,
         kind: 'tool-result',
+        ...(typeof record.tool_use_id === 'string'
+          ? { toolCallId: record.tool_use_id }
+          : {}),
         ...(cut ? { text: cut.text } : {}),
         ...(cut?.truncated ? { truncated: true as const } : {}),
         ...(record.is_error === true ? { isError: true as const } : {}),

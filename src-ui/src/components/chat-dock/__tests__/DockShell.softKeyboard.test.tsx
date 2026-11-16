@@ -26,7 +26,12 @@ vi.mock('../ChatDockResizeHandle', () => ({
   ChatDockResizeHandle: () => null,
 }));
 
+import { APPEARANCE_HOOKS } from '@kontourai/station-contracts/custom-appearance';
 import { DockShell } from '../DockShell';
+
+/** A custom-appearance hook selector, from the contract (APPEARANCE_HOOKS). */
+const appearanceHook = (id: string) =>
+  APPEARANCE_HOOKS.find((hook) => hook.id === id)!.selector;
 
 // The keyboard's stand-in: what the visual viewport loses at the bottom.
 let keyboardInset = 0;
@@ -107,6 +112,14 @@ test('a collapsed phone bar steps aside while the keyboard types elsewhere, and 
   await waitFor(() =>
     expect(dock()?.hasAttribute('data-keyboard-hidden')).toBe(false),
   );
+});
+
+test('the dock carries its region custom-appearance hook', () => {
+  const { dock } = renderShell();
+  const regions = ['region-left', 'region-right', 'region-bottom'].filter(
+    (id) => dock()?.matches(appearanceHook(id)),
+  );
+  expect(regions).toHaveLength(1);
 });
 
 test('browser chrome alone is not a keyboard, and neither is a short viewport with nothing to type in', async () => {

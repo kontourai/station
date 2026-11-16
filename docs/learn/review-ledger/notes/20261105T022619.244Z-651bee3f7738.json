@@ -1,9 +1,0 @@
-{
-  "revision": "af36a0094d388100cd63e8012fd393a6c97b2a9b",
-
-  "notes": [
-    {"path":"docs/guides/machine-relationships.md","note":"Stale on docs/guides/connections.md, which gained two #4520 sentences (Claude binaryPath pin; locked managed environment drops env/configHome/Connect through). This guide only links to Connections for setup steps (lines 7, 63) and states nothing about engine launch configuration. No edit.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]},
-
-    {"path":"docs/design/settings-architecture.md","note":"Stale on docs/reference/config.md, which gained one #4520 sentence about a locked managed environment and proxyConnectionId/env/configHome. This design links config.md only for telemetry destinations (line 321) and says nothing about engine connection config. No edit.","inputs":["docs/design/settings-architecture.md","docs/reference/config.md"]}
-  ]
-}

@@ -11,6 +11,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { PENDING_TURN_INTERRUPT_TTL_MS } from '@kontourai/station-contracts/orchestration';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { UntrustedContentLedger } from '../../plugins/untrusted-content-policy.js';
 import {
   createDelegationResultSteerPort,
   createSqliteDelegationResultStore,
@@ -2262,4 +2263,82 @@ test('inputless disposition holds corrupt captured markers and unavailable audit
   } finally {
     eventStore.close();
   }
+});
+
+describe("a delivered result carries the child's untrusted read (#4828)", () => {
+  async function deliverOne(childRead: boolean) {
+    const ledger = new UntrustedContentLedger();
+    if (childRead)
+      ledger.markConversation('child-session', Promise.resolve(true));
+    const db = new DatabaseSync(':memory:');
+    db.exec(DELEGATION_RESULT_DELIVERY_SCHEMA);
+    const store = createSqliteDelegationResultStore(db, () => Date.now());
+    const markedAtStart: boolean[] = [];
+    const delivery = new DelegationResultDelivery({
+      store,
+      untrustedContentLedger: ledger,
+      foldEvents: () => [],
+      headSequence: () => 0,
+      turnEvents: () => [],
+      conversationOf: (threadId) => threadId,
+      currentSessionId: (conversationId) => `${conversationId}-session`,
+      readInputlessTurnDisposition: () => ({ kind: 'inputless' }),
+      coordinatorBusy: () => false,
+      sessionOwnerId: () => 'human:local:owner',
+      start: async ({ parentConversationId }) => {
+        markedAtStart.push(
+          await ledger.conversationHasRead(parentConversationId),
+        );
+        return {
+          outcome: 'started',
+          conversationId: parentConversationId,
+          sessionId: `${parentConversationId}-session`,
+          turnId: 'parent-turn',
+        };
+      },
+      steer: async () => ({ outcome: 'unsupported-engine' }),
+      subscribe: () => () => {},
+      logger: { warn: vi.fn() },
+      retryDelaysMs: [],
+    });
+    delivery.arm({
+      childConversationId: 'child',
+      taskId: 'child',
+      parentConversationId: 'parent',
+      actor: { userId: 'human:local:owner', attribution: 'verified-bound' },
+    });
+    const now = Date.now();
+    db.prepare(
+      `INSERT INTO delegation_result_deliveries
+         (child_conversation_id, transition_key, transition, parent_conversation_id,
+          child_session_id, child_turn_id, outcome, delivery_id, text, state,
+          created_at, updated_at)
+       VALUES ('child', 'settled:child-session:turn-1', 'settled', 'parent',
+               'child-session', 'turn-1', 'completed', 'dr-1', 'child result',
+               'pending', ?, ?)`,
+    ).run(now, now);
+    await delivery.reconcile();
+    delivery.stop();
+    return {
+      markedAtStart,
+      parent: await ledger.conversationHasRead('parent'),
+      parentSession: await ledger.conversationHasRead('parent-session'),
+    };
+  }
+
+  test('a child that read untrusted content marks the parent before its result is delivered', async () => {
+    expect(await deliverOne(true)).toEqual({
+      markedAtStart: [true],
+      parent: true,
+      parentSession: true,
+    });
+  });
+
+  test('a child that read nothing untrusted leaves the parent unmarked', async () => {
+    expect(await deliverOne(false)).toEqual({
+      markedAtStart: [false],
+      parent: false,
+      parentSession: false,
+    });
+  });
 });

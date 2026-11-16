@@ -804,6 +804,7 @@ export {
   type ReadinessTrustEvidenceVM,
   type ReadinessTrustGapVM,
   type ReadinessTrustReportVM,
+  type ReconnectEngineMcpServerInput,
   type RegistryCatalogTab,
   type RelationGraphLink,
   type RemoteEnvironmentAuthenticationRequired,
@@ -813,8 +814,10 @@ export {
   type ReorderProjectsInput,
   type ReorderProjectsVariables,
   type ResolvedOpenSshHost,
+  type RewindSessionToTurnInput,
   recheckACPConnectionRegistry,
   reconnectACPConnection,
+  reconnectOrchestrationEngineMcpServer,
   recordFirstRunDecision,
   refreshACPPublicRegistrySource,
   regenerateConversationTitle,
@@ -845,6 +848,7 @@ export {
   revokePluginPermissions,
   revokeStationPersonToken,
   revokeWorkspaceHomeRoleGrant,
+  rewindOrchestrationSessionToTurn,
   runAgentMcpPrompt,
   runsQueries,
   SESSION_SUMMARY_GENERATE_MUTATION_KEY,
@@ -1193,6 +1197,7 @@ export {
   useProviderCommandsQuery,
   useReadinessQuery,
   useReconnectACPConnectionMutation,
+  useReconnectEngineMcpServerMutation,
   useReconnectIntegrationMutation,
   useRecordFirstRunDecisionMutation,
   useRefreshReadinessMutation,
@@ -1228,6 +1233,7 @@ export {
   useRevokePluginPermissionMutation,
   useRevokeStationPersonTokenMutation,
   useRevokeWorkspaceHomeRoleMutation,
+  useRewindSessionToTurnMutation,
   useRunIndependentReviewMutation,
   useRunJob,
   useRunQuery,
@@ -1250,6 +1256,7 @@ export {
   useServiceUpdateProgressQuery,
   useSessionBuilderRunQuery,
   useSessionFlowRunQuery,
+  useSessionLiveContinuityQuery,
   useSessionRelationsQuery,
   useSessionSummaryQuery,
   useSetCredentialProfileEnrollmentMutation,
@@ -1379,6 +1386,12 @@ export {
   fetchCodingFileMentionCandidates,
   useCodingFileMentionCandidatesQuery,
 } from './query-domains/chatRuntimeCoding.js';
+export {
+  type CustomAppearanceAction,
+  customAppearanceKey,
+  useCustomAppearanceMutation,
+  useCustomAppearanceQuery,
+} from './query-domains/customAppearance';
 export {
   confirmDevicePairingRequest,
   DevicePairingRequestActionError,
@@ -1533,6 +1546,11 @@ export type {
   SetupImportPreview,
   SetupImportReceipt,
 } from './query-domains/setupImports';
+export {
+  taskCodeReviewQueryKey,
+  useRequestTaskCodeReviewMutation,
+  useTaskCodeReviewQuery,
+} from './query-domains/taskCodeReview.js';
 export {
   fetchTaskCaptureContent,
   fetchTaskCaptureSessions,

@@ -498,7 +498,7 @@ it('a bound delivery keeps invitation secret in host custody and requires indepe
     screen.getByRole('button', { name: 'Continue to device approval' }),
   );
   await screen.findByText(
-    'Connection invitation accepted. The Station owner still needs to approve this device.',
+    'Connection invitation accepted. The Station operator still needs to approve this device.',
   );
   const begin = host.invoke.mock.calls.find(
     ([command]) => command === 'station_native_relay_link_begin',
@@ -707,7 +707,7 @@ it.each(['confirmed', 'lost-reply', 'late-reply'] as const)(
     } else {
       await modal.findByText(
         outcome === 'confirmed'
-          ? 'Connection invitation accepted. The Station owner still needs to approve this device.'
+          ? 'Connection invitation accepted. The Station operator still needs to approve this device.'
           : 'The connection wasn’t confirmed. Close this screen and check the Station’s status before using another invitation.',
       );
       fireEvent.click(modal.getByRole('button', { name: 'Close' }));

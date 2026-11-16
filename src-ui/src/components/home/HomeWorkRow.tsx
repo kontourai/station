@@ -2,7 +2,8 @@ import type { GitReadLocation } from '@kontourai/station-sdk';
 import type { ReactNode } from 'react';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
 import type { HomeLaneItem } from '../../views/home/home-lane-model';
-import type { WorkFactsById } from '../../views/home/work-facts';
+import { useObservedWorkStatus } from '../../views/home/useObservedWorkStatus';
+import type { WorkFacts, WorkFactsById } from '../../views/home/work-facts';
 import { InboxRow } from '../chat-dock/ChatDockInboxRows';
 import { rowProjectMarks } from '../inbox-row/row-project-marks';
 import { WorkItemFamily } from '../inbox-row/WorkItemFamily';
@@ -112,7 +113,12 @@ export function renderHomeWorkRow({
             context.setDetailsFor(null);
         }}
         renderRow={(task) => (
-          <HomeWorkRowWithPlan item={task} size={size}>
+          <HomeWorkRowWithPlan
+            item={task}
+            size={size}
+            now={context.now}
+            facts={context.workFacts?.get(task.id)}
+          >
             <InboxRow
               item={task}
               rowKey={task.stableId}
@@ -168,10 +174,14 @@ export function renderHomeWorkRow({
 function HomeWorkRowWithPlan({
   item,
   size,
+  now,
+  facts,
   children,
 }: {
   item: HomeLaneItem;
   size: 'card' | 'slim';
+  now: number;
+  facts?: WorkFacts;
   children: ReactNode;
 }) {
   const sessionId =
@@ -182,11 +192,35 @@ function HomeWorkRowWithPlan({
   return (
     <div className="home-work-row">
       {children}
-      <SessionPlanProgress
+      <HomeWorkRowPlan
+        item={item}
         sessionId={sessionId}
-        lifecycleLabel={item.lifecycleLabel}
-        className="home-work-row__plan"
+        now={now}
+        facts={facts}
       />
     </div>
+  );
+}
+
+/** The plan line, read as the status ladder files the row (the same status
+ *  the shared row's status line shows). */
+function HomeWorkRowPlan({
+  item,
+  sessionId,
+  now,
+  facts,
+}: {
+  item: HomeLaneItem;
+  sessionId: string;
+  now: number;
+  facts?: WorkFacts;
+}) {
+  const status = useObservedWorkStatus(item, now, facts);
+  return (
+    <SessionPlanProgress
+      sessionId={sessionId}
+      status={status}
+      className="home-work-row__plan"
+    />
   );
 }

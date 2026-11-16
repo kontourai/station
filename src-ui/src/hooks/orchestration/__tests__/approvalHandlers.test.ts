@@ -1056,3 +1056,18 @@ describe('docs/design/event-content-spill.md: toasts for requests that need load
     );
   });
 });
+
+test('live input request carries its kind beside the pending id', () => {
+  getChatForExecutionSession.mockReturnValue({ pendingApprovals: [] });
+  handleRequestOpenedEvent('http://station.test', {
+    ...requestOpened(undefined),
+    requestType: 'input',
+  });
+  expect(updateChat).toHaveBeenCalledWith(
+    'thread-1',
+    expect.objectContaining({
+      pendingApprovals: ['req-1'],
+      pendingRequestKinds: { 'req-1': 'input' },
+    }),
+  );
+});

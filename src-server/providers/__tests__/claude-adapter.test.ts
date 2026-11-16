@@ -9,7 +9,7 @@ import {
 } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import type { ResolvedAgentToolServer } from '@kontourai/station-contracts/provider';
 import * as childWorkload from '@kontourai/station-shared/child-workload';
 import {
@@ -29,6 +29,7 @@ import {
   projectDelegatedTaskEvent,
   snapshotFor,
 } from '../../tools/station-control-delegation.js';
+import { resolveHomeDir } from '../../utils/paths.js';
 import * as claudeEngine from '../adapters/claude-code-spawn.js';
 import {
   CredentialProfileEnvironmentError,
@@ -9516,6 +9517,7 @@ describe('ClaudeAdapter', () => {
   });
 
   describe('#895 wave B: agent-authored system prompt', () => {
+    const makeTempDir = trackTempDirs();
     test("startSession passes systemPrompt { type: 'preset', preset: 'claude_code', append } to query() when input.agent.systemPrompt is set, and merges a systemPrompt delivery report into session.configured", async () => {
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter();
@@ -9569,6 +9571,15 @@ describe('ClaudeAdapter', () => {
     });
 
     test('startSession keeps the promptless SDK options shape apart from the required engine-spawn TMPDIR', async () => {
+      // A Claude config home with no settings.json, so the developer's own
+      // settings cannot change the AGENTS.md setting below.
+      vi.stubEnv(
+        'CLAUDE_CONFIG_DIR',
+        makeTempDir('station-claude-options-shape-'),
+      );
+      onTestFinished(() => {
+        vi.unstubAllEnvs();
+      });
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter();
 
@@ -9589,6 +9600,7 @@ describe('ClaudeAdapter', () => {
         // A supplied title skips the engine's own session-naming request.
         title: 'Station conversation thread-no-system-prompt-baseline',
         includePartialMessages: true,
+        includeHookEvents: true,
         // station#1877: asks the SDK to summarise what a subagent is doing.
         // task_progress.summary is documented as carrying the model-generated
         // status only when this is on, so without it a background subagent
@@ -9610,7 +9622,20 @@ describe('ClaudeAdapter', () => {
         allowDangerouslySkipPermissions: undefined,
         thinking: undefined,
         effort: undefined,
-        settings: undefined,
+        // AGENTS.md beside CLAUDE.md (claude-instruction-files.ts).
+        settings: {
+          pluginConfigs: {
+            'agents-md@builtin': {
+              options: { instructionFiles: 'claude-md-and-agents-md' },
+            },
+          },
+        },
+        // #4828: every session marks the conversation on a native web read;
+        // with no Agent there is no PreToolUse policy.
+        hooks: {
+          Stop: [{ hooks: [expect.any(Function)] }],
+          PostToolUse: [{ hooks: [expect.any(Function)] }],
+        },
       });
     });
 
@@ -9944,7 +9969,15 @@ describe('ClaudeAdapter', () => {
         type: 'stdio',
         command: 'node',
         args: [builtinStationControlServerPath()],
-        env: { [INTERNAL_API_TOKEN_ENV]: expect.any(String) },
+        // The home's compile cache rides only the built-in child, like the token.
+        env: {
+          [INTERNAL_API_TOKEN_ENV]: expect.any(String),
+          NODE_COMPILE_CACHE: resolve(
+            resolveHomeDir(),
+            'cache',
+            'node-compile',
+          ),
+        },
       });
       expect(queryArgs.options.mcpServers['third-party']).toEqual({
         type: 'stdio',

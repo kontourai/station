@@ -1,7 +1,0 @@
-{
-  "revision": "b6a80a1f397cea97456dee12ad9c16c11a20633d",
-
-  "notes": [
-    {"path":"docs/design/shell-plugins-distributions.md","note":"#4688: Board Delete and Move to project are deferred behind General Undo (notice + Mod+Z); the server write runs when the notice closes. Deleting or moving the open Board now returns Home and Undo returns to it. Rename/promote/section claims re-checked; personal-boards.md updated for the moved-open-Board case. Verified by ProjectSidebarBoards tests and a live isolated-instance run at 390/1440 in both themes (undo survives reload).","inputs":["docs/design/shell-plugins-distributions.md","src-ui/src/components/project-sidebar/ProjectSidebarBoards.tsx"]}
-  ]
-}

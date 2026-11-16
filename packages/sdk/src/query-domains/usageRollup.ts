@@ -48,6 +48,8 @@ export function useUsageRollupQuery(
           ? ['all']
           : ['profile', query.credentialProfileRef],
       ),
+      query.connectionId ?? '',
+      query.modelConnectionId ?? '',
       query.localOnly ? 1 : 0,
       query.groupBy ?? 'provider',
       query.cursor ?? '',

@@ -12,6 +12,7 @@ import {
 import { engineChipLabel } from '../badges/EngineChip';
 import { FlowGatedChip } from '../flow/FlowGatedChip';
 import { AgentIcon } from '../icons/AgentIcon';
+import { useChildChatTrail } from './ChildChatNavigationContext';
 
 interface ChatDockActiveIdentityProps {
   session: Pick<ChatSession, 'id' | 'title'> &
@@ -77,6 +78,7 @@ export function ChatDockActiveIdentity({
   onDetails,
   onClose,
 }: ChatDockActiveIdentityProps) {
+  const childTrail = useChildChatTrail();
   const closeTabShortcut = useShortcutDisplay('dock.closeTab');
 
   const bindingAgent = executionAgent === undefined ? agent : executionAgent;
@@ -174,8 +176,10 @@ export function ChatDockActiveIdentity({
   const delegationTitle = inputOrigin ? delegatedTaskLabel(inputOrigin) : null;
 
   return (
-    <div className="chat-dock__active-identity">
-      {!originLabel && (
+    <div
+      className={`chat-dock__active-identity${childTrail ? ' chat-dock__active-identity--child' : ''}`}
+    >
+      {!originLabel && !childTrail && (
         <AgentIcon
           agent={iconSubject}
           size={20}
@@ -191,7 +195,7 @@ export function ChatDockActiveIdentity({
             .filter(Boolean)
             .join('\n')}
         >
-          {session.title}
+          {childTrail ?? session.title}
         </span>
         <span
           className="chat-dock__active-identity-context"

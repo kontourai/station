@@ -51,6 +51,20 @@ interface ProjectLine {
   text: string;
   /** The 1-based sequence of the message this replies to. */
   replyTo?: number;
+  /** Projected reactions, in first-reacted order (#4796). */
+  reactions?: { emoji: string; actors: RoomActor[] }[];
+  /** The latest edit's time; `text` is the edited text (#4797). */
+  editedAt?: string;
+  /** A tombstone: the history withholds its text (#4797). */
+  deletedAt?: string;
+  /** Files on the message (#4812). */
+  attachments?: {
+    id: string;
+    kind: 'image' | 'file';
+    name: string;
+    mimeType: string;
+    size: number;
+  }[];
 }
 
 const SHORT: ProjectLine[] = [
@@ -201,13 +215,175 @@ export type ProjectRoomScene =
   | 'agent-abandon'
   /** The short room with the composer focused and, on a phone, a keyboard. */
   | 'keyboard'
-  | 'channels';
+  | 'channels'
+  /** Reaction pills; the phone opens a message's actions (#4796). */
+  | 'reactions'
+  /** The quick picker, open on a message (#4796). */
+  | 'reaction-picker'
+  /** Edited messages and the composer editing your last one (#4797). */
+  | 'edited'
+  /** A deleted message whose reply still reads (#4797). */
+  | 'deleted'
+  /** An image and a file in a channel, and one staged to send (#4812). */
+  | 'attachment'
+  /**
+   * #4794/#4795: the channel list, a channel and a thread. `#general` holds
+   * a bug triage with SHORT's shape (two Jonas lines, Scout, Maya) plus two
+   * replies to Scout's message (its thread).
+   */
+  | 'navigation';
+
+/** Ids of the attachment scene's files. */
+const SHARED_IMAGE_ID = '6a1f2e3d-4c5b-4a69-8877-665544332211';
+const SHARED_FILE_ID = '6a1f2e3d-4c5b-4a69-8877-665544332212';
+
+/**
+ * The navigation scene's `#general`. The Pages home publishes its thread
+ * capture (#4801), so it carries no pricing-like text. Sequence 3 is Scout's
+ * diagnosis, the thread root; the six messages keep the read-marker fixture's
+ * latest version (6).
+ */
+const NAVIGATION_HISTORY: ProjectLine[] = [
+  {
+    actor: JONAS,
+    at: at(1, 14, 2),
+    text: 'Morning! Two reports of the Safari sign-in loop came in overnight.',
+  },
+  {
+    actor: JONAS,
+    at: at(1, 14, 3),
+    text: 'Both are on the latest build, right after the login redirect.',
+  },
+  {
+    actor: SCOUT,
+    at: at(1, 14, 6),
+    text: 'I traced it in `auth/redirect.ts`. Two things differ on Safari:\n\n- The **return URL** loses its query string after sign-in.\n- The **session cookie** is set after the redirect, so the first load sees none.',
+  },
+  {
+    actor: VIEWER,
+    at: at(1, 14, 11),
+    text: 'Good catch. Jonas, can you take both before the release?',
+  },
+  {
+    actor: PRIYA,
+    at: at(1, 14, 20),
+    text: 'Both fixes are in the branch now.',
+    replyTo: 3,
+  },
+  {
+    actor: JONAS,
+    at: at(1, 14, 26),
+    text: 'Thanks. Shipping it after lunch.',
+    replyTo: 3,
+  },
+];
 
 function projectLines(scene: ProjectRoomScene): ProjectLine[] {
   if (scene === 'empty') return [];
   if (scene === 'long' || scene === 'new-messages') return longHistory();
+  if (scene === 'navigation') return NAVIGATION_HISTORY;
+  const [first, second, third, fourth] = SHORT as [
+    ProjectLine,
+    ProjectLine,
+    ProjectLine,
+    ProjectLine,
+  ];
+  if (scene === 'reactions' || scene === 'reaction-picker')
+    return [
+      {
+        ...first,
+        reactions: [
+          { emoji: '👍', actors: [PRIYA, VIEWER] },
+          { emoji: '🎉', actors: [PRIYA] },
+        ],
+      },
+      second,
+      {
+        ...third,
+        reactions: [
+          { emoji: '👀', actors: [JONAS] },
+          { emoji: '🙏', actors: [VIEWER, PRIYA, JONAS] },
+        ],
+      },
+      { ...fourth, reactions: [{ emoji: '✅', actors: [JONAS] }] },
+    ];
+  if (scene === 'edited')
+    return [
+      first,
+      {
+        ...second,
+        text: 'I kept the three tiers and moved the FAQ under the comparison table.',
+        editedAt: at(1, 14, 5),
+      },
+      third,
+      {
+        ...fourth,
+        text: 'Good catch. Jonas, can you update both numbers before we ship?',
+        editedAt: at(1, 14, 12),
+      },
+    ];
+  if (scene === 'deleted')
+    // The deleted message and the reply to it end the history, so a phone
+    // that follows the newest message shows both.
+    return [
+      first,
+      second,
+      third,
+      fourth,
+      {
+        actor: JONAS,
+        at: at(1, 14, 14),
+        text: '',
+        deletedAt: at(1, 14, 15),
+      },
+      {
+        actor: PRIYA,
+        at: at(1, 14, 16),
+        text: 'Which FAQ do you mean, the billing one?',
+        replyTo: 5,
+      },
+    ];
+  if (scene === 'attachment')
+    // The files end the history, so a phone shows the image and the file.
+    return [
+      first,
+      fourth,
+      {
+        actor: JONAS,
+        at: at(1, 14, 13),
+        text: 'Here is the new pricing table on a phone.',
+        attachments: [
+          {
+            id: SHARED_IMAGE_ID,
+            kind: 'image',
+            name: 'pricing-table.png',
+            mimeType: 'image/png',
+            size: IMAGE_PNG.length,
+          },
+        ],
+      },
+      {
+        actor: PRIYA,
+        at: at(1, 14, 15),
+        text: '',
+        attachments: [
+          {
+            id: SHARED_FILE_ID,
+            kind: 'file',
+            name: 'plan-limits.pdf',
+            mimeType: 'application/pdf',
+            size: 48213,
+          },
+        ],
+      },
+    ];
   return SHORT;
 }
+
+/** The navigation scene's thread root: Scout's Safari diagnosis. */
+export const NAVIGATION_THREAD_ROOT = uuid(3, 'c1');
+/** `#design` room id, for routes and read markers. */
+export const GALLERY_DESIGN_ROOM_ID = DESIGN_ID;
 
 /** Arrive after the reader scrolls up in the new-messages scene. */
 const ARRIVALS: ProjectLine[] = [
@@ -236,7 +412,7 @@ const DESIGN: ProjectLine[] = [
 /** Channels as the server lists them: default first, then by name. */
 function projectChannels(scene: ProjectRoomScene) {
   const general = { channelId: ROOM_ID, name: 'general', isDefault: true };
-  if (scene !== 'channels') return [general];
+  if (scene !== 'channels' && scene !== 'navigation') return [general];
   return [
     { ...general, topic: 'Team-wide updates and launch decisions' },
     {
@@ -260,11 +436,15 @@ function projectMessage(line: ProjectLine, seq: number, roomId = ROOM_ID) {
     intentId: uuid(seq, roomId === ROOM_ID ? 'b1' : 'b2'),
     text: line.text,
     ...(line.replyTo ? { replyTo: uuid(line.replyTo, 'c1') } : {}),
+    ...(line.attachments ? { attachments: line.attachments } : {}),
     roomId,
     messageId: uuid(seq, roomId === ROOM_ID ? 'c1' : 'c2'),
     seq,
     actor: line.actor,
     createdAt: line.at,
+    ...(line.editedAt ? { editedAt: line.editedAt } : {}),
+    ...(line.deletedAt ? { deletedAt: line.deletedAt } : {}),
+    ...(line.reactions ? { reactions: line.reactions } : {}),
   };
 }
 
@@ -393,6 +573,25 @@ export async function installProjectRoomFixture(
       },
     ],
     [
+      `${address}/attachments/*`,
+      (route) => {
+        if (route.request().method() !== 'GET')
+          return rejectUnexpectedFixtureRequest(route);
+        const id = new URL(route.request().url()).pathname.split('/').at(-1);
+        const file = read()
+          .flatMap((message) =>
+            'attachments' in message ? (message.attachments ?? []) : [],
+          )
+          .find((attachment) => attachment.id === id);
+        if (!file) return rejectUnexpectedFixtureRequest(route);
+        return route.fulfill({
+          status: 200,
+          headers: { 'Content-Type': 'application/octet-stream' },
+          body: file.kind === 'image' ? IMAGE_PNG : Buffer.from('%PDF-1.7\n'),
+        });
+      },
+    ],
+    [
       `${address}/presence`,
       (route) => {
         if (route.request().method() !== 'POST')
@@ -411,6 +610,33 @@ export async function installProjectRoomFixture(
   ];
   const handlers: [string, (route: Route) => Promise<void> | void][] = [
     ...roomRoutes(base, ROOM_ID, messages, scene === 'failed-send'),
+    // A full room marks itself read through what it shows (#4794); these
+    // rooms are fixture rooms, so the fixture answers as the server would.
+    [
+      '**/api/read-markers/mark',
+      (route) => {
+        if (route.request().method() !== 'POST')
+          return rejectUnexpectedFixtureRequest(route);
+        const { target, version } = route.request().postDataJSON() as {
+          target: { kind: string; roomId?: string };
+          version: number;
+        };
+        if (target.kind !== 'project-room')
+          return rejectUnexpectedFixtureRequest(route);
+        return route.fulfill({
+          json: {
+            success: true,
+            data: {
+              target,
+              latestVersion: version,
+              seenVersion: version,
+              unread: false,
+              unreadCount: 0,
+            },
+          },
+        });
+      },
+    ],
     [
       `${project}/channels`,
       (route) => {
@@ -422,7 +648,7 @@ export async function installProjectRoomFixture(
       },
     ],
   ];
-  if (scene === 'channels')
+  if (scene === 'channels' || scene === 'navigation')
     handlers.push(
       ...roomRoutes(
         `${project}/channels/${DESIGN_ID}`,
@@ -504,6 +730,156 @@ export async function installProjectRoomFixture(
     async cleanup() {
       for (const stream of streams) stream.end();
       await new Promise<void>((resolve) => events.close(() => resolve()));
+      for (const [pattern, handler] of handlers)
+        await page.unroute(pattern, handler);
+    },
+  };
+}
+
+/**
+ * The sidebar's and phone list's reads for one Project (#4794): its Tasks, a
+ * running session behind one of them, and the read-marker summary and mark
+ * routes (#3075) in the exact shapes `@kontourai/station-contracts/
+ * read-markers` defines. Markers are stateful: marking a room read makes the
+ * next summary answer it read, as the server does.
+ */
+export async function installProjectConversationsFixture(
+  page: Page,
+  input: { slug: string; projectId: string },
+) {
+  const { slug, projectId } = input;
+  const task = (
+    index: number,
+    title: string,
+    updatedAt: string,
+    extra: Record<string, unknown> = {},
+  ) => ({
+    id: `task:${slug}-${index}`,
+    projectId,
+    title,
+    description: '',
+    priority: 'normal',
+    status: 'in_progress',
+    createdBy: 'person:maya',
+    createdAt: at(0, 13, 0),
+    updatedAt,
+    ...extra,
+  });
+  const runningSession = `station:${slug}-review`;
+  const tasks = [
+    task(1, 'Fix the login redirect on Safari', at(2, 15, 40), {
+      sessionId: runningSession,
+    }),
+    task(2, 'Draft the release notes for 2.4', at(2, 15, 10)),
+    task(3, 'Check the onboarding copy', at(2, 14, 0), { status: 'review' }),
+    // No room was ever opened for this Task: the summary answers unavailable.
+    task(4, 'Rename the onboarding checklist', at(2, 13, 0)),
+  ];
+  /** Room latest versions, and what this person has seen of each. */
+  const rooms = new Map<string, { latest: number; seen: number }>([
+    [`project-room:${slug}:${ROOM_ID}`, { latest: 6, seen: 3 }],
+    [`project-room:${slug}:${DESIGN_ID}`, { latest: 2, seen: 2 }],
+    [`project-room:${slug}:${uuid(3, 'e1')}`, { latest: 9, seen: 8 }],
+    [`task-room:${tasks[0]!.id}`, { latest: 12, seen: 10 }],
+    [`task-room:${tasks[1]!.id}`, { latest: 4, seen: 4 }],
+    [`task-room:${tasks[2]!.id}`, { latest: 7, seen: 7 }],
+  ]);
+  type Target =
+    | { kind: 'project-room'; projectSlug: string; roomId: string }
+    | { kind: 'task-room'; taskId: string }
+    | { kind: 'agent-conversation'; conversationId: string };
+  const keyOf = (target: Target) =>
+    target.kind === 'project-room'
+      ? `project-room:${target.projectSlug}:${target.roomId}`
+      : target.kind === 'task-room'
+        ? `task-room:${target.taskId}`
+        : `agent-conversation:${target.conversationId}`;
+  const stateOf = (target: Target) => {
+    const room = rooms.get(keyOf(target));
+    if (!room) return { target, unavailable: true as const };
+    return {
+      target,
+      latestVersion: room.latest,
+      seenVersion: room.seen,
+      unread: room.latest > room.seen,
+      unreadCount: Math.min(room.latest - room.seen, 99),
+    };
+  };
+  const handlers: [
+    string | ((url: URL) => boolean),
+    (route: Route) => Promise<void> | void,
+  ][] = [
+    [
+      '**/api/read-markers/summary',
+      (route) => {
+        if (route.request().method() !== 'POST')
+          return rejectUnexpectedFixtureRequest(route);
+        const { targets } = route.request().postDataJSON() as {
+          targets: Target[];
+        };
+        return route.fulfill({
+          json: { success: true, data: { items: targets.map(stateOf) } },
+        });
+      },
+    ],
+    [
+      '**/api/read-markers/mark',
+      (route) => {
+        if (route.request().method() !== 'POST')
+          return rejectUnexpectedFixtureRequest(route);
+        const { target, version } = route.request().postDataJSON() as {
+          target: Target;
+          version: number;
+        };
+        const room = rooms.get(keyOf(target));
+        if (!room) return rejectUnexpectedFixtureRequest(route);
+        room.seen = Math.max(room.seen, Math.min(version, room.latest));
+        return route.fulfill({
+          json: { success: true, data: stateOf(target) },
+        });
+      },
+    ],
+    [
+      (url) =>
+        url.pathname === '/api/tasks' &&
+        url.searchParams.get('projectId') === slug,
+      (route) => {
+        if (route.request().method() !== 'GET')
+          return rejectUnexpectedFixtureRequest(route);
+        return route.fulfill({ json: { success: true, data: tasks } });
+      },
+    ],
+    [
+      '**/api/orchestration/sessions/read-model',
+      (route) =>
+        route.fulfill({
+          json: {
+            success: true,
+            data: [
+              {
+                provider: 'station',
+                threadId: runningSession,
+                projectSlug: slug,
+                status: 'busy',
+                controlMode: 'station-owned',
+                lifecycleState: 'running',
+                hasActiveTurn: true,
+                answerability: { answerable: true },
+                isLoaded: true,
+                isPersisted: true,
+                eventCount: 1,
+                createdAt: at(2, 15, 30),
+                updatedAt: at(2, 15, 40),
+              },
+            ],
+          },
+        }),
+    ],
+  ];
+  for (const [pattern, handler] of handlers) await page.route(pattern, handler);
+  return {
+    tasks,
+    async cleanup() {
       for (const [pattern, handler] of handlers)
         await page.unroute(pattern, handler);
     },
@@ -755,6 +1131,34 @@ export async function installTaskRoomFixture(
     [
       `**/api/tasks/${encoded}/**`,
       (route) => rejectUnexpectedFixtureRequest(route),
+    ],
+    // The open room marks itself read through its checkpoint (#4794).
+    [
+      '**/api/read-markers/mark',
+      (route) => {
+        const body = route.request().postDataJSON() as {
+          target: { kind: string; taskId?: string };
+          version: number;
+        };
+        if (
+          route.request().method() !== 'POST' ||
+          body.target.kind !== 'task-room' ||
+          body.target.taskId !== taskId
+        )
+          return rejectUnexpectedFixtureRequest(route);
+        return route.fulfill({
+          json: {
+            success: true,
+            data: {
+              target: body.target,
+              latestVersion: body.version,
+              seenVersion: body.version,
+              unread: false,
+              unreadCount: 0,
+            },
+          },
+        });
+      },
     ],
     [
       '**/api/tasks',

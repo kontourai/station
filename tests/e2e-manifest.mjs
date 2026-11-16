@@ -282,7 +282,7 @@ export const PR_BROWSER_SMOKE_CONTRACT = {
   requiredObservations: [
     ...[320, 390, 412].map((width) => ({
       path: 'tests/cross-runtime-chat-switching.spec.ts',
-      title: `mobile primary project switcher opens an edge sheet at ${width}x844 with touch-safe actions`,
+      title: `mobile start composer owns project choice at ${width}x844 with touch-safe actions`,
     })),
     {
       path: 'tests/chat-inventory-drilldown-mobile.spec.ts',
@@ -345,6 +345,8 @@ export const PR_BROWSER_SMOKE_CONTRACT = {
 export const PRODUCT_E2E_EXECUTION_PROFILE = {
   parallelWorkers: 2,
   parallelSafetyExceptions: {
+    'tests/new-project-choices.spec.ts':
+      'Read-only live shell and new-project form; writes only this browser context’s device-local inbox scope and theme.',
     'tests/chat-history-reopen.spec.ts':
       'Owns a unique temporary SQLite directory; shell requests are page-scoped fixtures and the store is closed and removed in finally.',
     'tests/sidebar-geometry.spec.ts':
@@ -359,7 +361,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
       'writes only the runner-supplied per-scenario observation artifact directory',
     'tests/daily-driver-switching.spec.ts':
       'browser-local page.route mocks installed through tests/helpers/daily-driver-shell.ts; no live-instance or child-process resources',
-    'tests/activity-pane.spec.ts':
+    'tests/child-transcript-chat.spec.ts':
       'read-only against the isolated temp-home instance; the only writes are this browser context’s own localStorage — the regionArrangement device setting, plus the dock-chrome settings a region write mirrors (station.chatDock.snap, chatDockHeight/chatDockWidth)',
     'tests/project-architecture.spec.ts':
       'browser-local page.route mocks installed before navigation; the only writes are this browser context’s own localStorage — the same regionArrangement and dock-chrome device settings its placement journeys drive',
@@ -369,6 +371,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
       'browser-local orchestration SSE and API fixtures installed before navigation; the only write is this browser context’s device-local Answer delivery preference',
   },
   parallelSafe: [
+    'tests/new-project-choices.spec.ts',
     'tests/branding-theme-boot.spec.ts',
     'tests/buffered-answer-delivery.spec.ts',
     'tests/agents-pane.spec.ts',
@@ -402,6 +405,8 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/chat-replay.spec.ts',
     'tests/transcript-load-stability.spec.ts',
     'tests/chat-history-reopen.spec.ts',
+    // Every API read is a route of mockChatShell and the spec's own fixtures.
+    'tests/chat-dock-inbox-open.spec.ts',
     'tests/mobile-dock-clearance.spec.ts',
     'tests/accessibility-core.spec.ts',
     'tests/status-token-contrast.spec.ts',
@@ -449,13 +454,18 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/knowledge-onboarding.spec.ts',
     'tests/root-route-restore.spec.ts',
     'tests/task-first-home.spec.ts',
-    'tests/activity-pane.spec.ts',
+    'tests/child-transcript-chat.spec.ts',
     'tests/device-pane.spec.ts',
     'tests/connections-sections.spec.ts',
     'tests/connections-computers-ssh.spec.ts',
   ],
   sharedInstanceExclusive: [
     'tests/station-connection-chat.spec.ts',
+    // Creates real Projects, channels and read markers on the instance.
+    'tests/project-channel-navigation.spec.ts',
+    // Starts its own Station with local accounts and sharing, pairs browsers
+    // and approves an account-bound device, as device-pairing-mobile does.
+    'tests/project-room-message-actions.spec.ts',
     'tests/conversation-surfaces.spec.ts',
     'tests/owned-work-custody.spec.ts',
     // Owns its HTTPS listeners, private home, virtual authenticator and CLI child.
@@ -953,6 +963,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/new-project-choices.spec.ts',
+    bucket: 'product',
+    surface: 'Projects',
+    tierTarget: 'full',
+    primary: false,
+    rationale:
+      'Render new-project icon choices and save the Home inbox scope on an isolated browser device.',
+    exceptions: [],
+  },
+  {
     path: 'tests/project-icons.spec.ts',
     bucket: 'product',
     surface: 'Projects',
@@ -982,25 +1002,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
-    path: 'tests/activity-pane.spec.ts',
+    path: 'tests/child-transcript-chat.spec.ts',
     bucket: 'product',
-    surface: 'Activity',
+    surface: 'Chat',
     tierTarget: 'full',
     primary: true,
     rationale:
-      "#928: /?surface=activity is the canonical DEEP LINK to the Activity surface, and #928 changed what it means — the link is a REVEAL and the region model decides where the revealed surface lands, so there is no /activity route and no surface-owned 'Dock this pane' any more (the redirect that keeps stored links working stays unit-covered; this journey drives the destination). Desktop: the link reveals Activity in its declared defaultRegion 'right' with its own region chrome (Resize Activity, Hide Activity), leaving Chat's region and the Home primary area untouched. Activity is the only registered surface that declares every region, so this is also the only browser journey that crosses the dock/primary-area boundary: placed in 'main' through the header's Layout picker it is rendered by the route outlet through a PageFrame (an h1 only a main occupant produces) with no DockShell at all and no dock panel spawned for what it displaced, the placement survives a reload through the regionArrangement device setting, and returning it to 'right' hands the primary area back to Home. The sidebar's Activity row is a place: it opens Activity as the page (main) and carries aria-current=page while Home's row gives it up, pressing it again keeps the page, Home takes the area back, and the deep link still docks right afterwards. 390x844 isMobile variant: the reveal opens Activity over Chat in the one folded slot (#2549) — inside the viewport with no horizontal document scroll, its 44px Back to Chat control returning — and the drawer's Activity row opens the page rather than a layer. Every assertion names an affordance that must exist, so the deep link silently ceasing to produce the surface fails by name. The dock's slot-return journeys live in project-architecture.spec.ts.",
+      'Child transcript opens in Chat, breadcrumb restores its parent, and legacy Activity URLs open the exact session.',
     exceptions: [],
   },
-  {
-    path: 'tests/activity-related-review.spec.ts',
-    bucket: 'extended',
-    surface: 'Activity',
-    tierTarget: 'full',
-    primary: true,
-    rationale:
-      'Exercises Activity quick review through its real caller, Related shell host and SessionDetail: filtered sibling order, source selection/search/scroll preservation, durable Open and kept-target focus, changed results and real phone Back/Up.',
-    exceptions: [],
-  },
+
   {
     path: 'tests/device-pane.spec.ts',
     bucket: 'product',
@@ -1190,6 +1201,36 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Deterministic 320px/390px mobile task-switcher, visual-viewport, composer, scroll-anchor, model/session preservation, restore, and desktop parity lane.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/project-room-message-actions.spec.ts',
+    bucket: 'product',
+    surface: 'Project channels',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      '#4796/#4797/#4812 on a real isolated Station: two paired operator browsers see a reaction and its removal, an edit and a delete (both kept after reload); a file uploaded on one downloads byte for byte on the other; an oversize file is refused in the composer; a 900px desktop keeps row actions and the picker on screen; an invited contributor, through their own account-bound session, is refused edit and delete of the operator message (and the operator theirs), and their message offers no Edit or Delete. The contributor room UI is not exercised: a browser guest is shown Available Projects, not the room.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/project-channel-navigation.spec.ts',
+    bucket: 'product',
+    surface: 'Project channels',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      '#4794/#4795 on a real Station: server read markers drive sidebar bold and clear for a second client; keyboard Up/Down/Enter; phone channel list pushes a full-screen channel, send, thread page, Back restores the list scroll; no horizontal scroll at 390 and 360.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/chat-dock-inbox-open.spec.ts',
+    bucket: 'product',
+    surface: 'Chat',
+    tierTarget: 'full',
+    primary: false,
+    rationale:
+      '#4814: a stored conversation with no open chat opens its transcript from the dock inbox; the selection survives the bind that sets the row chatSessionId.',
     exceptions: [],
   },
   {
@@ -1873,6 +1914,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/task-code-review.spec.ts',
+    bucket: 'extended',
+    surface: 'Task code review',
+    tierTarget: 'full',
+    primary: false,
+    rationale:
+      'Real Task checkout observation plus explicitly controlled review transport-loss, freshness and failed-reviewer UI states; captures desktop and mobile in both themes without invoking a provider.',
+    exceptions: [],
+  },
+  {
     path: 'tests/basis-answer-lifecycle.spec.ts',
     bucket: 'extended',
     surface: 'Basis / exact answer retention',
@@ -2228,7 +2279,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "station#3027 + UX audit RT-02/SHELL-12: the 'Which agents do you use?' chapter in a browser. Proves WHERE it renders (inside Home's route content, on the shared dialog surface, never on another route) and WHEN (the durable AppConfig.firstRun record: pending opens it, skipped leaves only Home's card and stays closed for ten seconds, completed offers nothing, and the connect launcher still goes first), that each externalEngines row maps to its rendered state (available pre-ticked and tickable, already-enabled shown as ready with no control, blocked with the server's reason, undetected collapsed), that a confirm issues exactly one create per newly ticked engine and none for an already-bound one, that a failing create does not abort the rest of the batch, and that 'Not now' creates nothing and writes the deferral. Declared after first-run-live.spec.ts so that spec still observes the pristine temp-home boot state; this one is browser-local (route-patched status/agent catalog/app config) and mutates no server state.",
+      "station#3027 + UX audit RT-02/SHELL-12: the 'Which engines do you use?' chapter in a browser. Proves WHERE it renders (inside Home's route content, on the shared dialog surface, never on another route) and WHEN (the durable AppConfig.firstRun record: pending opens it, skipped leaves only Home's card and stays closed for ten seconds, completed offers nothing, and the connect launcher still goes first), that each externalEngines row maps to its rendered state (available pre-ticked and tickable, already-enabled shown as ready with no control, blocked with the server's reason, undetected collapsed), that a confirm issues exactly one create per newly ticked engine and none for an already-bound one, that a failing create does not abort the rest of the batch, and that 'Not now' creates nothing and writes the deferral. Declared after first-run-live.spec.ts so that spec still observes the pristine temp-home boot state; this one is browser-local (route-patched status/agent catalog/app config) and mutates no server state.",
     exceptions: [],
   },
   {
@@ -2238,7 +2289,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'station#3805: one unmocked browser journey from a newly created, runner-owned home through explicit model setup, first-run completion, real direct-chat Work, explicit opt-in to developer tools for the scheduled-check Starter, reload, and exact Scheduler receipt/output inspection. It proves no Project or Task is silently seeded, inherits no telemetry configuration, and uses an explicit healthy resource observation so unrelated host load cannot substitute an honest deferral for this product-path proof.',
+      'station#3805: one unmocked browser journey from a newly created, runner-owned home through explicit model setup, first-run completion, real direct-chat Work. The retired Home scheduled-check card is no longer part of this journey. It proves no Project or Task is silently seeded, inherits no telemetry configuration, and uses an explicit healthy resource observation so unrelated host load cannot substitute an honest deferral for this product-path proof.',
     exceptions: [],
   },
   {

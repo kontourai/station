@@ -338,6 +338,13 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
     'Propose',
     fixed('a personal Board'),
   ),
+  get_appearance: read(fixed('your appearance')),
+  propose_appearance: entry(
+    'Proposed',
+    'Proposing',
+    'Propose',
+    ({ args }) => quoted(text(args, 'name')) ?? 'an appearance',
+  ),
 
   // Skills
   list_skills: listed('Skills'),
@@ -425,6 +432,19 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
     'Propose',
     named('Automation', 'name', 'an Automation'),
   ),
+  propose_automation_source: entry(
+    'Proposed',
+    'Proposing',
+    'Propose',
+    named('Automation source', 'name', 'an Automation source'),
+  ),
+  propose_automation_rule: entry(
+    'Proposed',
+    'Proposing',
+    'Propose',
+    named('Automation rule', 'name', 'an Automation rule'),
+  ),
+  list_automation_proposals: listed('Automation proposals'),
   update_job: entry(
     'Updated',
     'Updating',

@@ -448,11 +448,11 @@ describe('Apps stay discoverable after Projects', () => {
     await renderSidebar(<ProjectSidebar />);
     expect(boardsHeader()).not.toBeNull();
     expect(screen.getByRole('button', { name: 'New Board' })).toBeTruthy();
-    expect(screen.getByText('Dashboards across projects.')).toBeTruthy();
+    expect(screen.getByText('Boards across Projects.')).toBeTruthy();
     boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
     act(() => sdk.notify());
     expect(screen.getByRole('button', { name: 'Daily brief' })).toBeTruthy();
-    expect(screen.queryByText('Dashboards across projects.')).toBeNull();
+    expect(screen.queryByText('Boards across Projects.')).toBeNull();
   });
 
   test('one Board brings the section back, after Projects', async () => {
@@ -469,11 +469,7 @@ describe('Apps stay discoverable after Projects', () => {
       projectsHeader.compareDocumentPosition(header!) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    const activityRow = screen.getByRole('button', { name: 'Activity' });
-    expect(
-      activityRow.compareDocumentPosition(header!) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Activity' })).toBeNull();
   });
 });
 

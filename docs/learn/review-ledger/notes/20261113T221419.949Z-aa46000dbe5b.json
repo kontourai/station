@@ -1,0 +1,7 @@
+{
+  "revision": "146c1838d5c4226a12251d66f5cd567583025d50",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"Only links to docs/reference/contracts.md as the contracts reference; the Muse sandbox paragraph edit there changes no instruction in this file; no edit needed.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

@@ -1,7 +1,0 @@
-{
-  "revision": "d4dd544f8ebb5da7bc33520ca331f1c08dcfabc1",
-
-  "notes": [
-    {"path":"docs/patterns/frontend.md","note":"No claim affected: PlatformProfileContext only gained an effect calling platform/installedAppZoom.ts (installed-app viewport/touch-action zoom lock). Doc names no root platform attributes, zoom or this effect; its theming/pattern guidance is unchanged. index.css untouched by this change.","inputs":["docs/patterns/frontend.md","src-ui/src/index.css","src-ui/src/platform/PlatformProfileContext.tsx"]}
-  ]
-}

@@ -18,6 +18,7 @@ vi.mock('../hooks/useACPConnections', () => ({
 }));
 
 import { ManagedPolicyContext } from '../contexts/ManagedPolicyContext';
+import { mountedDecisionSurfaces } from '../lib/custom-appearance/decision-surfaces';
 import { AgentEditorApprovalDefault } from '../views/agent-editor/AgentEditorApprovalDefault';
 import {
   buildAgentPayload,
@@ -55,6 +56,8 @@ describe('AgentEditorApprovalDefault', () => {
   test('a knob engine offers the default; choosing full access says what it means and reaches the save payload', () => {
     let latest: AgentFormData | undefined;
     render(<Harness initial={agent({})} onForm={(form) => (latest = form)} />);
+    // Custom CSS is held off while this grant UI is on screen.
+    expect(mountedDecisionSurfaces()).toContain('agent-approval-default');
     const select = screen.getByLabelText('Default approval mode');
     expect((select as HTMLSelectElement).value).toBe('');
 

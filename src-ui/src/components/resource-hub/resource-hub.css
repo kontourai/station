@@ -1,0 +1,21 @@
+/*
+ * Resource-hub kit presentation (docs/design/connections-overhaul.md).
+ * Tokens only; no media queries — these rules flow at any width.
+ */
+
+.resource-status {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Doubled class: wins over the published `.badge` rule whatever order the
+   stylesheets load in. Truncates rather than wrapping beside a row name. */
+.resource-status__badge.resource-status__badge {
+  display: inline-block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

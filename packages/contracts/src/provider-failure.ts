@@ -24,6 +24,11 @@ import {
 import { PRINCIPAL_UNRESOLVED_CODE } from './principal.js';
 import { PROJECT_IDENTITY_NOT_PREPARED_CODE } from './project-identity.js';
 import {
+  PROJECT_ROOM_FILES_UNAVAILABLE_CODE,
+  PROJECT_ROOM_FORBIDDEN_CODE,
+  PROJECT_ROOM_PROJECT_NOT_FOUND_CODE,
+} from './project-room.js';
+import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
   APPROVAL_ESCALATION_REQUIRES_RESTART_CODE,
@@ -31,6 +36,7 @@ import {
   CLIENT_TURN_IN_FLIGHT_CODE,
   CLIENT_TURN_INPUT_CONFLICT_CODE,
   CLIENT_TURN_INPUT_UNSUPPORTED_CODE,
+  ENGINE_CREDENTIAL_PROFILE_UNSUPPORTED_CODE,
   ENGINE_MEMORY_EXHAUSTED_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_SIGN_IN_REQUIRED_CODE,
@@ -43,7 +49,11 @@ import {
   MUSE_APPROVAL_MODE_NOT_APPLIED_CODE,
   MUSE_HELD_TURN_UNFINISHED_CODE,
   MUSE_LINGERING_CHILD_REAPED_CODE,
+  MUSE_MODEL_RETRY_SCHEDULED_CODE,
+  MUSE_MODEL_ROUTE_UNSERVED_CODE,
+  MUSE_SANDBOX_UNAVAILABLE_CODE,
   MUSE_SERVE_HOST_EXITED_CODE,
+  MUSE_SERVE_SCHEMA_UNVERIFIED_COMPATIBLE_CODE,
   MUSE_SERVE_STOP_UNCONFIRMED_CODE,
   MUSE_SERVE_UNAVAILABLE_CODE,
   MUSE_TURN_IDLE_TIMEOUT_CODE,
@@ -183,6 +193,9 @@ export const PROVIDER_FAILURE_KINDS = {
   'muse-exit-without-terminal': 'engine_crashed',
   'muse-spawn-failed': 'unavailable',
   'muse-terminal-not-completed': 'provider_error',
+  // Station's own OpenCode server client refused a route it never calls
+  // (credential, auth, config writes): a retry cannot reach it.
+  opencode_serve_denied_path: 'permission_denied',
   [CONFINEMENT_REFUSAL_CODES[0]]: 'permission_denied',
   [CONFINEMENT_REFUSAL_CODES[1]]: 'permission_denied',
   [CONFINEMENT_REFUSAL_CODES[2]]: 'permission_denied',
@@ -202,6 +215,14 @@ export const PROVIDER_FAILURE_KINDS = {
   [CONVERSATION_CONTEXT_UNAVAILABLE_CODE]: 'conflict',
   [PRINCIPAL_UNRESOLVED_CODE]: 'auth',
   [PROJECT_IDENTITY_NOT_PREPARED_CODE]: 'input_unsupported',
+  // No such Project on this Station (#4855): like `stage_not_found`, an
+  // absent target, not an outage; a retry cannot find it.
+  [PROJECT_ROOM_PROJECT_NOT_FOUND_CODE]: 'input_unsupported',
+  // Someone else's (or an Agent's) room message (#4797): a retry is refused too.
+  [PROJECT_ROOM_FORBIDDEN_CODE]: 'permission_denied',
+  // The room's file store cannot prove its references (#4852): attachments
+  // pause until an operator repairs it; a later retry can succeed.
+  [PROJECT_ROOM_FILES_UNAVAILABLE_CODE]: 'unavailable',
   [MODEL_OVERRIDE_UNSUPPORTED_CODE]: 'input_unsupported',
   [MODEL_NOT_ADVERTISED_CODE]: 'model_unavailable',
   [SESSION_REATTACH_CONFLICT_CODE]: 'conflict',
@@ -214,6 +235,7 @@ export const PROVIDER_FAILURE_KINDS = {
   // A command inside the engine's scope was killed; the engine kept running.
   [WORKLOAD_COMMAND_OOM_KILLED_CODE]: 'warning',
   [ENGINE_SIGN_IN_REQUIRED_CODE]: 'auth',
+  [ENGINE_CREDENTIAL_PROFILE_UNSUPPORTED_CODE]: 'input_unsupported',
   [MUSE_TURN_IDLE_TIMEOUT_CODE]: 'timeout',
   [MUSE_TURN_TOTAL_TIMEOUT_CODE]: 'timeout',
   [MUSE_LINGERING_CHILD_REAPED_CODE]: 'warning',
@@ -223,6 +245,10 @@ export const PROVIDER_FAILURE_KINDS = {
   [MUSE_APPROVAL_DECIDE_FAILED_CODE]: 'warning',
   [MUSE_SERVE_UNAVAILABLE_CODE]: 'warning',
   [MUSE_APPROVAL_MODE_NOT_APPLIED_CODE]: 'warning',
+  [MUSE_MODEL_RETRY_SCHEDULED_CODE]: 'warning',
+  [MUSE_MODEL_ROUTE_UNSERVED_CODE]: 'warning',
+  [MUSE_SANDBOX_UNAVAILABLE_CODE]: 'warning',
+  [MUSE_SERVE_SCHEMA_UNVERIFIED_COMPATIBLE_CODE]: 'warning',
   [ACP_APPROVAL_TAKEOVER_FAILED_CODE]: 'warning',
   [ACP_APPROVAL_GOVERNANCE_REFUSED_CODE]: 'permission_denied',
   // #4519: remote access the machine's managed policy forbids.

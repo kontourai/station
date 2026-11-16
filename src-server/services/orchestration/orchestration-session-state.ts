@@ -2,6 +2,7 @@ import type { OwnedSessionActivity } from '@kontourai/station-contracts/orchestr
 import type { ProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
 import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
+import { isInputRequestEvent } from '@kontourai/station-shared/input-request';
 import { providerFailure } from '../../providers/provider-failure.js';
 
 export { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
@@ -540,8 +541,10 @@ export function deriveReadModelSession(options: {
 }
 
 export function buildOrchestrationSessionSummary(options: {
+  /** `threadId`: the session's own answer where it differs from its engine's. */
   readDurabilityProfile?: (
     provider: string | undefined,
+    threadId?: string,
   ) => ProviderDurabilityProfile | undefined;
   persisted?: ProviderSession;
   loaded?: ProviderSession;
@@ -711,8 +714,16 @@ export function buildOrchestrationSessionSummary(options: {
   const openRequestIds = options.openRequestIds?.filter(
     (id) => !settledRequestIds.has(id),
   );
+  const latestRequests = new Map<
+    string,
+    Extract<CanonicalRuntimeEvent, { method: 'request.opened' }>
+  >();
+  for (const event of events) {
+    if (event.method === 'request.opened')
+      latestRequests.set(event.requestId, event);
+  }
   const summary: OrchestrationSessionSummary = {
-    durability: options.readDurabilityProfile?.(base.provider),
+    durability: options.readDurabilityProfile?.(base.provider, base.threadId),
     provider: base.provider,
     threadId: base.threadId,
     status: base.status,
@@ -783,6 +794,14 @@ export function buildOrchestrationSessionSummary(options: {
     ...(openRequestIds
       ? {
           openRequestIds: [...openRequestIds],
+          openRequestKinds: Object.fromEntries(
+            openRequestIds.flatMap((id) => {
+              const event = latestRequests.get(id);
+              if (!event || event.method !== 'request.opened') return [];
+              const kind = isInputRequestEvent(event) ? 'input' : 'approval';
+              return [[id, kind] as const];
+            }),
+          ),
           blockingOpenRequestIds: openRequestIds.filter(
             (id) =>
               !options.events?.some(
@@ -1898,6 +1917,11 @@ export async function startRecoveredOrchestrationSession(options: {
     if (deps.applyCredentialProfile) {
       startInput = await deps.applyCredentialProfile(startInput);
     }
+    // #4435: the adapter's governance check runs before the start boundary,
+    // as it does for a fresh start. Inside the boundary, a definitive refusal
+    // (OpenCode's approval rules could not be read) was recorded as a start
+    // that may have happened, and every retry was refused behind it.
+    await adapter.preflightStart?.(startInput);
     const admissionLease = await deps.admitEngineStart?.(startInput.threadId);
     let recovered: ProviderSession;
     try {

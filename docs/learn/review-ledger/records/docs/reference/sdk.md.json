@@ -622,10 +622,6 @@
 
     "packages/sdk/package.json#/scripts",
 
-    "pnpm-lock.yaml#/packages",
-
-    "pnpm-lock.yaml#/snapshots",
-
     "packages/sdk/src/client/http.ts",
 
     "packages/contracts/src/personal-board.ts",
@@ -876,7 +872,11 @@
 
     "packages/sdk/src/terminal-view/session.ts",
 
-    "packages/sdk/src/__tests__/terminal-view/controller.test.ts"
+    "packages/sdk/src/__tests__/terminal-view/controller.test.ts",
+
+    "packages/sdk/src/query-domains/taskCodeReview.ts",
+
+    "packages/sdk/src/__tests__/task-code-review-hooks.test.tsx"
   ],
 
   "checks": [

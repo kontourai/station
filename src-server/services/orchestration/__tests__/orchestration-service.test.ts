@@ -41,6 +41,7 @@ import { PENDING_TURN_INTERRUPT_TTL_MS } from '@kontourai/station-contracts/orch
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import type { ProjectTaskRoomGrant } from '@kontourai/station-contracts/project-task-room';
 import {
+  ACP_SESSION_STARTED_FRESH_CODE,
   PORTABLE_EXECUTION_CONSENT_METADATA_KEY,
   SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
@@ -64,6 +65,7 @@ import {
 } from '../../../__test-utils__/session-runtime-barriers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
+
 import { MonitoringEmitter } from '../../../monitoring/emitter.js';
 import type {
   ProviderAdapterMetadata,
@@ -118,6 +120,9 @@ import {
   sessionActivityEvents,
   sessionBackgroundTasks,
   sessionOwnerCacheOps,
+  sessionReadModelDuration,
+  sessionReadModelReads,
+  sessionReadModelThreads,
   tenantExecutionContextOutcomes,
   turnProvenanceProjections,
 } from '../../../telemetry/metrics.js';
@@ -185,6 +190,9 @@ import {
 } from '../turn-completion-notifications.js';
 import { resolveWorkspaceIdentity } from '../workspace-identity.js';
 
+/** Directories for #4992's read-model test; removed after each test. */
+const makeReadModelCacheDir = trackTempDirs();
+
 vi.mock('../../../telemetry/metrics.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../telemetry/metrics.js')>()),
   agentCapabilityUndelivered: { add: vi.fn() },
@@ -219,6 +227,9 @@ vi.mock('../../../telemetry/metrics.js', async (importOriginal) => ({
   sessionBackgroundTasks: { add: vi.fn() },
   projectResourceShadowComparisons: { add: vi.fn() },
   sessionOwnerCacheOps: { add: vi.fn() },
+  sessionReadModelDuration: { record: vi.fn() },
+  sessionReadModelReads: { add: vi.fn() },
+  sessionReadModelThreads: { record: vi.fn() },
   sessionStateDuration: { record: vi.fn() },
   sessionTransitions: { add: vi.fn() },
   tenantExecutionContextAttributes: vi.fn((value) => value),
@@ -627,6 +638,7 @@ type InternalObserver = Omit<
   ): ReturnType<RawOrchestrationService['listSessions']>;
   listSessionReadModel(
     authority?: SessionReadAuthority,
+    options?: Parameters<RawOrchestrationService['listSessionReadModel']>[1],
   ): ReturnType<RawOrchestrationService['listSessionReadModel']>;
   listLoadedSessionReadModel(
     authority?: SessionReadAuthority,
@@ -793,6 +805,8 @@ function internalObserver(
       if (scopeIndex === undefined) return value.bind(instance);
       return (...args: unknown[]) => {
         args[scopeIndex] ??= INTERNAL_SESSION_READ_SCOPE;
+        if (property === 'listSessionReadModel')
+          args[1] ??= { purpose: 'session-list' };
         return value.apply(instance, args);
       };
     },
@@ -1777,7 +1791,7 @@ describe('OrchestrationService', () => {
       expect(
         (
           await restarted.listSessionReadModel(
-            personalReadAuthority('owner-user'),
+            personalReadAuthority('owner-user'), { purpose: 'session-list' }
           )
         ).find((session) => session.threadId === root)?.conversationActivity,
       ).toEqual(lastA?.activity);
@@ -10042,9 +10056,10 @@ describe('OrchestrationService', () => {
     );
   });
 
-  test('matrix-none engine child deltas never become conversation running work through service wiring', async () => {
-    // ACP 1.1.1 has no subagent concept, so its matrix cell stays `none`
-    // (muse's became `declared` with muse serve, #2452).
+  test('a non-reporting engine’s stray child deltas never become conversation running work through service wiring', async () => {
+    // ACP reports subagents per connection: an engine that does not (every
+    // ACP engine but Kiro) says `not-reported` at its start, exactly as the
+    // adapter publishes it, and a stray delta after that changes nothing.
     const acp = new FakeAdapter('acp');
     const isolated = new OrchestrationService({
       adapterRegistry: createRegistry([acp]),
@@ -10062,6 +10077,18 @@ describe('OrchestrationService', () => {
         projectAndPublishEvent(event: CanonicalRuntimeEvent): boolean;
       }
     ).projectAndPublishEvent.bind(isolated);
+    publish({
+      eventId: 'matrix-none-not-reported',
+      provider: 'acp',
+      threadId,
+      createdAt: new Date().toISOString(),
+      method: 'child-work.updated',
+      delta: {
+        kind: 'not-reported',
+        reporterThreadId: threadId,
+        reason: 'This engine reports no subagents to Station over ACP.',
+      },
+    });
     publish({
       eventId: 'matrix-none-child-delta',
       provider: 'acp',
@@ -16063,7 +16090,7 @@ describe('OrchestrationService', () => {
 
       const startedAt = performance.now();
       const items = await perfService.listSessionReadModel(
-        personalReadAuthority('owner-user'),
+        personalReadAuthority('owner-user'), { purpose: 'session-list' }
       );
       const durationMs = performance.now() - startedAt;
       rawDb.prepare = originalPrepare;
@@ -16158,6 +16185,385 @@ describe('OrchestrationService', () => {
     } finally {
       perfEventStore.close();
       rmSync(perfTmp, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  // #4992: the read model is listed several times a second while any session
+  // streams, and each list folded every readable thread again. A repeated
+  // list now folds and counts only the threads whose events moved.
+  test('#4992: a repeated listSessionReadModel folds and counts only the threads whose events moved', async () => {
+    const cacheTmp = makeReadModelCacheDir(
+      'orchestration-service-read-model-cache-',
+    );
+    const cacheEventStore = new EventStore(
+      join(cacheTmp, 'orchestration.sqlite'),
+    );
+    const cacheService = new OrchestrationService({
+      adapterRegistry: createRegistry([new FakeAdapter('claude')]),
+      eventBus: new EventBus(),
+      eventStore: cacheEventStore,
+      adoptionLedger: cacheEventStore.createAdoptionLedger(),
+      flowRunService: new FlowRunService(),
+      listProjects: () => [],
+      agentPolicyService: new AgentPolicyService({
+        env: { ...process.env, SA_HOOK_PROFILE: '', SA_DISABLED_HOOKS: '' },
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      }),
+      workflowSidecarService: new WorkflowSidecarService({
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      }),
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    try {
+      cacheService.initialize();
+      await awaitSessionRecoveryCompleted(cacheService);
+      const threadIds = Array.from(
+        { length: 40 },
+        (_, index) => `read-model-cache-thread-${index}`,
+      );
+      for (const [index, threadId] of threadIds.entries()) {
+        const createdAt = new Date(2026, 0, 1, 0, 0, index).toISOString();
+        cacheEventStore.upsertSession({
+          provider: 'claude',
+          threadId,
+          status: 'ready',
+          createdAt,
+          updatedAt: createdAt,
+        });
+        cacheEventStore.appendEvent({
+          eventId: `${threadId}-started`,
+          provider: 'claude',
+          threadId,
+          createdAt,
+          method: 'session.started',
+          sessionId: threadId,
+          metadata: { agentSlug: 'claude', userId: 'owner-user' },
+        });
+        cacheEventStore.appendEvent({
+          eventId: `${threadId}-turn1-started`,
+          provider: 'claude',
+          threadId,
+          turnId: 'turn-1',
+          createdAt,
+          method: 'turn.started',
+          prompt: `Prompt ${index}`,
+        });
+      }
+
+      // Record the thread ids bound to each fact-join and count statement
+      // the store runs, at the database seam the service cannot bypass.
+      const rawDb = (cacheEventStore as unknown as { db: DatabaseSync }).db;
+      const originalPrepare = rawDb.prepare.bind(rawDb);
+      const factReads: unknown[][] = [];
+      const countReads: unknown[][] = [];
+      rawDb.prepare = ((sql: string) => {
+        const statement = originalPrepare(sql);
+        const shape = sql.replace(/\s+/g, ' ');
+        const sink = shape.includes(
+          'FROM orchestration_session_projection_facts AS fact',
+        )
+          ? factReads
+          : shape.includes(
+                'SELECT thread_id AS threadId, COUNT(*) AS c FROM orchestration_events WHERE thread_id IN',
+              )
+            ? countReads
+            : undefined;
+        if (!sink) return statement;
+        const all = statement.all.bind(statement);
+        statement.all = ((...params: unknown[]) => {
+          sink.push(params);
+          return all(...(params as []));
+        }) as typeof statement.all;
+        return statement;
+      }) as typeof originalPrepare;
+      const authority = personalReadAuthority('owner-user');
+      const eventCountOf = (
+        sessions: Awaited<ReturnType<typeof cacheService.listSessionReadModel>>,
+        threadId: string,
+      ) =>
+        sessions.find((session) => session.threadId === threadId)?.eventCount;
+
+      const first = await cacheService.listSessionReadModel(authority, { purpose: 'session-list' });
+      expect(first).toHaveLength(threadIds.length);
+      expect(factReads).toHaveLength(1);
+      expect([...factReads[0]!].sort()).toEqual([...threadIds].sort());
+      expect(countReads).toHaveLength(1);
+
+      const unchanged = await cacheService.listSessionReadModel(authority, { purpose: 'session-list' });
+      expect(unchanged).toEqual(
+        first.map((session) =>
+          expect.objectContaining({
+            threadId: session.threadId,
+            eventCount: session.eventCount,
+          }),
+        ),
+      );
+      expect(factReads).toHaveLength(1);
+      expect(countReads).toHaveLength(1);
+
+      const moved = threadIds[7]!;
+      cacheEventStore.appendEvent({
+        eventId: `${moved}-turn1-completed`,
+        provider: 'claude',
+        threadId: moved,
+        turnId: 'turn-1',
+        createdAt: new Date(2026, 0, 2).toISOString(),
+        method: 'turn.completed',
+        finishReason: 'stop',
+      } as any);
+      const after = await cacheService.listSessionReadModel(authority, { purpose: 'session-list' });
+      expect(factReads.slice(1)).toEqual([[moved]]);
+      expect(countReads.slice(1)).toEqual([[moved]]);
+      expect(eventCountOf(after, moved)).toBe((eventCountOf(first, moved) ?? 0) + 1);
+      expect(eventCountOf(after, threadIds[8]!)).toBe(eventCountOf(first, threadIds[8]!));
+      rawDb.prepare = originalPrepare;
+    } finally {
+      cacheEventStore.close();
+    }
+  }, 60_000);
+
+  /** A real store and service for the #4992 measurement tests below. */
+  async function readModelMeasurementWorld(label: string) {
+    const eventStore = new EventStore(
+      join(makeReadModelCacheDir(label), 'orchestration.sqlite'),
+    );
+    const service = new OrchestrationService({
+      adapterRegistry: createRegistry([new FakeAdapter('claude')]),
+      eventBus: new EventBus(),
+      eventStore,
+      adoptionLedger: eventStore.createAdoptionLedger(),
+      flowRunService: new FlowRunService(),
+      listProjects: () => [],
+      agentPolicyService: new AgentPolicyService({
+        env: { ...process.env, SA_HOOK_PROFILE: '', SA_DISABLED_HOOKS: '' },
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      }),
+      workflowSidecarService: new WorkflowSidecarService({
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      }),
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    service.initialize();
+    await awaitSessionRecoveryCompleted(service);
+    const seed = (threadId: string, userId: string, index: number) => {
+      const createdAt = new Date(2026, 0, 1, 0, 0, index).toISOString();
+      eventStore.upsertSession({
+        provider: 'claude',
+        threadId,
+        status: 'ready',
+        createdAt,
+        updatedAt: createdAt,
+      });
+      eventStore.appendEvent({
+        eventId: `${threadId}-started`,
+        provider: 'claude',
+        threadId,
+        createdAt,
+        method: 'session.started',
+        sessionId: threadId,
+        metadata: { agentSlug: 'claude', userId },
+      });
+    };
+    return { eventStore, service, seed };
+  }
+
+  // #4992: which callers drive the read model's rate, and what the event
+  // store's per-thread cache saved them, measured at the service seam.
+  test('#4992: each read model read is recorded under its purpose with the cache refold and reuse counts', async () => {
+    const { eventStore, service, seed } = await readModelMeasurementWorld(
+      'orchestration-service-read-model-measurement-',
+    );
+    try {
+      const owned = ['measured-0', 'measured-1', 'measured-2', 'measured-3'];
+      owned.forEach((threadId, index) => seed(threadId, 'owner-user', index));
+      seed('measured-other', 'other-user', 9);
+      const owner = personalReadAuthority('owner-user');
+      vi.mocked(sessionReadModelReads.add).mockClear();
+      vi.mocked(sessionReadModelDuration.record).mockClear();
+      vi.mocked(sessionReadModelThreads.record).mockClear();
+      const before = service.sessionReadModelMeasurement().byPurpose;
+      const baseline = {
+        list: before['session-list'],
+        snapshot: before['sse-snapshot'],
+      };
+      expect(baseline).toEqual({ list: undefined, snapshot: undefined });
+
+      // Cold: every readable thread is folded and counted.
+      await service.listSessionReadModel(owner, { purpose: 'session-list' });
+      // Warm: nothing moved, so everything is reused.
+      await service.listSessionReadModel(owner, { purpose: 'session-list' });
+      // One thread moves; a narrowed read of two threads refolds only it.
+      eventStore.appendEvent({
+        eventId: 'measured-1-turn',
+        provider: 'claude',
+        threadId: 'measured-1',
+        turnId: 'turn-1',
+        createdAt: new Date(2026, 0, 2).toISOString(),
+        method: 'turn.started',
+        prompt: 'moved',
+      } as any);
+      await service.listSessionReadModel(owner, {
+        purpose: 'sse-snapshot',
+        threadIds: ['measured-1', 'measured-2', 'measured-other'],
+      });
+
+      const byPurpose = service.sessionReadModelMeasurement().byPurpose;
+      expect(byPurpose['session-list']).toMatchObject({
+        reads: 2,
+        threadScopedReads: 0,
+        threadsConsidered: 8,
+        projectionRefolded: 4,
+        projectionReused: 4,
+        countRefreshed: 4,
+        countReused: 4,
+      });
+      // `measured-other` is not the owner's: it is never considered.
+      expect(byPurpose['sse-snapshot']).toMatchObject({
+        reads: 1,
+        threadScopedReads: 1,
+        threadsConsidered: 2,
+        projectionRefolded: 1,
+        projectionReused: 1,
+        countRefreshed: 1,
+        countReused: 1,
+      });
+      expect(Object.keys(byPurpose).sort()).toEqual([
+        'session-list',
+        'sse-snapshot',
+      ]);
+
+      // The same numbers reach the meter, by bounded purpose and scope only.
+      expect(vi.mocked(sessionReadModelReads.add).mock.calls).toEqual([
+        [1, { purpose: 'session-list', scope: 'all' }],
+        [1, { purpose: 'session-list', scope: 'all' }],
+        [1, { purpose: 'sse-snapshot', scope: 'threads' }],
+      ]);
+      const threads = vi
+        .mocked(sessionReadModelThreads.record)
+        .mock.calls.filter(([, attributes]) =>
+          String(attributes?.outcome).startsWith('projection_'),
+        );
+      expect(threads).toEqual([
+        [4, { purpose: 'session-list', outcome: 'projection_refolded' }],
+        [0, { purpose: 'session-list', outcome: 'projection_reused' }],
+        [0, { purpose: 'session-list', outcome: 'projection_refolded' }],
+        [4, { purpose: 'session-list', outcome: 'projection_reused' }],
+        [1, { purpose: 'sse-snapshot', outcome: 'projection_refolded' }],
+        [1, { purpose: 'sse-snapshot', outcome: 'projection_reused' }],
+      ]);
+      expect(
+        vi
+          .mocked(sessionReadModelDuration.record)
+          .mock.calls.map(([, attributes]) => attributes),
+      ).toEqual([
+        { purpose: 'session-list', phase: 'total' },
+        { purpose: 'session-list', phase: 'build' },
+        { purpose: 'session-list', phase: 'total' },
+        { purpose: 'session-list', phase: 'build' },
+        { purpose: 'sse-snapshot', phase: 'total' },
+        { purpose: 'sse-snapshot', phase: 'build' },
+      ]);
+
+      // A purpose outside the closed vocabulary never becomes a dimension.
+      await service.listSessionReadModel(owner, {
+        purpose: 'user-42-session-abc' as never,
+      });
+      expect(vi.mocked(sessionReadModelReads.add).mock.calls.at(-1)).toEqual([
+        1,
+        { purpose: 'invalid', scope: 'all' },
+      ]);
+    } finally {
+      eventStore.close();
+    }
+  }, 60_000);
+
+  // #4992: the hosting check read the caller's whole read model to answer
+  // for one Task. It now reads the one record the (environment, Task) pair
+  // names. Equivalence is pinned against the old fold, kept here as the
+  // reference, over records the caller can and cannot read.
+  test('#4992: peerDelegationHostsTask answers as the full read model fold did, reading one record', async () => {
+    const { eventStore, service, seed } = await readModelMeasurementWorld(
+      'orchestration-service-peer-host-',
+    );
+    try {
+      const dispatch = (taskId: string, environmentId: string, userId: string) =>
+        service.recordPeerDelegationActivityDispatch({
+          taskId,
+          conversationId: `conversation-${taskId}`,
+          prompt: `Work on ${taskId}`,
+          userId,
+          environment: { id: environmentId, name: environmentId, kind: 'peer' },
+          target: { kind: 'agent', id: 'codex' },
+        });
+      dispatch('task-a', 'env-1', 'owner-user');
+      dispatch('task-a', 'env-2', 'owner-user');
+      dispatch('task-b', 'env-1', 'owner-user');
+      // Another person's record: the owner must not learn it names a host.
+      dispatch('task-a', 'env-3', 'other-user');
+      // Ordinary Sessions the old fold had to read too.
+      seed('unrelated-1', 'owner-user', 1);
+      seed('unrelated-2', 'other-user', 2);
+
+      const referenceHosts = async (
+        taskId: string,
+        authority: ReturnType<typeof personalReadAuthority>,
+      ) =>
+        new Set(
+          (
+            await service.listSessionReadModel(authority, {
+              purpose: 'session-list',
+            })
+          ).flatMap((session) =>
+            session.delegation?.environmentKind === 'peer' &&
+            session.delegation.taskId === taskId &&
+            session.delegation.environmentId
+              ? [session.delegation.environmentId]
+              : [],
+          ),
+        );
+      const authorities = {
+        owner: personalReadAuthority('owner-user'),
+        other: personalReadAuthority('other-user'),
+        stranger: personalReadAuthority('stranger-user'),
+      };
+      const answers: string[] = [];
+      for (const [who, authority] of Object.entries(authorities)) {
+        for (const taskId of ['task-a', 'task-b', 'task-c']) {
+          const expected = await referenceHosts(taskId, authority);
+          for (const environmentId of ['env-1', 'env-2', 'env-3']) {
+            const hosted = await service.peerDelegationHostsTask(
+              taskId,
+              environmentId,
+              authority,
+            );
+            expect(
+              { who, taskId, environmentId, hosted },
+            ).toEqual({
+              who,
+              taskId,
+              environmentId,
+              hosted: expected.has(environmentId),
+            });
+            if (hosted) answers.push(`${who}:${taskId}:${environmentId}`);
+          }
+        }
+      }
+      // Non-vacuous: the matrix holds both answers, and the unreadable
+      // record answers only for its own owner.
+      expect(answers.sort()).toEqual([
+        'other:task-a:env-3',
+        'owner:task-a:env-1',
+        'owner:task-a:env-2',
+        'owner:task-b:env-1',
+      ]);
+
+      // Each check considered at most the one record it names.
+      const host =
+        service.sessionReadModelMeasurement().byPurpose['peer-delegation-host'];
+      expect(host).toMatchObject({ reads: 27, threadScopedReads: 27 });
+      expect(host!.threadsConsidered).toBe(answers.length);
+    } finally {
+      eventStore.close();
     }
   }, 60_000);
 
@@ -16757,6 +17163,204 @@ describe('OrchestrationService', () => {
     );
 
     await museService.shutdown();
+  });
+
+  test('a recovered ACP engine that started a new session (acp.session-started-fresh) gets the first-turn instructions again, once', async () => {
+    // The ACP adapter starts a new engine session when a reviewed engine
+    // cannot reload the conversation (acp-reattach-identity.ts) and says so
+    // with ACP_SESSION_STARTED_FRESH_CODE. That engine never received the
+    // authored prompt the conversation's first turn carried.
+    const turnsOn = (adapter: FakeAdapter) => {
+      adapter.sendTurn.mockImplementation(async (input) => {
+        // Unique across both engine processes, as real turn ids are.
+        const turnId = `acp-turn-${randomUUID()}`;
+        adapter.events.push({
+          eventId: randomUUID(),
+          provider: adapter.provider,
+          threadId: input.threadId,
+          turnId,
+          createdAt: new Date().toISOString(),
+          method: 'turn.started',
+          prompt: input.displayInput ?? input.input,
+        });
+        adapter.events.push({
+          eventId: randomUUID(),
+          provider: adapter.provider,
+          threadId: input.threadId,
+          turnId,
+          createdAt: new Date().toISOString(),
+          method: 'turn.completed',
+          finishReason: 'stop',
+        });
+        return { threadId: input.threadId, turnId };
+      });
+    };
+    const startsWith = (
+      adapter: FakeAdapter,
+      startedFresh: boolean,
+    ) =>
+      adapter.startSession.mockImplementation(async (input) => {
+        const now = new Date().toISOString();
+        adapter.events.push({
+          eventId: randomUUID(),
+          provider: 'acp',
+          threadId: input.threadId,
+          createdAt: now,
+          method: 'session.started',
+          sessionId: input.threadId,
+          initialState: 'created',
+          metadata: { ...input.metadata },
+        });
+        if (startedFresh)
+          adapter.events.push({
+            eventId: randomUUID(),
+            provider: 'acp',
+            threadId: input.threadId,
+            createdAt: now,
+            method: 'runtime.warning',
+            severity: 'warning',
+            code: ACP_SESSION_STARTED_FRESH_CODE,
+            message:
+              'Gemini CLI could not reload this conversation, so Station started a new Gemini CLI session.',
+          });
+        const started: ProviderSession = {
+          provider: 'acp',
+          threadId: input.threadId,
+          status: 'ready',
+          // Kept for recovery, as the ACP adapter's sessions are.
+          persistSession: true,
+          // What the ACP adapter's start returns when it started fresh.
+          ...(startedFresh ? { engineContextStartedFresh: true as const } : {}),
+          createdAt: now,
+          updatedAt: now,
+        };
+        // The engine now holds the session (`hasSession`), as the default
+        // fake start records it.
+        adapter.sessions.set(input.threadId, started);
+        return started;
+      });
+    const resolveSessionAgent = createSessionAgentResolver({
+      loadAgentSpec: async () => ({ name: 'Gemini Agent', prompt: 'Be terse.' }),
+      resolveToolServer: async () => null,
+      resolveSkillDir: async () => null,
+    });
+    const acp = new FakeAdapter('acp');
+    startsWith(acp, false);
+    turnsOn(acp);
+    const first = new OrchestrationService({
+      adapterRegistry: createRegistry([acp]),
+      eventBus,
+      eventStore,
+      resolveSessionAgent,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    const threadId = 'thread-acp-started-fresh-instructions';
+    await first.dispatch({
+      type: 'startSession',
+      input: { threadId, provider: 'acp', metadata: { agentSlug: 'gemini' } },
+    });
+    await waitFor(
+      () => eventStore.listEvents(threadId),
+      (events) => events.some((event) => event.method === 'session.started'),
+    );
+    await first.dispatch({
+      type: 'sendTurn',
+      input: { threadId, input: 'Hello' },
+    });
+    expect(acp.sendTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ input: 'Be terse.\nHello' }),
+    );
+    await waitFor(
+      () => eventStore.listEvents(threadId),
+      (events) => events.some((event) => event.method === 'turn.started'),
+    );
+    // A Station restart: the engine is materialized by the next turn, and
+    // its start logs the started-fresh warning inside that same dispatch.
+    const recovered = new FakeAdapter('acp');
+    startsWith(recovered, true);
+    turnsOn(recovered);
+    const second = new OrchestrationService({
+      adapterRegistry: createRegistry([recovered]),
+      eventBus: new EventBus(),
+      eventStore,
+      resolveSessionAgent,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    second.initialize();
+    await awaitSessionRecoveryCompleted(second);
+    await second.dispatch({
+      type: 'sendTurn',
+      input: { threadId, input: 'After restart' },
+    });
+    expect(recovered.startSession).toHaveBeenCalledTimes(1);
+    expect(recovered.sendTurn).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        input: 'Be terse.\nAfter restart',
+        displayInput: 'After restart',
+        metadata: expect.objectContaining({
+          firstTurnInstructionsComposed: true,
+        }),
+      }),
+    );
+    await waitFor(
+      () => eventStore.listEvents(threadId),
+      (events) =>
+        events.filter((event) => event.method === 'turn.started').length ===
+        2,
+    );
+    // Delivered once to the new engine session: not again after that.
+    await second.dispatch({
+      type: 'sendTurn',
+      input: { threadId, input: 'Again' },
+    });
+    expect(recovered.sendTurn).toHaveBeenLastCalledWith(
+      expect.objectContaining({ input: 'Again' }),
+    );
+    // No start mark: a live engine logs the warning itself (the ACP
+    // adapter's own credential-recovery restart starts fresh between turns),
+    // and the next turn reads it from the log.
+    recovered.events.push({
+      eventId: randomUUID(),
+      provider: 'acp',
+      threadId,
+      createdAt: new Date().toISOString(),
+      method: 'runtime.warning',
+      severity: 'warning',
+      code: ACP_SESSION_STARTED_FRESH_CODE,
+      message:
+        'Gemini CLI could not reload this conversation, so Station started a new Gemini CLI session.',
+    });
+    await waitFor(
+      () => eventStore.listEvents(threadId),
+      (events) =>
+        events.filter(
+          (event) =>
+            (event.payload as { code?: string }).code ===
+            ACP_SESSION_STARTED_FRESH_CODE,
+        ).length === 2,
+    );
+    await second.dispatch({
+      type: 'sendTurn',
+      input: { threadId, input: 'Later' },
+    });
+    expect(recovered.startSession).toHaveBeenCalledTimes(1);
+    expect(recovered.sendTurn).toHaveBeenLastCalledWith(
+      expect.objectContaining({ input: 'Be terse.\nLater' }),
+    );
+    await waitFor(
+      () => eventStore.listEvents(threadId),
+      (events) =>
+        events.filter((event) => event.method === 'turn.started').length ===
+        4,
+    );
+    await second.dispatch({
+      type: 'sendTurn',
+      input: { threadId, input: 'Once more' },
+    });
+    expect(recovered.sendTurn).toHaveBeenLastCalledWith(
+      expect.objectContaining({ input: 'Once more' }),
+    );
+    await Promise.all([first.shutdown(), second.shutdown()]);
   });
 
   test('sendTurn validates attachments before dispatch and records successful bytes', async () => {
@@ -21756,6 +22360,7 @@ describe('OrchestrationService', () => {
     // The complete method-targeted projection + count are the bounded work.
     expect(projectionSpy).toHaveBeenCalledWith(
       expect.arrayContaining([threadId]),
+      expect.any(Function),
     );
     expect(countSpy).toHaveBeenCalled();
     // THE bounded-work guard: this thread has 5,002 rows, but the fold's
@@ -27681,6 +28286,149 @@ describe('OrchestrationService', () => {
     }
   });
 
+  describe('child steering after the launching turn ended', () => {
+    const THREAD_ID = 'outliving-parent';
+    const key = {
+      producer: 'engine-subagent' as const,
+      reporterThreadId: THREAD_ID,
+    };
+    function setup(options: { declares: boolean }) {
+      const muse = new FakeAdapter('muse');
+      if (options.declares)
+        Object.assign(muse, { childSteerOutlivesParentTurn: true });
+      muse.sessions.set(THREAD_ID, {
+        provider: 'muse',
+        threadId: THREAD_ID,
+        status: 'ready',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      muse.steerChildWork.mockResolvedValue({
+        outcome: 'steered',
+        turnId: 'launch-turn',
+      });
+      // The parent turn launched the child and ended; nothing runs on the
+      // parent now.
+      eventStore.appendEvent({
+        eventId: 'outliving-turn-started',
+        provider: 'muse',
+        threadId: THREAD_ID,
+        turnId: 'launch-turn',
+        createdAt: new Date().toISOString(),
+        method: 'turn.started',
+        prompt: 'launch a workflow',
+      });
+      eventStore.appendEvent({
+        eventId: 'outliving-turn-completed',
+        provider: 'muse',
+        threadId: THREAD_ID,
+        turnId: 'launch-turn',
+        createdAt: new Date().toISOString(),
+        method: 'turn.completed',
+        finishReason: 'stop',
+        outputText: 'launched',
+      });
+      const service = new OrchestrationService({
+        adapterRegistry: createRegistry([muse]),
+        eventBus,
+        eventStore,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      const publish = (event: CanonicalRuntimeEvent) =>
+        (
+          service as unknown as {
+            projectAndPublishEvent(event: CanonicalRuntimeEvent): boolean;
+          }
+        ).projectAndPublishEvent(event);
+      publish({
+        eventId: 'outliving-child',
+        provider: 'muse',
+        threadId: THREAD_ID,
+        createdAt: new Date().toISOString(),
+        method: 'child-work.updated',
+        delta: {
+          kind: 'snapshot',
+          ...key,
+          running: [
+            {
+              ...key,
+              childId: 'child',
+              status: 'running',
+              parent: { turnId: 'launch-turn' },
+              backgrounded: true,
+              controls: {
+                stop: 'provider-task-stop',
+                steer: { turnId: 'launch-turn' },
+              },
+            },
+          ],
+        },
+      });
+      return { muse, service, publish };
+    }
+    const command = (clientInputId: string, childId = 'child') => ({
+      type: 'steerChildWork' as const,
+      threadId: THREAD_ID,
+      childId,
+      turnId: 'launch-turn',
+      input: 'redirect',
+      clientInputId,
+    });
+    const context = { requestCurrent: () => true };
+
+    test('an adapter whose children outlive the turn steers a running child with no parent turn', async () => {
+      const { muse, service } = setup({ declares: true });
+      expect(await service.dispatch(command('outliving-1'), context)).toEqual({
+        outcome: 'steered',
+        threadId: THREAD_ID,
+        childId: 'child',
+        turnId: 'launch-turn',
+      });
+      expect(muse.steerChildWork).toHaveBeenCalledWith(
+        THREAD_ID,
+        'child',
+        'launch-turn',
+        'redirect',
+      );
+    });
+
+    test('without the declaration the same steer is refused as before, and nothing reaches the adapter', async () => {
+      const { muse, service } = setup({ declares: false });
+      expect(await service.dispatch(command('outliving-2'), context)).toEqual({
+        outcome: 'no-active-task',
+        threadId: THREAD_ID,
+      });
+      expect(muse.steerChildWork).not.toHaveBeenCalled();
+    });
+
+    test('a child the projection does not hold running under that token is refused', async () => {
+      const { muse, service, publish } = setup({ declares: true });
+      expect(
+        await service.dispatch(command('outliving-3', 'other-child'), context),
+      ).toEqual({ outcome: 'no-active-task', threadId: THREAD_ID });
+      // The running child, under a token it does not advertise.
+      expect(
+        await service.dispatch(
+          { ...command('outliving-5'), turnId: 'other-turn' },
+          context,
+        ),
+      ).toEqual({ outcome: 'no-active-task', threadId: THREAD_ID });
+      publish({
+        eventId: 'outliving-child-settled',
+        provider: 'muse',
+        threadId: THREAD_ID,
+        createdAt: new Date().toISOString(),
+        method: 'child-work.updated',
+        delta: { kind: 'settle', ...key, childId: 'child', status: 'completed' },
+      });
+      expect(await service.dispatch(command('outliving-4'), context)).toEqual({
+        outcome: 'no-active-task',
+        threadId: THREAD_ID,
+      });
+      expect(muse.steerChildWork).not.toHaveBeenCalled();
+    });
+  });
+
   test('child steering retains an uncertain effect and refuses a stale request', async () => {
     claude.sessions.set('child-uncertain', {
       provider: 'claude',
@@ -28276,6 +29024,8 @@ describe('OrchestrationService', () => {
       'extension.notification': 'non-fold',
       'conversation.forked': 'non-fold',
       'child-work.updated': 'non-fold',
+      'model.rerouted': 'non-fold',
+      'engine-mcp.status': 'non-fold',
     };
     const NON_FOLD_METHODS = (
       Object.keys(METHOD_ROLE) as CanonicalRuntimeEvent['method'][]
@@ -29277,7 +30027,7 @@ describe('OrchestrationService', () => {
       service.listSessions(personalReadAuthority('other-user')),
     ).resolves.toEqual([]);
     await expect(
-      service.listSessionReadModel(personalReadAuthority('other-user')),
+      service.listSessionReadModel(personalReadAuthority('other-user'), { purpose: 'session-list' }),
     ).resolves.toEqual([]);
     await expect(
       service.readSession(

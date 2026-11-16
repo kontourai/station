@@ -143,19 +143,22 @@ test('the chosen scope persists across mounts', () => {
   expect(pressed('All')).toBe('true');
 });
 
-test('an engine that cannot report subagents is not an engine reporting none', () => {
+test('an engine that may not report subagents is not an engine reporting none', () => {
+  // ACP reports per connection (Kiro does, others do not): with nothing
+  // from the server, the pane says so instead of "No subagents running".
   openChat('acp');
   render(<AgentsWorkspacePane />);
   expect(
-    screen.getByText('This engine does not report subagents'),
+    screen.getByText('Subagents are not shown for this engine'),
   ).toBeTruthy();
+  expect(screen.queryByText('No subagents running')).toBeNull();
   cleanup();
   activeChatsStore.removeChat(CHAT);
   openChat('claude');
   render(<AgentsWorkspacePane />);
   expect(screen.getByText('No subagents running')).toBeTruthy();
   expect(
-    screen.queryByText('This engine does not report subagents'),
+    screen.queryByText('Subagents are not shown for this engine'),
   ).toBeNull();
 });
 
@@ -259,8 +262,8 @@ test('a delegate from the session read model shows in All with its provenance an
     screen.getByText('Recorded origin: CLI (reported) · Via Fixture Station'),
   ).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Stop' })).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Open session' }));
-  expect(showSurface).toHaveBeenCalledWith('activity', {
+  fireEvent.click(screen.getByRole('button', { name: 'Open chat' }));
+  expect(showSurface).toHaveBeenCalledWith('chat', {
     session: 'delegate-cli',
   });
 });
@@ -320,7 +323,7 @@ test('per chat, delegates are the background-tasks store’s cards — live, as 
   ]);
   expect(screen.getByText('Running (1)')).toBeTruthy();
   expect(screen.getByText('Audit the dependencies')).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'View transcript' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Open chat' })).toBeTruthy();
   expect(screen.queryByText('Last week’s audit')).toBeNull();
 
   cleanup();

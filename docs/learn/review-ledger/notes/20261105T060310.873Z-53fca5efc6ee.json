@@ -1,7 +1,0 @@
-{
-  "revision": "39ef9fd135d88728c0dbae661f13d5fc4cc86452",
-
-  "notes": [
-    {"path":"docs/design/terminal.md","note":"Rewrote the Windows close rule for the release on exit: the adapter releases each ConPTY through kill() with the console listing answered empty once node-pty reports the exit (natural or taskkill), checked against node-pty-adapter.ts releaseConpty, node-pty 1.1's WindowsPtyAgent.kill and ConoutConnection, and the adapter suite's two real-ConPTY cases.","inputs":["docs/design/terminal.md","src-server/adapters/__tests__/node-pty-adapter.test.ts","src-server/adapters/node-pty-adapter.ts"]}
-  ]
-}

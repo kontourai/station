@@ -468,7 +468,7 @@ test('same-child deliberate model intent waits for capability evidence and survi
     validModelIds: [],
   });
   expect(invalid.requestedModel).toBeNull();
-  expect(invalid.error).toContain('saved model choice');
+  expect(invalid.error).toContain("The saved model isn't available");
 });
 
 test('a changed child from an older server cannot retain writable predecessor identity', () => {
@@ -736,4 +736,40 @@ test('binding-change queue review blocks automatic and delayed dispatch', async 
   ).toBe('execution-binding-changed');
   activeChatsStore.removeChat(id);
   vi.useRealTimers();
+});
+
+test('a changed child drops the predecessor engine’s usage and MCP servers', () => {
+  const previous = {
+    conversationId: conversation.id,
+    currentSessionId: 'old-kiro',
+    agentSlug: 'kiro',
+    provider: 'acp',
+    agentConnectionId: 'kiro-kas',
+    liveUsage: { contextPercent: 40 },
+    engineMcpServers: [
+      { name: 'docs', state: 'ready' as const, scope: 'session' as const },
+    ],
+    engineMcpReconnect: true as const,
+    engineMcpComplete: true as const,
+  };
+  const resolution: ConversationOpenResolution = {
+    ...resolved(),
+    execution: {
+      sessionId: 'conversation-749:child:2',
+      agentId: conversation.agentSlug,
+      provider: 'codex',
+      engineConnectionId: 'codex-connection',
+      model: 'current-model',
+    },
+  };
+
+  const merged = {
+    ...previous,
+    ...conversationOpenPatch(resolution, previous as never),
+  };
+
+  expect(merged.liveUsage).toBeUndefined();
+  expect(merged.engineMcpServers).toBeUndefined();
+  expect(merged.engineMcpReconnect).toBeUndefined();
+  expect(merged.engineMcpComplete).toBeUndefined();
 });

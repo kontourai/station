@@ -1,0 +1,11 @@
+{
+  "revision": "068bd1e293f93db50ce27dcd82a99f17b3754b3d",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Bounded round-5 manifest review: registers new-project-choices.spec.ts in product with an explicit parallel-safe class and browser-local-only writes; updates the classifier expectation. PR_BROWSER_SMOKE_CONTRACT, its nine specs, full coverage command and campaign completion requirements are unchanged. New captures qualify only icon-choice rendering and Home scope selection, not whole-app campaign completion.","inputs":["docs/guides/e2e-coverage-matrix.md","scripts/__tests__/e2e-manifest.test.ts","tests/e2e-manifest.mjs"]},
+
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Bounded round-5 manifest review: registers new-project-choices.spec.ts in product with an explicit parallel-safe class and browser-local-only writes; updates the classifier expectation. PR_BROWSER_SMOKE_CONTRACT, its nine specs, full coverage command and campaign completion requirements are unchanged. New captures qualify only icon-choice rendering and Home scope selection, not whole-app campaign completion.","inputs":["docs/plans/whole-app-ux-campaign.md","tests/e2e-manifest.mjs"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Bounded round-5 manifest review: registers new-project-choices.spec.ts in product with an explicit parallel-safe class and browser-local-only writes; updates the classifier expectation. PR_BROWSER_SMOKE_CONTRACT, its nine specs, full coverage command and campaign completion requirements are unchanged. New captures qualify only icon-choice rendering and Home scope selection, not whole-app campaign completion.","inputs":["docs/testing/browser-smoke.md","scripts/__tests__/e2e-manifest.test.ts","tests/e2e-manifest.mjs"]}
+  ]
+}

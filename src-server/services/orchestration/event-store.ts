@@ -93,6 +93,7 @@ import {
   type CanonicalRuntimeEvent,
   isProviderTriggeredTurn,
   PROVIDER_TURN_TRIGGER,
+  TURN_DISPATCH_ORIGINS,
   type TurnDispatchOrigin,
   turnDispatchOrigin,
 } from '@kontourai/station-contracts/runtime-events';
@@ -221,6 +222,10 @@ import {
   applyWalJournalMode,
   isSqliteContentionError,
 } from '../../utils/sqlite-wal.js';
+import {
+  type AutomationProposalStore,
+  createSqliteAutomationProposalStore,
+} from '../automation/automation-proposals.js';
 import {
   type OperationalEventConsumer,
   type OperationalEventConsumerConfig,
@@ -620,6 +625,19 @@ const MAX_SESSION_WORK_ITEM_ASSOCIATION_ROW_BYTES = 8 * 1024;
 const MAX_SESSION_ACTIVITY_TOOL_NAME_BYTES = 256;
 
 /** Descriptor-only row for the Session Outputs owner. No event payload crosses it. */
+/**
+ * What one batched session-projection read did with the per-thread cache
+ * (#4992), reported to an optional observer so a caller can measure it
+ * without reaching into the cache. A read inside a transaction, or with
+ * caches disabled, refreshes every requested thread.
+ */
+export interface SessionProjectionCacheOutcome {
+  /** Threads read from the database again. */
+  refreshed: number;
+  /** Threads served from the cache. */
+  reused: number;
+}
+
 export interface DeclaredOutputDescriptorRow {
   declarationId: string;
   eventId: string;
@@ -825,6 +843,130 @@ const USAGE_RECEIPT_EVENT_SELECT = `SELECT e.id, e.provider, e.thread_id, e.turn
                   ORDER BY config.sequence DESC LIMIT 1) AS credential_profile_json
 `;
 
+/** The `session.started` that opened this usage event's process epoch, or 0. */
+const USAGE_RECEIPT_EPOCH = `COALESCE((SELECT MAX(epoch.sequence) FROM orchestration_events epoch
+                    WHERE epoch.thread_id = e.thread_id AND epoch.method = 'session.started'
+                      AND epoch.sequence <= e.sequence), 0)`;
+
+/**
+ * A launch plan `extractModelLaunchPlan` (orchestration-session-state.ts)
+ * recognizes: an accepted Station-resolved plan or a declared engine choice.
+ */
+const ACCEPTED_LAUNCH_PLAN = `json_type(attribution.payload, '$.metadata.modelLaunchPlan') = 'object'
+                    AND ((json_extract(attribution.payload, '$.metadata.modelLaunchPlan.kind') = 'station-resolved'
+                          AND json_type(attribution.payload, '$.metadata.modelLaunchPlan.modelConnectionId') = 'text'
+                          AND json_type(attribution.payload, '$.metadata.modelLaunchPlan.modelId') = 'text'
+                          AND json_extract(attribution.payload, '$.metadata.modelLaunchPlan.evidence') = 'catalog-accepted')
+                      OR (json_extract(attribution.payload, '$.metadata.modelLaunchPlan.kind') = 'engine-selected'
+                          AND json_extract(attribution.payload, '$.metadata.modelLaunchPlan.evidence') IN ('adapter-declared', 'capability-absent')))`;
+
+/**
+ * Connection attribution, joined only by the windowed rollup: export pages
+ * and the conversation usage tree never carry it, so they never pay for it.
+ *
+ * Both facts belong to the usage event's process epoch. The engine
+ * connection is the latest one recorded since the epoch's `session.started`
+ * (a reconfiguration may restate it); the model connection is the launch
+ * plan in effect at that event, so a mid-thread model switch attributes
+ * later usage to the new plan and an engine-selected plan to none. Every
+ * lookup is an equality on `(thread_id, method)` over the history index,
+ * never a scan of the thread's whole history: the planner otherwise prefers
+ * the `(thread_id, sequence)` index and walks every event of the epoch.
+ */
+const USAGE_RECEIPT_CONNECTION_COLUMNS = `,
+                COALESCE(
+                  (SELECT json_extract(attribution.payload, '$.metadata.connectionId')
+                     FROM orchestration_events attribution INDEXED BY idx_events_history_projection
+                    WHERE attribution.thread_id = e.thread_id
+                      AND attribution.method = 'session.configured'
+                      AND attribution.sequence > ${USAGE_RECEIPT_EPOCH}
+                      AND attribution.sequence <= e.sequence
+                      AND json_valid(attribution.payload)
+                      AND json_type(attribution.payload, '$.metadata.connectionId') = 'text'
+                    ORDER BY attribution.sequence DESC LIMIT 1),
+                  (SELECT json_extract(started.payload, '$.metadata.connectionId')
+                     FROM orchestration_events started INDEXED BY idx_events_history_projection
+                    WHERE started.thread_id = e.thread_id
+                      AND started.method = 'session.started'
+                      AND started.sequence = ${USAGE_RECEIPT_EPOCH}
+                      AND json_valid(started.payload)
+                      AND json_type(started.payload, '$.metadata.connectionId') = 'text')
+                ) AS connection_id,
+                (SELECT CASE WHEN json_extract(attribution.payload, '$.metadata.modelLaunchPlan.kind') = 'station-resolved'
+                             THEN json_extract(attribution.payload, '$.metadata.modelLaunchPlan.modelConnectionId') END
+                   FROM orchestration_events attribution INDEXED BY idx_events_history_projection
+                  WHERE attribution.thread_id = e.thread_id
+                    AND attribution.method = 'session.configured'
+                    AND attribution.sequence > ${USAGE_RECEIPT_EPOCH}
+                    AND attribution.sequence <= e.sequence
+                    AND json_valid(attribution.payload)
+                    AND ${ACCEPTED_LAUNCH_PLAN}
+                  ORDER BY attribution.sequence DESC LIMIT 1) AS model_connection_id
+`;
+
+function connectionFilterValues(filter: UsageReceiptFilter): string[] {
+  return [
+    ...(filter.connectionId !== undefined ? [filter.connectionId] : []),
+    ...(filter.modelConnectionId !== undefined
+      ? [filter.modelConnectionId]
+      : []),
+  ];
+}
+
+/**
+ * The windowed rollup's receipt selection. A connection filter first selects
+ * the threads that ever recorded that connection (an indexed lookup of their
+ * configuration events), so usage events of every other thread are never
+ * projected; the exact per-event attribution then decides membership.
+ * Exported so a test can pin that query plan.
+ */
+export function usageReceiptEventsSql(
+  ownerCount: number,
+  filter: UsageReceiptFilter,
+): string {
+  const owners = usageOwnerPlaceholders(
+    Array.from({ length: ownerCount }, () => ''),
+  );
+  const candidateThreads = [
+    ...(filter.connectionId !== undefined
+      ? [
+          `e.thread_id IN (SELECT candidate.thread_id FROM orchestration_events candidate
+              WHERE candidate.method IN ('session.started', 'session.configured')
+                AND json_valid(candidate.payload)
+                AND json_extract(candidate.payload, '$.metadata.connectionId') = ?)`,
+        ]
+      : []),
+    ...(filter.modelConnectionId !== undefined
+      ? [
+          `e.thread_id IN (SELECT candidate.thread_id FROM orchestration_events candidate
+              WHERE candidate.method = 'session.configured'
+                AND json_valid(candidate.payload)
+                AND json_extract(candidate.payload, '$.metadata.modelLaunchPlan.modelConnectionId') = ?)`,
+        ]
+      : []),
+  ];
+  const exact = [
+    ...(filter.connectionId !== undefined ? ['connection_id = ?'] : []),
+    ...(filter.modelConnectionId !== undefined
+      ? ['model_connection_id = ?']
+      : []),
+  ];
+  return `SELECT * FROM (${USAGE_RECEIPT_EVENT_SELECT}${USAGE_RECEIPT_CONNECTION_COLUMNS}
+           FROM orchestration_events e
+           INNER JOIN orchestration_conversation_history h ON h.thread_id = e.thread_id
+           LEFT JOIN orchestration_conversation_sessions cs ON cs.session_id = e.thread_id
+          WHERE e.method = 'token-usage.updated'
+            AND e.observed_at >= ? AND e.observed_at <= ?
+            AND h.owner_user_id IN (${owners})
+            AND (? IS NULL OR h.tenant_id = ?)
+            AND (? IS NULL OR e.provider = ?)
+            AND (? IS NULL OR e.observed_at > ? OR (e.observed_at = ? AND e.id > ?))
+            ${candidateThreads.map((clause) => `AND ${clause}`).join('\n            ')})
+          ${exact.length ? `WHERE ${exact.join(' AND ')}` : ''}
+          ORDER BY observed_at ASC, id ASC
+          LIMIT ?`;
+}
+
 /** How much of a turn's prompt the digest read keeps (the first line is clipped from it). */
 export const TURN_DIGEST_PROMPT_PREFIX_CHARS = 1024;
 /** The most Sessions one conversation lineage the digest reads may name. */
@@ -880,6 +1022,16 @@ export interface SessionNamingParent {
   stationDerived: boolean;
 }
 
+/**
+ * Narrowing applied inside the bounded receipt selection, so a busy engine or
+ * connection cannot fill the window's limit and crowd a quiet one out.
+ */
+export interface UsageReceiptFilter {
+  provider?: string;
+  connectionId?: string;
+  modelConnectionId?: string;
+}
+
 /** One `token-usage.updated` row with the receipt facts joined onto it. */
 export interface UsageReceiptEventRow {
   event: PersistedRuntimeEvent;
@@ -893,6 +1045,8 @@ export interface UsageReceiptEventRow {
    */
   costSegment?: string;
   accountKey?: string;
+  connectionId?: string;
+  modelConnectionId?: string;
 }
 
 /**
@@ -954,6 +1108,10 @@ function spilledTypeSql(path: string, payload = 'payload') {
  * A turn's own `turn.started`. A steer re-announces its turn with another
  * `turn.started` of the same id; it neither starts a turn nor marks one.
  */
+/** Every origin this build classifies, as an SQL list (fixed literals). */
+const KNOWN_TURN_DISPATCH_ORIGINS_SQL = TURN_DISPATCH_ORIGINS.map(
+  (origin) => `'${origin}'`,
+).join(', ');
 const OWN_TURN_START_SQL = `method = 'turn.started' AND (CASE WHEN json_valid(payload) THEN json_extract(payload, '$.inputKind') END) IS NOT 'steer'`;
 
 /**
@@ -986,6 +1144,12 @@ const UNRESOLVED_COMPLETION_STANDS_SQL_FUNCTION =
   'station_unresolved_completion_stands';
 /** Distinct (thread, high-water) transcript checks kept for paging reuse. */
 const STANDING_UNRESOLVED_CACHE_MAX = 8;
+/**
+ * Threads whose session projection facts and event count are kept between
+ * reads (#4992). Each entry holds a thread's handful of folded facts, without
+ * hydrated attachment data, so the bound is on thread count, not history.
+ */
+const SESSION_PROJECTION_CACHE_MAX = 2048;
 
 /** SQLite function: whether the exact input read would serve this row. */
 const READABLE_USER_INPUT_SQL_FUNCTION = 'station_is_readable_user_input';
@@ -2492,8 +2656,8 @@ function isReadableContentEvent(event: CanonicalRuntimeEvent): boolean {
     !isProviderTriggeredTurn(event)
   );
 }
-/** Events per committed batch of the content-projection backfill. */
-export const THREAD_CONTENT_BACKFILL_BATCH = 10_000;
+/** Threads per committed batch of the content-projection backfill. */
+export const THREAD_CONTENT_BACKFILL_BATCH = 500;
 /** {@link isReadableContentEvent} over stored rows (alias `e`). */
 const READABLE_CONTENT_EVENT_SQL = `(e.method IN (${[
   ...READABLE_CONTENT_METHODS,
@@ -2504,6 +2668,28 @@ const READABLE_CONTENT_EVENT_SQL = `(e.method IN (${[
   AND json_type(e.payload, '$.prompt') = 'text'
   AND length(json_extract(e.payload, '$.prompt')) > 0
   AND COALESCE(json_extract(e.payload, '$.metadata.trigger'), '') <> '${PROVIDER_TURN_TRIGGER}'))`;
+/**
+ * The next thread after the backfill's cursor: one seek into the thread
+ * index, never a read of the thread's events.
+ */
+export const THREAD_CONTENT_BACKFILL_NEXT_THREAD_SQL = `SELECT MIN(thread_id) AS thread_id
+  FROM orchestration_events WHERE thread_id > ?`;
+/**
+ * One thread's content version at or below the cutoff: a walk back over
+ * `idx_events_thread_global_sequence` from the thread's newest event at the
+ * cutoff to its newest readable one. Pinned to that index because a range or
+ * per-method plan over the whole table (`idx_events_method`) reads every
+ * readable event in the store for each call.
+ */
+export const THREAD_CONTENT_BACKFILL_PROJECT_SQL = `INSERT INTO orchestration_thread_content (thread_id, content_sequence)
+  SELECT e.thread_id, e.global_sequence
+  FROM orchestration_events e INDEXED BY idx_events_thread_global_sequence
+  WHERE e.thread_id = ? AND e.global_sequence <= ?
+    AND ${READABLE_CONTENT_EVENT_SQL}
+  ORDER BY e.global_sequence DESC
+  LIMIT 1
+  ON CONFLICT(thread_id) DO UPDATE SET
+    content_sequence = MAX(content_sequence, excluded.content_sequence)`;
 
 export class EventStoreIntegrityError extends Error {
   readonly code = 'STATION_EVENT_STORE_CORRUPT';
@@ -2639,6 +2825,26 @@ export class EventStore {
    * per process.
    */
   private readonly standingUnresolvedCache = new Map<string, Set<string>>();
+  /**
+   * Per-thread session projection facts and event count, keyed by the
+   * thread's highest `global_sequence` (#4992). Every write that can change a
+   * thread's projection (an append, which also maintains its fact and request
+   * rows, or the thread's deletion) moves or removes that mark, and global
+   * sequences come from a monotonic high-water and are never reused. So an
+   * entry whose mark still matches describes exactly the rows a fresh read
+   * would fold. Rows are stored unhydrated and frozen; attachment data is
+   * read at return time, as before. Small LRU, per process.
+   */
+  private readonly sessionProjectionCache = new Map<
+    string,
+    {
+      highWater: number;
+      events?: readonly PersistedRuntimeEvent[];
+      eventCount?: number;
+    }
+  >();
+  /** Set only while the projection is computed for the cache above. */
+  private deferAttachmentHydration = false;
   /** Kept private: room history receives a separate connection, never this DB. */
   private readonly databasePath: string;
   private usageExportActivation?: () => string;
@@ -2743,6 +2949,7 @@ export class EventStore {
   private taskWriteBack?: TaskWriteBackStore;
   private worktreeOutputSettlements?: WorktreeOutputSettlementStore;
   private agentSchedule?: AgentScheduleStore;
+  private automationProposals?: AutomationProposalStore;
   private coordinator?: CoordinatorStore;
   private resumeChoices?: UsageLimitResumeChoices;
   private mcpAppResourceResolver?: (toolRef: string) => string | undefined;
@@ -2781,7 +2988,7 @@ export class EventStore {
       /** Before the content migration writes or reads its cutoff. */
       threadContentMigrationStart?: () => void;
       /** After each committed content-projection backfill batch. */
-      threadContentBackfillBatch?: (cursor: number) => void;
+      threadContentBackfillBatch?: (threadCursor: string) => void;
     } = {},
   ) {
     this.databasePath = dbPath;
@@ -5025,7 +5232,9 @@ export class EventStore {
     if (row.payload === null)
       throw new Error('Projection payload exceeds read budget');
     const event = mapPersistedEventRow(row);
-    return hydrate ? this.hydrateAttachments(event) : event;
+    return hydrate && !this.deferAttachmentHydration
+      ? this.hydrateAttachments(event)
+      : event;
   }
 
   /**
@@ -7751,6 +7960,8 @@ export class EventStore {
    * The usage fold's facts, in canonical order. The method index excludes
    * transcript deltas; SQL removes large input/output fields before JS sees
    * them. Keep optional usage fields absent rather than manufacturing nulls.
+   * A method the fold reads (`foldUsageEvents`) must be listed here, or it
+   * never reaches the fold in production.
    */
   listUsageEventPayloads(
     threadId: string,
@@ -7761,14 +7972,15 @@ export class EventStore {
          WHEN method = 'turn.started' THEN json_remove(payload, '$.prompt', '$.attachments', '$.metadata')
          WHEN method = 'turn.completed' THEN json_remove(payload, '$.outputText')
          WHEN method = 'tool.completed' THEN json_remove(payload, '$.output', '$.result', '$.images', '$.attachments', '$.metadata')
-         WHEN method IN ('session.started', 'session.configured', 'turn.completed', 'token-usage.updated') THEN payload
+         WHEN method IN ('session.started', 'session.configured', 'turn.completed', 'token-usage.updated', 'engine-mcp.status') THEN payload
          ELSE json_object('eventId', id, 'threadId', thread_id,
            'provider', provider, 'method', method, 'createdAt', created_at)
          END AS payload, observed_at
        FROM orchestration_events
        WHERE thread_id = ? AND (
          method IN ('session.started', 'session.configured', 'turn.started',
-           'turn.completed', 'tool.completed', 'token-usage.updated')
+           'turn.completed', 'tool.completed', 'token-usage.updated',
+           'engine-mcp.status')
          OR id = (SELECT id FROM orchestration_events WHERE thread_id = ? ORDER BY sequence DESC LIMIT 1)
          OR id = (SELECT id FROM orchestration_events WHERE thread_id = ? AND provider != 'station-agent' LIMIT 1))
        ORDER BY sequence ASC`,
@@ -8208,32 +8420,27 @@ export class EventStore {
     to: string;
     after?: { observedAt: string; eventId: string };
     limit: number;
+    filter?: UsageReceiptFilter;
   }): UsageReceiptEventRow[] {
-    const owners = usageOwnerPlaceholders(options.ownerUserIds);
+    const filter = options.filter ?? {};
     const rows = this.db
-      .prepare(
-        `${USAGE_RECEIPT_EVENT_SELECT}
-           FROM orchestration_events e
-           INNER JOIN orchestration_conversation_history h ON h.thread_id = e.thread_id
-           LEFT JOIN orchestration_conversation_sessions cs ON cs.session_id = e.thread_id
-          WHERE e.method = 'token-usage.updated'
-            AND e.observed_at >= ? AND e.observed_at <= ?
-            AND h.owner_user_id IN (${owners})
-            AND (? IS NULL OR h.tenant_id = ?)
-            AND (? IS NULL OR e.observed_at > ? OR (e.observed_at = ? AND e.id > ?))
-          ORDER BY e.observed_at ASC, e.id ASC
-          LIMIT ?`,
-      )
+      .prepare(usageReceiptEventsSql(options.ownerUserIds.length, filter))
       .all(
         `${options.from}T00:00:00.000Z`,
         `${options.to}T23:59:59.999Z`,
         ...options.ownerUserIds,
         options.tenantId ?? null,
         options.tenantId ?? null,
+        filter.provider ?? null,
+        filter.provider ?? null,
         options.after?.observedAt ?? null,
         options.after?.observedAt ?? null,
         options.after?.observedAt ?? null,
         options.after?.eventId ?? null,
+        // Candidate-thread placeholders, then the exact attribution ones,
+        // in the order `usageReceiptEventsSql` writes them.
+        ...connectionFilterValues(filter),
+        ...connectionFilterValues(filter),
         options.limit + 1,
       ) as any[];
     const costSegments = this.cumulativeCostSegmentsFor(
@@ -8262,6 +8469,12 @@ export class EventStore {
       ...(typeof row.task_id === 'string' ? { taskId: row.task_id } : {}),
       ...(typeof row.model === 'string' ? { model: row.model } : {}),
       ...(typeof accountKey === 'string' ? { accountKey } : {}),
+      ...(typeof row.connection_id === 'string' && row.connection_id
+        ? { connectionId: row.connection_id }
+        : {}),
+      ...(typeof row.model_connection_id === 'string' && row.model_connection_id
+        ? { modelConnectionId: row.model_connection_id }
+        : {}),
       ...(costSegment !== undefined ? { costSegment } : {}),
     };
   }
@@ -9228,6 +9441,59 @@ export class EventStore {
       )
       .get(threadId) as { origin: unknown } | undefined;
     return row ? turnDispatchOrigin({ dispatchOrigin: row.origin }) : undefined;
+  }
+
+  /**
+   * #2540: {@link latestTurnDispatchOrigin}, skipping turns the engine opened
+   * on its own (`PROVIDER_TURN_TRIGGER`): such a turn records no origin and
+   * continues whatever the last send started. `undefined` with no such turn.
+   */
+  latestSentTurnDispatchOrigin(
+    threadId: string,
+  ): TurnDispatchOrigin | undefined {
+    const row = this.readStatement(
+      `SELECT json_extract(payload, '$.dispatchOrigin') AS origin
+         FROM orchestration_events
+         WHERE thread_id = ? AND ${OWN_TURN_START_SQL}
+           AND COALESCE(json_extract(payload, '$.metadata.trigger'), '') <> '${PROVIDER_TURN_TRIGGER}'
+         ORDER BY sequence DESC
+         LIMIT 1`,
+    ).get(threadId) as { origin: unknown } | undefined;
+    return row ? turnDispatchOrigin({ dispatchOrigin: row.origin }) : undefined;
+  }
+
+  /**
+   * Whether a person has, or may have, sent into `threadId`. Any turn start
+   * Station placed as a person's (`interactive`, #4512) or marked
+   * person-typed (`authoredBy`, #4827) counts, and so, read conservatively,
+   * does every steer whatever origin it carries (a steer inherits its turn's
+   * origin, so one a person sent from a surface that does not mark
+   * authorship reads as the turn's), except one Station itself delivered: a
+   * child's result, recorded with Station's internal actor and the
+   * server-stamped `delegation-result` sender (`DELEGATION_RESULT_CLIENT_ORIGIN`
+   * plus sender), which no person's request can carry. Also counted: any
+   * turn start that records no origin
+   * this build recognises (one from before the field existed, a newer
+   * Station's value). A turn the engine opened on its own
+   * (`PROVIDER_TURN_TRIGGER`) is demonstrably no one's send and never counts.
+   */
+  hasPersonTurn(threadId: string): boolean {
+    return (
+      this.readStatement(
+        `SELECT 1 FROM orchestration_events
+         WHERE thread_id = ? AND method = 'turn.started' AND json_valid(payload)
+           AND (json_extract(payload, '$.dispatchOrigin') = 'interactive'
+             OR json_extract(payload, '$.authoredBy') = 'person'
+             OR (COALESCE(json_extract(payload, '$.metadata.trigger'), '') <> '${PROVIDER_TURN_TRIGGER}'
+               AND ((json_extract(payload, '$.inputKind') = 'steer'
+                   AND NOT (COALESCE(json_extract(payload, '$.clientOrigin.actor.kind'), '') = 'internal'
+                     AND COALESCE(json_extract(payload, '$.clientOrigin.sender.kind'), '') = 'delegation-result'))
+                 OR (json_extract(payload, '$.inputKind') IS NOT 'steer'
+                   AND (json_extract(payload, '$.dispatchOrigin') IS NULL
+                     OR json_extract(payload, '$.dispatchOrigin') NOT IN (${KNOWN_TURN_DISPATCH_ORIGINS_SQL}))))))
+         LIMIT 1`,
+      ).get(threadId) !== undefined
+    );
   }
 
   /**
@@ -10307,8 +10573,120 @@ export class EventStore {
    */
   listSessionProjectionEventsForThreads(
     threadIds: readonly string[],
+    observe?: (outcome: SessionProjectionCacheOutcome) => void,
   ): Map<string, PersistedRuntimeEvent[]> {
     const uniqueThreadIds = [...new Set(threadIds)];
+    if (uniqueThreadIds.length === 0) {
+      observe?.({ refreshed: 0, reused: 0 });
+      return new Map();
+    }
+    const marks = this.sessionProjectionCacheMarks(uniqueThreadIds);
+    if (!marks) {
+      observe?.({ refreshed: uniqueThreadIds.length, reused: 0 });
+      return this.foldSessionProjectionEvents(uniqueThreadIds);
+    }
+    // #4992: the read model folds every readable thread on each list, and it
+    // is listed several times a second while any session streams. Only the
+    // threads whose mark moved are folded again.
+    const stale = uniqueThreadIds.filter(
+      (threadId) =>
+        this.cachedSessionProjection(threadId, marks)?.events === undefined,
+    );
+    observe?.({
+      refreshed: stale.length,
+      reused: uniqueThreadIds.length - stale.length,
+    });
+    let folded = new Map<string, PersistedRuntimeEvent[]>();
+    if (stale.length > 0) {
+      this.deferAttachmentHydration = true;
+      try {
+        folded = this.foldSessionProjectionEvents(stale);
+      } finally {
+        this.deferAttachmentHydration = false;
+      }
+      for (const threadId of stale) {
+        const events = folded.get(threadId) ?? [];
+        this.storeSessionProjection(threadId, marks, {
+          events: events.map(deepFreezeEvent),
+        });
+      }
+    }
+    const result = new Map<string, PersistedRuntimeEvent[]>();
+    for (const threadId of uniqueThreadIds) {
+      const events =
+        folded.get(threadId) ??
+        this.cachedSessionProjection(threadId, marks)?.events ??
+        [];
+      result.set(
+        threadId,
+        events.map((event) => this.hydrateAttachments(event)),
+      );
+    }
+    return result;
+  }
+
+  /**
+   * Each thread's highest `global_sequence`, the key of
+   * {@link sessionProjectionCache}, or `undefined` when no cache may be used
+   * for this read. A read inside an open transaction is never cached: a
+   * rollback would hand its global sequences to different events.
+   */
+  private sessionProjectionCacheMarks(
+    threadIds: readonly string[],
+  ): Map<string, number> | undefined {
+    if (this.cachesDisabled || this.db.isTransaction) return undefined;
+    // One min/max-optimised index seek per thread; a `GROUP BY` over the
+    // same index walks every row of each thread.
+    const statement = this.readStatement(
+      `SELECT MAX(global_sequence) AS highWater
+         FROM orchestration_events WHERE thread_id = ?`,
+    );
+    const marks = new Map<string, number>();
+    for (const threadId of threadIds) {
+      const row = statement.get(threadId) as
+        | { highWater: number | null }
+        | undefined;
+      if (typeof row?.highWater === 'number')
+        marks.set(threadId, row.highWater);
+      else this.sessionProjectionCache.delete(threadId);
+    }
+    return marks;
+  }
+
+  private cachedSessionProjection(
+    threadId: string,
+    marks: ReadonlyMap<string, number>,
+  ) {
+    const highWater = marks.get(threadId);
+    const entry = this.sessionProjectionCache.get(threadId);
+    if (highWater === undefined || entry?.highWater !== highWater)
+      return undefined;
+    this.sessionProjectionCache.delete(threadId);
+    this.sessionProjectionCache.set(threadId, entry);
+    return entry;
+  }
+
+  private storeSessionProjection(
+    threadId: string,
+    marks: ReadonlyMap<string, number>,
+    facts: { events?: readonly PersistedRuntimeEvent[]; eventCount?: number },
+  ): void {
+    const highWater = marks.get(threadId);
+    if (highWater === undefined) return;
+    const current = this.sessionProjectionCache.get(threadId);
+    const kept = current?.highWater === highWater ? current : { highWater };
+    this.sessionProjectionCache.delete(threadId);
+    this.sessionProjectionCache.set(threadId, { ...kept, ...facts });
+    while (this.sessionProjectionCache.size > SESSION_PROJECTION_CACHE_MAX) {
+      const oldest = this.sessionProjectionCache.keys().next().value;
+      if (oldest === undefined) break;
+      this.sessionProjectionCache.delete(oldest);
+    }
+  }
+
+  private foldSessionProjectionEvents(
+    uniqueThreadIds: readonly string[],
+  ): Map<string, PersistedRuntimeEvent[]> {
     const result = new Map<string, PersistedRuntimeEvent[]>();
     if (uniqueThreadIds.length === 0) return result;
 
@@ -11581,17 +11959,24 @@ export class EventStore {
    *
    * The cutoff is written once, atomically, before the first batch; a
    * resume or a second initializer reads that same cutoff and never
-   * recomputes it, and completion never changes it. Each bounded batch
-   * re-reads the cursor and completion under its own writer lock (doing
-   * nothing once another initializer has finished), projects only events up
-   * to the cutoff, and commits with its progress, so an interrupted start
-   * resumes where it stopped. Content appended after the cutoff is projected
-   * by its own append.
+   * recomputes it, and completion never changes it. The backfill walks the
+   * store's threads in id order: each thread's version is its newest readable
+   * event at or below the cutoff, found by walking back over the thread's
+   * own index, so the whole backfill reads each thread's tail once instead
+   * of rescanning the table per batch. Each bounded batch of threads re-reads
+   * the thread cursor and completion under its own writer lock (doing
+   * nothing once another initializer has finished) and commits with its
+   * progress, so an interrupted start resumes after the last committed
+   * thread. Content appended after the cutoff is projected by its own
+   * append. The MAX merge makes re-projecting a thread harmless, which is
+   * why a home that began the earlier global-sequence pass (its
+   * `cursor_sequence` part-way, no thread cursor) simply runs the thread
+   * pass from the first thread.
    *
    * It runs while the store opens. A failure (a writer holding the lock past
    * `busy_timeout`, an interrupted batch) fails the open, which leaves no
    * store; the next open reuses the durable cutoff and resumes at the
-   * committed cursor.
+   * committed thread cursor.
    */
   private ensureThreadContentProjection(): void {
     this.db.exec(
@@ -11604,13 +11989,26 @@ export class EventStore {
          cutoff_sequence INTEGER NOT NULL CHECK (cutoff_sequence >= 0),
          cursor_sequence INTEGER NOT NULL
            CHECK (cursor_sequence >= 0 AND cursor_sequence <= cutoff_sequence),
-         completed_at TEXT
+         completed_at TEXT,
+         cursor_thread_id TEXT
        );`,
     );
     this.faults.threadContentMigrationStart?.();
     // The cutoff is written once: a resume or a second initializer reuses it.
     this.db.exec('BEGIN IMMEDIATE');
     try {
+      // A home that began the earlier global-sequence pass has no thread
+      // cursor column; adding it under the writer lock keeps two
+      // initializers from racing to add it.
+      const hasThreadCursor = (
+        this.db
+          .prepare('PRAGMA table_info(orchestration_thread_content_migration)')
+          .all() as { name: string }[]
+      ).some((column) => column.name === 'cursor_thread_id');
+      if (!hasThreadCursor)
+        this.db.exec(
+          'ALTER TABLE orchestration_thread_content_migration ADD COLUMN cursor_thread_id TEXT',
+        );
       const begun = this.db
         .prepare(
           'SELECT 1 AS begun FROM orchestration_thread_content_migration WHERE singleton = 1',
@@ -11630,32 +12028,37 @@ export class EventStore {
       throw error;
     }
     const readMigration = this.db.prepare(
-      `SELECT cutoff_sequence, cursor_sequence, completed_at
+      `SELECT cutoff_sequence, cursor_thread_id, completed_at
        FROM orchestration_thread_content_migration WHERE singleton = 1`,
     );
-    const project = this.db.prepare(
-      `INSERT INTO orchestration_thread_content (thread_id, content_sequence)
-       SELECT e.thread_id, MAX(e.global_sequence)
-       FROM orchestration_events e
-       WHERE e.global_sequence > ? AND e.global_sequence <= ?
-         AND ${READABLE_CONTENT_EVENT_SQL}
-       GROUP BY e.thread_id
-       ON CONFLICT(thread_id) DO UPDATE SET
-         content_sequence = MAX(content_sequence, excluded.content_sequence)`,
+    const firstThread = this.db.prepare(
+      'SELECT MIN(thread_id) AS thread_id FROM orchestration_events',
     );
+    const nextThread = this.db.prepare(THREAD_CONTENT_BACKFILL_NEXT_THREAD_SQL);
+    const project = this.db.prepare(THREAD_CONTENT_BACKFILL_PROJECT_SQL);
     const advance = this.db.prepare(
       `UPDATE orchestration_thread_content_migration
-       SET cursor_sequence = ?, completed_at = ?
+       SET cursor_thread_id = ?
        WHERE singleton = 1 AND completed_at IS NULL`,
     );
+    // Completion leaves the legacy sequence cursor at the cutoff, so the
+    // row reads finished to any reader of either cursor.
+    const complete = this.db.prepare(
+      `UPDATE orchestration_thread_content_migration
+       SET cursor_thread_id = ?, cursor_sequence = cutoff_sequence,
+           completed_at = ?
+       WHERE singleton = 1 AND completed_at IS NULL`,
+    );
+    const threadOf = (row: unknown): string | null =>
+      (row as { thread_id: string | null } | undefined)?.thread_id ?? null;
     while (true) {
-      let cursor: number;
+      let cursor: string | null;
       let finished: boolean;
       this.db.exec('BEGIN IMMEDIATE');
       try {
         const migration = readMigration.get() as {
           cutoff_sequence: number;
-          cursor_sequence: number;
+          cursor_thread_id: string | null;
           completed_at: string | null;
         };
         if (migration.completed_at !== null) {
@@ -11663,18 +12066,30 @@ export class EventStore {
           return;
         }
         const cutoff = Number(migration.cutoff_sequence);
-        const from = Number(migration.cursor_sequence);
-        cursor = Math.min(from + THREAD_CONTENT_BACKFILL_BATCH, cutoff);
-        finished = cursor >= cutoff;
-        project.run(from, cursor);
-        advance.run(cursor, finished ? new Date().toISOString() : null);
+        cursor = migration.cursor_thread_id;
+        let thread = threadOf(
+          cursor === null ? firstThread.get() : nextThread.get(cursor),
+        );
+        for (
+          let projected = 0;
+          thread !== null && projected < THREAD_CONTENT_BACKFILL_BATCH;
+          projected += 1
+        ) {
+          project.run(thread, cutoff);
+          cursor = thread;
+          thread = threadOf(nextThread.get(thread));
+        }
+        finished = thread === null;
+        if (finished) complete.run(cursor, new Date().toISOString());
+        else advance.run(cursor);
         this.db.exec('COMMIT');
       } catch (error) {
         this.db.exec('ROLLBACK');
         throw error;
       }
       if (finished) return;
-      this.faults.threadContentBackfillBatch?.(cursor);
+      // A batch that did not finish projected at least one thread.
+      this.faults.threadContentBackfillBatch?.(cursor as string);
     }
   }
 
@@ -11894,8 +12309,44 @@ export class EventStore {
    * callers read a missing entry as zero — the same answer
    * `countEventsByThread` gives a threadless id.
    */
-  countEventsByThreads(threadIds: readonly string[]): Map<string, number> {
+  countEventsByThreads(
+    threadIds: readonly string[],
+    observe?: (outcome: SessionProjectionCacheOutcome) => void,
+  ): Map<string, number> {
     const uniqueThreadIds = [...new Set(threadIds)];
+    if (uniqueThreadIds.length === 0) {
+      observe?.({ refreshed: 0, reused: 0 });
+      return new Map();
+    }
+    const marks = this.sessionProjectionCacheMarks(uniqueThreadIds);
+    if (!marks) {
+      observe?.({ refreshed: uniqueThreadIds.length, reused: 0 });
+      return this.queryEventCountsByThreads(uniqueThreadIds);
+    }
+    // #4992: a count only moves with the thread's mark, so only threads whose
+    // mark moved are counted again. A thread without a mark has no events.
+    const counts = new Map<string, number>();
+    const stale: string[] = [];
+    for (const threadId of uniqueThreadIds) {
+      if (!marks.has(threadId)) continue;
+      const cached = this.cachedSessionProjection(threadId, marks)?.eventCount;
+      if (cached === undefined) stale.push(threadId);
+      else counts.set(threadId, cached);
+    }
+    // A thread without a mark has no events and needs no query: neither.
+    observe?.({ refreshed: stale.length, reused: counts.size });
+    const counted = this.queryEventCountsByThreads(stale);
+    for (const threadId of stale) {
+      const eventCount = counted.get(threadId) ?? 0;
+      this.storeSessionProjection(threadId, marks, { eventCount });
+      if (eventCount > 0) counts.set(threadId, eventCount);
+    }
+    return counts;
+  }
+
+  private queryEventCountsByThreads(
+    uniqueThreadIds: readonly string[],
+  ): Map<string, number> {
     const counts = new Map<string, number>();
     if (uniqueThreadIds.length === 0) return counts;
     for (const chunk of this.chunkArray(
@@ -16752,6 +17203,12 @@ export class EventStore {
     return this.agentSchedule;
   }
 
+  /** #4830: agent-proposed Automation sources and rules (`automation-proposals.ts`). */
+  automationProposalStore(): AutomationProposalStore {
+    this.automationProposals ??= createSqliteAutomationProposalStore(this.db);
+    return this.automationProposals;
+  }
+
   /** #3628: coordinator designations and their wakes (`coordinator-session.ts`). */
   coordinatorStore(): CoordinatorStore {
     this.coordinator ??= createSqliteCoordinatorStore(this.db);
@@ -18576,6 +19033,25 @@ export class EventStore {
       .get() as { max_sequence: number };
     return row.max_sequence + 1;
   }
+}
+
+/**
+ * Freezes a cached projection row and everything it holds (#4992). The cache
+ * hands the same objects to every later read, so a caller that mutated one
+ * would change another request's answer; frozen, it fails where it writes.
+ */
+function deepFreezeEvent(event: PersistedRuntimeEvent): PersistedRuntimeEvent {
+  const pending: object[] = [event];
+  const seen = new Set<object>();
+  while (pending.length > 0) {
+    const value = pending.pop()!;
+    if (seen.has(value)) continue;
+    seen.add(value);
+    Object.freeze(value);
+    for (const child of Object.values(value))
+      if (child !== null && typeof child === 'object') pending.push(child);
+  }
+  return event;
 }
 
 function parsePersistedTenantExecutionContext(value: unknown) {

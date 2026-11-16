@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { WORKSPACE_ACTIVITY_PANE_DESCRIPTOR } from '../workspace-activity-pane.js';
+import { WORKSPACE_AGENTS_PANE_DESCRIPTOR } from '../workspace-agents-pane.js';
 import { WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR } from '../workspace-browser-preview.js';
 import { WORKSPACE_CHAT_PANE_DESCRIPTOR } from '../workspace-chat-pane.js';
 import {
@@ -23,7 +23,7 @@ import {
 } from '../workspace-task-room.js';
 
 const BUILTIN_DESCRIPTORS = [
-  WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
+  WORKSPACE_AGENTS_PANE_DESCRIPTOR,
   WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR,
   WORKSPACE_CHAT_PANE_DESCRIPTOR,
   WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR,
@@ -56,7 +56,7 @@ describe('built-in Workspace Pane ambient satisfiability', () => {
           ).length > 0,
       ).map((descriptor) => descriptor.id),
     ).toEqual([
-      WORKSPACE_ACTIVITY_PANE_DESCRIPTOR.id,
+      WORKSPACE_AGENTS_PANE_DESCRIPTOR.id,
       WORKSPACE_CHAT_PANE_DESCRIPTOR.id,
       WORKSPACE_HOME_PANE_DESCRIPTOR.id,
     ]);

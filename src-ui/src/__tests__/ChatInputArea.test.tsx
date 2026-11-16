@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { APPEARANCE_HOOKS } from '@kontourai/station-contracts/custom-appearance';
 import { CHAT_INPUT_MAX_CHARS } from '@shared/chat-input-limits';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -24,6 +25,10 @@ import {
   startConversationReferenceDrag,
 } from '../components/chat/conversationReferenceDrag';
 import { deviceSettingsStore } from '../lib/device-settings-store';
+
+/** A custom-appearance hook selector, from the contract (APPEARANCE_HOOKS). */
+const appearanceHook = (id: string) =>
+  APPEARANCE_HOOKS.find((hook) => hook.id === id)!.selector;
 
 const fetchConversationInventory = vi.hoisted(() => vi.fn());
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
@@ -128,6 +133,8 @@ function renderChatInputArea(overrides: Record<string, unknown> = {}) {
   };
 
   render(<ChatInputArea {...props} />);
+  if (props.modelQuery === null)
+    fireEvent.click(screen.getByTestId('run-setup-trigger'));
   return props;
 }
 
@@ -150,6 +157,12 @@ describe('ChatInputArea', () => {
     expect(
       screen.getByRole('button', { name: 'Stop the current turn' }),
     ).toBeTruthy();
+  });
+
+  test('renders the composer custom-appearance hook around its text box', () => {
+    renderChatInputArea();
+    const composer = document.querySelector(appearanceHook('composer'));
+    expect(composer?.contains(screen.getByRole('textbox'))).toBe(true);
   });
 
   test('an explicit Queue choice wins over the native steer default', () => {
@@ -395,9 +408,7 @@ describe('ChatInputArea', () => {
       </QueryClientProvider>,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Composer actions' }));
-    fireEvent.click(
-      screen.getByRole('menuitem', { name: 'Reference conversation…' }),
-    );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reference chat…' }));
     const option = await screen.findByRole('option', {
       name: /Conversation A/,
     });
@@ -421,7 +432,7 @@ describe('ChatInputArea', () => {
     );
     await waitFor(() =>
       expect(
-        screen.queryByRole('dialog', { name: 'Reference a conversation' }),
+        screen.queryByRole('dialog', { name: 'Reference a chat' }),
       ).toBeNull(),
     );
     fireEvent.drop(screen.getByRole('textbox'), { dataTransfer });
@@ -539,9 +550,7 @@ describe('ChatInputArea', () => {
       </QueryClientProvider>,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Composer actions' }));
-    fireEvent.click(
-      screen.getByRole('menuitem', { name: 'Reference conversation…' }),
-    );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reference chat…' }));
     const option = await screen.findByRole('option', {
       name: /Conversation A/,
     });
@@ -561,7 +570,7 @@ describe('ChatInputArea', () => {
       '@[r:Conversation%20A|conversation-a||authority-a] ',
     );
     expect(
-      screen.queryByRole('dialog', { name: 'Reference a conversation' }),
+      screen.queryByRole('dialog', { name: 'Reference a chat' }),
     ).toBeNull();
     expect(document.activeElement).toBe(textarea);
   });
@@ -885,7 +894,7 @@ describe('ChatInputArea', () => {
     });
 
     const model = screen.getByRole('button', {
-      name: /Unavailable: This Agent reports no selectable models\./,
+      name: /^Engine & model:.*Unavailable: This Agent reports no selectable models\./,
     });
     expect(model.getAttribute('aria-disabled')).toBe('true');
     model.focus();
@@ -1138,6 +1147,7 @@ describe('ChatInputArea', () => {
     }
 
     render(<OfflineComposer />);
+    fireEvent.click(screen.getByTestId('run-setup-trigger'));
     fireEvent.click(screen.getByRole('button', { name: /^Engine & model/ }));
 
     expect(await screen.findByRole('dialog', { name: 'Model' })).toBeTruthy();
@@ -1225,7 +1235,7 @@ describe('ChatInputArea', () => {
     // (docs/design/chat-composer.md §3.3) — the visible identity spans are
     // aria-hidden, so the name has to carry the selection itself.
     const modelButton = screen.getByRole('button', {
-      name: /OpenCode.*Big Pickle/,
+      name: /^Engine & model:.*OpenCode.*Big Pickle/,
     });
     expect(modelButton.getAttribute('aria-label')).toContain('OpenCode');
     expect(modelButton.getAttribute('aria-label')).toContain('Big Pickle');
@@ -1601,6 +1611,8 @@ describe('ChatInputArea', () => {
 
     // Start an escalation on session A — opens the mode sheet and picks full
     // access, which must land on the confirm step rather than applying.
+    if (!screen.queryByRole('dialog', { name: 'Run setup' }))
+      fireEvent.click(screen.getByTestId('run-setup-trigger'));
     fireEvent.click(screen.getByRole('button', { name: /^Approval mode:/ }));
     // The mode sheet is lazy-loaded; wait for it rather than the Suspense null.
     await screen.findByRole('radiogroup', { name: 'Approval mode' });
@@ -2376,4 +2388,117 @@ describe('ChatInputArea queued-retry Discard', () => {
       expect(onDiscard).not.toHaveBeenCalled();
     },
   );
+});
+
+test.each([undefined, 'claude'])(
+  'reply setup uses provider identity %s without connection initials',
+  async (executionEngineId) => {
+    renderChatInputArea({
+      agentConnectionId: 'my-saved-connection',
+      executionEngineId,
+      executionEngineLabel: 'Engine',
+      agentLabel: 'Writer',
+      agentIcon: <span>Agent mark</span>,
+    });
+    const trigger = screen.getByTestId('run-setup-trigger');
+    await waitFor(() =>
+      expect(trigger.querySelector('[data-brand-key="claude"]') !== null).toBe(
+        executionEngineId === 'claude',
+      ),
+    );
+    expect(trigger.textContent).not.toContain('EN');
+    // The Agent mark names the Agent; the visible text is the Model's.
+    expect(trigger.textContent).not.toContain('Writer');
+    expect(trigger.getAttribute('aria-label')).toMatch(/^Writer ·/);
+  },
+);
+
+test.each([
+  { currentExecutionAgentId: 'other-engine' },
+  { currentModelSource: 'session override', currentModel: 'claude-sonnet' },
+])(
+  'reply setup exposes a conversation override independently of approval state: %j',
+  (override) => {
+    renderChatInputArea(override);
+    const trigger = screen.getByTestId('run-setup-trigger');
+    expect(trigger.textContent).not.toContain('⚠');
+    expect(trigger.textContent).toContain('·');
+    expect(trigger.getAttribute('aria-label')).toContain(
+      'changed for this conversation',
+    );
+  },
+);
+
+test('reply setup omits an unresolved model instead of naming Model', () => {
+  renderChatInputArea({
+    agentLabel: 'Writer',
+    currentModel: undefined,
+    agentDefaultModel: undefined,
+    availableModels: [],
+  });
+  expect(
+    screen
+      .getByTestId('run-setup-trigger')
+      .querySelector('.composer-choice__value')?.textContent,
+  ).toBe('Writer');
+});
+
+test('ACP reply setup uses the connection engine mark', async () => {
+  renderChatInputArea({
+    executionEngineId: 'acp',
+    acpApproval: {
+      engineId: 'opencode',
+      engineName: 'OpenCode',
+      control: 'station',
+    },
+  });
+  await waitFor(() =>
+    expect(
+      screen
+        .getByTestId('run-setup-trigger')
+        .querySelector('[data-brand-key="opencode"]'),
+    ).not.toBeNull(),
+  );
+});
+
+test('reply setup names a requested effort after the model, never a guessed one', () => {
+  const models = [
+    {
+      id: 'claude-opus',
+      name: 'Opus',
+      capabilities: {
+        supportsEffort: true,
+        supportedEffortLevels: ['low', 'medium', 'high'],
+      },
+    },
+  ];
+  renderChatInputArea({
+    agentLabel: 'Claude Code',
+    agentIcon: <span>Agent mark</span>,
+    agentDefaultModel: 'claude-opus',
+    availableModels: models,
+    modelRuntimeOptions: { effort: 'high' },
+  });
+  const trigger = screen.getByTestId('run-setup-trigger');
+  expect(
+    trigger.querySelector('.composer-run-control__label')?.textContent,
+  ).toBe('Opus · High');
+  expect(trigger.getAttribute('aria-label')).toMatch(
+    /^Claude Code · Opus · High/,
+  );
+  cleanup();
+
+  // Nothing requested: the engine default applies, so no level is named.
+  renderChatInputArea({
+    agentLabel: 'Claude Code',
+    agentIcon: <span>Agent mark</span>,
+    agentDefaultModel: 'claude-opus',
+    availableModels: models,
+    modelRuntimeOptions: {},
+  });
+  expect(
+    screen
+      .getByTestId('run-setup-trigger')
+      .querySelector('.composer-run-control__label')?.textContent,
+  ).toBe('Opus');
 });

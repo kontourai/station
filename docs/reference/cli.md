@@ -1233,8 +1233,9 @@ session start, then retain the accepted selector for an omitted resume or turn.
 An explicit replacement is catalog-validated before execution.
 Claude and Codex accept only lifecycle points their adapters declare. ACP can
 apply a start-time selection only when the new session's option catalog offers
-it and the engine confirms the exact selected value. ACP resume and per-turn
-model changes remain unsupported. Requested, applied and reported model facts
+it and the engine confirms the exact selected value. On a resume, ACP applies the
+conversation's model again where the resumed session offers it and differs;
+per-turn model changes remain unsupported. Requested, applied and reported model facts
 remain separate; see [model launch behavior](api.md#orchestration-model-launch-behavior).
 
 `--cwd=<path>` binds a **new** runtime session's `cwd` to an explicit
@@ -1996,7 +1997,11 @@ must be a persisted Agent ID whose execution binds to an external
 engine (for example `codex` or `kiro`) — approvals are an
 orchestration-session concept, and the provider is resolved from that binding.
 Station#979 AC5: resolution reads the connection's own
-`config.provider` (or `'acp'` for an ACP-transported connection), so an
+`config.provider`. For an ACP-transported connection that is the ACP-family
+engine the host projects (`opencode` for an OpenCode connection while the
+OpenCode native engine preview is on), else `'acp'`, as the server's
+execution-target resolver reads it. One such connection holds both `acp` and
+`opencode` chats, so `--agent` lists sessions of either. An
 ACP connection (Kiro, OpenCode) or a Bedrock connection is listable and
 respondable exactly like a `claude`/`codex`/`ollama` binding. No provider
 is inferred from Agent ID text. `--watch` is
@@ -2595,7 +2600,8 @@ running version, backs up the home once, and starts the new version as a
 trial. The backup holds Station's own state: every entry but the service
 manifests, `instances.json`, logs, monitoring, quarantine, `tmp` and the update
 restore marker `update-restore.json` (which the service and its updates own),
-versioned re-acquirable `media-tools/`, the default project directories under
+versioned re-acquirable `media-tools/` and `engines/` (pinned engine installs),
+the default project directories under
 `workspaces/`, real acquired working-copy
 directories at `repository-acquisitions/<request UUID>/checkout-N`, and the
 browser's `browser/chromium` and `browser/profiles`: an update neither copies
@@ -3660,8 +3666,9 @@ WAL and shared-memory sidecars are not copied. Symlinks in included content,
 corrupt databases, detected active instances, and
 configured size/count limits fail closed. Volatile logs, monitoring output,
 service state, temporary files, live instance records, and the top-level
-quarantine directory are excluded. Re-acquirable `media-tools/` downloads are
-also excluded; a restored home requires host tools or fresh download consent.
+quarantine directory are excluded. Re-acquirable `media-tools/` downloads and
+pinned `engines/` installs are also excluded; a restored home requires host
+tools or fresh download consent.
 See [media backup and rollback](../guides/local-speech.md#backup-and-update-rollback).
 Defaults are 100,000 entries (files and directories), 20 GiB total,
 and 2 GiB per file. This is a private local copy, not an encrypted export or a
@@ -4130,6 +4137,17 @@ provenance (`fullSha`, `shortSha`, `branch`, `builtAt`, `ageSeconds`,
 `instanceId`, `bootId`, `channel`, and `dirty`), redacted app configuration,
 and up to 256 KiB from the end of the current server log. Build provenance is
 additive within schema version 1 and omitted only when none is available.
+`sessionReadModel` (additive, #4992) carries per-purpose totals of session
+read model reads since the server process first read it: `since`,
+`observedAt`, and `byPurpose`, keyed by the caller's declared purpose (a
+closed vocabulary such as `session-list`, `sse-snapshot` or `attention`), with
+`reads`, `threadScopedReads`, `totalMs`/`maxTotalMs`, `buildMs`/`maxBuildMs`
+(the synchronous fold), `threadsConsidered`, and the event store cache's
+`projectionRefolded`/`projectionReused` and `countRefreshed`/`countReused`
+thread counts. It holds counts and durations only, never a session, user or
+thread identity. The same numbers are exported as the
+`station.orchestration.session_read_model.reads`, `.duration` and `.threads`
+OpenTelemetry metrics.
 When logging is not enabled,
 the payload explicitly contains:
 
@@ -4526,7 +4544,7 @@ station review read <project-slug> <receipt-id>
 
 `review run` requires a caller-generated `requestId` and implementing Agent slug. Explicit mode carries distinct reviewer Agent slugs; Repo Map mode carries `"reviewers":[]` plus `"selection":{"kind":"repo-map"}` and Station resolves trusted policy, eligible read-only reviewers, and pins the exact resolved Git SHAs. Unavailable routing or reviewers becomes durable `not-verified` with a server-owned reason; no reviewer is invoked and no clean receipt is fabricated. Station resolves actor identities; clients cannot declare attribution.
 
-The SDK gives each HTTP operation a 30-second bound, reads status after a submission failure, and retries the same request ID once if that read also fails. It then polls a running request every 500 ms; there is no CLI-wide review deadline. Completed results are printed, while terminal refused or indeterminate outcomes fail. `review status` reads the exact durable status directly.
+The SDK gives each HTTP operation a 30-second bound. An explicit `409 review_request_conflict` fails immediately without status recovery or retry. After other submission failures, it reads status and retries the same request ID once if that read also fails. It then polls a running request every 500 ms; there is no CLI-wide review deadline. Completed results are printed, while terminal refused or indeterminate outcomes fail. `review status` reads the exact durable status directly.
 
 Findings are evidence input only and do not approve, reject, satisfy a gate, or replace the completion gate. The station-control MCP exposes the same shared operations as `run_independent_review`, `get_review_request`, `list_review_receipts`, and `get_review_receipt`.
 

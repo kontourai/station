@@ -87,9 +87,9 @@ export function ChatEmptyState({
     const content = runtimeOnlyNeedsModel
       ? {
           title: `${agentName} needs a model connection`,
-          description:
-            'A coding engine is available, but this Station agent still needs a model connection before it can chat.',
-          actionLabel: 'Manage Connections',
+          // The heading and title already say what is missing.
+          description: '',
+          actionLabel: 'Manage connections',
           badges: [],
           actionTarget: 'providers' as const,
         }
@@ -108,7 +108,7 @@ export function ChatEmptyState({
       <div className="empty-state" data-testid="chat-empty-state-unconfigured">
         <h3>Connect a model to start chatting</h3>
         <p className="empty-state__detail">{content.title}</p>
-        <p>{content.description}</p>
+        {content.description && <p>{content.description}</p>}
         <button
           type="button"
           className="empty-state__cta"

@@ -699,7 +699,7 @@ export function AuthorityQueryProvider({
       return (
         <StationConnectingScreen
           key={`${observationKeyText}:loading`}
-          step="Loading Station"
+          step="Loading Station data"
           answered
         />
       );
