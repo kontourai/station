@@ -16,6 +16,7 @@ import {
   createRecoveryDispatchAdapter,
   type RecoveryDispatchAdapter,
   type RecoveryDispatchReplay,
+  RecoveryNotSentError,
 } from './recovery-dispatch-adapter.js';
 
 interface CredentialProfileRecoveryDeps {
@@ -179,8 +180,18 @@ export class CredentialProfileRecovery {
     signal: AbortSignal;
     credentialProfileRef?: string;
   }): Promise<{ turnId: string }> {
-    const { adapter, armedInternalStopTurnId } =
-      await this.deps.restartProviderSession(input);
+    // The pre-send boundary: until `adapter.sendTurn` is called below, no
+    // failure can have reached the provider's send, so each throws
+    // `RecoveryNotSentError`. A restart that fails (for example a signed-out
+    // account) is one of them.
+    let restarted: Awaited<ReturnType<typeof this.deps.restartProviderSession>>;
+    try {
+      restarted = await this.deps.restartProviderSession(input);
+    } catch (error) {
+      throw new RecoveryNotSentError(error);
+    }
+    const { adapter, armedInternalStopTurnId } = restarted;
+    let sendInvoked = false;
     // archive#3525 fix round FIX 1: the restart above only means the
     // provider process is back up, not that this turn actually redispatches
     // — if sendTurn itself now fails, nothing is retrying, and the armed
@@ -219,6 +230,7 @@ export class CredentialProfileRecovery {
         input.modelOptions,
       );
       await this.deps.assertRetainedWorkspaceAuthorized(input.threadId);
+      sendInvoked = true;
       result = await adapter.sendTurn({
         threadId: input.threadId,
         input: composeAmbientTurnText(input.ambientContext, input.input),
@@ -239,7 +251,7 @@ export class CredentialProfileRecovery {
         armedInternalStopTurnId,
         adapter.provider,
       );
-      throw error;
+      throw sendInvoked ? error : new RecoveryNotSentError(error);
     }
     this.deps.onTurnDispatched({
       provider: adapter.provider,

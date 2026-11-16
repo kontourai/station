@@ -2058,8 +2058,11 @@ in [contracts](contracts.md)). These routes serve the chat banner:
   pre-dispatch checks apply first. A `stopId` that is not the waiting stop
   answers `not-waiting` (a click from an older banner never acts on a newer
   stop). A profile not currently offered, one that no longer qualifies when
-  staged, or a restart refused before sending anything answers `not-switched`
-  and leaves the stop waiting for its reset. Both list or switch this Station's accounts, so they need the
+  staged, or a failure before the replay reaches the engine's send (the
+  account is rolled back and the session restarted on the connection's
+  account) answers `not-switched` and leaves the stop waiting for its reset.
+  A failure after the send was called answers `failed`, and the stop does not
+  resume on its own. Both list or switch this Station's accounts, so they need the
   `access:manage` pairing scope as well as the Session's own person.
 
 Every POST answers `{ result, recovery }`: `result.kind` is `resumed` (the

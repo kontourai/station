@@ -30,8 +30,25 @@ export interface RecoveryDispatchReplay {
   signal: AbortSignal;
 }
 
+/**
+ * Thrown by an execution Adapter for a failure it can prove came before the
+ * provider was asked to send anything: the replay was never handed to the
+ * provider's send. Every failure after that call stays indeterminate.
+ */
+export class RecoveryNotSentError extends Error {
+  constructor(cause: unknown) {
+    // Keeps the underlying message: callers and logs still see why.
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+    this.name = 'RecoveryNotSentError';
+  }
+}
+
 type RecoveryDispatchOutcome =
-  | { kind: 'rejected' }
+  /**
+   * Definitely not sent. `sessionTouched`: the session restart had begun, so
+   * the caller must put the session back before anything else uses it.
+   */
+  | { kind: 'rejected'; sessionTouched?: true }
   | { kind: 'accepted'; turnId: string }
   | { kind: 'observed'; turnId: string }
   | { kind: 'indeterminate' };
@@ -65,8 +82,10 @@ export function createRecoveryDispatchAdapter(
         return execution.providerAcceptsResponse(intent.provider)
           ? { kind: 'accepted', turnId: result.turnId }
           : { kind: 'observed', turnId: result.turnId };
-      } catch {
-        return { kind: 'indeterminate' };
+      } catch (error) {
+        return error instanceof RecoveryNotSentError
+          ? { kind: 'rejected', sessionTouched: true }
+          : { kind: 'indeterminate' };
       }
     },
     ...(execution.interrupt ? { interrupt: execution.interrupt } : {}),

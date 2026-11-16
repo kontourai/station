@@ -337,7 +337,11 @@ class CredentialRecoveryImplementation implements CredentialRecoveryModule {
       }
       if (outcome.kind === 'rejected') {
         const rolledBack = await this.rollback(claimed, 'adoption_failed');
-        if (!rolledBack) {
+        // A restart that began before failing left the session down or on
+        // the candidate; put it back on the connection's own account.
+        const restored =
+          !outcome.sessionTouched || (await this.restoreOrQuarantine(claimed));
+        if (!rolledBack || !restored) {
           const marked = this.markCompensationRequired(claimed);
           if (marked.kind !== 'applied') return { kind: 'indeterminate' };
           return { kind: 'indeterminate' };

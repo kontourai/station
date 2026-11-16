@@ -1620,18 +1620,20 @@ enrolled profile that automatic recovery could select (same routing, not the
 active profile). The first takes the banner's free button slot; the rest sit in
 its actions menu. Choosing one runs the same stage, restart and replay as
 automatic recovery, with the click in place of the `automatic` opt-in, and
-switches the connection's active profile like any profile application, so
-later chats on that connection use it too; the button's tooltip and the
-resuming line say so.
+switches the connection's active profile like any profile application: every
+chat that starts or restarts on that connection without its own pinned profile
+uses it, including other people's chats and restored ones. The button's
+tooltip and the resuming line say so.
 Station does not know whether that account is limited too; if it is, the
 replay stops on its own usage limit. An `allowancePreference` does not rank or
-exclude these choices. A profile that no longer qualifies, or a restart the
-engine refuses before sending anything, rolls the account back and leaves the
-stop waiting for its reset. When Station cannot tell whether the replay went
-out (the restarted session failed partway, for example a signed-out account),
-the stop ends as "may not have gone through" and does not resume on its own,
-so the turn is never sent twice. Nothing is offered while automatic recovery
-is paused (see above).
+exclude these choices. A profile that no longer qualifies leaves the stop
+waiting. So does a failure before the replay reaches the engine's send (for
+example the chosen account is signed out and its session cannot start):
+Station rolls the account back, restarts the session on the connection's
+account and keeps the reset. A failure after the send was called stops as
+"may not have gone through" and does not resume on its own, so the turn is
+never sent twice. Nothing is offered while automatic recovery is paused (see
+above).
 
 Claude Code offers no account here: its adapter declares profile application
 `unsupported`, because `CLAUDE_CONFIG_DIR` does not isolate the macOS Keychain

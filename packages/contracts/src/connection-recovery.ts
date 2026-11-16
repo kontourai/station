@@ -291,9 +291,11 @@ export interface UsageLimitContinueOnProfile {
  */
 export interface UsageLimitContinueOnOptions {
   /**
-   * Opaque identity of the waiting stop these accounts are offered for;
-   * present whenever `profiles` is not empty. "Continue on" sends it back, and
-   * a stop that is no longer the waiting one refuses the click.
+   * Equality token for the waiting stop these accounts are offered for;
+   * present whenever `profiles` is not empty. "Continue on" sends it back
+   * unchanged, and a stop that is no longer the waiting one refuses the click.
+   * It is derived from Session and turn ids, so it is neither secret nor
+   * unguessable and grants nothing; clients must not parse it.
    */
   stopId?: string;
   profiles: UsageLimitContinueOnProfile[];

@@ -23,9 +23,13 @@ const NOTICE_MS = 10_000;
 const SETTLE_MS = 1_500;
 const MAX_TIMER_MS = 2 ** 31 - 1 - SETTLE_MS;
 
-/** "Continue on" switches the connection's account, not this chat's alone. */
+/**
+ * "Continue on" changes the connection's active account: every chat that
+ * starts or restarts on it without its own pinned profile uses it, including
+ * other people's and restored chats.
+ */
 const SWITCH_DISCLOSURE =
-  "Changes this engine connection's account for later chats too.";
+  'Chats that start or restart on this connection use this account, for everyone.';
 
 const RETIRED_COPY: Record<ConnectionRecoveryOutcomeReason, string> = {
   'auto-resume-off': 'Auto-resume is off.',
@@ -144,8 +148,14 @@ function UsageLimitBannerFor({
     enabled,
   });
   const [notSwitched, setNotSwitched] = useState(false);
-  /** The account a switch went to, said once the stop resumes on it. */
-  const [switchedTo, setSwitchedTo] = useState<string | null>(null);
+  /**
+   * The account a switch went to, for the stop it was made on: a later stop
+   * in this conversation never reports it.
+   */
+  const [switched, setSwitched] = useState<{
+    stopId: string;
+    label: string;
+  } | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [notice, setNotice] = useState<string | null>(null);
   const wasEngaged = useRef(false);
@@ -191,6 +201,8 @@ function UsageLimitBannerFor({
       wasEngaged.current = true;
       setEngaged(true);
       setNotice(null);
+      // A switch resumes its own stop, so a stop waiting again is a new one.
+      setSwitched(null);
       return;
     }
     // A stop no longer waiting cannot still be "not switched".
@@ -243,8 +255,8 @@ function UsageLimitBannerFor({
           data-testid="usage-limit-banner"
         >
           <p className="usage-limit-banner__body" role="status">
-            {switchedTo
-              ? `Resuming on ${switchedTo}. New chats on this connection use it too.`
+            {switched
+              ? `Resuming on ${switched.label}, now this connection’s account for everyone.`
               : 'Resuming this conversation…'}
           </p>
         </section>
@@ -295,7 +307,8 @@ function UsageLimitBannerFor({
       {
         onSuccess: ({ result }) => {
           setNotSwitched(result?.kind === 'not-switched');
-          if (result?.kind === 'resumed') setSwitchedTo(label);
+          if (result?.kind === 'resumed')
+            setSwitched({ stopId: continueOnStopId, label });
         },
       },
     );

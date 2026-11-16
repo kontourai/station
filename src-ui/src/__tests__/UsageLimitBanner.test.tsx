@@ -625,14 +625,14 @@ describe('UsageLimitBanner (#3157)', () => {
 
       // The account is the connection's, not this chat's alone.
       expect(continueOn.getAttribute('title')).toBe(
-        "Changes this engine connection's account for later chats too.",
+        'Chats that start or restart on this connection use this account, for everyone.',
       );
 
       fireEvent.click(continueOn);
 
       expect(
         await screen.findByText(
-          'Resuming on Work. New chats on this connection use it too.',
+          'Resuming on Work, now this connection’s account for everyone.',
         ),
       ).not.toBeNull();
       expect(continueOnBodies).toEqual([
@@ -641,6 +641,40 @@ describe('UsageLimitBanner (#3157)', () => {
       expect(posts().map((call) => call.url)).toEqual([
         `${API}/api/orchestration/sessions/${THREAD}/usage-limit/continue-on`,
       ]);
+    });
+
+    test('a later stop that resumes on the same account never reports the earlier switch', async () => {
+      const manual = () => ({
+        recovery: projection({
+          decision: 'manual',
+          outcome: 'manual',
+          dueAt: undefined,
+        }),
+      });
+      answers.read = manual;
+      answers['continue-on-read'] = () => work;
+      const { rerenderWith } = renderBanner();
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Continue on Work' }),
+      );
+      expect(
+        await screen.findByText(
+          'Resuming on Work, now this connection’s account for everyone.',
+        ),
+      ).not.toBeNull();
+
+      // A new stop in the same conversation, then a plain Resume now.
+      answers.read = manual;
+      answers['continue-on-read'] = () => ({ ...work, stopId: 'stop-2' });
+      rerenderWith({ eventCount: 5 });
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Resume now' }),
+      );
+
+      expect(
+        await screen.findByText('Resuming this conversation…'),
+      ).not.toBeNull();
+      expect(screen.queryByText(/Resuming on Work/)).toBeNull();
     });
 
     test('when both labelled slots are taken, the account waits behind the actions menu', async () => {

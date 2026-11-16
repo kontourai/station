@@ -9,6 +9,7 @@ import {
   credentialProfileApplication,
   recoveryAdmissionRefused,
 } from '../../../telemetry/metrics.js';
+import { CredentialProfileRecovery } from '../credential-profile-recovery.js';
 import type {
   CredentialReceiptAcknowledgement,
   CredentialSettlementOutcome,
@@ -888,6 +889,10 @@ describe('SessionRecoveryCoordinator', () => {
       extra: {
         recoveryDispatchAdapter?: RecoveryDispatchAdapter;
         rollback?: TestCredentialRecoveryAdapter['rollback'];
+        restoreSession?: (input: {
+          threadId: string;
+          signal: AbortSignal;
+        }) => Promise<void>;
       } = {},
     ) {
       vi.useFakeTimers({ now: STOPPED_AT });
@@ -912,6 +917,9 @@ describe('SessionRecoveryCoordinator', () => {
         },
         ...(extra.recoveryDispatchAdapter
           ? { recoveryDispatchAdapter: extra.recoveryDispatchAdapter }
+          : {}),
+        ...(extra.restoreSession
+          ? { restoreSession: extra.restoreSession }
           : {}),
         autoResume,
         resumeChoices: store.usageLimitResumeChoices(),
@@ -1108,6 +1116,139 @@ describe('SessionRecoveryCoordinator', () => {
       );
       expect(sendTurn).toHaveBeenCalledOnce();
       expect(restartResume).not.toHaveBeenCalled();
+      await coordinator.dispose();
+      store.close();
+      vi.useRealTimers();
+    });
+
+    /**
+     * The production execution Adapter (`CredentialProfileRecovery`'s own
+     * `createDispatchAdapter`), with only the service seams it calls stubbed:
+     * the provider session restart, the turn send and the ordinary send.
+     */
+    function productionDispatch(options: {
+      restart: (input: {
+        threadId: string;
+        credentialProfileRef?: string;
+      }) => Promise<void>;
+      providerSendTurn: () => Promise<{ turnId: string }>;
+    }) {
+      const providerSendTurn = vi.fn(options.providerSendTurn);
+      const restartProviderSession = vi.fn(
+        async (input: { threadId: string; credentialProfileRef?: string }) => {
+          await options.restart(input);
+          return {
+            adapter: { provider: 'codex', sendTurn: providerSendTurn } as any,
+          };
+        },
+      );
+      const dispatchSendTurn = vi.fn(async () => ({
+        turnId: 'same-account-turn',
+      }));
+      const recovery = new CredentialProfileRecovery({
+        dispatchSendTurn,
+        providerAcceptsResponse: () => true,
+        interruptRecoveredTurn: vi.fn(async () => undefined),
+        restartProviderSession,
+        reportRedispatchFailed: vi.fn(),
+        replayModelOptions: async (_threadId, _provider, modelOptions) =>
+          modelOptions,
+        assertRetainedWorkspaceAuthorized: async () => undefined,
+        replayConfinement: () => ({ mode: 'none' }) as any,
+        onTurnDispatched: vi.fn(),
+        forgetCoalescedThread: vi.fn(),
+        markThreadQuarantined: vi.fn(),
+        sessionAdapterFor: () => undefined,
+        loadedProviderFor: () => undefined,
+        providerForThread: () => undefined,
+        forgetThreadState: vi.fn(),
+        markSessionClosed: vi.fn() as any,
+        logger: { warn: vi.fn() },
+      });
+      return {
+        recovery,
+        restartProviderSession,
+        providerSendTurn,
+        dispatchSendTurn,
+      };
+    }
+
+    test('with the production adapter, a restart that fails before any send rolls the account back, restores the session and leaves the stop waiting', async () => {
+      const rollback = vi.fn(async () => ({ kind: 'rolled-back' as const }));
+      const production = productionDispatch({
+        // The chosen account is signed out: its session cannot start.
+        restart: async ({ credentialProfileRef }) => {
+          if (credentialProfileRef) throw new Error('not signed in');
+        },
+        providerSendTurn: async () => ({ turnId: 'never' }),
+      });
+      const { store, coordinator } = setup(consentedOnly, () => true, {
+        rollback,
+        recoveryDispatchAdapter: production.recovery.createDispatchAdapter(),
+        restoreSession: (input) => production.recovery.restoreSession(input),
+      });
+      stopOnUsageLimit(store, coordinator);
+      await vi.advanceTimersByTimeAsync(0);
+
+      await expect(
+        coordinator.continueUsageLimitOnProfile(
+          THREAD,
+          'work',
+          stopIdOf(coordinator),
+        ),
+      ).resolves.toEqual({ kind: 'not-switched' });
+      expect(production.providerSendTurn).not.toHaveBeenCalled();
+      expect(rollback).toHaveBeenCalledOnce();
+      // The failed restart, then the restore on the connection's own account.
+      expect(
+        production.restartProviderSession.mock.calls.map(
+          ([input]) => input.credentialProfileRef,
+        ),
+      ).toEqual(['work', undefined]);
+      expect(coordinator.latestProjection(THREAD)).toMatchObject({
+        outcome: 'armed',
+        dueAt: RESET_AT,
+      });
+
+      await vi.advanceTimersByTimeAsync(
+        Date.parse(RESET_AT) - STOPPED_AT.getTime() + 1_000,
+      );
+      expect(production.dispatchSendTurn).toHaveBeenCalledOnce();
+      expect(production.providerSendTurn).not.toHaveBeenCalled();
+      await coordinator.dispose();
+      store.close();
+      vi.useRealTimers();
+    });
+
+    test('with the production adapter, a send that throws after it was invoked stays indeterminate and never resumes on its own', async () => {
+      const production = productionDispatch({
+        restart: async () => undefined,
+        providerSendTurn: async () => {
+          throw new Error('connection reset mid-send');
+        },
+      });
+      const { store, coordinator } = setup(consentedOnly, () => true, {
+        recoveryDispatchAdapter: production.recovery.createDispatchAdapter(),
+        restoreSession: (input) => production.recovery.restoreSession(input),
+      });
+      stopOnUsageLimit(store, coordinator);
+      await vi.advanceTimersByTimeAsync(0);
+
+      await expect(
+        coordinator.continueUsageLimitOnProfile(
+          THREAD,
+          'work',
+          stopIdOf(coordinator),
+        ),
+      ).resolves.toEqual({ kind: 'failed' });
+      expect(production.providerSendTurn).toHaveBeenCalledOnce();
+      expect(coordinator.latestProjection(THREAD)?.outcome).not.toBe('armed');
+
+      await vi.advanceTimersByTimeAsync(
+        Date.parse(RESET_AT) - STOPPED_AT.getTime() + 60_000,
+      );
+      expect(production.dispatchSendTurn).not.toHaveBeenCalled();
+      expect(production.providerSendTurn).toHaveBeenCalledOnce();
       await coordinator.dispose();
       store.close();
       vi.useRealTimers();
