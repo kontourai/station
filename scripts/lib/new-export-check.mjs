@@ -13,8 +13,8 @@
  * 2. Export names those files gain: declarations (`export const|let|var|
  *    function|async function|class|abstract class|type|interface|enum NAME`)
  *    and local export lists (`export { a, b as c }`, the exported name
- *    counts). `export default` and re-exports (`export … from`) are not
- *    collected. A name the same file already exported at the merge base is
+ *    counts). `export default` is not collected (no declaration keyword
+ *    follows `export`), nor are re-exports (`export … from`). A name the same file already exported at the merge base is
  *    inherited, not new.
  * 3. A name that no OTHER tracked file of the pushed commit contains as a
  *    whole word is a finding.
@@ -105,7 +105,6 @@ function exportedNames(lines) {
       }
       continue;
     }
-    if (/^\s*export\s+default\b/.test(line)) continue;
     const declared = DECLARATION.exec(line);
     if (declared) {
       names.push({
@@ -217,8 +216,11 @@ function modulesAt(sha) {
 }
 
 const IDENTIFIER = /[A-Za-z_$][\w$]*/g;
+// `typeof import('…')` is a type position, not a load, so it does not count.
 const WHOLE_IMPORT =
-  /(?:\*\s*as\s+[\w$]+\s+from\s*|\bimport\s*\(\s*|\brequire\s*\(\s*)['"]([^'"]+)['"]/g;
+  /(?:\*\s*as\s+[\w$]+\s+from\s*|(?<!typeof\s+)\bimport\s*\(\s*|\brequire\s*\(\s*)['"]([^'"]+)['"]/g;
+/** Block and line comments, roughly: a name only a comment mentions is not a use. */
+const COMMENTS = /\/\*[\s\S]*?\*\/|(^|[^:'"`\\])\/\/[^\n]*/g;
 const GLOB_IMPORT = /import\.meta\.glob\(\s*\[?\s*['"]([^'"]+)['"]/g;
 const withoutExtension = (path) => path.replace(/\.[^./]+$/, '');
 
@@ -308,11 +310,28 @@ export function newUnnamedExports({ base, sha }) {
       const files = namedIn.get(token);
       if (files) files.set(path, (files.get(path) ?? 0) + 1);
     }
+  // A file whose only mention of a name is in a comment does not use it.
+  // Comments are stripped only for the files that matched, and only then.
+  const texts = new Map(modules.map((entry) => [entry.path, entry.text]));
+  const codeMentions = (file, name) => {
+    let count = 0;
+    for (const [token] of texts
+      .get(file)
+      .replace(COMMENTS, '$1')
+      .matchAll(IDENTIFIER))
+      if (token === name) count++;
+    return count;
+  };
   const findings = candidates
     .filter(({ path, name, typeOnly }) => {
       if (entries.has(path) || wholeImports.has(path)) return false;
       const files = namedIn.get(name);
-      if ([...files.keys()].some((file) => file !== path)) return false;
+      if (
+        [...files.keys()].some(
+          (file) => file !== path && codeMentions(file, name) > 0,
+        )
+      )
+        return false;
       return !(typeOnly && (files.get(path) ?? 0) > 1);
     })
     .map(({ path, name }) => ({ path, name }));

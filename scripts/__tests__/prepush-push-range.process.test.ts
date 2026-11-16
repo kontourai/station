@@ -381,8 +381,8 @@ describe.skipIf(process.platform === 'win32')(
         const f = fixture();
         const head = f.commit(
           {
-            'scripts/tool.mjs': 'export const toolOption = 1;\n',
-            'package.json': `${JSON.stringify({ name: 'fixture', version: '1.0.0', type: 'module', main: 'src/index.ts', scripts: { tool: 'node scripts/tool.mjs' } })}\n`,
+            'tools/tool.mjs': 'export const toolOption = 1;\n',
+            'package.json': `${JSON.stringify({ name: 'fixture', version: '1.0.0', type: 'module', main: 'src/index.ts', scripts: { tool: 'node tools/tool.mjs' } })}\n`,
           },
           'feat: an entry script',
         );
@@ -435,6 +435,28 @@ describe.skipIf(process.platform === 'win32')(
         );
         expect(result.output).not.toContain('export Shape is not named');
         expect(result.output).not.toContain('export unit is not named');
+      },
+      TIMEOUT,
+    );
+
+    it(
+      'refuses an export that another file mentions only in a comment or a type-position import',
+      () => {
+        const f = fixture();
+        f.commit(
+          {
+            'src/b.ts':
+              "import { alsoUsed } from './a';\nexport function helper() {\n  return alsoUsed();\n}\nexport function onlyInComments() {\n  return 4;\n}\n",
+            'src/index.ts':
+              "import { used } from './a';\nimport { helper } from './b';\n// onlyInComments is described here but never called.\n/* nor here: onlyInComments */\ntype B = typeof import('./b');\nconsole.log(used(), helper());\n",
+          },
+          'feat: an export only comments mention',
+        );
+        const result = f.push();
+        expect(result.status).not.toBe(0);
+        expect(result.output).toContain(
+          '  src/b.ts: export onlyInComments is not named in any other file',
+        );
       },
       TIMEOUT,
     );
