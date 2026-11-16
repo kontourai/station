@@ -672,6 +672,7 @@ import {
   type PairingScopeContextStore,
   refusedOnWebSocket,
 } from '../../security/pairing-route-scopes.js';
+import { runtimeRemoteStationReadAuthority } from '../../security/remote-station-read-authority.js';
 import {
   attestedBrowserVisibleHost,
   attestedProxyPeerAddress,
@@ -874,6 +875,7 @@ import { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.j
 import { resolveWorkspaceIdentity } from '../../services/orchestration/workspace-identity.js';
 import { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
 import { PeerEnrollmentService } from '../../services/peers/peer-enrollment-service.js';
+import { PeerReadinessService } from '../../services/peers/peer-readiness-service.js';
 import { DistributionProfileService } from '../../services/plugins/distribution-profile-service.js';
 import { IntegrationIconAssets } from '../../services/plugins/integration-icon-assets.js';
 import type { MCPService } from '../../services/plugins/mcp-service.js';
@@ -979,7 +981,7 @@ import {
   type NativeDeviceProofBindingService,
   NativeDeviceProofOperatorAuthority,
 } from '../../services/ssh/native-device-proof-binding-service.js';
-import { searchConnectedRemoteMessages } from '../../services/ssh/remote-session-reader.js';
+import { runtimeRemoteMessageSearch } from '../../services/ssh/remote-session-reader.js';
 import type { SshEnvironmentService } from '../../services/ssh/ssh-environment-service.js';
 import {
   createStarterOwnerAdapter,
@@ -2057,9 +2059,13 @@ export function configureRuntimeRoutes(
   // here, at startup, so an invalid STATION_REMOTE_REQUEST_TIMEOUT_MS fails
   // the boot with its own message. (The peer store above has other
   // in-process readers for their own peer calls.)
+  // One readiness cache serves the peer list (`GET /api/environments/peers`)
+  // and the forwarder's refuse-before-dispatch check.
+  const peerReadiness = new PeerReadinessService();
   const remoteStations = createRemoteStationForwarder({
     ssh: context.sshEnvironmentService,
     peers: peerCredentialStore,
+    readiness: peerReadiness,
     warn: (message) => context.logger.warn(message),
   });
   const actionOperations = context.actionOperations;
@@ -10799,6 +10805,9 @@ export function configureRuntimeRoutes(
       context.sshEnvironmentService,
       undefined,
       peerCredentialStore,
+      undefined,
+      undefined,
+      runtimeRemoteStationReadAuthority(context.environmentSecurityService),
     ),
   );
   // station#1123 slice 2: outbound peer-credential admin routes. Gated to
@@ -10825,6 +10834,7 @@ export function configureRuntimeRoutes(
         hostname(),
         context.configLoader.getProjectHomeDir(),
       ),
+      peerReadiness,
     ),
   );
   context.app.route(
@@ -12482,14 +12492,11 @@ export function configureRuntimeRoutes(
       conversationAcknowledgements,
       conversationReadAuthorityForRequest,
       context.orchestrationService,
-      (query, signal) =>
-        searchConnectedRemoteMessages(
-          context.sshEnvironmentService,
-          query,
-          signal,
-          undefined,
-          peerCredentialStore,
-        ),
+      runtimeRemoteMessageSearch(
+        runtimeRemoteStationReadAuthority(context.environmentSecurityService),
+        context.sshEnvironmentService,
+        peerCredentialStore,
+      ),
       context.environmentSecurityService,
       readMarkers,
     ),

@@ -1103,6 +1103,13 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     // remote-access-threat-model.md`'s "Cross-station reads" section.
     ['GET', '/api/environments/ssh/sessions', 'orchestration:operate'],
     ['HEAD', '/api/environments/ssh/sessions', 'orchestration:operate'],
+    // A remote session's relayed history: full transcripts of another
+    // Station, under the same leaf on purpose.
+    [
+      'GET',
+      '/api/environments/ssh/sessions/env-id/external:claude:thread/history',
+      'orchestration:operate',
+    ],
     ['GET', '/api/pairing/devices', 'access:manage'],
     ['GET', '/api/pairing/native-relay-surfaces', 'access:manage'],
     ['POST', '/api/pairing/native-relay-surfaces', 'access:manage'],

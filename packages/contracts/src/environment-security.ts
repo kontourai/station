@@ -1237,6 +1237,14 @@ export interface StationCapabilityFlags {
   /** SSH environment management (`src-server/services/ssh/`, `/api/ssh-environments`). */
   sshEnvironments?: boolean;
   /**
+   * `GET /api/environments/ssh/sessions/:environmentId/:threadId/history`
+   * relays one bounded, read-only history page of a session that lives on a
+   * connected SSH environment's Station. A host without it answers 404 for
+   * that path, which a client cannot tell from a missing session, so clients
+   * gate opening a remote session on this flag.
+   */
+  remoteSessionHistory?: boolean;
+  /**
    * Review, recall and briefing for private memory
    * (`/api/knowledge/memory/queue|recall|brief|measurement`). The routes also
    * need the `private-memory` preview; absent on hosted deployments, which
@@ -1525,6 +1533,100 @@ export function parsePublicStationHandshake(
     return undefined;
   }
   return value as unknown as PublicStationHandshake;
+}
+
+/**
+ * How a Station's unauthenticated public handshake
+ * ({@link PUBLIC_STATION_HANDSHAKE_PATH}) answered, in the vocabulary the
+ * Station switcher and the Runs-on picker share:
+ *
+ * - `online`: 200 with schemaVersion 1 and an environmentId.
+ * - `recovering`: the Station UI proxy's `503/504
+ *   {"ready":false,"status":"unavailable"}` envelope (server down or
+ *   restarting behind a live proxy).
+ * - `unconfirmed`: something answered, but not a readable Station handshake.
+ * - `unreachable`: no answer (network error or deadline).
+ */
+export const STATION_READINESS_STATUSES = [
+  'online',
+  'recovering',
+  'unconfirmed',
+  'unreachable',
+] as const;
+export type StationReadinessStatus =
+  (typeof STATION_READINESS_STATUSES)[number];
+
+/** A paired peer Station's readiness as this Station last probed it. */
+export interface PeerStationReadiness {
+  status: StationReadinessStatus;
+  /**
+   * `identity-mismatch`: the handshake answered `online` for a different
+   * environmentId than the one stored for this peer, so the Station at that
+   * address is not this peer. Reported as `unconfirmed`.
+   */
+  reason?: 'identity-mismatch';
+  /** Epoch milliseconds of the probe this answer came from. */
+  checkedAt: number;
+}
+
+/**
+ * Classifies a handshake answer. `body` is the parsed JSON body, or
+ * `undefined` when the bytes were not JSON. A caller with a stored identity
+ * passes `expectedEnvironmentId`; a different one is `unconfirmed` with
+ * reason `identity-mismatch`. Network failures never reach here: the caller
+ * reports them as `unreachable`.
+ */
+export function classifyStationHandshakeAnswer(input: {
+  httpStatus: number;
+  body: unknown;
+  expectedEnvironmentId?: string;
+}): Pick<PeerStationReadiness, 'status' | 'reason'> {
+  const body = isObjectRecord(input.body) ? input.body : undefined;
+  if (
+    input.httpStatus === 200 &&
+    body?.schemaVersion === PUBLIC_HANDSHAKE_SCHEMA_VERSION &&
+    typeof body.environmentId === 'string' &&
+    body.environmentId.length > 0
+  ) {
+    if (
+      input.expectedEnvironmentId !== undefined &&
+      body.environmentId !== input.expectedEnvironmentId
+    )
+      return { status: 'unconfirmed', reason: 'identity-mismatch' };
+    return { status: 'online' };
+  }
+  if (
+    (input.httpStatus === 503 || input.httpStatus === 504) &&
+    body?.ready === false &&
+    body.status === 'unavailable'
+  )
+    return { status: 'recovering' };
+  return { status: 'unconfirmed' };
+}
+
+/** Whether this readiness means the Station can take work now. */
+export function stationReadinessIsReady(
+  readiness: Pick<PeerStationReadiness, 'status'>,
+): boolean {
+  return readiness.status === 'online';
+}
+
+/** A short, user-facing reason a not-ready Station cannot take work. */
+export function stationReadinessReason(
+  readiness: Pick<PeerStationReadiness, 'status' | 'reason'>,
+): string | undefined {
+  if (readiness.reason === 'identity-mismatch')
+    return 'Identity mismatch · a different Station answers at this address';
+  switch (readiness.status) {
+    case 'online':
+      return undefined;
+    case 'recovering':
+      return 'Recovering · server down or restarting';
+    case 'unconfirmed':
+      return 'Unconfirmed · not answering as a Station';
+    case 'unreachable':
+      return 'Unreachable';
+  }
 }
 
 /** Same-user native access decisions; requires direct loopback and this boot's local proof. */

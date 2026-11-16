@@ -263,7 +263,19 @@ accepts. A failed Station-list read keeps the chooser reachable, with an
 access/version explanation and a Retry action rather than hiding the control.
 The list uses one shared rule set: a verified SSH environment when no
 Project is selected (a Project is never placed over SSH), or a paired Station
-the caller may list whose credential holds `orchestration:operate`. A caller
+the caller may list whose credential holds `orchestration:operate`. An
+offered Station that cannot take work right now stays listed but disabled,
+with its reason in place of its kind: a paired Station whose public handshake
+is not `online` (**Recovering · server down or restarting**, **Unreachable**,
+**Unconfirmed · not answering as a Station**, or an identity mismatch), or an
+SSH environment whose connection is in error (**Connection failed**). The
+server keeps each paired Station's last handshake answer and returns it with
+`GET /api/environments/peers` without waiting on a probe
+([peer readiness](../../src-server/services/peers/peer-readiness-service.ts));
+each read refreshes stale answers in the background, and the open list re-reads
+every 5 seconds. A peer not yet probed, or one from an older host that reports
+no readiness, stays choosable. The
+current choice is never hidden. A caller
 whose authority observation reports a grant without `orchestration:operate`
 is offered This Station only; any failed read of the observation (an older
 Station without it, a refusal, a server error or an unreadable body) hides

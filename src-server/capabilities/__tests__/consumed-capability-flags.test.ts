@@ -24,6 +24,7 @@ import { createMemoryRoutes } from '../../routes/knowledge/memory-routes.js';
 import { createPushRoutes } from '../../routes/operations/push-routes.js';
 import { createRecipientCandidateRoutes } from '../../routes/operations/recipient-candidates.js';
 import { createSchedulerRoutes } from '../../routes/operations/scheduler.js';
+import { createSshEnvironmentRoutes } from '../../routes/operations/ssh-environments.js';
 import { createInboxHarness } from '../../routes/orchestration/__tests__/helpers/thread-inbox-harness.js';
 import { createCoordinatorRoutes } from '../../routes/orchestration/coordinator.js';
 import { createOrchestrationRoutes } from '../../routes/orchestration/orchestration.js';
@@ -57,6 +58,7 @@ import {
   STATION_CAPABILITY_FLAGS,
   servesCoordinatorSession,
   servesFollowUpAttachments,
+  servesRemoteSessionReads,
 } from '../station-capability-flags.js';
 import { TABLED_CAPABILITY_FLAGS } from './consumed-capability-flag-names.js';
 
@@ -422,6 +424,40 @@ const CONSUMED_FLAGS: Record<
     );
     return response.status === 200;
   },
+  // GET /sessions/:environmentId/:threadId/history relays one remote page.
+  // Built with the same deployment predicate runtime-routes.ts composes.
+  remoteSessionHistory: async ({ hosted }) => {
+    const service = {
+      list: () => [
+        {
+          profile: { id: 'env-1', name: 'Box', environmentId: null },
+          state: { phase: 'connected', localUrl: 'http://127.0.0.1:1' },
+        },
+      ],
+    };
+    const routes = createSshEnvironmentRoutes(
+      service as never,
+      undefined,
+      undefined,
+      undefined,
+      async (_apiBase, threadId) => ({
+        protocolVersion: 1,
+        session: { threadId } as never,
+        events: [],
+        hasMore: false,
+        watermark: 0,
+      }),
+      {
+        hosted: !servesRemoteSessionReads({ hosted }),
+        current: () => true,
+        owner: () => true,
+      },
+    );
+    const response = await routes.request(
+      '/sessions/env-1/external:claude:abc/history',
+    );
+    return response.status === 200;
+  },
   // GET /sessions/:threadId/inputs/:eventId answers the exact authored input.
   sessionInventoryInputRead: async (deployment) => {
     const routes = orchestrationRoutes(deployment, {
@@ -742,6 +778,7 @@ describe('consumed capability flags match what their routes serve', () => {
     readMarkers: { personal: true, hosted: true },
     scheduledConversationTarget: { personal: true, hosted: false },
     sessionEventWindow: { personal: true, hosted: true },
+    remoteSessionHistory: { personal: true, hosted: false },
     sessionInventoryInputRead: { personal: true, hosted: false },
     eventStreamResume: { personal: true, hosted: true },
     sessionPersonReads: { personal: true, hosted: true },
