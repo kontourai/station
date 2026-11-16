@@ -264,6 +264,26 @@ describe('agent feedback on a linked pull request', () => {
     );
   });
 
+  test('feedback off: the dialog shows no status badge, only the switches', async () => {
+    sdk.view = view({
+      status: { state: 'off' },
+      settings: {
+        fixFailingChecks: false,
+        addressReviewComments: false,
+        reviewEachHead: false,
+      },
+    });
+    renderLinks();
+    const dialog = await openDialog();
+    expect(within(dialog).queryByText('Off')).toBeNull();
+    expect(dialog.querySelector('.pr-feedback-dialog__status')).toBeNull();
+    expect(
+      within(dialog)
+        .getByRole('switch', { name: 'Fix failing checks automatically' })
+        .getAttribute('aria-checked'),
+    ).toBe('false');
+  });
+
   test('with the preview off nothing is read and nothing is offered', async () => {
     flags.preview = false;
     sdk.view = view();

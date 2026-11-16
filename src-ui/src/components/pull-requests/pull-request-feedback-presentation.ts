@@ -26,19 +26,21 @@ export function pullRequestFeedbackChip(
   }
 }
 
-/** The dialog's badge: the same states, as a word and a tone. */
-export function pullRequestFeedbackBadge(view: PullRequestFeedbackView): {
-  label: string;
-  tone: 'positive' | 'caution' | 'negative' | 'neutral';
-} {
+/**
+ * The dialog's badge: the same states, as a word and a tone. None while
+ * feedback is off or the pull request closed: an "Off" badge read as an
+ * empty box, and the switches already say it.
+ */
+export function pullRequestFeedbackBadge(view: PullRequestFeedbackView):
+  | {
+      label: string;
+      tone: 'positive' | 'caution' | 'negative' | 'neutral';
+    }
+  | undefined {
   if (!view.ownedHere && view.owner)
     return { label: 'Elsewhere', tone: 'neutral' };
   const chip = pullRequestFeedbackChip(view);
-  if (!chip)
-    return {
-      label: view.status.state === 'closed' ? 'Closed' : 'Off',
-      tone: 'neutral',
-    };
+  if (!chip) return undefined;
   return {
     label: chip.label,
     tone:
@@ -92,8 +94,9 @@ export function pullRequestFeedbackLine(
   const status = view.status;
   switch (status.state) {
     case 'off':
-    case 'closed':
       return null;
+    case 'closed':
+      return { text: 'Pull request closed; feedback stopped' };
     case 'unavailable':
       return {
         text:

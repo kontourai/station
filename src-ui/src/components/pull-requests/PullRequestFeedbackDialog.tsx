@@ -91,9 +91,9 @@ export function PullRequestFeedbackDialog({
       }
     >
       <div className="pr-feedback-dialog__body">
-        {badge && (
+        {(badge || (line && !owner)) && (
           <div className="pr-feedback-dialog__status">
-            <StatusBadge status={badge.label} tone={badge.tone} />
+            {badge && <StatusBadge status={badge.label} tone={badge.tone} />}
             {line && !owner && (
               <span className="pr-feedback-dialog__line">
                 {line.text}
