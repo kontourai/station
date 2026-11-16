@@ -341,7 +341,22 @@ class CredentialRecoveryImplementation implements CredentialRecoveryModule {
           const marked = this.markCompensationRequired(claimed);
           if (marked.kind !== 'applied') return { kind: 'indeterminate' };
           return { kind: 'indeterminate' };
-        } else if (
+        }
+        // The provider definitely did not take the replay, and the account is
+        // back. A person's choice that failed must not cost the stop its own
+        // wait: it returns to waiting instead of ending failed.
+        if (observation.consentedProfileRef !== undefined) {
+          const released = prepared.attempt.releaseBeforeInvocation({
+            outcome: intent.outcome === 'manual' ? 'manual' : 'armed',
+            now: this.now(),
+          });
+          if (released.kind === 'applied') {
+            this.claims.delete(intent.fingerprint);
+            this.claimedFingerprints.delete(intent.fingerprint);
+            return { kind: 'rolled-back' };
+          }
+        }
+        if (
           this.dependencies.ledger.terminal(
             claimed.fingerprint,
             'failed',

@@ -95,7 +95,10 @@ async function seedRoutes(
           ? route.fulfill(
               json({
                 success: true,
-                data: { profiles: [{ ref: 'work', label: 'Work account' }] },
+                data: {
+                  stopId: 'usage-limit-stop',
+                  profiles: [{ ref: 'work', label: 'Work account' }],
+                },
               }),
             )
           : route.fulfill(

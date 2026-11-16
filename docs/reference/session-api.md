@@ -2049,13 +2049,17 @@ in [contracts](contracts.md)). These routes serve the chat banner:
   order. It is empty for an engine that cannot apply a profile (Claude Code),
   a stop that is not waiting, a hosted Station, or while credential-recovery
   admission is blocked.
-  `POST /sessions/:threadId/usage-limit/continue-on` with `{ "profileRef" }`
+  The answer also carries `stopId`, the waiting stop the accounts are offered
+  for. `POST /sessions/:threadId/usage-limit/continue-on` with
+  `{ "profileRef", "stopId" }`
   ("Continue on <label>") stages that profile and replays the stopped turn
   under it, through the same protocol as automatic credential recovery, with
   this request as the consent the `automatic` policy otherwise gives. The
-  pre-dispatch checks apply first. A profile not currently offered, or one that
-  no longer qualifies when staged, answers `not-switched` and leaves the stop
-  waiting. Both list or switch this Station's accounts, so they need the
+  pre-dispatch checks apply first. A `stopId` that is not the waiting stop
+  answers `not-waiting` (a click from an older banner never acts on a newer
+  stop). A profile not currently offered, one that no longer qualifies when
+  staged, or a restart refused before sending anything answers `not-switched`
+  and leaves the stop waiting for its reset. Both list or switch this Station's accounts, so they need the
   `access:manage` pairing scope as well as the Session's own person.
 
 Every POST answers `{ result, recovery }`: `result.kind` is `resumed` (the

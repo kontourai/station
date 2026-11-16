@@ -290,6 +290,12 @@ export interface UsageLimitContinueOnProfile {
  * waiting, credential-recovery admission is blocked, or the Station is hosted.
  */
 export interface UsageLimitContinueOnOptions {
+  /**
+   * Opaque identity of the waiting stop these accounts are offered for;
+   * present whenever `profiles` is not empty. "Continue on" sends it back, and
+   * a stop that is no longer the waiting one refuses the click.
+   */
+  stopId?: string;
   profiles: UsageLimitContinueOnProfile[];
 }
 

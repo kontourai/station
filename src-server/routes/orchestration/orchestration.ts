@@ -6027,9 +6027,9 @@ export function createOrchestrationRoutes(
       return c.json({ success: false, error: 'Session not found' }, 404);
     return c.json({
       success: true,
-      data: {
-        profiles: await orchestrationService.readUsageLimitContinueOn(threadId),
-      } satisfies UsageLimitContinueOnOptions,
+      data: (await orchestrationService.readUsageLimitContinueOn(
+        threadId,
+      )) satisfies UsageLimitContinueOnOptions,
     });
   });
 
@@ -6049,13 +6049,16 @@ export function createOrchestrationRoutes(
         )
       )
         return c.json({ success: false, error: 'Session not found' }, 404);
-      const { profileRef } = getBody(c) as { profileRef: string };
+      const { profileRef, stopId } = getBody(c) as {
+        profileRef: string;
+        stopId: string;
+      };
       return c.json({
         success: true,
         data: await orchestrationService.actOnUsageLimitRecovery(
           threadId,
           'continue-on',
-          profileRef,
+          { profileRef, stopId },
         ),
       });
     },

@@ -37,7 +37,7 @@ import type {
 import type { NoProjectChatFolder } from '@kontourai/station-contracts/config';
 import type {
   ConnectionRecoveryProjection,
-  UsageLimitContinueOnProfile,
+  UsageLimitContinueOnOptions,
 } from '@kontourai/station-contracts/connection-recovery';
 import type {
   ConversationContextBoundaryProjection,
@@ -6072,8 +6072,9 @@ export class OrchestrationService {
    */
   async readUsageLimitContinueOn(
     threadId: string,
-  ): Promise<UsageLimitContinueOnProfile[]> {
+  ): Promise<UsageLimitContinueOnOptions> {
     this.initialize();
+    const none: UsageLimitContinueOnOptions = { profiles: [] };
     const list =
       this.options.credentialProfileRecoveryAdapter?.listContinueOnProfiles;
     if (
@@ -6083,21 +6084,24 @@ export class OrchestrationService {
       this.credentialRecovery.admission() !== undefined ||
       this.options.requireTenantExecutionContext?.() === true
     )
-      return [];
+      return none;
     const projection = this.recoveryCoordinator?.latestProjection(threadId);
+    const stopId = this.recoveryCoordinator?.usageLimitStopId(threadId);
     if (
+      !stopId ||
       !projection?.usageLimit ||
       projection.scope !== 'account' ||
       (projection.outcome !== 'armed' && projection.outcome !== 'manual')
     )
-      return [];
+      return none;
     const provider =
       this.options.eventStore?.readSessionByThread(threadId)?.provider;
-    if (!provider) return [];
+    if (!provider) return none;
     try {
-      return await list(provider);
+      const profiles = await list(provider);
+      return profiles.length > 0 ? { stopId, profiles } : none;
     } catch {
-      return [];
+      return none;
     }
   }
 
@@ -6110,8 +6114,11 @@ export class OrchestrationService {
   async actOnUsageLimitRecovery(
     threadId: string,
     action: 'resume' | 'cancel' | 'resume-at-reset' | 'hold' | 'continue-on',
-    /** The profile "Continue on <label>" names; required for `continue-on`. */
-    profileRef?: string,
+    /**
+     * `continue-on` only: the profile chosen and the stop it was offered for
+     * (`UsageLimitContinueOnOptions.stopId`).
+     */
+    continueOn?: { profileRef: string; stopId: string },
   ): Promise<{
     result: UsageLimitRecoveryActionResult;
     recovery: ConnectionRecoveryProjection | null;
@@ -6123,18 +6130,23 @@ export class OrchestrationService {
       const before = await this.readUsageLimitRecovery(threadId);
       const waiting =
         before?.outcome === 'armed' || before?.outcome === 'manual';
-      const offered = (await this.readUsageLimitContinueOn(threadId)).some(
-        (profile) => profile.ref === profileRef,
+      const options = await this.readUsageLimitContinueOn(threadId);
+      const offered = options.profiles.some(
+        (profile) => profile.ref === continueOn?.profileRef,
       );
       const result: UsageLimitRecoveryActionResult =
-        !coordinator || !waiting
+        !coordinator || !waiting || !continueOn
           ? { kind: 'not-waiting' }
-          : profileRef && offered
-            ? await coordinator.continueUsageLimitOnProfile(
-                threadId,
-                profileRef,
-              )
-            : { kind: 'not-switched' };
+          : // A click from an older banner never acts on a newer stop.
+            options.stopId !== undefined && options.stopId !== continueOn.stopId
+            ? { kind: 'not-waiting' }
+            : offered
+              ? await coordinator.continueUsageLimitOnProfile(
+                  threadId,
+                  continueOn.profileRef,
+                  continueOn.stopId,
+                )
+              : { kind: 'not-switched' };
       return { result, recovery: await this.readUsageLimitRecovery(threadId) };
     }
     const result: UsageLimitRecoveryActionResult = coordinator

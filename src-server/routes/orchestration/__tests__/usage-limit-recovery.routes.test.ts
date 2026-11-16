@@ -365,11 +365,12 @@ describe('"Continue on <label>" routes', () => {
   const continueOn = (
     f: Awaited<ReturnType<typeof fixture>>,
     profileRef: unknown,
+    stopId: unknown = FINGERPRINT,
   ) =>
     f.app.request(`${PATH}/continue-on`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ profileRef }),
+      body: JSON.stringify({ profileRef, stopId }),
     });
 
   test('the read lists the accounts the waiting stop may continue on, for its owner only', async () => {
@@ -379,7 +380,10 @@ describe('"Continue on <label>" routes', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       success: true,
-      data: { profiles: [{ ref: 'work', label: 'Work' }] },
+      data: {
+        stopId: FINGERPRINT,
+        profiles: [{ ref: 'work', label: 'Work' }],
+      },
     });
     expect(adapter.listContinueOnProfiles).toHaveBeenCalledWith('claude');
     // The banner's own read does not carry the accounts.
@@ -424,6 +428,21 @@ describe('"Continue on <label>" routes', () => {
     expect(adapter.stage).not.toHaveBeenCalled();
   });
 
+  test('a click bound to another stop, or to none, is refused before anything is staged', async () => {
+    const adapter = accounts();
+    const f = await fixture({ credentialProfileRecoveryAdapter: adapter });
+    const stale = (await (
+      await continueOn(f, 'work', `${THREAD}:an-older-turn:rate-limit:account`)
+    ).json()) as {
+      data: { result: unknown; recovery: Record<string, unknown> };
+    };
+    expect(stale.data.result).toEqual({ kind: 'not-waiting' });
+    expect(stale.data.recovery).toMatchObject({ outcome: 'armed' });
+    expect((await continueOn(f, 'work', null)).status).toBe(400);
+    expect(adapter.stage).not.toHaveBeenCalled();
+    expect(f.ledger.find(FINGERPRINT)?.outcome).toBe('armed');
+  });
+
   test('a hosted Station offers no account and switches none', async () => {
     const adapter = accounts();
     const f = await fixture({
@@ -440,11 +459,14 @@ describe('"Continue on <label>" routes', () => {
         : [];
     expect(listed).toEqual([]);
     await continueOn(f, 'work');
-    await expect(f.service.readUsageLimitContinueOn(THREAD)).resolves.toEqual(
-      [],
-    );
+    await expect(f.service.readUsageLimitContinueOn(THREAD)).resolves.toEqual({
+      profiles: [],
+    });
     await expect(
-      f.service.actOnUsageLimitRecovery(THREAD, 'continue-on', 'work'),
+      f.service.actOnUsageLimitRecovery(THREAD, 'continue-on', {
+        profileRef: 'work',
+        stopId: FINGERPRINT,
+      }),
     ).resolves.toMatchObject({ result: { kind: 'not-switched' } });
     expect(adapter.listContinueOnProfiles).not.toHaveBeenCalled();
     expect(f.ledger.find(FINGERPRINT)?.outcome).toBe('armed');

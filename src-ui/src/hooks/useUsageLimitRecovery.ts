@@ -1,6 +1,7 @@
 import type {
   ConnectionRecoveryOutcomeReason,
   ConnectionRecoveryProjection,
+  UsageLimitContinueOnOptions,
   UsageLimitContinueOnProfile,
 } from '@kontourai/station-contracts/connection-recovery';
 import { getJson, mutateJson } from '@kontourai/station-sdk';
@@ -76,11 +77,20 @@ const usageLimitRecoveryKey = (
   threadId: string,
 ) => ['usage-limit-recovery', apiBase, scope?.authorityKey ?? null, threadId];
 
-/** Bounded, shape-checked profile list; anything malformed offers nothing. */
-function readProfiles(data: unknown): UsageLimitContinueOnProfile[] {
-  const profiles = (data as { profiles?: unknown } | undefined)?.profiles;
-  if (!Array.isArray(profiles)) return [];
-  return profiles
+const NO_ACCOUNTS: UsageLimitContinueOnOptions = { profiles: [] };
+
+/**
+ * Bounded, shape-checked account list for one stop; anything malformed, or a
+ * list without the stop it is for, offers nothing.
+ */
+function readOptions(data: unknown): UsageLimitContinueOnOptions {
+  const { profiles, stopId } = (data ?? {}) as {
+    profiles?: unknown;
+    stopId?: unknown;
+  };
+  if (!Array.isArray(profiles) || typeof stopId !== 'string')
+    return NO_ACCOUNTS;
+  const valid = profiles
     .slice(0, 16)
     .filter(
       (profile): profile is UsageLimitContinueOnProfile =>
@@ -90,6 +100,7 @@ function readProfiles(data: unknown): UsageLimitContinueOnProfile[] {
         ((profile as { label?: unknown }).label === undefined ||
           typeof (profile as { label?: unknown }).label === 'string'),
     );
+  return valid.length > 0 ? { stopId, profiles: valid } : NO_ACCOUNTS;
 }
 
 const path = (apiBase: string, threadId: string, leaf = '') =>
@@ -157,7 +168,7 @@ export function useUsageLimitRecovery(input: {
       (waitingOutcome === 'armed' || waitingOutcome === 'manual'),
     retry: false,
     staleTime: 5_000,
-    queryFn: async ({ signal }): Promise<UsageLimitContinueOnProfile[]> => {
+    queryFn: async ({ signal }): Promise<UsageLimitContinueOnOptions> => {
       const response = await getJson(path(apiBase, threadId, '/continue-on'), {
         signal,
         ...(scope ? { requestScope: scope } : {}),
@@ -165,21 +176,28 @@ export function useUsageLimitRecovery(input: {
       });
       // A device without the credential-management scope is refused: that
       // is "nothing to offer", not a banner error.
-      if (!response.ok) return [];
+      if (!response.ok) return NO_ACCOUNTS;
       try {
         const body = (await response.json()) as {
           success?: boolean;
           data?: unknown;
         };
-        return body.success === true ? readProfiles(body.data) : [];
+        return body.success === true ? readOptions(body.data) : NO_ACCOUNTS;
       } catch {
-        return [];
+        return NO_ACCOUNTS;
       }
     },
   });
   /** Continue this stop on another enrolled credential profile, now. */
   const continueOn = useMutation({
-    mutationFn: async (profileRef: string) =>
+    /** The account chosen and the stop it was offered for. */
+    mutationFn: async ({
+      profileRef,
+      stopId,
+    }: {
+      profileRef: string;
+      stopId: string;
+    }) =>
       readData(
         await mutateJson(
           path(apiBase, threadId, '/continue-on'),
@@ -188,7 +206,7 @@ export function useUsageLimitRecovery(input: {
             ...(scope ? { requestScope: scope } : {}),
             maxResponseBytes: 64 * 1024,
           },
-          { profileRef },
+          { profileRef, stopId },
         ),
       ),
     onSuccess: ({ recovery }) => {
@@ -210,7 +228,8 @@ export function useUsageLimitRecovery(input: {
     cancel,
     resumeAtReset,
     hold,
-    continueOnProfiles: continueOnQuery.data ?? [],
+    continueOnProfiles: continueOnQuery.data?.profiles ?? [],
+    continueOnStopId: continueOnQuery.data?.stopId,
     continueOn,
   };
 }

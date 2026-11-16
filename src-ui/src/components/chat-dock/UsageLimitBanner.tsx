@@ -23,6 +23,10 @@ const NOTICE_MS = 10_000;
 const SETTLE_MS = 1_500;
 const MAX_TIMER_MS = 2 ** 31 - 1 - SETTLE_MS;
 
+/** "Continue on" switches the connection's account, not this chat's alone. */
+const SWITCH_DISCLOSURE =
+  "Changes this engine connection's account for later chats too.";
+
 const RETIRED_COPY: Record<ConnectionRecoveryOutcomeReason, string> = {
   'auto-resume-off': 'Auto-resume is off.',
   superseded: 'Auto-resume canceled: a newer message was sent.',
@@ -131,6 +135,7 @@ function UsageLimitBannerFor({
     resumeAtReset,
     hold,
     continueOnProfiles,
+    continueOnStopId,
     continueOn,
   } = useUsageLimitRecovery({
     apiBase,
@@ -139,6 +144,8 @@ function UsageLimitBannerFor({
     enabled,
   });
   const [notSwitched, setNotSwitched] = useState(false);
+  /** The account a switch went to, said once the stop resumes on it. */
+  const [switchedTo, setSwitchedTo] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [notice, setNotice] = useState<string | null>(null);
   const wasEngaged = useRef(false);
@@ -236,7 +243,9 @@ function UsageLimitBannerFor({
           data-testid="usage-limit-banner"
         >
           <p className="usage-limit-banner__body" role="status">
-            Resuming this conversation…
+            {switchedTo
+              ? `Resuming on ${switchedTo}. New chats on this connection use it too.`
+              : 'Resuming this conversation…'}
           </p>
         </section>
       );
@@ -276,13 +285,20 @@ function UsageLimitBannerFor({
     key: `continue-on:${profile.ref}`,
     label: `Continue on ${profile.label || profile.ref}`,
     ref: profile.ref,
+    account: profile.label || profile.ref,
   }));
-  const continueOnProfile = (profileRef: string) => {
+  const continueOnProfile = (profileRef: string, label: string) => {
+    if (!continueOnStopId) return;
     setNotSwitched(false);
-    continueOn.mutate(profileRef, {
-      onSuccess: ({ result }) =>
-        setNotSwitched(result?.kind === 'not-switched'),
-    });
+    continueOn.mutate(
+      { profileRef, stopId: continueOnStopId },
+      {
+        onSuccess: ({ result }) => {
+          setNotSwitched(result?.kind === 'not-switched');
+          if (result?.kind === 'resumed') setSwitchedTo(label);
+        },
+      },
+    );
   };
   const resumeNowButton = (
     <Button
@@ -352,17 +368,20 @@ function UsageLimitBannerFor({
         pending={continueOn.isPending}
         pendingLabel="Switching…"
         disabled={busy}
-        onClick={() => continueOnProfile(firstContinueOn.ref)}
+        title={SWITCH_DISCLOSURE}
+        onClick={() =>
+          continueOnProfile(firstContinueOn.ref, firstContinueOn.account)
+        }
       >
         {firstContinueOn.label}
       </Button>
     ) : undefined;
   const overflow = (continueOnButton ? moreContinueOn : continueOnActions).map(
-    ({ key, label, ref }) => ({
+    ({ key, label, ref, account }) => ({
       key,
       label,
       disabled: busy,
-      onSelect: () => continueOnProfile(ref),
+      onSelect: () => continueOnProfile(ref, account),
     }),
   );
 

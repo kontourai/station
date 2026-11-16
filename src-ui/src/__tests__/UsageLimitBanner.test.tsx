@@ -598,7 +598,10 @@ describe('UsageLimitBanner (#3157)', () => {
   });
 
   describe('Continue on <label>', () => {
-    const work = { profiles: [{ ref: 'work', label: 'Work' }] };
+    const work = {
+      stopId: 'stop-1',
+      profiles: [{ ref: 'work', label: 'Work' }],
+    };
 
     test('a stop with no known reset offers the other account beside Resume now, and continuing on it posts that account', async () => {
       answers.read = () => ({
@@ -620,12 +623,21 @@ describe('UsageLimitBanner (#3157)', () => {
         url: `${API}/api/orchestration/sessions/${THREAD}/usage-limit/continue-on`,
       });
 
+      // The account is the connection's, not this chat's alone.
+      expect(continueOn.getAttribute('title')).toBe(
+        "Changes this engine connection's account for later chats too.",
+      );
+
       fireEvent.click(continueOn);
 
       expect(
-        await screen.findByText('Resuming this conversation…'),
+        await screen.findByText(
+          'Resuming on Work. New chats on this connection use it too.',
+        ),
       ).not.toBeNull();
-      expect(continueOnBodies).toEqual([{ profileRef: 'work' }]);
+      expect(continueOnBodies).toEqual([
+        { profileRef: 'work', stopId: 'stop-1' },
+      ]);
       expect(posts().map((call) => call.url)).toEqual([
         `${API}/api/orchestration/sessions/${THREAD}/usage-limit/continue-on`,
       ]);
@@ -658,7 +670,9 @@ describe('UsageLimitBanner (#3157)', () => {
         await screen.findByRole('menuitem', { name: 'Continue on Work' }),
       );
       await waitFor(() =>
-        expect(continueOnBodies).toEqual([{ profileRef: 'work' }]),
+        expect(continueOnBodies).toEqual([
+          { profileRef: 'work', stopId: 'stop-1' },
+        ]),
       );
     });
 

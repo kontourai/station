@@ -745,11 +745,15 @@ export class SessionRecoveryCoordinator {
   async continueUsageLimitOnProfile(
     threadId: string,
     profileRef: string,
+    /** The stop the person was offered this for (`usageLimitStopId`). */
+    stopId: string,
   ): Promise<UsageLimitRecoveryActionResult> {
     if (this.stopping || this.disposed || !this.credentialRecovery)
       return { kind: 'not-waiting' };
     const waiting = this.waitingUsageLimitIntent(threadId);
-    if (!waiting) return { kind: 'not-waiting' };
+    // A click from an older banner never acts on a newer stop.
+    if (!waiting || waiting.fingerprint !== stopId)
+      return { kind: 'not-waiting' };
     let result: UsageLimitRecoveryActionResult = { kind: 'not-waiting' };
     await this.enqueueLifecycle(waiting.fingerprint, async () => {
       const current = this.ledger.find(waiting.fingerprint);
@@ -796,6 +800,14 @@ export class SessionRecoveryCoordinator {
             : { kind: 'failed' };
     });
     return result;
+  }
+
+  /**
+   * The opaque identity of the usage-limit stop still waiting in this
+   * Session, which "Continue on <label>" is offered for and must name back.
+   */
+  usageLimitStopId(threadId: string): string | undefined {
+    return this.waitingUsageLimitIntent(threadId)?.fingerprint;
   }
 
   /** #3157: the user's "Cancel auto-resume": retire the waiting intent unsent. */
@@ -885,6 +897,16 @@ export class SessionRecoveryCoordinator {
     }
     this.clearIntentRuntime(intent, true);
     const current = this.ledger.find(intent.fingerprint);
+    // A refused person's choice the module returned to waiting keeps its reset.
+    if (
+      consentedProfileRef !== undefined &&
+      outcome.kind === 'rolled-back' &&
+      current?.outcome === 'armed' &&
+      current.dueAt
+    ) {
+      this.schedule(current.fingerprint, current.dueAt);
+      return true;
+    }
     if (outcome.kind === 'indeterminate') {
       this.recordIntentOutcome(intent, 'compensation-required');
     } else if (current?.outcome === 'resumed') {

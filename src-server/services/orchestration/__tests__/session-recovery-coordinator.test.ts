@@ -885,6 +885,10 @@ describe('SessionRecoveryCoordinator', () => {
     function setup(
       stage: TestCredentialRecoveryAdapter['stage'],
       autoResume: () => boolean,
+      extra: {
+        recoveryDispatchAdapter?: RecoveryDispatchAdapter;
+        rollback?: TestCredentialRecoveryAdapter['rollback'];
+      } = {},
     ) {
       vi.useFakeTimers({ now: STOPPED_AT });
       const store = new EventStore(
@@ -902,12 +906,34 @@ describe('SessionRecoveryCoordinator', () => {
           }) as any,
         sendTurn,
         restartResume,
-        credentialRecoveryAdapter: { stage },
+        credentialRecoveryAdapter: {
+          stage,
+          ...(extra.rollback ? { rollback: extra.rollback } : {}),
+        },
+        ...(extra.recoveryDispatchAdapter
+          ? { recoveryDispatchAdapter: extra.recoveryDispatchAdapter }
+          : {}),
         autoResume,
+        resumeChoices: store.usageLimitResumeChoices(),
         now: () => new Date(Date.now()),
       });
       return { store, coordinator, restartResume, sendTurn };
     }
+
+    const consentedOnly: TestCredentialRecoveryAdapter['stage'] = async (
+      input,
+    ) =>
+      input.consentedProfileRef
+        ? {
+            candidateProfileRef: input.consentedProfileRef,
+            capability: 'restart_resume',
+          }
+        : undefined;
+    const stopIdOf = (coordinator: SessionRecoveryCoordinator) => {
+      const stopId = coordinator.usageLimitStopId(THREAD);
+      expect(stopId).toBeDefined();
+      return stopId as string;
+    };
 
     test('continues a waiting stop on the chosen account now, with automatic recovery off, and the reset sends nothing more', async () => {
       // Like production with `automatic: false`: only a consented stage
@@ -932,7 +958,11 @@ describe('SessionRecoveryCoordinator', () => {
       });
 
       await expect(
-        coordinator.continueUsageLimitOnProfile(THREAD, 'work'),
+        coordinator.continueUsageLimitOnProfile(
+          THREAD,
+          'work',
+          stopIdOf(coordinator),
+        ),
       ).resolves.toEqual({ kind: 'resumed' });
 
       expect(stage).toHaveBeenLastCalledWith(
@@ -970,7 +1000,11 @@ describe('SessionRecoveryCoordinator', () => {
       await vi.advanceTimersByTimeAsync(0);
 
       await expect(
-        coordinator.continueUsageLimitOnProfile(THREAD, 'work'),
+        coordinator.continueUsageLimitOnProfile(
+          THREAD,
+          'work',
+          stopIdOf(coordinator),
+        ),
       ).resolves.toEqual({ kind: 'not-switched' });
       expect(restartResume).not.toHaveBeenCalled();
       expect(coordinator.latestProjection(THREAD)).toMatchObject({
@@ -1010,7 +1044,11 @@ describe('SessionRecoveryCoordinator', () => {
       stage.mockClear();
 
       await expect(
-        coordinator.continueUsageLimitOnProfile(THREAD, 'work'),
+        coordinator.continueUsageLimitOnProfile(
+          THREAD,
+          'work',
+          stopIdOf(coordinator),
+        ),
       ).resolves.toEqual({ kind: 'not-switched' });
       expect(stage).not.toHaveBeenCalled();
       expect(coordinator.latestProjection(THREAD)).toMatchObject({
@@ -1055,7 +1093,11 @@ describe('SessionRecoveryCoordinator', () => {
       });
 
       await expect(
-        coordinator.continueUsageLimitOnProfile(THREAD, 'work'),
+        coordinator.continueUsageLimitOnProfile(
+          THREAD,
+          'work',
+          stopIdOf(coordinator),
+        ),
       ).resolves.toEqual({ kind: 'not-switched' });
       expect(coordinator.latestProjection(THREAD)).toMatchObject({
         outcome: 'armed',
@@ -1066,6 +1108,152 @@ describe('SessionRecoveryCoordinator', () => {
       );
       expect(sendTurn).toHaveBeenCalledOnce();
       expect(restartResume).not.toHaveBeenCalled();
+      await coordinator.dispose();
+      store.close();
+      vi.useRealTimers();
+    });
+
+    test('a chosen account whose restart is refused rolls back and leaves the stop waiting for its reset', async () => {
+      const rollback = vi.fn(async () => ({ kind: 'rolled-back' as const }));
+      const sent: string[] = [];
+      const { store, coordinator } = setup(consentedOnly, () => true, {
+        rollback,
+        recoveryDispatchAdapter: {
+          dispatch: async ({ credentialProfileRef }) => {
+            if (credentialProfileRef) return { kind: 'rejected' };
+            sent.push('same-account');
+            return { kind: 'accepted', turnId: 'same-account-turn' };
+          },
+        },
+      });
+      stopOnUsageLimit(store, coordinator);
+      await vi.advanceTimersByTimeAsync(0);
+
+      await expect(
+        coordinator.continueUsageLimitOnProfile(
+          THREAD,
+          'work',
+          stopIdOf(coordinator),
+        ),
+      ).resolves.toEqual({ kind: 'not-switched' });
+      expect(rollback).toHaveBeenCalledOnce();
+      expect(coordinator.latestProjection(THREAD)).toMatchObject({
+        outcome: 'armed',
+        dueAt: RESET_AT,
+      });
+
+      await vi.advanceTimersByTimeAsync(
+        Date.parse(RESET_AT) - STOPPED_AT.getTime() + 1_000,
+      );
+      expect(sent).toEqual(['same-account']);
+      await coordinator.dispose();
+      store.close();
+      vi.useRealTimers();
+    });
+
+    test('a click from an older banner names a stop that is no longer the waiting one and switches nothing', async () => {
+      const stage = vi.fn(consentedOnly);
+      const { store, coordinator, restartResume } = setup(stage, () => true);
+      stopOnUsageLimit(store, coordinator);
+      await vi.advanceTimersByTimeAsync(0);
+      stage.mockClear();
+
+      await expect(
+        coordinator.continueUsageLimitOnProfile(
+          THREAD,
+          'work',
+          `${THREAD}:an-older-turn:rate-limit:account`,
+        ),
+      ).resolves.toEqual({ kind: 'not-waiting' });
+      expect(stage).not.toHaveBeenCalled();
+      expect(restartResume).not.toHaveBeenCalled();
+      expect(coordinator.latestProjection(THREAD)).toMatchObject({
+        outcome: 'armed',
+      });
+      await coordinator.dispose();
+      store.close();
+      vi.useRealTimers();
+    });
+
+    test('two clicks at once, even for two different accounts, restart once', async () => {
+      const { store, coordinator, restartResume, sendTurn } = setup(
+        consentedOnly,
+        () => true,
+      );
+      stopOnUsageLimit(store, coordinator);
+      await vi.advanceTimersByTimeAsync(0);
+      const stopId = stopIdOf(coordinator);
+
+      const results = await Promise.all([
+        coordinator.continueUsageLimitOnProfile(THREAD, 'work', stopId),
+        coordinator.continueUsageLimitOnProfile(THREAD, 'personal', stopId),
+      ]);
+
+      expect(restartResume).toHaveBeenCalledOnce();
+      expect(
+        results.filter((result) => result.kind === 'resumed'),
+      ).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(
+        Date.parse(RESET_AT) - STOPPED_AT.getTime() + 60_000,
+      );
+      expect(sendTurn).not.toHaveBeenCalled();
+      expect(restartResume).toHaveBeenCalledOnce();
+      await coordinator.dispose();
+      store.close();
+      vi.useRealTimers();
+    });
+
+    test('a click racing the reset timer dispatches the turn once', async () => {
+      const { store, coordinator, restartResume, sendTurn } = setup(
+        consentedOnly,
+        () => true,
+      );
+      stopOnUsageLimit(store, coordinator);
+      await vi.advanceTimersByTimeAsync(
+        Date.parse(RESET_AT) - STOPPED_AT.getTime() - 1,
+      );
+      const stopId = stopIdOf(coordinator);
+
+      const click = coordinator.continueUsageLimitOnProfile(
+        THREAD,
+        'work',
+        stopId,
+      );
+      await vi.advanceTimersByTimeAsync(60_000);
+      await click;
+
+      expect(restartResume.mock.calls.length + sendTurn.mock.calls.length).toBe(
+        1,
+      );
+      await coordinator.dispose();
+      store.close();
+      vi.useRealTimers();
+    });
+
+    test("a click after Don't resume is the person's own consent: it continues once and the reset sends nothing", async () => {
+      const { store, coordinator, restartResume, sendTurn } = setup(
+        consentedOnly,
+        () => true,
+      );
+      stopOnUsageLimit(store, coordinator);
+      await vi.advanceTimersByTimeAsync(0);
+      await expect(
+        coordinator.chooseUsageLimitResume(THREAD, 'hold'),
+      ).resolves.toEqual({ kind: 'chosen', choice: 'hold' });
+
+      await expect(
+        coordinator.continueUsageLimitOnProfile(
+          THREAD,
+          'work',
+          stopIdOf(coordinator),
+        ),
+      ).resolves.toEqual({ kind: 'resumed' });
+      expect(restartResume).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(
+        Date.parse(RESET_AT) - STOPPED_AT.getTime() + 60_000,
+      );
+      expect(sendTurn).not.toHaveBeenCalled();
+      expect(restartResume).toHaveBeenCalledOnce();
       await coordinator.dispose();
       store.close();
       vi.useRealTimers();
@@ -1094,7 +1282,11 @@ describe('SessionRecoveryCoordinator', () => {
       store.appendEvent(newer);
 
       await expect(
-        coordinator.continueUsageLimitOnProfile(THREAD, 'work'),
+        coordinator.continueUsageLimitOnProfile(
+          THREAD,
+          'work',
+          stopIdOf(coordinator),
+        ),
       ).resolves.toEqual({ kind: 'retired', reason: 'superseded' });
       expect(stage).not.toHaveBeenCalled();
       expect(restartResume).not.toHaveBeenCalled();
