@@ -39,6 +39,7 @@ import {
   installProjectConversationsFixture,
   installProjectRoomFixture,
   installTaskRoomFixture,
+  LIVE_ROOM_SCENES,
   NAVIGATION_THREAD_ROOT,
   type ProjectRoomScene,
   type TaskRoomScene,
@@ -3530,6 +3531,9 @@ const ROOM_SCENES = [
   { scene: 'edited', room: 'project' },
   { scene: 'deleted', room: 'project' },
   { scene: 'attachment', room: 'project' },
+  { scene: 'live-mention', room: 'project' },
+  { scene: 'agent-working', room: 'project' },
+  { scene: 'agent-outcome', room: 'project' },
   { scene: 'thread', room: 'task' },
   { scene: 'working', room: 'task' },
 ] as const satisfies readonly (
@@ -3597,6 +3601,10 @@ function roomConversationScreens(): Screen[] {
                 (route) =>
                   fulfillGalleryStationHandshake(route, false, {
                     projectRoomMessageActions: true,
+                    // The shared live stream, typing and members (#4798).
+                    ...(LIVE_ROOM_SCENES.includes(scene)
+                      ? { projectRoomLive: true }
+                      : {}),
                   }),
               );
               fixture = await installProjectRoomFixture(page, {
@@ -3711,6 +3719,42 @@ function roomConversationScreens(): Screen[] {
             if (scene === 'mention') {
               await composer.click();
               await composer.pressSequentially('@');
+            }
+            if (scene === 'live-mention') {
+              // The reader's own mention stands out; someone is typing.
+              await expect(
+                conversation.locator('.room-mention--self'),
+              ).toHaveText('@Maya Chen');
+              await expect(
+                roomRegion.getByText('Jonas Berg is typing…'),
+              ).toBeVisible();
+              // A narrowed search, so the list leaves the room above it in view.
+              await composer.click();
+              await composer.pressSequentially('@Pri');
+              await expect(
+                roomRegion.getByRole('option', { name: /Priya Natarajan/ }),
+              ).toBeVisible();
+              if (viewport.width === MOBILE.width)
+                await expectTouchTarget(
+                  roomRegion.getByRole('option', { name: /Priya Natarajan/ }),
+                  'Mention option',
+                );
+            }
+            if (scene === 'agent-working') {
+              await expect(
+                conversation.getByText('Working on it…'),
+              ).toBeVisible();
+              await expect(
+                conversation.getByText('Scout is working…'),
+              ).toBeVisible();
+            }
+            if (scene === 'agent-outcome') {
+              await expect(
+                conversation.getByText('Couldn’t finish'),
+              ).toBeVisible();
+              await expect(
+                conversation.getByText('Stopped', { exact: true }),
+              ).toBeVisible();
             }
             if (scene === 'keyboard') {
               await composer.click();
@@ -4730,8 +4774,108 @@ function childChatScreens(): Screen[] {
   );
 }
 
+/**
+ * #4799: the reader's own mentions on the attention page, from their private
+ * feed in the exact record shape `GET /api/me/notifications` serves.
+ */
+function personMentionScreens(): Screen[] {
+  const mention = (
+    id: string,
+    title: string,
+    body: string,
+    createdAt: string,
+    read: boolean,
+  ) => ({
+    id,
+    source: 'project-room',
+    category: 'room-mention',
+    title,
+    body,
+    priority: 'normal',
+    status: 'delivered',
+    scheduledAt: null,
+    deliveredAt: createdAt,
+    metadata: {
+      envelope: {
+        v: 1,
+        source: { kind: 'system', subsystem: 'project-room' },
+        audience: {
+          kind: 'principal',
+          principalId: 'human:local:operator',
+          projectId: 'gallery-project',
+        },
+        urgency: 'attention',
+        target: {
+          kind: 'path',
+          path: `/projects/gallery-onboarding?section=room&message=${id}`,
+        },
+        interrupt: 'default',
+        ...(read ? { readAt: createdAt, readBy: 'web:gallery' } : {}),
+      },
+    },
+    createdAt,
+    updatedAt: createdAt,
+  });
+  const feed = [
+    mention(
+      'c1000000-0000-4000-8000-000000000001',
+      'Priya Natarajan mentioned you in #general',
+      '@Maya Chen can you sign off on the copy today? @Jonas Berg has the numbers.',
+      new Date(Date.now() - 5 * 60_000).toISOString(),
+      false,
+    ),
+    mention(
+      'c1000000-0000-4000-8000-000000000002',
+      'Jonas Berg mentioned you in #design',
+      'Updated both screens, @Maya Chen. Ready when you are.',
+      new Date(Date.now() - 95 * 60_000).toISOString(),
+      true,
+    ),
+  ];
+  return (['dark', 'light'] as const).flatMap((theme) =>
+    [DESKTOP, MOBILE].map((viewport): Screen => {
+      const width = viewport.width === DESKTOP.width ? 'desktop' : 'mobile';
+      let restore: (() => Promise<void>) | undefined;
+      return {
+        name: `notifications-for-you-${theme}-${width}`,
+        title: `For you mentions — ${theme}, ${viewport.width}px`,
+        path: '/notifications',
+        viewport,
+        captureTheme: theme,
+        async beforeGoto(page) {
+          restore = await withRoute(page, '**/api/me/notifications', (route) =>
+            route.request().method() === 'GET'
+              ? route.fulfill({ json: { success: true, data: feed } })
+              : rejectUnexpectedFixtureRequest(route),
+          );
+        },
+        async afterGoto(page) {
+          const section = page.getByRole('region', { name: 'For you' });
+          await expect(section).toBeVisible();
+          await expect(
+            section.getByRole('button', {
+              // The visually hidden ", unread" is its own box, so the
+              // accessible name may carry a space before its comma.
+              name: /Priya Natarajan mentioned you in #general\s*, unread/,
+            }),
+          ).toBeVisible();
+          if (viewport.width === MOBILE.width)
+            await expectTouchTarget(
+              section.getByRole('button').first(),
+              'Mention row',
+            );
+        },
+        async cleanup() {
+          await restore?.();
+        },
+      };
+    }),
+  );
+}
+
 const SCREENS: Screen[] = [
   ...roomConversationScreens(),
+  ...personMentionScreens(),
   ...channelNavigationScreens(),
   ...appsLibraryScreens(),
   ...appsLibraryScreens(true),

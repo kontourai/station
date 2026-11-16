@@ -234,6 +234,8 @@ describe('e2e manifest', () => {
       'tests/project-channel-navigation.spec.ts',
       // Owns an isolated Station with accounts and sharing (#4796, #4812).
       'tests/project-room-message-actions.spec.ts',
+      // Owns an isolated Station with accounts and sharing (#4798).
+      'tests/project-room-live.spec.ts',
       'tests/conversation-surfaces.spec.ts',
       'tests/owned-work-custody.spec.ts',
       // Owns its HTTPS listeners, private home, virtual authenticator and CLI child.

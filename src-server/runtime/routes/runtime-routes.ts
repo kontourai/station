@@ -215,6 +215,7 @@ import { ProjectMembershipRefusal } from '../../services/projects/project-member
 import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
 import { createProjectRoomAgentRuntime } from '../../services/projects/project-room-agent-module.js';
 import { createProjectRoomAgentPublication } from '../../services/projects/project-room-agent-publication.js';
+import { notifyProjectRoomMention } from '../../services/projects/project-room-mention-notifications.js';
 import { ProjectRoomService } from '../../services/projects/project-room-service.js';
 import {
   createProjectRoomRuntime,
@@ -1694,10 +1695,10 @@ export function isProjectMemberDraftLease(method: string, path: string) {
 function isProjectMemberRoomAction(method: string, path: string) {
   return (
     (method === 'POST' &&
-      (/^\/api\/projects\/[^/]+\/room\/(?:init|messages|messages\/[^/]+\/(?:reactions|edit|delete)|attachments|presence|agents|agents\/[^/]+\/(?:cancel|reconcile))$/.test(
+      (/^\/api\/projects\/[^/]+\/room\/(?:init|messages|messages\/[^/]+\/(?:reactions|edit|delete)|attachments|presence|typing|agents|agents\/[^/]+\/(?:cancel|reconcile))$/.test(
         path,
       ) ||
-        /^\/api\/projects\/[^/]+\/channels(?:\/[^/]+\/(?:messages|messages\/[^/]+\/(?:reactions|edit|delete)|attachments|presence|agents|agents\/[^/]+\/(?:cancel|reconcile)))?$/.test(
+        /^\/api\/projects\/[^/]+\/channels(?:\/[^/]+\/(?:messages|messages\/[^/]+\/(?:reactions|edit|delete)|attachments|presence|typing|agents|agents\/[^/]+\/(?:cancel|reconcile)))?$/.test(
           path,
         ))) ||
     (method === 'PUT' &&
@@ -9589,10 +9590,21 @@ export function configureRuntimeRoutes(
       );
     },
   });
+  // Bound once the notification service is composed below (#4799).
+  let roomMentionNotifications: NotificationService | undefined;
   const projectRoomService = new ProjectRoomService(
     roomStore.store,
     roomAccess,
     new ProjectRoomAttachments(join(roomHome, 'project-room-attachments')),
+    (event) => {
+      const service = roomMentionNotifications;
+      if (!service) return;
+      void notifyProjectRoomMention(service, event).catch((error: unknown) => {
+        context.logger.warn('Project room mention notification failed', {
+          error,
+        });
+      });
+    },
   );
   let roomAgentRuntime:
     | ReturnType<typeof createProjectRoomAgentRuntime>
@@ -12537,6 +12549,7 @@ export function configureRuntimeRoutes(
         context.projectService.listProjects().map((project) => project.slug),
       ),
   });
+  roomMentionNotifications = notificationService;
   automationActions = runtimeAutomationActions;
   durableTaskFollowUpWake = taskFollowUpWake;
   threadInbox?.start();

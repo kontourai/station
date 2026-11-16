@@ -1,6 +1,7 @@
 import { Button } from '../Button';
 import { roomShortTime } from './groupRows';
 import { RoomAvatar } from './RoomAvatar';
+import './RoomAgentActivity.css';
 import './RoomThreadSummary.css';
 
 /**
@@ -14,7 +15,10 @@ export function RoomThreadSummary({
   lastAt,
   disabled,
   onOpen,
+  working,
 }: {
+  /** An Agent answering in this thread now (#4800): "Writer is working…". */
+  working?: string;
   repliers: readonly { key: string; label: string; agent: boolean }[];
   count: number;
   lastAt?: string;
@@ -41,7 +45,13 @@ export function RoomThreadSummary({
       >
         {`${count} ${count === 1 ? 'reply' : 'replies'}`}
       </Button>
-      {lastAt && Number.isFinite(Date.parse(lastAt)) && (
+      {working ? (
+        <span className="room-thread-summary__working">
+          <span className="room-agent-activity__pulse" aria-hidden="true" />
+          {working} is working…
+        </span>
+      ) : null}
+      {!working && lastAt && Number.isFinite(Date.parse(lastAt)) && (
         <span className="room-thread-summary__last">
           Last reply {roomShortTime(lastAt)}
         </span>

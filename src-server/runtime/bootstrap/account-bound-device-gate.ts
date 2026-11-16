@@ -305,12 +305,13 @@ function isAccountBoundGuestAdminWrite(path: string, method: string): boolean {
 function isAccountBoundRoomLeaf(path: string, method: string): boolean {
   if (method === 'GET' || method === 'HEAD')
     return (
-      /^\/api\/projects\/[^/]+\/room(?:\/(?:messages|events|agents\/[^/]+|attachments\/[^/]+))?$/.test(
+      /^\/api\/projects\/[^/]+\/room(?:\/(?:messages|events|members|agents\/[^/]+|attachments\/[^/]+))?$/.test(
         path,
       ) ||
-      /^\/api\/projects\/[^/]+\/channels(?:\/[^/]+(?:\/(?:messages|events|agents\/[^/]+|attachments\/[^/]+))?)?$/.test(
+      /^\/api\/projects\/[^/]+\/channels(?:\/[^/]+(?:\/(?:messages|events|members|agents\/[^/]+|attachments\/[^/]+))?)?$/.test(
         path,
-      )
+      ) ||
+      /^\/api\/projects\/[^/]+\/rooms\/live$/.test(path)
     );
   if (method === 'PUT')
     return /^\/api\/projects\/[^/]+\/(?:room|channels\/[^/]+)\/note$/.test(
@@ -320,10 +321,10 @@ function isAccountBoundRoomLeaf(path: string, method: string): boolean {
     return /^\/api\/projects\/[^/]+\/channels\/[^/]+$/.test(path);
   return (
     method === 'POST' &&
-    (/^\/api\/projects\/[^/]+\/room\/(?:init|messages|messages\/[^/]+\/(?:reactions|edit|delete)|attachments|presence|agents|agents\/[^/]+\/(?:cancel|reconcile))$/.test(
+    (/^\/api\/projects\/[^/]+\/room\/(?:init|messages|messages\/[^/]+\/(?:reactions|edit|delete)|attachments|presence|typing|agents|agents\/[^/]+\/(?:cancel|reconcile))$/.test(
       path,
     ) ||
-      /^\/api\/projects\/[^/]+\/channels(?:\/[^/]+\/(?:messages|messages\/[^/]+\/(?:reactions|edit|delete)|attachments|presence|agents|agents\/[^/]+\/(?:cancel|reconcile)))?$/.test(
+      /^\/api\/projects\/[^/]+\/channels(?:\/[^/]+\/(?:messages|messages\/[^/]+\/(?:reactions|edit|delete)|attachments|presence|typing|agents|agents\/[^/]+\/(?:cancel|reconcile)))?$/.test(
         path,
       ))
   );
