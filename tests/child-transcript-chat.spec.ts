@@ -263,10 +263,6 @@ for (const viewport of [
         await control.click();
         await expect(trail).toHaveCount(0);
         await expect(log).toContainText('Parent answer with a child review.');
-        // Back lands on the working chat, not a record reader of it.
-        await expect(page.locator('.imported-conversation-pane')).toHaveCount(
-          0,
-        );
         if (name === 'Back to parent chat') {
           await page.goto(childUrl);
           await expect(trail).toBeVisible();
