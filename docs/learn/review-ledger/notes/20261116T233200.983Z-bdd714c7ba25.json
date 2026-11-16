@@ -1,0 +1,7 @@
+{
+  "revision": "f084d02891d336e26bc962557b185243c0064d2e",
+
+  "notes": [
+    {"path":"src-server/AGENTS.md","note":"Checked the workflow-sidecar-service diff: the same flow-agents functions (bindHostWorkflowSession, run-correlation readers/validators, phases/statuses/writeJson) now come from 11.2.0 subpaths that re-export the root's names; sidecar ownership rules here are unchanged.","inputs":["src-server/AGENTS.md","src-server/services/evidence/workflow-sidecar-service.ts"]}
+  ]
+}
