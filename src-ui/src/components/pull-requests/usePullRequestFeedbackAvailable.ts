@@ -1,4 +1,5 @@
 import { PULL_REQUEST_FEEDBACK_PREVIEW_ID } from '@kontourai/station-contracts/pull-request-feedback';
+import { useFeaturePreviewsQuery } from '@kontourai/station-sdk';
 import { readPullRequestFeedbackCapability } from '@kontourai/station-sdk/pull-request-feedback';
 import { useQuery } from '@tanstack/react-query';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
@@ -8,13 +9,15 @@ import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags
  * Whether this host offers pull request agent feedback: the
  * `pull-request-agent-feedback` preview is on and the host serves it. The
  * capability read shares its cache entry with `usePullRequestFeedback`.
- * `pending` while that read has not answered.
+ * `pending` while the previews or that read have not answered, so a link to
+ * a section it gates is not dropped before they do.
  */
 export function usePullRequestFeedbackAvailable(): {
   available: boolean;
   pending: boolean;
 } {
   const scope = useHostRequestAuthorityScope();
+  const previews = useFeaturePreviewsQuery();
   const preview = useSurfaceVisibilityFlags().has(
     PULL_REQUEST_FEEDBACK_PREVIEW_ID,
   );
@@ -27,6 +30,6 @@ export function usePullRequestFeedbackAvailable(): {
   });
   return {
     available: preview && capability.data === true,
-    pending: preview && capability.isPending,
+    pending: previews.isPending || (preview && capability.isPending),
   };
 }
