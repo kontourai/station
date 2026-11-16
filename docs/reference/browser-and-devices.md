@@ -160,9 +160,10 @@ create authority.
 Claude Agents receive `station-browser` in-process unless the Agent switches it
 off. With the **Codex browser and device tools** Feature Preview enabled, a
 Codex Agent can receive the same registrations through its Session's dynamic
-tool stream. On resume, Station accepts persisted tool names only when they are
-also in the current authorized catalog; tools added since the thread started
-need a new thread. ACP header-token calls remain `caller-not-bound`. See the
+tool stream; a new Session whose Agent has Station Control also gets that whole
+catalog there, at `bound`, and no header token. On resume, Station accepts
+persisted tool names only when they are also in the current authorized catalog;
+tools added since the thread started need a new thread. ACP header-token calls remain `caller-not-bound`. See the
 [bound-channel decision](../decisions/browser-agent-actions-and-bound-channel.md)
 for the protocol and evidence limits.
 

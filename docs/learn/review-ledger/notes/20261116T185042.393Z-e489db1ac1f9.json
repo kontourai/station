@@ -1,0 +1,7 @@
+{
+  "revision": "382eb00677f99b2c727952fc724f921d5fc8bc9c",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Reviewed for #5056: the only manifest change is the comment on the existing metric-reference.test.ts process-heavy entry, now naming its bounded git children. Classification rules here are unchanged and still followed.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

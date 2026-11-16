@@ -1,0 +1,11 @@
+{
+  "revision": "8f2b38092fd187c8717e9c9bac729b345753ec0e",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"screenshots.spec.ts change only builds a failed screen's capture.json fields through failedScreenFields and lists failed-screen reasons in the final assertion (#5028); screen definitions, viewports, motion and telemetry behaviour are unchanged.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"screenshots.spec.ts change only builds a failed screen's capture.json fields through failedScreenFields and lists failed-screen reasons in the final assertion (#5028); screen definitions, viewports, motion and telemetry behaviour are unchanged.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"screenshots.spec.ts change only builds a failed screen's capture.json fields through failedScreenFields and lists failed-screen reasons in the final assertion (#5028); screen definitions, viewports, motion and telemetry behaviour are unchanged.","inputs":["tests/screenshots.spec.ts"]}
+  ]
+}
