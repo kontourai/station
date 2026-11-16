@@ -1,7 +1,7 @@
 name: Nightly
 
 # Nightly proves source usability and signed artifact custody independently of
-# scheduled full qualification. Beta and stable retain exact-SHA full regression.
+# scheduled full qualification. Stable RC/final retain exact-SHA full regression.
 on:
   schedule:
     - cron: '47 * * * *'
@@ -33,6 +33,13 @@ jobs:
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
+      - name: Refuse a Nightly base at or below a published RC or final
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '[.[][] | {tag_name, draft, prerelease}]' > "$RUNNER_TEMP/published-product-releases.json"
+          node scripts/nightly-release-base.mjs --package-json package.json --release-history "$RUNNER_TEMP/published-product-releases.json"
       - id: decide
         name: Decide configured cadence and bounded terminal delivery recovery
         env:

@@ -6882,6 +6882,7 @@ interface Shot {
   file: string;
   ok: boolean;
   error?: string;
+  browserErrors?: string[];
   sha256?: string;
   controls?: Array<{ label: string; disabled: boolean }>;
   rasterDiagnostic?: {
@@ -7734,6 +7735,9 @@ test('build gallery — capture key screens', async ({ page }) => {
               screen,
               file,
               ok: true,
+              browserErrors: browserErrors.length
+                ? [...browserErrors]
+                : undefined,
               controls: final.atPhoto.map(({ label, disabled }) => ({
                 label,
                 disabled,
@@ -7850,6 +7854,7 @@ test('build gallery — capture key screens', async ({ page }) => {
               ok,
               screen,
               error,
+              browserErrors,
               sha256,
               controls,
               layout,
@@ -7865,6 +7870,7 @@ test('build gallery — capture key screens', async ({ page }) => {
               name: screen.name,
               viewport: screen.viewport,
               error: error ?? null,
+              browserErrors,
               sha256,
               controls,
               layout,

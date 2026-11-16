@@ -1766,6 +1766,8 @@
 
     "src-server/services/orchestration/child-work-history.ts",
 
+    "packages/sdk/src/relay-management.ts",
+
     "src-server/services/evidence/task-code-review-module.ts",
 
     "src-server/routes/evidence/task-code-reviews.ts"

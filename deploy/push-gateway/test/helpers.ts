@@ -110,7 +110,7 @@ export async function fakeServiceAccount() {
 
 export const allow = { limit: async () => ({ success: true }) };
 
-export const IOS_BUNDLE = 'io.kontourai.station.beta';
+export const IOS_BUNDLE = 'io.kontourai.station.nightly';
 export const TEAM_ID = 'TEAM123456';
 export const KEY_ID = 'KEY1234567';
 

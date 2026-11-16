@@ -28,7 +28,7 @@ const chromiumAvailable = chromiumIsInstalled(REPO_ROOT);
 const SHIPPED = SHIPPED_THEMES[BRANDING_BASE_THEME];
 
 type Mode = 'dark' | 'light';
-type Channel = 'release' | 'dev' | 'beta' | 'nightly';
+type Channel = 'release' | 'dev' | 'nightly';
 
 interface Measured {
   brand: string;
@@ -207,7 +207,7 @@ describe.skipIf(!chromiumAvailable)('action and focus role cascade', () => {
     },
   );
 
-  const channels = (['dev', 'beta', 'nightly'] as const).flatMap((channel) =>
+  const channels = (['dev', 'nightly'] as const).flatMap((channel) =>
     (['dark', 'light'] as const).map((mode) => [channel, mode] as const),
   );
 

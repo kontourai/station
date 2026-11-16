@@ -2816,7 +2816,6 @@ export function HostDevicePairingPanel({
                     className="pairing-select"
                   >
                     <option value="stable">Station</option>
-                    <option value="beta">Station Beta</option>
                     <option value="nightly">Station Nightly</option>
                   </select>
                 </label>
@@ -3062,7 +3061,6 @@ export function HostDevicePairingPanel({
               className="pairing-select"
             >
               <option value="stable">Station</option>
-              <option value="beta">Station Beta</option>
               <option value="nightly">Station Nightly</option>
             </select>
           </label>

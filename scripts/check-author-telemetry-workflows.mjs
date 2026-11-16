@@ -68,7 +68,7 @@ const SCOPES = [
     'Build server and UI',
     PORTABLE,
     'STATION_CHANNEL',
-    `\${{ inputs.ring == 'preview' && 'beta' || inputs.ring }}`,
+    `\${{ inputs.ring }}`,
   ],
   [
     'portable-server-archives.yml',

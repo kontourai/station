@@ -18,7 +18,7 @@ const payload = encodeDevicePairingPayload({
 });
 
 describe('channel-aware pairing deep links', () => {
-  test.each(['stable', 'beta', 'nightly'] as const)(
+  test.each(['stable', 'nightly'] as const)(
     'round-trips the %s client route without constraining backend identity',
     (clientChannel) => {
       const link = encodePairingDeepLink({ payload, clientChannel });

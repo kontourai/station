@@ -20,19 +20,6 @@ export const IOS_TESTFLIGHT_CHANNELS = Object.freeze({
     agentActivityBundleId: 'io.kontourai.station.AgentActivity',
     notificationServiceBundleId: 'io.kontourai.station.NotificationService',
   }),
-  beta: Object.freeze({
-    bundleId: 'io.kontourai.station.beta',
-    productName: 'Station Beta',
-    appStoreName: 'Station Beta by Kontour AI',
-    scheme: 'station-beta',
-    icon: 'icons/beta/icon.png',
-    iosIconSet: 'icons/beta/ios',
-    environment: 'ios-beta',
-    internalGroup: 'Station Beta Internal',
-    agentActivityBundleId: 'io.kontourai.station.beta.AgentActivity',
-    notificationServiceBundleId:
-      'io.kontourai.station.beta.NotificationService',
-  }),
   nightly: Object.freeze({
     bundleId: 'io.kontourai.station.nightly',
     productName: 'Station Nightly',
@@ -125,7 +112,7 @@ function main(args) {
   const output = option(args, 'output');
   if (!channel || !marketingVersion || !bundleVersion || !output)
     fail(
-      'usage: --channel <stable|beta|nightly> --marketing-version <version> --bundle-version <number> --output <path>',
+      'usage: --channel <stable|nightly> --marketing-version <version> --bundle-version <number> --output <path>',
     );
   if (args.length !== 8)
     fail('every supported option must be supplied exactly once');

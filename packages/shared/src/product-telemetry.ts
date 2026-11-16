@@ -30,12 +30,11 @@ import {
   type UsageTelemetryEvent,
 } from '@kontourai/station-contracts/product-telemetry';
 
-/** Runtime builds call the preview release ring beta; telemetry uses preview. */
+/** Only supported runtime identities contribute a build channel label. */
 export function mapRuntimeChannelToTelemetryChannel(
   channel: string | undefined,
 ): ProductTelemetryBuild['channel'] {
-  const label = channel === 'beta' ? 'preview' : channel;
-  return TELEMETRY_CHANNELS.find((allowed) => allowed === label);
+  return TELEMETRY_CHANNELS.find((allowed) => allowed === channel);
 }
 
 export function renderUsageTelemetryInventory(): string {

@@ -123,6 +123,7 @@
     "scripts/lib/nightly-build-identity.mjs",
     "scripts/lib/native-release-config.mjs",
     "esbuild.config.mjs",
+    "scripts/lib/server-bundle-ascii.mjs",
     "scripts/lib/desktop-node-runtime.mjs",
     "scripts/prepare-desktop-rust-resources.mjs"
   ],

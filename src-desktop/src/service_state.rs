@@ -1804,11 +1804,11 @@ mod tests {
                 None,
                 Some("C:\\Users\\tester".into()),
                 true,
-                Some(std::ffi::OsStr::new("beta"))
+                Some(std::ffi::OsStr::new("nightly"))
             ),
             PathBuf::from("C:\\Users\\tester\\.station")
                 .join("instances")
-                .join("beta")
+                .join("nightly")
         );
     }
 

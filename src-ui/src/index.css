@@ -44,7 +44,7 @@
    and `channel-text-contrast.test.tsx` measures the rendered text on its
    real surfaces, including the raised rows the panel links sit on and the
    sidebar home button's hover fill behind the badge. Where a channel's
-   signature hue fails (nightly #8b5cf6, beta #5865f2, the dev light
+   signature hue fails (nightly #8b5cf6 and the dev light
    #a75f0d), the mode uses a nearby shade of it for brand and roles alike. A dark-mode fill light enough to read on the dark page cannot
    carry white text at 4.5:1, so dark modes pair it with dark text. */
 :root.is-dev-build {
@@ -76,22 +76,6 @@
   --k-focus: #98560c;
 }
 
-:root[data-app-channel="beta"] {
-  --k-brand: #7983f4;
-  --k-brand-contrast: #06080b;
-  --k-action: #7983f4;
-  --k-action-contrast: #06080b;
-  --k-focus: #7983f4;
-}
-
-:root[data-app-channel="beta"][data-theme="light"] {
-  --k-brand: #4f5bd5;
-  --k-brand-contrast: #ffffff;
-  --k-action: #4f5bd5;
-  --k-action-contrast: #ffffff;
-  --k-focus: #4f5bd5;
-}
-
 :root[data-app-channel="nightly"] {
   --k-brand: #9d7bf8;
   --k-brand-contrast: #06080b;
@@ -108,10 +92,6 @@
   --k-focus: #7c3aed;
 }
 
-:root[data-app-channel="beta"] img[src="/favicon.png"] {
-  content: url("/favicon-beta.png");
-}
-
 :root[data-app-channel="nightly"] img[src="/favicon.png"] {
   content: url("/favicon-nightly.png");
 }
@@ -121,7 +101,7 @@
    that suppress outlines. Pointer focus remains visually unchanged.
 
    The ring follows `--k-focus` where something chose a focus colour: a
-   white-label theme, or a Dev, Beta or Nightly build (the channel blocks
+   white-label theme, or a Dev or Nightly build (the channel blocks
    above). Everywhere else it follows the accent, so a device accent chosen
    in Appearance colours it. The installed @kontourai/ui tokens always define
    `--k-focus`, so "is it defined" cannot tell those apart; instead
@@ -147,7 +127,6 @@
 :is(
     :root[data-brand-focus],
     :root.is-dev-build,
-    :root[data-app-channel="beta"],
     :root[data-app-channel="nightly"]
   )
   :where(

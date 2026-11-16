@@ -556,10 +556,12 @@ separate v3 tables, connection offers in v4, consumed request proofs in v5,
 and grant-renewal receipts in v6. Schema v7 adds a separate bounded invitation-request replay table; it does not reinterpret grant IDs as invitation IDs. Existing browser v1 wire records, Origin
 checks, owner tables, and signaling behavior are unchanged. A native surface is
 discriminated as `station-native` and binds the app identifier, one of the
-actual `dev`, `stable`, `beta`, or `nightly` channels, a client instance UUID,
+actual `dev`, `stable`, or `nightly` channels, a client instance UUID,
 and a P-256 proof-key thumbprint. The operator must choose that thumbprint from
 an independently approved native install key. The descriptive app/channel
 fields are bound as metadata; this exchange does not provide OS app attestation.
+Retired Beta surfaces are rejected by active proof, key and enrollment owners;
+retained records are not remapped to an active channel.
 
 `POST /broker/v1/native/grants/redeem` accepts only a v2 invitation and an
 ES256 compact JWS proof from its bound key. The signed payload uses UTF-8 JSON

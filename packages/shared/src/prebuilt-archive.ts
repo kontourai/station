@@ -29,15 +29,20 @@ import { renamePathSyncRetrying } from './fs-windows-compat.js';
 import { STATION_RELEASE_RINGS, type StationReleaseRing } from './ports.js';
 import { windowsSystemUtilityPath } from './windows-system-utility.mjs';
 
-export interface PackagedReleaseManifest {
-  schemaVersion: 2;
+interface PackagedReleaseIdentity {
   sha: string;
-  ref: string;
   createdAt: string;
   channel: PackagedRuntimeChannel;
   releaseChannel: PackagedReleaseChannel;
   prerelease: boolean;
 }
+
+/** v3 binds promotable bytes to their product version, independently of a release tag. */
+export type PackagedReleaseManifest = PackagedReleaseIdentity &
+  (
+    | { schemaVersion: 2; ref: string; version?: never }
+    | { schemaVersion: 3; version: string; ref?: never }
+  );
 
 export type PackagedReleaseChannel = StationReleaseRing;
 export type PackagedRuntimeChannel =
@@ -73,23 +78,32 @@ export function validatePackagedReleaseManifest(
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const candidate = value as Partial<PackagedReleaseManifest>;
   const keys = Object.keys(value).sort();
-  const expectedKeys = [
-    'channel',
-    'createdAt',
-    'prerelease',
-    'ref',
-    'releaseChannel',
-    'schemaVersion',
-    'sha',
-  ];
+  const expectedKeys =
+    candidate.schemaVersion === 2
+      ? [
+          'channel',
+          'createdAt',
+          'prerelease',
+          'ref',
+          'releaseChannel',
+          'schemaVersion',
+          'sha',
+        ]
+      : [
+          'channel',
+          'createdAt',
+          'prerelease',
+          'releaseChannel',
+          'schemaVersion',
+          'sha',
+          'version',
+        ];
   if (
     keys.length !== expectedKeys.length ||
     keys.some((key, index) => key !== expectedKeys[index]) ||
-    candidate.schemaVersion !== 2 ||
+    (candidate.schemaVersion !== 2 && candidate.schemaVersion !== 3) ||
     typeof candidate.sha !== 'string' ||
     !/^[0-9a-f]{40}$/i.test(candidate.sha) ||
-    typeof candidate.ref !== 'string' ||
-    !/^[A-Za-z0-9._/-]{1,128}$/.test(candidate.ref) ||
     typeof candidate.createdAt !== 'string' ||
     !Number.isFinite(Date.parse(candidate.createdAt)) ||
     new Date(Date.parse(candidate.createdAt)).toISOString() !==
@@ -98,20 +112,33 @@ export function validatePackagedReleaseManifest(
     candidate.channel !==
       STATION_RELEASE_RINGS[candidate.releaseChannel].runtimeChannel ||
     candidate.prerelease !==
-      STATION_RELEASE_RINGS[candidate.releaseChannel].prerelease ||
-    !packagedReleaseTag(candidate.releaseChannel).test(candidate.ref)
-  ) {
+      STATION_RELEASE_RINGS[candidate.releaseChannel].prerelease
+  )
     return null;
-  }
-  return {
-    schemaVersion: 2,
+  const identity = {
     sha: candidate.sha,
-    ref: candidate.ref,
     createdAt: candidate.createdAt,
     channel: STATION_RELEASE_RINGS[candidate.releaseChannel].runtimeChannel,
     releaseChannel: candidate.releaseChannel,
     prerelease: STATION_RELEASE_RINGS[candidate.releaseChannel].prerelease,
   };
+  if (
+    candidate.schemaVersion === 2 &&
+    typeof candidate.ref === 'string' &&
+    candidate.ref.length <= 128 &&
+    packagedReleaseTag(candidate.releaseChannel).test(candidate.ref)
+  )
+    return { ...identity, schemaVersion: 2, ref: candidate.ref };
+  if (
+    candidate.schemaVersion === 3 &&
+    (candidate.releaseChannel === 'stable' ||
+      candidate.releaseChannel === 'nightly') &&
+    typeof candidate.version === 'string' &&
+    candidate.version.length <= 127 &&
+    packagedReleaseTag(candidate.releaseChannel).test(`v${candidate.version}`)
+  )
+    return { ...identity, schemaVersion: 3, version: candidate.version };
+  return null;
 }
 
 /**
@@ -176,11 +203,11 @@ export function isPrebuiltArchiveRoot(root: string): boolean {
   return readPrebuiltArchiveRelease(root) !== null;
 }
 
-/** The version a release names: its tag without the leading `v`. */
+/** Product version from v3 provenance, or the tag identity of a legacy v2 archive. */
 export function packagedReleaseVersion(
-  release: Pick<PackagedReleaseManifest, 'ref'>,
+  release: { version: string } | { ref: string },
 ): string {
-  return release.ref.slice(1);
+  return 'version' in release ? release.version : release.ref.slice(1);
 }
 
 /**
