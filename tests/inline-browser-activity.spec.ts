@@ -562,7 +562,8 @@ for (const width of [390, 1440]) {
       await expect(activity).toContainText('3 actions');
       const disclosure = await activity.locator('summary').boundingBox();
       expect(disclosure).not.toBeNull();
-      expect(disclosure!.height).toBeGreaterThanOrEqual(44);
+      // DOMRects can report 43.999969 for a 44px layout box.
+      expect(Number(disclosure!.height.toFixed(3))).toBeGreaterThanOrEqual(44);
       await expect(activity.locator('canvas')).toHaveCount(0);
       await expect(
         activity.getByRole('button', {
