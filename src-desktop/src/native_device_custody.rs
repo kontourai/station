@@ -63,7 +63,7 @@ impl NativeDeviceCustodyOwner {
 
     fn validate(&self) -> Result<(), String> {
         if !crate::native_proof_key_core::valid_app_identifier(&self.app_identifier)
-            || !matches!(self.channel.as_str(), "dev" | "stable" | "beta" | "nightly")
+            || !matches!(self.channel.as_str(), "dev" | "stable" | "nightly")
         {
             return Err("invalid Station custody owner".into());
         }

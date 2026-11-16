@@ -18,6 +18,11 @@ waking); there is no OS job. A machine's
 [managed policy](managed-policy.md#update-control), read when the app starts,
 can turn these checks off or send them to an approved mirror.
 
+Stable RCs use the final product version and Stable update endpoint. Moving
+between RCs at the same `X.Y.Z` requires a manual reinstall; the updater does
+not treat another candidate at that version as newer. See
+[RC acceptance](release-rings.md#publish-a-release-candidate).
+
 Updating has three separate steps:
 
 1. **Download.** Open **Updates** in the sidebar, including its collapsed
@@ -346,6 +351,16 @@ machine would miss for other users, and Node's portable mode removes only the
 path dependency. Node's `NODE_DISABLE_COMPILE_CACHE=1` opt-out remains
 supported, and the server then gives the built-in children no cache either.
 Cache failure must not prevent startup.
+
+Every static import in `dist-server/command-station.js` is loaded when the
+server boots, whether or not its code runs. The Claude Agent SDK,
+`@kontourai/console-server` and `@kontourai/veritas/engine` are loaded on first
+use instead, because an idle server needs none of them and each costs memory
+once loaded. The server build fails if the bundle statically imports any of
+those packages, or any subpath of one, again
+([deny list](../../scripts/lib/server-static-imports.mjs)).
+The `@kontourai/flow-agents` root is still imported at boot because some
+synchronous callers need values only it exports.
 
 Server bundles are minified with function/class names retained. The esbuild
 `linked` source-map setting is equivalent to the previous `true`: both emit an

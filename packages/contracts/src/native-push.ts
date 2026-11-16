@@ -27,7 +27,6 @@ export const NATIVE_PUSH_REGISTRATION_PATH = '/api/system/native-push';
 export const NATIVE_PUSH_ANDROID_PACKAGES = [
   'io.kontourai.station',
   'io.kontourai.station.nightly',
-  'io.kontourai.station.beta',
   'io.kontourai.station.debug',
 ] as const;
 
@@ -42,7 +41,6 @@ export type NativePushAndroidPackage =
  */
 export const NATIVE_PUSH_IOS_BUNDLES = [
   'io.kontourai.station',
-  'io.kontourai.station.beta',
   'io.kontourai.station.nightly',
   'io.kontourai.station.dev.instance',
 ] as const;

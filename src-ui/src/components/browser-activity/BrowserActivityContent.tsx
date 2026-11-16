@@ -10,15 +10,20 @@ export default function BrowserActivityContent({
   browserSessionId,
   run,
   active,
+  summaryCalls,
   renderRow,
 }: {
   scope: BrowserActivityScope;
   browserSessionId: string | null;
   run: ToolCallRun<ToolCallLike>;
   active: boolean;
+  summaryCalls: ToolCallLike[];
   renderRow: (index: number) => ReactNode;
 }) {
-  const group = classifyToolCallRun(run);
+  const group = classifyToolCallRun({
+    ...run,
+    calls: summaryCalls.map((part, index) => ({ part, index })),
+  });
   const outcomes = [
     group.failedCount > 0 ? `${group.failedCount} failed` : null,
     group.unresolvedCount > 0
@@ -30,7 +35,7 @@ export default function BrowserActivityContent({
       ? `${group.awaitingApprovalCount} awaiting approval`
       : null,
   ].filter(Boolean);
-  const children = active ? (
+  const children = !run.calls.length ? null : active ? (
     run.calls.map(({ index }) => renderRow(index))
   ) : (
     <>
@@ -52,10 +57,9 @@ export default function BrowserActivityContent({
       scope={scope}
       browserSessionId={browserSessionId}
       active={active}
-      toolCount={run.calls.length}
-      status={[active ? 'In progress' : 'Past activity', ...outcomes].join(
-        ' · ',
-      )}
+      toolCount={summaryCalls.length}
+      steps={summaryCalls}
+      status={outcomes.join(' · ')}
     >
       {children}
     </InlineBrowserActivity>

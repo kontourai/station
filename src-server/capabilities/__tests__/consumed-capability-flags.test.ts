@@ -30,10 +30,12 @@ import { createCoordinatorRoutes } from '../../routes/orchestration/coordinator.
 import { createOrchestrationRoutes } from '../../routes/orchestration/orchestration.js';
 import { createSessionPersonActivityRoutes } from '../../routes/orchestration/session-project-activity.js';
 import { createProjectRoomRoutes } from '../../routes/projects/project-room-routes.js';
+import { createPullRequestFeedbackRoutes } from '../../routes/pull-requests/pull-request-feedback.js';
 import { createReadMarkerRoutes } from '../../routes/read-markers/read-marker-routes.js';
 import { createDiagnosticsRoutes } from '../../routes/system/diagnostics.js';
 import { createSystemStatusRoutes } from '../../routes/system/system-status-routes.js';
 import { HOSTED_TENANT_REGISTRY_FILE_ENV } from '../../runtime/bootstrap/hosted-tenant-mode.js';
+import { composePullRequestFeedbackRuntime } from '../../runtime/routes/runtime-pull-request-feedback.js';
 import {
   resolveRuntimeConnectionRoutesEnabled,
   resolveRuntimeWebPushEnabled,
@@ -574,6 +576,47 @@ const CONSUMED_FLAGS: Record<
     });
     return response.status === 202;
   },
+  // GET /api/pull-request-feedback/conversations/:id answers only where the
+  // runtime composes pull request feedback (not hosted), preview on.
+  pullRequestFeedback: async ({ hosted }) => {
+    const world = inboxStation();
+    const runtime = composePullRequestFeedbackRuntime({
+      homeDir: makeTempDir('pr-feedback-flag-'),
+      hosted,
+      featurePreviews: {
+        bind: () => ({
+          select: (branches: { enabled: () => unknown }) => branches.enabled(),
+        }),
+      } as never,
+      eventStore: world.store,
+      inbox: world.inbox,
+      orchestration: world.service,
+      eventBus: { subscribe: () => () => {} },
+      providers: () => [],
+      links: { list: () => [] } as never,
+      keptForSessions: () => [],
+      access: {
+        current: () => true,
+        canRead: () => true,
+        operator: () => 'owner',
+        readerOf: () => () => true,
+      },
+      logger: { warn: vi.fn() },
+    });
+    if (!runtime) return false;
+    try {
+      const app = new Hono().route(
+        '/api/pull-request-feedback',
+        createPullRequestFeedbackRoutes(...runtime.routeArgs),
+      );
+      const response = await app.request(
+        '/api/pull-request-feedback/conversations/conversation-a',
+      );
+      return response.status === 200;
+    } finally {
+      await runtime.close();
+    }
+  },
   // GET /api/system/routes answers the Station routes only where runtime
   // route support composes a resolver, from the same predicate as the flag.
   connectionRoutes: async ({ hosted }) => {
@@ -792,6 +835,7 @@ describe('consumed capability flags match what their routes serve', () => {
     connectionRoutes: { personal: true, hosted: false },
     coordinatorSession: { personal: true, hosted: false },
     followUpAttachments: { personal: true, hosted: false },
+    pullRequestFeedback: { personal: true, hosted: false },
     troubleshootPrepare: { personal: true, hosted: true },
   };
 

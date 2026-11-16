@@ -318,14 +318,12 @@ export function stationProfilesPath(
   return join(resolveStationRoot(env), 'config', 'profiles.json');
 }
 
-export type StationRuntimeChannel = 'stable' | 'beta' | 'nightly' | 'dev';
+export type StationRuntimeChannel = 'stable' | 'nightly' | 'dev';
 
 export function runtimeChannelFromEnvironment(
   env: NodeJS.ProcessEnv = process.env,
 ): StationRuntimeChannel {
   switch (env.STATION_CHANNEL?.trim()) {
-    case 'beta':
-      return 'beta';
     case 'nightly':
       return 'nightly';
     case 'development':

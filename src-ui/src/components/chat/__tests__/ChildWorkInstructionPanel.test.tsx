@@ -230,18 +230,15 @@ test('an older response cannot clear a later uncertain instruction', async () =>
     ],
   };
   const checking = view('turn', true, 'Checking');
-  fireEvent.click(
-    await within(checking.container).findByRole('button', {
-      name: 'Check',
-    }),
-  );
-  await waitFor(() =>
-    expect(
-      within(checking.container).queryByText(
-        'Saved instruction: First instruction',
-      ),
-    ).toBeNull(),
-  );
+  await within(checking.container).findByText('Sent to the subagent.');
+  expect(
+    within(checking.container).queryByText(
+      'Saved instruction: First instruction',
+    ),
+  ).toBeNull();
+  expect(
+    await get(`child-steer:${JSON.stringify(['owner', 'parent', 'child'])}`),
+  ).toBeNull();
   fireEvent.change(inputB, { target: { value: 'Second instruction' } });
   fireEvent.click(within(b.container).getByRole('button', { name: 'Send' }));
   await within(b.container).findAllByText('May have reached the agent');

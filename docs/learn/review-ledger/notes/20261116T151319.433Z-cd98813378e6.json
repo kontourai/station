@@ -1,0 +1,7 @@
+{
+  "revision": "6a6b39ee1af7b7faf299de3e195e4b3f3b15ed04",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Edited the ConnectionInspector contract: model-catalog inclusion joins command/prerequisite inclusion as an explicit request input, and the boot-time built-in agent binding excludes model discovery and commands. Checked against connection-inspector.ts (includeModelCatalog gates listModelCatalog/listModels and the resolve_catalog metric; status still comes from resolveRuntimeAdapterReadiness over prerequisites), connection-service.ts (listRuntimeConnections/listRuntimeConnectionInventory pass the options through; defaults unchanged for every other caller) and station-runtime.ts listEngineConnections. The rest of the map is unchanged by this diff.","inputs":["docs/architecture/module-map.md","src-server/runtime/bootstrap/station-runtime.ts","src-server/services/connections/connection-inspector.ts","src-server/services/connections/connection-service.ts"]}
+  ]
+}

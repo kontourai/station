@@ -10,10 +10,6 @@ const CHANNELS = [
     identifier: 'io.kontourai.station',
   },
   {
-    config: 'src-desktop/tauri.beta.conf.json',
-    identifier: 'io.kontourai.station.beta',
-  },
-  {
     config: 'src-desktop/tauri.nightly.conf.json',
     identifier: 'io.kontourai.station.nightly',
   },

@@ -154,7 +154,9 @@
 
     "src-ui/src/float-over-chat/shownSources.ts",
 
-    "tests/inline-browser-activity.spec.ts"
+    "tests/inline-browser-activity.spec.ts",
+
+    "src-ui/src/components/chat/BrowserTurnActivity.tsx"
   ],
 
   "checks": [

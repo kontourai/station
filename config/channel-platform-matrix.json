@@ -29,20 +29,6 @@
       "iosIconSource": "src-desktop/icons/stable/ios",
       "iosStatus": "release-enabled"
     },
-    "beta": {
-      "appName": "Station Beta",
-      "desktopIdentifier": "io.kontourai.station.beta",
-      "pairingDeepLinkScheme": "station-beta",
-      "androidIdentifier": "io.kontourai.station.beta",
-      "iosIdentifier": "io.kontourai.station.beta",
-      "runtimeDirectory": "instances/beta",
-      "serverPort": 28141,
-      "uiPort": 28000,
-      "desktopIconSource": "src-desktop/icons/beta",
-      "androidIconSource": "src-desktop/icons/beta/android",
-      "iosIconSource": "src-desktop/icons/beta/ios",
-      "iosStatus": "source-configured; provider-NOT_VERIFIED until the protected Beta App ID, profile, group, and TestFlight receipt exist"
-    },
     "nightly": {
       "appName": "Station Nightly",
       "desktopIdentifier": "io.kontourai.station.nightly",

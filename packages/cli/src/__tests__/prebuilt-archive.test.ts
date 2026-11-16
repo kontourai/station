@@ -128,13 +128,13 @@ describe('resolveLifecycleStateLocation', () => {
     });
   });
 
-  test("names the archive's own runtime channel, not the ring or the caller's", () => {
+  test("keeps the archive's Nightly state separate from the caller's Stable channel", () => {
     const root = tree({
       release: {
         ...RELEASE,
-        ref: 'v0.0.0-preview.1',
-        channel: 'beta',
-        releaseChannel: 'preview',
+        ref: 'v0.0.0-nightly.1',
+        channel: 'nightly',
+        releaseChannel: 'nightly',
         prerelease: true,
       },
     });
@@ -143,9 +143,9 @@ describe('resolveLifecycleStateLocation', () => {
     expect(
       resolveLifecycleStateLocation(
         resolveLifecycleCodeRoot(root),
-        join(stationRoot, 'instances', 'beta'),
+        join(stationRoot, 'instances', 'nightly'),
       ).stateDir,
-    ).toBe(join(stationRoot, 'state', 'beta'));
+    ).toBe(join(stationRoot, 'state', 'nightly'));
   });
 
   test("derives the root from the home's path alone, never the environment", () => {

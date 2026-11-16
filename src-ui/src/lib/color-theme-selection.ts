@@ -24,9 +24,7 @@ interface IndexedFlavor {
   readonly panel: string;
   readonly raised: string;
   readonly accentContrast: string;
-  readonly channelContrast: Readonly<
-    Record<'dev' | 'beta' | 'nightly', string>
-  >;
+  readonly channelContrast: Readonly<Record<'dev' | 'nightly', string>>;
 }
 
 interface IndexedFamily {
@@ -113,7 +111,7 @@ export interface ColorThemeBrandSurfaces {
 
 /**
  * The theme's surfaces in `mode` for the selection stamped on `root`, or
- * `null` when Station's own colours are in force. `channel` is the Dev, Beta
+ * `null` when Station's own colours are in force. `channel` is the Dev
  * or Nightly build the root reports, whose brand text the theme keeps.
  */
 export function colorThemeBrandSurfaces(
@@ -131,10 +129,10 @@ export function colorThemeBrandSurfaces(
     mode === 'light'
       ? family.light
       : family.dark.find((f) => f.id === resolved.darkFlavor)!;
-  // index.css lets Beta and Nightly win over a dev build; so does the sheet.
+  // index.css lets Nightly win over a dev build; so does the sheet.
   const reported = root.getAttribute('data-app-channel');
   const effective =
-    reported === 'beta' || reported === 'nightly'
+    reported === 'nightly'
       ? reported
       : root.classList.contains('is-dev-build')
         ? 'dev'

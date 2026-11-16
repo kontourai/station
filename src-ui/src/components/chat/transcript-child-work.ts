@@ -246,6 +246,7 @@ export const TranscriptTurnContext = createContext<
       messageId?: string;
       firstRow?: boolean;
       wholeTurn?: boolean;
+      browserOwner?: string;
     }
   | undefined
 >(undefined);

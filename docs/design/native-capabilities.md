@@ -30,6 +30,12 @@ desktop-tray remains `disabled` rather than being guessed from the JavaScript
 host. The adapter skips a capability id it does not know (a newer shell's),
 but rejects the whole report for a malformed entry, a repeated id or a
 missing required id; an id the shell omits stays at its initial state.
+An older host may omit `channel`; an explicit retired, unknown or malformed
+channel rejects the report. A rejected report leaves the profile without a
+supported channel or startup mark. A failed refresh clears the cached target
+and restores report-derived availability to its initial states; a fresh valid
+report may enable those features again. Native host command authorization
+remains separate from these availability states.
 
 | Capability | Web/PWA | Current Tauri host | Notes |
 | --- | --- | --- | --- |
@@ -37,7 +43,7 @@ missing required id; an id the shell omits stays at its initial state.
 | Native host-event bridge | unsupported | enabled | Share intake uses `station://share-received`; separate typed subscriptions handle tray navigation and bundled-server status. |
 | Native image share receiver (`image-share-intake`) | unsupported | Android enabled; iOS and desktop disabled | `station-media-intake` receives `image/*` `ACTION_SEND`/`ACTION_SEND_MULTIPLE` and opens the conversation picker. iOS needs a Share Extension that is not built. See [Clipboard images and the share target](#clipboard-images-and-the-share-target). |
 | Clipboard images (`clipboard-image`) | unsupported (the room composer uses `navigator.clipboard.read()` on a touch browser) | enabled on mobile; unsupported on desktop | `station-media-intake` reads the system clipboard for the room composer’s **Paste image** action. Reply and start composers use Attach or textarea paste events. |
-| Pairing deep link | unsupported | enabled | Release schemes are `station-stable`, `station-beta`, and `station-nightly`; isolated development configuration uses a generated `station-dev-<suffix>` scheme. The pairing route accepts only `pair?linkVersion=1&clientChannel=<channel>&payload=station-pairing:v1:...`, opens Join for explicit confirmation, and never navigates or fetches a supplied URL. |
+| Pairing deep link | unsupported | enabled | Release schemes are `station-stable` and `station-nightly`; isolated development configuration uses a generated `station-dev-<suffix>` scheme. The pairing route accepts only `pair?linkVersion=1&clientChannel=<channel>&payload=station-pairing:v1:...`, opens Join for explicit confirmation, and never navigates or fetches a supplied URL. |
 | Native relay link delivery | unsupported | iOS source path; other targets unsupported | Separate `station-relay-<channel>` associations deliver public routing metadata and an opaque pending handle. Build enablement and compilation do not qualify installed cold/warm delivery. |
 | Nearby Station discovery | unsupported | iOS and Android 14+ source integration | Fixed `_station._tcp.local.` DNS-SD browsing returns untrusted private host/port hints. Earlier Android versions retain QR/manual entry. Bounded foreground scans require the existing access review; compilation and physical behavior require separate verification. |
 | Fold geometry | CSS Viewport Segments where the engine has them | iOS 27.1+ (`station-fold`); Android and desktop use the web path | Read-only hinge geometry and posture for foldable displays. Safari has no segments API, so on an iPhone only the native shell reports a crease. See [Fold geometry](#fold-geometry). |

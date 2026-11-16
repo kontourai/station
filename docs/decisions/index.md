@@ -27,7 +27,9 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 | [personal-coordinator-session](./personal-coordinator-session.md) | current | One coordinator Session per person, woken from delivered attention notifications through the conversation inbox |
 | [process-supervisor](./process-supervisor.md) | current | Station process ownership and the process supervisor |
 | [project-room-realtime](./project-room-realtime.md) | current | Keep Room durability independent of realtime transport and harden SSE first |
+| [pull-request-agent-feedback](./pull-request-agent-feedback.md) | current | Forge feedback goes to the agent that owns the pull request |
 | [pull-request-guide-generation](./pull-request-guide-generation.md) | current | Generate shared pull request guides without model execution tools |
+| [rc-promotion-provenance](./rc-promotion-provenance.md) | current | Release-candidate archive identity and producer provenance |
 | [registry-sources-detected-by-structure](./registry-sources-detected-by-structure.md) | current | A registry source is a location; what it provides is detected from the structure of its content |
 | [remote-task-engines](./remote-task-engines.md) | current | Drive cloud-hosted coding agents through one remote task engine abstraction |
 | [revision-evidence-freeze-policy](./revision-evidence-freeze-policy.md) | current | Freeze Task room revision evidence only when a consumer references it |

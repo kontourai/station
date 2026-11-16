@@ -1,0 +1,19 @@
+{
+  "revision": "0c9e0d5c052cf876606ff06cd1ca18a9a3be3e6f",
+
+  "notes": [
+    {"path":"docs/decisions/rc-promotion-provenance.md","note":"Reviewed the release-guide delta against the frozen-ADR amendment: AppStore-action feed may remain at a prior version during review, with explicit same-byte feed-only repair after exact released-build readback. Archive schema3 SHA/version identity, strict legacy2 exact-ref behavior, Nightly schema2 retention and original RC asset/attestation lineage remain unchanged; no store/native completion is implied.","inputs":["docs/guides/release-rings.md"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Reviewed updated least-privilege topology assertions: feed-only repair excludes desktop pointer publication, and its direct native-update-feed policy entry is acknowledged in the trusted default-branch script inventory. Existing exact-source, provider admission, signing/inventory and immutable-source controls remain; parsed workflow/source fixtures do not establish live stores or listings.","inputs":["scripts/__tests__/release-workflow.test.ts"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Reviewed updated least-privilege topology assertions: feed-only repair excludes desktop pointer publication, and its direct native-update-feed policy entry is acknowledged in the trusted default-branch script inventory. Existing exact-source, provider admission, signing/inventory and immutable-source controls remain; parsed workflow/source fixtures do not establish live stores or listings.","inputs":["scripts/__tests__/release-workflow.test.ts"]},
+
+    {"path":"docs/guides/nightly.md","note":"Reviewed updated least-privilege topology assertions: feed-only repair excludes desktop pointer publication, and its direct native-update-feed policy entry is acknowledged in the trusted default-branch script inventory. Existing exact-source, provider admission, signing/inventory and immutable-source controls remain; parsed workflow/source fixtures do not establish live stores or listings.","inputs":["scripts/__tests__/release-workflow.test.ts"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Reviewed updated least-privilege topology assertions: feed-only repair excludes desktop pointer publication, and its direct native-update-feed policy entry is acknowledged in the trusted default-branch script inventory. Existing exact-source, provider admission, signing/inventory and immutable-source controls remain; parsed workflow/source fixtures do not establish live stores or listings.","inputs":["scripts/__tests__/release-workflow.test.ts"]},
+
+    {"path":"docs/guides/store-entry.md","note":"Reviewed updated least-privilege topology assertions: feed-only repair excludes desktop pointer publication, and its direct native-update-feed policy entry is acknowledged in the trusted default-branch script inventory. Existing exact-source, provider admission, signing/inventory and immutable-source controls remain; parsed workflow/source fixtures do not establish live stores or listings.","inputs":["scripts/__tests__/release-workflow.test.ts"]},
+
+    {"path":"docs/guides/store-listing.md","note":"Reviewed updated least-privilege topology assertions: feed-only repair excludes desktop pointer publication, and its direct native-update-feed policy entry is acknowledged in the trusted default-branch script inventory. Existing exact-source, provider admission, signing/inventory and immutable-source controls remain; parsed workflow/source fixtures do not establish live stores or listings.","inputs":["scripts/__tests__/release-workflow.test.ts"]}
+  ]
+}

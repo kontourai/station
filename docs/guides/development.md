@@ -616,11 +616,9 @@ homes under one `STATION_ROOT` (`~/.station` by default):
 +-- cache/
 +-- installs/
 |   +-- stable/
-|   +-- beta/
 |   +-- nightly/
 +-- instances/
     +-- stable/       # runtime home: config, projects, agents, plugins, logs...
-    +-- beta/
     +-- nightly/
     +-- dev/<worktree-id>/
 ```
@@ -1016,7 +1014,9 @@ the fixed invariants plus browser/performance smoke and the UI bundle budget.
 The `fast-checks` result combines job outcomes with exact-plan shard receipts;
 the required `Source verification policy` context reconciles it (the
 [ruleset](#landing-a-pull-request) lists required contexts). A failing shard also annotates each failed test and uploads its
-redacted Vitest JSON report. Local `ci:fast` remains unsharded; see the
+redacted Vitest JSON report. After its summary line the shard log lists each
+failed test as `file > name`, then failed suites and infrastructure errors,
+because a job log shows an annotation's message but not its file or title. Local `ci:fast` remains unsharded; see the
 [testing guide](testing.md#what-counts-as-tested) for evidence interpretation.
 Ordinary pull requests use focused local evidence, normal push hooks, and required hosted checks.
 Follow the [local feedback rule](testing.md#what-counts-as-tested).
@@ -1034,7 +1034,7 @@ source only; scheduled/manual success then runs all five packaging/platform
 validation families. Replaced pending revisions have no qualification claim. Optional
 PR delivery families run in sequence after core fast checks, selected by a
 trusted base-owned diff planner; required integration contexts stay unchanged.
-Scheduled main qualification and tagged Preview/Stable require full qualification with bounded exact-source reuse; a scheduled run does not repeat a corpus that already failed tests on the same source within 24 hours (see [releasing](releasing.md)).
+Scheduled main qualification and tagged Stable RC/final releases require full qualification with bounded exact-source reuse; a scheduled run does not repeat a corpus that already failed tests on the same source within 24 hours (see [releasing](releasing.md)).
 
 Nightly runs independently: an hourly eligibility decision enforces a six-hour
 default publication minimum before source tests or builds. Eligible sources
@@ -1071,7 +1071,7 @@ Every Playwright spec must be assigned to exactly one bucket in `tests/e2e-manif
 
 Dependency updates retain lock and compatibility checks. Feature PRs, merge
 queues and Nightly builds do not run advisory audits; the central scheduled
-scan tracks disclosures, and Preview/Stable publication enforces a fresh
+scan tracks disclosures, and RC/final publication enforces a fresh
 exact-source floor. See [Dependency security](dependency-security.md) for graph
 views, accountable ownership, trusted release policy and exception contracts.
 

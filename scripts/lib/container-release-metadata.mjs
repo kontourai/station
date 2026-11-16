@@ -11,6 +11,7 @@ const SHA = /^[0-9a-f]{40}$/i;
  * ring.
  */
 const CONTAINER_RINGS = new Set(['stable']);
+const PACKAGED_RINGS = new Set(['stable', 'nightly']);
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const CONTAINER_PLATFORMS = ['linux/amd64', 'linux/arm64'];
 
@@ -21,9 +22,8 @@ function fail(message) {
 /**
  * The release ring a `v<version>` tag belongs to. A tagged release (final or
  * candidate) is Stable through the shared release-tag parser; any other tag
- * is read from the generated ring table (config/channel-ports.json
- * releaseRings) through the shared verifier's per-ring version grammar, so a
- * prerelease ring such as Nightly needs no list typed here.
+ * may be Nightly according to the generated ring table and shared verifier.
+ * Preview remains a legacy reader contract only, never a new producer.
  */
 function releaseRingForTag(tag) {
   if (typeof tag !== 'string' || !tag.startsWith('v')) return undefined;
@@ -34,8 +34,8 @@ function releaseRingForTag(tag) {
     // Not a tagged Stable release; try the prerelease rings below.
   }
   const version = tag.slice(1);
-  return Object.keys(STATION_RELEASE_RINGS).find((ring) =>
-    CHANNEL_VERSION[ring]?.test(version),
+  return Object.keys(STATION_RELEASE_RINGS).find(
+    (ring) => ring === 'nightly' && CHANNEL_VERSION[ring]?.test(version),
   );
 }
 
@@ -45,10 +45,11 @@ export function createPackagedReleaseManifest({ tag, sha, createdAt }) {
     fail(
       `tag must be one release ring's version: ${[
         'vMAJOR.MINOR.PATCH-rc.N',
-        ...Object.entries(STATION_RELEASE_RINGS).map(
-          ([name, { prerelease }]) =>
+        ...Object.entries(STATION_RELEASE_RINGS)
+          .filter(([ring]) => PACKAGED_RINGS.has(ring))
+          .map(([name, { prerelease }]) =>
             prerelease ? `vMAJOR.MINOR.PATCH-${name}.N` : 'vMAJOR.MINOR.PATCH',
-        ),
+          ),
       ].join(', ')}`,
     );
   }
@@ -64,9 +65,11 @@ export function createPackagedReleaseManifest({ tag, sha, createdAt }) {
   }
   const { runtimeChannel, prerelease } = STATION_RELEASE_RINGS[ring];
   return {
-    schemaVersion: 2,
+    schemaVersion: ring === 'nightly' ? 2 : 3,
     sha: sha.toLowerCase(),
-    ref: tag,
+    ...(ring === 'nightly'
+      ? { ref: tag }
+      : { version: parseReleaseTag(tag).baseVersion }),
     createdAt,
     channel: runtimeChannel,
     releaseChannel: ring,
@@ -99,8 +102,9 @@ export function createContainerReleaseMetadata({
     sha: manifest.sha,
     createdAt,
     channel: manifest.releaseChannel,
-    // A candidate is tagged only with its own tag and the source SHA: the
-    // bare version and `latest` move when it is promoted, never at staging.
+    // Publication alias policy, not staging names. Workflows stage at
+    // staging-<producerTag>; RC publication applies no aliases, and promotion
+    // derives final aliases while retaining the candidate's immutable digest.
     tags: kind === 'rc' ? [tag, shaTag] : [tag, baseVersion, shaTag, 'latest'],
     labels: {
       'org.opencontainers.image.created': createdAt,

@@ -311,7 +311,7 @@ The mutation suite is deliberately focused and opt-in. Its runner safety and pol
 
 Dependency advisory scans are not part of PR, merge-queue or Nightly feature
 verification. The central scheduled scan retains one assigned actionable tracker;
-Preview/Stable publication runs a fresh exact-source audit using trusted policy.
+Stable RC/final publication runs a fresh exact-source audit using trusted policy.
 This does not remove secret scanning, dependency review, signatures, integrity or
 functional checks. See [dependency security](dependency-security.md#where-the-scan-runs).
 
@@ -507,7 +507,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`qualification-after-repair.yml`](../../.github/workflows/qualification-after-repair.yml) | Qualify landed repair | **Main: Qualify landed repair** | after `PR: CI` runs on `main`. |
 | [`qualification-repair.yml`](../../.github/workflows/qualification-repair.yml) | Qualification repair | **Main: Qualification repair** | after `Main: Qualification`; manual dispatch. |
 | [`recover-terminal-capacity-owner.yml`](../../.github/workflows/recover-terminal-capacity-owner.yml) | Recover terminal physical-host capacity owner | **Tool: Recover terminal capacity owner** | manual dispatch. |
-| [`release-advisory.yml`](../../.github/workflows/release-advisory.yml) | Release dependency advisory gate | **Release: Dependency advisory gate** | reused by tagged staging, protected release publication, manual npm publication and Beta/Stable TestFlight. |
+| [`release-advisory.yml`](../../.github/workflows/release-advisory.yml) | Release dependency advisory gate | **Release: Dependency advisory gate** | reused by tagged staging, protected release publication, manual npm publication and Stable TestFlight. |
 | [`release.yml`](../../.github/workflows/release.yml) | Stage Station release | **Release: Stage** | `v*` tag pushes. |
 | [`seatbelt-kernel.yml`](../../.github/workflows/seatbelt-kernel.yml) | Tool: Seatbelt kernel legs | **Main: Seatbelt kernel legs** | main pushes (path filtered); manual dispatch. |
 | [`secret-scan.yml`](../../.github/workflows/secret-scan.yml) | Secret Scan | **PR: Secret scan** | PR events; main pushes; manual dispatch. |
@@ -856,7 +856,10 @@ by the `PR source admission` job (`scripts/pr-source-admission.mjs`) before the
 plan, shards and statics run, because it cannot merge and that work would be
 discarded. Only the job's explicit `admitted=false` output defers: mergeability
 still being computed, an API failure or the job failing to start admit the run.
-A deferred run fails `fast-checks` with the annotation naming the conflict. Merge `main`
+A deferred run fails `fast-checks` with the annotation naming the conflict. The
+pre-push hook warns about the same conflict before the push, against the
+`origin/main` the checkout last fetched (`scripts/prepush-main-conflict.mjs`);
+that `main` may be stale, so the warning never refuses a push. Merge `main`
 (a new head starts a new run), or, when `main` has since cleared
 the conflict without a head change, use "Re-run failed jobs" on the run: the
 source-policy publisher reads each run's newest attempt, so the rerun supersedes
@@ -907,7 +910,7 @@ slots exclude planners, security checks, platform builds and status publishers;
 they are not a total repository or organization capacity reservation.
 
 The reusable hosted workflow `.github/workflows/full-regression.yml` owns the
-exact-source full qualification receipt. Scheduled main qualification and tagged Preview/Stable use it: every canonical phase and Android viewport test must
+exact-source full qualification receipt. Scheduled main qualification and tagged Stable RC/final use it: every canonical phase and Android viewport test must
 succeed, with bounded exact-source reuse. A manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.
 
 Nightly runs independently. Its hourly decision checks the default six-hour
@@ -1102,9 +1105,11 @@ clearing package caches leaves those installed dependency trees in place.
 
 **A pure merge of main skips the expensive lanes (#3101).** When every pushed
 ref only adds clean merges of `origin/main` on top of the tip the remote
-already holds, `.githooks/pre-push` skips the transfer gate, static gates, SDK
-barrel; biome, the governance proof and the
-commit-subject gate still run. `scripts/prepush-pure-merge.mjs` owns the rule:
+already holds, `.githooks/pre-push` skips the push-range checks, documentation
+freshness (which otherwise refuses only a clean checkout of the pushed commit,
+with no untracked review-ledger file, on a branch that records reviews, and
+warns in every other case), transfer gate, static gates and SDK barrel; the main-conflict warning,
+biome, the governance proof and the commit-subject gate still run. `scripts/prepush-pure-merge.mjs` owns the rule:
 the remote ref is the record of the last push the hook accepted, each merge's
 second parent must be on `main` as the remote itself reports it (`git
 ls-remote`, never a local ref such as `origin/main`), and each merge's tree
@@ -1654,6 +1659,9 @@ base commit and skips the capture only when every changed path is one the
 capture never reads (docs, agent instructions, other workflows, desktop Rust,
 test files). The scope is an exclusion list because the capture boots the
 whole product through `./station start`, not just `src-ui/`. Review changed images in the run's `gallery-pr-<run>-<attempt>` artifact.
+Rendered screens retain bounded browser errors in `capture.json` beside their
+UI audit, so a valid PNG with a failing product assertion keeps its runtime
+diagnostics. These errors do not change the capture or findings verdict.
 When an intentional change should become the new reference, download that
 hosted artifact and run `npm run screenshot:baseline -- --gallery=<download dir>`.
 Commit reviewed baseline updates separately; they are optional for a green

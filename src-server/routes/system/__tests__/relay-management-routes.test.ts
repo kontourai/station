@@ -408,3 +408,34 @@ test('#4519: a managed policy without remote clients refuses setup approvals and
     await (await f.send('/invitations', { prepare }, device.credential)).json(),
   ).toEqual({ error: { code: 'relay_management_required' } });
 });
+
+test('management response versions preserve legacy retained clients without Beta enrollment authority', async () => {
+  const f = await fixture();
+  const legacyResponse = await f.send('');
+  expect(legacyResponse.status).toBe(200);
+  const responseBody = z.object({
+    data: z.object({ setupLinks: z.record(z.string(), z.string()) }),
+  });
+  const legacy = responseBody.parse(await legacyResponse.json()).data;
+  expect(Object.keys(legacy.setupLinks).sort()).toEqual([
+    'beta',
+    'nightly',
+    'stable',
+  ]);
+  const stable = new URL(legacy.setupLinks.stable);
+  const retired = new URL(legacy.setupLinks.beta);
+  expect(retired.protocol).toBe('station-relay-beta:');
+  expect(retired.hash).toBe(stable.hash);
+  const intent = JSON.parse(
+    Buffer.from(stable.hash.slice('#relay-link='.length), 'base64url').toString(
+      'utf8',
+    ),
+  );
+  expect(intent.kind).toBe('route-intent');
+  expect(intent).not.toHaveProperty('ticket');
+  const modernResponse = await f.send('?viewVersion=2');
+  expect(modernResponse.status).toBe(200);
+  const modern = responseBody.parse(await modernResponse.json()).data;
+  expect(Object.keys(modern.setupLinks).sort()).toEqual(['nightly', 'stable']);
+  expect((await f.send('?viewVersion=other')).status).toBe(400);
+});

@@ -1347,6 +1347,11 @@ exports `RelayInvitationLifetime`, `RelaySetupApproval`, `RelayPendingDevice`
 and `RelayManagementView`. The view contains public route/signing-confirmation
 facts, channel-specific setup links, exact approved surfaces and pending
 account-bound Device candidates; it contains no connector issuer credential.
+Active setup links and surfaces use Stable/Nightly (plus development surfaces).
+The optional `retiredRecords` counts are SDK-derived read metadata for excluded
+legacy Beta records, never actionable Device or approval authority.
+`RelayManagementWireView` retains the old public Beta route-intent link only for
+old SDK readers; it carries no enrollment grant.
 `approvedBy` preserves actual human actor attribution. `relay:manage`, declared
 in [environment security](../../packages/contracts/src/environment-security.ts),
 is an explicitly operator-promoted Device scope excluded from presets/defaults.
@@ -1997,6 +2002,16 @@ Provider refresh results carry an observation time and either current state or
 an explicit unsupported/unavailable reason. `PullRequest.headSha` and
 `baseSha` are optional because a provider that omits exact revisions must not
 be presented as current by inference.
+
+`pull-request-feedback` defines pull request agent feedback: a person's
+switches, the forge observation (checks with their required flag, review
+threads with resolved and outdated state, latest reviews), the status and
+delivery history a chat reads, and pure helpers (the canonical lowercase
+identity key, the settings parser, the failing-conclusion set). Its
+`review-findings` category and `reviewEachHead` setting are reserved for a
+later per-head review. `IPullRequestProvider.getFeedbackObservation` is
+optional; a provider without it reads as `unsupported`. See
+[Pull request agent feedback](../decisions/pull-request-agent-feedback.md).
 
 `TaskRecord.closeOnMerge` is optional and absent means off. It is a person's
 opt-in to move a Task to `done` when every pull request kept on it is merged;
