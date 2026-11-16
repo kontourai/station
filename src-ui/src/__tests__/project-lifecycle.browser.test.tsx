@@ -27,10 +27,8 @@ const sdkFixture: Plugin = {
         ? undefined
         : { path: 'project-lifecycle-sdk', namespace: 'lifecycle-fixture' },
     );
-    builder.onLoad(
-      { filter: /.*/, namespace: 'lifecycle-fixture' },
-      () => ({
-        contents: `
+    builder.onLoad({ filter: /.*/, namespace: 'lifecycle-fixture' }, () => ({
+      contents: `
           export * from ${JSON.stringify(resolve(ROOT, 'packages/sdk/src/index.ts'))};
           const idle = { mutate() {}, mutateAsync: async () => ({ interrupted: 0, stillRunning: 0, failed: 0 }), isPending: false, error: null };
           export const useProjectLifecycleMutation = () => idle;
@@ -48,10 +46,9 @@ const sdkFixture: Plugin = {
             ],
           });
         `,
-        resolveDir: ROOT,
-        loader: 'js',
-      }),
-    );
+      resolveDir: ROOT,
+      loader: 'js',
+    }));
   },
 };
 
