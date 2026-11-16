@@ -215,7 +215,9 @@ describe('native recovery documentation', () => {
     for (const edge of TEST_IMPACT_MANIFEST)
       if (
         'tests' in edge &&
-        edge.tests.includes('scripts/__tests__/native-recovery-docs.test.ts') &&
+        edge.tests?.includes(
+          'scripts/__tests__/native-recovery-docs.test.ts',
+        ) &&
         !/[*?[{]/.test(edge.pattern)
       )
         expect(existsSync(edge.pattern), edge.pattern).toBe(true);
