@@ -203,8 +203,9 @@ integration while preserving main's next development base.
 
 Nightly publication independently reads bounded public release history and
 refuses a root base at or below the highest public RC/final base. A failed or
-malformed history query cannot authorize publication. A successfully read
-history with no public RC/final permits initial bootstrap. The guard runs in
+malformed history query cannot authorize publication, and neither can an empty
+listing. A successfully read, non-empty history with no public RC/final permits
+initial bootstrap. The guard runs in
 the top-level Nightly decision, portable publication and native cohort
 admission. Forgetting the cut bump therefore stops publication rather than
 shipping a Nightly that orders below the released train. Source tests of this

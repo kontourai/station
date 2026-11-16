@@ -69,8 +69,8 @@ After an immutable RC/final cut, the
 [release-cut command](native-releases.md#product-version-and-release-cut)
 advances main to the next minor through normal review. Nightly admission reads
 public release history and refuses a base at or below the highest public
-RC/final base. Unavailable or malformed history does not count as first-run
-bootstrap. This check runs at top-level decision, portable publication and
+RC/final base. Unavailable, empty or malformed history does not count as
+first-run bootstrap. This check runs at top-level decision, portable publication and
 native cohort admission; it does not change CLI/library package versioning.
 
 Update summaries display recognized Nightly allocations as
