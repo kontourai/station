@@ -780,6 +780,45 @@ describe('an engine keeps Task memory through its own MCP connection', () => {
     ]);
   });
 
+  test("the production inbox asks pull request feedback's placement re-check before placing a queued prf- message", async () => {
+    const e = await setup();
+    const { sessionId } = await e.dispatchedTask();
+    const conversation =
+      e.store.conversationForSession(sessionId)?.conversationId ?? sessionId;
+    const inbox = support.options?.threadInbox?.();
+    expect(inbox).toBeDefined();
+    const submit = (clientTurnId: string) =>
+      inbox!.submit({
+        conversationId: conversation,
+        clientTurnId,
+        payload: {
+          message: 'Pull request feedback.',
+          actor: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+        },
+      });
+    const entry = (key: string) =>
+      e.store
+        .threadInboxStore()
+        .list(conversation)
+        .find((stored) => stored.key === key);
+    // A prf- key the feedback store never wrote: its re-check refuses it.
+    const key = `prf-${'0'.repeat(40)}`;
+    expect(submit(key).outcome).toBe('queued');
+    await vi.waitFor(() => expect(entry(key)?.state).toBe('refused'), {
+      timeout: 10_000,
+    });
+    expect(JSON.parse(String(entry(key)?.outcome))).toMatchObject({
+      reasonCode: 'pr_feedback_stale',
+    });
+    // The re-check passes over every other key.
+    const other = `tf-${'2'.repeat(40)}`;
+    expect(submit(other).outcome).toBe('queued');
+    await vi.waitFor(() => expect(entry(other)?.state).not.toBe('queued'), {
+      timeout: 10_000,
+    });
+    expect(entry(other)?.state).not.toBe('refused');
+  });
+
   test("the production inbox asks the Task follow-up wake's placement re-check before placing a queued tf- wake (#4508)", async () => {
     const asked: unknown[] = [];
     let refuse = true;

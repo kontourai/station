@@ -93,6 +93,7 @@ export const ROOT_DECISIONS = Object.freeze({
   automation: 'pending-work',
   scheduler: 'pending-work',
   'task-follow-ups': 'pending-work',
+  'pull-request-feedback': 'pending-work',
   'action-operations.json': 'pending-work',
   'attention-snoozes.json': 'pending-work',
   'checkpoint-restores.json': 'pending-work',

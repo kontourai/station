@@ -1149,6 +1149,7 @@ import {
   mayAnswerDelegatedRequest,
   runtimeAttentionRouteOptions,
 } from './runtime-attention-route-options.js';
+import { composePullRequestFeedbackRuntime } from './runtime-pull-request-feedback.js';
 import {
   configureRuntimeSupportServices,
   createRuntimeSystemRouteDeps,
@@ -1756,6 +1757,7 @@ export function configureRuntimeRoutes(
   let durableTaskFollowUpWake:
     | Pick<TaskFollowUpWake, 'placementRefusal'>
     | undefined;
+  let pullRequestFeedback: ReturnType<typeof composePullRequestFeedbackRuntime>;
   // Shared by the operator grant routes and diagnostics admission.
   const unattendedGrantStore = new UnattendedGrantStore(
     context.configLoader.getProjectHomeDir(),
@@ -7034,7 +7036,8 @@ export function configureRuntimeRoutes(
           conversationId: input.conversationId,
           clientTurnId: input.clientTurnId,
           userId: input.payload.actor.userId,
-        }),
+        }) ??
+        pullRequestFeedback?.placementRefusal(input),
       hasPossibleEffect: (threadId) =>
         eventStore.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
       // The live continuation's own rule (`canContinueConversation`): the
@@ -10639,6 +10642,36 @@ export function configureRuntimeRoutes(
       },
     ),
   );
+  // Pull request agent feedback: composition, routes and the inbox's
+  // placement re-check live in runtime-pull-request-feedback.ts.
+  const canReadConversation = (request: Request, id: string) =>
+    context.orchestrationService.canUserReadConversation(
+      id,
+      conversationReadAuthorityForRequest(request),
+    );
+  pullRequestFeedback = composePullRequestFeedbackRuntime({
+    homeDir: context.configLoader.getProjectHomeDir(),
+    hosted: hostedTenantRegistry !== undefined,
+    featurePreviews: context.featurePreviews,
+    eventStore: context.orchestrationEventStore,
+    inbox: threadInbox,
+    orchestration: context.orchestrationService,
+    eventBus: context.eventBus,
+    logger: context.logger,
+    links: conversationPullRequestLinks,
+    providers: () =>
+      listProviders('pullRequest').map((entry) => entry.provider),
+    keptForSessions: (ids) =>
+      context.taskGraphService.listKeptDeclaredPullRequestsForSessions(ids),
+    access: {
+      current: isRequestPrincipalCurrent,
+      operator: ownerIdentityForRequest,
+      canRead: canReadConversation,
+      readerOf: (request) => (id) => canReadConversation(request, id),
+    },
+  });
+  if (pullRequestFeedback)
+    context.app.route('/api/pull-request-feedback', pullRequestFeedback.routes);
   context.app.route(
     '/api/pull-requests',
     createPullRequestRoutes(
@@ -12476,6 +12509,7 @@ export function configureRuntimeRoutes(
     taskFollowUpWake,
   } = configureRuntimeSupportServices(context, flowRunService, {
     threadInbox: () => threadInbox,
+    pullRequestFeedback,
     focus: focusPresence,
     inAppLiveness: clientStreamPresence.inAppLiveness,
     ...(scheduledConversationRuns

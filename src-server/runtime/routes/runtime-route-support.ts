@@ -90,6 +90,7 @@ import {
 } from '../plugins/runtime-provider-resolution.js';
 import { createAgentActivitySessionReader } from './agent-activity-session-reader.js';
 import { wireNotificationDelivery } from './notification-delivery-wiring.js';
+import type { PullRequestFeedbackRuntime } from './runtime-pull-request-feedback.js';
 import type { ConfigureRuntimeRoutesContext } from './runtime-routes.js';
 
 const WEB_PUSH_FALLBACK_SUBJECT = 'mailto:push@station.local';
@@ -422,6 +423,11 @@ export function configureRuntimeSupportServices(
     threadInbox?: () =>
       | Pick<ThreadInboxDelivery, 'submit' | 'entry'>
       | undefined;
+    /** Pull request agent feedback: its tick, shutdown and #4508 overlap. */
+    pullRequestFeedback?: Pick<
+      PullRequestFeedbackRuntime,
+      'tick' | 'close' | 'owns'
+    >;
     /**
      * #2064 (D4): paused Survey/Flow gate review sessions for the attention
      * projection. Injected rather than constructed here because the
@@ -576,6 +582,8 @@ export function configureRuntimeSupportServices(
       // The question wake's own re-check, with execute authority.
       mayReadTask: (task, owner) =>
         canUseTaskSource(context, task, owner, true),
+      forgeFeedbackOwned: (itemRef) =>
+        options.pullRequestFeedback?.owns(itemRef) === true,
       get submit(): TaskFollowUpWakePorts['submit'] {
         const inbox = options.threadInbox?.();
         return inbox ? (input) => inbox.submit(input) : undefined;
@@ -667,12 +675,14 @@ export function configureRuntimeSupportServices(
           // flight and deadline, so slow GitHub reads cannot hold up the
           // observation, actions and repairs below.
           taskFollowUpPoller?.tick(input);
+          options.pullRequestFeedback?.tick(input);
           await automationObservation.poller?.poll(input);
           if (!input.signal.aborted) await automationActions?.tick();
           if (!input.signal.aborted) await isolatedRepairs?.tick();
         },
         async close() {
           await taskFollowUpPoller?.close();
+          await options.pullRequestFeedback?.close();
           taskFollowUps?.close();
           await isolatedRepairs?.close();
           automationActions?.close();
