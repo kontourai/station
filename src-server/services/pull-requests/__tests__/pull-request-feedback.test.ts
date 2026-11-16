@@ -921,6 +921,7 @@ describe('pull request agent feedback reaches the owning conversation', () => {
             '![x](https://evil.example/pixel.png) <a href="https://evil.example">a</a>',
             'Or visit https://evil.example/ or www.evil.example now.',
             '<https://evil.example/auto> and [ref][1]',
+            '_https://evil.example/under_ foo_www.evil.example HTTPS://EVIL.example/up',
             '',
             '[1]: https://evil.example/ref',
           ].join('\n'),
@@ -955,7 +956,7 @@ describe('pull request agent feedback reaches the owning conversation', () => {
     ])
       expect(kinds.has(forbidden), forbidden).toBe(false);
     expect(quoted).toContain(
-      'Please \\[click here\\](`https://evil.example/login)`',
+      'Please \\[click here](`https://evil.example/login)`',
     );
     // The thread's own link, outside the quote, is Station's.
     expect(message).toContain(
@@ -1050,7 +1051,7 @@ describe('pull request agent feedback reaches the owning conversation', () => {
     const [message] = t.feedbackPrompts();
     expect(message!.length).toBeLessThanOrEqual(6000);
     expect(message).toContain('Unresolved review threads (8):');
-    expect(message).toMatch(/- \(\d more threads\)/);
+    expect(message).toMatch(/- \(\d more threads; see the pull request\)/);
     expect(t.store.claim(PR_KEY)?.condition).toBeUndefined();
   });
 });

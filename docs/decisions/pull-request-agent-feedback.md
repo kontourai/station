@@ -88,13 +88,16 @@ inside a code span `[`, `]` and `\` are literal, so they cannot end or forge
 the link. URLs must be https on the pull request's host, with `(`, `)`, `\` and
 spaces percent-encoded; one longer than 300 characters is dropped and the
 item is named without a link. Quoted excerpts are inert markdown: bare URLs,
-`www.` hosts and emails become inline code and `[`, `]`, `<`, `>`, `!` and
-backticks are escaped, so a reviewer's text cannot become a live link, image
-or HTML in the person's chat. Each block shows as many items as fit on their
+`www.` hosts and emails become inline code (even right after `_`, which GFM
+also links) and `\`, `[`, `<` and backticks are escaped, so a reviewer's text
+cannot become a live link, image or HTML in the person's chat. Each block shows as many items as fit on their
 own; excerpts then shrink (600, 300, 120 characters, then none) until
 everything fits in about 6,000 characters, and when a block still stays out
-the rest keep the largest excerpt that carries the same blocks. What does
-not fit stays waiting and goes in the next message, never marked sent.
+the rest keep the largest excerpt that carries the same blocks. A block that
+does not fit stays waiting and goes in the next message, never marked sent.
+Items past a block's cap are counted ("3 more threads; see the pull
+request") and count as delivered: the agent reads them on the pull request,
+and they are not listed again unless they change.
 
 ## Implementation status
 

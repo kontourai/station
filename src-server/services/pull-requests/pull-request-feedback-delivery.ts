@@ -179,9 +179,13 @@ const isFailing = (check: PullRequestFeedbackCheck) =>
   check.conclusion !== null &&
   FAILING_CHECK_CONCLUSIONS.has(check.conclusion);
 
-/** A bare URL, `www.` host or email: GFM would turn each into a link. */
+/**
+ * A bare URL, `www.` host or email: GFM would turn each into a link. No
+ * leading word boundary: GFM also links a URL right after `_`, and matching
+ * a little too much only puts more text in code.
+ */
 const AUTOLINKABLE =
-  /\b(?:[a-z][a-z0-9+.-]*:\/\/|www\.)[^\s<>`]*|[\w.+-]+@[\w-]+(?:\.[\w-]+)+/gi;
+  /(?:[a-z][a-z0-9+.-]*:\/\/|www\.)[^\s<>`]*|[\w.+-]+@[\w-]+(?:\.[\w-]+)+/gi;
 
 /**
  * Forge text made inert as markdown while staying readable: a quoted line is
@@ -190,11 +194,12 @@ const AUTOLINKABLE =
  * live link, image or tag in the person's chat. Bare URLs, `www.` hosts and
  * emails become inline code (GFM finds autolinks in text after escapes are
  * resolved, so escaping alone does not stop them); everywhere else the
- * syntax characters are backslash-escaped, which renders them as written.
+ * characters that open syntax (`\\`, `[`, `<`, backtick) are backslash-escaped,
+ * which renders them as written: `]`, `>` and `!` open nothing without them.
  */
 export function inertMarkdown(text: string): string {
   const escapeSyntax = (part: string) =>
-    part.replace(/[\\[\]<>!`]/g, (character) => `\\${character}`);
+    part.replace(/[\\[<`]/g, (character) => `\\${character}`);
   let out = '';
   let last = 0;
   for (const match of text.matchAll(AUTOLINKABLE)) {
@@ -320,7 +325,7 @@ function failingCandidate(
           ...excerpt(check.excerpt, excerptChars),
         ]),
         ...(failing.length > shown.length
-          ? [`- (${failing.length - shown.length} more failing)`]
+          ? [`- (${failing.length - shown.length} more failing; see the pull request)`]
           : []),
       ];
     },
@@ -397,12 +402,16 @@ function reviewCandidate(
             );
         }
         if (threads.length > maxItems)
-          lines.push(`- (${threads.length - maxItems} more threads)`);
+          lines.push(
+            `- (${threads.length - maxItems} more threads; see the pull request)`,
+          );
       }
       if (reviews.length) {
         lines.push(`Changes requested (${reviews.length}):`);
         if (reviews.length > maxItems)
-          lines.push(`- (${reviews.length - maxItems} more not listed)`);
+          lines.push(
+            `- (${reviews.length - maxItems} more not listed; see the pull request)`,
+          );
         for (const { review } of reviews.slice(0, maxItems)) {
           lines.push(
             `- ${loginOf(review!.author)} requested changes${review!.url && safeUrl(review!.url, host) ? `: ${linked('review', safeUrl(review!.url, host))}` : ''}`,
