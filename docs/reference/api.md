@@ -5803,7 +5803,11 @@ scopes, recent outcomes and available slice measurements. A recent outcome's
 `result` is `oom-kill-in-scope` when the kernel killed any process in the
 scope (the engine or a command), with `oomKills`, its `oomKillsSource`
 (`close`, exact; or `last-poll` when the scope was already collected) and
-systemd's own `systemdResult`. Measurement failure
+systemd's own `systemdResult`. `cleanup` lists scopes whose cleanup failed
+and has not settled: `pending` ones (retried with backoff, with
+`nextAttemptAt`) and `abandoned` ones (no longer retried until shutdown, with
+`abandonedAt`), each with its `attempts`, `errorKind` (`bus_unavailable`,
+`command_failed` or `other`) and `lastError`. Measurement failure
 is separate from enforcement state; see
 [Linux service workload budgets](../guides/development.md#linux-service-workload-budgets)
 for platform scope and admission behavior.
@@ -5818,7 +5822,9 @@ under `/api/system/workload`:
   (`ready`, `unmanaged`, `unavailable` or `stopping`) with any reason, host
   memory, effective `limits`, the `sources` of the two memory budgets
   (`environment`, `settings` or `default`), saved `settings`, any
-  `settingsError`, and `applies` (`new-scopes` or `restart`).
+  `settingsError`, `applies` (`new-scopes` or `restart`), running `scopes`,
+  and `cleanup` (scopes whose cleanup has not settled, as above; absent from
+  older hosts).
 - `PUT /api/system/workload/settings` takes `{ memoryMiB, totalMemoryMiB }`
   (whole MiB, or `null` for the default) and returns the new status. While the
   `workload-budget-settings` Feature Preview is off it answers 404 with
