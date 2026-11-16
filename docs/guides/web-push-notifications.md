@@ -115,7 +115,8 @@ three different observations; the label alone does not establish all three.
 `WebPushChannel.accepts` uses
 [the category classifier](../../packages/shared/src/notification-priority.ts).
 Current categories include approval requests, job failures/misses, unhealthy
-scheduler notices, turn completion/stop/failure, pairing requests, and the Agent
+scheduler notices, turn completion/stop/failure, pairing requests, pull request
+agent feedback that paused or waits on a stopped agent, and the Agent
 attention/failed/done/info categories. Lifecycle `needs_input` and
 `review_pending` projections are not themselves notification delivery events;
 a separate approval notification can represent related work.

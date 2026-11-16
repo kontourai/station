@@ -1,0 +1,7 @@
+{
+  "revision": "3e7d10156401e5af89015195490774a488f7ec3e",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"#5053: checked the ledger, delivery-status and shutdown claims against UsageTelemetryService. A retryable failure keeps the batch queued and writes no ledger record; a batch is recorded once when it leaves the queue (sent/acknowledged, or dropped with rejected, off, overflow or shutdown transport). failedAttempts counts each failed request; withdrawn/shutdownDropped/rejected/overflowDropped count each event once; both shutdown paths record shutdown_dropped.","inputs":["docs/reference/usage-telemetry.md","src-server/services/usage-telemetry-service.ts"]}
+  ]
+}
