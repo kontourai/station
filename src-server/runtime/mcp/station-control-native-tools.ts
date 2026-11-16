@@ -56,6 +56,10 @@ interface InProcessClient {
   close(): Promise<void>;
 }
 
+/**
+ * Both an McpServer and a per-session in-process server; each types its
+ * own transport, and both accept the structural one built below.
+ */
 interface ConnectableServer {
   connect(transport: never): Promise<void>;
   close(): Promise<void>;
@@ -177,7 +181,7 @@ export function nativeStationControlToolCatalog(): Promise<
         undefined,
         'station-control',
         'bound',
-      ) as unknown as ConnectableServer,
+      ),
     );
     try {
       const listing = (await client.request('tools/list', {})) as {
@@ -287,7 +291,7 @@ function openSessionClient(
         ? { resolveRecord: session.resolveRecord }
         : {}),
     });
-  return connectInProcessClient(server as unknown as ConnectableServer);
+  return connectInProcessClient(server);
 }
 
 /**

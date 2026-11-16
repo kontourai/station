@@ -14,7 +14,6 @@
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
