@@ -1130,6 +1130,9 @@ Delivery depends on the engine:
 - Claude is told to load the tools it names with ToolSearch only when the
   Agent's `tools.mcpLoading` is `on-demand`, which is when Station turns
   Claude's tool search on. Under the harness default, Claude Code decides.
+- The tool-families line appears only when the progressive-tools preview is on
+  and the Session's Station Control is not `bound`: Claude's in-process server
+  and Codex's bound catalog are served without family loading.
 
 Known limitations while this is a preview: the delivery check reads the event
 log, so a delivery report that has not yet been stored, or a recovery done by
