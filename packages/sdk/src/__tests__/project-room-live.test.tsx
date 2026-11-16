@@ -44,6 +44,13 @@ interface RoomStoreFixture {
     current: () => void,
   ): ProjectRoomMessage;
   history(s: typeof scope, after?: number, limit?: number): ProjectRoomHistory;
+  deleteMessage(
+    s: typeof scope,
+    actor: ProjectRoomActor,
+    messageId: string,
+    input: { intentId: string },
+    current: () => void,
+  ): ProjectRoomMessage;
 }
 let db: DatabaseSync;
 let store: RoomStoreFixture;
@@ -60,6 +67,8 @@ let historyFailure: boolean;
 /** The next history read is answered only when `heldHistory` is called. */
 let holdNextHistory: boolean;
 let heldHistory: (() => void) | undefined;
+/** When set, only a read starting `after` this sequence is held. */
+let holdOnlyAfter: number | undefined;
 
 beforeEach(async () => {
   db = new DatabaseSync(':memory:');
@@ -78,6 +87,7 @@ beforeEach(async () => {
   historyFailure = false;
   holdNextHistory = false;
   heldHistory = undefined;
+  holdOnlyAfter = undefined;
   server = createServer(async (request, response) => {
     const url = new URL(request.url!, apiBase);
     const ok = (data: unknown) => {
@@ -117,7 +127,10 @@ beforeEach(async () => {
         );
         return;
       }
-      if (holdNextHistory) {
+      if (
+        holdNextHistory &&
+        (holdOnlyAfter === undefined || after === holdOnlyAfter)
+      ) {
         holdNextHistory = false;
         heldHistory = () => ok(snapshot);
         return;
@@ -465,4 +478,122 @@ test('a history read already in flight never undoes a live append, in the cache 
   );
   expect(seqs(hook)).toEqual([1, 2]);
   expect(answer.data?.pages[0]?.messages.map((m) => m.seq)).toEqual([1, 2]);
+});
+
+// #4985 delta review: the hook remembers at most 500 merged rows. A read that
+// began before more merges than that must not be trusted with what it read.
+async function appendDuringHeldRead(count: number) {
+  seed(1);
+  const hook = await openRoom();
+  holdNextHistory = true;
+  const waiting = hook.result.current.history.refetch();
+  await waitFor(() => expect(heldHistory).toBeDefined());
+  for (let index = 0; index < count; index++)
+    push('append', { key: roomId, message: append(`during read ${index}`) });
+  await waitFor(() => expect(hook.result.current.lastSeq).toBe(count + 1), {
+    timeout: 10_000,
+  });
+  heldHistory!();
+  const answer = await waiting;
+  await waitFor(() =>
+    expect(hook.result.current.history.isFetching).toBe(false),
+  );
+  return { hook, answer };
+}
+const allSeqs = (to: number) => Array.from({ length: to }, (_, i) => i + 1);
+
+test('a read held across as many merges as the hook remembers keeps every row (control)', async () => {
+  const { hook, answer } = await appendDuringHeldRead(500);
+  expect(seqs(hook)).toEqual(allSeqs(501));
+  expect(answer.data?.pages[0]?.messages.map((m) => m.seq)).toEqual(
+    allSeqs(501),
+  );
+});
+
+test('a read held across more merges than the hook remembers is read again, never trusted to drop one', async () => {
+  const { hook, answer } = await appendDuringHeldRead(501);
+  expect(seqs(hook)).toEqual(allSeqs(502));
+  expect(answer.data?.pages[0]?.messages.map((m) => m.seq)).toEqual(
+    allSeqs(502),
+  );
+  push('append', { key: roomId, message: append('after read') });
+  await waitFor(() => expect(hook.result.current.lastSeq).toBe(503));
+  expect(seqs(hook)).toEqual(allSeqs(503));
+});
+
+test('a deletion merged during a held read stays deleted however many merges follow it', async () => {
+  seed(1);
+  const hook = await openRoom();
+  const one = store.history(scope).messages[0]!;
+  holdNextHistory = true;
+  const waiting = hook.result.current.history.refetch();
+  await waitFor(() => expect(heldHistory).toBeDefined());
+  const tombstone = store.deleteMessage(
+    scope,
+    other,
+    one.messageId,
+    { intentId: randomUUID() },
+    current,
+  );
+  push('update', {
+    key: roomId,
+    fromActivity: 0,
+    activity: 1,
+    messages: [tombstone],
+  });
+  await waitFor(() =>
+    expect(
+      hook.result.current.history.data?.pages[0]?.messages[0]?.deletedAt,
+    ).toBeDefined(),
+  );
+  for (let index = 0; index < 500; index++)
+    push('append', { key: roomId, message: append(`after delete ${index}`) });
+  await waitFor(() => expect(hook.result.current.lastSeq).toBe(501), {
+    timeout: 10_000,
+  });
+  heldHistory!();
+  const answer = await waiting;
+  await waitFor(() =>
+    expect(hook.result.current.history.isFetching).toBe(false),
+  );
+  const cached = hook.result.current.history.data?.pages[0]?.messages[0];
+  const read = answer.data?.pages[0]?.messages[0];
+  expect(cached?.deletedAt).toBeDefined();
+  expect(cached?.text).toBe('');
+  expect(read?.deletedAt).toBeDefined();
+  expect(read?.text).toBe('');
+});
+
+test('a read outlived on every attempt fails rather than answer with rows it lost, and the cache keeps them', async () => {
+  seed(1);
+  const hook = await openRoom();
+  // A long window is read in several pages: hold only each attempt's first.
+  holdOnlyAfter = 0;
+  holdNextHistory = true;
+  const waiting = hook.result.current.history.refetch();
+  let lastSeq = 1;
+  // Each attempt (the first read and both re-reads) is held while more rows
+  // merge than the hook remembers.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await waitFor(() => expect(heldHistory).toBeDefined());
+    const release = heldHistory!;
+    heldHistory = undefined;
+    for (let index = 0; index < 501; index++)
+      push('append', {
+        key: roomId,
+        message: append(`burst ${attempt}.${index}`),
+      });
+    lastSeq += 501;
+    await waitFor(() => expect(hook.result.current.lastSeq).toBe(lastSeq), {
+      timeout: 10_000,
+    });
+    holdNextHistory = attempt < 2;
+    release();
+  }
+  const answer = await waiting;
+  expect(answer.isError).toBe(true);
+  expect(String(answer.error)).toContain(
+    'changed faster than it could be read',
+  );
+  expect(seqs(hook)).toEqual(allSeqs(lastSeq));
 });

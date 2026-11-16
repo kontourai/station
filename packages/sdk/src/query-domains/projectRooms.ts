@@ -248,10 +248,12 @@ export const PROJECT_ROOM_HISTORY_MAX_PAGES = 20;
 export const PROJECT_ROOM_RETAINED_REREAD_MESSAGES =
   PROJECT_ROOM_HISTORY_MAX_PAGES * 25;
 /**
- * Live-merged rows a room hook remembers for history reads in flight: as
- * many as its windows hold, far more than can merge during one read.
+ * Live-merged rows a room hook remembers for history reads in flight. A read
+ * that outlives a forgotten row is read again rather than trusted.
  */
 const LIVE_ROWS_KEPT = PROJECT_ROOM_RETAINED_REREAD_MESSAGES;
+/** Times one history window is read again after it outlived a forgotten row. */
+const HISTORY_REREADS = 3;
 /**
  * The room route said the Project itself is not on this Station (#4855):
  * show "no such Project", never "unavailable" with a retry.
@@ -511,12 +513,15 @@ export function useProjectRoom(
   /**
    * Rows the stream (or an acknowledged write) merged into the cache, with
    * their place in the read order, so a history read that started before a
-   * merge keeps that newer row instead of undoing it. Bounded: a read only
-   * needs the rows merged while it was in flight.
+   * merge keeps that newer row instead of undoing it. Bounded by
+   * `LIVE_ROWS_KEPT`; forgetting a row that a pending read still needs marks
+   * that read `outlived`, and it is read again instead of trusted.
    */
   const liveRows = useRef(
     new Map<string, { message: ProjectRoomMessage; readSeq: number }>(),
   );
+  /** History window reads in flight, by their place in the read order. */
+  const pendingReads = useRef(new Map<number, { outlived: boolean }>());
   const [liveSeq, setLiveSeq] = useState<number>();
   const connected = useRef(false);
   const discovery = useQuery({
@@ -550,19 +555,49 @@ export function useProjectRoom(
     gcTime: 0,
     initialPageParam: { after: tailAfter, end: tailAfter + 25 },
     queryFn: async ({ pageParam, signal }) => {
-      const readSeq = nextHistoryRead();
-      const page = await readProjectRoomWindow(
-        scope,
-        slug,
-        { projectId, roomId: roomId! },
-        pageParam,
-        signal,
-        channelId,
-      );
-      // Rows merged after this read began are newer than what it read. The
-      // newest window (it starts at `tailAfter`) takes every newer row past
-      // its start; an older window only the rows inside it.
+      // The newest window starts at `tailAfter`; live appends grow it.
       const newest = pageParam.after === tailAfter;
+      let readSeq = 0;
+      let page: Awaited<ReturnType<typeof readProjectRoomWindow>> | undefined;
+      for (let attempt = 0; !page; attempt++) {
+        readSeq = nextHistoryRead();
+        const watch = { outlived: false };
+        pendingReads.current.set(readSeq, watch);
+        // A read again reaches as far as the cache already does.
+        const reach = attempt
+          ? Math.max(
+              pageParam.end,
+              ...[...liveRows.current.values()].map((row) => row.message.seq),
+              client.getQueryData<InfiniteData<HistoryPage>>([
+                ...contentKey,
+                tailAfter,
+              ])?.pages[0]?.checkpoint.lastSeq ?? 0,
+            )
+          : pageParam.end;
+        let read: Awaited<ReturnType<typeof readProjectRoomWindow>>;
+        try {
+          read = await readProjectRoomWindow(
+            scope,
+            slug,
+            { projectId, roomId: roomId! },
+            newest ? { after: pageParam.after, end: reach } : pageParam,
+            signal,
+            channelId,
+          );
+        } finally {
+          pendingReads.current.delete(readSeq);
+        }
+        // A row merged after this read began was forgotten: what it read may
+        // be older than that row, so it is never trusted.
+        if (!watch.outlived) page = read;
+        else if (attempt + 1 >= HISTORY_REREADS)
+          throw new ProjectRoomProtocolError(
+            'Project room history changed faster than it could be read.',
+          );
+      }
+      // Rows merged after this read began are newer than what it read. The
+      // newest window takes every newer row past its start; an older window
+      // only the rows inside it.
       const newer = [...liveRows.current.values()]
         .filter(
           (row) =>
@@ -619,9 +654,12 @@ export function useProjectRoom(
           liveRows.current.delete(message.messageId);
           liveRows.current.set(message.messageId, { message, readSeq });
         }
-        for (const id of liveRows.current.keys()) {
+        for (const [id, row] of liveRows.current) {
           if (liveRows.current.size <= LIVE_ROWS_KEPT) break;
           liveRows.current.delete(id);
+          // Every read that began before this row merged needed it.
+          for (const [started, watch] of pendingReads.current)
+            if (started < row.readSeq) watch.outlived = true;
         }
         const pages = data.pages.map((page) =>
           page.messages.some((m) => byId.has(m.messageId))
