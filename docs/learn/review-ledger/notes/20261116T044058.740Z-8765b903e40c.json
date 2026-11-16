@@ -1,0 +1,7 @@
+{
+  "revision": "8b13dd88d6a59e5a31174fa9d2b3082ed6bd620d",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Push-range and freshness rows now state the refuse-only-on-a-finding rule: each step warns when it cannot reach a verdict (no merge base, stale origin/main, oversize diff, crash, timeout); freshness refuses only a clean checkout of the pushed commit on a branch that records reviews; whitespace uses the pushed commit's attributes; entry points include workspace package.json entries. Checked against the two scripts, scripts/lib/prepush-base.mjs and scripts/lib/new-export-check.mjs.","inputs":["docs/guides/code-quality.md",".githooks/pre-push","docs/guides/testing.md"]}
+  ]
+}
