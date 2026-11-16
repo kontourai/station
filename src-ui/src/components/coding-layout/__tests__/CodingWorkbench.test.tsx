@@ -1961,6 +1961,16 @@ describe('CodingWorkbench — design audit round: the flyout, Escape, the way ba
     const trigger = within(rail()).getByRole('button', {
       name: 'Open Browser pane',
     });
+    // It adds another pane beside any Browser on the rail, and says so: a
+    // "+" on its globe and its tip, so the two globes do not read as one.
+    expect(
+      trigger.querySelector('.coding-workbench__rail-add-mark')?.textContent,
+    ).toBe('+');
+    fireEvent.pointerEnter(trigger.parentElement!);
+    expect(screen.getByRole('tooltip').textContent).toBe(
+      'Open a new Browser pane',
+    );
+    fireEvent.pointerLeave(trigger.parentElement!);
     expect(screen.queryByRole('region', { name: 'Browser' })).toBeNull();
     // A pointer click focuses the button it lands on; jsdom's does not.
     trigger.focus();
