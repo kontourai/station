@@ -172,6 +172,27 @@ describe('gallery-ui-findings check', () => {
     );
   });
 
+  it('prints each transient second capture without changing the verdict', () => {
+    const root = scratch();
+    const dir = gallery(root, [screen('home', audit())]);
+    const path = join(dir, 'capture.json');
+    const capture = JSON.parse(readFileSync(path, 'utf8'));
+    const identity =
+      'app-error-surface: lazy-boundary-row; failed chunk requests: /assets/CoreUpdateLaunchCheck-<hash>.js';
+    capture.secondCaptures = [
+      { screen: 'home', identity, second: 'passed' },
+      { screen: 'home', identity, second: 'app-error-surface' },
+    ];
+    writeFileSync(path, JSON.stringify(capture));
+    const list = allowlist(root, {});
+    const run = judge(['check', `--gallery=${dir}`, `--allowlist=${list}`]);
+    expect(run.status).toBe(0);
+    expect(
+      run.out.split('\n').filter((line) => line.startsWith('TRANSIENT')),
+    ).toEqual([`TRANSIENT home: passed on a second capture after ${identity}`]);
+    expect(run.out).toContain('OK: 1 screen(s)');
+  });
+
   it('passes when a listed finding is gone, and says it can be removed', () => {
     const root = scratch();
     const dir = gallery(root, [screen('home', audit())]);
