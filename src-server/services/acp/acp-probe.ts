@@ -41,6 +41,7 @@ import {
   type InitializeResult,
 } from './acp-process.js';
 import {
+  ACP_SESSION_LISTING_BOUNDS,
   type AcpSessionListing,
   acpSessionListingEnabled,
   advertisesSessionListing,
@@ -1128,6 +1129,9 @@ export class ACPProbe {
           (method, params) => process.extMethod(method, params),
           {
             deadlineMs: remainingHandshakeMs(),
+            ...(initiator === 'background'
+              ? { minDeadlineMs: ACP_SESSION_LISTING_BOUNDS.minDeadlineMs }
+              : {}),
             exclude: this.mintedProbeSessionIds,
             ...(managedWorkspace
               ? {

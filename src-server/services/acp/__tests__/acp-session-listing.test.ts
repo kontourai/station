@@ -112,15 +112,21 @@ describe('ACP session listing', () => {
   });
 
   test('bounds the session count, drops invalid entries and refuses a non-list answer', async () => {
-    const many = {
-      sessions: Array.from(
-        { length: ACP_SESSION_LISTING_BOUNDS.maxSessions + 1 },
-        (_, i) => ({ sessionId: `s-${i}`, cwd: '/work' }),
-      ),
-    };
-    const capped = await readAcpSessionListing(async () => many, {
-      deadlineMs: 1_000,
-    });
+    // Full pages whose total passes the bound: the excess is not kept.
+    let page = 0;
+    const capped = await readAcpSessionListing(
+      async () => {
+        page += 1;
+        return {
+          sessions: Array.from(
+            { length: ACP_SESSION_LISTING_BOUNDS.maxSessions },
+            (_, i) => ({ sessionId: `s-${page}-${i}`, cwd: '/work' }),
+          ),
+          nextCursor: `c${page}`,
+        };
+      },
+      { deadlineMs: 1_000 },
+    );
     expect(capped.outcome).toBe('limit');
     expect(capped.sessions).toHaveLength(
       ACP_SESSION_LISTING_BOUNDS.maxSessions,
@@ -152,16 +158,46 @@ describe('ACP session listing', () => {
     ).toBe('malformed');
   });
 
-  test('an agent that never answers fails at the deadline', async () => {
+  test('an agent that never answers fails at the deadline, with the floor only where asked for', async () => {
     vi.useFakeTimers();
-    const pending = readAcpSessionListing(() => new Promise(() => {}), {
+    const floored = readAcpSessionListing(() => new Promise(() => {}), {
       deadlineMs: 0,
+      minDeadlineMs: ACP_SESSION_LISTING_BOUNDS.minDeadlineMs,
     });
     await vi.advanceTimersByTimeAsync(ACP_SESSION_LISTING_BOUNDS.minDeadlineMs);
-    await expect(pending).resolves.toMatchObject({
+    await expect(floored).resolves.toMatchObject({
       outcome: 'failed',
       sessions: [],
     });
+
+    // An awaited probe gets no extra time: a spent budget sends nothing.
+    const request = vi.fn(() => new Promise(() => {}));
+    const spent = readAcpSessionListing(request, { deadlineMs: 0 });
+    await vi.advanceTimersByTimeAsync(0);
+    await expect(spent).resolves.toMatchObject({ outcome: 'failed' });
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  test('a page over the session bound is refused before any entry is read', async () => {
+    let entriesRead = 0;
+    const entry = {
+      get sessionId() {
+        entriesRead += 1;
+        return 's';
+      },
+      cwd: '/work',
+    };
+    const oversized = {
+      sessions: Array.from(
+        { length: ACP_SESSION_LISTING_BOUNDS.maxSessions + 1 },
+        () => entry,
+      ),
+    };
+    const listing = await readAcpSessionListing(async () => oversized, {
+      deadlineMs: 1_000,
+    });
+    expect(listing).toMatchObject({ outcome: 'limit', sessions: [] });
+    expect(entriesRead).toBe(0);
   });
 
   test('engines with their own session source are not listed here', () => {

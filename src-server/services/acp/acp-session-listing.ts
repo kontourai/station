@@ -36,7 +36,7 @@ export const ACP_SESSION_LISTING_BOUNDS = {
   maxIdBytes: 256,
   maxCwdBytes: 4096,
   maxCursorBytes: 1024,
-  /** Least time a listing gets even when the handshake budget is spent. */
+  /** Least time a background probe gives a listing once its budget is spent. */
   minDeadlineMs: 2_000,
 } as const;
 
@@ -103,12 +103,21 @@ export function parseAcpSessionListPage(value: unknown):
       rejected: number;
       nextCursor?: string;
       cursorRejected: boolean;
+      /** More entries than one listing keeps: refused unread. */
+      oversized?: true;
     }
   | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     return undefined;
   const page = value as { sessions?: unknown; nextCursor?: unknown };
   if (!Array.isArray(page.sessions)) return undefined;
+  if (page.sessions.length > ACP_SESSION_LISTING_BOUNDS.maxSessions)
+    return {
+      sessions: [],
+      rejected: 0,
+      cursorRejected: false,
+      oversized: true,
+    };
   const sessions: AcpListedSession[] = [];
   let rejected = 0;
   for (const entry of page.sessions) {
@@ -157,6 +166,11 @@ export async function readAcpSessionListing(
   ) => Promise<unknown>,
   options: {
     deadlineMs: number;
+    /**
+     * Floor under `deadlineMs`. Only a background probe sets it: an awaited
+     * probe must not outlast its own budget, so with none left it sends nothing.
+     */
+    minDeadlineMs?: number;
     exclude?: ReadonlySet<string>;
     /** Sessions in a folder this answers true for are left out too. */
     excludeFolder?: (cwd: string) => boolean;
@@ -170,12 +184,12 @@ export async function readAcpSessionListing(
   let rejected = 0;
   let outcome: AcpSessionListingOutcome = 'ok';
   let cursor: string | undefined;
+  const budgetMs = Math.max(options.deadlineMs, options.minDeadlineMs ?? 0);
+  if (budgetMs <= 0)
+    return { observedAt: now(), outcome: 'failed', sessions, rejected };
   let timer: NodeJS.Timeout | undefined;
   const deadline = new Promise<'deadline'>((resolve) => {
-    timer = setTimeout(
-      () => resolve('deadline'),
-      Math.max(options.deadlineMs, ACP_SESSION_LISTING_BOUNDS.minDeadlineMs),
-    );
+    timer = setTimeout(() => resolve('deadline'), budgetMs);
   });
   try {
     for (let page = 0; ; page += 1) {
@@ -194,6 +208,10 @@ export async function readAcpSessionListing(
       const parsed = parseAcpSessionListPage(answer);
       if (!parsed) {
         outcome = 'malformed';
+        break;
+      }
+      if (parsed.oversized) {
+        outcome = 'limit';
         break;
       }
       rejected += parsed.rejected;
