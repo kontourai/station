@@ -51,24 +51,21 @@
   font-size: var(--k-text-sm);
   overflow-wrap: anywhere;
 }
-/* Three soft beats: motion that says "working" without a spinner's urgency. */
+/* Three soft beats, then a steady dot while the request runs: motion that
+   says "working" without a spinner's urgency, settling beside the words
+   "Working on it…". */
 .room-agent-activity__pulse {
   inline-size: var(--k-space-2);
   block-size: var(--k-space-2);
   border-radius: 50%;
   background: var(--k-brand);
-  animation: room-agent-pulse var(--motion-status-pulse) var(--ease-standard)
-    infinite;
+  animation: room-agent-pulse var(--motion-status-pulse) var(--ease-standard) 3;
 }
+/* Each beat starts and ends at the resting dot, so it settles without a jump. */
 @keyframes room-agent-pulse {
-  0%,
-  100% {
+  50% {
     opacity: 0.35;
     transform: scale(0.8);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1);
   }
 }
 .room-agent-activity__actions {

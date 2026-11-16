@@ -255,7 +255,9 @@
   height: 44px;
 }
 
-/* An Agent working in this channel (#4800): a soft beat beside the name. */
+/* An Agent working in this channel (#4800): three soft beats as the mark
+   appears, then a steady dot for as long as the request runs. The row's
+   name says "agent working" whatever the motion. */
 .conversation-list__working {
   flex: 0 0 auto;
   inline-size: var(--k-space-2);
@@ -263,15 +265,12 @@
   border-radius: 50%;
   background: var(--k-active);
   animation: conversation-list-working var(--motion-status-pulse)
-    var(--ease-standard) infinite;
+    var(--ease-standard) 3;
 }
+/* Each beat starts and ends at the resting dot, so it settles without a jump. */
 @keyframes conversation-list-working {
-  0%,
-  100% {
-    opacity: 0.35;
-  }
   50% {
-    opacity: 1;
+    opacity: 0.35;
   }
 }
 /* An unread message names the reader (#4799): an "@" in the caution ink,
