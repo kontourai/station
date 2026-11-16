@@ -1102,8 +1102,9 @@ clearing package caches leaves those installed dependency trees in place.
 **A pure merge of main skips the expensive lanes (#3101).** When every pushed
 ref only adds clean merges of `origin/main` on top of the tip the remote
 already holds, `.githooks/pre-push` skips the push-range checks, documentation
-freshness (which otherwise warns, and refuses once the branch records
-reviews), transfer gate, static gates and SDK barrel; the main-conflict warning,
+freshness (which otherwise refuses only a clean checkout of the pushed commit
+on a branch that records reviews, and warns in every other case), transfer
+gate, static gates and SDK barrel; the main-conflict warning,
 biome, the governance proof and the commit-subject gate still run. `scripts/prepush-pure-merge.mjs` owns the rule:
 the remote ref is the record of the last push the hook accepted, each merge's
 second parent must be on `main` as the remote itself reports it (`git

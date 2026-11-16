@@ -179,12 +179,13 @@ if (args[0] === 'scripts/commit-message-gate.mjs') {
   git(['fetch', '-q', 'origin']);
 
   const slotDir = join(root, 'heavy-check-slots');
-  const push = (refs = ['feat']) => {
+  const push = (refs = ['feat'], extraEnv: Record<string, string> = {}) => {
     writeFileSync(report, '');
     const pushEnv: NodeJS.ProcessEnv = {
       ...env,
       PATH: `${bin}:${process.env.PATH ?? ''}`,
       STATION_HEAVY_CHECK_SLOT_DIR: slotDir,
+      ...extraEnv,
     };
     delete pushEnv.CI;
     delete pushEnv.GITHUB_ACTIONS;
@@ -263,7 +264,7 @@ describe.skipIf(process.platform === 'win32')(
         );
         expect(result.output).toContain('[diff-whitespace] FAIL');
         expect(result.output).toContain(
-          'FAIL: 1 push-range check(s) did not pass',
+          'FAIL: 1 push-range check(s) found a problem in the pushed commit',
         );
         expect(f.remoteHas('feat')).toBe('');
         // Refused before the heavier lanes started.
@@ -309,7 +310,7 @@ describe.skipIf(process.platform === 'win32')(
         expect(result.status).not.toBe(0);
         expect(f.remoteHas('feat')).toBe('');
         expect(result.output).toContain(
-          'FAIL: 2 new export(s) that no other file names',
+          'FAIL: 2 new export(s) that no other module names',
         );
         expect(result.output).toContain(
           '  src/b.ts: export newlyUnused is not named in any other file',
@@ -571,6 +572,213 @@ describe.skipIf(process.platform === 'win32')(
         expect(result.status, result.output).toBe(0);
         expect(result.output).not.toContain('merge cleanly');
         expect(result.output).not.toContain('could not check');
+        expect(result.output).toContain(
+          'WARNING: new exports not checked for refs/heads/feat: there is no origin/main here to compare against',
+        );
+      },
+      TIMEOUT,
+    );
+
+    it(
+      'passes an export used after a string containing /* (the verifier probe)',
+      () => {
+        const f = fixture();
+        const head = f.commit(
+          {
+            'src/probe.ts':
+              'export function verifyProbeQuiesce() {\n  return 1;\n}\n',
+            'src/routes.ts':
+              "const shares = '/api/shares/*';\nconst glob = '**/*.ts';\nexport async function route() {\n  const { verifyProbeQuiesce } = await import('./probe.js');\n  return [shares, glob, verifyProbeQuiesce()];\n}\n/* a later block comment */\n",
+            'src/index.ts':
+              "import { used } from './a';\nimport { helper } from './b';\nimport { route } from './routes';\nconsole.log(used(), helper(), route);\n",
+          },
+          'feat: a use after a string with a comment opener',
+        );
+        const result = f.push();
+        expect(result.status, result.output).toBe(0);
+        expect(f.remoteHas('feat')).toBe(head);
+        expect(result.output).not.toContain('is not named in any other file');
+      },
+      TIMEOUT,
+    );
+
+    it(
+      "passes an export read as P.Name after 'image/*' through a package namespace import",
+      () => {
+        const f = fixture();
+        const head = f.commit(
+          {
+            'packages/kit/package.json': `${JSON.stringify({ name: '@fixture/kit', exports: { '.': './src/index.ts' } })}\n`,
+            'packages/kit/src/index.ts': "export * from './image';\n",
+            'packages/kit/src/image.ts': 'export const imageExport = 1;\n',
+            'src/index.ts':
+              "import { used } from './a';\nimport { helper } from './b';\nconst accept = 'image/*';\nimport * as P from '@fixture/kit';\nconsole.log(used(), helper(), accept, P.imageExport);\n/* trailing */\n",
+          },
+          'feat: a namespace read after a string with a comment opener',
+        );
+        const result = f.push();
+        expect(result.status, result.output).toBe(0);
+        expect(f.remoteHas('feat')).toBe(head);
+        expect(result.output).not.toContain('is not named in any other file');
+      },
+      TIMEOUT,
+    );
+
+    it(
+      "passes a new export in a file its workspace package's package.json names as an entry",
+      () => {
+        const f = fixture();
+        const head = f.commit(
+          {
+            'packages/toolkit/package.json': `${JSON.stringify({ name: '@fixture/toolkit', exports: { '.': './src/index.ts', './extra': './src/extra.ts' }, bin: { tk: './bin/tk.mjs' } })}\n`,
+            'packages/toolkit/src/index.ts': 'export const toolkitEntry = 1;\n',
+            'packages/toolkit/src/extra.ts': 'export const toolkitExtra = 1;\n',
+            'packages/toolkit/bin/tk.mjs': 'export const toolkitBin = 1;\n',
+          },
+          'feat: a workspace package',
+        );
+        const result = f.push();
+        expect(result.status, result.output).toBe(0);
+        expect(f.remoteHas('feat')).toBe(head);
+        expect(result.output).not.toContain('is not named in any other file');
+      },
+      TIMEOUT,
+    );
+
+    it(
+      'warns and accepts when the export diff is past its capture bound, and still refuses whitespace in the same step',
+      () => {
+        const f = fixture();
+        const head = f.commit(
+          {
+            'src/b.ts':
+              "import { alsoUsed } from './a';\nexport function helper() {\n  return alsoUsed();\n}\nexport function unnamedButUnchecked() {\n  return 4;\n}\n",
+          },
+          'feat: an export behind an oversize diff',
+        );
+        const bound = { STATION_PREPUSH_EXPORT_DIFF_MAX_BYTES: '64' };
+        const accepted = f.push(['feat'], bound);
+        expect(accepted.status, accepted.output).toBe(0);
+        expect(f.remoteHas('feat')).toBe(head);
+        expect(accepted.output).toContain(
+          'WARNING: new exports not checked for refs/heads/feat: git diff',
+        );
+        expect(accepted.output).toContain(
+          'its output passed the capture bound; the range is very large, which usually means the local origin/main is stale',
+        );
+        f.commit({ 'docs/notes.md': 'notes\ntrailing space \n' }, 'docs: x');
+        const refused = f.push(['feat'], bound);
+        expect(refused.status).not.toBe(0);
+        expect(refused.output).toContain('[diff-whitespace] FAIL');
+        expect(f.remoteHas('feat')).toBe(head);
+      },
+      TIMEOUT,
+    );
+
+    it(
+      'warns and accepts an orphan branch, naming what each check could not do',
+      () => {
+        const f = fixture();
+        f.git(['checkout', '-q', '--orphan', 'orphan']);
+        const head = f.commit(
+          { 'docs/orphan.md': 'orphan\n' },
+          'chore: orphan root',
+        );
+        const result = f.push(['orphan']);
+        expect(result.status, result.output).toBe(0);
+        expect(f.remoteHas('orphan')).toBe(head);
+        expect(result.output).toContain(
+          'WARNING: whitespace not checked for refs/heads/orphan: the pushed commit shares no history with origin/main (an orphan branch?)',
+        );
+        expect(result.output).toContain(
+          'WARNING: new exports not checked for refs/heads/orphan: the pushed commit shares no history with origin/main',
+        );
+        expect(result.output).not.toContain('no origin/main here');
+      },
+      TIMEOUT,
+    );
+
+    it(
+      'names a stale local origin/main first, checks no exports, and still refuses a raw mkdtemp',
+      () => {
+        const f = fixture();
+        const knownMain = f.git(['rev-parse', 'origin/main']);
+        f.commit({ 'docs/branch.md': 'branch work\n' }, 'docs: branch work');
+        f.git(['checkout', '-q', 'main']);
+        f.commit({ 'docs/main.md': 'main moved\n' }, 'docs: main moved');
+        f.git(['push', '-q', 'origin', 'main']);
+        f.git(['checkout', '-q', 'feat']);
+        f.git(['merge', '-q', '--no-edit', 'main']);
+        f.commit(
+          {
+            'src/b.ts':
+              "import { alsoUsed } from './a';\nexport function helper() {\n  return alsoUsed();\n}\nexport function newlyUnused() {\n  return 4;\n}\n",
+          },
+          'feat: an export a stale base cannot judge',
+        );
+        f.git(['update-ref', 'refs/remotes/origin/main', knownMain]);
+        const accepted = f.push();
+        expect(accepted.status, accepted.output).toBe(0);
+        const lines = accepted.output.split('\n');
+        const hint = lines.findIndex((line) =>
+          line.includes('the local origin/main is stale'),
+        );
+        const firstCheck = lines.findIndex(
+          (line) =>
+            line.startsWith('Whitespace:') ||
+            line.includes('whitespace not checked'),
+        );
+        expect(hint).toBeGreaterThanOrEqual(0);
+        expect(hint).toBeLessThan(firstCheck);
+        expect(accepted.output).toContain(
+          'WARNING: new exports not checked for refs/heads/feat: the pushed range merges 1 commit(s)',
+        );
+        f.commit(
+          { 'src-server/feature/__tests__/leaky.test.ts': RAW },
+          'test: leaky',
+        );
+        const refused = f.push();
+        expect(refused.status).not.toBe(0);
+        expect(refused.output).toContain(
+          'src-server/feature/__tests__/leaky.test.ts: 1 (baseline 0)',
+        );
+      },
+      TIMEOUT,
+    );
+
+    it(
+      "judges whitespace with the pushed commit's attributes, not an uncommitted .gitattributes",
+      () => {
+        const f = fixture();
+        f.commit({ 'docs/notes.md': 'notes\ntrailing space \n' }, 'docs: x');
+        f.write('.gitattributes', '* -whitespace\n');
+        const result = f.push();
+        expect(result.status).not.toBe(0);
+        expect(result.output).toContain(
+          'docs/notes.md:2: trailing whitespace.',
+        );
+      },
+      TIMEOUT,
+    );
+
+    it(
+      'warns and accepts when the ratchet cannot run, and still refuses a real finding',
+      () => {
+        const f = fixture();
+        const head = f.commit(
+          { 'scripts/test-temp-dir-baseline.json': '{ not json\n' },
+          'chore: break the baseline',
+        );
+        const accepted = f.push();
+        expect(accepted.status, accepted.output).toBe(0);
+        expect(f.remoteHas('feat')).toBe(head);
+        expect(accepted.output).toContain(
+          'WARNING: test temp dirs not checked for refs/heads/feat: the ratchet did not run (exit 2).',
+        );
+        f.commit({ 'docs/notes.md': 'notes\ntrailing space \n' }, 'docs: x');
+        const refused = f.push();
+        expect(refused.status).not.toBe(0);
+        expect(refused.output).toContain('[diff-whitespace] FAIL');
       },
       TIMEOUT,
     );

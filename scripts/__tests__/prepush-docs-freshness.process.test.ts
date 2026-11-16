@@ -126,7 +126,10 @@ if (args[0] === 'scripts/commit-message-gate.mjs') {
     { mode: 0o755 },
   );
 
-  const push = (extraEnv: Record<string, string> = {}) => {
+  const push = (
+    extraEnv: Record<string, string> = {},
+    refs: string[] = ['feat'],
+  ) => {
     writeFileSync(report, '');
     const env: NodeJS.ProcessEnv = {
       ...(withoutFreshnessEnv(
@@ -159,7 +162,7 @@ if (args[0] === 'scripts/commit-message-gate.mjs') {
         'push',
         '-q',
         'origin',
-        'feat',
+        ...refs,
       ],
       {
         cwd: repo,
@@ -215,8 +218,11 @@ const recordNote = (f: ReturnType<typeof hookFixture>) => {
   return commit(f.repo, 'docs(ledger): review docs/a.md');
 };
 
+const ACCEPTED_ONLY_WARNS =
+  "The push continues; CI's docs:truth:gate will judge it.";
+
 describe.skipIf(process.platform === 'win32')(
-  'pre-push documentation freshness: warn until the branch records reviews',
+  'pre-push documentation freshness: refuse only on a verdict about the pushed commit',
   () => {
     it(
       'warns and accepts a push whose cited source changed when the branch has recorded no review',
@@ -227,16 +233,12 @@ describe.skipIf(process.platform === 'win32')(
         expect(result.status, result.output).toBe(0);
         expect(f.remoteHas('feat')).toBe(head);
         expect(result.output).toContain(
-          "WARNING: CI's statics job will fail on these until they are reviewed. The push is allowed because this branch has not recorded any review yet.",
+          "WARNING: documentation freshness: only a warning because this branch has not recorded any review yet; CI's statics job will fail on these until they are reviewed.",
         );
         expect(result.output).toContain('review docs/a.md; changed: src/a.ts');
         expect(result.output).toMatch(
           /Scoped against origin\/main at [0-9a-f]{40}, committed \d{4}-/,
         );
-        expect(result.output).toContain(
-          'If the list names files this branch did not change, run `git fetch origin main` and push again.',
-        );
-        // The later gates still ran.
         expect(result.gates).toContain(
           'scripts/check-prepush-orchestration-transfer.mjs',
         );
@@ -245,7 +247,7 @@ describe.skipIf(process.platform === 'win32')(
     );
 
     it(
-      'refuses a push whose recorded note a later edit of the cited source outdated',
+      'refuses a clean checkout of the pushed commit whose recorded note a later edit outdated',
       () => {
         const f = hookFixture();
         changeSource(f, 'export const a = 2;\n');
@@ -260,7 +262,7 @@ describe.skipIf(process.platform === 'win32')(
           'npm run docs:review:record -- <path> --note',
         );
         expect(result.output).toMatch(
-          /FAIL: this branch records documentation reviews \(\d+ ledger file\(s\) since its merge base\)/,
+          /FAIL: this branch records documentation reviews \(\d+ ledger file\(s\) since its merge base\), and the pushed commit, checked out with no uncommitted changes, leaves the reviews above stale\. CI's docs:truth:gate refuses the same commit\./,
         );
         expect(result.gates).not.toContain(
           'scripts/check-prepush-orchestration-transfer.mjs',
@@ -281,63 +283,114 @@ describe.skipIf(process.platform === 'win32')(
         expect(result.output).toMatch(
           /Documentation freshness: \d+ reviews and \d+ captures current\./,
         );
-        expect(result.output).not.toContain("WARNING: CI's statics job");
-        expect(result.output).not.toContain('needs refresh');
+        expect(result.output).not.toContain('WARNING: documentation freshness');
       },
       TIMEOUT,
     );
 
     it(
-      'refuses, saying the check could not run, when the check crashes',
+      'only warns when an uncommitted edit makes a recorded review stale',
       () => {
         const f = hookFixture();
         changeSource(f, 'export const a = 2;\n');
+        const head = recordNote(f);
+        f.write('src/a.ts', 'export const a = 9;\n');
+        const result = f.push();
+        expect(result.status, result.output).toBe(0);
+        expect(f.remoteHas('feat')).toBe(head);
+        expect(result.output).toContain(
+          'WARNING: documentation freshness: only a warning because the check read a working tree with uncommitted changes, so this list may not describe the pushed commit.',
+        );
+        expect(result.output).not.toContain('refuses the same commit');
+      },
+      TIMEOUT,
+    );
+
+    it(
+      'only warns when another commit is checked out than the one pushed',
+      () => {
+        const f = hookFixture();
+        changeSource(f, 'export const a = 2;\n');
+        const fresh = recordNote(f);
+        git(f.repo, ['switch', '-qc', 'other']);
+        changeSource(f, 'export const a = 3;\n');
+        const result = f.push({}, ['feat']);
+        expect(result.status, result.output).toBe(0);
+        expect(f.remoteHas('feat')).toBe(fresh);
+        expect(result.output).toContain(
+          'only a warning because the check read the checked-out commit, which is not the commit being pushed',
+        );
+        expect(result.output).not.toContain('refuses the same commit');
+      },
+      TIMEOUT,
+    );
+
+    it(
+      'warns and accepts, saying the check could not run, when the check crashes',
+      () => {
+        const f = hookFixture();
+        const head = changeSource(f, 'export const a = 2;\n');
         f.brokenCheck();
         const result = f.push();
-        expect(result.status).not.toBe(0);
-        expect(f.remoteHas('feat')).toBe('');
+        expect(result.status, result.output).toBe(0);
+        expect(f.remoteHas('feat')).toBe(head);
         expect(result.output).toContain(
-          'FAIL: the documentation freshness check could not run (exited 1 without a result: TypeError: simulated crash)',
+          'WARNING: documentation freshness: not checked: the check could not run (exited 1 without a result: TypeError: simulated crash).',
         );
+        expect(result.output).toContain(ACCEPTED_ONLY_WARNS);
         expect(result.output).not.toContain('needs refresh');
-        expect(result.output).not.toContain("WARNING: CI's statics job");
       },
       TIMEOUT,
     );
 
     it(
-      'refuses, naming the bound, when the check does not finish in time',
+      'warns and accepts, naming the bound, when the check does not finish in time',
       () => {
         const f = hookFixture();
-        changeSource(f, 'export const a = 2;\n');
+        const head = changeSource(f, 'export const a = 2;\n');
         f.writeCheck('setTimeout(() => {}, 30_000);\n');
         // The hook scales the bound by host pressure (at most 8x), so a
         // 1s base stays far below the stub's 30s.
         const result = f.push({
           STATION_PREPUSH_DOCS_FRESHNESS_TIMEOUT_MS: '1000',
         });
-        expect(result.status).not.toBe(0);
-        expect(f.remoteHas('feat')).toBe('');
+        expect(result.status, result.output).toBe(0);
+        expect(f.remoteHas('feat')).toBe(head);
         expect(result.output).toMatch(
-          /FAIL: the documentation freshness check could not run \(did not finish within [1-8]s\)/,
+          /WARNING: documentation freshness: not checked: the check could not run \(did not finish within [1-8]s\)/,
         );
-        expect(result.output).not.toContain('needs refresh');
       },
       TIMEOUT,
     );
 
     it(
-      'refuses stale entries when there is no origin/main to tell whether the branch records reviews',
+      'warns and accepts when there is no origin/main to scope against',
       () => {
         const f = hookFixture();
-        changeSource(f, 'export const a = 2;\n');
+        const head = changeSource(f, 'export const a = 2;\n');
         git(f.repo, ['update-ref', '-d', 'refs/remotes/origin/main']);
         const result = f.push();
-        expect(result.status).not.toBe(0);
-        expect(f.remoteHas('feat')).toBe('');
-        expect(result.output).toContain('review docs/a.md; changed: src/a.ts');
+        expect(result.status, result.output).toBe(0);
+        expect(f.remoteHas('feat')).toBe(head);
         expect(result.output).toContain(
-          'FAIL: could not tell whether this branch records documentation reviews (no merge base with origin/main)',
+          'WARNING: documentation freshness: not checked: there is no origin/main here to compare against',
+        );
+      },
+      TIMEOUT,
+    );
+
+    it(
+      'warns and accepts an orphan branch, which has no merge base',
+      () => {
+        const f = hookFixture();
+        git(f.repo, ['switch', '-q', '--orphan', 'orphan']);
+        git(f.repo, ['checkout', '-q', 'feat', '--', '.']);
+        const head = commit(f.repo, 'chore: orphan root');
+        const result = f.push({}, ['orphan']);
+        expect(result.status, result.output).toBe(0);
+        expect(f.remoteHas('orphan')).toBe(head);
+        expect(result.output).toContain(
+          'not checked: the pushed commit shares no history with origin/main (an orphan branch?)',
         );
       },
       TIMEOUT,
@@ -362,15 +415,37 @@ describe.skipIf(process.platform === 'win32')(
     );
 
     it(
-      'names a stale local origin/main when the branch merged a newer main',
+      'caps a long stale report at 30 entries and counts the rest',
+      () => {
+        const f = hookFixture();
+        changeSource(f, 'export const a = 2;\n');
+        const entries = Array.from(
+          { length: 45 },
+          (_, i) => `  review docs/page-${i}.md; changed: src/a.ts`,
+        ).join('\\n');
+        f.writeCheck(
+          `if (process.argv.includes('--json')) {\n  console.log(JSON.stringify({ mode: 'scoped', reason: 'fixture', base: 'origin/main', mergeBase: null, reviews: 45, captures: 0, blocking: [{ kind: 'review', path: 'docs/a.md', changed: ['src/a.ts'], rule: 'stale' }], advisory: [] }));\n  process.exit(1);\n}\nconsole.error('Documentation review needs refresh (scoped: fixture):\\n${entries}\\nReview the changed claims.');\nprocess.exit(1);\n`,
+        );
+        const result = f.push();
+        expect(result.status, result.output).toBe(0);
+        expect(result.output).toContain('  review docs/page-29.md;');
+        expect(result.output).not.toContain('  review docs/page-30.md;');
+        expect(result.output).toContain(
+          '  … and 15 more; run npm run docs:freshness:check for the full list',
+        );
+      },
+      TIMEOUT,
+    );
+
+    it(
+      'names a stale local origin/main first and judges nothing when the branch merged a newer main',
       () => {
         const f = hookFixture();
         const knownMain = git(f.repo, ['rev-parse', 'origin/main']);
         // A commit of the branch's own, so the merge below is a real merge.
         f.write('notes.txt', 'branch work\n');
         commit(f.repo, 'chore: branch work');
-        // Main moves on, changing a cited source without a note (main's
-        // merge queue runs freshness as advisory, so this can land).
+        // Main moves on, changing a cited source without a note.
         git(f.repo, ['switch', '-q', 'main']);
         f.write('src/b.ts', 'export const b = 2;\n');
         commit(f.repo, 'change b on main');
@@ -393,13 +468,19 @@ describe.skipIf(process.platform === 'win32')(
           '--no-edit',
           'main',
         ]);
-        // The local origin/main never learned of it.
+        // Record a note too, so a judged verdict would have refused.
+        changeSource(f, 'export const a = 2;\n');
+        recordNote(f);
+        changeSource(f, 'export const a = 3;\n');
+        // The local origin/main never learned of main's new commit.
         git(f.repo, ['update-ref', 'refs/remotes/origin/main', knownMain]);
         const result = f.push();
         expect(result.status, result.output).toBe(0);
-        expect(result.output).toContain('review docs/b.md; changed: src/b.ts');
         expect(result.output).toMatch(
-          /This branch merges 1 commit\(s\) origin\/main here does not contain \([0-9a-f]{12}\)\. If that was main, the local origin\/main is stale/,
+          /WARNING: documentation freshness: not checked: the pushed range merges 1 commit\(s\) the local origin\/main does not contain \([0-9a-f]{12}\); if that was main, the local origin\/main is stale .* Run `git fetch origin main` and push again\./,
+        );
+        expect(result.output).not.toContain(
+          'Documentation review needs refresh',
         );
       },
       TIMEOUT,

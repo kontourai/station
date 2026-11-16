@@ -65,7 +65,7 @@ export const EVERY_PUSH_CHECKS = Object.freeze([
   }),
   Object.freeze({
     command: 'node scripts/check-prepush-docs-freshness.mjs',
-    note: 'docs:freshness:check; refuses once the branch records reviews, warns before (~7s)',
+    note: 'docs:freshness:check; refuses only for a clean checkout of the pushed commit on a branch that records reviews, else warns (~7s)',
   }),
   Object.freeze({
     command: 'node scripts/commit-message-gate.mjs --prepush-stdin',

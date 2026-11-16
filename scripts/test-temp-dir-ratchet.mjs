@@ -341,5 +341,16 @@ function main(argv) {
 }
 
 if (invokedDirectly(import.meta.url)) {
-  process.exit(main(process.argv.slice(2)));
+  let status;
+  try {
+    status = main(process.argv.slice(2));
+  } catch (error) {
+    // Exit 1 is a finding; 2 says the ratchet could not count at all, which
+    // the pre-push hook reports as a warning rather than a refusal.
+    console.error(
+      `test-temp-dir-ratchet: could not run: ${error instanceof Error ? error.message : error}`,
+    );
+    status = 2;
+  }
+  process.exit(status);
 }

@@ -24,23 +24,49 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 /** `git diff --check` exits 2 when it reports a whitespace problem. */
 const GIT_CHECK_PROBLEM_EXIT = 2;
 
-function runDiffWhitespaceGate({ cwd = process.cwd(), base, head = 'HEAD' }) {
+/**
+ * `attrSource` reads `.gitattributes` from that commit rather than the working
+ * tree (`git --attr-source`, Git 2.40+), so an uncommitted attribute edit
+ * cannot change the verdict on a pushed commit. On an older Git the option is
+ * refused; the check then runs with working-tree attributes and says so.
+ */
+export function runDiffWhitespaceGate({
+  cwd = process.cwd(),
+  base,
+  head = 'HEAD',
+  attrSource,
+  warn = (message) => console.log(message),
+}) {
   if (typeof base !== 'string' || !base || base.startsWith('-'))
     throw new Error('Invalid diff whitespace gate base');
   if (typeof head !== 'string' || !head || head.startsWith('-'))
     throw new Error('Invalid diff whitespace gate head');
-  const result = spawnSync(
-    'git',
-    [
-      '--no-pager',
-      '-c',
-      'core.quotePath=false',
-      'diff',
-      '--check',
-      `${base}...${head}`,
-    ],
-    { cwd, stdio: 'inherit', windowsHide: true },
-  );
+  const diffArgs = [
+    '--no-pager',
+    '-c',
+    'core.quotePath=false',
+    'diff',
+    '--check',
+    `${base}...${head}`,
+  ];
+  let attrArgs = [];
+  if (attrSource) {
+    const probe = spawnSync('git', [`--attr-source=${attrSource}`, 'version'], {
+      cwd,
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    if (probe.status === 0) attrArgs = [`--attr-source=${attrSource}`];
+    else
+      warn(
+        '[diff-whitespace] WARNING: this Git has no --attr-source (Git 2.40+), so .gitattributes is read from the working tree, not the pushed commit.',
+      );
+  }
+  const result = spawnSync('git', [...attrArgs, ...diffArgs], {
+    cwd,
+    stdio: 'inherit',
+    windowsHide: true,
+  });
   if (result.error)
     throw new Error(
       `git diff --check could not start: ${result.error.message}`,
@@ -66,7 +92,13 @@ if (invokedDirectly(import.meta.url)) {
     const base =
       options.get('base') || process.env.STATION_CI_FAST_BASE || 'origin/main';
     const head = options.get('head') ?? 'HEAD';
-    if (runDiffWhitespaceGate({ base, head }).ok) {
+    if (
+      runDiffWhitespaceGate({
+        base,
+        head,
+        attrSource: options.has('head') ? head : undefined,
+      }).ok
+    ) {
       console.log(
         `[diff-whitespace] OK: no whitespace errors added since ${base}.`,
       );

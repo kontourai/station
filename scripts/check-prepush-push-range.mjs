@@ -28,8 +28,10 @@
  */
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { runDiffWhitespaceGate } from './diff-whitespace-gate.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { newUnnamedExports } from './lib/new-export-check.mjs';
+import { describeUnusableBase, resolvePushBase } from './lib/prepush-base.mjs';
 
 // The base the other scoped pre-push gates use, overridable the same way.
 const MAIN_REF = process.env.STATION_BASE_REF ?? 'origin/main';
@@ -56,43 +58,118 @@ function pushedUpdates(stdinText) {
 
 /**
  * What the pushed lines are compared against: the merge base with the local
- * `origin/main` (what CI's base becomes once the branch is a pull request),
- * else the tip the remote already holds, else nothing.
+ * `origin/main` (what CI's base becomes once the branch is a pull request).
+ * When that base cannot support a verdict (no ref, no shared history, or a
+ * stale ref under a merged newer main), the whitespace check falls back to
+ * the tip the remote already holds when that is an ancestor, and otherwise
+ * warns; the export check only warns.
  */
-function whitespaceBase({ sha, remoteSha }) {
-  const mergeBase = gitOutput(['merge-base', MAIN_REF, sha]);
-  if (mergeBase)
-    return { base: mergeBase, described: `its merge base with ${MAIN_REF}` };
+function pushBase(update) {
+  const resolved = resolvePushBase(MAIN_REF, update.sha);
+  if (resolved.state === 'ok')
+    return {
+      resolved,
+      base: resolved.mergeBase,
+      described: `its merge base with ${MAIN_REF}`,
+    };
+  const { remoteSha, sha } = update;
   if (
     remoteSha &&
     !ZERO.test(remoteSha) &&
     gitOutput(['merge-base', '--is-ancestor', remoteSha, sha]) !== null
   )
-    return { base: remoteSha, described: 'the tip the remote already holds' };
-  return null;
-}
-
-function run(script, args) {
-  const result = spawnSync(process.execPath, [script, ...args], {
-    stdio: 'inherit',
-    windowsHide: true,
-  });
-  if (result.error) throw result.error;
-  return result.status ?? 1;
+    return {
+      resolved,
+      base: remoteSha,
+      described: 'the tip the remote already holds',
+      fallback: true,
+    };
+  return { resolved, base: null };
 }
 
 const fullVerdict = (base) =>
-  `node scripts/code-health-gate.mjs --base=${base.base}`;
-const newExportsRemedy = (base) =>
-  `${fullVerdict(base)}   # CI's full unused-export verdict`;
+  `node scripts/code-health-gate.mjs --base=${base}`;
+
+function warn(message) {
+  console.log(`WARNING: ${message} CI will judge it; the push continues.`);
+}
+
+/** Whitespace on the pushed lines; false only on a real finding. */
+function whitespacePasses(update, base) {
+  const short = update.sha.slice(0, 12);
+  if (!base.base) {
+    warn(
+      `whitespace not checked for ${update.ref}: ${describeUnusableBase(MAIN_REF, base.resolved)}, and the remote holds no earlier tip of this branch.`,
+    );
+    return true;
+  }
+  console.log(
+    `Whitespace: checking ${update.ref} (${short}) against ${base.described}.`,
+  );
+  let result;
+  try {
+    result = runDiffWhitespaceGate({
+      base: base.base,
+      head: update.sha,
+      attrSource: update.sha,
+    });
+  } catch (error) {
+    warn(
+      `whitespace not checked for ${update.ref}: ${error instanceof Error ? error.message : error}.`,
+    );
+    return true;
+  }
+  if (result.ok) {
+    console.log(
+      `[diff-whitespace] OK: no whitespace errors added since ${base.base}.`,
+    );
+    return true;
+  }
+  console.error(
+    `[diff-whitespace] FAIL: the lines above add whitespace errors or conflict markers since ${base.base}; the merge queue's diff job rejects them. Fix them, or run \`git diff --check ${base.base}...${update.sha}\` to list them again.`,
+  );
+  return false;
+}
+
+/** The raw-mkdtemp ratchet at the pushed commit; exit 1 is a finding. */
+function ratchetPasses(update) {
+  console.log(
+    `Test temp dirs: checking ${update.ref} (${update.sha.slice(0, 12)}).`,
+  );
+  const result = spawnSync(
+    process.execPath,
+    ['scripts/test-temp-dir-ratchet.mjs', `--rev=${update.sha}`],
+    { stdio: 'inherit', windowsHide: true },
+  );
+  if (result.status === 1) return false;
+  if (result.status !== 0)
+    warn(
+      `test temp dirs not checked for ${update.ref}: the ratchet did not run (${result.error?.message ?? (result.signal ? `signal ${result.signal}` : `exit ${result.status}`)}).`,
+    );
+  return true;
+}
 
 /**
- * New exports that no other module names (scripts/lib/new-export-check.mjs).
- * Returns false when it refuses. It is a narrow subset of CI's code-health
- * gate, and says so, so a pass here is never read as the gate's verdict.
+ * New exports that no other module names (scripts/lib/new-export-check.mjs);
+ * false only on a finding. It is a heuristic for the one case CI's
+ * code-health gate kept refusing, not the gate, and says so.
  */
-function exportsRefused(update, base) {
-  const result = newUnnamedExports({ base: base.base, sha: update.sha });
+function exportsPass(update, base) {
+  if (base.resolved.state !== 'ok') {
+    warn(
+      `new exports not checked for ${update.ref}: ${describeUnusableBase(MAIN_REF, base.resolved)}.`,
+    );
+    return true;
+  }
+  let result;
+  try {
+    result = newUnnamedExports({ base: base.base, sha: update.sha });
+  } catch (error) {
+    warn(
+      `new exports not checked for ${update.ref}: ${error instanceof Error ? error.message : error}.`,
+    );
+    return true;
+  }
   if (result.findings.length === 0) {
     console.log(
       `New exports: ${result.checked} new export name(s), each named in another module.`,
@@ -101,7 +178,7 @@ function exportsRefused(update, base) {
   }
   console.error(
     [
-      `FAIL: ${result.findings.length} new export(s) that no other file names; CI's code-health gate refuses these as unused exports:`,
+      `FAIL: ${result.findings.length} new export(s) that no other module names; CI's code-health gate refuses these as unused exports:`,
       ...result.findings.map(
         ({ path, name }) =>
           `  ${path}: export ${name} is not named in any other file`,
@@ -110,7 +187,7 @@ function exportsRefused(update, base) {
       'This checks only a new export that nothing else names. A name that appears',
       'elsewhere by coincidence, or an export whose last use was removed, is left',
       "to CI. CI's exact verdict, locally (25-50s):",
-      `  ${fullVerdict(base)}`,
+      `  ${fullVerdict(base.base)}`,
     ].join('\n'),
   );
   return false;
@@ -119,32 +196,28 @@ function exportsRefused(update, base) {
 function main(stdinText) {
   const failed = [];
   for (const update of pushedUpdates(stdinText)) {
-    const short = update.sha.slice(0, 12);
-    const base = whitespaceBase(update);
-    if (base) {
-      console.log(
-        `Whitespace: checking ${update.ref} (${short}) against ${base.described}.`,
+    const base = pushBase(update);
+    if (base.resolved.state === 'stale')
+      // Said first, because every later line is judged against that base.
+      warn(
+        `${update.ref}: ${describeUnusableBase(MAIN_REF, base.resolved)}. Whitespace is compared against the remote's tip when it has one; new exports are not checked.`,
       );
-      const args = [`--base=${base.base}`, `--head=${update.sha}`];
-      if (run('scripts/diff-whitespace-gate.mjs', args) !== 0)
-        failed.push(`node scripts/diff-whitespace-gate.mjs ${args.join(' ')}`);
-    } else {
-      console.log(
-        `Whitespace: skipped for ${update.ref} — no ${MAIN_REF} here and no remote tip below it, so there is no base to compare against; the merge queue's diff job still checks it.`,
+    if (!whitespacePasses(update, base))
+      failed.push(
+        `git diff --check ${base.base}...${update.sha}   # whitespace`,
       );
-    }
-    console.log(`Test temp dirs: checking ${update.ref} (${short}).`);
-    const ratchetArgs = [`--rev=${update.sha}`];
-    if (run('scripts/test-temp-dir-ratchet.mjs', ratchetArgs) !== 0)
-      failed.push(`node scripts/test-temp-dir-ratchet.mjs ${ratchetArgs[0]}`);
-    if (base && !exportsRefused(update, base))
-      failed.push(newExportsRemedy(base));
+    if (!ratchetPasses(update))
+      failed.push(`node scripts/test-temp-dir-ratchet.mjs --rev=${update.sha}`);
+    if (!exportsPass(update, base))
+      failed.push(
+        `${fullVerdict(base.base)}   # CI's full unused-export verdict`,
+      );
   }
   if (failed.length > 0) {
     console.error(
       [
         '',
-        `FAIL: ${failed.length} push-range check(s) did not pass, so this push is refused.`,
+        `FAIL: ${failed.length} push-range check(s) found a problem in the pushed commit, so this push is refused.`,
         'Each printed its own finding and remedy above. Reproduce with:',
         '',
         ...failed.map((command) => `  ${command}`),
@@ -157,5 +230,11 @@ function main(stdinText) {
 }
 
 if (invokedDirectly(import.meta.url)) {
-  process.exitCode = main(readFileSync(0, 'utf8'));
+  try {
+    process.exitCode = main(readFileSync(0, 'utf8'));
+  } catch (error) {
+    warn(
+      `the push-range checks could not run (${error instanceof Error ? error.message : error}).`,
+    );
+  }
 }

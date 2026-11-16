@@ -3,28 +3,31 @@
  * Pre-push: recorded documentation reviews this branch left stale.
  *
  * Runs the real `docs:freshness:check` (scripts/check-documentation-freshness.mjs
- * --json) and decides only what its verdict means for this push:
+ * --json) and decides only what its verdict means for this push. It refuses
+ * only on positive evidence of a defect in what is being pushed, because
+ * `--no-verify` is not allowed and a wrongful refusal has no way around it:
  *
  * - fresh: one line, and the push continues;
- * - stale, and some pushed commit's range (merge base with origin/main up to
- *   the pushed sha) adds or changes a file under the review ledger: REFUSED,
- *   with the check's own list and remedy. The author has started recording
- *   reviews, so a stale entry now is a note outdated by a later edit or a
- *   cited page missed, which is what CI's docs:truth:gate kept failing on;
- * - stale, and no pushed range touches the ledger: the same list as a
- *   WARNING, and the push continues. Refusing here would force notes before
- *   the change is final, and every later edit would make them stale again;
- * - the check itself fails to run, or does not finish within its bound:
- *   REFUSED, saying so. "Could not check" never reads as "fresh" or "stale".
+ * - stale, the pushed commit is the checked-out commit, the tracked tree is
+ *   clean (so the check saw exactly what CI will see), and that commit's
+ *   range adds or changes a file under the review ledger: REFUSED, with the
+ *   check's own list and remedy. The author has started recording reviews,
+ *   so a stale entry is a note outdated by a later edit or a cited page
+ *   missed, which is what CI's docs:truth:gate kept failing on;
+ * - stale otherwise: the same list as a WARNING saying why it is only a
+ *   warning, and the push continues. Before the branch records any review,
+ *   refusing would force notes before the change is final; with uncommitted
+ *   edits or another commit checked out, the list is not about the pushed
+ *   commit at all;
+ * - no verdict possible (no base ref, no merge base, a local base older than
+ *   a main the branch merged, or the check crashing or timing out): a WARNING
+ *   naming what could not be checked, and the push continues. The stale-base
+ *   case is detected before the check runs, and its hint is printed first.
  *
- * When stale, it names the base commit and date the check was scoped
- * against: a local origin/main older than the main this branch merged makes
- * main's own changes look like this branch's. A merge on the branch whose
- * second parent that base does not contain is that case, and it is named
- * explicitly. No network call is made.
- *
- * Reads git's pre-push ref lines on stdin. The check reads the working tree,
- * like the static gates.
+ * The base is the check's own: STATION_DOCS_FRESHNESS_BASE, then
+ * STATION_CI_FAST_BASE, then origin/main, so the wrapper and the check scope
+ * the same range. No network call is made. Reads git's pre-push ref lines on
+ * stdin.
  */
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -32,27 +35,29 @@ import { fileURLToPath } from 'node:url';
 import { CAPTURE_MAX_BYTES } from './lib/bounded-capture.mjs';
 import { scaleLivenessMs } from './lib/liveness-scale.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { describeUnusableBase, resolvePushBase } from './lib/prepush-base.mjs';
 import { REVIEW_LEDGER_DIR } from './lib/review-ledger-paths.mjs';
 
-const BASE_REF = process.env.STATION_BASE_REF ?? 'origin/main';
+const BASE_REF =
+  process.env.STATION_DOCS_FRESHNESS_BASE ||
+  process.env.STATION_CI_FAST_BASE ||
+  'origin/main';
 const ZERO = /^0+$/;
 /** A liveness bound on the check (~5-8s here), not a performance budget. */
 const CHECK_TIMEOUT_BASE_MS = 120_000;
 /**
  * Test-only: replaces the base of that bound so a test can prove the timeout
- * path without a two-minute wait. Anything but a positive integer refuses.
+ * path without a two-minute wait. Anything but a positive integer is ignored.
  */
 const TIMEOUT_OVERRIDE_ENV = 'STATION_PREPUSH_DOCS_FRESHNESS_TIMEOUT_MS';
+/** Stale entries shown before the rest are counted; a stale base listed 4,000. */
+const SHOWN_ENTRIES = 30;
 
 function checkTimeoutMs(env = process.env) {
   const raw = env[TIMEOUT_OVERRIDE_ENV];
-  if (raw === undefined || raw === '')
-    return scaleLivenessMs(CHECK_TIMEOUT_BASE_MS, env);
-  if (!/^[1-9][0-9]*$/.test(raw))
-    throw new Error(
-      `${TIMEOUT_OVERRIDE_ENV} must be a positive integer of milliseconds, not '${raw.slice(0, 32)}'`,
-    );
-  return scaleLivenessMs(Number(raw), env);
+  const base =
+    raw && /^[1-9][0-9]*$/.test(raw) ? Number(raw) : CHECK_TIMEOUT_BASE_MS;
+  return scaleLivenessMs(base, env);
 }
 const CHECK = fileURLToPath(
   new URL('./check-documentation-freshness.mjs', import.meta.url),
@@ -76,31 +81,34 @@ function pushedShas(stdinText) {
   return [...shas];
 }
 
-/** Ledger files a pushed range adds or changes; null when it cannot tell. */
-function ledgerChanges(sha) {
-  const mergeBase = git(['merge-base', BASE_REF, sha]);
-  if (!mergeBase) return null;
-  const listed = git([
-    'diff',
-    '--name-only',
-    '--no-renames',
-    '--diff-filter=AM',
-    `${mergeBase}...${sha}`,
-    '--',
-    REVIEW_LEDGER_DIR,
-  ]);
-  return listed === null ? null : listed.split('\n').filter(Boolean);
+function warn(message) {
+  console.log(
+    `WARNING: documentation freshness: ${message} The push continues; CI's docs:truth:gate will judge it.`,
+  );
 }
 
-function runCheck() {
+function runCheck(args) {
   const timeout = checkTimeoutMs();
-  const result = spawnSync(process.execPath, [CHECK, '--json'], {
+  const result = spawnSync(process.execPath, [CHECK, ...args], {
     encoding: 'utf8',
     windowsHide: true,
     maxBuffer: CAPTURE_MAX_BYTES,
     timeout,
     killSignal: 'SIGKILL',
   });
+  return { result, timeout };
+}
+
+function jsonVerdict() {
+  const { result, timeout } = runCheck(['--json']);
+  if (result.error || result.signal)
+    return {
+      state: 'error',
+      detail:
+        result.error?.code === 'ETIMEDOUT' || result.signal
+          ? `did not finish within ${Math.round(timeout / 1000)}s`
+          : String(result.error?.message ?? result.signal),
+    };
   const lastLine = String(result.stdout ?? '')
     .trim()
     .split('\n')
@@ -111,14 +119,6 @@ function runCheck() {
   } catch {
     parsed = undefined;
   }
-  if (result.error || result.signal)
-    return {
-      state: 'error',
-      detail:
-        result.error?.code === 'ETIMEDOUT' || result.signal
-          ? `did not finish within ${Math.round(timeout / 1000)}s`
-          : String(result.error?.message ?? result.signal),
-    };
   if (parsed?.error)
     return { state: 'error', detail: String(parsed.error.message) };
   if (!parsed || !Array.isArray(parsed.blocking))
@@ -137,61 +137,72 @@ function runCheck() {
 }
 
 /**
- * The check's own human report and remedy, verbatim: the JSON result carries
- * no wording by design, so a stale verdict is re-run in its human form. That
- * costs a second run only when something is stale.
+ * The check's own human report and remedy, re-run because the JSON result
+ * carries no wording by design, and capped: entry lines past the first
+ * {@link SHOWN_ENTRIES} are counted, not printed.
  */
 function checkReport() {
-  const result = spawnSync(process.execPath, [CHECK], {
-    encoding: 'utf8',
-    windowsHide: true,
-    maxBuffer: CAPTURE_MAX_BYTES,
-    timeout: checkTimeoutMs(),
-    killSignal: 'SIGKILL',
-  });
+  const { result } = runCheck([]);
   const text = `${result.stdout ?? ''}${result.stderr ?? ''}`.trim();
+  const entry = /^ {2}(?:review|capture|note) /;
+  let shown = 0;
+  let hidden = 0;
+  const kept = [];
+  for (const line of text.split('\n')) {
+    if (entry.test(line)) {
+      if (shown >= SHOWN_ENTRIES) {
+        hidden += 1;
+        continue;
+      }
+      shown += 1;
+    }
+    kept.push(line);
+  }
+  if (hidden > 0)
+    kept.splice(
+      kept.findLastIndex((line) => entry.test(line)) + 1,
+      0,
+      `  … and ${hidden} more; run npm run docs:freshness:check for the full list`,
+    );
+  const report = kept.join('\n');
   return result.status === 1 && text
-    ? text
-    : `${text}\n(The check's human report did not repeat the stale verdict: exit ${result.status ?? result.signal}. Run npm run docs:freshness:check.)`.trim();
+    ? report
+    : `${report}\n(The check's human report did not repeat the stale verdict: exit ${result.status ?? result.signal}. Run npm run docs:freshness:check.)`.trim();
 }
 
-/** Which base it was scoped against, and whether that base looks stale. */
-function baseLines(result) {
-  const base = result.base ?? BASE_REF;
-  const described = git(['log', '-1', '--format=%H %cI', base]);
-  const lines = [
-    `  Scoped against ${base}${described ? ` at ${described.replace(' ', ', committed ')}` : ''}${result.mergeBase ? ` (merge base ${result.mergeBase.slice(0, 12)})` : ''}.`,
-  ];
-  const mergeBase = result.mergeBase;
-  const unknownMerges = mergeBase
-    ? (git(['rev-list', '--merges', '--parents', `${mergeBase}..HEAD`]) ?? '')
-        .split('\n')
-        .filter(Boolean)
-        .map((line) => line.split(' ')[2])
-        .filter(
-          (parent) =>
-            parent &&
-            git(['merge-base', '--is-ancestor', parent, base]) === null,
-        )
-    : [];
-  if (unknownMerges.length > 0)
-    lines.push(
-      `  This branch merges ${unknownMerges.length} commit(s) ${base} here does not contain (${unknownMerges
-        .slice(0, 3)
-        .map((sha) => sha.slice(0, 12))
-        .join(
-          ', ',
-        )}). If that was main, the local ${base} is stale and main's own changes are counted as this branch's: run \`git fetch origin main\` and push again.`,
-    );
-  else
-    lines.push(
-      `  If the list names files this branch did not change, run \`git fetch origin main\` and push again.`,
-    );
-  return lines;
+/** Ledger files a pushed range adds or changes. */
+function ledgerChanges(mergeBase, sha) {
+  const listed = git([
+    'diff',
+    '--name-only',
+    '--no-renames',
+    '--diff-filter=AM',
+    `${mergeBase}...${sha}`,
+    '--',
+    REVIEW_LEDGER_DIR,
+  ]);
+  return listed === null ? [] : listed.split('\n').filter(Boolean);
+}
+
+function scopedLine(mergeBase) {
+  const described = git(['log', '-1', '--format=%H %cI', BASE_REF]);
+  return `  Scoped against ${BASE_REF}${described ? ` at ${described.replace(' ', ', committed ')}` : ''}${mergeBase ? ` (merge base ${mergeBase.slice(0, 12)})` : ''}. If the list names files this branch did not change, run \`git fetch origin main\` and push again.`;
 }
 
 function main(stdinText) {
-  const check = runCheck();
+  const pushed = pushedShas(stdinText);
+  const head = git(['rev-parse', 'HEAD']);
+  // Before running anything: a base that cannot support a verdict.
+  const bases = pushed.map((sha) => ({
+    sha,
+    base: resolvePushBase(BASE_REF, sha),
+  }));
+  const unusable = bases.find(({ base }) => base.state !== 'ok');
+  if (unusable) {
+    warn(`not checked: ${describeUnusableBase(BASE_REF, unusable.base)}.`);
+    return 0;
+  }
+  const check = jsonVerdict();
   if (check.state === 'fresh') {
     console.log(
       `Documentation freshness: ${check.result.reviews} reviews and ${check.result.captures} captures current.`,
@@ -199,39 +210,40 @@ function main(stdinText) {
     return 0;
   }
   if (check.state === 'error') {
-    console.error(
-      `FAIL: the documentation freshness check could not run (${check.detail}), so this push is refused rather than assumed current. Reproduce with:\n\n  npm run docs:freshness:check\n`,
+    warn(
+      `not checked: the check could not run (${check.detail}). Reproduce with npm run docs:freshness:check.`,
     );
-    return 1;
+    return 0;
   }
   const report = checkReport();
-  const ranges = pushedShas(stdinText).map((sha) => ({
-    sha,
-    ledger: ledgerChanges(sha),
-  }));
-  const recording = ranges.filter((range) => range.ledger?.length);
-  // A range whose ledger changes cannot be read is treated as recording:
-  // "could not tell" must not decide for the lenient side.
-  const unknown = ranges.filter((range) => range.ledger === null);
-  if (recording.length > 0 || unknown.length > 0) {
+  const scoped = scopedLine(check.result.mergeBase);
+  const headPushed = head !== null && pushed.includes(head);
+  const clean = git(['status', '--porcelain', '--untracked-files=no']) === '';
+  const recording = headPushed
+    ? ledgerChanges(bases.find(({ sha }) => sha === head).base.mergeBase, head)
+    : [];
+  if (headPushed && clean && recording.length > 0) {
     console.error(
       [
         report,
-        ...baseLines(check.result),
+        scoped,
         '',
-        recording.length > 0
-          ? `FAIL: this branch records documentation reviews (${recording[0].ledger.length} ledger file(s) since its merge base), so the stale entries above refuse the push. CI's docs:truth:gate refuses them too.`
-          : `FAIL: could not tell whether this branch records documentation reviews (no merge base with ${BASE_REF}), so the stale entries above refuse the push.`,
+        `FAIL: this branch records documentation reviews (${recording.length} ledger file(s) since its merge base), and the pushed commit, checked out with no uncommitted changes, leaves the reviews above stale. CI's docs:truth:gate refuses the same commit.`,
         '',
       ].join('\n'),
     );
     return 1;
   }
+  const why = !headPushed
+    ? 'the check read the checked-out commit, which is not the commit being pushed, so this list may not describe the pushed commit'
+    : !clean
+      ? 'the check read a working tree with uncommitted changes, so this list may not describe the pushed commit'
+      : "this branch has not recorded any review yet; CI's statics job will fail on these until they are reviewed";
   console.log(
     [
-      "WARNING: CI's statics job will fail on these until they are reviewed. The push is allowed because this branch has not recorded any review yet.",
+      `WARNING: documentation freshness: only a warning because ${why}.`,
       report,
-      ...baseLines(check.result),
+      scoped,
     ].join('\n'),
   );
   return 0;
@@ -241,9 +253,8 @@ if (invokedDirectly(import.meta.url)) {
   try {
     process.exitCode = main(readFileSync(0, 'utf8'));
   } catch (error) {
-    console.error(
-      `FAIL: the documentation freshness step could not run (${error instanceof Error ? error.message : error}), so this push is refused.`,
+    warn(
+      `not checked: the step could not run (${error instanceof Error ? error.message : error}).`,
     );
-    process.exitCode = 1;
   }
 }
