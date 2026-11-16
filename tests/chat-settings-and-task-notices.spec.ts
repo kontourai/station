@@ -27,7 +27,7 @@ import {
 
 /**
  * The phone chat's Chat Settings dialog keeps Done reachable, and a
- * backgrounded task's settle reads as a compact status line, through the real
+ * backgrounded task's settle uses the shared child-work disclosure, through the real
  * dock at a phone and a desktop width. Child-work settles arrive through the
  * mock orchestration SSE seam (`emitMockOrchestrationEvent`), the same path
  * the live `child-work.updated` stream takes.
@@ -232,7 +232,7 @@ async function settle(
                 path: `/tmp/claude/tasks/${childId}.output`,
               },
             },
-        identity: { title, backgrounded: true },
+        identity: { title, backgrounded: true, workKind: 'command' },
       },
     },
   });
@@ -309,7 +309,7 @@ for (const [label, viewport] of [
       await expect(dialog).toBeHidden();
     });
 
-    test('settled background tasks read as compact, distinct status lines', async ({
+    test('settled background tasks use shared disclosures with distinct outcomes', async ({
       page,
     }, testInfo) => {
       await openChat(page, viewport);
@@ -338,21 +338,19 @@ for (const [label, viewport] of [
       );
       await settle(page, 'bg-stop', 'cancelled', 'List open issues');
 
-      const notices = page.getByTestId('background-task-notice');
-      await expect(notices).toHaveCount(3);
-      const [finished, failed, stopped] = [
-        notices.nth(0),
-        notices.nth(1),
-        notices.nth(2),
-      ];
-      await expect(finished).toContainText('Task finished');
-      await expect(failed).toContainText('Task failed');
-      await expect(stopped).toContainText('Task stopped');
+      const cards = page.getByTestId('subagent-card');
+      await expect(cards).toHaveCount(3);
+      await expect(page.getByTestId('background-task-notice')).toHaveCount(0);
+      const finished = cards.filter({ hasText: finishedTitle });
+      const failed = cards.filter({ hasText: failedTitle });
+      const stopped = cards.filter({ hasText: 'List open issues' });
+      await expect(finished).toContainText('Run finished');
+      await expect(failed).toContainText('Failed');
+      await expect(stopped).toContainText('Stopped');
 
-      // Distinct treatment: success and failure do not share a colour.
-      const colour = (notice: Locator) =>
-        notice
-          .locator('.task-notice__status')
+      const colour = (card: Locator) =>
+        card
+          .locator('.subagent-card__status')
           .evaluate((element) => getComputedStyle(element).color);
       expect(await colour(finished)).not.toBe(await colour(failed));
 
@@ -360,20 +358,19 @@ for (const [label, viewport] of [
         (element) => (element as HTMLElement).innerText,
       );
       expect(visible.split(finishedTitle)).toHaveLength(2);
-      await expect(finished.locator('details')).not.toHaveAttribute('open');
-      await expect(failed.locator('details')).toHaveCount(0);
-      await expect(
-        failed.getByText(
-          `Background command "${failedTitle}" failed with exit code 1`,
-        ),
-      ).toBeVisible();
+      const disclosure = finished.getByRole('button', {
+        name: /Capture the mismatch screen once/,
+      });
+      await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+      await expect(failed.getByText('Exit code 1')).toBeVisible();
       await expect(stopped).not.toContainText('⏹');
 
-      await notices.last().scrollIntoViewIfNeeded();
+      await stopped.scrollIntoViewIfNeeded();
       await evidence(page, `task-notices-${label}.png`, testInfo);
 
-      await finished.getByText('Details').click();
-      await expect(finished).toContainText('completed (exit code 0)');
+      await disclosure.click();
+      await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+      await expect(finished.getByText('Exit code 0')).toBeVisible();
       await evidence(page, `task-notices-${label}-details.png`, testInfo);
     });
   });

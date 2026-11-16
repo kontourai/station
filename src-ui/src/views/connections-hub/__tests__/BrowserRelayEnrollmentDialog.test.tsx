@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   complete: false,
   join: vi.fn(),
   enrollError: null as Error | null,
+  endState: null as 'failed' | 'cancelled' | 'activating' | null,
 }));
 
 vi.mock('../../../lib/browserRelayRouteBinding', () => ({
@@ -31,6 +32,10 @@ vi.mock('../../../lib/browserRelayEnrollmentController', () => ({
     ) {
       mocks.credentials = { ...credentials };
       mocks.signal = signal;
+      if (mocks.endState) {
+        this.options.onState(mocks.endState);
+        return new Promise(() => {});
+      }
       if (mocks.enrollError) return Promise.reject(mocks.enrollError);
       if (mocks.complete) {
         this.options.onState('enrolled');
@@ -105,6 +110,26 @@ it('refuses to send account credentials when the encrypted Station route is abse
   expect(mocks.credentials).toBeNull();
 });
 
+it('words device approval and invitations in plain, lowercase terms', () => {
+  render(
+    <BrowserRelayEnrollmentDialog
+      connection={connection}
+      onClose={mocks.close}
+    />,
+  );
+  expect(
+    screen.getByText(
+      /password setup\. Other providers refuse until they support device approval\./,
+    ),
+  ).toBeTruthy();
+  expect(
+    screen.getByText(/after this device is approved\. .*never device access\./),
+  ).toBeTruthy();
+  expect(document.body.textContent).not.toMatch(
+    /Device ceremony|enrollment flow/,
+  );
+});
+
 it('clears the password while waiting for operator Device approval and cancels on close', async () => {
   mocks.capture.mockReturnValue({
     transport: vi.fn(),
@@ -125,7 +150,7 @@ it('clears the password while waiting for operator Device approval and cancels o
   fireEvent.click(screen.getByRole('button', { name: 'Verify account' }));
   expect(
     await screen.findByText(
-      'Waiting for the Station operator to approve this Device…',
+      'Waiting for the Station operator to approve this device…',
     ),
   ).toBeTruthy();
   expect(screen.getByText('operator-request-123')).toBeTruthy();
@@ -238,4 +263,34 @@ it('a refused account verification reads as its reason, not its field key', asyn
   fireEvent.click(screen.getByRole('button', { name: 'Verify account' }));
   expect(await screen.findByText('Use letters and numbers only.')).toBeTruthy();
   expect(screen.queryByText(/Validation failed/)).toBeNull();
+});
+
+it.each([
+  ['failed', 'Setup didn’t finish.'],
+  ['cancelled', 'Setup cancelled.'],
+  ['activating', 'Activating the approved device and account session…'],
+] as const)('a %s setup says so in plain words', async (state, message) => {
+  mocks.endState = state;
+  mocks.capture.mockReturnValue({ transport: vi.fn(), isCurrent: () => true });
+  try {
+    render(
+      <BrowserRelayEnrollmentDialog
+        connection={connection}
+        onClose={mocks.close}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Station account name'), {
+      target: { value: 'zach' },
+    });
+    fireEvent.change(screen.getByLabelText('Password'), {
+      target: { value: 'local-password' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Verify account' }));
+    expect(await screen.findByText(message)).toBeTruthy();
+    expect(
+      screen.queryByText(/Enrollment|Device ceremony|enrollment flow/),
+    ).toBeNull();
+  } finally {
+    mocks.endState = null;
+  }
 });

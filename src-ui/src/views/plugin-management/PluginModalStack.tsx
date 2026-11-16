@@ -6,6 +6,7 @@ import {
   ResponsiveDialogSurface,
   ResponsiveSurfaceActions,
 } from '../../components/ResponsiveDialogSurface';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { InstallPluginModal } from './InstallPluginModal';
 import { InstallPreviewExtensionAccess } from './InstallPreviewExtensionAccess';
 import { InstallPreviewModal } from './InstallPreviewModal';
@@ -99,6 +100,7 @@ export function PluginModalStack({
   onCreateProject: () => Promise<void>;
   onAddToProjects: () => Promise<void>;
 }) {
+  useDecisionSurface('plugin-update-confirm', updateConfirm !== null);
   // #1131: rendered where `PluginManagementView` places it — a plain sibling
   // of `SplitPaneLayout`, inside the route frame `PageFrame` marks `inert`
   // while that layout's mobile detail sheet is open (PageFrame.tsx). The
@@ -196,7 +198,7 @@ export function PluginModalStack({
           overlayClassName="plugins__confirm-overlay"
           panelClassName="plugins__confirm"
         >
-          <h3 id="remove-plugin-title">Remove Plugin</h3>
+          <h3 id="remove-plugin-title">Remove plugin</h3>
           <p>
             Remove &ldquo;{removeConfirm}&rdquo; from Station?
             {removalRetainsData
@@ -238,7 +240,7 @@ export function PluginModalStack({
           overlayClassName="plugins__confirm-overlay"
           panelClassName="plugins__confirm"
         >
-          <h3 id="update-plugin-title">Update Plugin</h3>
+          <h3 id="update-plugin-title">Update plugin</h3>
           <p>
             Update &ldquo;{updateConfirm.pluginName}&rdquo;? Station pulls the
             plugin&rsquo;s latest code from its source.

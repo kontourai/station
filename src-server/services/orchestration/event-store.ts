@@ -93,6 +93,7 @@ import {
   type CanonicalRuntimeEvent,
   isProviderTriggeredTurn,
   PROVIDER_TURN_TRIGGER,
+  TURN_DISPATCH_ORIGINS,
   type TurnDispatchOrigin,
   turnDispatchOrigin,
 } from '@kontourai/station-contracts/runtime-events';
@@ -624,6 +625,19 @@ const MAX_SESSION_WORK_ITEM_ASSOCIATION_ROW_BYTES = 8 * 1024;
 const MAX_SESSION_ACTIVITY_TOOL_NAME_BYTES = 256;
 
 /** Descriptor-only row for the Session Outputs owner. No event payload crosses it. */
+/**
+ * What one batched session-projection read did with the per-thread cache
+ * (#4992), reported to an optional observer so a caller can measure it
+ * without reaching into the cache. A read inside a transaction, or with
+ * caches disabled, refreshes every requested thread.
+ */
+export interface SessionProjectionCacheOutcome {
+  /** Threads read from the database again. */
+  refreshed: number;
+  /** Threads served from the cache. */
+  reused: number;
+}
+
 export interface DeclaredOutputDescriptorRow {
   declarationId: string;
   eventId: string;
@@ -1094,6 +1108,10 @@ function spilledTypeSql(path: string, payload = 'payload') {
  * A turn's own `turn.started`. A steer re-announces its turn with another
  * `turn.started` of the same id; it neither starts a turn nor marks one.
  */
+/** Every origin this build classifies, as an SQL list (fixed literals). */
+const KNOWN_TURN_DISPATCH_ORIGINS_SQL = TURN_DISPATCH_ORIGINS.map(
+  (origin) => `'${origin}'`,
+).join(', ');
 const OWN_TURN_START_SQL = `method = 'turn.started' AND (CASE WHEN json_valid(payload) THEN json_extract(payload, '$.inputKind') END) IS NOT 'steer'`;
 
 /**
@@ -1126,6 +1144,12 @@ const UNRESOLVED_COMPLETION_STANDS_SQL_FUNCTION =
   'station_unresolved_completion_stands';
 /** Distinct (thread, high-water) transcript checks kept for paging reuse. */
 const STANDING_UNRESOLVED_CACHE_MAX = 8;
+/**
+ * Threads whose session projection facts and event count are kept between
+ * reads (#4992). Each entry holds a thread's handful of folded facts, without
+ * hydrated attachment data, so the bound is on thread count, not history.
+ */
+const SESSION_PROJECTION_CACHE_MAX = 2048;
 
 /** SQLite function: whether the exact input read would serve this row. */
 const READABLE_USER_INPUT_SQL_FUNCTION = 'station_is_readable_user_input';
@@ -2801,6 +2825,26 @@ export class EventStore {
    * per process.
    */
   private readonly standingUnresolvedCache = new Map<string, Set<string>>();
+  /**
+   * Per-thread session projection facts and event count, keyed by the
+   * thread's highest `global_sequence` (#4992). Every write that can change a
+   * thread's projection (an append, which also maintains its fact and request
+   * rows, or the thread's deletion) moves or removes that mark, and global
+   * sequences come from a monotonic high-water and are never reused. So an
+   * entry whose mark still matches describes exactly the rows a fresh read
+   * would fold. Rows are stored unhydrated and frozen; attachment data is
+   * read at return time, as before. Small LRU, per process.
+   */
+  private readonly sessionProjectionCache = new Map<
+    string,
+    {
+      highWater: number;
+      events?: readonly PersistedRuntimeEvent[];
+      eventCount?: number;
+    }
+  >();
+  /** Set only while the projection is computed for the cache above. */
+  private deferAttachmentHydration = false;
   /** Kept private: room history receives a separate connection, never this DB. */
   private readonly databasePath: string;
   private usageExportActivation?: () => string;
@@ -5188,7 +5232,9 @@ export class EventStore {
     if (row.payload === null)
       throw new Error('Projection payload exceeds read budget');
     const event = mapPersistedEventRow(row);
-    return hydrate ? this.hydrateAttachments(event) : event;
+    return hydrate && !this.deferAttachmentHydration
+      ? this.hydrateAttachments(event)
+      : event;
   }
 
   /**
@@ -8143,6 +8189,99 @@ export class EventStore {
     return rows.map((row) => row.thread_id);
   }
 
+  /** Navigation reads indexed metadata without tools or files; later pages can omit the initial count. */
+  readTurnDirectoryFacts(
+    threadIds: readonly string[],
+    options: {
+      beforeGlobalSequence?: number;
+      turnLimit: number;
+      includeCount?: boolean;
+    },
+  ): {
+    turns: Pick<
+      TurnDigestFacts,
+      | 'threadId'
+      | 'turnId'
+      | 'startedAt'
+      | 'startSequence'
+      | 'promptPrefix'
+      | 'terminal'
+    >[];
+    totalTurns?: number;
+    hasMore: boolean;
+  } {
+    const ids = [...new Set(threadIds)];
+    if (ids.length > TURN_DIGEST_LINEAGE_MAX)
+      throw new TurnDigestLineageTooLongError();
+    if (
+      !ids.length ||
+      !Number.isInteger(options.turnLimit) ||
+      options.turnLimit < 1 ||
+      options.turnLimit > 100
+    )
+      throw new Error(
+        'Turn directory requires a lineage and a limit between 1 and 100',
+      );
+    const startsWhere = `thread_id IN (${ids.map(() => '?').join(', ')}) AND method = 'turn.started'
+      AND turn_id IS NOT NULL AND json_valid(payload) AND json_extract(payload, '$.inputKind') IS NULL`;
+    const totalTurns =
+      options.includeCount === false
+        ? undefined
+        : Number(
+            (
+              this.db
+                .prepare(
+                  `SELECT COUNT(*) AS total FROM orchestration_events WHERE ${startsWhere}`,
+                )
+                .get(...ids) as { total: number }
+            ).total,
+          );
+    const starts = this.db
+      .prepare(`
+      SELECT thread_id, turn_id, created_at, global_sequence,
+        substr(${spilledTextSql('$.prompt', 'orchestration_events.thread_id')}, 1, ${TURN_DIGEST_PROMPT_PREFIX_CHARS}) AS prompt,
+        (SELECT json_object('method', terminal.method, 'finishReason', json_extract(terminal.payload, '$.finishReason'))
+           FROM orchestration_events terminal
+          WHERE terminal.thread_id = orchestration_events.thread_id AND terminal.turn_id = orchestration_events.turn_id
+            AND terminal.method IN ('turn.completed', 'turn.aborted', 'runtime.error') AND json_valid(terminal.payload)
+          ORDER BY terminal.sequence DESC LIMIT 1) AS terminal_json
+      FROM orchestration_events WHERE ${startsWhere} AND global_sequence < ?
+      ORDER BY global_sequence DESC LIMIT ?
+    `)
+      .all(
+        ...ids,
+        options.beforeGlobalSequence ?? Number.MAX_SAFE_INTEGER,
+        options.turnLimit + 1,
+      ) as {
+      thread_id: string;
+      turn_id: string;
+      created_at: string;
+      global_sequence: number;
+      prompt: unknown;
+      terminal_json: string | null;
+    }[];
+    return {
+      totalTurns,
+      hasMore: starts.length > options.turnLimit,
+      turns: starts.slice(0, options.turnLimit).map((start) => ({
+        threadId: start.thread_id,
+        turnId: start.turn_id,
+        startedAt: start.created_at,
+        startSequence: start.global_sequence,
+        ...(typeof start.prompt === 'string'
+          ? { promptPrefix: start.prompt }
+          : {}),
+        ...(start.terminal_json
+          ? {
+              terminal: JSON.parse(start.terminal_json) as NonNullable<
+                TurnDigestFacts['terminal']
+              >,
+            }
+          : {}),
+      })),
+    };
+  }
+
   /**
    * station#3413 (`get_session_digest`): the recorded facts of a window of a
    * conversation's turns, newest first, selected and aggregated in SQLite so
@@ -9398,6 +9537,59 @@ export class EventStore {
   }
 
   /**
+   * #2540: {@link latestTurnDispatchOrigin}, skipping turns the engine opened
+   * on its own (`PROVIDER_TURN_TRIGGER`): such a turn records no origin and
+   * continues whatever the last send started. `undefined` with no such turn.
+   */
+  latestSentTurnDispatchOrigin(
+    threadId: string,
+  ): TurnDispatchOrigin | undefined {
+    const row = this.readStatement(
+      `SELECT json_extract(payload, '$.dispatchOrigin') AS origin
+         FROM orchestration_events
+         WHERE thread_id = ? AND ${OWN_TURN_START_SQL}
+           AND COALESCE(json_extract(payload, '$.metadata.trigger'), '') <> '${PROVIDER_TURN_TRIGGER}'
+         ORDER BY sequence DESC
+         LIMIT 1`,
+    ).get(threadId) as { origin: unknown } | undefined;
+    return row ? turnDispatchOrigin({ dispatchOrigin: row.origin }) : undefined;
+  }
+
+  /**
+   * Whether a person has, or may have, sent into `threadId`. Any turn start
+   * Station placed as a person's (`interactive`, #4512) or marked
+   * person-typed (`authoredBy`, #4827) counts, and so, read conservatively,
+   * does every steer whatever origin it carries (a steer inherits its turn's
+   * origin, so one a person sent from a surface that does not mark
+   * authorship reads as the turn's), except one Station itself delivered: a
+   * child's result, recorded with Station's internal actor and the
+   * server-stamped `delegation-result` sender (`DELEGATION_RESULT_CLIENT_ORIGIN`
+   * plus sender), which no person's request can carry. Also counted: any
+   * turn start that records no origin
+   * this build recognises (one from before the field existed, a newer
+   * Station's value). A turn the engine opened on its own
+   * (`PROVIDER_TURN_TRIGGER`) is demonstrably no one's send and never counts.
+   */
+  hasPersonTurn(threadId: string): boolean {
+    return (
+      this.readStatement(
+        `SELECT 1 FROM orchestration_events
+         WHERE thread_id = ? AND method = 'turn.started' AND json_valid(payload)
+           AND (json_extract(payload, '$.dispatchOrigin') = 'interactive'
+             OR json_extract(payload, '$.authoredBy') = 'person'
+             OR (COALESCE(json_extract(payload, '$.metadata.trigger'), '') <> '${PROVIDER_TURN_TRIGGER}'
+               AND ((json_extract(payload, '$.inputKind') = 'steer'
+                   AND NOT (COALESCE(json_extract(payload, '$.clientOrigin.actor.kind'), '') = 'internal'
+                     AND COALESCE(json_extract(payload, '$.clientOrigin.sender.kind'), '') = 'delegation-result'))
+                 OR (json_extract(payload, '$.inputKind') IS NOT 'steer'
+                   AND (json_extract(payload, '$.dispatchOrigin') IS NULL
+                     OR json_extract(payload, '$.dispatchOrigin') NOT IN (${KNOWN_TURN_DISPATCH_ORIGINS_SQL}))))))
+         LIMIT 1`,
+      ).get(threadId) !== undefined
+    );
+  }
+
+  /**
    * #2436: the latest recorded approval-posture decision across `threadIds`
    * (a conversation's sessions), ordered by the server's global sequence —
    * the one order every client and the turn-start resolution agree on. One
@@ -10474,8 +10666,120 @@ export class EventStore {
    */
   listSessionProjectionEventsForThreads(
     threadIds: readonly string[],
+    observe?: (outcome: SessionProjectionCacheOutcome) => void,
   ): Map<string, PersistedRuntimeEvent[]> {
     const uniqueThreadIds = [...new Set(threadIds)];
+    if (uniqueThreadIds.length === 0) {
+      observe?.({ refreshed: 0, reused: 0 });
+      return new Map();
+    }
+    const marks = this.sessionProjectionCacheMarks(uniqueThreadIds);
+    if (!marks) {
+      observe?.({ refreshed: uniqueThreadIds.length, reused: 0 });
+      return this.foldSessionProjectionEvents(uniqueThreadIds);
+    }
+    // #4992: the read model folds every readable thread on each list, and it
+    // is listed several times a second while any session streams. Only the
+    // threads whose mark moved are folded again.
+    const stale = uniqueThreadIds.filter(
+      (threadId) =>
+        this.cachedSessionProjection(threadId, marks)?.events === undefined,
+    );
+    observe?.({
+      refreshed: stale.length,
+      reused: uniqueThreadIds.length - stale.length,
+    });
+    let folded = new Map<string, PersistedRuntimeEvent[]>();
+    if (stale.length > 0) {
+      this.deferAttachmentHydration = true;
+      try {
+        folded = this.foldSessionProjectionEvents(stale);
+      } finally {
+        this.deferAttachmentHydration = false;
+      }
+      for (const threadId of stale) {
+        const events = folded.get(threadId) ?? [];
+        this.storeSessionProjection(threadId, marks, {
+          events: events.map(deepFreezeEvent),
+        });
+      }
+    }
+    const result = new Map<string, PersistedRuntimeEvent[]>();
+    for (const threadId of uniqueThreadIds) {
+      const events =
+        folded.get(threadId) ??
+        this.cachedSessionProjection(threadId, marks)?.events ??
+        [];
+      result.set(
+        threadId,
+        events.map((event) => this.hydrateAttachments(event)),
+      );
+    }
+    return result;
+  }
+
+  /**
+   * Each thread's highest `global_sequence`, the key of
+   * {@link sessionProjectionCache}, or `undefined` when no cache may be used
+   * for this read. A read inside an open transaction is never cached: a
+   * rollback would hand its global sequences to different events.
+   */
+  private sessionProjectionCacheMarks(
+    threadIds: readonly string[],
+  ): Map<string, number> | undefined {
+    if (this.cachesDisabled || this.db.isTransaction) return undefined;
+    // One min/max-optimised index seek per thread; a `GROUP BY` over the
+    // same index walks every row of each thread.
+    const statement = this.readStatement(
+      `SELECT MAX(global_sequence) AS highWater
+         FROM orchestration_events WHERE thread_id = ?`,
+    );
+    const marks = new Map<string, number>();
+    for (const threadId of threadIds) {
+      const row = statement.get(threadId) as
+        | { highWater: number | null }
+        | undefined;
+      if (typeof row?.highWater === 'number')
+        marks.set(threadId, row.highWater);
+      else this.sessionProjectionCache.delete(threadId);
+    }
+    return marks;
+  }
+
+  private cachedSessionProjection(
+    threadId: string,
+    marks: ReadonlyMap<string, number>,
+  ) {
+    const highWater = marks.get(threadId);
+    const entry = this.sessionProjectionCache.get(threadId);
+    if (highWater === undefined || entry?.highWater !== highWater)
+      return undefined;
+    this.sessionProjectionCache.delete(threadId);
+    this.sessionProjectionCache.set(threadId, entry);
+    return entry;
+  }
+
+  private storeSessionProjection(
+    threadId: string,
+    marks: ReadonlyMap<string, number>,
+    facts: { events?: readonly PersistedRuntimeEvent[]; eventCount?: number },
+  ): void {
+    const highWater = marks.get(threadId);
+    if (highWater === undefined) return;
+    const current = this.sessionProjectionCache.get(threadId);
+    const kept = current?.highWater === highWater ? current : { highWater };
+    this.sessionProjectionCache.delete(threadId);
+    this.sessionProjectionCache.set(threadId, { ...kept, ...facts });
+    while (this.sessionProjectionCache.size > SESSION_PROJECTION_CACHE_MAX) {
+      const oldest = this.sessionProjectionCache.keys().next().value;
+      if (oldest === undefined) break;
+      this.sessionProjectionCache.delete(oldest);
+    }
+  }
+
+  private foldSessionProjectionEvents(
+    uniqueThreadIds: readonly string[],
+  ): Map<string, PersistedRuntimeEvent[]> {
     const result = new Map<string, PersistedRuntimeEvent[]>();
     if (uniqueThreadIds.length === 0) return result;
 
@@ -12098,8 +12402,44 @@ export class EventStore {
    * callers read a missing entry as zero — the same answer
    * `countEventsByThread` gives a threadless id.
    */
-  countEventsByThreads(threadIds: readonly string[]): Map<string, number> {
+  countEventsByThreads(
+    threadIds: readonly string[],
+    observe?: (outcome: SessionProjectionCacheOutcome) => void,
+  ): Map<string, number> {
     const uniqueThreadIds = [...new Set(threadIds)];
+    if (uniqueThreadIds.length === 0) {
+      observe?.({ refreshed: 0, reused: 0 });
+      return new Map();
+    }
+    const marks = this.sessionProjectionCacheMarks(uniqueThreadIds);
+    if (!marks) {
+      observe?.({ refreshed: uniqueThreadIds.length, reused: 0 });
+      return this.queryEventCountsByThreads(uniqueThreadIds);
+    }
+    // #4992: a count only moves with the thread's mark, so only threads whose
+    // mark moved are counted again. A thread without a mark has no events.
+    const counts = new Map<string, number>();
+    const stale: string[] = [];
+    for (const threadId of uniqueThreadIds) {
+      if (!marks.has(threadId)) continue;
+      const cached = this.cachedSessionProjection(threadId, marks)?.eventCount;
+      if (cached === undefined) stale.push(threadId);
+      else counts.set(threadId, cached);
+    }
+    // A thread without a mark has no events and needs no query: neither.
+    observe?.({ refreshed: stale.length, reused: counts.size });
+    const counted = this.queryEventCountsByThreads(stale);
+    for (const threadId of stale) {
+      const eventCount = counted.get(threadId) ?? 0;
+      this.storeSessionProjection(threadId, marks, { eventCount });
+      if (eventCount > 0) counts.set(threadId, eventCount);
+    }
+    return counts;
+  }
+
+  private queryEventCountsByThreads(
+    uniqueThreadIds: readonly string[],
+  ): Map<string, number> {
     const counts = new Map<string, number>();
     if (uniqueThreadIds.length === 0) return counts;
     for (const chunk of this.chunkArray(
@@ -18786,6 +19126,25 @@ export class EventStore {
       .get() as { max_sequence: number };
     return row.max_sequence + 1;
   }
+}
+
+/**
+ * Freezes a cached projection row and everything it holds (#4992). The cache
+ * hands the same objects to every later read, so a caller that mutated one
+ * would change another request's answer; frozen, it fails where it writes.
+ */
+function deepFreezeEvent(event: PersistedRuntimeEvent): PersistedRuntimeEvent {
+  const pending: object[] = [event];
+  const seen = new Set<object>();
+  while (pending.length > 0) {
+    const value = pending.pop()!;
+    if (seen.has(value)) continue;
+    seen.add(value);
+    Object.freeze(value);
+    for (const child of Object.values(value))
+      if (child !== null && typeof child === 'object') pending.push(child);
+  }
+  return event;
 }
 
 function parsePersistedTenantExecutionContext(value: unknown) {

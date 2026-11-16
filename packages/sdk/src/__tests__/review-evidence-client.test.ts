@@ -71,6 +71,32 @@ afterEach(() => {
 });
 
 describe('review evidence client', () => {
+  it('does not borrow another request result after an explicit identity conflict', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            success: false,
+            error: {
+              code: 'review_request_conflict',
+              message: 'This request belongs to different work.',
+            },
+          }),
+          { status: 409 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ success: true, data: completedStatus() }),
+        ),
+      );
+    vi.stubGlobal('fetch', fetch);
+    await expect(
+      runIndependentReview('http://station', request),
+    ).rejects.toMatchObject({ status: 409, code: 'review_request_conflict' });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
   it('uses the same project-scoped API for run, list, and read', async () => {
     const fetch = vi
       .fn()

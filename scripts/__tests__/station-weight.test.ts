@@ -6,6 +6,7 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   contextSwitchDelta,
+  formatAttribution,
   hostFingerprint,
   hostFingerprintInputs,
   IDLE_CPU_GAP,
@@ -13,9 +14,11 @@ import {
   killEligibility,
   LEFTOVER_GAP,
   linuxProcessTable,
+  memoryByRole,
   ownedTree,
   parseFootprint,
   parseProcStat,
+  processRole,
   processTable,
   recordedRoots,
   restMetric,
@@ -23,6 +26,7 @@ import {
   runTagging,
   runTagKind,
   sampleTreeCpu,
+  serverHeapReport,
   signalIfSame,
   spawnControlChild,
   taggedRows,
@@ -401,6 +405,7 @@ function resultAtBaseline(host = HOST) {
     host: { ...host },
     metrics,
     request: { station: { claudeCodeVersion: '2.1.318' } },
+    repoRules: { claudeMd: true, agentsMd: true } as Record<string, unknown>,
   };
 }
 
@@ -639,6 +644,62 @@ describe('station-weight gate', () => {
       passed: false,
       comparedCount: 0,
     });
+  });
+
+  test('a repository instruction file missing from the first request fails the gate and refuses a baseline', () => {
+    const cases: Array<[string, Record<string, unknown> | undefined, string]> =
+      [
+        [
+          'AGENTS.md not reached',
+          { claudeMd: true, agentsMd: false },
+          'did not reach the first request: agentsMd',
+        ],
+        [
+          'AGENTS.md absent from the result',
+          { claudeMd: true },
+          'did not reach the first request: agentsMd',
+        ],
+        [
+          'neither reached',
+          { claudeMd: false, agentsMd: false },
+          'did not reach the first request: claudeMd, agentsMd',
+        ],
+        [
+          'not measured',
+          { status: 'not_measured', reason: 'Claude engine not ready' },
+          'repoRules not measured: Claude engine not ready',
+        ],
+        ['no repoRules at all', undefined, 'claudeMd, agentsMd'],
+      ];
+    for (const [label, repoRules, reason] of cases) {
+      const result = { ...resultAtBaseline(), repoRules };
+      const verdicts = evaluateBudgets(result, FIXTURE_BASELINE);
+      // Every budget passes: only the instruction files fail the run.
+      expect(
+        verdicts.map((entry) => entry.verdict),
+        label,
+      ).not.toContain('FAIL');
+      const gate = gateOutcome(result, verdicts);
+      expect(gate.passed, label).toBe(false);
+      expect(gate.reasons.join('\n'), label).toContain(reason);
+      // Report-only skips the baseline, not the measurement.
+      expect(
+        gateOutcome(
+          result,
+          evaluateBudgets(result, undefined, { reportOnly: true }),
+          { reportOnly: true },
+        ).passed,
+        label,
+      ).toBe(false);
+      expect(() => recordBaseline(result, FIXTURE_BASELINE), label).toThrow(
+        reason,
+      );
+    }
+    // Control: both reached, the same run passes.
+    const passing = resultAtBaseline();
+    expect(
+      gateOutcome(passing, evaluateBudgets(passing, FIXTURE_BASELINE)).passed,
+    ).toBe(true);
   });
 
   test('a run that did not complete fails even with nothing over budget', () => {
@@ -1398,6 +1459,147 @@ Auxiliary data:
 Summary Footprint: 1059556832 B
 ======================================================================
 `;
+
+describe('station-weight memory attribution', () => {
+  const row = (pid: number, memoryBytes: number, command = 'node') => ({
+    pid,
+    ppid: 1,
+    rssBytes: memoryBytes,
+    cpuSeconds: 0,
+    started: 'x',
+    command,
+    memoryBytes,
+  });
+
+  test('names the fixed entries, then the script, then the executable', () => {
+    expect(
+      processRole(
+        '/usr/bin/node /b/dist-server-x/station-supervisor.js --entry /b/dist-server-x/command-station.js',
+      ),
+    ).toBe('supervisor');
+    expect(
+      processRole('/usr/bin/node /b/dist-server-x/command-station.js'),
+    ).toBe('server');
+    expect(
+      processRole('node /b/dist-server/attached-session-path-child.js'),
+    ).toBe('attached-session-path-child.js');
+    expect(processRole('/opt/claude --print')).toBe('claude');
+  });
+
+  test('names a known identity by its pid and birth, not its command line', () => {
+    const ui = { ...row(5, 18), started: 'Sun Nov 15 18:06:17 2026' };
+    const known = [
+      { pid: 5, started: 'Sun Nov 15 18:06:17 2026', role: 'ui-listener' },
+    ];
+    expect(memoryByRole([ui], [{ pid: 5, command: 'node -' }], known)).toEqual([
+      { role: 'ui-listener', processCount: 1, memoryBytes: 18 },
+    ]);
+    // A reused pid with another birth is not the known process.
+    expect(
+      memoryByRole(
+        [{ ...ui, started: 'Sun Nov 15 18:09:00 2026' }],
+        [{ pid: 5, command: 'node -' }],
+        known,
+      ),
+    ).toEqual([{ role: 'node', processCount: 1, memoryBytes: 18 }]);
+  });
+
+  test('sums memory per role from the described command lines, largest first', () => {
+    const rows = [row(1, 10), row(2, 500), row(3, 30), row(4, 20, 'claude')];
+    expect(
+      memoryByRole(rows, [
+        { pid: 1, command: 'node /b/station-supervisor.js' },
+        { pid: 2, command: 'node /b/command-station.js' },
+        { pid: 3, command: 'node /b/command-station.js' },
+      ]),
+    ).toEqual([
+      { role: 'server', processCount: 2, memoryBytes: 530 },
+      { role: 'claude', processCount: 1, memoryBytes: 20 },
+      { role: 'supervisor', processCount: 1, memoryBytes: 10 },
+    ]);
+  });
+
+  test("reads the server's heap beside the memory measured for its pid", async () => {
+    const rows = [row(7, 400_000_000), row(8, 20_000_000)];
+    const posture = (process: object) => async () => ({
+      status: 200,
+      json: { success: true, data: { resources: { process } } },
+      text: '',
+    });
+    await expect(
+      serverHeapReport(
+        posture({
+          pid: 7,
+          heapUsedBytes: 150_000_000,
+          heapTotalBytes: 300_000_000,
+        }),
+        rows,
+      ),
+    ).resolves.toMatchObject({
+      status: 'measured',
+      value: 400_000_000,
+      pid: 7,
+      heapUsedBytes: 150_000_000,
+      heapTotalBytes: 300_000_000,
+      outsideHeapBytes: 100_000_000,
+    });
+    // A pid outside the measured tree, a refused read and a throw are gaps.
+    await expect(
+      serverHeapReport(
+        posture({ pid: 9, heapUsedBytes: 1, heapTotalBytes: 1 }),
+        rows,
+      ),
+    ).resolves.toMatchObject({
+      status: 'not_measured',
+      reason: expect.stringContaining('9'),
+    });
+    await expect(
+      serverHeapReport(
+        async () => ({ status: 503, json: null, text: 'unavailable' }),
+        rows,
+      ),
+    ).resolves.toMatchObject({
+      status: 'not_measured',
+      reason: expect.stringContaining('503'),
+    });
+    await expect(
+      serverHeapReport(async () => {
+        throw new Error('refused');
+      }, rows),
+    ).resolves.toMatchObject({
+      status: 'not_measured',
+      reason: expect.stringContaining('refused'),
+    });
+  });
+
+  test('prints the attribution as REPORT lines', () => {
+    expect(
+      formatAttribution({
+        metrics: {
+          restMemoryBytes: {
+            byRole: [{ role: 'server', processCount: 1, memoryBytes: 400 }],
+          },
+        },
+        attribution: {
+          serverHeapAtRest: {
+            status: 'measured',
+            value: 400,
+            basis: 'rss',
+            pid: 7,
+            heapUsedBytes: 150,
+            heapTotalBytes: 300,
+            outsideHeapBytes: 100,
+          },
+          serverHeapWithSessions: { status: 'not_measured', reason: 'gone' },
+        },
+      }),
+    ).toEqual([
+      'REPORT restMemoryBytes role=server processes=1 bytes=400',
+      'REPORT serverHeapAtRest pid=7 rss=400 heapTotal=300 heapUsed=150 outsideHeap=100 bytes',
+      'REPORT serverHeapWithSessions not measured: gone',
+    ]);
+  });
+});
 
 describe('station-weight memory reading', () => {
   test('reads phys_footprint per pid, not the peak or the summary', () => {

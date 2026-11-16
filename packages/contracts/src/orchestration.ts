@@ -1167,6 +1167,8 @@ export interface OwnedSessionActivity {
 }
 
 export interface OrchestrationSessionSummary extends ProviderSession {
+  /** Soonest armed check-back in this conversation; approval proposals are excluded. */
+  nextWakeUpAt?: string;
   /** Aggregate owned execution activity; the parent's own event fold is retained. */
   ownedWork?: OwnedSessionActivity & {
     state: 'running' | 'stopping' | 'waiting-on-peer' | 'unknown';

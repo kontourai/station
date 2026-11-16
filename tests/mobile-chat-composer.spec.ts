@@ -5143,7 +5143,8 @@ for (const [name, viewport, maximize] of [
         .boundingBox();
       expect(controlsRow!.height).toBeLessThanOrEqual(44.5);
       // Send is concealed from the accessibility tree while the draft is
-      // empty, so it is found by its group rather than by role.
+      // empty, so it is found by its group rather than by role. An empty
+      // draft collapses it entirely, leaving nothing for Discard to cover.
       const send = await page
         .locator('.chat-input__submit-controls')
         .boundingBox();
@@ -5151,10 +5152,11 @@ for (const [name, viewport, maximize] of [
         (report) => report.inComposer,
       );
       expect(carried, 'the composer carries a Discard').toBeDefined();
-      expect(
-        carried!.box[0] + carried!.box[2],
-        'Discard stays clear of Send',
-      ).toBeLessThanOrEqual(send!.x + 0.5);
+      if (send)
+        expect(
+          carried!.box[0] + carried!.box[2],
+          'Discard stays clear of Send',
+        ).toBeLessThanOrEqual(send.x + 0.5);
       // Under load the transcript can report a scroll while it is still
       // collapsing, which portals its Scroll to bottom button into the
       // composer's activity row. That state is forced here rather than

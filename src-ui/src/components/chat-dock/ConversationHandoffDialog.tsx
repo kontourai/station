@@ -264,7 +264,7 @@ function handoffRefusalFeedback(error: unknown): string {
 export const HANDOFF_KEEPS_SUMMARY =
   'Recent messages, the workspace, and the agent and model you chose.';
 export const HANDOFF_STARTS_FRESH_SUMMARY =
-  "The previous engine's own session and tools, approvals given in this chat, and anything queued or still running.";
+  "The previous engine's own session and tools, approvals given in this chat, its task links, and anything queued or running.";
 
 export function ConversationHandoffDialog({
   apiBase,
@@ -514,6 +514,14 @@ export function ConversationHandoffDialog({
         let prepared: Awaited<ReturnType<typeof prepareDraft>>;
         try {
           prepared = await prepareDraft();
+        } catch {
+          // Nothing was sent and the draft stays in the composer; the
+          // dialog must not stay locked in "Continuing…".
+          setState('error');
+          setFeedback(
+            "Your draft couldn't be prepared, so nothing was sent. Try again.",
+          );
+          return;
         } finally {
           starting.current = false;
         }

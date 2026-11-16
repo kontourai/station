@@ -179,7 +179,7 @@ describe('PluginManagementView error wiring (Review H1)', () => {
 
     expect(
       screen.getByText(
-        /drain running module work and retire registered providers/,
+        /Running work finishes and registered providers are removed/,
       ),
     ).toBeTruthy();
     expect(screen.getByText(/still winding down/)).toBeTruthy();

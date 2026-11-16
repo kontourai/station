@@ -4581,7 +4581,9 @@ export async function listDelegatedTasks(
   try {
     rawSessions =
       target.kind === 'current' && orchestrationService
-        ? await orchestrationService.listSessionReadModel(readAuthority)
+        ? await orchestrationService.listSessionReadModel(readAuthority, {
+            purpose: 'delegated-task-inventory',
+          })
         : await readSelectedStation(target, () =>
             listOrchestrationSessions(target.apiBase, target.requestOptions),
           );
@@ -4921,7 +4923,9 @@ export async function refreshPeerDelegationActivity(
 ): Promise<void> {
   const readAuthority = readAuthorityForInput(input);
   const records = (
-    await orchestrationService.listSessionReadModel(readAuthority)
+    await orchestrationService.listSessionReadModel(readAuthority, {
+      purpose: 'peer-delegation-refresh',
+    })
   )
     .filter(
       (session) =>
@@ -5246,13 +5250,12 @@ export async function respondToDelegatedTaskRequest(
     // hosting the task: a body naming another environment is refused before
     // any outbound request, so a request id is never decided elsewhere.
     if (selectedTarget.kind === 'peer' && orchestrationService) {
-      const hosts =
-        await orchestrationService.peerDelegationHostingEnvironmentIds(
-          input.taskId,
-          readAuthority,
-        );
-      if (!hosts.includes(selectedTarget.environmentId))
-        throw new Error(PEER_RESPOND_ENVIRONMENT_MISMATCH_MESSAGE);
+      const hosted = await orchestrationService.peerDelegationHostsTask(
+        input.taskId,
+        selectedTarget.environmentId,
+        readAuthority,
+      );
+      if (!hosted) throw new Error(PEER_RESPOND_ENVIRONMENT_MISMATCH_MESSAGE);
     }
     // Same follow-up poster as the continue path — a receiver's closed
     // portable refusal keeps its code/403 here too.

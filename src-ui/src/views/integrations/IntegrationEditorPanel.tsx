@@ -3,6 +3,7 @@ import { DetailHeader } from '../../components/DetailHeader';
 import { LockGlyph } from '../../components/icons/Glyph';
 import { IntegrationGlyph } from '../../components/icons/IntegrationGlyph';
 import { LazyBoundary } from '../../components/LazyBoundary';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { IntegrationAccountSection } from './IntegrationAccountSection';
 import { IntegrationTrustReview } from './IntegrationTrustReview';
 import { IntegrationTrustSection } from './IntegrationTrustSection';
@@ -100,6 +101,7 @@ export function IntegrationEditorPanel({
   onUnlock: () => void;
   trustControlsEnabled?: boolean;
 }) {
+  useDecisionSurface('integration-editor');
   const isBuiltin = editForm.kind === 'builtin';
   /**
    * CI-R7: server-derived (`GET /integrations`), not inferred from `kind` —
@@ -118,7 +120,7 @@ export function IntegrationEditorPanel({
   return (
     <div className="detail-panel integration-editor-panel">
       <DetailHeader
-        title={editForm.displayName || editForm.id || 'New Tool Server'}
+        title={editForm.displayName || editForm.id || 'New tool server'}
         icon={
           !isNew ? (
             <IntegrationGlyph
@@ -225,7 +227,7 @@ export function IntegrationEditorPanel({
 
       <div className="agent-editor__section">
         <div className="agent-editor__section-header">
-          <h3 className="agent-editor__section-title">Editor Mode</h3>
+          <h3 className="agent-editor__section-title">Editor mode</h3>
           <p className="agent-editor__section-desc">
             {isBuiltin
               ? 'Built-in compatibility tools use a shared implementation across both runtimes.'
@@ -305,7 +307,7 @@ export function IntegrationEditorPanel({
       {!isBuiltin && viewMode === 'raw' ? (
         <div className="agent-editor__section">
           <div className="agent-editor__section-header">
-            <h3 className="agent-editor__section-title">Raw Configuration</h3>
+            <h3 className="agent-editor__section-title">Raw configuration</h3>
             <p className="agent-editor__section-desc">
               Paste a standard <code>mcp.json</code> config compatible with
               Claude Desktop, Cursor, Windsurf, and similar tools.

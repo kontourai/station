@@ -82,6 +82,7 @@ The optional [Durable Station Agent](#durable-station-agent) owner sits above th
 | [KnowledgeStoreProvider](#knowledgestoreprovider) | Register canonical roots and resolve their record adapters. | `src-server/knowledge-store/knowledge-store-provider.ts` |
 | [SqliteVecIndexProvider](#sqlitevecindexprovider) | Rebuild and query derived root partitions, scoped to one embedding generation. | `src-server/knowledge-index/sqlite-vec-index-provider.ts` |
 | [Workspace checkpoints](#workspace-checkpoints) | Capture turn-associated file snapshots and restore one through current workspace and caller checks. | `src-server/services/checkpoints/checkpoint-restore.ts` |
+| [Custom appearance](#custom-appearance) | Let a person, or an agent proposing for them, restyle Station with a palette and sandboxed CSS. | `src-server/services/identity/custom-appearance.ts` |
 | [Personal Board authoring](#personal-board-authoring) | Preview, edit and publish personal dashboards through user and chat authoring. | `src-server/services/layouts/personal-board-authoring.ts` |
 | [Personal Work Board](#personal-work-board) | Arrange exact work references without copying their owners' state. | `src-server/services/spatial-board/spatial-board-store.ts` |
 | [BrowserSessionService](#browsersessionservice) | Own browser acquisition, profile-scoped sessions and authorized automation independently of viewers. | `src-server/services/browser/browser-service.ts` |
@@ -1926,6 +1927,10 @@ builds the person gate, the delivery and the routes' ports; the
 drives that composition through the real boundary, guard and routes per
 credential channel, with a real thread inbox. A person reads a conversation
 schedule with conversation read access; an agent may read its own.
+Session read-model lists batch the earliest pending check-back time once per
+request, emitting only `nextWakeUpAt` for readable conversations. The shared
+work-status selector uses that fact for **Working · Waiting** after a turn settles;
+approval proposals are excluded.
 
 **Automation proposals (#4830).** `propose_automation_source` and
 `propose_automation_rule` follow the same pattern for Automation sources and
@@ -2295,7 +2300,61 @@ implements `hasOpenEngineWork` also vetoes the park while its engine still runs 
 task it never reported an end for, whatever the child-work record says.
 Parking stops the process but absorbs its exit, so the session stays dormant
 rather than ending: the next turn restarts it in place. No worktree, claim or
-room effect fires.
+room effect fires. The same check guards the recovery replay into a failed
+Claude turn and the relaunch for full access, so nothing below reaches them.
+
+A Session that is finished by design does not wait for that threshold.
+[`FinishedSessionParking`](../../src-server/services/orchestration/finished-session-parking.ts)
+watches every turn terminal the service commits. It parks the engine
+`finishedSessionParkAfterMs` (15 seconds) after the turn settled when all of
+these hold:
+
+- The Session's newest turn a send produced was unattended: `dispatchOrigin`
+  `delegation`, `automation` or `task-dispatch`, or `unknown` in a Session
+  started as a delegated child whose context Station derived or attested (a
+  delegator's `continue_task` follow-up records no origin). A turn the engine
+  opened on its own (`metadata.trigger` `provider`) does not decide.
+- No person has, or may have, sent into it. Counted as a person's: a turn
+  start placed `interactive` or marked person-typed, every steer (a steer
+  inherits its turn's origin, so a person's steer from an unmarked surface
+  reads as the turn's) except a child's result Station steered in (Station's
+  internal actor with the server-stamped `delegation-result` sender), and a
+  turn start with no origin this build recognises (history from before the
+  field). Engine-opened turns do not count.
+- The engine's adapter declares `openEngineWork: 'complete'` and its
+  `earlyParkRefusal` gives no reason. Only Claude declares it. Claude runs
+  with `includeHookEvents`, and Station's own hooks are SDK callbacks that
+  report no hook events, so any reported hook is one Station did not install
+  (user, project, local, plugin or managed): from then on that engine refuses,
+  since an `async` or `asyncRewake` hook can outlive the turn. It also
+  refuses on a Claude Code older than the one this was checked against, or
+  one whose `init` reported no version. It refuses
+  while it has a housekeeping task running (`skip_transcript`, such as a
+  post-turn memory save), while its last `init` reported any MCP server that
+  is not one of Station's in-process (`sdk`) servers or reported none, and
+  while its scheduled wakeups (CronCreate, ScheduleWakeup, a loop) are
+  non-zero or unknown. They are unknown before any Stop hook reported
+  `session_crons` and after any scheduling-tool call until one does again;
+  a turn that ends through StopFailure runs none. The refusal is read again
+  under the lifecycle lock. Codex, whose background command processes nothing
+  tracks, and ACP engines, whose own tools can run processes Station never
+  sees, do not declare it, and neither does any engine until it can.
+
+So a delegated child, a dedicated Automation run or a Task dispatch nobody
+typed in qualifies when it runs on Claude with only Station's own MCP servers
+and hooks, scheduled nothing, and has no housekeeping running. Not seen: a
+hook that is configured but has not fired in that engine (nothing of it is
+running; one that fires only after idling, such as an idle `Notification`,
+does not fire once parked, as after the idle park), and a process a command
+leaves running after its tool call returned without making it a background
+task. The park is the idle park
+with that grace as its threshold, so every refusal above still applies under
+the lifecycle lock. An engine event after the settle restarts the grace. A
+delegator's follow-up or a queued inbox entry starts a turn, which the park
+never stops, and that turn's own settle decides again. A refused park is left
+to the sweep, which never reads `earlyParkRefusal`. Everything else, a
+person's chat included, keeps the ordinary threshold.
+`idleSessionParkAfterMs: 0` turns both parks off.
 `isSessionLifecycleStateAtRest` answers "is this session doing anything";
 `sessionLifecycleOutcome` is the one lifecycle-to-outcome mapping.
 
@@ -2404,8 +2463,9 @@ anything else as `unknown`. Who passes what:
   then a person's entry is `interactive`; a delegated child's result
   (server-stamped `delegation-result` sender, also delivered through
   `delegationResultStartPort`) is `delegation` when the parent Session is
-  itself unattended (bound to a Task, or a delegated child whose start
-  carries Station's provenance stamp), and otherwise takes the parent's own
+  itself unattended (bound to a Task, or a delegated child whose first
+  start carries Station's provenance stamp; an in-place restart after a park
+  does not repeat the stamp), and otherwise takes the parent's own
   newest non-result turn's origin (`readSessionDispatchFacts`), so a
   person's chat stays `interactive`; Station's other entries (a
   Task question wake, a check-back) are
@@ -3105,8 +3165,10 @@ every other engine-to-client Kiro extension (requests and
 `ENGINE_EXTENSION_BINDINGS`: each names its exact wire shape, its basis
 (`declared`, `client-announced` or `undeclared-engine`), what it was observed
 against (the scrubbed kiro-cli 2.35.0 capture in
-`src-server/services/acp/__tests__/fixtures/`, or a kirodotdev/kirocrew
-fixture path) and its consumer. A row's notification tuple binds only once
+`src-server/services/acp/__tests__/fixtures/`, a kirodotdev/kirocrew
+fixture path, or, for another engine's row, the vendor's own source at a
+named commit) and its consumer. Qwen Code's subagent marker is such a row:
+a `tool-call-meta-field` wire (top-level `_meta.provenance: 'subagent'`). A row's notification tuple binds only once
 `ENGINE_EXTENSION_CONSUMERS` marks its consumer implemented, and never over a
 tuple the table above already binds. Today eleven bind: Kiro v2's
 `mcp/server_initialized` and `mcp/server_init_failure` (`engine-mcp.status`)
@@ -3117,9 +3179,10 @@ should replace it. The `child-work` consumer is implemented in
 [`acp-child-work.ts`](../../src-server/providers/adapters/acp-child-work.ts):
 kiro-cli's `subagent/list_update` keeps its host-chrome notification row while
 its engine row reads the roster into `child-work.updated`, and a `tool_call`
-whose `_meta.kiro.kind` is `agent-subtask` is read the same way. An ACP
-engine whose handshake names neither reporter publishes `not-reported` at
-session start. History replay (`child-work-history.ts`) restores the
+whose `_meta.kiro.kind` is `agent-subtask` is read the same way. Qwen Code's
+nested subagent tool calls list the subagent under the Agent tool call that
+runs it, until that call ends. An ACP engine whose handshake names no reporter
+publishes `not-reported` at session start. History replay (`child-work-history.ts`) restores the
 statement of a session that never exited (an unclean shutdown), so it does
 not read "nothing running"; a later `session.started` on the thread clears it,
 live or replayed, because the new start states its reporting afresh. The matrix cell's `perConnection` reason is what
@@ -3824,7 +3887,36 @@ is created; otherwise tables are created and every channel-less room is adopted 
 `#general` under the writer lock, after re-reading the version there, so a racing
 newer Station's upgrade is never overwritten. A room whose stored record does not
 match its row is not adopted, and it refuses its channels as it refuses its reads. Channel limits, unique names and
-archived read-only state are enforced in the store transaction. Persisted records are validated
+archived read-only state are enforced in the store transaction. Schema version 2
+adds message activity in separate tables: reactions (one per person and emoji),
+superseding edit and delete revisions, the files each message links, and a
+per-room activity counter. History projects the latest revision and the
+reactions onto each stored message, which is never rewritten. The live
+checkpoint counts activity so reactions and edits wake readers, while
+`lastSeq`, the read-state version, moves only with new messages. Only a
+message's person author may edit or delete it, and Agent messages are never
+edited. Message files are stored by `ProjectRoomAttachments` (over the
+`RoomAttachments` store Task rooms use) under a binding of Station, Project
+incarnation, room and uploader. Deleting a message releases its files, and an
+upload first releases its uploader's day-old unsent files. Uploads, releases
+and messages naming files hold one store-wide cross-process file lock (the
+yielding form, taken before the request's authority check so access revoked
+while waiting refuses). Records are written whole (staging, then rename), and
+a failed write removes only the staging file it created. A
+release reads every record first, never deletes
+bytes another record names, and keeps a record, its quota charge and its
+retry until its bytes' deletion is confirmed (an unlink, or `ENOENT`). A
+damaged record counts only with one whole `blobRef` hash; any record whose
+reference cannot be known fails the release closed. Every upload re-derives
+the store's health under the lock with the same scan (no cached state), and
+any unknown record or unreadable or linked `bindings/` level refuses it with
+`project_room_files_unavailable`, as does a failed write (typed as
+`RoomStorageFailure`); the marker is a diagnostic only. Repair is offline
+only: with every Station process stopped, fix or remove the damaged record
+under `bindings/`. A non-empty, linked or unreadable `repair/` (an earlier
+build's inbox) blocks uploads and releases and is never applied or deleted. The store never
+evicts by age or size. Task rooms keep age and size retention (#4947) and
+share only the whole-record write. Persisted records are validated
 against their row identities before use. History reads use a deferred transaction;
 discovery is lookup-only. Explicit opening requires current discussion authority.
 
@@ -4061,6 +4153,16 @@ ceiling; an observed external commit restores 250 ms sampling. Unsubscribing the
 last watcher cancels sampling. Idle external edits can therefore take up to two
 seconds plus scheduling delays to notify readers; this polling runs in the
 worker, separately from the server event loop.
+
+**Worker lifecycle.** The [working-state](../../src-server/services/orchestration/project-task-room-working-state.ts)
+and [history](../../src-server/services/orchestration/project-task-room-history.ts)
+workers are each a V8 isolate and start on their first request, not at
+composition. Each is retired after 60 seconds with no request in flight (and,
+for working state, no watcher), and the next request starts a fresh one over
+the same database. Every reply follows its commit and the workers keep no
+durable state in memory, so retirement is not a failure: it neither makes
+working state terminal nor starts the history worker's failure cooldown. A
+worker that fails is handled as before.
 
 ## SharedWorkingStateEditingCapability
 
@@ -4825,12 +4927,24 @@ inventory at 256 and materialize the newest 512 receipts. They may repair the
 reference index under its lock. Unreadable/contended Projects are reported;
 a missing workspace contributes no receipts rather than proving it has none.
 
-Confirmed-start shutdown failure and executor timeout retain the workspace.
-There is a current exception: if Session start returns an indeterminate outcome
-by throwing, the executor has not set its `started` flag, reports the workspace
-safe and skips stop. The module can then close that workspace despite possible
-live reviewer work. This path needs uncertainty propagation and confirmed
-cleanup before the general retention guarantee can be claimed.
+Confirmed-start shutdown failure, executor timeout and an unconfirmed Session
+start retain the workspace. A start invocation whose reply throws or lacks a
+confirmed Session does not classify its checkout as safe to remove.
+
+**Task association.** [TaskCodeReviewModule](../../src-server/services/evidence/task-code-review-module.ts)
+projects the submission owner's server-derived Task/Project incarnation binding.
+The association is published with request admission, before reviewer invocation;
+it is not guessed from titles, commits or receipt content. Requests retain the
+original Project ID and creation time as equality preconditions. Recreating a
+Project with the same slug and checkout cannot rebind a saved request.
+Receipt publication retains the admitted storage identity and rechecks authority
+at commit. Project and aggregate readers keep Task-associated evidence behind
+the same personal-only boundary; delta ancestry cannot drop that association.
+The personal-host [Task code-review routes](../../src-server/routes/evidence/task-code-reviews.ts)
+recheck current Task authority and keep checkout observation, revision freshness
+and reviewer outcomes separate. The [Overview panel](../../src-ui/src/views/task-workspace/TaskCodeReviewPanel.tsx)
+uses Project-scoped SDK queries and preserves the original request across response
+loss. Task checkout facts do not prove placement parity for independent room requests.
 
 **Consumers and evidence.** API, SDK client, CLI and station-control MCP share
 `REVIEW_EVIDENCE_OPERATOR_SURFACE`. Project Review UI uses that client; the old
@@ -4965,7 +5079,9 @@ normally killed). Orchestration's first-turn composition adds the
 budget statement for adapters declaring `workloadScope: 'engine-process'`
 (omitted, with the chat-images line, when the Session's `session.started`
 records that its engine resumed an existing native transcript, which already
-holds them) and
+holds them; delivered again, with the prompt, Station instructions and Task
+brief, on the first turn after an `acp.session-started-fresh` warning, whose
+new engine session holds none of them) and
 the [memory-exhaustion recovery note](../../src-server/services/orchestration/memory-exhaustion-recovery.ts)
 for a successor of a memory-killed Session. Otherwise, the first turn after any
 engine ended with work still running gets the
@@ -6326,6 +6442,24 @@ ownership, revision conflicts, publication, rename and move. Browser journeys
 cover desktop/phone authoring, live Task visibility, persistence and explicit
 proposal Apply. These are controlled runtime journeys, not physical multi-device
 or external Agent-provider evidence.
+
+## Custom appearance
+
+A person's own palette and CSS ([decision](../decisions/custom-appearance.md)).
+The [contract](../../packages/contracts/src/custom-appearance.ts) owns the
+shapes, the CSS text check, the contrast rules and the stable hook selectors.
+The [personal route](../../src-server/routes/me/custom-appearance.ts) resolves
+the request principal and refuses agents every step but read and propose; the
+[store](../../src-server/services/identity/custom-appearance.ts) keeps one
+revisioned document per person. Agents use
+[`get_appearance` and `propose_appearance`](../../src-server/tools/station-control-appearance-tools.ts).
+In the browser, the [controller](../../src-ui/src/lib/custom-appearance/controller.ts)
+adopts the palette and the [sanitized](../../src-ui/src/lib/custom-appearance/sanitize-css.ts)
+CSS, suspends the CSS while a [decision surface](../../src-ui/src/lib/custom-appearance/decision-surfaces.ts)
+is mounted and caches it for pre-paint; [previews](../../src-ui/src/lib/custom-appearance/preview.ts)
+run under the [keep bar](../../src-ui/src/lib/custom-appearance/keep-bar.ts).
+Evidence: [route tests](../../src-server/routes/me/__tests__/custom-appearance.routes.test.ts)
+and the [Chromium suite](../../src-ui/src/__tests__/custom-appearance.browser.test.ts).
 
 ## Personal Work Board
 

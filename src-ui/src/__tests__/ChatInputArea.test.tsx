@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 
+import { APPEARANCE_HOOKS } from '@kontourai/station-contracts/custom-appearance';
 import { CHAT_INPUT_MAX_CHARS } from '@shared/chat-input-limits';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -24,6 +26,10 @@ import {
   startConversationReferenceDrag,
 } from '../components/chat/conversationReferenceDrag';
 import { deviceSettingsStore } from '../lib/device-settings-store';
+
+/** A custom-appearance hook selector, from the contract (APPEARANCE_HOOKS). */
+const appearanceHook = (id: string) =>
+  APPEARANCE_HOOKS.find((hook) => hook.id === id)!.selector;
 
 const fetchConversationInventory = vi.hoisted(() => vi.fn());
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
@@ -152,6 +158,12 @@ describe('ChatInputArea', () => {
     expect(
       screen.getByRole('button', { name: 'Stop the current turn' }),
     ).toBeTruthy();
+  });
+
+  test('renders the composer custom-appearance hook around its text box', () => {
+    renderChatInputArea();
+    const composer = document.querySelector(appearanceHook('composer'));
+    expect(composer?.contains(screen.getByRole('textbox'))).toBe(true);
   });
 
   test('an explicit Queue choice wins over the native steer default', () => {
@@ -2396,7 +2408,8 @@ test.each([undefined, 'claude'])(
       ),
     );
     expect(trigger.textContent).not.toContain('EN');
-    expect(trigger.textContent).toContain('Writer');
+    // The Agent mark names the Agent; the visible text is the Model's.
+    expect(trigger.textContent).not.toContain('Writer');
     expect(trigger.getAttribute('aria-label')).toMatch(/^Writer ·/);
   },
 );
@@ -2447,4 +2460,143 @@ test('ACP reply setup uses the connection engine mark', async () => {
         .querySelector('[data-brand-key="opencode"]'),
     ).not.toBeNull(),
   );
+});
+
+test('on a phone, choosing another engine closes Run setup; another model of the same engine does not', async () => {
+  const mobile = (query: string) => ({
+    matches: true,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+    media: query,
+    onchange: null,
+  });
+  vi.mocked(window.matchMedia).mockImplementation(mobile);
+  try {
+    const onModelSelect = vi.fn();
+    const models = [
+      { id: 'claude-sonnet', name: 'Claude Sonnet' },
+      { id: 'claude-opus', name: 'Claude Opus' },
+      { id: 'gpt-6', name: 'GPT Six', executionAgentId: 'codex' },
+    ];
+    renderChatInputArea({
+      modelQuery: '',
+      availableModels: models,
+      pickerModels: models,
+      onModelSelect,
+    });
+    fireEvent.click(screen.getByTestId('run-setup-trigger'));
+    expect(screen.getByRole('dialog', { name: 'Run setup' })).toBeTruthy();
+    fireEvent.click(
+      await screen.findByRole(
+        'option',
+        { name: /Claude Opus/ },
+        { timeout: 5_000 },
+      ),
+    );
+    expect(screen.getByRole('dialog', { name: 'Run setup' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('option', { name: /GPT Six/ }));
+    expect(onModelSelect).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: 'gpt-6' }),
+    );
+    expect(screen.queryByRole('dialog', { name: 'Run setup' })).toBeNull();
+  } finally {
+    vi.mocked(window.matchMedia).mockImplementation((query: string) => ({
+      ...mobile(query),
+      matches: false,
+    }));
+  }
+}, 7_500);
+
+test('a draft sized while hidden is measured again once it shows, not pinned at zero height', async () => {
+  let measured = 0;
+  const scrollHeight = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    'scrollHeight',
+  );
+  Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+    configurable: true,
+    get() {
+      return this instanceof HTMLTextAreaElement ? measured : 0;
+    },
+  });
+  const callbacks: Array<() => void> = [];
+  const previousObserver = globalThis.ResizeObserver;
+  globalThis.ResizeObserver = class {
+    constructor(callback: () => void) {
+      callbacks.push(callback);
+    }
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as never;
+  try {
+    renderChatInputArea({ input: '' });
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    // Hidden at mount: nothing measurable, so nothing is pinned.
+    expect(textarea.style.height).not.toBe('0px');
+    // Shown: the next resize measures it.
+    measured = 46;
+    await act(async () => {
+      for (const callback of callbacks) callback();
+      await new Promise((resolve) =>
+        requestAnimationFrame(() => resolve(null)),
+      );
+    });
+    expect(textarea.style.height).toBe('46px');
+  } finally {
+    globalThis.ResizeObserver = previousObserver;
+    if (scrollHeight)
+      Object.defineProperty(
+        HTMLElement.prototype,
+        'scrollHeight',
+        scrollHeight,
+      );
+    else
+      delete (HTMLElement.prototype as { scrollHeight?: number }).scrollHeight;
+  }
+});
+
+test('reply setup names a requested effort after the model, never a guessed one', () => {
+  const models = [
+    {
+      id: 'claude-opus',
+      name: 'Opus',
+      capabilities: {
+        supportsEffort: true,
+        supportedEffortLevels: ['low', 'medium', 'high'],
+      },
+    },
+  ];
+  renderChatInputArea({
+    agentLabel: 'Claude Code',
+    agentIcon: <span>Agent mark</span>,
+    agentDefaultModel: 'claude-opus',
+    availableModels: models,
+    modelRuntimeOptions: { effort: 'high' },
+  });
+  const trigger = screen.getByTestId('run-setup-trigger');
+  expect(
+    trigger.querySelector('.composer-run-control__label')?.textContent,
+  ).toBe('Opus · High');
+  expect(trigger.getAttribute('aria-label')).toMatch(
+    /^Claude Code · Opus · High/,
+  );
+  cleanup();
+
+  // Nothing requested: the engine default applies, so no level is named.
+  renderChatInputArea({
+    agentLabel: 'Claude Code',
+    agentIcon: <span>Agent mark</span>,
+    agentDefaultModel: 'claude-opus',
+    availableModels: models,
+    modelRuntimeOptions: {},
+  });
+  expect(
+    screen
+      .getByTestId('run-setup-trigger')
+      .querySelector('.composer-run-control__label')?.textContent,
+  ).toBe('Opus');
 });

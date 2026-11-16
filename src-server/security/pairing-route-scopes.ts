@@ -3683,6 +3683,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     },
     {
       method: 'GET',
+      path: '/api/orchestration/session-reads/:sessionId/turn-directory',
+    },
+    {
+      method: 'GET',
       path: '/api/orchestration/session-reads/:sessionId/wait',
     },
     // #3413 part B work claims. The three POST leaves are agent-only at the
@@ -3833,6 +3837,15 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // no other principal's records, so none is more sensitive than the family.
     { method: 'GET', path: '/api/me/preferences' },
     { method: 'PATCH', path: '/api/me/preferences' },
+    // The person's own custom appearance: every leaf reads or writes only the
+    // request principal's document. Keep, save, dismiss and report also
+    // refuse a request that may be an agent's.
+    { method: 'GET', path: '/api/me/appearance' },
+    { method: 'PUT', path: '/api/me/appearance' },
+    { method: 'POST', path: '/api/me/appearance/proposal' },
+    { method: 'DELETE', path: '/api/me/appearance/proposal' },
+    { method: 'POST', path: '/api/me/appearance/proposal/keep' },
+    { method: 'POST', path: '/api/me/appearance/proposal/report' },
     { method: 'GET', path: '/api/me/notifications' },
     { method: 'POST', path: '/api/me/notifications/:id/read' },
     { method: 'DELETE', path: '/api/me/notifications/:id' },
@@ -3933,6 +3946,8 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // through the lead conversation inbox.
     { method: 'GET', path: '/api/tasks/:taskId/write-back' },
     { method: 'GET', path: '/api/tasks/:taskId/review' },
+    { method: 'GET', path: '/api/tasks/:taskId/review/code' },
+    { method: 'POST', path: '/api/tasks/:taskId/review/code' },
     { method: 'GET', path: '/api/tasks/:taskId/review/capture-sessions' },
     { method: 'GET', path: '/api/tasks/:taskId/review/walkthroughs' },
     {
@@ -4925,6 +4940,28 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'PUT', path: '/api/projects/:slug/room/note' },
     { method: 'POST', path: '/api/projects/:slug/room/presence' },
     { method: 'GET', path: '/api/projects/:slug/room/events' },
+    // Reactions, edits and deletes (#4796, #4797) compose the room's discuss
+    // tier; the room refuses edits and deletes of anyone else's message.
+    // Files (#4812): upload is discuss, a read is the room's view tier. Unlike
+    // Task-room files, they never feed an Agent request, and each is bound to
+    // its uploader (see account-bound-device-gate.ts isAccountBoundRoomLeaf).
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/room/messages/:messageId/reactions',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/room/messages/:messageId/edit',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/room/messages/:messageId/delete',
+    },
+    { method: 'POST', path: '/api/projects/:slug/room/attachments' },
+    {
+      method: 'GET',
+      path: '/api/projects/:slug/room/attachments/:attachmentId',
+    },
     { method: 'POST', path: '/api/projects/:slug/room/agents' },
     { method: 'GET', path: '/api/projects/:slug/room/agents/:requestId' },
     {
@@ -4955,6 +4992,26 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       path: '/api/projects/:slug/channels/:channelId/presence',
     },
     { method: 'GET', path: '/api/projects/:slug/channels/:channelId/events' },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/messages/:messageId/reactions',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/messages/:messageId/edit',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/messages/:messageId/delete',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/channels/:channelId/attachments',
+    },
+    {
+      method: 'GET',
+      path: '/api/projects/:slug/channels/:channelId/attachments/:attachmentId',
+    },
     {
       method: 'POST',
       path: '/api/projects/:slug/channels/:channelId/agents',

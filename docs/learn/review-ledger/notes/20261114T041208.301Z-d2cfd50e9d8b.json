@@ -1,0 +1,11 @@
+{
+  "revision": "80712b38077d8892ed358257d0b79edd674a85c9",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"The cited contracts reference changed in one paragraph only: the provider-failure inventory now lists acp.session-started-fresh among the ACP runtime warnings that mark a running session. This document links the reference as a route and makes no claim about that inventory, so its claims are unaffected.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The cited contracts reference changed in one paragraph only: the provider-failure inventory now lists acp.session-started-fresh among the ACP runtime warnings that mark a running session. This document links the reference as a route and makes no claim about that inventory, so its claims are unaffected.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"The cited contracts reference changed in one paragraph only: the provider-failure inventory now lists acp.session-started-fresh among the ACP runtime warnings that mark a running session. This document links the reference as a route and makes no claim about that inventory, so its claims are unaffected.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

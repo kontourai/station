@@ -7,6 +7,7 @@ import {
   isValidElement,
   type ReactNode,
   useCallback,
+  useEffect,
   useId,
   useRef,
   useState,
@@ -33,16 +34,25 @@ import './ComposerRunControl.css';
 /** One setup entry point for replies and every start surface. Picker owners stay mounted. */
 export function ComposerRunControl({
   label,
+  effort,
   icon,
   engineId,
   children,
   loadingLabel,
+  closeHandle,
 }: {
   label: string;
+  /** The requested reasoning effort, shown after the model; absent when the engine default applies. */
+  effort?: string;
   icon: ReactNode;
   engineId?: EngineId | null;
   children: ReactNode;
   loadingLabel?: string;
+  /**
+   * Receives the panel's close, for a picker rendered outside the panel whose
+   * choice opens a dialog that should replace it (an engine switch on a phone).
+   */
+  closeHandle?: { current: (() => void) | null };
 }) {
   const agent =
     isValidElement<React.ComponentProps<typeof AgentIcon>>(icon) &&
@@ -63,9 +73,18 @@ export function ComposerRunControl({
       ? cloneElement(icon, { fallbackGlyph: true })
       : icon || <AgentGlyph />;
   const separator = label.lastIndexOf(' · ');
+  // Effort qualifies a Model, so it is shown only beside one.
+  const shownEffort = separator < 0 ? undefined : effort;
   const contentId = useId();
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
+  useEffect(() => {
+    if (!closeHandle) return;
+    closeHandle.current = close;
+    return () => {
+      closeHandle.current = null;
+    };
+  }, [closeHandle, close]);
   const trigger = useRef<HTMLButtonElement>(null);
   const [summaries, setSummaries] = useState<
     Record<string, { label: string; safety?: string; changed?: boolean }>
@@ -113,7 +132,7 @@ export function ComposerRunControl({
   const changed = choices.some((choice) => choice.changed);
   const summary = [
     ...new Set([
-      label,
+      shownEffort ? `${label} · ${shownEffort}` : label,
       ...details,
       ...safety,
       ...(changed ? ['changed for this conversation'] : []),
@@ -135,13 +154,23 @@ export function ComposerRunControl({
               label
             ) : (
               <span className="composer-run-control__label">
-                <span className="composer-run-control__agent">
-                  {label.slice(0, separator)}
-                  {' · '}
-                </span>
+                {/* The Agent's own mark names it; the scarce text goes to the
+                    Model. The accessible name keeps the full label. */}
+                {!icon && (
+                  <span className="composer-run-control__agent">
+                    {label.slice(0, separator)}
+                    {' · '}
+                  </span>
+                )}
                 <span className="composer-run-control__model">
                   {label.slice(separator + 3)}
                 </span>
+                {shownEffort && (
+                  <span className="composer-run-control__effort">
+                    {' · '}
+                    {shownEffort}
+                  </span>
+                )}
               </span>
             )
           }

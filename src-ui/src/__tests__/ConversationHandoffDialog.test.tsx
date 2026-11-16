@@ -1687,3 +1687,36 @@ describe('handoff polish-round fixes', () => {
     expect(screen.queryByText(/Provider-native cursor/)).toBeNull();
   });
 });
+
+test('a draft preparation that throws leaves the dialog closable with a reason, and sends nothing', async () => {
+  vi.clearAllMocks();
+  handoffExecutionMessage.mockReset();
+  sessionStorage.clear();
+  useNewChatSelectionModel.mockReturnValue({
+    agentConnections: connections,
+    selectedProjectConfig: { agents: ['claude', 'codex', 'offline'] },
+    modelsForAgent: () => [{ id: 'gpt-5', name: 'GPT-5' }],
+    defaultEffectiveModelForAgent: () => ({ id: 'gpt-5' }),
+  });
+  const { onClose } = renderDialog('claude', undefined, undefined, undefined, {
+    prepareDraft: async () => {
+      throw new TypeError('Failed to fetch dynamically imported module');
+    },
+  });
+  fireEvent.click(screen.getByRole('radio', { name: /Codex reviewer/ }));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Continue with Codex reviewer' }),
+  );
+  await waitFor(() =>
+    expect(screen.getByRole('alert').textContent).toContain(
+      "Your draft couldn't be prepared",
+    ),
+  );
+  expect(handoffExecutionMessage).not.toHaveBeenCalled();
+  const close = screen.getByRole('button', {
+    name: 'Cancel agent handoff',
+  }) as HTMLButtonElement;
+  expect(close.disabled).toBe(false);
+  fireEvent.click(close);
+  expect(onClose).toHaveBeenCalledOnce();
+});

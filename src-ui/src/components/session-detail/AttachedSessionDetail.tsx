@@ -18,6 +18,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -558,7 +559,7 @@ export function AttachedSessionDetail({
         ? "You don't have permission to continue this conversation."
         : "This Station can't continue this conversation right now."
       : undefined;
-  const continueReasonId = `${session.threadId}-continue-reason`;
+  const continueReasonId = useId();
   const continueAction = continued ? null : (
     <Button
       variant="secondary"

@@ -394,6 +394,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/learning-review` | Owner-neutral learning lifecycle projections and explicit access gaps |
 | `@kontourai/station-contracts/layout` | `layoutOwner` derives ownership and `layoutSubject` derives the optional Project subject. Project ownership implies its Project; principal ownership without a subject remains a Board or reusable template. Personal records never inherit Coding's implicit primary Chat claim. Layout definitions, tabs, skills, templates, and repository workspace binding (`workspaceBinding: 'repository'`); legacy Coding records retain their repository binding. The layout contract fields `primary`, `presentation` and `drillIns` (#2995): `parseLayoutPresentationDeclaration` refuses unknown values and unresolvable drill-ins with `InvalidLayoutDeclarationError`; `layoutPresentationDeclaration`, `layoutClaimsPrimaryChat`, `layoutPresentsAsStack` and `findPrimaryChatLayout` (built-in Coding first, then the lowest `id`) read a layout read's stated declaration (a withheld read declares nothing; a stored built-in Coding record that states nothing reads as `BUILTIN_CODING_LAYOUT`'s declaration until slice j). `LAYOUT_PRIMARY_CHAT_PERMISSION` names the plugin permission a contributed `primary: 'chat'` needs. A catalog contribution's optional, server-issued `lifecycleGeneration` is identity only, never a permission; a reinstall or an enablement change replaces it and it never repeats. `null` is history the server cannot vouch for, under which a host admits nothing |
 | `@kontourai/station-contracts/personal-board` | Declarative dashboard sections, saved/proposed Board document and revisioned authoring inputs |
+| `@kontourai/station-contracts/custom-appearance` | A person's custom appearance (palette over `APPEARANCE_ROLE_PROPERTIES`, accent and CSS), its document, proposal and render report; `parseCustomAppearance`, the CSS text check (`customCssTextViolations`, `fetchingValueKind`), contrast rules rated with a caller-supplied ratio (`rateAppearancePalette`), the stable hook selectors (`APPEARANCE_HOOKS`) and the agent guide. See the [decision](../decisions/custom-appearance.md) |
 | `@kontourai/station-contracts/local-accounts` | Operator-only account projections, sign-in/session actions, one-time recovery results and the Project sharing setting |
 | `@kontourai/station-contracts/notification` | Notification payloads and actions |
 | `@kontourai/station-contracts/orchestration` | Connected-agent/orchestration request and response shapes. A session event window may carry `latestTool: { turnId, name }` independently of its transcript caps, bounded to a 256-byte UTF-8 name and 4096-byte turn ID at the snapshot watermark. `null` means no usable current-turn tool; only an absent field permits older-server event fallback. A new turn clears the fact; steering the same turn preserves it. No arguments or inferred tool-running state are included. `turnStartDetached: true` marks a capped newest page whose oldest event is its oldest turn's `turn.started`, re-added across events the page left out; its `nextCursor` reads that gap first. Absent means the page is contiguous, or the host predates the field. Conversation windows may include `memoryContinuation: { eligible, turnId? }`, the server's current person-continuation decision; an absent field does not authorize a stored-event Continue action. Submission still checks the sender's permission and current state. |
@@ -414,7 +415,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/troubleshoot` | In-app troubleshooting (#4470): the prepare route request and response, the seed's fields and limits (route, error summary, conversation and turn ids, which the host refuses rather than truncates), the `troubleshoot-report.yml` field ids, and a prefilled issue-link builder that returns over-limit fields separately instead of truncating |
 | `@kontourai/station-contracts/task-room-work` | Versioned Task agent request intent, explicit engine/model/options digest identity, authorized request records, list and submission outcomes. Requester IDs are Task-scoped display pseudonyms; execution references do not grant Session access or prove completion |
 | `@kontourai/station-contracts/task-memory` | Task memory (#4003): the Task summary revision and keyed record shapes, limits, default importance, the stateless write check (`checkTaskRecordWrite`, `taskSummaryRefusal`), refusal wording, the person's views, `taskAwaitsAnswer` for the Tasks list's `openQuestionCount`, and the Learning shapes (`TaskLearningView`, candidates, promotion and dismissal input, limits) for a done Task's promotion candidates. Every bound is a refusal |
-| `@kontourai/station-contracts/task-review` | Task review thread, event, evidence and capture shapes; person and caller-bound station-control DTOs; strict boundary parsing, append-transition checks, derived views/counts, quote relocation and freshness. [Contract source](../../packages/contracts/src/task-review.ts) and [pure contract tests](../../packages/contracts/src/__tests__/task-review.test.ts). Runtime integration and evidence belong to the Task review API and SDK references |
+| `@kontourai/station-contracts/task-review` | Task review thread, event, evidence, capture and independent code-review checkout projections; person and caller-bound station-control DTOs; strict boundary parsing, append-transition checks, derived views/counts, quote relocation and freshness. Code-review request identity retains Project and Task incarnations. [Contract source](../../packages/contracts/src/task-review.ts) and [pure contract tests](../../packages/contracts/src/__tests__/task-review.test.ts). Runtime integration and evidence belong to the Task review API and SDK references |
 | `@kontourai/station-contracts/chat-app` | Discord/Slack chips sharing status action shapes, principal links and explicit legacy import provenance, Project/conversation channel bindings, approval-correlated delivery attempts, per-app kill switches, hashed two-step link-code records and confirmation requests; [source](../../packages/contracts/src/chat-app.ts), [boundary tests](../../packages/contracts/src/__tests__/chat-app.test.ts) |
 | `@kontourai/station-contracts/integration-status` | Per-connection actions for GitHub, Discord, Slack, webhooks, Linear and Jira. Each action requires a `computedBy` probe ID, `works`, `unverified`, `not-configured`, `waiting-on-provider`, `unsupported` or `failed` state, and a diagnostic/upstream reason; [source](../../packages/contracts/src/integration-status.ts), [boundary tests](../../packages/contracts/src/__tests__/integration-status.test.ts) |
 | `@kontourai/station-contracts/task-write-back` | Bounded Task-bound outbound attempts, targets, initiators, outcomes and retry chains; [source](../../packages/contracts/src/task-write-back.ts), [store tests](../../src-server/services/orchestration/__tests__/task-write-back-store.test.ts) |
@@ -1157,8 +1158,9 @@ including private constants and newly added files. Known out-of-scope constants
 are explicitly allowed by file, name and value: directory/command grants and
 Station Control containment are caller authority, Flow unreachable-gate claims
 are evidence governance, the ACP `acp.session-rewound`,
-`acp.session-rewound-late` and `acp.agent-projection-unapplied` runtime
-warnings mark a session that kept running, and person/native-title control codes do not represent
+`acp.session-rewound-late`, `acp.agent-projection-unapplied` and
+`acp.session-started-fresh` runtime warnings mark a session that kept
+running, and person/native-title control codes do not represent
 turn execution or session startup. Class-field exclusions separately name application
 configuration, storage, policy, and non-provider lifecycle failures. The guard refuses
 a new unclassified constant or class-field code. Object-literal API/validation codes
@@ -2041,6 +2043,18 @@ Work-chat listings expose only currently readable canonical IDs and revisions.
 owner. See the real-store relationship and mounted-route tests for the local
 persistence/transport boundary; these do not qualify production composition.
 
+### Scheduled check-backs
+
+`OrchestrationSessionSummary.nextWakeUpAt` is the earliest armed check-back
+in that conversation, as an ISO timestamp. Approval proposals are excluded.
+The field is absent when no check-back is pending, and on older hosts. It is a
+display fact; it grants no send or execution permission.
+
+Home work rows carry this field too. Its description is part of the canonical
+Home-role projection record. A grant that predates the widened field list no
+longer covers that projection; the built-in Home remains the fallback until
+the grant is approved again.
+
 ### Finish time and engines run
 
 `OrchestrationSessionSummary.lifecycleChangedAt` is when the event that
@@ -2545,6 +2559,29 @@ truncates. `projectRoomChannelNameProblem` and `projectRoomChannelTopicProblem`
 name the reason (`empty`, `too_long`, `format`) so a client can explain it
 inline. `parseProjectRoomChannelCreateInput`, `parseProjectRoomChannelUpdateInput`
 (`topic: null` clears) and `parseProjectRoomChannelList` are the wire parsers.
+
+Messages can carry files, react and be edited or deleted (#4796, #4797,
+#4812). `ProjectRoomAttachment` is the Task room's `TaskRoomAttachment`, with its
+count and size limits, and no file named twice (`parseProjectRoomAttachments`);
+a message with files may
+have empty text. `ProjectRoomMessage` adds three projected fields that are never
+stored on the message itself: `editedAt` (the text is the latest edit's),
+`deletedAt` (a tombstone: empty text, no files or reactions) and `reactions`
+(`ProjectRoomReaction`: an emoji and its actors, in first-reacted order).
+`parseProjectRoomMessage` refuses a tombstone that still carries content. The
+inputs are `ProjectRoomReactionInput` (`{ emoji, reacted }`, a set state, so a
+repeat changes nothing), `ProjectRoomEditInput` and `ProjectRoomDeleteInput`, with
+their `parse…` functions. `PROJECT_ROOM_FORBIDDEN_CODE`
+(`project_room_forbidden`, a `permission_denied` failure) is the refusal of an
+edit or delete by anyone but the message's person author.
+`PROJECT_ROOM_FILES_UNAVAILABLE_CODE` (`project_room_files_unavailable`, an
+`unavailable` failure a later retry can clear) is the 503 refusal of a new
+attachment while the room's file store cannot read every file record.
+`PROJECT_ROOM_LIMITS` bounds reactions
+(`reactionEmojiPerMessage` 20, `reactionsPerMessage` 100, `reactionEmojiBytes`
+32) and revisions (`revisionsPerMessage` 50). `projectRoomReactionEmojiProblem`
+accepts exactly one emoji: a pictograph with optional skin tone or tag
+sequence, joined by ZWJ to more, a flag pair or a keycap.
 
 See [Room HTTP operations](api.md#shared-project-room) and the
 [SDK](sdk.md#shared-project-room).
