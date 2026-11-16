@@ -1232,24 +1232,47 @@ export class ProjectRoomStore {
   }
   /**
    * The room's newest `limit` Agent requests and its newest `working`
-   * unsettled ones (reserved or started), newest first (#4800). A request
-   * still working is never pushed out by newer settled ones. What a room
-   * reader sees of each is its lifecycle, never its Session.
+   * requests still working, newest first (#4800). Still working means
+   * unsettled (reserved or started) and not among the ids `failed` reports:
+   * a failed request never takes the place of one that is running, and newer
+   * settled requests never push one out. What a room reader sees of each is
+   * its lifecycle, never its Session.
    */
   recentRequests(
     roomId: string,
     limit: number,
     working: number,
+    failed: (requestIds: readonly string[]) => ReadonlySet<string>,
   ): ProjectRoomAgentRequest[] {
-    return this.db
-      .prepare(
-        `SELECT * FROM project_room_requests WHERE room_id=? AND (
-          rowid IN (SELECT rowid FROM project_room_requests WHERE room_id=? ORDER BY rowid DESC LIMIT ?)
-          OR rowid IN (SELECT rowid FROM project_room_requests WHERE room_id=? AND json_extract(record, '$.state') IN ('reserved', 'started') ORDER BY rowid DESC LIMIT ?)
-        ) ORDER BY rowid DESC`,
-      )
-      .all(roomId, roomId, limit, roomId, working)
-      .map((row) => this.storedRequest(row));
+    return this.transaction(() => {
+      const unsettled = this.db.prepare(
+        `SELECT rowid AS position, request_id FROM project_room_requests WHERE room_id=? AND rowid<? AND json_extract(record, '$.state') IN ('reserved', 'started') ORDER BY rowid DESC LIMIT ?`,
+      );
+      const running: number[] = [];
+      // Newest first, a page at a time, until enough are known to be running
+      // (a room holds at most LIMITS.requestsPerRoom requests).
+      for (let before = Number.MAX_SAFE_INTEGER; running.length < working; ) {
+        const page = unsettled.all(roomId, before, 100) as Array<{
+          position: number;
+          request_id: string;
+        }>;
+        const refused = failed(page.map((row) => row.request_id));
+        for (const row of page)
+          if (running.length < working && !refused.has(row.request_id))
+            running.push(row.position);
+        if (page.length < 100) break;
+        before = page[page.length - 1]!.position;
+      }
+      return this.db
+        .prepare(
+          `SELECT * FROM project_room_requests WHERE room_id=? AND (
+            rowid IN (SELECT rowid FROM project_room_requests WHERE room_id=? ORDER BY rowid DESC LIMIT ?)
+            OR rowid IN (SELECT value FROM json_each(?))
+          ) ORDER BY rowid DESC`,
+        )
+        .all(roomId, roomId, limit, JSON.stringify(running))
+        .map((row) => this.storedRequest(row));
+    }, true);
   }
   /**
    * Whether a standing message after `after` names `actorId` in its

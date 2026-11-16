@@ -11,6 +11,7 @@ import {
 } from '@kontourai/station-contracts/project-room';
 import {
   PROJECT_ROOM_LIVE_AGENT_REQUESTS,
+  PROJECT_ROOM_LIVE_WORKING_REQUESTS,
   PROJECT_ROOM_TYPING_TTL_MS,
   type ProjectRoomLiveFrame,
   parseProjectRoomBrowserView,
@@ -33,6 +34,7 @@ import {
   ProjectMembershipRefusal,
   ProjectMembershipStore,
 } from '../../services/projects/project-membership-store.js';
+import { createProjectRoomAgentRuntime } from '../../services/projects/project-room-agent-module.js';
 import {
   type ProjectRoomAccessPort,
   type ProjectRoomMentionEvent,
@@ -49,6 +51,7 @@ import {
   RoomAttachments,
 } from '../../services/projects/task-room-attachments.js';
 import { projectRoomVersionSource } from '../../services/read-markers/room-version-sources.js';
+import { projectRoomLiveResponse } from './project-room-live.js';
 import { createProjectRoomRoutes } from './project-room-routes.js';
 
 const owner = humanPrincipal('deployment', 'alice', 'Alice');
@@ -2604,6 +2607,97 @@ test('live (#4800): a request still working is carried however many newer reques
   } finally {
     await stream.cancel();
   }
+});
+
+test('live (#4800): failed preparations never crowd a request still working out of the frame', async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  let unavailable = false;
+  const agents = createProjectRoomAgentRuntime(h.home, h.runtime.store, {
+    async prepare() {
+      if (unavailable) throw new Error('unavailable');
+      return { label: 'Scout' };
+    },
+    async launch() {},
+    async answer() {
+      return null;
+    },
+    async cancel() {},
+  });
+  cleanup.push(() => agents.close());
+  const authority = {
+    scope: h.scope,
+    requester: a.actor,
+    executionRoot: h.home,
+    assertCurrent: () => {},
+  };
+  const first = await agents.module.request(authority, {
+    intentId: randomUUID(),
+    agentId: 'scout',
+    text: 'really working',
+  });
+  expect(first.state).toBe('started');
+  expect(first.failure).toBeUndefined();
+  unavailable = true;
+  // As many failed preparations as the frame keeps working requests: each
+  // stays reserved with a recorded failure.
+  expect(PROJECT_ROOM_LIVE_WORKING_REQUESTS).toBe(50);
+  for (let index = 0; index < PROJECT_ROOM_LIVE_WORKING_REQUESTS; index++) {
+    const failed = await agents.module.request(authority, {
+      intentId: randomUUID(),
+      agentId: 'scout',
+      text: `failed preparation ${index}`,
+    });
+    expect(failed.state).toBe('reserved');
+    expect(failed.failure).toBe('agent_unavailable');
+  }
+  const app = new Hono();
+  app.get('/api/projects/:slug/rooms/live', (c) =>
+    projectRoomLiveResponse(c, h.service, (ids) => agents.module.failures(ids)),
+  );
+  const stream = liveReader(
+    await app.request(
+      `/api/projects/example/rooms/live?channel=${a.roomId}&client=${randomUUID()}`,
+      { headers: { authorization: 'Bearer bob-session' } },
+    ),
+  );
+  try {
+    await stream.until('subscribed');
+    const frame = await stream.until('agents');
+    const working = frame.requests.find(
+      (request) => request.requestId === first.requestId,
+    );
+    expect(working?.state).toBe('started');
+    expect(working?.failure).toBeUndefined();
+  } finally {
+    await stream.cancel();
+  }
+});
+
+test('live (#4800): working requests are found past more failed ones than one page of the selection holds', async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  const reserve = (text: string) =>
+    h.runtime.store.reserveRequest(
+      h.scope,
+      a.actor,
+      { intentId: randomUUID(), agentId: 'scout', text },
+      () => {},
+    );
+  const running = reserve('running');
+  h.runtime.store.markStarted(h.scope, running.requestId, () => {});
+  // 150 newer unsettled requests, all failed: more than one page of 100.
+  const failed = new Set(
+    Array.from({ length: 150 }, (_, i) => reserve(`failed ${i}`).requestId),
+  );
+  const requests = h.service.recentRequests(
+    a.roomId,
+    PROJECT_ROOM_LIVE_AGENT_REQUESTS,
+    PROJECT_ROOM_LIVE_WORKING_REQUESTS,
+    (ids) => new Set(ids.filter((id) => failed.has(id))),
+  );
+  expect(requests).toHaveLength(PROJECT_ROOM_LIVE_AGENT_REQUESTS + 1);
+  expect(requests.at(-1)?.requestId).toBe(running.requestId);
 });
 
 test('mentions (#4799): a message names a member by id; only that person is told, once, and an edit tells only someone newly named', async () => {

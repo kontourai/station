@@ -155,10 +155,13 @@ export async function projectRoomLiveResponse(
       await write({ kind: 'revoked', key: sub.key });
     };
     const agents = (roomId: string) => {
+      // A request with a recorded failure is not working, so it never
+      // takes a place kept for one that is.
       const requests = service.recentRequests(
         roomId,
         PROJECT_ROOM_LIVE_AGENT_REQUESTS,
         PROJECT_ROOM_LIVE_WORKING_REQUESTS,
+        (ids) => new Set(failures?.(ids).keys() ?? []),
       );
       const failed = failures?.(requests.map((r) => r.requestId));
       return requests.map((request): ProjectRoomAgentActivity => {

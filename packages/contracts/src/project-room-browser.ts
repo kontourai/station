@@ -301,9 +301,9 @@ export type ProjectRoomAgentActivity = Pick<
 /** The newest requests a live frame carries, whatever their state. */
 export const PROJECT_ROOM_LIVE_AGENT_REQUESTS = 20;
 /**
- * The unsettled (reserved or started) requests a live frame also carries,
- * newest first, however many newer requests have settled. More than this
- * still shows the room as working.
+ * The requests still working (reserved or started, with no recorded failure)
+ * a live frame also carries, newest first, however many newer requests have
+ * settled or failed. With more than this working, the oldest are left out.
  */
 export const PROJECT_ROOM_LIVE_WORKING_REQUESTS = 50;
 /** Rooms one live connection may carry (#4798): every channel a Project lists. */
