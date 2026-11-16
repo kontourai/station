@@ -28,9 +28,6 @@
     "src-ui/src/components/attention/RequestInspectionDialog.tsx": {
       "jargon:receipt": 1
     },
-    "src-ui/src/components/badges/AchievementsBadge.tsx": {
-      "emoji": 5
-    },
     "src-ui/src/components/chat-dock/AgentScheduleNotes.tsx": {
       "jargon:authority": 1
     },
@@ -126,17 +123,14 @@
       "em-dash": 2
     },
     "src-ui/src/components/monitoring/FleetRoutingReceipts.tsx": {
-      "em-dash": 8,
       "jargon:receipt": 3
     },
     "src-ui/src/components/monitoring/InsightsDashboard.tsx": {
-      "issue-ref": 2,
       "em-dash": 1
     },
     "src-ui/src/components/monitoring/PersonalInsights.tsx": {
       "jargon:receipt": 9,
-      "jargon:enrolled": 4,
-      "jargon:canonical": 1
+      "jargon:enrolled": 2
     },
     "src-ui/src/components/monitoring/event-entry/EventEntryHeader.tsx": {
       "ascii-ellipsis": 2
@@ -156,9 +150,6 @@
     "src-ui/src/components/registry/RegistryCatalog.tsx": {
       "ascii-ellipsis": 1
     },
-    "src-ui/src/components/registry/registryCatalogModel.ts": {
-      "jargon:projection": 1
-    },
     "src-ui/src/components/report-problem/ReportProblemDialog.tsx": {
       "em-dash": 1
     },
@@ -169,18 +160,8 @@
     "src-ui/src/components/room/roomEmoji.ts": {
       "filler": 3
     },
-    "src-ui/src/components/scheduler/CronEditor.tsx": {
-      "ascii-ellipsis": 1
-    },
-    "src-ui/src/components/scheduler/JobDetail.tsx": {
-      "jargon:authority": 1,
-      "jargon:receipt": 1
-    },
     "src-ui/src/components/scheduler/JobFormModal.tsx": {
       "jargon:binding": 2
-    },
-    "src-ui/src/components/scheduler/schedulerAgentOptions.ts": {
-      "em-dash": 1
     },
     "src-ui/src/components/search/ExactMessageInspector.tsx": {
       "jargon:authority": 1
@@ -204,12 +185,10 @@
       "em-dash": 1
     },
     "src-ui/src/components/trust/TrustPanel.tsx": {
-      "em-dash": 1,
-      "jargon:projection": 1
+      "em-dash": 1
     },
     "src-ui/src/components/usage-stats/UsageRollupPanel.tsx": {
-      "jargon:receipt": 7,
-      "jargon:legacy": 1
+      "jargon:receipt": 7
     },
     "src-ui/src/components/voice/VoiceOrb.tsx": {
       "em-dash": 1
@@ -356,21 +335,14 @@
     "src-ui/src/views/RegistryView.tsx": {
       "em-dash": 1
     },
-    "src-ui/src/views/ScheduleView.tsx": {
-      "jargon:receipt": 2,
-      "jargon:durable": 1
-    },
     "src-ui/src/views/SettingsView.tsx": {
       "em-dash": 2
     },
     "src-ui/src/views/SkillsView.tsx": {
-      "em-dash": 2,
-      "ascii-ellipsis": 1
+      "em-dash": 2
     },
     "src-ui/src/views/TaskWorkspaceView.tsx": {
       "jargon:binding": 1,
-      "em-dash": 1,
-      "jargon:authority": 5,
       "jargon:receipt": 2
     },
     "src-ui/src/views/account/GuestDeviceOnboarding.tsx": {
@@ -404,25 +376,8 @@
     "src-ui/src/views/connections-hub/computer-rows.ts": {
       "em-dash": 9
     },
-    "src-ui/src/views/developer/CompanionArchivePreparation.tsx": {
-      "jargon:authority": 1,
-      "jargon:receipt": 2,
-      "jargon:reconcile": 2
-    },
-    "src-ui/src/views/developer/CompanionManaged.tsx": {
-      "jargon:authority": 1,
-      "jargon:reconcile": 2,
-      "jargon:custody": 1,
-      "jargon:receipt": 2
-    },
-    "src-ui/src/views/developer/CompanionProductIncidents.tsx": {
-      "jargon:canonical": 1
-    },
     "src-ui/src/views/developer/CompanionProductTrends.tsx": {
       "em-dash": 1
-    },
-    "src-ui/src/views/developer/MemoryTab.tsx": {
-      "jargon:canonical": 1
     },
     "src-ui/src/views/home/blocks/activity-bars.tsx": {
       "em-dash": 1
@@ -454,9 +409,6 @@
     "src-ui/src/views/monitoring/MonitoringActiveFilters.tsx": {
       "ascii-ellipsis": 1
     },
-    "src-ui/src/views/monitoring/MonitoringLogStream.tsx": {
-      "ascii-ellipsis": 1
-    },
     "src-ui/src/views/monitoring/MonitoringSidebar.tsx": {
       "ascii-ellipsis": 1
     },
@@ -481,13 +433,7 @@
       "jargon:authority": 1
     },
     "src-ui/src/views/project-page/ProjectTasksSection.tsx": {
-      "em-dash": 3
-    },
-    "src-ui/src/views/project-settings/AccessSection.tsx": {
-      "jargon:authority": 1
-    },
-    "src-ui/src/views/project-settings/KnowledgeSection.tsx": {
-      "jargon:durable": 1
+      "em-dash": 1
     },
     "src-ui/src/views/project-settings/ProjectKnowledgeSources.tsx": {
       "jargon:legacy": 2,
@@ -497,11 +443,8 @@
       "jargon:binding": 1
     },
     "src-ui/src/views/project-settings/ResourcesSection.tsx": {
-      "em-dash": 3,
-      "jargon:binding": 2
-    },
-    "src-ui/src/views/project-settings/projectAccessErrorText.ts": {
-      "jargon:authority": 1
+      "em-dash": 2,
+      "jargon:binding": 1
     },
     "src-ui/src/views/provider-settings/ProviderConnectionForm.tsx": {
       "em-dash": 3
@@ -517,9 +460,6 @@
     },
     "src-ui/src/views/schedule/ScheduleEmptyState.tsx": {
       "em-dash": 1
-    },
-    "src-ui/src/views/settings/AccountSharingSection.tsx": {
-      "jargon:reconcile": 2
     },
     "src-ui/src/views/settings/AnswerSharesSection.tsx": {
       "em-dash": 3
@@ -542,10 +482,7 @@
       "em-dash": 1
     },
     "src-ui/src/views/settings/PersonalTokens.tsx": {
-      "em-dash": 2
-    },
-    "src-ui/src/views/settings/TelemetryDelivery.tsx": {
-      "jargon:authority": 3
+      "em-dash": 1
     },
     "src-ui/src/views/settings/TelemetryTierSettings.tsx": {
       "em-dash": 3
@@ -556,9 +493,6 @@
     "src-ui/src/views/share/SharedAnswerBoundary.tsx": {
       "em-dash": 1
     },
-    "src-ui/src/views/task-experiences.ts": {
-      "jargon:projection": 1
-    },
     "src-ui/src/views/task-workspace/TaskCapabilityPath.tsx": {
       "jargon:receipt": 2
     },
@@ -566,7 +500,6 @@
       "jargon:receipt": 1
     },
     "src-ui/src/views/task-workspace/TaskTurnReferenceView.tsx": {
-      "jargon:re-anchor": 1,
       "jargon:legacy": 1
     },
     "src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx": {

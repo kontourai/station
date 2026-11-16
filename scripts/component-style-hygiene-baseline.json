@@ -857,7 +857,7 @@
       "legacy-token:--text-xl": 1,
       "legacy-token:--error-fill": 5,
       "legacy-token:--warning-text": 3,
-      "legacy-token:--error-text": 11,
+      "legacy-token:--error-text": 13,
       "legacy-token:--warning-primary": 1,
       "legacy-token:--warning-bg": 1,
       "legacy-token:--shadow-lg": 2,
