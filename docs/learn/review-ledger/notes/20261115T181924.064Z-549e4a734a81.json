@@ -1,0 +1,7 @@
+{
+  "revision": "e3822450d337a642661a7b9f48a863a84bde6d07",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"connections.md's Claude project-instructions paragraph gained managed-file and MDM/server details; machine-relationships.md's claims about relationship ownership and setup routing are unaffected.","inputs":["docs/guides/connections.md"]}
+  ]
+}

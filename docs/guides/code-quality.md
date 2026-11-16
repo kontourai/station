@@ -82,6 +82,9 @@ and ordinary helpers named `describe`; review them before changing code.
 Existing error-level lint rules remain enforced.
 The accessibility ratchet recognizes the `recommended` and `all` group presets;
 an explicit preset takes precedence over the deprecated `recommended` boolean.
+When Biome ends without its `Checked N files` summary, the ratchet fails rather
+than report a clean tree, and names how Biome ended (its exit status or signal)
+with the last 20 lines it wrote.
 
 The hook runs the transfer, static and SDK checks through
 `node scripts/heavy-check-slot.mjs <label> <script>`. Each one first waits for a
