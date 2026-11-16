@@ -25,8 +25,9 @@ alternates browser calls, commentary and other tools.
 
 Project one activity for each exact execution thread, turn and browser session
 from the loaded transcript and current stream. Ordinary tool results and
-approvals retain their original reading order. The card sits with the latest
-browser work and summarizes that session's actions in a compact strip. Turn
+approvals retain their original reading order. The active card has a stable owner at the transcript tail and summarizes that
+session's actions in a compact strip, preserving the canvas, full-screen state
+and focus as later calls and assistant rows arrive. Turn
 liveness comes from the conversation's open turn, not the assistant message's
 streaming flag. Calls with incomplete identity retain their ordinary renderer.
 

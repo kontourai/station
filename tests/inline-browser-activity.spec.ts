@@ -438,8 +438,34 @@ for (const width of [390, 1440]) {
       );
       const activity = page.locator('.inline-browser-activity');
       await expect(activity).toContainText('Working');
+      await expectPaintedPage(page);
+      const originalCanvas = await activity.locator('canvas').elementHandle();
+      await activity
+        .getByRole('button', { name: 'Full screen', exact: true })
+        .click();
+      await expect(activity.locator('.live-surface')).toHaveAttribute(
+        'data-immersive',
+        '',
+      );
       await continueBrowserWork(page);
       await expect(activity).toHaveCount(1);
+      await expect(activity.locator('.live-surface')).toHaveAttribute(
+        'data-immersive',
+        '',
+      );
+      expect(
+        await activity
+          .locator('canvas')
+          .evaluate(
+            (current, original) => current === original,
+            originalCanvas,
+          ),
+      ).toBe(true);
+      await page.keyboard.press('Escape');
+      await expect(activity.locator('.live-surface')).not.toHaveAttribute(
+        'data-immersive',
+        '',
+      );
       await expect(
         activity.locator('.inline-browser-activity__chip'),
       ).toHaveCount(3);

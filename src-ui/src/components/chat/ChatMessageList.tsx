@@ -54,7 +54,10 @@ import {
   type ScrollToBottomAnimation,
 } from './animateScrollToBottom';
 import { ChatRunningBackgroundTasks } from './BackgroundTaskActivity';
-import { BrowserTurnActivityProvider } from './BrowserTurnActivity';
+import {
+  BrowserTurnActivityProvider,
+  LiveBrowserTurnActivities,
+} from './BrowserTurnActivity';
 import { ChatEmptyState } from './ChatEmptyState';
 import {
   CHAT_READER_RESTORE_EVENT,
@@ -2332,6 +2335,7 @@ function ChatMessageListComponent({
                     </TranscriptTurnContext.Provider>
                   </div>
                 )}
+                <LiveBrowserTurnActivities />
                 {/* Backgrounded provider tasks outlive the assistant turn: the
                 session is honestly idle, but work continues. Keep a live
                 affordance so the chat never looks done while it isn't. */}

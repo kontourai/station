@@ -83,6 +83,7 @@ vi.mock('../components/icons/UserIcon', () => ({
 import { BrowserActivityContext } from '../components/chat/BrowserActivityContext';
 import { ChatMessageList } from '../components/chat/ChatMessageList';
 import { CHAT_READER_RESTORE_EVENT } from '../components/chat/chatScrollAnchor';
+import { activeChatsStore } from '../contexts/active-chats-store';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 
 test('keeps one live browser activity through persisted rows and settlement', async () => {
@@ -124,12 +125,14 @@ test('keeps one live browser activity through persisted rows and settlement', as
   const messages = [
     {
       role: 'assistant' as const,
+      id: 'browser-message-one',
       content: '',
       turnId: 'turn-a',
       contentParts: [first],
     },
     {
       role: 'assistant' as const,
+      id: 'browser-message-two',
       content: 'Between calls',
       turnId: 'turn-a',
       contentParts: [
@@ -145,20 +148,32 @@ test('keeps one live browser activity through persisted rows and settlement', as
     threadIds: ['browser-thread'],
     conversationKey: 'c',
   };
-  const view = (live: boolean) => (
+  activeChatsStore.initChat('browser-thread', {
+    agentSlug: 'dev-agent',
+    agentName: 'Dev Agent',
+    title: 'Browser',
+  });
+  activeChatsStore.updateChat('browser-thread', {
+    streamingMessage: { role: 'assistant', content: '', contentParts: [first] },
+  });
+  const view = (live: boolean, rows = messages, suppress = true) => (
     <QueryClientProvider client={client}>
       <BrowserActivityContext.Provider value={scope}>
         <ChatMessageList
-          activeSession={{ ...base, orchestrationTurnOpen: live, messages }}
+          activeSession={{
+            ...base,
+            orchestrationTurnOpen: live,
+            messages: rows,
+          }}
           fontSize={14}
           showReasoning={false}
           showToolDetails={false}
-          suppressStreamingRow
+          suppressStreamingRow={suppress}
         />
       </BrowserActivityContext.Provider>
     </QueryClientProvider>
   );
-  const rendered = render(view(true));
+  const rendered = render(view(true, [], false));
   await waitFor(() =>
     expect(
       document
@@ -166,7 +181,10 @@ test('keeps one live browser activity through persisted rows and settlement', as
         ?.getAttribute('data-active'),
     ).toBe('true'),
   );
-  expect(screen.getByText('Between calls')).toBeTruthy();
+  const viewer = document.querySelector('.inline-browser-activity');
+  rendered.rerender(view(true, messages, false));
+  await waitFor(() => expect(screen.getByText('Between calls')).toBeTruthy());
+  expect(document.querySelector('.inline-browser-activity')).toBe(viewer);
   expect(document.querySelectorAll('.inline-browser-activity')).toHaveLength(1);
   rendered.rerender(view(false));
   await waitFor(() =>
@@ -177,6 +195,7 @@ test('keeps one live browser activity through persisted rows and settlement', as
     ).toBe('false'),
   );
   expect(document.querySelectorAll('.inline-browser-activity')).toHaveLength(1);
+  activeChatsStore.removeChat('browser-thread');
   client.clear();
 });
 

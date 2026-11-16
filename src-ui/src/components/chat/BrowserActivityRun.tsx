@@ -2,6 +2,7 @@ import { type ReactNode, useContext } from 'react';
 import { LazyBoundary } from '../LazyBoundary';
 import { useBrowserActivityScope } from './BrowserActivityContext';
 import {
+  browserCallIdentity,
   browserTurnKey,
   useBrowserTurnActivities,
 } from './BrowserTurnActivity';
@@ -58,36 +59,40 @@ export function BrowserActivityRun<P extends ToolCallLike>({
     run.calls.some(({ part }) => !part.toolCallId)
   )
     return <>{rows}</>;
-  const ownedRows = rows.map((row, index) =>
-    group.owners.get(run.calls[index]!.part.toolCallId!) === turn.browserOwner
+  const ownedRows = rows.map((row, index) => {
+    const identity = browserCallIdentity(run.calls[index]!.part);
+    return group.ambiguous ||
+      !identity ||
+      group.owners.get(identity) === turn.browserOwner
       ? row
-      : null,
-  );
-  const last =
+      : null;
+  });
+  if (group.active) return <>{ownedRows}</>;
+  const first =
     group.owner === turn.browserOwner
-      ? run.calls.findIndex(({ part }) => part.toolCallId === group.lastId)
+      ? run.calls.findIndex(
+          ({ part }) => browserCallIdentity(part) === group.firstId,
+        )
       : -1;
-  if (last < 0) return <>{ownedRows}</>;
-  const item = run.calls[last]!;
-  const ownRun = { ...run, calls: [item] };
+  if (first < 0) return <>{ownedRows}</>;
   return (
     <>
-      {ownedRows.slice(0, last)}
+      {ownedRows.slice(0, first + 1)}
       <LazyBoundary
         load={loadBrowserActivityContent}
         componentProps={{
           scope,
           browserSessionId: session ?? null,
-          run: ownRun,
+          run: { type: 'tool-call-run' as const, key: run.key, calls: [] },
           summaryCalls: group.calls,
-          active: group.active,
-          renderRow: () => renderCall(item.part, item.index),
+          active: false,
+          renderRow: () => null,
         }}
-        pending={rows[last]}
-        unavailable={() => rows[last]}
+        pending={null}
+        unavailable={() => null}
         shareAcrossMounts
       />
-      {ownedRows.slice(last + 1)}
+      {ownedRows.slice(first + 1)}
     </>
   );
 }

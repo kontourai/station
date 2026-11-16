@@ -167,7 +167,7 @@ export function InlineBrowserActivity({
         <span>{host}</span>
       )}
       {active ? (
-        <StatusBadge status="Working" tone="info" />
+        <StatusBadge status="Working" tone="active" />
       ) : (
         <span>
           {toolCount} {toolCount === 1 ? 'action' : 'actions'}

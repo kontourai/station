@@ -19,7 +19,10 @@ import {
   BrowserActivityContext,
   BrowserActivityProvider,
 } from '../BrowserActivityContext';
-import { BrowserTurnActivityProvider } from '../BrowserTurnActivity';
+import {
+  BrowserTurnActivityProvider,
+  LiveBrowserTurnActivities,
+} from '../BrowserTurnActivity';
 import { MessageContent } from '../message-bubble/MessageContent';
 import { StreamingMessageView } from '../StreamingMessage';
 import { TranscriptTurnContext } from '../transcript-child-work';
@@ -29,6 +32,7 @@ vi.mock('../../browser-activity/InlineBrowserActivity', () => ({
     browserSessionId,
     active,
     status,
+    toolCount,
     children,
   }: ComponentProps<typeof InlineBrowserActivity>) => (
     <section
@@ -36,6 +40,7 @@ vi.mock('../../browser-activity/InlineBrowserActivity', () => ({
       data-active={String(active)}
     >
       <span>{status}</span>
+      <span>{toolCount} actions</span>
       {children}
     </section>
   ),
@@ -128,6 +133,7 @@ function TestTurn({
       >
         {children}
       </TranscriptTurnContext.Provider>
+      <LiveBrowserTurnActivities />
     </BrowserTurnActivityProvider>
   );
 }
@@ -143,7 +149,7 @@ describe('browser activity in the transcript', () => {
     );
     const card = await screen.findByRole('region', { name: 'Browser tab-a' });
     expect(screen.getByText('open')).toBeTruthy();
-    expect(card.textContent).toContain('click approval');
+    expect(screen.getByText('click approval')).toBeTruthy();
     expect(card.textContent).not.toContain('other');
     expect(screen.getByText('other')).toBeTruthy();
   });
@@ -204,7 +210,7 @@ test('a settled card retains the pending approval and answers its exact request'
   expect(failedRow).toBeTruthy();
   fireEvent.click(failedRow!);
   expect(screen.getByText('The page refused the action.')).toBeTruthy();
-  fireEvent.click(within(card).getByRole('button', { name: 'Allow Once' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Allow Once' }));
   await waitFor(() => expect(approve).toHaveBeenCalledWith(pending, 'once'));
   client.clear();
 });
@@ -327,6 +333,7 @@ test('keeps one activity per turn and browser session across assistant messages'
             />
           </TranscriptTurnContext.Provider>
         ))}
+        <LiveBrowserTurnActivities />
       </BrowserTurnActivityProvider>
     </BrowserActivityContext.Provider>
   );
@@ -345,7 +352,7 @@ test('keeps one activity per turn and browser session across assistant messages'
     screen
       .getAllByRole('region', { name: 'Browser tab-a' })
       .map((card) => card.getAttribute('data-active')),
-  ).toEqual(['true', 'false']);
+  ).toEqual(['false', 'true']);
   expect(screen.getByText('unknown')).toBeTruthy();
   expect(screen.getByText('other')).toBeTruthy();
   rendered.rerender(view(false));
@@ -409,6 +416,7 @@ test('deduplicates stream flush overlap and switches the live source with the ch
           >
             <StreamingMessageView {...props} contentParts={[call]} />
           </TranscriptTurnContext.Provider>
+          <LiveBrowserTurnActivities />
         </BrowserTurnActivityProvider>
       </BrowserActivityContext.Provider>
     );
@@ -433,4 +441,54 @@ test('deduplicates stream flush overlap and switches the live source with the ch
     activeChatsStore.removeChat('flush-a');
     activeChatsStore.removeChat('flush-b');
   }
+});
+
+test('retains distinct terminal events sharing a tool call id', async () => {
+  const first = {
+    ...parts[1]!,
+    needsApproval: false,
+    sourceEventId: 'event-one',
+    output: 'first result',
+  };
+  const second = {
+    ...first,
+    sourceEventId: 'event-two',
+    output: 'second result',
+  };
+  render(
+    <BrowserActivityContext.Provider value={scope}>
+      <TestTurn calls={[first, second]}>
+        <StreamingMessageView
+          {...props}
+          contentParts={[first, second]}
+          renderToolCall={(part) => (
+            <div key={part.sourceEventId}>{String(part.output)}</div>
+          )}
+        />
+      </TestTurn>
+    </BrowserActivityContext.Provider>,
+  );
+  expect(screen.getByText('first result')).toBeTruthy();
+  expect(screen.getByText('second result')).toBeTruthy();
+  const card = await screen.findByRole('region', { name: 'Browser tab-a' });
+  expect(within(card).getByText('2 actions')).toBeTruthy();
+});
+
+test('a terminal result supersedes its open call in the activity count', async () => {
+  const open = { ...parts[1]!, needsApproval: false, toolCallId: 'settling' };
+  const terminal = {
+    ...open,
+    sourceEventId: 'terminal-event',
+    output: 'result',
+  };
+  render(
+    <BrowserActivityContext.Provider value={scope}>
+      <TestTurn calls={[open, terminal]}>
+        <StreamingMessageView {...props} contentParts={[open, terminal]} />
+      </TestTurn>
+    </BrowserActivityContext.Provider>,
+  );
+  const card = await screen.findByRole('region', { name: 'Browser tab-a' });
+  expect(within(card).getByText('1 actions')).toBeTruthy();
+  expect(screen.getAllByText('settling')).toHaveLength(1);
 });

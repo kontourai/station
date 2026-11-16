@@ -6043,8 +6043,14 @@ appearance are registry-applied emulation shared by every viewer and Agent; the
 pane sizes a page it just opened from a narrow stage once and announces changes
 it did not make ([decision](../decisions/browser-viewport-is-shared-fit-is-per-viewer.md)).
 The off-by-default **Inline browser activity** preview places the same browser
-beside its qualified transcript calls. The conversation boundary supplies the
-Station request scope; exact session selection also requires the Project,
+beside its qualified transcript calls. `BrowserTurnActivity.tsx` projects one
+activity per execution thread, turn and browser session from loaded messages
+and the current stream. The active viewer has a stable transcript-tail owner;
+new browser calls update its action strip without remounting the canvas.
+Completed activity becomes a compact historical summary. Distinct terminal
+results retain their source-event identity and ordinary tool/approval controls.
+The conversation boundary supplies the Station request scope; exact session
+selection also requires the Project,
 principal and conversation binding. Inline and floating placements share
 `float-over-chat/BrowserSessionSurface.tsx`, including input, page dialogs and
 navigation. Existing source-visibility arbitration suppresses duplicate viewers.
