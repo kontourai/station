@@ -1,0 +1,15 @@
+{
+  "revision": "05c7686e80786403aee2f2a383f8194e3b7fdbcb",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked this page's claims about the source against the change: it only threads an 'eligible' flag from the session resolver to the Codex adapter's tool-family admission so a start composed as bound holds a no. No claim on this page describes tool-family admission timing; unchanged.","inputs":["src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/design/agent-engine-unification.md","note":"Checked this page's claims about the source against the change: it only threads an 'eligible' flag from the session resolver to the Codex adapter's tool-family admission so a start composed as bound holds a no. No claim on this page describes tool-family admission timing; unchanged.","inputs":["src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/design/agent-interaction-capabilities.md","note":"Checked this page's claims about the source against the change: it only threads an 'eligible' flag from the session resolver to the Codex adapter's tool-family admission so a start composed as bound holds a no. No claim on this page describes tool-family admission timing; unchanged.","inputs":["src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked this page's claims about the source against the change: it only threads an 'eligible' flag from the session resolver to the Codex adapter's tool-family admission so a start composed as bound holds a no. No claim on this page describes tool-family admission timing; unchanged.","inputs":["src-server/services/orchestration/session-agent-resolution.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked this page's claims about the source against the change: it only threads an 'eligible' flag from the session resolver to the Codex adapter's tool-family admission so a start composed as bound holds a no. No claim on this page describes tool-family admission timing; unchanged.","inputs":["src-server/services/orchestration/session-agent-resolution.ts"]}
+  ]
+}

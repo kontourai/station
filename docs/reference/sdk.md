@@ -6352,6 +6352,17 @@ as Station's own sentence (a busy Project, the daily limit, no reviewer, a
 pause), to show as it comes. `writePullRequestFeedback` takes an optional `reviewEachHead`;
 leaving it out keeps what the chat stored.
 
+`@kontourai/station-sdk/pull-request-watch` reads a Task's pull request watch
+(`getTaskPullRequestWatch`), sets the Task's own choice
+(`setTaskPullRequestWatch` with `on`, `off` or `project`) and sets a Project's
+setting (`setProjectPullRequestWatch`). Gate it like pull request feedback, on
+`readPullRequestFeedbackCapability`. The barrel's React hooks wrap them:
+`usePullRequestFeedbackCapability`, `useTaskPullRequestWatchQuery`,
+`useSetTaskPullRequestWatchMutation` and `useSetProjectPullRequestWatchMutation`. The
+[client](../../packages/sdk/src/client/pull-request-watch.ts) calls the
+[Task routes](../../src-server/routes/orchestration/tasks.ts) and the
+[Project route](../../src-server/routes/projects/projects.ts).
+
 ## Files in answers to input requests
 
 `getInputReplyContext(apiBase, reference, options)` from

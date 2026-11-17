@@ -61,6 +61,7 @@ const PUBLIC_QUERY_DOMAINS = [
   'projectTaskRooms',
   'proposedChanges',
   'pullRequests',
+  'pullRequestWatch',
   'reviewEvidence',
   'scheduler',
   'skillExperiences',

@@ -1,0 +1,7 @@
+{
+  "revision": "2fb350a386662f00ce2606cd02e3d08bba3d1fbb",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated MCP bundle carrying the module-map SessionQueryModule Interface edit; no other topic changed.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}

@@ -16,6 +16,13 @@
  *      read reached the Station fixture;
  *   6. the tool's result came back to the model.
  *
+ * The resume case then ends that `app-server`, resumes the thread in a new
+ * one with a newly minted credential (as `CodexAdapter` does), and also
+ * requires: the first request after resume offers just the index again, a
+ * `list_agents` call the model still holds from history does not run, and
+ * reloading the family makes `list_agents` work. Every case mints with the
+ * runtime's own Codex mint (`mintCodexStationMcpHeaderAuth`).
+ *
  * Exit status: 0 when every required case qualifies, 1 when one does not (or
  * the harness itself fails), 3 when no `codex` binary is available (SKIPPED,
  * never a pass). Control cases are reported but do not set the exit status.
@@ -37,7 +44,7 @@ import {
   STATION_CONTROL_MCP_PATH,
 } from '../src-server/routes/mcp/station-control-mcp-route.js';
 import {
-  mintStationControlMcpToken,
+  mintCodexStationMcpHeaderAuth,
   revokeStationControlMcpToken,
 } from '../src-server/runtime/mcp/station-control-mcp-token.js';
 import {
@@ -61,6 +68,8 @@ interface QualificationCase {
   driver: 'exec' | 'app-server';
   /** `cli`: `-c features.<FEATURE>=true` on the spawn; `thread`: inside `thread/start` config. */
   feature: 'off' | 'cli' | 'thread';
+  /** Resume the thread in a new process with a newly minted credential. */
+  resume?: true;
   description: string;
 }
 
@@ -102,6 +111,16 @@ const CASES: QualificationCase[] = [
     feature: 'thread',
     description: `codex app-server, features.${FEATURE}=true inside thread/start config`,
   },
+  {
+    id: 'app-server-resume-fresh-credential',
+    // Station admits a resumed thread to families only when its start had
+    // them, and every resume mints a new credential; this gates that path.
+    required: true,
+    driver: 'app-server',
+    feature: 'thread',
+    resume: true,
+    description: `codex app-server thread loaded a family, then thread/resume in a new process with a new credential and features.${FEATURE}=true in its config`,
+  },
 ];
 
 const fixtureModelCatalog = {
@@ -127,6 +146,8 @@ const fixtureModelCatalog = {
 
 type Json = Record<string, unknown>;
 interface McpObservation {
+  /** 1 before a resume, 2 after it. */
+  phase: 1 | 2;
   method: string;
   tool?: string;
   arguments?: unknown;
@@ -134,6 +155,10 @@ interface McpObservation {
   responseText: string;
 }
 interface Observations {
+  /** 2 once the thread has been resumed in a new process. */
+  phase: 1 | 2;
+  /** The phase of each model request, by index. */
+  requestPhases: (1 | 2)[];
   mcp: McpObservation[];
   rest: string[];
   /** Station-namespace tool names offered in each model request, in order. */
@@ -217,7 +242,36 @@ function outputText(output: unknown): string {
 }
 
 /**
- * The scripted model. It never calls a tool Codex did not offer it, so a
+ * The scripted model after a resume. It plays a model that still holds the
+ * family tool's name from the thread's history: it calls `list_agents` once
+ * whether or not Codex offers it, then reloads the family and calls it again.
+ */
+function resumedModel(
+  offered: string[],
+  outputs: Map<string, string>,
+  call: (callId: string, name: string, args: Json) => Json,
+  sequence: number,
+): Json {
+  if (!outputs.has('call_held')) return call('call_held', FAMILY_TOOL, {});
+  if (!outputs.has('call_reload'))
+    return offered.includes('load_tool_family')
+      ? call('call_reload', 'load_tool_family', { family: FAMILY })
+      : message('The disclosure index was not offered after resume.', sequence);
+  if (outputs.has('call_family_2'))
+    return message('Family tool result received after resume.', sequence);
+  if (offered.includes(FAMILY_TOOL))
+    return call('call_family_2', FAMILY_TOOL, {});
+  if (!outputs.has('call_poll_r2') && offered.includes('list_tool_families'))
+    return call(
+      outputs.has('call_poll_r1') ? 'call_poll_r2' : 'call_poll_r1',
+      'list_tool_families',
+      {},
+    );
+  return message(`${FAMILY_TOOL} was never offered after reloading.`, sequence);
+}
+
+/**
+ * The scripted model. Before a resume it never calls a tool Codex did not offer it, so a
  * family tool call proves Codex exposed the tool to the model.
  */
 function startModelFixture(observed: Observations): Promise<Server> {
@@ -234,6 +288,7 @@ function startModelFixture(observed: Observations): Promise<Server> {
     const namespace = stationNamespace(body);
     const offered = (namespace?.tools ?? []).map((tool) => String(tool.name));
     observed.offered.push(offered);
+    observed.requestPhases.push(observed.phase);
     const outputs = new Map<string, string>();
     for (const entry of (body.input as Json[]) ?? [])
       if (entry.type === 'function_call_output')
@@ -248,7 +303,9 @@ function startModelFixture(observed: Observations): Promise<Server> {
       arguments: JSON.stringify(args),
     });
     let item: Json;
-    if (!outputs.has('call_load')) {
+    if (observed.phase === 2) {
+      item = resumedModel(offered, outputs, call, sequence);
+    } else if (!outputs.has('call_load')) {
       item = offered.includes('load_tool_family')
         ? call('call_load', 'load_tool_family', { family: FAMILY })
         : message('Station disclosure index was not offered.', sequence);
@@ -296,6 +353,7 @@ async function startStation(observed: Observations) {
     if (!c.req.path.startsWith('/mcp/')) return;
     const params = rpc?.params as Json | undefined;
     observed.mcp.push({
+      phase: observed.phase,
       method: rpc ? String(rpc.method) : c.req.method,
       ...(rpc?.method === 'tools/call'
         ? { tool: String(params?.name), arguments: params?.arguments }
@@ -308,7 +366,9 @@ async function startStation(observed: Observations) {
     });
   });
   app.get('/agents', (c) => {
-    observed.rest.push('GET /agents');
+    observed.rest.push(
+      observed.phase === 2 ? 'GET /agents (resumed)' : 'GET /agents',
+    );
     return c.json({ success: true, data: [{ slug: AGENT_MARKER }] });
   });
   const server = serve({ fetch: app.fetch, hostname: '127.0.0.1', port: 0 });
@@ -318,7 +378,6 @@ async function startStation(observed: Observations) {
     '/',
     createStationControlMcpRoutes({
       port,
-      progressiveToolsEnabled: () => true,
       resolveCallerRecord: () => ({
         principal: { id: 'person:qualification', source: 'session-owner' },
         localProjectId: 'qualification',
@@ -390,6 +449,7 @@ function startEngine(
 }
 
 const PROMPT = `Load the ${FAMILY} Station tool family, then list agents.`;
+const RESUME_PROMPT = 'List agents again.';
 
 async function runExec(
   codex: string,
@@ -428,34 +488,22 @@ async function runExec(
   }
 }
 
-/**
- * Station's own Codex path: `codex app-server`, with the station-control
- * server delivered as dotted keys inside `thread/start`'s private config
- * (`codex-mcp-passthrough.ts`), never on argv.
- */
-async function runAppServer(
+/** One `codex app-server` process and its JSON-RPC conversation. */
+function openAppServer(
   codex: string,
-  common: string[],
-  mcp: { url: string; token: string },
-  testCase: QualificationCase,
+  args: string[],
   env: NodeJS.ProcessEnv,
   cwd: string,
-): Promise<string> {
+) {
   const { child, exited, stop } = startEngine(
     codex,
-    [
-      'app-server',
-      ...common,
-      ...(testCase.feature === 'cli' ? ['-c', `features.${FEATURE}=true`] : []),
-    ],
+    ['app-server', ...args],
     'codex app-server',
     { cwd, env, stdin: true },
   );
   const pending = new Map<number, (message: Json) => void>();
-  let turnCompleted: (() => void) | undefined;
-  const completed = new Promise<void>((resolve) => {
-    turnCompleted = resolve;
-  });
+  const turnWaiters: (() => void)[] = [];
+  let completedTurns = 0;
   const serverRequests: string[] = [];
   let buffer = '';
   child.stdout?.on('data', (chunk: Buffer) => {
@@ -484,7 +532,8 @@ async function runAppServer(
           `${JSON.stringify({ jsonrpc: '2.0', id: message.id, error: { code: -32601, message: 'qualification answers no requests' } })}\n`,
         );
       } else if (message.method === 'turn/completed') {
-        turnCompleted?.();
+        completedTurns += 1;
+        turnWaiters.shift()?.();
       }
     }
   });
@@ -508,7 +557,7 @@ async function runAppServer(
         throw new Error(`engine ended early (${exit})`);
       }),
     ]);
-  try {
+  const initialize = async () => {
     await deadline(
       send('initialize', {
         clientInfo: {
@@ -522,43 +571,239 @@ async function runAppServer(
     child.stdin?.write(
       `${JSON.stringify({ jsonrpc: '2.0', method: 'initialized' })}\n`,
     );
-    const started = await deadline(
-      send('thread/start', {
+  };
+  /** Starts a turn and waits for it to complete. */
+  const turn = async (threadId: unknown, text: string) => {
+    const done = new Promise<void>((resolve) => turnWaiters.push(resolve));
+    await deadline(
+      send('turn/start', {
+        threadId,
+        input: [{ type: 'text', text, text_elements: [] }],
+      }),
+    );
+    await deadline(done);
+  };
+  const close = async () => {
+    child.stdin?.end();
+    await stop();
+  };
+  const summary = () =>
+    `codex app-server: ${completedTurns} turn(s) completed${serverRequests.length ? `; refused server requests ${serverRequests.join(', ')}` : ''}`;
+  return { send, deadline, initialize, turn, close, summary };
+}
+
+/** Station's private `thread/start`/`thread/resume` config for station-control. */
+function stationThreadConfig(
+  mcp: { url: string; token: string },
+  feature: QualificationCase['feature'],
+): Json {
+  return {
+    'mcp_servers.station-control.url': mcp.url,
+    'mcp_servers.station-control.http_headers': {
+      Authorization: `Bearer ${mcp.token}`,
+    },
+    ...(feature === 'thread' ? { [`features.${FEATURE}`]: true } : {}),
+  };
+}
+
+/**
+ * Station's own Codex path: `codex app-server`, with the station-control
+ * server delivered as dotted keys inside `thread/start`'s private config
+ * (`codex-mcp-passthrough.ts`), never on argv.
+ */
+async function runAppServer(
+  codex: string,
+  common: string[],
+  mcp: { url: string; token: string },
+  testCase: QualificationCase,
+  env: NodeJS.ProcessEnv,
+  cwd: string,
+): Promise<string> {
+  const engine = openAppServer(
+    codex,
+    [
+      ...common,
+      ...(testCase.feature === 'cli' ? ['-c', `features.${FEATURE}=true`] : []),
+    ],
+    env,
+    cwd,
+  );
+  try {
+    await engine.initialize();
+    const started = await engine.deadline(
+      engine.send('thread/start', {
         cwd,
         model: 'disclosure-fixture',
         approvalPolicy: 'never',
         sandbox: 'read-only',
         experimentalRawEvents: false,
         persistExtendedHistory: false,
-        config: {
-          'mcp_servers.station-control.url': mcp.url,
-          'mcp_servers.station-control.http_headers': {
-            Authorization: `Bearer ${mcp.token}`,
-          },
-          ...(testCase.feature === 'thread'
-            ? { [`features.${FEATURE}`]: true }
-            : {}),
-        },
+        config: stationThreadConfig(mcp, testCase.feature),
       }),
     );
     const threadId = (started.thread as Json | undefined)?.id;
-    await deadline(
-      send('turn/start', {
-        threadId,
-        input: [{ type: 'text', text: PROMPT, text_elements: [] }],
-      }),
-    );
-    await deadline(completed);
-    return `codex app-server: turn completed${serverRequests.length ? `; refused server requests ${serverRequests.join(', ')}` : ''}`;
+    await engine.turn(threadId, PROMPT);
+    return engine.summary();
   } catch (error) {
     return `codex app-server: ${(error as Error).message}`;
   } finally {
-    child.stdin?.end();
-    await stop();
+    await engine.close();
   }
 }
 
-function judge(observed: Observations): CaseResult['checks'] {
+/**
+ * Station's resume path: the thread started with disclosure in one
+ * `codex app-server`, which then ends; a new process resumes it with a
+ * freshly minted credential (as `CodexAdapter` does on every resume). The
+ * new credential starts at the index, so the second turn shows what a model
+ * holding the old family names meets.
+ */
+async function runAppServerResume(
+  codex: string,
+  common: string[],
+  mcp: { url: string; token: string },
+  testCase: QualificationCase,
+  env: NodeJS.ProcessEnv,
+  cwd: string,
+  observed: Observations,
+  remint: () => string,
+): Promise<string> {
+  const first = openAppServer(codex, common, env, cwd);
+  let threadId: unknown;
+  const outcomes: string[] = [];
+  try {
+    await first.initialize();
+    const started = await first.deadline(
+      first.send('thread/start', {
+        cwd,
+        model: 'disclosure-fixture',
+        approvalPolicy: 'never',
+        sandbox: 'read-only',
+        experimentalRawEvents: false,
+        persistExtendedHistory: false,
+        config: stationThreadConfig(mcp, testCase.feature),
+      }),
+    );
+    threadId = (started.thread as Json | undefined)?.id;
+    await first.turn(threadId, PROMPT);
+    outcomes.push(`start ${first.summary()}`);
+  } catch (error) {
+    return `codex app-server (start): ${(error as Error).message}`;
+  } finally {
+    await first.close();
+  }
+  observed.phase = 2;
+  const resumed = openAppServer(codex, common, env, cwd);
+  try {
+    await resumed.initialize();
+    await resumed.deadline(
+      resumed.send('thread/resume', {
+        threadId,
+        cwd,
+        model: 'disclosure-fixture',
+        approvalPolicy: 'never',
+        sandbox: 'read-only',
+        persistExtendedHistory: false,
+        config: stationThreadConfig(
+          { url: mcp.url, token: remint() },
+          testCase.feature,
+        ),
+      }),
+    );
+    await resumed.turn(threadId, RESUME_PROMPT);
+    outcomes.push(`resume ${resumed.summary()}`);
+    return outcomes.join('; ');
+  } catch (error) {
+    return `${outcomes.join('; ')}; codex app-server (resume): ${(error as Error).message}`;
+  } finally {
+    await resumed.close();
+  }
+}
+
+/** What one phase of a case observed. */
+function phaseView(observed: Observations, phase: 1 | 2): Observations {
+  const requests = observed.requestPhases.flatMap((value, index) =>
+    value === phase ? [index] : [],
+  );
+  return {
+    ...observed,
+    mcp: observed.mcp.filter((entry) => entry.phase === phase),
+    rest: observed.rest.filter((entry) =>
+      phase === 2 ? entry.endsWith('(resumed)') : !entry.endsWith('(resumed)'),
+    ),
+    offered: requests.map((index) => observed.offered[index] ?? []),
+    outputs: requests.map((index) => observed.outputs[index] ?? new Map()),
+    requestPhases: requests.map(() => phase),
+  };
+}
+
+/** After a resume with a fresh credential: index first, held name refused, reload works. */
+function judgeResume(all: Observations): CaseResult['checks'] {
+  const observed = phaseView(all, 2);
+  const first = observed.offered[0] ?? [];
+  const output = (id: string) =>
+    observed.outputs
+      .map((outputs) => outputs.get(id))
+      .find((value) => value !== undefined);
+  const held = output('call_held');
+  const reloadIndex = observed.mcp.findIndex(
+    (entry) =>
+      entry.method === 'tools/call' && entry.tool === 'load_tool_family',
+  );
+  const heldAtRoute = observed.mcp
+    .slice(0, reloadIndex < 0 ? undefined : reloadIndex)
+    .filter(
+      (entry) => entry.method === 'tools/call' && entry.tool === FAMILY_TOOL,
+    );
+  const reload = observed.mcp[reloadIndex];
+  const relisted =
+    reloadIndex >= 0 &&
+    observed.mcp
+      .slice(reloadIndex + 1)
+      .some((entry) => entry.method === 'tools/list');
+  const again = output('call_family_2');
+  return [
+    {
+      name: 'resumed thread starts at the disclosure index',
+      evidence: 'EXECUTED',
+      passed:
+        first.includes('load_tool_family') && !first.includes(FAMILY_TOOL),
+      detail: `first request after resume offered [${first.join(', ')}]`,
+    },
+    {
+      name: `a held ${FAMILY_TOOL} call is refused until the family is reloaded`,
+      evidence: 'EXECUTED',
+      // The held call must not have run: its output would carry the agent.
+      passed: held !== undefined && !held.includes(AGENT_MARKER),
+      detail: `${heldAtRoute.length ? `reached the route (HTTP ${heldAtRoute.map((entry) => entry.status).join(', ')})` : 'never reached the route'}; model saw: ${held === undefined ? 'no output' : JSON.stringify(held.slice(0, 200))}`,
+    },
+    {
+      name: 'load_tool_family after resume reached Station and loaded the family',
+      evidence: 'EXECUTED',
+      passed: Boolean(reload?.responseText.includes('\\"loaded\\": true')),
+      detail: reload
+        ? `tools/call load_tool_family -> HTTP ${reload.status}`
+        : 'no load_tool_family call after resume',
+    },
+    {
+      name: 'engine listed tools again after reloading',
+      evidence: 'EXECUTED',
+      passed: relisted,
+      detail: `MCP methods after resume: ${observed.mcp.map((entry) => entry.tool ?? entry.method).join(' > ')}`,
+    },
+    {
+      name: `${FAMILY_TOOL} after reloading ran its REST read and returned to the model`,
+      evidence: 'EXECUTED',
+      passed:
+        Boolean(again?.includes(AGENT_MARKER)) &&
+        observed.rest.includes('GET /agents (resumed)'),
+      detail: `REST after resume: [${observed.rest.join(', ')}]; output ${again === undefined ? 'missing' : again.includes(AGENT_MARKER) ? 'carried the fixture agent' : 'lacked the fixture agent'}`,
+    },
+  ];
+}
+
+function judge(all: Observations): CaseResult['checks'] {
+  const observed = phaseView(all, 1);
   const loadIndex = observed.mcp.findIndex(
     (entry) =>
       entry.method === 'tools/call' && entry.tool === 'load_tool_family',
@@ -629,6 +874,8 @@ async function runCase(
   testCase: QualificationCase,
 ): Promise<CaseResult> {
   const observed: Observations = {
+    phase: 1,
+    requestPhases: [],
     mcp: [],
     rest: [],
     offered: [],
@@ -639,19 +886,17 @@ async function runCase(
   const model = await startModelFixture(observed);
   const station = await startStation(observed);
   const sessionId = `disclosure-qualification-${testCase.id}`;
-  // The runtime's own mint shape for a Codex header credential, with the
-  // per-token disclosure switch that every production mint leaves off.
-  const { token } = mintStationControlMcpToken(
-    sessionId,
-    'http-header-token',
-    undefined,
-    undefined,
-    undefined,
-    'station-control',
-    undefined,
-    () => true,
-    true,
-  );
+  // The runtime's own Codex header mint, as it runs for a Session the
+  // adapter admitted to tool families. A resume calls it again.
+  const mint = () =>
+    mintCodexStationMcpHeaderAuth({
+      port: Number(new URL(station.url).port),
+      sessionId,
+      conversationId: sessionId,
+      serverId: 'station-control',
+      toolFamilies: true,
+    }).token;
+  const token = mint();
   const catalogPath = join(home, 'models.json');
   writeFileSync(catalogPath, JSON.stringify(fixtureModelCatalog));
   const modelPort = (model.address() as AddressInfo).port;
@@ -677,22 +922,35 @@ async function runCase(
   };
   let engineExit: string;
   try {
-    const run = testCase.driver === 'exec' ? runExec : runAppServer;
-    engineExit = await run(
-      codex,
-      common,
-      { url: station.url, token },
-      testCase,
-      env,
-      home,
-    );
+    const mcp = { url: station.url, token };
+    engineExit = testCase.resume
+      ? await runAppServerResume(
+          codex,
+          common,
+          mcp,
+          testCase,
+          env,
+          home,
+          observed,
+          mint,
+        )
+      : await (testCase.driver === 'exec' ? runExec : runAppServer)(
+          codex,
+          common,
+          mcp,
+          testCase,
+          env,
+          home,
+        );
   } finally {
     revokeStationControlMcpToken(sessionId);
     model.close();
     station.server.close();
     rmSync(home, { recursive: true, force: true });
   }
-  const checks = judge(observed);
+  const checks = testCase.resume
+    ? [...judge(observed), ...judgeResume(observed)]
+    : judge(observed);
   return {
     id: testCase.id,
     description: testCase.description,

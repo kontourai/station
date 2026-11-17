@@ -200,6 +200,11 @@ export interface InitializeRuntimeDeps {
   stationInstructionsEnabled?: () => boolean;
   /** `codex-bound-browser-device-tools` Feature Preview, read per Session start. */
   codexBoundToolsEnabled?: () => boolean;
+  /** #2376 slice 3: `CodexAdapter.toolFamiliesAdmitted`, read per Session start. */
+  codexToolFamiliesAdmitted?: (
+    threadId: string,
+    eligible?: boolean,
+  ) => Promise<boolean>;
   /**
    * #2377 slice D: the station-control caller records for Station's own
    * engine, read lazily per call (`StationAgentAdapter`).
@@ -663,6 +668,7 @@ export async function initializeRuntime(
     resolveProjectToolServers: deps.resolveProjectToolServers,
     stationInstructionsEnabled: deps.stationInstructionsEnabled,
     codexBoundToolsEnabled: deps.codexBoundToolsEnabled,
+    codexToolFamiliesAdmitted: deps.codexToolFamiliesAdmitted,
     loadAgentSpec: loadSessionAgentSpec,
     resolveToolServer: (id) =>
       configLoader.loadIntegration(id).catch(() => null),

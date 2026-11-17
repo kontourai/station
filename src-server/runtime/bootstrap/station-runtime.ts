@@ -293,7 +293,10 @@ import {
   type AgentHooksDeps,
   createAgentHooks,
 } from '../agents/agent-hooks.js';
-import { createStagedPreToolPolicyEvaluator } from '../agents/pre-tool-policy.js';
+import {
+  createStagedPreToolPolicyEvaluator,
+  type PullRequestWatchPolicy,
+} from '../agents/pre-tool-policy.js';
 import {
   activatePreparedRuntimeAgentInstance,
   buildRuntimeAgentInstance,
@@ -534,9 +537,8 @@ import {
   createCodexBoundToolServer,
 } from '../mcp/station-control-in-process.js';
 import {
-  buildStationControlMcpHeaderUrl,
   coordinatorGeneration,
-  mintStationControlMcpToken,
+  mintCodexStationMcpHeaderAuth,
   revokeStationControlMcpToken,
 } from '../mcp/station-control-mcp-token.js';
 import {
@@ -669,6 +671,15 @@ const SESSION_RECOVERY_WARNING_MS = 5 * 60_000;
 export class StationRuntime {
   private readonly virtualApplicationConfiguration?: StationRuntimeOptions['virtualApplication'];
   private readonly virtualApplicationLifetime = new AbortController();
+  /**
+   * #5066: the watching-Task refusals, bound once the routes compose pull
+   * request feedback. Every agent's pre-tool policy reads it per call, so
+   * an agent built before that binding is still covered.
+   */
+  private readonly pullRequestWatchSlot: { current?: PullRequestWatchPolicy } =
+    {};
+  private readonly pullRequestWatchPolicy: PullRequestWatchPolicy = (input) =>
+    this.pullRequestWatchSlot.current?.(input);
   private virtualApplication?: VirtualApplicationIngress;
   private readonly relayInvitationOwner?: RelayInvitationOwner;
   private readonly selfHostedBrokerConfiguration?: StationRuntimeOptions['selfHostedBrokerConnector'];
@@ -1049,6 +1060,7 @@ export class StationRuntime {
       ),
   });
   private codexAdapter = new CodexAdapter({
+    toolFamiliesEnabled: () => this.codexToolFamiliesEnabled(),
     resolveBoundToolPolicy: (input) =>
       this.resolveExternalPreToolPolicy(input, 'authentic'),
     boundToolsEpoch: () =>
@@ -1134,61 +1146,45 @@ export class StationRuntime {
     // constructor body (same lazy-capture posture as
     // `getStationControlEnv` above), but this closure is only invoked at
     // `startSession` time, well after construction completes.
+    // #2376 slice 3: the adapter passes `toolFamilies` only for a session
+    // it admitted (preview on, qualified Codex version, header-token path);
+    // every other mint starts with the whole catalog.
     mintStationControlMcpAuth: (
       threadId: string,
       tenantExecutionContext,
       allowedTools,
       generation,
-    ) => {
-      const conversationId =
-        this.orchestrationEventStore.conversationForSession(threadId)
-          ?.conversationId ?? threadId;
-      const { token } = mintStationControlMcpToken(
-        threadId,
-        'http-header-token',
-        undefined,
+      toolFamilies,
+    ) =>
+      mintCodexStationMcpHeaderAuth({
+        port: this.port,
+        sessionId: threadId,
+        conversationId:
+          this.orchestrationEventStore.conversationForSession(threadId)
+            ?.conversationId ?? threadId,
+        serverId: 'station-control',
         tenantExecutionContext,
         allowedTools,
-        generation !== undefined ? 'coordinator-control' : 'station-control',
-        undefined,
-        generation === undefined
-          ? undefined
-          : () => coordinatorGeneration(conversationId) === generation,
-        // Codex 0.164 does not refresh tools after load_tool_family, even on
-        // the next turn. Keep its catalog callable until refresh is qualified.
-        false,
-      );
-      return { url: buildStationControlMcpHeaderUrl(this.port), token };
-    },
+        coordinatorGeneration: generation,
+        toolFamilies: toolFamilies === true,
+      }),
     mintStationKnowledgeMcpAuth: (
       threadId,
       tenantExecutionContext,
       allowedTools,
       generation,
-    ) => {
-      const conversationId =
-        this.orchestrationEventStore.conversationForSession(threadId)
-          ?.conversationId ?? threadId;
-      const { token } = mintStationControlMcpToken(
-        threadId,
-        'http-header-token',
-        undefined,
+    ) =>
+      mintCodexStationMcpHeaderAuth({
+        port: this.port,
+        sessionId: threadId,
+        conversationId:
+          this.orchestrationEventStore.conversationForSession(threadId)
+            ?.conversationId ?? threadId,
+        serverId: 'station-knowledge',
         tenantExecutionContext,
         allowedTools,
-        generation !== undefined
-          ? 'coordinator-knowledge'
-          : 'station-knowledge',
-        undefined,
-        generation === undefined
-          ? undefined
-          : () => coordinatorGeneration(conversationId) === generation,
-        false,
-      );
-      return {
-        url: buildStationControlMcpHeaderUrl(this.port, 'station-knowledge'),
-        token,
-      };
-    },
+        coordinatorGeneration: generation,
+      }),
     revokeStationControlMcpAuth: (threadId: string) =>
       revokeStationControlMcpToken(threadId),
     // `this.logger` is not assigned until later in the constructor body
@@ -1356,6 +1352,16 @@ export class StationRuntime {
   /** #4305: gates the Settings control, not deployment configuration. */
   private accountSharingSettingPreview!: FeaturePreviewSelector;
   private codexBoundToolsPreview?: FeaturePreviewSelector;
+  private codexToolFamiliesPreview?: FeaturePreviewSelector;
+  /** The `codex-tool-families` preview's current choice. */
+  private codexToolFamiliesEnabled(): boolean {
+    return (
+      this.codexToolFamiliesPreview?.select({
+        enabled: () => true,
+        disabled: () => false,
+      }) ?? false
+    );
+  }
   private stationInstructionsPreview?: FeaturePreviewSelector;
   private coordinatorSessionPreview?: FeaturePreviewSelector;
   private openCodeNativeEnginePreview?: FeaturePreviewSelector;
@@ -1468,6 +1474,7 @@ export class StationRuntime {
     });
     return createStagedPreToolPolicyEvaluator({
       spec,
+      pullRequestWatchPolicy: this.pullRequestWatchPolicy,
       projectToolPolicy: () => {
         const policy = new ToolLibraryService(
           this.configLoader.getProjectHomeDir(),
@@ -1816,6 +1823,14 @@ export class StationRuntime {
             'Let Codex Sessions use authorized browser and device tools through a bound channel. New Sessions also get Station Control there instead of a header token, adding about 110 KB of tool definitions to each thread.',
         });
       }
+      // #2376 slice 3. A new id, not the withdrawn progressive-tools one, so
+      // a host that saved that choice is not opted in by an upgrade.
+      this.codexToolFamiliesPreview = this.featurePreviews.bind({
+        id: 'codex-tool-families',
+        label: 'Codex tool families',
+        description:
+          'Start new Codex Sessions that use Station Control over its header token with a short index of tool families instead of every tool; the agent loads a family when it needs one. Needs Codex 0.167.0 or later, and stays off for the Codex browser and device tools channel. A change applies to new and resumed Sessions; a running Session keeps what it started with.',
+      });
       // Journal consumers wire after the quarantine notice: the runtime must
       // report a recorded corruption before anything asks the store for more
       // than its publisher.
@@ -4534,6 +4549,10 @@ export class StationRuntime {
               enabled: () => true,
               disabled: () => false,
             }) ?? false,
+          // The adapter's own admission question, so the families line in
+          // the instructions and the credential's listing agree.
+          codexToolFamiliesAdmitted: (threadId, eligible) =>
+            this.codexAdapter.toolFamiliesAdmitted(threadId, eligible),
           resolveProjectToolServers: async (input) => {
             const slug = input.metadata?.projectSlug;
             if (typeof slug !== 'string' || !slug) return [];
@@ -5437,6 +5456,9 @@ export class StationRuntime {
       serverUpdate,
       analyticsMaintenance,
     } = configureRuntimeRoutes({
+      bindPullRequestWatchPolicy: (policy) => {
+        this.pullRequestWatchSlot.current = policy;
+      },
       discordGateway: this.discordGatewayService,
       retainProjectRoomRuntime: (runtime) => {
         this.projectRoomRuntime = runtime;
@@ -5767,6 +5789,7 @@ export class StationRuntime {
       observeModelContext: (
         observation: import('../types.js').ModelGenerationObservation,
       ) => recordManagedModelContext(this.orchestrationEventStore, observation),
+      pullRequestWatchPolicy: this.pullRequestWatchPolicy,
       agentSlug,
       validateProjectTools: (
         slug: string,

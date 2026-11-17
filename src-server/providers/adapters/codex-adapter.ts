@@ -49,7 +49,10 @@ import {
   ConfinementRefusedError,
   observedConfinementRecord,
 } from '../../security/confinement/confinement-provider.js';
-import { managedEnginePrerequisites } from '../../security/managed-engine-limits.js';
+import {
+  managedEngineBinaryPath,
+  managedEnginePrerequisites,
+} from '../../security/managed-engine-limits.js';
 import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
 import { prepareManagedEngineWorkspace } from '../../services/infra/managed-engine-workspace.js';
@@ -108,6 +111,7 @@ import {
   buildCliRuntimePrerequisites,
   type CliAuthState,
   type CliCommandResult,
+  findCliBinary,
   parseCliAuthState,
   runCliCommand,
 } from '../auth/cli-auth.js';
@@ -190,6 +194,10 @@ import {
 import type { CodexModelOptions } from './codex-models.js';
 import { terminateCodexProcess } from './codex-process-termination.js';
 import { findUnaccountedCodexConfig } from './codex-project-config-provenance.js';
+import {
+  CODEX_TOOL_LIST_CHANGED_FEATURE,
+  CodexToolFamilyQualification,
+} from './codex-tool-families.js';
 import { applyEngineProxyAuthPrerequisite } from './engine-proxy-auth-prerequisite.js';
 import { externalPreToolPolicyIdentity } from './external-pre-tool-policy-identity.js';
 import { codexAnswers, codexInputRequest } from './harness-questions.js';
@@ -204,6 +212,12 @@ type CodexExecutionKnobs = NonNullable<
 >;
 
 interface CodexAdapterOptions {
+  /**
+   * #2376 slice 3: the `codex-tool-families` Feature Preview. On, a Codex
+   * whose version qualified gets Station Control as tool families on the
+   * header-token path (`toolFamiliesAdmitted`). Absent means off.
+   */
+  toolFamiliesEnabled?: () => boolean;
   boundToolsEnabled?: () => boolean;
   boundToolsEpoch?: () => number | undefined;
   resolveBoundToolPolicy?: (
@@ -297,6 +311,8 @@ interface CodexAdapterOptions {
     tenantExecutionContext?: import('@kontourai/station-contracts/tenancy').TenantExecutionContext,
     allowedTools?: readonly string[],
     coordinatorGeneration?: number,
+    /** #2376 slice 3: the credential starts at the tool-family index. */
+    toolFamilies?: true,
   ) => CodexStationMcpAuth | undefined;
   mintStationKnowledgeMcpAuth?: (
     threadId: string,
@@ -573,6 +589,9 @@ type CodexModelListResult = {
 
 /** The executable name this adapter probes and spawns. */
 const CODEX_CLI_COMMAND = 'codex';
+/** How long a resolver's admission answer waits for its Session start. */
+const TOOL_FAMILY_ADMISSION_HOLD_MS = 5 * 60_000;
+const TOOL_FAMILY_ADMISSIONS_MAX = 256;
 
 const CODEX_MODEL_MAX_ENTRIES = 1000;
 const CODEX_MODEL_MAX_PAGES = 32;
@@ -1070,8 +1089,22 @@ export class CodexAdapter implements ProviderAdapterShape {
     { snapshot: ConnectionQuotaSnapshot; cachedAt: number }
   >();
   private quotaSnapshotGeneration = 0;
+  private readonly toolFamilyQualification: CodexToolFamilyQualification;
+  /** One admission answer per Session start, shared by resolver and start. */
+  private readonly toolFamilyAdmissions = new Map<
+    string,
+    { admitted: Promise<boolean>; at: number }
+  >();
 
   constructor(private readonly options: CodexAdapterOptions = {}) {
+    // The binary a session spawn resolves (`spawnCodexProcess`).
+    this.toolFamilyQualification = new CodexToolFamilyQualification(
+      () =>
+        managedEngineBinaryPath('codex') ??
+        (options.findBinary ?? findCliBinary)(CODEX_CLI_COMMAND),
+      (command, args) => (options.runCommand ?? runCliCommand)(command, args),
+      () => this.now().getTime(),
+    );
     if (options.nativeSessionOwnership)
       this.continuity.nativeReturn = 'same-binding';
     this.processFactory =
@@ -1096,6 +1129,63 @@ export class CodexAdapter implements ProviderAdapterShape {
         ),
     );
     this.goals = new CodexGoals(this.transport);
+  }
+
+  /**
+   * #2376 slice 3: whether Codex may get Station Control as tool families:
+   * the preview is on and the installed Codex is at least the qualified
+   * version. The session resolver asks for a new Session's `threadId` when
+   * it composes the instructions' families line; that start then takes the
+   * same answer (`takeToolFamilyAdmission`), so the line and the credential
+   * cannot disagree and one start probes the version at most once.
+   * `startWithReservation` narrows the answer to the header-token path.
+   */
+  toolFamiliesAdmitted(threadId?: string, eligible = true): Promise<boolean> {
+    const now = this.now().getTime();
+    const enabled = this.options.toolFamiliesEnabled?.() === true;
+    const held = threadId ? this.toolFamilyAdmissions.get(threadId) : undefined;
+    // The resolver composed this start without a families line for another
+    // reason (its station-control was bound): hold a no, so a preview that
+    // flips before the start cannot admit an index credential the
+    // instructions never explain.
+    if (threadId && !eligible) {
+      this.holdToolFamilyAdmission(threadId, Promise.resolve(false), now);
+      return Promise.resolve(false);
+    }
+    // A held answer can only narrow: the preview switched off since then
+    // withdraws it, and one that said no never turns into yes (its
+    // instructions carry no families line).
+    if (held && now - held.at < TOOL_FAMILY_ADMISSION_HOLD_MS)
+      return enabled ? held.admitted : Promise.resolve(false);
+    const admitted = enabled
+      ? this.toolFamilyQualification.admitted()
+      : Promise.resolve(false);
+    if (threadId) this.holdToolFamilyAdmission(threadId, admitted, now);
+    return admitted;
+  }
+
+  private holdToolFamilyAdmission(
+    threadId: string,
+    admitted: Promise<boolean>,
+    now: number,
+  ): void {
+    // An answer nobody took (the start failed or never came) is dropped
+    // once it is older than the hold, and the map stays bounded.
+    for (const [key, entry] of this.toolFamilyAdmissions)
+      if (now - entry.at >= TOOL_FAMILY_ADMISSION_HOLD_MS)
+        this.toolFamilyAdmissions.delete(key);
+    if (this.toolFamilyAdmissions.size >= TOOL_FAMILY_ADMISSIONS_MAX)
+      this.toolFamilyAdmissions.delete(
+        this.toolFamilyAdmissions.keys().next().value!,
+      );
+    this.toolFamilyAdmissions.set(threadId, { admitted, at: now });
+  }
+
+  /** The answer the resolver got for this start, or a fresh one; used once. */
+  private takeToolFamilyAdmission(threadId: string): Promise<boolean> {
+    const admitted = this.toolFamiliesAdmitted(threadId);
+    this.toolFamilyAdmissions.delete(threadId);
+    return admitted;
   }
 
   async getPrerequisites(options?: {
@@ -2213,7 +2303,33 @@ export class CodexAdapter implements ProviderAdapterShape {
     // server, and its persisted copies are refused with a pointer to it.
     const catalogWithdrawn =
       resumeCursor?.boundCatalog === true && !servesCatalog;
-    const toolServers = await this.resolveAgentToolServers(input, boundCatalog);
+    // #2376 slice 3: station-control as tool families, only on the
+    // header-token path (never the bound catalog, whose channel has no
+    // disclosure) and never for an adopted fork, whose source thread Station
+    // did not start. A coordinator-derived server is on that path too and is
+    // admitted: its credential is per-session and re-minted like any other.
+    // Codex persists a thread's history but not its tool list, and every
+    // start mints a credential that begins at the index, so a continuation
+    // gets families only when its thread started with them (the cursor's
+    // `toolFamilies`): a thread told nothing about families keeps the whole
+    // catalog it has been using.
+    // `servesCatalog` covers `boundCatalog` and also a source-affinity
+    // continuation that serves the catalog beside the header server.
+    const toolFamiliesEligible =
+      !!boundControl &&
+      !servesCatalog &&
+      !adoption &&
+      (resumeCursor ? resumeCursor.toolFamilies === true : true);
+    let toolFamiliesAdmitted = false;
+    if (toolFamiliesEligible)
+      toolFamiliesAdmitted = await this.takeToolFamilyAdmission(input.threadId);
+    else this.toolFamilyAdmissions.delete(input.threadId);
+    const toolServers = await this.resolveAgentToolServers(
+      input,
+      boundCatalog,
+      toolFamiliesAdmitted,
+    );
+    const toolFamilies = toolServers.toolFamilies === true;
     // station#2072: the connection env layer merges UNDER the app-home
     // home key — a source-affinity or credential-profile home always owns
     // CODEX_HOME (an adopted session must run where its rollout lives),
@@ -2694,6 +2810,13 @@ export class CodexAdapter implements ProviderAdapterShape {
           resumeCursor.codexThreadId === codexThread.id)
           ? { boundCatalog: true as const }
           : {}),
+        // Likewise for tool families: the thread started with them, so its
+        // history may name family tools a later credential must reload.
+        ...((toolFamilies && !resumeCursor) ||
+        (resumeCursor?.toolFamilies &&
+          resumeCursor.codexThreadId === codexThread.id)
+          ? { toolFamilies: true as const }
+          : {}),
         ...(sourceAffinity
           ? {
               sourceAffinity: snapshotSessionSourceAffinity(sourceAffinity),
@@ -3086,12 +3209,16 @@ export class CodexAdapter implements ProviderAdapterShape {
      * no header token is minted and Codex gets no station-control MCP entry.
      */
     boundCatalog = false,
+    /** #2376 slice 3: mint station-control at the family index. */
+    toolFamilies = false,
   ): Promise<{
     configArgs?: string[];
     privateConfig?: Record<string, unknown>;
     report?: CapabilityDeliveryChannelReport;
     /** Ids Codex's own MCP configuration carries (`authoredMcpConfig`). */
     mcpDelivered?: string[];
+    /** Station Control was delivered at the family index. */
+    toolFamilies?: true;
   }> {
     const authoredServers = input.agent?.toolServers;
     if (authoredServers === undefined) return {};
@@ -3132,25 +3259,35 @@ export class CodexAdapter implements ProviderAdapterShape {
         )
       : control?.allowedTools;
     const stationControlMcpUrl = hasBuiltinStationControl
-      ? control?.coordinatorDerived
+      ? toolFamilies
         ? this.options.mintStationControlMcpAuth?.(
             input.threadId,
             input.tenantExecutionContext,
             selectedControlTools,
-            control.coordinatorGeneration,
+            control?.coordinatorDerived
+              ? control.coordinatorGeneration
+              : undefined,
+            true,
           )
-        : selectedControlTools !== undefined
+        : control?.coordinatorDerived
           ? this.options.mintStationControlMcpAuth?.(
               input.threadId,
               input.tenantExecutionContext,
               selectedControlTools,
+              control.coordinatorGeneration,
             )
-          : input.tenantExecutionContext
+          : selectedControlTools !== undefined
             ? this.options.mintStationControlMcpAuth?.(
                 input.threadId,
                 input.tenantExecutionContext,
+                selectedControlTools,
               )
-            : this.options.mintStationControlMcpAuth?.(input.threadId)
+            : input.tenantExecutionContext
+              ? this.options.mintStationControlMcpAuth?.(
+                  input.threadId,
+                  input.tenantExecutionContext,
+                )
+              : this.options.mintStationControlMcpAuth?.(input.threadId)
       : undefined;
 
     const knowledge = toolServers.find(
@@ -3180,6 +3317,15 @@ export class CodexAdapter implements ProviderAdapterShape {
         stationKnowledgeMcpUrl,
         oauthTokens,
       );
+    // Codex re-lists a server's tools after `load_tool_family` only with this
+    // feature on (`npm run qualify:tool-disclosure`). It rides the same
+    // private thread configuration as the credential, on start and resume.
+    const familiesDelivered =
+      toolFamilies &&
+      stationControlMcpUrl !== undefined &&
+      deliveredIds.includes('station-control');
+    if (familiesDelivered)
+      privateConfig[CODEX_TOOL_LIST_CHANGED_FEATURE] = true;
     const undelivered: CapabilityUndelivered[] = skipped.map(
       (skip: CodexToolServerSkip) => ({
         capability: 'toolServers',
@@ -3220,6 +3366,7 @@ export class CodexAdapter implements ProviderAdapterShape {
         undelivered,
       },
       mcpDelivered: deliveredIds,
+      ...(familiesDelivered ? { toolFamilies: true as const } : {}),
     };
   }
 

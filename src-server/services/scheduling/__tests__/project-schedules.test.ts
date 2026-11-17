@@ -6,10 +6,37 @@
  * test is which runs the scheduler starts and what it hands the runner.
  * `ScheduledProjectRuns` (how a run becomes a Task) is tested below with
  * its own fakes.
+ *
+ * #5126: who a run acts as is tested through the real scheduler, the
+ * production composition (`composeScheduledProjectRuns`) and the real
+ * Project membership rule over a real `ProjectMembershipService`; only the
+ * Task graph, the dispatcher and the conversation run are recording fakes.
  */
-import { AUTOMATION_RUN_POLICY } from '@kontourai/station-contracts/scheduler';
+import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { humanPrincipal } from '@kontourai/station-contracts/principal';
+import {
+  AUTOMATION_RUN_POLICY,
+  type SchedulerAutomationCreator,
+} from '@kontourai/station-contracts/scheduler';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
+import { composeScheduledProjectRuns } from '../../../runtime/routes/project-lifecycle-composition.js';
+import type { Logger } from '../../../utils/logger.js';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../identity/principal-resolver.js';
+import { ProjectManifestStore } from '../../projects/project-manifest-store.js';
+import {
+  type ProjectMembershipAuthority,
+  ProjectMembershipService,
+} from '../../projects/project-membership-service.js';
+import { ProjectMembershipStore } from '../../projects/project-membership-store.js';
+import {
+  createProjectPrincipalPermission,
+  projectJobCreatorMayRun,
+} from '../../projects/project-principal-permission.js';
+import { ProjectService } from '../../projects/project-service.js';
+import type { DispatchIntent } from '../../projects/task-dispatcher.js';
 import {
   BuiltinScheduler,
   type ScheduledProjectRunner,
@@ -19,12 +46,17 @@ import type {
   ScheduledConversationRunOutcome,
 } from '../scheduled-conversation-runs.js';
 import { ScheduledProjectRuns } from '../scheduled-project-runs.js';
-import { createSchedulerLedger } from '../scheduler-ledger.js';
+import {
+  createSchedulerLedger,
+  PROJECT_JOB_OWNER_NEEDED_REASON,
+} from '../scheduler-ledger.js';
 
 const makeTempDir = trackTempDirs();
 const schedulers: BuiltinScheduler[] = [];
+const databases: DatabaseSync[] = [];
 afterEach(async () => {
   for (const scheduler of schedulers.splice(0)) await scheduler.stop();
+  for (const db of databases.splice(0)) db.close();
 });
 
 const PROJECT = 'id-atlas';
@@ -265,17 +297,24 @@ describe('ScheduledProjectRuns', () => {
           );
         },
       },
-      actor: { userId: 'operator', ownerAttribution: 'unattributed-agent' },
+      creatorMayRunInProject: () => true,
       recordSummary: (input) => summaries.push(input),
       now: () => new Date('2026-11-16T09:05:00.000Z'),
     });
     return { runs, tasks, turns, summaries, dispatches };
   }
 
-  const invoke = (runs: ScheduledProjectRuns) =>
+  const invoke = (
+    runs: ScheduledProjectRuns,
+    createdBy: SchedulerAutomationCreator = {
+      userId: 'person-a',
+      ownerAttribution: 'verified-bound',
+    },
+  ) =>
     runs.invoke({
       projectId: PROJECT,
       jobName: 'monday-digest',
+      createdBy,
       agentSlug: 'writer',
       prompt: 'Summarize last week',
       receipt: {} as never,
@@ -301,7 +340,11 @@ describe('ScheduledProjectRuns', () => {
       },
     ]);
     expect(dispatches).toEqual([
-      expect.objectContaining({ taskId: 'task-1', agentId: 'writer' }),
+      expect.objectContaining({
+        taskId: 'task-1',
+        agentId: 'writer',
+        owner: { userId: 'person-a', ownerAttribution: 'verified-bound' },
+      }),
     ]);
     // The turn lands in the dispatched Task's own chat, which is where the
     // dispatch stamped the Task brief for the first turn.
@@ -311,8 +354,8 @@ describe('ScheduledProjectRuns', () => {
         prompt: 'Summarize last week',
         target: { kind: 'conversation', conversationId: 'chat-of-task-1' },
         createdBy: {
-          userId: 'operator',
-          ownerAttribution: 'unattributed-agent',
+          userId: 'person-a',
+          ownerAttribution: 'verified-bound',
         },
       }),
     ]);
@@ -359,5 +402,267 @@ describe('ScheduledProjectRuns', () => {
         text: expect.stringContaining('did not start'),
       }),
     ]);
+  });
+});
+
+describe("a Project job's run acts as its creator (#5126)", () => {
+  const owner = humanPrincipal('deployment', 'owner', 'Owner');
+  const member = humanPrincipal('deployment', 'member', 'Member');
+
+  /**
+   * A real Project with membership on: its owner, and `member` accepted as
+   * a viewer (`view` only). The operator, an unrestricted principal on this
+   * Station, holds `execute` there; the viewer does not.
+   */
+  async function membershipWorld() {
+    const home = makeTempDir('station-project-schedule-members-');
+    const storage = new FileStorageAdapter(home);
+    const manifests = new ProjectManifestStore(home, storage);
+    const projects = new ProjectService(storage, manifests);
+    const project = await projects.createProject({
+      name: 'Atlas',
+      slug: 'atlas',
+    });
+    const db = new DatabaseSync(join(home, 'access.sqlite'));
+    databases.push(db);
+    const membership = new ProjectMembershipService(
+      'station-one',
+      storage,
+      manifests,
+      new ProjectMembershipStore(db, 'station-one'),
+    );
+    let actor = owner;
+    const access: ProjectMembershipAuthority = {
+      current: async () => ({
+        principal: actor,
+        verifiedEmails: actor.id === member.id ? ['member@example.test'] : [],
+      }),
+      operator: async () => undefined,
+    };
+    const view = await membership.enable('atlas', project.id, access);
+    const offer = await membership.invite(
+      view.scope,
+      {
+        email: 'member@example.test',
+        role: 'viewer',
+        expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      },
+      access,
+    );
+    actor = member;
+    await membership.accept(offer.token, access);
+    actor = owner;
+    return {
+      projectId: project.id,
+      membership,
+      makeContributor: () =>
+        membership.changeMember(
+          view.scope,
+          member.id,
+          1,
+          { role: 'contributor', status: 'active' },
+          access,
+        ),
+    };
+  }
+
+  /** The real scheduler running Project jobs through the production runner. */
+  function runWorld(
+    projectId: string,
+    membership: ProjectMembershipService | undefined,
+  ) {
+    const tasks: unknown[] = [];
+    const dispatches: (DispatchIntent & { taskId: string })[] = [];
+    const turns: ScheduledConversationRunInput[] = [];
+    const may = createProjectPrincipalPermission(membership);
+    const runs = composeScheduledProjectRuns({
+      taskGraphService: {
+        createTaskIdempotent: async (input) => {
+          tasks.push(input);
+          return {
+            id: 'task-1',
+            createdAt: '2026-11-17T09:00:00.000Z',
+            projectId: input.projectId,
+          } as never;
+        },
+      },
+      taskDispatcher: {
+        dispatch: async (taskId, intent) => {
+          dispatches.push({ taskId, ...intent });
+          return {
+            kind: 'dispatched',
+            result: { session: { threadId: 'session-1' } },
+          } as never;
+        },
+      },
+      eventStore: {
+        conversationForSession: (sessionId) =>
+          sessionId === 'session-1'
+            ? ({ conversationId: 'chat-of-task-1' } as never)
+            : undefined,
+        taskMemoryStore: () =>
+          ({
+            readSummary: () => undefined,
+            updateSummary: () => ({ kind: 'updated' }),
+          }) as never,
+      },
+      conversationRuns: {
+        run: async (input) => {
+          turns.push(input);
+          return {
+            kind: 'completed',
+            output: '{}',
+            conversationId: 'chat-of-task-1',
+          };
+        },
+      },
+      creatorMayRunInProject: projectJobCreatorMayRun(may),
+      logger: { warn: vi.fn() } as unknown as Logger,
+    });
+    const ledger = createSchedulerLedger({
+      directory: makeTempDir('station-project-schedule-runs-'),
+    });
+    const scheduler = new BuiltinScheduler({
+      ledger,
+      turnAdapter: { invoke: vi.fn() },
+      projectRuns: runs,
+      projectHold: {
+        heldProjectIds: () => new Set(),
+        heldProjectSlugs: () => new Set(),
+        projectExists: (id) => id === projectId,
+      },
+    });
+    schedulers.push(scheduler);
+    const addJob = (name: string, createdBy?: SchedulerAutomationCreator) =>
+      scheduler.addJob({
+        name,
+        schedule: { kind: 'every', everyMs: 3_600_000 },
+        prompt: `Run ${name}`,
+        agent: 'writer',
+        projectId,
+        ...(createdBy ? { createdBy } : {}),
+      });
+    return { scheduler, ledger, addJob, tasks, dispatches, turns };
+  }
+
+  test("a member without the Project's execute permission: the run is refused, while the operator's job in the same Project runs", async () => {
+    const { projectId, membership } = await membershipWorld();
+    const world = runWorld(projectId, membership);
+    await world.addJob('members-job', { userId: member.id });
+    await world.addJob('operators-job', {
+      userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+    });
+
+    const refused = await world.scheduler.runJob('members-job');
+    expect(refused).toMatchObject({
+      outcome: 'failed',
+      message: expect.stringContaining(
+        "The job's creator may no longer start work in this Project",
+      ),
+    });
+    // Nothing was created, started or sent for the member.
+    expect(world.tasks).toEqual([]);
+    expect(world.dispatches).toEqual([]);
+    expect(world.turns).toEqual([]);
+
+    // The control: the operator holds what the member lacks, so the same
+    // Project's run starts, as the operator.
+    const ran = await world.scheduler.runJob('operators-job');
+    expect(ran).toMatchObject({ outcome: 'completed' });
+    expect(world.dispatches).toEqual([
+      expect.objectContaining({ ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID }),
+    ]);
+  });
+
+  test('a member who may execute there: the Task belongs to them and the turn is sent as them', async () => {
+    const { projectId, membership, makeContributor } = await membershipWorld();
+    await makeContributor();
+    const world = runWorld(projectId, membership);
+    await world.addJob('members-job', { userId: member.id });
+
+    const ran = await world.scheduler.runJob('members-job');
+
+    expect(ran).toMatchObject({ outcome: 'completed' });
+    expect(world.dispatches).toHaveLength(1);
+    const [intent] = world.dispatches;
+    expect(intent).toMatchObject({
+      taskId: 'task-1',
+      agentId: 'writer',
+      ownerUserId: member.id,
+      fullAccessGrant: null,
+    });
+    // A person's job acts for that person: no attribution marker.
+    expect(intent).not.toHaveProperty('ownerAttribution');
+    expect(world.turns).toEqual([
+      expect.objectContaining({
+        target: { kind: 'conversation', conversationId: 'chat-of-task-1' },
+        createdBy: { userId: member.id },
+      }),
+    ]);
+  });
+
+  test("an operator-created job's run is the operator's Task, acting for the operator", async () => {
+    const world = runWorld(PROJECT, undefined);
+    await world.addJob('digest', { userId: LOCAL_OPERATOR_PRINCIPAL_ID });
+
+    const ran = await world.scheduler.runJob('digest');
+
+    expect(ran).toMatchObject({ outcome: 'completed' });
+    expect(world.dispatches).toEqual([
+      expect.objectContaining({
+        ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
+        fullAccessGrant: null,
+        runtimeConfig: { modelOptions: { approvalMode: 'ask' } },
+      }),
+    ]);
+    expect(world.dispatches[0]).not.toHaveProperty('ownerAttribution');
+    expect(world.turns[0]?.createdBy).toEqual({
+      userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+    });
+  });
+
+  test.each([
+    ['a verified agent', 'verified-bound'],
+    ['an unverified agent', 'unattributed-agent'],
+  ] as const)(
+    "a job %s created replays that agent's attribution",
+    async (_label, ownerAttribution) => {
+      const world = runWorld(PROJECT, undefined);
+      const createdBy = {
+        userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+        ownerAttribution,
+      };
+      await world.addJob('agents-job', createdBy);
+
+      await world.scheduler.runJob('agents-job');
+
+      expect(world.dispatches).toEqual([
+        expect.objectContaining({
+          ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
+          ownerAttribution,
+        }),
+      ]);
+      expect(world.turns[0]?.createdBy).toEqual(createdBy);
+    },
+  );
+
+  test('an ownerless Project job starts no Task and carries ownerNeeded', async () => {
+    const world = runWorld(PROJECT, undefined);
+    await world.addJob('ownerless');
+    const listed = await world.scheduler.listJobs();
+    expect(listed[0]).toMatchObject({
+      projectId: PROJECT,
+      ownerNeeded: PROJECT_JOB_OWNER_NEEDED_REASON,
+    });
+
+    const refused = await world.scheduler.runJob('ownerless');
+
+    expect(refused).toMatchObject({
+      outcome: 'failed',
+      message: expect.stringContaining(PROJECT_JOB_OWNER_NEEDED_REASON),
+    });
+    expect(world.tasks).toEqual([]);
+    expect(world.dispatches).toEqual([]);
+    expect(world.turns).toEqual([]);
   });
 });

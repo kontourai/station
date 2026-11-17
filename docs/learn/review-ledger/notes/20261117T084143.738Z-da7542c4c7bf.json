@@ -1,0 +1,17 @@
+{
+  "revision": "5439ec4e393c30077aee4bd5d5204525c721f0dc",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"#5126 change is doc comments only: createdBy now says Project jobs' Tasks act as the creator too, and ownerNeeded says a Project job's runs start no Task. No type changed, so citing pages' type listings stand.","inputs":["packages/contracts/src/scheduler.ts"]},
+
+    {"path":"docs/design/automations.md","note":"#5126 change is doc comments only: createdBy now says Project jobs' Tasks act as the creator too, and ownerNeeded says a Project job's runs start no Task. No type changed, so citing pages' type listings stand.","inputs":["packages/contracts/src/scheduler.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#5126 change is doc comments only: createdBy now says Project jobs' Tasks act as the creator too, and ownerNeeded says a Project job's runs start no Task. No type changed, so citing pages' type listings stand.","inputs":["packages/contracts/src/scheduler.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"#5126 change is doc comments only: createdBy now says Project jobs' Tasks act as the creator too, and ownerNeeded says a Project job's runs start no Task. No type changed, so citing pages' type listings stand.","inputs":["packages/contracts/src/scheduler.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"#5126 change is doc comments only: createdBy now says Project jobs' Tasks act as the creator too, and ownerNeeded says a Project job's runs start no Task. No type changed, so citing pages' type listings stand.","inputs":["packages/contracts/src/scheduler.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"#5126 change is doc comments only: createdBy now says Project jobs' Tasks act as the creator too, and ownerNeeded says a Project job's runs start no Task. No type changed, so citing pages' type listings stand.","inputs":["packages/contracts/src/scheduler.ts"]}
+  ]
+}

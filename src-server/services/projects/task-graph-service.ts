@@ -43,11 +43,13 @@ import type {
   EngineId,
   ProviderSession,
 } from '@kontourai/station-contracts/provider';
+import type { TaskPullRequestWatchModeInput } from '@kontourai/station-contracts/pull-request-watch';
 import type {
   TaskChildCreateInput,
   TaskIdentity,
   TaskParentMutationInput,
   TaskParentMutationResult,
+  TaskPullRequestWatchHold,
   TaskWorkChatMutationInput,
   TaskWorkChatMutationResult,
 } from '@kontourai/station-contracts/task-graph';
@@ -676,6 +678,8 @@ const TASK_RECORD_KEYS = [
   'workItemObservedAt',
   'workItemProvenance',
   'closeOnMerge',
+  'pullRequestWatch',
+  'pullRequestWatchHold',
   'dispatchReservation',
 ] as const;
 const DISPATCH_RESERVATION_KEYS = [
@@ -1018,6 +1022,45 @@ function validateTaskGraphStoreData(
       );
     if (task.closeOnMerge !== undefined && task.closeOnMerge !== true)
       problems.push(`${at}.closeOnMerge: must be true when present`);
+    if (
+      task.pullRequestWatch !== undefined &&
+      task.pullRequestWatch !== 'on' &&
+      task.pullRequestWatch !== 'off'
+    )
+      problems.push(`${at}.pullRequestWatch: must be 'on' or 'off'`);
+    if (task.pullRequestWatchHold !== undefined) {
+      const hold = task.pullRequestWatchHold as unknown;
+      const record =
+        hold && typeof hold === 'object' && !Array.isArray(hold)
+          ? (hold as Record<string, unknown>)
+          : undefined;
+      if (
+        !record ||
+        Object.keys(record).some(
+          (key) => !['checks', 'pullRequest', 'at'].includes(key),
+        ) ||
+        !Array.isArray(record.checks) ||
+        record.checks.length > 20 ||
+        !record.checks.every(
+          (check) =>
+            typeof check === 'string' &&
+            check.length > 0 &&
+            check.length <= 200,
+        ) ||
+        typeof record.pullRequest !== 'string' ||
+        record.pullRequest.length === 0 ||
+        record.pullRequest.length > 300
+      )
+        problems.push(
+          `${at}.pullRequestWatchHold: must name its checks and pull request`,
+        );
+      else
+        validateCanonicalTimestamp(
+          record.at,
+          `${at}.pullRequestWatchHold.at`,
+          problems,
+        );
+    }
     if (task.workspaceBinding === undefined) {
       problems.push(`${at}.workspaceBinding: required`);
     } else if (
@@ -2816,8 +2859,11 @@ export class TaskGraphService {
           `Cannot transition task from ${task.status} to ${status}`,
         );
       }
+      // #5066: the hold says why Station blocked the Task; any move
+      // settles it.
+      const { pullRequestWatchHold: _hold, ...unheld } = task;
       const nextTask: TaskRecord = {
-        ...task,
+        ...(status === task.status ? task : unheld),
         status,
         updatedAt: new Date().toISOString(),
         ...(clientOrigin ? { updatedClientOrigin: clientOrigin } : {}),
@@ -2873,6 +2919,81 @@ export class TaskGraphService {
           ),
         },
         result: nextTask,
+      };
+    });
+  }
+
+  /**
+   * #5066: a PERSON's choice whether this Task watches its kept pull
+   * requests. `project` drops the Task's own choice. Like close-on-merge,
+   * no agent tool reaches it.
+   */
+  async setPullRequestWatch(
+    taskId: string,
+    mode: TaskPullRequestWatchModeInput,
+    clientOrigin?: ClientOrigin,
+  ): Promise<TaskRecord> {
+    return this.mutateStore((data) => {
+      const task = data.tasks.find((item) => item.id === taskId);
+      if (!task) throw new Error(`Task not found: ${taskId}`);
+      if (task.status === 'done' || task.status === 'canceled')
+        throw new Error(`Task is already ${task.status}`);
+      const { pullRequestWatch: _previous, ...rest } = task;
+      const nextTask: PersistedTaskRecord = {
+        ...rest,
+        ...(mode === 'project' ? {} : { pullRequestWatch: mode }),
+        updatedAt: new Date().toISOString(),
+        ...(clientOrigin ? { updatedClientOrigin: clientOrigin } : {}),
+      };
+      return {
+        data: {
+          ...data,
+          tasks: data.tasks.map((item) =>
+            item.id === taskId ? nextTask : item,
+          ),
+        },
+        result: nextTask,
+      };
+    });
+  }
+
+  /**
+   * #5066: a watched pull request used every fix attempt. Move the Task to
+   * `blocked` (the board's Needs you) with the failing checks named, when
+   * that is a transition it may make now. A Task already blocked keeps its
+   * status and gains the reason. Returns whether the Task was changed.
+   */
+  async holdTaskForPullRequestWatch(input: {
+    taskId: string;
+    hold: TaskPullRequestWatchHold;
+  }): Promise<boolean> {
+    return this.mutateStore((data) => {
+      const task = data.tasks.find((item) => item.id === input.taskId);
+      if (
+        !task ||
+        task.dispatchReservation ||
+        (task.status !== 'blocked' &&
+          !canTransitionTaskStatus(task.status, 'blocked'))
+      )
+        return { data, result: false };
+      const nextTask: PersistedTaskRecord = {
+        ...task,
+        status: 'blocked',
+        pullRequestWatchHold: {
+          checks: input.hold.checks.slice(0, 20).map((c) => c.slice(0, 200)),
+          pullRequest: input.hold.pullRequest.slice(0, 300),
+          at: input.hold.at,
+        },
+        updatedAt: new Date().toISOString(),
+      };
+      return {
+        data: {
+          ...data,
+          tasks: data.tasks.map((item) =>
+            item.id === input.taskId ? nextTask : item,
+          ),
+        },
+        result: true,
       };
     });
   }

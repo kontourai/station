@@ -623,6 +623,12 @@ export {
   useRejectProposedChangeMutation,
 } from './query-domains/proposedChanges';
 export {
+  usePullRequestFeedbackCapability,
+  useSetProjectPullRequestWatchMutation,
+  useSetTaskPullRequestWatchMutation,
+  useTaskPullRequestWatchQuery,
+} from './query-domains/pullRequestWatch';
+export {
   fetchReadMarkerSummary,
   markRead,
   readMarkerQueries,
