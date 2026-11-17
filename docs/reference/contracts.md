@@ -1520,6 +1520,12 @@ next poll of the wait for a retry already waiting. Another Station process
 sharing the store cannot see that the attempt gave up, so there the retry is
 treated as for a held key. When the client's
 automatic re-sends run out, the message stays queued with a reason and Retry.
+A send with a new key to a Session whose earlier turn start may have reached
+its engine is refused with `turn_start_held`
+(`TURN_START_HELD_CODE` in `@kontourai/station-contracts/orchestration`):
+nothing was sent. It is not a provider failure kind and is not retryable as
+such; it clears when that start settles, which the next send does once the
+Session's engine is observed gone, or the next boot does.
 A follow-up sent with `whenBusy: 'queue'` is held by Station instead, in the
 conversation's durable inbox (#3568): `POST /chat` answers `202` with a
 `ConversationInboxQueuedReceipt`, its `ConversationInboxEntry` says where the
