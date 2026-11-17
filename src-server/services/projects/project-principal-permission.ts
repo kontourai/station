@@ -42,3 +42,15 @@ export function createProjectPrincipalPermission(
       );
   };
 }
+
+/**
+ * #5126: whether a Project job's creator may still start its run. A run is a
+ * Task the creator starts, so it needs `execute` in the Project, read from
+ * current membership at each run.
+ */
+export function projectJobCreatorMayRun(
+  permission: ReturnType<typeof createProjectPrincipalPermission>,
+): (creatorId: string, localProjectId: string) => boolean {
+  return (creatorId, localProjectId) =>
+    permission(creatorId, localProjectId, 'execute');
+}

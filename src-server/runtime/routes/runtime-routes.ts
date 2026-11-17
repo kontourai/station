@@ -212,7 +212,10 @@ import type {
   ProjectMembershipService,
 } from '../../services/projects/project-membership-service.js';
 import { ProjectMembershipRefusal } from '../../services/projects/project-membership-store.js';
-import { createProjectPrincipalPermission } from '../../services/projects/project-principal-permission.js';
+import {
+  createProjectPrincipalPermission,
+  projectJobCreatorMayRun,
+} from '../../services/projects/project-principal-permission.js';
 import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
 import { createProjectRoomAgentRuntime } from '../../services/projects/project-room-agent-module.js';
 import { createProjectRoomAgentPublication } from '../../services/projects/project-room-agent-publication.js';
@@ -7288,8 +7291,9 @@ export function configureRuntimeRoutes(
           conversationRuns: scheduledConversationRuns,
           // #5126: a run acts as the job's creator, so it starts only while
           // the creator may still start work in the Project.
-          creatorMayRunInProject: (creatorId, projectId) =>
-            principalMayInProject(creatorId, projectId, 'execute'),
+          creatorMayRunInProject: projectJobCreatorMayRun(
+            principalMayInProject,
+          ),
           logger: context.logger,
         })
       : undefined;

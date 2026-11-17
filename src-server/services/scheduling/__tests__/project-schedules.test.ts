@@ -31,7 +31,10 @@ import {
   ProjectMembershipService,
 } from '../../projects/project-membership-service.js';
 import { ProjectMembershipStore } from '../../projects/project-membership-store.js';
-import { createProjectPrincipalPermission } from '../../projects/project-principal-permission.js';
+import {
+  createProjectPrincipalPermission,
+  projectJobCreatorMayRun,
+} from '../../projects/project-principal-permission.js';
 import { ProjectService } from '../../projects/project-service.js';
 import type { DispatchIntent } from '../../projects/task-dispatcher.js';
 import {
@@ -513,7 +516,7 @@ describe("a Project job's run acts as its creator (#5126)", () => {
           };
         },
       },
-      creatorMayRunInProject: (creatorId, id) => may(creatorId, id, 'execute'),
+      creatorMayRunInProject: projectJobCreatorMayRun(may),
       logger: { warn: vi.fn() } as unknown as Logger,
     });
     const ledger = createSchedulerLedger({
