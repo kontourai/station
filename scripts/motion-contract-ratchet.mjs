@@ -25,6 +25,10 @@ const DURATION_LITERAL = /(?:^|[\s,(])(?:\d*\.)?\d+(?:ms|s)\b/i;
 const EASING_LITERAL =
   /(?:^|[\s,(])(?:ease(?:-in|-out|-in-out)?|linear|cubic-bezier\s*\()/i;
 const TRANSITION_ALL = /\btransition\s*:\s*all(?:\s|;|$)/i;
+// `ease-in-out` is a different curve and must not match. A declared
+// `--ease-in` token does not legalize a use: the keyword and the var()
+// both fail with no ceiling.
+const EASE_IN_LAYER = /(?:^|[\s,(])ease-in(?![\w-])|var\(\s*--ease-in\s*\)/;
 
 // Matches a custom-property *declaration* (`--name:`), not a `var(--name)`
 // reference — the character before `--` must be whitespace, `;`, `{`, or the
@@ -154,6 +158,7 @@ export function inspectMotionCss(content, declaredTokens) {
   const hardCoded = [];
   const transitionAll = [];
   const unresolvedToken = [];
+  const easeIn = [];
   let match;
   MOTION_DECLARATION.lastIndex = 0;
   // biome-ignore lint/suspicious/noAssignInExpressions: bounded RegExp scan
@@ -161,6 +166,9 @@ export function inspectMotionCss(content, declaredTokens) {
     const value = match[1].trim();
     const declaration = match[0];
     if (TRANSITION_ALL.test(declaration)) transitionAll.push(declaration);
+    if (motionLayers(value).some((layer) => EASE_IN_LAYER.test(layer))) {
+      easeIn.push(declaration);
+    }
     // Per LAYER, not per declaration. Testing the whole value let a
     // partially tokenized declaration escape: a literal in one comma-separated
     // layer was excused by a `var(--motion-)` in a sibling layer, so
@@ -182,7 +190,7 @@ export function inspectMotionCss(content, declaredTokens) {
       if (tokens.length > 0) unresolvedToken.push({ declaration, tokens });
     }
   }
-  return { hardCoded, transitionAll, unresolvedToken };
+  return { hardCoded, transitionAll, unresolvedToken, easeIn };
 }
 
 export function inspectMotionFiles(files, readFile, declaredTokens) {
@@ -198,6 +206,9 @@ export function inspectMotionFiles(files, readFile, declaredTokens) {
     }
     for (const { declaration, tokens } of result.unresolvedToken) {
       findings.push({ file, kind: 'unresolved-token', declaration, tokens });
+    }
+    for (const declaration of result.easeIn) {
+      findings.push({ file, kind: 'ease-in', declaration });
     }
   }
   return findings;
@@ -248,6 +259,7 @@ export function evaluateMotionContract(
   const unresolvedToken = findings.filter(
     (finding) => finding.kind === 'unresolved-token',
   );
+  const easeIn = findings.filter((finding) => finding.kind === 'ease-in');
   const currentByFile = new Map();
   for (const finding of hardCoded) {
     currentByFile.set(finding.file, (currentByFile.get(finding.file) ?? 0) + 1);
@@ -263,10 +275,12 @@ export function evaluateMotionContract(
     hardCoded,
     transitionAll,
     unresolvedToken,
+    easeIn,
     perFileRegressions,
     passed:
       transitionAll.length === 0 &&
       unresolvedToken.length === 0 &&
+      easeIn.length === 0 &&
       hardCoded.length <= ceiling &&
       perFileRegressions.length === 0,
   };
@@ -318,11 +332,11 @@ function main() {
       );
     }
     throw new Error(
-      `motion contract failed: ${result.hardCoded.length} hard-coded declaration(s) (ceiling ${baseline.hardCodedDeclarationCeiling}), ${result.transitionAll.length} transition:all declaration(s), ${result.unresolvedToken.length} unresolved token reference(s)`,
+      `motion contract failed: ${result.hardCoded.length} hard-coded declaration(s) (ceiling ${baseline.hardCodedDeclarationCeiling}), ${result.transitionAll.length} transition:all declaration(s), ${result.unresolvedToken.length} unresolved token reference(s), ${result.easeIn.length} ease-in declaration(s)`,
     );
   }
   process.stdout.write(
-    `[motion-contract] OK: ${result.hardCoded.length} hard-coded declaration(s) <= ${baseline.hardCodedDeclarationCeiling}; no transition: all; no unresolved token references\n`,
+    `[motion-contract] OK: ${result.hardCoded.length} hard-coded declaration(s) <= ${baseline.hardCodedDeclarationCeiling}; no transition: all; no unresolved token references; no ease-in\n`,
   );
 }
 

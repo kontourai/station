@@ -54,6 +54,7 @@ describe('per-layer detection (#3223)', () => {
       hardCoded: [],
       transitionAll: [],
       unresolvedToken: [],
+      easeIn: [],
     });
   });
 
@@ -85,13 +86,23 @@ describe('motion contract ratchet', () => {
         '.item { transition: opacity var(--motion-fast) var(--ease-standard); }',
         REAL_TOKENS,
       ),
-    ).toEqual({ hardCoded: [], transitionAll: [], unresolvedToken: [] });
+    ).toEqual({
+      hardCoded: [],
+      transitionAll: [],
+      unresolvedToken: [],
+      easeIn: [],
+    });
     expect(
       inspectMotionCss(
         '.spinner { animation: spin var(--motion-status-spin) var(--ease-linear) infinite; }',
         REAL_TOKENS,
       ),
-    ).toEqual({ hardCoded: [], transitionAll: [], unresolvedToken: [] });
+    ).toEqual({
+      hardCoded: [],
+      transitionAll: [],
+      unresolvedToken: [],
+      easeIn: [],
+    });
   });
 
   it('rejects hard-coded motion and transition all', () => {
@@ -112,6 +123,44 @@ describe('motion contract ratchet', () => {
       })),
     ];
     expect(evaluateMotionContract(findings, 0).passed).toBe(false);
+  });
+
+  it('rejects ease-in even when a token of that name is declared', () => {
+    const declared = new Set([...REAL_TOKENS, '--ease-in']);
+    const eased = inspectMotionCss(
+      '.out { animation: leave var(--motion-fast) var(--ease-in) both; }',
+      declared,
+    );
+    expect(eased.unresolvedToken).toEqual([]);
+    expect(eased.easeIn).toHaveLength(1);
+    const findings = eased.easeIn.map((declaration) => ({
+      file: 'out.css',
+      kind: 'ease-in',
+      declaration,
+    }));
+    expect(evaluateMotionContract(findings, 10, { 'out.css': 10 }).passed).toBe(
+      false,
+    );
+  });
+
+  it('does not treat ease-in-out or ease-out as ease-in', () => {
+    const mixed = inspectMotionCss(
+      '.a { animation: pulse 1.2s ease-in-out infinite; } .b { transition: opacity var(--motion-fast) var(--ease-out); }',
+      REAL_TOKENS,
+    );
+    expect(mixed.easeIn).toEqual([]);
+    expect(mixed.hardCoded).toHaveLength(1);
+  });
+
+  it('binds ease-out to the kit curve and declares no ease-in token', () => {
+    expect(REAL_TOKENS.has('--ease-in')).toBe(false);
+    expect(REAL_TOKENS.has('--ease-out')).toBe(true);
+    expect(REAL_TOKENS.has('--k-ease')).toBe(true);
+    const tokens = readFileSync(
+      join(process.cwd(), 'src-ui/src/tokens.css'),
+      'utf8',
+    );
+    expect(tokens).toMatch(/--ease-out:\s*var\(--k-ease\)/);
   });
 
   it('extracts declared custom properties, not var() references', () => {
