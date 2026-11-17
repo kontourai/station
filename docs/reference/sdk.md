@@ -6304,6 +6304,12 @@ another chat is read with `pullRequestFeedbackOwnerOf`. Gate the calls on
 preview is off. The [client](../../packages/sdk/src/client/pull-request-feedback.ts)
 calls the [routes](../../src-server/routes/pull-requests/pull-request-feedback.ts).
 
+`getPullRequestFeedbackByPullRequest(apiBase, identity)` reads one pull
+request's feedback whichever chat is open, for the pull request panel; it
+refuses an answer about another pull request. An owner the reader may not
+read is `{ readable: false }`, and a 409 about such a chat reads through
+`pullRequestFeedbackOwnerOf` as `{}` (no id, no title).
+
 ## Files in answers to input requests
 
 `getInputReplyContext(apiBase, reference, options)` from

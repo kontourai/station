@@ -1,0 +1,7 @@
+{
+  "revision": "df2598a20ba7dc82a2ed14255425b4e3efb43682",
+
+  "notes": [
+    {"path":"README.md","note":"#5087 changed only the Full telemetry channel sentence in the privacy inventory and generated policy (beta is omitted, not mapped to preview). Checked the Data and privacy section: it links the inventory and public policy and makes no channel or telemetry-field claim, so it stays accurate.","inputs":["README.md","docs/privacy-policy.md","src-server/services/privacy-inventory.ts"]}
+  ]
+}

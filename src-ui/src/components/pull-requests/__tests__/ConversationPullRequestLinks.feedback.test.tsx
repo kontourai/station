@@ -275,6 +275,43 @@ describe('agent feedback on a linked pull request', () => {
     );
   });
 
+  test('Move here from a chat that may not see the owner moves feedback with its switches on', async () => {
+    // What the server now answers a reader who may not read the owning chat:
+    // the owner hidden, its switches reported off.
+    sdk.view = view({
+      ownedHere: false,
+      owner: {},
+      status: { state: 'off' },
+      settings: {
+        fixFailingChecks: false,
+        addressReviewComments: false,
+        reviewEachHead: false,
+      },
+    });
+    renderLinks();
+    const dialog = await openDialog();
+    expect(
+      await within(dialog).findByText('Feedback goes to another chat.'),
+    ).toBeTruthy();
+    sdk.write.mockResolvedValueOnce(view());
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Move here' }));
+    await waitFor(() =>
+      expect(sdk.write).toHaveBeenLastCalledWith(
+        'http://station.test',
+        'c1',
+        expect.objectContaining({
+          identity: IDENTITY,
+          move: true,
+          settings: expect.objectContaining({
+            fixFailingChecks: true,
+            addressReviewComments: true,
+          }),
+        }),
+        expect.anything(),
+      ),
+    );
+  });
+
   test('says why it cannot work: not signed in, or paused with Send again', async () => {
     sdk.view = view({ status: { state: 'unavailable', cause: 'credentials' } });
     const { unmount } = renderLinks();
