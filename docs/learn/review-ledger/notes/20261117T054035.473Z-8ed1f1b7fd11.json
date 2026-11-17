@@ -1,0 +1,7 @@
+{
+  "revision": "f283653281c995a57733c459227c113f9cfafa98",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Added a paragraph on the extended 2.11.0 VoltAgent patch, checked against patches/voltagent-core-2.11.0.patch (lazy requires at the four OTLP use sites in dist/index.js and dist/index.mjs; earlier hunks unchanged in effect), the new process test and voltagent-managed-telemetry.test.ts. Its timing, untested-serializer and quiet-failure statements match the patched source. The lock diff only moves the patch hash.","inputs":["docs/guides/dependency-security.md","patches/voltagent-core-2.11.0.patch","pnpm-lock.yaml#/snapshots"]}
+  ]
+}
