@@ -273,7 +273,9 @@ existing independent review (`ReviewEvidenceModule`) once per head.
    refused) and its messages are placed, but only while the
    `pull-request-head-review` preview is on; while it is off the switch
    does nothing and a write cannot turn it on. A write that leaves
-   `reviewEachHead` out keeps the chat's stored value. While the newest
+   `reviewEachHead` out keeps the chat's stored value, deliberately: review
+   settings stored while the preview was on resume when it is turned back
+   on (its Feature Preview description says so). While the newest
    head has no review, the panel says why (`headReviewWaiting`: settling,
    the agent busy, waiting or stopped, feedback waiting, another review
    in the Project, the daily limit, a draft, closed, or starting soon);
