@@ -430,18 +430,16 @@ const loadConversationOpenRevalidator = () =>
   }));
 
 /**
- * The first open after a page load otherwise waits on three chunks in series
- * before its `/open` request starts: the revalidator, its controller, and the
- * SDK open client. Fetch all three when the dock mounts, at idle, so that
- * request starts on the first effect. Fire-and-forget: the boundaries report
- * a failed import where they render.
+ * The first open after a page load otherwise waits on the revalidator chunk
+ * and then its controller chunk (which carries the SDK open client) before
+ * its `/open` request starts. Fetch both when the dock mounts, at idle, so
+ * that request starts on the first effect. Fire-and-forget: the boundaries
+ * report a failed import where they render.
  */
 export function preloadConversationOpenChunks(): Promise<unknown> {
   return Promise.all([
     loadConversationOpenRevalidator(),
-    loadConversationOpenController().then((controller) =>
-      controller.preloadConversationOpenClient(),
-    ),
+    loadConversationOpenController(),
   ]).catch(() => undefined);
 }
 
