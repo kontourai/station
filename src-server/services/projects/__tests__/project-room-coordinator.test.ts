@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { ProjectMembershipScope } from '@kontourai/station-contracts/project-membership';
 import type { ProjectRoomCoordinatorSettings } from '@kontourai/station-contracts/project-room-coordinator';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ProjectRoomCoordinator,
   type ProjectRoomCoordinatorPorts,
@@ -58,6 +58,8 @@ class World {
   publishCalls = 0;
   /** Throw on dispatch of these Tasks' titles (a crash mid-Start-all). */
   crashOnDispatch = new Set<string>();
+  /** Die right after creating a Task with this title. */
+  crashAfterCreate = new Set<string>();
   mayStart = true;
   dieAfterPublish = false;
 
@@ -77,7 +79,9 @@ class World {
         this.creates += 1;
         const id = `task-${this.tasks.size + 1}`;
         this.tasks.set(id, { id, key, status: 'in_progress' });
-        void input;
+        // The Task is written and the process dies before the call returns.
+        if (this.crashAfterCreate.delete(input.title))
+          return new Promise<never>(() => {});
         return { id, createdAt: 't0' };
       },
       dispatchTask: async ({ taskId }): Promise<DispatchOutcome> => {
@@ -279,21 +283,27 @@ describe('ProjectRoomCoordinator', () => {
     const first = w.open();
     await propose(first.coordinator, THREE);
     const [card] = first.coordinator.view(scope, ROOM).proposals;
-    // The process dies after the third Task's engine started but before its
-    // row recorded the Session or its first message was sent.
+    // The process dies twice over: after the second Task was created but
+    // before its row recorded it, and after the third Task's engine started
+    // but before its row recorded the Session or sent its first message.
+    w.crashAfterCreate.add('Update docs');
     w.titles.set('Bump deps', 'task-3');
     w.crashOnDispatch.add('Bump deps');
-    await first.coordinator.start({
+    // Start all never returns: the process dies inside it.
+    void first.coordinator.start({
       scope,
       roomId: ROOM,
       proposalId: card!.proposalId,
       starter: PERSON,
     });
-    expect(
-      first.coordinator
-        .view(scope, ROOM)
-        .proposals[0]!.tasks.map((t) => t.state),
-    ).toEqual(['working', 'working', 'starting']);
+    await vi.waitFor(() =>
+      expect(
+        first.coordinator
+          .view(scope, ROOM)
+          .proposals[0]!.tasks.map((t) => t.state),
+      ).toEqual(['working', 'starting', 'starting']),
+    );
+    expect(w.creates).toBe(3);
     first.db.close();
 
     // Restart: a new coordinator on the same store reconciles.
@@ -302,7 +312,11 @@ describe('ProjectRoomCoordinator', () => {
     await second.coordinator.reconcile();
     await second.coordinator.reconcile();
     expect(w.creates).toBe(3);
-    expect(w.dispatchedTasks).toEqual(['task-1', 'task-2', 'task-3']);
+    expect([...w.dispatchedTasks].sort()).toEqual([
+      'task-1',
+      'task-2',
+      'task-3',
+    ]);
     expect(w.submitted.size).toBe(3);
     expect(
       second.coordinator
