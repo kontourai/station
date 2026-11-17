@@ -102,7 +102,7 @@ export function isCiConfigPath(candidate: string): boolean {
  * `;`, `&`, `|`, newlines and parentheses. A redirect target is kept as a
  * word prefixed with `>`.
  */
-export function shellSegments(command: string): string[][] {
+function shellSegments(command: string): string[][] {
   const segments: string[][] = [];
   let words: string[] = [];
   let current = '';
