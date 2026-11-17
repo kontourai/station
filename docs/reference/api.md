@@ -1520,7 +1520,8 @@ terminal event is stored). The keep above applies to it unchanged.
 `POST /api/tasks/:taskId/overview-reopen` accepts `{}` and sets the Task's
 `overviewReopenedAt` to now, restarting the Project Overview's auto-resolve
 clock (#5064). It leaves `updatedAt` alone, refuses a done or canceled Task
-with 400, and no Station Control tool reaches it. With the `project-overview`
+with 400, and no Station Control tool reaches it. A paired device needs
+`orchestration:operate`, the Task family operate tier that close-on-merge also uses. With the `project-overview`
 Feature Preview off it answers 404 with `code: 'feature_preview_disabled'`;
 an older host answers a plain 404, which the SDK reports as
 `TaskOverviewReopenUnsupportedError`.
