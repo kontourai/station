@@ -9,9 +9,11 @@ import {
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
-  refetch: vi.fn(),
+  // Named so a missing review load fails on a readable assertion.
+  refetch: vi.fn().mockName('recovery review loader'),
   recover: vi.fn(),
   approve: vi.fn(),
+  hostApproval: vi.fn().mockName('trusted host approval'),
   invalidate: vi.fn(),
   data: undefined as any,
 }));
@@ -30,7 +32,10 @@ vi.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({ invalidateQueries: state.invalidate }),
 }));
 vi.mock('../../../core/PermissionManager', () => ({
-  usePermissions: () => ({ requestInstallConsent: state.approve }),
+  usePermissions: () => ({
+    requestInstallConsent: state.approve,
+    requestConsent: state.hostApproval,
+  }),
 }));
 
 import { PluginRecoveryPanel } from '../PluginRecoveryPanel';
@@ -69,17 +74,104 @@ beforeEach(() => {
   };
   state.refetch.mockResolvedValue({ data: state.data });
   state.approve.mockResolvedValue(true);
+  // The shape the recover route sends when activation is stopped again.
   state.recover.mockResolvedValue({
-    success: true,
-    configurationActivation: { status: 'pending' },
+    success: false,
+    configurationActivation: {
+      status: 'pending',
+      recovery: 'required',
+      deadlineMs: 10_000,
+    },
   });
+  state.hostApproval.mockResolvedValue(true);
 });
 afterEach(cleanup);
+
+/** Each test starts from the review the panel loads by itself. */
+async function reviewLoaded() {
+  await waitFor(() => expect(state.refetch).toHaveBeenCalledOnce(), {
+    timeout: 1000,
+  });
+}
+
+test('a recovery that activates the plugin asks for the trusted approval it still owes, once, and reports where the panel cannot', async () => {
+  state.recover.mockResolvedValue({
+    success: true,
+    plugin: { name: 'fixture', version: '1.0.0' },
+    permissions: {
+      autoGranted: [],
+      pendingConsent: [{ permission: 'plugin.server', tier: 'trusted' }],
+      dependencies: [],
+    },
+  });
+  const onOutcome = vi.fn();
+  render(
+    <PluginRecoveryPanel
+      plugin={plugin}
+      onRemove={vi.fn()}
+      onOutcome={onOutcome}
+    />,
+  );
+  await reviewLoaded();
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Recover plugin' }),
+  );
+  await waitFor(() => expect(onOutcome).toHaveBeenCalledOnce());
+  expect(state.hostApproval).toHaveBeenCalledOnce();
+  expect(state.hostApproval).toHaveBeenCalledWith('fixture', 'Fixture', [
+    { permission: 'plugin.server', tier: 'trusted' },
+  ]);
+  expect(onOutcome).toHaveBeenCalledWith({
+    type: 'success',
+    text: 'Fixture was recovered and is active.',
+  });
+});
+
+test('a declined trusted approval after recovery says the plugin still needs it', async () => {
+  state.recover.mockResolvedValue({
+    success: true,
+    permissions: {
+      autoGranted: [],
+      pendingConsent: [{ permission: 'plugin.server', tier: 'trusted' }],
+    },
+  });
+  state.hostApproval.mockResolvedValue(false);
+  const onOutcome = vi.fn();
+  render(
+    <PluginRecoveryPanel
+      plugin={plugin}
+      onRemove={vi.fn()}
+      onOutcome={onOutcome}
+    />,
+  );
+  await reviewLoaded();
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Recover plugin' }),
+  );
+  await waitFor(() =>
+    expect(onOutcome).toHaveBeenCalledWith({
+      type: 'error',
+      text: "Fixture is installed but requires host approval before it is ready. Open Plugins, select it, and review its request under Requested and not granted.",
+    }),
+  );
+});
+
+test('a recovery stopped again says the host was busy and how to get out', async () => {
+  render(<PluginRecoveryPanel plugin={plugin} onRemove={vi.fn()} />);
+  await reviewLoaded();
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Recover plugin' }),
+  );
+  expect((await screen.findByRole('status')).textContent).toBe(
+    'Recovery was saved, but the plugin is still not active: Station was too busy to finish activating it within 10 seconds. Trying again when the host is idle usually works; Remove plugin is the way out.',
+  );
+  expect(state.hostApproval).not.toHaveBeenCalled();
+});
 test('loads a fresh review with the row, requires explicit consent, passes exact revisions, and keeps a saved-but-inactive recovery honest', async () => {
   render(<PluginRecoveryPanel plugin={plugin} onRemove={vi.fn()} />);
   expect(screen.queryByRole('button', { name: 'Recover plugin' })).toBeNull();
   // Nothing resumes the activation, so the review is offered without a click.
-  await waitFor(() => expect(state.refetch).toHaveBeenCalledOnce());
+  await reviewLoaded();
   fireEvent.click(
     await screen.findByRole('button', { name: 'Recover plugin' }),
   );
@@ -127,6 +219,7 @@ test('a refused recovery shows the server reason, not the field key', async () =
   );
   try {
     render(<PluginRecoveryPanel plugin={plugin} onRemove={vi.fn()} />);
+    await reviewLoaded();
     fireEvent.click(
       await screen.findByRole('button', { name: 'Recover plugin' }),
     );
@@ -139,6 +232,7 @@ test('a refused recovery shows the server reason, not the field key', async () =
 test('cancelled permission review performs no recovery mutation', async () => {
   state.approve.mockResolvedValue(false);
   render(<PluginRecoveryPanel plugin={plugin} onRemove={vi.fn()} />);
+  await reviewLoaded();
   fireEvent.click(
     await screen.findByRole('button', { name: 'Recover plugin' }),
   );
@@ -181,6 +275,7 @@ test('#1521: the recovery review shows the recovery preview’s receipt, not the
       onRemove={vi.fn()}
     />,
   );
+  await reviewLoaded();
   const region = await screen.findByRole('region', {
     name: 'Registry verification',
   });
@@ -201,6 +296,7 @@ test('an install that left this row inactive explains itself above the recovery 
       onRemove={vi.fn()}
     />,
   );
+  await reviewLoaded();
   const status = screen.getByRole('status');
   expect(status.textContent).toBe(text);
   expect(status.className).toContain('plugins__message--warning');

@@ -61,6 +61,7 @@ export function PluginDetailPanel({
   onUpdate,
   onCheckUpdates,
   onRemove,
+  onRecoveryOutcome,
   onToggleProviders,
   onToggleProvider,
   onSaveSetting,
@@ -116,6 +117,8 @@ export function PluginDetailPanel({
   onUpdate: (name: string) => void;
   onCheckUpdates: () => void;
   onRemove: (name: string) => void;
+  /** Where a recovery reports its outcome once its panel has unmounted. */
+  onRecoveryOutcome?: (message: PluginMessage) => void;
   onToggleProviders: (pluginName: string) => void;
   onToggleProvider: (
     pluginName: string,
@@ -184,6 +187,7 @@ export function PluginDetailPanel({
         plugin={selected}
         message={message}
         onRemove={onRemove}
+        onOutcome={onRecoveryOutcome}
       />
     );
   const update = updates.find((entry) => entry.name === selected.name);

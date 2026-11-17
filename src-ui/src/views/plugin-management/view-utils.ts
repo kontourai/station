@@ -292,3 +292,15 @@ export function recoveryStoppedNotice(unapplied: PluginLifecycleUnapplied) {
       : 'its activation did not finish';
   return `Recovery was saved, but the plugin is still not active: ${stopped}. Trying again when the host is idle usually works; Remove plugin is the way out.`;
 }
+
+/** What a declined post-install (or post-recovery) approval left behind. */
+export function consentFailureMessage(
+  pluginName: string,
+  pending: Array<{ tier: string }>,
+) {
+  if (pending.some((permission) => permission.tier === 'trusted')) {
+    return `${pluginName} is installed but requires host approval before it is ready. Open Plugins, select it, and review its request under Requested and not granted.`;
+  }
+
+  return `${pluginName} was installed, but required permissions were not approved.`;
+}

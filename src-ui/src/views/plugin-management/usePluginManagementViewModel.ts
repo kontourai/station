@@ -53,6 +53,7 @@ import {
 } from './types';
 import {
   buildPluginListItems,
+  consentFailureMessage,
   filterPlugins,
   pluginSelectionId,
   slugifyProjectName,
@@ -62,16 +63,7 @@ import {
   unappliedTone,
 } from './view-utils';
 
-export function consentFailureMessage(
-  pluginName: string,
-  pending: Array<{ tier: string }>,
-) {
-  if (pending.some((permission) => permission.tier === 'trusted')) {
-    return `${pluginName} is installed but requires host approval before it is ready. Open Plugins, select it, and choose Review Permissions when you're ready.`;
-  }
-
-  return `${pluginName} was installed, but required permissions were not approved.`;
-}
+export { consentFailureMessage } from './view-utils';
 
 /**
  * What a DECLINED install left behind (archive#4288): nothing, and the
@@ -1041,6 +1033,8 @@ export function usePluginManagementViewModel() {
     layoutAssignment,
     loadingProviderDetails,
     message,
+    /** A recovery outcome outlives its panel, so the view keeps it. */
+    setMessage,
     plugins,
     previewData,
     previewMutation,

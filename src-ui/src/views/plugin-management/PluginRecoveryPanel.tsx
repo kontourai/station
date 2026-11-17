@@ -1,4 +1,7 @@
-import { permissionTier } from '@kontourai/station-contracts/plugin';
+import {
+  permissionTier,
+  pluginLifecycleUnapplied,
+} from '@kontourai/station-contracts/plugin';
 import {
   usePluginRecoveryMutation,
   usePluginRecoveryPreviewQuery,
@@ -11,24 +14,35 @@ import { ResponsiveSurfaceActions } from '../../components/ResponsiveDialogSurfa
 import { usePermissions } from '../../core/PermissionManager';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import { PluginRegistryTrustSection } from './PluginRegistryTrustSection';
-import type { PluginMessage, ReadyPlugin } from './types';
+import {
+  installedDependencyPermissions,
+  type PluginMessage,
+  type ReadyPlugin,
+} from './types';
+import { consentFailureMessage, recoveryStoppedNotice } from './view-utils';
 
 export function PluginRecoveryPanel({
   plugin,
   message,
   onRemove,
+  onOutcome,
 }: {
   plugin: ReadyPlugin;
   /** The view's latest outcome, e.g. the install that left this row pending. */
   message?: PluginMessage | null;
   onRemove(name: string): void;
+  /**
+   * The outcome of a recovery that activated the plugin. The panel unmounts
+   * as soon as the plugin reads ready, so its own notice would never show.
+   */
+  onOutcome?(message: PluginMessage): void;
 }) {
   const preview = usePluginRecoveryPreviewQuery(plugin.name, {
     enabled: false,
   });
   const recovery = usePluginRecoveryMutation();
   const queries = useQueryClient();
-  const { requestInstallConsent } = usePermissions();
+  const { requestConsent, requestInstallConsent } = usePermissions();
   const [reviewedRevision, setReviewedRevision] = useState<string>();
   const [notice, setNotice] = useState<string>();
   const busy = useRef(false);
@@ -85,11 +99,47 @@ export function PluginRecoveryPanel({
           })),
         },
       });
-      setNotice(
-        result.configurationActivation?.status === 'pending'
-          ? 'Recovery was saved, but activation did not finish this time either, so the plugin is still not active. Refresh status, then recover it again.'
-          : 'Recovery completed. Refreshing plugin status.',
-      );
+      const unapplied = pluginLifecycleUnapplied(result);
+      if (unapplied) {
+        setNotice(
+          unapplied.kind === 'activation' && unapplied.recovery === 'none'
+            ? 'Recovery was saved; Station finishes applying it in the background.'
+            : recoveryStoppedNotice(unapplied),
+        );
+        return;
+      }
+      // Active now, so the trusted host approval it still owes can be
+      // recorded: ask for it here, as a completed install does, rather than
+      // leave the plugin's server code off until someone finds the request.
+      const name = plugin.displayName || plugin.name;
+      let outcome: PluginMessage = {
+        type: 'success',
+        text: `${name} was recovered and is active.`,
+      };
+      const owed = result.permissions?.pendingConsent ?? [];
+      if (owed.length > 0 && !(await requestConsent(plugin.name, name, owed)))
+        outcome = { type: 'error', text: consentFailureMessage(name, owed) };
+      for (const dependency of installedDependencyPermissions(result) ?? []) {
+        if (outcome.type === 'error') break;
+        if (dependency.pendingConsent.length === 0) continue;
+        if (
+          !(await requestConsent(
+            dependency.id,
+            dependency.id,
+            dependency.pendingConsent,
+          ))
+        )
+          outcome = {
+            type: 'error',
+            text: consentFailureMessage(
+              `Dependency ${dependency.id}`,
+              dependency.pendingConsent,
+            ),
+          };
+      }
+      void queries.invalidateQueries({ queryKey: ['plugins'] });
+      setNotice(outcome.text);
+      onOutcome?.(outcome);
     } catch (error) {
       setNotice(
         error instanceof Error

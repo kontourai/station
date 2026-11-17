@@ -683,8 +683,9 @@ configuration change behind it, and it does not retry it on its own. Plugins
 then says the plugin was installed (or updated) but is not active, and opens
 its row, which reads **Needs recovery**. It did not fail, and installing it
 again would install a second copy. Station does not ask for its trusted
-permissions yet, because their host approval needs an active plugin; the row's
-permissions ask for them once recovery activates it. The CLI prints the same
+permissions yet, because their host approval needs an active plugin; a
+recovery that activates it asks for them straight away, as a completed install
+does. The CLI prints the same
 outcome. A removal saved this way needs nothing from you: Station finishes
 unloading the plugin in the background.
 
@@ -692,8 +693,9 @@ A **Needs recovery** plugin retains its code and data while its runtime
 contributions remain unavailable. Open **Plugins** and select it: the recovery
 review loads with the row. Review the permissions and retained dependencies,
 then choose **Recover plugin** and confirm the permission review. Recovery does
-not fetch replacement code or reset stored data. Trusted permissions still
-require the separate host approval flow.
+not fetch replacement code or reset stored data. Once the plugin is active,
+Station asks for any trusted permissions it still needs through the separate
+host approval flow; declining leaves them under **Requested and not granted**.
 
 A recovery can also be saved without its activation finishing; the row then
 still reads **Needs recovery**. Use **Refresh status** to read its current

@@ -671,7 +671,7 @@ describe('usePluginManagementViewModel', () => {
         { tier: 'active' },
       ]),
     ).toBe(
-      "Provider Kit is installed but requires host approval before it is ready. Open Plugins, select it, and choose Review Permissions when you're ready.",
+      "Provider Kit is installed but requires host approval before it is ready. Open Plugins, select it, and review its request under Requested and not granted.",
     );
     expect(consentFailureMessage('Network Kit', [{ tier: 'active' }])).toBe(
       'Network Kit was installed, but required permissions were not approved.',
@@ -1286,7 +1286,7 @@ describe('usePluginManagementViewModel', () => {
     await waitFor(() => {
       expect(result.current.message).toEqual({
         type: 'error',
-        text: "Network Kit is installed but requires host approval before it is ready. Open Plugins, select it, and choose Review Permissions when you're ready.",
+        text: "Network Kit is installed but requires host approval before it is ready. Open Plugins, select it, and review its request under Requested and not granted.",
       });
     });
     expect(mocks.requestConsent).toHaveBeenCalledWith(
