@@ -1,23 +1,40 @@
+import { existsSync, readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import vm from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
 import { readWorkflowDocuments } from '../actionlint-gate.mjs';
+import { classifyCancellation } from '../main-health-comment-policy.mjs';
+import {
+  cronIntervalMs,
+  decideOverdue,
+  isOverdueBody,
+  OVERDUE_FLOOR_MS,
+  overdueLimitMs,
+  readWatchedSchedules,
+  renderOverdueBody,
+  watchedWorkflowNames,
+  workflowSchedule,
+} from '../main-health-schedules.mjs';
 
 /**
  * Owner decision: a scheduled workflow's failure must reach a person as an
- * issue, not only as a red run on the Actions tab. `main-health.yml` is the
- * one reporter (one tracker per workflow, updated in place, closed by the
- * next green). These tests hold every scheduled workflow to it and execute
- * its job conditions and scripts verbatim against a stateful fake GitHub.
+ * issue, not only as a red run on the Actions tab, and not running at all is
+ * a failure too. `main-health.yml` is the one reporter (one tracker per
+ * workflow, updated in place, closed by the next green or the next run).
+ * These tests hold every scheduled workflow to it and execute its job
+ * conditions and scripts verbatim against a stateful fake GitHub.
  */
 
 const root = new URL('../..', import.meta.url);
 const MAIN_HEALTH = '.github/workflows/main-health.yml';
+const HOUR = 3_600_000;
 
 /**
  * Scheduled workflows that report through something other than main-health,
  * each with the reason. A new scheduled workflow fails this suite until it is
- * watched by main-health or added here with a justification.
+ * watched by main-health or added here. An entry must name a workflow file
+ * that exists; it need not still be scheduled, so dropping a cron from one of
+ * these does not fail this suite.
  */
 const REPORTED_ELSEWHERE: Record<string, string> = {
   '.github/workflows/pr-duplicate-sweep.yml':
@@ -26,41 +43,17 @@ const REPORTED_ELSEWHERE: Record<string, string> = {
     'qualification-repair.yml opens the "Main qualification repair" episode issue for a red run and qualification-health.yml files "Main qualification health" for staleness; both belong to the qualification cadence owner',
 };
 
-/**
- * The scheduled set, pinned literally rather than derived, so adding or
- * removing a schedule is a visible edit here as well as in the workflow.
- */
-const SCHEDULED_WORKFLOWS = [
-  '.github/workflows/backlog-priority-policy.yml',
-  '.github/workflows/ci-throughput-health.yml',
-  '.github/workflows/dated-todo-sweep.yml',
-  '.github/workflows/dependency-advisory.yml',
-  '.github/workflows/docs-freshness-sweep.yml',
-  '.github/workflows/fresh-home-walkthrough.yml',
-  '.github/workflows/ios-rust-cache-warm.yml',
-  '.github/workflows/main-qualification.yml',
-  '.github/workflows/nightly-gallery.yml',
-  '.github/workflows/nightly.yml',
-  '.github/workflows/pr-duplicate-sweep.yml',
-  '.github/workflows/qualification-health.yml',
-  '.github/workflows/security-analysis.yml',
-  '.github/workflows/starved-pr-report.yml',
-];
-
 type Step = {
   name?: string;
   uses?: string;
   env?: Record<string, string>;
   with?: Record<string, unknown>;
 };
-type Job = {
-  if?: string;
-  permissions?: unknown;
-  steps: Step[];
-};
+type Job = { if?: string; permissions?: unknown; steps: Step[] };
 type WorkflowDocument = {
   name?: string;
   on?: Record<string, unknown> & {
+    schedule?: { cron: string }[];
     workflow_run?: { workflows?: string[]; branches?: string[] };
   };
   permissions?: unknown;
@@ -164,11 +157,55 @@ function annotation(message: string, level = 'failure') {
 }
 
 /**
+ * Cancellation annotations copied verbatim from real runs
+ * (`gh api repos/kontourai/station/check-runs/<job id>/annotations`).
+ */
+const REAL_CANCELS = {
+  person: {
+    // Nightly run 39698506810, job 119580381450.
+    message: 'The run was canceled by @briananderson1222.',
+    cause: 'person',
+  },
+  superseded: {
+    // PR: iOS build run 43974005046, job 133673171610.
+    message:
+      'Canceling since a higher priority waiting request for build-ios-PR: iOS build-5109 exists',
+    cause: 'superseded',
+  },
+  supersededSmoke: {
+    // Main: Container smoke run 43966051735, job 133647347507.
+    message:
+      'Canceling since a higher priority waiting request for container-smoke-refs/heads/main exists',
+    cause: 'superseded',
+  },
+  notAcquiredNightly: {
+    // Nightly run 43863134706, job 133326067954 ("Verify providers and
+    // finalize"); same text in run 42242672641, job 128025480568.
+    message:
+      'The job was not acquired by Runner of type hosted even after multiple attempts',
+    cause: 'infrastructure',
+  },
+  notAcquiredIos: {
+    // PR: iOS build runs 43482394075 (job 132082610236), 43256092915 (job
+    // 131315779715) and 42258632933 (job 128034355160): identical text.
+    message:
+      'The job was not acquired by Runner of type hosted even after multiple attempts',
+    cause: 'infrastructure',
+  },
+  runnerLost: {
+    // Main: Container smoke run 42050153692, job 127324215144.
+    message:
+      'The self-hosted runner lost communication with the server. Verify the machine is running and has a healthy network connection. Anything in your workflow that terminates the runner process, starves it for CPU/Memory, or blocks its network access can cause this error.',
+    cause: 'infrastructure',
+  },
+} as const;
+
+/**
  * A stateful stand-in for the Octokit surface main-health calls. Issues and
  * comments persist across calls, so "the second failure updates the first
  * issue" is observed, not asserted on a mock's arguments.
  */
-function fakeGithub() {
+function fakeGithub({ labelExists = true } = {}) {
   const issues: Issue[] = [];
   let nextComment = 1;
   let run: {
@@ -176,16 +213,21 @@ function fakeGithub() {
     annotations: Record<number, ReturnType<typeof annotation>[]>;
     failJobs?: boolean;
   } = { jobs: [], annotations: {} };
+  const scheduledRuns: Record<
+    string,
+    { created_at: string; html_url: string } | null
+  > = {};
+  const workflowCreated: Record<string, string> = {};
   const writes: string[] = [];
+  const calls: string[] = [];
   const find = (number: number) => {
     const issue = issues.find((candidate) => candidate.number === number);
     if (!issue) throw new Error(`no issue ${number}`);
     return issue;
   };
-  const listForRepo = async ({ state }: { state: string }) => ({
-    data: issues
-      .filter((issue) => state === 'all' || issue.state === state)
-      .map(({ comments: _comments, ...issue }) => ({ ...issue })),
+  const view = ({ comments: _comments, labels, ...issue }: Issue) => ({
+    ...issue,
+    labels: labels.map((name) => ({ name })),
   });
   const listJobs = async () => {
     if (run.failJobs) throw new Error('HTTP 502 from listJobsForWorkflowRun');
@@ -196,7 +238,19 @@ function fakeGithub() {
   });
   const github = {
     rest: {
-      actions: { listJobsForWorkflowRun: listJobs },
+      actions: {
+        listJobsForWorkflowRun: listJobs,
+        listWorkflowRuns: async ({ workflow_id }: { workflow_id: string }) => {
+          calls.push('listWorkflowRuns');
+          const last = scheduledRuns[workflow_id];
+          return { data: { workflow_runs: last ? [last] : [] } };
+        },
+        getWorkflow: async ({ workflow_id }: { workflow_id: string }) => ({
+          data: {
+            created_at: workflowCreated[workflow_id] ?? '2026-01-01T00:00:00Z',
+          },
+        }),
+      },
       checks: {
         listAnnotations: async ({
           check_run_id,
@@ -206,8 +260,42 @@ function fakeGithub() {
           data: run.annotations[check_run_id] ?? [],
         }),
       },
+      search: {
+        issuesAndPullRequests: async ({ q }: { q: string }) => {
+          calls.push('search');
+          const phrase = /in:title "([^"]+)"/.exec(q)?.[1] ?? '';
+          return {
+            data: {
+              items: issues
+                .filter((issue) => issue.title.includes(phrase))
+                .map(view),
+            },
+          };
+        },
+      },
       issues: {
-        listForRepo,
+        getLabel: async ({ name }: { name: string }) => {
+          calls.push('getLabel');
+          if (!labelExists || name !== 'ci:red')
+            throw Object.assign(new Error('Not Found'), { status: 404 });
+          return { data: { name } };
+        },
+        listForRepo: async ({
+          labels,
+          state,
+        }: {
+          labels?: string;
+          state: string;
+        }) => {
+          calls.push('listForRepo');
+          if (!labels) throw new Error('unbounded listForRepo: pass a label');
+          return {
+            data: issues
+              .filter((issue) => state === 'all' || issue.state === state)
+              .filter((issue) => issue.labels.includes(labels))
+              .map(view),
+          };
+        },
         listComments,
         create: async ({
           title,
@@ -219,6 +307,8 @@ function fakeGithub() {
           labels: string[];
         }) => {
           writes.push('create');
+          if (!labelExists && labels.includes('ci:red'))
+            throw new Error('would create an unreconciled label');
           issues.push({
             number: 100 + issues.length,
             title,
@@ -250,6 +340,8 @@ function fakeGithub() {
           labels: string[];
         }) => {
           writes.push('addLabels');
+          if (!labelExists && labels.includes('ci:red'))
+            throw new Error('would create an unreconciled label');
           const issue = find(issue_number);
           issue.labels = [...new Set([...issue.labels, ...labels])];
         },
@@ -293,6 +385,9 @@ function fakeGithub() {
     github,
     issues,
     writes,
+    calls,
+    scheduledRuns,
+    workflowCreated,
     setRun(next: typeof run) {
       run = next;
     },
@@ -328,17 +423,20 @@ function workflowRunEvent(
 
 /**
  * Runs main-health for one workflow_run event: evaluates each job's `if`, and
- * for each job that would start, executes its github-script step verbatim with
- * env resolved from the step's own declarations.
+ * for each job that would start (optionally only `only`), executes its
+ * github-script step verbatim with env resolved from the step's own
+ * declarations.
  */
 async function runMainHealth(
   fake: ReturnType<typeof fakeGithub>,
   github: ReturnType<typeof workflowRunEvent>,
+  { only, now }: { only?: string[]; now?: number } = {},
 ) {
   const document = mainHealth();
   const started: string[] = [];
   const core = { info: vi.fn(), warning: vi.fn() };
   for (const [jobName, definition] of Object.entries(document.jobs)) {
+    if (only && !only.includes(jobName)) continue;
     if (!evaluateGithubIf(String(definition.if), github)) continue;
     started.push(jobName);
     const step = definition.steps.find(
@@ -351,23 +449,29 @@ async function runMainHealth(
       [],
       { importModuleDynamically: vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER },
     )();
-    await fn(
-      fake.github,
-      {
-        repo: { owner: 'kontourai', repo: 'station' },
-        payload: { workflow_run: github.event.workflow_run },
-      },
-      {
-        env: {
-          GITHUB_WORKSPACE: pathToFileURL(root.pathname).href.replace(
-            /\/$/,
-            '',
-          ),
-          ...resolveEnv(step.env, github),
+    const realNow = Date.now;
+    if (now !== undefined) Date.now = () => now;
+    try {
+      await fn(
+        fake.github,
+        {
+          repo: { owner: 'kontourai', repo: 'station' },
+          payload: { workflow_run: github.event.workflow_run },
         },
-      },
-      core,
-    );
+        {
+          env: {
+            GITHUB_WORKSPACE: pathToFileURL(root.pathname).href.replace(
+              /\/$/,
+              '',
+            ),
+            ...resolveEnv(step.env, github),
+          },
+        },
+        core,
+      );
+    } finally {
+      Date.now = realNow;
+    }
   }
   return { started, core };
 }
@@ -391,14 +495,10 @@ const GREEN_SWEEP = {
   jobs: [job(12, 'sweep', 'success', [['Scan dated TODOs', 'success']])],
   annotations: {},
 };
+const REPORT = ['report-failure', 'close-after-success'];
 
 describe('scheduled workflow failure reporting', () => {
   it('watches every scheduled workflow from main-health or names who reports it instead', () => {
-    const scheduledFiles = scheduled()
-      .map(({ file }) => file)
-      .sort();
-    expect(scheduledFiles).toEqual(SCHEDULED_WORKFLOWS);
-
     const watched = new Set(mainHealth().on?.workflow_run?.workflows);
     const unreported = scheduled()
       .filter(({ file }) => !(file in REPORTED_ELSEWHERE))
@@ -408,12 +508,13 @@ describe('scheduled workflow failure reporting', () => {
       )
       .map(({ file }) => file);
     expect(unreported).toEqual([]);
-
-    // An allowlist entry for a workflow main-health also watches, or that is
-    // no longer scheduled, is a stale reason nobody rechecks.
+    // An allowlist entry must name a workflow that exists and that
+    // main-health does not also watch.
     for (const file of Object.keys(REPORTED_ELSEWHERE)) {
-      const entry = scheduled().find((candidate) => candidate.file === file);
-      expect(entry, `${file} is no longer scheduled`).toBeDefined();
+      expect(existsSync(new URL(file, root)), `${file} does not exist`).toBe(
+        true,
+      );
+      const entry = documents().find((candidate) => candidate.file === file);
       const document = entry?.document as WorkflowDocument | undefined;
       expect(watched.has(String(document?.name))).toBe(false);
       expect(REPORTED_ELSEWHERE[file].length).toBeGreaterThan(40);
@@ -444,7 +545,6 @@ describe('scheduled workflow failure reporting', () => {
     for (const conclusion of ['success', 'skipped', 'neutral'])
       expect(reports(conclusion), conclusion).toBe(false);
     expect(closes('success')).toBe(true);
-    // Only canonical main runs: not a branch, not a fork calling its branch main.
     expect(reports('failure', { head_branch: 'feature' })).toBe(false);
     expect(
       reports('failure', { head_repository: { full_name: 'fork/station' } }),
@@ -453,7 +553,6 @@ describe('scheduled workflow failure reporting', () => {
 
   it('grants issue writes only to the reporter, which runs no code from the reported run', () => {
     const document = mainHealth();
-    // workflow_run is the only trigger: main-health never runs for a PR.
     expect(Object.keys(document.on ?? {})).toEqual(['workflow_run']);
     expect(document.permissions).toEqual({
       actions: 'read',
@@ -472,31 +571,13 @@ describe('scheduled workflow failure reporting', () => {
         expect(step.with?.['persist-credentials']).toBe(false);
       }
     }
-    // The watched workflows hold no issue scope of their own for reporting:
-    // the newly watched ones are pinned to the permissions they had.
-    const own = (file: string) =>
-      (
-        documents().find((candidate) => candidate.file === file)?.document as
-          | WorkflowDocument
-          | undefined
-      )?.permissions;
-    expect(own('.github/workflows/starved-pr-report.yml')).toEqual({
-      contents: 'read',
-      'pull-requests': 'write',
-    });
-    expect(own('.github/workflows/ios-rust-cache-warm.yml')).not.toHaveProperty(
-      'issues',
-    );
-    expect(own('.github/workflows/container-smoke.yml')).toEqual({
-      contents: 'read',
-    });
   });
 
   it('opens one tracker on the first red run, updates it on the second, and closes it on green', async () => {
     const fake = fakeGithub();
     fake.setRun(RED_SWEEP);
     const first = workflowRunEvent('Repo: Dated TODO sweep', 'failure');
-    await runMainHealth(fake, first);
+    await runMainHealth(fake, first, { only: REPORT });
 
     expect(fake.issues).toHaveLength(1);
     const [tracker] = fake.issues;
@@ -509,23 +590,23 @@ describe('scheduled workflow failure reporting', () => {
     expect(tracker.body).toContain(
       'sweep: dated TODO expired: src-server/foo.ts:12 (2026-10-01)',
     );
-    // Warnings are not failing lines.
     expect(tracker.body).not.toContain('Node.js 20 is deprecated');
 
     const second = workflowRunEvent('Repo: Dated TODO sweep', 'failure', {
       head_sha: 'd'.repeat(40),
     });
-    await runMainHealth(fake, second);
+    await runMainHealth(fake, second, { only: REPORT });
     expect(fake.issues).toHaveLength(1);
     expect(fake.issues[0].body).toContain(
       `Run: ${second.event.workflow_run.html_url}`,
     );
-    // The second red establishes the comment marker; a third, unchanged red
-    // inside the heartbeat window edits it rather than notifying again.
     expect(fake.issues[0].comments).toHaveLength(1);
     await runMainHealth(
       fake,
       workflowRunEvent('Repo: Dated TODO sweep', 'failure'),
+      {
+        only: REPORT,
+      },
     );
     expect(fake.issues).toHaveLength(1);
     expect(fake.issues[0].comments).toHaveLength(1);
@@ -535,6 +616,7 @@ describe('scheduled workflow failure reporting', () => {
     const { started } = await runMainHealth(
       fake,
       workflowRunEvent('Repo: Dated TODO sweep', 'success'),
+      { only: REPORT },
     );
     expect(started).toEqual(['close-after-success']);
     expect(fake.issues[0].state).toBe('closed');
@@ -542,11 +624,13 @@ describe('scheduled workflow failure reporting', () => {
       'Closed after a successful run on main.',
     );
 
-    // Red again after green reopens the same tracker; it never forks a second.
     fake.setRun(RED_SWEEP);
     await runMainHealth(
       fake,
       workflowRunEvent('Repo: Dated TODO sweep', 'failure'),
+      {
+        only: REPORT,
+      },
     );
     expect(fake.issues).toHaveLength(1);
     expect(fake.issues[0].state).toBe('open');
@@ -558,10 +642,16 @@ describe('scheduled workflow failure reporting', () => {
     await runMainHealth(
       fake,
       workflowRunEvent('Repo: Dated TODO sweep', 'failure'),
+      {
+        only: REPORT,
+      },
     );
     await runMainHealth(
       fake,
       workflowRunEvent('Repo: Starved PR report', 'failure'),
+      {
+        only: REPORT,
+      },
     );
     expect(fake.issues.map((issue) => issue.title)).toEqual([
       'Main pipeline red: Repo: Dated TODO sweep',
@@ -569,13 +659,65 @@ describe('scheduled workflow failure reporting', () => {
     ]);
   });
 
+  it('finds an unlabelled tracker by its title and never scans every issue', async () => {
+    // Trackers opened before `ci:red` existed carry only bug and P1.
+    const fake = fakeGithub();
+    fake.issues.push({
+      number: 4037,
+      title: 'Main pipeline red: Repo: Dated TODO sweep',
+      body: 'old',
+      state: 'open',
+      labels: ['bug', 'P1'],
+      comments: [],
+    });
+    fake.setRun(RED_SWEEP);
+    await runMainHealth(
+      fake,
+      workflowRunEvent('Repo: Dated TODO sweep', 'failure'),
+      {
+        only: REPORT,
+      },
+    );
+    expect(fake.issues).toHaveLength(1);
+    expect(fake.issues[0].labels).toEqual(['bug', 'P1', 'ci:red']);
+    // One label listing and one title search, whatever the issue count.
+    expect(fake.calls.filter((call) => call === 'listForRepo')).toHaveLength(1);
+    expect(fake.calls.filter((call) => call === 'search')).toHaveLength(1);
+  });
+
+  it('opens and updates trackers unlabelled while ci:red does not exist yet', async () => {
+    const fake = fakeGithub({ labelExists: false });
+    fake.setRun(RED_SWEEP);
+    const { core } = await runMainHealth(
+      fake,
+      workflowRunEvent('Repo: Dated TODO sweep', 'failure'),
+      { only: REPORT },
+    );
+    expect(fake.issues).toHaveLength(1);
+    expect(fake.issues[0].labels).toEqual(['bug', 'P1']);
+    expect(core.info).toHaveBeenCalledWith(
+      expect.stringContaining('label ci:red does not exist yet'),
+    );
+    await runMainHealth(
+      fake,
+      workflowRunEvent('Repo: Dated TODO sweep', 'failure'),
+      {
+        only: REPORT,
+      },
+    );
+    expect(fake.issues).toHaveLength(1);
+    expect(fake.calls).not.toContain('listForRepo');
+  });
+
   it.each([
-    // Verbatim from Nightly run 39698506810.
-    ['a person', 'The run was canceled by @briananderson1222.', 'person'],
+    ['a person', REAL_CANCELS.person.message],
     [
-      'a newer run in its concurrency group',
-      'Canceling since a higher priority waiting request for container-smoke-refs/heads/main exists',
-      'superseded',
+      'a newer iOS run in its concurrency group',
+      REAL_CANCELS.superseded.message,
+    ],
+    [
+      'a newer smoke in its concurrency group',
+      REAL_CANCELS.supersededSmoke.message,
     ],
   ])('writes nothing when %s cancelled the run', async (_who, message) => {
     const fake = fakeGithub();
@@ -584,82 +726,291 @@ describe('scheduled workflow failure reporting', () => {
         job(21, 'Exact full-diff classification', 'success'),
         job(22, 'smoke', 'cancelled'),
       ],
-      annotations: { 22: [annotation(message)] },
+      annotations: {
+        22: [annotation(message), annotation('The operation was canceled.')],
+      },
     });
     const { started } = await runMainHealth(
       fake,
-      workflowRunEvent('Main: Container smoke', 'cancelled', { event: 'push' }),
+      workflowRunEvent('Main: Container smoke', 'cancelled'),
+      { only: REPORT },
     );
-    // The reporter starts (only annotations can say who cancelled) and then
-    // leaves every issue untouched.
     expect(started).toEqual(['report-failure']);
     expect(fake.writes).toEqual([]);
     expect(fake.issues).toEqual([]);
   });
 
   it.each([
-    'The job was not acquired by Runner of type self-hosted even after multiple attempts',
-    'The job has exceeded the maximum execution time while awaiting a runner for 24h0m0s',
-    // Verbatim from run 42050153692 (smoke job 127324215144). GitHub ended
-    // that job `failure`, not `cancelled`; the cancel path must still
-    // recognise it when a lost runner ends a run cancelled.
-    'The self-hosted runner lost communication with the server. Verify the machine is running and has a healthy network connection. Anything in your workflow that terminates the runner process, starves it for CPU/Memory, or blocks its network access can cause this error.',
-  ])(
-    'reports a run GitHub cancelled for lack of a runner: %s',
-    async (message) => {
-      const fake = fakeGithub();
-      fake.setRun({
-        jobs: [job(31, 'smoke', 'cancelled')],
-        annotations: { 31: [annotation(message)] },
-      });
-      await runMainHealth(
-        fake,
-        workflowRunEvent('Main: Container smoke', 'cancelled', {
-          event: 'push',
-        }),
-      );
-      expect(fake.issues).toHaveLength(1);
-      expect(fake.issues[0].title).toBe(
-        'Main pipeline red: Main: Container smoke',
-      );
-      expect(fake.issues[0].body).toContain('GitHub cancelled it');
-      expect(fake.issues[0].body).toContain('- smoke (cancelled)');
-      expect(fake.issues[0].body).toContain('Trigger: push');
-    },
-  );
-
-  it('writes nothing for a cancel it cannot attribute, and says so on its own run', async () => {
+    [
+      'Nightly verifier never acquired a runner',
+      REAL_CANCELS.notAcquiredNightly.message,
+    ],
+    ['iOS build never acquired a runner', REAL_CANCELS.notAcquiredIos.message],
+    ['the fleet runner was lost', REAL_CANCELS.runnerLost.message],
+  ])('reports a run GitHub cancelled: %s', async (_case, message) => {
     const fake = fakeGithub();
-    fake.setRun({ jobs: [], annotations: {} });
-    const { core } = await runMainHealth(
+    fake.setRun({
+      jobs: [job(31, 'smoke', 'cancelled')],
+      annotations: {
+        31: [
+          annotation(message),
+          annotation(
+            'Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times.',
+            'notice',
+          ),
+        ],
+      },
+    });
+    await runMainHealth(
+      fake,
+      workflowRunEvent('Main: Container smoke', 'cancelled'),
+      {
+        only: REPORT,
+      },
+    );
+    expect(fake.issues).toHaveLength(1);
+    expect(fake.issues[0].title).toBe(
+      'Main pipeline red: Main: Container smoke',
+    );
+    expect(fake.issues[0].body).toContain('GitHub cancelled it');
+    expect(fake.issues[0].body).toContain('- smoke (cancelled)');
+  });
+
+  it('reports a cancel whose cause it does not recognise, and says so', async () => {
+    // An API cancel by automation leaves no annotation at all (Main:
+    // Qualification run 43982701666, job 133702919995).
+    const fake = fakeGithub();
+    fake.setRun({ jobs: [job(41, 'report', 'cancelled')], annotations: {} });
+    await runMainHealth(
       fake,
       workflowRunEvent('Repo: Starved PR report', 'cancelled'),
+      {
+        only: REPORT,
+      },
     );
-    expect(fake.writes).toEqual([]);
-    expect(core.warning).toHaveBeenCalledWith(
-      expect.stringContaining('no recognised cause'),
-    );
+    expect(fake.issues).toHaveLength(1);
+    expect(fake.issues[0].body).toContain('the cause was not recognised');
+  });
+
+  it('classifies every real cancellation text it was built from', () => {
+    for (const { message, cause } of Object.values(REAL_CANCELS))
+      expect(classifyCancellation([annotation(message)]), message).toBe(cause);
+    expect(
+      classifyCancellation([annotation('The operation was canceled.')]),
+    ).toBe('unknown');
   });
 
   it('still opens the tracker when the run details cannot be read, then fails visibly', async () => {
     const fake = fakeGithub();
     fake.setRun({ jobs: [], annotations: {}, failJobs: true });
     await expect(
-      runMainHealth(fake, workflowRunEvent('Repo: Backlog policy', 'failure')),
+      runMainHealth(fake, workflowRunEvent('Repo: Backlog policy', 'failure'), {
+        only: REPORT,
+      }),
     ).rejects.toThrow(/Tracker written without run details: HTTP 502/);
     expect(fake.issues).toHaveLength(1);
     expect(fake.issues[0].body).toContain('Run details unavailable: HTTP 502');
   });
 
-  it('fails visibly rather than guessing when a cancel cannot be read', async () => {
+  it('reports an unreadable cancel rather than guessing it was a person', async () => {
     const fake = fakeGithub();
     fake.setRun({ jobs: [], annotations: {}, failJobs: true });
     await expect(
       runMainHealth(
         fake,
         workflowRunEvent('Main: Container smoke', 'cancelled'),
+        {
+          only: REPORT,
+        },
       ),
     ).rejects.toThrow(/HTTP 502/);
-    expect(fake.writes).toEqual([]);
+    expect(fake.issues).toHaveLength(1);
+    expect(fake.issues[0].body).toContain('the cause was not recognised');
+  });
+});
+
+describe('scheduled workflows that stop running', () => {
+  it('reads each watched schedule from the workflow file itself', () => {
+    const watched = new Set(mainHealth().on?.workflow_run?.workflows);
+    // The text reader agrees with the YAML parser on the watched list and on
+    // every scheduled workflow's name and crons.
+    expect(
+      watchedWorkflowNames(readFileSync(new URL(MAIN_HEALTH, root), 'utf8')),
+    ).toEqual([...watched]);
+    for (const { file, document } of scheduled()) {
+      const parsed = document as WorkflowDocument;
+      const text = readFileSync(new URL(file, root), 'utf8');
+      expect(workflowSchedule(text), file).toEqual({
+        name: parsed.name,
+        crons: (parsed.on?.schedule ?? []).map((entry) => entry.cron),
+      });
+    }
+    const schedules = readWatchedSchedules(root.href);
+    expect(schedules.map(({ name }) => name).sort()).toEqual(
+      scheduled()
+        .map(({ document }) => String((document as WorkflowDocument).name))
+        .filter((name) => watched.has(name))
+        .sort(),
+    );
+  });
+
+  it('derives the interval from cron and tolerates the measured sparsity', () => {
+    expect(cronIntervalMs(['47 * * * *'])).toBe(HOUR);
+    expect(cronIntervalMs(['23 2,8,14,20 * * *'])).toBe(6 * HOUR);
+    expect(cronIntervalMs(['7 */6 * * *'])).toBe(6 * HOUR);
+    expect(cronIntervalMs(['30 7 * * *'])).toBe(24 * HOUR);
+    expect(cronIntervalMs(['41 4 * * 1'])).toBe(168 * HOUR);
+    expect(OVERDUE_FLOOR_MS).toBe(20 * HOUR);
+    // Largest gaps measured 2026-10-17..11-16 stay inside the tolerance.
+    expect(overdueLimitMs(HOUR)).toBeGreaterThan(10.8 * HOUR);
+    expect(overdueLimitMs(6 * HOUR)).toBeGreaterThan(15.8 * HOUR);
+    expect(overdueLimitMs(24 * HOUR)).toBeGreaterThan(28.6 * HOUR);
+    expect(overdueLimitMs(168 * HOUR)).toBeGreaterThan(170.3 * HOUR);
+  });
+
+  it('says when the schedule last ran and what the tolerance is', () => {
+    const body = renderOverdueBody({
+      workflowName: 'Repo: Starved PR report',
+      file: 'starved-pr-report.yml',
+      crons: ['17 * * * *'],
+      intervalMs: HOUR,
+      limitMs: overdueLimitMs(HOUR),
+      lastRunAt: '2026-11-15T10:17:00Z',
+      lastRunUrl: 'https://github.com/kontourai/station/actions/runs/2',
+    });
+    expect(isOverdueBody(body)).toBe(true);
+    expect(body).toContain(
+      'Repo: Starved PR report has not run on its schedule since 2026-11-15T10:17:00Z.',
+    );
+    expect(body).toContain('Overdue after: 20 h without a scheduled run');
+  });
+
+  it('decides on time, late within tolerance, overdue, never ran, and a changed cron', () => {
+    const now = Date.parse('2026-11-16T12:00:00Z');
+    const at = (hoursAgo: number) =>
+      new Date(now - hoursAgo * HOUR).toISOString();
+    const hourly = cronIntervalMs(['17 * * * *']);
+    const daily = cronIntervalMs(['0 10 * * *']);
+    expect(
+      decideOverdue({ intervalMs: hourly, lastRunAt: at(1), now }).overdue,
+    ).toBe(false);
+    expect(
+      decideOverdue({ intervalMs: hourly, lastRunAt: at(10.8), now }).overdue,
+    ).toBe(false);
+    expect(
+      decideOverdue({ intervalMs: hourly, lastRunAt: at(21), now }).overdue,
+    ).toBe(true);
+    expect(
+      decideOverdue({ intervalMs: daily, lastRunAt: at(30), now }).overdue,
+    ).toBe(false);
+    expect(
+      decideOverdue({ intervalMs: daily, lastRunAt: at(49), now }).overdue,
+    ).toBe(true);
+    // Never ran: measured from when the workflow appeared.
+    expect(
+      decideOverdue({
+        intervalMs: daily,
+        lastRunAt: null,
+        workflowCreatedAt: at(5),
+        now,
+      }),
+    ).toMatchObject({ overdue: false, neverRan: true });
+    expect(
+      decideOverdue({
+        intervalMs: daily,
+        lastRunAt: null,
+        workflowCreatedAt: at(72),
+        now,
+      }),
+    ).toMatchObject({ overdue: true, neverRan: true });
+    // A weekly cron changed to hourly: 30 h without a run is now overdue.
+    const weekly = cronIntervalMs(['41 4 * * 1']);
+    expect(
+      decideOverdue({ intervalMs: weekly, lastRunAt: at(30), now }).overdue,
+    ).toBe(false);
+    expect(
+      decideOverdue({
+        intervalMs: cronIntervalMs(['41 * * * *']),
+        lastRunAt: at(30),
+        now,
+      }).overdue,
+    ).toBe(true);
+  });
+
+  it('opens one tracker for an overdue schedule, stays quiet while it stays overdue, and clears on the next run', async () => {
+    const now = Date.parse('2026-11-16T12:00:00Z');
+    const fake = fakeGithub();
+    const recent = {
+      created_at: new Date(now - 2 * HOUR).toISOString(),
+      html_url: 'https://github.com/kontourai/station/actions/runs/1',
+    };
+    for (const { file } of readWatchedSchedules(root.href))
+      fake.scheduledRuns[file] = recent;
+    fake.scheduledRuns['starved-pr-report.yml'] = {
+      created_at: '2026-11-15T10:17:00Z',
+      html_url: 'https://github.com/kontourai/station/actions/runs/2',
+    };
+    fake.scheduledRuns['dated-todo-sweep.yml'] = null;
+    fake.workflowCreated['dated-todo-sweep.yml'] = '2026-09-01T00:00:00Z';
+    const trigger = workflowRunEvent('Nightly', 'success');
+
+    const { started } = await runMainHealth(fake, trigger, {
+      only: ['overdue-schedules'],
+      now,
+    });
+    expect(started).toEqual(['overdue-schedules']);
+    expect(fake.issues.map((issue) => issue.title).sort()).toEqual([
+      'Main pipeline red: Repo: Dated TODO sweep',
+      'Main pipeline red: Repo: Starved PR report',
+    ]);
+    const starved = fake.issues.find((issue) =>
+      issue.title.endsWith('Starved PR report'),
+    );
+    expect(isOverdueBody(starved?.body)).toBe(true);
+    expect(starved?.body).toContain(
+      'has not run on its schedule since 2026-11-15T10:17:00Z',
+    );
+    const dated = fake.issues.find((issue) =>
+      issue.title.endsWith('Dated TODO sweep'),
+    );
+    expect(dated?.body).toContain('has never run on its schedule');
+
+    const writes = fake.writes.length;
+    await runMainHealth(fake, trigger, {
+      only: ['overdue-schedules'],
+      now: now + HOUR,
+    });
+    expect(fake.writes.length).toBe(writes);
+
+    fake.scheduledRuns['starved-pr-report.yml'] = recent;
+    await runMainHealth(fake, trigger, { only: ['overdue-schedules'], now });
+    expect(starved?.state).toBe('closed');
+    expect(starved?.comments.at(-1)?.body).toContain(
+      'Ran on its schedule again',
+    );
+    expect(dated?.state).toBe('open');
+  });
+
+  it('never clears a tracker it did not open', async () => {
+    const now = Date.parse('2026-11-16T12:00:00Z');
+    const fake = fakeGithub();
+    for (const { file } of readWatchedSchedules(root.href))
+      fake.scheduledRuns[file] = {
+        created_at: new Date(now - HOUR).toISOString(),
+        html_url: 'https://github.com/kontourai/station/actions/runs/3',
+      };
+    fake.setRun(RED_SWEEP);
+    await runMainHealth(
+      fake,
+      workflowRunEvent('Repo: Dated TODO sweep', 'failure'),
+      {
+        only: REPORT,
+      },
+    );
+    await runMainHealth(fake, workflowRunEvent('Nightly', 'success'), {
+      only: ['overdue-schedules'],
+      now,
+    });
+    expect(fake.issues[0].state).toBe('open');
   });
 });

@@ -464,12 +464,104 @@ export function decideMainHealthComment({
   };
 }
 
+/** Every tracker's title: the dedupe key, one issue per watched workflow. */
+export function trackerTitle(workflowName) {
+  return `Main pipeline red: ${workflowName}`;
+}
+
+/** Labels every tracker carries, whether or not `ci:red` exists yet. */
+export const MAIN_HEALTH_BASE_LABELS = Object.freeze(['bug', 'P1']);
+
 /**
- * Labels every tracker carries. `ci:red` is the filter the owner and, later,
- * agent intake read: every issue it marks is one watched workflow that is red
- * on main right now, opened and closed by `main-health.yml` alone.
+ * The filter the owner and, later, agent intake read: every issue it marks is
+ * one watched workflow that is red on main, opened and closed by
+ * `main-health.yml` alone. The owner creates it; until then trackers are
+ * opened unlabelled rather than not at all.
  */
-export const MAIN_HEALTH_LABELS = Object.freeze(['bug', 'P1', 'ci:red']);
+export const MAIN_HEALTH_LABEL = 'ci:red';
+
+/**
+ * The labels a tracker can carry right now. `ci:red` only once it exists:
+ * adding a missing label would create it with an arbitrary colour, which the
+ * label-manifest check then reports as drift.
+ *
+ * @param {any} github Octokit
+ * @param {{owner: string, repo: string}} repo
+ * @param {{info: (line: string) => void}} core
+ * @returns {Promise<string[]>}
+ */
+export async function trackerLabels(github, repo, core) {
+  try {
+    await github.rest.issues.getLabel({ ...repo, name: MAIN_HEALTH_LABEL });
+    return [...MAIN_HEALTH_BASE_LABELS, MAIN_HEALTH_LABEL];
+  } catch (error) {
+    if (error?.status !== 404) throw error;
+    core.info(
+      `main-health: label ${MAIN_HEALTH_LABEL} does not exist yet; trackers stay unlabelled with it until the owner creates it.`,
+    );
+    return [...MAIN_HEALTH_BASE_LABELS];
+  }
+}
+
+/** Most trackers a lookup reads; there is one per watched workflow. */
+export const MAX_TRACKER_RESULTS = 100;
+
+/**
+ * Every existing tracker, in a bounded number of calls rather than a scan of
+ * every issue in the repository (~50 pages here). Labelled trackers come from
+ * one label listing; trackers opened before the label existed are found by
+ * one title search. Search is eventually consistent, so a tracker created
+ * seconds ago and still unlabelled can be missed; the per-workflow
+ * concurrency group keeps that window to a second red within the same
+ * minute.
+ *
+ * @param {any} github Octokit
+ * @param {{owner: string, repo: string}} repo
+ * @param {string[]} labels the labels trackerLabels found, `ci:red` only if it exists
+ * @returns {Promise<{number: number, title: string, state: string, body?: string | null}[]>}
+ */
+export async function listTrackers(github, repo, labels) {
+  const labelled = labels.includes(MAIN_HEALTH_LABEL);
+  const found = new Map();
+  const keep = (issue) => {
+    if (issue?.pull_request) return;
+    if (!String(issue?.title ?? '').startsWith(trackerTitle(''))) return;
+    found.set(issue.number, issue);
+  };
+  if (labelled) {
+    const { data } = await github.rest.issues.listForRepo({
+      ...repo,
+      state: 'all',
+      labels: MAIN_HEALTH_LABEL,
+      per_page: MAX_TRACKER_RESULTS,
+    });
+    for (const issue of data) keep(issue);
+  }
+  const { data } = await github.rest.search.issuesAndPullRequests({
+    q: `repo:${repo.owner}/${repo.repo} is:issue in:title "${trackerTitle('').trim()}"`,
+    per_page: MAX_TRACKER_RESULTS,
+  });
+  for (const issue of data.items ?? []) keep(issue);
+  return [...found.values()];
+}
+
+/**
+ * The tracker for one title: an open one if any (two open duplicates exist
+ * from before), otherwise the newest.
+ *
+ * @param {{number: number, title: string, state: string}[]} trackers
+ * @param {string} title
+ */
+export function pickTracker(trackers, title) {
+  const matches = trackers
+    .filter((issue) => issue.title === title)
+    .sort(
+      (a, b) =>
+        Number(b.state === 'open') - Number(a.state === 'open') ||
+        b.number - a.number,
+    );
+  return matches[0] ?? null;
+}
 
 /** Unsuccessful jobs whose annotations are read, so one red run costs a bounded number of calls. */
 export const MAX_ANNOTATED_JOBS = 5;
@@ -497,15 +589,18 @@ export function unsuccessfulJobs(jobs = []) {
 /**
  * Who cancelled a run, from its jobs' check-run annotations. GitHub records
  * the cause only there; the run and job objects say `cancelled` either way.
+ * Every pattern below is a verbatim annotation from a real run (fixtures in
+ * scheduled-failure-reporting.test.ts carry the run ids).
  *
- * - `person`: "The run was canceled by @login." Never reported: someone chose it.
- * - `superseded`: a newer run in the same concurrency group took the slot.
- *   Never reported: the newer run carries the verdict.
- * - `infrastructure`: GitHub gave up on the job: no runner acquired it, the
- *   runner was lost, or it waited out the queue limit. Reported, because
- *   the work never ran and nothing else will say so.
- * - `unknown`: none of the above. Not reported, but logged as a warning on
- *   the main-health run; a run cancelled before any job existed lands here.
+ * - `person`: "The run was canceled by @login." Writes nothing: someone chose it.
+ * - `superseded`: "Canceling since a higher priority waiting request for
+ *   <group> exists". Writes nothing: the newer run carries the verdict.
+ * - `infrastructure`: GitHub gave up on the job ("not acquired by Runner",
+ *   "lost communication with the server"). Reported.
+ * - `unknown`: anything else, including a cancel with no annotation at all
+ *   (an API cancel by automation leaves none). Reported too, saying the cause
+ *   was not recognised: a failure must do something, and only a positively
+ *   identified choice by a person or a newer run is allowed to stay silent.
  *
  * A person's cancel wins over everything else in the same run: cancelling a
  * run that was stuck waiting for a runner is still a person's decision.
@@ -517,11 +612,11 @@ export function classifyCancellation(annotations = []) {
   const messages = (annotations ?? []).map((annotation) =>
     String(annotation?.message ?? ''),
   );
-  if (messages.some((message) => /\bcancell?ed by @/i.test(message)))
+  if (messages.some((message) => /^The run was canceled by @/.test(message)))
     return 'person';
   if (
     messages.some((message) =>
-      /higher priority waiting request|canceling since a higher priority/i.test(
+      /^Canceling since a higher priority waiting request for .+ exists/.test(
         message,
       ),
     )
@@ -529,7 +624,7 @@ export function classifyCancellation(annotations = []) {
     return 'superseded';
   if (
     messages.some((message) =>
-      /not acquired by runner|lost communication with the server|while awaiting a runner|runner has received a shutdown signal/i.test(
+      /not acquired by Runner of type|lost communication with the server/.test(
         message,
       ),
     )
@@ -537,6 +632,9 @@ export function classifyCancellation(annotations = []) {
     return 'infrastructure';
   return 'unknown';
 }
+
+/** Cancel causes that write nothing. */
+export const SILENT_CANCEL_CAUSES = Object.freeze(['person', 'superseded']);
 
 /**
  * Normalize one annotation line for a fenced block: no control characters,
@@ -590,6 +688,7 @@ export function failingLines(annotations = []) {
  *   lines?: string[],
  *   detailsError?: string | null,
  *   notes?: string[],
+ *   cancelCause?: string | null,
  * }} input
  */
 export function renderTrackerBody({
@@ -602,11 +701,14 @@ export function renderTrackerBody({
   lines = [],
   detailsError = null,
   notes = [],
+  cancelCause = null,
 }) {
   const lead =
-    conclusion === 'cancelled'
-      ? 'A watched workflow never completed on main: GitHub cancelled it (no runner took the job, or the runner was lost).'
-      : 'A watched workflow failed on main.';
+    conclusion !== 'cancelled'
+      ? 'A watched workflow failed on main.'
+      : cancelCause === 'infrastructure'
+        ? 'A watched workflow never completed on main: GitHub cancelled it (no runner took the job, or the runner was lost).'
+        : 'A watched workflow was cancelled on main and the cause was not recognised: not a person, not a newer run in its concurrency group, not a lost runner. Check who or what cancelled it.';
   const shown = normalizeFailures(failures);
   const sections = [
     lead,

@@ -447,25 +447,39 @@ bypass the queue), and `Main: Health` tracks its main-push result.
 Every scheduled workflow's red run opens or updates one issue. `Main: Health`
 is the only reporter: it watches each scheduled workflow by name and keeps one
 tracker per workflow, titled `Main pipeline red: <workflow name>` and labelled
-`bug`, `P1` and `ci:red`. The tracker body is rewritten for each red run with
-the run URL, trigger, head SHA, failing jobs and steps, and up to 15 failing
-annotation lines, so an agent can start from the issue alone. Comments follow
-the [comment policy](../../scripts/main-health-comment-policy.mjs): a new
-comment only when the failure changes, the tracker reopens, or a day has
-passed. The next fully green run closes it. A run GitHub cancelled because no
-runner took the job, or the runner was lost, is reported; a person's cancel
-and a run superseded in its concurrency group are not. Push and dispatch runs
-on `main` of a watched workflow report too. Main pushes of `Main: Container
-smoke` and `Nightly: iOS Rust cache` are the only push runs among the
-scheduled set; the push-only `Main: Seatbelt kernel legs` is watched too.
+`bug` and `P1`, plus `ci:red` once the owner has created that label (until
+then trackers open unlabelled with it and the job log says so). The tracker is
+found with one `ci:red` listing and one title search, not a scan of every
+issue. Its body is rewritten for each red run with the run URL, trigger, head
+SHA, failing jobs and steps, and up to 15 failing annotation lines, so an
+agent can start from the issue alone. Comments follow the
+[comment policy](../../scripts/main-health-comment-policy.mjs): a new comment
+only when the failure changes, the tracker reopens, or a day has passed. The
+next fully green run closes it.
+
+A cancelled run is attributed from its jobs' annotations. Only a person's
+cancel ("The run was canceled by @…") and a run superseded in its concurrency
+group ("Canceling since a higher priority waiting request for … exists") write
+nothing. A job GitHub never gave a runner, or whose runner was lost, is
+reported, and so is any cancel whose cause is not recognised, including an API
+cancel by automation, which leaves no annotation. Push and dispatch runs on
+`main` of a watched workflow report too; `Nightly: iOS Rust cache` and the
+push-only `Main: Seatbelt kernel legs` are the push-triggered ones.
+
+A schedule that stops firing is a failure as well. On every Main: Health run,
+its `overdue-schedules` job reads each watched scheduled workflow's cron from
+the workflow file, takes the longest gap between firings as the interval, and
+opens the same tracker with a "has not run on its schedule since …" body when
+the newest scheduled run is older than max(2 × interval, 20 h). GitHub fires
+this repository's schedules late and sparsely (largest gaps measured
+2026-10-17..11-16: 10.8 h for hourly crons, 15.8 h for six-hourly, 28.6 h for
+daily, 170 h for weekly), so the tolerance is 20 h, 20 h, 48 h and 14 days.
+The next scheduled run closes a tracker that check opened.
 
 `scripts/__tests__/scheduled-failure-reporting.test.ts` refuses a scheduled
 workflow that is neither watched nor on its justified allowlist: `Main:
 Qualification` (its repair episode and health trackers report it) and `Repo:
-Duplicate sweep` (its scheduled output has no reader). Only `Main:
-Qualification health` checks that `Main: Qualification` and `Nightly`
-actually ran; a schedule that stops firing for any other workflow is not yet
-detected.
+Duplicate sweep` (its scheduled output has no reader).
 
 The sidebar names below describe the primary trigger or delivery family.
 `PR:` checks can also run on main pushes or a main schedule; `Main:` qualification runs after main
@@ -495,7 +509,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`ci-extended.yml`](../../.github/workflows/ci-extended.yml) | CI Extended | **Tool: CI extended** | manual dispatch. |
 | [`ci-throughput-health.yml`](../../.github/workflows/ci-throughput-health.yml) | — | **Repo: CI throughput health** | UTC schedule: `41 */6 * * *`; manual dispatch; reports only while #3101 is open. |
 | [`ci.yml`](../../.github/workflows/ci.yml) | CI | **PR: CI** | PR events; merge queue; main pushes (heavy lane skipped when the merge queue already verified that exact SHA and base); manual dispatch. |
-| [`container-smoke.yml`](../../.github/workflows/container-smoke.yml) | Container smoke | **Main: Container smoke** | main pushes (smoke skipped for docs-only ranges); manual dispatch; GitHub-hosted. |
+| [`container-smoke.yml`](../../.github/workflows/container-smoke.yml) | Container smoke | **Main: Container smoke** | UTC schedule: `7 */6 * * *`, over the range since the last green smoke (smoke skipped when nothing container-relevant landed); manual dispatch; GitHub-hosted. |
 | [`dated-todo-sweep.yml`](../../.github/workflows/dated-todo-sweep.yml) | Dated TODO sweep | **Repo: Dated TODO sweep** | UTC schedule: `41 4 * * 1`; manual dispatch. |
 | [`dependency-advisory.yml`](../../.github/workflows/dependency-advisory.yml) | Scheduled dependency advisory floor | **Repo: Dependency advisory** | UTC schedule: `23 2,8,14,20 * * *`; manual dispatch. |
 | [`delivery-validation.yml`](../../.github/workflows/delivery-validation.yml) | — | **Delivery validation** | selected after PR core checks; all families after scheduled full qualification. |

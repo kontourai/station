@@ -1,9 +1,18 @@
 name: "Main: Container smoke"
 
+# A cadence, not a per-landing run: on a GitHub-hosted runner one smoke per
+# container-relevant landing (~26 a day at 20-30 minutes) would hold one of
+# the account's 20 job slots all day. Each scheduled run classifies the whole
+# range since the last run whose smoke passed and skips when nothing
+# container-relevant landed in it. The cadence lane's landing-driven decide
+# step should replace this cron once it exists: GitHub delivers this
+# repository's schedules sparsely (about 4-5 of 24 hourly firings a day), so
+# a six-hour cron runs roughly two or three times a day. Main: Health reports
+# a red or cancelled run and a schedule that stops firing.
 on:
+  schedule:
+    - cron: '7 */6 * * *'
   workflow_dispatch:
-  push:
-    branches: [main]
 
 permissions:
   contents: read
@@ -11,12 +20,15 @@ permissions:
 jobs:
   classify:
     name: Exact full-diff classification
-    # Classifies a diff with one node script so container-only changes still
-    # skip the smoke job. Hosted because the public repo has free GitHub-hosted
-    # minutes; this job does not need desktop-win.
+    # Classifies the range since the last green smoke with one node script,
+    # so a range of docs-only landings skips the smoke job.
     runs-on: ubuntu-22.04
     if: ${{ github.event_name != 'pull_request' }}
     timeout-minutes: 10
+    # Reads this workflow's own run and job history to find that range.
+    permissions:
+      contents: read
+      actions: read
     outputs:
       container: ${{ steps.classify.outputs.container }}
     steps:
@@ -29,24 +41,25 @@ jobs:
         with:
           node-version-file: .nvmrc
 
-      - id: classify
-        name: Classify the complete before..sha diff
+      - id: range
+        name: Find the last commit a smoke passed on
         env:
-          BEFORE: ${{ github.event.before || '0000000000000000000000000000000000000000' }}
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/container-smoke-range.mjs
+
+      - id: classify
+        name: Classify the complete range since the last green smoke
+        env:
+          BEFORE: ${{ steps.range.outputs.before }}
           AFTER: ${{ github.sha }}
         run: node scripts/classify-ci-change.mjs --before "$BEFORE" --after "$AFTER" >> "$GITHUB_OUTPUT"
 
   smoke:
     needs: classify
     if: github.event_name != 'pull_request' && (github.event_name == 'workflow_dispatch' || needs.classify.outputs.container == 'true')
-    # Never cancel a running smoke: the job takes 20+ minutes and the merge
-    # queue lands a non-docs entry every ~18, so cancelling on push meant
-    # only the last commit of a burst ever got a verdict (17 cancelled main
-    # runs on 2026-09-01 alone, each the only run for its commit, including
-    # the first two carrying the #917 fix).
-    # Without cancel the group still keeps at most one pending run, so the
-    # latest main is verified next. Main: Health ignores a run superseded in
-    # this group and reports one GitHub cancelled for lack of a runner.
+    # Never cancel a running smoke: its verdict covers every landing since
+    # the last green one. The group keeps at most one pending run; Main:
+    # Health ignores a run superseded in this group.
     concurrency:
       group: container-smoke-${{ github.ref }}
       cancel-in-progress: false
@@ -59,10 +72,14 @@ jobs:
     # (Run 33228038600's device-pairing timeout, once blamed on the hosted
     # environment, was the anonymous-browser premise gap fixed in #917.)
     runs-on: ubuntu-22.04
-    # The smoke took 20-25 minutes on the fleet host; the hosted runner is
-    # slower to build the image. A red past this bound is a timed_out run,
-    # which Main: Health reports.
-    timeout-minutes: 50
+    # Not yet measured hosted. The smoke job took 8-15 minutes on the fleet
+    # host (six passing runs on 2026-10-01, e.g. run 36850091547 at 15 min)
+    # with a warm Docker cache and installed browsers; a hosted runner builds
+    # the image cold and installs dependencies and Chromium, so 20-30 minutes
+    # is the estimate. 45 leaves half again for a slow pull without letting a
+    # hang hold a slot for long; set it from the first hosted runs. A timeout
+    # is a timed_out run, which Main: Health reports.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -90,7 +107,6 @@ jobs:
         env:
           STATION_RELEASE_SHA: ${{ github.sha }}
           STATION_RELEASE_REF: v0.0.0-rc.1
-          STATION_RELEASE_CREATED_AT: ${{ github.event.head_commit.timestamp || github.event.pull_request.updated_at }}
         run: scripts/container-smoke.sh
       - name: Verify public-ingress protocol and port isolation
         run: node deploy/public-ingress/smoke.mjs

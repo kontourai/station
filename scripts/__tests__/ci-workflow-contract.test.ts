@@ -476,11 +476,15 @@ describe('CI verification workflow contracts', () => {
       );
       expect(job).toContain('github.event.workflow_run.html_url');
       expect(job).toContain('github.event.workflow_run.head_sha');
-      expect(job).toContain('Main pipeline red: $' + '{workflowName}');
+      expect(job).toContain('trackerTitle(workflowName)');
+      // A bounded lookup (one label listing, one title search), never a scan
+      // of every issue (scheduled-failure-reporting.test.ts executes it).
+      expect(job).toContain('listTrackers(github, context.repo, labels)');
+      expect(job).not.toContain(
+        'github.paginate(github.rest.issues.listForRepo',
+      );
     }
-    expect(failureJob).toContain('labels: [...MAIN_HEALTH_LABELS]');
-    expect(failureJob).toContain("state: 'all'");
-    expect(failureJob).toContain("state: 'open'");
+    expect(failureJob).toContain('labels,');
     expect(failureJob).toContain(
       'group: main-health-$' + '{{ github.event.workflow_run.name }}',
     );
@@ -555,7 +559,9 @@ describe('CI verification workflow contracts', () => {
       [],
       { importModuleDynamically: vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER },
     )();
-    const listForRepo = vi.fn();
+    const listForRepo = vi.fn(async () => {
+      throw new Error('label absent: listForRepo must not be called');
+    });
     const listJobs = vi.fn();
     const listComments = vi.fn();
     const createComment = vi.fn();
@@ -565,6 +571,9 @@ describe('CI verification workflow contracts', () => {
       rest: {
         actions: { listJobsForWorkflowRun: listJobs },
         issues: {
+          getLabel: vi.fn(async () => {
+            throw Object.assign(new Error('Not Found'), { status: 404 });
+          }),
           listForRepo,
           listComments,
           create: vi.fn(),
@@ -572,6 +581,19 @@ describe('CI verification workflow contracts', () => {
           addLabels: vi.fn(),
           createComment,
           updateComment,
+        },
+        search: {
+          issuesAndPullRequests: vi.fn(async () => ({
+            data: {
+              items: [
+                {
+                  number: 42,
+                  state: issueState,
+                  title: 'Main pipeline red: Repo: Backlog policy',
+                },
+              ],
+            },
+          })),
         },
       },
       paginate: vi.fn(async (method: unknown) => {
@@ -584,13 +606,7 @@ describe('CI verification workflow contracts', () => {
             },
           ];
         if (method === listComments) return comments;
-        return [
-          {
-            number: 42,
-            state: issueState,
-            title: 'Main pipeline red: Repo: Backlog policy',
-          },
-        ];
+        throw new Error('unbounded issue scan');
       }),
     };
     await run(
@@ -746,13 +762,16 @@ describe('CI verification workflow contracts', () => {
     )?.document as {
       jobs: Record<string, { steps: { with: { script: string } }[] }>;
     };
-    const script = document.jobs['close-after-success'].steps[0].with.script;
-    const run = new (Object.getPrototypeOf(async () => {}).constructor)(
-      'github',
-      'context',
-      'process',
-      script,
-    );
+    const script = document.jobs['close-after-success'].steps.find(
+      (step) => typeof step.with?.script === 'string',
+    )?.with.script as string;
+    // The step imports the tracker lookup, so it needs a host for dynamic
+    // import(); vm.compileFunction with the main loader runs it as written.
+    const run = vm.compileFunction(
+      `return async function (github, context, process, core) {\n${script}\n};`,
+      [],
+      { importModuleDynamically: vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER },
+    )();
     const scenarios = [
       {
         workflowName: 'Nightly',
@@ -793,16 +812,30 @@ describe('CI verification workflow contracts', () => {
         );
         jobs.push({ name: optionalName, conclusion: 'skipped' });
         const listJobs = vi.fn();
+        const tracker = {
+          number: 1,
+          state: 'open',
+          title: `Main pipeline red: ${workflowName}`,
+        };
         const github = {
           rest: {
             actions: { listJobsForWorkflowRun: listJobs },
-            issues: { listForRepo: vi.fn(), createComment: vi.fn(), update },
+            issues: {
+              getLabel: vi.fn(async () => ({ data: {} })),
+              listForRepo: vi.fn(async () => ({ data: [tracker] })),
+              createComment: vi.fn(),
+              update,
+            },
+            search: {
+              issuesAndPullRequests: vi.fn(async () => ({
+                data: { items: [tracker] },
+              })),
+            },
           },
-          paginate: vi.fn(async (method) =>
-            method === listJobs
-              ? jobs
-              : [{ number: 1, title: `Main pipeline red: ${workflowName}` }],
-          ),
+          paginate: vi.fn(async (method) => {
+            if (method !== listJobs) throw new Error('unbounded issue scan');
+            return jobs;
+          }),
         };
         await run(
           github,
@@ -812,11 +845,13 @@ describe('CI verification workflow contracts', () => {
           },
           {
             env: {
+              GITHUB_WORKSPACE: pathToFileURL(root).href,
               WORKFLOW_NAME: workflowName,
               RUN_URL: 'https://example.test/run/123',
               HEAD_SHA: 'a'.repeat(40),
             },
           },
+          { info: vi.fn() },
         );
         expect(
           update,
@@ -1044,8 +1079,6 @@ describe('CI verification workflow contracts', () => {
         'publishes released packages from merged main; nothing to pre-verify',
       '.github/workflows/source-availability.yml':
         'reports on merged main and files issues; observational, not a build',
-      '.github/workflows/container-smoke.yml':
-        'no pull-request signal today; runs on a hosted runner after main pushes whose range is not docs-only, as one running plus one pending',
       '.github/workflows/build-android.yml':
         'desktop-rust.yml type-checks the Android target on pull requests; full APK assembly stays post-merge',
       '.github/workflows/ios-rust-cache-warm.yml':
@@ -1081,9 +1114,12 @@ describe('CI verification workflow contracts', () => {
     const ci = workflow('ci.yml');
     const containerSmoke = workflow('container-smoke.yml');
 
+    expect(ci).toContain('push:');
+    expect(ci).toContain('branches: [main]');
+    // Container smoke is a cadence over the range since its last green smoke
+    // (container-smoke-range.test.ts), not a per-push run.
+    expect(containerSmoke).not.toMatch(/^ {2}push:/m);
     for (const source of [ci, containerSmoke]) {
-      expect(source).toContain('push:');
-      expect(source).toContain('branches: [main]');
       expect(source).not.toContain('paths-ignore:');
       expect(source).toContain('Exact full-diff classification');
       expect(source).toContain('fetch-depth: 0');
@@ -1107,8 +1143,9 @@ describe('CI verification workflow contracts', () => {
     expect(containerSmoke).toContain(
       `group: container-smoke-\${{ github.ref }}`,
     );
-    // A 20-minute smoke must outlive the next queue merge; the group still
-    // collapses pending runs, so only the in-progress verdict is preserved.
+    // A running smoke covers every landing since the last green one; the
+    // group still collapses pending runs, so only the in-progress verdict is
+    // preserved.
     const containerSmokeJob = containerSmoke.slice(
       containerSmoke.indexOf('  smoke:'),
     );
@@ -3144,9 +3181,14 @@ describe('CI verification workflow contracts', () => {
     }
     expect(ci.triggers).toContain('merge_group');
     expect(ci.job.if).toContain("github.event_name != 'merge_group'");
-    // Neither copy runs on merge_group now, so their event handling is the
-    // same too.
-    expect(ci.step.env).toEqual(smoke.step.env);
+    // Neither copy runs on merge_group now. They differ only in where the
+    // range starts: ci.yml's push `before`, container smoke's last green
+    // smoke (a cadence run has no push `before`).
+    expect(smoke.step.env?.AFTER).toEqual(ci.step.env?.AFTER);
+    expect(smoke.step.env?.BEFORE).toBe(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      '${{ steps.range.outputs.before }}',
+    );
 
     // The guards that read as dead code and are not. Neither workflow
     // declares the event its job-level `if` excludes; the guard is what keeps
