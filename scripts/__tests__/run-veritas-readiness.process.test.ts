@@ -54,6 +54,7 @@ describe('run-veritas-readiness merge-base range (#5120)', () => {
       cwd: repo,
       encoding: 'utf8',
       env: gitEnv(),
+      windowsHide: true,
     });
     if (result.status !== 0)
       throw new Error(`git ${args.join(' ')} failed: ${result.stderr}`);
@@ -72,6 +73,7 @@ describe('run-veritas-readiness merge-base range (#5120)', () => {
       cwd: repo,
       encoding: 'utf8',
       env: gitEnv(),
+      windowsHide: true,
     });
     expect(result.status, result.stderr).toBe(0);
     return { ...JSON.parse(result.stdout), stderr: result.stderr };
