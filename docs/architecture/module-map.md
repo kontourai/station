@@ -300,7 +300,9 @@ the host half is the [operator-only route set](../../src-server/routes/operator-
 behind `station environment operator passkeys`. The
 [session service](../../src-server/services/identity/operator-sessions.ts) verifies
 single-use sign-in assertions on the [consent origin](../../src-server/runtime/consent/operator-sign-in-routes.ts)
-and stores hashed, device-bound sessions in that same private registry. The HTTP
+and stores hashed, device-bound sessions in that same private registry. WebAuthn
+initialization waits for the first ceremony; its code remains in the server bundle.
+The HTTP
 boundary admits exact session read leaves, including pending pairing requests,
 and per-action access-change requests.
 Those writes return 202 without mutation. The
