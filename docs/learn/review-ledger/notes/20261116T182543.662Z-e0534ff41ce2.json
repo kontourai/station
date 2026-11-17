@@ -1,0 +1,11 @@
+{
+  "revision": "50be642daa052938f0a880e12241ee065e8c45af",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"MessageBubble renders the Basis chip before the hover-revealed actions in the DOM again (focus order) with CSS placing it last. The Basis eligibility rule, the inventory host and checkpoint behavior are unchanged.","inputs":["src-ui/src/components/chat/MessageBubble.tsx"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"MessageBubble renders the Basis chip before the hover-revealed actions in the DOM again (focus order) with CSS placing it last. The Basis eligibility rule, the inventory host and checkpoint behavior are unchanged.","inputs":["src-ui/src/components/chat/MessageBubble.tsx"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"MessageBubble renders the Basis chip before the hover-revealed actions in the DOM again (focus order) with CSS placing it last. The Basis eligibility rule, the inventory host and checkpoint behavior are unchanged.","inputs":["src-ui/src/components/chat/MessageBubble.tsx"]}
+  ]
+}

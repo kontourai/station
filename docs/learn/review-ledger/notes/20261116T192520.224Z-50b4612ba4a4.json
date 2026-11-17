@@ -1,0 +1,15 @@
+{
+  "revision": "61456989822bfc7e38dafb3437b32b18a881aaff",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Adds the useChildWorkTranscriptTailQuery re-export only.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Adds the useChildWorkTranscriptTailQuery re-export only.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Adds the useChildWorkTranscriptTailQuery re-export only.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Adds the useChildWorkTranscriptTailQuery re-export only.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Adds the useChildWorkTranscriptTailQuery re-export only.","inputs":["packages/sdk/src/queries.ts"]}
+  ]
+}

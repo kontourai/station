@@ -301,7 +301,11 @@ import {
   canonicalPath,
   isCanonicalPathStrictlyWithin,
 } from '../../utils/path-containment.js';
-import { expandTilde, safeHomeDirectory } from '../../utils/paths.js';
+import {
+  expandTilde,
+  resolveHomeDir,
+  safeHomeDirectory,
+} from '../../utils/paths.js';
 import { type AgentPolicyService } from '../agents/agent-policy-service.js';
 import { publicAgentIdFromRuntimeKey } from '../agents/runtime-agent-identity.js';
 import type {
@@ -5496,6 +5500,12 @@ export class OrchestrationService {
     const lineageByThread =
       eventStore?.conversationLineageForThreads(readableThreadIds);
     const nextWakeUps = eventStore?.agentScheduleStore().nextArmedWakeUps();
+    // #5050: admit the runtime home once per build, and only if some row
+    // asks. Admission walks every path component (`lstat`/`realpath`); per
+    // row it was the read model's largest CPU cost. Never kept across builds,
+    // so each read still admits the home as it is now.
+    let stationHome: string | undefined;
+    const readStationHome = () => (stationHome ??= resolveHomeDir());
     return readableThreadIds
       .map((threadId) => {
         // archive#1867: summary facts are queried by their load-bearing
@@ -5541,6 +5551,7 @@ export class OrchestrationService {
           ...(conversationFirstPromptedTurn
             ? { conversationFirstPromptedTurn }
             : {}),
+          readStationHome,
           answerability: this.observeAnswerability(
             threadId,
             (loaded ?? persisted)?.provider,

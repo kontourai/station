@@ -21,6 +21,7 @@ import {
   type TaskStatus,
   type TaskWorkspaceBinding,
 } from '@kontourai/station-contracts';
+import type { PullRequestLinkIdentity } from '@kontourai/station-contracts/conversation-pull-request-links';
 import type { IPullRequestProvider } from '@kontourai/station-contracts/pull-request-provider';
 import {
   SESSION_INVENTORY_CURRENT_GROUP_IDS,
@@ -42,7 +43,10 @@ import {
   readTaskProposal,
   taskProposalBrief,
 } from '@kontourai/station-contracts/task-graph';
-import type { TaskPullRequestFactsProjection } from '@kontourai/station-contracts/task-lane';
+import type {
+  TaskPullRequestFactsProjection,
+  TaskPullRequestFeedbackFact,
+} from '@kontourai/station-contracts/task-lane';
 import {
   type TaskLatestReportPresentation,
   type TaskMemoryAttention,
@@ -476,6 +480,15 @@ export function createTaskRoutes(
      * reads use this host's own forge logins.
      */
     pullRequestProviders?: () => IPullRequestProvider[];
+    /**
+     * A kept pull request's agent feedback for the board, as this request
+     * may see it (undefined unless it may read the chat that gets it).
+     */
+    pullRequestFeedbackFor?: (
+      identity: PullRequestLinkIdentity,
+      request: Request,
+      taskSessionId?: string,
+    ) => TaskPullRequestFeedbackFact | undefined;
     /** Exact-identity tracker reads (#4003). Personal mode only. */
     workItemObserver?: WorkItemObserver;
     /**
@@ -865,6 +878,8 @@ export function createTaskRoutes(
       canRead: (sessionId) =>
         Boolean(authority && options.canReadSession?.(sessionId, authority)),
       providers: options.pullRequestProviders ?? (() => []),
+      feedbackFor: (identity, taskSessionId) =>
+        options.pullRequestFeedbackFor?.(identity, c.req.raw, taskSessionId),
     });
     // The provider reads take time; the requester may have lost the
     // standing it started with. Still a non-disclosing 404, with a code so a

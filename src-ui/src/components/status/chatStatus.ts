@@ -2,6 +2,10 @@ import type { ConversationTurnActivity } from '@kontourai/station-contracts/orch
 import { SESSION_STATUS_WORDS } from '@kontourai/station-contracts/session-attention';
 import type { ChatActivityHint } from '../../contexts/active-chats-state';
 import type { ChatStreamStatus } from '../../hooks/orchestration/useChatStreamStatus';
+import {
+  type BackgroundWorkCounts,
+  backgroundWorkRunningLabel,
+} from '../../utils/background-work-label';
 import { retryActivityLabel } from '../../utils/chat-activity';
 import { openTurnStartedAtMs } from '../../utils/conversation-activity';
 import { parseEpochMs } from '../../utils/parseEpochMs';
@@ -56,6 +60,12 @@ export interface ChatStatusInput {
   activityHint?: ChatActivityHint;
   /** The witnessed turn start, for a server without an activity record. */
   turnStartedAt?: number;
+  /**
+   * The chat's running background work by kind, when the chat knows its own
+   * engine children. Names the work the way the chat's background strip does;
+   * absent, the pill can only give Station's count.
+   */
+  backgroundWork?: BackgroundWorkCounts;
   /** This chat's own send is out and its turn has not started yet. */
   sendAwaitingTurnStart?: boolean;
   /** Station's delivery lookup said it has that send (`received`). */
@@ -155,16 +165,21 @@ export function deriveChatStatus(
   }
   if (!input.turnLive) {
     const children = activity?.runningChildWork;
-    if (!children) return undefined;
+    // The chat's own named work wins, as on its background strip, even
+    // before Station's count has caught up with it.
+    const named =
+      input.backgroundWork && backgroundWorkRunningLabel(input.backgroundWork);
+    if (!children && !named) return undefined;
     return {
       kind: 'working',
       tone: 'active',
       glyph: 'working',
       label:
-        children.count > 0
+        named ||
+        (children && children.count > 0
           ? `${children.count} background task${children.count === 1 ? '' : 's'} running`
-          : 'Waiting for background reply',
-      clockFrom: parseEpochMs(children.oldestStartedAt),
+          : 'Waiting for background reply'),
+      clockFrom: parseEpochMs(children?.oldestStartedAt),
       details: [],
       action: undefined,
     };

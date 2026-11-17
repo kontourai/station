@@ -96,8 +96,32 @@ export interface TaskPullRequestFact extends PullRequestLinkIdentity {
         sourceBranch?: string;
         /** Armed or queued to merge; absent when not observed. */
         landing?: PullRequest['landing'];
+        /** The head commit the provider reported, when it did. */
+        headSha?: string;
       }
     | { state: 'unavailable' | 'unsupported'; reason: string };
+  /**
+   * Its agent feedback, only for a reader of the chat that gets it and only
+   * while the `pull-request-agent-feedback` preview is on. It never moves a
+   * Task: it adds a note to the card, and only when `headSha` is the head
+   * the provider reported.
+   */
+  feedback?: TaskPullRequestFeedbackFact;
+}
+
+/**
+ * Where a pull request's agent feedback stands, for a Task card. `fixing`:
+ * the feedback goes to this Task's own run, and its open turn is the one
+ * Station started to send this pull request's failing checks. Computed per
+ * Task, so the same pull request kept on two Tasks is fixing on at most the
+ * one whose run is doing it.
+ */
+export interface TaskPullRequestFeedbackFact {
+  state: 'watching' | 'waiting-on-checks' | 'sent' | 'fixing' | 'paused';
+  /** The head this is about. */
+  headSha: string;
+  /** `sent`: when it went. */
+  at?: string;
 }
 
 export interface TaskPullRequestFactsEntry {
@@ -184,6 +208,14 @@ export interface TaskLaneDerivation {
   tone: TaskLaneTone;
   word: string;
   detail?: string;
+  /**
+   * What agent feedback is doing for the card's pull request ("auto-fix
+   * on", "sent", "fixing checks on #42"), printed after `detail`, with
+   * `at` as a relative time. It never changes the lane, rung, tone or
+   * certainty. Kept apart from `detail` because this derivation reads no
+   * clock, and a run's own words replace `detail` on its rungs.
+   */
+  feedbackNote?: { text: string; at?: string };
   /** The longer form, for a tooltip; never printed on the card. */
   reason?: string;
   statusGlyph: TaskStatusGlyph;
@@ -305,6 +337,51 @@ const OPEN_RUNG_TONES: Record<OpenPullRequestRung, TaskLaneTone> = {
 };
 
 const pullRequestLabel = (fact: PullRequestLinkIdentity) => `#${fact.ref}`;
+
+/** A pull request's feedback, only while it is about the head the provider reported. */
+const feedbackOnHead = (fact: CurrentFact) =>
+  fact.feedback &&
+  fact.status.headSha &&
+  fact.feedback.headSha === fact.status.headSha
+    ? fact.feedback
+    : undefined;
+
+const IN_REVIEW_FEEDBACK_NOTES: Partial<
+  Record<TaskPullRequestFeedbackFact['state'], string>
+> = {
+  watching: 'auto-fix on',
+  'waiting-on-checks': 'waiting on checks',
+  sent: 'sent',
+  paused: 'auto-fix paused',
+  // The run is fixing, but the card read it as not running (a run list
+  // older than the facts): still say so rather than nothing.
+  fixing: 'fixing checks',
+};
+
+/** An In review card's feedback note, for the pull request it names. */
+function inReviewFeedbackNote(
+  fact: CurrentFact,
+): TaskLaneDerivation['feedbackNote'] {
+  const feedback = feedbackOnHead(fact);
+  const text = feedback && IN_REVIEW_FEEDBACK_NOTES[feedback.state];
+  if (!feedback || !text) return undefined;
+  return { text, ...(feedback.at ? { at: feedback.at } : {}) };
+}
+
+/** A Running card's note: its run is the turn fixing a pull request's checks. */
+function runningFeedbackNote(
+  facts: readonly TaskPullRequestFact[],
+): TaskLaneDerivation['feedbackNote'] {
+  const fixing = facts.find(
+    (fact): fact is CurrentFact =>
+      isCurrent(fact) &&
+      isOpen(fact) &&
+      feedbackOnHead(fact)?.state === 'fixing',
+  );
+  return fixing
+    ? { text: `fixing checks on ${pullRequestLabel(fixing)}` }
+    : undefined;
+}
 const identityOf = (fact: TaskPullRequestFact): PullRequestLinkIdentity => ({
   provider: fact.provider,
   host: fact.host,
@@ -470,18 +547,21 @@ export function deriveTaskLane(input: TaskLaneInput): TaskLaneDerivation {
     };
   // 4. The run is moving. It outranks every pull request state: a run in
   // flight may still push to them.
-  if (ownRun && label === 'Running')
+  if (ownRun && label === 'Running') {
+    const feedbackNote = runningFeedbackNote(facts);
     return {
       ...base,
       placement: lane('running'),
       rung: 'running',
       tone: 'active',
       word: SESSION_STATUS_WORDS.running,
+      ...(feedbackNote ? { feedbackNote } : {}),
       statusGlyph: 'spinner',
       factTime: sessionTime,
       nextAction: openRun(),
       certainty: 'observed',
     };
+  }
 
   // 4b. A person or agent marked the Task blocked: a recorded decision that
   // no pull request state outranks (a clean PR does not unblock a Task).
@@ -563,6 +643,7 @@ export function deriveTaskLane(input: TaskLaneInput): TaskLaneDerivation {
     if (ready && runMissing && !unreadPullRequests.length)
       return runUnknownInReview(worst.fact);
     if (!ready || !unreadPullRequests.length) {
+      const feedbackNote = ready ? undefined : inReviewFeedbackNote(worst.fact);
       return {
         ...base,
         placement: lane(ready ? 'ready_to_merge' : 'in_review'),
@@ -573,6 +654,7 @@ export function deriveTaskLane(input: TaskLaneInput): TaskLaneDerivation {
           ready && open.length > 1
             ? `${open.length} PRs`
             : pullRequestLabel(worst.fact),
+        ...(feedbackNote ? { feedbackNote } : {}),
         ...(worst.fact.status.title ? { reason: worst.fact.status.title } : {}),
         statusGlyph: glyph,
         factTime: worst.fact.observedAt,

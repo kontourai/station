@@ -397,7 +397,8 @@ The latest failed attempt remains visible alongside historical success; for a
 refusal, `lastFailure.detail` carries the receiver's stated reason (its JSON
 `error`/`code`/`message`/`reason` strings, or plain text), at most 200
 characters with installation hashes, event IDs, receiver keys, URLs and paths
-masked. It is never logged. Refreshing or unavailable status hides cached success.
+masked. It is never logged; Settings shows it as plain text under Product
+delivery while delivery has failed. Refreshing or unavailable status hides cached success.
 
 An operator's **Check connection** calls a separate
 `station-product-probe/v1` source-key endpoint when the configured address has

@@ -837,3 +837,10 @@
     display: none;
   }
 }
+
+/* #5069: the toggle that shows archived Projects in the list. */
+.sidebar__archived-toggle {
+  margin: var(--k-space-1) var(--k-space-2) 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}

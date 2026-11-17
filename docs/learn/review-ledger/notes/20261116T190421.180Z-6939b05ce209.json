@@ -1,0 +1,11 @@
+{
+  "revision": "f4f9afcc931dc65cde5c95e2d6bae7fbbeb0cd55",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Adds the project-lifecycle subpath row only.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Adds the project-lifecycle subpath row only.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Adds the project-lifecycle subpath row only.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

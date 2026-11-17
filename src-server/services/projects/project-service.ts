@@ -724,6 +724,26 @@ export class ProjectService {
     return this.withRepositoryDisplay(withoutLockedProjectOverrides(updated));
   }
 
+  /**
+   * #5069: the one writer of `ProjectConfig.lifecycle` (`undefined` makes the
+   * Project active). The ordinary update refuses the field at its route.
+   */
+  async setProjectLifecycle(
+    slug: string,
+    lifecycle: ProjectConfig['lifecycle'],
+  ): Promise<ProjectConfig> {
+    const revision = this.storageAdapter.projectRevision(slug);
+    const updated: ProjectConfig = {
+      ...revision.value,
+      updatedAt: new Date().toISOString(),
+    };
+    if (lifecycle) updated.lifecycle = lifecycle;
+    else delete updated.lifecycle;
+    await revision.replace(updated);
+    projectOps.add(1, { operation: 'lifecycle', project: slug });
+    return updated;
+  }
+
   async deleteProject(slug: string): Promise<void> {
     await this.storageAdapter.deleteProject(slug);
     projectOps.add(1, { operation: 'delete', project: slug });

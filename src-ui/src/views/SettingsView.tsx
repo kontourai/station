@@ -1272,8 +1272,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       projectOverride={projectOverride}
                     />
                     <TerminalHistoryUsage />
-                    {/* Behind the workload-budget-settings Feature Preview;
-                  renders nothing while it is off. */}
+                    {/* The budget editor is behind the
+                  workload-budget-settings Feature Preview; workloads Station
+                  couldn't stop show either way. */}
                     <WorkloadBudgetSettings />
                   </EnvironmentStatus>
                 )}

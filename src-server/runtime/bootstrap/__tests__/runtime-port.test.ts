@@ -9,11 +9,18 @@ describe('resolveRuntimePort', () => {
 
   test('uses the selected runtime channel default when PORT is absent', () => {
     expect(
-      resolveRuntimePort(undefined, undefined, { STATION_CHANNEL: 'beta' }),
-    ).toBe(28141);
+      resolveRuntimePort(undefined, undefined, {
+        STATION_CHANNEL: 'development',
+        STATION_INSTANCE_ID: 'runtime-port-test',
+      }),
+    ).toBe(39140);
     expect(
       resolveRuntimePort(undefined, undefined, { STATION_CHANNEL: 'nightly' }),
     ).toBe(38141);
+    // #4929 retired Beta: its channel is refused, not given a port.
+    expect(() =>
+      resolveRuntimePort(undefined, undefined, { STATION_CHANNEL: 'beta' }),
+    ).toThrow('Unsupported Station runtime channel: beta');
   });
 
   test.each([65533, 65535])(
