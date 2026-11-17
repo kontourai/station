@@ -1,0 +1,7 @@
+{
+  "revision": "7daf688f3ba1649dd075e02bc77eb7c4a9116c21",
+
+  "notes": [
+    {"path":"docs/guides/desktop-build.md","note":"Added the linked-root paragraph and the no-follow prune sentence, against station-compile-cache.ts safeCompileCacheRoot/treeBytes/pruneStationCompileCache and adopt-compile-cache.ts. Checked: cache and cache/node-compile must be real directories or absent, the cache must resolve inside the home's real path, the home itself may be a link; a refused root disables both the children's cache and the prune, warned once per home; the walk ages only real directories, counts only regular files, and rm of a link removes the link. Executed unit regressions for a linked cache, a linked node-compile and links inside the root, plus fault injections reverting the check, each guard, the handoff check and link following in both passes. Limit stated: the desktop sidecar's natively set server cache path is not covered.","inputs":["docs/guides/desktop-build.md"]}
+  ]
+}

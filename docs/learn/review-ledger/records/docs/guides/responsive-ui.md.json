@@ -40,8 +40,6 @@
 
     "src-server/runtime/streaming/types.ts",
 
-    "src-server/security/pairing-route-scopes.ts",
-
     "src-server/services/approvals/approval-registry.ts",
 
     "src-server/services/orchestration/event-bus.ts",
@@ -67,10 +65,6 @@
     "src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx",
 
     "src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx",
-
-    "src-ui/src/components/chat-dock/ChatDockProjectContext.tsx",
-
-    "src-ui/src/components/chat-dock/ChatDockProjectSwitcherSheet.tsx",
 
     "src-ui/src/components/chat/chat.css",
 
@@ -122,8 +116,6 @@
 
     "src-ui/src/components/CreatePlusButton.css",
 
-    "src-ui/src/components/chat-dock/ChatDockProjectContext.css",
-
     "src-ui/src/components/status/live-status.css",
 
     "packages/shared/package.json#/name",
@@ -131,10 +123,6 @@
     "packages/shared/package.json#/exports",
 
     "packages/shared/package.json#/files",
-
-    "pnpm-lock.yaml#/packages",
-
-    "pnpm-lock.yaml#/snapshots",
 
     "src-ui/src/components/chat-dock/MobileInboxPanel.tsx",
 
@@ -168,7 +156,13 @@
 
     "src-ui/src/__tests__/HeaderActions.connection-reflow.test.tsx",
 
-    "src-ui/src/components/chat-dock/ChatInboxHoverCard.css"
+    "src-ui/src/components/chat-dock/ChatInboxHoverCard.css",
+
+    "package.json#/dependencies/@kontourai~1ui",
+
+    "package.json#/devDependencies/jsdom",
+
+    "pnpm-lock.yaml#/packages/@kontourai~1ui@1.20.1"
   ],
 
   "checks": [

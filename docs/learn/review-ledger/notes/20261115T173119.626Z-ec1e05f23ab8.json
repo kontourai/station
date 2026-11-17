@@ -1,0 +1,7 @@
+{
+  "revision": "83578a89b958e6de901dd05e393f848dd6b9f9ca",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Added the Claude project-instructions paragraph under Add an engine: Station passes instructionFiles=claude-md-and-agents-md for the built-in agents-md plugin via Options.settings, deferring to a user settings.json choice (instructionFiles/projectInstructions) or an unreadable/over-1MiB/non-JSON file. EXECUTED against bundled Claude Code 2.1.322 with a loopback stub: both files load, AGENTS.md-only loads by engine default, @AGENTS.md import and CLAUDE.md->AGENTS.md symlink send it once, user claude-md choice holds. Managed-over-flag precedence is from the SDK's documented ordering (REASONED, not executed).","inputs":["docs/guides/connections.md","src-server/providers/adapters/claude-adapter.ts"]}
+  ]
+}

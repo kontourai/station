@@ -25,6 +25,7 @@ import type { ApprovalGuardianService } from '../../services/approvals/approval-
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
 import { recordPersonApprovedCall } from '../../services/plugins/mediated-untrusted-content-gate.js';
 import {
+  DELEGATED_RESULT_TOOLS,
   sharedUntrustedContentLedger,
   type UntrustedContentLedger,
   untrustedContentDecision,
@@ -44,6 +45,7 @@ import {
   isAutoApproved,
   isIntrinsicStationEngineGrant,
 } from '../tools/tool-executor.js';
+import { isBuiltinHttpRequestDefinition } from '../tools/vended-tool-compat.js';
 import type {
   IAgentHooks,
   InvocationContext,
@@ -53,11 +55,16 @@ import type {
 } from '../types.js';
 import type { WorkItemCapture } from '../work-item-capture.js';
 import { stationDenial } from './denial-message.js';
-import { createStagedPreToolPolicyEvaluator } from './pre-tool-policy.js';
+import {
+  createStagedPreToolPolicyEvaluator,
+  type PullRequestWatchPolicy,
+} from './pre-tool-policy.js';
 
 // ── Hook factory dependencies ──────────────────────────
 
 export interface AgentHooksDeps {
+  /** #5066: refusals for a watching Task's agent. */
+  pullRequestWatchPolicy?: PullRequestWatchPolicy;
   /** Exact model-step context measurement; never an invocation billing total. */
   observeModelContext?: NonNullable<IAgentHooks['afterModelGeneration']>;
   projectToolPolicy?: (
@@ -111,14 +118,6 @@ export interface AgentHooksDeps {
  * station-control tools whose result can carry a delegated child's output
  * back into the parent's turn.
  */
-const DELEGATED_RESULT_TOOLS = new Set([
-  'delegate_task',
-  'get_task',
-  'get_task_events',
-  'continue_task',
-  'respond_to_task_request',
-  'list_delegated_tasks',
-]);
 
 // ── Factory ────────────────────────────────────────────
 
@@ -164,6 +163,7 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
   };
   const evaluatePreToolPolicy = createStagedPreToolPolicyEvaluator({
     spec: deps.spec,
+    pullRequestWatchPolicy: deps.pullRequestWatchPolicy,
     projectToolPolicy: deps.projectToolPolicy,
     agentPolicyService: deps.agentPolicyService,
     approvalGuardian: deps.approvalGuardian,
@@ -216,6 +216,10 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
         provenance.originalToolName,
       );
     },
+    // #4828: after an untrusted read, writes to known instruction-file and
+    // git-hook locations are denied by path, as a best-effort early check.
+    // This does not contain git hook execution (#4860).
+    untrustedContentRead: (invocation) => untrustedContent.hasRead(invocation),
     logger: deps.logger,
   });
 
@@ -324,6 +328,18 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
           untrustedContent.hasDescendantRead(invocation.conversationId)
         )
           untrustedContent.mark(invocation, Promise.resolve(true));
+      } else if (tool.builtin) {
+        // #4828: Station's HTTP request built-in is this engine's native web
+        // read; another built-in marks only when a person classed it
+        // untrusted. An unreadable definition counts as untrusted.
+        untrustedContent.mark(
+          invocation,
+          storedDefinition(tool.builtin.integrationId).then(
+            (def) =>
+              isBuiltinHttpRequestDefinition(def) ||
+              def.contentTrust === 'untrusted',
+          ),
+        );
       }
 
       deps.workItemCapture?.capture({

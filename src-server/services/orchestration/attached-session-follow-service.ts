@@ -31,6 +31,8 @@ import {
   attachedSessionProjectAttribution,
   attachedSessionScanDuration,
 } from '../../telemetry/metrics.js';
+import { mapWithConcurrency } from '../../utils/bounded-async.js';
+import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
 import type { AdoptionLedger } from './adoption-ledger.js';
@@ -45,6 +47,7 @@ import {
   isWithinRepositoryPath,
   type RepositoryLookup,
 } from './attached-session-repository.js';
+import { ATTACHED_SOURCE_CLOCK_SKEW_MS } from './attached-source-activity.js';
 import type { EventBus } from './event-bus.js';
 import type { EventStore } from './event-store.js';
 import { EventStoreIngressError } from './event-store.js';
@@ -197,25 +200,15 @@ export async function resolveAttachedProjectRoots(
   ) => string | undefined | Promise<string | undefined>,
   concurrency = DEFAULT_ROOT_RESOLUTION_CONCURRENCY,
 ): Promise<AttachedProjectRoot[]> {
-  const limit = Math.max(1, Math.floor(concurrency));
-  const resolved = new Array<AttachedProjectRoot>(projects.length);
-  let next = 0;
-  async function worker(): Promise<void> {
-    for (;;) {
-      const index = next++;
-      if (index >= projects.length) return;
-      const project = projects[index];
-      resolved[index] = {
-        slug: project.slug,
-        workingDirectory:
-          (await resolvePath(project.slug)) ?? project.workingDirectory,
-      };
-    }
-  }
-  await Promise.all(
-    Array.from({ length: Math.min(limit, projects.length) }, worker),
+  return mapWithConcurrency(
+    projects,
+    Math.max(1, Math.floor(concurrency)),
+    async (project) => ({
+      slug: project.slug,
+      workingDirectory:
+        (await resolvePath(project.slug)) ?? project.workingDirectory,
+    }),
   );
-  return resolved;
 }
 
 interface AttachedSessionFollowServiceOptions {
@@ -386,7 +379,7 @@ export class AttachedSessionFollowService {
       } catch (error) {
         this.options.logger?.warn('Attached-session source failed to close', {
           source: sourceLabel(source),
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage(error),
         });
       }
     }
@@ -402,7 +395,7 @@ export class AttachedSessionFollowService {
   private pollSafely(): Promise<void> {
     return this.pollNow().catch((error: unknown) => {
       this.options.logger?.warn('Attached-session poll failed', {
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
     });
   }
@@ -886,6 +879,8 @@ export class AttachedSessionFollowService {
         descriptor,
         snapshot,
         read.cursor,
+        false,
+        read.sourceWriteAt,
       ))
     ) {
       this.rejectFollow(source, descriptor);
@@ -1041,6 +1036,7 @@ export class AttachedSessionFollowService {
     snapshot: PollSessionSnapshot,
     cursor?: AttachedSessionCursor,
     hasNewEvents = false,
+    sourceWriteAt?: string,
   ): Promise<boolean> {
     const completedBoundary =
       source.continuationBoundary === 'completed-turn'
@@ -1050,17 +1046,29 @@ export class AttachedSessionFollowService {
             descriptor.threadId,
           )
         : undefined;
-    const attached = {
-      kind: source.kind,
-      ...(completedBoundary ? { completedBoundary } : {}),
-      externalSessionId: descriptor.sessionId,
-      ...(descriptor.affinity
-        ? { affinity: snapshotSessionSourceAffinity(descriptor.affinity) }
-        : {}),
+    const observedAt = Date.now();
+    const attachedFor = (previous: ProviderSession | undefined) => {
+      const lastWriteAt = nextSourceWriteAt(
+        sameAttachedSourceSubject(previous, source, descriptor)
+          ? previous?.attachedSource?.lastWriteAt
+          : undefined,
+        sourceWriteAt,
+        observedAt,
+      );
+      return {
+        kind: source.kind,
+        ...(completedBoundary ? { completedBoundary } : {}),
+        externalSessionId: descriptor.sessionId,
+        ...(descriptor.affinity
+          ? { affinity: snapshotSessionSourceAffinity(descriptor.affinity) }
+          : {}),
+        ...(lastWriteAt ? { lastWriteAt } : {}),
+      };
     };
     const candidateFor = (
       previous: ProviderSession | undefined,
     ): ProviderSession => {
+      const attached = attachedFor(previous);
       const sameSourceSubject = sameAttachedSourceSubject(
         previous,
         source,
@@ -1476,6 +1484,35 @@ function attachedSessionPersistenceFields(session: ProviderSession): unknown[] {
     session.tenantExecutionContext,
     session.createdAt,
   ];
+}
+
+/** A source write within this of the recorded one is not worth a row write. */
+const SOURCE_WRITE_STEP_MS = 30_000;
+
+/**
+ * The attachment's recorded last source write after this read: the source's
+ * report when it is at least {@link SOURCE_WRITE_STEP_MS} newer than the
+ * recorded one, else the recorded one. A report dated past the read (beyond
+ * the clock-skew allowance) is not evidence and is not recorded.
+ */
+function nextSourceWriteAt(
+  recorded: string | undefined,
+  reported: string | undefined,
+  observedAt: number,
+): string | undefined {
+  const reportedMs = reported === undefined ? NaN : Date.parse(reported);
+  if (
+    !Number.isFinite(reportedMs) ||
+    reportedMs > observedAt + ATTACHED_SOURCE_CLOCK_SKEW_MS
+  )
+    return recorded;
+  const recordedMs = recorded === undefined ? NaN : Date.parse(recorded);
+  if (
+    Number.isFinite(recordedMs) &&
+    reportedMs - recordedMs < SOURCE_WRITE_STEP_MS
+  )
+    return recorded;
+  return new Date(reportedMs).toISOString();
 }
 
 function sameAttachedSessionPersistence(

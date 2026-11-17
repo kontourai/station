@@ -9,11 +9,14 @@
  * internal token and delegation grants (another Station, not a person) have
  * no focus to report and are refused. The body supplies only the reporting
  * document's session id (which must equal its `X-Station-Client-Session`
- * header), its state, and its send counter `seq`. A report older than one
+ * header), its state, its send counter `seq`, and optionally the sessions it
+ * shows (`viewingSessionIds`). A report older than one
  * already applied for that document is answered 204 and changes nothing.
  */
 import {
   FOCUS_STATES,
+  FOCUS_VIEWING_SESSION_ID_PATTERN,
+  FOCUS_VIEWING_SESSION_IDS_MAX,
   type FocusState,
 } from '@kontourai/station-contracts/presence';
 import { type Context, Hono } from 'hono';
@@ -48,6 +51,27 @@ function isFocusState(value: unknown): value is FocusState {
     typeof value === 'string' &&
     (FOCUS_STATES as readonly string[]).includes(value)
   );
+}
+
+/**
+ * `viewingSessionIds` as sent: absent stays absent (an older client), and a
+ * present list must be a bounded array of session-id-shaped strings.
+ * Returns null for a malformed list.
+ */
+function parseViewingSessionIds(
+  value: unknown,
+): readonly string[] | undefined | null {
+  if (value === undefined) return undefined;
+  if (
+    !Array.isArray(value) ||
+    value.length > FOCUS_VIEWING_SESSION_IDS_MAX ||
+    !value.every(
+      (id) =>
+        typeof id === 'string' && FOCUS_VIEWING_SESSION_ID_PATTERN.test(id),
+    )
+  )
+    return null;
+  return [...new Set(value as string[])];
 }
 
 function resolveFocusReporter(
@@ -85,10 +109,21 @@ export function createFocusPresenceRoutes(deps: FocusPresenceRouteDeps) {
     }
     const record = body as Record<string, unknown>;
     const { clientSessionId, state, seq } = record;
+    const viewingSessionIds = parseViewingSessionIds(record.viewingSessionIds);
+    const viewingProjectId = record.viewingProjectId;
     if (
       Object.keys(record).some(
-        (key) => key !== 'clientSessionId' && key !== 'state' && key !== 'seq',
+        (key) =>
+          key !== 'clientSessionId' &&
+          key !== 'state' &&
+          key !== 'seq' &&
+          key !== 'viewingSessionIds' &&
+          key !== 'viewingProjectId',
       ) ||
+      viewingSessionIds === null ||
+      (viewingProjectId !== undefined &&
+        (typeof viewingProjectId !== 'string' ||
+          !FOCUS_VIEWING_SESSION_ID_PATTERN.test(viewingProjectId))) ||
       typeof seq !== 'number' ||
       !Number.isSafeInteger(seq) ||
       seq < 1 ||
@@ -128,6 +163,8 @@ export function createFocusPresenceRoutes(deps: FocusPresenceRouteDeps) {
       clientSessionId.toLowerCase(),
       state,
       seq,
+      viewingSessionIds,
+      viewingProjectId as string | undefined,
     );
     if (!result.accepted) {
       c.header(

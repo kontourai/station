@@ -273,7 +273,10 @@ Personal OAuth remains owned by the requesting principal and Project.
 promoting an account merely because its browser also presents an operator
 credential. These authoring leaves are separately admitted for account-bound
 Devices; the legacy Agent mutation and direct Agent/orchestration HTTP turn
-gates remain unchanged. Project Room Agent requests use a separate admission
+gates remain unchanged. Any viewing member may list the Project's active viewing members with
+current names (`GET …/members`, #4799): the people a room message may mention.
+A structured mention grants nothing; mentioning a non-member is refused.
+Project Room Agent requests use a separate admission
 path: current Project `execute` and `view` actions, independent transport and
 host execution permission, and a verified Project execution root. Their captured
 Task evidence includes only summaries already shared to that exact Project;

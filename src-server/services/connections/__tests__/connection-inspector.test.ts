@@ -1,8 +1,15 @@
 import type { ACPStatusValue } from '@kontourai/station-contracts/acp';
 import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import { describe, expect, test, vi } from 'vitest';
+import antigravityProfile from '../../../providers/__tests__/fixtures/acp-scripted-profiles/antigravity-1.5.8.json' with {
+  type: 'json',
+};
+import kiroV3Profile from '../../../providers/__tests__/fixtures/acp-scripted-profiles/kiro-v3.json' with {
+  type: 'json',
+};
 import { setProviderAdapterRegistrationProvenance } from '../../../providers/adapter-shape.js';
 import { AcpAdapter } from '../../../providers/adapters/acp-adapter.js';
+import { OpenCodeAdapter } from '../../../providers/adapters/opencode-adapter.js';
 import { createConnectionInspector } from '../connection-inspector.js';
 
 describe('ConnectionInspector Interface', () => {
@@ -39,6 +46,38 @@ describe('ConnectionInspector Interface', () => {
       now: () => Date.parse('2026-08-13T00:00:00.000Z'),
     });
   }
+
+  test('skips live model discovery when the request excludes the catalog, keeping prerequisite readiness', async () => {
+    const listModelCatalog = vi.fn(async () => ({
+      models: [{ id: 'live', name: 'Live', originalId: 'live' }],
+    }));
+    const subject = inspector(
+      adapter('codex', {
+        metadata: {
+          displayName: 'Codex Runtime',
+          description: 'test',
+          capabilities: ['agent-runtime'],
+          engineId: 'codex',
+        },
+        getPrerequisites: vi.fn(async () => []),
+        listModelCatalog,
+      }),
+    );
+    const skipped = await subject.inspect({
+      kind: 'runtime-capability-inventory',
+      includeModelCatalog: false,
+    });
+    expect(listModelCatalog).not.toHaveBeenCalled();
+    expect(skipped.connections[0]).toMatchObject({ status: 'ready' });
+    expect(skipped.connections[0]?.runtimeCatalog?.source).not.toBe('live');
+
+    const live = await subject.inspect({
+      kind: 'runtime-capability-inventory',
+    });
+    expect(listModelCatalog).toHaveBeenCalledTimes(1);
+    expect(live.connections[0]).toMatchObject({ status: 'ready' });
+    expect(live.connections[0]?.runtimeCatalog?.source).toBe('live');
+  });
 
   // #1208 review: the engine's catalog is decorated with reviewed identity
   // keyed on (engine family, id). `sonnet` from the Claude Code engine is a
@@ -318,6 +357,82 @@ describe('ConnectionInspector Interface', () => {
     expect(view?.capabilities).toContain('image-input');
   });
 
+  test('the ACP connection view carries the connection’s saved icon', async () => {
+    const subject = createConnectionInspector({
+      adapters: () => [],
+      appConfig: () => ({}) as any,
+      acpConnections: () =>
+        [{ id: 'kiro-kas', enabled: true, icon: 'brand:kiro' }] as any,
+      acpStatus: () => ({
+        connections: [{ id: 'kiro-kas', status: 'available' }],
+      }),
+      publicConnection: (runtimeId) => ({
+        id: engineConnectionId('kiro-kas'),
+        engineId: runtimeId,
+      }),
+      now: () => Date.now(),
+    });
+    const outcome = await subject.inspect({
+      kind: 'runtime-capability-inventory',
+    });
+    expect(
+      outcome.connections.find((connection) => connection.type === 'acp')
+        ?.config,
+    ).toMatchObject({ engineId: 'acp', icon: 'brand:kiro' });
+  });
+
+  test.each([
+    [false, { engineId: 'acp' }],
+    [true, { engineId: 'opencode', provider: 'opencode' }],
+  ] as const)(
+    'an OpenCode connection projects the engine that runs new chats on it (preview on: %s)',
+    async (previewOn, expected) => {
+      const openCode = new OpenCodeAdapter({
+        getConnections: async () => [],
+        nativeEnabled: () => previewOn,
+      });
+      const subject = createConnectionInspector({
+        adapters: () => [openCode as never],
+        appConfig: () => ({}) as any,
+        acpConnections: () =>
+          [
+            {
+              id: 'opencode',
+              enabled: true,
+              command: 'opencode',
+              args: ['acp'],
+            },
+            { id: 'kiro', enabled: true, command: 'kiro-cli', args: ['acp'] },
+          ] as any,
+        acpStatus: () => ({
+          connections: [
+            { id: 'opencode', status: 'available' },
+            { id: 'kiro', status: 'available' },
+          ],
+        }),
+        publicConnection: (runtimeId) => ({
+          id: engineConnectionId(runtimeId),
+          engineId: runtimeId,
+        }),
+        now: () => Date.now(),
+      });
+      const outcome = await subject.inspect({
+        kind: 'runtime-capability-inventory',
+      });
+      const config = (id: string) =>
+        outcome.connections.find((connection) => connection.id === id)?.config;
+      expect(config('opencode')).toMatchObject(expected);
+      if (!previewOn) expect(config('opencode')).not.toHaveProperty('provider');
+      // Another ACP engine is never claimed.
+      expect(config('kiro')).toMatchObject({ engineId: 'acp' });
+      expect(config('kiro')).not.toHaveProperty('provider');
+      // The OpenCode adapter is not an engine connection of its own.
+      expect(
+        outcome.connections.filter((connection) => connection.type !== 'acp'),
+      ).toEqual([]);
+    },
+  );
+
   test('keeps public and runtime identities distinct and omits an unmapped Adapter', async () => {
     const adapter = {
       provider: 'codex',
@@ -418,6 +533,64 @@ describe('ConnectionInspector Interface', () => {
         }),
       ],
     });
+  });
+
+  // An ACP engine's effort control is the reasoning-effort option it
+  // advertised: its exact values and names, on every catalog model, and
+  // nothing for an engine that advertises none.
+  test("offers an ACP connection's advertised thought_level values as each model's effort", async () => {
+    const catalogOf = async (configOptions: unknown) => {
+      const result = await createConnectionInspector({
+        adapters: () => [],
+        appConfig: () =>
+          ({ agentConnections: { acp: { enabled: true } } }) as any,
+        acpConnections: () =>
+          [{ id: 'engine', name: 'Engine', enabled: true }] as any,
+        acpStatus: () => ({
+          connections: [
+            {
+              id: 'engine',
+              status: 'available',
+              // The recorded engine's own shape, read as untyped wire data.
+              configOptions: configOptions as any,
+              handshakeObservedAt: '2026-11-13T00:00:00.000Z',
+            },
+          ],
+        }),
+        publicConnection: (runtimeId) => ({
+          id: engineConnectionId('engine'),
+          engineId: runtimeId,
+        }),
+        now: () => Date.now(),
+      }).inspect({ kind: 'runtime-capability-inventory' });
+      return (
+        result as {
+          connections: Array<{
+            runtimeCatalog: {
+              models: Array<{ id: string; capabilities?: unknown }>;
+            };
+          }>;
+        }
+      ).connections[0].runtimeCatalog.models;
+    };
+
+    // Antigravity 1.5.8 advertises `thought_level` low/medium/high.
+    const advertising = await catalogOf(
+      antigravityProfile.sessionNew.configOptions,
+    );
+    expect(advertising.length).toBeGreaterThan(1);
+    for (const model of advertising)
+      expect(model.capabilities).toEqual({
+        supportsEffort: true,
+        supportedEffortLevels: ['low', 'medium', 'high'],
+        effortLabels: { low: 'Low', medium: 'Medium', high: 'High' },
+      });
+
+    // kiro-cli 3.3 (v3) advertises no effort option.
+    const silent = await catalogOf(kiroV3Profile.sessionNew.configOptions);
+    expect(silent.length).toBeGreaterThan(0);
+    for (const model of silent)
+      expect(model).not.toHaveProperty('capabilities');
   });
 
   // The opencode-delegate-readiness live observation: the probe's initialize

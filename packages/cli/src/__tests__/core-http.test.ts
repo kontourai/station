@@ -1413,7 +1413,7 @@ describe('CLI core commands over HTTP', () => {
       'Pending approval request: Approve the write? (id: req-open-1) on thread managed-approval-thread',
     );
     expect(stderrText).toContain(
-      "station approvals respond 'managed-approval-thread' 'req-open-1' <accept|acceptForSession|decline|cancel>",
+      'station approvals respond managed-approval-thread req-open-1 <accept|acceptForSession|decline|cancel>',
     );
   });
 
@@ -1774,7 +1774,48 @@ describe('CLI core commands over HTTP', () => {
         `--api-base=${apiBase}`,
       ]),
     ).rejects.toThrow('--conversation requires a non-empty value');
+    // `--project <slug>` parses as a bare flag plus a positional. It used to be
+    // dropped, sending "myproj hi" as the message with no project binding.
+    await expect(
+      runCli([
+        'chat',
+        'codex',
+        '--project',
+        'myproj',
+        'hi',
+        `--api-base=${apiBase}`,
+      ]),
+    ).rejects.toThrow('--project requires a non-empty value');
     expect(orchestrationCommands).toEqual([]);
+  });
+
+  test('rejects space-separated selector flags instead of acting without them', async () => {
+    const { runCli } = await import('../cli.js');
+
+    // Dropping `--turn` interrupted the CURRENT turn rather than the named one.
+    await expect(
+      runCli([
+        'sessions',
+        'interrupt',
+        'codex',
+        'runtime-thread',
+        '--turn',
+        'turn-1',
+        `--api-base=${apiBase}`,
+      ]),
+    ).rejects.toThrow('--turn requires a non-empty value');
+    expect(orchestrationCommands).not.toContainEqual(
+      expect.objectContaining({ type: 'interruptTurn' }),
+    );
+
+    // Dropping `--agent` or `--thread` listed every agent's approvals.
+    _consoleLog.mockClear();
+    for (const flag of ['--agent', '--thread']) {
+      await expect(
+        runCli(['approvals', 'list', flag, 'codex', `--api-base=${apiBase}`]),
+      ).rejects.toThrow(`${flag} requires a non-empty value`);
+    }
+    expect(_consoleLog).not.toHaveBeenCalled();
   });
 
   test('scopes shared ACP-provider sessions to their connection metadata', async () => {
@@ -1821,7 +1862,7 @@ describe('CLI core commands over HTTP', () => {
     ]);
 
     expect(stderrWrite).toHaveBeenCalledWith(
-      "Session: dogfood-thread\nResume: station chat 'custom-box' --session='dogfood-thread' <message>\n",
+      'Session: dogfood-thread\nResume: station chat custom-box --session=dogfood-thread <message>\n',
     );
   });
 
@@ -2293,6 +2334,113 @@ describe('CLI core commands over HTTP', () => {
       expect.stringContaining('"requestId": "req-kiro-notes"'),
     );
   });
+
+  /**
+   * An OpenCode ACP connection as the host projects it: with the OpenCode
+   * native engine preview on its `config.provider` is `opencode`, with it
+   * off there is none. Its chats run on `opencode` (started with the
+   * preview on; a chat keeps its provider) or `acp`.
+   */
+  function openCodeConnection(previewOn: boolean) {
+    state.connections = [
+      ...state.connections,
+      {
+        id: 'opencode',
+        kind: 'agent',
+        type: 'acp',
+        name: 'OpenCode',
+        enabled: true,
+        capabilities: ['agent-runtime', 'acp', 'resume'],
+        config: {
+          engineId: 'opencode',
+          ...(previewOn ? { provider: 'opencode' } : {}),
+        },
+        status: 'ready',
+        prerequisites: [],
+      },
+    ];
+    state.agents = [
+      ...state.agents,
+      {
+        slug: 'oc-notes',
+        name: 'OpenCode Notes',
+        execution: { agentConnectionId: 'opencode' },
+        engineId: 'opencode',
+      },
+    ];
+    for (const [threadId, provider] of [
+      ['oc-native-thread', 'opencode'],
+      ['oc-acp-thread', 'acp'],
+    ] as const) {
+      state.runtimeSessions = [
+        ...state.runtimeSessions,
+        {
+          provider,
+          threadId,
+          status: 'running',
+          isLoaded: true,
+          isPersisted: true,
+          eventCount: 1,
+          createdAt: '2026-04-18T00:00:00.000Z',
+          updatedAt: '2026-04-18T00:00:00.000Z',
+          lastEventMethod: 'request.opened',
+        },
+      ];
+      state.runtimeSessionEvents[threadId] = [
+        {
+          provider,
+          threadId,
+          eventId: `evt-${threadId}`,
+          createdAt: '2026-04-18T00:00:00.000Z',
+          method: 'request.opened',
+          requestId: `req-${threadId}`,
+          requestType: 'approval',
+          title: 'Approve OpenCode work',
+        },
+      ];
+    }
+  }
+
+  test.each([true, false])(
+    'an Agent on an OpenCode connection resolves to the provider the host projects (preview on: %s)',
+    async (previewOn) => {
+      const { resolveManagedAgentExternalEngineTarget } = await import(
+        '../commands/session-client.js'
+      );
+      openCodeConnection(previewOn);
+      expect(
+        await resolveManagedAgentExternalEngineTarget(
+          apiBase,
+          'oc-notes' as never,
+          { strict: true },
+        ),
+      ).toMatchObject({
+        kind: 'runtime',
+        connectionId: 'opencode',
+        provider: previewOn ? 'opencode' : 'acp',
+      });
+    },
+  );
+
+  test.each([true, false])(
+    "approvals list for an Agent on an OpenCode connection lists both its `opencode` and its `acp` chats' requests (preview on: %s)",
+    async (previewOn) => {
+      const { runCli } = await import('../cli.js');
+      openCodeConnection(previewOn);
+      await runCli([
+        'approvals',
+        'list',
+        '--agent=oc-notes',
+        `--api-base=${apiBase}`,
+      ]);
+      expect(_consoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('"requestId": "req-oc-native-thread"'),
+      );
+      expect(_consoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('"requestId": "req-oc-acp-thread"'),
+      );
+    },
+  );
 
   test('approvals resolve real Agent bindings and provider configuration without fallback maps', async () => {
     const { runCli } = await import('../cli.js');
@@ -3194,7 +3342,7 @@ describe('CLI core commands over HTTP', () => {
       'Pending approval request: Approve the write? (id: req-open-1) on thread request-opened-thread',
     );
     expect(stderrText).toContain(
-      "station approvals respond 'request-opened-thread' 'req-open-1' <accept|acceptForSession|decline|cancel>",
+      'station approvals respond request-opened-thread req-open-1 <accept|acceptForSession|decline|cancel>',
     );
     expect(stderrText.match(/Pending approval request/g)?.length).toBe(1);
   });
@@ -3221,7 +3369,7 @@ describe('CLI core commands over HTTP', () => {
       requestType: 'approval',
       title: 'Approve the write?',
       respondCommand:
-        "station approvals respond 'request-opened-json-thread' 'req-open-1' <accept|acceptForSession|decline|cancel>",
+        'station approvals respond request-opened-json-thread req-open-1 <accept|acceptForSession|decline|cancel>',
     });
     expect(payload.lifecycleState).toBe('needs_input');
   });

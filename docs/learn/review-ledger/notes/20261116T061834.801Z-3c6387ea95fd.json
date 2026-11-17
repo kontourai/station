@@ -1,0 +1,7 @@
+{
+  "revision": "d09d29deb030b1f86786a3541d7f23ed77036134",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Follow-up for #4971: the panel's 'Agent now on …' caption always takes its own line below the engine name with no separator, and beside the trigger's Agent moved hint an Agent shown by name (no mark) is dropped from the label rather than cut to a stub. Both paragraphs updated and checked against ChatInputArea.tsx, ComposerRunControl.tsx and chat.css.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}

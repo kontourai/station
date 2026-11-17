@@ -1,0 +1,518 @@
+{
+  "version": 1,
+  "files": {
+    "src-ui/src/components/ComposerChoice.tsx": {
+      "emoji": 1
+    },
+    "src-ui/src/components/ComposerRunControl.tsx": {
+      "emoji": 1
+    },
+    "src-ui/src/components/EnginePicker.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/components/LocalUiSessionGate.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/components/TelemetryFeedbackPrompt.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/components/acp-connections/ACPConnectionDetailModal.tsx": {
+      "em-dash": 2
+    },
+    "src-ui/src/components/action-operations/ActionOperationsSection.tsx": {
+      "em-dash": 2
+    },
+    "src-ui/src/components/attention/AttentionCard.tsx": {
+      "jargon:authority": 1
+    },
+    "src-ui/src/components/attention/RequestInspectionDialog.tsx": {
+      "jargon:receipt": 1
+    },
+    "src-ui/src/components/chat-dock/AgentScheduleNotes.tsx": {
+      "jargon:authority": 1
+    },
+    "src-ui/src/components/chat-dock/ChatDock.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/components/chat-dock/ChatDockHeader.tsx": {
+      "em-dash": 2
+    },
+    "src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/components/chat-dock/SessionContextCard.tsx": {
+      "em-dash": 4
+    },
+    "src-ui/src/components/chat-dock/backgroundTaskRows.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/components/chat/BackgroundTaskNoticeCard.tsx": {
+      "em-dash": 2
+    },
+    "src-ui/src/components/chat/ChatInputArea.tsx": {
+      "em-dash": 5
+    },
+    "src-ui/src/components/chat/ChatMessageList.tsx": {
+      "em-dash": 2
+    },
+    "src-ui/src/components/chat/CheckpointRestoreButton.tsx": {
+      "jargon:authority": 1
+    },
+    "src-ui/src/components/chat/CodeBlockFrame.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/components/chat/ComposerAttachmentStrip.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/components/chat/ComposerStopButton.tsx": {
+      "em-dash": 2
+    },
+    "src-ui/src/components/chat/OutboundQueuedMessages.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/components/chat/SessionSummaryCard.tsx": {
+      "em-dash": 4
+    },
+    "src-ui/src/components/chat/TurnProvenanceCard.tsx": {
+      "jargon:receipt": 1
+    },
+    "src-ui/src/components/coding-layout/BranchToolbar.tsx": {
+      "em-dash": 2
+    },
+    "src-ui/src/components/coding-layout/CodingInspectorPanel.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/components/coding-layout/NewTerminalModal.tsx": {
+      "ascii-ellipsis": 1
+    },
+    "src-ui/src/components/coding-layout/PullRequestReviewPanel.tsx": {
+      "em-dash": 2
+    },
+    "src-ui/src/components/coding-layout/TerminalPanel.tsx": {
+      "ascii-ellipsis": 2
+    },
+    "src-ui/src/components/conversation-stats/ContextCompactionControl.tsx": {
+      "jargon:receipt": 1,
+      "jargon:canonical": 1
+    },
+    "src-ui/src/components/conversation/ConversationBody.tsx": {
+      "jargon:durable": 1,
+      "em-dash": 2,
+      "jargon:authority": 2
+    },
+    "src-ui/src/components/first-run/EnginesStep.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/components/first-run/UnpairedSampleWorkspace.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/components/flow/FlowRunConsole.tsx": {
+      "jargon:authority": 1,
+      "em-dash": 1
+    },
+    "src-ui/src/components/flow/WorkflowPlanPanel.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/components/home/HomeRecentWorkSection.tsx": {
+      "em-dash": 2
+    },
+    "src-ui/src/components/host-action/HostAction.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/components/modals/NewChatModal.tsx": {
+      "em-dash": 2
+    },
+    "src-ui/src/components/monitoring/FleetRoutingReceipts.tsx": {
+      "jargon:receipt": 3
+    },
+    "src-ui/src/components/monitoring/InsightsDashboard.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/components/monitoring/PersonalInsights.tsx": {
+      "jargon:receipt": 9,
+      "jargon:enrolled": 2
+    },
+    "src-ui/src/components/monitoring/event-entry/EventEntryHeader.tsx": {
+      "ascii-ellipsis": 2
+    },
+    "src-ui/src/components/plugins/framePaneHost.tsx": {
+      "em-dash": 2
+    },
+    "src-ui/src/components/profile/StationPeoplePanel.tsx": {
+      "jargon:binding": 1
+    },
+    "src-ui/src/components/readiness/ReadinessPanel.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/components/registry/KitCatalog.tsx": {
+      "jargon:projection": 1
+    },
+    "src-ui/src/components/registry/RegistryCatalog.tsx": {
+      "ascii-ellipsis": 1
+    },
+    "src-ui/src/components/report-problem/ReportProblemDialog.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/components/review/reviewEvidenceCopy.ts": {
+      "em-dash": 1,
+      "jargon:receipt": 1
+    },
+    "src-ui/src/components/room/roomEmoji.ts": {
+      "filler": 3
+    },
+    "src-ui/src/components/scheduler/JobFormModal.tsx": {
+      "jargon:binding": 2
+    },
+    "src-ui/src/components/search/ExactMessageInspector.tsx": {
+      "jargon:authority": 1
+    },
+    "src-ui/src/components/session-detail/OwnedWorkCleanup.tsx": {
+      "jargon:custody": 1
+    },
+    "src-ui/src/components/session/SessionConversationItem.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/components/setup/ExistingSetupImportStepper.tsx": {
+      "jargon:binding": 1
+    },
+    "src-ui/src/components/skill-experiences/RichExperiencePane.tsx": {
+      "jargon:canonical": 1
+    },
+    "src-ui/src/components/skill-experiences/SkillExperiencePanel.tsx": {
+      "jargon:canonical": 2
+    },
+    "src-ui/src/components/status/ChatStatusPill.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/components/trust/TrustPanel.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/components/usage-stats/UsageRollupPanel.tsx": {
+      "jargon:receipt": 7
+    },
+    "src-ui/src/components/voice/VoiceOrb.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/contexts/ApiBaseContext.tsx": {
+      "jargon:authority": 1
+    },
+    "src-ui/src/contexts/ProjectsContext.tsx": {
+      "jargon:authority": 13
+    },
+    "src-ui/src/hooks/orchestration/childWorkHandlers.ts": {
+      "em-dash": 2
+    },
+    "src-ui/src/hooks/orchestration/extensionHandlers.ts": {
+      "em-dash": 1
+    },
+    "src-ui/src/hooks/orchestration/replay/observe.ts": {
+      "jargon:binding": 1
+    },
+    "src-ui/src/hooks/orchestration/turnHandlers.ts": {
+      "jargon:reconcile": 1,
+      "jargon:durable": 1
+    },
+    "src-ui/src/hooks/useActiveChatSessionMessaging.ts": {
+      "jargon:authority": 3,
+      "em-dash": 4
+    },
+    "src-ui/src/hooks/useContextCompaction.ts": {
+      "jargon:authority": 1
+    },
+    "src-ui/src/hooks/useCopyToClipboardToast.ts": {
+      "em-dash": 1
+    },
+    "src-ui/src/hooks/useProjectCreationRecovery.ts": {
+      "jargon:authority": 1
+    },
+    "src-ui/src/hooks/useServerEventsListener.ts": {
+      "em-dash": 1
+    },
+    "src-ui/src/hooks/useTelemetryNotice.ts": {
+      "jargon:receipt": 1
+    },
+    "src-ui/src/lib/browserRelayApplicationAuthority.ts": {
+      "jargon:authority": 19,
+      "jargon:canonical": 1,
+      "jargon:enrolled": 5,
+      "jargon:receipt": 1
+    },
+    "src-ui/src/lib/browserRelayEnrollmentController.ts": {
+      "jargon:authority": 2,
+      "jargon:enrolled": 9
+    },
+    "src-ui/src/lib/browserRelayProjectInvitation.ts": {
+      "jargon:authority": 1
+    },
+    "src-ui/src/lib/browserRelayTurnCustody.ts": {
+      "jargon:canonical": 2
+    },
+    "src-ui/src/lib/outboundQueue.ts": {
+      "jargon:legacy": 3
+    },
+    "src-ui/src/lib/serverHealth.ts": {
+      "jargon:authority": 2
+    },
+    "src-ui/src/pages/ProfilePage.tsx": {
+      "jargon:receipt": 1
+    },
+    "src-ui/src/performance/WorkBoardPerformanceInstrumentation.tsx": {
+      "jargon:receipt": 1
+    },
+    "src-ui/src/performance/interactive-workspace-performance-bridge.ts": {
+      "jargon:receipt": 22,
+      "jargon:projection": 2,
+      "jargon:authority": 2
+    },
+    "src-ui/src/platform/native/NativeRelayLinkReview.tsx": {
+      "jargon:enrolled": 1
+    },
+    "src-ui/src/platform/native/nativeRelayGrantAdapter.ts": {
+      "jargon:lease": 1,
+      "jargon:custody": 1
+    },
+    "src-ui/src/platform/native/nativeRelayGrantRenewalSupervisor.ts": {
+      "jargon:receipt": 1
+    },
+    "src-ui/src/platform/native/stationProfileStorage.ts": {
+      "jargon:enrolled": 1,
+      "jargon:binding": 2
+    },
+    "src-ui/src/platform/native/tauri.ts": {
+      "jargon:lease": 1
+    },
+    "src-ui/src/platform/native/web.ts": {
+      "jargon:authority": 1
+    },
+    "src-ui/src/slashCommands/builtins.ts": {
+      "jargon:binding": 1
+    },
+    "src-ui/src/slashCommands/dispatch.ts": {
+      "em-dash": 2
+    },
+    "src-ui/src/slashCommands/mcpPrompt.ts": {
+      "em-dash": 2
+    },
+    "src-ui/src/utils/approvalMode.ts": {
+      "em-dash": 1
+    },
+    "src-ui/src/utils/child-work-display.ts": {
+      "em-dash": 1
+    },
+    "src-ui/src/utils/engineBinding.ts": {
+      "em-dash": 1
+    },
+    "src-ui/src/utils/skill-commands.ts": {
+      "em-dash": 2
+    },
+    "src-ui/src/utils/steerTurn.ts": {
+      "em-dash": 1
+    },
+    "src-ui/src/views/AgentConnectionView.tsx": {
+      "em-dash": 2
+    },
+    "src-ui/src/views/CredentialProfileEnrolment.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/views/DeveloperView.tsx": {
+      "jargon:canonical": 1
+    },
+    "src-ui/src/views/EngineAccountOverview.tsx": {
+      "jargon:receipt": 2
+    },
+    "src-ui/src/views/IntegrationsView.tsx": {
+      "em-dash": 2
+    },
+    "src-ui/src/views/KnowledgeConnectionView.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/views/MonitoringLogControls.tsx": {
+      "ascii-ellipsis": 1
+    },
+    "src-ui/src/views/PluginManagementView.tsx": {
+      "ascii-ellipsis": 1
+    },
+    "src-ui/src/views/RegistryView.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/views/SettingsView.tsx": {
+      "em-dash": 2
+    },
+    "src-ui/src/views/SkillsView.tsx": {
+      "em-dash": 2
+    },
+    "src-ui/src/views/TaskWorkspaceView.tsx": {
+      "jargon:binding": 1,
+      "jargon:receipt": 2
+    },
+    "src-ui/src/views/account/GuestDeviceOnboarding.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/views/agent-editor/AgentsViewEditorPane.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/views/connections-hub/BrowserStationTrustApproval.tsx": {
+      "jargon:durable": 1,
+      "jargon:enrolled": 1
+    },
+    "src-ui/src/views/connections-hub/ComputersSection.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/views/connections-hub/NativeRelayEnrollmentWizard.tsx": {
+      "jargon:binding": 1
+    },
+    "src-ui/src/views/connections-hub/RelayOperatorPanel.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/views/connections-hub/RelayRouteKeyApproval.tsx": {
+      "jargon:enrolled": 2
+    },
+    "src-ui/src/views/connections-hub/RelayRouteProfileDialog.tsx": {
+      "jargon:enrolled": 2
+    },
+    "src-ui/src/views/connections-hub/SshComputerCreatorDialog.tsx": {
+      "em-dash": 2
+    },
+    "src-ui/src/views/connections-hub/computer-rows.ts": {
+      "em-dash": 9
+    },
+    "src-ui/src/views/developer/CompanionProductTrends.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/views/home/blocks/activity-bars.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/views/home/work-item-open-policy.ts": {
+      "em-dash": 1
+    },
+    "src-ui/src/views/integrations/IntegrationEditorPanel.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/views/integrations/SecretBindingsSection.tsx": {
+      "jargon:binding": 11
+    },
+    "src-ui/src/views/integrations/TelemetryDestinationGrants.tsx": {
+      "jargon:authority": 1
+    },
+    "src-ui/src/views/integrations/utils.tsx": {
+      "ascii-ellipsis": 1
+    },
+    "src-ui/src/views/learning-review/LearningRecordActions.tsx": {
+      "jargon:canonical": 1
+    },
+    "src-ui/src/views/learning-review/LearningReviewPanel.tsx": {
+      "jargon:receipt": 3
+    },
+    "src-ui/src/views/monitoring/ContextDiagnostics.tsx": {
+      "jargon:binding": 1
+    },
+    "src-ui/src/views/monitoring/MonitoringActiveFilters.tsx": {
+      "ascii-ellipsis": 1
+    },
+    "src-ui/src/views/monitoring/MonitoringSidebar.tsx": {
+      "ascii-ellipsis": 1
+    },
+    "src-ui/src/views/plugin-management/InstallPreviewModal.tsx": {
+      "em-dash": 2
+    },
+    "src-ui/src/views/plugin-management/PluginRegistryTrustSection.tsx": {
+      "jargon:receipt": 1
+    },
+    "src-ui/src/views/plugin-management/usePluginManagementViewModel.ts": {
+      "em-dash": 1,
+      "ascii-ellipsis": 1,
+      "jargon:reconcile": 1
+    },
+    "src-ui/src/views/project-page/ProjectKnowledgeRulesEditor.tsx": {
+      "ascii-ellipsis": 1
+    },
+    "src-ui/src/views/project-page/ProjectRoom.tsx": {
+      "jargon:authority": 1
+    },
+    "src-ui/src/views/project-page/ProjectTaskSharingControl.tsx": {
+      "jargon:authority": 1
+    },
+    "src-ui/src/views/project-page/ProjectTasksSection.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/views/project-settings/ProjectKnowledgeSources.tsx": {
+      "jargon:legacy": 2,
+      "jargon:durable": 1
+    },
+    "src-ui/src/views/project-settings/ProjectRepositoryAttachment.tsx": {
+      "jargon:binding": 1
+    },
+    "src-ui/src/views/project-settings/ResourcesSection.tsx": {
+      "em-dash": 2,
+      "jargon:binding": 1
+    },
+    "src-ui/src/views/provider-settings/ProviderConnectionForm.tsx": {
+      "em-dash": 3
+    },
+    "src-ui/src/views/provider-settings/ProviderStackOverview.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/views/provider-settings/ProviderTypePicker.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/views/provider-settings/providerCatalog.tsx": {
+      "em-dash": 6
+    },
+    "src-ui/src/views/schedule/ScheduleEmptyState.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/views/settings/AnswerSharesSection.tsx": {
+      "em-dash": 3
+    },
+    "src-ui/src/views/settings/ConnectedServerUpdates.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/views/settings/CoreUpdateCheck.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/views/settings/DistributionProfileField.tsx": {
+      "em-dash": 2
+    },
+    "src-ui/src/views/settings/KnowledgeStoreSection.tsx": {
+      "em-dash": 1,
+      "jargon:durable": 2
+    },
+    "src-ui/src/views/settings/OfflineReadingSection.tsx": {
+      "jargon:authority": 1,
+      "em-dash": 1
+    },
+    "src-ui/src/views/settings/PersonalTokens.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/views/settings/TelemetryTierSettings.tsx": {
+      "em-dash": 3
+    },
+    "src-ui/src/views/settings/settings-catalog.ts": {
+      "jargon:binding": 3
+    },
+    "src-ui/src/views/share/SharedAnswerBoundary.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/views/task-workspace/TaskCapabilityPath.tsx": {
+      "jargon:receipt": 2
+    },
+    "src-ui/src/views/task-workspace/TaskCodeReviewPanel.tsx": {
+      "jargon:receipt": 1
+    },
+    "src-ui/src/views/task-workspace/TaskTurnReferenceView.tsx": {
+      "jargon:legacy": 1
+    },
+    "src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx": {
+      "jargon:authority": 1
+    },
+    "src-ui/src/workspace-panes/WorkspacePaneFailure.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/workspace-panes/agents/ChildWorkRow.tsx": {
+      "em-dash": 1
+    },
+    "src-ui/src/workspace-panes/browser-pane/browserArtifactContent.ts": {
+      "em-dash": 1
+    }
+  }
+}

@@ -1272,8 +1272,9 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       projectOverride={projectOverride}
                     />
                     <TerminalHistoryUsage />
-                    {/* Behind the workload-budget-settings Feature Preview;
-                  renders nothing while it is off. */}
+                    {/* The budget editor is behind the
+                  workload-budget-settings Feature Preview; workloads Station
+                  couldn't stop show either way. */}
                     <WorkloadBudgetSettings />
                   </EnvironmentStatus>
                 )}
@@ -1879,7 +1880,17 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 <div className="settings__scope-caption">
                   <SettingsScopeBadge scope="station" />
                 </div>
-                <KnowledgeStoreSection />
+                <KnowledgeStoreSection>
+                  <StationConfigSection
+                    section="knowledge"
+                    embedded
+                    config={config}
+                    provenance={provenance}
+                    onChange={setConfig}
+                    containerScope="station"
+                    projectOverride={projectOverride}
+                  />
+                </KnowledgeStoreSection>
               </section>
             )}
           </div>
@@ -1921,8 +1932,8 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
         title="Reset Station settings"
         message={
           resetPlan.keys.length === 0
-            ? 'No Station setting currently has a stored value, so there is nothing to reset. Settings on this device are not affected.'
-            : `This clears ${resetPlan.keys.length} stored Station setting${resetPlan.keys.length === 1 ? '' : 's'} and lets Station use its default again: ${resetPlan.labels.join(', ')}. The required model settings (Default model, Invoke model, Structure model) and the built-in agent engine choice are kept. Usage telemetry is not changed by a reset. Settings on this device are not affected. This cannot be undone.`
+            ? 'Nothing to reset. The settings a reset can clear already use their defaults.'
+            : `This clears ${resetPlan.keys.length} stored Station setting${resetPlan.keys.length === 1 ? '' : 's'} and lets Station use its default again: ${resetPlan.labels.join(', ')}. The required model settings (Default model, Invoke model, Structure model) and the engine choice for Station's agent are kept. Usage telemetry is not changed by a reset. Settings on this device are not affected. This cannot be undone.`
         }
         confirmLabel="Reset"
         confirmDisabled={resetPlan.keys.length === 0}

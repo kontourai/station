@@ -1,0 +1,7 @@
+{
+  "revision": "98fdc8d5773501eee7ede3273b9741fd02932169",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Module map composer/attachment ownership is unchanged: ChatInputArea, ComposerAttachmentStrip and StartComposer keep their owners and no module was added; prose unchanged. StartComposer's image thumbnail becomes a Preview button for the shared previewer; ConversationBody only passes the new sendQueuedForUploads prop to ChatInputArea; chat.css adds the attachment thumbnail-button and upload-wait line styles.","inputs":["docs/architecture/module-map.md","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/chat/chat.css","src-ui/src/components/conversation/ConversationBody.tsx"]}
+  ]
+}

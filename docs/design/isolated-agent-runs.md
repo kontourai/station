@@ -43,6 +43,132 @@ metadata are covered by the
 and [foreground caller test](../../src-server/services/execution-target/__tests__/execution-target-execution.test.ts);
 these fixtures do not establish a live engine or packaged-release journey.
 
+## Worktree output settlement
+
+A Session that started in a worktree of its own has at most one recorded
+outcome for its output ([#4771](https://github.com/kontourai/station/issues/4771)).
+The [settlement service](../../src-server/services/projects/worktree-output-settlement-service.ts)
+records it in the orchestration database; the
+[contract](../../packages/contracts/src/workspace-isolation.ts) names the
+shapes, and the [API reference](../reference/api.md#worktree-output-settlement)
+the route. A settlement is a receipt about a decision. It is not a review
+verdict or a gate result, and Station never writes to the base checkout to
+make one true. It is not a third proposal lifecycle either:
+[ProposedChange](../../packages/contracts/src/proposed-change.ts) and corpus-store
+proposals settle a proposed content change by approval, while this records an
+effect already taken (a discard, a cleanup) or a state already verified in Git
+or at the forge.
+
+| Outcome | Recorded when | Git effect |
+| --- | --- | --- |
+| `discarded` | A person asks. | Station removes the worktree and branch it created for that Session, and nothing else. It is refused while the branch has moved on or is checked out elsewhere; only completing an earlier discard whose worktree is already gone keeps the branch then. |
+| `kept` | The base ref's current tip contains the branch head commit. | None. Station does not merge. |
+| `released` | The forge reports an `OPEN` or `MERGED` pull request whose head branch and head commit equal the worktree branch's. | None. |
+| `cleaned-up-without-decision` | The Session-exit cleanup policy removed the worktree and no settlement existed. | The cleanup policy's own removal. |
+
+`kept` is derived, never asserted: a request to record it is refused with
+`base-does-not-contain-head` unless `git merge-base --is-ancestor` finds the
+branch head in the base ref's tip, resolved at request time with replacement
+objects disabled. The base must name a local or remote-tracking branch, recorded
+as `baseBranch`; a branch name is read as `refs/heads/<name>`, so a tag of the
+same name cannot stand in for it, and a tag, a commit id or another
+special ref such as `ORIG_HEAD` is refused (`base-unresolvable`). The default `baseRef` is `HEAD`: any spelling of it
+(`HEAD`, `@`, or `head` where the filesystem folds case) is resolved to the
+branch the repository's checkout has checked out now. A detached checkout
+names no branch (`base-detached`), and a
+checkout of the Session's own branch would contain its head trivially
+(`base-is-session-branch`); both are refused. A fast-forward merge, whose
+containing commit is the head itself, is kept. A squash or rebase merge creates new commits, so the base
+never contains the original head; such a merge is recorded as `released`
+through its merged pull request instead. Deriving `kept` from a merged pull
+request would also need the pull request's target to be the worktree's base,
+and `baseRef` is often `HEAD`, which names no branch. `kept` is also refused
+while the worktree has uncommitted or untracked changes, and for a branch with
+no commit beyond the one it started from.
+
+`released` uses the existing [pull request identity read](../../src-server/services/pull-requests/pull-request-identity-read.ts)
+that conversation links and Task close-out use, with the forge credentials
+Station already has. The caller names the pull request; the forge's state,
+head branch and head commit decide. A commit SHA match is the evidence; the
+pull request's repository is not separately matched to the worktree's remote.
+The read waits at most 30 seconds and is then refused as
+`pull-request-unavailable`: requests for one Session, Session-exit cleanup
+included, run one at a time, so a slow forge would hold them.
+
+Each record carries the actor (the request's authenticated principal, or
+Station's cleanup policy), the request key, the repository, worktree path,
+branch, `baseRef`, the starting `baseCommit` when known, the head commit the
+decision was made on, the time, and the evidence: the containing commit, the
+pull request read, or what the discard removed and whether it accepted losing
+uncommitted changes. A recorded outcome does not change when the base moves
+later; it states what was true when it was made.
+
+**Once only.** A second settlement is refused (`already-settled`) and the first
+record is unchanged. The same request key with the same request returns the
+original record; the same key with a different request is refused
+(`request-key-mismatch`). The table's triggers refuse any update or delete of
+a settled row.
+
+**Discard and crashes.** No outcome is recorded while a turn runs in the
+Session's worktree (`session-running`), the rule Task finalization follows.
+A discard is refused while the worktree has uncommitted or untracked changes
+unless the request sets `acceptUncommittedLoss`, which the record keeps.
+Files the repository ignores are removed without that acceptance (requiring
+it would make every worktree with build output need it); the record counts
+the ignored paths `git status` listed as `ignoredEntries` (every file in an
+ignored directory counts). A discard is also refused, before anything is
+removed, while another checkout has the Session's branch checked out
+(`branch-checked-out-elsewhere`), or while the branch has moved past the head
+just inspected (`branch-moved`). Station never hands git a worktree path that
+is a symlink or not a directory (`worktree-path-not-a-directory`), that now
+holds another repository (`worktree-replaced`), or whose repository has gone
+(`repository-missing`): `git worktree remove` would delete through a symlink.
+
+Station writes the discard's intent (`pending`) before any Git effect, naming
+the process that wrote it (pid and birth fingerprint). It then removes the
+worktree (forced only with that acceptance) and deletes the branch only at the
+recorded head. If the process stops between the effect and the record, a retry
+with the same request key completes it as recorded, reporting what this
+attempt still had to remove; once the worktree is gone, a branch that moved or
+was checked out since is kept, and the record says why (`branchKept`). Another
+request waits (`settlement-pending`) while the process that wrote the intent
+may still be running it. Once that process is provably gone, an intent whose
+worktree is still intact had no effect and gives way, and a discard request
+completes one whose removal had started (the record keeps its original
+requester).
+
+**Cleanup policy.** Session-exit cleanup records
+`cleaned-up-without-decision` only when it removed the worktree and no
+settlement existed; a decision made first stands. Its `afterCleanup` evidence
+is what Station observed afterwards (`present`, `absent`, or `unknown` when
+git could not tell), not who removed it: cleanup's branch deletion may fail
+for a branch checked out elsewhere, and a folder deleted before the Session
+exited is observed absent too. Unlike a discard, it writes no intent first: a
+crash between that removal and its record leaves no record. A cleanup policy
+that would remove the worktree does not run on a path that is a symlink or
+holds another repository; a preserve policy leaves it untouched.
+
+**Scope and limits.** Task-owned worktrees ([#4507](task-dispatcher.md#workspace-isolation))
+are shared by a Task's Sessions and are refused here (`task-owned-worktree`).
+Station does not apply output onto a base that has moved, and records
+`kept` and `released` without removing the worktree. Operations on one
+Session run one at a time within a Station service; across processes, one
+row per Session makes the recorded outcome at most one, and a pending intent
+is taken over only from a process that is provably gone, or by its own
+request key. Two processes retrying the same request key at once can both
+run the discard's Git steps; the branch deletion only at the recorded head
+and the single pending row keep the result to one discard, and one of them
+may answer with an error rather than the record. Two processes can still both read and verify before either
+records; the second then finds the first's row and is refused. The
+[real Git tests](../../src-server/services/projects/__tests__/worktree-output-settlement.test.ts)
+cover discard ownership, uncommitted and ignored changes, a branch checked out
+elsewhere, kept (including `HEAD` bases), squash merges, released, replay, a
+moved base (including one that edited the same file, refused until a merge
+resolves it), crash convergence, the intent being recorded before the removal
+runs, two services on one database, path shapes and the cleanup record; the forge in them is a scripted provider, not a live pull
+request. A [runtime route test](../../src-server/runtime/routes/__tests__/runtime-routes-worktree-settlement.test.ts)
+goes through the production route composition and scope table.
+
 ## Purpose
 
 New chat Sessions use the selected Project directory and runtime connection. Qualified existing Sessions keep their recorded directory while its attached resource remains authorized. Long-running autonomous work is different: Ralph, team execution, scheduled code work, and future project-task runs may need isolation so agent edits, temp homes, ports, and cleanup do not disturb the user's primary workspace.
@@ -66,6 +192,8 @@ An isolated run should record:
 - server and UI ports
 - temp home path
 - cleanup status
+- output outcome; for a Session's own worktree this is recorded today as a
+  [worktree output settlement](#worktree-output-settlement)
 
 The orchestration run ledger is the read model for these records. It should expose state and failure metadata first. It should not become a second task queue.
 

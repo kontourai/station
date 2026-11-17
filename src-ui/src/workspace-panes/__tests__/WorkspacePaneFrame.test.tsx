@@ -78,7 +78,7 @@ describe('WorkspacePaneFrame', () => {
     expect(
       screen.getByText('Technical details').closest('details')?.textContent,
     ).toContain('Error: intentional pane failure');
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(onRetry).toHaveBeenCalledWith('one');
     expect(screen.getByText('Example pane couldn’t open')).toBeTruthy();
     consoleError.mockRestore();

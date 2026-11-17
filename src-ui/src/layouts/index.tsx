@@ -10,12 +10,16 @@ import type {
 import { FullScreenError, LayoutHeader } from '@kontourai/station-sdk';
 import type { JSX } from 'react';
 import { useSyncExternalStore } from 'react';
+import { Button } from '../components/Button';
 import { FlowRunConsole } from '../components/flow/FlowRunConsole';
 import { MCPToolUIFrame } from '../components/mcp-ui/MCPToolUIFrame';
 import { StationExtensionsAccess } from '../components/registry/StationExtensionsAccess';
-import { Empty, SkeletonBlock } from '../components/state';
+import { Empty, ErrorState, SkeletonBlock } from '../components/state';
 import { TroubleshootAction } from '../components/troubleshoot/TroubleshootAction';
-import { pluginRegistry } from '../core/PluginRegistry';
+import {
+  PLUGIN_INVENTORY_UNAVAILABLE_MESSAGE,
+  pluginRegistry,
+} from '../core/PluginRegistry';
 import type { AgentSummary, LayoutDefinition, LayoutTab } from '../types';
 import { log } from '../utils/logger';
 import { PersonalBoardDashboard } from '../views/personal-board/PersonalBoardDashboard';
@@ -89,7 +93,7 @@ const DefaultLayout: AgentLayoutComponent = ({ layout, onShowChat }) => (
         </svg>
       }
       label={layout?.name || 'Layout'}
-      description="Start a conversation or schedule an automated job to get things moving."
+      description="Start a chat to work in this layout."
       action={
         <button
           type="button"
@@ -163,6 +167,26 @@ const UnsupportedLayoutComponent: AgentLayoutComponent = ({ activeTab }) => {
           label="Extensions are off on this device"
           description="This view needs extension code from the selected Station."
           action={<StationExtensionsAccess onlyWhenOff />}
+        />
+      </div>
+    );
+  }
+
+  // The registry never learned which plugins are installed, so it cannot say
+  // this component is missing; name the real cause and offer another read.
+  if (
+    typeof component === 'string' &&
+    loadStatus.state === 'degraded' &&
+    loadStatus.failure === 'registry-unavailable'
+  ) {
+    return (
+      <div className="workspace-default">
+        <ErrorState
+          title="Extensions could not load"
+          description={PLUGIN_INVENTORY_UNAVAILABLE_MESSAGE}
+          action={
+            <Button onClick={() => void pluginRegistry.reload()}>Retry</Button>
+          }
         />
       </div>
     );
@@ -293,23 +317,22 @@ const KitStandardViewLayout: AgentLayoutComponent = ({ layout, activeTab }) => {
 
   return (
     <section className="workspace-default" aria-label="Read-only Kit view">
-      <Empty
-        variant="prominent"
-        label={view.projection || 'Read-only Kit view'}
-        description="Station shows this Kit view as read-only information. Nothing here can be changed."
-      />
-      <pre className="workspace-default__description">
-        {JSON.stringify(
-          {
-            contribution: kit?.contributionRef,
-            projection: view.projection,
-            schemaRef: view.schemaRef,
-            readOnly: true,
-          },
-          null,
-          2,
-        )}
-      </pre>
+      <Empty variant="prominent" label="Kit view" description="Read-only" />
+      <details>
+        <summary>Details</summary>
+        <pre className="workspace-default__description">
+          {JSON.stringify(
+            {
+              contribution: kit?.contributionRef,
+              projection: view.projection,
+              schemaRef: view.schemaRef,
+              readOnly: true,
+            },
+            null,
+            2,
+          )}
+        </pre>
+      </details>
     </section>
   );
 };

@@ -30,7 +30,6 @@ interface ThirdPartyPackage {
 
 const CHANNEL_LABELS = {
   stable: 'Stable',
-  beta: 'Beta',
   nightly: 'Nightly',
   dev: 'Development',
 } as const;
@@ -109,7 +108,7 @@ function OpenSourceLicenses() {
                   className="settings__secondary-btn"
                   onClick={() => void licenses.refetch()}
                 >
-                  Try again
+                  Retry
                 </button>
               }
             />

@@ -1,0 +1,7 @@
+{
+  "revision": "33a564892674adaeb268e07e72cbd3ef99476dd6",
+
+  "notes": [
+    {"path":"docs/user/settings.md","note":"Edited for review of each new pull request head: checked each new sentence against pull-request-head-review.ts, the feedback routes, store and SDK client in this change (gating on both previews, keep-reviewEachHead rule, head-review routes and their 409 codes, bounds).","inputs":["docs/user/settings.md"]}
+  ]
+}

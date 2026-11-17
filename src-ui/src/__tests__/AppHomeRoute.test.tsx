@@ -24,6 +24,7 @@ import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
 import { useServerEventsListener } from '../hooks/useServerEventsListener';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { DEFAULT_DEVICE_REGION_ARRANGEMENT } from '../regions/region-model';
+import { flushHistoryTraversals } from './fixtures/history-traversals';
 
 const serverEventsMount = vi.hoisted(() => vi.fn(() => null));
 // Connection authority is exercised by station-connection-registry.test.tsx;
@@ -401,9 +402,9 @@ vi.mock('../workspace-panes/RegionPaneHost', async () => {
       renderChatPane: (...args: never[]) => ReactNode;
     }) => {
       const model = useRegionModelOptional();
-      return model?.regions[regionId].panes.includes('chat') ? (
-        <>{renderChatPane()}</>
-      ) : null;
+      return model?.regions[regionId].panes.includes('chat')
+        ? renderChatPane()
+        : null;
     },
   };
 });
@@ -415,11 +416,6 @@ vi.mock('../components/CommandPalette', () => ({
 // #928 C2a: the Activity shell is what `main` renders when Activity occupies
 // it. Stubbed: its content (the sessions surface) is not this route's
 // subject; WHICH shell the outlet mounts, and with which region, is.
-vi.mock('../app-shell/ActivityRegionShell', () => ({
-  ActivityRegionShell: ({ regionId }: { regionId: string }) => (
-    <div data-testid="activity-region-shell">{regionId}</div>
-  ),
-}));
 vi.mock('../components/header/Header', () => ({
   Header: () => <header>Workspace toolbar</header>,
 }));
@@ -953,9 +949,7 @@ describe('App home route resolution', () => {
 
       // jsdom runs a traversal as two chained 0ms tasks; these are task
       // turns that let one land, not a wait for time to pass.
-      for (let turn = 0; turn < 4; turn += 1) {
-        await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
-      }
+      await flushHistoryTraversals();
       expect(landed).toEqual([]);
       expect(window.location.pathname).toBe('/');
     } finally {
@@ -1372,7 +1366,7 @@ describe('App home route resolution', () => {
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['projects'] });
   });
 
-  test('with Activity in main, / renders the Activity shell for main and not Home', async () => {
+  test('a retired Activity occupant in main renders Home', async () => {
     hooks.projects = {
       data: [{ slug: 'dev' }],
       isLoading: false,
@@ -1394,11 +1388,8 @@ describe('App home route resolution', () => {
     render(<App />);
     await act(async () => undefined);
 
-    const shell = await screen.findByTestId('activity-region-shell');
-    expect(shell.textContent).toBe('main');
-    expect(shell.closest('main#station-main')).not.toBeNull();
-    expect(screen.queryByTestId('app-view-content')).toBeNull();
-    expect(screen.queryByRole('status', { name: /loading/i })).toBeNull();
+    const body = await screen.findByTestId('app-view-content');
+    expect(body.closest('main#station-main')).not.toBeNull();
   });
 
   test('a main occupant with no registered shell (a retired id) renders Home, not a blank outlet', async () => {
@@ -1472,8 +1463,7 @@ describe('App home route resolution', () => {
       window.history.pushState({}, '', '/');
       window.dispatchEvent(new PopStateEvent('popstate'));
     });
-    expect(await screen.findByTestId('activity-region-shell')).toBeTruthy();
-    expect(screen.queryByTestId('app-view-content')).toBeNull();
+    expect(await screen.findByTestId('app-view-content')).toBeTruthy();
   });
 
   /**

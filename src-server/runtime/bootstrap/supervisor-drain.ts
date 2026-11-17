@@ -4,6 +4,7 @@
  * drain) for those calls to end, then run the ordinary graceful shutdown.
  */
 import type { LifecycleShutdownReason } from '@kontourai/station-shared/lifecycle-events';
+import { sleep } from '../../utils/sleep.js';
 import type { DrainRequest, SupervisorLink } from './supervisor-link.js';
 
 const VOICE_DRAIN_POLL_MS = 500;
@@ -41,9 +42,7 @@ export async function runSupervisorDrain(
         reported = live;
       }
       if (live === 0) break;
-      await new Promise((resolve) =>
-        setTimeout(resolve, deps.pollMs ?? VOICE_DRAIN_POLL_MS),
-      );
+      await sleep(deps.pollMs ?? VOICE_DRAIN_POLL_MS);
     }
   }
   const shutdown = deps.shutdown();

@@ -1,8 +1,12 @@
-import type {
-  ChildWorkItem,
-  ChildWorkRegistryState,
+import {
+  type ChildWorkItem,
+  type ChildWorkKind,
+  type ChildWorkRegistryState,
+  childWorkKindOf,
 } from '@kontourai/station-contracts/child-work';
 import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-capability-matrix';
+import type { BackgroundTaskEntry } from '../../contexts/background-tasks-store';
+import { parseEpochMs } from '../../utils/parseEpochMs';
 
 /**
  * #2459: the Agents pane's read of child work — Station delegates from the
@@ -83,7 +87,20 @@ export interface ChildWorkSelectorInput {
   /** A session thread → the open chat it belongs to, when one does. */
   chatKeyFor: (threadId: string) => string | undefined;
   /** The open chat's facts, for a reporter with no session row. */
-  chatFacts?: (chatKey: string) => { provider?: string; title?: string };
+  chatFacts?: (chatKey: string) => {
+    provider?: string;
+    title?: string;
+    /** The project's display name, as the open chat records it. */
+    project?: string;
+    /** The id navigation opens this chat by (its conversation, else its key). */
+    durableId?: string;
+  };
+  /**
+   * A reporting session → the chat the background-tasks store bound it to
+   * (`providerReporters`). The binding outlives the chat while its children
+   * run, so a closed chat's subagents still group with its tool cards.
+   */
+  reporterChatOf?: (threadId: string) => string | undefined;
   /**
    * A delegate thread → the thread its bind event named as parent (the
    * background-tasks store's `delegateParents`), for per-chat nesting.
@@ -91,12 +108,6 @@ export interface ChildWorkSelectorInput {
   delegateParentOf?: (threadId: string) => string | undefined;
   /** A tool call's start (ms), for a legacy subagent with no `startedAt`. */
   toolCallStartedAt?: (toolCallId: string) => number | undefined;
-}
-
-function parseTime(iso: string | undefined): number | undefined {
-  if (!iso) return undefined;
-  const parsed = Date.parse(iso);
-  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function itemKey(item: ChildWorkItem): string {
@@ -107,13 +118,19 @@ function sessionIndex(sessions: readonly ChildWorkSessionSource[]) {
   return new Map(sessions.map((session) => [session.threadId, session]));
 }
 
+/** What chat membership reads: session rows and the open-chat lookup. */
+export type ChatMembershipInput = Pick<
+  ChildWorkSelectorInput,
+  'sessions' | 'chatKeyFor'
+>;
+
 /**
  * The chat a session belongs to: its own id, else its durable conversation's
  * (a conversation's older execution child still resolves to its chat).
  */
 function resolveChat(
   threadId: string,
-  input: ChildWorkSelectorInput,
+  input: ChatMembershipInput,
   sessions: Map<string, ChildWorkSessionSource>,
 ): string | undefined {
   const direct = input.chatKeyFor(threadId);
@@ -159,6 +176,16 @@ function engineStopIsWired(provider: string | undefined): boolean {
 /** Whether the engine's matrix says it reports nothing about subagents. */
 function engineReportsNoSubagents(provider: string | undefined): boolean {
   return engineMatrix(provider)?.subagentObservability.state === 'none';
+}
+
+/** The matrix's reason when only some of this engine's connections report. */
+function engineReportsPerConnection(
+  provider: string | undefined,
+): string | undefined {
+  const cell = engineMatrix(provider)?.subagentObservability;
+  return cell?.state === 'declared'
+    ? cell.perConnection?.unobservedReason
+    : undefined;
 }
 
 /**
@@ -282,11 +309,11 @@ function buildCandidates(input: ChildWorkSelectorInput): Candidate[] {
     const reportedDepth =
       item.producer === 'engine-subagent' && item.depth ? item.depth - 1 : 0;
     const startedAtMs =
-      parseTime(item.startedAt) ??
+      parseEpochMs(item.startedAt) ??
       (item.parent?.toolCallId
         ? input.toolCallStartedAt?.(item.parent.toolCallId)
         : undefined);
-    const endedAtMs = parseTime(item.endedAt);
+    const endedAtMs = parseEpochMs(item.endedAt);
     const stopEndsParentTurn =
       stop === 'provider-task-stop'
         ? engineStopEndsParentTurn(provider)
@@ -382,8 +409,20 @@ function toView(
   let finished = treeOrder(settled, false);
   let finishedOmitted = 0;
   if (finishedLimit !== undefined && finished.length > finishedLimit) {
-    finishedOmitted = finished.length - finishedLimit;
-    finished = finished.slice(0, finishedLimit);
+    // Only delegates are trimmed. The session read model lists every
+    // delegate ever run; engine subagents come from the registry, which is
+    // already bounded. Trimming them here could hide a subagent that its
+    // own chat still lists, and All must list everything a chat does.
+    let excess = finished.length - finishedLimit;
+    const kept: ChildWorkRowModel[] = [];
+    for (let index = finished.length - 1; index >= 0; index -= 1) {
+      const row = finished[index] as ChildWorkRowModel;
+      if (excess > 0 && row.item.producer === 'station-delegate') {
+        excess -= 1;
+        finishedOmitted += 1;
+      } else kept.push(row);
+    }
+    finished = kept.reverse();
   }
   return {
     running: treeOrder(running, true),
@@ -435,7 +474,7 @@ export function uniqueChatKey(
  * conversation resolves to.
  */
 export function threadInChat(
-  input: ChildWorkSelectorInput,
+  input: ChatMembershipInput,
   chatKey: string,
 ): (threadId: string | undefined) => boolean {
   const sessions = sessionIndex(input.sessions);
@@ -507,7 +546,15 @@ export function subagentNoticeFor(options: {
     return {
       label: 'This engine does not report subagents',
       description:
-        'Delegated tasks and tool calls from this conversation still appear here.',
+        'Delegated tasks and tool calls from this chat still appear here.',
+    };
+  // Only some connections of this engine report (ACP): with nothing from
+  // the server yet, "No subagents running" would be a claim nothing made.
+  const unobserved = engineReportsPerConnection(options.provider);
+  if (unobserved)
+    return {
+      label: 'Subagents are not shown for this engine',
+      description: unobserved,
     };
   return undefined;
 }
@@ -525,7 +572,7 @@ export function emptyStateFor(options: {
     return {
       label: 'No agent work yet',
       description:
-        'Delegated tasks and engine subagents from every conversation appear here, including work started from the CLI.',
+        'Delegated tasks, subagents and tool calls from every chat appear here, including CLI work.',
     };
   if (!options.hasChat)
     return {
@@ -533,4 +580,272 @@ export function emptyStateFor(options: {
       description: 'Open a chat to see the work it set running.',
     };
   return options.subagentNotice ?? { label: 'No subagents running' };
+}
+
+/** One row in "All chats": a child-work row or a background-tasks card. */
+export type AllChatsRow =
+  | { kind: 'child'; row: ChildWorkRowModel }
+  | {
+      kind: 'task';
+      entry: BackgroundTaskEntry;
+      /**
+       * The child-work kind a provider-task card stands for (the per-chat
+       * Stop bridge), so it is counted as what it is, not as its card.
+       */
+      workKind?: ChildWorkKind;
+    };
+
+/** The work one chat set running, as "All chats" groups it. */
+export interface AllChatsGroup {
+  /**
+   * The chat's store key when it is open; else the chat its reporting
+   * session was bound to, else the conversation or session it resolves to.
+   * Every row reaches this through one resolver, so a chat is one group.
+   */
+  key: string;
+  /** No chat: delegates started from the CLI or a task with no session here. */
+  outsideChat: boolean;
+  current: boolean;
+  title?: string;
+  /** The project's display name, only when the open chat records one. */
+  project?: string;
+  /** What opens this chat: its durable id, else the conversation or session. */
+  openThreadId?: string;
+  running: AllChatsRow[];
+  finished: AllChatsRow[];
+}
+
+export interface AllChatsView {
+  groups: AllChatsGroup[];
+  finishedOmitted: number;
+}
+
+const OUTSIDE_CHAT_GROUP = '\u0000outside-chat';
+/** Delegates of delegates are followed this far up to their chat. */
+const DELEGATE_CLIMB_LIMIT = 8;
+
+/**
+ * Whether a background-tasks card is listed beside child work: a tool call
+ * that did not spawn a listed child, or a delegated task the session read
+ * model does not already list. The per-chat pane applies the same rule.
+ */
+export function isListedTaskCard(
+  entry: BackgroundTaskEntry,
+  spawningToolCalls: ReadonlySet<string>,
+  listedDelegates: ReadonlySet<string> = new Set(),
+): boolean {
+  if (entry.source === 'tool-event') return !spawningToolCalls.has(entry.id);
+  if (entry.source === 'delegate-session')
+    return !listedDelegates.has(entry.delegateThreadId ?? entry.id);
+  return false;
+}
+
+/**
+ * Every chat's work for "All chats", grouped by chat: the global child-work
+ * view plus every chat's tool-call and delegated-task cards, so All lists
+ * at least what each chat's own scope lists. The current chat's group leads,
+ * then chats with running work, then the most recently active.
+ *
+ * A chat's title comes from the open chat, else from its session row. Its
+ * project is the open chat's display name only: a session row carries a
+ * slug (and a delegation's slug may be an unverified cross-machine match),
+ * so a closed chat shows no project rather than a slug beside names.
+ */
+export function selectAllChatsWork(
+  input: ChildWorkSelectorInput,
+  view: ChildWorkListView,
+  taskEntries: readonly BackgroundTaskEntry[],
+  currentChatKey: string | undefined,
+): AllChatsView {
+  const sessions = sessionIndex(input.sessions);
+  const delegateParent = (threadId: string): string | undefined => {
+    const asChild = sessions.get(threadId)?.childWork?.asChild;
+    const fromSession =
+      asChild?.producer === 'station-delegate'
+        ? asChild.parent?.taskId
+        : undefined;
+    return input.delegateParentOf?.(threadId) ?? fromSession;
+  };
+  // A delegate's work belongs to the chat that delegated it.
+  const anchorOf = (threadId: string | undefined) => {
+    let current = threadId;
+    for (let step = 0; current && step < DELEGATE_CLIMB_LIMIT; step += 1) {
+      const parent = delegateParent(current);
+      if (!parent || parent === current) break;
+      current = parent;
+    }
+    return current;
+  };
+
+  /** The ONE rule from a row's anchor thread to its chat's group key. */
+  const chatGroupKey = (anchor: string) => {
+    const target = input.reporterChatOf?.(anchor) ?? anchor;
+    const chatKey = resolveChat(target, input, sessions);
+    const session = sessions.get(target);
+    return {
+      key: chatKey ?? session?.conversationId ?? target,
+      chatKey,
+      session,
+    };
+  };
+
+  type Group = AllChatsGroup & { latest: number };
+  const groups = new Map<string, Group>();
+  const groupFor = (anchor: string | undefined): Group => {
+    if (!anchor) {
+      const existing = groups.get(OUTSIDE_CHAT_GROUP);
+      if (existing) return existing;
+      const created: Group = {
+        key: OUTSIDE_CHAT_GROUP,
+        outsideChat: true,
+        current: false,
+        running: [],
+        finished: [],
+        latest: Number.NEGATIVE_INFINITY,
+      };
+      groups.set(OUTSIDE_CHAT_GROUP, created);
+      return created;
+    }
+    const { key, chatKey, session } = chatGroupKey(anchor);
+    const facts = chatKey ? input.chatFacts?.(chatKey) : undefined;
+    const conversation = session?.conversationId
+      ? sessions.get(session.conversationId)
+      : undefined;
+    const title =
+      facts?.title ?? session?.displayTitle ?? conversation?.displayTitle;
+    const project = facts?.project;
+    let group = groups.get(key);
+    if (!group) {
+      group = {
+        key,
+        outsideChat: false,
+        current: currentChatKey !== undefined && key === currentChatKey,
+        openThreadId: chatKey ? (facts?.durableId ?? chatKey) : key,
+        running: [],
+        finished: [],
+        latest: Number.NEGATIVE_INFINITY,
+      };
+      groups.set(key, group);
+    }
+    if (!group.title && title) group.title = title;
+    if (!group.project && project) group.project = project;
+    return group;
+  };
+  const touch = (group: { latest: number }, time: number | undefined) => {
+    if (time !== undefined && time > group.latest) group.latest = time;
+  };
+
+  const childAnchor = (row: ChildWorkRowModel) =>
+    row.item.producer === 'station-delegate'
+      ? anchorOf(row.item.parent?.taskId ?? delegateParent(row.item.childId))
+      : anchorOf(row.item.reporterThreadId);
+
+  const listedDelegates = new Set(
+    [...view.running, ...view.finished]
+      .filter((row) => row.item.producer === 'station-delegate')
+      .map((row) => row.item.childId),
+  );
+  const spawningToolCalls = new Set<string>();
+  for (const row of [...view.running, ...view.finished])
+    if (row.item.parent?.toolCallId)
+      spawningToolCalls.add(row.item.parent.toolCallId);
+  for (const item of Object.values(input.engine.items))
+    if (item.parent?.toolCallId) spawningToolCalls.add(item.parent.toolCallId);
+  const cards = taskEntries.filter((entry) =>
+    isListedTaskCard(entry, spawningToolCalls, listedDelegates),
+  );
+
+  // Section order within a group mirrors the per-chat pane: running cards
+  // before running children, finished children before finished cards.
+  const runningCards = cards
+    .filter((entry) => entry.state === 'running')
+    .sort(
+      (a, b) =>
+        (a.startedAt ?? Number.POSITIVE_INFINITY) -
+        (b.startedAt ?? Number.POSITIVE_INFINITY),
+    );
+  for (const entry of runningCards) {
+    const group = groupFor(anchorOf(entry.chatThreadId));
+    group.running.push({ kind: 'task', entry });
+    touch(group, entry.startedAt);
+  }
+  for (const row of view.running) {
+    const group = groupFor(childAnchor(row));
+    group.running.push({ kind: 'child', row });
+    touch(group, row.startedAtMs);
+  }
+  for (const row of view.finished) {
+    const group = groupFor(childAnchor(row));
+    group.finished.push({ kind: 'child', row });
+    touch(group, row.endedAtMs ?? row.startedAtMs);
+  }
+  const finishedCards = cards
+    .filter((entry) => entry.state !== 'running')
+    .sort(
+      (a, b) =>
+        (b.endedAt ?? b.startedAt ?? 0) - (a.endedAt ?? a.startedAt ?? 0),
+    );
+  for (const entry of finishedCards) {
+    const group = groupFor(anchorOf(entry.chatThreadId));
+    group.finished.push({ kind: 'task', entry });
+    touch(group, entry.endedAt ?? entry.startedAt);
+  }
+
+  const ordered = [...groups.values()].sort((a, b) => {
+    if (a.current !== b.current) return a.current ? -1 : 1;
+    if (a.outsideChat !== b.outsideChat) return a.outsideChat ? 1 : -1;
+    const aRunning = a.running.length > 0;
+    if (aRunning !== b.running.length > 0) return aRunning ? -1 : 1;
+    return b.latest - a.latest;
+  });
+  return {
+    groups: ordered.map(({ latest: _latest, ...group }) => group),
+    finishedOmitted: view.finishedOmitted,
+  };
+}
+
+/**
+ * What a list of rows holds, by kind, for a section or group heading. One
+ * noun per thing, whatever list it came from:
+ * - agents: engine subagents and delegated tasks;
+ * - commands: background shell commands a turn left running (Claude's
+ *   backgrounded Bash, `workKind: 'command'`);
+ * - monitors: background monitors (`workKind: 'monitor'`);
+ * - tools: tool calls in a turn, Bash included. A Bash call that leaves a
+ *   background command is listed once, as that command: its spawning tool
+ *   call is not listed (`isListedTaskCard`).
+ */
+export interface WorkCounts {
+  agents: number;
+  commands: number;
+  monitors: number;
+  tools: number;
+}
+
+export function countWork(rows: readonly AllChatsRow[]): WorkCounts {
+  const counts: WorkCounts = { agents: 0, commands: 0, monitors: 0, tools: 0 };
+  const add = (kind: ChildWorkKind) => {
+    if (kind === 'agent') counts.agents += 1;
+    else if (kind === 'monitor') counts.monitors += 1;
+    else counts.commands += 1;
+  };
+  for (const row of rows) {
+    if (row.kind === 'child') add(childWorkKindOf(row.row.item));
+    else if (row.workKind) add(row.workKind);
+    else if (row.entry.kind === 'agent') counts.agents += 1;
+    else counts.tools += 1;
+  }
+  return counts;
+}
+
+/** "3 agents · 1 command · 9 tools"; an empty kind is left out. */
+export function workCountLabel(counts: WorkCounts): string {
+  const part = (count: number, one: string, many: string) =>
+    count > 0 ? [`${count} ${count === 1 ? one : many}`] : [];
+  return [
+    ...part(counts.agents, 'agent', 'agents'),
+    ...part(counts.commands, 'command', 'commands'),
+    ...part(counts.monitors, 'monitor', 'monitors'),
+    ...part(counts.tools, 'tool', 'tools'),
+  ].join(' · ');
 }

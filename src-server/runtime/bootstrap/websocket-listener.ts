@@ -9,6 +9,7 @@
 import { createServer, type Server, STATUS_CODES } from 'node:http';
 import type { Socket } from 'node:net';
 import { type ServerOptions, WebSocketServer } from 'ws';
+import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
 import {
   closeStableListener,
@@ -67,7 +68,7 @@ export function startWebSocketListener(
     logger.error('WebSocket listener failed to bind', {
       listener: name,
       port: address.port,
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage(error),
     });
   });
   return wss;

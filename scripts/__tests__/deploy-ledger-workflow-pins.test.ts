@@ -159,8 +159,9 @@ describe('the nightly workflow records what it ships', () => {
     expect(step).toContain(
       '--artifact-manifest cohort/cohort-macos/station-client-build.json',
     );
-    // The commit subject is what the changelog exclusion rule keys on.
-    expect(step).toMatch(/docs\(ledger\):/);
+    // One commit per run: the subject is derived from the rows the commit
+    // adds and refused unless the head normalizer would peel it.
+    expect(step).toContain('--subject-run-id "$GITHUB_RUN_ID"');
     // iOS is delivered outside the atomic chain (#1774) and has no ledger
     // channel, so both cohort rows carry its job result as a note.
     expect(step).toContain(
@@ -178,7 +179,7 @@ describe('the nightly workflow records what it ships', () => {
     ).toBeGreaterThan(androidLedger);
   });
 
-  it('records the independent CLI ship after its own publish, without pretending it orders the native cohort', () => {
+  it('records the independent CLI ship only after its registry-verified publish, without pretending it orders the native cohort', () => {
     const npmPublish = nightlyCaller.indexOf(
       'name: Publish @kontourai/station-cli to npm nightly',
     );
@@ -190,15 +191,22 @@ describe('the nightly workflow records what it ships', () => {
     expect(step).toContain(LEDGER_SCRIPT);
     expect(step).toContain('--channel nightly-npm');
     expect(step).toContain(
-      '--sha "$' + '{{ needs.test-gate.outputs.source_sha }}"',
+      'SOURCE_SHA: $' + '{{ needs.test-gate.outputs.source_sha }}',
     );
+    expect(step).toContain('--sha "$SOURCE_SHA"');
     // LOW-2: the nightly CLI's OWN identity step, not the Android's.
-    expect(step).toContain('$' + '{{ steps.identity.outputs.version }}');
+    expect(step).toContain(
+      'CLI_VERSION: $' + '{{ needs.nightly-cli.outputs.version }}',
+    );
     expect(step).not.toMatch(/git rev-parse/);
     // A publish alone is insufficient: the registry receipt must bind that
-    // version back to the exact source before a ledger mutation is reachable.
-    expect(step).toContain(
-      "always() && steps.cli_registry_provenance.outcome == 'success'",
+    // version back to the exact source before a ledger mutation is
+    // reachable. The recording job admits only that step's success.
+    expect(nightlyCaller).toContain(
+      'ledger_ready: $' + '{{ steps.cli_registry_provenance.outcome }}',
+    );
+    expect(nightlyCaller).toContain(
+      "needs['nightly-cli'].outputs.ledger_ready == 'success'",
     );
     const verifier = stepBlock(
       nightlyCaller,
@@ -208,7 +216,9 @@ describe('the nightly workflow records what it ships', () => {
     // The push credential is the release app's token — the require-green
     // ruleset's bypass actor, which GITHUB_TOKEN cannot be.
     expect(step).toContain('steps.ledger_token.outputs.token');
-    expect(step).toMatch(/docs\(ledger\):/);
+    expect(step).toContain('--subject-run-id "$GITHUB_RUN_ID"');
+    // The cohort may already have written this row in its one commit.
+    expect(step).toContain('--if-absent');
   });
 
   it('lets a ledger failure redden the job without blocking any ship', () => {
@@ -222,8 +232,12 @@ describe('the nightly workflow records what it ships', () => {
     );
     // Native recording is a final job after both provider receipts, so a
     // recorder failure cannot suppress either provider effect. It also waits
-    // on the independent iOS delivery only to disclose its result (#1774).
-    expect(nightly).toContain('needs: [protected-finalize, deliver-ios]');
+    // on the independent iOS delivery only to disclose its result (#1774),
+    // and on the verifier's second attempt, which runs only when the first
+    // never got a runner.
+    expect(nightly).toContain(
+      'needs: [protected-finalize, protected-finalize-retry, deliver-ios]',
+    );
     expect(nightly).toContain("needs.protected-finalize.result == 'success'");
   });
 });
@@ -262,7 +276,7 @@ describe('the desktop nightly workflow records what it ships (station#575)', () 
     expect(step).toContain('--sha "$' + '{{ inputs.source_sha }}"');
     expect(step).not.toMatch(/git rev-parse/);
     expect(step).toContain('desktopVersion=');
-    expect(step).toMatch(/docs\(ledger\):/);
+    expect(step).toContain('--subject-run-id "$GITHUB_RUN_ID"');
     // The push credential is the release app's token — the require-green
     // ruleset's bypass actor, which GITHUB_TOKEN cannot be.
     expect(step).toContain('steps.ledger_token.outputs.token');
@@ -318,14 +332,28 @@ describe('the desktop nightly workflow records what it ships (station#575)', () 
     // pinned verbatim, and every `--commit-subject` in every workflow is
     // bound to the normalizer's regex after shell substitution, so a future
     // writer cannot drift from the peel contract without reddening this.
+    // The Nightly's writers derive their subject from the rows they add
+    // (--subject-run-id); the commit script refuses a derived subject the
+    // normalizer would not peel, and deploy-ledger-nightly-batch.test.ts
+    // runs the normalizer on the commits it actually makes.
     const step = stepBlock(nightly, NIGHTLY_DESKTOP_LEDGER_STEP);
-    expect(step).toContain(
-      '--commit-subject "docs(ledger): record nightly-android $androidVersion from run $GITHUB_RUN_ID"',
-    );
-    expect(step).toContain(
-      '--commit-subject "docs(ledger): record nightly-desktop $desktopVersion from run $GITHUB_RUN_ID"',
+    expect(step).toContain('--subject-run-id "$GITHUB_RUN_ID"');
+    expect(stepBlock(nightlyCaller, NIGHTLY_NPM_LEDGER_STEP)).toContain(
+      '--subject-run-id "$GITHUB_RUN_ID"',
     );
     expect(step).not.toContain('record finalized');
+    expect(commitScript).toContain('GENERATED_LEDGER_SUBJECT.test(subject)');
+    // Every commit-back names its subject one way or the other.
+    for (const workflow of [
+      nightly,
+      nightlyCaller,
+      publishRelease,
+      publishPackages,
+    ])
+      for (const call of workflow.split(COMMIT_SCRIPT).slice(1))
+        expect(call.slice(0, 300)).toMatch(
+          /--commit-subject |--subject-run-id /,
+        );
 
     const subjects = [
       nightly,
@@ -335,7 +363,9 @@ describe('the desktop nightly workflow records what it ships (station#575)', () 
     ].flatMap((workflow) =>
       Array.from(workflow.matchAll(/--commit-subject "([^"]+)"/g), (m) => m[1]),
     );
-    expect(subjects).toHaveLength(5);
+    // publish-release, publish-packages, and the cohort's per-row fallback
+    // (Android, desktop), which keeps the invocation main always used.
+    expect(subjects).toHaveLength(4);
     for (const subject of subjects) {
       const substituted = subject
         .replace(/\$GITHUB_RUN_ID\b/g, '34252063142')

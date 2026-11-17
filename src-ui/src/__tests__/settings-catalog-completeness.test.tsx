@@ -56,6 +56,15 @@ vi.mock('@kontourai/station-connect', () => ({
   requestedScopeTokens: (scope: string) => scope.split(' ').filter(Boolean),
 }));
 const systemStatusRead = vi.hoisted(() => vi.fn());
+// Host options' workload status. The ordinary case has no cleanup backlog,
+// so the abandoned-workloads block renders nothing unless a test sets one.
+const workloadCleanup = vi.hoisted(() => ({
+  current: { pending: [], abandoned: [], abandonedDropped: 0 } as {
+    pending: unknown[];
+    abandoned: unknown[];
+    abandonedDropped: number;
+  },
+}));
 vi.mock('@kontourai/station-sdk', async () => {
   const { defaultNotificationPreferences } = await import(
     '@kontourai/station-contracts/notification-preferences'
@@ -250,6 +259,21 @@ vi.mock('@kontourai/station-sdk', async () => {
         isLoading: false,
       };
     },
+    WorkloadBudgetsUnsupportedError: class extends Error {},
+    useWorkloadBudgetsQuery: () => ({
+      isLoading: false,
+      error: null,
+      data: {
+        enforcement: { state: 'ready', platform: 'linux' },
+        hostMemoryBytes: 16 * 1024 ** 3,
+        settings: {},
+        settingsWritable: true,
+        applies: 'new-scopes',
+        activeScopes: 0,
+        cleanup: workloadCleanup.current,
+      },
+      refetch: vi.fn(),
+    }),
     useFeaturePreviewsQuery: () => ({
       isLoading: false,
       error: null,
@@ -575,6 +599,16 @@ vi.mock('../views/settings/CoreUpdateCheck', () => ({
   CoreUpdateCheck: () => <button type="button">check</button>,
 }));
 
+/**
+ * The save error's own Retry. A settings section that failed to load shows a
+ * Retry of its own on the same page, so the save one is asked for by its alert.
+ */
+const saveRetry = () =>
+  within(screen.getByRole('alert', { name: 'Settings save error' })).getByRole(
+    'button',
+    { name: 'Retry' },
+  );
+
 describe('settings catalog completeness', () => {
   beforeEach(() => {
     telemetryDisclosureRevision = 'settings-revision';
@@ -617,6 +651,11 @@ describe('settings catalog completeness', () => {
     resetDeviceSetting.mockClear();
     resetDeviceSettings.mockClear();
     window.history.replaceState({}, '', '/settings?view=overview');
+    workloadCleanup.current = {
+      pending: [],
+      abandoned: [],
+      abandonedDropped: 0,
+    };
   });
 
   async function renderSettings() {
@@ -712,6 +751,42 @@ describe('settings catalog completeness', () => {
 
     expect(container.querySelector('.settings__skeleton')).toBeTruthy();
     expect(screen.queryByText('Unable to load settings')).toBeNull();
+  });
+
+  test('Host options lists engine workloads Station couldn’t stop, with the budget preview off', async () => {
+    workloadCleanup.current = {
+      pending: [],
+      abandoned: [
+        {
+          unit: 'station-engine-abandoned.scope',
+          attempts: 3,
+          errorKind: 'bus_unavailable',
+          lastError: 'Failed to connect to bus',
+          firstFailedAt: '2026-11-10T11:00:00.000Z',
+          abandonedAt: '2026-11-10T12:00:00.000Z',
+        },
+      ],
+      abandonedDropped: 0,
+    };
+    window.history.replaceState({}, '', '/settings?view=host-runtime');
+    const { container } = await renderSettings();
+    const section = container.querySelector('#section-host-runtime');
+    expect(section).toBeTruthy();
+    const heading = within(section as HTMLElement).getByRole('heading', {
+      name: 'Workloads Station couldn’t stop',
+    });
+    expect(
+      within(heading.closest('section') as HTMLElement).getByText(
+        'station-engine-abandoned.scope',
+      ),
+    ).toBeTruthy();
+  });
+
+  test('Host options adds nothing when no workload is abandoned', async () => {
+    window.history.replaceState({}, '', '/settings?view=host-runtime');
+    const { container } = await renderSettings();
+    expect(container.querySelector('#section-host-runtime')).toBeTruthy();
+    expect(screen.queryByText('Workloads Station couldn’t stop')).toBeNull();
   });
 
   test('the rendered desktop Settings view and catalog enumerate the same exact ids', async () => {
@@ -1075,7 +1150,7 @@ describe('settings catalog completeness', () => {
       'debug',
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    fireEvent.click(saveRetry());
     await waitFor(() => expect(sdk.updateAppLogLevel).toHaveBeenCalledTimes(2));
     expect(updateConfig).not.toHaveBeenCalled();
   });
@@ -1117,7 +1192,7 @@ describe('settings catalog completeness', () => {
       revision: 'revision-2',
       operationId: 'config-edit-00000001',
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    fireEvent.click(saveRetry());
     await waitFor(() => expect(sdk.updateAppLogLevel).toHaveBeenCalledTimes(2));
     expect(updateConfig).toHaveBeenCalledTimes(1);
     expect(screen.queryByText('Unsaved changes')).toBeNull();
@@ -1145,7 +1220,7 @@ describe('settings catalog completeness', () => {
     await screen.findByText(
       /Some settings were saved. Unsaved changes are kept here/,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    fireEvent.click(saveRetry());
     await waitFor(() => expect(updateConfig).toHaveBeenCalledTimes(2));
     expect(sdk.updateAppLogLevel).toHaveBeenCalledTimes(1);
     expect(screen.queryByText('Unsaved changes')).toBeNull();
@@ -1303,6 +1378,66 @@ describe('settings catalog completeness', () => {
     );
   });
 
+  describe('Past conversations in Knowledge (knowledgeStores)', () => {
+    test('renders in the My knowledge store card, off by default, and saving writes knowledgeStores', async () => {
+      window.history.replaceState(
+        {},
+        '',
+        '/settings?view=knowledge&highlight=knowledge-conversation-history',
+      );
+      updateConfig.mockResolvedValueOnce(undefined);
+      const { container } = await renderSettings();
+
+      const card = container.querySelector('#section-knowledge');
+      if (!card) throw new Error('Missing the My knowledge store card');
+      const row = card.querySelector(
+        '[data-catalog-id="knowledge-conversation-history"]',
+      );
+      if (!(row instanceof HTMLElement))
+        throw new Error('Missing the past conversations row');
+      const toggle = within(row).getByRole('switch', {
+        name: 'Past conversations in Knowledge',
+      });
+      // Nothing stored: the registry default, off.
+      expect(toggle.getAttribute('aria-checked')).toBe('false');
+      // Before turning it on, a person sees without opening Details that it
+      // needs a reindex and cannot be undone by turning it off.
+      const visible = row.cloneNode(true) as HTMLElement;
+      for (const details of visible.querySelectorAll('details'))
+        details.remove();
+      expect(visible.textContent).toContain(
+        'Searchable after a Knowledge reindex',
+      );
+      expect(visible.textContent).toContain(
+        'Turning it off later does not remove them',
+      );
+
+      fireEvent.click(toggle);
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => expect(updateConfig).toHaveBeenCalledTimes(1));
+      expect(updateConfig).toHaveBeenCalledWith({ knowledgeStores: true });
+    });
+
+    test('shows a stored true as on and turning it off saves false', async () => {
+      configSnapshot.config = { ...INITIAL_CONFIG, knowledgeStores: true };
+      window.history.replaceState({}, '', '/settings?view=knowledge');
+      updateConfig.mockResolvedValueOnce(undefined);
+      await renderSettings();
+
+      const toggle = screen.getByRole('switch', {
+        name: 'Past conversations in Knowledge',
+      });
+      expect(toggle.getAttribute('aria-checked')).toBe('true');
+
+      fireEvent.click(toggle);
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+      await waitFor(() => expect(updateConfig).toHaveBeenCalledTimes(1));
+      expect(updateConfig).toHaveBeenCalledWith({ knowledgeStores: false });
+    });
+  });
+
   test('imported settings save without transferring first-run progress', async () => {
     configSnapshot.config = {
       ...INITIAL_CONFIG,
@@ -1379,7 +1514,7 @@ describe('settings catalog completeness', () => {
       revision: 'revision-2',
       operationId: 'config-edit-00000001',
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    fireEvent.click(saveRetry());
 
     await waitFor(() =>
       expect(
@@ -1429,7 +1564,8 @@ describe('settings catalog completeness', () => {
   });
 
   test('a save that never settles is released at the deadline with its drafts kept', async () => {
-    vi.useFakeTimers();
+    // Keep JSDOM's rendering/focus interval alive across timer restoration.
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
     try {
       const sdk = await import('@kontourai/station-sdk/app-config');
       const { SETTINGS_SAVE_DEADLINE_MS } = await import(
@@ -2085,7 +2221,8 @@ describe('settings catalog completeness', () => {
   });
 
   test('keeps a cold target timeout visible while Settings is still loading', async () => {
-    vi.useFakeTimers();
+    // Keep JSDOM's rendering/focus interval alive across timer restoration.
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
     try {
       configSnapshot = { config: null, dataUpdatedAt: 0 };
       window.history.replaceState(
@@ -2094,6 +2231,12 @@ describe('settings catalog completeness', () => {
         '/settings?view=system&highlight=log-level',
       );
       const { container } = await renderSettings();
+      // Let the mounted target observer register its timeout on a real frame.
+      await act(async () => {
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => resolve()),
+        );
+      });
       await act(async () => {
         await vi.advanceTimersByTimeAsync(5_100);
       });
@@ -2170,6 +2313,31 @@ describe('settings catalog completeness', () => {
       });
     });
 
+    // A required setting is outside the reset plan, so "every setting uses
+    // its default" would be false while it still holds a stored value.
+    test('an empty plan says only the clearable settings are at their defaults', async () => {
+      configProvenance = { defaultModel: { source: 'file' } };
+      await renderSettings();
+
+      expect(
+        screen.getByText(
+          'Restores most Station settings to their defaults. Device settings are kept.',
+        ),
+      ).toBeTruthy();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Reset Station settings' }),
+      );
+      expect(
+        screen.getByText(
+          'Nothing to reset. The settings a reset can clear already use their defaults.',
+        ),
+      ).toBeTruthy();
+      expect(
+        (screen.getByRole('button', { name: 'Reset' }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(true);
+    });
+
     test('is refused while the form holds an unsaved draft', async () => {
       // A reset writes what the SERVER stores; the draft is not part of it,
       // so a Save afterwards would re-store the very values just cleared.
@@ -2186,9 +2354,7 @@ describe('settings catalog completeness', () => {
       }) as HTMLButtonElement;
       expect(reset.disabled).toBe(true);
       expect(
-        screen.getByText(
-          'Save or discard your unsaved changes first. Discard is always available.',
-        ),
+        screen.getByText('Save or discard your changes first.'),
       ).toBeTruthy();
       fireEvent.click(reset);
       expect(updateConfig).not.toHaveBeenCalled();
@@ -3070,7 +3236,7 @@ describe('settings catalog completeness', () => {
         noData: true,
         disabled: [false, true, true],
         limit:
-          'Sharing options could not be loaded. You can try turning sharing off, or try again. Try again',
+          'Sharing options could not be loaded. You can try turning sharing off, or try again. Retry loading',
       },
       {
         // An older host already answered without capabilities; a failed
@@ -3183,7 +3349,7 @@ describe('settings catalog completeness', () => {
       },
     );
 
-    test('after a failed main read, Try again re-reads the disclosure', async () => {
+    test('after a failed main read, Retry loading re-reads the disclosure', async () => {
       telemetryEndpointConfigured = undefined;
       telemetryDisclosureIsError = true;
       telemetryDisclosureReadError = true;
@@ -3192,7 +3358,7 @@ describe('settings catalog completeness', () => {
       invalidateQuery.mockClear();
       fireEvent.click(
         within(screen.getByTestId('usage-sharing-limit')).getByRole('button', {
-          name: 'Try again',
+          name: 'Retry loading',
         }),
       );
       expect(invalidateQuery).toHaveBeenCalledWith([
@@ -3629,7 +3795,7 @@ describe('settings catalog completeness', () => {
       fireEvent.click(
         screen.getByRole('button', { name: 'Reset Station settings' }),
       );
-      const dialog = screen.getByRole('dialog');
+      const dialog = screen.getByRole('alertdialog');
       expect(dialog.textContent).not.toContain(WORKSPACE_ROW);
       fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
 

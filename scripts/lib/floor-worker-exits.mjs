@@ -1,0 +1,55 @@
+/**
+ * Preloaded (`--import`) into a Windows portable floor Vitest invocation
+ * (#4626): records how each forked Vitest worker ended, its exit code or
+ * signal, one JSON line per worker in `STATION_FLOOR_WORKER_EXIT_LOG`. A
+ * worker that dies under a terminal suite leaves no assertion and no log of
+ * its own; the parent is the only process that sees its exit status. The
+ * floor keeps the file only when the invocation failed.
+ *
+ * Only the Vitest main process records: it is the first to load this and
+ * takes the variable out of its environment, so a worker or a test's child
+ * that inherits the preload finds none and changes nothing.
+ */
+import { appendFileSync } from 'node:fs';
+import { createRequire, syncBuiltinESMExports } from 'node:module';
+import { basename } from 'node:path';
+
+const log = process.env.STATION_FLOOR_WORKER_EXIT_LOG;
+delete process.env.STATION_FLOOR_WORKER_EXIT_LOG;
+if (log) {
+  const childProcess = createRequire(import.meta.url)('node:child_process');
+  const fork = childProcess.fork;
+  childProcess.fork = function recordedFork(...args) {
+    const child = fork.apply(this, args);
+    const startedAt = new Date().toISOString();
+    // Vitest stops every worker it is done with by `kill()` (SIGTERM): an
+    // exit after that is its normal teardown, not a worker that died.
+    let stopRequestedAt = null;
+    const kill = child.kill;
+    child.kill = function recordedKill(...killArgs) {
+      stopRequestedAt ??= new Date().toISOString();
+      return kill.apply(this, killArgs);
+    };
+    child.once('exit', (code, signal) => {
+      try {
+        appendFileSync(
+          log,
+          `${JSON.stringify({
+            pid: child.pid ?? null,
+            module: typeof args[0] === 'string' ? basename(args[0]) : null,
+            code,
+            signal,
+            startedAt,
+            stopRequestedAt,
+            exitedAt: new Date().toISOString(),
+          })}\n`,
+        );
+      } catch {
+        // Evidence only: a failed write never changes the run.
+      }
+    });
+    return child;
+  };
+  // ESM importers of `node:child_process` (Vitest's pool) see the wrapper.
+  syncBuiltinESMExports();
+}

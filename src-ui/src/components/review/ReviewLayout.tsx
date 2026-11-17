@@ -20,6 +20,7 @@ import {
 } from './reviewEvidenceCopy';
 import { SurveyFlowReviewDetail } from './SurveyFlowReviewDetail';
 import './review-detail.css';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 
 type BulkAction = 'approve' | 'reject' | null;
 
@@ -238,6 +239,7 @@ export function ReviewLayout({
     selectedId === deepLink;
 
   const pendingIds = changes.map((change) => change.id);
+  useDecisionSurface('proposed-change', pendingIds.length > 0);
   const bulkPending =
     bulkApproveMutation.isPending || bulkRejectMutation.isPending;
 
@@ -260,14 +262,12 @@ export function ReviewLayout({
     <div className="pane-host" data-first-run-anchor="review">
       {deepLinkMissing && (
         <p role="status">
-          That review item is no longer pending in {projectSlug}, and Station
-          won’t open a different one in its place.
+          That review item is no longer pending in {projectSlug}.
         </p>
       )}
       <SplitPaneLayout
         label="review"
         title="Review"
-        subtitle={`Pending changes, paused gate reviews, and review evidence for ${projectSlug}`}
         items={items}
         loading={loading}
         selectedId={selectedId}
@@ -284,20 +284,18 @@ export function ReviewLayout({
           surveyReviews.length === 0 &&
           reviewReceipts.length === 0
         }
-        searchPlaceholder="Search changes, gate reviews, and evidence..."
+        searchPlaceholder="Search reviews…"
         listEmptyTitle={
           sourceNotices.length > 0
             ? 'Some reviews could not load'
             : 'Nothing to review'
         }
         listEmptyDescription={
-          sourceNotices.length > 0
-            ? sourceNotices.join(' ')
-            : 'Proposals awaiting approval, paused gate reviews, and independent review receipts for this Project appear here.'
+          sourceNotices.length > 0 ? sourceNotices.join(' ') : undefined
         }
         emptyIcon={<CheckGlyph />}
         emptyTitle="Select an item"
-        emptyDescription="Decide a proposed change, read a paused gate review, or open a review receipt."
+        emptyDescription="Decide a proposed change, read a paused gate review, or open a review result."
         headerActions={
           <Button
             size="sm"
@@ -324,7 +322,7 @@ export function ReviewLayout({
                   disabled={bulkPending}
                   onClick={() => setBulkAction('approve')}
                 >
-                  Approve All
+                  Approve all
                 </Button>
                 <Button
                   size="sm"
@@ -332,7 +330,7 @@ export function ReviewLayout({
                   disabled={bulkPending}
                   onClick={() => setBulkAction('reject')}
                 >
-                  Reject All
+                  Reject all
                 </Button>
               </div>
             ) : null}
@@ -370,7 +368,7 @@ export function ReviewLayout({
             : 'Reject pending changes'
         }
         message={`Apply this decision to ${pendingIds.length} pending proposed change${pendingIds.length === 1 ? '' : 's'} in ${projectSlug}?`}
-        confirmLabel={bulkAction === 'approve' ? 'Approve All' : 'Reject All'}
+        confirmLabel={bulkAction === 'approve' ? 'Approve all' : 'Reject all'}
         variant={bulkAction === 'reject' ? 'danger' : 'warning'}
         onConfirm={confirmBulk}
         onCancel={() => setBulkAction(null)}

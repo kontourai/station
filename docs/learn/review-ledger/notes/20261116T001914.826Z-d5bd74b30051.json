@@ -1,0 +1,7 @@
+{
+  "revision": "97e1eefda198a51bd315b249b226e75f4655f5a5",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"screenshots.spec.ts changes (app error-surface checks, second capture, layout-shift record, child-chat reopen wait) do not touch reduced-motion emulation or the motion screens' setup; motion claims unchanged.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]}
+  ]
+}

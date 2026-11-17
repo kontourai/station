@@ -1,0 +1,15 @@
+{
+  "revision": "fa7ffe3a535f1a197736faf4a5a5247c1ad6529b",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Push-once guidance now states only the two reproduced facts for the eight-push branch (all eight PR: CI runs cancelled; 607 runner-minutes in total); no dependent page relies on the removed figures.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"Push-once guidance now states only the two reproduced facts for the eight-push branch (all eight PR: CI runs cancelled; 607 runner-minutes in total); no dependent page relies on the removed figures.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Push-once guidance now states only the two reproduced facts for the eight-push branch (all eight PR: CI runs cancelled; 607 runner-minutes in total); no dependent page relies on the removed figures.","inputs":["docs/guides/development.md"]},
+
+    {"path":"packages/shared/README.md","note":"Push-once guidance now states only the two reproduced facts for the eight-push branch (all eight PR: CI runs cancelled; 607 runner-minutes in total); no dependent page relies on the removed figures.","inputs":["docs/guides/development.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Push-once guidance now states only the two reproduced facts for the eight-push branch (all eight PR: CI runs cancelled; 607 runner-minutes in total); no dependent page relies on the removed figures.","inputs":["docs/guides/development.md"]}
+  ]
+}

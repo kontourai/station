@@ -17,7 +17,7 @@ const release = JSON.parse(
 
 if (first === '--version' || first === '-v') {
   const identity = {
-    ref: release.ref,
+    ref: release.schemaVersion === 3 ? `v${release.version}` : release.ref,
     sha: release.sha,
     channel: release.channel,
     releaseChannel: release.releaseChannel,

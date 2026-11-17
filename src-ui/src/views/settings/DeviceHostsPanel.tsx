@@ -18,6 +18,7 @@ import {
 import { type FormEvent, useState } from 'react';
 import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
+import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { Empty, ErrorState, Skeleton } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { DeviceShares } from '../../workspace-panes/device/DeviceShares';
@@ -41,8 +42,8 @@ const STEP_LABEL: Record<DeviceHostCheckStep['id'], string> = {
   node: 'Node.js on the host',
   ios: 'Xcode simulators',
   android: 'Android SDK',
-  'hub-installed': 'Device hub installed',
-  'hub-running': 'Device hub running',
+  'hub-installed': 'Device helper installed',
+  'hub-running': 'Device helper running',
 };
 
 const STEP_STATE: Record<DeviceHostCheckStep['state'], string> = {
@@ -58,7 +59,8 @@ const REFUSAL_COPY: Record<string, string> = {
   'invalid-label': 'Give the host a short name.',
   duplicate: 'That host is already listed.',
   'too-many': 'This Station already has as many device hosts as it allows.',
-  'consent-required': 'Installing the hub needs your explicit agreement.',
+  'consent-required':
+    'Installing the device helper needs your explicit agreement.',
   'not-found': 'That host is no longer listed.',
 };
 
@@ -69,23 +71,23 @@ function refusalText(error: unknown): string {
 }
 
 function hubText(host: DeviceSshHostView): string {
-  if (!host.hubEnabled) return 'Device hub not enabled';
+  if (!host.hubEnabled) return 'Device helper not enabled';
   const install = host.install;
-  if (install.state === 'installing') return 'Installing the device hub…';
+  if (install.state === 'installing') return 'Installing the device helper…';
   if (install.state === 'failed')
     return `Install failed: ${DEVICE_SSH_HOST_GUIDANCE[install.failure]}`;
   const hub = host.hub;
   switch (hub.state) {
     case 'running':
-      return 'Device hub running';
+      return 'Device helper running';
     case 'starting':
-      return 'Starting the device hub…';
+      return 'Starting the device helper…';
     case 'restarting':
       return `Reconnecting (attempt ${hub.attempt})…`;
     case 'failed':
       return DEVICE_SSH_HOST_GUIDANCE[hub.failure];
     default:
-      return 'Device hub enabled; it starts when a device is opened';
+      return 'Device helper enabled; it starts when a device is opened';
   }
 }
 
@@ -242,8 +244,8 @@ function DeviceHostForm({
       </label>
       {host && sshTarget !== host.sshTarget && host.hubEnabled ? (
         <p className="device-hosts__note">
-          Changing the target turns the device hub off for this host until you
-          enable it again on the new machine.
+          Changing the target turns the device helper off for this host until
+          you enable it again on the new machine.
         </p>
       ) : null}
       {mutation.isError ? (
@@ -324,7 +326,7 @@ function DeviceHostRow({
       {mode === 'consent' ? (
         <div className="device-hosts__confirm">
           <p>
-            Station will copy the device hub it verified on this Station to{' '}
+            Station will copy the device helper it verified on this Station to{' '}
             {host.label} (into <code>~/.station-device-host</code>) and run it
             there, on that machine&rsquo;s loopback only, whenever a device on
             it is opened.
@@ -344,23 +346,6 @@ function DeviceHostRow({
               Install and enable
             </Button>
             <Button onClick={() => setMode('idle')}>Cancel</Button>
-          </div>
-        </div>
-      ) : mode === 'remove' ? (
-        <div className="device-hosts__confirm">
-          <p>Remove {host.label}? Its device sessions end and its hub stops.</p>
-          <div className="device-hosts__actions">
-            <Button
-              onClick={() => remove.mutate(host.hostId)}
-              pending={remove.isPending}
-              pendingLabel="Removing…"
-              variant="danger"
-            >
-              Remove host
-            </Button>
-            <Button disabled={remove.isPending} onClick={() => setMode('idle')}>
-              Cancel
-            </Button>
           </div>
         </div>
       ) : (
@@ -394,15 +379,15 @@ function DeviceHostRow({
                 >
                   {host.hub.state === 'failed' &&
                   host.hub.failure === 'hub-not-installed'
-                    ? 'Reinstall hub'
+                    ? 'Reinstall helper'
                     : host.hub.state === 'failed'
-                      ? 'Retry hub'
-                      : 'Start hub'}
+                      ? 'Retry helper'
+                      : 'Start helper'}
                 </Button>
               ) : null
             ) : (
               <Button disabled={busy} onClick={() => setMode('consent')}>
-                Enable device hub
+                Enable device helper
               </Button>
             )
           }
@@ -417,7 +402,7 @@ function DeviceHostRow({
                   },
                   {
                     key: 'disable-hub',
-                    label: 'Disable hub',
+                    label: 'Disable helper',
                     disabled: busy,
                     onSelect: () =>
                       setHub.mutate({ hostId: host.hostId, enabled: false }),
@@ -440,6 +425,20 @@ function DeviceHostRow({
           ]}
         />
       )}
+      {/* The dialog closes when the request settles: a refused removal is
+          reported once, by the row's error line below. */}
+      <ConfirmModal
+        isOpen={mode === 'remove'}
+        variant="danger"
+        title="Remove host"
+        message={`Remove ${host.label}? Its device sessions end and its hub stops.`}
+        confirmLabel="Remove host"
+        pending={remove.isPending}
+        onConfirm={() =>
+          remove.mutate(host.hostId, { onSettled: () => setMode('idle') })
+        }
+        onCancel={() => setMode('idle')}
+      />
       {check.isError || setHub.isError || startHub.isError || remove.isError ? (
         <p className="device-hosts__error" role="alert">
           {refusalText(

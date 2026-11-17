@@ -4,6 +4,7 @@
  * Chromium host factory bound to this Station's listener set.
  */
 import { findRunning } from '@kontourai/station-shared/instance-registry';
+import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
 import type { LiveSurfaceRegistry } from '../live-surface/registry.js';
 import type { MediaToolsResolver } from '../media-tools/media-tools-resolver.js';
@@ -221,7 +222,7 @@ export function createBrowserService(
           : {}),
         onError: (message, error) =>
           logger.warn(`browser: ${message}`, {
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage(error),
           }),
       })
     : undefined;

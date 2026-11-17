@@ -24,7 +24,14 @@
  * minted (`isRemoteStationTarget`). Later remote work (#2875,
  * provider-neutral workspace preparation) resolves through the same call.
  */
+
+import {
+  type PeerStationReadiness,
+  stationReadinessReason,
+} from '@kontourai/station-contracts/environment-security';
+import { errorMessage } from '../../utils/error-message.js';
 import type { PeerCredentialStore } from '../peers/peer-credential-store.js';
+import type { PeerReadinessService } from '../peers/peer-readiness-service.js';
 import type {
   SshEnvironmentService,
   SshEnvironmentView,
@@ -364,6 +371,35 @@ function mint(target: RemoteStationTarget): RemoteStationTarget {
   return frozen;
 }
 
+/**
+ * A paired Station whose fresh handshake says it cannot take work now. An
+ * `unconfirmed` answer that is not an identity mismatch is not refused here:
+ * something answered, and the real call reports what it is.
+ */
+function peerReadinessRefusesDispatch(
+  readiness: Pick<PeerStationReadiness, 'status' | 'reason'>,
+): boolean {
+  return (
+    readiness.status === 'recovering' ||
+    readiness.status === 'unreachable' ||
+    readiness.reason === 'identity-mismatch'
+  );
+}
+
+/** Refusal raised before any remote call to a peer that is not ready. */
+export class PeerStationNotReadyError extends Error {
+  readonly readiness: PeerStationReadiness;
+  constructor(name: string, readiness: PeerStationReadiness) {
+    super(
+      `Paired Station '${name}' is not ready: ${
+        stationReadinessReason(readiness) ?? readiness.status
+      }`,
+    );
+    this.name = 'PeerStationNotReadyError';
+    this.readiness = readiness;
+  }
+}
+
 /** No SSH profile names the Environment at all (the only peer fallback). */
 const SSH_ENVIRONMENT_NOT_FOUND_MESSAGE =
   'The selected environment is not a saved, verified SSH environment';
@@ -395,6 +431,14 @@ function requireLoopbackTunnel(value: string | undefined): string {
 export interface RemoteStationForwarderDependencies {
   readonly ssh: Pick<SshEnvironmentService, 'list' | 'connect'>;
   readonly peers: Pick<PeerCredentialStore, 'get'>;
+  /**
+   * When composed, a peer is probed (its public handshake, no credential)
+   * before a target is minted, and a peer that is `recovering`,
+   * `unreachable`, or answers as a different Station is refused at once
+   * with that reason instead of timing out on the first remote call. A
+   * cached `online` answer is reused; a refusal is always a fresh probe.
+   */
+  readonly readiness?: Pick<PeerReadinessService, 'probe'>;
   /** Where a failed credential read is reported (it never fails the hop). */
   readonly warn?: (message: string) => void;
   /** Where `STATION_REMOTE_REQUEST_TIMEOUT_MS` is read (default: the process). */
@@ -476,9 +520,9 @@ export function createRemoteStationForwarder(
     } catch (error) {
       deps.warn?.(
         `[remote-station-forwarder] peer credential lookup failed for environmentId=${environmentId}; ` +
-          `the SSH-tunneled target carries no credential: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+          `the SSH-tunneled target carries no credential: ${errorMessage(
+            error,
+          )}`,
       );
     }
     const localUrl =
@@ -517,6 +561,17 @@ export function createRemoteStationForwarder(
           throw new Error('The selected peer environment is unavailable');
         }
         if (!peer) throw error;
+        if (deps.readiness) {
+          const readiness = await deps.readiness.probe(
+            { environmentId, apiBase: peer.apiBase },
+            { revalidateFailures: true },
+          );
+          if (peerReadinessRefusesDispatch(readiness))
+            throw new PeerStationNotReadyError(
+              peer.label || peer.apiBase,
+              readiness,
+            );
+        }
         return mint({
           kind: 'peer',
           apiBase: peer.apiBase,

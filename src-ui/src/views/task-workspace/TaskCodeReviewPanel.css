@@ -1,0 +1,60 @@
+.task-code-review h3,
+.task-code-review p {
+  margin: 0;
+}
+.task-code-review__heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--k-space-3);
+}
+.task-code-review__controls {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--k-space-3);
+  flex-wrap: wrap;
+}
+.task-code-review__reviewer {
+  flex: 1 1 15rem;
+  min-width: 0;
+}
+.task-code-review__heading p,
+.task-code-review__note {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.task-code-review__details,
+.task-code-review__request,
+.task-code-review__history,
+.task-code-review__entry,
+.task-code-review dl {
+  display: grid;
+  gap: var(--k-space-2);
+  min-width: 0;
+}
+.task-code-review dl,
+.task-code-review dd {
+  margin: 0;
+}
+.task-code-review dt {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.task-code-review :is(p, dd, li, code) {
+  overflow-wrap: anywhere;
+}
+.task-code-review__entry {
+  border-top: 1px solid var(--k-line);
+  padding-top: var(--k-space-3);
+}
+.task-code-review ul {
+  padding-left: var(--k-space-5);
+  display: grid;
+  gap: var(--k-space-4);
+}
+.task-code-review .control {
+  font-size: max(var(--k-text-md), 1rem);
+}
+.task-code-review .disclosure-toggle {
+  min-height: calc(var(--k-space-6) + var(--k-space-3));
+}

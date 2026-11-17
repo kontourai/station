@@ -14,6 +14,7 @@ import {
   parsePairingScope,
 } from '@kontourai/station-contracts/environment-security';
 import type { StationProfileCredentialRef } from '@kontourai/station-contracts/station-profile';
+import { encodeBase64Url } from '@kontourai/station-shared/base64url';
 import { clientProtocolHeaders } from '@kontourai/station-shared/client-protocol';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
@@ -137,16 +138,6 @@ export interface ScannedPairingOffer {
   expiresAt: number;
 }
 
-function encodeBase64Url(value: string): string {
-  const bytes = new TextEncoder().encode(value);
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary)
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-}
-
 function decodeBase64Url(value: string): string {
   const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
   const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
@@ -169,7 +160,8 @@ export function encodeDevicePairingPayload(
     scope: offer.scope,
     expiresAt: offer.expiresAt,
   };
-  return `${PAYLOAD_PREFIX}${encodeBase64Url(JSON.stringify(payload))}`;
+  const bytes = new TextEncoder().encode(JSON.stringify(payload));
+  return `${PAYLOAD_PREFIX}${encodeBase64Url(bytes)}`;
 }
 
 export function decodeDevicePairingPayload(

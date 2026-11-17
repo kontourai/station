@@ -1,0 +1,7 @@
+{
+  "revision": "1def1d5df43db4343033b2eba5bbab526b6b3725",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-read after merging main's handoff rework (#5039) with the Agent-moved hint: the Run setup paragraph (hint at every width, the label giving way, the Agent name kept to about eight characters or left out, no leading dot when the label hides, accessible name and description) and section 3.1 (the panel caption's own line, the next-turn notice above the box) match ChatInputArea.tsx, ComposerRunControl.tsx and their CSS on the merged tree; renders checked at 320, 390 and 1280.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatInputArea.tsx"]}
+  ]
+}

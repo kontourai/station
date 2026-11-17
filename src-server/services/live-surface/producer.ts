@@ -134,6 +134,8 @@ export interface LiveSurfaceProducer {
    * the point where it was pressed — a `down` then `up` on the same target
    * is a click, and a human grabbing control to STOP an agent's click must
    * not be the thing that completes it.
+   * The supplied held state can be one viewer's subset. Cancel only that
+   * subset; another viewer may still own a producer's active gesture.
    *
    * Without this hook the registry dispatches a neutral cancel: a pointer
    * move to (-1, -1), outside every viewport, then each button's `up` there,

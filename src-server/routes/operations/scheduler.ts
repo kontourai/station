@@ -18,6 +18,7 @@ import { SchedulerStorageUnavailableError } from '../../services/scheduling/sche
 import type { SchedulerService } from '../../services/scheduling/scheduler-service.js';
 import { SchedulerScheduleInvalidError } from '../../services/scheduling/scheduler-service.js';
 import { schedulerJobRuns } from '../../telemetry/metrics.js';
+import { boundedIntQuery } from '../../utils/bounded-int-query.js';
 import type { Logger } from '../../utils/logger.js';
 import {
   addJobSchema,
@@ -142,7 +143,14 @@ export type AutomationJobAdmission = (
   c: Context,
   job: SchedulerJob,
 ) =>
-  | { readonly ok: true }
+  | {
+      readonly ok: true;
+      /**
+       * Admitted only by the operator-in-person override on a job someone
+       * else owns: the operator may manage it, never repoint it.
+       */
+      readonly operatorOverride?: true;
+    }
   | {
       readonly ok: false;
       readonly status: 403 | 404;
@@ -231,6 +239,22 @@ export function createSchedulerRoutes(
     jobProposals?: JobProposalApproval;
     /** Absent: a body with a `target` is refused (no conversation runs). */
     admitAutomationTarget?: AutomationTargetAdmission;
+    /**
+     * #2377 slice D: who an untargeted job's runs act as, resolved from the
+     * creating request (a person, or an agent's dispatch actor). Absent or
+     * unresolved: the job is stored with no owner and its runs have no
+     * Station tools (`ownerNeeded`).
+     */
+    jobOwner?: (c: Context) => SchedulerAutomationCreator | undefined;
+    /**
+     * #5070: this Station runs Project jobs as Tasks. Absent: a body with a
+     * `projectId` is refused rather than created as a plain job.
+     */
+    projectJobs?: boolean;
+    /** The `project-schedules` preview: off refuses a body with `projectId`. */
+    projectJobsPreview?: {
+      select<T>(branches: { enabled: () => T; disabled: () => T }): T;
+    };
     /** Absent: every action on a job with a stored target is refused. */
     admitAutomationJob?: AutomationJobAdmission;
     mayReadAutomationJob?: (c: Context, job: SchedulerJob) => boolean;
@@ -245,32 +269,58 @@ export function createSchedulerRoutes(
 
   /**
    * The refusal for acting on `name`, or undefined when it may proceed.
-   * Jobs without a target keep their existing (operator) authority.
+   * #2377 slice D: a job's runs act as its recorded owner, so a job with a
+   * target OR an owner is admitted against them (`admitAutomationJob`): the
+   * person who owns it, or an agent acting for that person. Only a job with
+   * neither (an older ownerless job) keeps its existing (operator) authority.
    */
   const refuseStoredTarget = async (
     c: Context,
     name: string,
+    edit?: { readonly target?: unknown },
   ): Promise<Response | undefined> => {
     const job = (await schedulerService.listJobs()).find(
       (candidate) => candidate.name === name,
     );
-    if (!job?.target) return undefined;
+    if (!job?.target && !job?.createdBy) return undefined;
     if (!options.admitAutomationJob)
       return c.json(
-        {
-          success: false,
-          code: 'automation_target_unavailable',
-          error: "This Station can't run an automation in a conversation.",
-        },
+        job.target
+          ? {
+              success: false,
+              code: 'automation_target_unavailable',
+              error: "This Station can't run an automation in a conversation.",
+            }
+          : {
+              success: false,
+              code: 'automation_owner_unavailable',
+              error: "This Station can't check who owns this job.",
+            },
         503,
       );
     const admitted = options.admitAutomationJob(c, job);
-    return admitted.ok
-      ? undefined
-      : c.json(
-          { success: false, code: admitted.code, error: admitted.error },
-          admitted.status,
-        );
+    if (!admitted.ok)
+      return c.json(
+        { success: false, code: admitted.code, error: admitted.error },
+        admitted.status,
+      );
+    // Its runs act as the owner, so a target the operator chose would run
+    // as the owner in a conversation the owner never chose (a dedicated one
+    // would even be started as them). Only the owner points their own job.
+    if (
+      admitted.operatorOverride &&
+      edit?.target !== undefined &&
+      edit.target !== null
+    )
+      return c.json(
+        {
+          success: false,
+          code: 'automation_target_owner_only',
+          error: "Only this job's owner can point it at a conversation.",
+        },
+        403,
+      );
+    return undefined;
   };
 
   const { canReadJob, canReadRunSummary, visibleJobs } =
@@ -460,7 +510,9 @@ export function createSchedulerRoutes(
       const cron = c.req.query('cron');
       if (!cron)
         return c.json({ success: false, error: 'cron is required' }, 400);
-      const count = parseInt(c.req.query('count') || '5', 10);
+      // The projection caps a preview at 1000 occurrences.
+      const count =
+        boundedIntQuery(c.req.query('count'), { min: 0, max: 1000 }) ?? 5;
       // #1536 D1: the zone travels with the expression or the projection is
       // wrong for every zoned schedule.
       const timezone = c.req.query('timezone') || undefined;
@@ -490,7 +542,8 @@ export function createSchedulerRoutes(
           (!providerId || candidate.provider === providerId),
       );
       if (!job) return c.json({ success: false, error: 'Job not found' }, 404);
-      const count = parseInt(c.req.query('count') || '20', 10);
+      const count =
+        boundedIntQuery(c.req.query('count'), { min: 1, max: 1000 }) ?? 20;
       const data = providerId
         ? await schedulerService.getJobLogsForProvider(
             providerId,
@@ -536,6 +589,38 @@ export function createSchedulerRoutes(
           { success: false, code: approval.code, error: approval.error },
           approval.status,
         );
+      if (body.projectId !== undefined && !options.projectJobs) {
+        approval?.revert();
+        return c.json(
+          {
+            success: false,
+            code: 'project_schedule_unavailable',
+            error: "This Station can't run a schedule as a Project Task.",
+          },
+          503,
+        );
+      }
+      if (
+        body.projectId !== undefined &&
+        options.projectJobsPreview?.select({
+          enabled: () => false,
+          disabled: () => true,
+        })
+      ) {
+        approval?.revert();
+        return c.json(
+          {
+            success: false,
+            error:
+              'Enable Project schedules in Settings → Advanced → Feature previews.',
+            code: 'feature_preview_disabled',
+            previewId: 'project-schedules',
+            settingsPath:
+              '/settings?view=feature-previews&highlight=feature-previews',
+          },
+          404,
+        );
+      }
       const admitted = admitTarget(
         c,
         options.admitAutomationTarget,
@@ -546,9 +631,15 @@ export function createSchedulerRoutes(
         return admitted.refused;
       }
       schedulerJobRuns.add(1, { op: 'create_job' });
+      // #2377 slice D: an untargeted job records its owner too.
+      const owner = body.target ? undefined : options.jobOwner?.(c);
       let output: Awaited<ReturnType<SchedulerService['addJob']>>;
       try {
-        output = await schedulerService.addJob({ ...body, ...admitted });
+        output = await schedulerService.addJob({
+          ...body,
+          ...admitted,
+          ...(owner ? { createdBy: owner } : {}),
+        });
       } catch (error) {
         approval?.revert();
         throw error;
@@ -567,7 +658,7 @@ export function createSchedulerRoutes(
   app.put('/jobs/:target', validate(editJobSchema), async (c) => {
     try {
       const opts = getBody(c) as Record<string, unknown>;
-      const stored = await refuseStoredTarget(c, param(c, 'target'));
+      const stored = await refuseStoredTarget(c, param(c, 'target'), opts);
       if (stored) return stored;
       const admitted = admitTarget(
         c,

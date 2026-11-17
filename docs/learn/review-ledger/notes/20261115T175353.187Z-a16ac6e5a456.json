@@ -1,0 +1,7 @@
+{
+  "revision": "65ccf6e0cdb5e3a9de82825c2836d3190991c50b",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Panel safety mark now follows the choice's value in its own aria-hidden span, outside the visible label, so the approval chip's Label in Name holds.","inputs":["docs/design/chat-composer.md","src-ui/src/components/ComposerChoice.css","src-ui/src/components/ComposerChoice.tsx"]}
+  ]
+}

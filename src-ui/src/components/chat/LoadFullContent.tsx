@@ -102,7 +102,7 @@ function ResolvedValueLoader<T>({
       <ErrorState
         variant="compact"
         title="The full content could not be loaded"
-        action={<Button onClick={() => void refetch()}>Try again</Button>}
+        action={<Button onClick={() => void refetch()}>Retry</Button>}
       />
     );
   return (

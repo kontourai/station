@@ -16,11 +16,13 @@
 
     "src-server/domain/shared-working-state.ts",
 
-    "src-server/services/orchestration/event-store.ts",
-
     "src-server/services/orchestration/project-task-room-working-state.ts",
 
-    "src-server/domain/__fixtures__/shared-working-state-v1.json"
+    "src-server/domain/__fixtures__/shared-working-state-v1.json",
+
+    "src-server/services/orchestration/project-task-room-working-state-worker.ts",
+
+    "src-server/domain/migrations/008-project-task-room-revision-publication.ts"
   ],
 
   "checks": [

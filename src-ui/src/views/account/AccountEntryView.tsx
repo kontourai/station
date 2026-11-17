@@ -16,8 +16,10 @@ import { Button } from '../../components/Button';
 import { LazyBoundary } from '../../components/LazyBoundary';
 import { PageFrame } from '../../components/page-frame';
 import { ErrorState, SkeletonList } from '../../components/state';
+import { clearTranscriptWindowCache } from '../../hooks/orchestration/transcriptWindowCache';
 import { clearOfflineReading } from '../../lib/offlineReading';
 import { errorText, userFacingErrorMessage } from '../../utils/errorText';
+import { formatDateTime } from '../../utils/relativeTime';
 import { StationUiError } from '../../utils/StationUiError';
 import {
   clearAccountEntryContinuation,
@@ -333,6 +335,7 @@ export function AccountEntryView({
     setError(undefined);
     try {
       await clearOfflineReading();
+      clearTranscriptWindowCache();
       await mutation.mutateAsync({ path, body: {} });
       // Signed out: a definite "no person", so this device's own appearance
       // replaces the account's cached one (lib/appearance-cache.ts).
@@ -436,9 +439,7 @@ export function AccountEntryView({
                 </strong>
                 .
               </p>
-              <p>
-                Expires {new Date(invitationView.expiresAt).toLocaleString()}.
-              </p>
+              <p>Expires {formatDateTime(invitationView.expiresAt)}.</p>
               {invitationView.recipientEmail && (
                 <p>
                   Use an account with the verified email{' '}
@@ -459,9 +460,7 @@ export function AccountEntryView({
               title="Sign-in is unavailable"
               description="This Station’s account service could not be loaded. Contact its operator or try again."
               action={
-                <Button onClick={() => void descriptor.refetch()}>
-                  Try again
-                </Button>
+                <Button onClick={() => void descriptor.refetch()}>Retry</Button>
               }
             />
           ) : invitation && mode !== 'reset' && preview.isPending ? (
@@ -509,9 +508,7 @@ export function AccountEntryView({
               title="Could not verify your account"
               description={errorText(session.error)}
               action={
-                <Button onClick={() => void session.refetch()}>
-                  Try again
-                </Button>
+                <Button onClick={() => void session.refetch()}>Retry</Button>
               }
             />
           ) : session.data && mode !== 'reset' ? (

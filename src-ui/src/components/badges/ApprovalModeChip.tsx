@@ -14,6 +14,7 @@ import { useAccountPreferences } from '../../contexts/AccountPreferencesContext'
 import { useManagedPolicySummary } from '../../contexts/ManagedPolicyContext';
 import {
   type ApprovalMode,
+  approvalChoiceIndicators,
   approvalModeChipLabel,
   approvalModeKnobSupported,
   approvalModeLabel,
@@ -141,8 +142,13 @@ function ApprovalModeChipContent({
     return null;
   }
   const policyLabel = toolPolicyDeliveryLabel(toolPolicyDelivery);
+  // The sheet states the explanation alone: the label above it only
+  // restated the same fact in Station's internal terms.
   const policyExplanation = toolPolicyDeliveryExplanation(toolPolicyDelivery);
-  const policyDisclosure = `${policyLabel}. ${policyExplanation}`;
+  // Where Station's approvals do not fully govern this engine, that boundary
+  // is safety copy: it stays on the chip itself, not only in the sheet.
+  const policyBoundary =
+    toolPolicyDelivery?.state === 'native' ? '' : ` ${policyLabel}.`;
 
   // #3290: the engine could not be moved onto the rules the pick needs, so
   // it runs what it ran before (its own settings, or the mode it reports).
@@ -273,25 +279,40 @@ function ApprovalModeChipContent({
     isOverride
       ? selectedLabel
       : agentDefaultShown
-        ? `${chipText} — ${approvalModeLabel(displayedMode)}`
+        ? // Full access has one name, so it is not announced twice.
+          approvalModeLabel(displayedMode) ===
+          approvalModeChipLabel(displayedMode)
+          ? chipText
+          : `${chipText} — ${approvalModeLabel(displayedMode)}`
         : (notApplied && appliedMode) || chipText === selectedLabel
           ? // #4390: the inherited mode's short and full names are both
             // "Default"; never announce "Default — Default".
             selectedLabel
           : `${chipText} — ${selectedLabel}`
   }${notAppliedNote}`;
+  // Shown when the engine has not reported a mode; a reported one is the
+  // sheet's "In effect" line instead. An existing chat says so plainly, so a
+  // pick or default is never read as the mode that is running.
   const sourceNote = isOverride
-    ? 'Only this chat'
-    : appliedMode
-      ? 'Confirmed by the engine'
-      : effective.mode === 'connection-default'
-        ? 'Engine settings; active mode not confirmed'
-        : approvalModeSourceNote(effective.source);
+    ? isNewSession
+      ? undefined
+      : 'In effect: not reported by the engine yet'
+    : effective.mode === 'connection-default'
+      ? 'In effect: the engine’s own settings; it hasn’t reported which mode'
+      : `${approvalModeSourceNote(effective.source)}${
+          isNewSession ? '' : ' · not confirmed by the engine yet'
+        }`;
 
   return (
     <>
       <ComposerChoice
         ref={triggerRef}
+        {...approvalChoiceIndicators({
+          mode: displayedMode,
+          override: isOverride,
+          refused: isRefused,
+          pending: isPendingApply || isPendingRestrict || notApplied,
+        })}
         className={`chat-input__approval-chip ${
           isPendingApply || isPendingRestrict || isRefused || notApplied
             ? 'chat-input__approval-chip--pending'
@@ -306,12 +327,14 @@ function ApprovalModeChipContent({
            by what they see. The pending state's short form ("Full access ·
            pending") is not a substring of the long form, so it is composed in
            explicitly rather than replaced. */
-        aria-label={`${
+        aria-label={`Approval mode: ${
           isPendingApply
-            ? `Approval mode: ${chipText} — takes effect next turn. Engine approval control. ${policyDisclosure}`
-            : `Approval mode: ${isPendingRestrict || isRefused ? `${chipText} — ${pendingNote}` : accessibleLabel}. Engine approval control. ${policyDisclosure}`
-        }${reviewerDisclosure} Approval ${chipText}`}
-        title={`Approval mode: ${selectedLabel}. ${policyDisclosure}${reviewerDisclosure} Approval ${chipText}`}
+            ? `${chipText} — takes effect next turn`
+            : isPendingRestrict || isRefused
+              ? `${chipText} — ${pendingNote}`
+              : accessibleLabel
+        }.${policyBoundary}${reviewerDisclosure} Approval ${chipText}`}
+        title={`Approval: ${selectedLabel}.${policyBoundary}`}
         onClick={() => setIsSheetOpen((open) => !open)}
         caption="Approval"
         value={chipText}
@@ -327,7 +350,9 @@ function ApprovalModeChipContent({
             onClose: () => setIsSheetOpen(false),
             onSelect: onChange,
             sourceNote,
+            policyNote: policyExplanation,
             pendingNote,
+            chatOverride: isOverride,
             activeMode: appliedMode
               ? approvalModeLabel(appliedMode)
               : undefined,

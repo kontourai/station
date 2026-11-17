@@ -140,7 +140,7 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
 
     expect(approvalToast().actions.map((action) => action.label)).toEqual([
       'Allow Once',
-      'Allow Bash for this session',
+      'Allow all Bash commands for this session',
       'Deny',
     ]);
   });
@@ -167,7 +167,7 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
       'Why: Tidy up txt.exe \u00b7 echo ab \u23ce rm -rf /',
     );
     expect(toast.actions.map((action) => action.label)).toContain(
-      'Allow Bash for this session',
+      'Allow all Bash commands for this session',
     );
   });
 
@@ -212,7 +212,8 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
     [
       'a Claude read-only tool with nothing to forward (an ask rule)',
       { toolName: 'Read' },
-      undefined,
+      // Owner decision (2026-11-16): offered on every tool approval.
+      'Allow all Read calls for this session',
     ],
     [
       'a Bash read outside the working directories',
@@ -265,12 +266,12 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
           { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
         ],
       },
-      undefined,
+      'Allow all Edit calls for this session',
     ],
     [
       'a sensitive-file edit with nothing to forward',
       { toolName: 'Edit', suggestions: [] },
-      undefined,
+      'Allow all Edit calls for this session',
     ],
     [
       'a Bash call forced by an ask rule',
@@ -278,7 +279,7 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
         toolName: 'Bash',
         matchedAskRule: { source: 'userSettings', toolName: 'Bash' },
       },
-      undefined,
+      'Allow all Bash commands for this session',
     ],
   ])('#2915: labels the session grant for %s', (_case, payload, label) => {
     handleRequestOpenedEvent(
@@ -302,7 +303,7 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
 
     const toast = approvalToast();
     expect(toast.actions[1].label).toBe(
-      'Allow station-control.list_agents for this session',
+      'Allow all station-control.list_agents calls for this session',
     );
     expect(toast.toolPreview).toBe('{"status":"active"}');
   });
@@ -484,7 +485,7 @@ describe('the Station browser server grant on the toast', () => {
     );
     expect(approvalToast().actions.map((action) => action.label)).toEqual([
       'Allow Once',
-      'Allow station-browser.browser_click for this session',
+      'Allow all station-browser.browser_click calls for this session',
       LABEL,
       'Deny',
     ]);
@@ -497,7 +498,7 @@ describe('the Station browser server grant on the toast', () => {
     );
     expect(approvalToast().actions.map((action) => action.label)).toEqual([
       'Allow Once',
-      'Allow station-browser.browser_click for this session',
+      'Allow all station-browser.browser_click calls for this session',
       'Deny',
     ]);
   });
@@ -595,7 +596,11 @@ describe('#2344: the toast reports what happened to its answer', () => {
     expect(showToolApproval).toHaveBeenCalledTimes(2);
     expect(
       showToolApproval.mock.calls[1]?.[0].actions.map((a) => a.label),
-    ).toEqual(['Allow Once', 'Allow Bash for this session', 'Deny']);
+    ).toEqual([
+      'Allow Once',
+      'Allow all Bash commands for this session',
+      'Deny',
+    ]);
   });
 
   test('a failure after the request settled elsewhere offers no dead prompt', async () => {
@@ -1051,4 +1056,19 @@ describe('docs/design/event-content-spill.md: toasts for requests that need load
       'Allow Once',
     );
   });
+});
+
+test('live input request carries its kind beside the pending id', () => {
+  getChatForExecutionSession.mockReturnValue({ pendingApprovals: [] });
+  handleRequestOpenedEvent('http://station.test', {
+    ...requestOpened(undefined),
+    requestType: 'input',
+  });
+  expect(updateChat).toHaveBeenCalledWith(
+    'thread-1',
+    expect.objectContaining({
+      pendingApprovals: ['req-1'],
+      pendingRequestKinds: { 'req-1': 'input' },
+    }),
+  );
 });

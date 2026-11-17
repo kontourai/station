@@ -113,7 +113,7 @@ test.describe('Orchestration Tool Activity Notifications', () => {
       'dev-agent failed shell exec',
     );
     await expect(toasts).toHaveCount(1);
-    await expect(toasts).toContainText('Tool Activity');
+    await expect(toasts).toContainText('Tool activity');
     await expect(toasts).toContainText('Permission denied');
   });
 });

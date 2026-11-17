@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { sleep } from '../utils/sleep.js';
 
 const run = promisify(execFile);
 type Row = { pid: number; parent: number; group: number; tty: string };
@@ -101,9 +102,7 @@ export async function terminatePtyProcessGroups(
       // forkpty returns the parent's owned device before the child completes
       // login_tty. Wait for that exact binding; never signal an unknown tty.
       if (expectedTty && !tty && ['?', '??', '-'].includes(currentTty)) {
-        await new Promise((resolve) =>
-          setTimeout(resolve, Math.min(10, remaining)),
-        );
+        await sleep(Math.min(10, remaining));
         continue;
       }
       if (

@@ -232,7 +232,7 @@ describe('NotificationHistory', () => {
     expect(row?.textContent).toContain('Approval needed');
     expect(row?.textContent).not.toContain('Backup finished');
     // A refusal is not retried blindly; the way forward is the chat.
-    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
   test('a network failure on a decision offers to try it again', () => {
@@ -262,7 +262,7 @@ describe('NotificationHistory', () => {
     expect(screen.getByTestId('decision-error').textContent).toMatch(
       /Couldn't reach Station/,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
 
     expect(action).toHaveBeenCalledTimes(2);
     expect(action.mock.calls[1]?.[0]).toEqual({

@@ -160,6 +160,36 @@
       "name": "flaky",
       "color": "d93f0b",
       "description": "Quarantined flaky test"
+    },
+    {
+      "name": "agent-context-increase",
+      "color": "D93F0B",
+      "description": "Accepts growth in Station's agent context budget (agent-context-budget.json)"
+    },
+    {
+      "name": "multiplayer",
+      "color": "1D76DB",
+      "description": "Shared human and agent work in Projects and Tasks; tracked by the Multiplayer epic."
+    },
+    {
+      "name": "multiplayer:extension",
+      "color": "BFDADC",
+      "description": "M3 extension after the useful shared-work handoff; retains its own owner and acceptance."
+    },
+    {
+      "name": "multiplayer:follow-up",
+      "color": "1D76DB",
+      "description": "M2 shared-work completion or contributing foundation; not a whole-program prerequisite for M1."
+    },
+    {
+      "name": "multiplayer:pilot",
+      "color": "0E8A16",
+      "description": "Bounded M1 handoff slice; implementation waits on the epic interface and ownership gates."
+    },
+    {
+      "name": "full-checks",
+      "color": "5319E7",
+      "description": "Runs the heavy PR: CI checks before arming (STATION_PR_HEAVY_CHECKS=when-armed)"
     }
   ]
 }

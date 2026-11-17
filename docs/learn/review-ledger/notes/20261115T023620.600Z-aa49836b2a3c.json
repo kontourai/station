@@ -1,0 +1,7 @@
+{
+  "revision": "722e108466a224ca0375f53893541987a352a921",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Test-only change: two merge-group listing tests (partial listing with an always-inconsistent later status cancels nothing after 9 listing calls; a malformed count fails after one call). The supersession paragraph's retry and fatal-malformed claims match them.","inputs":["docs/guides/testing.md","scripts/__tests__/pr-ci-supersession.test.ts"]}
+  ]
+}

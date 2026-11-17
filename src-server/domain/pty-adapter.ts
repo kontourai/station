@@ -17,6 +17,8 @@ export interface IPtyProcess {
   kill(signal?: string): void;
   /** End owned descendant groups when the backend can establish that custody. */
   terminate?(): Promise<void>;
+  /** Which step of an ending is still pending, for a missed cleanup deadline. */
+  describeTermination?(): string;
   onData(cb: (data: string) => void): () => void;
   onExit(
     cb: (event: {

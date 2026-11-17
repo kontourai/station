@@ -16,6 +16,7 @@ import type { ClientOriginSender } from '@kontourai/station-contracts/client-ori
 import type {
   InputRequestForm,
   InputRequestRecord,
+  InputRequestUrl,
 } from '@kontourai/station-contracts/input-request';
 import type {
   ApprovalMode,
@@ -28,6 +29,7 @@ import type { TurnChangedFiles } from '@kontourai/station-contracts/turn-changed
 import type { UIBlock } from '@kontourai/station-contracts/ui-block';
 import type { RegistryCatalogTab } from '@kontourai/station-sdk';
 import type {
+  ToolRequestRuleGrant,
   ToolRequestServerGrant,
   ToolRequestSessionGrant,
 } from '@kontourai/station-shared/tool-request-preview';
@@ -35,6 +37,7 @@ import type { ChatStationBindingV1 } from './connections/station-connection';
 import type {
   ChatActivityHint,
   ChatBackgroundTask,
+  ChatEngineMcpServer,
   ChatLiveUsage,
   FlowGateVerdictInfo,
   FlowRunBinding,
@@ -43,6 +46,7 @@ import type { PeerChatBinding } from './lib/peer-chat';
 import type { EffectiveModelSource } from './utils/execution';
 import type { TransformationReceipt } from './utils/heif-normalizer';
 import type { PlanArtifact } from './utils/planArtifacts';
+import type { EngineDetailTab } from './views/connections-hub/connection-sections';
 
 export type {
   LayoutAction,
@@ -205,6 +209,11 @@ export interface ChatMessage {
    */
   stationRestartContinuation?: boolean;
   /**
+   * An in-place engine rewind hid this turn from the engine. The row stays
+   * in the transcript, shown dimmed with a Rewound badge.
+   */
+  rewound?: boolean;
+  /**
    * The interrupted-turn boundary this row reports: the restart notice, or
    * the stopped row that says "Station restarted mid-turn" in its place.
    * Continue keys its send on it.
@@ -269,11 +278,20 @@ export interface ChatMessage {
     approvalSessionGrant?: ToolRequestSessionGrant;
     /** See `MessagePart.approvalServerGrant`. */
     approvalServerGrant?: ToolRequestServerGrant;
+    /** See `MessagePart.approvalRuleGrant`. */
+    approvalRuleGrant?: ToolRequestRuleGrant;
     /**
      * #3390: an open form request (a harness question or a tool server's
      * elicitation), answered on the pending-requests card.
      */
+    /** Semantic kind retained even before a form body is loaded. */
+    requestKind?: 'input' | 'approval';
     inputRequest?: InputRequestForm;
+    /**
+     * An open link request (an MCP server's sign-in page, a URL-mode
+     * elicitation, an engine's link), opened from the pending-requests card.
+     */
+    inputRequestUrl?: InputRequestUrl;
     /** #3390: an `input-request` part's record; see `MessagePart`. */
     inputRequestRecord?: InputRequestRecord;
     cancelled?: boolean;
@@ -436,7 +454,6 @@ export interface ChatSession {
   error?: string | null;
   createdAt: number;
   updatedAt: number;
-  hasUnread: boolean;
   provider?: EngineId;
   providerOptions?: Record<string, unknown>;
   /** See ChatUIState.lastAppliedApprovalMode (active-chats-state.ts) — not persisted. */
@@ -508,6 +525,7 @@ export interface ChatSession {
   currentModeId?: string | null;
   planArtifact?: PlanArtifact | null;
   pendingApprovals?: string[];
+  pendingRequestKinds?: Record<string, 'input' | 'approval'>;
   /** See ChatUIState.answeredApprovals. */
   answeredApprovals?: string[];
   /** See ChatUIState.unacknowledgedDecisions (#2880). */
@@ -520,6 +538,12 @@ export interface ChatSession {
   backgroundTasks?: ChatBackgroundTask[];
   /** Latest provider-reported usage observation for the live context meter. */
   liveUsage?: ChatLiveUsage;
+  /** See ChatUIState.engineMcpServers — the engine's MCP servers. */
+  engineMcpServers?: ChatEngineMcpServer[];
+  /** See ChatUIState.engineMcpReconnect. */
+  engineMcpReconnect?: true;
+  /** See ChatUIState.engineMcpComplete. */
+  engineMcpComplete?: true;
   /** Synthetic event-replay chat; absent on ordinary sessions. */
   replay?: {
     mode?: 'timeline';
@@ -595,7 +619,12 @@ export type NavigationView =
   | { type: 'connections-models' }
   | { type: 'connections-model-edit'; id: string }
   | { type: 'connections-engines' }
-  | { type: 'connections-engine-edit'; id: string }
+  | {
+      type: 'connections-engine-edit';
+      id: string;
+      /** Route tab; absent opens the detail's default view. */
+      tab?: EngineDetailTab;
+    }
   | { type: 'connections-engine-new'; providerId: string }
   | { type: 'connections-tools' }
   | { type: 'connections-tool-edit'; id: string }

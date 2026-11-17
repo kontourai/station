@@ -35,7 +35,6 @@ const lifecycle = {
   instanceName: 'agent',
   serverPort: 3242,
   uiPort: 5274,
-  features: 'a,b',
   allowedOrigins: ['https://x.example'],
   stationRoot: '/home/u/root',
 };
@@ -47,8 +46,9 @@ const windowsLifecycle = {
 
 /**
  * What a source checkout's units rendered before slice C (#2675), byte for
- * byte, except for the two deliberate changes named beside them. A checkout's
- * service must keep running exactly what it ran.
+ * byte, except for the two deliberate changes named beside them and the
+ * `--features=` option #3909 retired. A checkout's service must keep running
+ * exactly what it ran.
  */
 describe('a source checkout service renders what it did before slice C', () => {
   const source = {
@@ -73,7 +73,7 @@ describe('a source checkout service renders what it did before slice C', () => {
         'Environment="PATH=/opt/node24/bin:/usr/bin"',
         'Environment="STATION_ROOT=/home/u/root"',
         'Environment=STATION_SERVICE_MANAGED=1',
-        'ExecStart="/opt/node24/bin/node" "/opt/station/node_modules/tsx/dist/cli.mjs" "/opt/station/scripts/station-cli.ts" "service" "run" "--instance=agent" "--base=/home/u/.station" "--port=3242" "--ui-port=5274" "--host=0.0.0.0" "--features=a,b" "--allowed-origin=https://x.example"',
+        'ExecStart="/opt/node24/bin/node" "/opt/station/node_modules/tsx/dist/cli.mjs" "/opt/station/scripts/station-cli.ts" "service" "run" "--instance=agent" "--base=/home/u/.station" "--port=3242" "--ui-port=5274" "--host=0.0.0.0" "--allowed-origin=https://x.example"',
         '# Deliberately no Nice=, CPUWeight=, or IOSchedulingClass=: this user-facing',
         "# service should retain systemd's normal scheduling defaults, not a background tier.",
         'Restart=always',
@@ -114,7 +114,6 @@ describe('a source checkout service renders what it did before slice C', () => {
         '    <string>--port=3242</string>',
         '    <string>--ui-port=5274</string>',
         '    <string>--host=0.0.0.0</string>',
-        '    <string>--features=a,b</string>',
         '    <string>--allowed-origin=https://x.example</string>',
         '  </array>',
         '  <key>WorkingDirectory</key><string>/opt/station</string>',
@@ -152,7 +151,7 @@ describe('a source checkout service renders what it did before slice C', () => {
         // Deliberate (#2675 correction 10): launchd and systemd set it too.
         'set "STATION_SERVICE_MANAGED=1"',
         'cd /d "C:\\dev\\Station" || exit /b 1',
-        '"C:\\node\\node.exe" "C:\\dev\\Station\\node_modules\\tsx\\dist\\cli.mjs" "C:\\dev\\Station\\scripts\\station-cli.ts" "service" "run" "--instance=agent" "--base=C:\\Data" "--port=3242" "--ui-port=5274" "--host=0.0.0.0" "--features=a,b" "--allowed-origin=https://x.example" >> "C:\\Data\\logs\\agent-service.log" 2>&1',
+        '"C:\\node\\node.exe" "C:\\dev\\Station\\node_modules\\tsx\\dist\\cli.mjs" "C:\\dev\\Station\\scripts\\station-cli.ts" "service" "run" "--instance=agent" "--base=C:\\Data" "--port=3242" "--ui-port=5274" "--host=0.0.0.0" "--allowed-origin=https://x.example" >> "C:\\Data\\logs\\agent-service.log" 2>&1',
         '',
       ].join('\r\n'),
     );
@@ -177,7 +176,6 @@ describe('an installer-owned archive service runs the fixed launcher with curren
     '--port=3242',
     '--ui-port=5274',
     '--host=0.0.0.0',
-    '--features=a,b',
     '--allowed-origin=https://x.example',
   ];
 

@@ -14,6 +14,7 @@ import {
   type ExecutionTarget,
   executionProfileAgentId,
 } from '@kontourai/station-contracts/execution-target';
+import { isAcpFamilyEngine } from '@kontourai/station-contracts/provider';
 import {
   authenticatedFetch,
   continueExecutionMessage,
@@ -179,15 +180,12 @@ async function resolveRuntimeSessionTargetForConnection(
     );
   }
 
-  const isAcp =
-    connection.type === 'acp' || connection.capabilities.includes('acp');
-  const configuredProvider = connection.config.provider;
-  if (!isAcp && typeof configuredProvider !== 'string') {
+  const provider = connectionRuntimeProvider(connection);
+  if (!provider) {
     throw new Error(
       `Connection '${connectionId}' has no runtime provider configured.`,
     );
   }
-  const provider: EngineId = isAcp ? 'acp' : (configuredProvider as string);
 
   return {
     kind: 'runtime',
@@ -198,6 +196,25 @@ async function resolveRuntimeSessionTargetForConnection(
       agentSlug,
     },
   };
+}
+
+/**
+ * The provider a new chat on an agent-runtime connection runs on, read as
+ * the server's execution-target resolver reads it (`connectionProvider`): a
+ * saved ACP connection runs on ACP, or on the ACP-backed engine its
+ * projection names (`opencode`, while the OpenCode native engine preview is
+ * on); a host that projects none means ACP. Otherwise `config.provider`;
+ * undefined when there is none.
+ */
+function connectionRuntimeProvider(
+  connection: ConnectionConfig,
+): EngineId | undefined {
+  const configured = connection.config.provider;
+  if (connection.type === 'acp' || connection.capabilities.includes('acp'))
+    return typeof configured === 'string' && isAcpFamilyEngine(configured)
+      ? configured
+      : 'acp';
+  return typeof configured === 'string' ? configured : undefined;
 }
 
 /**
@@ -665,25 +682,24 @@ function createRuntimeSessionClient(
         '/api/orchestration/sessions/read-model',
       )) as Array<Record<string, unknown>>;
 
-      const providerSessions = sessions.filter(
-        (session) => session.provider === provider,
+      const providerSessions = sessions.filter((session) =>
+        sessionProviderMatches(session.provider, provider),
       );
-      const matchingSessions =
-        provider === 'acp'
-          ? (
-              await Promise.all(
-                providerSessions.map(async (session) => {
-                  const detail = await readRuntimeSessionOrNull(
-                    apiBase,
-                    String(session.threadId),
-                  );
-                  return runtimeSessionMatchesTarget(detail, target)
-                    ? session
-                    : null;
-                }),
-              )
-            ).filter((session): session is Record<string, unknown> => !!session)
-          : providerSessions;
+      const matchingSessions = isAcpFamilyEngine(provider)
+        ? (
+            await Promise.all(
+              providerSessions.map(async (session) => {
+                const detail = await readRuntimeSessionOrNull(
+                  apiBase,
+                  String(session.threadId),
+                );
+                return runtimeSessionMatchesTarget(detail, target)
+                  ? session
+                  : null;
+              }),
+            )
+          ).filter((session): session is Record<string, unknown> => !!session)
+        : providerSessions;
 
       return matchingSessions.map((session) => ({
         id: String(session.threadId),
@@ -824,7 +840,7 @@ function runtimeSessionMatchesTarget(
 ): boolean {
   if (!detail) return false;
   const session = detail.session as Record<string, unknown> | undefined;
-  if (session?.provider !== target.provider) return false;
+  if (!sessionProviderMatches(session?.provider, target.provider)) return false;
 
   const events = Array.isArray(detail.events)
     ? (detail.events as Array<Record<string, unknown>>)
@@ -842,8 +858,26 @@ function runtimeSessionMatchesTarget(
 
   // ACP providers share one orchestration provider id across multiple CLI
   // agents (for example Kiro and OpenCode), so an unscoped ACP session must
-  // never leak into another Agent's list/read/interrupt surface.
-  return target.provider !== 'acp';
+  // never leak into another Agent's list/read/interrupt surface. The same
+  // holds for an engine that runs saved ACP connections (`opencode`).
+  return !isAcpFamilyEngine(target.provider);
+}
+
+/**
+ * Whether a session's provider runs the target's connection. A saved ACP
+ * connection's chats run on `acp`, or on `opencode` for one started while
+ * the OpenCode native engine preview was on; a chat keeps its provider, so
+ * one connection can hold both.
+ */
+export function sessionProviderMatches(
+  sessionProvider: unknown,
+  targetProvider: EngineId,
+): boolean {
+  if (typeof sessionProvider !== 'string') return false;
+  if (sessionProvider === targetProvider) return true;
+  return (
+    isAcpFamilyEngine(sessionProvider) && isAcpFamilyEngine(targetProvider)
+  );
 }
 
 /**
@@ -881,12 +915,7 @@ async function resolveProviderForConnectionId(
   if (connection?.kind !== 'agent') {
     return null;
   }
-  const isAcp =
-    connection.type === 'acp' || connection.capabilities.includes('acp');
-  if (isAcp) return 'acp';
-  return typeof connection.config.provider === 'string'
-    ? connection.config.provider
-    : null;
+  return connectionRuntimeProvider(connection) ?? null;
 }
 
 /**
@@ -943,7 +972,34 @@ function printResumeHint({
   );
 }
 
-function shellQuote(value: string): string {
+/**
+ * One argument of a command the operator is meant to copy and paste (the
+ * `Respond:`/`Resume:` hints, and `respondCommand` under `--json`).
+ *
+ * A token made only of characters no shell treats specially is printed bare,
+ * so the usual ids read the same everywhere. Anything else is quoted for the
+ * shell this process runs under. POSIX: single quotes, with `'` escaped.
+ * Windows: double quotes, as `homeFlag` in `lifecycle.ts` does (#2805) —
+ * cmd.exe keeps single quotes as literal characters, so a pasted
+ * `respond 'thr_1' 'req_1'` named ids that do not exist. An embedded `"` is
+ * backslash-escaped the way a Windows program's argument parser expects.
+ * Both Windows shells still expand `%VAR%` (cmd) or `$name` (PowerShell)
+ * inside double quotes; a value containing those needs editing by hand.
+ */
+export function shellQuote(
+  value: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  if (/^[\w.:/-]+$/.test(value)) return value;
+  if (platform === 'win32') {
+    // Backslashes are literal to a Windows argument parser except before a
+    // quote, so only those runs (and a trailing run, which would otherwise
+    // escape the closing quote) are doubled.
+    const escaped = value
+      .replace(/(\\*)"/g, '$1$1\\"')
+      .replace(/(\\+)$/, '$1$1');
+    return `"${escaped}"`;
+  }
   return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 

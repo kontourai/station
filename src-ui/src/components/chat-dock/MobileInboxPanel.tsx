@@ -11,6 +11,7 @@ import { useRowFocusPreservation } from '../../hooks/useRowFocusPreservation';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import { Button } from '../Button';
 import { SearchGlyph } from '../icons/Glyph';
+import { ReadStatusNote } from '../inbox-row/ReadStatusNote';
 import { Empty, ErrorState, FilteredEmpty, SkeletonList } from '../state';
 import { useSheetGesturesPreview } from '../useResponsiveSheetGesture';
 import { InboxGroupList, type InboxGroupListProps } from './ChatDockInboxRows';
@@ -190,7 +191,7 @@ export function MobileInboxPanel({
       {searchOpen && (
         <input
           ref={searchRef}
-          className="mobile-inbox__search"
+          className="control control--input mobile-inbox__search"
           type="search"
           aria-label="Search chats and tasks"
           placeholder="Search…"
@@ -227,12 +228,12 @@ export function MobileInboxPanel({
           <Empty
             variant="compact"
             label={
-              scope.value === 'all'
+              scope.effectiveValue === 'all'
                 ? 'No chats yet.'
                 : 'No work in this filter.'
             }
             description={
-              scope.value === 'all'
+              scope.effectiveValue === 'all'
                 ? 'Start a chat with an agent.'
                 : 'Choose All work to see other projects and Stations.'
             }
@@ -248,6 +249,7 @@ export function MobileInboxPanel({
             )}
           </p>
         )}
+        <ReadStatusNote items={tasks} />
         <InboxGroupList
           key={controller.stateKey}
           swipeActions={swipeActions}

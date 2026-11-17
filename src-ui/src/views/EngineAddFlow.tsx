@@ -22,7 +22,10 @@ import type {
   ACPConnectionRegistryEntry,
 } from '../hooks/useACPConnections';
 import { connectionEngineId } from '../utils/execution';
-import { describeStationFailure } from '../utils/stationFailure';
+import {
+  describeEngineProbeFailure,
+  describeStationFailure,
+} from '../utils/stationFailure';
 import { resolveProviderPresentation } from './provider-settings/providerCatalog';
 import './EngineAddFlow.css';
 
@@ -168,8 +171,11 @@ function EngineAddCatalog({
             tag="Not connected yet"
             detail={
               connection.lastError
-                ? describeStationFailure(connection.lastError).body
-                : 'Saved, but Station has not connected to it yet.'
+                ? describeEngineProbeFailure(
+                    connection.lastError,
+                    connection.name,
+                  )
+                : "Station saved this engine but couldn't connect."
             }
             action={
               <Button
@@ -326,12 +332,12 @@ function NativeEngineSetup({
     >
       <DetailHeader
         title={`Add ${connection.name}`}
+        // The checking and result stages say what is happening in their own
+        // status block, so only the confirm stage needs a subtitle.
         subtitle={
           stage === 'confirm'
             ? 'Review what adding this engine changes.'
-            : stage === 'checking'
-              ? 'Station is checking this engine now.'
-              : 'Here is the current readiness result.'
+            : undefined
         }
       />
       <div className="agent-editor__section">
@@ -347,14 +353,14 @@ function NativeEngineSetup({
               <li>Checks whether it is ready to run work.</li>
             </ul>
             <p className="acp-add-dialog__confirm-note">
-              You can reset it from its engine page at any time.
+              To undo this, reset it from its engine page.
             </p>
           </div>
         )}
         {stage === 'checking' && (
           <div className="acp-add-dialog__result" role="status">
             <strong>Checking</strong>
-            <span>Adding {connection.name} and checking its readiness.</span>
+            <span>Checking {connection.name}…</span>
           </div>
         )}
         {stage === 'result' && presentation && (
@@ -396,7 +402,7 @@ function NativeEngineSetup({
               </Button>
             ) : stage === 'error' ? (
               <Button variant="primary" onClick={add}>
-                Try again
+                Retry
               </Button>
             ) : stage === 'result' && ready && saved ? (
               <Button

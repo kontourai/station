@@ -1146,7 +1146,10 @@ export class SkillService {
     if (location) {
       const home = projectHomeDir ?? this.projectHomeDir();
       const pluginsRoot = join(home, 'plugins');
-      if (location.startsWith(pluginsRoot)) return 'plugin';
+      // By whole segment, like the two roots below: `<home>/plugins-old/x` is
+      // not under `<home>/plugins`.
+      if (location === pluginsRoot || location.startsWith(pluginsRoot + sep))
+        return 'plugin';
       // `discoverSkills` scans exactly one project-scoped root,
       // `<home>/projects/<slug>/skills`, so a location under `<home>/projects`
       // IS workspace-scoped — no slug needed to read that off the path. This

@@ -861,7 +861,7 @@ for (const { name, label, transport } of registrations) {
       await expect(pending).resolves.toMatchObject({ done: true });
     });
 
-    if (name === 'muse') {
+    if (name === 'muse' || name === 'opencode') {
       it('interrupt uncertainty — adapter-shape.ts ProviderInterruptTurnResult: termination-unconfirmed is never cancelled', async () => {
         const turn = await send();
         engine.unconfirmTermination!();

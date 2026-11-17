@@ -51,6 +51,7 @@ import {
   resolveApiBase,
 } from './commands/core-api.js';
 import { runDevCommand } from './commands/dev-command.js';
+import { readStationConfinementPreflight } from './commands/doctor-confinement-reader.js';
 import {
   type EnvironmentSecurityServiceFactory,
   type PeerCredentialStoreFactory,
@@ -105,6 +106,10 @@ import {
 } from './commands/lifecycle.js';
 import { doctor, doctorJson } from './commands/lifecycle-doctor.js';
 import { runStationsCommand } from './commands/profile-command.js';
+import {
+  refuseStrandsRuntimeEnvironment,
+  refuseStrandsRuntimeOption,
+} from './commands/retired-features-option.js';
 import {
   parseAllowedOriginFlag,
   runServiceCommand,
@@ -173,7 +178,6 @@ export interface ParsedLifecycleArgs {
   baseDir: string;
   buildFlag: boolean;
   clearAllowedOrigins: boolean;
-  features?: string;
   force: boolean;
   allowSharedHome: boolean;
   watch: boolean;
@@ -219,6 +223,8 @@ export function parseLifecycleArgs(args: string[]): ParsedLifecycleArgs {
     '--base',
     '--instance',
     '--log',
+    // SUNSET(#3909): keeps `--features strands-runtime` from slipping past
+    // the refusal below as two ignored arguments.
     '--features',
     '--allowed-origin',
     '--stop-intent',
@@ -231,6 +237,7 @@ export function parseLifecycleArgs(args: string[]): ParsedLifecycleArgs {
         `Lifecycle option ${arg} requires the ${arg}=<value> form.`,
       );
     }
+    refuseStrandsRuntimeOption(arg);
   }
 
   const channelDefaults = {
@@ -248,7 +255,6 @@ export function parseLifecycleArgs(args: string[]): ParsedLifecycleArgs {
   let buildFlag = false;
   let baseDir: string | undefined;
   let homeDir: string | undefined;
-  let features: string | undefined;
   let instanceName: string | undefined;
   let host: string | undefined;
   let lifecycleJournal: string | undefined;
@@ -272,8 +278,6 @@ export function parseLifecycleArgs(args: string[]): ParsedLifecycleArgs {
       baseDir = arg.slice(arg.indexOf('=') + 1);
     } else if (arg.startsWith('--home=')) {
       homeDir = arg.slice(arg.indexOf('=') + 1);
-    } else if (arg.startsWith('--features=')) {
-      features = arg.slice(arg.indexOf('=') + 1);
     } else if (arg.startsWith('--instance=')) {
       instanceName = arg.slice(arg.indexOf('=') + 1);
     } else if (arg.startsWith('--host=')) {
@@ -330,7 +334,6 @@ export function parseLifecycleArgs(args: string[]): ParsedLifecycleArgs {
     baseDir: homeTarget.projectHome,
     homeSource: homeTarget.source,
     host,
-    features,
     instanceName,
     lifecycleJournal,
     readinessFile,
@@ -732,7 +735,11 @@ async function runPlaybookMigrationReport(
  */
 function lifecycleSelector(args: string[]): StopOptions {
   const lifecycleArgs = parseLifecycleArgs(args);
-  const hasExplicitBase = args.some((arg) => arg.startsWith('--base='));
+  // `--home` and `--base` name the same directory (station#4299), so either
+  // one is "the home was named".
+  const hasExplicitBase = args.some(
+    (arg) => arg.startsWith('--base=') || arg.startsWith('--home='),
+  );
   const hasSelector =
     args.some((arg) => arg.startsWith('--instance=')) ||
     args.some((arg) => arg.startsWith('--port=')) ||
@@ -752,6 +759,24 @@ function lifecycleSelector(args: string[]): StopOptions {
     // keeps records in that home's Station root (#2675).
     stateHome: lifecycleArgs.baseDir,
   };
+}
+
+/**
+ * `station registry [url]` (and its `plugin registry` twin) takes one optional
+ * registry reference and no options. A first argument that starts with a dash
+ * is a flag this command does not have, never a reference to save: before
+ * this, `station registry --station=work` stored `--station=work` as the
+ * registry URL.
+ */
+async function showOrSaveRegistryFromArgs(
+  label: string,
+  reference: string | undefined,
+): Promise<void> {
+  if (reference?.startsWith('-')) {
+    failUnknownCommand(`${label} option ${reference}`);
+    return;
+  }
+  await registry(reference);
 }
 
 function buildProgram(
@@ -831,8 +856,12 @@ function buildProgram(
       await runPlaybookMigrationReport(rawArgs, dependencies);
       return;
     }
-    if (rawArgs.includes('--json')) await doctorJson();
-    else await doctor();
+    // #4774: the selected Station's confinement preflight, read with the
+    // target and credential flags this invocation carries.
+    const inspectConfinement = () => readStationConfinementPreflight(rawArgs);
+    if (rawArgs.includes('--json'))
+      await doctorJson({}, { inspectConfinement });
+    else await doctor({ inspectConfinement });
   });
 
   register('plugin', async (args) => {
@@ -908,7 +937,7 @@ function buildProgram(
           );
           break;
         }
-        await registry(subArgs[0]);
+        await showOrSaveRegistryFromArgs('plugin registry', subArgs[0]);
         break;
       case 'init':
         init(subArgs[0]);
@@ -990,6 +1019,8 @@ function buildProgram(
   });
 
   register('start', async (args) => {
+    // Before `--clean` can wipe the home.
+    refuseStrandsRuntimeEnvironment(process.env);
     const lifecycleArgs = parseLifecycleArgs(args);
     validateLifecyclePorts(
       lifecycleArgs.serverPort,
@@ -1022,7 +1053,6 @@ function buildProgram(
       baseDir: lifecycleArgs.baseDir,
       homeSource: lifecycleArgs.homeSource,
       instanceName: lifecycleArgs.instanceName,
-      features: lifecycleArgs.features,
       host: lifecycleArgs.host,
       // Ad-hoc starts honor the flag too; only `service install` persists
       // it (#1672).
@@ -1120,6 +1150,7 @@ function buildProgram(
           : didYouMean(action, actionsFor('supervisor') ?? []),
         `Valid supervisor actions: ${(actionsFor('supervisor') ?? []).join(', ')}.`,
       );
+      return;
     }
     supervisorStatus({
       ...lifecycleSelector(rest),
@@ -1400,7 +1431,7 @@ function buildProgram(
       await installRegistryPlugin(registryId, parseCoreArgs(args.slice(2)));
       return;
     }
-    await registry(args[0]);
+    await showOrSaveRegistryFromArgs('registry', args[0]);
   });
 
   return program;

@@ -396,7 +396,9 @@ test.describe('Orchestration Chat Flow', () => {
     await expect(
       page.getByRole('button', { name: '1 pending approval' }),
     ).toHaveCount(0);
-    await expect(page.getByText('Tool Approval Request')).toBeHidden();
+    await expect(
+      page.getByText('Approval request', { exact: true }),
+    ).toBeHidden();
     // The pill floats in with a scale transform; measure the settled box.
     await approvalQueue.evaluate((pill) =>
       Promise.all(pill.getAnimations().map((animation) => animation.finished)),
@@ -408,7 +410,9 @@ test.describe('Orchestration Chat Flow', () => {
     expect(queueBox!.x + queueBox!.width).toBeLessThanOrEqual(390);
 
     await approvalQueue.click();
-    await expect(page.getByText('Tool Approval Request')).toBeVisible();
+    await expect(
+      page.getByText('Approval request', { exact: true }),
+    ).toBeVisible();
     await expect(
       page.getByRole('button', { name: 'Allow Once' }),
     ).toBeVisible();
@@ -1024,9 +1028,7 @@ test.describe('Orchestration Chat Flow', () => {
     await expect(allowOnce).toBeDisabled();
     answer = 'settled';
     await card.getByRole('button', { name: 'Check status' }).click();
-    await expect(card.getByRole('status')).toHaveText(
-      'This request is no longer open.',
-    );
+    await expect(card.getByRole('status')).toHaveText('Already answered.');
     await expectClearLayout('desktop inspected decision');
 
     // The disabled "no longer open" state of the inline buttons. Only a
@@ -1035,9 +1037,7 @@ test.describe('Orchestration Chat Flow', () => {
     // label-row check this test once made has no subject any more: 720px is
     // under the 768px phone query, where the row carries only Answer.
     answer = 'settled';
-    await expect(card.getByRole('status')).toHaveText(
-      'This request is no longer open.',
-    );
+    await expect(card.getByRole('status')).toHaveText('Already answered.');
     await expect(allowOnce).toBeDisabled();
     // Disabling restyles the buttons without resizing them: a border that
     // appears only when disabled shifted every button by 2px on click.

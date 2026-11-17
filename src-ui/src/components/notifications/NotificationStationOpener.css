@@ -1,0 +1,40 @@
+/* What opening a notification is doing: the Station switch, or why it did
+   not open. Above the dock like a toast; dialogs still supersede it. */
+.notification-station-notice {
+  position: fixed;
+  z-index: var(--layer-notification);
+  top: calc(var(--app-toolbar-height, 46px) + var(--safe-top, 0px) + 8px);
+  left: 50%;
+  width: min(420px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  padding: var(--k-space-3) var(--k-space-4);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-overlay);
+  background: var(--k-panel-raised);
+  box-shadow: var(--k-shadow);
+  color: var(--k-text);
+}
+
+.notification-station-notice .empty {
+  padding: 0;
+}
+
+.notification-station-notice--pending {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-3);
+}
+
+.notification-station-notice__line {
+  margin: 0;
+  font-size: var(--k-text-sm);
+}
+
+/* On a phone the top of the page is a route's primary control (Home's start
+   composer): stand the notice just clear of the collapsed dock instead. */
+@media (max-width: 640px) {
+  .notification-station-notice {
+    top: auto;
+    bottom: calc(var(--dock-bottom-clearance, 0px) + 8px);
+  }
+}

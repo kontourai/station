@@ -1233,6 +1233,7 @@ describe('thread inbox (#3568)', () => {
     await runningFirstTurn(world);
     const sessions = await world.service.listSessionReadModel(
       INTERNAL_SESSION_READ_SCOPE,
+      { purpose: 'session-list' },
     );
     expect(sessions).toContainEqual(
       expect.objectContaining({ provider: 'claude', durability: declaration }),
@@ -2007,6 +2008,42 @@ describe('thread inbox (#3568)', () => {
     expect(followUpSends()).toEqual([FOLLOW_UP]);
   });
 
+  test('a follow-up refused busy during a rewind goes when the rewind ends, not at its timed re-check', async () => {
+    let refuseOnce = true;
+    const world = boot(path(), {
+      // No re-checks: only a trigger can place it.
+      retryDelaysMs: [],
+      start: async ({ payload: sent }) => {
+        if (refuseOnce) {
+          refuseOnce = false;
+          throw Object.assign(
+            new Error(
+              'Station is rewinding this conversation; send again when it finishes.',
+            ),
+            { code: 'provider_turn_in_progress' },
+          );
+        }
+        sends.push(sent.message);
+        return {
+          outcome: 'started',
+          conversationId: THREAD,
+          sessionId: THREAD,
+          turnId: 'turn-next',
+        };
+      },
+    });
+    const firstTurn = await runningFirstTurn(world);
+    queueFollowUp(world);
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
+    await settle(world);
+    expect(world.inbox.list(THREAD)).toMatchObject([{ state: 'queued' }]);
+    expect(followUpSends()).toEqual([]);
+    // The rewind ends with no turn event.
+    world.inbox.nudge(THREAD);
+    await settle(world);
+    expect(followUpSends()).toEqual([FOLLOW_UP]);
+  });
+
   test('a busy flag that outlives the terminal is looked at again, and the follow-up goes', async () => {
     let coordinatorHolds = true;
     const world = boot(path(), { coordinatorBusy: () => coordinatorHolds });
@@ -2296,6 +2333,19 @@ describe('thread inbox (#3568)', () => {
       { clientTurnId: 'via-session', conversationId: THREAD },
     ]);
     expect(world.inbox.mustQueue('later-session')).toBe(true);
+    // The finished-alert hold asks by session id too, independent of busy.
+    expect(world.inbox.hasWaitingFollowUp('later-session')).toBe(true);
+  });
+
+  test('a waiting follow-up is reported until it is placed', async () => {
+    const world = boot(path());
+    const firstTurn = await runningFirstTurn(world);
+    expect(world.inbox.hasWaitingFollowUp(THREAD)).toBe(false);
+    queueFollowUp(world);
+    expect(world.inbox.hasWaitingFollowUp(THREAD)).toBe(true);
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, firstTurn);
+    await settle(world);
+    expect(world.inbox.hasWaitingFollowUp(THREAD)).toBe(false);
   });
 
   test('the lookup answers queued only to the sender, and only while it waits', async () => {
@@ -2863,6 +2913,7 @@ test('restart preserves delivery proof before applying coordinator policy', asyn
   });
   policy = new CoordinatorWakeDelivery({
     store: second.store.coordinatorStore(),
+    enabled: () => true,
     mayRead: (_userId, sessionId) => sessionId !== 'source-b',
     conversationOf: (id) => id,
     delegatedBy: () => undefined,

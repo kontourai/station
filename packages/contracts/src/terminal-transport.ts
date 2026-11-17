@@ -14,6 +14,13 @@ export const TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES = 128;
 export const TERMINAL_MIN_WINDOW_BYTES = 16 * 1024;
 export const TERMINAL_INPUT = 1;
 export const TERMINAL_OUTPUT = 2;
+/**
+ * Version 2 only (#4625): the terminal's size from this sequence on, as
+ * {@link encodeTerminalSize} bytes. It takes the place of a journal record,
+ * is acknowledged like output and costs no output credit. A version 1 client
+ * gets the same sequence as an empty output frame.
+ */
+export const TERMINAL_RESIZE = 3;
 
 /**
  * Authenticated HTTP mint for a single-use socket ticket. Every client,
@@ -25,6 +32,12 @@ export const TERMINAL_TICKET_PATH = '/api/terminal/tickets';
 export const TERMINAL_TICKET_TTL_MS = 30_000;
 /** Selected subprotocol: the version this socket speaks. */
 export const TERMINAL_SOCKET_PROTOCOL = 'station.terminal.v1';
+/**
+ * Version 1 plus {@link TERMINAL_RESIZE} frames (#4625). A client offers it
+ * before version 1; a host that knows it selects it, and an older host
+ * selects version 1. Read the selected subprotocol to know which was chosen.
+ */
+export const TERMINAL_SOCKET_PROTOCOL_V2 = 'station.terminal.v2';
 /**
  * Subprotocol prefix carrying the ticket, so it never enters a URL, an
  * access log or a referrer. The server never echoes it back.
@@ -78,7 +91,7 @@ export const TERMINAL_CLOSE = {
 } as const;
 
 export function encodeTerminalFrame(
-  kind: typeof TERMINAL_INPUT | typeof TERMINAL_OUTPUT,
+  kind: typeof TERMINAL_INPUT | typeof TERMINAL_OUTPUT | typeof TERMINAL_RESIZE,
   channel: number,
   seq: number,
   data: Uint8Array,
@@ -108,7 +121,9 @@ export function decodeTerminalFrame(bytes: Uint8Array) {
   const channel = view.getUint32(1);
   const seq = Number(view.getBigUint64(5));
   if (
-    (kind !== TERMINAL_INPUT && kind !== TERMINAL_OUTPUT) ||
+    (kind !== TERMINAL_INPUT &&
+      kind !== TERMINAL_OUTPUT &&
+      kind !== TERMINAL_RESIZE) ||
     channel === 0 ||
     !Number.isSafeInteger(seq) ||
     seq < 1
@@ -120,6 +135,34 @@ export function decodeTerminalFrame(bytes: Uint8Array) {
     seq,
     data: bytes.subarray(TERMINAL_FRAME_HEADER_BYTES),
   };
+}
+
+/** A {@link TERMINAL_RESIZE} frame's payload: columns, then rows, each 16 bits. */
+export function encodeTerminalSize(cols: number, rows: number): Uint8Array {
+  if (!terminalDimension(cols) || !terminalDimension(rows))
+    throw new Error('Invalid terminal size');
+  const bytes = new Uint8Array(4);
+  const view = new DataView(bytes.buffer);
+  view.setUint16(0, cols);
+  view.setUint16(2, rows);
+  return bytes;
+}
+
+export function decodeTerminalSize(data: Uint8Array): {
+  cols: number;
+  rows: number;
+} {
+  if (data.byteLength !== 4) throw new Error('Invalid terminal size');
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const cols = view.getUint16(0);
+  const rows = view.getUint16(2);
+  if (!terminalDimension(cols) || !terminalDimension(rows))
+    throw new Error('Invalid terminal size');
+  return { cols, rows };
+}
+
+function terminalDimension(value: number): boolean {
+  return Number.isInteger(value) && value >= 1 && value <= 1000;
 }
 
 /** Operate includes watching a terminal; observe never includes mutations. */

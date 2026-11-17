@@ -812,7 +812,7 @@ export async function dismissSetupLauncher(page: Page): Promise<void> {
   const launcher = page.getByTestId('setup-launcher');
   if (await launcher.isVisible()) {
     await launcher
-      .getByRole('button', { name: 'Dismiss setup launcher', exact: true })
+      .getByRole('button', { name: 'Dismiss setup reminder', exact: true })
       .click();
     await expect(launcher).toBeHidden();
   }
@@ -975,6 +975,15 @@ export async function seedOrchestrationRoutes(
     ),
     page.route('**/api/projects/dev/trust-bundles', (r) =>
       r.fulfill({ json: { success: true, data: [] } }),
+    ),
+    // The sidebar lists the expanded Project's channels (#4794). Project
+    // `dev` exists only in these mocks, never on the live Station (which
+    // answers its room routes "no such Project"), and its room was never
+    // opened, so it has no channels yet.
+    page.route('**/api/projects/dev/channels', (r) =>
+      r.request().method() === 'GET'
+        ? r.fulfill({ json: { success: true, data: { channels: [] } } })
+        : rejectUnexpectedFixtureRequest(r),
     ),
     page.route('**/api/agents', (r) =>
       r.fulfill({

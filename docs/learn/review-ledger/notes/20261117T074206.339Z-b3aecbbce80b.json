@@ -1,0 +1,7 @@
+{
+  "revision": "5d54bf3f4cc360cc47b83ce0f5c974c92582b3fb",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"#5111: re-read against the changed testing/code-quality guides and resource manifest: this page's routes and heavy-check-slot guidance are unchanged; the edits only add the fallow memory budget section, the 240 s fallow watchdog row and one manifest classification, none of which this page restates.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]}
+  ]
+}

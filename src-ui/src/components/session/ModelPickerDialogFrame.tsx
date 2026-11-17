@@ -10,6 +10,7 @@ import {
   useRef,
 } from 'react';
 import { MOBILE_MEDIA_QUERY } from '../../hooks/useIsMobile';
+import { FOCUSABLE_SELECTOR, wrapTabFocus } from '../../utils/focusable';
 import { ResponsiveDialogHeader } from '../ResponsiveDialogSurface';
 
 /**
@@ -59,24 +60,14 @@ export function ModelPickerDialogFrame({
     }
     if (event.key !== 'Tab') return;
     const controls = Array.from(
-      panelRef.current?.querySelectorAll<HTMLElement>(
-        'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])',
-      ) ?? [],
+      panelRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR) ?? [],
     );
     if (controls.length === 0) {
       event.preventDefault();
       panelRef.current?.focus();
       return;
     }
-    const first = controls[0];
-    const last = controls.at(-1)!;
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
+    wrapTabFocus(event, controls);
   };
 
   useEffect(() => {

@@ -7,6 +7,10 @@ import {
   preserveJobEventEnvironment,
   scrubEventScopedEnvironment,
 } from './scripts/lib/ci-event-environment.mjs';
+import {
+  GROUP_MANIFEST_DIR_ENV,
+  MANIFEST_DIR_ENV,
+} from './scripts/lib/qualification-failure-manifest.mjs';
 import { enableFixtureSqliteSynchronousOffForTest } from './src-server/utils/sqlite-fixture-durability.js';
 
 /**
@@ -28,9 +32,22 @@ scrubEventScopedEnvironment(process.env);
 delete process.env.STATION_LIVENESS_SCALE;
 delete process.env.STATION_LIVENESS_SCALE_RESOLVED;
 
+// The qualification manifest location belongs to the job's runners, never a
+// test: a producer a test spawns must not write into a real job's manifest.
+// The runners already withhold it from test processes; this also covers a
+// test run started with it set (docs/guides/testing.md, "Known qualification
+// failures").
+delete process.env[MANIFEST_DIR_ENV];
+delete process.env[GROUP_MANIFEST_DIR_ENV];
+
 // A runtime built by a test must not download the public agent registry; its
 // tests construct the source with an injected fetch instead.
 process.env.STATION_PUBLIC_AGENT_REGISTRY = 'off';
+
+// Tests assert on individual warnings, often the same one from many cases in
+// one file, so the logger's repeat limit (#4995) is off here. Its own tests
+// turn it on with `configureLogRepeatLimit`.
+process.env.STATION_LOG_REPEAT_LIMIT = '0';
 
 installNodeHttpCompatibility();
 

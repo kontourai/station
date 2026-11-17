@@ -168,7 +168,7 @@ export default function LogsTab() {
               className="button"
               onClick={() => void refetch()}
             >
-              Try again
+              Retry
             </button>
           }
         />

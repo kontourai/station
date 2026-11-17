@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -583,6 +584,46 @@ Nothing was sent at another approval mode.`);
       vi.doUnmock('node:fs');
     }
   });
+
+  // The bytes the server's own writer produces for this file: two-space
+  // indent, no trailing newline, and (where the platform has modes) owner-only.
+  test('--offline writes app.json in the format the server writer uses', async () => {
+    const { configSet } = await import('../commands/config.js');
+    await configSet('logLevel', 'debug', OFFLINE);
+
+    const appJson = join(tempHome, 'config', 'app.json');
+    expect(readFileSync(appJson, 'utf-8')).toBe(
+      JSON.stringify({ logLevel: 'debug' }, null, 2),
+    );
+    if (process.platform !== 'win32') {
+      expect(statSync(appJson).mode & 0o777).toBe(0o600);
+    }
+  });
+
+  // Every offline write replaces the whole file, so a file that cannot be
+  // read as an object must be refused, not merged into: an array used to be
+  // written back as `[]`, losing the value just "set".
+  test.each<[label: string, content: string, message: RegExp]>([
+    ['is not valid JSON', '{ "logLevel": ', /is not valid JSON/],
+    ['is a JSON array', '[]', /must contain a JSON object/],
+    ['is JSON null', 'null', /must contain a JSON object/],
+  ])(
+    '--offline refuses, and leaves untouched, an app.json that %s',
+    async (_label, content, message) => {
+      markCurrentHome();
+      const configDir = join(tempHome, 'config');
+      const appJson = join(configDir, 'app.json');
+      mkdirSync(configDir, { recursive: true });
+      writeFileSync(appJson, content);
+      const { configSet } = await import('../commands/config.js');
+
+      await expect(configSet('logLevel', 'debug', OFFLINE)).rejects.toThrow(
+        message,
+      );
+
+      expect(readFileSync(appJson, 'utf-8')).toBe(content);
+    },
+  );
 
   // Review round 1 MEDIUM 2(b): a composite-kind field (structurally
   // unvalidated offline — no AJV pass runs outside a live Station) gets an

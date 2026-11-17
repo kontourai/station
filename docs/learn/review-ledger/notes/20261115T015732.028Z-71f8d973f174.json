@@ -1,0 +1,7 @@
+{
+  "revision": "69a17a41dd00e4915f5f031dfb1d5ccc344f7ea7",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Cited docs/guides/testing.md changed again only in its merge-group supersession paragraph (listing retry, any merge_group workflow, post-landing checks); this document's links and claims about testing.md do not depend on it and remain accurate.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]}
+  ]
+}

@@ -9,7 +9,7 @@ import {
 } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import type { ResolvedAgentToolServer } from '@kontourai/station-contracts/provider';
 import * as childWorkload from '@kontourai/station-shared/child-workload';
 import {
@@ -29,6 +29,7 @@ import {
   projectDelegatedTaskEvent,
   snapshotFor,
 } from '../../tools/station-control-delegation.js';
+import { resolveHomeDir } from '../../utils/paths.js';
 import * as claudeEngine from '../adapters/claude-code-spawn.js';
 import {
   CredentialProfileEnvironmentError,
@@ -123,7 +124,11 @@ vi.mock('../auth/cli-auth.js', () => ({
 }));
 
 import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
-import { toolRequestSessionGrantFromPayload } from '@kontourai/station-shared/tool-request-preview';
+import {
+  toolRequestRuleGrantFromPayload,
+  toolRequestSessionGrantFromPayload,
+  toolRequestStrictSessionGrantFromPayload,
+} from '@kontourai/station-shared/tool-request-preview';
 import { foldUsageEvents } from '@kontourai/station-shared/usage-fold';
 import {
   createStagedPreToolPolicyEvaluator,
@@ -140,6 +145,7 @@ import {
   verifyStationControlMcpToken,
 } from '../../runtime/mcp/station-control-mcp-token.js';
 import { isAutoApprovedExternalTool } from '../../runtime/tools/tool-executor.js';
+import { NO_PERSON_INTENT } from '../../services/approvals/guardian-conversation.js';
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
 import {
   installSessionTmpDirPolicy,
@@ -148,7 +154,6 @@ import {
 } from '../../services/infra/session-tmpdir.js';
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
 import { scrubBootInternalSecrets } from '../../utils/child-process-environment.js';
-import { INTERNAL_API_TOKEN_ENV } from '../../utils/internal-api-token.js';
 import {
   ProviderTurnEndedError,
   ProviderTurnInProgressError,
@@ -2851,7 +2856,7 @@ describe('ClaudeAdapter', () => {
         });
         const answer = async (
           decision: 'accept' | 'acceptForSession' | 'decline',
-          context?: { sessionGrantScope?: 'server' },
+          context?: { sessionGrantScope?: 'server' | 'rule' },
         ) => {
           await adapter.respondToRequest(
             threadId,
@@ -2942,7 +2947,7 @@ describe('ClaudeAdapter', () => {
       },
     );
 
-    test('a read-only tool mints no tool grant even from a read that carries no escalation signal', async () => {
+    test('a session answer to a read covers later reads: every read ask is an escalation', async () => {
       // The engine's own ask-rule and safety-check asks for Read carry no
       // suggestion and no blocked path (the SDK drops the reason's type), so
       // only the read-only rule keeps a session answer from covering them all.
@@ -2951,9 +2956,11 @@ describe('ClaudeAdapter', () => {
       if (first.kind !== 'prompted') throw new Error('expected a prompt');
       await first.answer('acceptForSession');
 
+      // Owner decision (2026-11-16): every Claude read ask is an escalation
+      // (the engine allows reads inside the folders itself), so a person's
+      // session answer to one covers the later ones.
       const next = await ask('Read', { file_path: '/work/a/.env.local' });
-      expect(next.kind).toBe('prompted');
-      if (next.kind === 'prompted') await next.answer('decline');
+      expect(next.kind).toBe('allowed');
 
       await adapter.stopSession('thread-read-no-signal');
     });
@@ -3212,7 +3219,10 @@ describe('ClaudeAdapter', () => {
       },
     );
 
-    test('under full access a file edit offers no session grant and forwards no mode change', async () => {
+    // Owner decision (2026-11-16): the session answer is offered, but as
+    // Station's own tool grant: no engine suggestion is forwarded, so full
+    // access is never switched to acceptEdits.
+    test('under full access a file edit session answer forwards no mode change', async () => {
       const query = createControlledMockQuery();
       const threadId = 'thread-edit-bypass';
       const { adapter, ask } = await grantHarness(threadId, {
@@ -3233,11 +3243,19 @@ describe('ClaudeAdapter', () => {
       expect(edit.event.payload).toMatchObject({
         permissionMode: 'bypassPermissions',
       });
-      await expect(edit.answer('acceptForSession')).resolves.toEqual({
+      expect(toolRequestSessionGrantFromPayload(edit.event.payload)).toBe(
+        'tool',
+      );
+      const answered = await edit.answer('acceptForSession');
+      expect(answered).toMatchObject({
         behavior: 'allow',
         updatedInput: input,
-        updatedPermissions: undefined,
       });
+      expect(
+        (answered as { updatedPermissions?: unknown[] }).updatedPermissions ??
+          [],
+      ).toEqual([]);
+      expect(query.setPermissionMode).not.toHaveBeenCalledWith('acceptEdits');
       await adapter.stopSession(threadId);
     });
 
@@ -3302,7 +3320,7 @@ describe('ClaudeAdapter', () => {
       await adapter.stopSession(threadId);
     });
 
-    test('in plan mode a file edit offers no session grant and forwards no mode change', async () => {
+    test('in plan mode a file edit session answer forwards no mode change', async () => {
       const query = createControlledMockQuery();
       const threadId = 'thread-plan-edit';
       const { adapter, ask, waitFor } = await grantHarness(threadId, { query });
@@ -3335,11 +3353,17 @@ describe('ClaudeAdapter', () => {
       });
       if (sensitive.kind !== 'prompted') throw new Error('expected a prompt');
       expect(sensitive.event.payload).toMatchObject({ permissionMode: 'plan' });
-      await expect(sensitive.answer('acceptForSession')).resolves.toEqual({
+      // Owner decision (2026-11-16): offered as Station's own tool grant,
+      // which forwards nothing, so plan mode is never left by it.
+      const answered = await sensitive.answer('acceptForSession');
+      expect(answered).toMatchObject({
         behavior: 'allow',
         updatedInput: input,
-        updatedPermissions: undefined,
       });
+      expect(
+        (answered as { updatedPermissions?: unknown[] }).updatedPermissions ??
+          [],
+      ).toEqual([]);
 
       await adapter.stopSession(threadId);
     });
@@ -3426,11 +3450,24 @@ describe('ClaudeAdapter', () => {
       expect(ruleForced.event.payload).toMatchObject({
         matchedAskRule: { source: 'userSettings', toolName: 'Bash' },
       });
-      await expect(ruleForced.answer('acceptForSession')).resolves.toEqual({
+      // Owner decision (2026-11-16): an escalation with nothing to forward
+      // offers Station's own tool grant. It forwards none of the engine's
+      // rules, and it answers the tool's later escalations.
+      const answered = await ruleForced.answer('acceptForSession');
+      expect(answered).toMatchObject({
         behavior: 'allow',
         updatedInput: { command: 'git push' },
-        updatedPermissions: undefined,
       });
+      expect(
+        (answered as { updatedPermissions?: unknown[] }).updatedPermissions ??
+          [],
+      ).toEqual([]);
+      const again = await ask(
+        'Bash',
+        { command: 'git push --tags' },
+        { matchedAskRule: { source: 'userSettings', toolName: 'Bash' } },
+      );
+      expect(again.kind).toBe('allowed');
 
       await adapter.stopSession('thread-folder-forward');
     });
@@ -3784,6 +3821,7 @@ describe('ClaudeAdapter', () => {
           approvalGuardian: {
             isEnabled: () => true,
             getMode: () => mode,
+            readConversation: () => NO_PERSON_INTENT,
             reviewToolCall,
           },
           logger: { info: vi.fn(), warn: vi.fn() },
@@ -4183,9 +4221,9 @@ describe('ClaudeAdapter', () => {
         expect(reviewToolCall).toHaveBeenCalledTimes(1);
         const outside = await askFrame(outsideRead('toolu_read'));
         if (outside.kind !== 'prompted') throw new Error('expected a prompt');
-        expect(toolRequestSessionGrantFromPayload(outside.event.payload)).toBe(
-          'read-folder',
-        );
+        expect(
+          toolRequestStrictSessionGrantFromPayload(outside.event.payload),
+        ).toBe('read-folder');
         await outside.answer('decline');
         await adapter.stopSession('thread-guardian-outside');
       });
@@ -4343,9 +4381,9 @@ describe('ClaudeAdapter', () => {
           'Allow network access to api.example.com',
         );
         // The surfaces read the payload and offer no session option.
-        expect(toolRequestSessionGrantFromPayload(first.event.payload)).toBe(
-          'none',
-        );
+        expect(
+          toolRequestStrictSessionGrantFromPayload(first.event.payload),
+        ).toBe('none');
         // A session answer is a one-call accept: nothing is forwarded, so
         // the engine's localSettings rule is never written.
         await expect(first.answer('acceptForSession')).resolves.toEqual({
@@ -4496,9 +4534,9 @@ describe('ClaudeAdapter', () => {
         expect(override.event.payload).toMatchObject({
           decisionReason: 'dangerouslyDisableSandbox',
         });
-        expect(toolRequestSessionGrantFromPayload(override.event.payload)).toBe(
-          'none',
-        );
+        expect(
+          toolRequestStrictSessionGrantFromPayload(override.event.payload),
+        ).toBe('none');
         await override.answer('decline');
         await adapter.stopSession('thread-override-grant');
       });
@@ -4691,14 +4729,6 @@ describe('ClaudeAdapter', () => {
           },
         ],
         [
-          'compound with decision_reason',
-          {
-            ...bashCompound,
-            decision_reason:
-              'This command uses the `&` background operator, which defers execution past approval-time safety checks. Approve only if you trust it.',
-          },
-        ],
-        [
           'compound with a directory suggestion',
           {
             ...bashCompound,
@@ -4758,6 +4788,30 @@ describe('ClaudeAdapter', () => {
         decision_reason_type: 'sandboxOverride',
         tool_use_id: 'toolu_bash',
       };
+      /**
+       * Claude's Bash command-analysis warnings, verbatim from a real
+       * Station event log: type `other`, no suggestions. Plain calls (owner
+       * decision): a whole-tool grant checks no prefix rule.
+       */
+      const bashWarning = (
+        decision_reason: string,
+        command = 'cd ../other && git status',
+      ): ClaudeCanUseToolRequest => ({
+        tool_name: 'Bash',
+        display_name: 'Bash',
+        input: { command },
+        description: command,
+        permission_suggestions: [],
+        decision_reason,
+        decision_reason_type: 'other',
+        tool_use_id: 'toolu_bash',
+      });
+      const BASH_WARNINGS = [
+        "A variable in this command can't be checked before it runs",
+        'Contains brace with quote character (expansion obfuscation)',
+        'Tilde in assignment value — bash may expand at assignment time',
+        'This command changes directory before running a version-control command, which can pick up untrusted hooks or repository configuration from the target directory. Approve only if you trust it.',
+      ];
       /** `other` with a reason that is not the ordinary one. */
       const bashShellOperators: ClaudeCanUseToolRequest = {
         tool_name: 'Bash',
@@ -4852,7 +4906,7 @@ describe('ClaudeAdapter', () => {
         if (outcome.kind !== 'prompted') throw new Error('unreachable');
         // The surfaces compute the same answer from the published payload.
         expect(
-          toolRequestSessionGrantFromPayload(outcome.event.payload),
+          toolRequestStrictSessionGrantFromPayload(outcome.event.payload),
           label,
         ).toBe('none');
         await outcome.answer('decline');
@@ -4867,9 +4921,9 @@ describe('ClaudeAdapter', () => {
           decisionReason: 'This command requires approval',
           claudeAsk: { decisionReasonType: 'other' },
         });
-        expect(toolRequestSessionGrantFromPayload(mint.event.payload)).toBe(
-          'tool',
-        );
+        expect(
+          toolRequestStrictSessionGrantFromPayload(mint.event.payload),
+        ).toBe('tool');
         await mint.answer('acceptForSession');
 
         // Positive control: the grant answers the next ordinary Bash ask.
@@ -4898,13 +4952,178 @@ describe('ClaudeAdapter', () => {
           await askFrame(bashSandboxOverride),
           'sandboxOverride',
         );
-        await expectPrompt(await askFrame(bashShellOperators), 'other prose');
+        // Owner decision: Bash `other` prose is a command-analysis warning,
+        // which the whole-tool grant answers.
+        await expect(askFrame(bashShellOperators)).resolves.toMatchObject({
+          kind: 'allowed',
+        });
 
         // The grant is intact after all of them.
         await expect(askFrame(bashOrdinary('git diff'))).resolves.toMatchObject(
           { kind: 'allowed' },
         );
         await adapter.stopSession('thread-frame-bash');
+      });
+
+      test("a Bash grant answers Claude's command-analysis warnings and still prompts for a blocked path", async () => {
+        const { adapter, askFrame } = await grantHarness(
+          'thread-frame-warnings',
+        );
+        // Before the grant, a warning ask prompts and offers the whole tool.
+        const first = await askFrame(bashWarning(BASH_WARNINGS[0]));
+        if (first.kind !== 'prompted') throw new Error('expected a prompt');
+        expect(first.event.payload).toMatchObject({
+          decisionReason: BASH_WARNINGS[0],
+          claudeAsk: { decisionReasonType: 'other' },
+        });
+        expect(
+          toolRequestStrictSessionGrantFromPayload(first.event.payload),
+        ).toBe('tool');
+        await first.answer('decline');
+
+        const mint = await askFrame(bashOrdinary('git status'));
+        if (mint.kind !== 'prompted') throw new Error('expected a prompt');
+        await mint.answer('acceptForSession');
+
+        // Each warning, and a chained command carrying one, is answered
+        // with no `request.opened`.
+        for (const reason of BASH_WARNINGS)
+          await expect(
+            askFrame(bashWarning(reason)),
+            reason,
+          ).resolves.toMatchObject({
+            kind: 'allowed',
+            result: { behavior: 'allow' },
+          });
+        await expect(
+          askFrame({ ...bashCompound, decision_reason: BASH_WARNINGS[0] }),
+        ).resolves.toMatchObject({ kind: 'allowed' });
+
+        // A path outside the workspace still prompts under the grant.
+        await expectPrompt(
+          await askFrame({
+            ...bashWarning(BASH_WARNINGS[0], 'cat /outside/f'),
+            blocked_path: '/outside/f',
+          }),
+          'blocked path',
+        );
+        await adapter.stopSession('thread-frame-warnings');
+      });
+
+      describe("the command-prefix answer (sessionGrantScope: 'rule')", () => {
+        const RULE = { sessionGrantScope: 'rule' as const };
+        /** As the live probe against SDK 0.3.304 saw it: a prefix suggestion. */
+        const npmLs: ClaudeCanUseToolRequest = {
+          tool_name: 'Bash',
+          display_name: 'Bash',
+          input: { command: 'npm ls react' },
+          description: 'npm ls react',
+          permission_suggestions: [
+            {
+              type: 'addRules',
+              rules: [{ toolName: 'Bash', ruleContent: 'npm ls *' }],
+              behavior: 'allow',
+              destination: 'localSettings',
+            },
+            { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+          ],
+          decision_reason: 'This command requires approval',
+          decision_reason_type: 'other',
+          tool_use_id: 'toolu_npm',
+        };
+
+        test('forwards only the Bash prefix rule for the session and mints no tool grant', async () => {
+          const { adapter, askFrame } = await grantHarness('thread-rule-scope');
+          const asked = await askFrame(npmLs);
+          if (asked.kind !== 'prompted') throw new Error('expected a prompt');
+          expect(toolRequestRuleGrantFromPayload(asked.event.payload)).toEqual({
+            rules: ['npm ls *'],
+            label: 'Allow "npm ls *" for this session',
+          });
+          await expect(asked.answer('acceptForSession', RULE)).resolves.toEqual(
+            {
+              behavior: 'allow',
+              updatedInput: { command: 'npm ls react' },
+              updatedPermissions: [
+                {
+                  type: 'addRules',
+                  rules: [{ toolName: 'Bash', ruleContent: 'npm ls *' }],
+                  behavior: 'allow',
+                  destination: 'session',
+                },
+              ],
+            },
+          );
+          // No Station tool grant: a different Bash command still prompts.
+          const next = await askFrame(bashOrdinary('git log'));
+          expect(next.kind).toBe('prompted');
+          if (next.kind === 'prompted') await next.answer('decline');
+          await adapter.stopSession('thread-rule-scope');
+        });
+
+        test('a rule answer to a request that offered no prefix is a one-call accept', async () => {
+          const { adapter, askFrame } =
+            await grantHarness('thread-rule-forged');
+          // An exact-command suggestion offers no prefix choice.
+          const exact = await askFrame({
+            ...npmLs,
+            input: { command: 'npm --version' },
+            permission_suggestions: [
+              {
+                type: 'addRules',
+                rules: [{ toolName: 'Bash', ruleContent: 'npm --version' }],
+                behavior: 'allow',
+                destination: 'localSettings',
+              },
+            ],
+          });
+          if (exact.kind !== 'prompted') throw new Error('expected a prompt');
+          expect(
+            toolRequestRuleGrantFromPayload(exact.event.payload),
+          ).toBeUndefined();
+          await expect(exact.answer('acceptForSession', RULE)).resolves.toEqual(
+            {
+              behavior: 'allow',
+              updatedInput: { command: 'npm --version' },
+              updatedPermissions: undefined,
+            },
+          );
+          // Nothing was minted: the next Bash call prompts.
+          const next = await askFrame(bashOrdinary('git log'));
+          expect(next.kind).toBe('prompted');
+          if (next.kind === 'prompted') await next.answer('decline');
+          await adapter.stopSession('thread-rule-forged');
+        });
+
+        test('a rule answer forwards no prefix the person was not shown (three prefixes)', async () => {
+          const { adapter, askFrame } = await grantHarness(
+            'thread-rule-unshown',
+          );
+          const three = await askFrame({
+            ...npmLs,
+            permission_suggestions: ['npm ls *', 'npm pkg *', 'rm *'].map(
+              (ruleContent) => ({
+                type: 'addRules' as const,
+                rules: [{ toolName: 'Bash', ruleContent }],
+                behavior: 'allow' as const,
+                destination: 'localSettings' as const,
+              }),
+            ),
+          });
+          if (three.kind !== 'prompted') throw new Error('expected a prompt');
+          // Too many prefixes for a short label: no prefix choice offered.
+          expect(
+            toolRequestRuleGrantFromPayload(three.event.payload),
+          ).toBeUndefined();
+          await expect(three.answer('acceptForSession', RULE)).resolves.toEqual(
+            {
+              behavior: 'allow',
+              updatedInput: { command: 'npm ls react' },
+              updatedPermissions: undefined,
+            },
+          );
+          await adapter.stopSession('thread-rule-unshown');
+        });
       });
 
       test('an ask whose frame was never recorded prompts under a Bash grant, and its payload says so', async () => {
@@ -4955,9 +5174,9 @@ describe('ClaudeAdapter', () => {
         // A compound command can mint the grant too.
         const mint = await askFrame(bashCompound);
         if (mint.kind !== 'prompted') throw new Error('expected a prompt');
-        expect(toolRequestSessionGrantFromPayload(mint.event.payload)).toBe(
-          'tool',
-        );
+        expect(
+          toolRequestStrictSessionGrantFromPayload(mint.event.payload),
+        ).toBe('tool');
         await mint.answer('acceptForSession');
         await expect(askFrame(bashCompound)).resolves.toMatchObject({
           kind: 'allowed',
@@ -4969,7 +5188,7 @@ describe('ClaudeAdapter', () => {
           if (outcome.kind !== 'prompted') throw new Error('unreachable');
           // Only a directory suggestion leaves a session option, the folder.
           expect(
-            toolRequestSessionGrantFromPayload(outcome.event.payload),
+            toolRequestStrictSessionGrantFromPayload(outcome.event.payload),
             label,
           ).toBe(
             label === 'compound with a directory suggestion'
@@ -5037,7 +5256,7 @@ describe('ClaudeAdapter', () => {
             if (outcome.kind === 'prompted') {
               // No prompting case offers a Bash tool grant.
               expect(
-                toolRequestSessionGrantFromPayload(outcome.event.payload),
+                toolRequestStrictSessionGrantFromPayload(outcome.event.payload),
               ).not.toBe('tool');
               await outcome.answer('decline');
             }
@@ -5054,24 +5273,41 @@ describe('ClaudeAdapter', () => {
           decisionReasonType: 'subcommandResults',
         });
         // Nothing tells an ordinary PowerShell command from one with a
-        // security warning, so no session option is offered and a session
-        // answer covers this call only.
+        // security warning, so every PowerShell ask is an escalation.
+        expect(
+          toolRequestStrictSessionGrantFromPayload(mint.event.payload),
+        ).toBe('none');
+        // Owner decision (2026-11-16): the session option is still offered,
+        // and a person's answer to an escalation covers the tool's later
+        // escalations, a safety check included.
         expect(toolRequestSessionGrantFromPayload(mint.event.payload)).toBe(
-          'none',
+          'tool',
         );
         await mint.answer('acceptForSession');
-        await expectPrompt(
-          await askFrame(powerShellOrdinary),
-          'PowerShell ordinary ask',
-        );
+        await expect(askFrame(powerShellOrdinary)).resolves.toMatchObject({
+          kind: 'allowed',
+        });
+        await expect(
+          askFrame({ ...powerShellOrdinary, classifier_approvable: true }),
+        ).resolves.toMatchObject({ kind: 'allowed' });
+        await adapter.stopSession('thread-frame-ps');
+      });
+
+      // The other half of the owner decision: a grant given on a plain call
+      // never answers an escalation of the same tool.
+      test('a Bash grant given on an ordinary command still prompts for a safety check', async () => {
+        const { adapter, askFrame } = await grantHarness('thread-frame-plain');
+        const mint = await askFrame(bashOrdinary('git status'));
+        if (mint.kind !== 'prompted') throw new Error('expected a prompt');
+        await mint.answer('acceptForSession');
         await expectPrompt(
           await askFrame({
-            ...powerShellOrdinary,
+            ...bashOrdinary('rm -rf build'),
             classifier_approvable: true,
           }),
-          'PowerShell safety check',
+          'Bash safety check under a plain grant',
         );
-        await adapter.stopSession('thread-frame-ps');
+        await adapter.stopSession('thread-frame-plain');
       });
 
       test('a Bash ask whose frame carries no reason type prompts under a Bash grant: the engine always sends one', async () => {
@@ -5116,6 +5352,14 @@ describe('ClaudeAdapter', () => {
           ).resolves.toMatchObject({ kind: 'allowed' });
 
         for (const [label, frame] of [
+          // Only a person's own session answer covers a Bash
+          // command-analysis warning; a pattern leaves it to a person.
+          ['shell operators warning', bashShellOperators],
+          ['variable warning', bashWarning(BASH_WARNINGS[0])],
+          [
+            'chained command warning',
+            { ...bashCompound, decision_reason: BASH_WARNINGS[1] },
+          ],
           ['safetyCheck', bashSafetyCheck],
           ['rule', bashAskRule],
           ...compoundEscalations,
@@ -5129,7 +5373,6 @@ describe('ClaudeAdapter', () => {
           ],
           ['ordinary ask flagged classifier_approvable', bashFlaggedOrdinary],
           ['sandboxOverride', bashSandboxOverride],
-          ['other prose', bashShellOperators],
           ['WebFetch ask rule', webFetchAskRule],
           ['sensitive-file edit', editSensitiveFile],
         ] as const) {
@@ -5174,9 +5417,9 @@ describe('ClaudeAdapter', () => {
         const { adapter, askFrame } = await grantHarness('thread-frame-mcp');
         const mint = await askFrame(mcpOrdinary);
         if (mint.kind !== 'prompted') throw new Error('expected a prompt');
-        expect(toolRequestSessionGrantFromPayload(mint.event.payload)).toBe(
-          'tool',
-        );
+        expect(
+          toolRequestStrictSessionGrantFromPayload(mint.event.payload),
+        ).toBe('tool');
         await mint.answer('acceptForSession');
         await expect(askFrame(mcpOrdinary)).resolves.toMatchObject({
           kind: 'allowed',
@@ -5188,9 +5431,9 @@ describe('ClaudeAdapter', () => {
         const { adapter, askFrame } = await grantHarness('thread-frame-edit');
         const plain = await askFrame(editOrdinary);
         if (plain.kind !== 'prompted') throw new Error('expected a prompt');
-        expect(toolRequestSessionGrantFromPayload(plain.event.payload)).toBe(
-          'edit-mode',
-        );
+        expect(
+          toolRequestStrictSessionGrantFromPayload(plain.event.payload),
+        ).toBe('edit-mode');
         await plain.answer('decline');
 
         // Before part 2 this offered "Auto-accept file edits" (#2932).
@@ -5222,7 +5465,7 @@ describe('ClaudeAdapter', () => {
         if (outsideEdit.kind !== 'prompted')
           throw new Error('expected a prompt');
         expect(
-          toolRequestSessionGrantFromPayload(outsideEdit.event.payload),
+          toolRequestStrictSessionGrantFromPayload(outsideEdit.event.payload),
         ).toBe('folder');
         await outsideEdit.answer('decline');
 
@@ -5245,7 +5488,7 @@ describe('ClaudeAdapter', () => {
         if (outsideRead.kind !== 'prompted')
           throw new Error('expected a prompt');
         expect(
-          toolRequestSessionGrantFromPayload(outsideRead.event.payload),
+          toolRequestStrictSessionGrantFromPayload(outsideRead.event.payload),
         ).toBe('read-folder');
         await outsideRead.answer('decline');
         await adapter.stopSession('thread-frame-edit');
@@ -9323,6 +9566,7 @@ describe('ClaudeAdapter', () => {
   });
 
   describe('#895 wave B: agent-authored system prompt', () => {
+    const makeTempDir = trackTempDirs();
     test("startSession passes systemPrompt { type: 'preset', preset: 'claude_code', append } to query() when input.agent.systemPrompt is set, and merges a systemPrompt delivery report into session.configured", async () => {
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter();
@@ -9376,6 +9620,15 @@ describe('ClaudeAdapter', () => {
     });
 
     test('startSession keeps the promptless SDK options shape apart from the required engine-spawn TMPDIR', async () => {
+      // A Claude config home with no settings.json, so the developer's own
+      // settings cannot change the AGENTS.md setting below.
+      vi.stubEnv(
+        'CLAUDE_CONFIG_DIR',
+        makeTempDir('station-claude-options-shape-'),
+      );
+      onTestFinished(() => {
+        vi.unstubAllEnvs();
+      });
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter();
 
@@ -9396,6 +9649,7 @@ describe('ClaudeAdapter', () => {
         // A supplied title skips the engine's own session-naming request.
         title: 'Station conversation thread-no-system-prompt-baseline',
         includePartialMessages: true,
+        includeHookEvents: true,
         // station#1877: asks the SDK to summarise what a subagent is doing.
         // task_progress.summary is documented as carrying the model-generated
         // status only when this is on, so without it a background subagent
@@ -9417,7 +9671,22 @@ describe('ClaudeAdapter', () => {
         allowDangerouslySkipPermissions: undefined,
         thinking: undefined,
         effort: undefined,
-        settings: undefined,
+        // AGENTS.md beside CLAUDE.md (claude-instruction-files.ts).
+        settings: {
+          pluginConfigs: {
+            'agents-md@builtin': {
+              options: { instructionFiles: 'claude-md-and-agents-md' },
+            },
+          },
+        },
+        // #4828: every session marks the conversation on a native web read;
+        // with no Agent there is no PreToolUse policy.
+        hooks: {
+          Stop: [{ hooks: [expect.any(Function)] }],
+          PostToolUse: [{ hooks: [expect.any(Function)] }],
+          PostToolUseFailure: [{ hooks: [expect.any(Function)] }],
+          UserPromptSubmit: [{ hooks: [expect.any(Function)] }],
+        },
       });
     });
 
@@ -9515,6 +9784,33 @@ describe('ClaudeAdapter', () => {
       ).rejects.toThrow('needs sign-in');
       expect(mockQuery).not.toHaveBeenCalled();
     });
+
+    test.each([
+      [undefined, 'from-the-harness'],
+      ['on-demand', 'true'],
+      ['always', 'false'],
+    ] as const)(
+      'mcpLoading %s leaves ENABLE_TOOL_SEARCH at %s (unset keeps the harness value)',
+      async (loading, expected) => {
+        vi.stubEnv('ENABLE_TOOL_SEARCH', 'from-the-harness');
+        try {
+          mockQuery.mockReturnValue(createMockQuery([]));
+          const adapter = new ClaudeAdapter();
+          await adapter.startSession({
+            provider: 'claude',
+            threadId: `tool-search-${loading ?? 'harness'}`,
+            agent: {
+              slug: 'my-agent',
+              ...(loading ? { toolServerLoading: loading } : {}),
+            },
+          });
+          const { options } = mockQuery.mock.calls[0][0];
+          expect(options.env.ENABLE_TOOL_SEARCH).toBe(expected);
+        } finally {
+          vi.unstubAllEnvs();
+        }
+      },
+    );
 
     test('adds selected tools without suppressing harness discovery and denies an unselected or newly published MCP call', async () => {
       mockQuery.mockReturnValue(createMockQuery([]));
@@ -9717,7 +10013,7 @@ describe('ClaudeAdapter', () => {
       });
     });
 
-    test('injects the Station internal API token into the built-in station-control server only, never a third-party env-less server', async () => {
+    test('#2377 slice D: the stdio fallback for the built-in station-control server gets no internal API token, and a third-party server no env', async () => {
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter();
       const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
@@ -9751,7 +10047,15 @@ describe('ClaudeAdapter', () => {
         type: 'stdio',
         command: 'node',
         args: [builtinStationControlServerPath()],
-        env: { [INTERNAL_API_TOKEN_ENV]: expect.any(String) },
+        // The home's compile cache rides only the built-in child; no child
+        // receives the internal token.
+        env: {
+          NODE_COMPILE_CACHE: resolve(
+            resolveHomeDir(),
+            'cache',
+            'node-compile',
+          ),
+        },
       });
       expect(queryArgs.options.mcpServers['third-party']).toEqual({
         type: 'stdio',

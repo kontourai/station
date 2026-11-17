@@ -25,6 +25,7 @@ import {
   closeFixtureServer,
   startOllamaFixture,
 } from './helpers/ollama-fixture';
+import { closeRunSetup, runSetupControl } from './helpers/run-setup';
 import { pairBrowser } from './live/helpers/station-instance.mjs';
 
 test.describe
@@ -265,10 +266,10 @@ test.describe
         page.getByRole('heading', { name: 'Task inspection' }),
       ).toBeVisible();
       await expect(
-        page.getByRole('link', { name: 'Add capabilities' }),
+        page.getByRole('link', { name: 'Add plugins' }),
       ).toHaveAttribute('href', '/plugins');
       await expect(
-        page.getByText(/Inspection is not a verification claim/i),
+        page.getByText('Files and references recorded for this Task.'),
       ).toBeVisible();
       await expect(
         page.getByRole('button', { name: /attacker\.example/i }),
@@ -465,12 +466,17 @@ test.describe
           name: new RegExp(`^Project: ${projectSlug}`),
         }),
       ).toBeVisible();
-      await startForm.getByRole('button', { name: /^Agent:/ }).click();
+      await (
+        await runSetupControl(startForm, (panel) =>
+          panel.getByRole('button', { name: /^Agent:/ }),
+        )
+      ).click();
       const agentChooser = page.getByRole('dialog', { name: 'Choose agent' });
       await agentChooser
         .locator('.new-chat-modal__agent', { hasText: agentName })
         .click();
       await expect(agentChooser).toHaveCount(0);
+      await closeRunSetup(page);
       await startForm
         .getByRole('textbox', { name: 'What would you like done?' })
         .fill('Give me the public answer.');
@@ -692,9 +698,7 @@ test.describe
           .getByText(answer, { exact: true }),
       ).toBeVisible();
       await expect(
-        page.getByText(
-          /semantic support is separate and has not been assessed/i,
-        ),
+        page.getByText('No supporting claim linked yet.'),
       ).toBeVisible();
       await expect(page.getByText(/reasoning/i)).toHaveCount(0);
       await expectNoBlockingAccessibilityViolations(

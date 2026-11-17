@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
 
 export function useQueuedMessages(sessionId: string | null) {
@@ -10,12 +10,32 @@ export function useQueuedMessages(sessionId: string | null) {
   } = useActiveChatActions();
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editValue, setEditValue] = useState('');
+  // The chat whose `isEditingQueue` this instance raised and has not lowered.
+  const editingSessionIdRef = useRef<string | null>(null);
+
+  // An editor that goes away without Save or Cancel (the list unmounts on a
+  // chat switch, and a removed input fires no blur) must not leave the flag
+  // behind: the queue neither drains nor sends while it is set. Only the
+  // instance that raised it lowers it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: sessionId is the trigger; the cleanup reads the chat from the ref.
+  useEffect(
+    () => () => {
+      const editingSessionId = editingSessionIdRef.current;
+      if (!editingSessionId) return;
+      editingSessionIdRef.current = null;
+      setEditingIndex(null);
+      setEditValue('');
+      updateChat(editingSessionId, { isEditingQueue: false });
+    },
+    [sessionId, updateChat],
+  );
 
   const startEdit = useCallback(
     (index: number, currentValue: string) => {
       if (!sessionId) return;
       setEditingIndex(index);
       setEditValue(currentValue);
+      editingSessionIdRef.current = sessionId;
       updateChat(sessionId, { isEditingQueue: true });
     },
     [sessionId, updateChat],
@@ -25,6 +45,7 @@ export function useQueuedMessages(sessionId: string | null) {
     if (!sessionId) return;
     setEditingIndex(null);
     setEditValue('');
+    editingSessionIdRef.current = null;
     updateChat(sessionId, { isEditingQueue: false });
   }, [sessionId, updateChat]);
 
@@ -37,6 +58,7 @@ export function useQueuedMessages(sessionId: string | null) {
     }
     setEditingIndex(null);
     setEditValue('');
+    editingSessionIdRef.current = null;
     updateChat(sessionId, { isEditingQueue: false });
   }, [
     sessionId,

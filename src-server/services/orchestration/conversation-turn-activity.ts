@@ -13,6 +13,7 @@ import {
   PROVIDER_TURN_TRIGGER,
 } from '@kontourai/station-contracts/runtime-events';
 import { orchestrationConversationActivityStuckChildTurns } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
 import type { NativeForkAffectedScope } from './conversation-fork-context.js';
 import type {
   EventStore,
@@ -196,7 +197,7 @@ export class ConversationTurnActivityProjection {
           this.deps.logger.warn('Conversation activity fold failed', {
             threadId: input.event.threadId,
             method: input.event.method,
-            error: error instanceof Error ? error.message : String(error),
+            error: errorMessage(error),
           });
         }
       },

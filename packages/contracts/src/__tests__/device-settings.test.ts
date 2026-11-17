@@ -206,6 +206,9 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
         'colorTheme',
         'colorThemeFlavor',
         'colorThemeAccent',
+        // #4692 — density and motion, synced per account.
+        'density',
+        'motion',
         // #3994 — terminal screen reader mode, off by default.
         'terminalScreenReader',
       ].sort(),
@@ -226,6 +229,9 @@ describe('DEVICE_SETTINGS_REGISTRY completeness', () => {
     expect(byKey.get('colorTheme')).toBe('station');
     expect(byKey.get('colorThemeFlavor')).toBeNull();
     expect(byKey.get('colorThemeAccent')).toBeNull();
+    // #4692: Comfortable (13px) is the default; motion follows the device.
+    expect(byKey.get('density')).toBe('comfortable');
+    expect(byKey.get('motion')).toBe('system');
     expect(byKey.get('hapticsEnabled')).toBe(true);
     expect(byKey.get('terminalScreenReader')).toBe(false);
     expect(byKey.get('featureSettings')).toEqual({

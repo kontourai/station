@@ -470,8 +470,8 @@ test.describe
 
       await page.setViewportSize({ width: 320, height: 720 });
       await expect(detail).toBeVisible();
-      // Read only: Continue in Station confirms
-      // a continuation first; nothing here acts on the source session.
+      // Read only: Continue in Station is the one action; nothing here
+      // acts on the source session.
       await expect(
         detail.getByRole('button', {
           name: /approve|decline|stop|resume|retry|delegate/i,
@@ -498,10 +498,7 @@ test('opens an attached session in the normal mobile chat without adopting befor
   );
   const detail = page.getByTestId('session-detail');
   await expect(detail).toContainText('Started in Claude Code · Read only');
-  const composer = detail.getByPlaceholder(
-    'Continue in Station from this history…',
-    { exact: true },
-  );
+  const composer = detail.getByPlaceholder('Message…', { exact: true });
   await expect(composer).toBeVisible();
   await composer.fill('UI audit draft — do not send.');
   expect(fixture.commands).toEqual([]);

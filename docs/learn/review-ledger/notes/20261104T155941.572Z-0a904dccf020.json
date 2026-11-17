@@ -1,7 +1,0 @@
-{
-  "revision": "286217b645a749a1668be2ea35d2e1cca2d7cfd6",
-
-  "notes": [
-    {"path":"docs/guides/integrating-station.md","note":"Reviewed the API reference CORS change against the integration guide's authentication and public-boundary instructions. If-Match is now admitted for revisioned preference writes; it grants no identity or execution authority and requires no change to the linked integration recipes.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]}
-  ]
-}

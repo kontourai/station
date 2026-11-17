@@ -1055,7 +1055,7 @@ describe('the device toolbar', () => {
     );
     expect(
       screen.getByText(
-        /still screenshot about once a second: live video needs a video decoder \(ffmpeg\)/,
+        /Showing a screenshot each second\. Install ffmpeg on the computer running Station for live video\./,
       ),
     ).toBeTruthy();
   });

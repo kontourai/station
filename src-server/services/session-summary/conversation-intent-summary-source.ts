@@ -14,6 +14,7 @@ import {
   SESSION_SUMMARY_TRANSCRIPT_MAX_CHARS,
   textOf,
 } from '../../routes/chat/session-summary-generation.js';
+import { quotedLines } from '../orchestration/quoted-text.js';
 
 /** A server-only observation. The model never supplies or upgrades this. */
 export type SummaryRelatedEvidenceObservation =
@@ -155,9 +156,13 @@ function cap(text: string): string {
 function roleText(message: ConversationMessage): string | undefined {
   if (message.role !== 'user' && message.role !== 'assistant') return undefined;
   const text = textOf(message).trim();
-  return text
-    ? `${message.role === 'user' ? 'User' : 'Assistant'}: ${cap(text)}`
-    : undefined;
+  if (!text) return undefined;
+  const role = message.role === 'user' ? 'User' : 'Assistant';
+  // A row another Station sent is quoted, after capping, so no line of it can
+  // pose as a turn to the summary model.
+  return typeof message.metadata?.importedFrom === 'string'
+    ? `${role} (another Station's record):\n${quotedLines(cap(text)).join('\n')}`
+    : `${role}: ${cap(text)}`;
 }
 
 function ranges(

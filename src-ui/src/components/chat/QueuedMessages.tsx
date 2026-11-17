@@ -451,6 +451,16 @@ export function QueuedMessages({
         </span>
         <div className="queued-message__text" title={entry.message}>
           <span className="queued-message__body">{entry.message}</span>
+          {entry.attachments?.length ? (
+            <span
+              className="queued-message__files"
+              title={entry.attachments.map((file) => file.name).join(', ')}
+            >
+              {entry.attachments.length === 1
+                ? entry.attachments[0]!.name
+                : `${entry.attachments.length} files`}
+            </span>
+          ) : null}
           <MessageDeliveryNote
             variant="inline"
             state={

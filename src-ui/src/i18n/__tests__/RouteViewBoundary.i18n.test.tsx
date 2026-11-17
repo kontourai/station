@@ -28,7 +28,7 @@ describe('RouteViewBoundary localization pilot', () => {
     expect(screen.getByRole('alert').textContent).toContain(
       'This view stopped working.',
     );
-    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
 
   test('renders pseudo-locale error roles and actions after its lazy catalog arrives', async () => {
@@ -46,6 +46,6 @@ describe('RouteViewBoundary localization pilot', () => {
         /Ŧħīş ṽīēŵ şŧōƥƥēđ ŵōřķīñğ/,
       );
     });
-    expect(screen.getByRole('button', { name: /Ŧřŷ àğàīñ/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Řēŧřŷ/ })).toBeTruthy();
   });
 });

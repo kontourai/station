@@ -787,7 +787,7 @@ export function DelegationLauncher({
             <div className="delegation-launcher__discovery-error" role="alert">
               <span>{describeStationFailure(discoveryError).body}</span>
               <button type="button" onClick={() => void retryDiscovery()}>
-                Try again
+                Retry
               </button>
             </div>
           )}

@@ -278,7 +278,9 @@ test('successful deletion closes its confirmation after newer navigation superse
       await deleteResponse;
     });
     await screen.findByRole('dialog', { name: 'Apps' });
-    expect(screen.queryByRole('dialog', { name: 'Delete Board?' })).toBeNull();
+    expect(
+      screen.queryByRole('alertdialog', { name: 'Delete Board?' }),
+    ).toBeNull();
     expect(
       screen.queryByRole('button', {
         name: 'Daily brief Personal Board Morning decisions',

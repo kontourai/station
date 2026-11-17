@@ -9,6 +9,7 @@ Concrete execution plans that expand roadmap phases or major initiatives into im
 - [2675-slice-w-install-ps1.md](2675-slice-w-install-ps1.md) — #2675 slice W: `install.ps1` for the prebuilt Windows archive (design)
 - [agent-identity-supported-surface-inventory.md](agent-identity-supported-surface-inventory.md) — Agent identity supported-surface inventory
 - [basis-session-epic-completion.md](basis-session-epic-completion.md) — Basis and session surfaces: remaining epic work
+- [browser-activity-inline.md](browser-activity-inline.md) — Inline browser activity
 - [continuity-epic-followthrough.md](continuity-epic-followthrough.md) — Continuity and existing-client follow-through
 - [documentation-code-audit.md](documentation-code-audit.md) — Documentation and architecture audit
 - [integration-completion-program.md](integration-completion-program.md) — Integration completion program

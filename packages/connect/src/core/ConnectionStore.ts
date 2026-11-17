@@ -1,4 +1,5 @@
 import type { StationRoute } from '@kontourai/station-contracts/station-routes';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   createDirectHttpAccessMethod,
   createHostTunnelAccessMethod,
@@ -42,10 +43,6 @@ const AUTHORITY_KEY_PREFIX = '-credential-authority:';
 const RETIRED_GENERATION_KEY_PREFIX = '-retired-generation:';
 const RETIRED_AUTHORITY_KEY_PREFIX = '-retired-credential-authority:';
 
-function uuid(): string {
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
-}
-
 /**
  * The slice of the Web Locks API this store uses, named structurally so the
  * package stays testable and free of a DOM-lib dependency for it.
@@ -68,6 +65,17 @@ function defaultLockManager(): ConnectionStoreLockManager | undefined {
   return locks && typeof locks.request === 'function'
     ? (locks as ConnectionStoreLockManager)
     : undefined;
+}
+
+/**
+ * A stored row this build cannot read — a shape a newer build wrote, or plain
+ * damage — and the readable row it followed. It is never listed, and every
+ * write puts it back unchanged where it was, so one unreadable row costs
+ * neither the readable ones nor itself.
+ */
+interface UnreadableRow {
+  after: string | null;
+  raw: unknown;
 }
 
 export class ConnectionStore {
@@ -99,7 +107,7 @@ export class ConnectionStore {
    * the invalidation the pairing just made.
    */
   private counterView = new Map<string, number>();
-  private readonly leaseInstance = uuid();
+  private readonly leaseInstance = randomCorrelationId();
   private leaseSequence = 0;
   private readonly profileLeases = new Map<
     string,
@@ -313,7 +321,7 @@ export class ConnectionStore {
     return normalizeConnectionProfile(
       connection,
       this.endpointFor(rawUrl),
-      connection.id ?? uuid(),
+      connection.id ?? randomCorrelationId(),
     );
   }
 
@@ -413,22 +421,32 @@ export class ConnectionStore {
   private readShared(): {
     connections: SavedConnection[];
     activeId: string | null;
+    unreadable: UnreadableRow[];
   } {
     try {
       const raw = this.storage.get(this.storageKey);
-      const parsed: Partial<SavedConnection>[] = raw ? JSON.parse(raw) : [];
-      const connections = Array.isArray(parsed)
-        ? parsed.map((connection) => this.normalize(connection))
-        : [];
-      if (
-        Array.isArray(parsed) &&
-        this.pendingWrites === 0 &&
-        JSON.stringify(parsed) !== JSON.stringify(connections)
-      ) {
-        // Migration rewrite. Skipped while a local write is in flight: that
-        // write publishes the normalized list anyway, and this one is not
-        // serialized.
-        this.storage.set(this.storageKey, JSON.stringify(connections));
+      const parsed: unknown = raw ? JSON.parse(raw) : [];
+      const connections: SavedConnection[] = [];
+      const unreadable: UnreadableRow[] = [];
+      for (const row of Array.isArray(parsed) ? parsed : []) {
+        // Row by row: one row this build cannot read must not empty the list.
+        try {
+          connections.push(this.normalize(row as Partial<SavedConnection>));
+        } catch {
+          unreadable.push({
+            after: connections[connections.length - 1]?.id ?? null,
+            raw: row,
+          });
+        }
+      }
+      if (Array.isArray(parsed) && this.pendingWrites === 0) {
+        const normalized = this.serializeRows(connections, unreadable);
+        if (JSON.stringify(parsed) !== normalized) {
+          // Migration rewrite. Skipped while a local write is in flight: that
+          // write publishes the normalized list anyway, and this one is not
+          // serialized.
+          this.storage.set(this.storageKey, normalized);
+        }
       }
       const persistedActiveId = this.storage.get(this.activeKey);
       const active = connections.find(
@@ -441,9 +459,53 @@ export class ConnectionStore {
         active?.brokerRoute && this.preparedBrokerRouteId !== persistedActiveId
           ? null
           : persistedActiveId;
-      return { connections, activeId };
+      return { connections, activeId, unreadable };
     } catch {
-      return { connections: [], activeId: null };
+      return { connections: [], activeId: null, unreadable: [] };
+    }
+  }
+
+  /** The stored list: the readable rows, with each unreadable row back in place. */
+  private serializeRows(
+    connections: readonly SavedConnection[],
+    unreadable: readonly UnreadableRow[],
+  ): string {
+    if (unreadable.length === 0) return JSON.stringify(connections);
+    const waiting = [...unreadable];
+    const rows: unknown[] = [];
+    const placeAfter = (id: string | null) => {
+      for (let index = 0; index < waiting.length; ) {
+        if (waiting[index].after === id) {
+          rows.push(waiting.splice(index, 1)[0].raw);
+        } else {
+          index += 1;
+        }
+      }
+    };
+    placeAfter(null);
+    for (const connection of connections) {
+      rows.push(connection);
+      placeAfter(connection.id);
+    }
+    // The readable row it followed has since been removed.
+    for (const row of waiting) rows.push(row.raw);
+    return JSON.stringify(rows);
+  }
+
+  /**
+   * True when storage holds a saved-connection value this build cannot read
+   * as a list at all: text that is not JSON, or JSON that is not an array. It
+   * reads as an empty list, and a caller that fills an empty list on its own
+   * initiative (default seeding, legacy migration) must not: the write would
+   * replace whatever the value holds.
+   */
+  hasUnreadableStoredList(): boolean {
+    const raw = this.storage.get(this.storageKey);
+    if (!raw) return false;
+    try {
+      return !Array.isArray(JSON.parse(raw));
+    } catch {
+      return true;
     }
   }
 
@@ -571,8 +633,12 @@ export class ConnectionStore {
       try {
         // Merge, don't snapshot: shared storage may have moved on for
         // connections this document did not touch.
-        const merged = this.applyLocalOverlay(this.readShared());
-        this.storage.set(this.storageKey, JSON.stringify(merged.connections));
+        const shared = this.readShared();
+        const merged = this.applyLocalOverlay(shared);
+        this.storage.set(
+          this.storageKey,
+          this.serializeRows(merged.connections, shared.unreadable),
+        );
         if (merged.activeId) {
           this.storage.set(this.activeKey, merged.activeId);
         } else {
@@ -637,7 +703,7 @@ export class ConnectionStore {
       return existing;
     }
     const conn: SavedConnection = this.normalize({
-      id: uuid(),
+      id: randomCorrelationId(),
       name: name || url,
       url,
     });
@@ -674,7 +740,7 @@ export class ConnectionStore {
         );
       return existing;
     }
-    const id = uuid();
+    const id = randomCorrelationId();
     const connection = this.normalize({
       id,
       name: input.name.trim() || input.applicationOrigin,
@@ -723,7 +789,7 @@ export class ConnectionStore {
       );
       return selected;
     }
-    const id = uuid();
+    const id = randomCorrelationId();
     const method = createHostTunnelAccessMethod({
       id: `access:ssh:${id}`,
       hostAlias: input.hostAlias,
@@ -2038,6 +2104,8 @@ export class ConnectionStore {
   migrate(legacyKey: string): void {
     const legacyUrl = this.storage.get(legacyKey);
     if (!legacyUrl) return;
+    // Importing into a list this build cannot read would replace it.
+    if (this.hasUnreadableStoredList()) return;
     const snapshot = this.read();
     const { connections } = snapshot;
     const alreadyExists = connections.some((c) => c.url === legacyUrl);

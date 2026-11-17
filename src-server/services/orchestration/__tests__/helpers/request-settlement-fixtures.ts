@@ -274,6 +274,7 @@ export const INTERRUPTED_WITH_SETTLED_APPROVAL_SUMMARY: OrchestrationSessionSumm
     lastEventAt: '2026-09-30T10:00:05.000Z',
     lastEventMethod: 'session.state-changed',
     openRequestIds: [],
+    openRequestKinds: {},
     blockingOpenRequestIds: [],
     hasActiveTurn: false,
   };
@@ -291,6 +292,7 @@ export const INTERRUPTED_WITH_NO_REQUEST_SUMMARY: OrchestrationSessionSummary =
     lastEventAt: '2026-09-30T10:00:05.000Z',
     lastEventMethod: 'session.state-changed',
     openRequestIds: [],
+    openRequestKinds: {},
     blockingOpenRequestIds: [],
     hasActiveTurn: false,
   };
@@ -307,6 +309,7 @@ export const APPROVAL_BETWEEN_TURNS_SUMMARY: OrchestrationSessionSummary = {
   lastEventAt: '2026-09-30T10:00:04.000Z',
   lastEventMethod: 'request.opened',
   openRequestIds: ['req-1'],
+  openRequestKinds: { 'req-1': 'approval' },
   blockingOpenRequestIds: ['req-1'],
   hasActiveTurn: false,
 };
@@ -323,6 +326,7 @@ export const QUESTION_BETWEEN_TURNS_SUMMARY: OrchestrationSessionSummary = {
   lastEventAt: '2026-09-30T10:00:04.000Z',
   lastEventMethod: 'request.opened',
   openRequestIds: ['req-1'],
+  openRequestKinds: { 'req-1': 'input' },
   blockingOpenRequestIds: ['req-1'],
   hasActiveTurn: false,
 };

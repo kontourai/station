@@ -46,12 +46,19 @@ class AgentActivityPlugin: Plugin {
     ProcessInfo.processInfo.isOperatingSystemAtLeast(Self.featureFloor)
   }
 
+  /// The route the last alert tap named, until the WebView takes it
+  /// (`take_launch_route`). Main thread only.
+  private static var launchRoute: AlertTapRoute?
+  private static weak var loaded: AgentActivityPlugin?
+
   override func load(webview: WKWebView) {
+    Self.loaded = self
     // As early as a plugin can: the delegate gets its remote-notification
     // callbacks, and is re-assigned so UIKit re-reads them, long before the
     // first alert_token call registers. Nothing registers here.
     DispatchQueue.main.async {
       RemoteNotificationDelegateHook.install(in: UIApplication.shared, broker: .shared)
+      Self.listenForAlertTaps(attempt: 0)
     }
     if #available(iOS 18.0, *) {
       LiveActivities.startDeduplicating()
@@ -185,6 +192,47 @@ class AgentActivityPlugin: Plugin {
         invoke.reject("APNs registration failed: \(reason)")
       case nil:
         invoke.reject("APNs device token unavailable")
+      }
+    }
+  }
+
+  /// The session the last alert tap named, once (`{ route: … | null }`, the
+  /// Android shape), then nothing until the next tap.
+  @objc public func takeLaunchRoute(_ invoke: Invoke) {
+    DispatchQueue.main.async {
+      let route = Self.launchRoute
+      Self.launchRoute = nil
+      let value: Any = route.map { $0.json } ?? NSNull()
+      invoke.resolve(["route": value])
+    }
+  }
+
+  /// Taps on alert pushes reach the notification-center delegate, which
+  /// the Tauri notification plugin sets and which ignores push taps; the
+  /// hook lets this plugin read them too. The delegate may not be set yet
+  /// when this plugin loads, so it is looked for a few times. A cold-start
+  /// tap is delivered once launching finishes, after both plugins loaded.
+  private static func listenForAlertTaps(attempt: Int) {
+    guard let delegate = UNUserNotificationCenter.current().delegate,
+      let delegateClass = object_getClass(delegate)
+    else {
+      if attempt < 20 {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+          listenForAlertTaps(attempt: attempt + 1)
+        }
+      }
+      return
+    }
+    NotificationResponseHook.install(on: delegateClass) { response in
+      guard let response = response as? UNNotificationResponse,
+        response.actionIdentifier == UNNotificationDefaultActionIdentifier,
+        let route = AlertTapRouteResolver.resolve(
+          userInfo: response.notification.request.content.userInfo,
+          registration: RegistrationKeychain(accessGroup: RegistrationKeychain.appSharedAccessGroup()).load)
+      else { return }
+      DispatchQueue.main.async {
+        launchRoute = route
+        loaded?.trigger("launchRoute", data: [:])
       }
     }
   }

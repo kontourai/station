@@ -1,3 +1,15 @@
+/**
+ * A response body passed its request's `maxResponseBytes`. Its own class so a
+ * caller can tell "too large" from any other unreadable body without reading
+ * the message.
+ */
+export class StationResponseTooLargeError extends Error {
+  constructor(readonly maximum: number) {
+    super('Station response exceeded its byte limit');
+    this.name = 'StationResponseTooLargeError';
+  }
+}
+
 /** Opt-in bounded GET body for portable client requests with a byte ceiling. */
 export function boundResponse(
   response: Response,
@@ -18,8 +30,7 @@ export function boundResponse(
           return;
         }
         bytes += chunk.value.byteLength;
-        if (bytes > maximum)
-          throw new Error('Station response exceeded its byte limit');
+        if (bytes > maximum) throw new StationResponseTooLargeError(maximum);
         controller.enqueue(chunk.value);
       } catch (error) {
         void reader.cancel().catch(() => {});

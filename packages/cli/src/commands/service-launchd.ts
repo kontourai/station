@@ -1,4 +1,5 @@
 import { dirname, join } from 'node:path';
+import { sleepSync } from './platform.js';
 import type {
   CommandRunner,
   ServiceFs,
@@ -35,10 +36,6 @@ function launchdDrainTimeoutMs(): number {
     BOOTOUT_MINIMUM_DRAIN_TIMEOUT_MS,
     LAUNCHD_EXIT_TIMEOUT_SECONDS * 1_000 + BOOTOUT_DRAIN_MARGIN_MS,
   );
-}
-
-function sleepSynchronously(milliseconds: number): void {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 }
 
 function xml(value: string): string {
@@ -143,7 +140,7 @@ function waitForLaunchdBootout(
       );
       lastProgressAt = now;
     }
-    (dependencies.sleep ?? sleepSynchronously)(
+    (dependencies.sleep ?? sleepSync)(
       Math.min(BOOTOUT_POLL_INTERVAL_MS, timeoutMs - elapsedMs),
     );
   }

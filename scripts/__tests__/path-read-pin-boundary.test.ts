@@ -39,7 +39,10 @@
  * reached through a helper parameter (`const read = (p) =>
  * readFileSync(join(UI_SRC, p))`, at least 14 files, hiding
  * `ChatDockHeader.tsx`, `DockShell.tsx` and `ProjectLayoutRenderer.tsx`) or
- * written as a cwd-relative literal is not seen at all. A green run here is
+ * written as a cwd-relative literal is not seen at all (a literal naming a
+ * native file under `src-desktop/`, `tests/ios-runtime-smoke/` or
+ * `scripts/templates/` is scheduled separately, see
+ * `native-literal-pin-boundary.test.ts`). A green run here is
  * evidence about the pins the scanner reports, not about the class;
  * `path-read-pin-scan.mjs` carries the full statement of the gap.
  *
@@ -65,6 +68,7 @@ import { selectChangedVerification } from '../run-changed-verification.mjs';
 import {
   buildTestImpactManifest,
   E2E_CONTRACT_BOUNDARIES,
+  nativeLiteralPinEdges,
   PATH_READ_PIN_BOUNDARY_TEST,
   pathReadPinEdges,
   REPO_SCAN_SUITES,
@@ -101,6 +105,10 @@ const derived = pathReadPinEdges({ root: ROOT });
  * construction. Shrinking this list is the goal; growing it is a decision.
  */
 const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
+  // Reads each workflow under .github/workflows by a name taken from a
+  // directory listing, to check which pull-request workflows no source event
+  // triggers. Its ci-health.mjs import selects it for changes to that script.
+  'scripts/__tests__/ci-health.test.ts',
   // Reads only package.json created in a trackTempDirs checkout fixture,
   // never repository source. Its real service and route imports select it.
   'src-server/services/projects/__tests__/project-working-configuration.test.ts',
@@ -112,6 +120,10 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   // Reads staged licenses and native binaries only in trackTempDirs fixtures.
   // Its desktop-server-runtime import selects the real staging behavior.
   'scripts/__tests__/desktop-runtime-pruning.test.ts',
+  // Its completeness check reads every scripts test by a computed path to
+  // discover native-file literals independently of the derivation under
+  // test; the scripts it reads are its subject, not one pinned source file.
+  'scripts/__tests__/native-literal-pin-boundary.test.ts',
   // Reads a deliberately excluded fixtures/ manifest and temporary installed copies,
   // not production source. Keep fixture paths outside the source pin inventory.
   'src-server/routes/operations/__tests__/telemetry-events.routes.test.ts',
@@ -260,6 +272,35 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   'tests/builder-delivery-viewer.spec.ts',
   'tests/session-inventory-mcp-interop.spec.ts',
   'tests/survey-review-workbench.spec.ts',
+  // Kiro parity suites read the fake ACP agent's request record from a
+  // trackTempDirs directory and captured handshake frames under fixtures/
+  // (test data, excluded from source pins). Their direct adapter, probe and
+  // handshake-fact imports select them for changes.
+  'src-server/providers/__tests__/acp-engine-extension-events.test.ts',
+  'src-server/providers/__tests__/acp-host-auth.process.test.ts',
+  'src-server/providers/__tests__/acp-kiro-announce.process.test.ts',
+  'src-server/providers/__tests__/acp-kiro-parity.process.test.ts',
+  'src-server/providers/__tests__/acp-kiro-parity.test.ts',
+  'src-server/providers/__tests__/acp-session-answers.process.test.ts',
+  'src-server/services/acp/__tests__/acp-client-announcements.process.test.ts',
+  'src-server/services/acp/__tests__/acp-handshake-facts.test.ts',
+  'src-server/services/acp/__tests__/acp-probe-terminal-facts.process.test.ts',
+  // Grok suites read only the scrubbed grok 1.0.77 capture under fixtures/
+  // (test data, excluded from source pins). Their direct adapter, reader and
+  // binding imports select them for changes.
+  'src-server/providers/__tests__/acp-adapter-grok.test.ts',
+  'src-server/providers/__tests__/acp-engine-extension-events.grok.test.ts',
+  // The steer suite reads only the scrubbed Antigravity 1.5.8 capture under
+  // services/acp/__tests__/fixtures/ (test data, excluded from source pins).
+  // Its direct acp-steer import selects it for changes.
+  'src-server/providers/__tests__/acp-steer.test.ts',
+  // OpenCode native suites read only the scrubbed opencode serve 2.3.0
+  // captures (and its served openapi.json) under fixtures/ (test data,
+  // excluded from source pins). Their direct client, fingerprint and
+  // replay-harness imports select them for changes.
+  'src-server/providers/__tests__/opencode-serve-client.test.ts',
+  'src-server/providers/__tests__/opencode-serve-fingerprint.test.ts',
+  'src-server/providers/__tests__/opencode-serve-fixtures.test.ts',
 ]);
 
 /**
@@ -579,11 +620,20 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'lists src-ui/public/color-themes, its own generated output, to refuse a sheet the catalog no longer renders; the color-theme edges in scripts/test-impact-manifest.mjs select it',
   'packages/contracts/src/__tests__/channel-fixture-corpus.test.ts':
     'walks its own fixture directory',
+  'src-server/providers/__tests__/opencode-serve-fixtures.test.ts':
+    'lists its own fixtures/ directory for the opencode serve 2.3.0 captures, to check each is scrubbed of host paths and secrets',
   // The heavy-check slot queue lives under a makeTempDir root reached through
   // the workspace or temp fixture object.
   'scripts/__tests__/heavy-check-slots.test.ts': TEMP_VIA_FIXTURE,
   'scripts/__tests__/verification-coordinator.test.ts': TEMP_VIA_FIXTURE,
+  // Walks fixture homes that `buildSourceHome()` creates under trackTempDirs.
+  'scripts/__tests__/seed-dev-home.test.ts': TEMP_VIA_FIXTURE,
+  // Lists the trackTempDirs scratch directory a producer CLI ran in, to
+  // prove it wrote no manifest there.
+  'scripts/__tests__/qualification-failure-manifest.test.ts': TEMP_VIA_FIXTURE,
   'scripts/__tests__/ci-event-environment.test.ts':
+    'lists .github/workflows; the .github/workflows/** edge selects it',
+  'scripts/__tests__/promotion-full-regression-workflow.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',
   'scripts/__tests__/test-impact-incidents.test.ts':
     'lists src-server/runtime/bootstrap to pin every gate module to its impact edge; asserts nothing about their content',
@@ -593,8 +643,12 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'lists the versions directory of the temporary install root its harness creates',
   'scripts/__tests__/service-launcher-e2e.test.ts':
     'lists the archive directory of the temporary install it builds, to read the signed archive size',
+  'src-server/routes/projects/project-room-routes.test.ts':
+    'lists the attachment bindings directory under its temporary Station home to prove a deleted message and an expired unsent upload free their files (#4852)',
   'src-server/services/infra/__tests__/workload-budget.test.ts':
     'lists the config directory under its temporary Station home to prove a refused settings save leaves no temporary file beside workload-budgets.json',
+  'src-server/security/confinement/__tests__/confinement-preflight-factory.test.ts':
+    'snapshots its temporary Station home before and after a confinement preflight read, to prove the read created and changed nothing under it',
   'packages/supervisor/src/__tests__/control-server.test.ts':
     'lists the run directory under its temporary Station home to check leftover private socket names',
   'packages/cli/src/__tests__/supervised-lifecycle.real.test.ts':
@@ -697,6 +751,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
   'src-server/services/infra/__tests__/server-log-store.test.ts':
     TEMP_VIA_FIXTURE,
   'src-server/utils/__tests__/git-exec.hardening.test.ts':
+    'git ls-files inside the temporary repository its helper creates',
+  'scripts/__tests__/version-pr-current.test.ts':
     'git ls-files inside the temporary repository its helper creates',
   'tests/learning-source.spec.ts':
     'a Playwright spec; Vitest cannot schedule it (#1817)',
@@ -922,10 +978,12 @@ describe('derived pin edges only add to selection', () => {
     expect(built.slice(0, TEST_IMPACT_MANIFEST.length)).toEqual(
       TEST_IMPACT_MANIFEST,
     );
-    // #2922: the spawned-script edges follow the pin edges.
+    // The native-literal edges (#4891) and then the spawned-script edges
+    // (#2922) follow the pin edges.
     expect(built.length).toBe(
       TEST_IMPACT_MANIFEST.length +
         derived.length +
+        nativeLiteralPinEdges({ root: ROOT }).length +
         spawnedScriptEdges({ root: ROOT }).length,
     );
     expect(derived.length).toBeGreaterThan(40);

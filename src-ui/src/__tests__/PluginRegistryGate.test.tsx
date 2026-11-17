@@ -16,6 +16,8 @@ const mocks = vi.hoisted(() => ({
   },
   apiBase: 'http://127.0.0.1:3141',
   connectionStatus: 'connected' as 'connected' | 'connecting' | 'error',
+  onHealthyProbe: undefined as (() => void) | undefined,
+  retryUnavailableInventory: vi.fn(),
   listeners: new Set<() => void>(),
   queryClient: { invalidateQueries: vi.fn() },
   reload: vi.fn(),
@@ -43,7 +45,10 @@ vi.mock('../contexts/NavigationContext', () => ({
 
 vi.mock('@kontourai/station-connect', () => ({
   useConnections: () => ({ activeConnection: mocks.activeConnection }),
-  useConnectionStatus: () => ({ status: mocks.connectionStatus }),
+  useConnectionStatus: (options: { onHealthyProbe?: () => void }) => {
+    mocks.onHealthyProbe = options.onHealthyProbe;
+    return { status: mocks.connectionStatus };
+  },
 }));
 
 vi.mock('@tanstack/react-query', () => ({
@@ -54,6 +59,7 @@ vi.mock('../core/PluginRegistry', () => ({
   pluginRegistry: {
     getLoadStatus: () => mocks.status,
     reload: mocks.reload,
+    retryUnavailableInventory: mocks.retryUnavailableInventory,
     setApiBase: mocks.setApiBase,
     subscribe: (listener: () => void) => {
       mocks.listeners.add(listener);
@@ -84,6 +90,8 @@ describe('PluginRegistryGate', () => {
     mocks.navigate.mockReset();
     mocks.activeConnection.id = 'local-station';
     mocks.connectionStatus = 'connected';
+    mocks.onHealthyProbe = undefined;
+    mocks.retryUnavailableInventory.mockReset();
     setLoadStatus('loading');
   });
 
@@ -167,6 +175,18 @@ describe('PluginRegistryGate', () => {
       );
     },
   );
+
+  test('hands each healthy-probe cue to the registry, which decides whether to re-read', () => {
+    render(
+      <PluginRegistryGate>
+        <main>Station shell</main>
+      </PluginRegistryGate>,
+    );
+    expect(mocks.retryUnavailableInventory).not.toHaveBeenCalled();
+    mocks.onHealthyProbe?.();
+    mocks.onHealthyProbe?.();
+    expect(mocks.retryUnavailableInventory).toHaveBeenCalledTimes(2);
+  });
 
   test('reloads on reconnect even when the outage-era attempt has not settled yet', async () => {
     // The reconnect can land while the offline attempt is still in flight.

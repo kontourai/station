@@ -19,6 +19,10 @@ import {
   readBoundedJson,
 } from '../registries/catalog-http.js';
 import { AiSdkLLMProvider } from './ai-sdk-llm-provider.js';
+import {
+  assertEmbeddingVectors,
+  postEmbeddingRequest,
+} from './embedding-http.js';
 import { MODEL_CATALOG_TIMEOUT_MS } from './model-catalog.js';
 import type {
   IEmbeddingProvider,
@@ -345,13 +349,17 @@ export class OllamaEmbeddingProvider implements IEmbeddingProvider {
   }
 
   async embed(texts: string[]): Promise<number[][]> {
-    const res = await fetch(`${this.baseUrl}/api/embed`, {
-      method: 'POST',
+    const data = await postEmbeddingRequest({
+      providerName: this.displayName,
+      url: `${this.baseUrl}/api/embed`,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: this.model, input: texts }),
+      body: { model: this.model, input: texts },
     });
-    const data = (await res.json()) as { embeddings: number[][] };
-    return data.embeddings;
+    return assertEmbeddingVectors(
+      this.displayName,
+      (data as { embeddings?: unknown } | null)?.embeddings,
+      texts.length,
+    );
   }
 
   dimensions(): number {

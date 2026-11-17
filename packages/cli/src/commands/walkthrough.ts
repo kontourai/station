@@ -11,6 +11,7 @@ import {
 } from '@kontourai/station-sdk/client';
 import {
   configureApiCredential,
+  optionalValueFlag,
   parseCoreArgs,
   printJson,
   resolveApiBase,
@@ -35,13 +36,8 @@ async function runWalkthrough(args: string[]) {
   configureApiCredential(parsed, base);
   const [action, value] = parsed.positionals;
   if (action === 'list') {
-    printJson(
-      await listWalkthroughs(base, project, {
-        ...(typeof parsed.flags.cursor === 'string'
-          ? { cursor: parsed.flags.cursor }
-          : {}),
-      }),
-    );
+    const cursor = optionalValueFlag(parsed, 'cursor');
+    printJson(await listWalkthroughs(base, project, cursor ? { cursor } : {}));
     return;
   }
   if (action === 'show' && value) {

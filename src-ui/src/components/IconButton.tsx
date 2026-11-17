@@ -3,7 +3,11 @@ import { Button } from './Button';
 import './IconButton.css';
 
 type IconButtonProps = Omit<ComponentProps<typeof Button>, 'variant'> & {
-  /** Icon-only: the accessible name is the label. */
+  /**
+   * Icon-only: the accessible name is the label. It is also the hover
+   * tooltip unless `title` says something more, so callers never pair the two
+   * by hand.
+   */
   'aria-label': string;
 };
 
@@ -18,11 +22,12 @@ type IconButtonProps = Omit<ComponentProps<typeof Button>, 'variant'> & {
  * `icon-button` class is also what an `ActionOverflowMenu` trigger wears
  * when it stands in a row of these.
  */
-export function IconButton({ className, ...props }: IconButtonProps) {
+export function IconButton({ className, title, ...props }: IconButtonProps) {
   return (
     <Button
       variant="ghost"
       className={className ? `icon-button ${className}` : 'icon-button'}
+      title={title ?? props['aria-label']}
       {...props}
     />
   );

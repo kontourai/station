@@ -1,4 +1,4 @@
-import { relativeTime } from '../../utils/relativeTime';
+import { absoluteTime, relativeTime } from '../../utils/relativeTime';
 
 /**
  * A compact relative time ("4m", "2h", "3d") with the absolute time in its
@@ -18,11 +18,7 @@ export function RelativeTime({
   const at = Date.parse(iso);
   if (Number.isNaN(at)) return null;
   return (
-    <time
-      className={className}
-      dateTime={iso}
-      title={new Date(at).toLocaleString()}
-    >
+    <time className={className} dateTime={iso} title={absoluteTime(at)}>
       {relativeTime(at, now)}
     </time>
   );

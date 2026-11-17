@@ -64,7 +64,10 @@ export async function startDevServer(
       if (depSource) {
         console.log(`📦 Installing dependency: ${dep.id}...`);
         try {
-          install(depSource, []);
+          // `install` is async: without the await a refused or failed install
+          // is an unhandled rejection instead of the warning below, and the
+          // dev page is generated before the dependency exists.
+          await install(depSource, []);
         } catch (e: any) {
           console.warn(`  ⚠ Dep ${dep.id} failed: ${e.message}`);
         }

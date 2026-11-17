@@ -30,6 +30,7 @@ import {
   type SchedulerAutomationTarget,
   type SchedulerJob,
 } from '@kontourai/station-contracts/scheduler';
+import { errorMessage } from '../../utils/error-message.js';
 import {
   type StationFramedTurnSubmit,
   submitStationFramedTurn,
@@ -387,7 +388,7 @@ export class ScheduledConversationRuns implements ScheduledConversationRunner {
 }
 
 function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return errorMessage(error);
 }
 
 /**

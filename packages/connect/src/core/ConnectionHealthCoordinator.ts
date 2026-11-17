@@ -47,6 +47,19 @@ export interface ConnectionHealthSnapshot {
   }>;
   /** Per-route outcome of the last completed run, in probe order. */
   routes: ReadonlyArray<ConnectionRouteResult>;
+  /**
+   * When the last probe run finished (epoch ms), whatever its outcome; null
+   * until one has. An aborted run is not a check and leaves it unchanged; a
+   * supervised managed-loopback server is never probed, so it reads null.
+   */
+  checkedAt: number | null;
+  /**
+   * Completed runs, whatever their outcome; an aborted run does not count.
+   * It changes once per run even where `checking` and `checkedAt` cannot
+   * show one: a managed-loopback run publishes `checking` true and false in
+   * one synchronous pass and reports no check time.
+   */
+  completedProbes: number;
 }
 
 export type ConnectionHealthCheckResult =
@@ -89,6 +102,8 @@ export class ConnectionHealthCoordinator {
     blocked: false,
     failureWindows: [],
     routes: [],
+    checkedAt: null,
+    completedProbes: 0,
   };
   private timer: ReturnType<typeof setTimeout> | null = null;
   private windowOpen = false;
@@ -175,6 +190,10 @@ export class ConnectionHealthCoordinator {
           endpointId: endpoint.id,
           state: index === 0 ? 'in-use' : 'not-checked',
         })),
+        // Nothing was probed: the supervisor vouches for this server, so
+        // there is no check time to report, including an earlier probe's.
+        checkedAt: null,
+        completedProbes: this.snapshot.completedProbes + 1,
       });
       this.schedule(this.options.pollIntervalMs ?? 10_000);
       this.runQueuedCheck();
@@ -261,6 +280,8 @@ export class ConnectionHealthCoordinator {
         blocked: false,
         failureWindows: this.closeFailureWindow(),
         routes: routeResults,
+        checkedAt: Date.now(),
+        completedProbes: this.snapshot.completedProbes + 1,
       });
       this.schedule(this.options.pollIntervalMs ?? 10_000);
     } else {
@@ -319,6 +340,8 @@ export class ConnectionHealthCoordinator {
         blocked,
         failureWindows,
         routes: routeResults,
+        checkedAt: Date.now(),
+        completedProbes: this.snapshot.completedProbes + 1,
       });
       if (!blocked) this.schedule(this.retryDelay());
     }

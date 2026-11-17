@@ -270,7 +270,7 @@ test.describe('Notifications hierarchy', () => {
       page.getByRole('button', { name: 'Allow Once' }),
     ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Deny' })).toBeVisible();
-    await expect(page.getByLabel('Answer this session')).toBeVisible();
+    await expect(page.getByLabel('Answer this request')).toBeVisible();
     await expect(page.getByRole('link', { name: 'Open session' })).toHaveCount(
       4,
     );
@@ -306,7 +306,7 @@ test.describe('Notifications hierarchy', () => {
     ).toHaveCount(1);
 
     await page
-      .getByLabel('Answer this session')
+      .getByLabel('Answer this request')
       .fill('Continue with the safe option.');
     const sendAnswer = page.getByRole('button', { name: 'Send answer' });
     await sendAnswer.evaluate((button) =>

@@ -93,6 +93,9 @@ class FakeCodexAdapter implements ProviderAdapterShape {
       threadId: input.threadId,
       metadata: {
         ...input.metadata,
+        ...(input.resumeCursor !== undefined
+          ? { nativeSessionResumed: true }
+          : {}),
         ...(delivery
           ? {
               [SESSION_CAPABILITY_DELIVERY_METADATA_KEY]: {
@@ -156,11 +159,13 @@ describe('Station orchestration instructions on the first turn', () => {
   let eventStore: EventStore;
   let service: OrchestrationService | undefined;
   let previewOn: boolean;
+  let available: string[] | undefined;
 
   beforeEach(() => {
     tmp = makeTempDir('station-instructions-first-turn-');
     eventStore = new EventStore(join(tmp, 'orchestration.sqlite'));
     previewOn = true;
+    available = undefined;
   });
   afterEach(async () => {
     await service?.shutdown();
@@ -179,7 +184,10 @@ describe('Station orchestration instructions on the first turn', () => {
         loadAgentSpec: async () => ({
           name: 'Test Agent',
           prompt: AUTHORED_PROMPT,
-          tools: { mcpServers: ['station-control'] },
+          tools: {
+            mcpServers: ['station-control'],
+            ...(available ? { available } : {}),
+          },
         }),
         resolveToolServer: async () =>
           ({
@@ -198,6 +206,7 @@ describe('Station orchestration instructions on the first turn', () => {
   async function startSession(
     orchestration: OrchestrationService,
     threadId: string,
+    resumeCursor?: unknown,
   ) {
     await orchestration.dispatch({
       type: 'startSession',
@@ -205,6 +214,7 @@ describe('Station orchestration instructions on the first turn', () => {
         threadId,
         provider: 'codex',
         metadata: { agentSlug: 'test-agent' },
+        ...(resumeCursor !== undefined ? { resumeCursor } : {}),
       },
     });
     await waitFor(() =>
@@ -387,5 +397,55 @@ describe('Station orchestration instructions on the first turn', () => {
     expect(first?.input).toContain(AUTHORED_PROMPT);
     expect(first?.input).not.toContain(text);
     expect(first?.input).not.toContain('<station_instructions>');
+  });
+
+  test('a successor resuming the native transcript is not re-told; a fresh one is', async () => {
+    const adapter = new FakeCodexAdapter();
+    const orchestration = start(adapter);
+    const conversationId = 'thread-lineage';
+    await startSession(orchestration, conversationId);
+    const text = receiptText(conversationId);
+    const first = await send(orchestration, adapter, conversationId, 'Hello');
+    expect(first?.input).toContain(text);
+
+    async function successor(resumeCursor?: unknown) {
+      const id = `${conversationId}:session:${randomUUID()}`;
+      eventStore.reserveNextConversationSession({
+        conversationId,
+        predecessorSessionId: conversationId,
+        proposedSessionId: id,
+        createdAt: new Date().toISOString(),
+      });
+      await startSession(orchestration, id, resumeCursor);
+      return id;
+    }
+
+    // The continuation path's shape: the predecessor's cursor, so the engine
+    // resumes the transcript that already holds the first turn's text.
+    const resumed = await successor({ nativeSession: 'native-1' });
+    expect(
+      eventStore
+        .listEvents(resumed)
+        .find((event) => event.method === 'session.started')?.payload,
+    ).toMatchObject({ metadata: { nativeSessionResumed: true } });
+    const again = await send(orchestration, adapter, resumed, 'Continue');
+    expect(again?.input).toBe('Continue');
+
+    // Instructions that changed since (here, delegate_task withdrawn) still
+    // do not reach the resumed transcript: delivery is once per native
+    // transcript. A fresh native transcript gets the current version.
+    available = ['station-control_wait_session'];
+    const changed = await successor({ nativeSession: 'native-1' });
+    expect(deliveryOf(changed)?.stationInstructions).toBeUndefined();
+    expect((await send(orchestration, adapter, changed, 'More'))?.input).toBe(
+      'More',
+    );
+    const fresh = await successor();
+    const freshText = receiptText(fresh);
+    expect(freshText).not.toBe(text);
+    const told = await send(orchestration, adapter, fresh, 'Restart');
+    expect(told?.input).toContain(AUTHORED_PROMPT);
+    expect(told?.input).toContain(freshText);
+    expect(told?.input.endsWith('\nRestart')).toBe(true);
   });
 });

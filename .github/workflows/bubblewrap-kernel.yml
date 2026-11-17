@@ -1,0 +1,78 @@
+name: "Tool: bubblewrap kernel legs"
+
+# The bubblewrap process tests skip loudly wherever the production sandbox
+# cannot apply, and a skip passes (#4772). bubblewrap is not part of every
+# Ubuntu install, and Ubuntu 24.04's AppArmor policy
+# (kernel.apparmor_restrict_unprivileged_userns) can refuse an unconfined
+# program the user namespace bwrap needs. This installs bubblewrap, gives
+# /usr/bin/bwrap (and nothing else) a narrow AppArmor profile that allows
+# user namespaces when that policy is on, runs the tests, then fails unless
+# the legs pinned in scripts/required-test-profiles.json passed (#4770).
+#
+# Dispatch only, as for the Seatbelt legs: the workflow gate refuses
+# candidate-controlled pull_request workflows and reserves
+# pull_request_target for a reviewed list, and a push-to-main lane must be
+# declared in ci-workflow-contract.test.ts. Which automatic trigger to add is
+# an owner decision.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: station-bubblewrap-kernel-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  bubblewrap-kernel:
+    name: bubblewrap kernel legs (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install bubblewrap
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y bubblewrap
+
+      # The remedy docs/guides/development.md gives operators: a profile for
+      # the one executable, not the restriction turned off for the machine.
+      - name: Allow bubblewrap its user namespaces under AppArmor
+        run: |
+          if [ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null)" = "1" ]; then
+            printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' \
+              'profile station-bwrap /usr/bin/bwrap flags=(unconfined) {' '  userns,' '}' \
+              | sudo tee /etc/apparmor.d/station-bwrap > /dev/null
+            sudo apparmor_parser -r /etc/apparmor.d/station-bwrap
+          fi
+
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with: { install: false }
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - run: npm run dependencies:ci
+
+      - name: Run the bubblewrap process tests with a JSON report
+        run: >-
+          npx vitest run --root .
+          src-server/security/confinement/__tests__/bubblewrap.process.test.ts
+          --maxWorkers=1
+          --reporter=default
+          --reporter=json
+          --outputFile.json="$RUNNER_TEMP/bubblewrap-process.report.json"
+
+      # Runs after a test failure too, so the log names each leg that did not
+      # pass; a missing report fails here rather than reading as success.
+      - name: Require the pinned kernel legs to have run
+        if: ${{ !cancelled() }}
+        run: >-
+          node scripts/check-required-tests-ran.mjs
+          --profile-name linux-bubblewrap-kernel
+          --report "$RUNNER_TEMP/bubblewrap-process.report.json"

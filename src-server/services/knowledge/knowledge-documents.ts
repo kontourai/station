@@ -33,6 +33,37 @@ interface KnowledgeDocumentDeps {
   ) => Promise<string | null>;
 }
 
+/**
+ * An upload named a path the namespace already holds a document for.
+ *
+ * This is a caller-visible conflict, not a damaged store: the metadata
+ * validator refuses two documents at one path, and before this error existed
+ * a second upload of a filename (or a directory re-scan) reached that
+ * validator and was reported as store corruption, after its chunks had
+ * already been embedded.
+ */
+export class KnowledgeDocumentExistsError extends Error {
+  constructor(
+    readonly path: string,
+    readonly namespace: string,
+  ) {
+    super(
+      `A knowledge document already exists at '${path}' in namespace '${namespace}'`,
+    );
+    this.name = 'KnowledgeDocumentExistsError';
+  }
+}
+
+function assertDocumentPathIsFree(
+  existing: KnowledgeDocumentMeta[],
+  path: string,
+  namespace: string,
+): void {
+  if (existing.some((document) => document.path === path)) {
+    throw new KnowledgeDocumentExistsError(path, namespace);
+  }
+}
+
 function contentHash(content: string): string {
   return crypto.createHash('sha256').update(content).digest('hex');
 }
@@ -102,6 +133,19 @@ export async function uploadKnowledgeDocument(
   const shouldWriteFiles = nsCfg?.writeFiles !== false;
   const { metadata: fmMeta, body } = parseKnowledgeFrontmatter(content);
   const filePath = filename;
+  const documentRoot = {
+    storageDir,
+    dataDir: deps.dataDir,
+    projectSlug,
+    namespace,
+  };
+
+  // Decided before the embedding call: a path that is already taken costs a
+  // metadata read, not a provider request per chunk. The mutation below
+  // checks again under the lock, for an upload that lands in between.
+  await readKnowledgeDocuments(documentRoot, (transaction) =>
+    assertDocumentPathIsFree(transaction.metadata(), filePath, namespace),
+  );
 
   const chunks = chunkKnowledgeText(body);
   const bodyHash = contentHash(body);
@@ -127,15 +171,10 @@ export async function uploadKnowledgeDocument(
     ...(Object.keys(mergedMeta).length > 0 && { metadata: mergedMeta }),
   };
   const committed = await mutateKnowledgeDocuments(
-    {
-      storageDir,
-      dataDir: deps.dataDir,
-      projectSlug,
-      namespace,
-      operation: 'upload-document',
-    },
+    { ...documentRoot, operation: 'upload-document' },
     (transaction) => {
       const existing = transaction.metadata();
+      assertDocumentPathIsFree(existing, filePath, namespace);
       if (shouldWriteFiles) transaction.writeDocument(filePath, content);
       transaction.replaceMetadata([...existing, meta]);
       return meta;

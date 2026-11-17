@@ -44,6 +44,7 @@ import {
 import { isSessionLifecycleStateStopped } from '@kontourai/station-contracts/session-lifecycle';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { canonicalGitHubWorkItemRef } from '@kontourai/station-contracts/work-item-provider';
+import { errorMessage } from '../../utils/error-message.js';
 import { quotedLines } from '../orchestration/quoted-text.js';
 import type { TaskLeadState } from '../orchestration/task-question-wake.js';
 import type {
@@ -65,6 +66,8 @@ const FAILING_CONCLUSIONS = new Set([
   'STARTUP_FAILURE',
 ]);
 const MEMBER_TEXT_KINDS = new Set(['comment', 'review', 'review_comment']);
+/** What pull request feedback covers; issue comments are not. */
+const FORGE_FEEDBACK_KINDS = new Set(['check_run', 'review', 'review_comment']);
 /** Items written out in one wake; the rest are counted. */
 const WAKE_ITEMS_SHOWN = 8;
 const EXCERPT_CHARS = 1000;
@@ -111,6 +114,13 @@ export interface TaskFollowUpWakePorts {
   conversationOf(sessionId: string): string;
   /** Re-check the lead owner's access to the Task, as the question wake does. */
   mayReadTask(task: TaskRecord, ownerUserId: string): boolean;
+  /**
+   * Whether pull request agent feedback sends this kind of item
+   * (`check_run`, `review`, `review_comment`) for this pull request
+   * (`pull-request-feedback-*.ts`); this wake then skips it (still recorded
+   * in the brief). Issue comments still wake.
+   */
+  forgeFeedbackOwned?(itemRef: string, kind: string): boolean;
   submit:
     | ((input: {
         readonly conversationId: string;
@@ -127,7 +137,7 @@ export type TaskFollowUpWakeOutcome =
   | { kind: 'none' }
   | {
       kind: 'skipped';
-      reason: 'task-ended' | 'no-live-lead' | 'blocked';
+      reason: 'task-ended' | 'no-live-lead' | 'blocked' | 'forge-feedback';
       items: number;
     }
   | {
@@ -276,6 +286,23 @@ export class TaskFollowUpWake {
         if (!pending.length)
           return { kind: 'skipped', reason: 'blocked', items: checks.length };
       }
+      // Pull request feedback sends checks and reviews on the pull requests
+      // it owns; this wake would say the same thing twice.
+      const owned = pending.filter(
+        (item) =>
+          FORGE_FEEDBACK_KINDS.has(item.kind) &&
+          this.ports.forgeFeedbackOwned?.(item.itemRef, item.kind) === true,
+      );
+      if (owned.length) {
+        store.settleWakes(task, owned, 'skipped');
+        pending = pending.filter((item) => !owned.includes(item));
+        if (!pending.length)
+          return {
+            kind: 'skipped',
+            reason: 'forge-feedback',
+            items: owned.length,
+          };
+      }
       if (!record.sessionId) return skip(pending, 'no-live-lead');
       const lead = await this.ports.readLead(record.sessionId);
       if (
@@ -333,7 +360,7 @@ export class TaskFollowUpWake {
     } catch (error) {
       this.ports.logger.warn('Task follow-up wake failed', {
         taskId: task.taskId,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage(error),
       });
       return { kind: 'deferred', reason: 'error' };
     }

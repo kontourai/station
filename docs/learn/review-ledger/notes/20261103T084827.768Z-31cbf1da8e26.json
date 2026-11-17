@@ -1,7 +1,0 @@
-{
-  "revision": "a893c393df748db859525e5eb1c7f5739e5af797",
-
-  "notes": [
-    {"path":"docs/reference/station-docs.md","note":"Scoped review of the generated Durable Station Agent topic delta against the canonical module-map section and generator. The topic now describes writer-12 shared text, packed frames, indexed incremental terminal expiry, typed output capacity and captured steer replay. The manual still accurately describes credential-free static retrieval, content digests and the separation from live reads/control; those delivery semantics and the other generated topics are unchanged. No installation, live-provider, latency or release qualification is inferred, and no prose edit is needed.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
-  ]
-}

@@ -15,7 +15,7 @@
     "build": "../../station plugin build"
   },
   "dependencies": {
-    "@kontourai/survey": "^8.2.0"
+    "@kontourai/survey": "^9.0.0"
   },
   "peerDependencies": {
     "@kontourai/station-sdk": "*",

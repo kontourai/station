@@ -38,6 +38,10 @@ import {
   type ProjectCheckoutFreshness,
 } from '@kontourai/station-contracts/project-checkout-freshness';
 import type { ProjectResourceBindOutcome } from '@kontourai/station-contracts/project-identity';
+import {
+  PROJECT_LIFECYCLE_ACTIONS,
+  type ProjectDeletionPreview,
+} from '@kontourai/station-contracts/project-lifecycle';
 import type {
   ProjectMemberAction,
   ProjectMembershipScope,
@@ -48,6 +52,10 @@ import {
   validateLayoutAgentReferences,
   validateProjectAgentScope,
 } from '@kontourai/station-contracts/project-reference-integrity';
+import {
+  MAX_PULL_REQUEST_FIX_ATTEMPTS,
+  parseProjectPullRequestWatchSettings,
+} from '@kontourai/station-contracts/pull-request-watch';
 import { BROWSER_PANE_DEPLOYMENT_CAPABILITY } from '@kontourai/station-contracts/workspace-browser-pane';
 import { WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-browser-preview';
 import {
@@ -86,6 +94,7 @@ import {
   grantedPairingScope,
   type PairingScopeContextStore,
 } from '../../security/pairing-route-scopes.js';
+import { FeaturePreviewDisabledError } from '../../services/feature-previews/feature-preview-refusal.js';
 import type { FeaturePreviewSelector } from '../../services/feature-previews/feature-preview-registry.js';
 import type { StationKitObservabilityRegistry } from '../../services/kits/kit-observability-registry.js';
 import {
@@ -110,8 +119,12 @@ import {
   ProjectCreationConflict,
   ProjectCreationService,
 } from '../../services/projects/project-creation-service.js';
-import { discoverProjectIconCandidates } from '../../services/projects/project-icon-discovery.js';
+import {
+  discoverProjectIconCandidates,
+  withDiscoveredProjectIcon,
+} from '../../services/projects/project-icon-discovery.js';
 import { ProjectIdentityService } from '../../services/projects/project-identity-service.js';
+import type { ProjectLifecycleService } from '../../services/projects/project-lifecycle-service.js';
 import {
   describeProjectResolution,
   type ProjectManifestRecordReader,
@@ -290,7 +303,8 @@ interface ProjectRouteDeps {
    * isolated worktree rather than the checkout.
    */
   sessionWorkspaceDirectory?: SessionWorkspaceDirectory;
-  visualFileFrameOrigin?: () => string | undefined;
+  /** The frame origin, only when this request's client can reach it. */
+  visualFileFrameOrigin?: (c: Context) => string | undefined;
   /** Restricts the Project catalogue for an authenticated shared member. */
   memberProjectAdmissions?: (c: Context) => Promise<
     | readonly {
@@ -328,6 +342,26 @@ interface ProjectRouteDeps {
   ) => Promise<boolean>;
   /** #3994: ends a deleted Project's running terminal sessions. */
   endProjectTerminals?: (projectId: string) => Promise<number | undefined>;
+  /**
+   * #5069: Pause/Resume and Archive/Unarchive. Absent (route-only tests),
+   * the lifecycle route answers 503 and Delete stops no turns.
+   */
+  projectLifecycle?: ProjectLifecycleService;
+  /**
+   * The `project-pause-archive` preview: off refuses starting a Pause or an
+   * Archive. Resume and Unarchive stay available, so a hold made while it
+   * was on can always be lifted.
+   */
+  projectLifecyclePreview?: FeaturePreviewSelector;
+  /** #5070: the scheduled jobs that belong to a Project. */
+  projectSchedules?: {
+    count(projectId: string): Promise<number>;
+    /** Deletes them and returns how many it deleted. */
+    removeAll(projectId: string): Promise<number>;
+  };
+  /** #5069: what Delete keeps, for its confirmation. */
+  countProjectTasks?: (projectId: string) => number;
+  countProjectSessions?: (slug: string) => number;
   /**
    * archive#3778 — `OperatingStateService.hasBuilderRun`, the ONE Builder-run
    * predicate the Board's nav entry and route guard already consume. Injected
@@ -432,6 +466,16 @@ function projectMutationStatus(
   return fallback;
 }
 
+function lifecycleFieldRefusal(c: Context) {
+  return c.json(
+    {
+      success: false,
+      error: 'Pause or archive a Project with its lifecycle controls.',
+    },
+    400,
+  );
+}
+
 function projectMutationMessage(error: unknown): string {
   if (error instanceof FileStorageConflictError) {
     return 'Project storage changed before the operation could commit';
@@ -522,6 +566,9 @@ export function createProjectCatalogueReader(
           )
         : undefined;
       const projects = await projectService.listProjects();
+      const displayProjects = allowed
+        ? projects
+        : await Promise.all(projects.map(withDiscoveredProjectIcon));
       const currentAdmissions = allowed
         ? ((await deps.memberProjectAdmissions?.(c)) ?? [])
         : undefined;
@@ -552,7 +599,7 @@ export function createProjectCatalogueReader(
                   )!;
                   return memberProjectView(project, admission.actions);
                 })
-            : projects,
+            : displayProjects,
       });
       if (!allowed || !currentReadable || !readable || !currentScopes)
         return response;
@@ -1139,6 +1186,7 @@ export function createProjectRoutes(
   app.post('/', validate(projectCreateSchema), async (c) => {
     const body = normalizeProjectBody(getBody(c));
     try {
+      if (Object.hasOwn(body, 'lifecycle')) return lifecycleFieldRefusal(c);
       if (Object.hasOwn(body, 'repositorySource')) {
         return c.json(
           {
@@ -1377,6 +1425,7 @@ export function createProjectRoutes(
           data: memberProjectView(project, memberAdmission.actions),
         });
       }
+      const displayProject = await withDiscoveredProjectIcon(project);
       const knownAgents = await readKnownAgents();
       const diagnostics = knownAgents
         ? validateProjectAgentScope(project, {
@@ -1388,8 +1437,8 @@ export function createProjectRoutes(
         success: true,
         data:
           diagnostics.length > 0
-            ? { ...project, _integrityDiagnostics: diagnostics }
-            : project,
+            ? { ...displayProject, _integrityDiagnostics: diagnostics }
+            : displayProject,
       });
     } catch (error: unknown) {
       const failure = projectReadFailure(error, 'Project');
@@ -1472,6 +1521,7 @@ export function createProjectRoutes(
     try {
       const slug = param(c, 'slug');
       const body = normalizeProjectBody(getBody(c));
+      if (Object.hasOwn(body, 'lifecycle')) return lifecycleFieldRefusal(c);
       if (
         Object.hasOwn(body, 'repositorySource') ||
         Object.hasOwn(body, 'repositoryAcquisitionId') ||
@@ -1528,7 +1578,87 @@ export function createProjectRoutes(
     }
   });
 
-  // Delete project
+  /**
+   * #5069: Pause/Resume, Archive/Unarchive. Pause and Archive write the
+   * held state, then interrupt the Project's running turns and report what
+   * is still running after the bounded wait.
+   */
+  app.post(
+    '/:slug/lifecycle',
+    validate(z.object({ action: z.enum(PROJECT_LIFECYCLE_ACTIONS) }).strict()),
+    async (c) => {
+      try {
+        const slug = param(c, 'slug');
+        if ((await deps.memberProjectAdmission?.(c, slug)) !== undefined)
+          return c.json({ success: false, error: 'Project not found' }, 404);
+        if (!deps.projectLifecycle)
+          return c.json(
+            {
+              success: false,
+              error: 'Pause and Archive are unavailable on this Station.',
+            },
+            503,
+          );
+        const { action } = getBody(c) as {
+          action: (typeof PROJECT_LIFECYCLE_ACTIONS)[number];
+        };
+        if (
+          (action === 'pause' || action === 'archive') &&
+          deps.projectLifecyclePreview?.select({
+            enabled: () => false,
+            disabled: () => true,
+          }) !== false
+        )
+          return c.json(
+            new FeaturePreviewDisabledError(
+              'project-pause-archive',
+              'Pause and archive Projects',
+            ).refusal,
+            404,
+          );
+        const result = await deps.projectLifecycle.apply(slug, action);
+        projectOps.add(1, { op: `lifecycle-${action}` });
+        return c.json({ success: true, data: result });
+      } catch (error: unknown) {
+        return c.json(
+          { success: false, error: projectMutationMessage(error) },
+          projectMutationStatus(error),
+        );
+      }
+    },
+  );
+
+  /** #5069: the counts Delete's confirmation states, from the records it acts on. */
+  app.get('/:slug/deletion-preview', async (c) => {
+    try {
+      const slug = param(c, 'slug');
+      if ((await deps.memberProjectAdmission?.(c, slug)) !== undefined)
+        return c.json({ success: false, error: 'Project not found' }, 404);
+      const project = storageAdapter.getProject(slug);
+      const preview: ProjectDeletionPreview = {
+        removes: {
+          layouts: storageAdapter.listLayouts(slug).length,
+          knowledgeDocuments: storageAdapter.listDocuments(slug).length,
+          schedules: (await deps.projectSchedules?.count(project.id)) ?? 0,
+        },
+        stops: {
+          runningSessions:
+            deps.projectLifecycle?.runningThreadIds(slug).length ?? 0,
+        },
+        keeps: {
+          tasks: deps.countProjectTasks?.(project.id) ?? 0,
+          sessions: deps.countProjectSessions?.(slug) ?? 0,
+        },
+      };
+      return c.json({ success: true, data: preview });
+    } catch (error: unknown) {
+      const failure = projectReadFailure(error, 'Project');
+      return c.json({ success: false, error: failure.error }, failure.status);
+    }
+  });
+
+  // Delete project. #5069: first holds the Project and stops its running
+  // turns (as Pause does), then deletes its schedules, then the Project.
   app.delete('/:slug', async (c) => {
     try {
       const slug = param(c, 'slug');
@@ -1538,7 +1668,12 @@ export function createProjectRoutes(
       } catch {
         // The delete below reports the missing Project.
       }
+      if (projectId && deps.projectLifecycle)
+        await deps.projectLifecycle.apply(slug, 'pause');
+      if (projectId && deps.projectSchedules)
+        await deps.projectSchedules.removeAll(projectId);
       await projectService.deleteProject(slug);
+      deps.projectLifecycle?.forget(slug);
       projectOps.add(1, { op: 'delete' });
       // The Project is gone either way; a shell that will not end is logged,
       // not reported as a failed delete.
@@ -1960,6 +2095,50 @@ export function createProjectRoutes(
         const updated = {
           ...revision.value,
           ...getBody(c),
+          updatedAt: new Date().toISOString(),
+        };
+        await revision.replace(updated);
+        return c.json({ success: true, data: updated });
+      } catch (error) {
+        return c.json(
+          { success: false, error: projectMutationMessage(error) },
+          projectMutationStatus(error),
+        );
+      }
+    },
+  );
+
+  // #5066: whether this Project's Tasks watch their pull requests. Only the
+  // Project's owner reaches a write here (the runtime Project guard refuses a
+  // member's), and no station-control tool names it, so an agent never does.
+  app.put(
+    '/:slug/pull-request-watch',
+    validate(
+      z
+        .object({
+          enabled: z.boolean(),
+          maxFixAttempts: z
+            .number()
+            .int()
+            .min(1)
+            .max(MAX_PULL_REQUEST_FIX_ATTEMPTS)
+            .optional(),
+        })
+        .strict(),
+    ),
+    async (c) => {
+      try {
+        const slug = param(c, 'slug');
+        const settings = parseProjectPullRequestWatchSettings(getBody(c));
+        if (!settings)
+          return c.json(
+            { success: false, error: 'Invalid pull request watch settings' },
+            400,
+          );
+        const revision = storageAdapter.projectRevision(slug);
+        const updated = {
+          ...revision.value,
+          pullRequestWatch: settings,
           updatedAt: new Date().toISOString(),
         };
         await revision.replace(updated);

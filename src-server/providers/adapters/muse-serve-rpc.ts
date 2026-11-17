@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { errorMessage } from '../../utils/error-message.js';
 import { isRecord } from '../../utils/is-record.js';
 
 /**
@@ -12,9 +13,9 @@ import { isRecord } from '../../utils/is-record.js';
  * approval is.
  *
  * Every handler is total. A malformed line, a reply to an unknown id, or a
- * server REQUEST (the probe observed none; MSP approvals are notifications)
- * never throws inside the stdout handler: a throw there would tear down the
- * whole session.
+ * server REQUEST never throws inside the stdout handler: a throw there would
+ * tear down the whole session. A server request the session does not serve
+ * is refused (-32601); one it serves is answered with what it returns.
  */
 
 /**
@@ -97,6 +98,14 @@ export interface MuseServeCloseInfo {
 
 export interface MuseServeConnectionHandlers {
   onNotification(method: string, params: Record<string, unknown>): void;
+  /**
+   * A server-initiated REQUEST. Returns the result to reply with, or
+   * `undefined` to refuse it (-32601). Absent: every request is refused.
+   */
+  onServerRequest?(
+    method: string,
+    params: Record<string, unknown>,
+  ): Record<string, unknown> | undefined;
   onClose(info: MuseServeCloseInfo): void;
   /** A line that was not a JSON-RPC frame, or an overflowed partial line. */
   onProtocolNoise?(detail: string): void;
@@ -267,14 +276,35 @@ export class MuseServeConnection {
     const method = typeof frame.method === 'string' ? frame.method : undefined;
     const hasId = typeof frame.id === 'number' || typeof frame.id === 'string';
     if (method && hasId) {
-      // A server-initiated REQUEST. MSP 1.3 was never observed sending one
-      // (approvals are notifications), but an unanswered request would park
-      // whatever issued it, so it gets a spec-conformant refusal.
-      this.write({
-        jsonrpc: '2.0',
-        id: frame.id,
-        error: { code: -32601, message: `Station does not serve ${method}.` },
-      });
+      // A server-initiated REQUEST. MSP 1.4 asks a client to present an
+      // approval or a question this way (`approval/request`,
+      // `userInput/request`); an error reply means "could not present", and
+      // the prompt stays pending. Anything the session does not serve, or a
+      // handler that throws, still gets a spec-conformant refusal: an
+      // unanswered request would park whatever issued it.
+      let result: Record<string, unknown> | undefined;
+      try {
+        result = this.handlers.onServerRequest?.(
+          method,
+          isRecord(frame.params) ? frame.params : {},
+        );
+      } catch (error) {
+        this.handlers.onProtocolNoise?.(
+          `server request handler threw for ${method}: ${errorMessage(error)}`,
+        );
+      }
+      this.write(
+        result
+          ? { jsonrpc: '2.0', id: frame.id, result }
+          : {
+              jsonrpc: '2.0',
+              id: frame.id,
+              error: {
+                code: -32601,
+                message: `Station does not serve ${method}.`,
+              },
+            },
+      );
       return;
     }
     if (method) {
@@ -285,7 +315,7 @@ export class MuseServeConnection {
         );
       } catch (error) {
         this.handlers.onProtocolNoise?.(
-          `notification handler threw for ${method}: ${error instanceof Error ? error.message : String(error)}`,
+          `notification handler threw for ${method}: ${errorMessage(error)}`,
         );
       }
       return;

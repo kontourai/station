@@ -27,6 +27,7 @@ const pendingSchema = z
         name: z.string().min(1),
         slug: z.string().min(1),
         icon: z.string().optional(),
+        iconDisabled: z.boolean().optional(),
         description: z.string().optional(),
         workingDirectory: z.string().optional(),
         repositoryAcquisitionId: z.string().uuid().optional(),

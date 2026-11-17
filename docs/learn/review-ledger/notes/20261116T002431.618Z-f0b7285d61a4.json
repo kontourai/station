@@ -1,0 +1,19 @@
+{
+  "revision": "2ff9ffc7c0655c354ee3802324a02ef950bd0018",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed: the turn-completion listener now receives onReplayedDelivery, wired to the coordinator wake's observeNotification, for a restart that finds a finish already written. No other service, route or composition claim in citing documents changes.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Reviewed: the turn-completion listener now receives onReplayedDelivery, wired to the coordinator wake's observeNotification, for a restart that finds a finish already written. No other service, route or composition claim in citing documents changes.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reviewed: the turn-completion listener now receives onReplayedDelivery, wired to the coordinator wake's observeNotification, for a restart that finds a finish already written. No other service, route or composition claim in citing documents changes.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Reviewed: the turn-completion listener now receives onReplayedDelivery, wired to the coordinator wake's observeNotification, for a restart that finds a finish already written. No other service, route or composition claim in citing documents changes.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Reviewed: the turn-completion listener now receives onReplayedDelivery, wired to the coordinator wake's observeNotification, for a restart that finds a finish already written. No other service, route or composition claim in citing documents changes.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed: the turn-completion listener now receives onReplayedDelivery, wired to the coordinator wake's observeNotification, for a restart that finds a finish already written. No other service, route or composition claim in citing documents changes.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed: the turn-completion listener now receives onReplayedDelivery, wired to the coordinator wake's observeNotification, for a restart that finds a finish already written. No other service, route or composition claim in citing documents changes.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]}
+  ]
+}

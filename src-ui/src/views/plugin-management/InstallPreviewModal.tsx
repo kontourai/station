@@ -8,6 +8,7 @@ import {
   ResponsiveDialogSurface,
   ResponsiveSurfaceActions,
 } from '../../components/ResponsiveDialogSurface';
+import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { compareProposalDigest } from '../../utils/pluginProposal';
 import { PluginRegistryTrustSection } from './PluginRegistryTrustSection';
 import { ReinstallDelta } from './ReinstallDelta';
@@ -43,6 +44,7 @@ export function InstallPreviewModal({
   onToggleSkip: (key: string) => void;
   onConfirm: (dataPolicy?: 'preserve' | 'retain-and-reset') => void;
 }) {
+  useDecisionSurface('plugin-install-preview');
   const [resetData, setResetData] = useState(false);
   const hasBlockingConflict = previewData.components.some(
     (component) => component.skippable === false && !!component.conflict,
@@ -248,12 +250,12 @@ export function InstallPreviewModal({
           >
             {reinstall
               ? installPending
-                ? 'Reinstalling...'
+                ? 'Reinstalling…'
                 : resetData
                   ? 'Reinstall with New Data'
                   : 'Reinstall'
               : installPending
-                ? 'Installing...'
+                ? 'Installing…'
                 : resetData
                   ? 'Confirm Install with New Data'
                   : 'Confirm Install'}

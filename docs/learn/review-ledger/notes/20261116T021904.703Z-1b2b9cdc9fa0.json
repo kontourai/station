@@ -1,0 +1,7 @@
+{
+  "revision": "9a876cf566925e89fd48b92b6f99ff97393a85a7",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Third review round: the handoff picker description still holds; useNewChatSelectionModel gained an additive selectedContextSettled field used only by the armed handoff wait.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/hooks/useNewChatSelectionModel.ts"]}
+  ]
+}

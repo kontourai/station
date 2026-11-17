@@ -10,6 +10,9 @@ vi.mock('../../../telemetry/metrics.js', () => ({
 }));
 
 const { createKnowledgeRoutes } = await import('../knowledge.js');
+const { KnowledgeDocumentExistsError } = await import(
+  '../../../services/knowledge/knowledge-documents.js'
+);
 const { knowledgeOps } = await import('../../../telemetry/metrics.js');
 
 function createMockKnowledgeService() {
@@ -134,6 +137,28 @@ describe('Knowledge Routes', () => {
     });
 
     expect(response.status).toBe(201);
+  });
+
+  test('POST /upload answers a filename that is already taken with a conflict, not store unavailability', async () => {
+    const svc = createMockKnowledgeService();
+    svc.uploadDocument.mockRejectedValueOnce(
+      new KnowledgeDocumentExistsError('new.md', 'default'),
+    );
+    const response = await createKnowledgeRoutes(svc as any).request(
+      '/upload',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: 'new.md', content: '# New' }),
+      },
+    );
+
+    expect(response.status).toBe(409);
+    expect(await json(response)).toEqual({
+      success: false,
+      error:
+        'A document with this filename already exists in this namespace. Update or delete it instead.',
+    });
   });
 
   test('POST /upload returns 400 without filename', async () => {

@@ -1,0 +1,9 @@
+{
+  "revision": "af8a904db5483870b6d8e78e0027f0083f129fdb",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"#4852 fix round 7: config.md changed only the Project channel store sentence (store directories that cannot be read, including linked ones, pause uploads). This page cites config.md for its current limits, none of which concern attachment storage; prose unchanged.","inputs":["docs/architecture/abstraction-review.md","docs/reference/config.md"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"#4852 fix round 7: config.md changed only the Project channel store sentence (store directories that cannot be read, including linked ones, pause uploads). This page cites the telemetry destinations section, which is unchanged; prose unchanged.","inputs":["docs/design/settings-architecture.md","docs/reference/config.md"]}
+  ]
+}

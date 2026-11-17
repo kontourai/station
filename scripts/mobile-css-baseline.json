@@ -1,5 +1,5 @@
 {
-  "pageLocalMediaQueryCeiling": 102,
+  "pageLocalMediaQueryCeiling": 104,
   "pageLocal": {
     "src-ui/src/components/Checkbox.css": {
       "count": 1,
@@ -20,6 +20,10 @@
     "src-ui/src/components/PathAutocomplete.css": {
       "count": 1,
       "reason": "The shared path field's dropdown drops absolute positioning on touch so it cannot open off-screen."
+    },
+    "src-ui/src/components/ProjectTaskBoard.css": {
+      "count": 2,
+      "reason": "The Project Tasks board's own geometry: one container query puts five lanes across only when the board itself is wide enough (the Project page's navigation column makes viewport width the wrong measure), and one hover/fine-pointer query reveals a card's action without reflowing it. No shared primitive owns a lane board."
     },
     "src-ui/src/components/TasksLayout.css": {
       "count": 1,
@@ -58,8 +62,8 @@
       "reason": "The conversation timeline owns its compact mobile history header, 44px scrubber, and four-action row so transcript space remains usable at phone widths."
     },
     "src-ui/src/components/chat/chat.css": {
-      "count": 9,
-      "reason": "Nine surface-owned decisions: 480px toolbar region-button and turn-footer alignment; 600px mention targets; shared phone/coarse attachment, menu and picker touch floors; hover-only footer disclosure; phone/short-coarse composer and toolbar layout; 374px connection-label reachability; a 640px composer container query for centered status/scroll stacking and its popup; short-coarse focused drafting that hides settings while preserving activity; and a 48px container query on the phone chat bar's project control, which shows a folder glyph only where a long chat title leaves it 40px of content and both its caption and project name would truncate to an ellipsis (the width depends on the chat title beside it, so no viewport media query or shared primitive can decide it). Duplicate 480px and phone/coarse blocks were consolidated; counts and ceiling remain unchanged. These choices depend on chat/toolbar control composition or allocated pane width rather than a generic dialog or page primitive."
+      "count": 7,
+      "reason": "Seven surface-owned rules, each depending on chat/toolbar control composition or allocated pane width rather than a page or dialog primitive: 600px mention-chip and picker targets; the phone/coarse touch floors for delivery, attachment, menu and picker controls; 480px toolbar and turn-footer alignment; the hover-only transcript actions; 374px connection-label reachability; the phone/short-coarse composer and toolbar layout; and a 640px composer container query that centres the status and scroll controls."
     },
     "src-ui/src/components/coding-layout/BranchToolbar.css": {
       "count": 1,
@@ -104,6 +108,10 @@
     "src-ui/src/components/notifications/NotificationContainer.css": {
       "count": 2,
       "reason": "The toast stack's small-screen box (safe-area gutters, a viewport-bounded height) and its dismiss touch target."
+    },
+    "src-ui/src/components/notifications/NotificationStationOpener.css": {
+      "count": 1,
+      "reason": "The notification-open notice is a fixed overlay like the toast stack; on a phone it stands just above the collapsed dock instead of over the route's top controls (Home's start composer)."
     },
     "src-ui/src/components/notifications/NotificationHistory.css": {
       "count": 1,
@@ -154,8 +162,8 @@
       "reason": "The voice pill lifts above the safe-area inset and its mute control takes a 44px box."
     },
     "src-ui/src/index.css": {
-      "count": 11,
-      "reason": "The app-shell stylesheet, and the largest remaining concentration (10 blocks, down from 12 \u2014 #1636 folded the maximized-bar mobile-agent-avatar and mobile-project-name breakpoints into the unconditional `.chat-dock__mobile-project`/`.chat-dock__mobile-identity` flex layout, removing two `@media` blocks outright; corrected here because the ratchet never reports an over-recorded file, same as #1160). It is deliberately NOT a primitive entry: it mixes genuine shell primitives (the responsive dialog surface, the toolbar, the chat dock, the global touch-target net) with page-ish rules (the command/delegation launchers, the new-chat modal), and exempting the file would let any page hide a responsive rule by moving it here. Two blocks are reduced-motion END STATES the motion primitive cannot express; one is a `prefers-color-scheme` fork that should be reading theme tokens; the rest are the shell's own mobile and desktop-only geometry. Three same-condition folds were REFUSED because a `chat-input`/`chat-dock` property is decided again in between."
+      "count": 12,
+      "reason": "The app-shell stylesheet, and the largest remaining concentration (10 blocks, down from 12 \u2014 #1636 folded the maximized-bar mobile-agent-avatar and mobile-project-name breakpoints into the unconditional `.chat-dock__mobile-project`/`.chat-dock__mobile-identity` flex layout, removing two `@media` blocks outright; corrected here because the ratchet never reports an over-recorded file, same as #1160). It is deliberately NOT a primitive entry: it mixes genuine shell primitives (the responsive dialog surface, the toolbar, the chat dock, the global touch-target net) with page-ish rules (the command/delegation launchers, the new-chat modal), and exempting the file would let any page hide a responsive rule by moving it here. Two blocks are reduced-motion END STATES the motion primitive cannot express; one is a `prefers-color-scheme` fork that should be reading theme tokens; the rest are the shell's own mobile and desktop-only geometry. Three same-condition folds were REFUSED because a `chat-input`/`chat-dock` property is decided again in between. The twelfth is a `(hover: hover) and (pointer: fine)` capability query on `.chat-scroll-to-bottom`, so a tap cannot leave the button scaled. It is not a layout breakpoint, and no other query in this file has that condition."
     },
     "src-ui/src/pages/NotificationsPage.css": {
       "count": 1,

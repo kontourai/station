@@ -1,0 +1,21 @@
+{
+  "revision": "11d95bc9738695b026330dcfd14b747e7991d992",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"StartComposer retains its picker and conversation boundary owners; loading model label is now narrowed to ready state. No module ownership or authority change.","inputs":["docs/architecture/module-map.md","src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"ApprovalModeChip and StartApprovalSummary now share indicator derivation: neutral override dot versus full-access/refused/pending warning. Approval resolution, delivery labels and picker callbacks remain owned by existing policy. No enforcement claim added.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/components/badges/ApprovalModeChip.tsx","src-ui/src/utils/approvalMode.ts"]},
+
+    {"path":"docs/design/motion.md","note":"Added closed-trigger gallery scenes only. Existing reduced-motion captures and computed motion assertions are retained. No animation change.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reconnect layout measures the closed composer trigger and captures the 320px image with the sheet closed; model-name assertions now scope to selected model controls. Existing journey coverage categories remain accurate.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/mobile-chat-composer.spec.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"ComposerChoice publishes a neutral changed flag separately from risk; Run setup geometry and phone sheet ownership remain intact. Source review does not prove physical-device layout.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/ComposerChoice.tsx"]},
+
+    {"path":"docs/guides/testing.md","note":"New filled-trigger and full-access captures extend the existing gallery and source routing, retaining partial-capture semantics and the fixture-audit route. No test runner or gate weakened.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Added composer-only gallery scenes. All telemetry scenes, endpoint fixtures, inventory and delivery assertions remain unchanged; no live telemetry claim.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Start and reply setup retain their existing choices and callbacks; model and engine overrides now have a neutral changed indicator. Full access retains warning. Existing start/send documentation remains accurate.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/StartComposerParity.test.tsx","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/chat/ChatInputArea.tsx"]}
+  ]
+}

@@ -54,6 +54,7 @@ describe('per-layer detection (#3223)', () => {
       hardCoded: [],
       transitionAll: [],
       unresolvedToken: [],
+      easeIn: [],
     });
   });
 
@@ -71,6 +72,16 @@ describe('per-layer detection (#3223)', () => {
     expect(motionLayers('a 1s, b 2s, c 3s')).toHaveLength(3);
   });
 
+  it('does not split inside a quoted name or an escaped comma', () => {
+    expect(
+      motionLayers('"x,y" var(--motion-fast) var(--ease-out)'),
+    ).toHaveLength(1);
+    expect(
+      motionLayers('a\\2c b var(--motion-fast) var(--ease-out)'),
+    ).toHaveLength(1);
+    expect(motionLayers('"x,\\"y", ease-in')).toHaveLength(2);
+  });
+
   it('judges a layer on its own duration and easing', () => {
     expect(isHardCodedLayer('border-color 0.15s')).toBe(true);
     expect(isHardCodedLayer('border-color var(--motion-fast)')).toBe(false);
@@ -85,13 +96,23 @@ describe('motion contract ratchet', () => {
         '.item { transition: opacity var(--motion-fast) var(--ease-standard); }',
         REAL_TOKENS,
       ),
-    ).toEqual({ hardCoded: [], transitionAll: [], unresolvedToken: [] });
+    ).toEqual({
+      hardCoded: [],
+      transitionAll: [],
+      unresolvedToken: [],
+      easeIn: [],
+    });
     expect(
       inspectMotionCss(
         '.spinner { animation: spin var(--motion-status-spin) var(--ease-linear) infinite; }',
         REAL_TOKENS,
       ),
-    ).toEqual({ hardCoded: [], transitionAll: [], unresolvedToken: [] });
+    ).toEqual({
+      hardCoded: [],
+      transitionAll: [],
+      unresolvedToken: [],
+      easeIn: [],
+    });
   });
 
   it('rejects hard-coded motion and transition all', () => {
@@ -112,6 +133,186 @@ describe('motion contract ratchet', () => {
       })),
     ];
     expect(evaluateMotionContract(findings, 0).passed).toBe(false);
+  });
+
+  it('rejects ease-in even when a token of that name is declared', () => {
+    const declared = new Set([...REAL_TOKENS, '--ease-in']);
+    const eased = inspectMotionCss(
+      '.out { animation: leave var(--motion-fast) var(--ease-in) both; }',
+      declared,
+    );
+    expect(eased.unresolvedToken).toEqual([]);
+    expect(eased.easeIn).toHaveLength(1);
+    const findings = eased.easeIn.map((declaration) => ({
+      file: 'out.css',
+      kind: 'ease-in',
+      declaration,
+    }));
+    expect(evaluateMotionContract(findings, 10, { 'out.css': 10 }).passed).toBe(
+      false,
+    );
+  });
+
+  it('rejects an ease-in fallback and an uppercase keyword with no ceiling', () => {
+    const declared = new Set([...REAL_TOKENS, '--ease-in']);
+    const fallback = inspectMotionCss(
+      '.out { animation: leave var(--motion-fast) var(--ease-in, var(--ease-out)) both; }',
+      declared,
+    );
+    expect(fallback.unresolvedToken).toEqual([]);
+    expect(fallback.hardCoded).toEqual([]);
+    expect(fallback.easeIn).toHaveLength(1);
+    expect(
+      evaluateMotionContract(
+        fallback.easeIn.map((declaration) => ({
+          file: 'out.css',
+          kind: 'ease-in' as const,
+          declaration,
+        })),
+        0,
+      ).passed,
+    ).toBe(false);
+    const upper = inspectMotionCss(
+      '.out { animation: leave var(--motion-fast) EASE-IN both; } .fn { transition: opacity var(--motion-fast) VAR(--ease-in); }',
+      declared,
+    );
+    expect(upper.easeIn).toHaveLength(2);
+    const findings = [
+      ...upper.hardCoded.map((declaration) => ({
+        file: 'out.css',
+        kind: 'hard-coded' as const,
+        declaration,
+      })),
+      ...upper.easeIn.map((declaration) => ({
+        file: 'out.css',
+        kind: 'ease-in' as const,
+        declaration,
+      })),
+    ];
+    expect(evaluateMotionContract(findings, 10, { 'out.css': 10 }).passed).toBe(
+      false,
+    );
+    const withoutEaseIn = findings.filter(
+      (finding) => finding.kind !== 'ease-in',
+    );
+    expect(
+      evaluateMotionContract(withoutEaseIn, 10, { 'out.css': 10 }).passed,
+    ).toBe(true);
+  });
+
+  it('rejects an adjacent or escaped ease-in and keeps a longer ident', () => {
+    const rejected = [
+      '.a { transition: opacity var(--motion-fast)ease-in; }',
+      '.b { transition: opacity var(--motion-fast)EASE-IN; }',
+      '.c { transition: opacity var(--motion-fast) \\65 ase-in; }',
+      '.d { transition: opacity var(--motion-fast) v\\61r(--ease-in); }',
+      '.e { transition: opacity var(--motion-fast) var(--\\65 ase-in); }',
+    ];
+    for (const css of rejected) {
+      const found = inspectMotionCss(css, REAL_TOKENS);
+      expect(found.easeIn, css).toHaveLength(1);
+      expect(
+        evaluateMotionContract(
+          found.easeIn.map((declaration) => ({
+            file: 'a.css',
+            kind: 'ease-in' as const,
+            declaration,
+          })),
+          0,
+        ).passed,
+        css,
+      ).toBe(false);
+    }
+    const named = inspectMotionCss(
+      '.a { animation: ease-iné var(--motion-slow) var(--ease-out); }',
+      REAL_TOKENS,
+    );
+    expect(named.easeIn).toEqual([]);
+    const escapedOut = inspectMotionCss(
+      '.b { animation: pulse 1.2s ease-in\\2d out infinite; }',
+      REAL_TOKENS,
+    );
+    expect(escapedOut.easeIn).toEqual([]);
+  });
+
+  it('rejects ease-in after a non-ASCII ident and ignores a quoted name', () => {
+    const rejected = [
+      '.u { animation: I var(--motion-fast) var(--ease-custom, ease-in); }',
+      '.u { animation: \u0130 var(--motion-fast) var(--ease-custom, ease-in); }',
+    ];
+    for (const css of rejected) {
+      const found = inspectMotionCss(css, REAL_TOKENS);
+      expect(found.hardCoded, css).toEqual([]);
+      expect(found.unresolvedToken, css).toEqual([]);
+      expect(found.easeIn, css).toHaveLength(1);
+      expect(
+        evaluateMotionContract(
+          found.easeIn.map((declaration) => ({
+            file: 'a.css',
+            kind: 'ease-in' as const,
+            declaration,
+          })),
+          0,
+        ).passed,
+        css,
+      ).toBe(false);
+    }
+    const allowed = [
+      '.a { animation: "ease-in" var(--motion-fast) var(--ease-out); }',
+      '.b { animation: x var(--motion-fast) var(--ease-out, url("ease-in")); }',
+      '.c { animation: "slide ease-in" var(--motion-fast) var(--ease-out); }',
+      '.d { animation: "var(--ease-in)" var(--motion-fast) var(--ease-out); }',
+    ];
+    for (const css of allowed) {
+      const found = inspectMotionCss(css, REAL_TOKENS);
+      expect(found.easeIn, css).toEqual([]);
+      expect(found.hardCoded, css).toEqual([]);
+    }
+  });
+
+  it('rejects ease-in after a comma inside a quoted name', () => {
+    const hidden =
+      '.x { animation: "x,y" var(--motion-fast) var(--ease-custom, ease-in); }';
+    const found = inspectMotionCss(hidden, REAL_TOKENS);
+    expect(found.hardCoded, hidden).toEqual([]);
+    expect(found.unresolvedToken, hidden).toEqual([]);
+    expect(found.easeIn, hidden).toHaveLength(1);
+    expect(
+      evaluateMotionContract(
+        found.easeIn.map((declaration) => ({
+          file: 'a.css',
+          kind: 'ease-in' as const,
+          declaration,
+        })),
+        0,
+      ).passed,
+    ).toBe(false);
+    const clean = '.x { animation: "x,y" var(--motion-fast) var(--ease-out); }';
+    const allowed = inspectMotionCss(clean, REAL_TOKENS);
+    expect(allowed.easeIn, clean).toEqual([]);
+    expect(allowed.hardCoded, clean).toEqual([]);
+  });
+
+  it('does not treat ease-in-out or ease-out as ease-in', () => {
+    const declared = new Set([...REAL_TOKENS, '--EASE-IN']);
+    const mixed = inspectMotionCss(
+      '.a { animation: pulse 1.2s ease-in-out infinite; } .b { transition: opacity var(--motion-fast) var(--ease-out); } .c { animation: pulse 1.2s EASE-IN-OUT infinite; } .d { animation: leave var(--motion-fast) var(--EASE-IN) both; }',
+      declared,
+    );
+    expect(mixed.easeIn).toEqual([]);
+    expect(mixed.unresolvedToken).toEqual([]);
+    expect(mixed.hardCoded).toHaveLength(2);
+  });
+
+  it('binds ease-out to the kit curve and declares no ease-in token', () => {
+    expect(REAL_TOKENS.has('--ease-in')).toBe(false);
+    expect(REAL_TOKENS.has('--ease-out')).toBe(true);
+    expect(REAL_TOKENS.has('--k-ease')).toBe(true);
+    const tokens = readFileSync(
+      join(process.cwd(), 'src-ui/src/tokens.css'),
+      'utf8',
+    );
+    expect(tokens).toMatch(/--ease-out:\s*var\(--k-ease\)/);
   });
 
   it('extracts declared custom properties, not var() references', () => {

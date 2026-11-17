@@ -30,6 +30,8 @@ import { useNavigationActions } from '../../contexts/NavigationContext';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { userFacingErrorMessage } from '../../utils/errorText';
+import { formatBytes } from '../../utils/formatBytes';
+import { formatDateTime } from '../../utils/relativeTime';
 import { sha256Hex } from '../../utils/sha256';
 
 export interface TaskOutputPromotion {
@@ -720,13 +722,8 @@ function message(error: unknown, fallback: string) {
 }
 function bytes(value: number) {
   if (!Number.isFinite(value) || value < 0) return 'Unavailable';
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KiB`;
-  return `${(value / (1024 * 1024)).toFixed(1)} MiB`;
+  return formatBytes(value);
 }
 function time(value: string) {
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime())
-    ? 'Unavailable'
-    : parsed.toLocaleString();
+  return formatDateTime(value, 'Unavailable');
 }

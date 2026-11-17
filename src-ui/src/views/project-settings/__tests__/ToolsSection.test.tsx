@@ -41,6 +41,12 @@ vi.mock('@kontourai/station-sdk', () => ({
 function Editor({ save }: { save: (payload: unknown) => void }) {
   const [form, setForm] = useState<ProjectForm | null>({
     name: 'Demo',
+    goal: '',
+    instructions: '',
+    coordinatorEffort: 'inherit',
+    taskEffort: 'inherit',
+    taskModel: '',
+    taskProviderId: '',
     defaultWorkspaceIsolation: 'inherit',
     defaultModelSelection: 'fixed',
     defaultApprovalModeSelection: 'fixed',

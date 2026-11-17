@@ -128,15 +128,7 @@ export async function runSetupCommand(
   const [kind, ...values] = positionals;
 
   if (kind === 'local') {
-    assertFlags(flags, [
-      'name',
-      'base',
-      'port',
-      'ui-port',
-      'instance',
-      'features',
-      'host',
-    ]);
+    assertFlags(flags, ['name', 'base', 'port', 'ui-port', 'instance', 'host']);
     if (values.length > 0)
       throw new Error(
         'Usage: station setup local [--name=kontour] [service flags]',

@@ -1,12 +1,5 @@
 import { createReadStream, existsSync } from 'node:fs';
-import {
-  appendFile,
-  mkdir,
-  open,
-  readdir,
-  stat,
-  unlink,
-} from 'node:fs/promises';
+import { mkdir, open, readdir, stat, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 
 interface RuntimeLogger {
@@ -155,6 +148,7 @@ export class RuntimeEventLog {
       max: number;
     }
   >();
+  private writeQueue: Promise<void> = Promise.resolve();
   private lastRetentionDay?: string;
   private retentionInFlight?: Promise<RetentionResult>;
 
@@ -272,6 +266,8 @@ export class RuntimeEventLog {
       ? indexedFiles.reverse()
       : indexedFiles) {
       const path = join(this.eventLogPath, name);
+      // One warning per file per query, however many lines are malformed.
+      const malformed: { count: number; firstError?: unknown } = { count: 0 };
       try {
         const before = await eventFileSignature(path);
         const known = this.timeBounds.get(name);
@@ -293,10 +289,8 @@ export class RuntimeEventLog {
           try {
             event = JSON.parse(line);
           } catch (error) {
-            this.logger.warn('Failed to parse event line', {
-              file: name,
-              error,
-            });
+            malformed.count++;
+            malformed.firstError ??= error;
             continue;
           }
           const time =
@@ -360,6 +354,13 @@ export class RuntimeEventLog {
         }
         // Concurrent retention may remove a file; other I/O errors propagate.
         if (!isMissingFileError(error)) throw error;
+      } finally {
+        if (malformed.count)
+          this.logger.warn('Skipped malformed event lines', {
+            file: name,
+            count: malformed.count,
+            error: malformed.firstError,
+          });
       }
     }
     return result();
@@ -394,7 +395,19 @@ export class RuntimeEventLog {
     }
   }
 
-  async persist(event: any): Promise<void> {
+  /**
+   * Appends one event as one NDJSON line. Writes are serialized: callers fire
+   * and forget, and concurrent `appendFile` calls on separate descriptors
+   * interleave once a line exceeds Node's 512 KiB write chunk, tearing both
+   * lines into invalid JSON.
+   */
+  persist(event: any): Promise<void> {
+    const write = this.writeQueue.then(() => this.persistNow(event));
+    this.writeQueue = write.catch(() => {});
+    return write;
+  }
+
+  private async persistNow(event: any): Promise<void> {
     try {
       if (!existsSync(this.eventLogPath)) {
         await mkdir(this.eventLogPath, { recursive: true });
@@ -408,7 +421,7 @@ export class RuntimeEventLog {
         });
       }
       const logPath = this.getTodayEventLogPath();
-      await appendFile(logPath, `${JSON.stringify(event)}\n`, 'utf-8');
+      await appendEventLine(logPath, `${JSON.stringify(event)}\n`);
     } catch (error) {
       this.logger.error('Failed to persist event', { error, event });
     }
@@ -538,6 +551,37 @@ function isMissingFileError(error: unknown): boolean {
     'code' in error &&
     (error as NodeJS.ErrnoException).code === 'ENOENT'
   );
+}
+
+/**
+ * Writes the line with a single append `write`, so another appender (a second
+ * Station process during a restart) cannot land inside it. A previous writer
+ * killed mid-line leaves a tail with no newline; this line then starts on a
+ * fresh one, so only the torn fragment is lost rather than this event too.
+ */
+async function appendEventLine(path: string, line: string): Promise<void> {
+  const handle = await open(path, 'a+');
+  try {
+    const { size } = await handle.stat();
+    let torn = false;
+    if (size > 0) {
+      const last = Buffer.alloc(1);
+      await handle.read(last, 0, 1, size - 1);
+      torn = last[0] !== 10;
+    }
+    const bytes = Buffer.from(torn ? `\n${line}` : line, 'utf8');
+    let offset = 0;
+    while (offset < bytes.length) {
+      const { bytesWritten } = await handle.write(
+        bytes,
+        offset,
+        bytes.length - offset,
+      );
+      offset += bytesWritten;
+    }
+  } finally {
+    await handle.close();
+  }
 }
 
 async function eventFileSignature(path: string): Promise<string> {

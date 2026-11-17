@@ -25,32 +25,31 @@ export function WorkspacePaneStandardDataView({
     return (
       <Empty
         variant="prominent"
-        label="Standard data view unavailable"
-        description="The placed contribution identity does not match this declared read-only view."
+        label="View unavailable"
+        description="This view no longer matches its plugin. Close the tab and reopen it."
       />
     );
   }
 
   return (
     <section aria-label="Read-only standard data view">
-      <Empty
-        variant="prominent"
-        label={renderer.view.projection}
-        description="Station shows this view as read-only information. Nothing here can be changed."
-      />
-      <pre className="workspace-default__description">
-        {JSON.stringify(
-          {
-            contribution,
-            incarnation: renderer.view.incarnation,
-            projection: renderer.view.projection,
-            schemaRef: renderer.view.schemaRef,
-            readOnly: true,
-          },
-          null,
-          2,
-        )}
-      </pre>
+      <Empty variant="prominent" label="Data view" description="Read-only" />
+      <details>
+        <summary>Details</summary>
+        <pre className="workspace-default__description">
+          {JSON.stringify(
+            {
+              contribution,
+              incarnation: renderer.view.incarnation,
+              projection: renderer.view.projection,
+              schemaRef: renderer.view.schemaRef,
+              readOnly: true,
+            },
+            null,
+            2,
+          )}
+        </pre>
+      </details>
     </section>
   );
 }

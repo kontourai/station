@@ -24,8 +24,14 @@ import {
   useIntegrationsQuery,
   useModelConnectionsQuery,
 } from '@kontourai/station-sdk';
+import { useManagedEngineStateFor } from '../../hooks/useManagedEngines';
 import type { ProviderConnection } from '../provider-settings/types';
 import { filterModelProviders } from '../provider-settings/utils';
+import {
+  deriveConnectionHealth,
+  engineHealthInput,
+  modelHealthInput,
+} from './connection-health';
 import {
   CONNECTION_SECTIONS,
   type ConnectionSectionId,
@@ -37,14 +43,24 @@ interface ConnectionSectionSignals {
   needsAttention: (id: ConnectionSectionId) => boolean;
   /** The section `/connections` resolves to, or undefined when none needs it. */
   firstNeedingAttention: (typeof CONNECTION_SECTIONS)[number] | undefined;
+  /**
+   * Every read attention depends on has answered (data or error). Before
+   * that, "nothing needs attention" only means "nothing has loaded yet".
+   */
+  settled: boolean;
 }
 
 export function useConnectionSectionSignals(): ConnectionSectionSignals {
-  const { data: connections = [] } = useModelConnectionsQuery();
-  const { data: engines = [] } = useEngineConnectionsQuery();
-  const { data: tools = [] } = useIntegrationsQuery();
-  const { data: knowledge } = useGlobalKnowledgeStatusQuery();
+  const modelsQuery = useModelConnectionsQuery();
+  const enginesQuery = useEngineConnectionsQuery();
+  const toolsQuery = useIntegrationsQuery();
+  const knowledgeQuery = useGlobalKnowledgeStatusQuery();
+  const { data: connections = [] } = modelsQuery;
+  const { data: engines = [] } = enginesQuery;
+  const { data: tools = [] } = toolsQuery;
+  const { data: knowledge } = knowledgeQuery;
   const { rows: computers } = useComputerRows();
+  const managedStateFor = useManagedEngineStateFor();
 
   /**
    * Live capture caught both halves of getting the counts wrong: "Models 1"
@@ -75,6 +91,8 @@ export function useConnectionSectionSignals(): ConnectionSectionSignals {
   };
 
   const needsAttention = (id: ConnectionSectionId): boolean => {
+    // A store with no embedding model is a resting state (semantic search
+    // off), like an unconnected computer: the Knowledge page says so.
     if (id === 'knowledge') return Boolean(knowledge && !knowledge.vectorDb);
     // CI-R3: `connected` is "an agent session currently holds a client",
     // which is false for every tool server — including the built-ins — until
@@ -88,15 +106,36 @@ export function useConnectionSectionSignals(): ConnectionSectionSignals {
     // connected" for every computer nobody has connected yet — which is a
     // resting state, not a problem to fix.
     if (id === 'computers') return false;
-    const list = id === 'models' ? models : engines;
-    return list.some(
-      (item) => !item.enabled || item.status === 'missing_prerequisites',
-    );
+    // The same verdict its list row shows, and its own attention rule
+    // (`ConnectionHealth.needsAttention`): an engine marks whenever it is not
+    // dispatchable, including under managed policy; a model connection only
+    // for something the reader must fix. Engines the list does not show
+    // (supported, never added) claim nothing here either.
+    if (id === 'models')
+      return models.some(
+        (item) => deriveConnectionHealth(modelHealthInput(item)).needsAttention,
+      );
+    return engines
+      .filter((engine) => engine.setup?.state !== 'available')
+      .some(
+        (engine) =>
+          deriveConnectionHealth(engineHealthInput(engine), {
+            policyDisallowed: managedStateFor(engine)?.disallowed === true,
+          }).needsAttention,
+      );
   };
 
   return {
     count,
     needsAttention,
+    // `isLoading` is a first fetch in flight. A disabled read (no Station
+    // to ask) is pending but not loading, and must not hold the redirect
+    // forever. Computers claims no attention, so its read is not waited on;
+    // the ACP reads behind managed policy are not waited on either, and the
+    // resolver's own time bound covers a slow one.
+    settled: [modelsQuery, enginesQuery, toolsQuery, knowledgeQuery].every(
+      (query) => !query.isLoading,
+    ),
     firstNeedingAttention: CONNECTION_SECTIONS.find((section) =>
       needsAttention(section.id),
     ),

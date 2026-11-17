@@ -2,7 +2,9 @@ import type { OwnedSessionActivity } from '@kontourai/station-contracts/orchestr
 import type { ProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
 import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
+import { isInputRequestEvent } from '@kontourai/station-shared/input-request';
 import { providerFailure } from '../../providers/provider-failure.js';
+import { runEngineOutsideStationServerScope } from '../../security/station-server-scope.js';
 
 export { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
 
@@ -49,6 +51,8 @@ import { runtimeEventContentText } from '@kontourai/station-contracts/runtime-ev
 import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
+  isProviderTriggeredTurn,
+  PROVIDER_TURN_TRIGGER,
 } from '@kontourai/station-contracts/runtime-events';
 import type { SessionLifecycleState } from '@kontourai/station-contracts/session-lifecycle';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
@@ -66,6 +70,7 @@ import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/u
 import { errorMessage } from '../../utils/error-message.js';
 import { receiptBus } from '../infra/receipt-bus.js';
 import type { RuntimeEngineStartLease } from '../infra/resource-posture.js';
+import { deriveAttachedSourceActivity } from './attached-source-activity.js';
 import { assertDispatchCwdUnmoved } from './dispatch-cwd-admission.js';
 import type { EventStore } from './event-store.js';
 import { isStationChatFolder } from './no-project-chat-folder.js';
@@ -538,8 +543,10 @@ export function deriveReadModelSession(options: {
 }
 
 export function buildOrchestrationSessionSummary(options: {
+  /** `threadId`: the session's own answer where it differs from its engine's. */
   readDurabilityProfile?: (
     provider: string | undefined,
+    threadId?: string,
   ) => ProviderDurabilityProfile | undefined;
   persisted?: ProviderSession;
   loaded?: ProviderSession;
@@ -592,6 +599,8 @@ export function buildOrchestrationSessionSummary(options: {
    * same prompt two different ways.
    */
   conversationFirstPromptedTurn?: CanonicalRuntimeEvent;
+  /** Read time for `attachedSourceActivity`; defaults to the wall clock. */
+  now?: number;
   /**
    * #2310: what the store knows about this thread's whole conversation
    * (`EventStore.conversationDraftFactsForThreads`). Omitted means the lineage
@@ -599,6 +608,14 @@ export function buildOrchestrationSessionSummary(options: {
    * stays absent unless the thread's own events rule it out).
    */
   conversationDraftFacts?: ConversationDraftFacts;
+  /**
+   * #5050: the admitted Station runtime home, for the "is `cwd` a folder
+   * Station made" check. A READER so a list builder admits the home once per
+   * build and only when some row has a `cwd`; resolving it per row repeated
+   * the whole admission filesystem walk for every session. Omitted, the check
+   * resolves the home itself.
+   */
+  readStationHome?: () => string;
 }): OrchestrationSessionSummary {
   const base = options.loaded ?? options.persisted;
   const persistedNativeState =
@@ -659,6 +676,7 @@ export function buildOrchestrationSessionSummary(options: {
     ) ??
     delegation?.title;
   const turnOrigin = extractTurnOrigin(events);
+  const latestTurnTrigger = extractLatestTurnTrigger(events);
   const lastRuntimeError = findTerminalFailureEvent(events);
   const controlMode = base.controlMode ?? 'station-owned';
   const { draft, firstSendOutcome } = deriveSessionDraft({
@@ -708,8 +726,16 @@ export function buildOrchestrationSessionSummary(options: {
   const openRequestIds = options.openRequestIds?.filter(
     (id) => !settledRequestIds.has(id),
   );
+  const latestRequests = new Map<
+    string,
+    Extract<CanonicalRuntimeEvent, { method: 'request.opened' }>
+  >();
+  for (const event of events) {
+    if (event.method === 'request.opened')
+      latestRequests.set(event.requestId, event);
+  }
   const summary: OrchestrationSessionSummary = {
-    durability: options.readDurabilityProfile?.(base.provider),
+    durability: options.readDurabilityProfile?.(base.provider, base.threadId),
     provider: base.provider,
     threadId: base.threadId,
     status: base.status,
@@ -730,7 +756,7 @@ export function buildOrchestrationSessionSummary(options: {
     ...(base.model ? { model: base.model } : {}),
     ...(base.cwd ? { cwd: base.cwd } : {}),
     // #4389: a no-project chat's scratch folder is one Station made too.
-    ...(base.cwd && isStationChatFolder(base.cwd)
+    ...(base.cwd && isStationChatFolder(base.cwd, options.readStationHome?.())
       ? { cwdManagedWorkspace: true as const }
       : {}),
     ...(appliedApprovalMode ? { appliedApprovalMode } : {}),
@@ -745,6 +771,7 @@ export function buildOrchestrationSessionSummary(options: {
     isPersisted: Boolean(options.persisted),
     eventCount: options.eventCount ?? options.events?.length ?? 0,
     ...(turnOrigin ? { turnOrigin } : {}),
+    ...(latestTurnTrigger ? { latestTurnTrigger } : {}),
     ...lifecycleWithoutProjectSlug,
     ...(assignedAgentSlug
       ? { assignedAgentSlug: agentId(assignedAgentSlug) }
@@ -779,6 +806,14 @@ export function buildOrchestrationSessionSummary(options: {
     ...(openRequestIds
       ? {
           openRequestIds: [...openRequestIds],
+          openRequestKinds: Object.fromEntries(
+            openRequestIds.flatMap((id) => {
+              const event = latestRequests.get(id);
+              if (!event || event.method !== 'request.opened') return [];
+              const kind = isInputRequestEvent(event) ? 'input' : 'approval';
+              return [[id, kind] as const];
+            }),
+          ),
           blockingOpenRequestIds: openRequestIds.filter(
             (id) =>
               !options.events?.some(
@@ -807,6 +842,15 @@ export function buildOrchestrationSessionSummary(options: {
     ...(modelLaunchPlan ? { modelLaunchPlan } : {}),
     ...(reportedModel ? { reportedModel } : {}),
     hasActiveTurn: hasOpenTurn(events),
+    ...(controlMode === 'read-only-attached'
+      ? {
+          attachedSourceActivity: deriveAttachedSourceActivity(
+            events,
+            options.now ?? Date.now(),
+            base.attachedSource?.lastWriteAt,
+          ),
+        }
+      : {}),
     ...(draft !== undefined ? { draft } : {}),
   };
   const ownedWork = options.readOwnedWork?.(base.threadId);
@@ -852,6 +896,22 @@ export function clientOriginIdentity(origin: ClientOrigin): string {
       ? `device:${origin.actor.deviceId}`
       : origin.actor.kind;
   return JSON.stringify([actor, origin.reported.surface]);
+}
+
+/**
+ * `'provider'` when the newest `turn.started` is a turn the engine opened on
+ * its own (a reply to background work no one sent), read through the one
+ * shared derivation. Absent for any other latest turn, or none.
+ */
+function extractLatestTurnTrigger(
+  events: CanonicalRuntimeEvent[],
+): OrchestrationSessionSummary['latestTurnTrigger'] {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event?.method !== 'turn.started') continue;
+    return isProviderTriggeredTurn(event) ? PROVIDER_TURN_TRIGGER : undefined;
+  }
+  return undefined;
 }
 
 function extractTurnOrigin(
@@ -1878,6 +1938,11 @@ export async function startRecoveredOrchestrationSession(options: {
     if (deps.applyCredentialProfile) {
       startInput = await deps.applyCredentialProfile(startInput);
     }
+    // #4435: the adapter's governance check runs before the start boundary,
+    // as it does for a fresh start. Inside the boundary, a definitive refusal
+    // (OpenCode's approval rules could not be read) was recorded as a start
+    // that may have happened, and every retry was refused behind it.
+    await adapter.preflightStart?.(startInput);
     const admissionLease = await deps.admitEngineStart?.(startInput.threadId);
     let recovered: ProviderSession;
     try {
@@ -1892,7 +1957,10 @@ export async function startRecoveredOrchestrationSession(options: {
             ? deps.invokeSessionStart(startInput.threadId, () =>
                 adapter.startSession(startInput),
               )
-            : adapter.startSession(startInput),
+            : // #2377 slice D: never inherit a dispatch route's server scope.
+              runEngineOutsideStationServerScope(() =>
+                adapter.startSession(startInput),
+              ),
       );
     } finally {
       admissionLease?.release();

@@ -326,6 +326,67 @@ describe('Project Room explicit agent participation', () => {
       ).toBe('published');
     },
   );
+  it('keeps an Agent request in its channel and refuses one in an archived channel (#4792)', async () => {
+    const f = fixture();
+    const store = f.room.store;
+    const design = store.createChannel(
+      f.authority.scope,
+      { name: 'design' },
+      f.authority.assertCurrent,
+    );
+    const inDesign = { ...f.authority, channelId: design.channelId };
+    const handle = await f.module.request(inDesign, f.input);
+    expect(handle.roomId).toBe(design.channelId);
+    expect(f.module.inspect(inDesign, handle.requestId).requestId).toBe(
+      handle.requestId,
+    );
+    // The default room cannot see the channel's request.
+    expect(() => f.module.inspect(f.authority, handle.requestId)).toThrow(
+      'not_found',
+    );
+    store.updateChannel(
+      f.authority.scope,
+      design.channelId,
+      { archived: true },
+      f.authority.assertCurrent,
+    );
+    const launches = f.launches;
+    const preparations = f.preparations;
+    await expect(
+      f.module.request(inDesign, { ...f.input, intentId: randomUUID() }),
+    ).rejects.toThrow('archived');
+    expect(f.launches).toBe(launches);
+    expect(f.preparations).toBe(preparations);
+  });
+  it('never forwards a message’s files: the launch context carries no file id, name or bytes (#4812)', async () => {
+    const f = fixture();
+    const file = {
+      id: randomUUID(),
+      kind: 'image' as const,
+      name: 'PRIVATE_FILE_CANARY.png',
+      mimeType: 'image/png' as const,
+      size: 8,
+    };
+    const source = f.room.store.append(
+      f.authority.scope,
+      f.authority.requester,
+      { intentId: randomUUID(), text: 'shared caption', attachments: [file] },
+      f.authority.assertCurrent,
+    );
+    await f.module.request(f.authority, f.input);
+    expect(f.launches).toBe(1);
+    expect(JSON.parse(f.captures[0]!.split('\n')[1]!)).toEqual([
+      {
+        actor: source.actor,
+        text: source.text,
+        messageId: source.messageId,
+        seq: source.seq,
+      },
+    ]);
+    expect(f.captures[0]).not.toContain(file.id);
+    expect(f.captures[0]).not.toContain(file.name);
+  });
+
   it('includes a fitting note and history unchanged', async () => {
     const f = fixture();
     const source = f.room.store.append(

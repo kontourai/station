@@ -1,0 +1,7 @@
+{
+  "revision": "dad2814f5734e0ee0562eb5cc9bccded89bc8677",
+
+  "notes": [
+    {"path":"docs/design/native-capabilities.md","note":"Checked this page's claims about scripts/native-platform-boundary.mjs against the lane's additions: the capabilities/permissions scanner rules are untouched; the change only adds station-html-reply: to the expected Tauri CSP frame-src and lists the visual-reply staging seam among reviewed Tauri adapter files.","inputs":["docs/design/native-capabilities.md","scripts/native-platform-boundary.mjs"]}
+  ]
+}

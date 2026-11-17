@@ -6,6 +6,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { errorMessage } from '../../utils/error-message.js';
 import type { WorkloadMemorySettings } from './workload-budget.js';
 
 function workloadBudgetSettingsPath(homeDir: string): string {
@@ -52,7 +53,7 @@ export async function readWorkloadBudgetSettings(
   } catch (error) {
     return {
       settings: {},
-      error: `${path} is invalid: ${error instanceof Error ? error.message : String(error)}`,
+      error: `${path} is invalid: ${errorMessage(error)}`,
     };
   }
 }

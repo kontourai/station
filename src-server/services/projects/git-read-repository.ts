@@ -96,6 +96,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { execGit } from '../../utils/git-exec.js';
+import { isCanonicalPathWithin } from '../../utils/path-containment.js';
 import {
   type GitDirectoryCheckOptions,
   gitDirectoryInsideProject,
@@ -162,7 +163,7 @@ const refused = (reason: string): ProjectRepositoryForRead => ({
 });
 
 function within(path: string, root: string): boolean {
-  return path === root || path.startsWith(root + sep);
+  return isCanonicalPathWithin(root, path);
 }
 
 /** The runner marks a child it killed on its deadline. */

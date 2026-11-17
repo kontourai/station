@@ -35,9 +35,9 @@
 //      verification. None stages anything.
 //   6. the full install (#2675 slice W2), in a Station root of its own:
 //      Windows PowerShell 5.1 installs archive 1 (no Node.js anywhere) on
-//      chosen ports, with `current` a junction, the owned station-beta.cmd
+//      chosen ports, with `current` a junction, the owned station.cmd
 //      launcher, schema 4 state and an install root restricted to the user,
-//      and Station answers as archive 1; `station-beta.cmd upgrade`, with no
+//      and Station answers as archive 1; `station.cmd upgrade`, with no
 //      manifest URL in its environment, runs the version's install.ps1 with
 //      the installed Node.js and Station answers as archive 2 on the same
 //      ports; archive 1 again is refused as a downgrade; the installed
@@ -91,9 +91,8 @@ const installScript = join(repoRoot, 'install.ps1');
 const KEY_IDS = {
   nightly: 'station-portable-nightly-2026-09',
   stable: 'station-portable-release-2026-09',
-  preview: 'station-portable-release-2026-09',
 };
-const RUNTIME = { stable: 'stable', preview: 'beta', nightly: 'nightly' };
+const RUNTIME = { stable: 'stable', nightly: 'nightly' };
 // Past MAX_PATH (260), with room to spare.
 const LONG_PATH_TARGET = 300;
 const RUN_TIMEOUT_MS = 30 * 60_000;
@@ -120,8 +119,14 @@ function describeArchive(path) {
     path,
     ring,
     runtime: RUNTIME[ring],
-    version: descriptor.release.ref.replace(/^v/, ''),
-    tag: descriptor.release.ref,
+    version:
+      descriptor.release.schemaVersion === 3
+        ? descriptor.release.version
+        : descriptor.release.ref.replace(/^v/, ''),
+    tag:
+      descriptor.release.schemaVersion === 3
+        ? `v${descriptor.release.version}`
+        : descriptor.release.ref,
     sha: descriptor.release.sha,
     sha256: descriptor.sha256,
     size: descriptor.size,

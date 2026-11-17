@@ -1,0 +1,7 @@
+{
+  "revision": "addca25a1d54ffbf217f41e0caed3b7ddbff52f1",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Bundle delta still waits for arming; repo-scans remains non-required and now runs on every push.","inputs":["docs/guides/code-quality.md",".github/workflows/ci.yml","docs/guides/testing.md","scripts/__tests__/ci-fast-checks-job-graph.test.ts"]}
+  ]
+}

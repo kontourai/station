@@ -34,6 +34,7 @@ import { useWorkFacts } from './useWorkFacts';
 import type { WorkFactsById } from './work-facts';
 import {
   focusChatEventDetailForAction,
+  openRemoteSessionReader,
   resolveWorkItemOpenAction,
 } from './work-item-open-policy';
 
@@ -194,19 +195,27 @@ function createContinueWork(
   // does both halves — it commands the region model, and falls back to the
   // canonical deep link when no region host is mounted.
   showActivitySession: (sessionId: string) => void,
-  acknowledge: (conversationId: string, updatedAt: string) => void,
+  acknowledge: (
+    conversationId: string,
+    updatedAt: string,
+    readVersion: number | undefined,
+  ) => void,
   codingLayoutFor: CodingLayoutFor,
 ) {
   return (task: HomeWorkItem) => {
     if (task.conversationUpdatedAt) {
-      acknowledge(task.id, task.conversationUpdatedAt);
+      acknowledge(task.id, task.conversationUpdatedAt, task.readVersion);
     }
     if (task.kind === 'task') {
       onNavigate({ type: 'task', taskId: task.id });
       return;
     }
-    if (task.kind === 'remote-session') return;
     const action = resolveWorkItemOpenAction(task);
+    if (action.kind === 'remote') {
+      openRemoteSessionReader(action);
+      return;
+    }
+    if (task.kind === 'remote-session') return;
     if (action.kind === 'navigate') {
       showActivitySession(action.threadId);
       return;
@@ -269,9 +278,13 @@ export function useHomeViewModel(onNavigate: (view: NavigationView) => void) {
     ),
     continueWork: createContinueWork(
       onNavigate,
-      (sessionId) => showSurface('activity', { session: sessionId }),
-      (conversationId, updatedAt) =>
-        acknowledge.mutate({ conversationId, updatedAt }),
+      (sessionId) => showSurface('chat', { session: sessionId }),
+      (conversationId, updatedAt, readVersion) =>
+        acknowledge.mutate({
+          conversationId,
+          updatedAt,
+          ...(readVersion === undefined ? {} : { readVersion }),
+        }),
       codingLayoutFor,
     ),
   };

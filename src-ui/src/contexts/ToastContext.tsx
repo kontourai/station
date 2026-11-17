@@ -24,6 +24,19 @@ export function stripAnsi(input: string): string {
   return input.replace(ANSI_CSI_PATTERN, '');
 }
 
+/**
+ * A toast action's failure the user can act on. Its message replaces the
+ * generic "Action failed" line, so an Undo that is no longer valid can say why.
+ */
+export class ToastActionError extends Error {}
+
+/**
+ * Why a toast left the screen: `closed` covers expiry, the close button and
+ * Dismiss all; `scope` is a Station change, after which work captured for the
+ * previous Station must not run.
+ */
+export type ToastDismissReason = 'closed' | 'scope';
+
 type ToastAction = {
   label: string;
   onClick: () => unknown;
@@ -98,6 +111,8 @@ export type ToastOptions = {
   detail?: string;
   /** Explicitly safe text for recall; never pass raw diagnostics or credentials. */
   recallText?: string;
+  /** Runs once when this toast leaves the screen, for any reason. */
+  onDismiss?: (reason: ToastDismissReason) => void;
 };
 
 type Expiration = {
@@ -122,6 +137,10 @@ class ToastStore {
   private timeouts = new Map<string, ReturnType<typeof setTimeout>>();
   private maxHistory = 100;
   private expirations = new Map<string, Expiration>();
+  private dismissHandlers = new Map<
+    string,
+    (reason: ToastDismissReason) => void
+  >();
   private stationScope =
     typeof location === 'undefined' ? 'local' : location.origin;
   private hidden = typeof document !== 'undefined' && document.hidden;
@@ -330,6 +349,7 @@ class ToastStore {
         dismissed: false,
       });
     }
+    if (options.onDismiss) this.dismissHandlers.set(id, options.onDismiss);
     this.resetExpiration(toast);
     const transients = this.toasts.filter(
       (item) =>
@@ -387,10 +407,13 @@ class ToastStore {
       this.notify();
       this.notifyHistory();
     };
-    const fail = () => {
+    const fail = (error?: unknown) => {
       if (!this.toasts.includes(toast)) return;
       toast.pendingAction = undefined;
-      toast.actionError = 'Action failed. Try again.';
+      toast.actionError =
+        error instanceof ToastActionError && error.message
+          ? error.message
+          : 'Action failed. Try again.';
       toast.duration = 0;
       this.resetExpiration(toast);
       publish();
@@ -416,9 +439,16 @@ class ToastStore {
           if (this.toasts.includes(toast)) this.dismiss(id);
         }, fail);
       } else if (this.toasts.includes(toast)) this.dismiss(id);
-    } catch {
-      fail();
+    } catch (error) {
+      fail(error);
     }
+  }
+
+  private runDismissHandler(id: string, reason: ToastDismissReason) {
+    const handler = this.dismissHandlers.get(id);
+    if (!handler) return;
+    this.dismissHandlers.delete(id);
+    handler(reason);
   }
 
   subscribe = (listener: () => void) => {
@@ -663,6 +693,7 @@ class ToastStore {
 
     this.toasts = this.toasts.filter((t) => t.id !== id);
     this.notify();
+    this.runDismissHandler(id, 'closed');
   }
 
   /**
@@ -687,8 +718,10 @@ class ToastStore {
     this.timeouts.forEach((timeout) => clearTimeout(timeout));
     this.timeouts.clear();
     this.expirations.clear();
+    const closing = this.toasts.map((toast) => toast.id);
     this.toasts = [];
     this.notify();
+    for (const id of closing) this.runDismissHandler(id, 'scope');
   }
 
   // Dismiss every currently-visible notification at once. The container renders
@@ -698,6 +731,7 @@ class ToastStore {
     this.timeouts.forEach((timeout) => clearTimeout(timeout));
     this.timeouts.clear();
     this.expirations.clear();
+    const closing = this.toasts.map((toast) => toast.id);
     this.toasts = [];
     for (const item of this.history) {
       if (!item.dismissed) item.dismissed = true;
@@ -707,6 +741,7 @@ class ToastStore {
     }
     this.notify();
     this.notifyHistory();
+    for (const id of closing) this.runDismissHandler(id, 'closed');
   }
 
   clearRecentMessages() {

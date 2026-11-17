@@ -25,3 +25,11 @@
 .settings__field .field__label {
   font-size: var(--k-text-sm);
 }
+
+/* Published inputs honor the shell's shared mobile target floor. */
+.control--input {
+  min-height: max(
+    var(--touch-target-min, 0px),
+    calc(var(--k-space-6) + var(--k-space-2))
+  );
+}

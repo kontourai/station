@@ -1604,3 +1604,61 @@ export function countThreads(
   }
   return counts;
 }
+
+import type {
+  IndependentReviewRequestStatus,
+  ReviewFinding,
+} from './review-evidence.js';
+
+/** Personal-host code review, separate from anchored feedback and gate verdicts. */
+export interface TaskCodeReviewRequest {
+  requestId: string;
+  projectId: string;
+  projectCreatedAt: string;
+  taskCreatedAt: string;
+  baseSha: string;
+  headSha: string;
+  reviewerAgentSlug: string;
+}
+
+export interface TaskCodeReviewWorkspace {
+  state: 'available' | 'unavailable';
+  kind: 'task-worktree' | 'project-checkout' | 'unknown';
+  path?: string;
+  branch?: string;
+  headSha?: string;
+  baseSha?: string;
+  dirty?: boolean;
+}
+
+export interface TaskCodeReviewEntry {
+  requestId: string;
+  state: IndependentReviewRequestStatus['state'];
+  startedAt: string;
+  updatedAt: string;
+  failureReason?: string;
+  receiptId?: string;
+  baseSha?: string;
+  headSha?: string;
+  freshness: 'same-revision' | 'different-revision' | 'unavailable';
+  findings: ReviewFinding[];
+  omittedFindings: number;
+  reviewers: { name: string; status: string }[];
+}
+
+export interface TaskCodeReviewView {
+  version: 'station.task-code-review/v1';
+  projectId: string;
+  projectCreatedAt: string;
+  taskCreatedAt: string;
+  projectSlug: string;
+  workspace: TaskCodeReviewWorkspace;
+  implementerAgentSlug?: string;
+  canRequest: boolean;
+  requestUnavailableReason?: 'task-ended' | 'execution-not-authorized';
+  reviewers: { slug: string; name: string }[];
+  requests: TaskCodeReviewEntry[];
+  omittedRequests: number;
+  /** Partial reads do not turn missing evidence into an empty collection. */
+  requestsUnavailable: boolean;
+}

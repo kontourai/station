@@ -1,0 +1,7 @@
+{
+  "revision": "1d83584d2baf428cbf1ae7b399e172ea9a99c4e6",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"credentialProfileEnvForHome now refuses an app home that is neither the legacy app home nor a current profile's, and logs an invalid-overlay refusal with the storage id and variable names only. Resolver and peek behaviour unchanged.","inputs":["src-server/providers/app-home/credential-profile-env.ts"]}
+  ]
+}

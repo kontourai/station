@@ -56,7 +56,7 @@ describe('insightsDashboardUtils', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-01-01T12:00:00Z'));
 
-    expect(formatRelativePast('2026-01-01T11:50:00Z')).toBe('10 min ago');
+    expect(formatRelativePast('2026-01-01T11:50:00Z')).toBe('10m ago');
     expect(formatRelativeFuture('2026-01-01T13:30:00Z')).toBe('in 2 hr');
 
     vi.useRealTimers();

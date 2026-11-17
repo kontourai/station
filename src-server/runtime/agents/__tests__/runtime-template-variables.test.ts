@@ -89,6 +89,33 @@ describe('replaceRuntimeTemplateVariables', () => {
     vi.useRealTimers();
   });
 
+  test('inserts a value that looks like a replacement pattern verbatim', () => {
+    getCachedUser.mockReturnValue({
+      alias: 'casey',
+      name: "Casey $' Example",
+      email: 'casey@example.com',
+      title: 'Founder',
+    });
+
+    const result = replaceRuntimeTemplateVariables(
+      'Name: {{user_name}} | Budget: {{budget}} | Echo: {{echo}} | tail',
+      {
+        region: 'us-west-2',
+        defaultModel: 'claude-sonnet',
+        invokeModel: 'claude-sonnet',
+        structureModel: 'claude-sonnet',
+        templateVariables: [
+          { key: 'budget', type: 'static', value: '$$100' },
+          { key: 'echo', type: 'static', value: '$& and $`' },
+        ],
+      },
+    );
+
+    expect(result).toBe(
+      "Name: Casey $' Example | Budget: $$100 | Echo: $& and $` | tail",
+    );
+  });
+
   test('falls back cleanly when auth identity is unavailable', () => {
     getCachedUser.mockImplementation(() => {
       throw new Error('auth unavailable');

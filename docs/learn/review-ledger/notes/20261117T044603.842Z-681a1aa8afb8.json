@@ -1,0 +1,13 @@
+{
+  "revision": "ae25786cb526a0b2fee73a3be3e2dbbf00c6e03a",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Checked cli.md home backup (backs up state roots the registry names), config.md, local-speech and ADR 0020: the change only classifies the new conversation-inbox-hidden.json as state, beside conversation-work-state.json, so it is backed up like the settled store and no claim changes.","inputs":["packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/guides/local-speech.md","note":"Checked cli.md home backup (backs up state roots the registry names), config.md, local-speech and ADR 0020: the change only classifies the new conversation-inbox-hidden.json as state, beside conversation-work-state.json, so it is backed up like the settled store and no claim changes.","inputs":["packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Checked cli.md home backup (backs up state roots the registry names), config.md, local-speech and ADR 0020: the change only classifies the new conversation-inbox-hidden.json as state, beside conversation-work-state.json, so it is backed up like the settled store and no claim changes.","inputs":["packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked cli.md home backup (backs up state roots the registry names), config.md, local-speech and ADR 0020: the change only classifies the new conversation-inbox-hidden.json as state, beside conversation-work-state.json, so it is backed up like the settled store and no claim changes.","inputs":["packages/shared/src/station-home-store-registry.ts"]}
+  ]
+}

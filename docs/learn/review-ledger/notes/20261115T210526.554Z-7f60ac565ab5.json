@@ -1,0 +1,17 @@
+{
+  "revision": "a909819273e2fcd4def6f4bc9c2cf0ede694c21f",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"#4995 adds one sentence about vitest.setup.ts setting STATION_LOG_REPEAT_LIMIT=0; the routing AGENTS guides that cite testing.md reference other sections and remain accurate.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"#4995 adds one sentence about vitest.setup.ts setting STATION_LOG_REPEAT_LIMIT=0; the routing AGENTS guides that cite testing.md reference other sections and remain accurate.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"#4995 adds one sentence about vitest.setup.ts setting STATION_LOG_REPEAT_LIMIT=0; the routing AGENTS guides that cite testing.md reference other sections and remain accurate.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"#4995 adds one sentence about vitest.setup.ts setting STATION_LOG_REPEAT_LIMIT=0; the routing AGENTS guides that cite testing.md reference other sections and remain accurate.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"#4995 adds one sentence about vitest.setup.ts setting STATION_LOG_REPEAT_LIMIT=0; the routing AGENTS guides that cite testing.md reference other sections and remain accurate.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"#4995 adds one sentence about vitest.setup.ts setting STATION_LOG_REPEAT_LIMIT=0; the routing AGENTS guides that cite testing.md reference other sections and remain accurate.","inputs":["docs/guides/testing.md"]}
+  ]
+}

@@ -766,7 +766,7 @@ describe('ToolCallDisplay — a pending multi-line command is shown whole (#3382
     );
     expect(
       await screen.findByRole('menuitem', {
-        name: 'Allow Bash for this session',
+        name: 'Allow all Bash commands for this session',
       }),
     ).toBeTruthy();
   });
@@ -1287,5 +1287,26 @@ describe('ToolCallDisplay — multi-line text arguments show as text', () => {
     expect(
       document.querySelector('.tool-call__hidden-warning')!.textContent,
     ).toContain('These arguments contain hidden characters');
+  });
+});
+
+describe('ToolCallDisplay — a session grant the adapter would refuse is not offered', () => {
+  const MORE = 'More ways to allow this request';
+
+  test('a registry-route part (no request binding) is judged by its tool name', () => {
+    pendingBash({ command: 'ls' });
+    expect(screen.getByRole('button', { name: MORE })).toBeTruthy();
+  });
+
+  test('an orchestration request without its projected grant offers none', () => {
+    // The Claude adapter judges a Bash ask from fields its name does not
+    // carry (a blocked path, the engine's reason), so the name alone could
+    // offer a grant the adapter answers as one call.
+    pendingBash(
+      { command: 'cat /outside/f' },
+      { approvalThreadId: 'thread-1', approvalToolName: 'Bash' },
+    );
+    expect(screen.getByRole('button', { name: 'Allow Once' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: MORE })).toBeNull();
   });
 });

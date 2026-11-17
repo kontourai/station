@@ -15,6 +15,7 @@ import {
   resolveRuntimeHome,
   resolveStationRoot,
   resolveStationRuntimeContext,
+  runtimeChannelFromEnvironment,
   runtimeInstancePath,
   spawnedStationRoot,
   stationProfilesPath,
@@ -62,9 +63,9 @@ describe('Station root runtime path resolver', () => {
     expect(runtimeInstancePath('stable', { env })).toBe(
       '/tmp/station-root/instances/stable',
     );
-    expect(runtimeInstancePath('beta', { env })).toBe(
-      '/tmp/station-root/instances/beta',
-    );
+    expect(() =>
+      runtimeChannelFromEnvironment({ STATION_CHANNEL: 'beta' }),
+    ).toThrow('Unsupported Station runtime channel');
     expect(runtimeInstancePath('nightly', { env })).toBe(
       '/tmp/station-root/instances/nightly',
     );

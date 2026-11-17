@@ -1,0 +1,7 @@
+{
+  "revision": "8cbe9bbfd1addb45446dce86d51850f87b118b7a",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Added the source-write gate, contention-before-activity order and override race tests; the module map's description of this route evidence is unchanged.","inputs":["src-server/routes/orchestration/__tests__/adopted-continuation-dock.routes.test.ts"]}
+  ]
+}

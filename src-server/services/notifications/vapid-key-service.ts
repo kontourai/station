@@ -23,7 +23,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
-import webpush from 'web-push';
+import * as webpush from 'web-push';
 
 const VAPID_KEYS_SCHEMA_VERSION = 1 as const;
 const VAPID_KEYS_FILE = 'vapid-keys.json';

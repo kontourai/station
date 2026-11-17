@@ -132,10 +132,12 @@ docker compose up -d
 Use a comma-separated list only when the same Station is deliberately reachable
 through multiple exact origins. Do not use wildcard origins.
 
-Stable publication targets `ghcr.io/kontourai/station:latest`; preview
-publication targets `:preview`. The release pipeline also defines exact
-`vX.Y.Z`, semver-without-`v`, and immutable `sha-<40-character-SHA>` tags.
-Check the registry and release record for availability before selecting a tag;
+Stable publication promotes the recorded image digest to
+`ghcr.io/kontourai/station:latest`, `:vX.Y.Z`, `:X.Y.Z` and
+`:sha-<40-character-SHA>` aliases. An RC stages under its own immutable
+`:staging-vX.Y.Z-rc.N` name; RC publication moves no Stable alias. Pin the
+`image@sha256:...` digest from the validated release inventory when deploying.
+Check the registry and release record for availability before selecting an image;
 use the source-build path below when the selected artifact is not published. Inspect the
 runtime identity through the public same-origin endpoint:
 
@@ -153,13 +155,13 @@ the container smoke build:
 
 ```bash
 export STATION_RELEASE_SHA="$(git rev-parse HEAD)"
-export STATION_RELEASE_REF=v0.0.0-preview.1
+export STATION_RELEASE_REF=v0.0.0-rc.1
 export STATION_RELEASE_CREATED_AT="$(git show -s --format=%cI HEAD | xargs -I{} node -e 'process.stdout.write(new Date(process.argv[1]).toISOString())' '{}')"
-docker build --pull --tag station-local:preview \
+docker build --pull --tag station-local:rc \
   --build-arg "STATION_RELEASE_SHA=$STATION_RELEASE_SHA" \
   --build-arg "STATION_RELEASE_REF=$STATION_RELEASE_REF" \
   --build-arg "STATION_RELEASE_CREATED_AT=$STATION_RELEASE_CREATED_AT" .
-export STATION_IMAGE=station-local:preview
+export STATION_IMAGE=station-local:rc
 docker compose up -d
 ```
 
@@ -705,16 +707,16 @@ that this audit installed or recovered a live service.
 
 ### Channel desktop apps: ports, homes, and targeting
 
-The macOS desktop ships as up to three coexisting channel apps — `Station.app`
-(stable), `Station Beta.app`, `Station Nightly.app`. Each channel has a
-default server port — stable `18141`, beta `28141`, nightly `38141` — carried
+The macOS desktop has two coexisting release-channel apps: `Station.app`
+(Stable) and `Station Nightly.app`. Each channel has a default server port —
+Stable `18141` and Nightly `38141` — carried
 in the app's **persisted service manifest** (`src-desktop/src/service_state.rs`
 reconciles `manifest.server_port` against local state), so the port is stable
 across restarts and self-updates in practice, but it is configuration, not a
 compile-time constant: trust the manifest/live process, not the number.
 
 Default homes are channel-qualified under `STATION_ROOT/instances/` (for
-example `stable`, `beta`, `nightly`); an explicitly configured home or persisted
+example `stable` and `nightly`); an explicitly configured home or persisted
 service manifest can choose another admitted path. The old `~/.station-nightly`
 example described one deployment, not the current universal Nightly home.
 Inspect the owning service manifest and instance status rather than guessing

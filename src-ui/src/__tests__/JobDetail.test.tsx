@@ -168,3 +168,36 @@ test.each([false, true])(
     );
   },
 );
+
+// `usageKnown: false` covers a run whose usage was never reported (finished
+// or indeterminate), and the monitor stays paused until it is resolved.
+test('a monitor run that finished without usage says the monitor is paused and how to continue', () => {
+  schedulerJobs.mockReturnValue({
+    data: [
+      {
+        name: JOB_NAME,
+        provider: 'station',
+        prompt: '',
+        enabled: true,
+        monitor: {
+          kind: 'github-pull-request',
+          objective: 'review-ready',
+          target: 'https://github.com/kontourai/station/pull/1',
+          projectId: 'project-alpha',
+          agentId: 'reviewer',
+        },
+        monitorState: { usageKnown: false, triggerId: 'trigger-1' },
+      },
+    ],
+  });
+  renderWithRuns([]);
+  expect(
+    screen.getByText(
+      'This run’s usage wasn’t reported, so the monitor is paused. Resolve it from Task evidence to continue.',
+    ),
+  ).toBeTruthy();
+  expect(
+    screen.getByRole('button', { name: 'Resolve from Task evidence' }),
+  ).toBeTruthy();
+  expect(screen.queryByText(/isn't final yet/)).toBeNull();
+});

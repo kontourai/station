@@ -118,7 +118,7 @@ export function AgentToolLibrary({
             void access.refetch();
           }}
         >
-          Try again
+          Retry
         </Button>
       </p>
     );

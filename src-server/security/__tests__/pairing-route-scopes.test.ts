@@ -340,6 +340,25 @@ describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () =
     );
   });
 
+  test('read markers sit at the read tier as two exact leaves; nothing else under the prefix is mapped', () => {
+    expect(requiredPairingScope('POST', '/api/read-markers/summary')).toBe(
+      'orchestration:read',
+    );
+    expect(requiredPairingScope('POST', '/api/read-markers/mark')).toBe(
+      'orchestration:read',
+    );
+    // Not a family: a sibling, nested leaf or other method is refused.
+    expect(
+      requiredPairingScope('POST', '/api/read-markers/other'),
+    ).toBeUndefined();
+    expect(
+      requiredPairingScope('POST', '/api/read-markers/mark/x'),
+    ).toBeUndefined();
+    expect(
+      requiredPairingScope('DELETE', '/api/read-markers/mark'),
+    ).toBeUndefined();
+  });
+
   test('declares the protected Task tool-result projection leaf at the read tier', () => {
     const path = '/api/tasks/:taskId/tool-result-references';
     expect(PAIRING_SCOPE_FAMILY_INHERITED_LEAVES).toContainEqual({
@@ -475,6 +494,33 @@ describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () =
       [
         'POST',
         '/api/orchestration/sessions/:threadId/usage-limit/hold',
+        'orchestration:operate',
+        'family',
+        '/api/orchestration',
+        true,
+      ],
+      // The person's restart or sign-in of one engine-run MCP server.
+      [
+        'POST',
+        '/api/orchestration/sessions/:threadId/mcp-servers/:serverName/reconnect',
+        'orchestration:operate',
+        'family',
+        '/api/orchestration',
+        true,
+      ],
+      // A Session's live continuity, and the person's in-place rewind of its
+      // engine context.
+      [
+        'GET',
+        '/api/orchestration/sessions/:threadId/continuity',
+        'orchestration:read',
+        'family',
+        '/api/orchestration',
+        true,
+      ],
+      [
+        'POST',
+        '/api/orchestration/sessions/:threadId/rewind',
         'orchestration:operate',
         'family',
         '/api/orchestration',
@@ -1057,6 +1103,13 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     // remote-access-threat-model.md`'s "Cross-station reads" section.
     ['GET', '/api/environments/ssh/sessions', 'orchestration:operate'],
     ['HEAD', '/api/environments/ssh/sessions', 'orchestration:operate'],
+    // A remote session's relayed history: full transcripts of another
+    // Station, under the same leaf on purpose.
+    [
+      'GET',
+      '/api/environments/ssh/sessions/env-id/external:claude:thread/history',
+      'orchestration:operate',
+    ],
     ['GET', '/api/pairing/devices', 'access:manage'],
     ['GET', '/api/pairing/native-relay-surfaces', 'access:manage'],
     ['POST', '/api/pairing/native-relay-surfaces', 'access:manage'],
@@ -1587,6 +1640,10 @@ describe('pairing-route-scopes: table-driven lookups', () => {
         'POST',
         '/api/connections/agent/codex/credential-recovery/profiles/profile-a/apply',
       ],
+      // "Continue on <label>" lists and switches the same accounts from a
+      // usage-limit stop, so it is not the Session family's operate tier.
+      ['GET', '/api/orchestration/sessions/thread-1/usage-limit/continue-on'],
+      ['POST', '/api/orchestration/sessions/thread-1/usage-limit/continue-on'],
     ] as const;
     const standardResolver = {
       verifyCredential: vi.fn(async () => true),

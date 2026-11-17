@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
+import { lstat, readFile } from 'node:fs/promises';
 import { relative } from 'node:path';
 import type {
   KnowledgeDocumentMeta,
@@ -20,6 +21,16 @@ import {
 import { readKnowledgeDocuments } from './knowledge-storage.js';
 
 const logger = createLogger({ name: 'knowledge-filesystem' });
+
+/** Longest document, in characters, a directory scan indexes. */
+const MAX_SCANNED_DOCUMENT_CHARACTERS = 500_000;
+/**
+ * Largest file a directory scan reads at all. UTF-8 spends at most three
+ * bytes on one UTF-16 code unit, so a file above this size always decodes to
+ * more than `MAX_SCANNED_DOCUMENT_CHARACTERS` and is skipped without being
+ * read. A file at or below it is read and measured exactly as before.
+ */
+const MAX_SCANNED_FILE_BYTES = MAX_SCANNED_DOCUMENT_CHARACTERS * 3;
 
 export async function listKnowledgeDocuments({
   projectSlug,
@@ -172,20 +183,41 @@ export async function scanKnowledgeDirectories({
         extensions.map((extension) => normalizeKnowledgeExtension(extension)),
       )
     : DEFAULT_EXTENSIONS;
-  const files = collectKnowledgeFiles(scanPath, allowedExtensions);
-  const filteredFiles = applyKnowledgeScanPatterns(
-    files,
+  // The patterns are applied inside the walk, so the walk's file cap counts
+  // files this scan will index rather than files the patterns then discard.
+  const files = await collectKnowledgeFiles(
     scanPath,
-    includePatterns,
-    excludePatterns,
+    allowedExtensions,
+    (filePath) =>
+      applyKnowledgeScanPatterns(
+        [filePath],
+        scanPath,
+        includePatterns,
+        excludePatterns,
+      ).length > 0,
   );
 
   let indexed = 0;
   let skipped = 0;
-  for (const filePath of filteredFiles) {
+  for (const filePath of files) {
     try {
-      const content = readFileSync(filePath, 'utf-8');
-      if (content.length === 0 || content.length > 500_000) {
+      // Size first: an empty or oversized file is skipped without its bytes
+      // ever being read into memory. `lstat`, so a file swapped for a link
+      // since the walk is not read through either.
+      const info = await lstat(filePath);
+      if (
+        !info.isFile() ||
+        info.size === 0 ||
+        info.size > MAX_SCANNED_FILE_BYTES
+      ) {
+        skipped += 1;
+        continue;
+      }
+      const content = await readFile(filePath, 'utf-8');
+      if (
+        content.length === 0 ||
+        content.length > MAX_SCANNED_DOCUMENT_CHARACTERS
+      ) {
         skipped += 1;
         continue;
       }

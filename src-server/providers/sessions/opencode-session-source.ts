@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readdirSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, sep } from 'node:path';
@@ -26,6 +25,13 @@ import type {
   AttachedSessionSource,
   AttachedSessionSourceOutcome,
 } from './attached-session-source.js';
+import {
+  asRecord,
+  boundedInteger,
+  digest,
+  isPlainRecord,
+  text,
+} from './session-source-values.js';
 import {
   deriveConfigHomeAffinity,
   resolveConfigHomeAffinity,
@@ -56,6 +62,13 @@ const EPOCH = '1970-01-01T00:00:00.000Z';
 const SOURCE_HOME_NAMESPACE = 'opencode-data-home';
 const PROMPT_SOURCE = 'opencode-session';
 const DATABASE_FILE_PATTERN = /^opencode(?:-[A-Za-z0-9._-]{1,64})?\.db$/u;
+const NEXT_DATABASE = 'opencode-next.db';
+/**
+ * A running compaction usually finishes within minutes. One held longer is
+ * most likely from an OpenCode process that died mid-compaction in a session
+ * nobody reopened (reopening settles it); it is reported once.
+ */
+const COMPACTION_HOLD_WARN_MS = 15 * 60 * 1000;
 
 /**
  * The only tables this source reads, and the columns it depends on. Message
@@ -89,6 +102,42 @@ const EXACT_PART_COLUMNS = [
   'time_updated',
   'data',
 ] as const;
+/**
+ * OpenCode 2.x keeps sessions in `session_v2` and each message as one
+ * self-contained `session_message` row, ordered by `seq`. An assistant row's
+ * content may also live in `session_part` (written under OpenCode's
+ * `experimental.part_rows`; the table first appears in 2.3), which OpenCode
+ * reads before the row's inline content. Same rule as above: identity columns
+ * of the session table, exact column sets for the transcript tables.
+ */
+const REQUIRED_SESSION_V2_COLUMNS = [
+  'id',
+  'parent_id',
+  'directory',
+  'time_created',
+  'time_updated',
+  'time_archived',
+  'version',
+] as const;
+const EXACT_SESSION_MESSAGE_COLUMNS = [
+  'id',
+  'session_id',
+  'type',
+  'seq',
+  'time_created',
+  'time_updated',
+  'data',
+] as const;
+const EXACT_SESSION_PART_COLUMNS = [
+  'message_id',
+  'session_id',
+  'ordinal',
+  'type',
+  'call_id',
+  'time_created',
+  'time_updated',
+  'data',
+] as const;
 
 const logger = createLogger({ name: 'opencode-session-source' });
 
@@ -99,15 +148,33 @@ interface OpenCodeUsage {
   cacheWrite: number;
 }
 
+/**
+ * Last fully consumed message: `(time_created, id)` in an OpenCode 1.x store,
+ * `seq` (with the row id it named) in an OpenCode 2.x store. A position of
+ * the other layout is never reinterpreted.
+ */
+type CursorPosition =
+  | { time: number; id: string }
+  | { seq: number; id: string };
+
 interface OpenCodeCursorState extends Record<string, unknown> {
   version: 1;
-  /** Last fully consumed message, in the writer's (time_created, id) order. */
-  after?: { time: number; id: string };
+  after?: CursorPosition;
   turnId?: string;
   /** The open turn already imported assistant text (paragraph boundary). */
   assistantTextObserved?: true;
   usage?: OpenCodeUsage;
+  /** OpenCode 2.x: the open turn's latest step finish, reported at its close. */
+  finish?: 'stop' | 'max-tokens' | 'other';
 }
+
+/**
+ * Which writer layout a store has. OpenCode 1.x keeps `session`/`message`/
+ * `part` (1.x releases may also carry an experimental `session_message` that
+ * references `session`); OpenCode 2.x keeps `session_v2`, whose presence
+ * decides, since 2.x reads only that table.
+ */
+type StoreLayout = { kind: 'v1' } | { kind: 'v2'; partRows: boolean };
 
 interface PooledConnection {
   db: DatabaseSync;
@@ -128,6 +195,7 @@ interface SourceRegistration extends DatabaseRegistration {
 }
 
 interface MessageInfo {
+  /** OpenCode 1.x `role`; OpenCode 2.x the row's `type`. */
   role?: string;
   completed?: number;
   finish?: string;
@@ -136,11 +204,23 @@ interface MessageInfo {
   hasError: boolean;
   errorName?: string;
   errorMessage?: string;
+  /** OpenCode 2.x `idle` outcome. */
+  outcome?: string;
+  /** OpenCode 2.x `compaction` status. */
+  status?: string;
+  /** OpenCode 2.x user prompt text. */
+  text?: string;
+  /** OpenCode 2.x assistant step usage. */
+  tokens?: unknown;
 }
 
 interface MessageRow {
   id: string;
   time: number;
+  /** OpenCode 2.x order within the session. */
+  seq?: number;
+  /** `time_updated`: OpenCode rewrites the row as the message progresses. */
+  updated?: number;
   bytes: number;
   /** Projected fields; null when the row is not valid JSON or is oversized. */
   info: MessageInfo | null;
@@ -168,6 +248,8 @@ interface OpenCodeSessionSourceOptions {
   yieldFn?: () => Promise<void>;
   /** Test seam for the one-per-reason schema/open warning. */
   warn?: (message: string, meta: Record<string, unknown>) => void;
+  /** Test seam for the clock that ages a held compaction. */
+  now?: () => number;
 }
 
 /**
@@ -182,8 +264,15 @@ interface OpenCodeSessionSourceOptions {
  * and answer drained reads without querying the transcript tables.
  * (SQLite gives any WAL reader the `-wal`/`-shm` files it needs, so an empty
  * pair can appear beside a store OpenCode last closed cleanly.)
- * Only `session`, `message` and `part` are queried — the same file holds
- * account tokens and credentials, which this source never selects.
+ * Only the transcript tables are queried: `session`, `message` and `part`
+ * in an OpenCode 1.x store, `session_v2`, `session_message` and
+ * `session_part` in an OpenCode 2.x store (see `StoreLayout`), plus, in a
+ * 2.x store beside an `opencode-next.db`, the one `kv` row OpenCode keeps
+ * its migration state in, read by exact key. The same file holds account
+ * tokens and credentials, which this source never selects.
+ * Reading through OpenCode's own server API instead would need an
+ * `opencode serve` process kept running beside Station, and starting one
+ * migrates (writes) this store.
  *
  * The pre-SQLite JSON layout (`storage/session/**.json`) is not read: current
  * OpenCode migrates it into the database on first start.
@@ -209,6 +298,9 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
   private readonly readYieldEveryMessages: number;
   private readonly yieldFn: () => Promise<void>;
   private readonly warned = new Set<string>();
+  private readonly now: () => number;
+  /** Held compactions already reported, by thread and message. */
+  private readonly heldWarned = new Set<string>();
   private readonly handles = new Map<string, SourceRegistration>();
   /**
    * One long-lived read-only connection per database, reopened only when the
@@ -223,7 +315,7 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
   /** Schema verdict per database, keyed by file identity and schema_version. */
   private readonly schemaChecks = new Map<
     string,
-    { key: string; mismatch: string | null }
+    { key: string; verdict: SchemaVerdict }
   >();
   /** The last discovery, reused while no database or its WAL has changed. */
   private lastDiscovery?: {
@@ -284,17 +376,26 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
       options.yieldFn ??
       (() => new Promise<void>((resolve) => setImmediate(resolve)));
     this.warn = options.warn ?? ((message, meta) => logger.warn(message, meta));
+    this.now = options.now ?? Date.now;
   }
 
   /**
-   * Station runs OpenCode itself as an ACP connection (provider `acp`), and
-   * those runs land in this same store under the ACP session id. Naming that
-   * id keeps the follower from importing Station's own session a second time.
+   * Station runs OpenCode itself, and those runs land in this same store:
+   * as an ACP connection (provider `acp`, under the ACP session id), or as
+   * the `opencode` engine, whose cursor (`OpenCodeResumeCursor`,
+   * `kind: 'opencode'`) names the OpenCode session id over either of its
+   * transports (the ACP session id is the same id). Naming that id keeps the
+   * follower from importing Station's own session a second time.
    */
   ownedNativeSessionId(session: {
     provider: string;
     resumeCursor?: unknown;
   }): string | undefined {
+    if (
+      isRecord(session.resumeCursor) &&
+      session.resumeCursor.kind === 'opencode'
+    )
+      return boundedId(session.resumeCursor.sessionId);
     if (session.provider !== 'acp' || !isRecord(session.resumeCursor)) {
       return undefined;
     }
@@ -350,18 +451,73 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
       updatedAt: number;
       registration: SourceRegistration;
     }> = [];
-    for (const database of listed.databases) {
-      const result = await this.withDatabase(database, (db) => {
+    // OpenCode 2.x's 1.x-to-2.x migration imports `opencode-next.db` into
+    // `opencode.db` (every session row and its `session_message` rows, never
+    // a 1.x message/part transcript) and leaves the file in place. It is
+    // read last, so beside a 2.x store:
+    // - once that migration has completed (`migration.v1-v2` in `kv`), a file
+    //   of the shape it imports (`isNextDatabase`: project, session and
+    //   session_message) contributes only sessions created after the
+    //   completion was recorded: every earlier one is in the 2.x store or was
+    //   deleted there. OpenCode never imports the file again (and records
+    //   completion even when no file existed yet), so a later session, from
+    //   a pinned 1.x next-channel build or a file created afterwards, is the
+    //   next store's own;
+    // - a file of that shape no layout here reads is skipped too, silently;
+    // - otherwise it is read by its own layout, without any session the 2.x
+    //   store holds in any state (archived, a child, never prompted), whose
+    //   2.x copy is the one OpenCode keeps.
+    // Alone, the file is read or fails closed like any other store.
+    const ordered = [
+      ...listed.databases.filter(
+        (database) => database.fileName !== NEXT_DATABASE,
+      ),
+      ...listed.databases.filter(
+        (database) => database.fileName === NEXT_DATABASE,
+      ),
+    ];
+    const v2Stores: DatabaseRegistration[] = [];
+    /** When a 2.x store recorded its migration completed (epoch ms). */
+    let v2MigrationCompletedAt: number | undefined;
+    for (const database of ordered) {
+      const besideV2 =
+        database.fileName === NEXT_DATABASE && v2Stores.length > 0;
+      // Sessions created at or before this were imported (or deleted since).
+      let importedThrough: number | undefined;
+      if (besideV2) {
+        const shape = this.nextStoreShape(database);
+        if (shape.importShape && !shape.readable) continue;
+        if (shape.importShape) importedThrough = v2MigrationCompletedAt;
+      }
+      const result = await this.withDatabase(database, (db, layout) => {
+        if (layout.kind === 'v2') {
+          v2Stores.push(database);
+          const completedAt = migrationCompletedAt(db);
+          if (completedAt !== undefined) {
+            v2MigrationCompletedAt = Math.max(
+              v2MigrationCompletedAt ?? completedAt,
+              completedAt,
+            );
+          }
+        }
         // `time_updated` has no index upstream, so this is one scan of the
         // session table (about 12 ms warm on a 61k-session store). The
-        // EXISTS probe uses `message_session_time_created_id_idx`; it skips
-        // the many sessions OpenCode creates and never prompts.
+        // EXISTS probe uses `message_session_time_created_id_idx` (2.x:
+        // `session_message_session_type_seq_idx`); it skips the many
+        // sessions OpenCode creates and never prompts.
         const rows = db
           .prepare(
-            `SELECT id, directory, time_created, time_updated FROM session
-             WHERE parent_id IS NULL AND time_archived IS NULL
-               AND EXISTS (SELECT 1 FROM message WHERE message.session_id = session.id)
-             ORDER BY time_updated DESC, id ASC LIMIT ?`,
+            layout.kind === 'v1'
+              ? `SELECT id, directory, time_created, time_updated FROM session
+                 WHERE parent_id IS NULL AND time_archived IS NULL
+                   AND EXISTS (SELECT 1 FROM message WHERE message.session_id = session.id)
+                 ORDER BY time_updated DESC, id ASC LIMIT ?`
+              : `SELECT id, directory, time_created, time_updated FROM session_v2
+                 WHERE parent_id IS NULL AND time_archived IS NULL
+                   AND EXISTS (SELECT 1 FROM session_message
+                     WHERE session_message.session_id = session_v2.id
+                       AND session_message.type = 'user')
+                 ORDER BY time_updated DESC, id ASC LIMIT ?`,
           )
           .all(this.maxCandidates + 1);
         return rows;
@@ -373,8 +529,21 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
       if (result.value.length > this.maxCandidates) {
         outcome = mergeOutcome(outcome, 'candidate_limit');
       }
+      const held = besideV2
+        ? await this.heldByV2Stores(
+            result.value.map((row) => String(row.id)),
+            v2Stores,
+          )
+        : new Set<string>();
       // Every database contributes its newest; the merged list is capped below.
       for (const row of result.value) {
+        if (held.has(String(row.id))) continue;
+        if (
+          importedThrough !== undefined &&
+          !(Number(row.time_created) > importedThrough)
+        ) {
+          continue;
+        }
         const registration = this.registrationFor(
           database,
           sourceHome.affinity,
@@ -440,17 +609,23 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     if (!cursor) return rejected();
 
     const signature = this.storeSignature(current);
-    const cursorKey = JSON.stringify(previousCursor);
+    const cursorKey = cursorCacheKey(previousCursor);
     const drained = this.drainedReads.get(session.threadId);
     if (drained?.signature === signature && drained.cursor === cursorKey) {
       return { outcome: drained.outcome, events: [], cursor: previousCursor };
     }
     this.drainedReads.delete(session.threadId);
 
-    const result = await this.withDatabase(current, async (db) => {
+    const result = await this.withDatabase(current, async (db, layout) => {
+      // A position written for the other layout (the store was migrated
+      // under this thread) is never reinterpreted.
+      const after = cursor.state.after;
+      if (after && 'seq' in after !== (layout.kind === 'v2')) return null;
       const row = db
         .prepare(
-          'SELECT id, directory, time_created, time_updated, version FROM session WHERE id = ?',
+          `SELECT id, directory, time_created, time_updated, version FROM ${
+            layout.kind === 'v1' ? 'session' : 'session_v2'
+          } WHERE id = ?`,
         )
         .get(session.sessionId);
       const refreshed = row
@@ -463,18 +638,35 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
         return null;
       }
       return this.readMessages(
-        db,
-        session,
         cursor,
-        isLegacyUsageVersion(row?.version),
+        layout.kind === 'v1'
+          ? v1Reader(db, session, cursor, {
+              maxMessages: this.maxMessages,
+              maxRowBytes: this.maxRowBytes,
+              maxPartsPerMessage: this.maxPartsPerMessage,
+              legacyVersion: isLegacyUsageVersion(row?.version),
+            })
+          : v2Reader(db, session, cursor, layout.partRows, {
+              maxMessages: this.maxMessages,
+              maxRowBytes: this.maxRowBytes,
+              maxPartsPerMessage: this.maxPartsPerMessage,
+            }),
+        isCount(row?.time_updated) ? row.time_updated : undefined,
       );
     });
     if (!result.ok || !result.value) return rejected();
-    const { read, drained: reachedEnd } = result.value;
-    if (reachedEnd) {
+    const { read, drained: reachedEnd, held } = result.value;
+    // A read held by a running compaction is not answered from the drained
+    // cache until the hold is reported: a crashed session nobody reopens
+    // leaves the store unchanged, and the bound must still be noticed.
+    const unreportedHold =
+      held?.info?.role === 'compaction' &&
+      held.info.status === 'running' &&
+      !this.reportLongHold(current, session, held);
+    if (reachedEnd && !unreportedHold) {
       this.drainedReads.set(session.threadId, {
         signature,
-        cursor: JSON.stringify(read.cursor),
+        cursor: cursorCacheKey(read.cursor),
         outcome: read.outcome,
       });
       // Bounded by the discovered set: forget threads no longer discovered.
@@ -487,77 +679,34 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
   }
 
   private async readMessages(
-    db: DatabaseSync,
-    session: AttachedSessionDescriptor,
     cursor: DecodedCursor,
-    legacyVersion: boolean,
-  ): Promise<{ read: AttachedSessionReadResult; drained: boolean }> {
-    const after = cursor.state.after;
-    // Only the fields this source maps are projected out of the writer's
-    // JSON, inside SQLite: a user message's file diffs or a tool's metadata
-    // never reach this process, and the row bound applies to what does.
-    const messageRows = db
-      .prepare(
-        `WITH m AS (
-           SELECT id, time_created AS time,
-             CASE WHEN json_valid(data) THEN json_object(
-               'role', data->>'$.role',
-               'completed', data->'$.time.completed',
-               'finish', data->>'$.finish',
-               'parentID', data->>'$.parentID',
-               'summary', json_type(data, '$.summary') = 'true',
-               'hasError', json_type(data, '$.error') IS NOT NULL,
-               'errorName', data->>'$.error.name',
-               'errorMessage', substr(data->>'$.error.data.message', 1, 4096)
-             ) END AS slim
-           FROM message
-           WHERE session_id = ?
-             AND (time_created > ? OR (time_created = ? AND id > ?))
-           ORDER BY time_created ASC, id ASC LIMIT ?)
-         SELECT id, time, octet_length(slim) AS bytes,
-           CASE WHEN octet_length(slim) <= ? THEN slim END AS data FROM m`,
-      )
-      .all(
-        session.sessionId,
-        after?.time ?? -1,
-        after?.time ?? -1,
-        after?.id ?? '',
-        this.maxMessages + 1,
-        this.maxRowBytes,
-      )
-      .map(messageRow);
-    const partQuery = db.prepare(
-      `WITH p AS (
-         SELECT id,
-           CASE WHEN json_valid(data) THEN json_object(
-             'type', data->>'$.type',
-             'text', data->>'$.text',
-             'synthetic', data->'$.synthetic',
-             'ignored', data->'$.ignored',
-             'callID', data->>'$.callID',
-             'tool', data->>'$.tool',
-             'providerExecuted', data->'$.metadata.providerExecuted',
-             'state', json_object(
-               'status', data->>'$.state.status',
-               'input', data->'$.state.input',
-               'output', data->>'$.state.output',
-               'error', data->>'$.state.error'
-             ),
-             'tokens', data->'$.tokens'
-           ) END AS slim
-         FROM part WHERE message_id = ? AND session_id = ?
-         ORDER BY id ASC LIMIT ?)
-       SELECT id, octet_length(slim) AS bytes,
-         CASE WHEN octet_length(slim) <= ? THEN slim END AS data FROM p`,
-    );
-
+    reader: LayoutReader,
+    sessionUpdated?: number,
+  ): Promise<{
+    read: AttachedSessionReadResult;
+    drained: boolean;
+    held?: MessageRow;
+  }> {
+    const messageRows = reader.messages();
     let outcome: AttachedSessionSourceOutcome = 'ok';
     const events: CanonicalRuntimeEvent[] = [];
     let state = cloneState(cursor.state);
     let offset = cursor.offset;
     let bytesUsed = 0;
+    /** The unsettled message that ended the read, if one did. */
+    let held: MessageRow | undefined;
     // Reached the end of what is settled: no page bound stopped the read.
     let drained = messageRows.length <= this.maxMessages;
+    // The newest row write seen: the session row, each message read, and
+    // the parts of a message still being written.
+    let newestWrite: number | undefined = sessionUpdated;
+    for (const row of messageRows)
+      if (row?.updated !== undefined)
+        newestWrite = Math.max(newestWrite ?? 0, row.updated);
+    const written = () =>
+      newestWrite !== undefined
+        ? { sourceWriteAt: millisTimestamp(newestWrite) }
+        : {};
     const window = messageRows.slice(0, this.maxMessages);
     for (const [index, message] of window.entries()) {
       // A full page is a few hundred parts parsed on the main thread; yield
@@ -576,14 +725,7 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
           drained: false,
         };
       }
-      const parts = partQuery
-        .all(
-          message.id,
-          session.sessionId,
-          this.maxPartsPerMessage + 1,
-          this.maxRowBytes,
-        )
-        .map(partRow);
+      const parts = reader.parts(message);
       const planned = planParts(parts, this.maxPartsPerMessage, this.maxBytes);
       const messageBytes = message.bytes + planned.bytes;
       if (bytesUsed > 0 && bytesUsed + messageBytes > this.maxBytes) {
@@ -591,7 +733,7 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
         drained = false;
         break;
       }
-      const mapped = mapMessage(
+      const mapped = reader.map(
         message,
         planned,
         {
@@ -599,14 +741,26 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
           assistant: messageRows
             .slice(index + 1)
             .some((later) => later?.info?.role === 'assistant'),
+          idle: messageRows
+            .slice(index + 1)
+            .some((later) => later?.info?.role === 'idle'),
+          runningCompaction: messageRows
+            .slice(index + 1)
+            .some(
+              (later) =>
+                later?.info?.role === 'compaction' &&
+                later.info.status === 'running',
+            ),
         },
-        session,
         cloneState(state),
-        legacyVersion,
       );
       if (mapped.kind === 'unsettled') {
+        const newestPart = reader.newestPartWrite(message);
+        if (newestPart !== undefined)
+          newestWrite = Math.max(newestWrite ?? 0, newestPart);
         outcome = mergeOutcome(outcome, 'incomplete_tail');
         drained = true;
+        held = message;
         break;
       }
       if (mapped.kind === 'oversized') {
@@ -642,15 +796,21 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
       events.push(...remaining);
       bytesUsed += messageBytes;
       state = mapped.state;
-      state.after = { time: message.time, id: message.id };
+      state.after = reader.position(message);
       offset += 1;
       if (index === window.length - 1 && messageRows.length > window.length) {
         outcome = mergeOutcome(outcome, 'byte_limit');
       }
     }
     return {
-      read: { outcome, events, cursor: encodeCursor(offset, state) },
+      read: {
+        outcome,
+        events,
+        cursor: encodeCursor(offset, state),
+        ...written(),
+      },
       drained,
+      ...(held ? { held } : {}),
     };
   }
 
@@ -743,7 +903,7 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
    */
   private async withDatabase<T>(
     database: DatabaseRegistration,
-    body: (db: DatabaseSync) => T | Promise<T>,
+    body: (db: DatabaseSync, layout: StoreLayout) => T | Promise<T>,
   ): Promise<
     | { ok: true; value: T }
     | { ok: false; outcome: AttachedSessionSourceOutcome }
@@ -752,15 +912,15 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
     try {
       connection = this.connectionFor(database);
       connection.active += 1;
-      const mismatch = this.checkedSchema(database, connection.db);
-      if (mismatch) {
-        this.warnOnce(database, `schema:${mismatch}`, {
+      const verdict = this.checkedSchema(database, connection.db);
+      if ('mismatch' in verdict) {
+        this.warnOnce(database, `schema:${verdict.mismatch}`, {
           reason: 'unsupported_schema',
-          detail: mismatch,
+          detail: verdict.mismatch,
         });
         return { ok: false, outcome: 'rejected_candidate' };
       }
-      return { ok: true, value: await body(connection.db) };
+      return { ok: true, value: await body(connection.db, verdict.layout) };
     } catch (error) {
       this.warnOnce(database, `error:${errorCode(error)}`, {
         reason: 'database_unreadable',
@@ -802,6 +962,89 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
       // An unreadable store has no stable signature; never reuse a cache.
       return `unreadable:${++this.generations}`;
     }
+  }
+
+  /**
+   * Reports a running compaction that has held `session`'s read past the
+   * bound, once per thread and row in each Station run. Returns whether it
+   * has been reported. Names the database, conversation and session ids,
+   * never transcript data.
+   */
+  private reportLongHold(
+    database: DatabaseRegistration,
+    session: AttachedSessionDescriptor,
+    held: MessageRow,
+  ): boolean {
+    const key = `${session.threadId}\u0000${held.id}`;
+    if (this.heldWarned.has(key)) return true;
+    if (this.now() - held.time < COMPACTION_HOLD_WARN_MS) return false;
+    this.heldWarned.add(key);
+    if (this.heldWarned.size > this.maxCandidates * 2) {
+      const oldest = this.heldWarned.values().next().value;
+      if (oldest !== undefined) this.heldWarned.delete(oldest);
+    }
+    this.warn(
+      'An OpenCode compaction has not finished; later messages in this conversation wait for it.',
+      {
+        database: database.fileName,
+        reason: 'compaction_unfinished',
+        // Identifiers only: Station's conversation and OpenCode's session.
+        threadId: session.threadId,
+        sessionId: session.sessionId,
+        heldForMinutes: Math.floor((this.now() - held.time) / 60_000),
+      },
+    );
+    return true;
+  }
+
+  /**
+   * Whether `database` is readable by a layout here, and whether it has the
+   * shape OpenCode 2.x imports as `opencode-next.db` (its `isNextDatabase`:
+   * project, session and session_message tables). Unopenable reads as
+   * neither, so the caller's normal read reports it.
+   */
+  private nextStoreShape(database: DatabaseRegistration): {
+    readable: boolean;
+    importShape: boolean;
+  } {
+    try {
+      const db = this.connectionFor(database).db;
+      const tables = new Set(
+        db
+          .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+          .all()
+          .map((row) => String(row.name)),
+      );
+      return {
+        readable: !('mismatch' in this.checkedSchema(database, db)),
+        importShape:
+          tables.has('project') &&
+          tables.has('session') &&
+          tables.has('session_message'),
+      };
+    } catch {
+      return { readable: false, importShape: false };
+    }
+  }
+
+  /**
+   * The ids among `ids` (one store's candidates, so at most the candidate
+   * bound plus one) that any 2.x store holds in `session_v2`, in any state:
+   * one primary-key lookup each. A 2.x store unreadable now holds none.
+   */
+  private async heldByV2Stores(
+    ids: string[],
+    stores: DatabaseRegistration[],
+  ): Promise<Set<string>> {
+    const held = new Set<string>();
+    for (const store of stores) {
+      const result = await this.withDatabase(store, (db) => {
+        const lookup = db.prepare('SELECT 1 FROM session_v2 WHERE id = ?');
+        return ids.filter((id) => lookup.get(id) !== undefined);
+      });
+      if (result.ok) for (const id of result.value) held.add(id);
+    }
+    return held;
   }
 
   /** Release every held connection (the follower is stopping). */
@@ -846,14 +1089,14 @@ export class OpenCodeSessionSource implements AttachedSessionSource {
   private checkedSchema(
     database: DatabaseRegistration,
     db: DatabaseSync,
-  ): string | null {
+  ): SchemaVerdict {
     const version = db.prepare('PRAGMA schema_version').get()?.schema_version;
     const key = `${database.fileIdentity}:${String(version)}`;
     const cached = this.schemaChecks.get(database.path);
-    if (cached?.key === key) return cached.mismatch;
-    const mismatch = schemaMismatch(db);
-    this.schemaChecks.set(database.path, { key, mismatch });
-    return mismatch;
+    if (cached?.key === key) return cached.verdict;
+    const verdict = checkSchema(db);
+    this.schemaChecks.set(database.path, { key, verdict });
+    return verdict;
   }
 
   private warnOnce(
@@ -880,33 +1123,326 @@ function closeQuietly(db: DatabaseSync): void {
   }
 }
 
-function schemaMismatch(db: DatabaseSync): string | null {
+type SchemaVerdict = { layout: StoreLayout } | { mismatch: string };
+
+/**
+ * When OpenCode's 1.x-to-2.x migration recorded itself completed in this 2.x
+ * store (the `time_updated` of the one `kv` row OpenCode keeps its state in,
+ * `migration.v1-v2`, read by its exact key; epoch ms), or undefined when it
+ * has not: no table, no row, another phase, or an unusable time.
+ */
+function migrationCompletedAt(db: DatabaseSync): number | undefined {
+  try {
+    const row = db
+      .prepare(
+        "SELECT value, time_updated FROM kv WHERE key = 'migration.v1-v2'",
+      )
+      .get();
+    const state =
+      typeof row?.value === 'string' ? parseRecord(row.value) : null;
+    return state?.phase === 'completed' && isCount(row?.time_updated)
+      ? row.time_updated
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The store's layout, or why it is not one this source reads. The verdict
+ * names a table and what is wrong with it, never a value from it.
+ */
+function checkSchema(db: DatabaseSync): SchemaVerdict {
   const columns = (table: string): string[] =>
     db
       .prepare('SELECT name FROM pragma_table_info(?) ORDER BY cid')
       .all(table)
       .map((row) => String(row.name));
-  const session = columns('session');
-  if (session.length === 0) return 'session:missing';
-  const missing = REQUIRED_SESSION_COLUMNS.filter(
-    (column) => !session.includes(column),
-  );
-  if (missing.length > 0) return `session:missing:${missing.join(',')}`;
-  for (const [table, expected] of [
-    ['message', EXACT_MESSAGE_COLUMNS],
-    ['part', EXACT_PART_COLUMNS],
-  ] as const) {
-    const actual = columns(table);
+  const exact = (
+    table: string,
+    expected: readonly string[],
+    actual = columns(table),
+  ): string | null => {
     if (actual.length === 0) return `${table}:missing`;
-    const unexpected = actual.filter(
-      (column) => !(expected as readonly string[]).includes(column),
-    );
+    const unexpected = actual.filter((column) => !expected.includes(column));
     const absent = expected.filter((column) => !actual.includes(column));
-    if (unexpected.length > 0 || absent.length > 0) {
-      return `${table}:columns`;
+    return unexpected.length > 0 || absent.length > 0
+      ? `${table}:columns`
+      : null;
+  };
+  const required = (
+    table: string,
+    expected: readonly string[],
+    actual: string[],
+  ): string | null => {
+    const missing = expected.filter((column) => !actual.includes(column));
+    return missing.length > 0 ? `${table}:missing:${missing.join(',')}` : null;
+  };
+
+  const sessionV2 = columns('session_v2');
+  if (sessionV2.length > 0) {
+    const mismatch =
+      required('session_v2', REQUIRED_SESSION_V2_COLUMNS, sessionV2) ??
+      exact('session_message', EXACT_SESSION_MESSAGE_COLUMNS);
+    if (mismatch) return { mismatch };
+    // OpenCode 2.0-2.2 have no part table; when present it must be the shape
+    // this source folds.
+    const partColumns = columns('session_part');
+    if (partColumns.length === 0) {
+      return { layout: { kind: 'v2', partRows: false } };
     }
+    const partMismatch = exact(
+      'session_part',
+      EXACT_SESSION_PART_COLUMNS,
+      partColumns,
+    );
+    return partMismatch
+      ? { mismatch: partMismatch }
+      : { layout: { kind: 'v2', partRows: true } };
   }
-  return null;
+
+  const session = columns('session');
+  if (session.length === 0) return { mismatch: 'session:missing' };
+  const mismatch =
+    required('session', REQUIRED_SESSION_COLUMNS, session) ??
+    exact('message', EXACT_MESSAGE_COLUMNS) ??
+    exact('part', EXACT_PART_COLUMNS);
+  return mismatch ? { mismatch } : { layout: { kind: 'v1' } };
+}
+
+interface ReaderBounds {
+  maxMessages: number;
+  maxRowBytes: number;
+  maxPartsPerMessage: number;
+}
+
+/**
+ * One store layout's half of a read: the page of messages after the cursor
+ * (one row of look-ahead past the page bound), each message's parts, the
+ * message mapper and the position a consumed message leaves the cursor at.
+ * Every row is projected inside SQLite to only the fields this source maps,
+ * so a user message's file diffs or a tool's metadata never reach this
+ * process, and the row bound applies to what does.
+ */
+interface LayoutReader {
+  messages(): Array<MessageRow | null>;
+  parts(message: MessageRow): Array<PartRow | null>;
+  map(
+    message: MessageRow,
+    planned: PlannedParts,
+    following: FollowingMessages,
+    state: OpenCodeCursorState,
+  ): MappedMessage;
+  position(message: MessageRow): CursorPosition;
+  /**
+   * The newest write to a message's own parts: a step still streaming
+   * rewrites its parts without moving the message or the session.
+   */
+  newestPartWrite(message: MessageRow): number | undefined;
+}
+
+function maxTimeOf(row: unknown): number | undefined {
+  const value = (row as { t?: unknown } | undefined)?.t;
+  return isCount(value) ? value : undefined;
+}
+
+function v1Reader(
+  db: DatabaseSync,
+  session: AttachedSessionDescriptor,
+  cursor: DecodedCursor,
+  bounds: ReaderBounds & { legacyVersion: boolean },
+): LayoutReader {
+  const after = cursor.state.after as { time: number; id: string } | undefined;
+  const partQuery = db.prepare(
+    `WITH p AS (
+       SELECT id,
+         CASE WHEN json_valid(data) THEN json_object(
+           'type', data->>'$.type',
+           'text', data->>'$.text',
+           'synthetic', data->'$.synthetic',
+           'ignored', data->'$.ignored',
+           'callID', data->>'$.callID',
+           'tool', data->>'$.tool',
+           'providerExecuted', data->'$.metadata.providerExecuted',
+           'state', json_object(
+             'status', data->>'$.state.status',
+             'input', data->'$.state.input',
+             'output', data->>'$.state.output',
+             'error', data->>'$.state.error'
+           ),
+           'tokens', data->'$.tokens'
+         ) END AS slim
+       FROM part WHERE message_id = ? AND session_id = ?
+       ORDER BY id ASC LIMIT ?)
+     SELECT id, octet_length(slim) AS bytes,
+       CASE WHEN octet_length(slim) <= ? THEN slim END AS data FROM p`,
+  );
+  return {
+    messages: () =>
+      db
+        .prepare(
+          `WITH m AS (
+             SELECT id, time_created AS time, time_updated AS updated,
+               CASE WHEN json_valid(data) THEN json_object(
+                 'role', data->>'$.role',
+                 'completed', data->'$.time.completed',
+                 'finish', data->>'$.finish',
+                 'parentID', data->>'$.parentID',
+                 'summary', json_type(data, '$.summary') = 'true',
+                 'hasError', json_type(data, '$.error') IS NOT NULL,
+                 'errorName', data->>'$.error.name',
+                 'errorMessage', substr(data->>'$.error.data.message', 1, 4096)
+               ) END AS slim
+             FROM message
+             WHERE session_id = ?
+               AND (time_created > ? OR (time_created = ? AND id > ?))
+             ORDER BY time_created ASC, id ASC LIMIT ?)
+           SELECT id, time, updated, octet_length(slim) AS bytes,
+             CASE WHEN octet_length(slim) <= ? THEN slim END AS data FROM m`,
+        )
+        .all(
+          session.sessionId,
+          after?.time ?? -1,
+          after?.time ?? -1,
+          after?.id ?? '',
+          bounds.maxMessages + 1,
+          bounds.maxRowBytes,
+        )
+        .map(messageRow),
+    parts: (message) =>
+      partQuery
+        .all(
+          message.id,
+          session.sessionId,
+          bounds.maxPartsPerMessage + 1,
+          bounds.maxRowBytes,
+        )
+        .map(partRow),
+    map: (message, planned, following, state) =>
+      mapMessage(
+        message,
+        planned,
+        following,
+        session,
+        state,
+        bounds.legacyVersion,
+      ),
+    position: (message) => ({ time: message.time, id: message.id }),
+    newestPartWrite: (message) =>
+      maxTimeOf(
+        db
+          .prepare(
+            'SELECT max(time_updated) AS t FROM part WHERE message_id = ? AND session_id = ?',
+          )
+          .get(message.id, session.sessionId),
+      ),
+  };
+}
+
+/**
+ * OpenCode 2.x. A message is one `session_message` row in `seq` order. An
+ * assistant row's content items are its parts: `session_part` rows in
+ * `ordinal` order, then the row's inline `content`, the order OpenCode's own
+ * history read folds them in (`SessionHistory.withParts`). Each item is
+ * projected to the same slim shape as a 1.x part, so the text and tool
+ * mapping is shared; a tool's output is the text of its result content.
+ */
+function v2Reader(
+  db: DatabaseSync,
+  session: AttachedSessionDescriptor,
+  cursor: DecodedCursor,
+  partRows: boolean,
+  bounds: ReaderBounds,
+): LayoutReader {
+  const after = cursor.state.after as { seq: number; id: string } | undefined;
+  const partSource = partRows
+    ? `SELECT 0 AS src, ordinal AS pos,
+         CASE WHEN json_valid(data) THEN json_set(data, '$.type', type) END AS item
+       FROM session_part WHERE message_id = ?1 AND session_id = ?2
+       UNION ALL `
+    : '';
+  const partQuery = db.prepare(
+    `WITH items AS (
+       ${partSource}SELECT 1 AS src, c.key AS pos, c.value AS item
+       FROM session_message m, json_each(m.data, '$.content') c
+       WHERE m.id = ?1 AND m.session_id = ?2 AND m.type = 'assistant'
+         AND json_valid(m.data) AND json_type(m.data, '$.content') = 'array'),
+     p AS (
+       SELECT src, pos,
+         CASE WHEN json_valid(item) THEN json_object(
+           'type', item->>'$.type',
+           'text', item->>'$.text',
+           'callID', item->>'$.id',
+           'tool', item->>'$.name',
+           'state', json_object(
+             'status', item->>'$.state.status',
+             'input', item->'$.state.input',
+             'output', (SELECT group_concat(o.value->>'$.text', char(10))
+               FROM json_each(item, '$.state.content') o
+               WHERE o.value->>'$.type' = 'text'),
+             'error', item->>'$.state.error.message'
+           )
+         ) END AS slim
+       FROM items ORDER BY src ASC, pos ASC LIMIT ?3)
+     SELECT ?1 || ':' || src || ':' || pos AS id, octet_length(slim) AS bytes,
+       CASE WHEN octet_length(slim) <= ?4 THEN slim END AS data FROM p`,
+  );
+  return {
+    messages: () =>
+      db
+        .prepare(
+          `WITH m AS (
+             SELECT id, seq, time_created AS time, time_updated AS updated,
+               CASE WHEN json_valid(data) THEN json_object(
+                 'role', type,
+                 'completed', data->'$.time.completed',
+                 'finish', data->>'$.finish',
+                 'hasError', json_type(data, '$.error') IS NOT NULL,
+                 'errorName', data->>'$.error.type',
+                 'errorMessage', substr(data->>'$.error.message', 1, 4096),
+                 'outcome', data->>'$.outcome',
+                 'status', data->>'$.status',
+                 'text', CASE WHEN type = 'user' THEN data->>'$.text' END,
+                 'tokens', CASE WHEN type = 'assistant' THEN data->'$.tokens' END
+               ) END AS slim
+             FROM session_message
+             WHERE session_id = ? AND seq > ?
+             ORDER BY seq ASC LIMIT ?)
+           SELECT id, seq, time, updated, octet_length(slim) AS bytes,
+             CASE WHEN octet_length(slim) <= ? THEN slim END AS data FROM m`,
+        )
+        .all(
+          session.sessionId,
+          after?.seq ?? -1,
+          bounds.maxMessages + 1,
+          bounds.maxRowBytes,
+        )
+        .map(messageRow),
+    parts: (message) =>
+      message.info?.role === 'assistant'
+        ? partQuery
+            .all(
+              message.id,
+              session.sessionId,
+              bounds.maxPartsPerMessage + 1,
+              bounds.maxRowBytes,
+            )
+            .map(partRow)
+        : [],
+    map: (message, planned, following, state) =>
+      mapMessageV2(message, planned, following, session, state),
+    position: (message) => ({ seq: message.seq!, id: message.id }),
+    newestPartWrite: (message) =>
+      partRows
+        ? maxTimeOf(
+            db
+              .prepare(
+                'SELECT max(time_updated) AS t FROM session_part WHERE message_id = ? AND session_id = ?',
+              )
+              .get(message.id, session.sessionId),
+          )
+        : undefined,
+  };
 }
 
 interface PlannedParts {
@@ -1088,6 +1624,10 @@ interface ParsedPart {
 interface FollowingMessages {
   any: boolean;
   assistant: boolean;
+  /** OpenCode 2.x: a later `idle` row (the turn ended). */
+  idle: boolean;
+  /** OpenCode 2.x: a later compaction row that is still running. */
+  runningCompaction: boolean;
 }
 
 /**
@@ -1216,6 +1756,174 @@ function mapAssistantMessage(
     emitter.closeTurn({
       kind: 'completed',
       finishReason: finishReason(info.finish),
+    });
+  }
+}
+
+/**
+ * One settled OpenCode 2.x message to canonical events. OpenCode 2.x closes
+ * a turn with an `idle` row (its outcome says how), not with a step's
+ * finish. A prompt steered in while a turn runs is part of OpenCode's turn;
+ * Station starts a turn per prompt, so it closes the open one as superseded
+ * the way the 1.x mapping does. Model-facing rows (`synthetic`, `system`,
+ * `skill`), the user's own shell rows and agent, model and location switches
+ * carry no conversation turn and map to nothing.
+ */
+function mapMessageV2(
+  message: MessageRow,
+  planned: PlannedParts,
+  following: FollowingMessages,
+  session: AttachedSessionDescriptor,
+  previous: OpenCodeCursorState,
+): MappedMessage {
+  const info = message.info;
+  if (!isSettledV2(info, following)) return { kind: 'unsettled' };
+  const state = cloneState(previous);
+  if (message.oversized) return { kind: 'oversized', events: [], state };
+  if (!info?.role || !V2_MESSAGE_TYPES.has(info.role)) {
+    return { kind: 'malformed', events: [], state };
+  }
+  const emitter = new MessageEmitter(session, message, state);
+  if (info.role === 'user') {
+    emitter.closeTurn({ kind: 'superseded' });
+    const bounded = info.text
+      ? boundedPrompt(info.text, {
+          maxBytes: MAX_PROMPT_BYTES,
+          source: PROMPT_SOURCE,
+        })
+      : undefined;
+    emitter.state.turnId = message.id;
+    emitter.emit('turn-started', {
+      method: 'turn.started',
+      turnId: message.id,
+      ...(bounded ? { prompt: bounded.value } : {}),
+      ...(bounded?.metadata ? { metadata: bounded.metadata } : {}),
+    });
+  } else if (info.role === 'assistant') {
+    mapAssistantStepV2(emitter, message.id, info, planned);
+  } else if (info.role === 'compaction') {
+    if (info.status === 'completed') {
+      emitter.emit('context-compacted', {
+        method: 'extension.notification',
+        namespace: PROMPT_SOURCE,
+        type: 'context-compacted',
+        payload: { source: 'provider-event' },
+      });
+    }
+  } else if (info.role === 'idle') {
+    closeTurnAtIdle(emitter, info);
+  }
+  return { kind: 'ok', events: emitter.events, state: emitter.state };
+}
+
+/**
+ * Every `Session.Message.Info` type of OpenCode 2.3. A row of any other type
+ * is a writer change this source does not understand: it is reported as
+ * malformed and passed, like a 1.x row with an unknown role.
+ */
+const V2_MESSAGE_TYPES = new Set([
+  'agent-switched',
+  'model-switched',
+  'location-switched',
+  'user',
+  'synthetic',
+  'system',
+  'skill',
+  'shell',
+  'assistant',
+  'compaction',
+  'idle',
+]);
+
+/**
+ * Settled: an assistant step once completed or failed, or once a later step
+ * or idle row exists (the writer died mid-write). A compaction once it is no
+ * longer running. OpenCode finishes a running compaction row in place,
+ * however many rows follow it: `session.compaction.ended` completes the
+ * latest running one, and when the session next runs `settleStaleCompactions`
+ * marks every row still running failed. A running row with a later running
+ * one after it can therefore only end failed, which maps to nothing, so it
+ * is passed; the latest holds the read (see `reportLongHold`). Every other
+ * 2.x row is written whole, content inline.
+ */
+function isSettledV2(
+  info: MessageInfo | null,
+  following: FollowingMessages,
+): boolean {
+  if (info?.role === 'assistant') {
+    return (
+      info.hasError ||
+      Number.isSafeInteger(info.completed) ||
+      following.assistant ||
+      following.idle
+    );
+  }
+  if (info?.role === 'compaction') {
+    return info.status !== 'running' || following.runningCompaction;
+  }
+  return true;
+}
+
+function mapAssistantStepV2(
+  emitter: MessageEmitter,
+  messageId: string,
+  info: MessageInfo,
+  planned: PlannedParts,
+): void {
+  if (!emitter.state.turnId) {
+    emitter.state.turnId = messageId;
+    emitter.emit('turn-started', { method: 'turn.started', turnId: messageId });
+  }
+  const turnId = emitter.state.turnId!;
+  for (const part of planned.included) {
+    const data = parseRecord(part.data!);
+    if (!data) continue;
+    const type = text(data.type);
+    if (type === 'text' || type === 'reasoning') {
+      mapTextPart(emitter, turnId, { id: part.id, data }, type);
+    } else if (type === 'tool') {
+      mapToolPart(emitter, turnId, data);
+    }
+  }
+  emitter.omissionWarning(planned.omitted, turnId);
+  // A 2.x step's `tokens` has no total; its total is input + output +
+  // reasoning + cache (`TokenUsage.total`), the current shape.
+  const step = decodeUsage(info.tokens, false);
+  if (step) emitter.state.usage = addUsage(emitter.state.usage, step);
+  // A failed step is reported by the turn's idle row, which carries the
+  // outcome; a step OpenCode retried after its error is not a failure.
+  if (info.finish !== undefined) {
+    emitter.state.finish = finishReason(info.finish);
+  }
+}
+
+function closeTurnAtIdle(emitter: MessageEmitter, info: MessageInfo): void {
+  const turnId = emitter.state.turnId;
+  if (!turnId) return;
+  if (info.outcome === 'interrupted') {
+    emitter.closeTurn({
+      kind: 'aborted',
+      reason: diagnosticText(info.errorMessage) ?? 'interrupted in OpenCode',
+    });
+  } else if (info.outcome === 'failed') {
+    emitter.emit('turn-error', {
+      method: 'runtime.error',
+      ...providerFailure('provider_error'),
+      turnId,
+      severity: 'error',
+      message:
+        diagnosticText(info.errorMessage) ??
+        info.errorName ??
+        'OpenCode reported an error.',
+    } satisfies ProviderRuntimeErrorBody);
+    emitter.closeTurn({ kind: 'completed', finishReason: 'other' });
+  } else {
+    emitter.closeTurn({
+      kind: 'completed',
+      finishReason:
+        info.outcome === 'succeeded'
+          ? (emitter.state.finish ?? 'other')
+          : 'other',
     });
   }
 }
@@ -1456,6 +2164,7 @@ function decodeState(
     'turnId',
     'assistantTextObserved',
     'usage',
+    'finish',
   ];
   if (!Object.keys(raw).every((key) => allowed.includes(key))) return null;
   if (raw.version !== 1) return null;
@@ -1463,15 +2172,10 @@ function decodeState(
   if (raw.after !== undefined) {
     const after = asRecord(raw.after);
     const id = boundedId(after?.id);
-    if (
-      !after ||
-      Object.keys(after).length !== 2 ||
-      !isCount(after.time) ||
-      !id
-    ) {
-      return null;
-    }
-    state.after = { time: after.time as number, id };
+    if (!after || Object.keys(after).length !== 2 || !id) return null;
+    if (isCount(after.time)) state.after = { time: after.time, id };
+    else if (isCount(after.seq)) state.after = { seq: after.seq, id };
+    else return null;
   }
   if (raw.turnId !== undefined) {
     const turnId = boundedId(raw.turnId);
@@ -1481,6 +2185,17 @@ function decodeState(
   if (raw.assistantTextObserved !== undefined) {
     if (raw.assistantTextObserved !== true || !state.turnId) return null;
     state.assistantTextObserved = true;
+  }
+  if (raw.finish !== undefined) {
+    if (
+      !state.turnId ||
+      (raw.finish !== 'stop' &&
+        raw.finish !== 'max-tokens' &&
+        raw.finish !== 'other')
+    ) {
+      return null;
+    }
+    state.finish = raw.finish;
   }
   if (raw.usage !== undefined) {
     const usage = asRecord(raw.usage);
@@ -1515,6 +2230,25 @@ function encodeCursor(
   };
 }
 
+/**
+ * A cursor's identity for the drained-read cache, independent of key order:
+ * a cursor the caller hands back after a JSON round trip, or one this source
+ * re-encodes from decoded state, names the same position.
+ */
+function cursorCacheKey(cursor: AttachedSessionCursor): string {
+  const canonical = (value: unknown): unknown =>
+    Array.isArray(value)
+      ? value.map(canonical)
+      : isRecord(value)
+        ? Object.fromEntries(
+            Object.keys(value)
+              .sort()
+              .map((key) => [key, canonical(value[key])]),
+          )
+        : value;
+  return JSON.stringify(canonical(cursor));
+}
+
 function cloneState(state: OpenCodeCursorState): OpenCodeCursorState {
   return structuredClone(state);
 }
@@ -1525,9 +2259,12 @@ function messageRow(row: Record<string, unknown>): MessageRow | null {
   if (!id || !isCount(time)) return null;
   const bytes = isCount(row.bytes) ? row.bytes : 0;
   const projected = typeof row.data === 'string' ? parseRecord(row.data) : null;
+  if (row.seq !== undefined && !isCount(row.seq)) return null;
   return {
     id,
     time,
+    ...(row.seq !== undefined ? { seq: row.seq as number } : {}),
+    ...(isCount(row.updated) ? { updated: row.updated } : {}),
     bytes,
     oversized: isCount(row.bytes) && typeof row.data !== 'string',
     info: projected
@@ -1542,6 +2279,10 @@ function messageRow(row: Record<string, unknown>): MessageRow | null {
           hasError: projected.hasError === 1 || projected.hasError === true,
           errorName: text(projected.errorName),
           errorMessage: text(projected.errorMessage),
+          outcome: text(projected.outcome),
+          status: text(projected.status),
+          text: typeof projected.text === 'string' ? projected.text : undefined,
+          tokens: projected.tokens,
         }
       : null,
   };
@@ -1629,10 +2370,6 @@ function errorCode(error: unknown): string {
   return 'unknown';
 }
 
-function digest(parts: unknown[]): string {
-  return createHash('sha256').update(JSON.stringify(parts)).digest('hex');
-}
-
 function millisTimestamp(value: number): string {
   const date = new Date(value);
   return Number.isFinite(date.getTime()) ? date.toISOString() : EPOCH;
@@ -1651,10 +2388,6 @@ function diagnosticText(value: unknown): string | undefined {
     : undefined;
 }
 
-function text(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value : undefined;
-}
-
 function boundedId(value: unknown): string | undefined {
   const valueText = text(value);
   return valueText && Buffer.byteLength(valueText) <= MAX_ID_BYTES
@@ -1669,24 +2402,6 @@ function boundedPath(value: unknown): string | undefined {
     : undefined;
 }
 
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return isRecord(value) ? value : undefined;
-}
-
-function isPlainRecord(value: Record<string, unknown>): boolean {
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
-
 function isCount(value: unknown): value is number {
   return Number.isSafeInteger(value) && (value as number) >= 0;
-}
-
-function boundedInteger(name: string, value: number, ceiling: number): number {
-  if (!Number.isSafeInteger(value) || value < 1 || value > ceiling) {
-    throw new RangeError(
-      `${name} must be an integer from 1 through ${ceiling}.`,
-    );
-  }
-  return value;
 }

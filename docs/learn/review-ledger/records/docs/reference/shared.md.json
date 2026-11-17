@@ -126,10 +126,6 @@
 
     "packages/shared/package.json#/engines",
 
-    "pnpm-lock.yaml#/packages",
-
-    "pnpm-lock.yaml#/snapshots",
-
     "packages/shared/src/mcp-app-result.ts",
 
     "packages/shared/src/delegation-files.ts",
@@ -152,7 +148,13 @@
 
     "packages/cli/src/dev/security.ts",
 
-    "packages/shared/src/http-upload.ts"
+    "packages/shared/src/http-upload.ts",
+
+    "packages/shared/package.json#/dependencies/koffi",
+
+    "packages/shared/package.json#/dependencies/esbuild",
+
+    "packages/shared/package.json#/dependencies/@modelcontextprotocol~1client"
   ],
 
   "checks": [

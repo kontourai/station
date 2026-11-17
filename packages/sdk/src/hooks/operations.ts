@@ -50,9 +50,14 @@ export function useNotifications() {
         throw new Error(`Failed to schedule notification: ${res.statusText}`);
       return res.json();
     },
-    /** Dismiss a notification */
+    /** Dismiss a notification. Rejects when the server refuses or fails. */
     dismiss: async (id: string) => {
-      await fetch(`${apiBase}/notifications/${id}`, { method: 'DELETE' });
+      const res = await fetch(
+        `${apiBase}/notifications/${encodeURIComponent(id)}`,
+        { method: 'DELETE' },
+      );
+      if (!res.ok)
+        throw new Error(`Failed to dismiss notification: ${res.statusText}`);
     },
   };
 }
@@ -126,7 +131,11 @@ export function useUserLookup(alias: string | null) {
 
   useEffect(() => {
     if (!alias) {
+      // The lookup this replaces was cancelled by its cleanup, so its
+      // `finally` no longer lowers `loading`; no lookup is running now.
       setData(null);
+      setLoading(false);
+      setError(null);
       return;
     }
     let cancelled = false;

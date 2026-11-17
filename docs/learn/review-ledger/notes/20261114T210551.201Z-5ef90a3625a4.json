@@ -1,0 +1,7 @@
+{
+  "revision": "5dceb868ecfddebb99342bffe67a7eba79444598",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Round 8: re-read the denyApprovals passage (74-92), the ACP and opencode-engine coverage paragraph (100-120) and every OpenCode-native mention (#4828, 266-270). Updated the coverage sentence: an ask that does not fit its recorded tool (Code Mode nested call) is treated as unnamed, goes to a person, and is rejected under delegation denyApprovals.","inputs":["docs/conformance/tool-policy-delivery.md"]}
+  ]
+}

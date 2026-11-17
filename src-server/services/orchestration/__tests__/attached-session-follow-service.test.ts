@@ -207,6 +207,80 @@ describe('AttachedSessionFollowService', () => {
     });
   }
 
+  // Review item 1: a source written without new events (a step still
+  // streaming, a subagent's transcript) keeps the attachment's last write
+  // current, so the summary reads an open turn as active.
+  test("records the source's own newest write, at 30-second steps, and the summary reads it", async () => {
+    const started = new Date(Date.now() - 20 * 60_000).toISOString();
+    const at = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
+    const firstWrite = at(60_000);
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi.fn().mockResolvedValue({ sessions: [session] }),
+      read: vi
+        .fn()
+        .mockResolvedValueOnce({
+          outcome: 'ok',
+          events: [
+            {
+              eventId: 'turn-1',
+              provider: 'claude',
+              threadId: session.threadId,
+              createdAt: started,
+              method: 'turn.started',
+              turnId: 'turn-1',
+              prompt: 'long job',
+            },
+          ],
+          cursor: 10,
+          sourceWriteAt: firstWrite,
+        })
+        // Ten seconds later: not worth a row write.
+        .mockResolvedValueOnce({
+          outcome: 'ok',
+          events: [],
+          cursor: 10,
+          sourceWriteAt: at(50_000),
+        })
+        // A source write dated past the skew allowance is not recorded.
+        .mockResolvedValueOnce({
+          outcome: 'ok',
+          events: [],
+          cursor: 10,
+          sourceWriteAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+        })
+        .mockResolvedValueOnce({
+          outcome: 'ok',
+          events: [],
+          cursor: 10,
+          sourceWriteAt: at(5_000),
+        }),
+    };
+    const service = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      listProjects: () => [
+        { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+      ],
+    });
+    await service.pollNow();
+    expect(persistedAttachment().attachedSource?.lastWriteAt).toBe(firstWrite);
+    expect(summary().attachedSourceActivity).toEqual({
+      state: 'active',
+      lastWriteAt: firstWrite,
+    });
+    await service.pollNow();
+    expect(persistedAttachment().attachedSource?.lastWriteAt).toBe(firstWrite);
+    await service.pollNow();
+    expect(persistedAttachment().attachedSource?.lastWriteAt).toBe(firstWrite);
+    await service.pollNow();
+    expect(
+      Date.parse(persistedAttachment().attachedSource!.lastWriteAt!),
+    ).toBeGreaterThan(Date.parse(firstWrite) + 30_000);
+  });
+
   test('uses the documented default and bounds an invalid poll override', () => {
     expect(resolveAttachedSessionPollInterval(undefined)).toBe(2_000);
     expect(resolveAttachedSessionPollInterval('not-a-number')).toBe(2_000);

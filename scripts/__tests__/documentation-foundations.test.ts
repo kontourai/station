@@ -52,21 +52,21 @@ describe('documentation foundations', () => {
     const { channels } = JSON.parse(read('config/channel-ports.json')) as {
       channels: Record<string, { instanceDirectory: string; uiPort: number }>;
     };
-    const { stable, beta } = channels;
+    const { stable, nightly } = channels;
 
     for (const fact of [
       `~/.station/installs/${stable.instanceDirectory}`,
       `~/.station/instances/${stable.instanceDirectory}`,
       `http://localhost:${stable.uiPort}`,
-      'station-beta',
-      `~/.station/instances/${beta.instanceDirectory}`,
-      `http://localhost:${beta.uiPort}`,
-      'STATION_CHANNEL=beta',
+      'station-nightly',
+      `~/.station/instances/${nightly.instanceDirectory}`,
+      `http://localhost:${nightly.uiPort}`,
+      'STATION_CHANNEL=nightly',
     ])
       expect(guide).toContain(fact);
     expect(guide).not.toContain('~/.local/share/station/current');
     expect(guide).not.toContain('http://localhost:3000');
-    expect(installer).toContain('runtime_launcher_name=station-beta');
+    expect(installer).toContain('runtime_launcher_name=station-nightly');
     expect(installer).toContain(
       `station_home="\${STATION_HOME:-$station_root/instances/$runtime_channel}"`,
     );
@@ -177,7 +177,7 @@ describe('documentation foundations', () => {
       );
     }
     expect(guide).toContain(
-      `STATION_CHANNEL=beta "\${STATION_ROOT:-$HOME/.station}/installs/beta/current/install.sh" uninstall`,
+      `STATION_CHANNEL=nightly "\${STATION_ROOT:-$HOME/.station}/installs/nightly/current/install.sh" uninstall`,
     );
     expect(cli).not.toContain('STATION_CHANNEL=preview');
     expect(cli).toContain('selected runtime instance data');
@@ -289,14 +289,11 @@ describe('documentation freshness sweep contract', () => {
     expect(workflow.permissions).toEqual({ contents: 'read' });
     expect(Object.keys(workflow.jobs)).toEqual([
       'sweep',
+      'sweep-issue',
       'hygiene',
       'hygiene-issue',
     ]);
     expect(workflow.jobs.sweep.if).toBeUndefined();
-    expect(workflow.jobs.sweep.permissions).toEqual({
-      contents: 'read',
-      issues: 'write',
-    });
     const text = JSON.stringify(workflow);
     expect(text).not.toMatch(/secrets\./);
     for (const job of Object.values(workflow.jobs) as {
@@ -325,5 +322,68 @@ describe('documentation freshness sweep contract', () => {
     expect(runs(hygiene)).toContain('npm run hygiene:report');
     expect(runs(issue)).not.toMatch(/dependencies:ci|npm (ci|install)|pnpm/);
     expect(runs(issue)).toContain('scripts/hygiene-report.mjs --upsert');
+  });
+
+  // #4270: the freshness report needs installed packages, so it follows the
+  // same split. The issue job runs only after a successful report, so a
+  // failed sweep cannot close the issue on a missing report.
+  it('reports freshness from a read-only installing job and writes the issue from a dependency-free one', () => {
+    const workflow = parse(
+      readFileSync('.github/workflows/docs-freshness-sweep.yml', 'utf8'),
+    );
+    const { sweep, 'sweep-issue': issue } = workflow.jobs;
+    type Step = { run?: string; uses?: string; with?: Record<string, string> };
+    const runs = (job: { steps: Step[] }) =>
+      job.steps.map((step) => step.run ?? '').join('\n');
+    expect(sweep.permissions).toEqual({ contents: 'read' });
+    expect(sweep.steps[0].with?.['fetch-depth']).toBe(0);
+    const install = sweep.steps.findIndex(
+      (step: Step) => step.run === 'npm run dependencies:ci',
+    );
+    const reportStep = sweep.steps.findIndex((step: Step) =>
+      step.run?.startsWith('node scripts/docs-freshness-sweep.mjs --report'),
+    );
+    expect(install).toBeGreaterThan(0);
+    expect(reportStep).toBeGreaterThan(install);
+    const upload = sweep.steps.find((step: Step) =>
+      step.uses?.startsWith('actions/upload-artifact@'),
+    );
+    expect(upload?.with).toMatchObject({
+      name: 'docs-freshness-report',
+      path: '.artifacts/docs-freshness-report.md',
+    });
+    expect(issue.needs).toBe('sweep');
+    expect(issue.if).not.toMatch(/always\(\)|!cancelled\(\)|failure\(\)/);
+    expect(issue.permissions).toEqual({ contents: 'read', issues: 'write' });
+    const download = issue.steps.find((step: Step) =>
+      step.uses?.startsWith('actions/download-artifact@'),
+    );
+    expect(download?.with).toMatchObject({
+      name: 'docs-freshness-report',
+      path: '.artifacts',
+    });
+    expect(runs(issue)).not.toMatch(/dependencies:ci|npm (ci|install)|pnpm/);
+    expect(runs(issue)).toContain(
+      'scripts/docs-freshness-sweep.mjs --upsert --report .artifacts/docs-freshness-report.md',
+    );
+  });
+
+  // An install-time script must not be able to save a package-manager cache
+  // that other workflows on main restore.
+  it('keeps every job in the sweep workflow off the package-manager cache', () => {
+    const workflow = parse(
+      readFileSync('.github/workflows/docs-freshness-sweep.yml', 'utf8'),
+    );
+    const setups = Object.values(
+      workflow.jobs as Record<
+        string,
+        { steps: { uses?: string; with?: Record<string, unknown> }[] }
+      >,
+    ).flatMap((job) =>
+      job.steps.filter((step) => step.uses?.startsWith('actions/setup-node@')),
+    );
+    expect(setups).toHaveLength(4);
+    for (const step of setups)
+      expect(step.with?.['package-manager-cache']).toBe(false);
   });
 });

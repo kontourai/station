@@ -1,0 +1,7 @@
+{
+  "revision": "6ee5a4ff83ba6a31abfe9cbce7bdc8f3c810bcb7",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Reviewed: only the finished-alert replay and quiet-end clauses changed. The webhook-turn card-alert claim this document cites is unchanged.","inputs":["docs/design/notification-delivery.md"]}
+  ]
+}

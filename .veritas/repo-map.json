@@ -580,11 +580,6 @@
         "path": "AGENTS.md",
         "tool": "codex",
         "required": true
-      },
-      {
-        "path": "CLAUDE.md",
-        "tool": "claude-code",
-        "required": true
       }
     ]
   }

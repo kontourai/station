@@ -12,8 +12,8 @@ export function DeleteIntegrationModal({
   return (
     <ConfirmModal
       isOpen
-      title="Delete Tool Server"
-      message={`Remove “${integrationName}”? This cannot be undone.`}
+      title="Delete tool server"
+      message={`Delete “${integrationName}”? This cannot be undone.`}
       confirmLabel="Delete"
       variant="danger"
       role="alertdialog"
