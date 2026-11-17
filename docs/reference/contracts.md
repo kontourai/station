@@ -404,6 +404,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/plugin-foreground-work` | Bounded foreground-work declarations, start intents, effect depth, run states, and safe public outcomes. Published ahead of a server implementation: Station does not admit or list plugin foreground runs yet |
 | `@kontourai/station-contracts/project` | Project config and metadata, and `projectIconProblem`: the one rule for a stored project icon (a short glyph, or a PNG/JPEG/WebP/ICO data URL of at most 128 KiB whose bytes match its type) that the create and update routes, the icon pickers and the renderer share |
 | `@kontourai/station-contracts/project-checkout-freshness` | How far a Project's checkout is behind its upstream, from local git refs: the `GET /api/projects/:slug/checkout-freshness` view (`stale`, `not-stale` or `unknown` with a reason), the default thresholds, `resolveProjectCheckoutStaleThresholds` and `projectCheckoutStaleReasons` |
+| `@kontourai/station-contracts/project-lifecycle` | Pause, Archive and Delete for a Project: the `ProjectConfig.lifecycle` state, the `POST /api/projects/:slug/lifecycle` request and result (turns interrupted, still running after `PROJECT_LIFECYCLE_STOP_WAIT_MS`), `projectLifecycleHoldsWork`, the held-turn refusal, and the `GET /api/projects/:slug/deletion-preview` counts |
 | `@kontourai/station-contracts/project-chat-defaults` | How a Project's new chat picks its model and approval mode (`fixed` or `last-used`), the `GET /api/projects/:slug/chat-defaults` view, and `resolveProjectChatApprovalDefault`, the one resolution the session start and that view share |
 | `@kontourai/station-contracts/project-membership` | Exact Station/local/portable Project scope, member roles/actions, invitations, administration projections, sharing enablement and refusal details |
 | `@kontourai/station-contracts/provider` | Provider kinds and provider-facing contract enums/types, including `PROVIDER_OPENCODE` and `isAcpFamilyEngine` (`ACP_FAMILY_ENGINE_IDS`: `acp` and `opencode`, the engines that run saved ACP connection records). Read it where a behaviour belongs to the ACP connection a session runs on, never to tell the engines apart. See [the OpenCode native transport decision](../decisions/opencode-native-transport.md) |
@@ -2990,3 +2991,7 @@ implemented by these declarations.
 The retired Activity pane and Activity review pane subpaths are no longer exported.
 Child transcript tool calls and results carry an optional engine-issued `toolCallId`;
 readers join only matching IDs, leaving legacy unkeyed results readable.
+A `ChildWorkTranscriptPage` names its message range with `offset` and
+`endOffset`, so a tail read (the latest messages) and a read from a cursor
+compose without re-reading earlier pages; a read from past the end names the
+end, so a reader can tell the transcript is shorter than its cursor.

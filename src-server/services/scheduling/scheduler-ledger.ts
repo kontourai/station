@@ -88,6 +88,8 @@ export interface StoredSchedulerJob {
   monitorState?: ExternalMonitorState;
   /** Where each run lands; absent is a legacy Station-engine file run. */
   target?: SchedulerAutomationTarget;
+  /** #5070: the Project each run is a Task in. Never changed by an edit. */
+  projectId?: string;
   /**
    * The admitted creator every run acts as (targeted and, since #2377 slice
    * D, untargeted). Never changed by an edit.
@@ -597,7 +599,15 @@ export interface SchedulerLedger {
   remove(name: string): SchedulerRemoveOutcome;
   list(): SchedulerReadOutcome<StoredSchedulerJob[]>;
   listViews(now?: number): SchedulerReadOutcome<SchedulerJob[]>;
-  claimDue(now: number): SchedulerReadOutcome<SchedulerDispatchReceipt[]>;
+  /**
+   * `held` (#5069): a due job it answers `true` for is left unclaimed, its
+   * occurrence neither run nor recorded, so the job runs once it is released
+   * (a Project or targeted occurrence too late by then is recorded missed).
+   */
+  claimDue(
+    now: number,
+    held?: (job: StoredSchedulerJob) => boolean,
+  ): SchedulerReadOutcome<SchedulerDispatchReceipt[]>;
   claimManual(name: string, now: number): SchedulerClaimOutcome;
   claimStarterManualIntent(
     operationId: string,
@@ -1348,7 +1358,10 @@ class SqliteSchedulerLedger implements SchedulerLedger {
     );
   }
 
-  claimDue(now: number): SchedulerReadOutcome<SchedulerDispatchReceipt[]> {
+  claimDue(
+    now: number,
+    held?: (job: StoredSchedulerJob) => boolean,
+  ): SchedulerReadOutcome<SchedulerDispatchReceipt[]> {
     // A claim authorizes a real agent invocation whose receipt this store
     // then has to settle. Handing one out over damaged bytes buys an
     // unattended run nothing can record the outcome of.
@@ -1386,12 +1399,16 @@ class SqliteSchedulerLedger implements SchedulerLedger {
             continue;
           }
           if (due.kind === 'not-due') continue;
+          // #5069: a paused or archived Project's job waits, unclaimed.
+          if (held?.(due.job)) continue;
           if (this.claimRow(row.job_id)) continue;
           // A targeted run is a turn in someone's conversation. One that
           // arrives hours after its time (Station was off) would land out of
-          // context, so it is recorded missed and the cursor moves on.
+          // context, so it is recorded missed and the cursor moves on. A
+          // Project run (#5070) follows the same rule, so a Project resumed
+          // after days does not start stale work.
           if (
-            due.job.target &&
+            (due.job.target || due.job.projectId) &&
             now - due.scheduledForMs > AUTOMATION_RUN_POLICY.latenessCutoffMs
           ) {
             this.recordLateOccurrence(

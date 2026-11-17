@@ -58,10 +58,11 @@ export type JobFormPrefill = Partial<{
  * whose output is a file, kept for jobs created before targets and for hosts
  * without `scheduledConversationTarget`.
  */
-type RunIn = 'dedicated' | 'chat' | 'file';
+type RunIn = 'dedicated' | 'chat' | 'file' | 'project';
 
 function runInForJob(job: SchedulerJob | undefined): RunIn | undefined {
   if (!job) return undefined;
+  if (job.projectId) return 'project';
   if (job.target?.kind === 'dedicated') return 'dedicated';
   if (job.target?.kind === 'conversation') return 'chat';
   return 'file';
@@ -89,9 +90,15 @@ export function JobFormModal({
   interactionDisabled = false,
   setupError,
   onReadinessChange,
+  project,
 }: {
   job?: SchedulerJob;
   prefill?: JobFormPrefill;
+  /**
+   * Opened from a Project: the new job belongs to it, and each run starts a
+   * Task there. An existing Project job keeps its Project either way.
+   */
+  project?: Readonly<{ id: string; name: string }>;
   onClose: () => void;
   onSetupAgent?: (target: string) => void;
   hidden?: boolean;
@@ -128,11 +135,15 @@ export function JobFormModal({
       ? job.target.conversationId
       : init.conversationId;
   const [runInChoice, setRunInChoice] = useState<RunIn | undefined>(
-    () => runInForJob(job) ?? (init.conversationId ? 'chat' : undefined),
+    () =>
+      runInForJob(job) ??
+      (project ? 'project' : init.conversationId ? 'chat' : undefined),
   );
   const runIn: RunIn = runInChoice ?? (targetsSupported ? 'dedicated' : 'file');
   const targeted = runIn !== 'file';
-  const anyEngine = runIn === 'dedicated';
+  // A Project run is a Task started on its Agent's own engine.
+  const anyEngine = runIn === 'dedicated' || runIn === 'project';
+  const projectId = job ? job.projectId : project?.id;
   const agentOptions = useMemo(
     () => schedulerAgentOptions(agents, { anyEngine }),
     [agents, anyEngine],
@@ -457,18 +468,20 @@ export function JobFormModal({
             ? { cron: nextSchedule.expr }
             : { schedule: nextSchedule }),
           prompt: form.prompt,
-          ...(target
-            ? { target }
-            : {
-                ...(form.monitorType === 'none'
-                  ? { agent: form.agent || undefined }
-                  : {}),
-                retryCount: form.retryCount || undefined,
-                retryDelaySecs: form.retryCount
-                  ? form.retryDelaySecs
-                  : undefined,
-                monitor,
-              }),
+          ...(runIn === 'project' && projectId
+            ? { projectId, agent: form.agent || undefined }
+            : target
+              ? { target }
+              : {
+                  ...(form.monitorType === 'none'
+                    ? { agent: form.agent || undefined }
+                    : {}),
+                  retryCount: form.retryCount || undefined,
+                  retryDelaySecs: form.retryCount
+                    ? form.retryDelaySecs
+                    : undefined,
+                  monitor,
+                }),
           ...Object.fromEntries(
             extraFields
               .map((f) => [f.key, form[f.key] || undefined])
@@ -578,7 +591,15 @@ export function JobFormModal({
             )}
           </label>
         )}
-        {(targetsSupported || (isEdit && targeted)) && (
+        {runIn === 'project' && (
+          <div className="schedule__field">
+            <span className="schedule__field-label">Run in</span>
+            <span className="schedule__field-hint">
+              Each run starts a Task in {project?.name ?? 'its Project'}.
+            </span>
+          </div>
+        )}
+        {runIn !== 'project' && (targetsSupported || (isEdit && targeted)) && (
           <label className="schedule__field">
             <span className="schedule__field-label">Run in</span>
             <select

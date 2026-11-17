@@ -246,6 +246,15 @@ export function createSchedulerRoutes(
      * Station tools (`ownerNeeded`).
      */
     jobOwner?: (c: Context) => SchedulerAutomationCreator | undefined;
+    /**
+     * #5070: this Station runs Project jobs as Tasks. Absent: a body with a
+     * `projectId` is refused rather than created as a plain job.
+     */
+    projectJobs?: boolean;
+    /** The `project-schedules` preview: off refuses a body with `projectId`. */
+    projectJobsPreview?: {
+      select<T>(branches: { enabled: () => T; disabled: () => T }): T;
+    };
     /** Absent: every action on a job with a stored target is refused. */
     admitAutomationJob?: AutomationJobAdmission;
     mayReadAutomationJob?: (c: Context, job: SchedulerJob) => boolean;
@@ -580,6 +589,38 @@ export function createSchedulerRoutes(
           { success: false, code: approval.code, error: approval.error },
           approval.status,
         );
+      if (body.projectId !== undefined && !options.projectJobs) {
+        approval?.revert();
+        return c.json(
+          {
+            success: false,
+            code: 'project_schedule_unavailable',
+            error: "This Station can't run a schedule as a Project Task.",
+          },
+          503,
+        );
+      }
+      if (
+        body.projectId !== undefined &&
+        options.projectJobsPreview?.select({
+          enabled: () => false,
+          disabled: () => true,
+        })
+      ) {
+        approval?.revert();
+        return c.json(
+          {
+            success: false,
+            error:
+              'Enable Project schedules in Settings → Advanced → Feature previews.',
+            code: 'feature_preview_disabled',
+            previewId: 'project-schedules',
+            settingsPath:
+              '/settings?view=feature-previews&highlight=feature-previews',
+          },
+          404,
+        );
+      }
       const admitted = admitTarget(
         c,
         options.admitAutomationTarget,

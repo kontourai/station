@@ -28,6 +28,25 @@ The engines offered depend on your Station. A Station that does not advertise
 chat automations offers only the output-file run, which cannot use an external
 engine.
 
+## Project schedules
+
+A schedule can belong to a Project. It is a Feature Preview: turn on
+**Project schedules** in Settings → Advanced → Feature previews. Create one
+from Project settings →
+**Schedules** → **New schedule**, or approve one an agent proposed in a chat
+(`propose_job` with the Project's id). Each run starts a new **Task** in that
+Project for the Agent you pick, on that Agent's engine. The Task's first
+message is the schedule's instructions, so the Session starts with the Task
+brief like any Task. When the run ends, Station writes a one-line run summary
+as the Task's summary; the answer itself is in the Task's chat.
+
+While the Project is paused or archived its schedules wait: Station does not
+start a run, and **Run now** is refused. After **Resume**, a schedule that
+came due while paused runs once, unless it is more than six hours late, in
+which case that occurrence is recorded missed. Deleting the Project deletes
+its schedules. A schedule's Project is set when it is created and cannot
+change. Turning the preview off holds every Project schedule the same way.
+
 ## What a chat shows
 
 A chat's **Automations** section lists everything that will act on it

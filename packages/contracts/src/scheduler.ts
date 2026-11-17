@@ -236,6 +236,14 @@ export interface SchedulerJob {
   /** Where each run lands; absent is a legacy Station-engine file run. */
   target?: SchedulerAutomationTarget;
   /**
+   * #5070: the Project (`ProjectConfig.id`) the job belongs to. Each run is
+   * a new Task in that Project, started for `agent` with the job's prompt as
+   * its first message, so the Session gets the Task brief like any Task. No
+   * run is claimed while the Project is paused or archived. Exclusive with
+   * `target` and `monitor`. Set at create; it cannot move to another Project.
+   */
+  projectId?: string;
+  /**
    * Server-recorded creator every run acts as (#2377 slice D: untargeted
    * jobs too). Read-only.
    */
@@ -303,6 +311,8 @@ export interface AddJobOpts {
   prompt: string;
   agent?: string;
   target?: SchedulerAutomationTarget;
+  /** See {@link SchedulerJob.projectId}. */
+  projectId?: string;
   /** Server-only: the route records the admitted creator. */
   createdBy?: SchedulerAutomationCreator;
   notifyStart?: boolean;

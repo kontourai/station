@@ -25,7 +25,8 @@ const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
   'station-browser-relay-account-scope-event-v1', // Transient cross-tab relay account-scope signal; written and removed, never a setting or credential.
   'station-outbound-unlocked-renderers', // Cross-window runtime signal: boot ids of renderers whose outbox liveness lock could not be taken, so other windows read them as unknown rather than gone (lib/outboundQueueLease.ts). Bounded to 32 ids; never a setting or credential.
   'station.background-tasks.sections', // Ephemeral panel disclosure state.
-  'station.agents-pane.scope', // Ephemeral Agents pane scope (this conversation / all), view state not a setting.
+  'station.agents-pane.scope', // Ephemeral Agents pane scope (this chat / all chats), view state not a setting.
+  'station.agents-pane.collapsed-chats', // Agents pane chat groups this viewer collapsed; disclosure view state, not a setting.
   'station.chatDock.snap', // Ephemeral dock geometry/snap state.
   'station.dockFirstRunSeen', // One-time affordance marker.
   // archive#3122's `station.home.variant` used to sit here. It was written by

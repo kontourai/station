@@ -1,0 +1,7 @@
+{
+  "revision": "f4f9afcc931dc65cde5c95e2d6bae7fbbeb0cd55",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"propose_job accepts an optional projectId; self-configuring-agent.md documents it.","inputs":["src-server/tools/station-control-schedule-tools.ts"]}
+  ]
+}
