@@ -16,9 +16,8 @@ import {
   prepareFallowRun,
 } from './lib/fallow-base-cache.mjs';
 import {
-  fallowMemoryExceededMessage,
+  assertWithinFallowMemoryBudget,
   planFallowMemoryCap,
-  readFallowMemoryOutcome,
   wrapFallowCommand,
 } from './lib/fallow-memory-bound.mjs';
 import { holdHeavyCheckSlotForProcess } from './lib/heavy-check-slots.mjs';
@@ -188,23 +187,7 @@ export async function runFallowAnalysis(
     const result = await execution.completion;
     if (execution.isAlive()) await stop();
     const output = capture.finish();
-    // Whatever the exit looked like (the launcher reports a killed analyzer
-    // as status 137, or as exit 1 with no report), an OOM kill inside the
-    // budget is the verdict: say what it needs, not what signal it got.
-    const memory = readFallowMemoryOutcome(eventsFile);
-    if (memory?.oomKills)
-      throw new Error(
-        fallowMemoryExceededMessage(
-          command,
-          memoryCap.budgetMib,
-          memory.peakMib,
-        ),
-      );
-    // Evidence for tuning the budget; stderr, so JSON stdout stays parseable.
-    if (memory?.peakMib != null)
-      console.error(
-        `fallow ${command}: memory peak ${memory.peakMib} MiB of a ${memoryCap.budgetMib} MiB budget`,
-      );
+    assertWithinFallowMemoryBudget(command, memoryCap, eventsFile);
     // Exit 1 can be a finding verdict. It is usable only with a complete,
     // separately written JSON report; a truncated stdout is never parsed.
     if (

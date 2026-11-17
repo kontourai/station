@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
  * it. `OOMPolicy=continue` lets the kernel kill only the analyzer, so the
  * wrapper inside the scope (`fallow-memory-scope.mjs`) survives to record the
  * scope's `memory.events` and peak, and the caller reports
- * {@link fallowMemoryExceededMessage} instead of an opaque signal.
+ * that it needs more than its budget instead of an opaque signal.
  *
  * Elsewhere (macOS, Windows, no user manager) the child runs uncapped with a
  * warning. Hosted CI (`GITHUB_ACTIONS=true`) runs uncapped without one: each
@@ -32,7 +32,7 @@ import { fileURLToPath } from 'node:url';
  * report byte-identical apart from its run id. CI keeps two threads.
  */
 
-export const FALLOW_MEMORY_MAX_ENV = 'STATION_FALLOW_MEMORY_MAX_MIB';
+const FALLOW_MEMORY_MAX_ENV = 'STATION_FALLOW_MEMORY_MAX_MIB';
 /** The measured single-thread peak plus headroom; see docs/guides/code-quality.md. */
 export const DEFAULT_FALLOW_MEMORY_MAX_MIB = 5120;
 /** Analysis threads: one locally, so base and head run in turn; two on CI. */
@@ -50,7 +50,7 @@ const SCOPE_WRAPPER = fileURLToPath(
  * The budget in MiB: `STATION_FALLOW_MEMORY_MAX_MIB`, else the default.
  * A malformed or impossibly small value is refused, never silently replaced.
  */
-export function resolveFallowMemoryBudgetMib(env = process.env) {
+function resolveFallowMemoryBudgetMib(env = process.env) {
   const raw = env[FALLOW_MEMORY_MAX_ENV];
   if (raw === undefined || raw === '') return DEFAULT_FALLOW_MEMORY_MAX_MIB;
   const value = Number(raw);
@@ -178,7 +178,7 @@ export function wrapFallowCommand(plan, executable, args, eventsFile) {
  * What the scope wrapper recorded: `{ oomKills, peakMib }`, or null when it
  * recorded nothing (an uncapped run, or a wrapper that was itself killed).
  */
-export function readFallowMemoryOutcome(eventsFile) {
+function readFallowMemoryOutcome(eventsFile) {
   let text;
   try {
     text = readFileSync(eventsFile, 'utf8');
@@ -196,7 +196,21 @@ export function readFallowMemoryOutcome(eventsFile) {
   };
 }
 
-/** The clean refusal when the analyzer was OOM-killed at its budget. */
-export function fallowMemoryExceededMessage(command, budgetMib, peakMib) {
-  return `code-health gate needs more than ${budgetMib} MiB; fallow ${command} was OOM-killed at its memory budget${peakMib === null ? '' : ` (peak ${peakMib} MiB)`}. Set ${FALLOW_MEMORY_MAX_ENV} higher on a host with room for it, or leave the gate to CI.`;
+/**
+ * After a fallow child exits, whatever its status: refuse the run when the
+ * kernel OOM-killed it inside its budget, saying what it needs rather than
+ * what signal it got (the launcher reports a killed analyzer as status 137,
+ * or as exit 1 with no report). Otherwise log the scope's peak, which counts
+ * reclaimable file cache and so can sit at the budget without any kill.
+ */
+export function assertWithinFallowMemoryBudget(command, plan, eventsFile) {
+  const memory = readFallowMemoryOutcome(eventsFile);
+  if (memory?.oomKills)
+    throw new Error(
+      `code-health gate needs more than ${plan.budgetMib} MiB; fallow ${command} was OOM-killed at its memory budget. Set ${FALLOW_MEMORY_MAX_ENV} higher on a host with room for it, or leave the gate to CI.`,
+    );
+  if (memory?.peakMib != null)
+    console.error(
+      `fallow ${command}: scope memory peak ${memory.peakMib} MiB (file cache included) of a ${plan.budgetMib} MiB budget`,
+    );
 }

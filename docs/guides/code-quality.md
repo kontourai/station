@@ -236,6 +236,26 @@ The gate waits for a [host heavy-check slot](testing.md#host-heavy-check-slots)
 however it is started, so concurrent runs from several worktrees run one after
 the other.
 
+The installed analyzer compares new findings with inherited findings. Newly
+introduced unused exports and types block delivery; resolve their actual caller
+or entrypoint/public-API contract before changing code or configuration. Class
+members, dependencies, complexity, and clone candidates remain advisory because
+their correctness depends on external interfaces, runtime loading, or design
+intent. A high score based on estimated coverage does not establish a test gap.
+
+Review new advisory findings in each PR and record a fix or an evidence-backed
+reason to retain them. Do not extract pass-through wrappers to reduce a score.
+The gate reads all three analyzer baselines from the immutable upstream commit,
+so candidate rebaselining cannot hide its new findings. Missing or incomplete
+analysis fails the gate. Required CI logs the result, writes a job summary, and
+retains the full report in its fast-feedback artifact under `.kontourai/code-health/`.
+Configured public APIs and entrypoints remain explicit analysis limits.
+
+Track confirmed defects separately from advisory review, and distinguish new
+findings from fixes and inherited debt. Freeze each repair batch for validation
+and landing; later discoveries belong to a subsequent batch. These gates reduce
+specific regressions; they cannot guarantee that new code has no defects.
+
 ### Memory budget
 
 Each fallow child the gate and the audit runners start
@@ -280,7 +300,9 @@ child runs in its own transient user scope (`systemd-run --user --scope`,
 under the user manager, outside the caller's own scope, so the caller is no
 longer charged for the analyzer. When the kernel kills the analyzer at the
 budget, the gate exits 2 with `code-health gate needs more than N MiB; fallow
-audit was OOM-killed at its memory budget (peak P MiB)`. A budget below
+audit was OOM-killed at its memory budget`. A run that finishes logs the
+scope's memory peak to stderr; that peak counts reclaimable file cache (the
+base checkout and the files read), so it can sit at the budget with no kill. A budget below
 1024 MiB, or one that is not a whole number, is refused before anything runs.
 
 Where no capped scope can start (macOS, Windows, Linux without a user manager),
@@ -288,26 +310,6 @@ the child runs uncapped and the runner prints a warning naming why. Hosted CI
 (`GITHUB_ACTIONS=true`) runs uncapped, silently and with two threads, as
 before: each runner is a single tenant. The raw `npm run fallow*` package
 scripts run the analyzer directly, without the budget.
-
-The installed analyzer compares new findings with inherited findings. Newly
-introduced unused exports and types block delivery; resolve their actual caller
-or entrypoint/public-API contract before changing code or configuration. Class
-members, dependencies, complexity, and clone candidates remain advisory because
-their correctness depends on external interfaces, runtime loading, or design
-intent. A high score based on estimated coverage does not establish a test gap.
-
-Review new advisory findings in each PR and record a fix or an evidence-backed
-reason to retain them. Do not extract pass-through wrappers to reduce a score.
-The gate reads all three analyzer baselines from the immutable upstream commit,
-so candidate rebaselining cannot hide its new findings. Missing or incomplete
-analysis fails the gate. Required CI logs the result, writes a job summary, and
-retains the full report in its fast-feedback artifact under `.kontourai/code-health/`.
-Configured public APIs and entrypoints remain explicit analysis limits.
-
-Track confirmed defects separately from advisory review, and distinguish new
-findings from fixes and inherited debt. Freeze each repair batch for validation
-and landing; later discoveries belong to a subsequent batch. These gates reduce
-specific regressions; they cannot guarantee that new code has no defects.
 
 ### Dead-code ceiling
 

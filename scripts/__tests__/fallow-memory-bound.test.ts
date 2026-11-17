@@ -180,7 +180,7 @@ describe.skipIf(process.platform === 'win32')(
           },
         }),
       ).rejects.toThrow(
-        /^code-health gate needs more than 2048 MiB; fallow audit was OOM-killed at its memory budget \(peak 2048 MiB\)\. Set STATION_FALLOW_MEMORY_MAX_MIB higher/,
+        /^code-health gate needs more than 2048 MiB; fallow audit was OOM-killed at its memory budget\. Set STATION_FALLOW_MEMORY_MAX_MIB higher/,
       );
       expect(readdirSync(join(scratch, 'fallow'))).toEqual([]);
     });
@@ -277,7 +277,7 @@ describe.skipIf(realCap?.kind !== 'capped')(
           memoryCap: { ...realCap, budgetMib: 192 },
         }),
       ).rejects.toThrow(
-        /^code-health gate needs more than 192 MiB; fallow audit was OOM-killed at its memory budget \(peak \d+ MiB\)/,
+        /^code-health gate needs more than 192 MiB; fallow audit was OOM-killed at its memory budget\./,
       );
       expect(existsSync(join(scratch, 'audit.json'))).toBe(false);
     }, 30_000);
