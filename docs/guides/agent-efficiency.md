@@ -92,9 +92,11 @@ Session gets Station Control as tool families when all of these hold:
 
 - the installed Codex reports `codex-cli 0.167.0` or later (the version the
   [qualification](#qualify-tool-family-loading) passed). Station reads
-  `codex --version` from the binary a Session spawn uses, once per installed
-  binary; an older, pre-release `0.167.0`, unreadable or unrecognised version
-  keeps the static catalog;
+  `codex --version` from the binary a Session spawn uses. An answer stands for
+  60 seconds, because a mise or asdf shim can switch the Codex behind one path,
+  and a probe that fails or hangs stands for 30 seconds before a retry. An
+  older, pre-release `0.167.0`, unreadable or unrecognised version keeps the
+  static catalog;
 - Station Control travels on the header-token path. The bound catalog of the
   **Codex browser and device tools** preview never has families. A
   coordinator-derived Control server is on the header path, has a per-Session
@@ -104,9 +106,11 @@ Session gets Station Control as tool families when all of these hold:
 An admitted Session's credential starts at the family index, Station adds
 `features.mcp_tool_list_changed: true` to the same private `thread/start`
 configuration that carries the credential, and the orchestration instructions
-gain the family-loading line. The instructions ask the same admission question
-as the adapter, so the line appears exactly when the listing starts at the
-index. Knowledge keeps its full listing.
+gain the family-loading line. The instructions and the Session start share one
+admission answer per start (one version probe at most), so the line appears
+when the listing starts at the index. The one exception narrows: if the
+preview is switched off between composing the instructions and starting the
+engine, the Session gets the full catalog. Knowledge keeps its full listing.
 
 Every start and resume mints a new credential, and loaded families belong to a
 credential, so a resumed thread starts at the index again. Codex rejects a
@@ -115,8 +119,11 @@ family tool the model still holds from the thread's history with
 continues (the qualification's resume case). A resume keeps families only when
 its thread started with them (the resume cursor's `toolFamilies`); a thread
 started with the full catalog keeps it, so its tools never disappear under it.
-Turning the preview off gives running Sessions the full catalog on their next
-listing and starts new and resumed Sessions with it.
+Changing the preview applies to new and resumed Sessions. A running Session
+keeps what its credential was minted with: Codex re-lists only after
+`list_changed`, which a switch-off could not send, so withdrawing families
+mid-Session would leave it holding an index whose tools no longer answer. A
+resume after the preview is off starts with the full catalog.
 
 ## Qualify tool-family loading
 
