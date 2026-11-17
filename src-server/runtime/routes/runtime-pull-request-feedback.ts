@@ -34,8 +34,8 @@ import {
 } from '../../routes/pull-requests/pull-request-feedback.js';
 import { isOperatorInPersonNotAgent } from '../../security/coding-authority.js';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
-import type { ReviewEvidenceModule } from '../../services/evidence/review-evidence-module.js';
 import { readReviewRepositoryIdentity } from '../../services/evidence/git-review-workspace-source.js';
+import type { ReviewEvidenceModule } from '../../services/evidence/review-evidence-module.js';
 import type { FeaturePreviewRegistry } from '../../services/feature-previews/feature-preview-registry.js';
 import type { NotificationService } from '../../services/notifications/notification-service.js';
 import type { EventStore } from '../../services/orchestration/event-store.js';
