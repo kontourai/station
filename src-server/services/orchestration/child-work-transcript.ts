@@ -53,6 +53,8 @@ export interface ChildWorkTranscriptModule {
     childId: string;
     offset: number;
     limit: number;
+    /** Read the last `limit` messages instead of a page from `offset`. */
+    tail?: boolean;
     authority: SessionReadAuthority;
   }): Promise<ChildWorkTranscriptOutcome>;
 }
@@ -122,7 +124,7 @@ export function createChildWorkTranscriptModule(
         ) !== undefined
       );
     },
-    async read({ threadId, childId, offset, limit, authority }) {
+    async read({ threadId, childId, offset, limit, tail, authority }) {
       if (!deps.canReadSession(threadId, authority))
         return { status: 'not-found' };
       const ref = childTranscriptRefFromHistory(
@@ -138,6 +140,7 @@ export function createChildWorkTranscriptModule(
       const page = {
         offset: Math.max(0, Math.floor(offset)),
         limit: pageLimit,
+        tail: tail === true,
       };
       try {
         switch (ref.kind) {

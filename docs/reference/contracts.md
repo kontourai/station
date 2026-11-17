@@ -2991,3 +2991,7 @@ implemented by these declarations.
 The retired Activity pane and Activity review pane subpaths are no longer exported.
 Child transcript tool calls and results carry an optional engine-issued `toolCallId`;
 readers join only matching IDs, leaving legacy unkeyed results readable.
+A `ChildWorkTranscriptPage` names its message range with `offset` and
+`endOffset`, so a tail read (the latest messages) and a read from a cursor
+compose without re-reading earlier pages; a read from past the end names the
+end, so a reader can tell the transcript is shorter than its cursor.

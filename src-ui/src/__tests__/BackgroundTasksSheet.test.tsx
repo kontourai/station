@@ -178,7 +178,9 @@ describe('BackgroundTasksSheet', () => {
 
     fireEvent.click(screen.getByText('Recent activity (1)'));
     expect(screen.getByText('Investigate flaky test')).not.toBeNull();
-    expect(screen.getByText('Completed')).not.toBeNull();
+    // An agent card's completed turn reads as child-work rows do: the run
+    // finished, which is not a claim that the work succeeded.
+    expect(screen.getByText('Run finished')).not.toBeNull();
   });
 
   // station#1558: an entry whose session ended before its tool reported must

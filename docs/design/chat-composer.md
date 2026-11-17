@@ -712,7 +712,13 @@ without the "Running" its highlight already says; the full label is its
 tooltip and what a screen reader hears. The batch fills the answer's column for its whole
 life, so its running calls changing never resize the card, and the elapsed time
 holds its column from the start, so its appearing never widens it. A call is shown running only inside
-the turn the server reports open. Reduced motion disables the highlight and
+the turn the server reports open, or, once settled, while this Station's live tool record still
+holds it open (`tool.started` seen, no `tool.completed`, not closed by the turn's end): the record the
+Agents pane lists as running. Batches, inline call rows and browser activity summaries all read it.
+A reconnect snapshot keeps such a call running while the conversation still reports running child
+work; with none, it settles `unresolved` everywhere at once. A settled call with neither reads
+"no result". A chat reopened while a call runs reads "no result" until the call's next event, since
+the live record is not seeded from history. Reduced motion disables the highlight and
 makes pill size changes immediate.
 
 On a phone, a settled answer without anchored child work shows its tool work as one row. Every call from
@@ -729,12 +735,15 @@ own tool row or inside an activity summary. A Claude background shell command
 (`local_bash`, including one a Monitor launched) is child work of kind
 `command`/`monitor`, not a subagent: its card shows a terminal mark, the
 command line and its exit code, with no model, instructions or transcript.
-After the turn ends, the banner that says background work continues lists
-each running task the loaded transcript does not already draw as a card, with
-the same activity line the Background tasks sheet and Agents pane show (latest
-tool, progress, elapsed time), ticking live. A carded task appears once, as
-its card, which carries its own activity and elapsed time; with every running
-task carded, no list renders.
+After the turn ends, a strip says background work continues. It and the status
+pill read one list of the chat's running work and count it by kind ("9 agents
+and 3 tools running"), even before Station's own count catches up; only a single
+task is named. Each running task appears once in the transcript: work the
+transcript already shows (a subagent card, a call in a tool batch) is counted
+"above" ("9 agents above · 3 tools running"), and the strip's card lists only
+the rest, each with a kind glyph and the activity line the Background tasks
+sheet and Agents pane show (latest tool, progress, elapsed time), ticking live.
+With everything shown above, no list renders.
 A chat that recorded a local failure (a send refused during a restart, an
 earlier session's error) still reads Running in the inbox and header while the
 server reports the conversation's current execution running a turn or
@@ -807,7 +816,10 @@ without the directory retain the explicitly labelled loaded-window map.
 - **Turn rail.** A 16px gutter over the transcript's right edge, inside its
   scrollbar, with one tick per indexed turn placed by its ordinal position. The loaded
   fallback places ticks by their positions among transcript rows. The rows on screen are drawn as a band, and their turns' ticks are
-  highlighted; both are written from the scroll handler, once per frame. Hover
+  highlighted; both are written from the scroll handler, once per frame. At rest
+  the ticks are faint, so a long chat's packed ticks do not read as a dashed
+  bar; pointing at or focusing the rail brings them up, and the current turn
+  and marked turns stay at full strength. Hover
   or keyboard focus previews a turn: its prompt and, when loaded, the start of its first
   reply. Escape dismisses the preview without moving focus or the pointer:
   while it shows, the preview carries `data-escape-owner`, so the app's
@@ -997,6 +1009,13 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
   takes its confirmation); the pick is the new chat's own and rides its first
   send. In the dock's New chat draft the picker opens on the popover layer, as
   on Home.
+  On desktop a picker opened from Run setup (approval, model) replaces the
+  panel rather than stacking on it: Run setup hides, the picker opens at the Run
+  setup trigger and stays inside the composer's column, Escape returns to Run
+  setup and a click outside closes both. The approval picker's first line says
+  the mode in effect as the engine confirmed it, or that the engine has not
+  confirmed one yet; its list and the chip both call the broadest mode
+  **Full access**.
   The running chip shows engine-confirmed values or a pending/restart state. Personal defaults
   apply to new interactive chats; saving a future default is explicit.
 - New-chat and running-chat selectors use `ComposerChoice` for the caption,
@@ -1425,7 +1444,9 @@ continues to follow its existing close-on-merge setting. Linked pull requests
 alone do not automatically settle standalone conversations.
 
 Every populated shelf can be collapsed; collapsed shelves sit below expanded
-work, with Settled at the bottom by default. Shelf menus offer Move up and
+work, with Settled at the bottom by default. With no shelf expanded they stack
+from the top of the list. A collapsed shelf still lists the row of the chat on
+screen, so the open chat is never hidden from the inbox. Shelf menus offer Move up and
 Move down; that order is saved on this device within expanded and collapsed
 shelves. The inbox header is one line: search, the
 work scope picker (its "Show work" label kept for assistive technology), and
