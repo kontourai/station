@@ -498,8 +498,13 @@ layer replaces the personal default in **Permissions**
 message to the dock’s existing sender once; Home's Start hands the dock its
 exact chip selection, which the dock starts through the same path. Setup actions retain the draft
 through the authority-fenced return journey. A removed preference requires an
-explicit replacement; an unavailable preference keeps its reason and repair.
-Home’s composer shows the same remembered Agent, repair included; only with no Agent to offer does its Start run the quick-start preparation. The mobile overflow holds
+explicit replacement. Only an Agent that can start is remembered or chosen by
+default: a remembered, recent or configured Agent that cannot start yields to
+the next one that can, and an Agent chosen on the way into setup shows only
+once setup makes it ready. An Agent picked from the menu in this tab still
+shows with its repair, so it can run on another Station. The setup card appears
+only when no Agent can start, with each reason under **Details**.
+Home’s composer shows the same Agent; only with no Agent to offer does its Start run the quick-start preparation. The mobile overflow holds
 chat actions rather than repeating the app header’s connection-health row.
 When fullscreen chat hides that header, its actions sheet retains Station
 management and connection state.

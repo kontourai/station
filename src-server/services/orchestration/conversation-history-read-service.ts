@@ -4,6 +4,7 @@ import type {
 } from '@kontourai/station-contracts/orchestration';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import type { ProviderSession } from '../../providers/adapter-shape.js';
+import { resolveHomeDir } from '../../utils/paths.js';
 import { publicAgentIdFromRuntimeKey } from '../agents/runtime-agent-identity.js';
 import { derivedConversationTitle } from './conversation-title.js';
 import type { ConversationHistoryCursor, EventStore } from './event-store.js';
@@ -135,6 +136,11 @@ export class ConversationHistoryReadService {
       this.options.eventStore.readConversationExecutionProviders(
         page.records.map((record) => record.conversationId),
       );
+    // #5092: admit the runtime home once per request, and only if some row
+    // asks; per row, each summary repeated the admission filesystem walk.
+    // Never kept across requests (the #5050 reader pattern).
+    let stationHome: string | undefined;
+    const readStationHome = () => (stationHome ??= resolveHomeDir());
     const sessionItems = page.records.flatMap(
       (record): ConversationListItem[] => {
         const persisted = this.options.hydratePersistedSession(record.threadId);
@@ -153,6 +159,7 @@ export class ConversationHistoryReadService {
           eventCount: this.options.eventStore.countEventsByThread(
             record.threadId,
           ),
+          readStationHome,
           answerability: this.options.observeAnswerability(
             record.threadId,
             (loaded ?? persisted)?.provider,
