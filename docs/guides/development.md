@@ -948,7 +948,8 @@ gh api repos/kontourai/station/rules/branches/main
   `Source verification policy` stays pending with "heavy checks run once
   armed" until the run that arming starts (`PR armed`) passes on that head;
   a push to an armed PR runs everything. Arm at your final push as before. For
-  a full run before arming, add the `full-checks` label and push or re-run.
+  a full run before arming, add the `full-checks` label and push or use
+  **Re-run all jobs** (**Re-run failed jobs** repeats the old decision).
   Unset or `every-push` (the default), every push runs everything. See
   [heavy checks when armed](testing.md#heavy-checks-when-armed).
 - **Pass no merge-method flag.** The `merge_queue` rule's `merge_method` owns
