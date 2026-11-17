@@ -389,6 +389,7 @@ export function usePluginManagementViewModel() {
   async function install(
     skipList?: string[],
     dataPolicy: 'preserve' | 'retain-and-reset' = 'preserve',
+    options?: { installAgainWhileInactive?: boolean },
   ) {
     const source = installSource.trim();
     if (!source) return;
@@ -444,6 +445,33 @@ export function usePluginManagementViewModel() {
       reinstall && reinstall.pluginName === basis.manifest?.name
         ? reinstall
         : null;
+    // A plugin already installed but not active (Needs recovery) is
+    // recovered, not installed again: another install adds another copy of
+    // its code and asks for consent again. Installing again stays possible,
+    // explicitly, for a source that changed since.
+    const inactive = plugins.find(
+      (plugin) =>
+        !isRejectedPlugin(plugin) &&
+        plugin.name === basis.manifest?.name &&
+        plugin.installationReadiness?.state === 'pending',
+    );
+    if (inactive && !reinstalling && !options?.installAgainWhileInactive) {
+      setShowInstallModal(false);
+      selectPlugin(inactive.name);
+      setMessage({
+        type: 'warning',
+        text: `${displayName} is already installed but not active. Recover it to activate it; installing it again adds another copy of its code.`,
+        action: {
+          label: 'Install again anyway',
+          invoke: () => {
+            void install(skipList, dataPolicy, {
+              installAgainWhileInactive: true,
+            });
+          },
+        },
+      });
+      return;
+    }
     const pendingConsent = [
       ...basis.permissions.pendingConsent,
       ...(basis.dependencies ?? []).flatMap((dependency) =>

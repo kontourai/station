@@ -5,6 +5,7 @@ import {
   useInvalidateQuery,
   usePluginRegistryInstallMutation,
   usePluginRegistryPreviewMutation,
+  usePluginsQuery,
   useRegistryAgentActionMutation,
   useRegistryIntegrationActionMutation,
   useRegistryItemsQuery,
@@ -169,6 +170,9 @@ export function RegistryView({
   const agentMutation = useRegistryAgentActionMutation();
   const integrationMutation = useRegistryIntegrationActionMutation();
   const pluginMutation = usePluginRegistryInstallMutation();
+  // Which installed plugins read Needs recovery, so an install of one offers
+  // Recover instead of a second copy.
+  const { data: installedPluginRows } = usePluginsQuery();
   const skillMutation = useRegistrySkillActionMutation();
   const layoutMutation = useRegistryLayoutActionMutation();
 
@@ -381,7 +385,7 @@ export function RegistryView({
     }
   };
 
-  const confirmPluginInstall = async () => {
+  const confirmPluginInstall = async (installAgainWhileInactive = false) => {
     const preview = pluginInstallPreview;
     if (!preview) return;
     const { data, item, itemId, tab } = preview;
@@ -391,6 +395,37 @@ export function RegistryView({
       data.manifest?.name ||
       item.displayName ||
       itemId;
+    const inactiveName = (installedPluginRows ?? []).find(
+      (row) =>
+        !('status' in row && row.status === 'rejected') &&
+        row.name === data.manifest?.name &&
+        'installationReadiness' in row &&
+        row.installationReadiness?.state === 'pending',
+    )?.name;
+    if (inactiveName && !installAgainWhileInactive) {
+      // Recovered, not installed again: see the Plugins view's install.
+      showToast(
+        `${displayName} is already installed but not active. Recover it to activate it; installing it again adds another copy of its code.`,
+        undefined,
+        undefined,
+        [
+          {
+            label: 'Recover plugin',
+            variant: 'primary' as const,
+            onClick: () => {
+              setPluginInstallPreview(null);
+              navigate(`/plugins/${encodeURIComponent(inactiveName)}`);
+            },
+          },
+          {
+            label: 'Install again anyway',
+            onClick: () => void confirmPluginInstall(true),
+          },
+        ],
+        'warning',
+      );
+      return;
+    }
     const pendingConsent = [
       ...data.permissions.pendingConsent,
       ...(data.dependencies ?? []).flatMap((dependency) =>

@@ -578,7 +578,7 @@ const VERBS: Record<string, VerbSpec> = {
     group: 'Plugins',
     summary: 'Install, inspect, scaffold, build, and preview plugins',
     usage: [
-      'station plugin install <source> [--skip=<components>] [--yes]',
+      'station plugin install <source> [--skip=<components>] [--yes] [--reinstall]',
       'station plugin preview <source>',
       'station plugin list|build',
       'station plugin recovery-backups',

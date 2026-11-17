@@ -546,6 +546,52 @@ describe('plugin CLI API authority', () => {
     );
   });
 
+  test('refuses to install another copy of a plugin that is installed but not active, unless --reinstall', async () => {
+    const preview = {
+      valid: true,
+      manifest: { name: 'demo', version: '1.0.0' },
+      components: [],
+      conflicts: [],
+      contentDigest: 'sha256:reviewed',
+      grantRevision: 'parent-reviewed-revision',
+      permissions: { required: [], autoGranted: [], pendingConsent: [] },
+    };
+    listPlugins.mockResolvedValue([
+      {
+        name: 'demo',
+        version: '1.0.0',
+        installationReadiness: { state: 'pending', recovery: 'review' },
+      },
+    ]);
+    authenticatedFetch.mockImplementation(async () => Response.json(preview));
+    const { install } = await import('../commands/install.js');
+
+    await expect(
+      install(PLUGIN_SOURCE, [], { ...parsed, flags: { yes: true } }, null),
+    ).rejects.toThrow(
+      'demo is already installed but not active. Run `station plugin recover demo` to activate it, or pass --reinstall to install another copy of its code. Nothing was installed.',
+    );
+    expect(authenticatedFetch).toHaveBeenCalledTimes(1);
+
+    authenticatedFetch
+      .mockReset()
+      .mockResolvedValueOnce(Response.json(preview))
+      .mockResolvedValueOnce(
+        Response.json({
+          success: true,
+          plugin: { name: 'demo', version: '1.0.0' },
+        }),
+      );
+    await expect(
+      install(
+        PLUGIN_SOURCE,
+        [],
+        { ...parsed, flags: { yes: true, reinstall: true } },
+        null,
+      ),
+    ).resolves.toEqual({ pluginName: 'demo', version: '1.0.0' });
+  });
+
   describe('plugin recover', () => {
     const review = {
       manifest: { name: 'demo', version: '1.0.0' },

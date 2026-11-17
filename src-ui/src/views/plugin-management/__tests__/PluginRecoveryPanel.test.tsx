@@ -151,7 +151,7 @@ test('a declined trusted approval after recovery says the plugin still needs it'
   await waitFor(() =>
     expect(onOutcome).toHaveBeenCalledWith({
       type: 'error',
-      text: "Fixture is installed but requires host approval before it is ready. Open Plugins, select it, and review its request under Requested and not granted.",
+      text: 'Fixture is installed but requires host approval before it is ready. Open Plugins, select it, and review its request under Requested and not granted.',
     }),
   );
 });

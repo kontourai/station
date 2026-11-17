@@ -158,7 +158,12 @@ export function PluginRecoveryPanel({
           className={`plugins__message plugins__message--${message.type}`}
           role="status"
         >
-          {message.text}
+          <span>{message.text}</span>
+          {message.action && (
+            <Button onClick={message.action.invoke}>
+              {message.action.label}
+            </Button>
+          )}
         </div>
       )}
       <DetailHeader

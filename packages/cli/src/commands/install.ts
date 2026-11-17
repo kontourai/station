@@ -329,6 +329,29 @@ export async function install(
       `Station at ${target.apiBase} did not report what installing this plugin requires, so there is nothing to approve. Upgrade Station, or install the plugin from its Plugins page.`,
     );
   }
+  // Installed but not active (Needs recovery): recover it rather than add
+  // another copy of its code. `--reinstall` installs again on purpose, for a
+  // source that changed since. An inventory that cannot be read does not
+  // block the install; the server remains the authority on what it accepts.
+  const previewedName = previewed.manifest?.name;
+  if (previewedName && parsed.flags.reinstall !== true) {
+    let rows: Awaited<ReturnType<typeof listPlugins>> | undefined;
+    try {
+      rows = await listPlugins(target.apiBase);
+    } catch {
+      rows = undefined;
+    }
+    const inactive = rows?.some(
+      (row) =>
+        row.name === previewedName &&
+        'installationReadiness' in row &&
+        row.installationReadiness?.state === 'pending',
+    );
+    if (inactive)
+      throw new Error(
+        `${previewedName} is already installed but not active. Run \`station plugin recover ${previewedName}\` to activate it, or pass --reinstall to install another copy of its code. Nothing was installed.`,
+      );
+  }
 
   const revisionPresent = (value: unknown) =>
     typeof value === 'string' && value.length > 0;

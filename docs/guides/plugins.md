@@ -685,7 +685,10 @@ does not retry it on its own. Recovery runs under the same limit, so on a busy
 host recover when it is idle. Plugins
 then says the plugin was installed (or updated) but is not active, and opens
 its row, which reads **Needs recovery**. It did not fail, and installing it
-again would install a second copy. Station does not ask for its trusted
+again would install a second copy: installing a plugin that reads **Needs
+recovery**, from Plugins, Registry or `station plugin install`, offers
+recovery instead, and installs again only when you ask (**Install again
+anyway**, or `--reinstall`). Station does not ask for its trusted
 permissions yet, because their host approval needs an active plugin; a
 recovery that activates it asks for them straight away, as a completed install
 does. The CLI prints the same

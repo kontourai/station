@@ -213,6 +213,8 @@ const refetchInstalled = vi.fn();
 const reloadPlugins = vi.fn(async () => undefined);
 /** What the plugin install resolves with instead of an applied install. */
 let pluginInstallResult: unknown;
+/** What `GET /api/plugins` lists (readiness included). */
+let installedPluginRows: unknown[] = [];
 const pluginRegistryListeners = new Set<() => void>();
 let pluginRegistryStatus: {
   state: 'ready' | 'degraded';
@@ -250,6 +252,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   useRegistryIntegrationActionMutation: () => makeMutation('integrations'),
   useRegistryLayoutActionMutation: () => makeMutation('layouts'),
   usePluginRegistryInstallMutation: () => makeMutation('plugins'),
+  usePluginsQuery: () => ({ data: installedPluginRows }),
   usePluginRegistryPreviewMutation: () => ({
     isPending: false,
     variables: undefined,
@@ -388,6 +391,7 @@ afterEach(() => {
   previewResults.clear();
   installedPermissions = undefined;
   pluginInstallResult = undefined;
+  installedPluginRows = [];
   reloadPlugins.mockClear();
   requestConsent.mockClear();
   previewMutationCalls.length = 0;
@@ -1367,6 +1371,46 @@ describe('RegistryView', () => {
     expect(mutationCalls).toHaveLength(1);
     expect(requestConsent).not.toHaveBeenCalled();
     expect(reloadPlugins).not.toHaveBeenCalled();
+  });
+
+  test('installing a plugin that is already installed but not active offers Recover, and installs again only when asked', async () => {
+    previewResults.set('demo-layout', validDemoPreview());
+    installedPluginRows = [
+      {
+        name: 'demo-layout',
+        version: '1.0.0',
+        installationReadiness: { state: 'pending', recovery: 'review' },
+      },
+    ];
+    render(<RegistryView initialTab="plugins" />);
+    fireEvent.click(
+      within(screen.getByTestId('registry-detail')).getByRole('button', {
+        name: 'Install',
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
+
+    await waitFor(() => expect(showToastMock).toHaveBeenCalled());
+    const [text, , , actions, tone] = showToastMock.mock.calls.at(-1) as [
+      string,
+      unknown,
+      unknown,
+      Array<{ label: string; onClick: () => void }>,
+      string,
+    ];
+    expect(text).toBe(
+      'Demo Layout is already installed but not active. Recover it to activate it; installing it again adds another copy of its code.',
+    );
+    expect(tone).toBe('warning');
+    expect(mutationCalls).toEqual([]);
+    expect(actions.map((action) => action.label)).toEqual([
+      'Recover plugin',
+      'Install again anyway',
+    ]);
+    actions[0]!.onClick();
+    expect(navigateMock).toHaveBeenCalledWith('/plugins/demo-layout');
+    actions[1]!.onClick();
+    await waitFor(() => expect(mutationCalls).toHaveLength(1));
   });
 
   test('a plugin that contributes no layout is confirmed with nothing to place (#1536 G7)', () => {

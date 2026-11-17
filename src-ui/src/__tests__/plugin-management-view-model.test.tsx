@@ -671,7 +671,7 @@ describe('usePluginManagementViewModel', () => {
         { tier: 'active' },
       ]),
     ).toBe(
-      "Provider Kit is installed but requires host approval before it is ready. Open Plugins, select it, and review its request under Requested and not granted.",
+      'Provider Kit is installed but requires host approval before it is ready. Open Plugins, select it, and review its request under Requested and not granted.',
     );
     expect(consentFailureMessage('Network Kit', [{ tier: 'active' }])).toBe(
       'Network Kit was installed, but required permissions were not approved.',
@@ -1286,7 +1286,7 @@ describe('usePluginManagementViewModel', () => {
     await waitFor(() => {
       expect(result.current.message).toEqual({
         type: 'error',
-        text: "Network Kit is installed but requires host approval before it is ready. Open Plugins, select it, and review its request under Requested and not granted.",
+        text: 'Network Kit is installed but requires host approval before it is ready. Open Plugins, select it, and review its request under Requested and not granted.',
       });
     });
     expect(mocks.requestConsent).toHaveBeenCalledWith(
@@ -1373,6 +1373,37 @@ describe('usePluginManagementViewModel', () => {
     });
     expect(mocks.installMutate).toHaveBeenCalledTimes(1);
     expect(mocks.previewMutate).toHaveBeenCalledTimes(1);
+  });
+
+  test('installing a plugin that is already installed but not active offers Recover, and installs again only when asked', async () => {
+    mocks.pluginsData = [
+      {
+        name: 'network-kit',
+        displayName: 'Network Kit',
+        version: '1.0.0',
+        installationReadiness: { state: 'pending', recovery: 'review' },
+      },
+    ];
+    mocks.requestInstallConsent.mockResolvedValue(true);
+    const { result } = renderHook(() => usePluginManagementViewModel());
+    await primePreview(result);
+    await act(async () => {
+      await result.current.install([]);
+    });
+
+    expect(mocks.installMutate).not.toHaveBeenCalled();
+    expect(mocks.requestInstallConsent).not.toHaveBeenCalled();
+    expect(mocks.selectPlugin).toHaveBeenCalledWith('network-kit');
+    expect(result.current.message).toMatchObject({
+      type: 'warning',
+      text: 'Network Kit is already installed but not active. Recover it to activate it; installing it again adds another copy of its code.',
+      action: { label: 'Install again anyway' },
+    });
+    await act(async () => {
+      result.current.message?.action?.invoke();
+    });
+    await waitFor(() => expect(mocks.installMutate).toHaveBeenCalledOnce());
+    expect(mocks.requestInstallConsent).toHaveBeenCalledOnce();
   });
 
   test('a recorded selection whose listing is unfinished reloads plugins rather than reporting a failure', async () => {
