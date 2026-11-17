@@ -832,6 +832,7 @@ export {
   renameCodingFile,
   renameConversation,
   renewAuth,
+  reopenTaskOnOverview,
   requestAgentHealth,
   requestCoreUpdateStatus,
   requestPluginRecoveryPreview,
