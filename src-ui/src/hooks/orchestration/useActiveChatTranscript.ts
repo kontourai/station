@@ -411,8 +411,16 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
   const windowWatermark = replay
     ? Number.MAX_SAFE_INTEGER
     : serverWindow.watermark;
+  // A failed read that holds nothing has no rows for live events to gap
+  // against: its failure is the state to show, not a catch-up that never ends
+  // (the gap reload waits on the error, so it would never clear).
+  const windowFailedEmpty = Boolean(
+    serverWindow.error && serverWindow.events.length === 0,
+  );
   const liveGap =
-    !replay && windowWatermark < readSequencedLiveTruncation(apiBase);
+    !replay &&
+    !windowFailedEmpty &&
+    windowWatermark < readSequencedLiveTruncation(apiBase);
   const gapReloadKey = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (
