@@ -22,7 +22,7 @@ choose a section from the picker. One section is shown at a time. Section
 links remain bookmarkable, and moving between sections keeps unsaved edits.
 
 **Save** applies project defaults. Layout, source, access and knowledge actions
-apply separately when confirmed. A saved model connection that is no longer
+apply separately when confirmed, and **Pull requests** saves as you change it. A saved model connection that is no longer
 available stays visible until you choose a replacement; an unrelated edit does
 not reset it to the Station default.
 
