@@ -35,7 +35,13 @@ const logger = createLogger({ name: 'usage-aggregator' });
  * free. `OrchestrationService.listSessionUsage` is the only implementation.
  */
 interface OrchestrationUsageSource {
-  listSessionUsage(): OrchestrationSessionUsage[];
+  /**
+   * The source decides how much it re-reads (#373); `rebuild` asks it to
+   * discard what it kept and read everything again.
+   */
+  listSessionUsage(options?: {
+    rebuild?: boolean;
+  }): OrchestrationSessionUsage[] | Promise<OrchestrationSessionUsage[]>;
   /**
    * The request-scoped version keeps hosted analytics inside the same
    * user/tenant predicate as every other session-derived read.
@@ -159,17 +165,28 @@ export class UsageAggregator {
     });
   }
 
-  async fullRescan(): Promise<UsageStats> {
-    if (this.rescanInFlight) return this.rescanInFlight;
-    this.rescanInFlight = this.serialize(() => this.fullRescanInner());
+  /**
+   * Rebuilds the snapshot from retained records. Engine usage comes from a
+   * source that re-reads only what changed since its last pass (#373); the
+   * snapshot is still recomputed whole from every session it returns.
+   * `rebuild` (the Profile's **Rebuild usage**) makes that source read
+   * everything again, and queues behind a pass already running instead of
+   * joining it.
+   */
+  async fullRescan(options: { rebuild?: boolean } = {}): Promise<UsageStats> {
+    if (this.rescanInFlight && !options.rebuild) return this.rescanInFlight;
+    const pass = this.serialize(() => this.fullRescanInner(options));
+    this.rescanInFlight = pass;
     try {
-      return await this.rescanInFlight;
+      return await pass;
     } finally {
-      this.rescanInFlight = undefined;
+      if (this.rescanInFlight === pass) this.rescanInFlight = undefined;
     }
   }
 
-  private async fullRescanInner(): Promise<UsageStats> {
+  private async fullRescanInner(options: {
+    rebuild?: boolean;
+  }): Promise<UsageStats> {
     const previousStats = await this.loadStats();
     const agentsDir = join(this.projectHomeDir, 'agents');
 
@@ -240,7 +257,8 @@ export class UsageAggregator {
     }
 
     // Relay provenance selects the primary ledger; coincidental ids do not.
-    const orchestrationSessions = this.readOrchestrationSessionUsage();
+    const orchestrationSessions =
+      await this.readOrchestrationSessionUsage(options);
     const memorySessionKeys = new Set<string>();
     for (const [agentSlug, ids] of sessionCounts)
       for (const id of ids) memorySessionKeys.add(`${agentSlug}\0${id}`);
@@ -361,13 +379,15 @@ export class UsageAggregator {
    * claiming a measured zero sessions. A read that throws (a closed store on
    * a mid-reload rescan) is the same "could not read" answer, logged.
    */
-  private readOrchestrationSessionUsage():
-    | OrchestrationSessionUsage[]
-    | undefined {
+  private async readOrchestrationSessionUsage(options: {
+    rebuild?: boolean;
+  }): Promise<OrchestrationSessionUsage[] | undefined> {
     const source = this.orchestrationUsage?.get();
     if (!source) return undefined;
     try {
-      return source.listSessionUsage();
+      return await source.listSessionUsage(
+        options.rebuild ? { rebuild: true } : undefined,
+      );
     } catch (error) {
       logger.error('Failed to read orchestration session usage', { error });
       return undefined;

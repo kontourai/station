@@ -3054,8 +3054,7 @@ export class OrchestrationService {
               .map((event) => event.payload)
           : [];
       },
-      readUsageRevision: (threadId) =>
-        this.options.eventStore?.readUsageRevision(threadId) ?? 'empty',
+      usageProjectionStore: this.options.eventStore,
       listUsageEventPayloads: (threadId, clock) =>
         this.options.eventStore?.listUsageEventPayloads(threadId, clock) ?? [],
       listUsageReceiptEvents: (input) =>
@@ -7493,10 +7492,17 @@ export class OrchestrationService {
    * A session that was never configured is skipped: it has no agent or
    * conversation to attribute usage to, and that is the same rule monitoring
    * applies to the same sessions.
+   *
+   * #373: each thread's fold is cached in the store and refolded only after
+   * its events change, so a pass reads what changed since the last one;
+   * `rebuild` discards the cache and folds every thread again.
    */
-  listSessionUsage(authority: SessionReadScope): OrchestrationSessionUsage[] {
+  listSessionUsage(
+    authority: SessionReadScope,
+    options?: { rebuild?: boolean },
+  ): Promise<OrchestrationSessionUsage[]> {
     this.initialize();
-    return this.transcriptReads.listSessionUsage(authority);
+    return this.transcriptReads.listSessionUsage(authority, options);
   }
 
   listDailyUsage(day: string, authority: SessionReadScope) {

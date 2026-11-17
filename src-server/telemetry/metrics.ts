@@ -2444,6 +2444,28 @@ export const analyticsOps = meter.createCounter(
     description: 'Analytics query events',
   },
 );
+/**
+ * #373: one lifetime usage pass, by `mode`: `full` (no valid watermark, or a
+ * requested rebuild) or `incremental` (caught up from the watermark).
+ */
+export const usageProjectionPassDuration = meter.createHistogram(
+  'station.usage_projection.pass.duration',
+  {
+    description: 'Lifetime usage projection pass duration by mode',
+    unit: 'ms',
+  },
+);
+/**
+ * #373: event rows one lifetime usage pass read, by `mode`: `full` (every
+ * thread refolded), `incremental` (new rows past the watermark) or `rebuild`
+ * (usage rows of the threads an incremental pass refolded).
+ */
+export const usageProjectionRowsScanned = meter.createHistogram(
+  'station.usage_projection.rows_scanned',
+  {
+    description: 'Event rows read per lifetime usage projection pass by mode',
+  },
+);
 
 // ── Bedrock ──
 export const bedrockOps = meter.createCounter('station.bedrock.operations', {

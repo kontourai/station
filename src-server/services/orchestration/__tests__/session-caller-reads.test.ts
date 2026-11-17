@@ -145,7 +145,7 @@ test('authorized existence, binding and conversation reads keep image bytes lazy
 
 // Distinct risk: the real service must wire the narrow usage reader and reuse
 // an unchanged projection, then invalidate it without leaking its mutable result.
-test('usage polling reuses unchanged per-session projections and observes new usage', () => {
+test('usage polling reuses unchanged per-session projections and observes new usage', async () => {
   const { store, service, append } = fixture();
   append({ method: 'turn.started', turnId: 'turn', prompt: 'large input' });
   append({
@@ -165,7 +165,7 @@ test('usage polling reuses unchanged per-session projections and observes new us
   append({ method: 'turn.completed', turnId: 'turn', finishReason: 'stop' });
   const replay = vi.spyOn(store, 'listEvents');
   const facts = vi.spyOn(store, 'listUsageEventPayloads');
-  const first = service.listSessionUsage(authority());
+  const first = await service.listSessionUsage(authority());
   expect(first[0]?.usage).toMatchObject({
     inputTokens: 10,
     outputTokens: 3,
@@ -173,11 +173,15 @@ test('usage polling reuses unchanged per-session projections and observes new us
     toolCalls: 1,
   });
   first[0]!.usage.inputTokens = 999;
-  expect(service.listSessionUsage(authority())[0]?.usage.inputTokens).toBe(10);
+  expect(
+    (await service.listSessionUsage(authority()))[0]?.usage.inputTokens,
+  ).toBe(10);
   expect(facts).toHaveBeenCalledTimes(1);
-  expect(service.listSessionUsage(authority('stranger'))).toEqual([]);
+  expect(await service.listSessionUsage(authority('stranger'))).toEqual([]);
   append({ method: 'token-usage.updated', turnId: 'next', promptTokens: 4 });
-  expect(service.listSessionUsage(authority())[0]?.usage.inputTokens).toBe(14);
+  expect(
+    (await service.listSessionUsage(authority()))[0]?.usage.inputTokens,
+  ).toBe(14);
   expect(facts).toHaveBeenCalledTimes(2);
   expect(replay).not.toHaveBeenCalled();
   const payloads = store.listUsageEventPayloads('thread');

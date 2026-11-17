@@ -1,5 +1,7 @@
+import { setImmediate as yieldToEventLoop } from 'node:timers/promises';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
+  INTERNAL_SESSION_READ_SCOPE,
   isSessionReadAuthority,
   type SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
@@ -22,6 +24,10 @@ import {
   CatalogUsagePricingSnapshotReader,
   stampUsageReceiptPrice,
 } from '../../analytics/usage-pricing-snapshot-reader.js';
+import {
+  usageProjectionPassDuration,
+  usageProjectionRowsScanned,
+} from '../../telemetry/metrics.js';
 import type {
   EventStore,
   UsageReceiptEventRow,
@@ -48,6 +54,35 @@ const STALE_OBSERVATION_REASON =
 const CONTEXT_OCCUPANCY_ONLY_REASON =
   'engine reports context occupancy only, not token or cost totals';
 
+/**
+ * #373: names what a cached thread projection was computed by. Bump it when
+ * anything that shapes a cached entry changes: the shared fold
+ * (`packages/shared/src/usage-fold.ts`, which a test pins to this value),
+ * the rows `EventStore.listUsageEventPayloads` selects, or
+ * {@link foldThreadUsage}. A checkpoint under another version rebuilds once.
+ */
+const USAGE_PROJECTION_VERSION = 'usage-projection-v1';
+/** How long one synchronous slice of a pass may hold the event loop. */
+const USAGE_PROJECTION_SLICE_MS = 16;
+/** Refolded entries are committed in batches of about this many bytes. */
+const USAGE_PROJECTION_WRITE_BATCH_BYTES = 4 * 1024 * 1024;
+
+/** What lifetime usage caches per thread: everything derived from its events. */
+interface ThreadUsageProjection {
+  projection: ReturnType<typeof foldUsageObservationProjection>;
+  relayAgentId?: string;
+}
+
+/** The orchestration store's durable side of the lifetime usage projection. */
+type UsageProjectionStore = Pick<
+  EventStore,
+  | 'currentGlobalSequence'
+  | 'readUsageProjectionCheckpoint'
+  | 'advanceUsageProjection'
+  | 'readUsageProjection'
+  | 'writeUsageProjections'
+>;
+
 interface SessionTranscriptReadsDeps {
   canReadSession: (threadId: string, authority: SessionReadScope) => boolean;
   isEphemeralSession: (threadId: string) => boolean;
@@ -66,7 +101,11 @@ interface SessionTranscriptReadsDeps {
    * conversation of its own.
    */
   conversationIdForThread?: (threadId: string) => string;
-  readUsageRevision: (threadId: string) => string;
+  /**
+   * #373: where per-thread usage folds persist between passes. Without it
+   * every pass folds every thread, as a store-less deployment always has.
+   */
+  usageProjectionStore?: UsageProjectionStore;
   listUsageEventPayloads: EventStore['listUsageEventPayloads'];
   listUsageReceiptEvents: EventStore['listUsageReceiptEvents'];
   listUsageCoverageEvents: EventStore['listUsageCoverageEvents'];
@@ -105,15 +144,6 @@ interface SessionTranscriptReadsDeps {
  * none of the surface.
  */
 export class SessionTranscriptReads {
-  private readonly usageProjections = new Map<
-    string,
-    {
-      revision: string;
-      projection: ReturnType<typeof foldUsageObservationProjection>;
-      relayAgentId?: string;
-    }
-  >();
-
   constructor(private readonly deps: SessionTranscriptReadsDeps) {}
 
   /** Additive async owner seam; synchronous consumers keep their existing API. */
@@ -263,7 +293,28 @@ export class SessionTranscriptReads {
       });
   }
 
-  listSessionUsage(authority: SessionReadScope): OrchestrationSessionUsage[] {
+  /**
+   * Every persisted session's usage, for lifetime analytics. The answer is
+   * the shared fold over each thread's usage rows, exactly as folding them
+   * all again would give; what changes with #373 is how much is read.
+   *
+   * A pass first catches up in one transaction: threads with rows past the
+   * stored watermark lose their cached fold, and the watermark moves to the
+   * store's current high-water (`full` mode forgets every thread instead,
+   * when there is no checkpoint under this version, the checkpoint is ahead
+   * of the store, or the caller asks for a rebuild). It then walks the
+   * sessions, refolding only threads with no cached fold, in slices that
+   * yield the event loop. The fold reads a thread's whole history (it
+   * resolves turn models and principals before allocating), so a changed
+   * thread is refolded whole, never patched.
+   *
+   * Deletions and rewrites need no watermark: the store's triggers drop the
+   * affected thread's cached fold in the same transaction.
+   */
+  async listSessionUsage(
+    authority: SessionReadScope,
+    options: { rebuild?: boolean } = {},
+  ): Promise<OrchestrationSessionUsage[]> {
     // Its one consumer is `analytics/stats.json`, a home-global lifetime
     // store with no per-user partition, served by a route that applies no
     // tenant scope. In a hosted deployment "home-global" would mean "across
@@ -271,51 +322,57 @@ export class SessionTranscriptReads {
     // matching the memory substrate this supplements, which hosted mode does
     // not use either (`isHostedSessionReadAuthority` in `conversations.ts`).
     if (this.deps.requireTenantExecutionContext() === true) return [];
+    const startedAt = performance.now();
+    const store = this.deps.usageProjectionStore;
+    const highWater = store?.currentGlobalSequence() ?? 0;
+    const checkpoint = options.rebuild
+      ? undefined
+      : store?.readUsageProjectionCheckpoint();
+    const mode =
+      checkpoint?.version === USAGE_PROJECTION_VERSION &&
+      checkpoint.watermark <= highWater
+        ? 'incremental'
+        : 'full';
+    const caughtUp = store?.advanceUsageProjection({
+      version: USAGE_PROJECTION_VERSION,
+      ...(mode === 'incremental' ? { since: checkpoint!.watermark } : {}),
+      through: highWater,
+    });
+    if (mode === 'incremental')
+      usageProjectionRowsScanned.record(caughtUp?.rows ?? 0, { mode });
+
+    const threadIds = this.deps.readSessionThreadIds(authority);
     const sessions: OrchestrationSessionUsage[] = [];
-    for (const threadId of this.deps.readSessionThreadIds(authority)) {
+    let refolds: Array<readonly [string, string]> = [];
+    let refoldBytes = 0;
+    let refoldedRows = 0;
+    let sliceStartedAt = performance.now();
+    for (const threadId of threadIds) {
+      if (performance.now() - sliceStartedAt >= USAGE_PROJECTION_SLICE_MS) {
+        // A commit per slice would make a full build mostly fsyncs.
+        if (refoldBytes >= USAGE_PROJECTION_WRITE_BATCH_BYTES) {
+          store?.writeUsageProjections({ upserts: refolds });
+          refolds = [];
+          refoldBytes = 0;
+        }
+        await yieldToEventLoop();
+        sliceStartedAt = performance.now();
+      }
       if (this.deps.isEphemeralSession(threadId)) continue;
       if (!this.deps.canReadSession(threadId, authority)) continue;
       const attribution = this.deps.sessionAttributionFor(threadId);
-      const revision = this.deps.readUsageRevision(threadId);
-      let cached = this.usageProjections.get(threadId);
-      if (cached?.revision !== revision) {
+      let entry = parseThreadUsageProjection(
+        store?.readUsageProjection(threadId),
+      );
+      if (!entry) {
         const events = this.deps.listUsageEventPayloads(threadId);
-        const projection = foldUsageObservationProjection(events, (dropped) =>
-          this.deps.reportDroppedUsageFigure(dropped),
-        );
-        const relayAgentIds = new Set(
-          events.flatMap((event) =>
-            event.method === 'session.configured' &&
-            event.provider === 'station-agent' &&
-            typeof event.metadata?.agentId === 'string' &&
-            event.metadata.agentId
-              ? [event.metadata.agentId]
-              : [],
-          ),
-        );
-        const relayAgentId =
-          relayAgentIds.size === 1 &&
-          events.every((event) => event.provider === 'station-agent')
-            ? [...relayAgentIds][0]
-            : undefined;
-        cached = {
-          revision,
-          projection,
-          ...(relayAgentId ? { relayAgentId } : {}),
-        };
-        // Bound retained read state independently of the lifetime event log.
-        if (
-          projection.observations.length <= 2_000 &&
-          Buffer.byteLength(JSON.stringify(projection)) <= 262_144
-        ) {
-          if (this.usageProjections.size >= 128)
-            this.usageProjections.delete(
-              this.usageProjections.keys().next().value!,
-            );
-          this.usageProjections.set(threadId, cached);
-        } else this.usageProjections.delete(threadId);
+        refoldedRows += events.length;
+        entry = this.foldThreadUsage(events);
+        const serialized = JSON.stringify(entry);
+        refolds.push([threadId, serialized]);
+        refoldBytes += serialized.length;
       }
-      const { projection, relayAgentId } = cached;
+      const { projection, relayAgentId } = entry;
       if (
         !attribution &&
         projection.observations.length === 0 &&
@@ -334,13 +391,49 @@ export class SessionTranscriptReads {
               },
             }
           : {}),
-        ...structuredClone(projection),
+        ...projection,
       });
     }
-    const retained = new Set(sessions.map((session) => session.threadId));
-    for (const threadId of this.usageProjections.keys())
-      if (!retained.has(threadId)) this.usageProjections.delete(threadId);
+    // Only a caller that sees every session can say which cached folds
+    // belong to no session any more.
+    store?.writeUsageProjections({
+      upserts: refolds,
+      ...(authority === INTERNAL_SESSION_READ_SCOPE
+        ? { retainOnly: new Set(threadIds) }
+        : {}),
+    });
+    usageProjectionRowsScanned.record(refoldedRows, {
+      mode: mode === 'full' ? 'full' : 'rebuild',
+    });
+    usageProjectionPassDuration.record(performance.now() - startedAt, {
+      mode,
+    });
     return sessions;
+  }
+
+  /** Everything a thread's cached usage entry holds, from its usage rows. */
+  private foldThreadUsage(
+    events: CanonicalRuntimeEvent[],
+  ): ThreadUsageProjection {
+    const projection = foldUsageObservationProjection(events, (dropped) =>
+      this.deps.reportDroppedUsageFigure(dropped),
+    );
+    const relayAgentIds = new Set(
+      events.flatMap((event) =>
+        event.method === 'session.configured' &&
+        event.provider === 'station-agent' &&
+        typeof event.metadata?.agentId === 'string' &&
+        event.metadata.agentId
+          ? [event.metadata.agentId]
+          : [],
+      ),
+    );
+    const relayAgentId =
+      relayAgentIds.size === 1 &&
+      events.every((event) => event.provider === 'station-agent')
+        ? [...relayAgentIds][0]
+        : undefined;
+    return { projection, ...(relayAgentId ? { relayAgentId } : {}) };
   }
 
   /**
@@ -778,4 +871,32 @@ function hasTokenMeasurements(
     event.cacheWriteTokens,
     event.reasoningTokens,
   ].some(isReportedAmount);
+}
+
+/**
+ * A cached entry, or `undefined` for one that cannot be used: refolding the
+ * thread is always the correct answer, so a damaged row costs a refold rather
+ * than the pass.
+ */
+function parseThreadUsageProjection(
+  value: string | undefined,
+): ThreadUsageProjection | undefined {
+  if (value === undefined) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      'projection' in parsed &&
+      parsed.projection &&
+      typeof parsed.projection === 'object' &&
+      Array.isArray(
+        (parsed.projection as { observations?: unknown }).observations,
+      )
+    )
+      return parsed as ThreadUsageProjection;
+  } catch {
+    // Fall through: an unreadable row is a missing row.
+  }
+  return undefined;
 }

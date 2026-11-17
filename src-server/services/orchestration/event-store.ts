@@ -195,6 +195,7 @@ import {
   ensureWorktreeOutputSettlementOwnerColumn,
   WORKTREE_OUTPUT_SETTLEMENTS_MIGRATION,
 } from '../../domain/migrations/029-worktree-output-settlements.js';
+import { USAGE_PROJECTION_CACHE_MIGRATION } from '../../domain/migrations/030-usage-projection-cache.js';
 import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
@@ -3348,6 +3349,8 @@ export class EventStore {
       ensureWorktreeOutputSettlementOwnerColumn(this.db);
       this.db.exec(EVENT_CONTENT_MIGRATION);
       this.sweepOrphanedEventContent();
+      // #373: lifetime usage's per-thread fold cache and its watermark.
+      this.db.exec(USAGE_PROJECTION_CACHE_MIGRATION);
       this.db
         .prepare(
           `INSERT OR IGNORE INTO orchestration_stream_identity(singleton, high_water)
@@ -7942,20 +7945,128 @@ export class EventStore {
     return rows.map((row) => JSON.parse(row.payload as string));
   }
 
-  /** Append-only usage projection identity; delete/recreate gets a new head. */
-  readUsageRevision(threadId: string): string {
+  /**
+   * #373: lifetime usage's projection watermark (`030-usage-projection-cache`).
+   * `undefined` when no pass has completed its catch-up under any version.
+   */
+  readUsageProjectionCheckpoint():
+    | { version: string; watermark: number }
+    | undefined {
     const row = this.readStatement(
-      `SELECT id, global_sequence FROM orchestration_events
-       WHERE thread_id = ? ORDER BY sequence DESC LIMIT 1`,
-    ).get(threadId) as { id: string; global_sequence: number } | undefined;
-    const external = this.readStatement('PRAGMA data_version').get() as
-      | { data_version: number }
-      | undefined;
-    return JSON.stringify([
-      row?.id,
-      row?.global_sequence,
-      external?.data_version,
-    ]);
+      `SELECT version, watermark FROM orchestration_usage_projection_checkpoint
+       WHERE singleton = 1`,
+    ).get() as { version: string; watermark: number } | undefined;
+    return row
+      ? { version: row.version, watermark: Number(row.watermark) }
+      : undefined;
+  }
+
+  /**
+   * #373: one pass's catch-up, in one transaction. A rebuild (`since`
+   * undefined) forgets every cached thread; otherwise only the threads with
+   * a row in `(since, through]` are forgotten. Either way the watermark then
+   * moves to `through`, so a later pass never re-reads these rows and a thread
+   * forgotten here is refolded whenever it is next read.
+   *
+   * The range read is pinned to `idx_events_global_sequence`: left to itself
+   * SQLite scans the whole `(thread_id, global_sequence)` index instead.
+   */
+  advanceUsageProjection(input: {
+    version: string;
+    since?: number;
+    through: number;
+  }): { rows: number; threads: number } {
+    const changed =
+      input.since === undefined
+        ? []
+        : (this.readStatement(
+            `SELECT thread_id, COUNT(*) AS rows
+             FROM orchestration_events INDEXED BY idx_events_global_sequence
+             WHERE global_sequence > ? AND global_sequence <= ?
+             GROUP BY thread_id`,
+          ).all(input.since, input.through) as Array<{
+            thread_id: string;
+            rows: number;
+          }>);
+    this.inUsageProjectionWrite(() => {
+      if (input.since === undefined)
+        this.db
+          .prepare('DELETE FROM orchestration_usage_projection_cache')
+          .run();
+      else {
+        const forget = this.readStatement(
+          'DELETE FROM orchestration_usage_projection_cache WHERE thread_id = ?',
+        );
+        for (const row of changed) forget.run(row.thread_id);
+      }
+      this.readStatement(
+        `INSERT INTO orchestration_usage_projection_checkpoint (singleton, version, watermark)
+         VALUES (1, ?, ?)
+         ON CONFLICT(singleton) DO UPDATE SET
+           version = excluded.version, watermark = excluded.watermark`,
+      ).run(input.version, input.through);
+    });
+    return {
+      rows: changed.reduce((sum, row) => sum + Number(row.rows), 0),
+      threads: changed.length,
+    };
+  }
+
+  /** #373: one thread's cached usage fold, as the reader serialized it. */
+  readUsageProjection(threadId: string): string | undefined {
+    const row = this.readStatement(
+      'SELECT projection FROM orchestration_usage_projection_cache WHERE thread_id = ?',
+    ).get(threadId) as { projection: string } | undefined;
+    return row?.projection;
+  }
+
+  /**
+   * #373: stores refolded threads and drops threads the caller no longer
+   * lists. Never moves the watermark: that belongs to
+   * {@link advanceUsageProjection}.
+   */
+  writeUsageProjections(input: {
+    upserts: ReadonlyArray<readonly [threadId: string, projection: string]>;
+    retainOnly?: ReadonlySet<string>;
+  }): void {
+    this.inUsageProjectionWrite(() => {
+      const upsert = this.readStatement(
+        `INSERT INTO orchestration_usage_projection_cache (thread_id, projection)
+         VALUES (?, ?)
+         ON CONFLICT(thread_id) DO UPDATE SET projection = excluded.projection`,
+      );
+      for (const [threadId, projection] of input.upserts)
+        upsert.run(threadId, projection);
+      if (!input.retainOnly) return;
+      const forget = this.readStatement(
+        'DELETE FROM orchestration_usage_projection_cache WHERE thread_id = ?',
+      );
+      for (const { thread_id } of this.readStatement(
+        'SELECT thread_id FROM orchestration_usage_projection_cache',
+      ).all() as Array<{ thread_id: string }>)
+        if (!input.retainOnly.has(thread_id)) forget.run(thread_id);
+    });
+  }
+
+  /** Takes the writer first, as appends do, so a peer writer waits rather than failing the upgrade. */
+  private inUsageProjectionWrite(write: () => void): void {
+    const nested = this.db.isTransaction;
+    this.db.exec(
+      nested ? 'SAVEPOINT usage_projection_write' : 'BEGIN IMMEDIATE',
+    );
+    try {
+      write();
+      this.db.exec(
+        nested ? 'RELEASE SAVEPOINT usage_projection_write' : 'COMMIT',
+      );
+    } catch (error) {
+      this.db.exec(
+        nested
+          ? 'ROLLBACK TO SAVEPOINT usage_projection_write; RELEASE SAVEPOINT usage_projection_write'
+          : 'ROLLBACK',
+      );
+      throw error;
+    }
   }
 
   /**
@@ -7963,7 +8074,9 @@ export class EventStore {
    * transcript deltas; SQL removes large input/output fields before JS sees
    * them. Keep optional usage fields absent rather than manufacturing nulls.
    * A method the fold reads (`foldUsageEvents`) must be listed here, or it
-   * never reaches the fold in production.
+   * never reaches the fold in production. Lifetime usage caches what the fold
+   * makes of these rows (#373), so a change here also bumps
+   * `USAGE_PROJECTION_VERSION` in `session-transcript-reads.ts`.
    */
   listUsageEventPayloads(
     threadId: string,
