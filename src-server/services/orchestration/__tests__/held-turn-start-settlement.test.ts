@@ -231,7 +231,7 @@ describe('a turn start held over an engine exit', () => {
       expect(refused).toMatchObject({ kind: 'failed', code: HELD });
       expect(refused.kind === 'failed' ? refused.message : '').toMatch(BUSY);
       expect(refused.kind === 'failed' ? refused.message : '').toMatch(
-        /If the engine has stopped, the next message records that turn as interrupted/,
+        /Once Station has seen the engine process end, the next message records that turn as interrupted/,
       );
     }
     // Refused before the adapter: the held turn is never joined by another.
@@ -259,12 +259,64 @@ describe('a turn start held over an engine exit', () => {
     replaced.replace(replacement);
     open.unshift(async () => replacement.events.close());
     const after = await h.outcome('after the replacement');
-    expect(after).toMatchObject({ kind: 'failed' });
+    // The bound adapter is no longer the registry's: nothing can say the old
+    // engine ended, so the answer promises only what is true.
+    expect(after).toMatchObject({
+      kind: 'failed',
+      code: 'turn_start_held_until_restart',
+    });
     expect(after.kind === 'failed' ? after.message : '').toMatch(BUSY);
     expect(replacement.sends).toHaveLength(0);
     expect(original.sends).toHaveLength(1);
     expect(h.banner()).toBeUndefined();
     expect(h.warned('Held turn start settled')).toHaveLength(0);
+  });
+
+  test('an engine that cannot report its process ending: held until restart, and the answer says only that', async () => {
+    const adapter = new EngineFake();
+    (adapter as { engineEnded?: unknown }).engineEnded = undefined;
+    const h = await boot(adapter);
+    adapter.onSend = async () => {
+      throw new Error('Claude Code process exited with code 143');
+    };
+    expect(await h.outcome('lost')).toMatchObject({ code: MAY_HAVE_STARTED });
+    adapter.onSend = undefined;
+    await h.persisted(adapter.exitEngine(THREAD));
+    // The exit came after the claim, so its terminal retires it; hold one
+    // made after the exit instead.
+    adapter.onSend = async () => {
+      throw new Error('Claude Code process exited with code 143');
+    };
+    await h.outcome('lost again');
+    adapter.onSend = undefined;
+    const refused = await h.outcome('after');
+    expect(refused).toMatchObject({
+      kind: 'failed',
+      code: 'turn_start_held_until_restart',
+    });
+    const message = refused.kind === 'failed' ? refused.message : '';
+    expect(message).toMatch(
+      /stays held until that turn reports its end or Station restarts/,
+    );
+    expect(message).not.toMatch(/next message/);
+    expect(h.banner()).toBeUndefined();
+  });
+
+  test("another process's live claim is answered as busy, not as a held start", async () => {
+    const h = await boot();
+    // A start another live Station process holds on the same store.
+    const now = new Date().toISOString();
+    (h.store as unknown as { db: import('node:sqlite').DatabaseSync }).db
+      .prepare(
+        `INSERT INTO orchestration_turn_boundaries (boundary_id,thread_id,state,owner_id,owner_pid,owner_identity_kind,created_at,updated_at,purpose,created_sequence) VALUES ('turn-boundary:peer',?,'invoking','peer-process',?,'unverified',?,?,'turn',0)`,
+      )
+      .run(THREAD, process.pid, now, now);
+    const refused = await h.outcome('while the peer starts');
+    expect(refused).toMatchObject({ kind: 'failed', code: 'turn_start_busy' });
+    expect(refused.kind === 'failed' ? refused.message : '').toMatch(
+      /Another start on this Session .* has not finished, so nothing was sent/,
+    );
+    expect(h.adapter.sends).toHaveLength(0);
   });
 
   test('a turn that really started, confirmed too late, is never run beside a second one', async () => {

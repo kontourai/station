@@ -626,12 +626,25 @@ export const FOREGROUND_MESSAGE_INDETERMINATE_CODE =
   'foreground_message_indeterminate' as const;
 
 /**
- * Refusal code when a Session already holds a turn start Station cannot yet
- * confirm or rule out (a running start, or one that may have reached the
- * engine). Nothing was sent. It clears when that start settles: its terminal,
- * the next message after its engine is observed gone, or the next boot.
+ * Refusal codes of a send while the Session already has a turn start that
+ * blocks it. Nothing was sent in any of them.
+ *
+ * `turn_start_held`: an earlier start by this Station process may have
+ * reached the engine and cannot be confirmed or ruled out. The Session's
+ * engine reports its process ending, so once it has ended the next send
+ * records that turn as interrupted and goes ahead.
+ *
+ * `turn_start_held_until_restart`: the same, on an engine that does not
+ * report its process ending: it stays held until that turn reports its end
+ * or Station restarts.
+ *
+ * `turn_start_busy`: another start on the Session (from another request or
+ * Station process, or the start of its engine) has not finished.
  */
 export const TURN_START_HELD_CODE = 'turn_start_held' as const;
+export const TURN_START_HELD_UNTIL_RESTART_CODE =
+  'turn_start_held_until_restart' as const;
+export const TURN_START_BUSY_CODE = 'turn_start_busy' as const;
 
 /**
  * Exact evidence returned when foreground start effects completed but the

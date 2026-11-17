@@ -545,6 +545,7 @@ import { SessionEventReads } from './session-event-reads.js';
 import {
   SessionExecutionCoordinator,
   SessionLifecycleClaimRefusedError,
+  SessionTurnStartBusyError,
   SessionTurnStartHeldError,
   SessionTurnStartIndeterminateError,
 } from './session-execution-coordinator.js';
@@ -12290,6 +12291,7 @@ export class OrchestrationService {
         // what will clear it instead of "try again".
         error instanceof SessionEndedError ||
           error instanceof SessionTurnStartHeldError ||
+          error instanceof SessionTurnStartBusyError ||
           error instanceof SessionStopWhileStartingError ||
           error instanceof DraftDiscardRefusedError ||
           error instanceof DraftDiscardedError ||
@@ -14555,19 +14557,19 @@ export class OrchestrationService {
   private async settleHeldTurnStarts(
     threadId: string,
     held: readonly SessionTurnBoundaryRecord[],
-  ): Promise<boolean> {
+  ): Promise<{ settled: boolean; engineObservable: boolean }> {
     // Only the adapter instance the thread is bound to (the one whose events
     // it last observed) knows that thread's engine, and only while it is
     // still the registry's adapter: a replaced adapter may still be stopping
     // its engines, and its replacement has never seen them, so "no record"
     // from either proves nothing.
     const adapter = this.sessionAdapters.get(threadId);
-    if (
-      adapter === undefined ||
-      this.options.adapterRegistry.get(adapter.provider) !== adapter ||
-      adapter.engineEnded?.(threadId) !== true
-    )
-      return false;
+    const engineObservable =
+      adapter !== undefined &&
+      this.options.adapterRegistry.get(adapter.provider) === adapter &&
+      typeof adapter.engineEnded === 'function';
+    if (!engineObservable || adapter.engineEnded?.(threadId) !== true)
+      return { settled: false, engineObservable };
     const provider = adapter.provider;
     const settled = await this.interruptedTurns.settleHeldTurnStarts(
       held,
@@ -14589,7 +14591,7 @@ export class OrchestrationService {
         'Held turn start settled: the engine process for this Session ended, so the turn is recorded as interrupted and the Session takes new turns',
         { threadId, boundaryId, provider, reason: 'engine-ended' },
       );
-    return released.length > 0;
+    return { settled: released.length > 0, engineObservable };
   }
 
   /**

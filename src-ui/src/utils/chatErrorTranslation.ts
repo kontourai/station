@@ -4,7 +4,9 @@ import {
 } from '@kontourai/station-contracts/execution-target';
 import {
   APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
+  TURN_START_BUSY_CODE,
   TURN_START_HELD_CODE,
+  TURN_START_HELD_UNTIL_RESTART_CODE,
 } from '@kontourai/station-contracts/orchestration';
 import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principal';
 import {
@@ -428,18 +430,30 @@ export function translateChatError(
     };
   }
 
-  // An earlier message on this Session may still have reached its engine,
-  // so Station refuses to start another turn beside it. Nothing was sent.
-  // "Try again in a moment" would be wrong: it clears only when that start
-  // settles, which the hint says how.
-  if (code === TURN_START_HELD_CODE) {
+  // A send refused because an earlier start on this Session blocks it.
+  // Nothing was sent, and "try again in a moment" would be wrong: each code
+  // says what actually clears it, and only that (the engine decides whether
+  // Station can see it stop).
+  if (
+    code === TURN_START_HELD_CODE ||
+    code === TURN_START_HELD_UNTIL_RESTART_CODE
+  )
     return {
       title: 'Your earlier message may still be running',
-      body: 'Station cannot yet tell whether your earlier message reached the agent, so this one was not sent.',
-      hint: 'Wait for that turn to finish, or stop it. If the agent has stopped, send again: Station then records the earlier turn as interrupted instead of refusing.',
+      body: 'Station cannot tell whether your earlier message reached the agent, so this one was not sent.',
+      hint:
+        code === TURN_START_HELD_CODE
+          ? 'Wait for that turn to finish. If the agent has stopped, send again: Station then records the earlier turn as interrupted instead of refusing.'
+          : 'This agent does not report when it stops, so Station keeps refusing until that turn reports its end or Station restarts.',
       retryable: false,
     };
-  }
+  if (code === TURN_START_BUSY_CODE)
+    return {
+      title: 'Another start is still in progress',
+      body: 'Another message or the agent’s own start has not finished on this chat, so this one was not sent.',
+      hint: 'Send again once it has finished.',
+      retryable: false,
+    };
 
   // A dispatch refused because the session's lifecycle already ended — a
   // Station-side refusal, not an agent failure. The server's message is

@@ -290,12 +290,12 @@ import { taskRoomAttachmentsSchema } from './task-room-attachment-http.js';
 // These are intentional public projections. The typed code/outcome and, when
 // available, the receipt/session below give callers evidence to observe; a
 // thrown implementation message must not become part of the route Interface.
-// The guidance after the first sentence says what a person can do: the
-// held start (session-execution-coordinator.ts) refuses later messages to
-// that Session until it settles, and it settles on the next message once the
-// engine is gone (`settleHeldTurnStarts`), or at the next restart.
+// The guidance after the first sentence says what a person can do. It
+// promises nothing engine-specific: what clears the held start depends on
+// the engine, and the refusal a later send gets says which applies
+// (`turn_start_held` or `turn_start_held_until_restart`).
 const INDETERMINATE_GUIDANCE =
-  "Do not retry automatically: check the conversation for that turn. Until Station can tell, later messages to this Session are refused; if the Session's engine has stopped, the next message records the turn as interrupted and sending after that works.";
+  'Do not retry automatically: check the conversation for that turn. Until Station can tell whether it started, later messages to this Session are refused, and that refusal says what will clear it.';
 const FOREGROUND_MESSAGE_INDETERMINATE_ERROR = `Foreground Agent message may have started. ${INDETERMINATE_GUIDANCE}`;
 const FOREGROUND_CONTINUATION_INDETERMINATE_ERROR = `Foreground Agent continuation may have started. ${INDETERMINATE_GUIDANCE}`;
 

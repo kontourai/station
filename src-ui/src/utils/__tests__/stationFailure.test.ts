@@ -240,21 +240,26 @@ describe('Station authority failure translation', () => {
     expect(terminal.terminalSession).toBe(true);
     expect(terminal.hint).toBe('Start a new chat.');
   });
-  it('a held turn start says what clears it, never "try again in a moment"', () => {
+  it.each([
+    ['turn_start_held', /If the agent has stopped, send again/],
+    [
+      'turn_start_held_until_restart',
+      /until that turn reports its end or Station restarts/,
+    ],
+    ['turn_start_busy', /Send again once it has finished/],
+  ])('%s says what clears it, never "try again in a moment"', (code, hint) => {
     const held = describeStationFailure(
       new ChatHttpError(
         400,
-        'Session already has a turn start in progress: chat:session:1. Station cannot yet tell whether an earlier message on this Session reached its engine.',
-        'turn_start_held',
+        'Session already has a turn start in progress: chat:session:1.',
+        code,
       ),
       connection('direct'),
     );
-    expect(held).toMatchObject({
-      title: 'Your earlier message may still be running',
-      delivery: 'refused',
-      retryable: false,
-    });
-    expect(held.hint).toMatch(/If the agent has stopped, send again/);
+    expect(held).toMatchObject({ delivery: 'refused', retryable: false });
+    expect(held.hint).toMatch(hint);
     expect(`${held.body} ${held.hint}`).not.toMatch(/moment|chat:session/);
+    if (code !== 'turn_start_held')
+      expect(held.hint).not.toMatch(/send again: Station then records/);
   });
 });
