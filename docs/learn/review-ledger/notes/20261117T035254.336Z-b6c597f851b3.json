@@ -1,0 +1,7 @@
+{
+  "revision": "8d0e4dc3932c3f218a8e946f17af99097c40a6a1",
+
+  "notes": [
+    {"path":"docs/design/verified-action-replay.md","note":"Cited decision gained an 'Agent evaluation on a blank tab' subsection. This design still lists browser_evaluate as a gap operation for replay; the new refusal does not change that.","inputs":["docs/design/verified-action-replay.md","docs/decisions/browser-agent-actions-and-bound-channel.md"]}
+  ]
+}

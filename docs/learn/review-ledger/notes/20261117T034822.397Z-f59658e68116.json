@@ -1,0 +1,9 @@
+{
+  "revision": "8d0e4dc3932c3f218a8e946f17af99097c40a6a1",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"One file added to PROCESS_EXCLUSIVE_VITEST_FILES (browser-blank-tab-evaluate.real.test.ts) so hosted full regression runs it with the pinned Chrome for Testing. Group definitions, worker bounds and validation are unchanged; the manifest validation test passes.","inputs":["scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"One file added to PROCESS_EXCLUSIVE_VITEST_FILES (browser-blank-tab-evaluate.real.test.ts) so hosted full regression runs it with the pinned Chrome for Testing. Group definitions, worker bounds and validation are unchanged; the manifest validation test passes.","inputs":["scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

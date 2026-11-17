@@ -1,0 +1,7 @@
+{
+  "revision": "8d0e4dc3932c3f218a8e946f17af99097c40a6a1",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the pinned-Chromium paragraph against scripts/lib/pinned-vitest-chromium.mjs and the manifest entry; the new test's survival case skips with the found major version below 158.","inputs":["docs/guides/testing.md"]}
+  ]
+}

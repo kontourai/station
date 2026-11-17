@@ -1,0 +1,7 @@
+{
+  "revision": "8d0e4dc3932c3f218a8e946f17af99097c40a6a1",
+
+  "notes": [
+    {"path":"docs/guides/browser-workspace.md","note":"Reviewed the new blank-tab sentence against BrowserAutomation.evaluate (SITELESS_BLANK_PAGE check) and browser-blank-tab-evaluate.real.test.ts run under Chrome for Testing 158 and system Chrome 157.","inputs":["docs/guides/browser-workspace.md"]}
+  ]
+}
