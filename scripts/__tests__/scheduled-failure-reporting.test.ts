@@ -1216,6 +1216,58 @@ describe('scheduled workflows that stop running', () => {
     }
   });
 
+  it("clears a stopped schedule's tracker only with a successful scheduled run", async () => {
+    // Main: Qualification health's cron stopped 30 h ago, but its
+    // workflow_run-triggered runs keep going green; a push or a dispatch of
+    // a push-triggered workflow is the same case.
+    const now = Date.parse('2026-11-16T12:00:00Z');
+    const fake = fakeGithub();
+    for (const { file } of readWatchedSchedules(root.href))
+      fake.scheduledRuns[file] = {
+        created_at: new Date(now - HOUR).toISOString(),
+        html_url: 'https://github.com/kontourai/station/actions/runs/6',
+        status: 'completed',
+        conclusion: 'success',
+      };
+    fake.scheduledRuns['qualification-health.yml'] = {
+      created_at: new Date(now - 30 * HOUR).toISOString(),
+      html_url: 'https://github.com/kontourai/station/actions/runs/7',
+      status: 'completed',
+      conclusion: 'success',
+    };
+    await runMainHealth(fake, workflowRunEvent('Nightly', 'success'), {
+      only: ['overdue-schedules'],
+      now,
+    });
+    const tracker = fake.issues.find((issue) =>
+      issue.title.endsWith('Main: Qualification health'),
+    );
+    expect(isOverdueBody(tracker?.body)).toBe(true);
+    fake.setRun({ jobs: [job(71, 'health', 'success')], annotations: {} });
+    for (const event of [
+      'workflow_run',
+      'workflow_run',
+      'workflow_dispatch',
+      'push',
+    ])
+      await runMainHealth(
+        fake,
+        workflowRunEvent('Main: Qualification health', 'success', { event }),
+        { only: REPORT },
+      );
+    expect(tracker?.state).toBe('open');
+    expect(tracker?.comments).toEqual([]);
+    await runMainHealth(
+      fake,
+      workflowRunEvent('Main: Qualification health', 'success', {
+        event: 'schedule',
+      }),
+      { only: REPORT },
+    );
+    expect(tracker?.state).toBe('closed');
+    expect(tracker?.comments).toHaveLength(1);
+  });
+
   it('opens one tracker for an overdue schedule, stays quiet while it stays overdue, and clears on the next run', async () => {
     const now = Date.parse('2026-11-16T12:00:00Z');
     const fake = fakeGithub();

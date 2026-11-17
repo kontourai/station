@@ -284,6 +284,7 @@ jobs:
         with:
           script: |
             const { consolidateTracker, listTrackers, trackerTitle } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/main-health-comment-policy.mjs`);
+            const { isOverdueBody } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/main-health-schedules.mjs`);
             const workflowName = process.env.WORKFLOW_NAME;
             const runUrl = process.env.RUN_URL;
             const headSha = process.env.HEAD_SHA;
@@ -327,6 +328,12 @@ jobs:
             } else if (!hasSuccessfulJob || hasSkippedJob) return;
             const existing = await consolidateTracker(github, context.repo, await listTrackers(github, context.repo), title);
             if (!existing || existing.state !== 'open') return;
+            // A stopped schedule is answered only by a scheduled run: a push,
+            // dispatch or workflow_run green says nothing about the cron.
+            if (isOverdueBody(existing.body) && context.payload.workflow_run.event !== 'schedule') {
+              core.info(`main-health: ${title} tracks a stopped schedule; a ${context.payload.workflow_run.event} run does not clear it.`);
+              return;
+            }
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
