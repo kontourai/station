@@ -1546,6 +1546,17 @@ async function routeHeldStaging(page: Page) {
       ),
     );
   });
+  // The accepted send opens the conversation, whose transcript asks for its
+  // turn directory; a 404 is the client's "no directory" answer.
+  await page.route(
+    '**/api/orchestration/session-reads/staged-attachment-thread/turn-directory*',
+    (route) =>
+      route.fulfill({
+        status: 404,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: false, error: 'Not found' }),
+      }),
+  );
   return { stageId, dispatched, settleUpload };
 }
 
