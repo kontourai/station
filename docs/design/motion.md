@@ -18,7 +18,7 @@ hard-coded durations/easings and `transition: all` are rejected by
 | Category | Contract | Typical tokens |
 | --- | --- | --- |
 | Feedback/state | Immediate acknowledgement without moving layout. Animate color, opacity, transform, or shadow. | `--motion-fast`, `--ease-standard` |
-| Entrance/exit | Preserve where a surface came from. Animate opacity and transform; remove non-essential movement under reduced motion. Enter and exit both use `--ease-out`. The exit is one duration step faster than the enter. | `--motion-base` or `--motion-slow` in; the next faster token out |
+| Entrance/exit | Preserve where a surface came from. Animate opacity and transform; remove non-essential movement under reduced motion. Enter and exit both use `--ease-out`. The exit uses the next faster duration token. | `--motion-base` or `--motion-slow` in; the next faster token out. The status pill enters on `--motion-slow` and already left on `--motion-fast`; that leave stays. |
 | Direct manipulation | Pointer/finger movement is 1:1. Do not transition the property being dragged or resized. Snap/release feedback may animate after release. | `--motion-instant` while manipulating |
 | Perpetual status | Motion may indicate live work but cannot be the only status signal. Stop after one iteration under reduced motion. | `--motion-status-spin`, `--motion-status-pulse`, or `--motion-status-breathe`; `--ease-linear` for rotation |
 | Status arrival | A status that appears or changes state lands with a small overshoot (the chat status pill, a lifecycle chip). One shot; transform and opacity only. | `--motion-base` or `--motion-slow`, `--ease-spring` |

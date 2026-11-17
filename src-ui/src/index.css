@@ -4182,8 +4182,8 @@ button.background-tasks-banner:focus-visible {
 .ephemeral-message {
   animation: fadeIn var(--motion-slow) var(--ease-out);
   transition:
-    opacity var(--motion-fast) var(--ease-out),
-    transform var(--motion-fast) var(--ease-out);
+    opacity var(--motion-base) var(--ease-out),
+    transform var(--motion-base) var(--ease-out);
 }
 
 /* A notice the user reads and acts on (Retry, Dismiss), not a transcript
