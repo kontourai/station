@@ -729,7 +729,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/typecheck-host-slots.test.ts',
   // Host heavy-check slots: runs the slot runner as short-lived children
   // against a PRIVATE slot directory (never the host's) to prove queueing
-  // order, dead-holder reclaim, the bounded wait and nested admission.
+  // order, dead-holder reclaim, the bounded wait and nested admission, and
+  // starts each self-slotted fallow entry point from an empty directory to
+  // prove it queues before analysing anything (#5080).
   'scripts/__tests__/heavy-check-slots.test.ts',
   // Drives verification CLI admission without launching compilers.
   'scripts/__tests__/live-service-verification.process.test.ts',
@@ -850,7 +852,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Bounded node children run the CLI ↔ Station Control parity entry point
   // against fixture manifests, and read the ratchet base through git.
   'scripts/__tests__/cli-mcp-parity.test.ts',
-  // Bounded node children prove generation and check failures in disposable roots.
+  // Bounded node children prove generation and check failures in disposable
+  // roots; bounded git children prove regenerated catalogs merge cleanly.
   'scripts/__tests__/metric-reference.test.ts',
   // Regenerate-and-diff plus real-entry-point runs: docs-index --check and
   // the repo hygiene gate each spawn one bounded node child.
@@ -1257,6 +1260,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // fixture origin, then every ledger reader as a child process on the
   // resulting history: one commit per run is a claim about real git state.
   'scripts/__tests__/deploy-ledger-nightly-batch.test.ts',
+  // Runs the native cohort's real runner-loss decision step and its real
+  // incomplete-cohort receipt step under bash, because what they decide is
+  // the second verifier attempt and the recorded finality. Bounded,
+  // single-shot children against fixture files; no network.
+  'scripts/__tests__/nightly-finalize-runner-loss.test.ts',
   // Proves the published-packages
   // JSON parse's success and refusal exit statuses as a real child process,
   // the same "gate as a real child" shape as the entry-point gates above.
@@ -1975,6 +1983,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/supervisor/src/__tests__/handle-guard.test.ts',
   // Boots the real server entrypoint as a child with an oversized STATION_LOG_FILE.
   'src-server/__tests__/stdout-log-file-rotation.process.test.ts',
+  // Boots the real server entrypoint as a child and stops it with SIGTERM.
+  'src-server/__tests__/log-repeat-shutdown-flush.process.test.ts',
 ]);
 
 export const DOGFOOD_RECONCILE_PREFIX =

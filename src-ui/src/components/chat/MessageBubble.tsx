@@ -975,7 +975,10 @@ function MessageBubbleComponent({
     </>
   );
   // #926 amendment (owner, 2026-10): Basis stays visible at rest, beside
-  // the hover-revealed row rather than inside it.
+  // the hover-revealed row rather than inside it. It shows at the bar's end
+  // (chat.css `order`): the hidden row keeps its space, so a chip drawn
+  // before it sat apart from the bubble's edge. It stays first in the DOM so
+  // keyboard focus reaches the visible chip before the hidden row.
   const turnFooterBar = (
     <div className="turn-footer__bar">
       {basisChip}

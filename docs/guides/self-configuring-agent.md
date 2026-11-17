@@ -919,7 +919,12 @@ propose the job instead:
 job that trusts every tool is never proposable (`station_control_person_only`).
 Station records the proposing chat as the job's `target`: once approved, each
 run is a turn in this chat, on its own engine, so a Claude Code or Codex chat
-can propose work for itself.
+can propose work for itself. With `projectId` (a Project's id) the proposal is
+a Project schedule instead: each run starts a new Task in that Project, and no
+`target` is recorded. That needs the chat to be able to start work in the
+Project itself (`job_proposal_project_out_of_scope`) and the
+`project-schedules` Feature Preview to be on
+(`job_proposal_project_unavailable`).
 The agent learns only the proposal's id and `open`. A conversation holds at
 most 3 open proposals (`job_proposal_limit_reached`).
 
@@ -1123,10 +1128,16 @@ Delivery depends on the engine:
   the engine. When the engine is recovered just before the first turn, that
   check reads the delivery report written by the recovery.
 - Codex gets device guidance only while the `codex-bound-browser-device-tools`
-  preview is on and the bound channel offers `device_open`.
+  preview is on and the bound channel offers `device_open`. With that preview
+  on, a Codex Session whose Station Control is not coordinator-derived is told
+  the `bound` catalog its bound channel carries; otherwise the
+  `delegated-custody` subset.
 - Claude is told to load the tools it names with ToolSearch only when the
   Agent's `tools.mcpLoading` is `on-demand`, which is when Station turns
   Claude's tool search on. Under the harness default, Claude Code decides.
+- The tool-families line appears only when the progressive-tools preview is on
+  and the Session's Station Control is not `bound`: Claude's in-process server
+  and Codex's bound catalog are served without family loading.
 
 Known limitations while this is a preview: the delivery check reads the event
 log, so a delivery report that has not yet been stored, or a recovery done by

@@ -1,0 +1,7 @@
+{
+  "revision": "382eb00677f99b2c727952fc724f921d5fc8bc9c",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Reviewed for #5056: the generator now sorts rows by name and drops digest, count and line links. The guide only claims the catalog lists every declared instrument and does not prove recording; both remain true.","inputs":["docs/guides/monitoring.md","scripts/generate-metric-reference.mjs"]}
+  ]
+}

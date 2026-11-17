@@ -374,8 +374,13 @@ const childWorkTranscriptQuerySchema = z
       .min(1)
       .max(CHILD_WORK_TRANSCRIPT_PAGE_MAX)
       .default(30),
+    // The latest messages; a tail read names no offset.
+    tail: z.literal('1').optional(),
   })
-  .strict();
+  .strict()
+  .refine((query) => !(query.tail && query.offset > 0), {
+    message: 'A tail read names no offset',
+  });
 const sessionInventoryQueryBaseSchema = z
   .object({
     scope: z.enum(['whole-session', 'current-answer']),
@@ -2446,14 +2451,15 @@ export function createOrchestrationRoutes(
   /**
    * One in-flight peer-delegation reconciliation per caller.
    *
-   * `refreshDelegatedTaskActivity` builds its own read model, takes the last
-   * 20 live peer delegations and `Promise.allSettled`s a remote HTTP read per
+   * `refreshDelegatedTaskActivity` reads the caller's peer delegation
+   * records (only those, never a second full read model: #5051), takes the
+   * last 20 live ones and `Promise.allSettled`s a remote HTTP read per
    * delegation, each with a 1.5s timeout
    * (`station-control-delegation.ts`'s `refreshPeerDelegationActivity`).
    * `GET /sessions/read-model` is polled, so awaiting that in the response
-   * path put up to 1.5s of peer network latency plus a second full read-model
-   * build in front of data the local store already had, and a slow peer
-   * stalled every subsequent poll behind its own predecessor.
+   * path put up to 1.5s of peer network latency in front of data the local
+   * store already had, and a slow peer stalled every subsequent poll behind
+   * its own predecessor.
    *
    * Keyed by userId, never shared: a poll from one caller must not suppress
    * another caller's reconciliation, whose peer set and authority are
@@ -6373,6 +6379,7 @@ export function createOrchestrationRoutes(
     const parsed = childWorkTranscriptQuerySchema.safeParse({
       offset: c.req.query('offset'),
       limit: c.req.query('limit'),
+      tail: c.req.query('tail'),
     });
     if (!parsed.success)
       return c.json({ success: false, error: 'Invalid transcript page' }, 400);
@@ -6385,7 +6392,9 @@ export function createOrchestrationRoutes(
     const outcome = await orchestrationService.childWorkTranscripts.read({
       threadId,
       childId: param(c, 'childId'),
-      ...parsed.data,
+      offset: parsed.data.offset,
+      limit: parsed.data.limit,
+      tail: parsed.data.tail === '1',
       authority,
     });
     if (outcome.status === 'unavailable') return unavailable(503);

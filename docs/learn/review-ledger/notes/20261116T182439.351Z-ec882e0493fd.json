@@ -1,0 +1,7 @@
+{
+  "revision": "c22d79d51228f339203507152d3f8594c1018a78",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Amendment text updated for the fix round (one group resolver, durable-id open, display-name-only project, monitors, Run finished vs Completed) and checked against the same sources.","inputs":["docs/design/placement.md"]}
+  ]
+}

@@ -126,6 +126,12 @@ export interface AgentJobProposalJob {
     readonly kind: 'conversation';
     readonly conversationId: string;
   };
+  /**
+   * #5070: the Project (`ProjectConfig.id`) the job belongs to, when the
+   * agent proposed a Project schedule. Each run is then a new Task in that
+   * Project instead of a turn in the proposing chat, so `target` is absent.
+   */
+  readonly projectId?: string;
 }
 
 export type AgentJobProposalState = 'open' | 'approved' | 'declined';
@@ -197,6 +203,10 @@ export type AgentJobProposalRefusalCode =
   | 'job_proposal_rate_limited'
   | 'job_proposal_invalid'
   | 'job_proposal_agent_out_of_scope'
+  /** #5070: the chat could not start work in the named Project itself. */
+  | 'job_proposal_project_out_of_scope'
+  /** #5070: Project schedules are not offered or are turned off. */
+  | 'job_proposal_project_unavailable'
   | 'job_proposal_unavailable';
 
 /** The key a wake-up is handed to its conversation's inbox under. */
@@ -234,12 +244,14 @@ export function jobMatchesProposal(
     readonly prompt?: unknown;
     readonly agent?: unknown;
     readonly target?: unknown;
+    readonly projectId?: unknown;
   },
 ): boolean {
   return (
     body.name === job.name &&
     body.prompt === job.prompt &&
     (body.agent ?? undefined) === (job.agent ?? undefined) &&
+    (body.projectId ?? undefined) === (job.projectId ?? undefined) &&
     canonical(body.schedule) === canonical(job.schedule) &&
     canonical(body.target ?? null) === canonical(job.target ?? null)
   );

@@ -16773,6 +16773,87 @@ describe('OrchestrationService', () => {
     }
   }, 60_000);
 
+  // #5051: the peer-delegation refresh folded the caller's whole read model
+  // to find the peer records it reconciles. It now reads only the
+  // `peer-delegation:` threads. Equivalence is pinned against the old fold,
+  // kept here as the reference, over records the caller can and cannot read.
+  test('#5051: listPeerDelegationActivity returns what the full read model fold did, reading only peer records', async () => {
+    const { eventStore, service, seed } = await readModelMeasurementWorld(
+      'orchestration-service-peer-refresh-',
+    );
+    try {
+      const dispatch = (taskId: string, environmentId: string, userId: string) =>
+        service.recordPeerDelegationActivityDispatch({
+          taskId,
+          conversationId: `conversation-${taskId}`,
+          prompt: `Work on ${taskId}`,
+          userId,
+          environment: { id: environmentId, name: environmentId, kind: 'peer' },
+          target: { kind: 'agent', id: 'codex' },
+        });
+      seed('unrelated-1', 'owner-user', 1);
+      dispatch('task-a', 'env-1', 'owner-user');
+      seed('unrelated-2', 'other-user', 2);
+      dispatch('task-b', 'env-2', 'owner-user');
+      // Another person's record: the owner must never see it.
+      dispatch('task-c', 'env-1', 'other-user');
+      // At rest, still returned: the refresh, not the read, drops it.
+      dispatch('task-d', 'env-1', 'owner-user');
+      expect(
+        service.recordPeerDelegationActivityOutcome({
+          taskId: 'task-d',
+          environmentId: 'env-1',
+          status: 'completed',
+        }),
+      ).toBe(true);
+
+      const reference = async (
+        authority: ReturnType<typeof personalReadAuthority>,
+      ) =>
+        (
+          await service.listSessionReadModel(authority, {
+            purpose: 'session-list',
+          })
+        ).filter((session) => session.delegation?.environmentKind === 'peer');
+      const taskIdsFor = async (userId: string) => {
+        const authority = personalReadAuthority(userId);
+        const expected = await reference(authority);
+        const narrowed = await service.listPeerDelegationActivity(authority);
+        // Each read stamps its own observation time; nothing else may differ.
+        const unstamped = (sessions: typeof expected) =>
+          sessions.map((session) => ({
+            ...session,
+            answerability: { ...session.answerability, observedAt: '' },
+          }));
+        expect(unstamped(narrowed)).toEqual(unstamped(expected));
+        return narrowed.map((session) => session.delegation?.taskId);
+      };
+      // Non-vacuous, in read-model order, and the unreadable record answers
+      // only for its own owner.
+      expect(await taskIdsFor('owner-user')).toEqual([
+        'task-a',
+        'task-b',
+        'task-d',
+      ]);
+      expect(await taskIdsFor('other-user')).toEqual(['task-c']);
+      expect(await taskIdsFor('stranger-user')).toEqual([]);
+
+      // Each refresh read considered only the peer records it may read, as a
+      // thread-scoped read under its own purpose.
+      const refresh =
+        service.sessionReadModelMeasurement().byPurpose[
+          'peer-delegation-refresh'
+        ];
+      expect(refresh).toMatchObject({
+        reads: 3,
+        threadScopedReads: 3,
+        threadsConsidered: 4,
+      });
+    } finally {
+      eventStore.close();
+    }
+  }, 60_000);
+
   // archive#4466: `listAgentRuns` is `listSessionReadModel`'s copy-pasted
   // sibling — same `.map` over `listSessionProjectionEvents`/
   // `countEventsByThread` per thread, in this same service. Switched to the
@@ -30037,6 +30118,8 @@ describe('OrchestrationService', () => {
       ],
       hasMore: true,
       nextSequence: 2,
+      // #5077: the thread's MAX(sequence), not the page's last sequence.
+      highWaterSequence: 3,
     });
     await expect(
       service.readSessionEventPage(

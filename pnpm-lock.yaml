@@ -141,7 +141,7 @@ importers:
         version: 0.4.0
       '@kontourai/console-server':
         specifier: ^1.1.0
-        version: 1.1.0(@kontourai/flow-agents@11.0.0(@ai-sdk/provider@3.0.19)(@kontourai/bearing@0.2.0(playwright@1.65.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.96)(@smithy/signature-v4@5.7.5)(ws@8.22.2)(zod@4.6.7))(playwright@1.65.0)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.7))(supports-color@7.2.0)
+        version: 1.1.0(@kontourai/flow-agents@11.2.0(@ai-sdk/provider@3.0.19)(@kontourai/bearing@0.2.0(playwright@1.65.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.96)(@smithy/signature-v4@5.7.5)(ws@8.22.2)(zod@4.6.7))(playwright@1.65.0)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.7))(supports-color@7.2.0)
       '@kontourai/console-ui':
         specifier: ^0.3.0
         version: 0.3.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -167,8 +167,8 @@ importers:
         specifier: 6.0.0
         version: 6.0.0(supports-color@7.2.0)
       '@kontourai/flow-agents':
-        specifier: 11.0.0
-        version: 11.0.0(@ai-sdk/provider@3.0.19)(@kontourai/bearing@0.2.0(playwright@1.65.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.96)(@smithy/signature-v4@5.7.5)(ws@8.22.2)(zod@4.6.7))(playwright@1.65.0)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.7)
+        specifier: 11.2.0
+        version: 11.2.0(@ai-sdk/provider@3.0.19)(@kontourai/bearing@0.2.0(playwright@1.65.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.96)(@smithy/signature-v4@5.7.5)(ws@8.22.2)(zod@4.6.7))(playwright@1.65.0)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.7)
       '@kontourai/monument':
         specifier: ^0.1.0
         version: link:packages/monument
@@ -600,8 +600,8 @@ importers:
   examples/builder-delivery-viewer:
     dependencies:
       '@kontourai/flow-agents':
-        specifier: 11.0.0
-        version: 11.0.0(@ai-sdk/provider@3.0.19)(@kontourai/bearing@0.2.0(playwright@1.65.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.96)(@smithy/signature-v4@5.7.5)(ws@8.22.2)(zod@4.6.7))(playwright@1.65.0)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.7)
+        specifier: 11.2.0
+        version: 11.2.0(@ai-sdk/provider@3.0.19)(@kontourai/bearing@0.2.0(playwright@1.65.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.96)(@smithy/signature-v4@5.7.5)(ws@8.22.2)(zod@4.6.7))(playwright@1.65.0)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.7)
       '@kontourai/station-sdk':
         specifier: '*'
         version: link:../../packages/sdk
@@ -837,8 +837,8 @@ importers:
         specifier: 6.0.0
         version: 6.0.0(supports-color@7.2.0)
       '@kontourai/flow-agents':
-        specifier: 11.0.0
-        version: 11.0.0(@ai-sdk/provider@3.0.19)(@kontourai/bearing@0.2.0(playwright@1.65.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.96)(@smithy/signature-v4@5.7.5)(ws@8.22.2)(zod@4.6.7))(playwright@1.65.0)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.7)
+        specifier: 11.2.0
+        version: 11.2.0(@ai-sdk/provider@3.0.19)(@kontourai/bearing@0.2.0(playwright@1.65.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.96)(@smithy/signature-v4@5.7.5)(ws@8.22.2)(zod@4.6.7))(playwright@1.65.0)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.7)
       '@kontourai/surface':
         specifier: ^6.3.0
         version: 6.3.0(supports-color@7.2.0)
@@ -857,8 +857,8 @@ importers:
         specifier: 6.0.0
         version: 6.0.0(supports-color@7.2.0)
       '@kontourai/flow-agents':
-        specifier: 11.0.0
-        version: 11.0.0(@ai-sdk/provider@3.0.19)(@kontourai/bearing@0.2.0(playwright@1.65.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.96)(@smithy/signature-v4@5.7.5)(ws@8.22.2)(zod@4.6.7))(playwright@1.65.0)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.7)
+        specifier: 11.2.0
+        version: 11.2.0(@ai-sdk/provider@3.0.19)(@kontourai/bearing@0.2.0(playwright@1.65.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.96)(@smithy/signature-v4@5.7.5)(ws@8.22.2)(zod@4.6.7))(playwright@1.65.0)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.7)
       '@kontourai/station-contracts':
         specifier: ^0.14.0
         version: link:../contracts
@@ -2411,8 +2411,8 @@ packages:
       '@anthropic-ai/sdk':
         optional: true
 
-  '@kontourai/flow-agents@11.0.0':
-    resolution: {integrity: sha512-gY3mh0wpICJs9KhaIxsK5mF4LCNj5VG2cgaAFBenGRkfjHCL5AGqNxmy0EGrRrK8LYAhKCB86/RR+ne+1ftt9g==}
+  '@kontourai/flow-agents@11.2.0':
+    resolution: {integrity: sha512-RuNFCqGVMF8+51sGriPKFqDCFnKlbGevVMNAdFHgbjT5AJry3woM4J9Dh1uVfZSUqSJaJy00dIN4zkWm9u1mTw==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -10405,7 +10405,7 @@ snapshots:
 
   '@kontourai/console-core@0.4.0': {}
 
-  '@kontourai/console-server@1.1.0(@kontourai/flow-agents@11.0.0(@ai-sdk/provider@3.0.19)(@kontourai/bearing@0.2.0(playwright@1.65.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.96)(@smithy/signature-v4@5.7.5)(ws@8.22.2)(zod@4.6.7))(playwright@1.65.0)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.7))(supports-color@7.2.0)':
+  '@kontourai/console-server@1.1.0(@kontourai/flow-agents@11.2.0(@ai-sdk/provider@3.0.19)(@kontourai/bearing@0.2.0(playwright@1.65.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.96)(@smithy/signature-v4@5.7.5)(ws@8.22.2)(zod@4.6.7))(playwright@1.65.0)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.7))(supports-color@7.2.0)':
     dependencies:
       '@kontourai/console-core': 0.4.0
       '@kontourai/flow': 1.4.1(supports-color@7.2.0)
@@ -10413,7 +10413,7 @@ snapshots:
       '@kontourai/telemetry': 0.1.0
       jose: 6.2.17
     optionalDependencies:
-      '@kontourai/flow-agents': 11.0.0(@ai-sdk/provider@3.0.19)(@kontourai/bearing@0.2.0(playwright@1.65.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.96)(@smithy/signature-v4@5.7.5)(ws@8.22.2)(zod@4.6.7))(playwright@1.65.0)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.7)
+      '@kontourai/flow-agents': 11.2.0(@ai-sdk/provider@3.0.19)(@kontourai/bearing@0.2.0(playwright@1.65.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.96)(@smithy/signature-v4@5.7.5)(ws@8.22.2)(zod@4.6.7))(playwright@1.65.0)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.7)
     transitivePeerDependencies:
       - supports-color
 
@@ -10528,7 +10528,7 @@ snapshots:
       - supports-color
       - typescript
 
-  '@kontourai/flow-agents@11.0.0(@ai-sdk/provider@3.0.19)(@kontourai/bearing@0.2.0(playwright@1.65.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.96)(@smithy/signature-v4@5.7.5)(ws@8.22.2)(zod@4.6.7))(playwright@1.65.0)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.7)':
+  '@kontourai/flow-agents@11.2.0(@ai-sdk/provider@3.0.19)(@kontourai/bearing@0.2.0(playwright@1.65.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.96)(@smithy/signature-v4@5.7.5)(ws@8.22.2)(zod@4.6.7))(playwright@1.65.0)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.7)':
     dependencies:
       '@kontourai/conduit': 0.8.0
       '@kontourai/datum': 0.8.1(playwright@1.65.0)

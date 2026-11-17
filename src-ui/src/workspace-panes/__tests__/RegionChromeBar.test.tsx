@@ -801,8 +801,10 @@ describe('the region controls (from ChatDockHeader, #795 / #1385)', () => {
       chrome: chromeStub({ isDockMaximized: true }),
     });
     expect(screen.getByLabelText('Hide Chat').title).toBe('Hide Chat (⌘D)');
+    // The tip names the region it sizes: the side bar and the bottom bar
+    // both carry this button.
     expect(screen.getByLabelText('Restore dock region size').title).toBe(
-      'Restore dock region size (⌃⌘M)',
+      "Restore the Bottom region's size (⌃⌘M)",
     );
     expect(document.querySelector('.chat-dock__subtitle')).toBeNull();
     unmount();
@@ -819,8 +821,22 @@ describe('the region controls (from ChatDockHeader, #795 / #1385)', () => {
       'Hide Agents (⌘⇧A)',
     );
     expect(screen.getByLabelText('Expand dock region to workspace').title).toBe(
-      'Expand dock region to workspace',
+      'Expand the Bottom region to the workspace',
     );
+  });
+
+  test('the side and bottom bars name their own region on the expand button', () => {
+    const { unmount } = renderBar({
+      chrome: chromeStub({ effectiveDockSlotPlacement: 'right' }),
+    });
+    expect(
+      screen.getByLabelText('Expand dock region to workspace').title,
+    ).toMatch(/^Expand the Right region to the workspace/);
+    unmount();
+    renderBar({ chrome: chromeStub({ effectiveDockSlotPlacement: 'bottom' }) });
+    expect(
+      screen.getByLabelText('Expand dock region to workspace').title,
+    ).toMatch(/^Expand the Bottom region to the workspace/);
   });
 
   test('mirrors the collapse direction for a left-side region', () => {

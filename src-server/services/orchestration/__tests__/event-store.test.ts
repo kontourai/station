@@ -8773,6 +8773,7 @@ describe('EventStore', () => {
       ],
       hasMore: true,
       nextSequence: 3,
+      highWaterSequence: 4,
     });
     expect(
       store.listEventPage('thread-page', { afterSequence: 3, limit: 2 }),
@@ -8780,6 +8781,44 @@ describe('EventStore', () => {
       events: [expect.objectContaining({ id: 'evt-4', sequence: 4 })],
       hasMore: false,
       nextSequence: 4,
+      highWaterSequence: 4,
+    });
+    expect(
+      store.listEventPage('thread-missing', { afterSequence: 0, limit: 2 }),
+    ).toEqual({
+      events: [],
+      hasMore: false,
+      nextSequence: 0,
+      highWaterSequence: 0,
+    });
+  });
+
+  // #5077: once a middle row is gone, the count no longer bounds sequences.
+  // The page reports the thread's real high water, which stays above it.
+  test('reports the per-thread high water, not the count, across a sequence gap', () => {
+    for (let index = 1; index <= 4; index += 1) {
+      store.appendEvent({
+        eventId: `gap-${index}`,
+        provider: 'claude',
+        threadId: 'thread-gap',
+        createdAt: `2026-03-28T00:00:0${index}.000Z`,
+        method: 'content.text-delta',
+        itemId: 'item-1',
+        delta: String(index),
+      });
+    }
+    store['db']
+      .prepare('DELETE FROM orchestration_events WHERE id = ?')
+      .run('gap-2');
+
+    expect(store.countEventsByThread('thread-gap')).toBe(3);
+    expect(
+      store.listEventPage('thread-gap', { afterSequence: 1, limit: 1 }),
+    ).toEqual({
+      events: [expect.objectContaining({ id: 'gap-3', sequence: 3 })],
+      hasMore: true,
+      nextSequence: 3,
+      highWaterSequence: 4,
     });
   });
 

@@ -1,0 +1,7 @@
+{
+  "revision": "a3d607ef900e0a67b357cb132ba4f0b6752c864f",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"The tab strip's reveal now shows a selected tab wider than the strip from its start (its name in view); otherwise unchanged. Placement and region-tab claims still hold.","inputs":["src-ui/src/workspace-panes/RegionChromeBar.tsx"]}
+  ]
+}

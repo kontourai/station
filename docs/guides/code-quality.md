@@ -232,6 +232,10 @@ its explicit upstream base. Run it directly while implementing:
 node scripts/code-health-gate.mjs --base=origin/main
 ```
 
+The gate waits for a [host heavy-check slot](testing.md#host-heavy-check-slots)
+however it is started, so concurrent runs from several worktrees run one after
+the other.
+
 The installed analyzer compares new findings with inherited findings. Newly
 introduced unused exports and types block delivery; resolve their actual caller
 or entrypoint/public-API contract before changing code or configuration. Class

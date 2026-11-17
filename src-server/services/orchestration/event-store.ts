@@ -1875,6 +1875,8 @@ export interface PersistedRuntimeEventPage {
   events: PersistedRuntimeEvent[];
   hasMore: boolean;
   nextSequence: number;
+  /** The thread's `MAX(sequence)`, read in the same snapshot as `events`. */
+  highWaterSequence: number;
 }
 export interface PersistedRuntimeEventReplayDescriptor {
   threadId: string;
@@ -12857,15 +12859,36 @@ export class EventStore {
     threadId: string,
     options: { afterSequence: number; limit: number },
   ): PersistedRuntimeEventPage {
-    const rows = this.db
-      .prepare(
-        `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
-         FROM orchestration_events
-         WHERE thread_id = ? AND sequence > ?
-         ORDER BY sequence ASC
-         LIMIT ?`,
-      )
-      .all(threadId, options.afterSequence, options.limit + 1);
+    // #5077: the page and the thread's high water come from one read
+    // snapshot, so no event in the page can lie above the reported bound.
+    const owned = !this.db.isTransaction;
+    if (owned) this.db.exec('BEGIN');
+    let rows: unknown[];
+    let highWaterSequence: number;
+    try {
+      rows = this.db
+        .prepare(
+          `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
+           FROM orchestration_events
+           WHERE thread_id = ? AND sequence > ?
+           ORDER BY sequence ASC
+           LIMIT ?`,
+        )
+        .all(threadId, options.afterSequence, options.limit + 1);
+      highWaterSequence = (
+        this.db
+          .prepare(
+            `SELECT COALESCE(MAX(sequence), 0) AS high_water
+             FROM orchestration_events
+             WHERE thread_id = ?`,
+          )
+          .get(threadId) as { high_water: number }
+      ).high_water;
+      if (owned) this.db.exec('COMMIT');
+    } catch (error) {
+      if (owned && this.db.isTransaction) this.db.exec('ROLLBACK');
+      throw error;
+    }
     const hasMore = rows.length > options.limit;
     const events = rows.slice(0, options.limit).map((row: any) => ({
       id: row.id,
@@ -12882,6 +12905,7 @@ export class EventStore {
       events,
       hasMore,
       nextSequence: events.at(-1)?.sequence ?? options.afterSequence,
+      highWaterSequence,
     };
   }
 
@@ -14016,6 +14040,28 @@ export class EventStore {
       )
       .get(threadId);
     return row ? mapPersistedSessionRow(row as any) : undefined;
+  }
+
+  /**
+   * Persisted session ids under one thread-id prefix, oldest first. Internal
+   * inventory for a narrowed read model (#5051); never exposed to callers and
+   * not readability-checked here. A half-open range ('p:' <= id < 'p;'), not
+   * LIKE, so it is exact regardless of case_sensitive_like and seeks the
+   * primary key.
+   */
+  listSessionIdsByThreadPrefix(prefix: string): string[] {
+    if (!prefix) throw new Error('thread prefix is required');
+    const upper = `${prefix.slice(0, -1)}${String.fromCharCode(
+      prefix.charCodeAt(prefix.length - 1) + 1,
+    )}`;
+    const rows = this.db
+      .prepare(
+        `SELECT thread_id FROM provider_session_state
+         WHERE thread_id >= ? AND thread_id < ?
+         ORDER BY created_at ASC`,
+      )
+      .all(prefix, upper) as Array<{ thread_id: string }>;
+    return rows.map((row) => row.thread_id);
   }
 
   /** Internal workspace-mutation barrier inventory; never exposed to callers. */
