@@ -1,5 +1,6 @@
 import { chatHostImageMapFromEvent } from '@kontourai/station-contracts/chat-host-images';
 import { claudeArtifactLinkOfEvent } from '@kontourai/station-contracts/claude-artifact';
+import { appearanceProposalReferenceOfEvent } from '@kontourai/station-contracts/custom-appearance';
 import type {
   InputRequestOutcome,
   InputRequestRecord,
@@ -398,6 +399,9 @@ export function handleToolCompletedEvent(
     ...(event.htmlReply ? { htmlReply: event.htmlReply } : {}),
     ...(claudeArtifactLinkOfEvent(event)
       ? { claudeArtifact: claudeArtifactLinkOfEvent(event) }
+      : {}),
+    ...(appearanceProposalReferenceOfEvent(event)
+      ? { appearanceProposal: appearanceProposalReferenceOfEvent(event) }
       : {}),
     error: event.error,
     ...(event.outputReceipt?.truncated

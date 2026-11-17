@@ -5,6 +5,7 @@ import {
 } from '@kontourai/station-contracts/chat-host-images';
 import { claudeArtifactLinkOfEvent } from '@kontourai/station-contracts/claude-artifact';
 import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
+import { appearanceProposalReferenceOfEvent } from '@kontourai/station-contracts/custom-appearance';
 import { isStationMemoryContinuationTurn } from '@kontourai/station-contracts/provider';
 import {
   hasRuntimeEventContentRefs,
@@ -1192,6 +1193,9 @@ export function projectRuntimeEventsToMessages(
           if (refusal) existing.stationControlRefusal = refusal;
           const artifact = claudeArtifactLinkOfEvent(ev);
           if (artifact) existing.claudeArtifact = artifact;
+          const appearance = appearanceProposalReferenceOfEvent(ev);
+          if (appearance) existing.appearanceProposal = appearance;
+          else delete existing.appearanceProposal;
           if (ev.outputReceipt?.truncated) existing.outputTruncated = true;
           existing.error = spillableDisplayText(ev.error);
           existing.sourceEventId = ev.eventId;
@@ -1284,6 +1288,9 @@ export function projectRuntimeEventsToMessages(
                     ev.stationControlRefusal,
                   ),
                 }
+              : {}),
+            ...(appearanceProposalReferenceOfEvent(ev)
+              ? { appearanceProposal: appearanceProposalReferenceOfEvent(ev) }
               : {}),
             ...(ev.outputReceipt?.truncated
               ? { outputTruncated: true as const }

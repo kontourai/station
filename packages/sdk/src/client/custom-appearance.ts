@@ -1,5 +1,8 @@
 import type {
   CustomAppearanceDocument,
+  CustomAppearanceLibraryDocument,
+  CustomAppearanceLibrarySaveInput,
+  CustomAppearanceLibraryUpdateInput,
   CustomAppearanceProposalInput,
   CustomAppearanceRenderReport,
   CustomAppearanceSaveInput,
@@ -61,5 +64,40 @@ export async function reportCustomAppearanceRender(
 ): Promise<CustomAppearanceDocument> {
   return unwrapProjectResponse(
     await mutateJson(`${path(apiBase)}/proposal/report`, 'POST', opts, report),
+  );
+}
+
+/** 404 means the host is older or Appearance Studio is disabled. */
+export async function getCustomAppearanceLibrary(
+  apiBase: string,
+  opts?: ClientRequestOptions,
+): Promise<CustomAppearanceLibraryDocument> {
+  return unwrapProjectResponse(await getJson(`${path(apiBase)}/library`, opts));
+}
+export async function saveCustomAppearanceLibraryTheme(
+  apiBase: string,
+  input: CustomAppearanceLibrarySaveInput,
+  opts?: ClientRequestOptions,
+): Promise<CustomAppearanceLibraryDocument> {
+  return unwrapProjectResponse(
+    await mutateJson(`${path(apiBase)}/library`, 'POST', opts, input),
+  );
+}
+export async function updateCustomAppearanceLibraryTheme(
+  apiBase: string,
+  input: CustomAppearanceLibraryUpdateInput,
+  opts?: ClientRequestOptions,
+): Promise<CustomAppearanceLibraryDocument> {
+  return unwrapProjectResponse(
+    await mutateJson(`${path(apiBase)}/library`, 'PATCH', opts, input),
+  );
+}
+export async function removeCustomAppearanceLibraryTheme(
+  apiBase: string,
+  input: { revision: string; id: string },
+  opts?: ClientRequestOptions,
+): Promise<CustomAppearanceLibraryDocument> {
+  return unwrapProjectResponse(
+    await mutateJson(`${path(apiBase)}/library`, 'DELETE', opts, input),
   );
 }

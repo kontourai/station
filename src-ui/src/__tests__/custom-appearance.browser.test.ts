@@ -41,7 +41,9 @@ function App() {
   const [open, setOpen] = useState(false);
   showApproval = (value) => flushSync(() => setOpen(value));
   return React.createElement(React.Fragment, null,
-    React.createElement('div', { id: 'probe', 'data-surface': 'sidebar' }, 'Probe'),
+    React.createElement('div', { className: 'main-content' },
+      React.createElement('div', { id: 'probe', 'data-surface': 'sidebar' }, 'Probe'),
+      React.createElement('div', { 'data-surface': 'composer' }, 'Compose')),
     React.createElement('svg', { width: 20, height: 20 },
       React.createElement('path', { id: 'probe-path', d: 'M0 0 L10 10' })),
     open && React.createElement(PermissionRequestModal, {
@@ -73,6 +75,7 @@ window.harness = {
     return { text, stripped };
   },
   setActive: (css, palette) => setActiveCustomAppearance(css === null ? null : appearance(css, palette)),
+  setVisual: (visual) => setActiveCustomAppearance({ ...appearance(''), visual }),
   snapshot: () => getCustomAppearanceSnapshot(),
   applyCached: () => applyCachedCustomAppearance(),
   bar: () => {
@@ -137,6 +140,48 @@ describe('custom appearance in Chromium', () => {
   }, 60_000);
   afterAll(async () => {
     await browser?.close();
+  });
+
+  test('typed visual styling reaches its consumers, pauses for approvals, and clears', async () => {
+    await call('setVisual', { radius: 20, fontSize: 18, panelOpacity: 0.6 });
+    expect(
+      await page.evaluate(
+        () =>
+          getComputedStyle(document.querySelector('[data-surface="composer"]')!)
+            .borderRadius,
+      ),
+    ).toBe('20px');
+    expect(
+      await page.evaluate(() =>
+        getComputedStyle(document.documentElement)
+          .getPropertyValue('--text-base')
+          .trim(),
+      ),
+    ).toBe('18px');
+    await call('showApproval', true);
+    expect(
+      await page.evaluate(
+        () =>
+          getComputedStyle(document.querySelector('[data-surface="composer"]')!)
+            .borderRadius,
+      ),
+    ).not.toBe('20px');
+    await call('showApproval', false);
+    expect(
+      await page.evaluate(
+        () =>
+          getComputedStyle(document.querySelector('[data-surface="composer"]')!)
+            .borderRadius,
+      ),
+    ).toBe('20px');
+    await call('setActive', null);
+    expect(
+      await page.evaluate(() =>
+        getComputedStyle(document.documentElement)
+          .getPropertyValue('--text-base')
+          .trim(),
+      ),
+    ).not.toBe('18px');
   });
 
   const probe = (property: string) =>

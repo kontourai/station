@@ -62,6 +62,7 @@ import type {
   ConnectionRecoveryProjection,
 } from '@kontourai/station-contracts/connection-recovery';
 import { isLowContentPrompt } from '@kontourai/station-contracts/conversation-title';
+import { appearanceProposalReferenceOfEvent } from '@kontourai/station-contracts/custom-appearance';
 import { parseMcpToolRef } from '@kontourai/station-contracts/layout';
 import { parseLearningContextContributions } from '@kontourai/station-contracts/learning-review';
 import type {
@@ -2438,8 +2439,12 @@ function snapshotEvent(
     const refusal =
       parseStationControlRefusal(toolName, payload.error) ??
       parseStationControlRefusal(toolName, payload.output);
+    const appearance = appearanceProposalReferenceOfEvent(payload);
     snapshotPayload = {
       ...payload,
+      ...(appearance
+        ? { appearanceProposal: appearance }
+        : { appearanceProposal: undefined }),
       ...(pageReference ? { htmlReply: pageReference } : {}),
       ...(refusal ? { stationControlRefusal: refusal } : {}),
       ...(error ? { error: error.text } : {}),
@@ -4844,6 +4849,11 @@ export class EventStore {
           typeof raw.error === 'string' ? raw.error : undefined,
         ) ?? parseStationControlRefusal(toolName, raw.output);
       if (refusal) stamped.stationControlRefusal = refusal;
+      const appearance = appearanceProposalReferenceOfEvent({
+        ...stamped,
+        output: raw.output,
+      });
+      if (appearance) stamped.appearanceProposal = appearance;
     }
     persisted = { ...persisted, payload: plan.payload };
     // Attachment projection can replace a very small inline data URL with a

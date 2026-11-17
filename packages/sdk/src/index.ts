@@ -1405,6 +1405,10 @@ export {
 } from './query-domains/chatRuntimeCoding.js';
 export {
   type CustomAppearanceAction,
+  type CustomAppearanceLibraryAction,
+  customAppearanceLibraryKey,
+  useCustomAppearanceLibraryQuery,
+  useCustomAppearanceLibraryMutation,
   customAppearanceKey,
   useCustomAppearanceMutation,
   useCustomAppearanceQuery,
