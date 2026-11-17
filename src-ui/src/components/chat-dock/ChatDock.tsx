@@ -105,6 +105,7 @@ import { useChatDockKeyboardShortcuts } from '../../hooks/useChatDockKeyboardSho
 import { useChatDockState } from '../../hooks/useChatDockState';
 import { useChatInput } from '../../hooks/useChatInput';
 import { useCoarseNow } from '../../hooks/useCoarseNow';
+import { hasUploadsInFlight } from '../../hooks/useComposerAttachments';
 import { useConversationInboxSnapshot } from '../../hooks/useConversationInbox';
 import { useDerivedSessions } from '../../hooks/useDerivedSessions';
 import {
@@ -1573,6 +1574,14 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     // generic toast must not be suppressed in that case.
     isChatVisible: isPaneOpen && !readerCovered,
   });
+  // Start's first message is held here until its files stage; the composer
+  // shows it waiting rather than offering a second Send.
+  const startSendWaitsForUploads = Boolean(
+    pendingGoalSend &&
+      pendingGoalSend.sessionId === activeSessionId &&
+      pendingGoalSend.prompt !== undefined &&
+      (pendingGoalSend.files || pendingGoalSend.filesPhase),
+  );
   useEffect(() => {
     if (!pendingGoalSend) return;
     if (pendingGoalSend.authority && !pendingGoalSend.authority.isCurrent()) {
@@ -1608,12 +1617,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     if (pendingGoalSend.filesPhase === 'staging') return;
     if (pendingGoalSend.filesPhase === 'staged') {
       const stages = chatInput.attachmentStages;
-      if (
-        stages.some(
-          (stage) => stage.state === 'queued' || stage.state === 'uploading',
-        )
-      )
-        return;
+      if (hasUploadsInFlight(stages)) return;
       // A file this engine refused is not added (the composer says why); one
       // that did not stage stays with its retry. Either way the message
       // waits in the composer for the person instead of going without it.
@@ -4690,6 +4694,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                                 onComposerEnabledChange={
                                   onComposerEnabledChange
                                 }
+                                sendQueuedForUploads={startSendWaitsForUploads}
                                 secondaryActions={secondaryActions}
                                 onOpenAgentHandoff={() =>
                                   openConversationHandoff(
