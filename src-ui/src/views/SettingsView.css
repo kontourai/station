@@ -1506,6 +1506,26 @@
   flex-wrap: wrap;
   gap: var(--k-space-2);
 }
+/* Engine workloads Station couldn't stop; unit names wrap at phone width. */
+.workload-cleanup__list {
+  display: grid;
+  gap: var(--k-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.workload-cleanup__item {
+  display: grid;
+  gap: var(--k-space-1);
+  min-width: 0;
+}
+.workload-cleanup__unit {
+  overflow-wrap: anywhere;
+}
+/* A telemetry receiver's refusal reason may hold an unbroken token. */
+.telemetry-delivery__detail {
+  overflow-wrap: anywhere;
+}
 
 /* #4305: Project sharing with local accounts. */
 .account-sharing__toggle {

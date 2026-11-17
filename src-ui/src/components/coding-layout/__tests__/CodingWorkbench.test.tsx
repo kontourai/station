@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 
+import { resolve } from 'node:path';
 import { BUILTIN_CODING_LAYOUT } from '@kontourai/station-contracts/layout';
 import {
   createWorkspaceCodingDiffPaneInstance,
@@ -8,6 +9,7 @@ import {
 } from '@kontourai/station-contracts/workspace-coding-panels';
 import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
 import { createWorkspacePaneHostBaselineDocument } from '@kontourai/station-contracts/workspace-pane-host';
+import { chromium } from '@playwright/test';
 import {
   act,
   fireEvent,
@@ -19,6 +21,12 @@ import {
 import { type ReactNode, useContext, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { createUiModuleGraph } from '../../../../../scripts/lib/ui-module-graph.mjs';
+import {
+  assertNoImportsSurvive,
+  chromiumIsInstalled,
+  resolveCssImports,
+} from '../../../../../tests/helpers/css-cascade-fixture';
 import { requestCenterChatPage } from '../../../app-shell/chat-placement';
 import { NavigationProvider } from '../../../contexts/NavigationContext';
 import { navigationStore } from '../../../contexts/navigation-store';
@@ -31,6 +39,8 @@ import type { WorkspacePaneHostOpenAction } from '../../../workspace-panes/Works
 import { workspacePaneHostScopeKey } from '../../../workspace-panes/workspacePaneHostNavigation';
 import { WORKSPACE_PANE_OPENED } from '../../../workspace-panes/workspacePaneHostOpenOutcome';
 import { ActionOverflowMenu } from '../../ActionOverflowMenu';
+import { ChatDockActiveIdentity } from '../../chat-dock/ChatDockActiveIdentity';
+import { ChildChatNavigation } from '../../chat-dock/ChildChatNavigation';
 import { MobileDockHeaderLeadingContext } from '../../chat-dock/MobileDockHeaderLeading';
 import { CodingWorkbench } from '../CodingWorkbench';
 import {
@@ -63,6 +73,8 @@ const harness = vi.hoisted(() => ({
   needsYou: 0,
   /** How many times Chat has rendered: geometry must not render it. */
   chatRenders: 0,
+  /** What Chat's toolbar puts in the bar's leading slot (its identity). */
+  leading: null as ReactNode,
 }));
 
 // Station's one Chat controller is its own subject; here it is the page's
@@ -97,6 +109,9 @@ vi.mock('../../chat-dock/ChatDock', () => ({
           <textarea aria-label="Message" />
         </div>
         <aside className="chat-dock-inbox">inbox</aside>
+        {slots?.leading && harness.leading
+          ? createPortal(harness.leading, slots.leading)
+          : null}
         {slots?.trailing
           ? createPortal(
               <button type="button" aria-label="New chat">
@@ -115,6 +130,7 @@ vi.mock('../../../hooks/useSurfaceVisibilityFlags', () => ({
 }));
 
 vi.mock('../../../hooks/useKeyboardShortcut', () => ({
+  useShortcutDisplay: () => '',
   useKeyboardShortcut: (
     id: string,
     key: string,
@@ -1436,6 +1452,32 @@ describe('CodingWorkbench — one quiet bar, the inbox beside a tool, and names 
       focusVisible.mockRestore();
     }
   });
+
+  test('a zero count draws no badge and is not announced', () => {
+    const { container } = render(
+      <NavigationProvider>
+        <CodingWorkbench
+          stackName={BUILTIN_CODING_LAYOUT.name}
+          drillInOrder={BUILTIN_CODING_DRILL_INS}
+          projectId="project-uuid"
+          projectSlug="demo"
+          centerChat
+          location={{ page: 'chat', paneId: null }}
+          scope={scope}
+          instances={instances}
+          hostDocument={() => document}
+          paneLabel={label}
+          badges={{ [diff.descriptorId]: 0 }}
+          hostOpen={null}
+          onOpenCatalog={vi.fn()}
+        >
+          <div />
+        </CodingWorkbench>
+      </NavigationProvider>,
+    );
+    expect(railItem('Diff').getAttribute('aria-label')).toBe('Diff');
+    expect(container.querySelector('.coding-workbench__rail-count')).toBeNull();
+  });
 });
 
 describe('CodingWorkbench — the folded inbox’s edge, and the fold judged again on resize', () => {
@@ -1935,6 +1977,16 @@ describe('CodingWorkbench — design audit round: the flyout, Escape, the way ba
     const trigger = within(rail()).getByRole('button', {
       name: 'Open Browser pane',
     });
+    // It adds another pane beside any Browser on the rail, and says so: a
+    // "+" on its globe and its tip, so the two globes do not read as one.
+    expect(
+      trigger.querySelector('.coding-workbench__rail-add-mark')?.textContent,
+    ).toBe('+');
+    fireEvent.pointerEnter(trigger.parentElement!);
+    expect(screen.getByRole('tooltip').textContent).toBe(
+      'Open a new Browser pane',
+    );
+    fireEvent.pointerLeave(trigger.parentElement!);
     expect(screen.queryByRole('region', { name: 'Browser' })).toBeNull();
     // A pointer click focuses the button it lands on; jsdom's does not.
     trigger.focus();
@@ -2288,5 +2340,182 @@ test.each([null, 'same-conversation'])(
       otherKey,
     );
     expect(deviceSettingsStore.get('inboxOpen')).toBe(true);
+  },
+);
+
+describe.skipIf(!chromiumIsInstalled(resolve('.')))(
+  'the Coding bar while a subagent chat is open (real cascade)',
+  () => {
+    afterEach(() => {
+      harness.leading = null;
+    });
+    test('names the parent once, spaces every separator alike, and keeps Open Browser on one line', async () => {
+      const parentTitle =
+        'Is this machine getting overwhelmed? Seems like station process/server is slow';
+      harness.chatTitle = parentTitle;
+      // Chat's real identity with its child trail, as the dock renders it
+      // into the bar while a subagent chat is open.
+      harness.leading = (
+        <ChildChatNavigation
+          rootKey="parent"
+          title={parentTitle}
+          dockOutlet
+          initialChild={{
+            title: 'Inventory event-row readers for retention',
+            threadId: 'parent',
+            childId: 'child',
+            connection: { apiBase: 'https://station.test' },
+          }}
+        >
+          <div className="chat-dock__header-identity chat-dock__header-identity--pane">
+            <ChatDockActiveIdentity
+              session={{ id: 'parent', title: parentTitle }}
+              onClose={() => {}}
+            />
+          </div>
+        </ChildChatNavigation>
+      );
+      const view = render(
+        <NavigationProvider>
+          <CodingWorkbench
+            stackName="Coding"
+            drillInOrder={BUILTIN_CODING_DRILL_INS}
+            projectId="project-uuid"
+            projectSlug="demo"
+            centerChat
+            wide
+            location={{ page: 'chat', paneId: null }}
+            scope={scope}
+            instances={instances}
+            hostDocument={() => document}
+            paneLabel={label}
+            hostOpen={{ open: vi.fn(() => WORKSPACE_PANE_OPENED) }}
+            onOpenCatalog={vi.fn()}
+            browserPreviewAvailability={{
+              state: 'available',
+              reason: { code: 'ready', source: 'resolver' },
+            }}
+          >
+            <div />
+          </CodingWorkbench>
+        </NavigationProvider>,
+      );
+      await screen.findByRole('navigation', { name: 'Chat breadcrumb' });
+      // A copy: React still owns the mounted bar.
+      const bar = view.container
+        .querySelector('.coding-workbench__bar')!
+        .cloneNode(true) as Element;
+      // The mock Chat's New chat stub carries an unstyled glyph; the real
+      // toolbar's controls are not this test's subject.
+      bar.querySelector('[aria-label="New chat"]')?.remove();
+      const graph = createUiModuleGraph();
+      const styles = [
+        'src-ui/src/index.css',
+        ...[
+          ...graph.closure(
+            [
+              'src-ui/src/components/coding-layout/CodingWorkbench.tsx',
+              'src-ui/src/components/chat-dock/ChatDockHeader.tsx',
+              'src-ui/src/components/chat-dock/ChildChatNavigation.tsx',
+            ],
+            { followDynamic: false },
+          ),
+        ].filter((path) => path.endsWith('.css')),
+      ]
+        .map((path) => resolveCssImports(resolve(path)))
+        .join('\n');
+      assertNoImportsSurvive(styles);
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage({
+          viewport: { width: 620, height: 120 },
+        });
+        await page.setContent(
+          `<!doctype html><html data-theme="dark"><head><style>${styles}</style></head><body style="margin:0">${bar.outerHTML}</body></html>`,
+        );
+        const facts = await page.evaluate(() => {
+          const bar = window.document.querySelector('.coding-workbench__bar')!;
+          const shown = (element: Element) =>
+            getComputedStyle(element).display !== 'none' &&
+            element.getClientRects().length > 0;
+          const textBox = (element: Element) => {
+            const range = window.document.createRange();
+            range.selectNodeContents(element);
+            return range.getBoundingClientRect();
+          };
+          const lines = (element: Element) => {
+            const range = window.document.createRange();
+            range.selectNodeContents(element);
+            return new Set(
+              [...range.getClientRects()].map((rect) => Math.round(rect.top)),
+            ).size;
+          };
+          // The visible crumbs in order, and each separator's glyph.
+          const inbox = bar.querySelector('.coding-workbench__crumb-link')!;
+          const parent = bar.querySelector('.child-chat-trail__label')!;
+          const child = bar.querySelector('.child-chat-trail [aria-current]')!;
+          const before = getComputedStyle(
+            bar.querySelector('.child-chat-trail')!,
+            '::before',
+          );
+          const separator = bar.querySelector('.child-chat-trail__separator')!;
+          const trail = bar.querySelector('.child-chat-trail')!;
+          // The trail's own leading "/" is a pseudo-element: its box is the
+          // trail's start plus its margin, its width the glyph's.
+          const trailBox = trail.getBoundingClientRect();
+          const firstSlashLeft =
+            trailBox.left + Number.parseFloat(before.marginLeft);
+          const separatorBox = textBox(separator);
+          // A crumb cut to an ellipsis: its own box is what shows.
+          const parentBox = parent.getBoundingClientRect();
+          return {
+            parentNames: [
+              ...bar.querySelectorAll(
+                '.coding-workbench__crumb-current, .child-chat-trail__label',
+              ),
+            ].filter(shown).length,
+            browserLines: lines(
+              [...bar.querySelectorAll('button')].find(
+                (button) => button.textContent === 'Open Browser',
+              )!,
+            ),
+            // The parent yields first: the child keeps more of the bar.
+            childReadable:
+              child.getBoundingClientRect().width >
+              parent.getBoundingClientRect().width,
+            back: shown(bar.querySelector('.child-chat-trail__back')!),
+            firstSlash: before.content,
+            separator: separator.textContent,
+            gaps: {
+              inboxToSlash: firstSlashLeft - textBox(inbox).right,
+              slashToParent:
+                parentBox.left -
+                // The leading "/" is the same glyph as the trail's own.
+                (firstSlashLeft + separatorBox.width),
+              parentToSlash: separatorBox.left - parentBox.right,
+              slashToChild: textBox(child).left - separatorBox.right,
+            },
+          };
+        });
+        await page.screenshot({
+          path: resolve(
+            'test-results/child-chat-coding-bar/coding-bar-620-dark.png',
+          ),
+        });
+        expect({ ...facts, gaps: undefined }).toEqual({
+          parentNames: 1,
+          browserLines: 1,
+          childReadable: true,
+          back: false,
+          firstSlash: '"/"',
+          separator: '/',
+          gaps: undefined,
+        });
+        const gaps = Object.values(facts.gaps);
+        expect(Math.max(...gaps) - Math.min(...gaps)).toBeLessThanOrEqual(2);
+      } finally {
+        await browser.close();
+      }
+    });
   },
 );

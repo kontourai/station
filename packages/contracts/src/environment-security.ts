@@ -1234,6 +1234,8 @@ export interface StationCapabilityFlags {
    * flag. Absent on hosted deployments, whose scheduler routes answer 404.
    */
   scheduledConversationTarget?: boolean;
+  /** #5070: the scheduler accepts a job `projectId` (runs as a Task). */
+  projectSchedules?: boolean;
   /** SSH environment management (`src-server/services/ssh/`, `/api/ssh-environments`). */
   sshEnvironments?: boolean;
   /**

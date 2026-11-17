@@ -60,14 +60,17 @@ async function toolListJsonBytes(server: McpServer): Promise<number> {
 }
 
 /**
- * The `dynamicTools` Codex's `thread/start` carries when the bound browser
- * and device channel is on, with both families (the widest offer).
+ * The `dynamicTools` Codex's `thread/start` carries when the bound channel is
+ * on: browser tools and the whole station-control catalog at `bound`, devices
+ * included (the widest offer, #2376 slice 2). Such a session has no
+ * header-token station-control listing beside it.
  */
 async function codexBoundToolsJsonBytes(): Promise<number> {
   const server = await createCodexBoundToolServer({
     sessionId: 'agent-context-budget',
     includeBrowser: true,
     includeDevices: true,
+    stationControl: {},
     isCurrent: () => true,
     dispatch: async () => {
       throw new Error('The budget only lists the bound tools.');
@@ -113,8 +116,9 @@ test('Station-injected agent context matches the committed budget', async () => 
         'bound',
       ),
     ),
-    // What Codex and ACP engines list: their credential travels to the
-    // engine, so it holds `delegated-custody` and sees that subset.
+    // What ACP engines, and Codex without the bound channel, list: their
+    // credential travels to the engine, so it holds `delegated-custody` and
+    // sees that subset.
     stationControlDelegatedToolListJsonBytes: await toolListJsonBytes(
       createSelectedStationControlMcpServer(
         undefined,
@@ -123,7 +127,7 @@ test('Station-injected agent context matches the committed budget', async () => 
         'delegated-custody',
       ),
     ),
-    // Codex's separate bound channel, offered as `dynamicTools` beside it.
+    // Codex's bound channel, offered as `dynamicTools` instead of it.
     codexBoundToolsJsonBytes: await codexBoundToolsJsonBytes(),
     stationBrowserToolListJsonBytes: await toolListJsonBytes(
       createStationBrowserMcpServer(),

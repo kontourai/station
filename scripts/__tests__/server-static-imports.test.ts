@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   assertNoBootDeniedStaticImports,
+  BOOT_DENIED_EXACT_STATIC_IMPORTS,
   BOOT_DENIED_STATIC_IMPORTS,
   staticImportSpecifiers,
 } from '../lib/server-static-imports.mjs';
@@ -19,6 +20,7 @@ function bundle(text: string) {
 }
 
 const denied = ['@anthropic-ai/claude-agent-sdk', '@kontourai/veritas'];
+const deniedExact = ['@kontourai/flow-agents'];
 
 describe('assertNoBootDeniedStaticImports', () => {
   it('denies exactly the packages whose callers load them on first use', () => {
@@ -26,6 +28,9 @@ describe('assertNoBootDeniedStaticImports', () => {
       '@anthropic-ai/claude-agent-sdk',
       '@kontourai/console-server',
       '@kontourai/veritas',
+    ]);
+    expect(BOOT_DENIED_EXACT_STATIC_IMPORTS).toEqual([
+      '@kontourai/flow-agents',
     ]);
   });
 
@@ -49,13 +54,15 @@ describe('assertNoBootDeniedStaticImports', () => {
   it('accepts dynamic imports, requires and packages that only share a prefix', async () => {
     const file = bundle(
       'import{x}from"@kontourai/veritas-lite";' +
+        'import{p}from"@kontourai/flow-agents/run-correlation";' +
+        'import{r}from"@kontourai/flow-agents-extra";' +
         'const s=()=>import("@anthropic-ai/claude-agent-sdk/core");' +
         'const t=require("@kontourai/veritas/engine");' +
         'const u="import{q}from\\"@anthropic-ai/claude-agent-sdk\\"";' +
-        'console.log(x,s,t,u);',
+        'console.log(x,p,r,s,t,u);',
     );
     await expect(
-      assertNoBootDeniedStaticImports(file, { denied }),
+      assertNoBootDeniedStaticImports(file, { denied, deniedExact }),
     ).resolves.toBeUndefined();
   });
 
@@ -64,21 +71,23 @@ describe('assertNoBootDeniedStaticImports', () => {
       'import{query as q}from"@anthropic-ai/claude-agent-sdk";' +
         'import*as f from"@kontourai/veritas";import"node:fs";' +
         'import{c}from"@anthropic-ai/claude-agent-sdk/core";' +
-        'console.log(q,f,c);',
+        'import{w}from"@kontourai/flow-agents";' +
+        'console.log(q,f,c,w);',
     );
     await expect(
-      assertNoBootDeniedStaticImports(file, { denied }),
+      assertNoBootDeniedStaticImports(file, { denied, deniedExact }),
     ).rejects.toThrow(
-      `${file} statically imports @anthropic-ai/claude-agent-sdk, @anthropic-ai/claude-agent-sdk/core, @kontourai/veritas, which the server must not load at boot.`,
+      `${file} statically imports @anthropic-ai/claude-agent-sdk, @anthropic-ai/claude-agent-sdk/core, @kontourai/flow-agents, @kontourai/veritas, which the server must not load at boot.`,
     );
   });
 
   it('checks the default deny list when none is given', async () => {
     const file = bundle(
-      'import"@kontourai/veritas/engine";import"@kontourai/flow-agents";',
+      'import"@kontourai/veritas/engine";import"@kontourai/flow-agents";' +
+        'import"@kontourai/flow-agents/local-artifact-root";',
     );
     await expect(assertNoBootDeniedStaticImports(file)).rejects.toThrow(
-      /statically imports @kontourai\/veritas\/engine, which/,
+      /statically imports @kontourai\/flow-agents, @kontourai\/veritas\/engine, which/,
     );
   });
 

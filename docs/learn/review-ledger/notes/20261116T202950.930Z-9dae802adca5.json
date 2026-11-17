@@ -1,0 +1,17 @@
+{
+  "revision": "7467aa41b32c4505e5809a5aed5a7e5baec3fad6",
+
+  "notes": [
+    {"path":"docs/learn/media/child-tool-text-after-1440-light.png","note":"The reader keeps settled children's calls off the live tool record (TranscriptToolRecordLive) and offers Show later messages only against a Station from before page ranges. Captures still illustrate the Text output unavailable label; getting-started claims hold.","inputs":["src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx"]},
+
+    {"path":"docs/learn/media/child-tool-text-after-390-dark.png","note":"The reader keeps settled children's calls off the live tool record (TranscriptToolRecordLive) and offers Show later messages only against a Station from before page ranges. Captures still illustrate the Text output unavailable label; getting-started claims hold.","inputs":["src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx"]},
+
+    {"path":"docs/learn/media/child-tool-text-before-1440-light.png","note":"The reader keeps settled children's calls off the live tool record (TranscriptToolRecordLive) and offers Show later messages only against a Station from before page ranges. Captures still illustrate the Text output unavailable label; getting-started claims hold.","inputs":["src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx"]},
+
+    {"path":"docs/learn/media/child-tool-text-before-390-dark.png","note":"The reader keeps settled children's calls off the live tool record (TranscriptToolRecordLive) and offers Show later messages only against a Station from before page ranges. Captures still illustrate the Text output unavailable label; getting-started claims hold.","inputs":["src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"The reader keeps settled children's calls off the live tool record (TranscriptToolRecordLive) and offers Show later messages only against a Station from before page ranges. Captures still illustrate the Text output unavailable label; getting-started claims hold.","inputs":["src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"The reader keeps settled children's calls off the live tool record (TranscriptToolRecordLive) and offers Show later messages only against a Station from before page ranges. Captures still illustrate the Text output unavailable label; getting-started claims hold.","inputs":["src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx"]}
+  ]
+}

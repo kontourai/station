@@ -811,6 +811,7 @@ function LiveConversationBody({
     onResync: resyncConversation,
     onRecoveryFocus: focusRecoveredComposer,
     catchingUp: streamCatchingUp,
+    apiBase,
   });
   /*
    * One transitional state for the whole conversation, from the two things

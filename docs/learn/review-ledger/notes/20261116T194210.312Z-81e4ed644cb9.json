@@ -1,0 +1,7 @@
+{
+  "revision": "d7c487980bba14870f7760207985425c5d562642",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Cites config.md; the new section is an env-var retention setting and does not change settings architecture claims.","inputs":["docs/design/settings-architecture.md","docs/reference/config.md"]}
+  ]
+}

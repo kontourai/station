@@ -372,3 +372,37 @@ export async function acquireHeavyCheckSlot({
   });
   return { ...slot, skipped: false };
 }
+
+/**
+ * Hold a heavy-check slot for the rest of this process: the slot runner
+ * (`scripts/heavy-check-slot.mjs`) before it becomes its check, and a script
+ * that is itself a heavy check (`code-health-gate.mjs`, the fallow runners),
+ * so a direct `node scripts/<check>.mjs` queues like its package script
+ * (#5080). Under a live ancestor's claim it is admitted without a slot, and in
+ * hosted CI it takes none. A claim it takes is released when the process
+ * exits and is exported to descendants, which are then admitted under it.
+ *
+ * Resolves true once admitted. On a refused wait it prints the refusal and
+ * resolves false; the caller picks its exit status.
+ *
+ * @param {string} label The check's name in every waiter's message.
+ * @returns {Promise<boolean>}
+ */
+export async function holdHeavyCheckSlotForProcess(label) {
+  let slot;
+  try {
+    slot = await acquireHeavyCheckSlot({ label });
+  } catch (error) {
+    process.stderr.write(`${error?.message ?? error}\n`);
+    return false;
+  }
+  if (!slot.reentrant && !slot.skipped) {
+    process.once('exit', slot.release);
+    // The claim's record keeps this pid through execve, so descendants
+    // still find their holder.
+    process.env[HEAVY_CHECK_HELD_ENV] = withHeavyCheckHeld(process.env, slot)[
+      HEAVY_CHECK_HELD_ENV
+    ];
+  }
+  return true;
+}

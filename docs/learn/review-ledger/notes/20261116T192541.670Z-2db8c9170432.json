@@ -1,0 +1,13 @@
+{
+  "revision": "61456989822bfc7e38dafb3437b32b18a881aaff",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"New useChildWorkTranscriptTailQuery (tail first page, older via fetchPreviousPage, cursor reads past endOffset while running); existing hooks unchanged. Composer, placement and station-docs claims are unaffected.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"docs/design/placement.md","note":"New useChildWorkTranscriptTailQuery (tail first page, older via fetchPreviousPage, cursor reads past endOffset while running); existing hooks unchanged. Composer, placement and station-docs claims are unaffected.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"New useChildWorkTranscriptTailQuery (tail first page, older via fetchPreviousPage, cursor reads past endOffset while running); existing hooks unchanged. Composer, placement and station-docs claims are unaffected.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"New useChildWorkTranscriptTailQuery (tail first page, older via fetchPreviousPage, cursor reads past endOffset while running); existing hooks unchanged. Composer, placement and station-docs claims are unaffected.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]}
+  ]
+}

@@ -123,6 +123,41 @@ Items past a block's cap are counted ("3 more threads; see the pull
 request") and count as delivered: the agent reads them on the pull request,
 and they are not listed again unless they change.
 
+## Where a person sees it
+
+Wherever a person looks at a pull request, they can tell whether its agent
+is getting feedback without opening a dialog, and never learn more about a
+chat than they may read:
+
+- **The pull request panel** shows one line under its head: "Agent
+  feedback", the status, the chat that gets it (a link; "this chat" when it
+  is the open one), the last message sent about the head it shows and when,
+  and a gear to the dialog (naming the owning chat when it is not the open
+  one). It may appear a moment after the review and move it down: the two
+  reads settle apart. To a
+  reader who may not read the owning chat it says only "goes to another
+  chat", with no title, status or settings. When no chat gets it and the
+  open chat holds the pull request, it says "Off · Turn on…". Otherwise,
+  while loading, or on an error, there is no line at all.
+- **A failing check** the agent was sent says "Sent 3m" beside it, only for
+  checks sent about the head the panel shows.
+- **A Task board card** in In review adds "auto-fix on", "sent 3m",
+  "waiting on checks" or "auto-fix paused" after its pull request; a Running
+  card adds "fixing checks on #42" while the feedback goes to that Task's
+  own run and its open turn is the one Station started to send that pull
+  request's failing checks (an In review card the facts say is fixing reads
+  "fixing checks"). Another Task keeping the same pull request, or a run
+  doing other work, is never fixing. The note never changes the
+  card's lane, rung, tone or certainty, and shows only while the feedback is
+  about the head the provider reported. It is read for a reader of the
+  owning chat only.
+- `GET /api/pull-request-feedback/by-pull-request` answers all of this for
+  one pull request, whichever chat is open. The 409 for turning feedback on
+  in a second chat, and a chat's own feedback read, name the owning chat
+  (id and title) only to a reader of it; to anyone else a chat's own read
+  also shows that pull request's switches off and its status `off`, never
+  the owning chat's.
+
 ## Implementation status
 
 Implemented: detection (one `gh api graphql --hostname` per pull request, on
@@ -143,6 +178,12 @@ Choices the decisions left open, and departures from the plan:
   running turn. A message queued behind a turn in which the agent pushed a fix
   would carry the old head's failures.
 - Merge conflicts ride the "Fix failing checks" switch.
+- The panel and card times read "Sent 3m", not "3m ago": Station's one
+  relative-time format has no "ago". A card's note travels beside its status
+  detail (`feedbackNote`) rather than in it: the lane derivation reads no
+  clock, and a run's own words replace the detail on a Running card.
+  "Fixing" is only a turn that carried failing checks; a turn about review
+  threads alone adds no note.
 - Sign-in and rate-limit failures are read from the one GraphQL call's error
   output rather than a separate `gh auth status` probe.
 - A stopped agent is noticed once per pull request until it is no longer
@@ -152,8 +193,7 @@ Choices the decisions left open, and departures from the plan:
   interrupt twice. A later stop with the same feedback still waiting is the
   same notice. A pause recorded before pauses kept their start time is
   stamped once when first read.
-- Not yet built: the pull request panel strip, Project defaults (and so
-  automatic claims of a Task branch's pull request, `branch-derived`), and
-  the `by-pull-request` read. The `review-findings` category and
-  `reviewEachHead` setting exist for the later per-head review and drive
+- Not yet built: Project defaults (and so automatic claims of a Task
+  branch's pull request, `branch-derived`). The `review-findings` category
+  and `reviewEachHead` setting exist for the later per-head review and drive
   nothing.

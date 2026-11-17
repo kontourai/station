@@ -31,6 +31,7 @@ import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import type {
   TaskPullRequestFact,
   TaskPullRequestFactsProjection,
+  TaskPullRequestFeedbackFact,
 } from '@kontourai/station-contracts/task-lane';
 import { readPullRequestByIdentity } from '../pull-requests/pull-request-identity-read.js';
 
@@ -64,6 +65,15 @@ export async function readTaskPullRequestFacts(input: {
   /** The request's own session read check, per keep's provenance. */
   canRead: (sessionId: string) => boolean;
   providers: () => IPullRequestProvider[];
+  /**
+   * A pull request's agent feedback, as this request may see it: undefined
+   * unless the preview is on and the reader may read the chat that gets it.
+   */
+  feedbackFor?: (
+    identity: Identity,
+    /** The Task's own run: only it can be fixing on this card. */
+    taskSessionId: string | undefined,
+  ) => TaskPullRequestFeedbackFact | undefined;
   deadlineMs?: number;
   now?: () => Date;
 }): Promise<TaskPullRequestFactsProjection> {
@@ -111,6 +121,15 @@ export async function readTaskPullRequestFacts(input: {
     now,
   );
 
+  // Once per pull request and Task run, read after the provider so it is
+  // as fresh.
+  const feedback = new Map<string, TaskPullRequestFeedbackFact | undefined>();
+  const feedbackOf = (keep: Identity, taskSessionId: string | undefined) => {
+    const key = `${identityKey(keep)}\u0000${taskSessionId ?? ''}`;
+    if (!feedback.has(key))
+      feedback.set(key, input.feedbackFor?.(keep, taskSessionId));
+    return feedback.get(key);
+  };
   const tasks: TaskPullRequestFactsProjection['tasks'] = {};
   for (const { task, reads } of plan) {
     const pullRequests = reads.map(({ keep, skipped }) => {
@@ -126,13 +145,15 @@ export async function readTaskPullRequestFacts(input: {
           observedAt: now().toISOString(),
           status: { state: 'unavailable', reason: skipped },
         } satisfies TaskPullRequestFact;
-      return {
-        ...identity,
-        ...(results.get(identityKey(keep)) as Omit<
-          TaskPullRequestFact,
-          keyof Identity
-        >),
-      };
+      const read = results.get(identityKey(keep)) as Omit<
+        TaskPullRequestFact,
+        keyof Identity
+      >;
+      const fed =
+        read.status.state === 'current'
+          ? feedbackOf(keep, task.sessionId?.trim() || undefined)
+          : undefined;
+      return { ...identity, ...read, ...(fed ? { feedback: fed } : {}) };
     });
     tasks[task.id] = {
       taskCreatedAt: task.createdAt,
@@ -233,6 +254,7 @@ function toFact(
       title: pullRequest.title,
       mergeability: pullRequest.mergeability,
       sourceBranch: pullRequest.sourceBranch,
+      ...(pullRequest.headSha ? { headSha: pullRequest.headSha } : {}),
       ...(pullRequest.draft !== undefined ? { draft: pullRequest.draft } : {}),
       ...(pullRequest.reviewDecision
         ? { reviewDecision: pullRequest.reviewDecision }
