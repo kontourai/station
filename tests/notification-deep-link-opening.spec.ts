@@ -1,3 +1,4 @@
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
   expect,
   type Locator,
@@ -9,6 +10,7 @@ import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import {
   DEFAULT_CONVERSATION_LOOKUPS,
   DEFAULT_CONVERSATIONS,
+  DEV_CONFIG,
   dismissSetupLauncher,
   installMockOrchestrationConversationEventWindow,
   installMockOrchestrationEventWindow,
@@ -16,6 +18,7 @@ import {
   seedOrchestrationRoutes,
   waitForMockOrchestrationSse,
 } from './helpers/orchestration';
+import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
 
 /**
  * A conversation opened from the notification panel while the dock shows
@@ -93,9 +96,9 @@ const attachedSession = {
   projectSlug: 'dev',
 };
 
-// The station feed record (notifications-inbox.spec.ts) with a v1 envelope
-// whose path target the panel's Open follows.
-const notification = (id: string, title: string, chat: string) => ({
+// The station feed record (notifications-inbox.spec.ts) with the session
+// target turn-completion-notifications.ts writes; Open marks its chat.
+const notification = (id: string, title: string, sessionId: string) => ({
   id,
   source: 'orchestration',
   category: 'turn-finished',
@@ -110,7 +113,7 @@ const notification = (id: string, title: string, chat: string) => ({
       source: { kind: 'system', subsystem: 'orchestration' },
       audience: { kind: 'owner' },
       urgency: 'done',
-      target: { kind: 'path', path: `/?chat=${chat}&dock=open` },
+      target: { kind: 'session', sessionId },
       interrupt: 'default',
     },
   },
@@ -123,7 +126,171 @@ const NOTIFICATIONS = [
 const json = (route: Route, data: unknown, status = 200) =>
   route.fulfill({ status, json: { success: status < 400, data } });
 
+// Instance reads every page makes at boot, answered by the runner's Station.
+const STATION_BOOTSTRAP = new Set([
+  'GET /api/boot',
+  'GET /api/auth/authority',
+  'GET /api/settings/managed-policy',
+  'GET /api/usage-telemetry/status',
+  'GET /api/usage-telemetry/disclosure',
+  'GET /api/plugins',
+  'GET /api/plugins/home-role',
+  'GET /api/system/capabilities',
+  'GET /api/system/skills',
+  'GET /api/system/core-update',
+  'GET /api/connections/agents',
+  'GET /api/models',
+  'GET /api/me/layouts',
+  'GET /api/me/appearance',
+  'GET /api/feature-previews',
+  'GET /api/environments/ssh',
+  'GET /api/environments/peers',
+  'GET /api/projects/run-locations',
+  'GET /api/orchestration/work-claims',
+  'GET /api/tasks',
+  'POST /api/presence/focus',
+  'GET /acp/connections',
+  'GET /config/app',
+]);
+
+const SESSION_OF: Record<string, string> = {
+  'conv-1': 'session-1',
+  'conv-2': 'session-2',
+};
+const PROMPT_OF: Record<string, string> = {
+  'session-1': 'Check the first chat',
+  'session-2': 'Draft the release notes',
+};
+
+/** The seeded conversations' own reads, in each route's envelope. */
+async function fulfillConversationRead(route: Route): Promise<boolean> {
+  if (route.request().method() !== 'GET') return false;
+  const url = new URL(route.request().url());
+  const path = url.pathname;
+  let match: RegExpMatchArray | null;
+  // orchestration.ts GET /sessions/:threadId/checkpoints: none recorded.
+  if (
+    /^\/api\/orchestration\/sessions\/session-[12]\/checkpoints$/.test(path)
+  ) {
+    await json(route, []);
+    return true;
+  }
+  // orchestration.ts GET /conversations/:id/inbox; thread-inbox.ts currentHead.
+  if (
+    (match = path.match(
+      /^\/api\/orchestration\/conversations\/(conv-[12])\/inbox$/,
+    ))
+  ) {
+    await json(route, {
+      currentHead: JSON.stringify([SESSION_OF[match[1]], 2]),
+      entries: [],
+    });
+    return true;
+  }
+  // session-project-activity.ts GET /:sessionId/turn-directory, one turn.
+  if (
+    (match = path.match(
+      /^\/api\/orchestration\/session-reads\/(conv-[12])\/turn-directory$/,
+    ))
+  ) {
+    const sessionId = SESSION_OF[match[1]];
+    await json(route, {
+      session: {
+        conversationId: match[1],
+        ...(url.searchParams.get('includeCount') === 'false'
+          ? {}
+          : { turnCount: 1 }),
+      },
+      turns: [
+        {
+          turnId: `${sessionId}-turn`,
+          startedAt: NOW,
+          request: PROMPT_OF[sessionId],
+          outcome: 'completed',
+        },
+      ],
+      nextCursor: null,
+    });
+    return true;
+  }
+  // agent-schedule.ts GET /agent-schedule/:conversationId: nothing scheduled.
+  if (/^\/api\/orchestration\/agent-schedule\/conv-[12]$/.test(path)) {
+    await json(route, { wakeUps: [], jobProposals: [], jobs: [] });
+    return true;
+  }
+  // mcp-prompts.ts GET /:slug/mcp-prompts: the fixture agent has no MCP server.
+  if (path === '/agents/dev-agent/mcp-prompts') {
+    await json(route, { prompts: [], unavailable: [] });
+    return true;
+  }
+  // orchestration.ts GET /sessions/:threadId/turns/:turnId/basis: none kept.
+  if (
+    /^\/api\/orchestration\/sessions\/session-[12]\/turns\/[^/]+\/basis$/.test(
+      path,
+    )
+  ) {
+    await route.fulfill({
+      status: 404,
+      json: { success: false, error: 'Basis not found' },
+    });
+    return true;
+  }
+  // conversations.ts GET /:slug/conversations/:id/stats; usage not measured.
+  if (
+    (match = path.match(
+      /^\/agents\/dev-agent\/conversations\/(conv-[12])\/stats$/,
+    ))
+  ) {
+    await json(route, {
+      conversationId: match[1],
+      modelId: 'claude-sonnet',
+      turns: 1,
+      toolCalls: 0,
+    });
+    return true;
+  }
+  // browser.ts GET /projects/:projectSlug/access and /sessions, as the shell
+  // models them for its own Project.
+  if (path === '/api/browser/projects/dev/access') {
+    await json(route, {
+      projectId: DEV_CONFIG.id,
+      role: 'operator',
+      principalKey: 'operator',
+      operator: true,
+      browser: 'not-ready',
+    });
+    return true;
+  }
+  if (
+    path === '/api/browser/sessions' &&
+    url.searchParams.get('projectSlug') === 'dev'
+  ) {
+    await json(route, []);
+    return true;
+  }
+  return false;
+}
+
+/** Lowest-precedence boundary: nothing unmodelled reaches the Station unseen. */
+async function closeFixtureBoundary(page: Page) {
+  await page.route(
+    (url) =>
+      /^\/(api|agents|acp)\//.test(url.pathname) ||
+      url.pathname === '/config/app',
+    async (route) => {
+      const request = route.request();
+      const path = new URL(request.url()).pathname;
+      if (STATION_BOOTSTRAP.has(`${request.method()} ${path}`))
+        return route.fallback();
+      if (await fulfillStationShellRead(route)) return;
+      if (await fulfillConversationRead(route)) return;
+      return rejectUnexpectedFixtureRequest(route);
+    },
+  );
+}
+
 async function seed(page: Page) {
+  await closeFixtureBoundary(page);
   await installMockOrchestrationSse(page);
   await seedOrchestrationRoutes(page, {
     conversations: [
@@ -144,6 +311,24 @@ async function seed(page: Page) {
         agentSlug: 'dev-agent',
         projectSlug: 'dev',
         title: 'Release notes',
+      },
+    },
+    // Without the server's execution binding the open reads as an unknown
+    // replacement ("Couldn't check this chat").
+    executionBySession: {
+      'session-1': {
+        sessionId: 'session-1',
+        agentId: agentId('dev-agent'),
+        provider: 'codex',
+        engineConnectionId: 'codex',
+        model: 'claude-sonnet',
+      },
+      'session-2': {
+        sessionId: 'session-2',
+        agentId: agentId('dev-agent'),
+        provider: 'codex',
+        engineConnectionId: 'codex',
+        model: 'claude-sonnet',
       },
     },
   });
@@ -219,20 +404,31 @@ async function seed(page: Page) {
         ? json(route, { outcome: 'read' })
         : rejectUnexpectedFixtureRequest(route),
   );
-  await page.route(
-    (url) => url.pathname === '/api/conversations/conv-3/open',
-    (route) =>
-      route.request().method() === 'GET'
-        ? route.fulfill({
-            status: 403,
-            json: { success: false, error: 'Forbidden' },
-          })
-        : rejectUnexpectedFixtureRequest(route),
-  );
 }
 
-/** Holds conv-2's open until released; always unrouted. */
-async function holdOpen(page: Page) {
+/** The dock's lookup (useChatDockActiveChatSync → fetchConversationById) refused. */
+async function refuseLookup(page: Page) {
+  let reached!: () => void;
+  const wasReached = new Promise<void>((resolve) => {
+    reached = resolve;
+  });
+  await page.route(
+    (url) => url.pathname === '/api/conversations/conv-3',
+    (route) => {
+      if (route.request().method() !== 'GET')
+        return rejectUnexpectedFixtureRequest(route);
+      reached();
+      return route.fulfill({
+        status: 403,
+        json: { success: false, error: 'Forbidden' },
+      });
+    },
+  );
+  return { reached: wasReached };
+}
+
+/** Holds the dock's conv-2 lookup, which owns the opening state; always unrouted. */
+async function holdLookup(page: Page) {
   let reached!: () => void;
   const wasReached = new Promise<void>((resolve) => {
     reached = resolve;
@@ -241,9 +437,10 @@ async function holdOpen(page: Page) {
   const released = new Promise<void>((resolve) => {
     release = resolve;
   });
-  const matches = (url: URL) =>
-    url.pathname === '/api/conversations/conv-2/open';
+  const matches = (url: URL) => url.pathname === '/api/conversations/conv-2';
   const handler = async (route: Route) => {
+    if (route.request().method() !== 'GET')
+      return rejectUnexpectedFixtureRequest(route);
     reached();
     await released;
     await route.fallback();
@@ -268,13 +465,23 @@ async function openFirstChat(page: Page) {
   ).toContainText('The first chat stays readable.');
 }
 
-async function openFromNotifications(page: Page, title: string) {
+async function openFromNotifications(
+  page: Page,
+  title: string,
+  phone: boolean,
+) {
   await page.getByRole('button', { name: /^Notifications/ }).click();
   await page
     .locator('.notification-history__item')
     .filter({ hasText: title })
     .getByRole('button', { name: 'Open' })
     .click();
+  // The panel stays open after Open; close it the way a person does, by
+  // pressing outside it, so it covers nothing in the captures.
+  if (phone) await page.getByTestId('notification-history-backdrop').click();
+  else
+    await page.getByRole('heading', { name: 'Continue', exact: true }).click();
+  await expect(page.locator('.notification-history')).toHaveCount(0);
 }
 
 async function tabTo(page: Page, target: Locator) {
@@ -307,6 +514,7 @@ for (const [width, viewport] of [
       });
 
       const capture = async (page: Page, testInfo: TestInfo, name: string) => {
+        await expect(page.locator('.notification-history')).toHaveCount(0);
         await expect(page.locator('html')).toHaveAttribute(
           'data-theme',
           colorScheme,
@@ -319,10 +527,10 @@ for (const [width, viewport] of [
       test('names the opening conversation and covers the previous one', async ({
         page,
       }, testInfo) => {
-        const hold = await holdOpen(page);
+        const hold = await holdLookup(page);
         try {
           await openFirstChat(page);
-          await openFromNotifications(page, 'Finished: Release notes');
+          await openFromNotifications(page, 'Finished: Release notes', phone);
           await hold.reached;
           await expect(openingStatus(page)).toBeVisible();
           await expect(headerTitle(page)).toContainText('Opening conversation');
@@ -344,8 +552,10 @@ for (const [width, viewport] of [
       test('a refused conversation says why and is dismissed from the keyboard', async ({
         page,
       }, testInfo) => {
+        const refused = await refuseLookup(page);
         await openFirstChat(page);
-        await openFromNotifications(page, 'Finished: Private review');
+        await openFromNotifications(page, 'Finished: Private review', phone);
+        await refused.reached;
         const notice = page.getByText('No access to this conversation');
         await expect(notice).toBeVisible();
         await capture(page, testInfo, 'refused');
@@ -380,13 +590,20 @@ for (const [width, viewport] of [
             });
           },
         );
-        const hold = await holdOpen(page);
+        const hold = await holdLookup(page);
         try {
           await openFirstChat(page);
-          await page
-            .getByRole('button', { name: phone ? 'Inbox' : /^Show inbox/ })
-            .first()
-            .click();
+          // A phone folds the Inbox behind its header toggle; the desktop
+          // dock already shows it beside the chat.
+          if (phone)
+            await page
+              .getByRole('button', { name: 'Inbox', exact: true })
+              .click();
+          await expect(
+            page
+              .locator('[aria-label="Inbox chats"], [aria-label="Inbox"]')
+              .first(),
+          ).toBeVisible();
           await page
             .getByRole('button', {
               name: new RegExp(`^${IMPORTED_TITLE},.*third-party session`),
@@ -407,7 +624,7 @@ for (const [width, viewport] of [
                 .locator('.chat-dock__header-action')
                 .getByRole('button', { name: 'Continue in Station' }),
             ).toBeVisible();
-          await openFromNotifications(page, 'Finished: Release notes');
+          await openFromNotifications(page, 'Finished: Release notes', phone);
           await hold.reached;
           await expect(continueAction).toBeVisible();
           await expect(headerTitle(page)).toContainText(IMPORTED_TITLE);
