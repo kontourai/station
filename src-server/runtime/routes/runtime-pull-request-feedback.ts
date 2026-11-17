@@ -895,6 +895,8 @@ export function composePullRequestFeedbackRuntime(
         ),
         store,
         openTurnKey,
+        reviewHold: headReview.watchHold(pullRequestFeedbackKey(identity)),
+        headReviewEnabled: headReviewEnabled(),
         ...(taskSessionId
           ? { taskConversationId: conversationOf(taskSessionId) }
           : {}),

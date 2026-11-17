@@ -560,15 +560,22 @@ describe('Station reviews each new pull request head once', () => {
     expect(t.reviewer().watchHold(PR_KEY)?.detail).toContain('Send again');
     await t.delivery().deliver(CONVERSATION);
     expect(onReady).not.toHaveBeenCalled();
+    await t.delivery().sendAgain(PR_KEY);
+    expect(t.store.claim(PR_KEY)?.condition).toBeUndefined();
+    t.reviews.answer.findings = [];
+    expect((await t.reviewer().reviewAgain(PR_KEY)).outcome).toBe('started');
+    await t.reviewer().settled();
+    expect(onReady).toHaveBeenCalledTimes(1);
+    expect(t.reviewer().watchHold(PR_KEY)).toBeUndefined();
   });
 
   it('a watch whose review setter lost permission needs a current person instead of reporting ready', async () => {
-    const t = await setup(REVIEW_ONLY);
+    const t = await setup(REVIEW_AND_SEND);
     t.store.writeClaim({
       prKey: PR_KEY,
       identity: IDENTITY,
       conversationId: CONVERSATION,
-      settings: REVIEW_ONLY,
+      settings: REVIEW_AND_SEND,
       enabledBy: STRANGER,
       now: new Date().toISOString(),
       watch: {
@@ -588,6 +595,28 @@ describe('Station reviews each new pull request head once', () => {
     expect(t.reviewer().watchHold(PR_KEY)?.detail).toContain(
       'permission changed',
     );
+    const ownership = new PullRequestFeedbackOwnership({
+      store: () => t.store,
+      readStore: () => t.store,
+      linkedIdentities: async () => [IDENTITY],
+      session: () => ({ state: 'idle', ownerUserId: OWNER }),
+      mayContinue: (id, userId) => t.h.inbox.mayContinue(id, userId),
+      title: () => 'Chat',
+      headReviewEnabled: () => true,
+    });
+    expect(
+      (
+        await ownership.write({
+          conversationId: CONVERSATION,
+          identity: IDENTITY,
+          settings: REVIEW_AND_SEND,
+          viewer: { userId: OWNER, canRead: () => true },
+        })
+      ).kind,
+    ).toBe('ok');
+    await t.tick();
+    expect(t.reviews.run).toHaveBeenCalledTimes(1);
+    expect(onReady).toHaveBeenCalledTimes(1);
   });
 
   it('runs once a head held still, once per head across reads and a restart, and never writes to the forge', async () => {

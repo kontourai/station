@@ -74,7 +74,7 @@ function failing(): PullRequestFeedbackObservation {
   };
 }
 
-async function setup() {
+async function setup(headReview = false) {
   let runtime: PullRequestFeedbackRuntime | undefined;
   const h = station({
     placementRefusal: (input) => runtime?.placementRefusal(input),
@@ -93,7 +93,7 @@ async function setup() {
     settings: {
       fixFailingChecks: true,
       addressReviewComments: false,
-      reviewEachHead: false,
+      reviewEachHead: headReview,
     },
     enabledBy: OWNER,
     now: '2026-11-10T12:00:00.000Z',
@@ -143,6 +143,15 @@ async function setup() {
 }
 
 describe('the composed Task board feedback fact', () => {
+  it('projects a current head awaiting Station review to the board, only to a reader of its chat', async () => {
+    const { runtime, state, run } = await setup(true);
+    expect(runtime.factFor(PR, REQUEST, run)).toMatchObject({
+      state: 'reviewing',
+      headSha: HEAD,
+    });
+    state.reads = false;
+    expect(runtime.factFor(PR, REQUEST, run)).toBeUndefined();
+  });
   it('fixing while the turn Station started for the failing checks runs, then sent', async () => {
     const { h, runtime, delivery, run } = await setup();
     expect(runtime.factFor(PR, REQUEST, run)).toEqual({

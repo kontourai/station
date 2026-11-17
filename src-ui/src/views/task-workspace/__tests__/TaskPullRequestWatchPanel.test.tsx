@@ -11,6 +11,10 @@ const state = vi.hoisted(() => ({
   view: undefined as TaskPullRequestWatchView | undefined,
   queryEnabled: [] as boolean[],
   mutate: vi.fn(),
+  openReview: vi.fn(() => ({ ok: true })),
+}));
+vi.mock('../../../contexts/useOpenInRegion', () => ({
+  useOpenPullRequestInRegion: () => state.openReview,
 }));
 vi.mock('../../../hooks/useSurfaceVisibilityFlags', () => ({
   useSurfaceVisibilityFlags: () =>
@@ -177,6 +181,11 @@ test('a head waiting for review or needing recovery never says Ready for you', (
   };
   rerender(<TaskPullRequestWatchPanel task={task} />);
   expect(screen.getByText('Review needs you')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Open review' }));
+  expect(state.openReview).toHaveBeenCalledWith(
+    { host: 'github.com', owner: 'acme', repository: 'widgets', ref: '42' },
+    'widgets',
+  );
   expect(screen.getByText(/Required findings were dismissed/)).toBeTruthy();
   expect(screen.queryByText('Ready for you')).toBeNull();
 });

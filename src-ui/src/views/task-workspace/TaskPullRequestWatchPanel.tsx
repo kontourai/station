@@ -16,6 +16,8 @@ import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { DisclosureToggle } from '../../components/DisclosureToggle';
 import { ErrorState, SkeletonList } from '../../components/state';
+import { toastStore } from '../../contexts/ToastContext';
+import { useOpenPullRequestInRegion } from '../../contexts/useOpenInRegion';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import './TaskPullRequestWatchPanel.css';
@@ -93,6 +95,7 @@ function useTaskPullRequestWatch(task: TaskRecord) {
  * it.
  */
 export function TaskPullRequestWatchPanel({ task }: { task: TaskRecord }) {
+  const openPullRequest = useOpenPullRequestInRegion();
   const { available, view, setMode } = useTaskPullRequestWatch(task);
   const [refusalsOpen, setRefusalsOpen] = useState(false);
   if (!available) return null;
@@ -203,6 +206,33 @@ export function TaskPullRequestWatchPanel({ task }: { task: TaskRecord }) {
                     {data.watching && line && (
                       <span className="task-pr-watch__line">{line}</span>
                     )}
+                    {data.watching &&
+                      openPullRequest &&
+                      (pullRequest.watch.state === 'reviewing' ||
+                        pullRequest.watch.state === 'review-needed') && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => {
+                            const identity = pullRequest.identity;
+                            const opened = openPullRequest(
+                              {
+                                host: identity.host,
+                                owner: identity.repository.owner,
+                                repository: identity.repository.name,
+                                ref: identity.ref,
+                              },
+                              task.projectId,
+                            );
+                            if (!opened.ok)
+                              toastStore.show(
+                                'This pull request can’t be opened here.',
+                              );
+                          }}
+                        >
+                          Open review
+                        </Button>
+                      )}
                   </li>
                 );
               })}
