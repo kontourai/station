@@ -1,0 +1,7 @@
+{
+  "revision": "c4d2a3b194c956cad05394f9ea11c53070594ccd",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Cites a source changed in round three (main-health.yml, the comment policy, the schedules module or testing.md); no claim on this page concerns tracker closing, damping, overdue timing or tracker identity, so it stays accurate.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]}
+  ]
+}
