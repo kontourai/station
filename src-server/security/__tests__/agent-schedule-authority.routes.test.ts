@@ -30,6 +30,7 @@ import {
   AGENT_WAKE_UP_MAX_PENDING_PER_CONVERSATION,
   AGENT_WAKE_UP_NOTE_MAX_CHARS,
 } from '@kontourai/station-contracts/agent-schedule';
+import type { SchedulerAutomationTarget } from '@kontourai/station-contracts/scheduler';
 import {
   getRun as sdkGetRun,
   listJobs as sdkListJobs,
@@ -253,6 +254,8 @@ async function boot(options: {
    * without owner standing) is a `device-credential`.
    */
   credentialAuthority?: 'operator-credential' | 'device-credential';
+  /** The pairing store's answer: this device has owner-device standing. */
+  ownerStanding?: boolean;
 }): Promise<World> {
   const store = createSqliteAgentScheduleStore(new DatabaseSync(':memory:'));
   const pictureDb = new DatabaseSync(':memory:');
@@ -356,6 +359,9 @@ async function boot(options: {
           : 'orchestration:read orchestration:operate',
       resolveCredentialAuthority: () =>
         options.credentialAuthority ?? 'operator-credential',
+      ...(options.ownerStanding
+        ? { resolveCredentialOwnerStanding: () => true }
+        : {}),
       now: () => Date.now(),
       maxFailures: 1_000,
       windowMs: 60_000,
@@ -3278,6 +3284,10 @@ describe('acting on an untargeted job is admitted against its owner', () => {
     owner: string,
     requestUserId?: () => string,
     credentialAuthority?: 'operator-credential' | 'device-credential',
+    extra: {
+      ownerStanding?: boolean;
+      target?: SchedulerAutomationTarget;
+    } = {},
   ) {
     const scheduler = new SchedulerService({
       logger: quietLogger(),
@@ -3301,12 +3311,14 @@ describe('acting on an untargeted job is admitted against its owner', () => {
       retargetsGrantedJob: () => false,
       ...(requestUserId ? { requestUserId } : {}),
       ...(credentialAuthority ? { credentialAuthority } : {}),
+      ...(extra.ownerStanding ? { ownerStanding: true } : {}),
     });
     await scheduler.addJob({
       name: 'owned-job',
       schedule: { kind: 'every', everyMs: 60_000 },
       prompt: 'Original',
       createdBy: { userId: owner },
+      ...(extra.target ? { target: extra.target } : {}),
     });
     return {
       scheduler,
@@ -3401,6 +3413,111 @@ describe('acting on an untargeted job is admitted against its owner', () => {
       );
       expect(ran.status).toBe(200);
       await vi.waitFor(() => expect(runOwners).toEqual(['device:local:phone']));
+    } finally {
+      await world.close();
+    }
+  });
+
+  test('the operator in person cannot point a job a device owns at a conversation', async () => {
+    const world = await ownedWorld('device:local:phone');
+    try {
+      for (const target of [
+        { kind: 'dedicated', agent: 'helper' },
+        { kind: 'conversation', conversationId: 'conversation-of-operator' },
+      ]) {
+        const edited = await personRequest(
+          'PUT',
+          '/scheduler/jobs/owned-job',
+          { prompt: 'Retargeted', target },
+          world.at.baseUrl,
+        );
+        expect([edited.status, edited.body.code]).toEqual([
+          403,
+          'automation_target_owner_only',
+        ]);
+      }
+      const [job] = await world.scheduler.listJobs();
+      expect(job).toMatchObject({
+        prompt: 'Original',
+        createdBy: { userId: 'device:local:phone' },
+      });
+      expect(job?.target).toBeUndefined();
+      // The control: an edit that leaves the target alone is still admitted.
+      const untouched = await personRequest(
+        'PUT',
+        '/scheduler/jobs/owned-job',
+        { prompt: 'Revised', target: null },
+        world.at.baseUrl,
+      );
+      expect(untouched.status).toBe(200);
+    } finally {
+      await world.close();
+    }
+  });
+
+  test('the override reaches only untargeted jobs: a not-yet-started dedicated job another person owns stays theirs', async () => {
+    const world = await ownedWorld(
+      'human:local:person-a',
+      undefined,
+      undefined,
+      { target: { kind: 'dedicated', agent: 'helper' } },
+    );
+    try {
+      const [stored] = await world.scheduler.listJobs();
+      // The control: the job has a target but no conversation yet.
+      expect(stored?.target).toEqual({ kind: 'dedicated', agent: 'helper' });
+      for (const [method, path, body] of [
+        ['PUT', '/scheduler/jobs/owned-job', { prompt: 'Injected' }],
+        ['PUT', '/scheduler/jobs/owned-job/disable', undefined],
+        ['POST', '/scheduler/jobs/owned-job/run', undefined],
+        ['DELETE', '/scheduler/jobs/owned-job', undefined],
+      ] as const) {
+        const response = await personRequest(
+          method,
+          path,
+          body,
+          world.at.baseUrl,
+        );
+        expect([method, path, response.status]).toEqual([method, path, 404]);
+      }
+      expect(turns).toEqual([]);
+      expect((await world.scheduler.listJobs())[0]).toMatchObject({
+        prompt: 'Original',
+        enabled: true,
+      });
+    } finally {
+      await world.close();
+    }
+  });
+
+  test('an owner device signed in as someone else gets no override', async () => {
+    // One of the owner's paired devices (owner-device standing), whose
+    // requests resolve to a different user than the job's owner.
+    const world = await ownedWorld(
+      'device:local:phone',
+      () => 'device:local:tablet',
+      'device-credential',
+      { ownerStanding: true },
+    );
+    try {
+      const edited = await personRequest(
+        'PUT',
+        '/scheduler/jobs/owned-job',
+        { prompt: 'Injected' },
+        world.at.baseUrl,
+      );
+      expect([edited.status, edited.body.code]).toEqual([
+        404,
+        'automation_not_found',
+      ]);
+      const deleted = await personRequest(
+        'DELETE',
+        '/scheduler/jobs/owned-job',
+        undefined,
+        world.at.baseUrl,
+      );
+      expect(deleted.status).toBe(404);
+      expect((await world.scheduler.listJobs())[0]?.prompt).toBe('Original');
     } finally {
       await world.close();
     }

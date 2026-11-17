@@ -143,7 +143,14 @@ export type AutomationJobAdmission = (
   c: Context,
   job: SchedulerJob,
 ) =>
-  | { readonly ok: true }
+  | {
+      readonly ok: true;
+      /**
+       * Admitted only by the operator-in-person override on a job someone
+       * else owns: the operator may manage it, never repoint it.
+       */
+      readonly operatorOverride?: true;
+    }
   | {
       readonly ok: false;
       readonly status: 403 | 404;
@@ -261,6 +268,7 @@ export function createSchedulerRoutes(
   const refuseStoredTarget = async (
     c: Context,
     name: string,
+    edit?: { readonly target?: unknown },
   ): Promise<Response | undefined> => {
     const job = (await schedulerService.listJobs()).find(
       (candidate) => candidate.name === name,
@@ -282,12 +290,28 @@ export function createSchedulerRoutes(
         503,
       );
     const admitted = options.admitAutomationJob(c, job);
-    return admitted.ok
-      ? undefined
-      : c.json(
-          { success: false, code: admitted.code, error: admitted.error },
-          admitted.status,
-        );
+    if (!admitted.ok)
+      return c.json(
+        { success: false, code: admitted.code, error: admitted.error },
+        admitted.status,
+      );
+    // Its runs act as the owner, so a target the operator chose would run
+    // as the owner in a conversation the owner never chose (a dedicated one
+    // would even be started as them). Only the owner points their own job.
+    if (
+      admitted.operatorOverride &&
+      edit?.target !== undefined &&
+      edit.target !== null
+    )
+      return c.json(
+        {
+          success: false,
+          code: 'automation_target_owner_only',
+          error: "Only this job's owner can point it at a conversation.",
+        },
+        403,
+      );
+    return undefined;
   };
 
   const { canReadJob, canReadRunSummary, visibleJobs } =
@@ -593,7 +617,7 @@ export function createSchedulerRoutes(
   app.put('/jobs/:target', validate(editJobSchema), async (c) => {
     try {
       const opts = getBody(c) as Record<string, unknown>;
-      const stored = await refuseStoredTarget(c, param(c, 'target'));
+      const stored = await refuseStoredTarget(c, param(c, 'target'), opts);
       if (stored) return stored;
       const admitted = admitTarget(
         c,

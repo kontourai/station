@@ -330,11 +330,17 @@ function admitAutomationJobFor(
     // operator credential or home-possession, never an agent, never an owner
     // device) may manage ANY owned untargeted job. Its runs still act as the
     // job's recorded owner, never as the operator.
+    if (
+      conversationId === undefined &&
+      requester.userId !== job.createdBy?.userId &&
+      !job.target &&
+      isOperatorAtHostNotAgent(c.req.raw)
+    )
+      return { ok: true, operatorOverride: true };
     const allowed =
       conversationId !== undefined
         ? requester.mayMutate(conversationId)
-        : requester.userId === job.createdBy?.userId ||
-          (!job.target && isOperatorAtHostNotAgent(c.req.raw));
+        : requester.userId === job.createdBy?.userId;
     return allowed
       ? { ok: true }
       : {
