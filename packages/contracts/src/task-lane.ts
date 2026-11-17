@@ -319,7 +319,10 @@ function openPullRequestRung(fact: CurrentFact): OpenPullRequestRung {
   if (review === 'review-needed') return 'stationReviewNeeded';
   if (
     review === 'reviewing' ||
-    (fact.feedback?.reviewEachHead && fact.feedback.headSha !== status.headSha)
+    (fact.feedback?.reviewEachHead &&
+      (!status.headSha ||
+        !fact.feedback.headSha ||
+        fact.feedback.headSha !== status.headSha))
   )
     return 'stationReviewPending';
   if (status.readiness === 'blocked')

@@ -16,7 +16,7 @@ import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { DisclosureToggle } from '../../components/DisclosureToggle';
 import { ErrorState, SkeletonList } from '../../components/state';
-import { useShowSurface } from '../../contexts/useShowSurface';
+import { useNavigation } from '../../contexts/NavigationContext';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import './TaskPullRequestWatchPanel.css';
@@ -94,7 +94,7 @@ function useTaskPullRequestWatch(task: TaskRecord) {
  * it.
  */
 export function TaskPullRequestWatchPanel({ task }: { task: TaskRecord }) {
-  const showSurface = useShowSurface();
+  const { navigate } = useNavigation();
   const { available, view, setMode } = useTaskPullRequestWatch(task);
   const [refusalsOpen, setRefusalsOpen] = useState(false);
   if (!available) return null;
@@ -213,7 +213,9 @@ export function TaskPullRequestWatchPanel({ task }: { task: TaskRecord }) {
                           size="sm"
                           variant="secondary"
                           onClick={() =>
-                            showSurface('chat', { session: task.sessionId })
+                            navigate(
+                              `/tasks/${encodeURIComponent(task.id)}?taskView=conversation`,
+                            )
                           }
                         >
                           Open chat
