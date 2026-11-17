@@ -90,6 +90,7 @@ import {
   openCodeFormRequest,
   openCodeHistoryText,
   openCodeMcpStatus,
+  openCodePartKey,
   openCodeStepUsage,
   openCodeToolError,
   openCodeToolOutput,
@@ -842,7 +843,7 @@ export class OpenCodeNativeSession {
           : undefined;
     if (!turn || turn.settled) return;
     if (!turn.startPublished) this.publishStart(turn, {});
-    this.appendText(turn, `${turnId}:command`, text);
+    this.appendText(turn, `text:${turnId}:command`, text);
     if (!turn.executing && this.pendingStart !== turn)
       this.settle(turn, { method: 'turn.completed', finishReason: 'stop' });
   }
@@ -1610,10 +1611,9 @@ export class OpenCodeNativeSession {
       if (!message || !id) continue;
       if (bound(message) !== 'in' || message.type !== 'assistant') continue;
       for (const [key, text] of texts) {
-        if (!key.startsWith(`${id}:`) || !text) continue;
+        if (!key.startsWith(openCodePartKey('text', id, '')) || !text) continue;
         const part = this.parts.get(key);
         if (part) {
-          if (part.kind !== 'text') continue;
           if (
             text.length > part.streamed.length &&
             text.startsWith(part.streamed)
@@ -1751,12 +1751,13 @@ export class OpenCodeNativeSession {
       case 'session.text.started':
       case 'session.reasoning.started':
         this.withTurn((turn) => {
-          const key = this.partKey(data);
+          const kind =
+            event.type === 'session.text.started' ? 'text' : 'reasoning';
+          const key = this.partKey(data, kind);
           if (key && !this.parts.has(key))
             this.parts.set(key, {
               turnId: turn.turnId,
-              kind:
-                event.type === 'session.text.started' ? 'text' : 'reasoning',
+              kind,
               streamed: '',
               open: true,
               gapped: false,
@@ -2112,11 +2113,21 @@ export class OpenCodeNativeSession {
     });
   }
 
-  private partKey(data: Record<string, unknown>): string | undefined {
+  /**
+   * A streamed part's identity. OpenCode numbers each kind of part on its
+   * own (a reply after reasoning is text `ordinal: 0` beside reasoning
+   * `ordinal: 0`; fixture `opencode-serve-2.3.0-reasoning.jsonl`), so the
+   * kind is part of it. History keys its text the same way
+   * ({@link openCodeHistoryText}).
+   */
+  private partKey(
+    data: Record<string, unknown>,
+    kind: 'text' | 'reasoning',
+  ): string | undefined {
     const messageId = readString(data.assistantMessageID);
     const ordinal = data.ordinal;
     return messageId && typeof ordinal === 'number'
-      ? `${messageId}:${ordinal}`
+      ? openCodePartKey(kind, messageId, ordinal)
       : undefined;
   }
 
@@ -2125,7 +2136,7 @@ export class OpenCodeNativeSession {
     data: Record<string, unknown>,
     kind: 'text' | 'reasoning',
   ): void {
-    const key = this.partKey(data);
+    const key = this.partKey(data, kind);
     const delta = typeof data.delta === 'string' ? data.delta : '';
     if (!key || !delta) return;
     let part = this.parts.get(key);
@@ -2148,7 +2159,7 @@ export class OpenCodeNativeSession {
       this.publishForTurn(turn, {
         method: 'content.reasoning-delta',
         turnId: turn.turnId,
-        itemId: `reasoning:${key}`,
+        itemId: key,
         delta,
       });
     }
@@ -2159,7 +2170,7 @@ export class OpenCodeNativeSession {
     data: Record<string, unknown>,
     kind: 'text' | 'reasoning',
   ): void {
-    const key = this.partKey(data);
+    const key = this.partKey(data, kind);
     if (!key) return;
     const part = this.parts.get(key);
     const full = typeof data.text === 'string' ? data.text : undefined;
@@ -2188,7 +2199,7 @@ export class OpenCodeNativeSession {
     this.publishForTurn(turn, {
       method: 'content.text-delta',
       turnId: turn.turnId,
-      itemId: `text:${key}`,
+      itemId: key,
       delta,
     });
   }
