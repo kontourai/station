@@ -51,6 +51,12 @@ vi.mock('../hooks/useExecutionStationCatalog', () => ({
     stations: [
       { id: 'current', name: 'Laptop', kind: 'current' },
       { id: 'receiver', name: 'Receiver', kind: 'paired' },
+      {
+        id: 'asleep',
+        name: 'Asleep',
+        kind: 'paired',
+        unavailableReason: 'Unreachable',
+      },
     ],
   }),
   useExecutionStationCatalog: () => ({
@@ -583,5 +589,20 @@ describe('continuing a chat on a paired Station', () => {
     expect(prepareDraft).toHaveBeenCalledTimes(1);
     expect(handoffConversationToStation).toHaveBeenCalledTimes(1);
     expect(onContinuedOnStation).toHaveBeenCalledTimes(1);
+  });
+
+  test('a paired Station that is not ready is shown greyed with why, and cannot be chosen', async () => {
+    renderDialog();
+    const asleep = (await screen.findByRole('radio', {
+      name: /Asleep/,
+    })) as HTMLInputElement;
+    expect(asleep.disabled).toBe(true);
+    expect(screen.getByText('Unreachable')).toBeTruthy();
+    fireEvent.click(asleep);
+    expect(screen.getByRole('dialog', { name: 'Switch agent' })).toBeTruthy();
+    expect(
+      (screen.getByRole('radio', { name: 'Receiver' }) as HTMLInputElement)
+        .disabled,
+    ).toBe(false);
   });
 });

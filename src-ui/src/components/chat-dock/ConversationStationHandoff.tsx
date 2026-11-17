@@ -628,17 +628,31 @@ export function ConversationStationChoice({
       role="radiogroup"
       aria-label="Station"
     >
-      {[{ id: 'current', name: 'This Station' }, ...paired].map((station) => (
+      {[
+        { id: 'current', name: 'This Station' } as {
+          id: string;
+          name: string;
+          unavailableReason?: string;
+        },
+        ...paired,
+      ].map((station) => (
         <label key={station.id} className="conversation-handoff-dialog__agent">
           <input
             type="radio"
             name="conversation-handoff-station"
             value={station.id}
             checked={station.id === value}
-            disabled={disabled}
-            onChange={() => onChange(station.id)}
+            // A paired Station that is not ready stays listed, greyed, with
+            // why: a handoff to it could not reach it.
+            disabled={disabled || Boolean(station.unavailableReason)}
+            onChange={() => {
+              if (!station.unavailableReason) onChange(station.id);
+            }}
           />
           <span>{station.name}</span>
+          {station.unavailableReason && (
+            <small>{station.unavailableReason}</small>
+          )}
         </label>
       ))}
     </div>
