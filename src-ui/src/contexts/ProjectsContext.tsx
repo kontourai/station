@@ -625,6 +625,8 @@ export interface ProjectMetadata {
   defaultProviderId?: string;
   /** Server-owned explicit sidebar position (archive#3315); list is pre-sorted by it. */
   position?: number;
+  /** Paused or archived; absent is active (`@kontourai/station-contracts/project-lifecycle`). */
+  lifecycle?: import('@kontourai/station-contracts/project-lifecycle').ProjectLifecycle;
   /**
    * #3370: where a new chat in this project runs. Never sent by the Project
    * list: the start composer merges it in from the run-locations read

@@ -5,6 +5,7 @@ import type {
   ProjectChatApprovalPosture,
   ProjectChatDefaultSelection,
 } from './project-chat-defaults.js';
+import type { ProjectLifecycle } from './project-lifecycle.js';
 import type { ProjectMemberAction } from './project-membership.js';
 import type { ProjectPullRequestWatchSettings } from './pull-request-watch.js';
 import type { WorkspaceIsolationMode } from './workspace-isolation.js';
@@ -148,6 +149,11 @@ export interface ProjectConfig {
    * name order, so an unordered workspace stays deterministic.
    */
   position?: number;
+  /**
+   * #5069: paused or archived; absent is active. Written only by the
+   * lifecycle route (`project-lifecycle.ts`).
+   */
+  lifecycle?: ProjectLifecycle;
   createdAt: string;
   updatedAt: string;
 }
@@ -186,6 +192,8 @@ export interface ProjectMetadata {
   defaultProviderId?: string;
   /** See {@link ProjectConfig.position}; the list route returns projects sorted by it. */
   position?: number;
+  /** See {@link ProjectConfig.lifecycle}. */
+  lifecycle?: ProjectLifecycle;
 }
 
 /**

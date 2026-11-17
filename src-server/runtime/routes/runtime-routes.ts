@@ -1155,6 +1155,10 @@ import {
 } from './conversation-start-ports.js';
 import { createFullAccessRefusalIdentity } from './full-access-refusal-identity.js';
 import {
+  composeProjectLifecycle,
+  composeScheduledProjectRuns,
+} from './project-lifecycle-composition.js';
+import {
   mayAnswerDelegatedRequest,
   runtimeAttentionRouteOptions,
 } from './runtime-attention-route-options.js';
@@ -7287,6 +7291,23 @@ export function configureRuntimeRoutes(
         )
       : undefined;
 
+  // #5069: Pause and Archive hold a Project's turns (registered as a turn
+  // admission here) and its schedules. #5070: a Project job's run is a Task
+  // in its Project, queued through the same conversation run.
+  const projectLifecycle = composeProjectLifecycle(context);
+  const scheduledProjectRuns =
+    scheduledConversationRuns && context.orchestrationEventStore
+      ? composeScheduledProjectRuns({
+          taskGraphService: context.taskGraphService,
+          taskDispatcher: context.taskDispatcher,
+          eventStore: context.orchestrationEventStore,
+          conversationRuns: scheduledConversationRuns,
+          logger: context.logger,
+        })
+      : undefined;
+  // The scheduler is composed after the Project routes; Delete reads it late.
+  let projectScheduler: SchedulerService | undefined;
+
   // A Session killed for exhausting its workload memory continues once,
   // through the same inbox (capped, idempotent per dead turn). The person's
   // Continue reaches the same entry through the orchestration route.
@@ -7377,6 +7398,14 @@ export function configureRuntimeRoutes(
       ),
     agentProject: async (agentSlug) =>
       (await context.agentService.getAgent(agentSlug)).project,
+    // #5070: a Project schedule is proposable only where Project runs exist
+    // and the `project-schedules` preview is on.
+    projectSchedulesEnabled: () =>
+      scheduledProjectRuns !== undefined &&
+      projectLifecycle.schedulesPreview.select({
+        enabled: () => true,
+        disabled: () => false,
+      }),
     // #4830: an agent proposes Automation sources and rules; a person
     // confirms. Not hosted: Automations have no tenant binding.
     ...(hostedTenantRegistry === undefined
@@ -10396,6 +10425,30 @@ export function configureRuntimeRoutes(
         },
         endProjectTerminals: async (projectId) =>
           scopedTerminals.sessions?.endProject(projectId),
+        projectLifecycle: projectLifecycle.lifecycle,
+        projectLifecyclePreview: projectLifecycle.pauseArchivePreview,
+        projectSchedules: {
+          count: async (projectId) =>
+            (await projectScheduler?.listJobs())?.filter(
+              (job) => job.projectId === projectId,
+            ).length ?? 0,
+          removeAll: async (projectId) => {
+            const jobs = ((await projectScheduler?.listJobs()) ?? []).filter(
+              (job) => job.projectId === projectId,
+            );
+            for (const job of jobs) await projectScheduler!.removeJob(job.name);
+            return jobs.length;
+          },
+        },
+        countProjectTasks: (projectId) =>
+          context.taskGraphService.listTasks(projectId).length,
+        countProjectSessions: (slug) =>
+          (context.orchestrationEventStore?.readSessions() ?? []).filter(
+            (session) =>
+              context.orchestrationService.resolveSessionProjectSlug(
+                session.threadId,
+              ) === slug,
+          ).length,
         visualFileFrameOrigin: clientReachableFrameOrigin(
           context.getMcpUiFrameOrigin,
         ),
@@ -12621,6 +12674,8 @@ export function configureRuntimeRoutes(
     ...(scheduledConversationRuns
       ? { conversationRuns: scheduledConversationRuns }
       : {}),
+    ...(scheduledProjectRuns ? { projectRuns: scheduledProjectRuns } : {}),
+    projectHold: projectLifecycle.projectHold,
     // #2064 (D4): the same aggregate `/api/survey-flow-reviews` serves, over
     // the same live project inventory — one read, so a paused review counted
     // by the bell is the same row the Review page lists.
@@ -12633,6 +12688,7 @@ export function configureRuntimeRoutes(
       ),
   });
   roomMentionNotifications = notificationService;
+  projectScheduler = schedulerService;
   automationActions = runtimeAutomationActions;
   durableTaskFollowUpWake = taskFollowUpWake;
   threadInbox?.start();
@@ -12974,6 +13030,12 @@ export function configureRuntimeRoutes(
       mayReadAutomationRun: agentSchedule.mayReadAutomationRun,
       ...(scheduledConversationRuns
         ? { admitAutomationTarget: agentSchedule.admitAutomationTarget }
+        : {}),
+      ...(scheduledProjectRuns
+        ? {
+            projectJobs: true,
+            projectJobsPreview: projectLifecycle.schedulesPreview,
+          }
         : {}),
     }),
   );

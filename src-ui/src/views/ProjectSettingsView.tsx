@@ -4,7 +4,6 @@ import {
   type WorkspaceIsolationMode,
 } from '@kontourai/station-contracts/workspace-isolation';
 import {
-  useDeleteProjectMutation,
   useModelConnectionsQuery,
   useProjectIconCandidatesQuery,
   useUpdateProjectMutation,
@@ -22,7 +21,6 @@ import {
   ProjectIcon,
 } from '../components/icons/ProjectIcon';
 import { ModelSelector } from '../components/ModelSelector';
-import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { normalizeWorkingDirectory } from '../components/modals/project-form-utils';
 import { PageRow } from '../components/PageRow';
 import { PageSection } from '../components/PageSection';
@@ -46,6 +44,7 @@ import { useShowSurface } from '../contexts/useShowSurface';
 import { useCloseShortcut } from '../hooks/useCloseShortcut';
 import { useDevicePresentation } from '../hooks/useDevicePresentation';
 import { useSectionNavigation } from '../hooks/useSectionNavigation';
+import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { userFacingErrorMessage } from '../utils/errorText';
 import { AccessSection } from './project-settings/AccessSection';
@@ -54,6 +53,8 @@ import { KnowledgeSection } from './project-settings/KnowledgeSection';
 import { LayoutsSection } from './project-settings/LayoutsSection';
 import { NewChatDefaultsSection } from './project-settings/NewChatDefaultsSection';
 import { ProjectCheckoutFreshnessNotice } from './project-settings/ProjectCheckoutFreshnessNotice';
+import { ProjectLifecycleSection } from './project-settings/ProjectLifecycleSection';
+import { ProjectSchedulesSection } from './project-settings/ProjectSchedulesSection';
 import { ProjectSourcesSection } from './project-settings/ProjectSourcesSection';
 import { PullRequestWatchSection } from './project-settings/PullRequestWatchSection';
 import { ToolsSection } from './project-settings/ToolsSection';
@@ -79,6 +80,7 @@ const PROJECT_SETTINGS_SECTIONS = [
   ['resources', 'Sources'],
   ['access', 'People and access'],
   ['knowledge', 'Project knowledge'],
+  ['schedules', 'Schedules'],
   ['danger', 'Danger zone'],
 ] as const;
 
@@ -174,10 +176,10 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   const showSurface = useShowSurface();
 
   const [form, setForm] = useState<ProjectForm | null>(null);
+  // #5069/#5070: Pause/Archive and Project schedules are Feature Previews.
+  const previewFlags = useSurfaceVisibilityFlags();
   const [savedForm, setSavedForm] = useState<ProjectForm | null>(null);
-  const [deleteOpen, setDeleteOpen] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
   const { activeSection, hrefForSection, navigateToSection } =
     useSectionNavigation(
       PROJECT_SETTINGS_SECTIONS.map(([id]) => id),
@@ -260,8 +262,6 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
     project?.workingDirectory,
     { enabled: iconPickerOpen },
   );
-
-  const deleteMutation = useDeleteProjectMutation();
 
   const isDirty =
     !isLoading && !!form && JSON.stringify(form) !== JSON.stringify(savedForm);
@@ -359,19 +359,6 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
       );
     } catch (saveFailure) {
       setSaveError(userFacingErrorMessage(saveFailure));
-    }
-  }
-
-  async function deleteProject() {
-    setDeleteError(null);
-    try {
-      await deleteMutation.mutateAsync(slug);
-      // The project this view was about is gone, so there is no "back" to
-      // return to: land on Home BY NAME — the Home surface, placed in `main`
-      // (the model navigates to `/`) — not on whatever occupies `main` (#1523).
-      showSurface('home');
-    } catch (deleteFailure) {
-      setDeleteError(userFacingErrorMessage(deleteFailure));
     }
   }
 
@@ -848,46 +835,37 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             <KnowledgeSection slug={slug} />
           </div>
 
-          {/* Danger Zone */}
+          {/* #5070: the Project's own schedules (`project-schedules` preview) */}
+          <div
+            className="project-settings__panel"
+            hidden={activeSection !== 'schedules'}
+          >
+            {project && previewFlags.has('project-schedules') && (
+              <ProjectSchedulesSection
+                projectId={project.id}
+                projectName={form.name}
+                held={project.lifecycle !== undefined}
+              />
+            )}
+          </div>
+
+          {/* #5069: Pause, Archive, Delete */}
           <div
             className="project-settings__panel"
             hidden={activeSection !== 'danger'}
           >
-            <PageSection
-              id="section-danger"
-              className="project-settings__section"
-              title="Danger zone"
-              description="Deleting this project cannot be undone."
-              tone="danger"
-            >
-              <Button
-                variant="danger-outline"
-                onClick={() => {
-                  setDeleteError(null);
-                  setDeleteOpen(true);
-                }}
-              >
-                Delete Project
-              </Button>
-            </PageSection>
+            <ProjectLifecycleSection
+              slug={slug}
+              name={form.name}
+              lifecycle={project?.lifecycle}
+              pauseArchiveEnabled={previewFlags.has('project-pause-archive')}
+              // The Project is gone, so there is no "back": land on Home BY
+              // NAME, placed in `main`, not on whatever occupies it (#1523).
+              onDeleted={() => showSurface('home')}
+            />
           </div>
         </div>
       </div>
-
-      <ConfirmModal
-        isOpen={deleteOpen}
-        title="Delete Project"
-        message={`Delete "${form.name}"? Project settings and layouts will be deleted. Tasks and chats stay in history, but they will no longer have a live Project workspace. This cannot be undone.`}
-        confirmLabel="Delete"
-        variant="danger"
-        pending={deleteMutation.isPending}
-        error={deleteError}
-        onConfirm={() => void deleteProject()}
-        onCancel={() => {
-          setDeleteOpen(false);
-          setDeleteError(null);
-        }}
-      />
 
       <DiscardModal />
     </div>

@@ -5414,6 +5414,21 @@ public `station` Agent; the adapter alone maps it to the private runtime key.
 The operator projection exposes the principal for standing-grant management,
 but creation/update does not accept caller-declared execution authority.
 
+**Project jobs and Project lifecycle (#5069, #5070).** A job with a
+`projectId` replaces the scheduled-turn adapter with
+[ScheduledProjectRuns](../../src-server/services/scheduling/scheduled-project-runs.ts):
+each run creates a Task in that Project (keyed by run id), dispatches it
+through the Task dispatcher, queues the prompt on the Task's chat through
+ScheduledConversationRuns, and writes a run summary as the Task summary. The
+[ProjectLifecycleService](../../src-server/services/projects/project-lifecycle-service.ts),
+composed in [project-lifecycle-composition](../../src-server/runtime/routes/project-lifecycle-composition.ts),
+is an orchestration turn admission (a paused or archived Project's chats admit
+no turn), interrupts a Project's running turns through
+`OrchestrationService.interruptTurn`, and tells the scheduler which Projects
+hold their jobs: `SchedulerLedger.claimDue`'s `held` predicate leaves those
+occurrences unclaimed. Both are behind Feature Previews (`project-pause-archive`,
+`project-schedules`).
+
 **Conversation targets (Automations).** A job with a `target` never uses the
 scheduled-turn adapter. [ScheduledConversationRuns](../../src-server/services/scheduling/scheduled-conversation-runs.ts)
 queues each run on the target conversation's thread inbox as a framed Station

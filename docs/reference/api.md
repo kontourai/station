@@ -377,6 +377,29 @@ not read today.
 
 See [project chat defaults](contracts.md).
 
+## Project lifecycle
+
+`POST /api/projects/:slug/lifecycle` with `{action}` (`pause`, `resume`,
+`archive` or `unarchive`) sets `ProjectConfig.lifecycle`
+([`project-lifecycle`](contracts.md)). Pause and Archive write the state
+first, so the Project's chats admit no new turn (a refused turn says
+"This Project is paused. Resume it to continue."), then interrupt every
+running turn in the Project through the orchestration's own interrupt,
+looking again until none runs or `PROJECT_LIFECYCLE_STOP_WAIT_MS` (10 s)
+passes. The answer counts `interrupted`, `stillRunning` and `failed`. The
+scheduler claims none of a held Project's jobs. Resume lifts a pause but not
+an archive; Unarchive lifts either. Pause and Archive are behind the
+`project-pause-archive` Feature Preview (404 `feature_preview_disabled` while
+it is off); Resume and Unarchive always answer, so a hold can be lifted. A
+shared member gets 404. `PUT /api/projects/:slug` and `POST /api/projects`
+refuse a body naming `lifecycle` (400).
+
+`GET /api/projects/:slug/deletion-preview` counts what
+`DELETE /api/projects/:slug` removes (Layouts, knowledge documents, the
+Project's schedules), the running chats it stops, and what it keeps (Tasks,
+chats). `DELETE` holds the Project and stops its running turns as Pause does,
+deletes its schedules, then removes the Project.
+
 ## Project checkout freshness
 
 `GET /api/projects/:slug/checkout-freshness` says how far the Project's
@@ -5717,6 +5740,14 @@ Station that cannot run a turn in a conversation answers 503
 `automation_target_unavailable`; hosted Stations answer 404 like every
 scheduler route. Clients gate offering it on the `scheduledConversationTarget`
 capability flag. `notifyStart` is accepted and ignored.
+
+A body may instead name a `projectId` (#5070): each run starts a new Task in
+that Project, and the job may carry no `target` or `monitor` (400). It is set
+at create only. A Station without a Project runner answers 503
+`project_schedule_unavailable`; while the `project-schedules` Feature Preview
+is off, the route answers 404 `feature_preview_disabled`. Clients gate offering
+it on the `projectSchedules` capability flag, which, like `pullRequestFeedback`,
+says the route exists whatever the preview's state.
 
 A person approves an agent's job proposal (`propose_job`) by sending this
 route the proposed job with its `proposalId`. The route then creates the job

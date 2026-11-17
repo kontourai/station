@@ -163,6 +163,7 @@ export class FileStorageAdapter implements IStorageAdapter {
           ...(config.position !== undefined
             ? { position: config.position }
             : {}),
+          ...(config.lifecycle ? { lifecycle: config.lifecycle } : {}),
         } satisfies ProjectMetadata,
       ];
     });

@@ -2421,6 +2421,23 @@ Updates a project. Invalidates `['projects']` on success.
 
 Deletes a project. Invalidates `['projects']` on success.
 
+### `useProjectLifecycleMutation(slug: string)`
+
+Pauses, resumes, archives or unarchives a Project
+(`POST /api/projects/:slug/lifecycle`); takes the action and resolves to its
+`ProjectLifecycleResult`. Invalidates `['projects']` and `['scheduler']`.
+
+### `useProjectDeletionPreviewQuery(slug: string, config?)`
+
+What deleting the Project removes, stops and keeps
+(`GET /api/projects/:slug/deletion-preview`), as `ProjectDeletionPreview`.
+
+### `useProjectSchedulesCapability()`
+
+`true` when the host advertises `projectSchedules`: it runs a scheduler job
+with a `projectId` as a Task in that Project. An older host would create a
+plain job, so offer Project schedules only on `true`.
+
 ### `useCreateLayoutMutation(projectSlug: string)`
 
 Creates a new layout within a project. Invalidates project layouts on success.
