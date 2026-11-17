@@ -27,6 +27,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { holdHeavyCheckSlotForProcess } from './lib/heavy-check-slots.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const CEILING_FILE = 'scripts/fallow-dead-code-ceiling.json';
@@ -270,6 +271,13 @@ export function main(
 
 if (invokedDirectly(import.meta.url)) {
   try {
+    // A whole-tree fallow analysis queues for the host-wide heavy-check slot
+    // (#5080); checking a saved `--report` runs none.
+    if (
+      !process.argv.includes('--report') &&
+      !(await holdHeavyCheckSlotForProcess('fallow:ceiling'))
+    )
+      throw new Error('no heavy-check slot; fallow did not run');
     process.exitCode = main();
   } catch (error) {
     console.error(

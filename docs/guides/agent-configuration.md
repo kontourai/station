@@ -134,7 +134,8 @@ engine startup; the conversation stays recoverable after the cause is fixed.
 Project's Station browser in process, except in a session whose network
 Station restricts ([`confinedNetwork`](../reference/config.md#optional-fields)):
 the browser runs outside that session's sandbox, so it is not offered there. Codex can use the same browser through
-the default-off **Codex browser and device tools** Feature Preview; ACP remains
+the default-off **Codex browser and device tools** Feature Preview, which also
+moves a new Codex Session's Station Control onto that bound channel; ACP remains
 unavailable. The editor's engine status may not reflect that preview. **Workflow
 files** holds the workflow editor. Browser access is independent of attaching
 MCP sources. See the [bound-channel decision](../decisions/browser-agent-actions-and-bound-channel.md)

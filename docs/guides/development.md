@@ -578,7 +578,9 @@ when abandoned; the attempts between are debug lines. Shutdown still tries
 every scope once more, abandoned ones included, and reports any that do not
 settle. `GET /api/system/workload` and the resource-posture route list pending
 and abandoned scopes under `cleanup` (at most 256 abandoned are kept, with a
-count of any dropped). Attempts are counted by
+count of any dropped). Settings › Advanced › Host options lists the abandoned
+ones, with a restart hint, whether or not the workload budget preview is on.
+Attempts are counted by
 `station.workload.scope_cleanup.attempts`, and the backlog is observed by
 `station.workload.scope_cleanup.backlog`.
 
@@ -1002,6 +1004,12 @@ Exit 3 is provisional/deferred and names the broader lane to run next. Its
 receipt does not certify completion. Do not repeatedly launch `npm test`,
 `test:full`, `verify:static`, `verify:local`, or full E2E while editing; those
 host-coordinated lanes consume shared CPU and mutable-output leases.
+
+`test:focused`, `test:changed`, `typecheck`, the code-health gate
+(`node scripts/code-health-gate.mjs`) and the fallow audits wait for one
+[host heavy-check slot](testing.md#host-heavy-check-slots) shared by every
+worktree, so concurrent runs from several agents serialize instead of sharing
+one memory limit. Let them wait rather than working around the queue.
 
 `npm run ci:fast` runs affected tests
 against `STATION_CI_FAST_BASE` first, then fixed runtime, lockfile, workflow,

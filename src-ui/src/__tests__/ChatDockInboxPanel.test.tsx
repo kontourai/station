@@ -877,7 +877,12 @@ describe('ChatDockInboxPanel', () => {
   });
 
   it('moves a collapsed Working shelf below expanded work and keeps Settled last', () => {
-    renderPanel({ items: [...items, item('ready', 'Ready', NOW)] });
+    // No chat on screen: a collapsed shelf keeps the open chat's row, which
+    // is covered by InboxRow.test.tsx's collapsed-section case.
+    renderPanel({
+      items: [...items, item('ready', 'Ready', NOW)],
+      activeChatSessionId: null,
+    });
     fireEvent.click(screen.getByRole('button', { name: /^Working/ }));
     expect(
       screen.queryByRole('button', { name: 'active title, active project' }),

@@ -171,6 +171,7 @@ import {
   getApprovalClaims,
   OPEN_APPROVAL_QUEUE_EVENT,
 } from '../components/status/approvalReveal';
+import { backgroundTasksStore } from '../contexts/background-tasks-store';
 import { setStreamConnectionState } from '../hooks/orchestration/streamConnectionState';
 import type { ChatSession } from '../types';
 
@@ -483,4 +484,76 @@ test('known window input outranks an older conservative approval hint', async ()
     </QueryClientProvider>,
   );
   await waitFor(() => expect(pill()?.textContent).toContain('Needs input'));
+});
+
+// Last in the file: these settled chats start the transcript reader, whose
+// failed reads (no server here) leave module state that later docks see.
+describe('ChatDockBody status pill after the turn', () => {
+  // The conversation's live tool record, in the partition its events land
+  // in: this chat has no Station, so its API base.
+  function toolRunningAfterTurn() {
+    backgroundTasksStore.ingest(
+      {
+        provider: 'claude',
+        threadId: 'pill-background',
+        createdAt: '2026-11-16T10:00:00.000Z',
+        method: 'tool.started',
+        toolCallId: 'bg-tool',
+        toolName: 'Bash',
+        arguments: { description: 'Run gate:for' },
+      } as never,
+      'http://localhost:3242',
+    );
+  }
+  const settledWithAgent = (runningChildWork?: number) =>
+    buildSession({
+      // Its own chat: the transcript reader keeps state per chat id.
+      id: 'pill-background',
+      orchestrationSessionStarted: true,
+      orchestrationTurnOpen: false,
+      status: 'idle',
+      messages: [
+        { role: 'user', content: 'Go', timestamp: 1 },
+        { role: 'assistant', content: 'Started.', timestamp: 2 },
+      ],
+      backgroundTasks: [
+        { taskId: 'agent-1', backgrounded: true, description: 'Inventory' },
+      ],
+      ...(runningChildWork === undefined
+        ? {}
+        : {
+            conversationActivity: {
+              conversationId: 'pill-background',
+              asOfSequence: 3,
+              runningChildWork: { count: runningChildWork, producers: [] },
+            },
+          }),
+    } as Partial<ChatSession>);
+
+  test('after the turn, the pill counts the agents and tools the strip counts', async () => {
+    backgroundTasksStore.reset();
+    toolRunningAfterTurn();
+    // No Station activity record: the counts come from the chat alone.
+    renderDock(settledWithAgent());
+    try {
+      await waitFor(() =>
+        expect(pill()?.textContent).toContain('1 agent and 1 tool running'),
+      );
+    } finally {
+      backgroundTasksStore.reset();
+    }
+  });
+
+  test("with Station still at zero, the pill names the chat's own running agent", async () => {
+    backgroundTasksStore.reset();
+    renderDock(settledWithAgent(0));
+    try {
+      await waitFor(() =>
+        expect(pill()?.textContent).toContain('1 agent running'),
+      );
+      expect(pill()?.textContent).not.toContain('Waiting for background reply');
+    } finally {
+      backgroundTasksStore.reset();
+    }
+  });
 });

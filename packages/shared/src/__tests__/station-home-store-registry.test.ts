@@ -164,6 +164,9 @@ describe('Station home store registry (#2675 D)', () => {
     expect(classifyStationHomeRoot('principal-notifications.json')).toBe(
       'state',
     );
+    expect(classifyStationHomeRoot('notification-tombstones.json')).toBe(
+      'state',
+    );
     expect(
       classifyStationHomeRoot('principal-notifications.json.previous'),
     ).toBe('state');

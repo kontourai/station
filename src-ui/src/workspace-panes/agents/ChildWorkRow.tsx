@@ -18,6 +18,7 @@ import { type CSSProperties, useMemo, useState } from 'react';
 import { Button } from '../../components/Button';
 import { ChildWorkActivity } from '../../components/chat/ChildWorkActivity';
 import { ChildWorkIdentity } from '../../components/chat/ChildWorkIdentity';
+import { WorkStatusPill } from '../../components/chat-dock/backgroundTaskRows';
 import {
   childChatTarget,
   useChildChatNavigation,
@@ -265,11 +266,10 @@ export function ChildWorkRow({
             </span>
           )}
         </span>
-        <span
-          className={`child-work-row__chip child-work-row__chip--${childWorkDisplayStatus(item)}`}
-        >
-          {CHILD_WORK_STATUS_LABEL[childWorkDisplayStatus(item)]}
-        </span>
+        <WorkStatusPill
+          status={childWorkDisplayStatus(item)}
+          label={CHILD_WORK_STATUS_LABEL[childWorkDisplayStatus(item)]}
+        />
         {expandable && (
           <span className="child-work-row__chevron" aria-hidden="true">
             {expanded ? '▾' : '▸'}

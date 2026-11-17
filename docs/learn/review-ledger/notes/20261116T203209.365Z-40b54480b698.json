@@ -1,0 +1,7 @@
+{
+  "revision": "8c008b260937ba2a64428ac7cfa283b81c2041aa",
+
+  "notes": [
+    {"path":"docs/guides/mobile-release.md","note":"Its claims on this workflow cover iOS TestFlight delivery and environments; the verifier's second attempt does not touch deliver-ios, so they hold.","inputs":["docs/guides/mobile-release.md",".github/workflows/nightly-native-cohort.yml"]}
+  ]
+}

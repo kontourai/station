@@ -349,6 +349,15 @@ function MessageContentComponent({
               </LazyMarkdown>
             );
           }
+          // A record's own note inside a turn (a stop, hook feedback, a
+          // part left out): shown, but not the agent's words.
+          if (part.type === 'notice' && part.content) {
+            return (
+              <p key={index} className="message-notice">
+                {part.content}
+              </p>
+            );
+          }
           if (part.type === 'file') {
             return (
               <FilePartPreview

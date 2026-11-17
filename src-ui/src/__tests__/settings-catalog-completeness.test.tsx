@@ -56,6 +56,15 @@ vi.mock('@kontourai/station-connect', () => ({
   requestedScopeTokens: (scope: string) => scope.split(' ').filter(Boolean),
 }));
 const systemStatusRead = vi.hoisted(() => vi.fn());
+// Host options' workload status. The ordinary case has no cleanup backlog,
+// so the abandoned-workloads block renders nothing unless a test sets one.
+const workloadCleanup = vi.hoisted(() => ({
+  current: { pending: [], abandoned: [], abandonedDropped: 0 } as {
+    pending: unknown[];
+    abandoned: unknown[];
+    abandonedDropped: number;
+  },
+}));
 vi.mock('@kontourai/station-sdk', async () => {
   const { defaultNotificationPreferences } = await import(
     '@kontourai/station-contracts/notification-preferences'
@@ -250,6 +259,21 @@ vi.mock('@kontourai/station-sdk', async () => {
         isLoading: false,
       };
     },
+    WorkloadBudgetsUnsupportedError: class extends Error {},
+    useWorkloadBudgetsQuery: () => ({
+      isLoading: false,
+      error: null,
+      data: {
+        enforcement: { state: 'ready', platform: 'linux' },
+        hostMemoryBytes: 16 * 1024 ** 3,
+        settings: {},
+        settingsWritable: true,
+        applies: 'new-scopes',
+        activeScopes: 0,
+        cleanup: workloadCleanup.current,
+      },
+      refetch: vi.fn(),
+    }),
     useFeaturePreviewsQuery: () => ({
       isLoading: false,
       error: null,
@@ -627,6 +651,11 @@ describe('settings catalog completeness', () => {
     resetDeviceSetting.mockClear();
     resetDeviceSettings.mockClear();
     window.history.replaceState({}, '', '/settings?view=overview');
+    workloadCleanup.current = {
+      pending: [],
+      abandoned: [],
+      abandonedDropped: 0,
+    };
   });
 
   async function renderSettings() {
@@ -722,6 +751,42 @@ describe('settings catalog completeness', () => {
 
     expect(container.querySelector('.settings__skeleton')).toBeTruthy();
     expect(screen.queryByText('Unable to load settings')).toBeNull();
+  });
+
+  test('Host options lists engine workloads Station couldn’t stop, with the budget preview off', async () => {
+    workloadCleanup.current = {
+      pending: [],
+      abandoned: [
+        {
+          unit: 'station-engine-abandoned.scope',
+          attempts: 3,
+          errorKind: 'bus_unavailable',
+          lastError: 'Failed to connect to bus',
+          firstFailedAt: '2026-11-10T11:00:00.000Z',
+          abandonedAt: '2026-11-10T12:00:00.000Z',
+        },
+      ],
+      abandonedDropped: 0,
+    };
+    window.history.replaceState({}, '', '/settings?view=host-runtime');
+    const { container } = await renderSettings();
+    const section = container.querySelector('#section-host-runtime');
+    expect(section).toBeTruthy();
+    const heading = within(section as HTMLElement).getByRole('heading', {
+      name: 'Workloads Station couldn’t stop',
+    });
+    expect(
+      within(heading.closest('section') as HTMLElement).getByText(
+        'station-engine-abandoned.scope',
+      ),
+    ).toBeTruthy();
+  });
+
+  test('Host options adds nothing when no workload is abandoned', async () => {
+    window.history.replaceState({}, '', '/settings?view=host-runtime');
+    const { container } = await renderSettings();
+    expect(container.querySelector('#section-host-runtime')).toBeTruthy();
+    expect(screen.queryByText('Workloads Station couldn’t stop')).toBeNull();
   });
 
   test('the rendered desktop Settings view and catalog enumerate the same exact ids', async () => {

@@ -149,8 +149,9 @@ restores the card's release. A `held` row is read again with no turn open and
 sent once nothing holds it. A `writing` row is looked up by its dedupe tag
 before anything is written:
 
-- No record: it was either never written or cleared by the person, and the
-  saved state cannot tell the two apart. The replay is dropped and logged as
+- No record: it was either never written, cleared by the person, or removed
+  by [retention](../reference/config.md#notification-retention) after it
+  settled, and the saved state cannot tell these apart. The replay is dropped and logged as
   `replay_ambiguous`: no notification is written, no phone is pushed, the
   coordinator is not woken, and the card gets no release. Without a record of
   what the person cleared, this recovery is not exactly-once.

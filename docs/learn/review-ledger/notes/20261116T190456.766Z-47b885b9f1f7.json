@@ -1,0 +1,11 @@
+{
+  "revision": "f4f9afcc931dc65cde5c95e2d6bae7fbbeb0cd55",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Adds optional ProjectConfig.lifecycle and ProjectMetadata.lifecycle; shared.md shows the field.","inputs":["packages/contracts/src/project.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Adds optional ProjectConfig.lifecycle and ProjectMetadata.lifecycle; shared.md shows the field.","inputs":["packages/contracts/src/project.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Adds optional ProjectConfig.lifecycle and ProjectMetadata.lifecycle; shared.md shows the field.","inputs":["packages/contracts/src/project.ts"]}
+  ]
+}
