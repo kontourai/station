@@ -1,0 +1,17 @@
+{
+  "revision": "31a5f1388b505ebc40c46749d56a1dc1b1005211",
+
+  "notes": [
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Checked the citing pages: the sidebar now reads Waiting on you counts from a store that a lazily loaded source fills while the project-overview preview is on, so first paint makes no Tasks read. shell-ownership-and-boards.md (the dot follows the Overview rule over the Tasks list and sessions) still holds; the Boards, branding and dated review pages make no claim about it.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"docs/reviews/sidebar-focus-20261107/README.md","note":"Checked the citing pages: the sidebar now reads Waiting on you counts from a store that a lazily loaded source fills while the project-overview preview is on, so first paint makes no Tasks read. shell-ownership-and-boards.md (the dot follows the Overview rule over the Tasks list and sessions) still holds; the Boards, branding and dated review pages make no claim about it.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"docs/reviews/sidebar-focus-20261107/manager-audit-addendum.md","note":"Checked the citing pages: the sidebar now reads Waiting on you counts from a store that a lazily loaded source fills while the project-overview preview is on, so first paint makes no Tasks read. shell-ownership-and-boards.md (the dot follows the Overview rule over the Tasks list and sessions) still holds; the Boards, branding and dated review pages make no claim about it.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"docs/reviews/workspace-map-20261015/README.md","note":"Checked the citing pages: the sidebar now reads Waiting on you counts from a store that a lazily loaded source fills while the project-overview preview is on, so first paint makes no Tasks read. shell-ownership-and-boards.md (the dot follows the Overview rule over the Tasks list and sessions) still holds; the Boards, branding and dated review pages make no claim about it.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Checked the citing pages: the sidebar now reads Waiting on you counts from a store that a lazily loaded source fills while the project-overview preview is on, so first paint makes no Tasks read. shell-ownership-and-boards.md (the dot follows the Overview rule over the Tasks list and sessions) still holds; the Boards, branding and dated review pages make no claim about it.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"examples/custom-branding/README.md","note":"Checked the citing pages: the sidebar now reads Waiting on you counts from a store that a lazily loaded source fills while the project-overview preview is on, so first paint makes no Tasks read. shell-ownership-and-boards.md (the dot follows the Overview rule over the Tasks list and sessions) still holds; the Boards, branding and dated review pages make no claim about it.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]}
+  ]
+}
