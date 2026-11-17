@@ -515,7 +515,7 @@ export function seatbeltTempRoot(stationHome: string): string {
  * directory) that per-session engine `TMPDIR`s use. Canonical when
  * `stationHome` is.
  */
-export function seatbeltTempRoots(stationHome: string): string[] {
+function seatbeltTempRoots(stationHome: string): string[] {
   return [seatbeltTempRoot(stationHome), ...shortSessionTmpRoots()];
 }
 
