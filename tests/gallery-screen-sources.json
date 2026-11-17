@@ -673,6 +673,58 @@
       "src-ui/src/views/HomeView.tsx",
       "src-ui/src/components/chat-dock/ChatDock.tsx"
     ],
+    "project-library-dark-desktop": [
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectLibrarySection.tsx",
+      "src-ui/src/views/project-page/ProjectLibrarySection.css",
+      "src-ui/src/views/project-page/project-library-upload-plan.ts"
+    ],
+    "project-library-dark-mobile": [
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectLibrarySection.tsx",
+      "src-ui/src/views/project-page/ProjectLibrarySection.css",
+      "src-ui/src/views/project-page/project-library-upload-plan.ts"
+    ],
+    "project-library-light-desktop": [
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectLibrarySection.tsx",
+      "src-ui/src/views/project-page/ProjectLibrarySection.css",
+      "src-ui/src/views/project-page/project-library-upload-plan.ts"
+    ],
+    "project-library-light-mobile": [
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/ProjectLibrarySection.tsx",
+      "src-ui/src/views/project-page/ProjectLibrarySection.css",
+      "src-ui/src/views/project-page/project-library-upload-plan.ts"
+    ],
+    "project-setup-dark-desktop": [
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/SetupRecommendationsCard.tsx",
+      "src-ui/src/views/project-page/SetupRecommendationsCard.css",
+      "src-ui/src/views/project-page/setup-recommendations.ts",
+      "src-ui/src/lib/continue-in-project.ts"
+    ],
+    "project-setup-dark-mobile": [
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/SetupRecommendationsCard.tsx",
+      "src-ui/src/views/project-page/SetupRecommendationsCard.css",
+      "src-ui/src/views/project-page/setup-recommendations.ts",
+      "src-ui/src/lib/continue-in-project.ts"
+    ],
+    "project-setup-light-desktop": [
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/SetupRecommendationsCard.tsx",
+      "src-ui/src/views/project-page/SetupRecommendationsCard.css",
+      "src-ui/src/views/project-page/setup-recommendations.ts",
+      "src-ui/src/lib/continue-in-project.ts"
+    ],
+    "project-setup-light-mobile": [
+      "src-ui/src/views/ProjectPage.tsx",
+      "src-ui/src/views/project-page/SetupRecommendationsCard.tsx",
+      "src-ui/src/views/project-page/SetupRecommendationsCard.css",
+      "src-ui/src/views/project-page/setup-recommendations.ts",
+      "src-ui/src/lib/continue-in-project.ts"
+    ],
     "channel-nav-list-dark-desktop": [
       "src-ui/src/components/project-conversations/ProjectConversationList.tsx",
       "src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx",

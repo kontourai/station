@@ -4586,6 +4586,7 @@ function projectLibraryScreens(): Screen[] {
         let request: ReturnType<typeof createAuthenticatedE2ERequest>;
         let previousEnabled: boolean | undefined;
         let projectCreated = false;
+        let restoreHandshake: (() => Promise<void>) | undefined;
         const screen: Screen = {
           name: `project-${scene}-${theme}-${width}`,
           title:
@@ -4621,6 +4622,16 @@ function projectLibraryScreens(): Screen[] {
             projectCreated = true;
             const projectId = (await project.json()).data.id as string;
             if (scene === 'library') {
+              // The Library mounts only when the host advertises it; the
+              // gallery's shared handshake advertises nothing by default.
+              restoreHandshake = await withRoute(
+                page,
+                '**/.well-known/station/v1',
+                (route) =>
+                  fulfillGalleryStationHandshake(route, false, {
+                    projectLibrary: true,
+                  }),
+              );
               await page.route(
                 `**/api/projects/${slug}/library`,
                 async (route) => {
@@ -4729,6 +4740,8 @@ function projectLibraryScreens(): Screen[] {
             await page.mouse.move(0, 0);
           },
           async cleanup() {
+            await restoreHandshake?.();
+            restoreHandshake = undefined;
             if (projectCreated) {
               const removed = await request.delete(
                 `${resolveE2EApiBase()}/api/projects/${slug}`,
