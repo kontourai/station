@@ -49,7 +49,9 @@ older than an hour that a killed run left behind. The cache is
 overrides it. It is never the system temp directory by default: where `/tmp` is
 tmpfs, a checkout there is RAM charged to the caller's memory limit (#5080).
 The raw `npm run fallow` and `npm run fallow:audit` commands run the analyzer
-directly, without that private directory.
+directly, without that private directory. The runners also hold each fallow
+child to a [memory budget](code-quality.md#memory-budget) and, off CI, one
+analysis thread.
 
 For ongoing implementation, `ci:fast` runs the [code-health prevention gate](code-quality.md#code-health-prevention)
 with an explicit base and reports introduced versus inherited candidates. It
@@ -2421,7 +2423,7 @@ liveness bounds ×4`.
 | Vitest `testTimeout` and `hookTimeout` | 30 s | `vitest.config.ts` |
 | Product-law per-observation default | 30 s | `productLawObservationTimeoutMs` |
 | Product-law total runtime ceiling | 150 s | `productLawRuntimeBudgetMs` |
-| Fallow watchdog per command | 120 s | `runFallowAnalysis` |
+| Fallow watchdog per command | 240 s | `runFallowAnalysis` |
 | Transfer capture child default | 60 s | `transferCaptureLivenessTimeoutMs` |
 | Transfer capture in-process barriers | half the capture bound (30 s), so they scale with it | `scripts/lib/transfer-capture-barrier.ts` |
 

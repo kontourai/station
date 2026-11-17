@@ -236,6 +236,56 @@ The gate waits for a [host heavy-check slot](testing.md#host-heavy-check-slots)
 however it is started, so concurrent runs from several worktrees run one after
 the other.
 
+### Memory budget
+
+Each fallow child the gate and the audit runners start
+([`runFallowAnalysis`](../../scripts/run-fallow-audit.mjs)) runs inside a
+memory budget, so an analysis that outgrows it fails the gate rather than the
+Station engine that started it (#5111). Peak resident memory of one fallow
+process on this repository (about 11,000 source files), measured on 2026-11-17
+with fallow 3.42:
+
+| Run | 2 threads | 1 thread |
+| --- | --- | --- |
+| Gate audit (`--gate new-only`), base and head both uncached | 5.5 GiB | 2.9 GiB |
+| Gate audit, head cached, base not cached (67–233 changed files) | 5.3 GiB | 3.7 GiB |
+| Gate audit, both cached | 2.7 GiB | 2.7 GiB |
+| Gate audit, 904 changed files, base not cached | killed at 6 GiB | MEASURE_BIG |
+| Head only (`--gate all`), uncached | 2.9 GiB | 2.9 GiB |
+WHOLE_TREE_ROWS
+
+Changed-file count barely matters, and duplication is not the driver: an audit
+with only its dupes analysis peaked lower than one with only health or dead
+code. What doubles the peak is the base snapshot's analysis, which
+`--gate new-only` needs to tell new findings from inherited ones. With two
+threads fallow analyses the base and the head at the same time; with one, in
+turn. Fallow caches a base's analysis under `.fallow/cache/`, so the cold case
+is the first audit against a new merge base: a fresh worktree, or after
+`main` moves.
+
+So off CI every fallow child runs with `--threads 1`. Reports are identical to
+the two-thread ones apart from their run id; a cold audit takes about 1.7
+times as long (114 s measured on a loaded host), so the per-command watchdog is
+240 s. The changed-file scope and every sub-analysis stay as they were:
+skipping the base pass (`--gate all`) or dropping an analysis would change the
+verdict.
+
+The budget is `STATION_FALLOW_MEMORY_MAX_MIB`, default 4096 MiB: the measured
+single-thread peak with headroom. On Linux with a systemd user manager, the
+child runs in its own transient user scope (`systemd-run --user --scope`,
+`MemoryMax` set to the budget, no swap, `OOMPolicy=continue`). That scope sits
+under the user manager, outside the caller's own scope, so the caller is no
+longer charged for the analyzer. When the kernel kills the analyzer at the
+budget, the gate exits 2 with `code-health gate needs more than N MiB; fallow
+audit was OOM-killed at its memory budget (peak P MiB)`. A budget below
+1024 MiB, or one that is not a whole number, is refused before anything runs.
+
+Where no capped scope can start (macOS, Windows, Linux without a user manager),
+the child runs uncapped and the runner prints a warning naming why. Hosted CI
+(`GITHUB_ACTIONS=true`) runs uncapped, silently and with two threads, as
+before: each runner is a single tenant. The raw `npm run fallow*` package
+scripts run the analyzer directly, without the budget.
+
 The installed analyzer compares new findings with inherited findings. Newly
 introduced unused exports and types block delivery; resolve their actual caller
 or entrypoint/public-API contract before changing code or configuration. Class

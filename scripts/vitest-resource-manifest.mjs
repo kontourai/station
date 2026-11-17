@@ -920,6 +920,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // throwaway git repository to prove its base snapshot lands in the Station
   // temp root rather than the system temp directory.
   'scripts/__tests__/fallow-base-cache.test.ts',
+  // #5111: runs a fake analyzer through the fallow memory-scope wrapper (and,
+  // where a systemd user manager exists, a real 192 MiB user scope whose
+  // kernel OOM kill it provokes) to prove the budget refusal end to end.
+  // Single-shot children, each bounded by its budget or the fallow watchdog.
+  'scripts/__tests__/fallow-memory-bound.test.ts',
   // Runs `install-script-generated.mjs --check` as a child against this
   // checkout and a stale scratch copy, so the gate's exit status is proven.
   'scripts/__tests__/install-script-generated.test.ts',
