@@ -13970,6 +13970,37 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
     },
   );
 
+  // Between the observed exit and the session's end (it waits for the
+  // scope's workload outcome) the record still exists; only the process's
+  // own exit says no turn can run on it.
+  test('engineEnded answers from the observed exit while the record still exists', async () => {
+    const threadId = 'thread-engine-exit-pending-outcome';
+    let resolveOutcome: (value: undefined) => void = () => {};
+    const outcome = vi
+      .spyOn(childWorkload, 'childWorkloadOutcome')
+      .mockReturnValue(
+        new Promise<undefined>((resolve) => {
+          resolveOutcome = resolve;
+        }),
+      );
+    try {
+      const { adapter, until } = await runningChild(threadId, {
+        engineExitStreamGraceMs: 20,
+      });
+      const engine = spawnEngine();
+      expect(adapter.engineEnded(threadId)).toBe(false);
+      engine.exit(null, 'SIGTERM');
+      engine.closeStderr();
+      await vi.waitFor(() => expect(adapter.engineEnded(threadId)).toBe(true));
+      expect(await adapter.hasSession(threadId)).toBe(true);
+      resolveOutcome(undefined);
+      await until((event) => event.method === 'session.exited');
+      expect(adapter.engineEnded(threadId)).toBe(true);
+    } finally {
+      outcome.mockRestore();
+    }
+  });
+
   test('a send to a Session whose stream already failed is refused before any effect', async () => {
     const threadId = 'thread-stream-failed-refusal';
     const { adapter, query, until } = await runningChild(threadId);
