@@ -13,11 +13,11 @@ const KIT_TOKENS = readFileSync(
 );
 
 type Theme = 'dark' | 'light';
-type Channel = 'default' | 'beta' | 'nightly';
+type Channel = 'default' | 'nightly';
 type Tone = 'positive' | 'caution' | 'negative' | 'active';
 
 const THEMES: Theme[] = ['dark', 'light'];
-const CHANNELS: Channel[] = ['default', 'beta', 'nightly'];
+const CHANNELS: Channel[] = ['default', 'nightly'];
 
 function hexValues(source: string, token: string): string[] {
   const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -117,22 +117,18 @@ describe('StatusBadge tone contrast (station#923)', () => {
     const expected: Record<Tone, Record<Channel, [number, number]>> = {
       positive: {
         default: [10.43, 4.81],
-        beta: [10.43, 4.81],
         nightly: [10.43, 4.81],
       },
       caution: {
         default: [10.7, 5.93],
-        beta: [10.7, 5.93],
         nightly: [10.7, 5.93],
       },
       negative: {
         default: [7.4, 5.07],
-        beta: [7.4, 5.07],
         nightly: [7.4, 5.07],
       },
       active: {
         default: [8.06, 4.71],
-        beta: [8.06, 4.71],
         nightly: [8.06, 4.71],
       },
     };
@@ -170,7 +166,7 @@ describe('StatusBadge tone contrast (station#923)', () => {
 
     // The a11y render ratchet only exercises the DEFAULT channel. Its dark
     // --k-brand-contrast is near-black, so filled tones passed there while the
-    // beta/nightly white override failed for owners. Keep channels explicit.
+    // nightly white override failed for owners. Keep channels explicit.
     for (const [tone, config] of Object.entries(TONES) as [
       Tone,
       (typeof TONES)[Tone],

@@ -37,7 +37,19 @@ of the tracked and unignored tree, including extensionless launchers and native
 entrypoints. Unrecognized files remain visible instead of being silently excluded. The normal
 `npm run fallow:audit` command is a changed-file review, not a full-tree audit.
 `npm run fallow:dead-code` prints Fallow's dead-code summary grouped by package
-for a quick local look; it reads no baseline and gates nothing.
+for a quick local look; it reads no baseline and gates nothing. Every fallow
+entry point waits for a [host heavy-check slot](#host-heavy-check-slots).
+
+`fallow audit` builds a full checkout of its base commit (about 380 MB here) in
+its temp directory. The audit runners give each run a private directory under
+a disk-backed cache, removed when the run ends, and remove any run directory
+older than an hour that a killed run left behind. The cache is
+`$XDG_CACHE_HOME/station/fallow` (when `XDG_CACHE_HOME` is absolute), else
+`~/.cache/station/fallow`, created owner-only; `STATION_FALLOW_CACHE_DIR`
+overrides it. It is never the system temp directory by default: where `/tmp` is
+tmpfs, a checkout there is RAM charged to the caller's memory limit (#5080).
+The raw `npm run fallow` and `npm run fallow:audit` commands run the analyzer
+directly, without that private directory.
 
 For ongoing implementation, `ci:fast` runs the [code-health prevention gate](code-quality.md#code-health-prevention)
 with an explicit base and reports introduced versus inherited candidates. It
@@ -798,6 +810,39 @@ A workspace `package.json` must not reach related discovery: Vitest's default
 the whole corpus and overruns the shard budget, while a checkout under a
 dot-directory selects nothing. Give a changed manifest explicit readers in the
 impact manifest instead, as the contracts, SDK and Basis pane manifests do.
+An escalated path (`ESCALATION_PATHS`: `packages/shared/`, `packages/contracts/`,
+root configuration, workflows, the selector's own files) records `ci-fast` and
+gets no related discovery, because most of the corpus imports it. The hosted
+shard plan (#5010) also runs the suites near each escalated file that exists
+and Vitest can import (a JS, TS or JSON file): every suite that reaches it
+through at most one intermediate module when there are at most 100 of them,
+otherwise every suite that imports it directly when there are at most 100.
+The distances come from the Vite module graph related discovery walks, in the
+same child process, matched by real path; a diff whose only importable changes
+are escalated files now starts that child. Only a path whose chosen set is
+non-empty counts as covered. A path over both limits, a path whose chosen set
+is empty, and a path missing from Vitest's graph each add a `ci-fast` reason
+that names it; an escalated workflow, lockfile or deleted file has no importer
+graph and is named as such. A file re-exported through a widely imported
+barrel (`packages/contracts/src/index.ts` has 70 direct importers) is usually
+over the limit at two steps, so it gets only its direct importers, and often
+none. The union of suites the rule adds beyond what the plan runs anyway is
+capped at 250; above that the rule adds none for the diff and one `ci-fast`
+reason gives the count. The plan never runs an arbitrary part of a set. The
+plan's `escalatedImporters` field records each path's outcome, depth and
+counts, and the plan step prints the union and every path not covered. The
+`escalation:` reason and the `ci-fast` obligation stay either way, so the plan
+remains provisional and main qualification still runs the full corpus. Local
+unsharded feedback is unchanged. A failing discovery child (a timeout, a
+non-zero exit, malformed output or an unmatched seed) fails the plan for every
+diff alike, including an escalated-only diff that started no child before;
+the error names the escalated-importer query, so a broken rule cannot degrade
+into silently running less. Over the 150 merges before 2026-11-16 the rule
+added a median of 0 files and at most 95 to a plan, and deferred no path.
+It misses a suite further away, or one intermediate module away from a file
+with more than 100 such suites (`runtime-port.test.ts`, through
+`runtime-port.ts`, from `runtime-path-resolver.ts`, which has 134), and a
+suite that reads a changed file by path rather than importing it.
 
 Every test worker starts without the triggering event's environment:
 `vitest.setup.ts` removes each `GITHUB_*` variable except `GITHUB_ACTIONS`,
@@ -936,6 +981,18 @@ succeed, with bounded exact-source reuse. A manual `workflow_dispatch` of `PR: C
 Nightly runs independently. Its hourly decision checks the default six-hour
 minimum publication interval before running lint, all typecheck lanes, native
 boundary checks and deterministic browser smoke against one exact source SHA.
+Those checks are a subset of `fast-checks statics`, which the merge queue runs
+on the exact commit it then fast-forwards `main` to. The gate first looks for
+that receipt ([`nightly-source-gate-receipt.mjs`](../../scripts/nightly-source-gate-receipt.mjs)):
+exactly one successful `merge_group` run of `ci.yml` from a
+`gh-readonly-queue/main/` branch at the Nightly source SHA, whose statics job
+passed with its `ci:fast` and browser-journey steps executed. It then records
+that run in a notice and the job summary and skips its own checks; the job,
+its name and its `source_sha` output are unchanged for everything downstream.
+Anything else, including a deploy-ledger commit (a pass on a ledger-equivalent
+ancestor never counts, because tests read the ledger), several runs, an API
+error or a failure of the lookup itself, runs the checks as before.
+Installation and the Chromium cache steps run either way.
 Signing, staged inventory, provenance, provider admission and readback remain
 mandatory. This usability gate does not claim full qualification.
 
@@ -1171,9 +1228,10 @@ the context Station itself puts in front of every engine session: the
 `tools/list` of each built-in MCP server (name, description and input schema)
 and Station's injected text (orchestration instructions, workload budget,
 chat-image line). station-control is measured twice: `bound`, the listing
-Claude's in-process delivery receives, and `delegated-custody`, the subset Codex
-and ACP engines list. `codexBoundToolsJsonBytes` measures the `dynamicTools`
-Codex's bound browser and device channel offers at thread start, through the
+Claude's in-process delivery receives, and `delegated-custody`, the subset ACP
+engines, and Codex without its bound channel, list. `codexBoundToolsJsonBytes`
+measures the `dynamicTools` Codex's bound channel offers at thread start, the
+browser tools plus the whole station-control catalog at `bound`, through the
 mapping the adapter sends. `agent-context-budget.test.ts` beside it recomputes each
 number from live source and fails when the file disagrees, so update the JSON
 to the measured values in the same change. When text shrinks, lower the
@@ -2273,6 +2331,21 @@ slot and then runs the script as the slot holder. These entry points use it:
 | Pre-push transfer budgets, static gates, SDK barrel | `pre-push:transfer-budgets`, `pre-push:static-gates`, `pre-push:sdk-barrel` |
 | A verification-coordinator lane that executes (`ci:fast`, `verify:static`, `test-changed`, …) | `verification:<lane>` |
 | Each `full:regression` phase, requested or submitted | `verification:full-regression:<phase>` |
+| `node scripts/code-health-gate.mjs` (also a `ci:fast` step), started any way | `code-health-gate` |
+| `npm run veritas:fallow:advisory` (a Veritas readiness evidence check), `npm run audit:code-health` | `fallow audit`, `fallow audit --whole-tree` |
+| `npm run fallow:baseline`, `npm run fallow:ceiling` (not with `--report`) | `fallow:baseline`, `fallow:ceiling` |
+| `npm run fallow`, `npm run fallow:dead-code`, `npm run fallow:audit` | the script name |
+
+The code-health gate and the fallow runners take the slot themselves, so a
+direct `node scripts/<script>.mjs` queues like a package script. One `fallow
+audit` reached 5.1 GiB, and two worktrees running the gate at once got a
+Station engine OOM-killed ([#5080](https://github.com/kontourai/station/issues/5080)).
+`npm run docs:review:record` takes no slot. It is single-threaded bookkeeping:
+it snapshots the repository's review inputs, checks them, and writes the review
+ledger (measured on 2026-11-16: 41 s, 1.1 cores, 1.1 GiB peak for
+`--show-delta`). The slot is sized for checks that saturate about four cores
+and hold several GiB, and with one slot, a ledger write would wait behind a
+whole test run.
 
 - N is the smaller of one slot per four logical CPUs (floored) and one per
   8 GiB of RAM (rounded), between 1 and 4. A 4-core, 15 GiB host gets 1.

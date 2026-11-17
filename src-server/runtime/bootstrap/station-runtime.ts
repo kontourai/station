@@ -1821,7 +1821,7 @@ export class StationRuntime {
           id: 'codex-bound-browser-device-tools',
           label: 'Codex browser and device tools',
           description:
-            'Let Codex Sessions use authorized browser and device tools through a bound channel.',
+            'Let Codex Sessions use authorized browser and device tools through a bound channel. New Sessions also get Station Control there instead of a header token, adding about 110 KB of tool definitions to each thread.',
         });
       }
       // Journal consumers wire after the quarantine notice: the runtime must

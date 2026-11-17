@@ -15,6 +15,7 @@ import {
   fallowChildEnvironment,
   prepareFallowRun,
 } from './lib/fallow-base-cache.mjs';
+import { holdHeavyCheckSlotForProcess } from './lib/heavy-check-slots.mjs';
 import { scaleLivenessMs } from './lib/liveness-scale.mjs';
 import { ensureLivenessScale } from './lib/liveness-scale-resolve.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
@@ -94,8 +95,8 @@ export async function runFallowAnalysis(
 ) {
   const watchdogMs = scaleLivenessMs(FALLOW_WATCHDOG_BASE_MS, options.env);
   // `fallow audit` leaves a full base checkout in its temp directory for every
-  // base commit: give each run a private one under Station's temp root and
-  // remove it when the run ends (#2529).
+  // base commit: give each run a private one under the disk-backed fallow
+  // cache root, never tmpfs (#5080), and remove it when the run ends (#2529).
   const fallowRun = prepareFallowRun();
   const startedAt = performance.now();
   const execution = executeOwnedCommand(
@@ -292,13 +293,23 @@ export async function runFallowAudit(root, scope = 'changed') {
 }
 
 if (invokedDirectly(import.meta.url)) {
-  await ensureLivenessScale();
   const args = process.argv.slice(2);
   if (args.some((arg) => arg !== '--whole-tree')) {
     console.error('usage: run-fallow-audit.mjs [--whole-tree]');
     process.exitCode = 1;
-  } else
+  } else if (
+    // A fallow audit can reach 5 GiB (#5080): queue for the host-wide
+    // heavy-check slot, however this runner was started.
+    !(await holdHeavyCheckSlotForProcess(
+      args.includes('--whole-tree')
+        ? 'fallow audit --whole-tree'
+        : 'fallow audit',
+    ))
+  )
+    process.exitCode = 1;
+  else
     try {
+      await ensureLivenessScale();
       console.log(
         JSON.stringify(
           await runFallowAudit(

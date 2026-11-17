@@ -216,6 +216,7 @@ const ARGS: Record<string, Record<string, unknown>> = {
   search_sessions: { query: 'cobalt' },
   search_conversations: { query: 'cobalt' },
   rename_session: { conversationId: 'c', title: 'A title' },
+  settle_conversation: { conversationId: 'c', settled: true },
   board_pin: {
     reference: { kind: 'session', id: 's' },
     name: 'w',

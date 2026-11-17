@@ -332,3 +332,50 @@ test('#4521: a managed policy explains OTel and a refused connection check in it
     screen.queryByText('Only the Station operator can check this connection.'),
   ).toBeNull();
 });
+
+function refusedStatus(detail?: string) {
+  const status = delivery();
+  status.product.phase = 'failed';
+  status.product.lastAcknowledged = null;
+  status.product.lastFailure = {
+    at: status.product.observedAt,
+    code: 'http_refused',
+    httpStatus: 400,
+    ...(detail ? { detail } : {}),
+  };
+  return status;
+}
+
+test('a refused batch shows the receiver’s reason as plain text beside the failure', async () => {
+  const detail =
+    '<a href="https://evil.example">schema</a> <b>version 3</b> is unsupported';
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(reply(refusedStatus(detail))),
+  );
+  const { container } = mount();
+  await screen.findByText('The destination refused the request.');
+  expect(screen.getByText(`Receiver’s reason: ${detail}`)).toBeTruthy();
+  expect(container.querySelector('a, b')).toBeNull();
+});
+
+test('an older host without a refusal reason shows only the failure', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reply(refusedStatus())));
+  mount();
+  await screen.findByText('The destination refused the request.');
+  expect(screen.queryByText(/Receiver’s reason/)).toBeNull();
+});
+
+test('a reason from an earlier refusal is not shown once delivery recovers', async () => {
+  const status = refusedStatus('schema version 3 is unsupported');
+  status.product.phase = 'acknowledged';
+  status.product.lastAcknowledged = {
+    at: status.product.observedAt,
+    storedAt: status.product.observedAt,
+    eventCount: 5,
+  };
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reply(status)));
+  mount();
+  await screen.findByText(/Receiver acknowledged 5 observations/);
+  expect(screen.queryByText(/Receiver’s reason/)).toBeNull();
+});

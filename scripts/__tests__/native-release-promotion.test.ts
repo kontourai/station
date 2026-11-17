@@ -355,7 +355,7 @@ process.stdout.write(String(response.status));
     });
     // iOS is built and audited during staging and only uploaded by the
     // publishing cohort from the same run's staged bytes (#1454).
-    expect(iosStageCaller?.needs).toEqual(['plan-cohort', 'stage-macos']);
+    expect(iosStageCaller?.needs).toBe('plan-cohort');
     expect((iosStageCaller as any)?.uses).toBe(
       './.github/workflows/testflight-delivery.yml',
     );
@@ -409,6 +409,8 @@ process.stdout.write(String(response.status));
       'promote-macos',
       'deliver-ios',
       'protected-finalize',
+      'confirm-finalize-runner-loss',
+      'protected-finalize-retry',
       'record-native-completion',
       'clear-promotion-fence',
       'record-native-recovery',
@@ -551,9 +553,15 @@ process.stdout.write(String(response.status));
     ).toBe(false);
     // Recording depends on iOS only to disclose its result; the status
     // functions keep the job reachable after an iOS failure while finality
-    // is still granted by protected-finalize alone.
+    // is still granted by the protected verifier alone: its first attempt,
+    // or the second attempt that runs only when the first never got a
+    // runner (nightly-finalize-runner-loss.test.ts drives every shape).
     const record = cohort.jobs?.['record-native-completion'] ?? {};
-    expect(record.needs).toEqual(['protected-finalize', 'deliver-ios']);
+    expect(record.needs).toEqual([
+      'protected-finalize',
+      'protected-finalize-retry',
+      'deliver-ios',
+    ]);
     // The ledger's changelog slice spans the previous ship SHA to this one, so
     // this job must hold that history. A shallow checkout here records an
     // empty changelog on every native row, and the workflow cannot be
@@ -564,7 +572,7 @@ process.stdout.write(String(response.status));
     expect(recordCheckout?.with?.['fetch-depth']).toBe(0);
     expect(record.if).toBe(
       '$' +
-        "{{ always() && !cancelled() && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.protected-finalize.result == 'success' }}",
+        "{{ always() && !cancelled() && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && ((needs.protected-finalize.result == 'success' && needs.protected-finalize-retry.result == 'skipped') || (needs.protected-finalize.result == 'cancelled' && needs.protected-finalize-retry.result == 'success')) }}",
     );
     const recover = cohort.jobs?.['record-native-recovery'] ?? {};
     expect(recover.needs).toEqual([
@@ -573,6 +581,7 @@ process.stdout.write(String(response.status));
       'promote-macos',
       'deliver-ios',
       'protected-finalize',
+      'protected-finalize-retry',
       'record-native-completion',
       'clear-promotion-fence',
     ]);
@@ -587,7 +596,7 @@ process.stdout.write(String(response.status));
     expect(recover.if).toContain("needs.promote-android.result != 'success'");
     expect(recover.if).toContain("needs.promote-macos.result != 'success'");
     expect(recover.if).toContain(
-      "needs.protected-finalize.result != 'success'",
+      "(needs.protected-finalize.result != 'success' && needs.protected-finalize-retry.result != 'success')",
     );
     expect(recover.if).toContain(
       "needs.record-native-completion.result != 'success'",
@@ -775,6 +784,7 @@ process.stdout.write(String(response.status));
       'promote-macos',
       'deliver-ios',
       'protected-finalize',
+      'protected-finalize-retry',
       'record-native-completion',
     ]);
     expect(clearJob.if).toBe(
@@ -788,6 +798,7 @@ process.stdout.write(String(response.status));
       'promote-android',
       'promote-macos',
       'protected-finalize',
+      'protected-finalize-retry',
       'record-native-completion',
       'deliver-ios',
     ]) {

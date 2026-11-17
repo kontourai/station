@@ -4978,6 +4978,13 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'DELETE', path: '/api/projects/:slug' },
     { method: 'GET', path: '/api/projects/:slug' },
     { method: 'PUT', path: '/api/projects/:slug' },
+    // #5069: Pause/Resume and Archive/Unarchive this Station's own Project,
+    // and the counts Delete's confirmation shows. The mutation stops this
+    // Project's own running turns through the ordinary interrupt and holds
+    // its schedules; no more sensitive than `DELETE /:slug` beside it. The
+    // read counts this Station's own records and mutates nothing.
+    { method: 'POST', path: '/api/projects/:slug/lifecycle' },
+    { method: 'GET', path: '/api/projects/:slug/deletion-preview' },
     // What a new chat in this Project starts with for the caller: the
     // Project's own new-chat settings, which `GET /:slug` already returns,
     // and the model and approval mode the caller's own last chat here

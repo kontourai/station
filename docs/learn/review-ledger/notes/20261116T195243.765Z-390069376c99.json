@@ -1,0 +1,7 @@
+{
+  "revision": "d7c487980bba14870f7760207985425c5d562642",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Cites monitoring/config/metrics references; additions (one counter, one retention env var) do not change its abstraction findings.","inputs":["docs/architecture/abstraction-review.md","docs/guides/monitoring.md","docs/reference/config.md","docs/reference/metrics.md"]}
+  ]
+}

@@ -71,7 +71,9 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
   coordinator's account, not authoritative live status. See [Houston's
   working picture](../user/houston.md#working-picture).
 - `search_sessions` and `rename_session` for finding and naming conversations
-  (see [Searching and renaming conversations](#searching-and-renaming-conversations))
+  (see [Searching and renaming conversations](#searching-and-renaming-conversations)),
+  and `settle_conversation` for settling or reopening one in the person's
+  **Open and Settled inbox** when the person asks
 - `declare_pull_request` for an agent on any engine (Claude Code, Codex, ACP) to
   declare a pull request it opened, by `provider`, `host`, `repository`
   (`owner` and `name`) and `ref`: the identity shape the conversation link
@@ -217,6 +219,13 @@ bound operator caller is not limited to one owner's conversations, as with
 `delete_conversation`, and the `person_title` guard still applies to it. A
 caller that is not bound also stays in its own Session's Project or the global
 space, as dispatch does.
+
+`settle_conversation` takes a `conversationId` and `settled` (`true` settles,
+`false` reopens) and writes the Session owner's own inbox record through the
+person's route, so it needs the **Open and Settled inbox** preview (refused with
+`feature_preview_disabled` otherwise) and a conversation the owner can read
+(another person's reads as not found). An agent settles only when the person
+asks. The person's next message, a question, a failure or a stop reopens it.
 
 ### Dispatch authority
 
@@ -919,7 +928,12 @@ propose the job instead:
 job that trusts every tool is never proposable (`station_control_person_only`).
 Station records the proposing chat as the job's `target`: once approved, each
 run is a turn in this chat, on its own engine, so a Claude Code or Codex chat
-can propose work for itself.
+can propose work for itself. With `projectId` (a Project's id) the proposal is
+a Project schedule instead: each run starts a new Task in that Project, and no
+`target` is recorded. That needs the chat to be able to start work in the
+Project itself (`job_proposal_project_out_of_scope`) and the
+`project-schedules` Feature Preview to be on
+(`job_proposal_project_unavailable`).
 The agent learns only the proposal's id and `open`. A conversation holds at
 most 3 open proposals (`job_proposal_limit_reached`).
 
@@ -1123,10 +1137,16 @@ Delivery depends on the engine:
   the engine. When the engine is recovered just before the first turn, that
   check reads the delivery report written by the recovery.
 - Codex gets device guidance only while the `codex-bound-browser-device-tools`
-  preview is on and the bound channel offers `device_open`.
+  preview is on and the bound channel offers `device_open`. With that preview
+  on, a Codex Session whose Station Control is not coordinator-derived is told
+  the `bound` catalog its bound channel carries; otherwise the
+  `delegated-custody` subset.
 - Claude is told to load the tools it names with ToolSearch only when the
   Agent's `tools.mcpLoading` is `on-demand`, which is when Station turns
   Claude's tool search on. Under the harness default, Claude Code decides.
+- The tool-families line appears only when the progressive-tools preview is on
+  and the Session's Station Control is not `bound`: Claude's in-process server
+  and Codex's bound catalog are served without family loading.
 
 Known limitations while this is a preview: the delivery check reads the event
 log, so a delivery report that has not yet been stored, or a recovery done by

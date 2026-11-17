@@ -63,7 +63,14 @@ const normalize = (sql: string) =>
 export function ensureUsageExportInvalidations(
   db: SqliteDatabase & { readonly isTransaction: boolean },
 ): void {
-  db.exec('SAVEPOINT usage_export_invalidations');
+  // Top-level migrations take the writer before reading their marker/schema,
+  // avoiding a deferred WAL snapshot that cannot upgrade after a peer commit.
+  const ownsTransaction = !db.isTransaction;
+  db.exec(
+    ownsTransaction
+      ? 'BEGIN IMMEDIATE'
+      : 'SAVEPOINT usage_export_invalidations',
+  );
   try {
     const initialized = db
       .prepare(
@@ -126,11 +133,13 @@ export function ensureUsageExportInvalidations(
       throw new Error(
         'Usage export invalidation state is unavailable; refusing repair',
       );
-    db.exec('RELEASE usage_export_invalidations');
+    db.exec(ownsTransaction ? 'COMMIT' : 'RELEASE usage_export_invalidations');
   } catch (error) {
     if (db.isTransaction)
       db.exec(
-        'ROLLBACK TO usage_export_invalidations; RELEASE usage_export_invalidations',
+        ownsTransaction
+          ? 'ROLLBACK'
+          : 'ROLLBACK TO usage_export_invalidations; RELEASE usage_export_invalidations',
       );
     throw error;
   }

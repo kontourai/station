@@ -1,0 +1,13 @@
+{
+  "revision": "93fba263e511b4b09e07bb3b0f3fa4f147f86869",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Formatting-only change to the idle-shrink reset condition; no behaviour or documented claim changed.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Formatting-only change to the idle-shrink reset condition; no behaviour or documented claim changed.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Formatting-only change to the idle-shrink reset condition; no behaviour or documented claim changed.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Formatting-only change to the idle-shrink reset condition; no behaviour or documented claim changed.","inputs":["packages/sdk/src/query-domains/chatRuntimeOrchestration.ts"]}
+  ]
+}

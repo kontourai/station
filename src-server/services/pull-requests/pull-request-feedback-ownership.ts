@@ -17,7 +17,9 @@ import type { PullRequestLinkIdentity } from '@kontourai/station-contracts/conve
 import {
   type ConversationPullRequestFeedback,
   PULL_REQUEST_FEEDBACK_OFF,
+  type PullRequestFeedbackByPullRequest,
   type PullRequestFeedbackDelivery,
+  type PullRequestFeedbackOwner,
   type PullRequestFeedbackSettings,
   type PullRequestFeedbackStatus,
   type PullRequestFeedbackView,
@@ -76,7 +78,7 @@ export type PullRequestFeedbackEnableResult =
   | { kind: 'reviewer' }
   | { kind: 'not-permitted' }
   | { kind: 'unavailable' }
-  | { kind: 'conflict'; owner: { conversationId: string; title?: string } };
+  | { kind: 'conflict'; owner: PullRequestFeedbackOwner };
 
 /** The person asking, and what they may read. */
 export interface PullRequestFeedbackViewer {
@@ -135,13 +137,9 @@ export class PullRequestFeedbackOwnership {
       pullRequestFeedbackSends(existing.settings) &&
       !input.move
     ) {
-      const title = this.titleFor(existing.conversationId, input.viewer);
       return {
         kind: 'conflict',
-        owner: {
-          conversationId: existing.conversationId,
-          ...(title ? { title } : {}),
-        },
+        owner: this.ownerFor(existing.conversationId, input.viewer),
       };
     }
     const store = this.ports.store();
@@ -245,26 +243,42 @@ export class PullRequestFeedbackOwnership {
         history: [],
       };
     const ownedHere = claim.conversationId === conversationId;
-    const title = ownedHere
-      ? undefined
-      : this.titleFor(claim.conversationId, viewer);
     const history = ownedHere ? this.history(store, claim) : [];
+    const owner = pullRequestFeedbackSends(claim.settings)
+      ? ownedHere
+        ? { conversationId }
+        : this.ownerFor(claim.conversationId, viewer)
+      : null;
+    // The by-pull-request read's rule: a reader who may not read the owning
+    // chat learns only that another chat owns it, never its switches or
+    // status (a pause's head and time, a stopped agent).
+    const hidden = !ownedHere && owner !== null && !owner.conversationId;
     return {
       identity,
       ownedHere,
-      owner: pullRequestFeedbackSends(claim.settings)
-        ? { conversationId: claim.conversationId, ...(title ? { title } : {}) }
-        : null,
-      settings: claim.settings,
-      status: this.status(store, claim),
+      owner,
+      settings: hidden ? { ...PULL_REQUEST_FEEDBACK_OFF } : claim.settings,
+      status: hidden ? { state: 'off' } : this.status(store, claim),
       ...(history[0] ? { last: history[0] } : {}),
       history,
     };
   }
 
-  private titleFor(
+  /**
+   * The owning chat as this reader may know it: its id and title only when
+   * the reader may read it, otherwise nothing but that another chat owns it.
+   */
+  private ownerFor(
     conversationId: string,
     viewer: PullRequestFeedbackViewer,
+  ): PullRequestFeedbackOwner {
+    const title = this.readableTitle(conversationId, viewer);
+    return title === undefined ? {} : { conversationId, title };
+  }
+
+  private readableTitle(
+    conversationId: string,
+    viewer: Pick<PullRequestFeedbackViewer, 'canRead'>,
   ): string | undefined {
     try {
       return viewer.canRead(conversationId)
@@ -273,6 +287,103 @@ export class PullRequestFeedbackOwnership {
     } catch {
       return undefined;
     }
+  }
+
+  /**
+   * One pull request's feedback for anyone looking at the pull request.
+   * A reader who may not read the owning chat learns only that another
+   * chat owns it: no id, title, status, settings or history.
+   */
+  byPullRequest(
+    identity: PullRequestLinkIdentity,
+    viewer: Pick<PullRequestFeedbackViewer, 'canRead'>,
+    /** false: without `sentChecks` (the Task board reads only the rest). */
+    options: { sentChecks?: boolean } = {},
+  ): PullRequestFeedbackByPullRequest {
+    const exact = identityOf(identity);
+    const store = this.ports.readStore();
+    const claim = store?.claim(pullRequestFeedbackKey(exact));
+    if (!store || !claim || !pullRequestFeedbackSends(claim.settings))
+      return { identity: exact, owner: null };
+    const title = this.readableTitle(claim.conversationId, viewer);
+    if (title === undefined)
+      return { identity: exact, owner: { readable: false } };
+    const head = store.observation(claim.prKey)?.observation.headSha;
+    const last = head ? this.lastSentOnHead(store, claim, head) : undefined;
+    const sentChecks =
+      options.sentChecks === false
+        ? undefined
+        : this.sentChecks(store, claim.prKey);
+    return {
+      identity: exact,
+      owner: { readable: true, conversationId: claim.conversationId, title },
+      status: this.status(store, claim),
+      settings: claim.settings,
+      ...(last ? { last } : {}),
+      ...(sentChecks ? { sentChecks } : {}),
+    };
+  }
+
+  /**
+   * The newest message sent about this head. A send about an earlier push
+   * says nothing about the one on screen, so it is not "the last send".
+   */
+  private lastSentOnHead(
+    store: PullRequestFeedbackStore,
+    claim: PullRequestFeedbackClaim,
+    headSha: string,
+  ): PullRequestFeedbackDelivery | undefined {
+    for (const batch of store.batchesForConversation(
+      claim.conversationId,
+      HISTORY_LIMIT * 2,
+    )) {
+      if (batch.state !== 'sent') continue;
+      const entry = batch.summary.find((part) => part.prKey === claim.prKey);
+      if (!entry || entry.headSha !== headSha) continue;
+      return {
+        id: batch.key,
+        at: batch.settledAt ?? batch.createdAt,
+        headSha,
+        categories: entry.categories,
+        state: 'sent',
+      };
+    }
+    return undefined;
+  }
+
+  /**
+   * The failing checks the agent was sent on the head Station last
+   * observed, each at the newest time it went, with its link from that
+   * observation. Nothing for an earlier head: a check sent about an old
+   * push says nothing about the one on screen.
+   */
+  private sentChecks(
+    store: PullRequestFeedbackStore,
+    prKey: string,
+  ): PullRequestFeedbackByPullRequest['sentChecks'] {
+    const observation = store.observation(prKey)?.observation;
+    if (!observation) return undefined;
+    const headSha = observation.headSha;
+    const urls = new Map(
+      observation.checks.flatMap((check) =>
+        check.url ? [[check.name, check.url] as const] : [],
+      ),
+    );
+    const at = new Map<string, string>();
+    for (const delivery of store.recentSentFailures(prKey, HISTORY_LIMIT)) {
+      if (delivery.headSha !== headSha || !delivery.settledAt) continue;
+      for (const name of delivery.summary.failing ?? [])
+        if ((at.get(name) ?? '') < delivery.settledAt)
+          at.set(name, delivery.settledAt);
+    }
+    if (!at.size) return undefined;
+    return {
+      headSha,
+      checks: [...at].map(([name, sentAt]) => {
+        const url = urls.get(name);
+        return { name, ...(url ? { url } : {}), at: sentAt };
+      }),
+    };
   }
 
   private status(

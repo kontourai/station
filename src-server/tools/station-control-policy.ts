@@ -442,6 +442,15 @@ export const STATION_CONTROL_TOOL_POLICY = {
     personOnly: 'never',
     routes: [post('/api/conversations/:id/agent-title')],
   },
+  // The person's own Open and Settled inbox: the same route and preview the
+  // inbox row uses, recorded for the person this session acts for.
+  settle_conversation: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [put('/api/conversations/:id/work-state')],
+  },
 
   // ── board ──────────────────────────────────────────────────────────────
   // A session face is the owner's when the owner may read the session; a
@@ -2083,6 +2092,7 @@ export const RESTRICTED_NETWORK_STATION_CONTROL_TOOLS: ReadonlySet<string> =
     'list_active_work',
     'search_sessions',
     'rename_session',
+    'settle_conversation',
     'board_pin',
     'board_unpin',
     'board_move',

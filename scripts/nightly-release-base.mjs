@@ -1,4 +1,5 @@
-import { readFileSync, statSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
+import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { parseReleaseTag } from './lib/release-tag.mjs';
 import { assertProductVersion } from './product-version.mjs';
@@ -50,6 +51,44 @@ export function assertNightlyReleaseBase(version, history) {
   };
 }
 
+/**
+ * Every published release, read through `gh` page by page. `--slurp` wraps the
+ * pages in one array and cannot be combined with `--jq`/`--template` (gh exits
+ * 1), so the projection happens here, not in the workflow. A failed or
+ * overflowing listing throws, and so does an empty one: the repository's own
+ * Nightlies are releases, so zero means an unread listing, never bootstrap.
+ */
+export function listPublishedReleases(repository) {
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repository ?? ''))
+    throw new Error(`Invalid repository ${repository}`);
+  const args = [
+    'api',
+    '--paginate',
+    '--slurp',
+    `repos/${repository}/releases?per_page=100`,
+  ];
+  const result = spawnSyncBounded('gh', args, {
+    encoding: 'utf8',
+    shell: false,
+    windowsHide: true,
+    timeout: 120_000,
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0)
+    throw new Error(
+      `gh release listing failed (exit ${result.status}): ${String(result.stderr).trim()}`,
+    );
+  const pages = JSON.parse(result.stdout);
+  if (!Array.isArray(pages) || !pages.every(Array.isArray))
+    throw new Error('Release listing is not an array of pages');
+  const releases = pages.flat();
+  if (releases.length === 0)
+    throw new Error(
+      'Release listing is empty; refusing to treat an unread listing as bootstrap',
+    );
+  return releases;
+}
+
 if (invokedDirectly(import.meta.url)) {
   try {
     const args = process.argv.slice(2);
@@ -59,9 +98,7 @@ if (invokedDirectly(import.meta.url)) {
         throw new Error(`Missing ${name}`);
       return args[index + 1];
     };
-    const historyPath = value('--release-history');
-    if (statSync(historyPath).size > 1_048_576)
-      throw new Error('Release history exceeds its size bound');
+    const repository = value('--repository');
     const version = JSON.parse(
       readFileSync(value('--package-json'), 'utf8'),
     ).version;
@@ -74,7 +111,7 @@ if (invokedDirectly(import.meta.url)) {
       );
     const result = assertNightlyReleaseBase(
       version,
-      JSON.parse(readFileSync(historyPath, 'utf8')),
+      listPublishedReleases(repository),
     );
     process.stdout.write(`${JSON.stringify(result)}\n`);
   } catch (error) {

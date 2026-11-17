@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { TELEMETRY_CHANNELS } from '@kontourai/station-contracts/product-telemetry';
+import { mapRuntimeChannelToTelemetryChannel } from '@kontourai/station-shared/product-telemetry';
 import { describe, expect, test } from 'vitest';
 import type { PrivacyInventoryEntry } from '../privacy-inventory.js';
 import {
@@ -46,6 +48,21 @@ describe('privacy inventory', () => {
         readFileSync(join(process.cwd(), path)),
       );
     }
+  });
+
+  test('discloses exactly the Full channels the build mapping sends and omits retired beta (#5087)', () => {
+    const match = renderPrivacyPolicy().match(
+      /Full sends only an? ([a-z-]+(?:, [a-z-]+)* or [a-z-]+) channel and omits any other value, including the retired beta channel\./,
+    );
+    expect(match, 'Full channel disclosure sentence is missing').not.toBeNull();
+    const disclosed = (match?.[1] ?? '').split(/, | or /);
+    expect(disclosed).toEqual([...TELEMETRY_CHANNELS]);
+    for (const channel of disclosed)
+      expect(mapRuntimeChannelToTelemetryChannel(channel)).toBe(channel);
+    for (const channel of ['beta', 'unknown', 'private-build-label'])
+      expect(mapRuntimeChannelToTelemetryChannel(channel)).toBeUndefined();
+    for (const rendered of [renderPrivacyPolicy(), renderPlayDataSafety()])
+      expect(rendered).not.toMatch(/maps beta/i);
   });
 
   const flagPairs = [

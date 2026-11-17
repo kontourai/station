@@ -51,7 +51,7 @@ describe('APPROVAL_MODE_OPTIONS copy', () => {
     const never = APPROVAL_MODE_OPTIONS.find(
       (option) => option.value === 'never',
     );
-    expect(never?.label).toBe('Never ask (full access)');
+    expect(never?.label).toBe('Full access');
     expect(never?.description.toLowerCase()).not.toContain('safe');
     for (const option of APPROVAL_MODE_OPTIONS) {
       expect(option.label.toLowerCase()).not.toContain('safe');
@@ -80,7 +80,7 @@ describe('full-access copy does not overstate what a start without a grant gets'
       (option) => option.value === 'never',
     );
     expect(never?.description).toBe(
-      'Turns off approval prompts where the engine allows it. Without a full-access grant, Station applies a narrower setting, so some actions may still ask.',
+      'No approval prompts where the engine allows it. A start without full-access permission gets a narrower mode.',
     );
   });
 
@@ -210,7 +210,7 @@ describe('resolveEffectiveApprovalMode', () => {
       }),
     ).toEqual({
       mode: 'never',
-      label: 'Never ask (full access) (agent default)',
+      label: 'Full access (agent default)',
       source: 'agent default',
     });
   });

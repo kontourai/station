@@ -232,6 +232,9 @@ export function ComposerRunControl({
       <ResponsiveDialogSurface
         open={open}
         layer="popover"
+        // A picker opened from a choice here replaces this panel rather than
+        // stacking on it.
+        yieldToChildPopover
         ariaLabel="Run setup"
         onClose={() => setOpen(false)}
         anchorRef={trigger}

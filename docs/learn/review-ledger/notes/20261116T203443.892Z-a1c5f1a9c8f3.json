@@ -1,0 +1,7 @@
+{
+  "revision": "7467aa41b32c4505e5809a5aed5a7e5baec3fad6",
+
+  "notes": [
+    {"path":"packages/sdk/AGENTS.md","note":"sdk.md gained the older-Station fallback sentences; AGENTS routing and import rules unaffected.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

@@ -1885,6 +1885,8 @@ export interface PersistedRuntimeEventPage {
   events: PersistedRuntimeEvent[];
   hasMore: boolean;
   nextSequence: number;
+  /** The thread's `MAX(sequence)`, read in the same snapshot as `events`. */
+  highWaterSequence: number;
 }
 export interface PersistedRuntimeEventReplayDescriptor {
   threadId: string;
@@ -12870,15 +12872,36 @@ export class EventStore {
     threadId: string,
     options: { afterSequence: number; limit: number },
   ): PersistedRuntimeEventPage {
-    const rows = this.db
-      .prepare(
-        `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
-         FROM orchestration_events
-         WHERE thread_id = ? AND sequence > ?
-         ORDER BY sequence ASC
-         LIMIT ?`,
-      )
-      .all(threadId, options.afterSequence, options.limit + 1);
+    // #5077: the page and the thread's high water come from one read
+    // snapshot, so no event in the page can lie above the reported bound.
+    const owned = !this.db.isTransaction;
+    if (owned) this.db.exec('BEGIN');
+    let rows: unknown[];
+    let highWaterSequence: number;
+    try {
+      rows = this.db
+        .prepare(
+          `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
+           FROM orchestration_events
+           WHERE thread_id = ? AND sequence > ?
+           ORDER BY sequence ASC
+           LIMIT ?`,
+        )
+        .all(threadId, options.afterSequence, options.limit + 1);
+      highWaterSequence = (
+        this.db
+          .prepare(
+            `SELECT COALESCE(MAX(sequence), 0) AS high_water
+             FROM orchestration_events
+             WHERE thread_id = ?`,
+          )
+          .get(threadId) as { high_water: number }
+      ).high_water;
+      if (owned) this.db.exec('COMMIT');
+    } catch (error) {
+      if (owned && this.db.isTransaction) this.db.exec('ROLLBACK');
+      throw error;
+    }
     const hasMore = rows.length > options.limit;
     const events = rows.slice(0, options.limit).map((row: any) => ({
       id: row.id,
@@ -12895,6 +12918,7 @@ export class EventStore {
       events,
       hasMore,
       nextSequence: events.at(-1)?.sequence ?? options.afterSequence,
+      highWaterSequence,
     };
   }
 

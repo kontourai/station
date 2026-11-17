@@ -1,0 +1,13 @@
+{
+  "revision": "aa508b0777e8a9629589150b75e9474baec8ed78",
+
+  "notes": [
+    {"path":"docs/learn/media/project-invitation-after-1440-dark.png","note":"The fixture SDK stub gained useProjectLifecycleMutation and useProjectDeletionPreviewQuery, and ProjectSchedulesSection is stubbed like the Sources and Access sections; the invitation journey these captures show (Access section, before/after the created link) renders unchanged.","inputs":["src-ui/src/__tests__/project-settings.browser.test.tsx"]},
+
+    {"path":"docs/learn/media/project-invitation-after-390-light.png","note":"The fixture SDK stub gained useProjectLifecycleMutation and useProjectDeletionPreviewQuery, and ProjectSchedulesSection is stubbed like the Sources and Access sections; the invitation journey these captures show (Access section, before/after the created link) renders unchanged.","inputs":["src-ui/src/__tests__/project-settings.browser.test.tsx"]},
+
+    {"path":"docs/learn/media/project-invitation-before-1440-dark.png","note":"The fixture SDK stub gained useProjectLifecycleMutation and useProjectDeletionPreviewQuery, and ProjectSchedulesSection is stubbed like the Sources and Access sections; the invitation journey these captures show (Access section, before/after the created link) renders unchanged.","inputs":["src-ui/src/__tests__/project-settings.browser.test.tsx"]},
+
+    {"path":"docs/learn/media/project-invitation-before-390-light.png","note":"The fixture SDK stub gained useProjectLifecycleMutation and useProjectDeletionPreviewQuery, and ProjectSchedulesSection is stubbed like the Sources and Access sections; the invitation journey these captures show (Access section, before/after the created link) renders unchanged.","inputs":["src-ui/src/__tests__/project-settings.browser.test.tsx"]}
+  ]
+}

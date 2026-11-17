@@ -1311,6 +1311,23 @@
   border-radius: 4px;
 }
 
+.composer-attachments__thumb-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: zoom-in;
+}
+
+.composer-attachments__thumb-button:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
 .composer-attachments__glyph {
   display: inline-flex;
   flex: 0 0 auto;
@@ -1443,8 +1460,9 @@
   .composer-attachments__chip {
     min-height: 44px;
   }
-  .composer-attachments__remove {
-    width: 44px;
+  .composer-attachments__remove,
+  .composer-attachments__thumb-button {
+    min-width: 44px;
     height: 44px;
   }
   .composer-attachments__action {
@@ -1685,14 +1703,16 @@
 
 /* The fix sits at the end of its reason, wrapping as one unit, without its
    touch target inflating the text's line height. */
-.chat-input__attachment-error:has(.chat-input__blocked-action) {
+.chat-input__attachment-error:has(.chat-input__blocked-action),
+.chat-input__upload-wait:has(.chat-input__blocked-action) {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   column-gap: var(--space-2);
 }
 
-.chat-input__attachment-error .chat-input__blocked-action {
+.chat-input__attachment-error .chat-input__blocked-action,
+.chat-input__upload-wait .chat-input__blocked-action {
   padding: 0 var(--space-1);
   border: 0;
   background: transparent;
@@ -1819,7 +1839,8 @@
 }
 
 /* The next-send destination stays visible while Run setup is closed. */
-.chat-input__next-turn-notice {
+.chat-input__next-turn-notice,
+.chat-input__composer-notice {
   display: block;
   flex-basis: 100%;
   margin: 0;
@@ -2027,6 +2048,11 @@
   box-shadow: none;
   overflow: visible;
 }
+/* The approval picker is a short list; at the shared 380px it covered more of
+   the transcript than its rows need. */
+.composer-popover-panel.composer-mode-sheet {
+  --composer-popover-width: 340px;
+}
 .chat-input__model-popover-panel .session-model-picker {
   position: relative;
   right: auto;
@@ -2060,17 +2086,35 @@
   .session-model-picker {
   max-height: calc(100dvh - var(--responsive-anchor-bottom) - 20px);
 }
+/* Inside the composer's column where it has one (`data-popover-boundary`),
+   so a panel opened from the composer's trailing edge does not cover the
+   panes beside it; the viewport clamp still wins for a column too narrow. */
 .composer-popover-overlay--start[data-anchored] .composer-popover-panel {
   left: clamp(
     12px,
-    var(--responsive-anchor-left, 12px),
+    clamp(
+      var(--responsive-boundary-left, 12px),
+      var(--responsive-anchor-left, 12px),
+      calc(
+        var(--responsive-boundary-right, calc(100vw - 12px)) -
+        var(--composer-popover-width)
+      )
+    ),
     calc(100vw - var(--composer-popover-width) - 12px)
   );
 }
 .composer-popover-overlay--end[data-anchored] .composer-popover-panel {
   right: clamp(
     12px,
-    var(--responsive-anchor-right, 12px),
+    clamp(
+      calc(100vw - var(--responsive-boundary-right, calc(100vw - 12px))),
+      var(--responsive-anchor-right, 12px),
+      calc(
+        100vw -
+        var(--responsive-boundary-left, 12px) -
+        var(--composer-popover-width)
+      )
+    ),
     calc(100vw - var(--composer-popover-width) - 12px)
   );
 }
@@ -2416,8 +2460,10 @@
   min-height: 44px;
 }
 
-/* The settled answer's footer bar: the Basis chip, always visible (#926
-   amendment, owner 2026-10), then the hover-revealed action row. */
+/* The settled answer's footer bar: the hover-revealed action row, then the
+   Basis chip, always visible (#926 amendment, owner 2026-10), at the bubble's
+   edge. The chip comes first in the DOM, so focus reaches it before the
+   hidden row; `order` places it last. */
 .turn-footer__bar {
   display: flex;
   align-items: center;
@@ -2476,6 +2522,10 @@
 .turn-footer__bar .answer-basis-chip,
 .message-meta .answer-basis-chip {
   min-height: 44px;
+}
+
+.turn-footer__bar > .answer-basis-chip {
+  order: 1;
 }
 
 @media (hover: hover) {
@@ -3535,7 +3585,8 @@
     display: none;
   }
 
-  .chat-input__next-turn-notice {
+  .chat-input__next-turn-notice,
+  .chat-input__composer-notice {
     display: block;
   }
 
@@ -3689,11 +3740,23 @@ div.chat-input
   margin-inline-start: 0;
 }
 .chat-input__meta:not(
-  :has(.chat-input__next-turn-notice, .chat-status-pill, .chat-scroll-to-bottom)
+  :has(
+    .chat-input__next-turn-notice,
+    .chat-input__composer-notice,
+    .chat-status-pill,
+    .chat-scroll-to-bottom
+  )
 ) {
   display: none;
 }
 
 .chat-input .chat-controls-row {
   gap: clamp(0px, calc((100cqw - 450px) * 1000), var(--k-space-2));
+}
+
+/* A record's own note inside a turn: muted, never read as the agent's words. */
+.message-notice {
+  margin: var(--k-space-1) 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
 }
