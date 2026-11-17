@@ -1,0 +1,7 @@
+{
+  "revision": "025ad31bfcc21fb1e73b59ac02cb12f3d51eb0e5",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated docs bundle after merging origin/main and the head review docs; station-docs.md's claims about the bundle are unchanged.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}
