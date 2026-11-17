@@ -11,6 +11,10 @@ const state = vi.hoisted(() => ({
   view: undefined as TaskPullRequestWatchView | undefined,
   queryEnabled: [] as boolean[],
   mutate: vi.fn(),
+  navigate: vi.fn(),
+}));
+vi.mock('../../../contexts/NavigationContext', () => ({
+  useNavigation: () => ({ navigate: state.navigate }),
 }));
 vi.mock('../../../hooks/useSurfaceVisibilityFlags', () => ({
   useSurfaceVisibilityFlags: () =>
@@ -45,6 +49,7 @@ const task: TaskRecord = {
   description: '',
   priority: 'normal',
   status: 'in_progress',
+  sessionId: 'task-run',
   createdBy: 'user',
   createdAt: '2026-11-17T00:00:00.000Z',
   updatedAt: '2026-11-17T00:00:00.000Z',
@@ -177,6 +182,10 @@ test('a head waiting for review or needing recovery never says Ready for you', (
   };
   rerender(<TaskPullRequestWatchPanel task={task} />);
   expect(screen.getByText('Review needs you')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Open chat' }));
+  expect(state.navigate).toHaveBeenCalledWith(
+    '/tasks/task-1?taskView=conversation',
+  );
   expect(screen.getByText(/Required findings were dismissed/)).toBeTruthy();
   expect(screen.queryByText('Ready for you')).toBeNull();
 });

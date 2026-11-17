@@ -184,10 +184,13 @@ chat than they may read:
   own run and its open turn is the one Station started to send that pull
   request's failing checks (an In review card the facts say is fixing reads
   "fixing checks"). Another Task keeping the same pull request, or a run
-  doing other work, is never fixing. The note never changes the
-  card's lane, rung, tone or certainty, and shows only while the feedback is
+  doing other work, is never fixing. Delivery notes do not change the
+  card's lane, rung, tone or certainty, and show only while the feedback is
   about the head the provider reported. It is read for a reader of the
   owning chat only.
+  With head review enabled, a pending review or required findings keep a
+  clean forge head In review. A newer forge head also waits until Station
+  has observed and reviewed it; an earlier head's review cannot make it ready.
 - `GET /api/pull-request-feedback/by-pull-request` answers all of this for
   one pull request, whichever chat is open. The 409 for turning feedback on
   in a second chat, and a chat's own feedback read, name the owning chat

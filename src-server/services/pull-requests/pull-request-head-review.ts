@@ -345,23 +345,19 @@ export class PullRequestHeadReviewer {
     )
       return hold(
         'review-needed',
-        'Review permission changed. Turn review off and on from the chat to choose its current owner.',
+        'Review permission changed. Turn review off and on in the chat.',
       );
     if (claim.condition?.state === 'paused')
       return hold(
         'review-needed',
-        'Agent feedback is paused. Open the chat and choose Send again.',
+        'Feedback is paused. Choose Send again in the chat.',
       );
     const review = store.headReview(prKey, headSha);
-    if (!review)
-      return hold(
-        'reviewing',
-        'Waiting for this head’s review. Open the pull request in its chat for details.',
-      );
+    if (!review) return hold('reviewing', 'Waiting to review this push.');
     if (review.state === 'running')
       return hold(
         'reviewing',
-        'Reviewing this head before reporting it ready.',
+        'Reviewing this push before reporting it ready.',
       );
     if (review.state !== 'reviewed')
       return hold(
@@ -381,11 +377,11 @@ export class PullRequestHeadReviewer {
     if (delivery?.state === 'dismissed')
       return hold(
         'review-needed',
-        'Required findings were dismissed. Open the pull request in its chat and choose Review again.',
+        'Required findings were dismissed. Choose Review again.',
       );
     return hold(
       'review-needed',
-      'Required findings remain on this head. Open the pull request in its chat to send them or review again.',
+      'Required findings remain. Send them to the agent or review again.',
     );
   }
 

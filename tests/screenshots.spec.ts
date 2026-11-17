@@ -2941,7 +2941,7 @@ function pullRequestWatchScreens(): Screen[] {
                     state: 'review-needed',
                     headSha: 'c3d4e5f60718293a4b5c6d7e8f90123456789012',
                     detail:
-                      'Required findings were dismissed. Open the pull request in its chat and choose Review again.',
+                      'Required findings were dismissed. Choose Review again.',
                   },
                   fixAttempts: 1,
                   maxFixAttempts: 3,
