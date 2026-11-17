@@ -1,0 +1,7 @@
+{
+  "revision": "2fb350a386662f00ce2606cd02e3d08bba3d1fbb",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Updated the SessionQueryModule Interface for the optional prefetched events; checked the conversation-open and lineage sections against the single-read open path.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

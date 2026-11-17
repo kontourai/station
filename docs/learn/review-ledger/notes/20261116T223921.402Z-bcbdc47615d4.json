@@ -1,0 +1,7 @@
+{
+  "revision": "f18db47905491b9778f928a5f3ffd28960c667a7",
+
+  "notes": [
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"ConversationBody ownership, slots and layout claims are unchanged; this change only replaces its first-load skeleton with a loading stage and keeps the draft editable while the open read is pending.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/components/conversation/ConversationBody.tsx"]}
+  ]
+}

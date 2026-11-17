@@ -5,6 +5,9 @@ import type {
 import { readProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import { StationRequestAuthorityError } from '@kontourai/station-sdk/client';
+// Static: this module is itself a lazy chunk, so the open client loads with
+// it instead of as a third chunk after it.
+import { resolveConversationOpen } from '@kontourai/station-sdk/conversation-open';
 import type { StationConnection } from '../../connections/station-connection';
 import { chatBelongsToStation } from '../../connections/station-state';
 import type { ChatUIState } from '../../contexts/active-chats-state';
@@ -53,9 +56,6 @@ export async function resolveConversationOpenAuthoritatively(
   const current = () =>
     isCurrent?.() !== false && (!connection || connection.isCurrent());
   const read = observation?.read(conversationId, 'open', current);
-  const { resolveConversationOpen } = await import(
-    '@kontourai/station-sdk/conversation-open'
-  );
   try {
     if (!current()) throw new StationRequestAuthorityError();
     const resolution = await resolveConversationOpen(
