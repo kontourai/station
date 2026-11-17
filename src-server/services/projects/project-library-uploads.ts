@@ -45,7 +45,7 @@ const MEDIA_TYPES: Record<string, string> = {
   yml: 'text/yaml',
 };
 
-export function projectLibraryMediaType(relativePath: string): string {
+function projectLibraryMediaType(relativePath: string): string {
   const name = relativePath.slice(relativePath.lastIndexOf('/') + 1);
   const dot = name.lastIndexOf('.');
   const extension = dot > 0 ? name.slice(dot + 1).toLowerCase() : '';

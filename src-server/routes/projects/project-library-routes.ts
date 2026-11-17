@@ -69,7 +69,7 @@ export interface ProjectLibraryPreview {
   select<T>(branches: { enabled: () => T; disabled: () => T }): T;
 }
 
-export const PROJECT_LIBRARY_PREVIEW_ID = 'project-library';
+const PROJECT_LIBRARY_PREVIEW_ID = 'project-library';
 
 /** The typed refusal every Library route answers while the preview is off. */
 function previewDisabled(c: Context) {
@@ -111,7 +111,7 @@ export interface ProjectLibraryDeps {
 }
 
 /** The Library page for one Project: uploads and Task outputs, newest first. */
-export async function readProjectLibrary(
+async function readProjectLibrary(
   deps: ProjectLibraryDeps,
   project: ProjectLibraryProject,
 ): Promise<ProjectLibraryPage> {
