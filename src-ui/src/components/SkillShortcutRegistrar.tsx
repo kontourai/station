@@ -5,14 +5,17 @@ import {
 } from '@kontourai/station-contracts/skill-command';
 import { useSkillsQuery } from '@kontourai/station-sdk';
 import { useMemo } from 'react';
+import type { StationConnection } from '../connections/station-connection';
+import { conversationAccessFor } from '../connections/station-connection';
+import { isTurnInFlight } from '../contexts/active-chats-state';
 import {
-  type ConversationOpenPolicyState,
   conversationCanMutate,
   conversationOpenPhase,
 } from '../contexts/conversation-open-policy';
 import type { KeyboardShortcut } from '../contexts/KeyboardShortcutsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
+import type { ChatSession } from '../types';
 
 /**
  * One bindable chord: the device-settings key it is stored under, what to call
@@ -47,6 +50,26 @@ const SKILL_SHORTCUT_WHEN: KeyboardShortcut['when'] = {
 const NO_MODIFIERS: KeyboardShortcut['modifiers'] = [];
 
 /**
+ * Why the active chat cannot take a command now, by the composer's own send
+ * rules: it can when writable, or busy with a turn this tab sees in flight
+ * (the send queues behind it); never when the caller may not continue.
+ */
+function shortcutRefusal(
+  chat: ChatSession | undefined,
+  station: StationConnection | undefined,
+): string | undefined {
+  if (!chat) return undefined;
+  if (conversationAccessFor(chat, station)?.continue === false)
+    return "You can't send messages in this chat.";
+  if (conversationCanMutate(chat)) return undefined;
+  const phase = conversationOpenPhase(chat);
+  if (phase === 'busy' && isTurnInFlight(chat)) return undefined;
+  return phase === 'resolving'
+    ? 'This chat is still opening. Try again in a moment.'
+    : "This chat can't take messages right now.";
+}
+
+/**
  * One skill's chord, registered through the same primitive every other
  * shortcut in the app uses.
  *
@@ -57,30 +80,17 @@ const NO_MODIFIERS: KeyboardShortcut['modifiers'] = [];
  * to pre-apply it was a second derivation of one fact, and it is what put a
  * changing value in the registering effect's dependencies.
  */
-/**
- * Why the active chat cannot take a command now, by the rule queued sends
- * follow: it can when writable, or busy (the send queues behind the turn).
- */
-function shortcutRefusal(
-  chat: ConversationOpenPolicyState | undefined,
-): string | undefined {
-  if (!chat || conversationCanMutate(chat)) return undefined;
-  const phase = conversationOpenPhase(chat);
-  if (phase === 'busy') return undefined;
-  return phase === 'resolving'
-    ? 'This chat is still opening. Try again in a moment.'
-    : "This chat can't take messages right now.";
-}
-
 function SkillShortcut({
   target,
   hasContext,
   activeChat,
+  station,
   onRun,
 }: {
   target: ShortcutTarget;
   hasContext: boolean;
-  activeChat?: ConversationOpenPolicyState;
+  activeChat?: ChatSession;
+  station?: StationConnection;
   onRun: (target: { cmd: string; name: string }) => void;
 }) {
   const { showToast } = useToast();
@@ -94,7 +104,7 @@ function SkillShortcut({
         showToast('Open a chat before running a shortcut.', 'warning');
         return;
       }
-      const refusal = shortcutRefusal(activeChat);
+      const refusal = shortcutRefusal(activeChat, station);
       if (refusal) {
         showToast(refusal, 'warning');
         return;
@@ -112,11 +122,14 @@ function SkillShortcut({
 export function SkillShortcutRegistrar({
   hasContext,
   activeChat,
+  station,
   onRun,
 }: {
   hasContext: boolean;
-  /** The active chat's open state: a command runs only where a send could. */
-  activeChat?: ConversationOpenPolicyState;
+  /** The active chat: a command runs only where the composer could send. */
+  activeChat?: ChatSession;
+  /** The Station connection the active chat is bound to, when remote. */
+  station?: StationConnection;
   onRun: (target: { cmd: string; name: string }) => void;
 }) {
   const { data: skills = [] } = useSkillsQuery() as { data?: Skill[] };
@@ -153,6 +166,7 @@ export function SkillShortcutRegistrar({
           target={target}
           hasContext={hasContext}
           activeChat={activeChat}
+          station={station}
           onRun={onRun}
         />
       ))}

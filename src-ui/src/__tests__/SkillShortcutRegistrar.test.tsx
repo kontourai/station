@@ -124,71 +124,63 @@ describe('SkillShortcutRegistrar', () => {
     });
   });
 
-  // A shortcut types a command into the active chat, so it follows the send
-  // rule: refused while the chat is opening, read-only or unverified; run when
-  // writable, or busy (the send queues behind the turn).
-  test('runs a command only where the active chat could take a send', () => {
+  // A shortcut types a command into the active chat, so it follows the
+  // composer's send rules: refused while the chat is opening, read-only or
+  // unverified, busy with no turn this tab sees, or when the caller may not
+  // continue; run when writable, or busy with a turn in flight (it queues).
+  test('runs a command only where the composer could send', () => {
     const onRun = vi.fn();
     mocks.skills = [
       { name: 'first-book', command: { enabled: true, global: true } },
     ];
-    const resolved = (canContinue: boolean, continuationPending = false) =>
-      ({
-        status: 'resolved',
-        canContinue,
-        ...(continuationPending ? { continuationPending } : {}),
-      }) as never;
-    const view = render(
-      <Harness
-        hasContext
-        onRun={onRun}
-        activeChat={{ conversationOpenPending: true }}
-      />,
-    );
-    act(() => registered[0].handler());
-    expect(mocks.toast).toHaveBeenLastCalledWith(
-      'This chat is still opening. Try again in a moment.',
-      'warning',
-    );
+    const resolved = (
+      canContinue: boolean,
+      extra: Record<string, unknown> = {},
+    ) => ({ status: 'resolved', canContinue, ...extra }) as never;
+    const chat = (fields: Record<string, unknown>) => fields as never;
+    const view = render(<Harness hasContext onRun={onRun} />);
+    const press = (activeChat: unknown) => {
+      view.rerender(
+        <Harness hasContext onRun={onRun} activeChat={activeChat as never} />,
+      );
+      act(() => registered[0].handler());
+    };
+    const lastToast = () => mocks.toast.mock.calls.at(-1)?.[0];
 
-    view.rerender(
-      <Harness
-        hasContext
-        onRun={onRun}
-        activeChat={{ conversationOpenState: resolved(false) }}
-      />,
+    press(chat({ conversationOpenPending: true }));
+    expect(lastToast()).toBe(
+      'This chat is still opening. Try again in a moment.',
     );
-    act(() => registered[0].handler());
-    view.rerender(
-      <Harness
-        hasContext
-        onRun={onRun}
-        activeChat={{ conversationOpenFailed: true }}
-      />,
+    press(chat({ conversationOpenState: resolved(false) }));
+    expect(lastToast()).toBe("This chat can't take messages right now.");
+    press(chat({ conversationOpenFailed: true }));
+    expect(lastToast()).toBe("This chat can't take messages right now.");
+    // Busy, but this tab sees no turn: the composer is draft-only too.
+    press(
+      chat({
+        conversationOpenState: resolved(false, { continuationPending: true }),
+      }),
     );
-    act(() => registered[0].handler());
-    expect(mocks.toast).toHaveBeenLastCalledWith(
-      "This chat can't take messages right now.",
-      'warning',
+    expect(lastToast()).toBe("This chat can't take messages right now.");
+    // Writable, but the server said this caller may not post.
+    press(
+      chat({
+        conversationOpenState: resolved(true, {
+          callerAccess: { continue: false, startChat: true },
+        }),
+      }),
     );
+    expect(lastToast()).toBe("You can't send messages in this chat.");
     expect(onRun).not.toHaveBeenCalled();
 
-    view.rerender(
-      <Harness
-        hasContext
-        onRun={onRun}
-        activeChat={{ conversationOpenState: resolved(false, true) }}
-      />,
+    // Busy with a turn in flight here: the command queues behind it.
+    press(
+      chat({
+        conversationOpenState: resolved(false, { continuationPending: true }),
+        orchestrationTurnOpen: true,
+      }),
     );
-    act(() => registered[0].handler());
-    view.rerender(
-      <Harness
-        hasContext
-        onRun={onRun}
-        activeChat={{ conversationOpenState: resolved(true) }}
-      />,
-    );
-    act(() => registered[0].handler());
+    press(chat({ conversationOpenState: resolved(true) }));
     expect(onRun).toHaveBeenCalledTimes(2);
   });
 });

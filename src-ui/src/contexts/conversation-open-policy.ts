@@ -1,6 +1,6 @@
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
 
-export interface ConversationOpenPolicyState {
+interface ConversationOpenPolicyState {
   conversationOpenPending?: boolean;
   conversationOpenFailed?: boolean;
   conversationOpenState?: ConversationOpenResolution;

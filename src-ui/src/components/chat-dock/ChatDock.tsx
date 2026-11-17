@@ -3728,6 +3728,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 !importedSessionId && activeSessionId && activeSessionForHook,
               )}
               activeChat={activeSession ?? undefined}
+              station={conversationConnection}
               onRun={useCallback(
                 (target: { cmd: string; name: string }) => {
                   void chatInput.handleCommandSelect({
