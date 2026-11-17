@@ -206,6 +206,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Small loopback responses exercise dependency stream ownership in naturally exiting children.
   'scripts/__tests__/dependency-http-availability.process.test.ts',
   'src-server/runtime/frameworks/__tests__/voltagent-stream-finish-flush.process.test.ts',
+  // Fresh Node children import VoltAgent and record which modules load.
+  'src-server/runtime/frameworks/__tests__/voltagent-otlp-on-first-use.process.test.ts',
   // Fake startup/cleanup owners and real Windows ConPTY releases;
   // an owned child exercises 30 concurrent native shell exits and resizes.
   'src-server/adapters/__tests__/node-pty-adapter.test.ts',
@@ -333,8 +335,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/nightly-source-gate-receipt.test.ts',
   // Runs the source-policy publisher CLI as one short Node child against a loopback Actions API.
   'scripts/__tests__/source-verification-policy.test.ts',
-  // Runs the signer diagnostic CLI against a loopback Actions API.
-  'scripts/__tests__/pr-conflict-signer-diagnostic.test.ts',
   // #3101: runs the conflict-deferral CLI against a loopback GitHub API.
   'scripts/__tests__/pr-source-admission.test.ts',
   // Executes repair publication against real temporary checkouts and a loopback API.
@@ -577,9 +577,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/tools/__tests__/station-control-caller-binding.process.test.ts',
   // A same-user Node child replays copied Codex tool headers over loopback.
   'src-server/runtime/mcp/__tests__/codex-bound-tools.test.ts',
-  // #2377: one bounded Node child runs the stdio entry's credential install
-  // and the stdio tools' own REST helper against an in-process guard, proving
-  // a real pooled child reaches reads only; no real services.
+  // #2377: one bounded Node child runs the stdio entry's install and the
+  // stdio tools' own REST helper with a copied internal token against an
+  // in-process guard, proving a real caller-less child is refused every
+  // route (slice D); no real services.
   'src-server/security/__tests__/station-control-authority-pooled-child.process.test.ts',
   // #3160: one bounded Node child registers the real station-control server
   // as a caller-less stdio child and calls the three Session tools over an
@@ -686,6 +687,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // discovery, which is itself a Vitest child. Single-shot spawns, no
   // wall-clock assertion.
   'scripts/__tests__/fast-checks-shard-cli.test.ts',
+  // #5010: plans one recorded incident diff through real related discovery,
+  // a Vitest child; it imports no child_process itself. Single-shot spawn,
+  // no wall-clock assertion.
+  'scripts/__tests__/test-impact-incidents.test.ts',
   // #3101: dependency-free planner CLI output and exit status in child processes.
   'scripts/__tests__/fast-checks-plan.test.ts',
   // Runs the merge-queue regression decision script and the required
@@ -1511,6 +1516,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/version-packages-lock.test.ts',
   // Executes the credential guard's real Bash bytes before a fixture action.
   'scripts/__tests__/version-pr-operation.test.ts',
+  // Runs real git and the installed `changeset version` in temporary
+  // repositories, plus the workflow's own Bash bytes.
+  'scripts/__tests__/version-pr-current.test.ts',
   // The room runtime intentionally hard-exits a child after durable history
   // commit and before recovery settlement, then reopens the same SQLite file.
   // That crash/reopen lifecycle must not overlap ordinary workers.

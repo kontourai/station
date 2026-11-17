@@ -126,12 +126,10 @@ runner availability. Other repositories still consume the shared hosted pool.
 `release-pipeline.mjs profile` validates the execution envelope without polling
 GitHub. Its explicit `observe` command is a one-shot diagnostic snapshot; it
 allocates no work and grants no admission. The old fifteen-minute runner-held
-capacity loop is removed. A manual `hosted-capacity-probe.yml` can demonstrate
-native queue retention and non-overlap with a ten-second `ADMISSION_ONLY` job;
-it performs no source qualification, installs nothing and publishes nothing.
+capacity loop is removed.
 
 Pinned actionlint does not yet parse GitHub's queue field. The workflow gate
-validates the three reviewed workflow-level queues and the two PR source-job
+validates the two reviewed workflow-level queues and the two PR source-job
 queues, then removes that field
 from private lint copies. All other actionlint checks and the original-document
 security checks still run; unknown queue shapes fail rather than being ignored.
@@ -671,7 +669,30 @@ upstream's trailing whitespace, and the review ledger's
 [release-versioning contract](documentation-review-ledger.md#generated-release-records-and-removed-notes)
 accepts the version bumps and the changelog sections built from consumed notes.
 A record that cites a version value still needs a note.
-Mixed pushes and every other changed path still trigger maintenance. Manual
+Mixed pushes and every other changed path still trigger maintenance.
+Maintenance leaves the open version PR alone when regenerating would not change
+what it releases: [`version-pr-current.mjs`](../../scripts/version-pr-current.mjs)
+runs `npm run version-packages` on the pushed `main` (bounded at 3 minutes,
+without the job's GitHub token) and compares the tree with `git merge-tree` of
+that `main` and the PR head. It skips the action only for the
+`station-automation[bot]` PR (login, `Bot` type and user id) from this
+repository's `changeset-release/main`, whose head is one commit on an ancestor
+of `main`, merges cleanly to exactly that tree, still consumes only notes that
+are on `main` unchanged, and is not a no-op on `main` unless regenerating is
+empty too. The PR then keeps its checks and its merge-queue place. A new,
+removed or edited note, a manifest or lockfile change that alters the output,
+a release that already landed, a conflict, a timeout or any unreadable state
+regenerates as before; a dispatch never skips. The version script runs in its
+own process group, which the probe kills and waits out; if it cannot confirm
+the group is gone, the job fails rather than let the action commit a checkout
+something may still write to. A descendant that starts its own session leaves
+that group and is not covered; pnpm and the changesets tooling do not do that.
+Squashing the kept head onto
+the probed `main` gives the bytes a regeneration would have pushed. When the
+merge queue builds it behind other entries, it is squashed onto that later
+base instead, as a regenerated head would be; a note one of those entries adds
+stays pending for the next version PR, and the push that lands it probes again.
+On 2026-11-16, 28 of the 36 regenerations would have been skipped. Manual
 package publication remains available and requires exact-source qualification.
 The separately authorized published
 pointer-repair break glass retains its existing inventory/provenance checks and

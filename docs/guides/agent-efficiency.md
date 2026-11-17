@@ -59,7 +59,9 @@ Browser families. The same family is the Tools catalog's `ai.kontour/tool-group`
 Station lists its tool schemas without what tells a model nothing: the `$schema`
 dialect URL, zod's safe-integer bounds, `propertyNames: {type: "string"}` and
 `additionalProperties: {}`. It also omits the arguments only Station's runtime
-writes (`_userId`, `_delegation`, `_delegationAttestation`, `_sourceContext`).
+writes (`_userId`, `_sourceContext`), and `_delegation` and
+`_delegationAttestation`, which Station's engine no longer writes and strips
+from a model's call (the route derives a child's context from the caller).
 Calls are still validated by each tool's own schema, so the runtime's values
 still arrive and a value a model writes anyway is judged as before.
 

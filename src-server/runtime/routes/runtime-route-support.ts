@@ -95,6 +95,7 @@ import { runWithUnattendedPrincipal } from '../agents/unattended-principal-conte
 import { createAutomationActionsRuntime } from '../automation-actions-runtime.js';
 import { isHostedTenantExecutionRequired } from '../bootstrap/runtime-tenant-context.js';
 import { canUseTaskSource } from '../context-efficiency-runtime.js';
+import { openNativeStationControlRequestRun } from '../mcp/station-control-native-tools.js';
 import {
   createStationControlCallerRecordResolver,
   stationControlCallerRecordSources,
@@ -116,6 +117,28 @@ const WEB_PUSH_FALLBACK_SUBJECT = 'mailto:push@station.local';
  * the runtime's private invocation context rather than accepting caller
  * supplied unattended authority.
  */
+/**
+ * #2377 slice D: a personal Station has one person, its operator: not
+ * hosted, and no other people's accounts (local accounts or deployment
+ * authentication). Only there is an ownerless job the operator's.
+ */
+export function isPersonalStation(
+  context: Pick<
+    ConfigureRuntimeRoutesContext,
+    'localAccounts' | 'deploymentAuthentication'
+  >,
+): boolean {
+  return (
+    !isHostedTenantExecutionRequired() &&
+    !context.localAccounts &&
+    !context.deploymentAuthentication
+  );
+}
+
+/** What a run of a job with no recorded owner tells the model (#2377 slice D). */
+export const JOB_OWNER_NEEDED_MODEL_NOTE =
+  'Station tools are unavailable for this run: this scheduled job has no recorded owner. Do not call Station tools.';
+
 export function createScheduledTurnAdapter(
   activeAgents: ReadonlyMap<
     string,
@@ -128,7 +151,7 @@ export function createScheduledTurnAdapter(
   >,
 ): ScheduledTurnAdapter {
   return {
-    invoke: async ({ agentSlug, prompt, principal, signal }) => {
+    invoke: async ({ agentSlug, prompt, principal, signal, receipt }) => {
       if (signal.aborted) {
         return {
           kind: 'definitely-not-invoked' as const,
@@ -143,11 +166,24 @@ export function createScheduledTurnAdapter(
           error: `Agent '${resolvedSlug}' not found`,
         };
       }
+      // #2377 slice D: a run acts for the job's recorded owner, through its
+      // own in-process station-control caller. A job with no owner (one
+      // created before owners were recorded, on a shared or hosted Station)
+      // gets no caller, and the model is told it has no Station tools.
+      const owner = receipt.job.createdBy;
+      const run = owner
+        ? openNativeStationControlRequestRun({ principalId: owner.userId })
+        : undefined;
+      const generate = () =>
+        agent.generateText(
+          owner ? prompt : `${JOB_OWNER_NEEDED_MODEL_NOTE}\n\n${prompt}`,
+          { signal },
+        );
       try {
         const result = await runWithUnattendedPrincipal(
           { kind: 'scheduled-job', jobId: principal.jobId },
           principal.runId,
-          () => agent.generateText(prompt, { signal }),
+          () => (run ? run.run(generate) : generate()),
         );
         return { kind: 'completed' as const, output: result.text ?? '' };
       } catch (error) {
@@ -162,6 +198,8 @@ export function createScheduledTurnAdapter(
           error:
             error instanceof Error ? error.message : 'Scheduler agent failed',
         };
+      } finally {
+        await run?.close();
       }
     },
   };
@@ -799,6 +837,11 @@ export function configureRuntimeSupportServices(
     builtin: {
       notificationService,
       turnAdapter: createScheduledTurnAdapter(context.activeAgents),
+      // #2377 slice D: only a personal Station's older ownerless jobs are
+      // the operator's; a shared or hosted Station never guesses an owner.
+      ...(isPersonalStation(context)
+        ? { personalJobOwner: { userId: LOCAL_OPERATOR_PRINCIPAL_ID } }
+        : {}),
       ...(options.conversationRuns
         ? { conversationRuns: options.conversationRuns }
         : {}),

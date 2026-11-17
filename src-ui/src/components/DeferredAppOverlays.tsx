@@ -27,6 +27,7 @@ import { useEffect } from 'react';
 import { useNavigationActions } from '../contexts/NavigationContext';
 import { OPEN_CONNECTIONS_MODAL_EVENT } from '../lib/connectionModalEvents';
 import { subscribeToNotificationOpen } from '../lib/notificationOpen';
+import { requestNotificationOpen } from '../lib/notificationStationOpen';
 import { subscribeToTrayNavigation } from '../lib/trayNavigation';
 import { isMainDesktopWindow } from '../platform/native/mainWindow';
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
@@ -37,6 +38,7 @@ import {
 import { CommandPalette } from './CommandPalette';
 import { FirstRunFlow } from './first-run/FirstRunFlow';
 import { HomeRecoveryBannerSource } from './notifications/HomeRecoveryBannerSource';
+import { NotificationStationOpener } from './notifications/NotificationStationOpener';
 import { RemoteSessionReaderHost } from './remote-session/RemoteSessionReaderHost';
 import { ReportProblemHost } from './report-problem/ReportProblemHost';
 import { SchedulerJobDialogHost } from './scheduler/SchedulerJobDialogHost';
@@ -58,9 +60,11 @@ function TrayNavigationListener() {
   return null;
 }
 
-/** A click on a native notification alert opens its in-app link (#2608). */
+/**
+ * A click on a native notification alert opens its in-app link (#2608) on
+ * the Station the alert came from.
+ */
 function NotificationOpenListener() {
-  const { navigate } = useNavigationActions();
   const profile = usePlatformProfile();
   const enabled =
     profile.isTauri &&
@@ -68,8 +72,11 @@ function NotificationOpenListener() {
     !profile.isMobile &&
     isMainDesktopWindow();
   useEffect(
-    () => (enabled ? subscribeToNotificationOpen(navigate) : undefined),
-    [enabled, navigate],
+    () =>
+      enabled
+        ? subscribeToNotificationOpen(requestNotificationOpen)
+        : undefined,
+    [enabled],
   );
   return null;
 }
@@ -85,6 +92,7 @@ export default function DeferredAppOverlays() {
       <RemoteSessionReaderHost />
       <HomeRecoveryBannerSource />
       <TrayNavigationListener />
+      <NotificationStationOpener />
       <NotificationOpenListener />
       <AgentActivityRefresher />
       <AgentActivityLaunchRoutes />

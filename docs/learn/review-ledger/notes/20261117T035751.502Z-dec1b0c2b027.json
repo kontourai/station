@@ -1,0 +1,7 @@
+{
+  "revision": "addca25a1d54ffbf217f41e0caed3b7ddbff52f1",
+
+  "notes": [
+    {"path":"docs/design/process-supervisor.md","note":"Fix round re-checked: policy ignores undecided PR armed runs and cheap-only runs newer than a verified proof, deferral marker runs after failure, repo scans back on every push, re-arm of a verified head runs cheap only; this page's claims are unaffected.","inputs":["docs/design/process-supervisor.md","docs/guides/development.md"]}
+  ]
+}

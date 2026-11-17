@@ -1,0 +1,7 @@
+{
+  "revision": "9b6c86493e31b81342d5f45805d648e65d307f7e",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated shipped topics from the module-map Project jobs paragraph (Project job runs act as the operator until #5126); station-docs reference describes the topic surface, unchanged.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}

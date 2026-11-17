@@ -376,6 +376,13 @@ export interface WorkloadBudgetStatus {
     holder?: 'placed' | 'unplaced';
     /** Why an engine scope's holder is unplaced. */
     holderReason?: WorkloadHolderUnplacedReason;
+    /**
+     * The scope's largest processes when Station saw its latest kill: the
+     * survivors, since the killed process is already gone.
+     */
+    lastOomKillProcesses?: WorkloadScopeProcess[];
+    /** Present while the scope is under memory pressure. */
+    pressure?: WorkloadScopePressure;
   }>;
   /** Scopes whose cleanup failed and has not settled. Absent from older hosts. */
   cleanup?: WorkloadScopeCleanupStatus;
@@ -425,6 +432,32 @@ export interface WorkloadScopeCleanupStatus {
  * sleep(1) to start one, the scope's processes do not include it, or the
  * holder that was found has since gone.
  */
+/** One process in a workload scope, as `/proc/<pid>/status` reports it. */
+export interface WorkloadScopeProcess {
+  pid: number;
+  /** The kernel's command name (`comm`, at most 15 characters). */
+  name: string;
+  /** Resident set size (`VmRSS`). */
+  rssBytes: number;
+}
+
+/**
+ * A workload scope whose working set (`memory.current` less inactive file
+ * cache) reached the configured share of its `memory.max`. It leaves
+ * pressure once the working set falls 5 points below that share.
+ */
+export interface WorkloadScopePressure {
+  /** When Station saw the scope enter pressure. */
+  since: string;
+  thresholdPercent: number;
+  workingSetBytes: number;
+  memoryMaxBytes: number;
+  /** `memory.events` `max` when it entered: allocations that hit the limit. */
+  limitEvents?: number;
+  /** The scope's largest processes when it entered, at most three. */
+  largestProcesses?: WorkloadScopeProcess[];
+}
+
 export type WorkloadHolderUnplacedReason =
   | 'holder-unavailable'
   | 'not-in-scope'

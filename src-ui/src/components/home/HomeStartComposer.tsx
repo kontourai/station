@@ -530,15 +530,10 @@ export function HomeStartComposer({
             : undefined,
       };
   const noAgentToOffer = !agent && !defaultSelection?.missingPreferredAgentSlug;
-  // Setup shows only for the Agent picked when it cannot start, or, when
-  // nothing can start, for every Agent that needs it (the dock's rule).
-  const setupAgents = agent
-    ? agentRunnability(agent).runnable
-      ? []
-      : [agent]
-    : viewModel.flatList.filter(
-        (candidate) => !agentRunnability(candidate).runnable,
-      );
+  // Setup shows only for an Agent picked from the menu that cannot start.
+  // With no Agent to offer, Start hands the dock its automatic start, which
+  // prepares an engine; the dock's draft owns the setup card then.
+  const setupAgents = agent && !agentRunnability(agent).runnable ? [agent] : [];
   const canStart =
     Boolean(prompt.trim()) &&
     !loading &&

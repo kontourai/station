@@ -298,20 +298,30 @@ describe('station-control authority table: the owner decisions', () => {
     }
   });
 
-  test('decision 4 with decision 2: a caller-less request reaches exactly the reads of nobody’s data', () => {
-    for (const [name, policy] of TABLE) {
-      if (policy.enforcedBy === 'route') continue;
-      const refusal = evaluateStationControlPolicy(policy, { caller: null });
-      if (policy.toolClass === 'read-only' && policy.role === 'none')
-        expect([name, refusal]).toEqual([name, undefined]);
-      else
-        expect([name, refusal?.code]).toEqual([
-          name,
-          policy.personOnly === 'always'
-            ? 'station_control_person_only'
-            : 'station_control_caller_required',
-        ]);
-    }
+  test('decision 4, slice D: a caller-less request is refused every entry, route-enforced and reads of nobody’s data included', () => {
+    const entries = [
+      ...TABLE,
+      ...Object.entries(STATION_CONTROL_INFRASTRUCTURE_POLICY),
+    ] as [string, StationControlToolPolicy][];
+    // The control: the reads of nobody's data and the route-enforced entries
+    // are exactly the ones a verified caller with no owner still reaches.
+    const openToAnyVerified = entries.filter(
+      ([, policy]) =>
+        evaluateStationControlPolicy(policy, {
+          caller: { assurance: 'bearer-exposed' },
+        }) === undefined,
+    );
+    expect(openToAnyVerified.length).toBeGreaterThan(10);
+    for (const [name, policy] of entries)
+      expect([
+        name,
+        evaluateStationControlPolicy(policy, { caller: null })?.code,
+      ]).toEqual([
+        name,
+        policy.personOnly === 'always'
+          ? 'station_control_person_only'
+          : 'station_control_caller_required',
+      ]);
   });
 });
 

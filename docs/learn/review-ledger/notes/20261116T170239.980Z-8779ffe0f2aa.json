@@ -1,0 +1,15 @@
+{
+  "revision": "5b7dbfe8e719c69247b5b6cb1cb78cf0df4e0c7a",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"#2377 slice D edits only the delegation-context and usage-tree provenance passages; the citing ADR's managed-chat routing claims do not depend on them.","inputs":["docs/reference/session-api.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"#2377 slice D edits only the usage-tree delegation sentence; the citing review's claims do not depend on it.","inputs":["docs/guides/monitoring.md"]},
+
+    {"path":"docs/design/automations.md","note":"#2377 slice D edits only the internal-token-in-child passage; the citing automations design does not depend on it.","inputs":["docs/security/remote-access-threat-model.md"]},
+
+    {"path":"docs/design/terminal.md","note":"#2377 slice D edits only the person-reads internal-request list wording; the citing terminal and integration passages do not depend on it.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#2377 slice D edits only the person-reads internal-request list wording; the citing terminal and integration passages do not depend on it.","inputs":["docs/reference/api.md"]}
+  ]
+}

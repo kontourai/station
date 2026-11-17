@@ -1,0 +1,7 @@
+{
+  "revision": "4ed2c09f36c9e556c51032d2f3fa0c393c1ee7b1",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Documented hidden in GET /api/conversations/work-state and PUT /api/conversations/:id/inbox-hidden ({hidden:boolean}, preview/person/current-authority guard, Session read recheck via canUserReadSession, 404 unreadable) and pruning on conversation delete. Matches conversation-work-state.ts, conversations.ts delete route and their route tests; pairing scope leaf added beside work-state.","inputs":["docs/reference/api.md","src-server/routes/chat/__tests__/conversation-work-state.test.ts","src-server/routes/chat/conversation-work-state.ts","src-server/routes/chat/conversations.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts"]}
+  ]
+}

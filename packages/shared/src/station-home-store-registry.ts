@@ -73,6 +73,7 @@ export const STATION_HOME_ROOTS: Readonly<
   cache: 'state',
   'connection-smoke.json': 'state',
   'conversation-acknowledgements.json': 'state',
+  'conversation-inbox-hidden.json': 'state',
   'conversation-intent-summaries': 'state',
   'conversation-pull-request-links.json': 'state',
   'conversation-work-state.json': 'state',

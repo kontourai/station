@@ -820,6 +820,14 @@ Drafts appear as a pencil on the chat row in its current status. Collapse a
 shelf to move it below expanded work. Shelf menus let you move sections up or
 down, with that order saved on this device. **Settled** is last by default.
 
+With the preview on, **Settle** is how you put away your own conversations,
+so their rows have no **Dismiss**. A **Third-party** session offers **Hide**
+instead; it stays hidden on all your devices, through its updates, until you
+bring it into Station or search for it and choose **Restore to inbox**.
+Sessions you dismissed on this browser before move to your hidden list once.
+**Settled** and **Third-party** show the last seven days; choose **Show older**
+for the rest. Search always finds everything.
+
 The workspace map lists Projects and their named Layouts, followed by your
 **Apps**. Its **+** creates a Board and lets you name it, even
 when the list is empty. Select a project to see its configured views as child rows.
@@ -923,7 +931,7 @@ durable request flow.
 
 ### Finish setup and return
 
-When no Agent can respond, the composer shows a setup card with your message.
+When no Agent can respond, the chat dock's new chat shows a setup card above your message.
 It lists each Agent with its status and repair, and offers engine setup, a
 model connection and **Check again**. Each Agent's **Details** holds its
 reason and any installation steps,
@@ -1364,7 +1372,18 @@ Open an attached terminal Session from the **inbox**. It reads like any chat. To
 continue it in Station, press **Continue in Station** next to where it says it started;
 no message is needed. If you typed one, it is sent there once the
 continuation opens, and pressing Send continues the same way. Claude and Codex create independent child
-Sessions; the original terminal Session can keep running. OpenCode and Grok
+Sessions; the original terminal Session can keep running.
+
+If the conversation is still mid-turn in its terminal, Station says **Still
+running in Claude Code. Continuing now forks it** instead of continuing.
+Mid-turn means its latest turn has not finished and Station saw it written in
+the last five minutes: for Claude Code, its transcript or a subagent's (while
+the conversation's own transcript changed in the last two hours); for Codex, the
+latest record Station imported. A single command that runs silently for longer
+than five minutes is not seen as running. Choose **Not now** and continue once
+it finishes, or **Continue anyway** to fork it now. A fork does not see anything the terminal Session writes afterwards.
+Station cannot stop the terminal Session for you. To hand the conversation over
+completely, finish or quit it in the terminal first. OpenCode and Grok
 conversations are read only: the message box shows why it is unavailable.
 Codex continues from the latest completed turn Station has observed, so wait
 for one if the message box is unavailable.

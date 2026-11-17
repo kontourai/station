@@ -369,10 +369,19 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
         {},
       ),
     ).toBe('station_control_person_only');
-    // A read stays open to a caller-less request (decision 4).
+    // Slice D (decision 4): a caller-less request is refused, reads too.
     expect(await outcome(base, 'GET', '/config/app', internal())).toBe(
-      'passed-guard',
+      'station_control_caller_required',
     );
+    // The control: the same read passes for a verified caller.
+    expect(
+      await outcome(
+        base,
+        'GET',
+        '/config/app',
+        callerFor('op-codex', 'url-token'),
+      ),
+    ).toBe('passed-guard');
     // A route no tool reaches fails closed.
     expect(
       await outcome(base, 'GET', '/api/operator/accounts', internal()),

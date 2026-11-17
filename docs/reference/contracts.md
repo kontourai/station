@@ -1097,6 +1097,7 @@ non-retryable.
 | `confinement_not_observed` | `permission_denied` | `false` |
 | `confinement_workspace_incompatible` | `permission_denied` | `false` |
 | `continuation_engine_not_ready` | `unavailable` | `true` |
+| `continuation_source_active` | `busy` | `true` |
 | `continuation_workspace_corrupt_worktree_binding` | `input_unsupported` | `false` |
 | `continuation_workspace_different_project` | `input_unsupported` | `false` |
 | `continuation_workspace_direct_mismatch` | `input_unsupported` | `false` |
@@ -1104,6 +1105,7 @@ non-retryable.
 | `continuation_workspace_unbound` | `input_unsupported` | `false` |
 | `continuation_workspace_worktree_gone` | `input_unsupported` | `false` |
 | `continuation_workspace_worktree_moved` | `input_unsupported` | `false` |
+| `conversation_handoff_predecessor_busy` | `busy` | `true` |
 | `conversation-context-unavailable` | `conflict` | `false` |
 | `engine-credential-profile-unsupported` | `input_unsupported` | `false` |
 | `engine-decision-not-sent` | `warning` | `false` |
@@ -2019,7 +2021,12 @@ The attention subpath's `PullRequestFeedbackAttentionItem`
 waiting, as a Needs-you item: its `source` names the owning chat and pull
 request, and `viewerMayChange` says whether the reader could send again or
 turn it off. `client-origin`'s `pull-request-feedback` sender labels the
-delivered message as Station's. See
+delivered message as Station's. `ProjectPullRequestFeedbackDefaults` is a
+Project's defaults as a reader sees them (`canChange`, and `stillOn`: open pull
+requests they turned on that still send, in chats the reader may read). The optional
+`IPullRequestProvider.findOpenPullRequestsByHead` lists open pull requests by
+exact head branch name (`PullRequestByHead`, with where each head lives),
+answering `PullRequestsByHeadResult`. See
 [Pull request agent feedback](../decisions/pull-request-agent-feedback.md).
 
 `TaskRecord.closeOnMerge` is optional and absent means off. It is a person's
@@ -2306,7 +2313,10 @@ whether a change applies to new scopes or after a restart. Its optional
 `scopes` lists running scopes with the per-engine limit each was launched
 with, the OOM kills Station observed in it, when it first saw the latest, and
 for an engine scope whether its holder is `placed` or `unplaced` (with a
-`WorkloadHolderUnplacedReason` code).
+`WorkloadHolderUnplacedReason` code). A scope may also carry
+`lastOomKillProcesses` and, while near its memory limit, a
+`WorkloadScopePressure`; both list processes as `WorkloadScopeProcess`
+(`pid`, kernel command `name`, `rssBytes`).
 
 `@kontourai/station-contracts/system-status` owns `DevicePresentation`
 (the request-bound host/paired projection), `SystemRuntimeIdentity`

@@ -1,0 +1,7 @@
+{
+  "revision": "86a601bb95062539dfad0a4176fc4ea1e6aa3085",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Added the push-once-per-fix-round landing bullet with the 2026-11-16 measurements; the rest of Landing a pull request is unchanged.","inputs":["docs/guides/development.md"]}
+  ]
+}

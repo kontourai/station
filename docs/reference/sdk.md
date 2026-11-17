@@ -6327,7 +6327,11 @@ feedback (`getConversationPullRequestFeedback`), sets a pull request's
 switches (`writePullRequestFeedback`, with `move` to take it from another
 chat), lifts a pause (`sendPullRequestFeedbackAgain`), and turns every
 switch off for a pull request the chat owns (`turnOffPullRequestFeedback`,
-which the Needs-you item calls). A 409 naming
+which the Needs-you item calls). `getProjectPullRequestFeedbackDefaults`
+and `writeProjectPullRequestFeedbackDefaults` read and set a Project's
+defaults (the write sends only the two switches, so a stored third is kept);
+`removeDerivedPullRequest` removes a pull request found on the chat's Task
+branch from the chat for good. A 409 naming
 another chat is read with `pullRequestFeedbackOwnerOf`. Gate the calls on
 `readPullRequestFeedbackCapability` (the `pullRequestFeedback` flag) and the
 `pull-request-agent-feedback` Feature Preview; the routes answer 404 while the
@@ -7116,7 +7120,9 @@ read or change explicit personal settlement under the `conversation-resolution`
 Feature Preview. State is separate from turn completion and dismissal. Reads
 return `null` on a 404 (unsupported host or disabled preview); mutations preserve
 a refusal with an update/preview remedy. Requests accept `ClientRequestOptions`
-for authority and cancellation.
+for authority and cancellation. `ConversationWorkState.hidden` lists hidden
+third-party Sessions by thread id and is absent from a host that cannot hide
+them; `setConversationInboxHidden` hides or unhides one for the caller.
 
 `getConversationTurnDirectory` reads paginated, indexed turn metadata from the
 existing Session digest under `session-cli-reads`; it returns `null` when that

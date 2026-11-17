@@ -310,6 +310,7 @@ environment variables before starting the service:
 | `STATION_WORKLOAD_CPU_PERCENT` | Logical CPUs × `75` | Combined CPU quota; `100` is one core |
 | `STATION_WORKLOAD_TASKS_MAX` | `512` | Per-scope processes and threads |
 | `STATION_WORKLOAD_TOTAL_TASKS_MAX` | `2048` | Combined processes and threads |
+| `STATION_WORKLOAD_PRESSURE_PERCENT` | `85` | Share of a scope's memory limit (50–99) at which Station reports it near the limit |
 
 The per-scope default grows with the host: a 16 GiB host has an 8 GiB total
 and about 4.8 GiB per engine, while an 8 GiB host keeps the earlier 3 GiB. One
@@ -451,6 +452,52 @@ decides which), and keeps systemd's own `systemdResult` (`success` under
 stop, or `last-poll` when systemd had already collected the scope (a terminal
 whose shell exited on hangup, since only engine scopes have holders): then a
 kill in the scope's final second can be missing.
+
+The same poll logs every rise in a running scope's count at once, as "A
+process in a workload scope was killed for memory", for every engine and
+command scope, whether or not an engine adapter listens and whether or not
+the engine survived: the kernel can kill several processes, the engine last,
+between two polls. The line names the scope, its Session, the count and the
+new kills, and its three largest remaining processes (`largestRemaining`,
+read from `cgroup.procs` and each pid's `/proc/<pid>/status` `Name` and
+`VmRSS`, at most 512 processes and 500 ms, or omitted). The killed process
+is already gone, so when the scope was near its limit beforehand the line
+also carries that earlier snapshot (`largestAtPressure`), which normally
+names the culprit. `GET /api/system/workload` keeps the latest snapshot as
+`lastOomKillProcesses`. The `station.workload.scope.oom_kills` metric counts
+each kill once, `source: live` when a poll saw it and `close` when only the
+close-time read did.
+
+A scope is near its limit when its working set, `memory.current` less
+`memory.stat` `inactive_file`, reaches `STATION_WORKLOAD_PRESSURE_PERCENT` of
+its `memory.max`. Station then logs "A workload scope is near its memory
+limit" once, with the three largest processes and the `memory.events` `max`
+count, and logs at info once the working set falls 5 points below the
+threshold; nothing in between. A rising `memory.events` `max` alone is not
+pressure: it also counts routine page-cache reclaim at the limit, which a
+scope that reads many files hits continually. While the scope is near its
+limit, `GET /api/system/workload` and `/api/system/resource-posture` list its
+`pressure`, and the engine's own `workload_status` read returns it with the
+largest processes, so an engine that checks can back off. Station does not
+push the warning into the engine's turn. The
+`station.workload.scope.memory_pressure` metric counts `enter` and `exit`
+transitions.
+
+Each poll also puts an engine's commands ahead of the engine for the OOM
+killer. Station does not start those commands (the engine does, inside its
+scope), and an unprivileged process cannot lower an `oom_score_adj` below the
+value it inherited (that takes `CAP_SYS_RESOURCE`). So instead it raises every
+other process in an engine scope, apart from the holder, to the engine's
+`oom_score_adj` plus 300 (at most 1000), and never lowers one. In a scope OOM
+the kernel adds `oom_score_adj` thousandths of `memory.max` to a process's
+size, so a command is chosen before the engine unless the engine is larger
+than it by more than 30% of the limit. A process the engine forks keeps the
+engine's score until the next poll (up to a second), and its own children
+inherit the raised one. When the engine runs behind a launcher process (a
+shim that starts the real engine as its child), the launcher is the one
+protected. A refused write is logged once and that scope is not retried.
+`OOMPolicy=continue` deliberately leaves `memory.oom.group` off: a group kill
+would end the engine along with the command.
 
 Codex reports both cases. A kill while Codex runs publishes a live warning
 (`workload-command-oom-killed`, naming the budget) and a transcript marker
@@ -941,10 +988,24 @@ gh api repos/kontourai/station/rules/branches/main
   cover native inputs only; a change confined to the rest of `src-ui/` or
   the bundled packages gets its iOS build from the main push, and a red one
   opens a `Main pipeline red: PR: iOS build` tracker.
+- **Push once per fix round.** Every push restarts the PR's checks and
+  cancels the run in progress. On 2026-11-16 one branch pushed 8 heads a
+  median of about 9 minutes apart: a newer push cancelled all eight of its
+  `PR: CI` runs, and the branch's workflows used 607 runner-minutes in
+  total.
 - **Arm auto-merge; do not merge by hand.**
   `gh pr merge <n> --repo kontourai/station --auto`. Auto-merge is opt-in per
   PR: a green PR that nobody armed sits forever, which is the usual reason a
   ready PR has not landed.
+- **With `STATION_PR_HEAVY_CHECKS=when-armed`, arming starts the heavy
+  checks.** An unarmed push then runs only the cheap part of `PR: CI`, and
+  `Source verification policy` stays pending with "heavy checks run once
+  armed" until the run that arming starts (`PR armed`) passes on that head;
+  a push to an armed PR runs everything. Arm at your final push as before. For
+  a full run before arming, add the `full-checks` label and push or use
+  **Re-run all jobs** (**Re-run failed jobs** repeats the old decision).
+  Unset or `every-push` (the default), every push runs everything. See
+  [heavy checks when armed](testing.md#heavy-checks-when-armed).
 - **Pass no merge-method flag.** The `merge_queue` rule's `merge_method` owns
   the strategy, and `gh pr merge --squash` is refused with `The merge strategy
   for main is set by the merge queue`. The `pull_request` rule's

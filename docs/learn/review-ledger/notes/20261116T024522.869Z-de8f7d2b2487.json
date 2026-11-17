@@ -1,0 +1,7 @@
+{
+  "revision": "a21eb8e52d4abd581d05c312e75d6028252d092c",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"attachedSourceActivity now documents lastWriteAt as the later of the newest event time and attachedSource.lastWriteAt (30-second steps), the per-source write signals (Claude transcript plus subagents within two hours, 512-entry bound; OpenCode session/message/held-part time_updated; Codex and Grok none), and the one-minute clock-skew rejection; checked against attached-source-activity.ts, the follower's nextSourceWriteAt, and both sources.","inputs":["docs/reference/session-api.md","src-server/providers/sessions/attached-session-source.ts","src-server/providers/sessions/claude-transcript-session-source.ts","src-server/providers/sessions/opencode-session-source.ts","src-server/services/orchestration/attached-session-adoption.ts","src-server/services/orchestration/attached-session-follow-service.ts","src-server/services/orchestration/orchestration-session-state.ts"]}
+  ]
+}
