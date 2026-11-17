@@ -1625,6 +1625,39 @@ describe('useActiveChatTranscript', () => {
       },
     );
 
+    test('the reopen copy carries no current child, and a cached paint names none', async () => {
+      const namespace = { value: NS_A };
+      fetchConversationWindow.mockImplementation(async (id: string) =>
+        id === 'seed-a'
+          ? { ...page('seed question'), currentSessionId: 'seed-child' }
+          : page('other'),
+      );
+      const view = renderReader(chat('seed-a'), namespace);
+      await waitFor(() =>
+        expect(view.result.current.currentSessionId).toBe('seed-child'),
+      );
+      view.rerender({ session: chat('seed-b') });
+      await waitFor(() =>
+        expect(
+          view.result.current.messages.map((message) => message.content),
+        ).toContain('other'),
+      );
+      const key = transcriptWindowCacheKey({
+        namespace: NS_A,
+        apiBase: 'http://station.test',
+        conversationId: 'seed-a',
+      });
+      expect(readTranscriptWindow(key)).toBeDefined();
+      expect(readTranscriptWindow(key)).not.toHaveProperty('currentSessionId');
+      fetchConversationWindow.mockImplementation(() => new Promise(() => {}));
+      view.rerender({ session: chat('seed-a') });
+      expect(view.result.current.revalidating).toBe(true);
+      expect(
+        view.result.current.messages.map((message) => message.content),
+      ).toContain('seed question');
+      expect(view.result.current.currentSessionId).toBeUndefined();
+    });
+
     test('another authority never paints a cached window for the same conversation id', async () => {
       const namespace = { value: NS_A };
       fetchConversationWindow.mockResolvedValue(page('authority A only'));
@@ -1671,6 +1704,48 @@ describe('useActiveChatTranscript', () => {
       expect(
         result.current.messages.map((message) => message.content),
       ).toContain('legacy after child cleared'),
+    );
+    expect(fetchWindow).toHaveBeenCalledTimes(1);
+  });
+
+  test('a 404 for a read sent with the child id falls back even when the child was cleared in flight', async () => {
+    let refuse: (reason: unknown) => void = () => {};
+    fetchConversationWindow
+      .mockImplementationOnce(
+        () => new Promise((_resolve, reject) => (refuse = reject)),
+      )
+      .mockRejectedValue({ status: 404 });
+    fetchWindow.mockResolvedValue({
+      protocolVersion: 1,
+      watermark: 1,
+      hasMore: false,
+      events: [
+        event('legacy-1', 'turn.started', {
+          turnId: 'legacy-turn',
+          prompt: 'legacy cleared mid-flight',
+        }),
+      ],
+    });
+    const session: ChatSession = {
+      ...baseSession,
+      id: 'legacy-flight',
+      conversationId: 'legacy-flight',
+      currentSessionId: 'legacy-flight-child',
+    };
+    const { result, rerender } = renderHook(
+      ({ session }) => useActiveChatTranscript('http://station.test', session),
+      { initialProps: { session } },
+    );
+    await waitFor(() =>
+      expect(fetchConversationWindow).toHaveBeenCalledTimes(1),
+    );
+    // `/open` clears the child while the read sent with it is in flight.
+    rerender({ session: { ...session, currentSessionId: undefined } });
+    await act(async () => refuse({ status: 404 }));
+    await waitFor(() =>
+      expect(
+        result.current.messages.map((message) => message.content),
+      ).toContain('legacy cleared mid-flight'),
     );
     expect(fetchWindow).toHaveBeenCalledTimes(1);
   });

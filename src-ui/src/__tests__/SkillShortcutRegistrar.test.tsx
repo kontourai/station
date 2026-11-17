@@ -25,10 +25,22 @@ function Probe() {
   return null;
 }
 
-function Harness({ hasContext, onRun }: { hasContext: boolean; onRun: any }) {
+function Harness({
+  hasContext,
+  onRun,
+  activeChat,
+}: {
+  hasContext: boolean;
+  onRun: any;
+  activeChat?: Parameters<typeof SkillShortcutRegistrar>[0]['activeChat'];
+}) {
   return (
     <KeyboardShortcutsProvider>
-      <SkillShortcutRegistrar hasContext={hasContext} onRun={onRun} />
+      <SkillShortcutRegistrar
+        hasContext={hasContext}
+        activeChat={activeChat}
+        onRun={onRun}
+      />
       <Probe />
     </KeyboardShortcutsProvider>
   );
@@ -110,5 +122,73 @@ describe('SkillShortcutRegistrar', () => {
       modifiers: ['cmd'],
       disabled: false,
     });
+  });
+
+  // A shortcut types a command into the active chat, so it follows the send
+  // rule: refused while the chat is opening, read-only or unverified; run when
+  // writable, or busy (the send queues behind the turn).
+  test('runs a command only where the active chat could take a send', () => {
+    const onRun = vi.fn();
+    mocks.skills = [
+      { name: 'first-book', command: { enabled: true, global: true } },
+    ];
+    const resolved = (canContinue: boolean, continuationPending = false) =>
+      ({
+        status: 'resolved',
+        canContinue,
+        ...(continuationPending ? { continuationPending } : {}),
+      }) as never;
+    const view = render(
+      <Harness
+        hasContext
+        onRun={onRun}
+        activeChat={{ conversationOpenPending: true }}
+      />,
+    );
+    act(() => registered[0].handler());
+    expect(mocks.toast).toHaveBeenLastCalledWith(
+      'This chat is still opening. Try again in a moment.',
+      'warning',
+    );
+
+    view.rerender(
+      <Harness
+        hasContext
+        onRun={onRun}
+        activeChat={{ conversationOpenState: resolved(false) }}
+      />,
+    );
+    act(() => registered[0].handler());
+    view.rerender(
+      <Harness
+        hasContext
+        onRun={onRun}
+        activeChat={{ conversationOpenFailed: true }}
+      />,
+    );
+    act(() => registered[0].handler());
+    expect(mocks.toast).toHaveBeenLastCalledWith(
+      "This chat can't take messages right now.",
+      'warning',
+    );
+    expect(onRun).not.toHaveBeenCalled();
+
+    view.rerender(
+      <Harness
+        hasContext
+        onRun={onRun}
+        activeChat={{ conversationOpenState: resolved(false, true) }}
+      />,
+    );
+    act(() => registered[0].handler());
+    view.rerender(
+      <Harness
+        hasContext
+        onRun={onRun}
+        activeChat={{ conversationOpenState: resolved(true) }}
+      />,
+    );
+    act(() => registered[0].handler());
+    expect(onRun).toHaveBeenCalledTimes(2);
   });
 });

@@ -5,6 +5,11 @@ import {
 } from '@kontourai/station-contracts/skill-command';
 import { useSkillsQuery } from '@kontourai/station-sdk';
 import { useMemo } from 'react';
+import {
+  type ConversationOpenPolicyState,
+  conversationCanMutate,
+  conversationOpenPhase,
+} from '../contexts/conversation-open-policy';
 import type { KeyboardShortcut } from '../contexts/KeyboardShortcutsContext';
 import { useToast } from '../contexts/ToastContext';
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
@@ -52,13 +57,30 @@ const NO_MODIFIERS: KeyboardShortcut['modifiers'] = [];
  * to pre-apply it was a second derivation of one fact, and it is what put a
  * changing value in the registering effect's dependencies.
  */
+/**
+ * Why the active chat cannot take a command now, by the rule queued sends
+ * follow: it can when writable, or busy (the send queues behind the turn).
+ */
+function shortcutRefusal(
+  chat: ConversationOpenPolicyState | undefined,
+): string | undefined {
+  if (!chat || conversationCanMutate(chat)) return undefined;
+  const phase = conversationOpenPhase(chat);
+  if (phase === 'busy') return undefined;
+  return phase === 'resolving'
+    ? 'This chat is still opening. Try again in a moment.'
+    : "This chat can't take messages right now.";
+}
+
 function SkillShortcut({
   target,
   hasContext,
+  activeChat,
   onRun,
 }: {
   target: ShortcutTarget;
   hasContext: boolean;
+  activeChat?: ConversationOpenPolicyState;
   onRun: (target: { cmd: string; name: string }) => void;
 }) {
   const { showToast } = useToast();
@@ -70,6 +92,11 @@ function SkillShortcut({
     () => {
       if (!hasContext) {
         showToast('Open a chat before running a shortcut.', 'warning');
+        return;
+      }
+      const refusal = shortcutRefusal(activeChat);
+      if (refusal) {
+        showToast(refusal, 'warning');
         return;
       }
       onRun({ cmd: `/${target.cmd}`, name: target.name });
@@ -84,9 +111,12 @@ function SkillShortcut({
 
 export function SkillShortcutRegistrar({
   hasContext,
+  activeChat,
   onRun,
 }: {
   hasContext: boolean;
+  /** The active chat's open state: a command runs only where a send could. */
+  activeChat?: ConversationOpenPolicyState;
   onRun: (target: { cmd: string; name: string }) => void;
 }) {
   const { data: skills = [] } = useSkillsQuery() as { data?: Skill[] };
@@ -122,6 +152,7 @@ export function SkillShortcutRegistrar({
           key={target.slug}
           target={target}
           hasContext={hasContext}
+          activeChat={activeChat}
           onRun={onRun}
         />
       ))}

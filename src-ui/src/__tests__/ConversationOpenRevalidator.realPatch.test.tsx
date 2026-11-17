@@ -88,14 +88,14 @@ describe('a held open answer under the real patch', () => {
     const wrap = (node: ReactNode) => (
       <QueryClientProvider client={client}>{node}</QueryClientProvider>
     );
-    const element = (loading: boolean) => (
+    const element = (loading: boolean, catalog = models) => (
       <ConversationOpenRevalidator
         sessionId={TAB}
         conversationId={CONVERSATION}
         apiBase="http://station.test"
         updateChat={updateChat}
         modelsLoading={loading}
-        availableModels={loading ? [] : models}
+        availableModels={loading ? [] : catalog}
         canModelSelect
         catalogProvider="codex"
         catalogConnectionId="codex-connection"
@@ -105,6 +105,9 @@ describe('a held open answer under the real patch', () => {
     return {
       catalogArrives: () =>
         act(async () => view.rerender(wrap(element(false)))),
+      /** The same catalog, refetched: a new array of the same models. */
+      catalogRefetched: () =>
+        act(async () => view.rerender(wrap(element(false, [...models])))),
     };
   }
 
@@ -188,5 +191,22 @@ describe('a held open answer under the real patch', () => {
         false,
       ),
     );
+  });
+
+  test('an answer already applied is not re-read by a later epoch change and catalog refetch', async () => {
+    activeChatsStore.updateChat(TAB, { requestedModel: null });
+    resolveConversationOpen.mockResolvedValue(resolved('child-1'));
+    const view = renderRevalidator(false);
+    await waitFor(() =>
+      expect(activeChatsStore.getSnapshot()[TAB]?.conversationOpenPending).toBe(
+        false,
+      ),
+    );
+    act(() => workObservation(client).resetStreamEpoch());
+    await view.catalogRefetched();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(resolveConversationOpen).toHaveBeenCalledTimes(1);
   });
 });
