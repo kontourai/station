@@ -1,0 +1,17 @@
+{
+  "revision": "f4f9afcc931dc65cde5c95e2d6bae7fbbeb0cd55",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Adds the lifecycle and deletion-preview routes and makes Delete hold the Project, stop its running turns and delete its schedules before removing it; PUT and POST refuse a lifecycle field. api.md documents these; other pages' Project route claims stay accurate.","inputs":["src-server/routes/projects/projects.ts"]},
+
+    {"path":"docs/guides/distribution-profiles.md","note":"Adds the lifecycle and deletion-preview routes and makes Delete hold the Project, stop its running turns and delete its schedules before removing it; PUT and POST refuse a lifecycle field. api.md documents these; other pages' Project route claims stay accurate.","inputs":["src-server/routes/projects/projects.ts"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Adds the lifecycle and deletion-preview routes and makes Delete hold the Project, stop its running turns and delete its schedules before removing it; PUT and POST refuse a lifecycle field. api.md documents these; other pages' Project route claims stay accurate.","inputs":["src-server/routes/projects/projects.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Adds the lifecycle and deletion-preview routes and makes Delete hold the Project, stop its running turns and delete its schedules before removing it; PUT and POST refuse a lifecycle field. api.md documents these; other pages' Project route claims stay accurate.","inputs":["src-server/routes/projects/projects.ts"]},
+
+    {"path":"docs/strategy/station-delivery-retirement.md","note":"Adds the lifecycle and deletion-preview routes and makes Delete hold the Project, stop its running turns and delete its schedules before removing it; PUT and POST refuse a lifecycle field. api.md documents these; other pages' Project route claims stay accurate.","inputs":["src-server/routes/projects/projects.ts"]},
+
+    {"path":"examples/enterprise-layout/README.md","note":"Adds the lifecycle and deletion-preview routes and makes Delete hold the Project, stop its running turns and delete its schedules before removing it; PUT and POST refuse a lifecycle field. api.md documents these; other pages' Project route claims stay accurate.","inputs":["src-server/routes/projects/projects.ts"]}
+  ]
+}

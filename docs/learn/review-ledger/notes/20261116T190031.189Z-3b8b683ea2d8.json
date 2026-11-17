@@ -1,0 +1,15 @@
+{
+  "revision": "f4f9afcc931dc65cde5c95e2d6bae7fbbeb0cd55",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Same additive hook exports as the SDK barrel; no existing hook changed.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Same additive hook exports as the SDK barrel; no existing hook changed.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Same additive hook exports as the SDK barrel; no existing hook changed.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Same additive hook exports as the SDK barrel; no existing hook changed.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Same additive hook exports as the SDK barrel; no existing hook changed.","inputs":["packages/sdk/src/queries.ts"]}
+  ]
+}
