@@ -229,13 +229,27 @@ async function fulfillConversationRead(route: Route): Promise<boolean> {
   if (
     /^\/api\/orchestration\/sessions\/session-[12]\/turns\/[^/]+\/basis$/.test(
       path,
-    ) ||
-    path ===
-      `/api/orchestration/sessions/${encodeURIComponent(ATTACHED)}/turns/${encodeURIComponent(`${ATTACHED}-turn`)}/basis`
+    )
   ) {
     await route.fulfill({
       status: 404,
       json: { success: false, error: 'Basis not found' },
+    });
+    return true;
+  }
+  // orchestration.ts GET /sessions/:threadId/inventory (the Inbox hover card):
+  // no inventory is kept for these sessions here.
+  if (
+    [
+      `/api/orchestration/sessions/${encodeURIComponent(ATTACHED)}/inventory`,
+      '/api/orchestration/sessions/session-1/inventory',
+    ].includes(path) &&
+    url.search === '?scope=whole-session'
+  ) {
+    await route.fulfill({
+      status: 404,
+      headers: { 'Cache-Control': 'private, no-store' },
+      json: { success: false, error: 'Session inventory unavailable' },
     });
     return true;
   }
