@@ -1,0 +1,283 @@
+{
+  "revision": "2a2225ead6e004c37bdfdebf5cca910933ee0905",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Added three user-facing label rows (Library, Continue in Project…, Setup recommendations) checked against the shipped UI copy; no existing row changed.","inputs":["docs/glossary.md","docs/reference/contracts.md","src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Added the Library and Continue in Project / Setup recommendations sections, checked against ProjectLibrarySection, ContinueInProjectDialog and SetupRecommendationsCard, the 25 MB limit and the hidden/package-folder skip rule.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Added the project-library and continue-in-project preview rows; checked against their binds in runtime-routes.ts and feature-preview-registry.ts.","inputs":["docs/user/settings.md","src-server/services/feature-previews/feature-preview-registry.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Added the Project Library section; checked against packages/contracts/src/project-library.ts and the projectLibrary flag.","inputs":["docs/reference/contracts.md","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts","src-server/tools/station-control-policy.ts","packages/contracts/package.json","packages/contracts/package.json#/exports","packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Added the Project Library section; checked against packages/sdk/src/project-library.ts and client/project-library.ts.","inputs":["docs/reference/sdk.md","packages/sdk/package.json","packages/sdk/package.json#/exports","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts","src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Added five Library rows; checked methods, paths, limits and preview/operator requirements against project-library-routes.ts.","inputs":["docs/reference/api.md","packages/sdk/src/client/index.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts","packages/contracts/src/environment-security.ts","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Added the Project Library section; checked the owners and links against the route, uploads service, TaskOutputModule and composer.","inputs":["docs/architecture/module-map.md","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts","src-server/tools/station-control-policy.ts"]},
+
+    {"path":"packages/contracts/README.md","note":"Added the /project-library subpath line; matches package.json exports.","inputs":["packages/contracts/README.md","packages/contracts/package.json#/exports"]},
+
+    {"path":"packages/sdk/README.md","note":"Added the Project Library subpath line; matches package.json exports.","inputs":["packages/sdk/README.md","packages/sdk/package.json#/exports"]},
+
+    {"path":"CONTEXT.md","note":"Glossary change only adds three user-facing label rows; nothing this map cites from the glossary changed meaning.","inputs":["CONTEXT.md","docs/glossary.md"]},
+
+    {"path":"CONTEXT-MAP.md","note":"Glossary change only adds three user-facing label rows; nothing this map cites from the glossary changed meaning.","inputs":["CONTEXT-MAP.md","docs/glossary.md"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"Diff adds one Project Library mount (/api/projects and /api/orchestration station-control leaves, absent on hosted) and one preview bind; no existing mount, route, guard or ordering changed. Library routes are documented in api.md and module-map.md in this PR.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Diff only adds seven declared leaves for the Project Library (five /api/projects/:slug/library routes at their family tiers, two internal-only station-control reads); no existing scope or tier changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Diff only adds seven declared leaves for the Project Library (five /api/projects/:slug/library routes at their family tiers, two internal-only station-control reads); no existing scope or tier changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Diff only adds seven declared leaves for the Project Library (five /api/projects/:slug/library routes at their family tiers, two internal-only station-control reads); no existing scope or tier changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/inference-fleet.md","note":"Diff only adds seven declared leaves for the Project Library (five /api/projects/:slug/library routes at their family tiers, two internal-only station-control reads); no existing scope or tier changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Diff only adds seven declared leaves for the Project Library (five /api/projects/:slug/library routes at their family tiers, two internal-only station-control reads); no existing scope or tier changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-relay-enrollment.md","note":"Diff only adds seven declared leaves for the Project Library (five /api/projects/:slug/library routes at their family tiers, two internal-only station-control reads); no existing scope or tier changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Diff only adds seven declared leaves for the Project Library (five /api/projects/:slug/library routes at their family tiers, two internal-only station-control reads); no existing scope or tier changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Diff only adds seven declared leaves for the Project Library (five /api/projects/:slug/library routes at their family tiers, two internal-only station-control reads); no existing scope or tier changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Diff only adds seven declared leaves for the Project Library (five /api/projects/:slug/library routes at their family tiers, two internal-only station-control reads); no existing scope or tier changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Diff only adds seven declared leaves for the Project Library (five /api/projects/:slug/library routes at their family tiers, two internal-only station-control reads); no existing scope or tier changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Diff only adds seven declared leaves for the Project Library (five /api/projects/:slug/library routes at their family tiers, two internal-only station-control reads); no existing scope or tier changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Diff only adds seven declared leaves for the Project Library (five /api/projects/:slug/library routes at their family tiers, two internal-only station-control reads); no existing scope or tier changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Diff only adds seven declared leaves for the Project Library (five /api/projects/:slug/library routes at their family tiers, two internal-only station-control reads); no existing scope or tier changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Diff only adds seven declared leaves for the Project Library (five /api/projects/:slug/library routes at their family tiers, two internal-only station-control reads); no existing scope or tier changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Diff only adds seven declared leaves for the Project Library (five /api/projects/:slug/library routes at their family tiers, two internal-only station-control reads); no existing scope or tier changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Diff only adds seven declared leaves for the Project Library (five /api/projects/:slug/library routes at their family tiers, two internal-only station-control reads); no existing scope or tier changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Diff only adds seven declared leaves for the Project Library (five /api/projects/:slug/library routes at their family tiers, two internal-only station-control reads); no existing scope or tier changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Diff only adds seven declared leaves for the Project Library (five /api/projects/:slug/library routes at their family tiers, two internal-only station-control reads); no existing scope or tier changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Diff only adds seven declared leaves for the Project Library (five /api/projects/:slug/library routes at their family tiers, two internal-only station-control reads); no existing scope or tier changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"packages/connect/README.md","note":"Diff only adds seven declared leaves for the Project Library (five /api/projects/:slug/library routes at their family tiers, two internal-only station-control reads); no existing scope or tier changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","note":"Diff only adds seven declared leaves for the Project Library (five /api/projects/:slug/library routes at their family tiers, two internal-only station-control reads); no existing scope or tier changed.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Diff adds one More-menu row, Continue in Project, behind the continue-in-project preview, and its dialog; existing rows, order and dock behavior are unchanged. Documented in docs/user/concepts.md.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Diff adds one More-menu row, Continue in Project, behind the continue-in-project preview, and its dialog; existing rows, order and dock behavior are unchanged. Documented in docs/user/concepts.md.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Diff adds one More-menu row, Continue in Project, behind the continue-in-project preview, and its dialog; existing rows, order and dock behavior are unchanged. Documented in docs/user/concepts.md.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Diff adds one More-menu row, Continue in Project, behind the continue-in-project preview, and its dialog; existing rows, order and dock behavior are unchanged. Documented in docs/user/concepts.md.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Diff adds one More-menu row, Continue in Project, behind the continue-in-project preview, and its dialog; existing rows, order and dock behavior are unchanged. Documented in docs/user/concepts.md.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"Diff adds one More-menu row, Continue in Project, behind the continue-in-project preview, and its dialog; existing rows, order and dock behavior are unchanged. Documented in docs/user/concepts.md.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Diff adds one More-menu row, Continue in Project, behind the continue-in-project preview, and its dialog; existing rows, order and dock behavior are unchanged. Documented in docs/user/concepts.md.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Diff adds one More-menu row, Continue in Project, behind the continue-in-project preview, and its dialog; existing rows, order and dock behavior are unchanged. Documented in docs/user/concepts.md.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Diff adds one More-menu row, Continue in Project, behind the continue-in-project preview, and its dialog; existing rows, order and dock behavior are unchanged. Documented in docs/user/concepts.md.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Diff adds list_project_library and read_project_library_file as SELF_READ tools (caller's own recorded Project) and allows them for restricted-network sessions like get_task_brief; no existing tool policy changed.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Diff adds list_project_library and read_project_library_file as SELF_READ tools (caller's own recorded Project) and allows them for restricted-network sessions like get_task_brief; no existing tool policy changed.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Diff adds list_project_library and read_project_library_file as SELF_READ tools (caller's own recorded Project) and allows them for restricted-network sessions like get_task_brief; no existing tool policy changed.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Diff adds list_project_library and read_project_library_file as SELF_READ tools (caller's own recorded Project) and allows them for restricted-network sessions like get_task_brief; no existing tool policy changed.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Diff adds list_project_library and read_project_library_file as SELF_READ tools (caller's own recorded Project) and allows them for restricted-network sessions like get_task_brief; no existing tool policy changed.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Diff adds list_project_library and read_project_library_file as SELF_READ tools (caller's own recorded Project) and allows them for restricted-network sessions like get_task_brief; no existing tool policy changed.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Diff adds list_project_library and read_project_library_file as SELF_READ tools (caller's own recorded Project) and allows them for restricted-network sessions like get_task_brief; no existing tool policy changed.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Diff adds list_project_library and read_project_library_file as SELF_READ tools (caller's own recorded Project) and allows them for restricted-network sessions like get_task_brief; no existing tool policy changed.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Diff adds list_project_library and read_project_library_file as SELF_READ tools (caller's own recorded Project) and allows them for restricted-network sessions like get_task_brief; no existing tool policy changed.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Diff adds one optional StationCapabilityFlags key, projectLibrary; no existing flag or type changed.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Diff adds one optional StationCapabilityFlags key, projectLibrary; no existing flag or type changed.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Diff adds one optional StationCapabilityFlags key, projectLibrary; no existing flag or type changed.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/design/station-peer-pairing.md","note":"Diff adds one optional StationCapabilityFlags key, projectLibrary; no existing flag or type changed.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Diff adds one optional StationCapabilityFlags key, projectLibrary; no existing flag or type changed.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Diff adds one optional StationCapabilityFlags key, projectLibrary; no existing flag or type changed.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Diff adds one optional StationCapabilityFlags key, projectLibrary; no existing flag or type changed.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Diff adds one optional StationCapabilityFlags key, projectLibrary; no existing flag or type changed.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Diff adds one optional StationCapabilityFlags key, projectLibrary; no existing flag or type changed.","inputs":["packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/adr/0021-separate-plugin-and-agent-sdk-surfaces.md","note":"Diff adds one subpath, ./project-library; existing exports unchanged. Documented in docs/reference/sdk.md and packages/sdk/README.md.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"docs/architecture.md","note":"Diff adds one subpath, ./project-library; existing exports unchanged. Documented in docs/reference/sdk.md and packages/sdk/README.md.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"docs/guides/agent-development.md","note":"Diff adds one subpath, ./project-library; existing exports unchanged. Documented in docs/reference/sdk.md and packages/sdk/README.md.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"docs/guides/build-your-first-plugin.md","note":"Diff adds one subpath, ./project-library; existing exports unchanged. Documented in docs/reference/sdk.md and packages/sdk/README.md.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"docs/reference/sdk.md","note":"Diff adds one subpath, ./project-library; existing exports unchanged. Documented in docs/reference/sdk.md and packages/sdk/README.md.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Diff adds one subpath, ./project-library; existing exports unchanged. Documented in docs/reference/sdk.md and packages/sdk/README.md.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"packages/sdk/README.md","note":"Diff adds one subpath, ./project-library; existing exports unchanged. Documented in docs/reference/sdk.md and packages/sdk/README.md.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Diff adds the Library section on Files & connections and the Setup recommendations card on Overview, both behind default-off previews; existing sections, navigation and order are unchanged.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Diff adds the Library section on Files & connections and the Setup recommendations card on Overview, both behind default-off previews; existing sections, navigation and order are unchanged.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/media/project-start-after.png","note":"Diff adds the Library section on Files & connections and the Setup recommendations card on Overview, both behind default-off previews; existing sections, navigation and order are unchanged.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/media/project-start-before.png","note":"Diff adds the Library section on Files & connections and the Setup recommendations card on Overview, both behind default-off previews; existing sections, navigation and order are unchanged.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"Diff adds the Library section on Files & connections and the Setup recommendations card on Overview, both behind default-off previews; existing sections, navigation and order are unchanged.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Diff adds the Library section on Files & connections and the Setup recommendations card on Overview, both behind default-off previews; existing sections, navigation and order are unchanged.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Diff adds the Library section on Files & connections and the Setup recommendations card on Overview, both behind default-off previews; existing sections, navigation and order are unchanged.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Diff adds the Library section on Files & connections and the Setup recommendations card on Overview, both behind default-off previews; existing sections, navigation and order are unchanged.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/architecture.md","note":"Diff adds one subpath, ./project-library; existing exports unchanged. Documented in docs/reference/contracts.md and packages/contracts/README.md.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Diff adds one subpath, ./project-library; existing exports unchanged. Documented in docs/reference/contracts.md and packages/contracts/README.md.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/reference/contracts.md","note":"Diff adds one subpath, ./project-library; existing exports unchanged. Documented in docs/reference/contracts.md and packages/contracts/README.md.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Diff adds one subpath, ./project-library; existing exports unchanged. Documented in docs/reference/contracts.md and packages/contracts/README.md.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"packages/contracts/README.md","note":"Diff adds one subpath, ./project-library; existing exports unchanged. Documented in docs/reference/contracts.md and packages/contracts/README.md.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/design/motion.md","note":"Diff adds eight gallery screens (Project Library and Setup recommendations, both themes, 1440 and 390 px); no existing screen, mock or volatile-chrome rule changed.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Diff adds eight gallery screens (Project Library and Setup recommendations, both themes, 1440 and 390 px); no existing screen, mock or volatile-chrome rule changed.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Diff adds eight gallery screens (Project Library and Setup recommendations, both themes, 1440 and 390 px); no existing screen, mock or volatile-chrome rule changed.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Diff adds one UI-only consumer, continue-in-project, after the existing constructor consumers; the registry's behavior is unchanged. Both new previews are rows in docs/user/settings.md.","inputs":["src-server/services/feature-previews/feature-preview-registry.ts"]},
+
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Diff adds one UI-only consumer, continue-in-project, after the existing constructor consumers; the registry's behavior is unchanged. Both new previews are rows in docs/user/settings.md.","inputs":["src-server/services/feature-previews/feature-preview-registry.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Diff adds one UI-only consumer, continue-in-project, after the existing constructor consumers; the registry's behavior is unchanged. Both new previews are rows in docs/user/settings.md.","inputs":["src-server/services/feature-previews/feature-preview-registry.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Diff registers the two Project Library tools after get_task_brief; registration order and every existing tool are unchanged.","inputs":["src-server/tools/station-control-mcp-server.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Diff registers the two Project Library tools after get_task_brief; registration order and every existing tool are unchanged.","inputs":["src-server/tools/station-control-mcp-server.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Diff adds listForProject and readContentForProject reads (Project-scoped, same verified snapshot read); existing list/read/create/delete behavior and storage format are unchanged.","inputs":["src-server/services/projects/task-output-module.ts"]},
+
+    {"path":"docs/design/remote-execution-preparation.md","note":"Diff adds projectLibrary (withdrawn on hosted) beside projectSchedules; no existing flag or deployment rule changed.","inputs":["src-server/capabilities/station-capability-flags.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Diff adds one re-export line for ./project-library; nothing else changed.","inputs":["packages/sdk/src/client/index.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Only change is the added ./project-library export subpath; version, dependencies and scripts unchanged.","inputs":["packages/sdk/package.json"]},
+
+    {"path":"docs/reference/contracts.md","note":"Only change is the added ./project-library export subpath; version, dependencies and scripts unchanged.","inputs":["packages/contracts/package.json"]}
+  ]
+}
