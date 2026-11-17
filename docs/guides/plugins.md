@@ -678,8 +678,11 @@ permission, or removal controls until the manifest validates again.
 ### Recover interrupted activation
 
 On a slow or busy host, an install or update can be saved before its runtime
-activation finishes. Station stops that activation rather than hold every other
-configuration change behind it, and it does not retry it on its own. Plugins
+activation finishes. Station waits up to 10 seconds for a plugin to activate,
+the same limit as any other configuration change; past it, Station stops that
+activation rather than hold every other configuration change behind it, and it
+does not retry it on its own. Recovery runs under the same limit, so on a busy
+host recover when it is idle. Plugins
 then says the plugin was installed (or updated) but is not active, and opens
 its row, which reads **Needs recovery**. It did not fail, and installing it
 again would install a second copy. Station does not ask for its trusted
