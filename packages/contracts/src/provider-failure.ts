@@ -21,6 +21,7 @@ import {
   CONVERSATION_CONTEXT_UNAVAILABLE_CODE,
   CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
+  SESSION_CONFIGURATION_REPLACED_CODE,
 } from './orchestration.js';
 import { PRINCIPAL_UNRESOLVED_CODE } from './principal.js';
 import { PROJECT_IDENTITY_NOT_PREPARED_CODE } from './project-identity.js';
@@ -185,6 +186,9 @@ export const PROVIDER_FAILURE_KINDS = {
   [ADOPTION_CONTINUATION_IN_PROGRESS_CODE]: 'busy',
   // The current Session still has a turn running; the handoff waits for it.
   [CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE]: 'busy',
+  // A replaced Session still runs work from before the change; sending again
+  // once it ends restarts the Session.
+  [SESSION_CONFIGURATION_REPLACED_CODE]: 'busy',
   [ADOPTION_ENGINE_NOT_READY_CODE]: 'unavailable',
   // A second consumer violates Station's internal queue-ownership invariant.
   async_event_queue_consumer_conflict: 'conflict',

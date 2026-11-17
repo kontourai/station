@@ -2,7 +2,10 @@ import {
   CONTINUATION_WORKSPACE_REFUSAL_CODES,
   EXECUTION_ENGINE_CHANGED_CODE,
 } from '@kontourai/station-contracts/execution-target';
-import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
+import {
+  APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
+  SESSION_CONFIGURATION_REPLACED_CODE,
+} from '@kontourai/station-contracts/orchestration';
 import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principal';
 import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
@@ -438,6 +441,23 @@ export function translateChatError(
       hint: 'Start a new chat to continue.',
       callerHints: { noSend: true, noNewChat: null, neither: null },
       terminalSession: true,
+    };
+  }
+
+  // The agent's configuration (its Agent, tool servers or engine connection)
+  // changed while this chat's engine was still running work it started
+  // before the change. Nothing was sent. That work can no longer use tools,
+  // so it ends; sending again after it does restarts the chat's engine in
+  // place, with this conversation, under the current configuration.
+  if (code === SESSION_CONFIGURATION_REPLACED_CODE) {
+    return {
+      title: "This agent's settings changed",
+      body:
+        text ||
+        "This agent's configuration changed while the chat was still running work started under the old one. Nothing was sent.",
+      hint: 'Send again once the current work finishes: the chat restarts with the new settings and keeps this conversation.',
+      // A caller that may not send here has nothing true to be told.
+      callerHints: { noNewChat: true, noSend: null, neither: null },
     };
   }
 

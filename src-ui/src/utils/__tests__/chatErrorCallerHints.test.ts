@@ -9,7 +9,10 @@ import {
   CONTINUATION_WORKSPACE_REFUSAL_CODES,
   EXECUTION_ENGINE_CHANGED_CODE,
 } from '@kontourai/station-contracts/execution-target';
-import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
+import {
+  APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
+  SESSION_CONFIGURATION_REPLACED_CODE,
+} from '@kontourai/station-contracts/orchestration';
 import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principal';
 import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
@@ -47,6 +50,7 @@ const INPUTS: Array<{
 }> = [
   ...[
     SESSION_ENDED_REJECTION_CODE,
+    SESSION_CONFIGURATION_REPLACED_CODE,
     ATTACHMENT_INPUT_UNSUPPORTED_CODE,
     ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
     EXECUTION_ENGINE_CHANGED_CODE,

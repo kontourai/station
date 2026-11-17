@@ -65,6 +65,22 @@ describe('translateChatError', () => {
     expect(formatChatErrorDisplay(result)).not.toMatch(/retrying may help/i);
   });
 
+  it('names a replaced-configuration refusal and says sending again after the work restarts the chat', () => {
+    const message =
+      "This agent's configuration changed while the session was still running work started under the old configuration. That work cannot use tools any more; once it ends, send your message again and the session restarts under the current configuration.";
+    const result = translateChatError({
+      status: 409,
+      code: 'session_configuration_replaced',
+      message,
+    });
+    expect(result.title).toBe("This agent's settings changed");
+    expect(result.body).toBe(message);
+    expect(result.hint).toMatch(/send again once the current work finishes/i);
+    expect(result.hint).toMatch(/keeps this conversation/);
+    expect(formatChatErrorDisplay(result)).not.toMatch(/retrying may help/i);
+    expect(result.title).not.toBe('Error');
+  });
+
   it('classifies an ended-session refusal by backend code as a Station-side end, not an error', () => {
     const result = translateChatError({
       code: 'session_ended',
