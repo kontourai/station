@@ -1,3 +1,4 @@
+import { validateStoreAuthority } from '../promote-store-release.mjs';
 import { parseReleaseTag } from './release-tag.mjs';
 import { releaseVariants } from './release-variants.mjs';
 
@@ -226,6 +227,14 @@ function ancillaryAssets(tag) {
     { name: 'station-updater-public-key.txt', role: 'updater-public-key' },
     // #3591: records whether the Windows MSI carries Authenticode.
     { name: windowsSigningReceiptAsset(tag), role: 'platform-signing-receipt' },
+    ...(parseReleaseTag(tag).kind === 'rc'
+      ? [
+          {
+            name: 'station-release-store-authority.json',
+            role: 'store-promotion-authority',
+          },
+        ]
+      : []),
     {
       name: 'station-portable.tar.gz.sha256',
       role: 'portable-checksum',
@@ -859,6 +868,30 @@ export function validateReleaseInventory(
   }
   validateSidecars(inventory, assetsDir);
   validateWindowsSigning(inventory, assetsDir);
+  if (assetsDir && parseReleaseTag(inventory.tag).kind === 'rc') {
+    const authority = validateStoreAuthority(
+      JSON.parse(
+        readFileSync(
+          join(assetsDir, 'station-release-store-authority.json'),
+          'utf8',
+        ),
+      ),
+    );
+    const asset = (suffix) =>
+      inventory.assets.find(
+        ({ name }) => name === `station-${inventory.tag}-${suffix}`,
+      )?.sha256;
+    if (
+      !authority.android ||
+      !authority.ios ||
+      authority.producerTag !== inventory.tag ||
+      authority.sourceSha !== inventory.sourceSha ||
+      authority.version !== inventory.version ||
+      authority.android.aabSha256 !== asset('android-universal.aab') ||
+      authority.ios.ipaSha256 !== asset('ios-device.ipa')
+    )
+      fail('store promotion authority does not bind this candidate');
+  }
   validateHostStream(inventory, assetsDir, manifestKeys);
   validateContainer(inventory, assetsDir, containerDescriptor);
   validateUpdaterPairs(inventory, assetsDir, updaterPublicKey);
@@ -891,13 +924,14 @@ export function readInventory(file) {
 export function assertOnlyExpectedAssets(
   assetsDir,
   tag,
-  { allowSignedHostManifest = false } = {},
+  { allowSignedHostManifest = false, allowPromotionReceipt = false } = {},
 ) {
   const allowed = new Set(expectedAssets(tag).keys());
   allowed.add('station-release-inventory.json');
   allowed.add('station-release-checksums.txt');
   // Attached by publish-release.yml; validateReleaseInventory verifies it.
   if (allowSignedHostManifest) allowed.add(signedHostManifestAsset(tag));
+  if (allowPromotionReceipt) allowed.add('station-release-promotion.json');
   for (const entry of readdirSync(assetsDir, { withFileTypes: true })) {
     if (!allowed.has(entry.name)) fail(`unexpected asset ${entry.name}`);
     if (entry.isSymbolicLink() || !entry.isFile())

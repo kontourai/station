@@ -335,6 +335,8 @@ function TaskCard({
   const showBranch =
     !pullRequests.length && branch !== undefined && branch !== projectBranch;
   const factTime = parseEpochMs(derivation.factTime);
+  const feedbackNote = derivation.feedbackNote;
+  const feedbackAt = parseEpochMs(feedbackNote?.at);
   // State each fact once: the status line already names a lone PR.
   const detailNamesPullRequest =
     shownPullRequest !== undefined &&
@@ -369,6 +371,16 @@ function TaskCard({
       <p className="task-card__status-line">
         <span className="task-card__word">{word}</span>
         {detail ? <span className="task-card__detail"> · {detail}</span> : null}
+        {feedbackNote ? (
+          // What agent feedback is doing for this pull request; never a lane.
+          <span className="task-card__detail">
+            {' · '}
+            {feedbackNote.text}
+            {feedbackAt !== undefined
+              ? ` ${relativeTime(feedbackAt, now)}`
+              : null}
+          </span>
+        ) : null}
         {derivation.certainty === 'partial' ? (
           <span className="sr-only">, some facts could not be read</span>
         ) : null}

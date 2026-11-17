@@ -8,25 +8,39 @@
  * Not composed on a hosted Station (no host forge login to read with, and
  * no conversation inbox), so every route there answers 404.
  */
-import type { ConversationPullRequestLink } from '@kontourai/station-contracts/conversation-pull-request-links';
-import { pullRequestFeedbackKey } from '@kontourai/station-contracts/pull-request-feedback';
+import type {
+  ConversationPullRequestLink,
+  PullRequestLinkIdentity,
+} from '@kontourai/station-contracts/conversation-pull-request-links';
+import {
+  pullRequestFeedbackKey,
+  pullRequestFeedbackSends,
+} from '@kontourai/station-contracts/pull-request-feedback';
 import type { IPullRequestProvider } from '@kontourai/station-contracts/pull-request-provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { isSessionLifecycleStateStopped } from '@kontourai/station-contracts/session-lifecycle';
 import type { TaskKeptDeclaredPullRequest } from '@kontourai/station-contracts/task-graph';
+import type { TaskPullRequestFeedbackFact } from '@kontourai/station-contracts/task-lane';
 import { parseGitHubWorkItemRef } from '@kontourai/station-contracts/work-item-provider';
-import type {
-  createPullRequestFeedbackRoutes,
-  PullRequestFeedbackRouteAccess,
+import {
+  type createPullRequestFeedbackRoutes,
+  type PullRequestFeedbackRouteAccess,
+  pullRequestFeedbackWriterId,
 } from '../../routes/pull-requests/pull-request-feedback.js';
 import { isOperatorInPersonNotAgent } from '../../security/coding-authority.js';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import type { FeaturePreviewRegistry } from '../../services/feature-previews/feature-preview-registry.js';
+import type { NotificationService } from '../../services/notifications/notification-service.js';
 import type { EventStore } from '../../services/orchestration/event-store.js';
 import { projectSessionLifecycle } from '../../services/orchestration/session-lifecycle-service.js';
 import type { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
 import { declaredPullRequestsForConversation } from '../../services/pull-requests/conversation-declared-pull-requests.js';
 import type { ConversationPullRequestLinkStore } from '../../services/pull-requests/conversation-pull-request-link-store.js';
+import {
+  type PullRequestFeedbackAttentionSource,
+  schedulePullRequestFeedbackNotice,
+  settlePullRequestFeedbackNotices,
+} from '../../services/pull-requests/pull-request-feedback-attention.js';
 import {
   type FeedbackSessionState,
   PullRequestFeedbackDelivery,
@@ -37,9 +51,12 @@ import {
 } from '../../services/pull-requests/pull-request-feedback-ownership.js';
 import { PullRequestFeedbackPoller } from '../../services/pull-requests/pull-request-feedback-poller.js';
 import {
+  type PullRequestFeedbackStore,
   PullRequestFeedbackStoreHolder,
   pullRequestFeedbackStorePath,
+  type StoredClaimCondition,
 } from '../../services/pull-requests/pull-request-feedback-store.js';
+import { pullRequestFeedbackTaskFact } from '../../services/pull-requests/pull-request-feedback-task-fact.js';
 
 /**
  * A person, not Station acting for an agent (its internal principal) and
@@ -53,6 +70,37 @@ function requestIsPerson(request: Request): boolean {
     principal?.deviceKind !== 'delegation' &&
     isOperatorInPersonNotAgent(request)
   );
+}
+
+/**
+ * A pause recorded before pauses kept `at`: stamped once, now, so its
+ * attention version (and an acknowledgement of it) stays put afterwards.
+ * `enabledAt` moved whenever a switch was saved, resurfacing it.
+ */
+function backfillPausedAt(
+  store: PullRequestFeedbackStore,
+  prKey: string,
+  condition: Extract<StoredClaimCondition, { state: 'paused' }>,
+): string {
+  const at = new Date().toISOString();
+  store.setCondition(prKey, { ...condition, at });
+  return at;
+}
+
+/** The forge's pull request page, only over https on its own host. */
+function pullRequestPageUrl(
+  value: string | undefined,
+  host: string,
+): string | undefined {
+  try {
+    const url = new URL(value ?? '');
+    return url.protocol === 'https:' &&
+      url.host.toLowerCase() === host.toLowerCase()
+      ? url.href
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** The events whose fold decides a Session's lifecycle state. */
@@ -100,11 +148,19 @@ export interface PullRequestFeedbackRuntimeDeps {
   keptForSessions(
     sessionIds: readonly string[],
   ): readonly TaskKeptDeclaredPullRequest[];
-  access: Omit<PullRequestFeedbackRouteAccess, 'enabled' | 'isPerson'>;
+  access: Omit<
+    PullRequestFeedbackRouteAccess,
+    'enabled' | 'isPerson' | 'mayContinue'
+  >;
   logger: {
     warn(message: string, meta?: Record<string, unknown>): void;
   };
 }
+
+type FeedbackNotifier = Pick<
+  NotificationService,
+  'scheduleEnveloped' | 'list' | 'markStatus'
+>;
 
 export interface PullRequestFeedbackRuntime {
   /**
@@ -116,10 +172,35 @@ export interface PullRequestFeedbackRuntime {
     conversationId: string;
     clientTurnId: string;
   }): { reasonCode: string; reason: string } | undefined;
+  /**
+   * A kept pull request's feedback for the Task board, as this request may
+   * see it: undefined while the preview is off or unless it may read the
+   * chat that gets it.
+   */
+  factFor(
+    identity: PullRequestLinkIdentity,
+    request: Request,
+    /** The Task's own run (`TaskRecord.sessionId`): only it can be fixing. */
+    taskSessionId?: string,
+  ): TaskPullRequestFeedbackFact | undefined;
   /** The scheduler tick: started, never awaited. */
   tick(input: { now: number; signal: AbortSignal }): void;
   /** #4508: whether this feature sends this kind of follow-up for the item. */
   owns(itemRef: string, kind: string): boolean;
+  /**
+   * Pull requests whose feedback needs a person now: paused, or waiting on
+   * a stopped agent. Empty while the preview is off. Not filtered by
+   * reader: the attention projection keeps only Sessions the reader reads.
+   */
+  attentionSources(): PullRequestFeedbackAttentionSource[];
+  /**
+   * The notification service, once composed (it is created after this
+   * runtime). Until then a notice is dropped; the attention item still
+   * shows.
+   */
+  bindNotifier(service: FeedbackNotifier): void;
+  /** Whether this request could Send again or turn feedback off for the chat. */
+  viewerMayChange(request: Request, conversationId: string): boolean;
   close(): Promise<void>;
 }
 
@@ -136,6 +217,7 @@ export function createFeedbackSessionReaders(deps: {
     | 'readSessionByThread'
     | 'listEventPayloads'
     | 'listEventsByMethods'
+    | 'latestEventByMethods'
   >;
   orchestration: PullRequestFeedbackRuntimeDeps['orchestration'];
   inbox: Pick<ThreadInboxDelivery, 'mustQueue'>;
@@ -155,7 +237,7 @@ export function createFeedbackSessionReaders(deps: {
     const sessionId =
       orchestration.currentConversationSessionId(conversationId);
     const persisted = eventStore.readSessionByThread(sessionId);
-    if (!persisted) return { state: 'stopped' };
+    if (!persisted) return { state: 'stopped', sessionId };
     const { lifecycleState } = projectSessionLifecycle({
       session: persisted,
       events: eventStore.listEventPayloads(
@@ -166,7 +248,7 @@ export function createFeedbackSessionReaders(deps: {
       ),
     });
     const ownerUserId = orchestration.sessionRecordedOwnerId(sessionId);
-    const owner = ownerUserId ? { ownerUserId } : {};
+    const owner = ownerUserId ? { ownerUserId, sessionId } : { sessionId };
     if (isSessionLifecycleStateStopped(lifecycleState))
       return { state: 'stopped', ...owner };
     if (
@@ -200,13 +282,29 @@ export function createFeedbackSessionReaders(deps: {
     }
     return windows;
   };
-  const lastTurnAt = (conversationId: string) => {
-    const last = turnEvents(
+  /** Only the newest turn event of the conversation's current Session. */
+  const lastTurnEvent = (conversationId: string) =>
+    eventStore.latestEventByMethods(
       orchestration.currentConversationSessionId(conversationId),
-    ).at(-1);
+      TURN_METHODS,
+    )?.payload as CanonicalRuntimeEvent | undefined;
+  const lastTurnAt = (conversationId: string) => {
+    const last = lastTurnEvent(conversationId);
     return last ? Date.parse(last.createdAt) : undefined;
   };
-  return { conversationOf, lineage, session, turnWindows, lastTurnAt };
+  /** The send key of the current Session's turn, while it has not ended. */
+  const openTurnKey = (conversationId: string) => {
+    const last = lastTurnEvent(conversationId);
+    return last?.method === 'turn.started' ? last.clientTurnId : undefined;
+  };
+  return {
+    conversationOf,
+    lineage,
+    session,
+    turnWindows,
+    lastTurnAt,
+    openTurnKey,
+  };
 }
 
 /**
@@ -254,12 +352,18 @@ export function composePullRequestFeedbackRuntime(
   const holder = new PullRequestFeedbackStoreHolder(() =>
     pullRequestFeedbackStorePath(deps.homeDir),
   );
-  const { conversationOf, lineage, session, turnWindows, lastTurnAt } =
-    createFeedbackSessionReaders({
-      eventStore,
-      orchestration: deps.orchestration,
-      inbox,
-    });
+  const {
+    conversationOf,
+    lineage,
+    session,
+    turnWindows,
+    lastTurnAt,
+    openTurnKey,
+  } = createFeedbackSessionReaders({
+    eventStore,
+    orchestration: deps.orchestration,
+    inbox,
+  });
   /** What a person linked to the chat (any Session of it) or kept on its Task. */
   const linkedNow = (conversationId: string) => {
     const ids = lineage(conversationId);
@@ -276,8 +380,45 @@ export function composePullRequestFeedbackRuntime(
   };
   const linkedIdentities = async (conversationId: string) =>
     linkedNow(conversationId);
+  let notifier: FeedbackNotifier | undefined;
+  const access = {
+    ...deps.access,
+    enabled,
+    isPerson: requestIsPerson,
+    mayContinue: (conversationId: string, userId: string) =>
+      inbox.mayContinue(conversationId, userId),
+  };
+  // Assigned below; delivery settles notices after each run through it.
+  let attentionSources: () => PullRequestFeedbackAttentionSource[] = () => [];
 
+  // Set before the store closes: a run finishing during shutdown would
+  // read no sources and expire every live notice.
+  let closing = false;
   const delivery = new PullRequestFeedbackDelivery({
+    settleNotices: () => {
+      const service = notifier;
+      if (!service || closing) return;
+      settlePullRequestFeedbackNotices(service, attentionSources()).catch(
+        (error) =>
+          deps.logger.warn('Pull request feedback notices not settled', {
+            error: error instanceof Error ? error.message : String(error),
+          }),
+      );
+    },
+    notify: (notice) => {
+      const service = notifier;
+      if (!service) return;
+      schedulePullRequestFeedbackNotice(
+        service,
+        notice,
+        deps.orchestration.currentConversationSessionId(notice.conversationId),
+      ).catch((error) =>
+        deps.logger.warn('Pull request feedback notification failed', {
+          conversationId: notice.conversationId,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    },
     linked: linkedNow,
     store: () => holder.forRead(),
     enabled,
@@ -311,6 +452,75 @@ export function composePullRequestFeedbackRuntime(
     title: (conversationId) =>
       eventStore.conversationTitle(lineage(conversationId)),
   });
+  attentionSources = () => {
+    const store = enabled() ? holder.forRead() : undefined;
+    if (!store) return [];
+    const sources: PullRequestFeedbackAttentionSource[] = [];
+    const linkedKeys = new Map<string, Set<string>>();
+    const stillLinked = (conversationId: string, prKey: string) => {
+      let keys = linkedKeys.get(conversationId);
+      if (!keys) {
+        keys = new Set(linkedNow(conversationId).map(pullRequestFeedbackKey));
+        linkedKeys.set(conversationId, keys);
+      }
+      return keys.has(prKey);
+    };
+    for (const claim of store.allClaims()) {
+      const condition = claim.condition;
+      if (
+        !pullRequestFeedbackSends(claim.settings) ||
+        (condition && condition.state !== 'paused') ||
+        // Unlinked: delivery releases it on its next run.
+        !stillLinked(claim.conversationId, claim.prKey)
+      )
+        continue;
+      const url = pullRequestPageUrl(
+        store.observation(claim.prKey)?.observation.url,
+        claim.identity.host,
+      );
+      const base = {
+        conversationId: claim.conversationId,
+        sessionId: deps.orchestration.currentConversationSessionId(
+          claim.conversationId,
+        ),
+        prKey: claim.prKey,
+        identity: claim.identity,
+        ...(url ? { url } : {}),
+      };
+      if (condition?.state === 'paused') {
+        sources.push({
+          ...base,
+          reason: condition.reason,
+          headSha: condition.headSha,
+          ...(condition.cap ? { cap: condition.cap } : {}),
+          // Required checks first, as a person reads them.
+          ...(condition.shown || condition.failing
+            ? { failing: condition.shown ?? condition.failing }
+            : {}),
+          ...(condition.rounds ? { rounds: condition.rounds } : {}),
+          at: condition.at ?? backfillPausedAt(store, claim.prKey, condition),
+        });
+        continue;
+      }
+      const waiting = store
+        .pendingDeliveries(claim.conversationId)
+        .filter((pending) => pending.prKey === claim.prKey);
+      if (!waiting.length || session(claim.conversationId).state !== 'stopped')
+        continue;
+      sources.push({
+        ...base,
+        reason: 'agent-stopped',
+        headSha: waiting.at(-1)!.headSha,
+        waiting: waiting.map((pending) => ({
+          category: pending.category,
+          count: pending.summary.count,
+        })),
+        // Oldest first: new feedback while stopped keeps one version.
+        at: waiting[0]!.createdAt,
+      });
+    }
+    return sources;
+  };
   const hasClaims = (conversationId: string) =>
     (holder.forRead()?.claimsForConversation(conversationId).length ?? 0) > 0;
   const unsubscribe = subscribeFeedbackTriggers({
@@ -326,9 +536,28 @@ export function composePullRequestFeedbackRuntime(
       ownership,
       () => delivery,
       (conversationId) => void poller.refresh(conversationId),
-      { ...deps.access, enabled, isPerson: requestIsPerson },
+      access,
     ],
     placementRefusal: (input) => delivery.placementRefusal(input),
+    factFor: (identity, request, taskSessionId) => {
+      const store = enabled() ? holder.forRead() : undefined;
+      if (!store || !deps.access.current(request)) return undefined;
+      return pullRequestFeedbackTaskFact({
+        view: ownership.byPullRequest(
+          identity,
+          {
+            canRead: (conversationId) =>
+              deps.access.canRead(request, conversationId),
+          },
+          { sentChecks: false },
+        ),
+        store,
+        openTurnKey,
+        ...(taskSessionId
+          ? { taskConversationId: conversationOf(taskSessionId) }
+          : {}),
+      });
+    },
     tick: (input) => poller.tick(input),
     owns: (itemRef, kind) => {
       if (!enabled()) return false;
@@ -352,7 +581,20 @@ export function composePullRequestFeedbackRuntime(
         )
       );
     },
+    attentionSources: () => attentionSources(),
+    bindNotifier: (service) => {
+      notifier = service;
+    },
+    viewerMayChange: (request, conversationId) => {
+      try {
+        return !!pullRequestFeedbackWriterId(access, request, conversationId);
+      } catch {
+        // An unresolvable request authority offers nothing.
+        return false;
+      }
+    },
     close: async () => {
+      closing = true;
       unsubscribe();
       await poller.close();
       holder.close();

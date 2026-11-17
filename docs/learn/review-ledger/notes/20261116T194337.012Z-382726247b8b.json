@@ -1,0 +1,7 @@
+{
+  "revision": "d6e7b35a63f0b841537cdf7f2b1e59548af366e7",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked the lastFailure.detail paragraph against TelemetryDelivery.tsx: shown as plain text only while product phase is failed.","inputs":["docs/reference/usage-telemetry.md"]}
+  ]
+}

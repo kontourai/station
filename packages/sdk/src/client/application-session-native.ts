@@ -100,7 +100,7 @@ const nativeSurface = z
   .object({
     kind: z.literal('station-native'),
     appIdentifier: z.string(),
-    channel: z.enum(['dev', 'stable', 'beta', 'nightly']),
+    channel: z.enum(['dev', 'stable', 'nightly']),
     clientInstanceId: z.string(),
     keyThumbprint: z.string(),
   })
@@ -541,7 +541,7 @@ export async function createNativeApplicationSessionProof(
     surface.kind !== 'station-native' ||
     typeof surface.appIdentifier !== 'string' ||
     !surface.appIdentifier ||
-    !['dev', 'stable', 'beta', 'nightly'].includes(surface.channel) ||
+    !['dev', 'stable', 'nightly'].includes(surface.channel) ||
     typeof surface.clientInstanceId !== 'string' ||
     !surface.clientInstanceId ||
     typeof surface.keyThumbprint !== 'string' ||

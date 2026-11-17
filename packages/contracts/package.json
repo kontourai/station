@@ -176,6 +176,7 @@
     "./project-settings-overrides": "./src/project-settings-overrides.ts",
     "./project-chat-defaults": "./src/project-chat-defaults.ts",
     "./project-checkout-freshness": "./src/project-checkout-freshness.ts",
+    "./project-lifecycle": "./src/project-lifecycle.ts",
     "./registry-lifecycle": "./src/registry-lifecycle.ts",
     "./runtime": "./src/runtime.ts",
     "./runtime-events": "./src/runtime-events.ts",

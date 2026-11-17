@@ -27,6 +27,8 @@ export interface PullRequestFeedbackRouteAccess {
   readerOf(request: Request): (conversationId: string) => boolean;
   /** False for Station's internal principal and delegation credentials. */
   isPerson(request: Request): boolean;
+  /** The inbox's live send rule: whether this person may continue the chat. */
+  mayContinue(conversationId: string, userId: string): boolean;
 }
 
 const settingsSchema = z
@@ -53,6 +55,29 @@ const lower = (identity: PullRequestLinkIdentity): PullRequestLinkIdentity => ({
   ...identity,
   host: identity.host.toLowerCase(),
 });
+
+/**
+ * The person a request may change this conversation's feedback as (Send
+ * again, the switches, turning it off), or undefined: the routes' own
+ * writer rule, shared with the attention item's `viewerMayChange`.
+ */
+export function pullRequestFeedbackWriterId(
+  access: PullRequestFeedbackRouteAccess,
+  request: Request,
+  conversationId: string,
+): string | undefined {
+  if (
+    !access.enabled() ||
+    !access.current(request) ||
+    !access.canRead(request, conversationId) ||
+    !access.isPerson(request)
+  )
+    return undefined;
+  const userId = access.operator(request);
+  return userId && access.mayContinue(conversationId, userId)
+    ? userId
+    : undefined;
+}
 
 export function createPullRequestFeedbackRoutes(
   ownership: PullRequestFeedbackOwnership,
@@ -82,12 +107,37 @@ export function createPullRequestFeedbackRoutes(
     canRead: access.readerOf(c.req.raw),
   });
   const writer = (c: any, conversationId: string) => {
-    const userId =
-      readable(c, conversationId) && access.isPerson(c.req.raw)
-        ? access.operator(c.req.raw)
-        : undefined;
+    const userId = pullRequestFeedbackWriterId(
+      access,
+      c.req.raw,
+      conversationId,
+    );
     return userId ? viewerOf(c, userId) : undefined;
   };
+
+  // Whichever chat is open: a reader who may not read the owning chat
+  // learns only that another chat owns it (see `byPullRequest`).
+  app.get('/by-pull-request', async (c) => {
+    if (!access.current(c.req.raw)) return unavailable(c);
+    const { provider, host, owner, name, ref } = c.req.query();
+    const identity = pullRequestLinkIdentitySchema.safeParse({
+      provider,
+      host,
+      repository: { owner, name },
+      ref,
+    });
+    if (!identity.success)
+      return c.json(
+        { success: false, error: 'A pull request identity is required' },
+        400,
+      );
+    return c.json({
+      success: true,
+      data: ownership.byPullRequest(lower(identity.data), {
+        canRead: access.readerOf(c.req.raw),
+      }),
+    });
+  });
 
   app.get('/conversations/:conversationId', async (c) => {
     const conversationId = param(c, 'conversationId');
@@ -170,6 +220,8 @@ export function createPullRequestFeedbackRoutes(
         viewer: actor,
       });
       if (result.kind !== 'ok') return unavailable(c);
+      // Settles its notice, if it was paused or waiting.
+      void delivery()?.deliver(conversationId);
       return c.json({ success: true, data: result.view });
     },
   );

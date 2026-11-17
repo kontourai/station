@@ -37,7 +37,19 @@ of the tracked and unignored tree, including extensionless launchers and native
 entrypoints. Unrecognized files remain visible instead of being silently excluded. The normal
 `npm run fallow:audit` command is a changed-file review, not a full-tree audit.
 `npm run fallow:dead-code` prints Fallow's dead-code summary grouped by package
-for a quick local look; it reads no baseline and gates nothing.
+for a quick local look; it reads no baseline and gates nothing. Every fallow
+entry point waits for a [host heavy-check slot](#host-heavy-check-slots).
+
+`fallow audit` builds a full checkout of its base commit (about 380 MB here) in
+its temp directory. The audit runners give each run a private directory under
+a disk-backed cache, removed when the run ends, and remove any run directory
+older than an hour that a killed run left behind. The cache is
+`$XDG_CACHE_HOME/station/fallow` (when `XDG_CACHE_HOME` is absolute), else
+`~/.cache/station/fallow`, created owner-only; `STATION_FALLOW_CACHE_DIR`
+overrides it. It is never the system temp directory by default: where `/tmp` is
+tmpfs, a checkout there is RAM charged to the caller's memory limit (#5080).
+The raw `npm run fallow` and `npm run fallow:audit` commands run the analyzer
+directly, without that private directory.
 
 For ongoing implementation, `ci:fast` runs the [code-health prevention gate](code-quality.md#code-health-prevention)
 with an explicit base and reports introduced versus inherited candidates. It
@@ -311,7 +323,7 @@ The mutation suite is deliberately focused and opt-in. Its runner safety and pol
 
 Dependency advisory scans are not part of PR, merge-queue or Nightly feature
 verification. The central scheduled scan retains one assigned actionable tracker;
-Preview/Stable publication runs a fresh exact-source audit using trusted policy.
+Stable RC/final publication runs a fresh exact-source audit using trusted policy.
 This does not remove secret scanning, dependency review, signatures, integrity or
 functional checks. See [dependency security](dependency-security.md#where-the-scan-runs).
 
@@ -507,7 +519,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`qualification-after-repair.yml`](../../.github/workflows/qualification-after-repair.yml) | Qualify landed repair | **Main: Qualify landed repair** | after `PR: CI` runs on `main`. |
 | [`qualification-repair.yml`](../../.github/workflows/qualification-repair.yml) | Qualification repair | **Main: Qualification repair** | after `Main: Qualification`; manual dispatch. |
 | [`recover-terminal-capacity-owner.yml`](../../.github/workflows/recover-terminal-capacity-owner.yml) | Recover terminal physical-host capacity owner | **Tool: Recover terminal capacity owner** | manual dispatch. |
-| [`release-advisory.yml`](../../.github/workflows/release-advisory.yml) | Release dependency advisory gate | **Release: Dependency advisory gate** | reused by tagged staging, protected release publication, manual npm publication and Beta/Stable TestFlight. |
+| [`release-advisory.yml`](../../.github/workflows/release-advisory.yml) | Release dependency advisory gate | **Release: Dependency advisory gate** | reused by tagged staging, protected release publication, manual npm publication and Stable TestFlight. |
 | [`release.yml`](../../.github/workflows/release.yml) | Stage Station release | **Release: Stage** | `v*` tag pushes. |
 | [`seatbelt-kernel.yml`](../../.github/workflows/seatbelt-kernel.yml) | Tool: Seatbelt kernel legs | **Main: Seatbelt kernel legs** | main pushes (path filtered); manual dispatch. |
 | [`secret-scan.yml`](../../.github/workflows/secret-scan.yml) | Secret Scan | **PR: Secret scan** | PR events; main pushes; manual dispatch. |
@@ -754,7 +766,27 @@ related selection. Hosted shard planning instead retains the other mapped
 related paths and concrete explicit targets, including selections over 32,
 while preserving every unresolved lane obligation. This produces earlier
 failures without declaring global coverage complete.
-A third kind is derived per diff, from its base content: when a `package.json`
+A third derivation covers native files that a test names by a literal
+repository path (#4891). A change under `src-desktop/**` only names the deferred
+`verify-local` lane, yet many suites assert on the text of Rust, Kotlin, Swift,
+plist, manifest and Tauri configuration files they read through a cwd-relative
+literal such as `readFileSync('src-desktop/src/lib.rs')`, which the path-read
+scan refuses by design. In a test under `packages`, `scripts`, `src-server` or
+`src-ui`, a string literal whose whole value is a path to an existing file under `src-desktop/`,
+`tests/ios-runtime-smoke/`, `scripts/templates/` or `deployment/`, or to a
+`Dockerfile` or `docker-compose` file, that is not a JS or TS module
+and not in a generated tree selects that test when the file changes. The
+`verify-local` deferral is still reported; the edge only adds tests. A literal
+in a fixture string or an error message counts too, so some selections are more
+than a read. In local unsharded feedback, which runs an escalated diff's explicit
+targets only up to 32 of them, a test that only this derivation selected is the
+first to be left out, so these edges cannot push a diff past that bound; the
+hosted shard plan keeps every one. It does not see a path built from several segments
+(`join('src-desktop', 'src', 'lib.rs')`), a template literal with a
+substitution, a literal inside a longer string, or a suite under `tests/`, which
+a pull-request shard cannot run. For a path that also escalates, such as
+`Dockerfile`, the escalation is still reported and the named tests run beside it.
+A fourth kind is derived per diff, from its base content: when a `package.json`
 dependency section or a `pnpm-lock.yaml` importer's resolved version changes
 for a sibling `@kontourai/*` package that is not a workspace package, the
 suites that import that package by name are selected (#3149). A version bump
@@ -910,7 +942,7 @@ slots exclude planners, security checks, platform builds and status publishers;
 they are not a total repository or organization capacity reservation.
 
 The reusable hosted workflow `.github/workflows/full-regression.yml` owns the
-exact-source full qualification receipt. Scheduled main qualification and tagged Preview/Stable use it: every canonical phase and Android viewport test must
+exact-source full qualification receipt. Scheduled main qualification and tagged Stable RC/final use it: every canonical phase and Android viewport test must
 succeed, with bounded exact-source reuse. A manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.
 
 Nightly runs independently. Its hourly decision checks the default six-hour
@@ -1151,9 +1183,10 @@ the context Station itself puts in front of every engine session: the
 `tools/list` of each built-in MCP server (name, description and input schema)
 and Station's injected text (orchestration instructions, workload budget,
 chat-image line). station-control is measured twice: `bound`, the listing
-Claude's in-process delivery receives, and `delegated-custody`, the subset Codex
-and ACP engines list. `codexBoundToolsJsonBytes` measures the `dynamicTools`
-Codex's bound browser and device channel offers at thread start, through the
+Claude's in-process delivery receives, and `delegated-custody`, the subset ACP
+engines, and Codex without its bound channel, list. `codexBoundToolsJsonBytes`
+measures the `dynamicTools` Codex's bound channel offers at thread start, the
+browser tools plus the whole station-control catalog at `bound`, through the
 mapping the adapter sends. `agent-context-budget.test.ts` beside it recomputes each
 number from live source and fails when the file disagrees, so update the JSON
 to the measured values in the same change. When text shrinks, lower the
@@ -1623,7 +1656,13 @@ a failure is never excused; a message whose own last line is
 current message ends that way. An app error surface's identity (below) leads
 the error and carries only the surfaces and the failed chunk paths with their
 content hashes masked, so the same chunk failing compares equal between two
-builds as long as it keeps its name.
+builds as long as it keeps its name. When every failure `main` does not have
+is such an identity naming a failed chunk request (not `no failed chunk
+request`), the comparison answers `infrastructure` instead of `pr`: the job
+still fails, under the title `Gallery chunk load failure` and with each screen
+and chunk listed as `CHUNK LOAD`, so a lost chunk is not reported as the pull
+request's layout (#5028). It is not excused, because a pull request that breaks
+a chunk's delivery fails the same way.
 So a break already on `main` does not turn unrelated
 PRs red, while breaking the same screen another way stays red. A crash or
 test-level assertion with no failing screen, a failing screen `main` lacks,
@@ -1659,6 +1698,9 @@ base commit and skips the capture only when every changed path is one the
 capture never reads (docs, agent instructions, other workflows, desktop Rust,
 test files). The scope is an exclusion list because the capture boots the
 whole product through `./station start`, not just `src-ui/`. Review changed images in the run's `gallery-pr-<run>-<attempt>` artifact.
+Rendered screens retain bounded browser errors in `capture.json` beside their
+UI audit, so a valid PNG with a failing product assertion keeps its runtime
+diagnostics. These errors do not change the capture or findings verdict.
 When an intentional change should become the new reference, download that
 hosted artifact and run `npm run screenshot:baseline -- --gallery=<download dir>`.
 Commit reviewed baseline updates separately; they are optional for a green
@@ -1840,7 +1882,13 @@ what differs between two captures of one failure: requests of the document a
 navigation was replacing, error text (one aborted chunk read `ERR_ABORTED` on one
 attempt and `ERR_FAILED` on another), whether it surfaced before or after the
 photo, counts, and a capture step's own error. All of that is in the screen's
-`appError` in `capture.json`, with the console errors.
+`appError` in `capture.json`, with the console errors. The capture's log and
+its final assertion name each failed screen; one that lost a chunk reads
+`lazy chunk unavailable: <screen> (<path> <error>)` with the real request paths.
+`scripts/__tests__/gallery-app-error-state.browser.test.ts` aborts a chunk on
+both attempts of one screen whose error row sits in a hard clip, and checks that
+reason and that the findings judge reports only `capture-failed`, though the
+same row audited directly yields `hit-target:unreachable` for Retry and Reload.
 
 A second capture needs both in the same attempt: a detected surface and a
 failed chunk request. A failed chunk request alone is not evidence that the
@@ -2238,6 +2286,21 @@ slot and then runs the script as the slot holder. These entry points use it:
 | Pre-push transfer budgets, static gates, SDK barrel | `pre-push:transfer-budgets`, `pre-push:static-gates`, `pre-push:sdk-barrel` |
 | A verification-coordinator lane that executes (`ci:fast`, `verify:static`, `test-changed`, …) | `verification:<lane>` |
 | Each `full:regression` phase, requested or submitted | `verification:full-regression:<phase>` |
+| `node scripts/code-health-gate.mjs` (also a `ci:fast` step), started any way | `code-health-gate` |
+| `npm run veritas:fallow:advisory` (a Veritas readiness evidence check), `npm run audit:code-health` | `fallow audit`, `fallow audit --whole-tree` |
+| `npm run fallow:baseline`, `npm run fallow:ceiling` (not with `--report`) | `fallow:baseline`, `fallow:ceiling` |
+| `npm run fallow`, `npm run fallow:dead-code`, `npm run fallow:audit` | the script name |
+
+The code-health gate and the fallow runners take the slot themselves, so a
+direct `node scripts/<script>.mjs` queues like a package script. One `fallow
+audit` reached 5.1 GiB, and two worktrees running the gate at once got a
+Station engine OOM-killed ([#5080](https://github.com/kontourai/station/issues/5080)).
+`npm run docs:review:record` takes no slot. It is single-threaded bookkeeping:
+it snapshots the repository's review inputs, checks them, and writes the review
+ledger (measured on 2026-11-16: 41 s, 1.1 cores, 1.1 GiB peak for
+`--show-delta`). The slot is sized for checks that saturate about four cores
+and hold several GiB, and with one slot, a ledger write would wait behind a
+whole test run.
 
 - N is the smaller of one slot per four logical CPUs (floored) and one per
   8 GiB of RAM (rounded), between 1 and 4. A 4-core, 15 GiB host gets 1.

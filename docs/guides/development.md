@@ -578,7 +578,9 @@ when abandoned; the attempts between are debug lines. Shutdown still tries
 every scope once more, abandoned ones included, and reports any that do not
 settle. `GET /api/system/workload` and the resource-posture route list pending
 and abandoned scopes under `cleanup` (at most 256 abandoned are kept, with a
-count of any dropped). Attempts are counted by
+count of any dropped). Settings › Advanced › Host options lists the abandoned
+ones, with a restart hint, whether or not the workload budget preview is on.
+Attempts are counted by
 `station.workload.scope_cleanup.attempts`, and the backlog is observed by
 `station.workload.scope_cleanup.backlog`.
 
@@ -616,11 +618,9 @@ homes under one `STATION_ROOT` (`~/.station` by default):
 +-- cache/
 +-- installs/
 |   +-- stable/
-|   +-- beta/
 |   +-- nightly/
 +-- instances/
     +-- stable/       # runtime home: config, projects, agents, plugins, logs...
-    +-- beta/
     +-- nightly/
     +-- dev/<worktree-id>/
 ```
@@ -1005,6 +1005,12 @@ receipt does not certify completion. Do not repeatedly launch `npm test`,
 `test:full`, `verify:static`, `verify:local`, or full E2E while editing; those
 host-coordinated lanes consume shared CPU and mutable-output leases.
 
+`test:focused`, `test:changed`, `typecheck`, the code-health gate
+(`node scripts/code-health-gate.mjs`) and the fallow audits wait for one
+[host heavy-check slot](testing.md#host-heavy-check-slots) shared by every
+worktree, so concurrent runs from several agents serialize instead of sharing
+one memory limit. Let them wait rather than working around the queue.
+
 `npm run ci:fast` runs affected tests
 against `STATION_CI_FAST_BASE` first, then fixed runtime, lockfile, workflow,
 evidence-check registration, generated-output, documentation,
@@ -1036,7 +1042,7 @@ source only; scheduled/manual success then runs all five packaging/platform
 validation families. Replaced pending revisions have no qualification claim. Optional
 PR delivery families run in sequence after core fast checks, selected by a
 trusted base-owned diff planner; required integration contexts stay unchanged.
-Scheduled main qualification and tagged Preview/Stable require full qualification with bounded exact-source reuse; a scheduled run does not repeat a corpus that already failed tests on the same source within 24 hours (see [releasing](releasing.md)).
+Scheduled main qualification and tagged Stable RC/final releases require full qualification with bounded exact-source reuse; a scheduled run does not repeat a corpus that already failed tests on the same source within 24 hours (see [releasing](releasing.md)).
 
 Nightly runs independently: an hourly eligibility decision enforces a six-hour
 default publication minimum before source tests or builds. Eligible sources
@@ -1073,7 +1079,7 @@ Every Playwright spec must be assigned to exactly one bucket in `tests/e2e-manif
 
 Dependency updates retain lock and compatibility checks. Feature PRs, merge
 queues and Nightly builds do not run advisory audits; the central scheduled
-scan tracks disclosures, and Preview/Stable publication enforces a fresh
+scan tracks disclosures, and RC/final publication enforces a fresh
 exact-source floor. See [Dependency security](dependency-security.md) for graph
 views, accountable ownership, trusted release policy and exception contracts.
 

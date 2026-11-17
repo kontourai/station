@@ -1,8 +1,9 @@
 /**
  * The composed runtime's #4508 hand-off (`owns`): the item's kind reaches the
  * per-kind rule, and a pull request no longer linked to the claim's chat is
- * not owned, so the Task's lead is still woken for it. Real store file in a
- * temp home, the inbox harness's event store and inbox.
+ * not owned, so the Task's lead is still woken for it. Its Needs-you sources
+ * and the one notice a pause sends through the bound notification service.
+ * Real store file in a temp home, the inbox harness's event store and inbox.
  */
 import type { PullRequestLinkIdentity } from '@kontourai/station-contracts/conversation-pull-request-links';
 import { pullRequestFeedbackKey } from '@kontourai/station-contracts/pull-request-feedback';
@@ -29,10 +30,15 @@ afterEach(async () => {
   for (const close of closers.splice(0)) await close();
 });
 
-function setup(settings: {
-  fixFailingChecks: boolean;
-  addressReviewComments: boolean;
-}) {
+const HEAD = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678';
+
+function setup(
+  settings: {
+    fixFailingChecks: boolean;
+    addressReviewComments: boolean;
+  },
+  preview: { on: boolean } = { on: true },
+) {
   const world = station();
   const homeDir = tempDir('pr-feedback-runtime-');
   const store = new PullRequestFeedbackStore(
@@ -46,14 +52,16 @@ function setup(settings: {
     enabledBy: 'owner',
     now: '2026-11-10T12:00:00.000Z',
   });
-  store.close();
   const links: { list: PullRequestLinkIdentity[] } = { list: [PR] };
   const runtime = composePullRequestFeedbackRuntime({
     homeDir,
     hosted: false,
     featurePreviews: {
       bind: () => ({
-        select: (branches: { enabled: () => unknown }) => branches.enabled(),
+        select: (branches: {
+          enabled: () => unknown;
+          disabled: () => unknown;
+        }) => (preview.on ? branches.enabled() : branches.disabled()),
       }),
     } as never,
     eventStore: world.store,
@@ -72,7 +80,8 @@ function setup(settings: {
     logger: { warn: vi.fn() },
   })!;
   closers.push(() => runtime.close());
-  return { runtime, links };
+  closers.push(() => store.close());
+  return { runtime, links, store, world };
 }
 
 describe('the composed #4508 hand-off', () => {
@@ -97,5 +106,163 @@ describe('the composed #4508 hand-off', () => {
     links.list = [];
     expect(runtime.owns(ITEM, 'check_run')).toBe(false);
     expect(runtime.owns(ITEM, 'review')).toBe(false);
+  });
+});
+
+describe('pull request feedback that needs a person', () => {
+  const pause = (store: PullRequestFeedbackStore) =>
+    store.setCondition(pullRequestFeedbackKey(PR), {
+      state: 'paused',
+      reason: 'repeated-failure',
+      headSha: HEAD,
+      failing: ['ci / unit-tests'],
+      at: '2026-11-16T09:00:00.000Z',
+    });
+
+  it('reads a pause as a source; nothing while the preview is off or once unlinked', () => {
+    const preview = { on: true };
+    const { runtime, store, links } = setup(
+      { fixFailingChecks: true, addressReviewComments: false },
+      preview,
+    );
+    expect(runtime.attentionSources()).toEqual([]);
+    pause(store);
+    expect(runtime.attentionSources()).toEqual([
+      {
+        conversationId: 'chat-a',
+        sessionId: expect.any(String),
+        prKey: pullRequestFeedbackKey(PR),
+        identity: PR,
+        reason: 'repeated-failure',
+        headSha: HEAD,
+        failing: ['ci / unit-tests'],
+        at: '2026-11-16T09:00:00.000Z',
+      },
+    ]);
+    preview.on = false;
+    expect(runtime.attentionSources()).toEqual([]);
+    preview.on = true;
+    links.list = [];
+    expect(runtime.attentionSources()).toEqual([]);
+  });
+
+  it('a pause recorded before pauses kept `at` gets one, once: saving switches does not resurface it', () => {
+    const { runtime, store } = setup({
+      fixFailingChecks: true,
+      addressReviewComments: false,
+    });
+    const prKey = pullRequestFeedbackKey(PR);
+    store.setCondition(prKey, {
+      state: 'paused',
+      reason: 'round-limit',
+      headSha: HEAD,
+    });
+    const [first] = runtime.attentionSources();
+    expect(Date.parse(first!.at)).not.toBeNaN();
+    expect(store.claim(prKey)?.condition).toMatchObject({ at: first!.at });
+    // Saving the switches again moves enabledAt, never this pause's version.
+    store.writeClaim({
+      prKey,
+      identity: PR,
+      conversationId: 'chat-a',
+      settings: {
+        fixFailingChecks: true,
+        addressReviewComments: true,
+        reviewEachHead: false,
+      },
+      enabledBy: 'owner',
+      now: '2030-01-01T00:00:00.000Z',
+    });
+    expect(runtime.attentionSources()[0]?.at).toBe(first!.at);
+  });
+
+  it('a pause sends one notice to the bound notification service, for the chat', async () => {
+    const { runtime, store } = setup({
+      fixFailingChecks: true,
+      addressReviewComments: false,
+    });
+    const prKey = pullRequestFeedbackKey(PR);
+    const at = '2026-11-16T08:00:00.000Z';
+    store.writeObservation(prKey, {
+      observation: {
+        identity: PR,
+        url: 'https://github.com/acme/widgets/pull/42',
+        state: 'OPEN',
+        draft: false,
+        headSha: HEAD,
+        baseSha: 'b'.repeat(40),
+        headRefName: 'feature',
+        baseRefName: 'main',
+        mergeable: 'mergeable',
+        checks: [
+          {
+            name: 'ci / unit-tests',
+            conclusion: 'FAILURE',
+            completed: true,
+            required: true,
+          },
+        ],
+        checksTruncated: false,
+        threads: [],
+        threadsTotal: 0,
+        reviews: [],
+        observedAt: at,
+      },
+      observedAt: at,
+      unchangedSince: at,
+      digest: 'd',
+    });
+    // Three rounds already placed on this head.
+    for (const n of [1, 2, 3]) {
+      store.beginBatch(
+        {
+          key: `prf-round-${n}`,
+          conversationId: 'chat-a',
+          generation: 1,
+          state: 'submitting',
+          message: 'm',
+          actor: { userId: 'owner' },
+          createdAt: at,
+          summary: [{ prKey, headSha: HEAD, generation: 1, categories: [] }],
+        },
+        [],
+      );
+      store.settleBatch(`prf-round-${n}`, 'sent', at);
+    }
+    const scheduleEnveloped = vi.fn(async () => ({}) as never);
+    runtime.bindNotifier({
+      scheduleEnveloped,
+      list: async () => [],
+      markStatus: vi.fn(async () => undefined),
+    });
+    const delivery = runtime.routeArgs[1]()!;
+    expect((await delivery.deliver('chat-a')).kind).toBe('none');
+    expect(store.claim(prKey)?.condition).toMatchObject({
+      state: 'paused',
+      cap: 'head',
+    });
+    await vi.waitFor(() => expect(scheduleEnveloped).toHaveBeenCalledTimes(1));
+    expect(scheduleEnveloped).toHaveBeenCalledWith(
+      'pull-request-feedback',
+      {
+        category: 'pull-request-feedback',
+        title: 'Agent paused on #42: checks still failing after 3 rounds',
+        body: 'acme/widgets at a1b2c3d. Send again or turn off auto-fix in Station.',
+        dedupeTag: expect.stringMatching(
+          /^pr-feedback:[0-9a-f]{16}:round-limit:[0-9a-f]{12}$/,
+        ),
+        metadata: { sessionId: 'chat-a' },
+      },
+      {
+        v: 1,
+        source: { kind: 'system', subsystem: 'pull-request-feedback' },
+        audience: { kind: 'session-readers', sessionId: 'chat-a' },
+        urgency: 'attention',
+        target: { kind: 'session', sessionId: 'chat-a' },
+        interrupt: 'default',
+      },
+    );
+    expect((await delivery.deliver('chat-a')).kind).toBe('none');
+    expect(scheduleEnveloped).toHaveBeenCalledTimes(1);
   });
 });

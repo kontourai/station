@@ -511,12 +511,12 @@ describe('the chip line exists only when a chip does', () => {
       ['remote', 'Station: home-media'],
       ['woke', 'Woke from snooze'],
     ]);
-    // #4266: no full-line "Unsent draft" chip. A pencil on the meta line,
+    // #4266: no full-line "Unsent draft" chip. A pencil after the project,
     // hidden from assistive tech: the row's name already says it.
     const marker = screen.getByTestId('inbox-row-draft-marker');
     expect(marker.getAttribute('title')).toBe('Unsent draft');
     expect(marker.getAttribute('aria-hidden')).toBe('true');
-    expect(marker.closest('.inbox-row__meta')).not.toBeNull();
+    expect(marker.closest('.inbox-row__context')).not.toBeNull();
     expect(screen.queryByText('Unsent draft')).toBeNull();
     expect(
       screen.getByRole('button', { name: /, unsent draft$/ }),
@@ -1290,14 +1290,14 @@ describe("the project's colour is a swatch, never the name's colour", () => {
     expect(swatch).not.toBeNull();
     expect(swatch!.getAttribute('aria-hidden')).toBe('true');
     expect(swatch!.style.backgroundColor).toBe('var(--event-tool-call)');
-    // Before the name, beside it on the meta line.
+    // Before the name, beside it on the state line.
     const project = row.querySelector<HTMLElement>('.inbox-row__project')!;
     expect(swatch!.nextElementSibling).toBe(project);
     expect(project.textContent).toBe('station');
     // The accent is never a text colour (accent-foreground ratchet).
     expect(project.style.color).toBe('');
     expect(
-      row.querySelector('.inbox-row__meta-text')!.getAttribute('style'),
+      row.querySelector('.inbox-row__context')!.getAttribute('style'),
     ).toBeNull();
     // The open button's name still says the project in words.
     expect(row.querySelector('button')!.getAttribute('aria-label')).toContain(

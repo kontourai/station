@@ -35,7 +35,7 @@ function setup({
   allowManualCredentials?: boolean;
   hostAppName?: string;
   authenticatedRequest?: typeof fetch;
-  pairingClientChannel?: 'stable' | 'beta' | 'nightly';
+  pairingClientChannel?: 'stable' | 'nightly';
   originIsStation?: boolean;
   hasLocalStation?: boolean;
   initialPanel?: 'list' | 'pair-host';

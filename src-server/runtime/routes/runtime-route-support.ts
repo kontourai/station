@@ -70,7 +70,11 @@ import {
 } from '../../services/projects/attention-projection.js';
 import { FileAttentionSnoozeStore } from '../../services/projects/attention-snooze-store.js';
 import { defaultedProjectWorkingDirectory } from '../../services/projects/project-service.js';
-import type { ScheduledTurnAdapter } from '../../services/scheduling/builtin-scheduler.js';
+import type {
+  ScheduledProjectHold,
+  ScheduledProjectRunner,
+  ScheduledTurnAdapter,
+} from '../../services/scheduling/builtin-scheduler.js';
 import { MonitorTaskTurnSupervisor } from '../../services/scheduling/monitor-task-supervisor.js';
 import type { ScheduledConversationRunner } from '../../services/scheduling/scheduled-conversation-runs.js';
 import { SchedulerService } from '../../services/scheduling/scheduler-service.js';
@@ -496,10 +500,13 @@ export function configureRuntimeSupportServices(
     coordinatorWakes?: () =>
       | Pick<CoordinatorWakeDelivery, 'observeNotification'>
       | undefined;
-    /** Pull request agent feedback: its tick, shutdown and #4508 overlap. */
+    /**
+     * Pull request agent feedback: its tick, shutdown, #4508 overlap, its
+     * Needs-you items, and the notification service its notices go to.
+     */
     pullRequestFeedback?: Pick<
       PullRequestFeedbackRuntime,
-      'tick' | 'close' | 'owns'
+      'tick' | 'close' | 'owns' | 'attentionSources' | 'bindNotifier'
     >;
     /**
      * #2064 (D4): paused Survey/Flow gate review sessions for the attention
@@ -520,6 +527,10 @@ export function configureRuntimeSupportServices(
      * Absent (hosted, or no inbox): such a job fails without invoking.
      */
     conversationRuns?: ScheduledConversationRunner;
+    /** #5070: runs a Project job as a Task. Absent: no Project jobs. */
+    projectRuns?: ScheduledProjectRunner;
+    /** #5069: which Projects hold their schedules. */
+    projectHold?: ScheduledProjectHold;
   } = {},
 ) {
   // The hosted registry is immutable deployment configuration. Until pairing
@@ -541,6 +552,8 @@ export function configureRuntimeSupportServices(
         }),
     },
   );
+  // Composed before this service exists; its notices go here from now on.
+  options.pullRequestFeedback?.bindNotifier(notificationService);
   const approvalInboxProvider = new ApprovalInboxNotificationProvider({
     approvalRegistry: context.approvalRegistry,
     orchestrationService: context.orchestrationService,
@@ -764,6 +777,8 @@ export function configureRuntimeSupportServices(
       ...(options.conversationRuns
         ? { conversationRuns: options.conversationRuns }
         : {}),
+      ...(options.projectRuns ? { projectRuns: options.projectRuns } : {}),
+      ...(options.projectHold ? { projectHold: options.projectHold } : {}),
       integrationSecretResolver,
       automationPoller: {
         async poll(input) {
@@ -1089,6 +1104,7 @@ export function configureRuntimeSupportServices(
           'Temporarily hide attention items until a chosen time. New source activity resurfaces immediately.',
       }),
     },
+    { pullRequestFeedback: options.pullRequestFeedback },
   );
   return {
     schedulerService,

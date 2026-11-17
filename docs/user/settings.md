@@ -32,6 +32,30 @@ device. **Sources** shows repository links and checkout locations. Use
 **Add a repository** to attach a checkout and **Advanced: checkout repair**
 for filesystem repair. **Workspace** edits the Project's local working folder.
 
+### Pause, archive, delete
+
+The last section of Project settings stops or removes a Project's work.
+Pause and Archive are Feature Previews (`project-pause-archive`); Delete is
+always offered:
+
+- **Pause** stops every chat running in the Project, through the same Stop a
+  chat offers, and holds it: no message, schedule or restart starts a turn
+  there until you **Resume**. Station waits up to 10 seconds for running
+  chats to stop and says how many it stopped. A stopped chat continues only
+  when you message it after Resume. The Project page shows a banner with
+  **Resume** while it is paused.
+- **Archive** does what Pause does and hides the Project from the sidebar.
+  **Archived (n)** at the end of the Project list shows archived Projects;
+  **Unarchive** returns one, active.
+- **Delete** first lists what it removes (Project settings, Layouts,
+  knowledge documents, schedules), the running chats it stops, and what it
+  keeps: Tasks, chats, the repository checkout, pushed branches and pull
+  requests. Tasks and chats stay readable in history.
+
+**Schedules** (the `project-schedules` Feature Preview) lists the Project's
+own automations. See
+[Project schedules](automations.md#project-schedules).
+
 ## Feature previews
 
 **Paired Station chats** lets New Chat use another paired Station. Choose its
@@ -50,9 +74,11 @@ only when this Station's build can run it; if none is, the section says
 | --- | --- | --- | --- |
 | `durable-station-agent` | Crash-durable Station Agent | Keeps Station-engine text turns running after a client disconnect and resumes journaled steps after restart. Stop still cancels. | Experimental; writes every model/tool step to private SQLite and can add substantial latency. An uncertain model request is surfaced without automatic resend; pending approvals still require an answer. |
 | `reviewed-usage-tariffs` | Reviewed usage tariffs | Lets the operator review exact Bearing source bytes and route/model tariff bindings for later usage capture. | No default price or live fetching. Retail values remain separate from billing, subscription fees and quota. Historical snapshots stay frozen. |
-| `codex-bound-browser-device-tools` | Codex browser and device tools | Offers eligible Codex Sessions the built-in browser and device tools over a bound channel. | Calls require current Project access and tool approval policy; browser pages and device contents can contain private data. Changing this choice retires existing bindings; start a new Session to use it again. |
+| `codex-bound-browser-device-tools` | Codex browser and device tools | Offers eligible Codex Sessions the built-in browser and device tools over a bound channel. A new Codex Session whose Agent has Station Control also gets every Station Control tool on that channel instead of a header token, which adds about 110 KB of tool definitions to each thread. | Calls require current Project access and tool approval policy; browser pages and device contents can contain private data. Changing this choice retires existing bindings; start a new Session to use it again. |
 | `station-orchestration-instructions` | Station orchestration instructions | Tells Agents that have Station control tools when and how to use them (delegating to another Agent, waiting on Sessions, browser and device tools). It rides the Agent's system prompt on Claude when the Agent has one, otherwise the first message of a new Session. | Adds a few thousand characters to each new Session's prompt. Applies to Sessions started after the change; resumed Sessions are not re-sent. Station control tool approval and access rules are unchanged. |
 | `learning-lifecycle-review` | Learning lifecycle review | Shows evidence, decisions, active guidance, effects and retirement in Project Sources. | Personal POSIX hosts only. Owner-reviewed activation can change future Task context; it does not install or deploy a Skill. |
+| `project-pause-archive` | Pause and archive Projects | Offers **Pause** and **Archive** in Project settings. Both stop the Project's running chats and hold its turns and schedules until **Resume** or **Unarchive**. | Turning it off hides Pause and Archive but keeps every hold: a paused or archived Project still offers Resume or Unarchive. |
+| `project-schedules` | Project schedules | Offers **Schedules** in Project settings and lets an agent propose a Project schedule. Each run starts a new Task in the Project. | Each run starts an agent and can spend model credits. Turning it off holds every Project schedule: none runs, and Run now is refused. |
 | `context-compaction` | Context compaction | Offers a bounded summary cold start and opt-in threshold compaction where supported. | Summary generation can spend model tokens. Old messages stay retained; native tool and approval state is omitted, not transferred. Unknown capacity prevents automatic compaction. |
 | `project-supervision` | Project supervision | Retains opted-in Task supervision and reconciles missed next actions through the conversation inbox. | Needs Coordinator chat. May queue model turns; current access, Task incarnation, waits, capacity and original delivery keys still govern placement. |
 | `github-automation-actions` | GitHub automation actions | Dispatches explicitly granted, matching rules into durable Tasks and their first inbox turn. | Can spend model tokens under retained budgets. Off by default; observation alone grants no execution authority. Repair publication requires credential separation. |

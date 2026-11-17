@@ -2421,6 +2421,23 @@ Updates a project. Invalidates `['projects']` on success.
 
 Deletes a project. Invalidates `['projects']` on success.
 
+### `useProjectLifecycleMutation(slug: string)`
+
+Pauses, resumes, archives or unarchives a Project
+(`POST /api/projects/:slug/lifecycle`); takes the action and resolves to its
+`ProjectLifecycleResult`. Invalidates `['projects']` and `['scheduler']`.
+
+### `useProjectDeletionPreviewQuery(slug: string, config?)`
+
+What deleting the Project removes, stops and keeps
+(`GET /api/projects/:slug/deletion-preview`), as `ProjectDeletionPreview`.
+
+### `useProjectSchedulesCapability()`
+
+`true` when the host advertises `projectSchedules`: it runs a scheduler job
+with a `projectId` as a Task in that Project. An older host would create a
+plain job, so offer Project schedules only on `true`.
+
 ### `useCreateLayoutMutation(projectSlug: string)`
 
 Creates a new layout within a project. Invalidates project layouts on success.
@@ -3326,7 +3343,11 @@ pending Devices must name that Station. `createRelayInvitation` also takes the
 reviewed route, recipient setup and a `RelayInvitationLifetime`; it validates
 the returned installation binding and requested expiry before returning the
 link. Lifetimes are `5m`, `15m`, `1h`, `24h` and `never`; the UI chooses `24h`.
-Every invitation remains single-use.
+Every invitation remains single-use. Reads request `viewVersion=2` and expose only Stable/Nightly setup links.
+An older host may include legacy Beta rows. The SDK validates every row's Station
+scope first, excludes valid legacy Beta records from actionable arrays and
+reports their counts in `retiredRecords`. Malformed or foreign records still
+reject the response; mutation responses never admit Beta authority.
 
 This published SDK leaf consumes the canonical codec from
 `@kontourai/station-shared/native-relay-link`, not the private Connect package.
@@ -6291,12 +6312,20 @@ own explicit links separately from provider-derived or Task-kept references.
 `@kontourai/station-sdk/pull-request-feedback` reads a chat's pull request
 feedback (`getConversationPullRequestFeedback`), sets a pull request's
 switches (`writePullRequestFeedback`, with `move` to take it from another
-chat), and lifts a pause (`sendPullRequestFeedbackAgain`). A 409 naming
+chat), lifts a pause (`sendPullRequestFeedbackAgain`), and turns every
+switch off for a pull request the chat owns (`turnOffPullRequestFeedback`,
+which the Needs-you item calls). A 409 naming
 another chat is read with `pullRequestFeedbackOwnerOf`. Gate the calls on
 `readPullRequestFeedbackCapability` (the `pullRequestFeedback` flag) and the
 `pull-request-agent-feedback` Feature Preview; the routes answer 404 while the
 preview is off. The [client](../../packages/sdk/src/client/pull-request-feedback.ts)
 calls the [routes](../../src-server/routes/pull-requests/pull-request-feedback.ts).
+
+`getPullRequestFeedbackByPullRequest(apiBase, identity)` reads one pull
+request's feedback whichever chat is open, for the pull request panel; it
+refuses an answer about another pull request. An owner the reader may not
+read is `{ readable: false }`, and a 409 about such a chat reads through
+`pullRequestFeedbackOwnerOf` as `{}` (no id, no title).
 
 ## Files in answers to input requests
 

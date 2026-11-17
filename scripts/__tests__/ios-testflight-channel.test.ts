@@ -51,14 +51,11 @@ describe('iOS TestFlight channel config', () => {
     expect(IOS_TESTFLIGHT_CHANNELS.stable.internalGroup).toBe(
       'Internal Testers',
     );
-    expect(IOS_TESTFLIGHT_CHANNELS.beta.internalGroup).toBe(
-      'Station Beta Internal',
-    );
     expect(IOS_TESTFLIGHT_CHANNELS.nightly.internalGroup).toBe(
       'Station Nightly Internal',
     );
   });
-  test.each(['stable', 'beta', 'nightly'] as const)(
+  test.each(['stable', 'nightly'] as const)(
     'creates an isolated %s identity with numeric store versions',
     (channel) => {
       const config = createIosTestFlightConfig({
@@ -88,7 +85,7 @@ describe('iOS TestFlight channel config', () => {
     },
   );
 
-  test.each(['stable', 'beta', 'nightly'] as const)(
+  test.each(['stable', 'nightly'] as const)(
     'names the committed %s iOS asset-catalog set the delivery copies over gen/apple',
     (channel) => {
       const identity = IOS_TESTFLIGHT_CHANNELS[channel];
@@ -108,7 +105,7 @@ describe('iOS TestFlight channel config', () => {
   );
 
   test('names reviewed extensions for all release channels, derived from the app', () => {
-    for (const channel of ['stable', 'beta', 'nightly'] as const) {
+    for (const channel of ['stable', 'nightly'] as const) {
       const identity = IOS_TESTFLIGHT_CHANNELS[channel];
       expect(identity.agentActivityBundleId).toBe(
         `${identity.bundleId}.AgentActivity`,
@@ -119,11 +116,21 @@ describe('iOS TestFlight channel config', () => {
     }
   });
 
-  test('rejects nonnumeric marketing and unsafe build versions', () => {
+  test('refuses the retired Beta channel', () => {
     expect(() =>
       createIosTestFlightConfig({
         channel: 'beta',
-        marketingVersion: '0.1.4-preview.1',
+        marketingVersion: '0.2.0',
+        bundleVersion: '20001',
+      }),
+    ).toThrow(/unknown channel/);
+  });
+
+  test('rejects nonnumeric marketing and unsafe build versions', () => {
+    expect(() =>
+      createIosTestFlightConfig({
+        channel: 'stable',
+        marketingVersion: '0.1.4-rc.1',
         bundleVersion: '1',
       }),
     ).toThrow(/numeric X.Y.Z/);

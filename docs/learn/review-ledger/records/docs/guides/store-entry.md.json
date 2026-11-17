@@ -100,7 +100,11 @@
 
     "src-ui/src/__tests__/CoreUpdateLaunchCheck.test.tsx",
 
-    "src-ui/src/components/CoreUpdateLaunchCheck.tsx"
+    "src-ui/src/components/CoreUpdateLaunchCheck.tsx",
+
+    "scripts/promote-store-release.mjs",
+
+    "scripts/__tests__/promote-store-release.test.ts"
   ],
 
   "checks": [

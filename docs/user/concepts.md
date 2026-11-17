@@ -104,8 +104,8 @@ inline and offers **Download** for the rest.
   listed and readable.
 - The Library is on personal Stations. A hosted Station does not offer it.
 
-Scheduled runs reach the Library through the Tasks they keep files for;
-schedules do not yet belong to a Project.
+A Project schedule runs each run as a Task in the Project, so a file that run
+keeps appears in the Library with a link to its Task.
 
 ### Continue in Project and Setup recommendations
 

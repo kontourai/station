@@ -1,0 +1,7 @@
+{
+  "revision": "16bedc9af6aa58965fe1d0d3bfa43c31297ec752",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Checked the qualification paragraph against scripts/qualify-tool-disclosure.ts: the three feature-on cases are required (exit status), the two feature-off cases are controls; reran the harness, all required cases qualified with codex-cli 0.167.0.","inputs":["docs/guides/agent-efficiency.md"]}
+  ]
+}

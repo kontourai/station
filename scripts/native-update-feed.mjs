@@ -1,6 +1,14 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import {
+  closeSync,
+  fsyncSync,
+  lstatSync,
+  openSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import semver from 'semver';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { observeAppleReleaseAvailability } from './promote-store-release.mjs';
 
 const CUSTOM_FEED_FIELDS = [
   'VITE_NATIVE_APP_UPDATE_FEED_URL',
@@ -46,6 +54,8 @@ function isExactIosStorePageAction(action, actionKind, iosAppId) {
   const pathSegments = action.pathname.split('/').filter(Boolean);
   return (
     actionKind === 'store-page' &&
+    !action.username &&
+    !action.password &&
     action.origin === 'https://apps.apple.com' &&
     pathSegments.at(-1) === `id${iosAppId}`
   );
@@ -176,6 +186,14 @@ export function writeNativeUpdateAuthorityReceipt(
   return authority;
 }
 
+/**
+ * @param {{
+ *   endpoint: string, actionUrl: string, actionKind: string, actionOrigins: string,
+ *   channel: string, version: string, token: string, bytes: string,
+ *   storeAuthority?: unknown, storeAuthorityFile?: string,
+ *   providerEnv?: NodeJS.ProcessEnv, fetchImpl?: typeof fetch
+ * }} options
+ */
 export async function deployUpdateFeed({
   endpoint,
   actionUrl,
@@ -185,6 +203,9 @@ export async function deployUpdateFeed({
   version,
   token,
   bytes,
+  storeAuthority,
+  storeAuthorityFile,
+  providerEnv = process.env,
   fetchImpl = fetch,
 }) {
   const observe = async (response) => {
@@ -223,6 +244,83 @@ export async function deployUpdateFeed({
       'Staged update feed does not exactly match protected release values',
     );
   }
+  const initialAction = new URL(actionUrl);
+  const allowedActionOrigins = actionOrigins
+    .split(',')
+    .map((value) => new URL(value.trim()).origin);
+  const readPrior = async () => {
+    const prior = await observe(
+      await fetchImpl(endpoint, {
+        method: 'GET',
+        redirect: 'error',
+        cache: 'no-store',
+      }),
+    );
+    if (prior.state === 'ambiguous')
+      throw ambiguous(
+        `Cannot establish prior feed state: HTTP ${prior.status}`,
+      );
+    return prior;
+  };
+  const previousAppStoreVersion = (prior, appId) => {
+    if (prior.state === 'absent') return null;
+    let previous, previousAction;
+    try {
+      previous = JSON.parse(prior.bytes);
+      previousAction = new URL(previous?.releaseUrl);
+    } catch {
+      throw ambiguous(
+        'Previous App Store feed is malformed; reconcile it before publication',
+      );
+    }
+    if (
+      !previous ||
+      Object.keys(previous).sort().join(',') !== 'channel,releaseUrl,version' ||
+      previous.channel !== channel ||
+      semver.valid(previous.version) === null ||
+      !isExactIosStorePageAction(previousAction, 'store-page', appId)
+    )
+      throw ambiguous(
+        'Previous App Store feed does not establish the same app/channel',
+      );
+    return previous.version;
+  };
+  let availability;
+  if (
+    actionKind === 'store-page' &&
+    initialAction.origin === 'https://apps.apple.com'
+  ) {
+    const iosAuthority =
+      storeAuthority ?? readStoreAuthority(storeAuthorityFile);
+    if (
+      iosAuthority?.version !== version ||
+      !allowedActionOrigins.includes(initialAction.origin) ||
+      !isExactIosStorePageAction(
+        initialAction,
+        actionKind,
+        iosAuthority?.ios?.appId,
+      )
+    )
+      throw new Error(
+        'App Store feed requires the matching authenticated RC store authority and exact app URL',
+      );
+    availability = await observeAppleReleaseAvailability(
+      iosAuthority,
+      providerEnv,
+      fetchImpl,
+    );
+    if (availability.state === 'PENDING') {
+      const previousVersion = previousAppStoreVersion(
+        await readPrior(),
+        availability.appId,
+      );
+      if (previousVersion === version)
+        throw ambiguous(
+          'Existing feed advertises an unreleased App Store build; reconcile it before retry',
+        );
+      return { state: 'DEFERRED_APP_STORE', previousVersion, availability };
+    }
+  }
   const action = await fetchImpl(actionUrl, {
     method: 'GET',
     redirect: 'follow',
@@ -234,17 +332,13 @@ export async function deployUpdateFeed({
   } catch {
     throw new Error('Native update action response did not expose a final URL');
   }
-  const allowedActionOrigins = actionOrigins
-    .split(',')
-    .map((value) => new URL(value.trim()).origin);
   if (
     resolvedAction.protocol !== 'https:' ||
     !allowedActionOrigins.includes(resolvedAction.origin)
-  ) {
+  )
     throw new Error(
       'Native update action redirected outside the protected HTTPS origin policy',
     );
-  }
   const contentType = action.headers.get('content-type') ?? '';
   const disposition = action.headers.get('content-disposition') ?? '';
   if (
@@ -253,18 +347,31 @@ export async function deployUpdateFeed({
       !contentType.includes('application/vnd.android.package-archive') &&
       !/attachment/i.test(disposition)) ||
     (actionKind === 'store-page' && !contentType.includes('text/html'))
-  ) {
+  )
     throw new Error(
       'Native update action did not resolve to its protected install target kind',
     );
+  if (
+    actionKind === 'store-page' &&
+    (availability || resolvedAction.origin === 'https://apps.apple.com') &&
+    (!availability ||
+      !isExactIosStorePageAction(
+        resolvedAction,
+        actionKind,
+        availability.appId,
+      ))
+  )
+    throw new Error(
+      'App Store action did not resolve to the exact verified app',
+    );
+  const prior = await readPrior();
+  if (availability) {
+    const previousVersion = previousAppStoreVersion(prior, availability.appId);
+    if (previousVersion && semver.gt(previousVersion, version))
+      return { state: 'UNCHANGED_NEWER_FEED', previousVersion, availability };
+    if (prior.state === 'present' && prior.bytes === bytes)
+      return { state: 'UNCHANGED', previousVersion, availability };
   }
-  const current = await fetchImpl(endpoint, {
-    method: 'GET',
-    redirect: 'error',
-  });
-  const prior = await observe(current);
-  if (prior.state === 'ambiguous')
-    throw ambiguous(`Cannot establish prior feed state: HTTP ${prior.status}`);
   const priorBytes = prior.state === 'present' ? prior.bytes : null;
   const priorEtag = prior.state === 'present' ? (prior.etag ?? '') : null;
   const conditional =
@@ -445,9 +552,28 @@ export async function deployUpdateFeed({
       'Published update feed failed verification; prior feed was restored',
     );
   }
+  return availability ? { state: 'PUBLISHED', availability } : undefined;
 }
 
-function main() {
+function readStoreAuthority(path) {
+  if (!path) return undefined;
+  const info = lstatSync(path);
+  if (!info.isFile() || info.size > 64 * 1024)
+    throw new Error('Store authority must be a bounded regular file');
+  return JSON.parse(readFileSync(path, 'utf8'));
+}
+
+function persistFeedResult(path, value, exclusive = false) {
+  const fd = openSync(path, exclusive ? 'wx' : 'w', 0o600);
+  try {
+    writeFileSync(fd, `${JSON.stringify(value)}\n`);
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+async function main() {
   const command = process.argv[2];
   const platformAt = process.argv.indexOf('--platform');
   const platform = platformAt >= 0 ? process.argv[platformAt + 1] : null;
@@ -486,8 +612,26 @@ function main() {
     return;
   }
   if (command === 'deploy') {
+    if (
+      process.argv.includes('--app-store-only') &&
+      (required('NATIVE_APP_UPDATE_ACTION_KIND') !== 'store-page' ||
+        new URL(required('NATIVE_APP_UPDATE_ACTION_URL')).origin !==
+          'https://apps.apple.com')
+    )
+      throw new Error('App Store-only repair requires an App Store action');
     const bytes = readFileSync(process.argv[3], 'utf8');
-    return deployUpdateFeed({
+    const resultFile = process.env.NATIVE_APP_UPDATE_RESULT_FILE;
+    if (resultFile)
+      persistFeedResult(
+        resultFile,
+        {
+          state: 'ATTEMPTED',
+          channel: required('VITE_NATIVE_APP_UPDATE_CHANNEL'),
+          version: required('VITE_NATIVE_APP_VERSION'),
+        },
+        true,
+      );
+    const result = await deployUpdateFeed({
       endpoint: required('VITE_NATIVE_APP_UPDATE_FEED_URL'),
       actionUrl: required('NATIVE_APP_UPDATE_ACTION_URL'),
       actionKind: required('NATIVE_APP_UPDATE_ACTION_KIND'),
@@ -496,7 +640,22 @@ function main() {
       version: required('VITE_NATIVE_APP_VERSION'),
       token: required('NATIVE_APP_UPDATE_PUBLISH_TOKEN'),
       bytes,
+      storeAuthorityFile: process.env.NATIVE_APP_UPDATE_STORE_AUTHORITY_FILE,
     });
+    const outcome = result ?? { state: 'PUBLISHED' };
+    if (resultFile) {
+      try {
+        persistFeedResult(resultFile, outcome);
+      } catch {
+        const error = new Error(
+          'Native feed result could not be retained; inspect feed state before retry',
+        );
+        error.ambiguousFeedState = true;
+        throw error;
+      }
+    }
+    process.stdout.write(`${JSON.stringify(outcome)}\n`);
+    return outcome;
   }
   throw new Error(`Unknown command: ${command}`);
 }

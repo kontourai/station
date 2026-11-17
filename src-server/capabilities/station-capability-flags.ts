@@ -164,6 +164,12 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // fact; the off `pull-request-agent-feedback` preview answers 404. Hosted
   // deployments withdraw it: see servesPullRequestFeedback.
   pullRequestFeedback: true,
+  // Project schedules (#5070): src-server/routes/operations/scheduler.ts
+  // accepts a job `projectId` and the built-in scheduler runs each run as a
+  // Task in that Project. An older host strips the field and would create a
+  // plain job, so a client offers Project schedules only on this flag.
+  // Hosted deployments withdraw it: they compose no Project runner.
+  projectSchedules: true,
   // #5067: the Project Library, `/api/projects/:slug/library…`
   // (src-server/routes/projects/project-library-routes.ts). Hosted
   // deployments withdraw it: see servesProjectLibrary.
@@ -285,6 +291,7 @@ const DEPLOYMENT_SERVED_FLAGS: Readonly<
   coordinatorSession: servesCoordinatorSession,
   followUpAttachments: servesFollowUpAttachments,
   pullRequestFeedback: servesPullRequestFeedback,
+  projectSchedules: servesScheduledConversationTarget,
   remoteSessionHistory: servesRemoteSessionReads,
   projectLibrary: servesProjectLibrary,
 };

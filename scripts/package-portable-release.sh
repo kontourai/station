@@ -56,7 +56,7 @@ if [[ "$REF" =~ ^nightly-[0-9]{4}-[0-9]{2}-[0-9]{2}-[1-9][0-9]*$ ]]; then
   PRERELEASE=true
 elif node "$ROOT/scripts/lib/release-tag.mjs" "$REF" >/dev/null; then
   # A final vX.Y.Z or a candidate vX.Y.Z-rc.N (#4929): both are the Stable
-  # ring, which is not a prerelease ring. The tag stays the archive's ref.
+  # ring; the archive carries its product version, while attestations bind the tag.
   CHANNEL=stable
   PRERELEASE=false
 else
@@ -104,7 +104,10 @@ node -e '
   const [path, sha, ref, createdAt, releaseChannel, prerelease] = process.argv.slice(1);
   // A staging bundle is verification-only and never an installable release.
   const channel = releaseChannel === "nightly-staging" ? "nightly-staging" : "stable";
-  fs.writeFileSync(path, `${JSON.stringify({ schemaVersion: 2, sha, ref, createdAt, channel, releaseChannel, prerelease: prerelease === "true" }, null, 2)}\n`);
+  const identity = releaseChannel === "stable"
+    ? { schemaVersion: 3, sha, version: ref.slice(1).replace(/-rc\.[1-9][0-9]*$/, ""), createdAt, channel, releaseChannel, prerelease: false }
+    : { schemaVersion: 2, sha, ref, createdAt, channel, releaseChannel, prerelease: prerelease === "true" };
+  fs.writeFileSync(path, `${JSON.stringify(identity, null, 2)}\n`);
 ' "$TEMP_DIR/station/.station-release.json" "$SHA" "$REF" "$CREATED_AT" "$CHANNEL" "$PRERELEASE"
 MANIFEST_TOUCH_TIME=$(node -e '
   const date = new Date(process.argv[1]);

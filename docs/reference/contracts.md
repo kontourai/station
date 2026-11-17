@@ -404,6 +404,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/plugin-foreground-work` | Bounded foreground-work declarations, start intents, effect depth, run states, and safe public outcomes. Published ahead of a server implementation: Station does not admit or list plugin foreground runs yet |
 | `@kontourai/station-contracts/project` | Project config and metadata, and `projectIconProblem`: the one rule for a stored project icon (a short glyph, or a PNG/JPEG/WebP/ICO data URL of at most 128 KiB whose bytes match its type) that the create and update routes, the icon pickers and the renderer share |
 | `@kontourai/station-contracts/project-checkout-freshness` | How far a Project's checkout is behind its upstream, from local git refs: the `GET /api/projects/:slug/checkout-freshness` view (`stale`, `not-stale` or `unknown` with a reason), the default thresholds, `resolveProjectCheckoutStaleThresholds` and `projectCheckoutStaleReasons` |
+| `@kontourai/station-contracts/project-lifecycle` | Pause, Archive and Delete for a Project: the `ProjectConfig.lifecycle` state, the `POST /api/projects/:slug/lifecycle` request and result (turns interrupted, still running after `PROJECT_LIFECYCLE_STOP_WAIT_MS`), `projectLifecycleHoldsWork`, the held-turn refusal, and the `GET /api/projects/:slug/deletion-preview` counts |
 | `@kontourai/station-contracts/project-chat-defaults` | How a Project's new chat picks its model and approval mode (`fixed` or `last-used`), the `GET /api/projects/:slug/chat-defaults` view, and `resolveProjectChatApprovalDefault`, the one resolution the session start and that view share |
 | `@kontourai/station-contracts/project-membership` | Exact Station/local/portable Project scope, member roles/actions, invitations, administration projections, sharing enablement and refusal details |
 | `@kontourai/station-contracts/provider` | Provider kinds and provider-facing contract enums/types, including `PROVIDER_OPENCODE` and `isAcpFamilyEngine` (`ACP_FAMILY_ENGINE_IDS`: `acp` and `opencode`, the engines that run saved ACP connection records). Read it where a behaviour belongs to the ACP connection a session runs on, never to tell the engines apart. See [the OpenCode native transport decision](../decisions/opencode-native-transport.md) |
@@ -415,7 +416,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/system-status` | Device presentation, the answering server's runtime identity, update-provenance issue codes, service and server update state, and engine workload memory budgets |
 | `@kontourai/station-contracts/troubleshoot` | In-app troubleshooting (#4470): the prepare route request and response, the seed's fields and limits (route, error summary, conversation and turn ids, which the host refuses rather than truncates), the `troubleshoot-report.yml` field ids, and a prefilled issue-link builder that returns over-limit fields separately instead of truncating |
 | `@kontourai/station-contracts/task-room-work` | Versioned Task agent request intent, explicit engine/model/options digest identity, authorized request records, list and submission outcomes. Requester IDs are Task-scoped display pseudonyms; execution references do not grant Session access or prove completion |
-| `@kontourai/station-contracts/task-lane` | Derived Task lanes: `deriveTaskLane` computes a Task's board lane (Needs you, Running, In review, Ready to merge, Idle) or shelf (Backlog, Done, Canceled), its status word and its one next action from the Task, its run summary and its kept pull requests' provider facts; `partitionTaskLanes` keeps lane order stable. Pure; never stored. Also the `GET /api/tasks/pull-request-facts` projection shapes |
+| `@kontourai/station-contracts/task-lane` | Derived Task lanes: `deriveTaskLane` computes a Task's board lane (Needs you, Running, In review, Ready to merge, Idle) or shelf (Backlog, Done, Canceled), its status word and its one next action from the Task, its run summary and its kept pull requests' provider facts; `partitionTaskLanes` keeps lane order stable. Pure; never stored. Also the `GET /api/tasks/pull-request-facts` projection shapes; a fact's optional `feedback` (agent feedback, for a reader of its chat) becomes a card's `feedbackNote` and never moves a lane |
 | `@kontourai/station-contracts/task-memory` | Task memory (#4003): the Task summary revision and keyed record shapes, limits, default importance, the stateless write check (`checkTaskRecordWrite`, `taskSummaryRefusal`), refusal wording, the person's views, `taskAwaitsAnswer` for the Tasks list's `openQuestionCount`, and the Learning shapes (`TaskLearningView`, candidates, promotion and dismissal input, limits) for a done Task's promotion candidates. Every bound is a refusal |
 | `@kontourai/station-contracts/task-review` | Task review thread, event, evidence, capture and independent code-review checkout projections; person and caller-bound station-control DTOs; strict boundary parsing, append-transition checks, derived views/counts, quote relocation and freshness. Code-review request identity retains Project and Task incarnations. [Contract source](../../packages/contracts/src/task-review.ts) and [pure contract tests](../../packages/contracts/src/__tests__/task-review.test.ts). Runtime integration and evidence belong to the Task review API and SDK references |
 | `@kontourai/station-contracts/chat-app` | Discord/Slack chips sharing status action shapes, principal links and explicit legacy import provenance, Project/conversation channel bindings, approval-correlated delivery attempts, per-app kill switches, hashed two-step link-code records and confirmation requests; [source](../../packages/contracts/src/chat-app.ts), [boundary tests](../../packages/contracts/src/__tests__/chat-app.test.ts) |
@@ -1347,6 +1348,11 @@ exports `RelayInvitationLifetime`, `RelaySetupApproval`, `RelayPendingDevice`
 and `RelayManagementView`. The view contains public route/signing-confirmation
 facts, channel-specific setup links, exact approved surfaces and pending
 account-bound Device candidates; it contains no connector issuer credential.
+Active setup links and surfaces use Stable/Nightly (plus development surfaces).
+The optional `retiredRecords` counts are SDK-derived read metadata for excluded
+legacy Beta records, never actionable Device or approval authority.
+`RelayManagementWireView` retains the old public Beta route-intent link only for
+old SDK readers; it carries no enrollment grant.
 `approvedBy` preserves actual human actor attribution. `relay:manage`, declared
 in [environment security](../../packages/contracts/src/environment-security.ts),
 is an explicitly operator-promoted Device scope excluded from presets/defaults.
@@ -2005,7 +2011,14 @@ delivery history a chat reads, and pure helpers (the canonical lowercase
 identity key, the settings parser, the failing-conclusion set). Its
 `review-findings` category and `reviewEachHead` setting are reserved for a
 later per-head review. `IPullRequestProvider.getFeedbackObservation` is
-optional; a provider without it reads as `unsupported`. See
+optional; a provider without it reads as `unsupported`. A `paused` status
+carries `cap` (`head` or `day`, for a round limit) and `at` when it paused.
+The attention subpath's `PullRequestFeedbackAttentionItem`
+(`pull-request-feedback`) is that pause, or a stopped agent with feedback
+waiting, as a Needs-you item: its `source` names the owning chat and pull
+request, and `viewerMayChange` says whether the reader could send again or
+turn it off. `client-origin`'s `pull-request-feedback` sender labels the
+delivered message as Station's. See
 [Pull request agent feedback](../decisions/pull-request-agent-feedback.md).
 
 `TaskRecord.closeOnMerge` is optional and absent means off. It is a person's

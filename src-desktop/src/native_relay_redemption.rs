@@ -406,7 +406,6 @@ fn with_locked_saved_enrollment_profile_store<T>(
     let channel_name = super::native_app_channel(&app_identifier, cfg!(debug_assertions));
     let channel = match channel_name {
         "stable" => NativeProofKeyChannel::Stable,
-        "beta" => NativeProofKeyChannel::Beta,
         "nightly" => NativeProofKeyChannel::Nightly,
         "dev" => NativeProofKeyChannel::Dev,
         _ => return Err(NativeRedemptionError::InvalidProfile),
@@ -2190,7 +2189,7 @@ fn native_grant_cleanup_owner_index_account(
     channel: &str,
 ) -> RedemptionResult<String> {
     if !valid_app_identifier(app_identifier)
-        || !matches!(channel, "stable" | "beta" | "nightly" | "dev")
+        || !matches!(channel, "stable" | "nightly" | "dev")
     {
         return Err(NativeRedemptionError::InvalidProfile);
     }
@@ -2235,7 +2234,6 @@ fn read_native_grant_cleanup_owner_index(
 fn channel_enum(channel: &str) -> NativeProofKeyChannel {
     match channel {
         "stable" => NativeProofKeyChannel::Stable,
-        "beta" => NativeProofKeyChannel::Beta,
         "nightly" => NativeProofKeyChannel::Nightly,
         _ => NativeProofKeyChannel::Dev,
     }
@@ -3390,7 +3388,6 @@ pub(crate) fn stage_removed_profile_routes(
     let channel_label = super::native_app_channel(&app_identifier, cfg!(debug_assertions));
     let channel = match channel_label {
         "stable" => NativeProofKeyChannel::Stable,
-        "beta" => NativeProofKeyChannel::Beta,
         "nightly" => NativeProofKeyChannel::Nightly,
         "dev" => NativeProofKeyChannel::Dev,
         _ => return Err("Station could not identify its native relay channel.".into()),
@@ -3451,7 +3448,6 @@ pub(crate) fn stage_locked_profile_routes_cleanup(
         }
         let channel = match binding.channel.as_str() {
             "stable" => NativeProofKeyChannel::Stable,
-            "beta" => NativeProofKeyChannel::Beta,
             "nightly" => NativeProofKeyChannel::Nightly,
             "dev" => NativeProofKeyChannel::Dev,
             _ => return Err(CandidateError::ProfileStale),
