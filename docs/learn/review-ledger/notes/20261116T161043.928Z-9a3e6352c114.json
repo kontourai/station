@@ -1,0 +1,7 @@
+{
+  "revision": "d831c1c41ad51f4ce19398e51822eb35e378789e",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Reworded the qualification limits to the glossary's ACP vocabulary (engines Station reaches over ACP: OpenCode, Kiro and custom engines); the claim is unchanged: none of them was qualified.","inputs":["docs/guides/agent-efficiency.md"]}
+  ]
+}
