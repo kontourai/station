@@ -32,7 +32,10 @@ export async function execAsSlotHolder({
   env = process.env,
 }) {
   if (process.platform !== 'win32') {
-    const reset = spawnSync('/bin/sh', ['-c', ':'], { stdio: 'inherit' });
+    const reset = spawnSync('/bin/sh', ['-c', ':'], {
+      stdio: 'inherit',
+      windowsHide: true,
+    });
     if (reset.error || reset.status !== 0)
       throw new Error(
         `${label}: cannot restore blocking stdio before exec: ${reset.error?.message ?? `exit ${reset.status}`}`,

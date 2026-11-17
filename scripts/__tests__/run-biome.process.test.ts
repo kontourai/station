@@ -123,6 +123,7 @@ test.skipIf(process.platform === 'win32')(
         STATION_BIOME_SLOT_DIR: join(directory, 'slots'),
       },
       stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
     });
     children.push(child);
     let stdout = '';
