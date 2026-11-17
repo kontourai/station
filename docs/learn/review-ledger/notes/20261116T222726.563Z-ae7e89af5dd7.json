@@ -1,0 +1,11 @@
+{
+  "revision": "ea60d720910ce6d78a3a747891862c3c73623353",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Adds the Agent feedback section to Project settings only with the feedback preview and capability; the settings sections documented in settings.md are otherwise unchanged.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/design/shell-skeletons.md","note":"Adds the Agent feedback section to Project settings only with the feedback preview and capability; the settings sections documented in settings.md are otherwise unchanged.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Adds the Agent feedback section to Project settings only with the feedback preview and capability; the settings sections documented in settings.md are otherwise unchanged.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]}
+  ]
+}
