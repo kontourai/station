@@ -1,0 +1,7 @@
+{
+  "revision": "4a0ea5b300656b6063f4e5bac88cea76adcce787",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Rewrote the scheduled-failure section: cancel attribution (only person and supersession silent), bounded tracker lookup, ci:red applied once it exists, overdue-schedules tolerance max(2x interval, 20 h) with measured gaps; container smoke row now a six-hour cadence. Checked against main-health.yml, main-health-schedules.mjs and container-smoke.yml.","inputs":["docs/guides/testing.md","scripts/__tests__/ci-workflow-contract.test.ts"]}
+  ]
+}

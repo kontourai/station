@@ -1,0 +1,7 @@
+{
+  "revision": "4a0ea5b300656b6063f4e5bac88cea76adcce787",
+
+  "notes": [
+    {"path":"docs/guides/private-runner-partition.md","note":"Container smoke stays GitHub-hosted (now a six-hour cadence); the self-hosted claims here are unchanged.","inputs":["docs/guides/private-runner-partition.md",".github/workflows/container-smoke.yml"]}
+  ]
+}
