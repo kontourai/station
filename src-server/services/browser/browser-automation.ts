@@ -2921,8 +2921,8 @@ export class BrowserAutomation {
  * process (`site_instance_impl.cc` CHECK `has_site_`). An about:blank a page
  * opened or navigated to itself inherits that page's origin and site, so
  * evaluation there stays allowed. Some opaque-origin blank pages that would
- * not abort are refused too; that costs only an agent's script on an empty
- * page.
+ * not abort are refused too, on every Chrome version: writing throwaway HTML
+ * into a blank tab is refused, and the refusal names the HTML reply tools.
  */
 const SITELESS_BLANK_PAGE =
   "location.href === 'about:blank' && self.origin === 'null'";
@@ -2960,7 +2960,7 @@ const EVALUATE_NO_PAGE_WORLD =
   'The page is between documents (it is loading), so the script did not run. Try again in a moment.';
 
 const EVALUATE_ON_BLANK_PAGE =
-  'This tab has no page loaded (about:blank), so Station does not run scripts in it: there, a script that adds a sandboxed frame can make the browser quit and close every tab. Open a page with browser_navigate first.';
+  'This tab has no page loaded (about:blank), so Station does not run scripts in it: there, a script that adds a sandboxed frame can make the browser quit and close every tab. Open a real page with browser_navigate first (an http or https address; data: and blob: addresses are not allowed). To show HTML you generated, use html_preview, or html_render to publish it in the conversation, where those tools are available, rather than writing it into a blank tab.';
 
 const EVALUATE_NOT_PERMITTED =
   'Running JavaScript in this Project’s browser is turned off. Ask the Station operator or a Project admin to allow JavaScript evaluation for this Project in the Browser pane. Until then, use browser_snapshot, browser_click, browser_type and browser_wait_for.';

@@ -90,7 +90,13 @@ on 158 the same frame loads there without an abort.
 an opaque origin, and refuses with `browser-refused` unless the answer is a
 definite no. The check also refuses opaque-origin blank pages that did not
 abort on 158, such as the blank page Station leaves after refusing a page's
-own `blob:` navigation; the cost is an Agent opening a page first.
+own `blob:` navigation. It applies on every Chrome version, 157 included:
+a version gate would be one more thing to get wrong, and the pinned browser
+is 158. The cost is real for one use: with `data:` and `blob:` already
+blocked, writing throwaway HTML into a blank tab was the only way to show
+generated HTML in the pane, and it is now refused. The refusal tells the
+Agent to open a real page first, or to show generated HTML with
+`html_preview` or `html_render`.
 
 The check and the Agent's script are two CDP calls, and a person's
 navigation does not wait for an Agent's call: the address bar, Back, Forward
