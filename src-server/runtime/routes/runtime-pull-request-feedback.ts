@@ -20,8 +20,8 @@ import {
   pullRequestFeedbackSends,
 } from '@kontourai/station-contracts/pull-request-feedback';
 import type { IPullRequestProvider } from '@kontourai/station-contracts/pull-request-provider';
-import type { IndependentReviewRequest } from '@kontourai/station-contracts/review-evidence';
 import type { ProjectPullRequestWatchSettings } from '@kontourai/station-contracts/pull-request-watch';
+import type { IndependentReviewRequest } from '@kontourai/station-contracts/review-evidence';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { isSessionLifecycleStateStopped } from '@kontourai/station-contracts/session-lifecycle';
 import type {
