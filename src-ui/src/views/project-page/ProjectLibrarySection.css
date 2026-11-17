@@ -66,6 +66,9 @@
 }
 
 .project-library__task-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   padding: 0;
   border: 0;
   background: none;
@@ -108,10 +111,4 @@
 .project-library__preview img {
   max-width: 100%;
   height: auto;
-}
-
-@media (max-width: 640px) {
-  .project-library__task-link {
-    min-height: 44px;
-  }
 }
