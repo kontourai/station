@@ -1617,9 +1617,7 @@ describe('ChatInputArea', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Approval mode:/ }));
     // The mode sheet is lazy-loaded; wait for it rather than the Suspense null.
     await screen.findByRole('radiogroup', { name: 'Approval mode' });
-    fireEvent.click(
-      screen.getByRole('radio', { name: /Never ask \(full access\)/ }),
-    );
+    fireEvent.click(screen.getByRole('radio', { name: /^Full access/ }));
     expect(
       screen.getByRole('button', { name: 'Enable full access' }),
     ).toBeTruthy();

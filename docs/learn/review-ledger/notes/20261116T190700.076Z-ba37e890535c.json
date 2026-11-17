@@ -1,0 +1,9 @@
+{
+  "revision": "f4f9afcc931dc65cde5c95e2d6bae7fbbeb0cd55",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Project metadata now carries lifecycle when set; storage layout unchanged.","inputs":["src-server/domain/file-storage-adapter.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Project metadata now carries lifecycle when set; storage layout unchanged.","inputs":["src-server/domain/file-storage-adapter.ts"]}
+  ]
+}

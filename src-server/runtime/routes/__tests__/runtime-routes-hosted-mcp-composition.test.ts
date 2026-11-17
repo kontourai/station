@@ -1193,6 +1193,8 @@ describe('configureRuntimeRoutes hosted station-control MCP composition', () => 
         acpBridge: { getStatus: () => ({ connections: [] }) },
         orchestrationService: {
           bindMandatoryTaskContextVerifier: vi.fn(),
+          // #5069: Project Pause registers its turn admission at composition.
+          registerTurnAdmission: vi.fn(() => () => {}),
           canUserReadSession: (sessionId: string, authority: any) =>
             sessionId ===
             `${authority.tenantExecutionContext?.tenantId}-session`,
@@ -1349,6 +1351,8 @@ describe('configureRuntimeRoutes hosted station-control MCP composition', () => 
         orchestrationService: new Proxy(
           {
             bindMandatoryTaskContextVerifier: vi.fn(),
+            // #5069: Project Pause registers its turn admission at composition.
+            registerTurnAdmission: vi.fn(() => () => {}),
             canUserReadSession: (sessionId: string, authority: any) =>
               sessionId ===
               `${authority.tenantExecutionContext?.tenantId}-session`,

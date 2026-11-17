@@ -79,6 +79,24 @@ export function useScheduledConversationTargetCapability() {
   );
 }
 
+/**
+ * #5070: whether the host runs a job as a Task in a Project
+ * (`projectSchedules`). An older host would strip `projectId` and create a
+ * plain job, so a client offers Project schedules only on `true`.
+ */
+export function useProjectSchedulesCapability() {
+  return useApiQuery(
+    ['scheduler', 'project-schedules-capability'],
+    async () => {
+      const handshake = await readPublicStationCapabilities(
+        await _getApiBase(),
+      );
+      return handshake ? hasCapability(handshake, 'projectSchedules') : null;
+    },
+    { staleTime: 10_000, retry: false },
+  );
+}
+
 export function useSchedulerProviders() {
   return useApiQuery(
     ['scheduler', 'providers'],

@@ -1,0 +1,7 @@
+{
+  "revision": "f753be457d3138060de5591340e49559b212d9ad",
+
+  "notes": [
+    {"path":"docs/design/survey-flow-review.md","note":"Checked the test diff: one survey test is renamed to what it proves (continuation through the real adapter, reused on the second call); the composition this page describes is unchanged.","inputs":["docs/design/survey-flow-review.md","src-server/services/flow/__tests__/survey-flow-review-service.test.ts"]}
+  ]
+}

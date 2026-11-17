@@ -723,7 +723,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/typecheck-host-slots.test.ts',
   // Host heavy-check slots: runs the slot runner as short-lived children
   // against a PRIVATE slot directory (never the host's) to prove queueing
-  // order, dead-holder reclaim, the bounded wait and nested admission.
+  // order, dead-holder reclaim, the bounded wait and nested admission, and
+  // starts each self-slotted fallow entry point from an empty directory to
+  // prove it queues before analysing anything (#5080).
   'scripts/__tests__/heavy-check-slots.test.ts',
   // Drives verification CLI admission without launching compilers.
   'scripts/__tests__/live-service-verification.process.test.ts',

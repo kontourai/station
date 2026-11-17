@@ -1,0 +1,7 @@
+{
+  "revision": "f4f9afcc931dc65cde5c95e2d6bae7fbbeb0cd55",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"Adds an optional details slot under the message; existing confirmations unchanged.","inputs":["src-ui/src/components/modals/ConfirmModal.tsx"]}
+  ]
+}
