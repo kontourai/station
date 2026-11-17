@@ -1,0 +1,11 @@
+{
+  "revision": "18dbda046a417be580e90a0c0a87e8820fa79a82",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"contracts.md now lists the three turn-start refusal codes; these pages cite it for other contracts and their claims are unchanged.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"contracts.md now lists the three turn-start refusal codes; these pages cite it for other contracts and their claims are unchanged.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"contracts.md now lists the three turn-start refusal codes; these pages cite it for other contracts and their claims are unchanged.","inputs":["docs/reference/contracts.md"]}
+  ]
+}
