@@ -42,6 +42,7 @@ import {
   type PullRequestReviewThread,
   pullRequestFeedbackSends,
 } from '@kontourai/station-contracts/pull-request-feedback';
+import { pullRequestReadyForPerson } from '@kontourai/station-contracts/pull-request-watch';
 import { errorMessage } from '../../utils/error-message.js';
 import { quotedLines, singleLine } from '../orchestration/quoted-text.js';
 import {
@@ -124,6 +125,23 @@ export interface PullRequestFeedbackDeliveryPorts {
   readonly logger: {
     warn(message: string, meta?: Record<string, unknown>): void;
   };
+  /**
+   * #5066: a watching Task's pull request used every fix attempt; these
+   * checks still fail on this head. Called once per head.
+   */
+  onFixBudgetSpent?(input: {
+    claim: PullRequestFeedbackClaim;
+    failing: readonly string[];
+    headSha: string;
+  }): void;
+  /**
+   * #5066: a watching Task's pull request is ready for its person on this
+   * head, with the agent idle. Called once per head.
+   */
+  onReady?(input: {
+    claim: PullRequestFeedbackClaim;
+    observation: PullRequestFeedbackObservation;
+  }): void;
 }
 
 export type PullRequestFeedbackDeliveryOutcome =
@@ -957,6 +975,7 @@ export class PullRequestFeedbackDelivery {
       const stored = store.observation(claim.prKey);
       const observation = stored?.observation;
       if (observation?.state !== 'OPEN') continue;
+      this.reportReady(store, claim, observation, conversationId, nowIso);
       const section = this.sectionFor(
         store,
         claim,
@@ -1075,6 +1094,38 @@ export class PullRequestFeedbackDelivery {
     return outcome;
   }
 
+  /**
+   * #5066: once per head, tell the watching Task its pull request is ready
+   * for the person: the forge shows it ready and the agent is not working
+   * (a running turn may still push).
+   */
+  private reportReady(
+    store: PullRequestFeedbackStore,
+    claim: PullRequestFeedbackClaim,
+    observation: PullRequestFeedbackObservation,
+    conversationId: string,
+    nowIso: string,
+  ): void {
+    if (!claim.watch || !pullRequestReadyForPerson(observation)) return;
+    if (this.ports.session(conversationId).state !== 'idle') return;
+    if (
+      !store.recordWatchReport({
+        prKey: claim.prKey,
+        headSha: observation.headSha,
+        kind: 'ready',
+        at: nowIso,
+      })
+    )
+      return;
+    try {
+      this.ports.onReady?.({ claim, observation });
+    } catch (error) {
+      this.ports.logger.warn('Pull request ready report failed', {
+        error: errorMessage(error),
+      });
+    }
+  }
+
   /** What is new for one pull request, recorded, after the caps. */
   private sectionFor(
     store: PullRequestFeedbackStore,
@@ -1117,6 +1168,9 @@ export class PullRequestFeedbackDelivery {
     // A pause holds until a new head with different feedback.
     const condition = claim.condition;
     if (condition?.state === 'paused') {
+      // A spent fix budget waits for its person (Send again), whatever the
+      // forge shows next.
+      if (condition.reason === 'fix-budget') return undefined;
       const moved = condition.headSha !== observation.headSha;
       const differs =
         condition.reason === 'round-limit' ||
@@ -1195,7 +1249,48 @@ export class PullRequestFeedbackDelivery {
       });
       return undefined;
     }
-    if (failingPart && claim.overrideHead !== observation.headSha) {
+    // #5066: a watching Task's pull request gets a bounded number of fix
+    // attempts in all, which replaces the repeated-failure pause.
+    if (failingPart && claim.watch) {
+      const budget = claim.watch.maxFixAttempts + claim.watch.extra;
+      if (store.fixAttempts(claim.prKey, claim.watch.since) >= budget) {
+        const failing = failingPart.candidate.summary.failing ?? [];
+        this.pause(store, claim, {
+          state: 'paused',
+          reason: 'fix-budget',
+          headSha: observation.headSha,
+          failing,
+          shown: failingPart.candidate.shown ?? failing,
+          at: nowIso,
+        });
+        if (
+          store.recordWatchReport({
+            prKey: claim.prKey,
+            headSha: observation.headSha,
+            kind: 'budget-spent',
+            at: nowIso,
+            failing,
+          })
+        )
+          try {
+            this.ports.onFixBudgetSpent?.({
+              claim,
+              failing,
+              headSha: observation.headSha,
+            });
+          } catch (error) {
+            this.ports.logger.warn('Pull request fix budget report failed', {
+              error: errorMessage(error),
+            });
+          }
+        return undefined;
+      }
+    }
+    if (
+      failingPart &&
+      !claim.watch &&
+      claim.overrideHead !== observation.headSha
+    ) {
       const names = failingPart.candidate.summary.failing ?? [];
       const earlier = store.recentSentFailures(
         claim.prKey,
@@ -1244,6 +1339,9 @@ export class PullRequestFeedbackDelivery {
       return 'not-paused';
     if (claim.condition.reason === 'repeated-failure')
       store.setOverrideHead(prKey, claim.condition.headSha);
+    // #5066: one more fix attempt for a watching Task's pull request.
+    if (claim.condition.reason === 'fix-budget' && claim.watch)
+      store.setWatch(prKey, { ...claim.watch, extra: claim.watch.extra + 1 });
     store.grantRound(prKey, claim.condition.headSha);
     store.setCondition(prKey, null);
     return this.deliver(claim.conversationId);

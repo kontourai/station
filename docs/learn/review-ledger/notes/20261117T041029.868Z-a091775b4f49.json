@@ -1,0 +1,7 @@
+{
+  "revision": "95b26011a7a1ee3a458b18f5743ab491c6625db1",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"ChatInputArea changes are the opening placeholder, the send-blocked reason with a draft, and no slash selector while draft-only; the getting-started sending steps are unchanged.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/ChatInputArea.tsx"]}
+  ]
+}

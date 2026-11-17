@@ -7,6 +7,7 @@ import type {
 } from './project-chat-defaults.js';
 import type { ProjectLifecycle } from './project-lifecycle.js';
 import type { ProjectMemberAction } from './project-membership.js';
+import type { ProjectPullRequestWatchSettings } from './pull-request-watch.js';
 import type { WorkspaceIsolationMode } from './workspace-isolation.js';
 
 export interface ProjectToolDefaults {
@@ -141,6 +142,13 @@ export interface ProjectConfig {
    * `TASK_OVERVIEW_AUTO_RESOLVE_DEFAULT_DAYS` in `task-overview`.
    */
   overviewAutoResolveDays?: number;
+  /**
+   * #5066: whether this Project's Tasks watch the pull requests they keep
+   * (CI and review), and how many fix attempts each gets. Absent: off. A
+   * Task's own choice overrides it. Written only through
+   * `PUT /api/projects/:slug/pull-request-watch`.
+   */
+  pullRequestWatch?: ProjectPullRequestWatchSettings;
   /**
    * Server-owned explicit sidebar position (station#3315). Assigned by the
    * reorder operation; projects without one list after positioned ones, in

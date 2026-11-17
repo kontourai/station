@@ -60,7 +60,7 @@ Applies to `src-ui` and the pane packages (`packages/basis-pane`, `packages/boar
 | Standard action | `Button` (`components/Button`) | `ActionControl` from `@kontourai/station-sdk/action-control`; not the SDK barrel `Button`, which defaults to `type="submit"` |
 | Error with retry | `ErrorState` (`components/state`) with an `action`; `variant="compact"` inline | `ErrorState` from `@kontourai/station-sdk/error-state`, same props |
 | Empty | `Empty`; `FilteredEmpty` when a filter hides results | `Empty` from `@kontourai/ui/react` (shell-only `FilteredEmpty`: give `Empty` a clear-filter action) |
-| Loading | `SkeletonList` (rows), `SkeletonBlock` (region) | `Skeleton` from `@kontourai/ui/react` |
+| Loading | `SkeletonList` (rows), `SkeletonBlock` (region); a conversation's first load uses `ConversationLoadingStage` | `Skeleton` from `@kontourai/ui/react` |
 | Status pill or badge | `StatusBadge` or `Badge` from `@kontourai/ui/react`, not the SDK `Pill` | Same |
 | Dialog | `Dialog`; `ConfirmModal` for a confirmation | `host.confirm(...)` for a confirmation; no pane dialog owner yet, so ask before adding one |
 | Disclosure | `DisclosureToggle` for a folded list section | No published primitive; a native `button` with `aria-expanded` |

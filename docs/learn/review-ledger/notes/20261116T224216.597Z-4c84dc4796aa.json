@@ -1,0 +1,7 @@
+{
+  "revision": "f18db47905491b9778f928a5f3ffd28960c667a7",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"The offlineSettling test only changed loading-state queries (stage element and Loading chat region label instead of skeleton text); no contract behavior it cites changed.","inputs":["docs/reference/contracts.md","src-ui/src/__tests__/ChatDockBody.offlineSettling.test.tsx"]}
+  ]
+}

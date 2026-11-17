@@ -5,9 +5,11 @@ import type {
   SpawnOptions,
 } from '@anthropic-ai/claude-agent-sdk';
 import {
+  type ChildWorkloadNotice,
   type ChildWorkloadOutcome,
   childWorkloadOutcome,
   spawnChildWorkload,
+  watchChildWorkloadNotices,
 } from '@kontourai/station-shared/child-workload';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import {
@@ -77,6 +79,14 @@ export type ClaudeEngineProcess = {
    * it ran in a managed scope. Returns the unsubscribe.
    */
   onExit: (listener: (exit: ClaudeEngineExit) => void) => () => void;
+  /**
+   * #5113: observe the running engine process's workload notices (its own
+   * scope's memory transitions). Each spawned process is watched until it
+   * exits. Returns the unsubscribe.
+   */
+  onWorkloadNotice: (
+    listener: (notice: ChildWorkloadNotice) => void,
+  ) => () => void;
 };
 
 /** One engine process's observed exit. */
@@ -165,6 +175,7 @@ export function createClaudeEngineProcess(
   let spawned: { command: string; args: readonly string[] } | undefined;
   const children = new Set<ChildProcess>();
   const exitListeners = new Set<(exit: ClaudeEngineExit) => void>();
+  const noticeListeners = new Set<(notice: ChildWorkloadNotice) => void>();
 
   const spawn = (options: SpawnOptions): SpawnedProcess => {
     if (retired)
@@ -184,7 +195,11 @@ export function createClaudeEngineProcess(
     });
     children.add(child);
     const workloadOutcome = childWorkloadOutcome(child);
+    const stopWatchingNotices = watchChildWorkloadNotices(child, (notice) => {
+      for (const listener of [...noticeListeners]) listener(notice);
+    });
     child.once('exit', (code, signal) => {
+      stopWatchingNotices?.();
       children.delete(child);
       const exit: ClaudeEngineExit = {
         code,
@@ -282,6 +297,10 @@ export function createClaudeEngineProcess(
     onExit(listener) {
       exitListeners.add(listener);
       return () => exitListeners.delete(listener);
+    },
+    onWorkloadNotice(listener) {
+      noticeListeners.add(listener);
+      return () => noticeListeners.delete(listener);
     },
     async terminate() {
       retired = true;

@@ -1,0 +1,7 @@
+{
+  "revision": "95b26011a7a1ee3a458b18f5743ab491c6625db1",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"The new in-memory transcript window cache paragraph matches transcriptWindowCache and useSessionEventWindow: count and byte bounds, the authority key, never naming the current child, approvals held while re-reading, a failed re-read dropping rows and evicting, clears on switch, authority change and sign-out, and the hover or focus prefetch skipped for touch and save-data.","inputs":["docs/design/offline-outbound-queue.md","src-ui/src/hooks/orchestration/useSessionEventWindow.ts"]}
+  ]
+}

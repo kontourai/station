@@ -1,0 +1,7 @@
+{
+  "revision": "733eb9230e0e52b6df932f00a68cd3bfb5e118d9",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated from the module map's #5126 Project jobs paragraph only (Project runs act as the job's creator); the station-docs reference's description of the shipped topics is unchanged.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}

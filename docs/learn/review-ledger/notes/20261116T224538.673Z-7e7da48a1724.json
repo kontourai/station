@@ -1,0 +1,7 @@
+{
+  "revision": "564cae9d1f4a2c97b59e580eca0511e97d6cdbac",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Added the conversation first-load stage (step line from the open read, the transcript first read, or catch-up; a six-second long-wait line naming the Station), removed the slow-load Start new chat escape (the recovery and history-failure notices keep their exits), and documented that the composer stays editable for a draft while the open read is pending, with Send disabled. Checked against ConversationBody, ConversationLoadingStage and ChatInputArea; the page's other composer claims are unchanged.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatDockBody.offlineSettling.test.tsx","src-ui/src/__tests__/ChatDockBody.sessionFailureBanner.test.tsx","src-ui/src/__tests__/ChatInputArea.test.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/conversation/ConversationBody.tsx"]}
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "revision": "2fb350a386662f00ce2606cd02e3d08bba3d1fbb",
+
+  "notes": [
+    {"path":"docs/guides/deployment-authentication.md","note":"Checked: sign-out also clears the in-memory transcript reopen cache; account and sign-out flow claims unchanged.","inputs":["src-ui/src/views/account/AccountEntryView.tsx"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Checked: sign-out also clears the in-memory transcript reopen cache; account and sign-out flow claims unchanged.","inputs":["src-ui/src/views/account/AccountEntryView.tsx"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Checked: sign-out also clears the in-memory transcript reopen cache; account and sign-out flow claims unchanged.","inputs":["src-ui/src/views/account/AccountEntryView.tsx"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked: sign-out also clears the in-memory transcript reopen cache; account and sign-out flow claims unchanged.","inputs":["src-ui/src/views/account/AccountEntryView.tsx"]}
+  ]
+}

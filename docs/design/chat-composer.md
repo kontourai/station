@@ -76,6 +76,22 @@ stop the original app. A failed opening retains the reader and offers a
 retry that does not create another continuation. Metadata is available through
 an explicit Details action.
 
+While a conversation's first load is in flight, an empty transcript shows a
+quiet loading stage: the Station mark and one status line naming the read in
+flight (**Opening conversation**, **Loading messages** or **Catching up**). A
+load that lands within a fraction of a second paints nothing. Past six seconds the stage adds
+**Taking longer than usual. Waiting on** the Station's name. A slow load offers
+no **Start new chat**. The exits belong to a load that failed: the recovery
+notice (Retry and Start new chat, which carries the draft) and the
+history-failure notice (Retry). While the open read is pending, the composer
+stays editable for a draft but runs nothing: Send, Enter and slash commands
+wait, and with a draft Send says it can send once the chat opens
+([stage](../../src-ui/src/components/conversation/ConversationLoadingStage.tsx),
+[body](../../src-ui/src/components/conversation/ConversationBody.tsx)). A skill
+shortcut follows the composer's rule: it runs a command only where the
+composer could send, and otherwise says why in a toast
+([registrar](../../src-ui/src/components/SkillShortcutRegistrar.tsx)).
+
 Message action rows reserve their layout space. Hover and keyboard focus may
 reveal controls, but must not change bubble size or the position of later messages.
 The desktop chat header's **Inventory** button opens the full Chat inventory

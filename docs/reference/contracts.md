@@ -1158,6 +1158,8 @@ non-retryable.
 | `session-reattach-conflict` | `conflict` | `false` |
 | `transcript-line-skipped` | `warning` | `false` |
 | `workload-command-oom-killed` | `warning` | `false` |
+| `workload-memory-pressure` | `warning` | `false` |
+| `workload-memory-pressure-cleared` | `warning` | `false` |
 | `sandbox_unavailable` | `permission_denied` | `false` |
 | `provider_model_unavailable` | `model_unavailable` | `false` |
 
@@ -2028,6 +2030,19 @@ requests they turned on that still send, in chats the reader may read). The opti
 exact head branch name (`PullRequestByHead`, with where each head lives),
 answering `PullRequestsByHeadResult`. See
 [Pull request agent feedback](../decisions/pull-request-agent-feedback.md).
+
+`pull-request-watch` defines Task-owned pull requests (#5066): the Project
+setting (`ProjectPullRequestWatchSettings`, parsed by
+`parseProjectPullRequestWatchSettings`), a Task's own choice
+(`TaskPullRequestWatchMode`), `resolveTaskPullRequestWatch` (the Task's choice
+wins, a done or canceled Task watches nothing), `pullRequestReadyForPerson` over
+a feedback observation, the refused-action kinds and the Task's watch view.
+`ProjectConfig.pullRequestWatch`, `TaskRecord.pullRequestWatch` and
+`TaskRecord.pullRequestWatchHold` are optional and absent means off; a Task
+store carrying either Task field is refused by Station builds that predate
+them. `PullRequestFeedbackStatus` gains the `fix-budget` pause reason and
+`TaskLaneRung` the `fixAttemptsUsed` rung. See
+[Task-owned pull requests](../decisions/task-owned-pull-requests.md).
 
 `TaskRecord.closeOnMerge` is optional and absent means off. It is a person's
 opt-in to move a Task to `done` when every pull request kept on it is merged;

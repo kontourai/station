@@ -40,7 +40,8 @@ type ToolDenialReason =
   | 'policy_evaluation_failed'
   | 'project_tool_policy'
   | 'untrusted_content_denied'
-  | 'untrusted_persistence_protection';
+  | 'untrusted_persistence_protection'
+  | 'pull_request_watch_refusal';
 
 /**
  * `defer` means "Station's policy is not deciding this call; the engine's own
@@ -100,7 +101,22 @@ export type StagedPreToolPolicyEvaluator = (
   },
 ) => Promise<PreToolPolicyDecision>;
 
+/**
+ * #5066: what a watching Task's agent may not do. `deny` refuses the call;
+ * `ask` puts it to a person as a required question. Undefined: no opinion.
+ */
+export type PullRequestWatchPolicy = (input: {
+  /** The engine's conversation for the call (a Session id on an external engine). */
+  conversationId: string | undefined;
+  toolName: string;
+  /** The operation's own name, as the persistence check reads it. */
+  operationName: string;
+  toolArgs: unknown;
+}) => { decision: 'deny' | 'ask'; predicate: string } | undefined;
+
 interface StagedPreToolPolicyDeps {
+  /** #5066: refusals for a watching Task's agent; see {@link PullRequestWatchPolicy}. */
+  pullRequestWatchPolicy?: PullRequestWatchPolicy;
   projectToolPolicy?: (
     invocation: InvocationContext,
     tool: ToolCallContext,
@@ -596,6 +612,34 @@ export function createStagedPreToolPolicyEvaluator(
             ?.originalToolName ??
           deps.toolNameMapping.get(tool.toolName)?.tool ??
           tool.toolName);
+    // #5066: a watching Task's agent never merges, arms auto-merge or
+    // force-pushes, and changes CI configuration only when a person
+    // approves. Before every grant below, so no pattern, session grant or
+    // full access answers it.
+    let watchVerdict: ReturnType<PullRequestWatchPolicy>;
+    try {
+      watchVerdict = deps.pullRequestWatchPolicy?.({
+        conversationId: invocation.conversationId ?? invocation.sessionId,
+        toolName: tool.toolName,
+        operationName,
+        toolArgs: tool.toolArgs,
+      });
+    } catch (error) {
+      deps.logger.warn('Pull request watch policy failed', {
+        toolName: tool.toolName,
+        conversationId: invocation.conversationId,
+        error: errorMessage(error),
+      });
+    }
+    if (watchVerdict?.decision === 'deny')
+      return deny(
+        'pull_request_watch_refusal',
+        tool.toolName,
+        watchVerdict.predicate,
+      );
+    if (watchVerdict?.decision === 'ask')
+      return requiredAsk(undefined, watchVerdict.predicate);
+
     const persistence =
       deps.untrustedContentRead &&
       isPersistenceRelevantTool(operationName) &&

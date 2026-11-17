@@ -61,6 +61,7 @@ const sdkMocks = vi.hoisted(() => ({
   chatDefaultsQuery: vi.fn(),
   // Station-wide previews the host reports, and the checkout freshness read.
   previews: [] as Array<{ id: string; enabled: boolean }>,
+  setPullRequestWatch: vi.fn(),
   checkoutFreshness: undefined as ProjectCheckoutFreshness | null | undefined,
   checkoutFreshnessError: null as Error | null,
   checkoutFreshnessQuery: vi.fn(),
@@ -350,6 +351,18 @@ vi.mock('@kontourai/station-sdk', () => ({
         }
       : { data: undefined, error: null, isError: false, refetch: vi.fn() },
   useProjectSchedulesCapability: () => ({ data: true }),
+  // #5066: the Pull requests section saves through this mutation.
+  useSetProjectPullRequestWatchMutation: (slug: string) => ({
+    isPending: false,
+    error: null,
+    mutate: (
+      settings: { enabled: boolean; maxFixAttempts: number },
+      options?: { onSuccess?: () => void },
+    ) => {
+      sdkMocks.setPullRequestWatch(slug, settings);
+      options?.onSuccess?.();
+    },
+  }),
   useSchedulerJobs: () => ({
     data: [],
     isPending: false,
@@ -1841,5 +1854,50 @@ describe('ProjectSettingsView: changing the icon after creation', () => {
     save();
     await waitFor(() => expect(sdkMocks.updateProject).toHaveBeenCalled());
     expect(sdkMocks.updateProject.mock.calls[0][0]).not.toHaveProperty('icon');
+  });
+});
+
+describe('Pull requests section (#5066)', () => {
+  beforeEach(() => {
+    sdkMocks.setPullRequestWatch.mockClear();
+    sdkMocks.refetch.mockClear();
+  });
+
+  test('cannot be changed while the pull request agent feedback preview is off', () => {
+    sdkMocks.project = projectFixture;
+    renderProjectSettings('pull-requests');
+    const toggle = screen.getByRole('switch', {
+      name: 'Watch Task pull requests',
+    });
+    expect(toggle).toHaveProperty('disabled', true);
+    expect(
+      screen.getByText(/Turn on Pull request agent feedback/),
+    ).toBeTruthy();
+    fireEvent.click(toggle);
+    expect(sdkMocks.setPullRequestWatch).not.toHaveBeenCalled();
+  });
+
+  test('saves the Project setting as it changes and refreshes the Project', () => {
+    sdkMocks.project = {
+      ...projectFixture,
+      pullRequestWatch: { enabled: false, maxFixAttempts: 3 },
+    };
+    sdkMocks.previews = [{ id: 'pull-request-agent-feedback', enabled: true }];
+    renderProjectSettings('pull-requests');
+    fireEvent.click(
+      screen.getByRole('switch', { name: 'Watch Task pull requests' }),
+    );
+    expect(sdkMocks.setPullRequestWatch).toHaveBeenLastCalledWith('demo', {
+      enabled: true,
+      maxFixAttempts: 3,
+    });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Fix attempts' }), {
+      target: { value: '5' },
+    });
+    expect(sdkMocks.setPullRequestWatch).toHaveBeenLastCalledWith('demo', {
+      enabled: false,
+      maxFixAttempts: 5,
+    });
+    expect(sdkMocks.refetch).toHaveBeenCalledTimes(2);
   });
 });

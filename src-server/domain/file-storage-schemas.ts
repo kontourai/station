@@ -15,6 +15,7 @@ import {
   PROJECT_CHAT_APPROVAL_POSTURES,
   PROJECT_CHAT_DEFAULT_SELECTIONS,
 } from '@kontourai/station-contracts/project-chat-defaults';
+import { MAX_PULL_REQUEST_FIX_ATTEMPTS } from '@kontourai/station-contracts/pull-request-watch';
 import { TASK_OVERVIEW_AUTO_RESOLVE_MAX_DAYS } from '@kontourai/station-contracts/task-overview';
 import { isSafeToolServerId } from '@kontourai/station-contracts/tool';
 import { z } from 'zod';
@@ -111,6 +112,17 @@ const projectSchema = z
       .int()
       .min(0)
       .max(TASK_OVERVIEW_AUTO_RESOLVE_MAX_DAYS)
+      .optional(),
+    pullRequestWatch: z
+      .object({
+        enabled: z.boolean(),
+        maxFixAttempts: z
+          .number()
+          .int()
+          .min(1)
+          .max(MAX_PULL_REQUEST_FIX_ATTEMPTS),
+      })
+      .strict()
       .optional(),
     position: z.number().int().nonnegative().optional(),
     // #5069: server-written by the lifecycle route only.

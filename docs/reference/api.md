@@ -1619,6 +1619,32 @@ request found on a Task's own branch also appears in
 `branch-derived` while the preview is on. See
 [the decision](../decisions/pull-request-agent-feedback.md).
 
+### Task-owned pull requests
+
+Served wherever pull request agent feedback is composed (the
+`pullRequestFeedback` capability flag; a hosted Station answers 404). While the
+Feature Preview is off the routes still answer, nothing is watched, and the
+view says `available: false`:
+
+- `GET /api/tasks/:taskId/pull-request-watch` returns the Task's
+  `TaskPullRequestWatchView`: whether it watches, whose choice decided
+  (`source`), its own `mode`, the Project's setting, each kept pull request's
+  watch state (`watching`, `fixing`, `ready`, `budget-spent` with the failing
+  checks, `elsewhere`, `unavailable`, `closed`) with fix attempts used and
+  allowed, and the newest 20 refused agent actions.
+- `PUT` on the same path, body `{ mode: 'on' | 'off' | 'project' }`, sets the
+  Task's own choice (`off` is Stop watching; `project` follows the Project)
+  and claims or releases its kept pull requests at once. A done or canceled
+  Task answers 400.
+- `PUT /api/projects/:slug/pull-request-watch`, body
+  `{ enabled, maxFixAttempts? }` (1–10, default 3), sets
+  `ProjectConfig.pullRequestWatch` and answers the Project. The runtime Project
+  guard admits only the Project's owner.
+
+No Station Control tool names these routes, so the authority guard refuses an
+agent's request to them. See
+[the decision](../decisions/task-owned-pull-requests.md).
+
 
 ## Table of Contents
 
@@ -5961,10 +5987,12 @@ over the same fixed set. A job stored without an owner afterwards stays
 ownerless. Such a job's view
 carries `ownerNeeded` (the reason). Its runs get no Station caller and the model
 is told so; the Station tools are still listed to it, and every call is
-refused. A Project job (`projectId`) is the exception: each run is a Task
-that currently acts as the local operator whoever created it (acting as the
-creator is #5126), so an ownerless one carries no `ownerNeeded`; who may
-change or run it is still decided by its creator. The scheduler routes answer
+refused. A Project job (`projectId`) runs as a Task that belongs to its
+creator and replays the creator's recorded owner attribution, so its Session's
+Station tools, Project role and scope are the creator's. A run starts only
+while the creator holds `execute` in the Project; otherwise, and for an
+ownerless Project job (whose view carries `ownerNeeded` with its own reason),
+it creates no Task and fails without invoking anything. The scheduler routes answer
 404 on a hosted Station, so hosted jobs are out of reach here.
 
 For a job that already has a `target`, every edit (any field), `run`,

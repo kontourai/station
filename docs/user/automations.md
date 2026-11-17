@@ -37,8 +37,10 @@ from Project settings →
 (`propose_job` with the Project's id). Each run starts a new **Task** in that
 Project for the Agent you pick, on that Agent's engine. The Task's first
 message is the schedule's instructions, so the Session starts with the Task
-brief like any Task. When the run ends, Station writes a one-line run summary
-as the Task's summary; the answer itself is in the Task's chat.
+brief like any Task. The Task belongs to whoever created the schedule and
+acts for them, with their role in the Project. When the run ends, Station
+writes a one-line run summary as the Task's summary; the answer itself is in
+the Task's chat.
 
 While the Project is paused or archived its schedules wait: Station does not
 start a run, and **Run now** is refused. After **Resume**, a schedule that
@@ -111,11 +113,11 @@ Templates only ask for work an agent can do with its workspace and tools.
   chat. A dedicated chat is your choice. To change or run an automation that
   runs in a chat, you must be able to send to that chat.
 - An automation acts as the person who created it; editing it does not change
-  that. Its Station tools act for that person too. Project schedules are the
-  exception for now: each run is a Task that acts as the Station's operator,
-  whoever created the schedule
-  ([#5126](https://github.com/kontourai/station/issues/5126) changes that).
-  Who may change or run one is still decided by who created it.
+  that. Its Station tools act for that person too. A Project schedule's run is
+  a Task that belongs to the person who created the schedule and acts for
+  them, with their role in the Project: if they can no longer start work in
+  that Project, the run doesn't start. A Project schedule with no recorded
+  owner doesn't start a Task at all.
 - Only an automation's owner, or an agent acting for them, can change, run,
   turn on or off, or delete it. You, signed in as the Station's operator on
   this computer or with the operator credential, can also manage any
