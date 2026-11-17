@@ -257,6 +257,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Fake systemd manager; reaps one real short-lived process for a dead pid.
   'src-server/services/infra/__tests__/workload-scope-cleanup.test.ts',
   'scripts/__tests__/run-biome.process.test.ts',
+  // #5120: runs a copy of the readiness wrapper as a node child against a
+  // disposable Git repository with short-lived git children; no wall-clock assertion.
+  'scripts/__tests__/run-veritas-readiness.process.test.ts',
   'scripts/__tests__/component-style-hygiene.process.test.ts',
   // Runs the UI copy length gate as a node child against a disposable Git tree.
   'scripts/__tests__/ui-copy-length.process.test.ts',
