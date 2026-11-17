@@ -1,3 +1,5 @@
+import { constants, copyFile, mkdir, writeFile } from 'node:fs/promises';
+import { basename, isAbsolute, join } from 'node:path';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
   expect,
@@ -296,7 +298,7 @@ async function fulfillConversationRead(route: Route): Promise<boolean> {
 }
 
 /** Lowest-precedence boundary: nothing unmodelled reaches the Station unseen. */
-async function closeFixtureBoundary(page: Page) {
+async function closeFixtureBoundary(page: Page, passedThrough: Set<string>) {
   await page.route(
     (url) =>
       /^\/(api|agents|acp)\//.test(url.pathname) ||
@@ -304,8 +306,11 @@ async function closeFixtureBoundary(page: Page) {
     async (route) => {
       const request = route.request();
       const path = new URL(request.url()).pathname;
-      if (STATION_BOOTSTRAP.has(`${request.method()} ${path}`))
+      const read = `${request.method()} ${path}`;
+      if (STATION_BOOTSTRAP.has(read)) {
+        passedThrough.add(read);
         return route.fallback();
+      }
       if (await fulfillStationShellRead(route)) return;
       if (await fulfillConversationRead(route)) return;
       return rejectUnexpectedFixtureRequest(route);
@@ -313,8 +318,9 @@ async function closeFixtureBoundary(page: Page) {
   );
 }
 
-async function seed(page: Page) {
-  await closeFixtureBoundary(page);
+async function seed(page: Page): Promise<Set<string>> {
+  const passedThrough = new Set<string>();
+  await closeFixtureBoundary(page, passedThrough);
   await installMockOrchestrationSse(page);
   await seedOrchestrationRoutes(page, {
     conversations: [
@@ -428,6 +434,34 @@ async function seed(page: Page) {
         ? json(route, { outcome: 'read' })
         : rejectUnexpectedFixtureRequest(route),
   );
+  return passedThrough;
+}
+
+// Opt-in, caller-owned evidence directory, as replay-inspector.ts does: the
+// runner removes a passing run's test-results, captures included.
+const EVIDENCE_DIR = process.env.STATION_NOTIFICATION_DEEP_LINK_EVIDENCE_DIR;
+if (EVIDENCE_DIR !== undefined && !isAbsolute(EVIDENCE_DIR))
+  throw new Error(
+    'STATION_NOTIFICATION_DEEP_LINK_EVIDENCE_DIR must be absolute',
+  );
+
+async function retain(testInfo: TestInfo, file: string) {
+  await testInfo.attach(basename(file), { path: file });
+  if (!EVIDENCE_DIR) return;
+  const directory = join(
+    EVIDENCE_DIR,
+    testInfo.titlePath
+      .slice(1)
+      .join(' ')
+      .replace(/[^a-z0-9-]+/gi, '-')
+      .slice(0, 120),
+  );
+  await mkdir(directory, { recursive: true });
+  await copyFile(
+    file,
+    join(directory, basename(file)),
+    constants.COPYFILE_EXCL,
+  );
 }
 
 /** The dock's lookup (useChatDockActiveChatSync → fetchConversationById) refused. */
@@ -537,10 +571,22 @@ for (const [width, viewport] of [
   const phone = viewport === PHONE;
   for (const colorScheme of ['light', 'dark'] as const) {
     test.describe(`notification deep link (${width}, ${colorScheme})`, () => {
+      let passedThrough = new Set<string>();
       test.beforeEach(async ({ page }) => {
         await page.setViewportSize(viewport);
         await page.emulateMedia({ colorScheme });
-        await seed(page);
+        passedThrough = await seed(page);
+      });
+      // The bootstrap reads the boundary handed to the Station by the time
+      // this hook runs (method and pathname only); not a record of responses,
+      // of traffic other routes answered, or of anything after this point.
+      test.afterEach(async ({ page: _page }, testInfo) => {
+        const file = testInfo.outputPath('station-passthrough.json');
+        await writeFile(
+          file,
+          JSON.stringify([...passedThrough].sort(), null, 2),
+        );
+        await retain(testInfo, file);
       });
 
       const capture = async (page: Page, testInfo: TestInfo, name: string) => {
@@ -552,6 +598,10 @@ for (const [width, viewport] of [
         await page.screenshot({
           path: testInfo.outputPath(`${name}-${width}-${colorScheme}.png`),
         });
+        await retain(
+          testInfo,
+          testInfo.outputPath(`${name}-${width}-${colorScheme}.png`),
+        );
       };
 
       test('names the opening conversation and covers the previous one', async ({
@@ -588,10 +638,18 @@ for (const [width, viewport] of [
         await openFirstChat(page);
         await openFromNotifications(page, 'Finished: Private review', phone);
         await refused.reached;
-        const notice = page.getByText('No access to this conversation');
+        const notice = page
+          .getByRole('alert')
+          .filter({ hasText: 'No access to this conversation' });
         await expect(notice).toBeVisible();
+        await expect(notice).toContainText(
+          'This device is not allowed to read it.',
+        );
+        await expect(
+          notice.getByRole('button', { name: 'Manage Stations' }),
+        ).toBeVisible();
         await capture(page, testInfo, 'refused');
-        const dismiss = page.getByRole('button', { name: 'Dismiss' });
+        const dismiss = notice.getByRole('button', { name: 'Dismiss' });
         await tabTo(page, dismiss);
         await page.keyboard.press('Enter');
         await expect(notice).toHaveCount(0);
