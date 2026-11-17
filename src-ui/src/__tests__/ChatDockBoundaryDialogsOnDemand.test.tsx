@@ -273,6 +273,22 @@ vi.mock('../components/chat/ShareIntakeController', () => ({
 // down, throwing an unhandled rejection that Vitest warns can produce false
 // positives elsewhere. Stubbed to a no-op component so the prewarm has
 // nothing async to chase.
+// Each factory runs when its module is first imported, so the flag records
+// whether the dock fetched that chunk at all. Read by the first test below,
+// before any other test in this file could have loaded the chunk.
+const openChunksLoaded = vi.hoisted(() => ({
+  revalidator: false,
+  sdkOpenClient: false,
+}));
+vi.mock('../components/chat-dock/ConversationOpenRevalidator', () => {
+  openChunksLoaded.revalidator = true;
+  return { ConversationOpenRevalidator: () => null };
+});
+vi.mock('@kontourai/station-sdk/conversation-open', () => {
+  openChunksLoaded.sdkOpenClient = true;
+  return { resolveConversationOpen: vi.fn() };
+});
+
 vi.mock('../workspace-panes/RegionPaneHost', () => ({
   RegionPaneHost: () => null,
 }));
@@ -372,6 +388,25 @@ async function expectWrapperPresent() {
     }),
   ).not.toBeNull();
 }
+
+// Declared first: the flags are module-registry state shared by this file.
+describe('conversation open chunks', () => {
+  test('a mounted dock fetches the open chunks before any conversation needs them', async () => {
+    expect(openChunksLoaded).toEqual({
+      revalidator: false,
+      sdkOpenClient: false,
+    });
+    renderDockedChat();
+    await vi.waitFor(
+      () =>
+        expect(openChunksLoaded).toEqual({
+          revalidator: true,
+          sdkOpenClient: true,
+        }),
+      { timeout: RESOLVE_WINDOW_MS },
+    );
+  });
+});
 
 describe('conversation-boundary dialogs are on demand', () => {
   test('a dock with no fork, handoff or context reset never mounts them', async () => {

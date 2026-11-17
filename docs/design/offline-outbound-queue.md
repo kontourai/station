@@ -259,6 +259,17 @@ approvals, or reuse saved text as current online data. Other tabs hear committed
 changes through BroadcastChannel. IndexedDB failure is reported by the setting
 and reader; a failed best-effort history capture cannot fail the live read.
 
+Separately, and never persisted, the page keeps recently read transcript windows
+in memory ([transcriptWindowCache](../../src-ui/src/hooks/orchestration/transcriptWindowCache.ts)):
+at most 12 windows and about 4 MB, least recently used first, keyed by the
+verified app authority, the target Station's authority, the API base, request
+scope and conversation. Switching back to a conversation paints its last window
+while the ordinary read revalidates it; the paint grants no write, which the
+conversation-open read still decides. A connection switch, authority change or
+sign-out clears it, and a read that began before a clear cannot repopulate it.
+Inbox rows warm it after a short hover or keyboard-focus dwell, one read at a
+time.
+
 Raw `orchestration-sessions` remain excluded from query persistence: they inherit
 `resumeCursor`, model routing, runtime diagnostics and prompt-derived titles.
 [OfflineSessionIndex](../../src-ui/src/components/OfflineSessionIndex.tsx) projects

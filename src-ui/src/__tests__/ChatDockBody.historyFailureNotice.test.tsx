@@ -272,6 +272,7 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
       handoffs: [],
       contextBoundaries: [],
       settled: true,
+      revalidating: false,
       catchingUp: false,
       openTurnProjected: false,
     }));
