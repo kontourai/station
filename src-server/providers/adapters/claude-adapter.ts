@@ -821,6 +821,8 @@ type ClaudeSessionRecord = {
   streamEnded?: boolean;
   /** Set once a failure for this engine's death was published. */
   engineFailurePublished?: boolean;
+  /** Set once the observed exit of this engine ended the session. */
+  engineExitFinalized?: boolean;
   /** The newest turn this adapter dispatched, kept after it ends. */
   lastDispatchedTurnId?: string;
   /** Stops observing the engine process's exit. */
@@ -5613,20 +5615,31 @@ export class ClaudeAdapter implements ProviderAdapterShape {
    * conversation to the memory-exhaustion continuation; anything else reads
    * as the engine stopping unexpectedly. Before this, the session silently
    * stayed `ready` with no failure, exit or interrupted work recorded.
+   *
+   * A stream that failed first (its failure is already published, the
+   * record kept with `status: 'error'`) still ends here once the exit is
+   * observed: the session is closed and `session.exited` published, so the
+   * conversation's next message goes to a new Session instead of this dead
+   * record, which refuses every turn. Its failure is not published twice,
+   * and it is not re-read as a memory kill: that hands the conversation to
+   * an unattended continuation, which only a failure reported as one may.
    */
   private async finalizeUnexpectedEngineExit(
     record: ClaudeSessionRecord,
   ): Promise<void> {
     const exit = record.engineExit;
-    if (!exit || record.stopping || record.engineFailurePublished) return;
+    if (!exit || record.stopping || record.engineExitFinalized) return;
+    record.engineExitFinalized = true;
+    const failureAlreadyPublished = record.engineFailurePublished === true;
     record.engineFailurePublished = true;
     const threadId = record.session.threadId;
-    const outcome = exit.workloadOutcome
-      ? await raceWithSignal(
-          exit.workloadOutcome,
-          AbortSignal.timeout(CLAUDE_ENGINE_EXIT_OUTCOME_WAIT_MS),
-        ).catch(() => undefined)
-      : undefined;
+    const outcome =
+      exit.workloadOutcome && !failureAlreadyPublished
+        ? await raceWithSignal(
+            exit.workloadOutcome,
+            AbortSignal.timeout(CLAUDE_ENGINE_EXIT_OUTCOME_WAIT_MS),
+          ).catch(() => undefined)
+        : undefined;
     if (record.stopping || this.sessions.get(threadId) !== record) return;
     const memoryExhausted = childWorkloadMemoryExhausted(outcome, exit.signal);
     const turnId = record.activeTurnId ?? record.lastDispatchedTurnId;
@@ -5637,27 +5650,28 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       record.engineStderrTail?.(),
     );
     const createdAt = new Date().toISOString();
-    this.publish({
-      eventId: crypto.randomUUID(),
-      provider: this.provider,
-      threadId,
-      createdAt,
-      ...(turnId ? { turnId } : {}),
-      method: 'runtime.error',
-      ...providerFailure('engine_crashed'),
-      severity: 'error',
-      message:
-        memoryExhausted && outcome
-          ? claudeMemoryExhaustedMessage(outcome)
-          : `Claude stopped unexpectedly: ${detail}`,
-      code: memoryExhausted
-        ? ENGINE_MEMORY_EXHAUSTED_CODE
-        : 'claude-engine-exited',
-      details: {
-        ...(exit.signal ? { exitSignal: exit.signal } : {}),
-        ...(outcome ? { workload: outcome } : {}),
-      },
-    } satisfies ProviderRuntimeErrorEvent);
+    if (!failureAlreadyPublished)
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId,
+        createdAt,
+        ...(turnId ? { turnId } : {}),
+        method: 'runtime.error',
+        ...providerFailure('engine_crashed'),
+        severity: 'error',
+        message:
+          memoryExhausted && outcome
+            ? claudeMemoryExhaustedMessage(outcome)
+            : `Claude stopped unexpectedly: ${detail}`,
+        code: memoryExhausted
+          ? ENGINE_MEMORY_EXHAUSTED_CODE
+          : 'claude-engine-exited',
+        details: {
+          ...(exit.signal ? { exitSignal: exit.signal } : {}),
+          ...(outcome ? { workload: outcome } : {}),
+        },
+      } satisfies ProviderRuntimeErrorEvent);
     record.session.status = 'closed';
     this.sessions.delete(threadId);
     this.publish({
