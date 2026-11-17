@@ -3978,6 +3978,16 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // merge. It mutates only that Task's own record, so the task family's
     // operate tier is the intended scope; no station-control tool reaches it.
     { method: 'PUT', path: '/api/tasks/:taskId/close-on-merge' },
+    // #5064 a person reopens a Task the Project Overview auto-resolved. It
+    // writes one timestamp (`overviewReopenedAt`) on that Task's own record:
+    // no status transition, no dispatch, no external or provider effect, and
+    // it leaves `updatedAt` alone. That is narrower than close-on-merge just
+    // above, which can move a Task to `done`, and than the family's status
+    // change, so the task family's operate tier is the intended scope and a
+    // read-tier device cannot call it. It is also refused while the
+    // `project-overview` Feature Preview is off; no station-control tool
+    // reaches it.
+    { method: 'POST', path: '/api/tasks/:taskId/overview-reopen' },
     // #4003 Start Task on a board item, and the Task's linked-item header.
     // Both read one tracker item through the Station host's own `gh` login.
     // The POST reads only a ref the Project's board offers when it is
