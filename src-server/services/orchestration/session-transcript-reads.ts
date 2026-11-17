@@ -324,91 +324,88 @@ export class SessionTranscriptReads {
     if (this.deps.requireTenantExecutionContext() === true) return [];
     const startedAt = performance.now();
     const store = this.deps.usageProjectionStore;
-    const highWater = store?.currentGlobalSequence() ?? 0;
-    const checkpoint = options.rebuild
-      ? undefined
-      : store?.readUsageProjectionCheckpoint();
-    const mode =
-      checkpoint?.version === USAGE_PROJECTION_VERSION &&
-      checkpoint.watermark <= highWater
-        ? 'incremental'
-        : 'full';
-    const caughtUp = store?.advanceUsageProjection({
-      version: USAGE_PROJECTION_VERSION,
-      ...(mode === 'incremental' ? { since: checkpoint!.watermark } : {}),
-      through: highWater,
-    });
-    if (mode === 'incremental')
-      usageProjectionRowsScanned.record(caughtUp?.rows ?? 0, { mode });
-
+    const mode = this.catchUpUsageProjection(store, options.rebuild === true);
     const threadIds = this.deps.readSessionThreadIds(authority);
     const sessions: OrchestrationSessionUsage[] = [];
-    let refolds: Array<readonly [string, string]> = [];
-    let refoldBytes = 0;
-    let refoldedRows = 0;
+    const refolds = new UsageRefoldBatch();
     let sliceStartedAt = performance.now();
     for (const threadId of threadIds) {
       if (performance.now() - sliceStartedAt >= USAGE_PROJECTION_SLICE_MS) {
-        // A commit per slice would make a full build mostly fsyncs.
-        if (refoldBytes >= USAGE_PROJECTION_WRITE_BATCH_BYTES) {
-          store?.writeUsageProjections({ upserts: refolds });
-          refolds = [];
-          refoldBytes = 0;
-        }
+        refolds.flushIfLarge(store);
         await yieldToEventLoop();
         sliceStartedAt = performance.now();
       }
       if (this.deps.isEphemeralSession(threadId)) continue;
       if (!this.deps.canReadSession(threadId, authority)) continue;
-      const attribution = this.deps.sessionAttributionFor(threadId);
-      let entry = parseThreadUsageProjection(
-        store?.readUsageProjection(threadId),
-      );
-      if (!entry) {
-        const events = this.deps.listUsageEventPayloads(threadId);
-        refoldedRows += events.length;
-        entry = this.foldThreadUsage(events);
-        const serialized = JSON.stringify(entry);
-        refolds.push([threadId, serialized]);
-        refoldBytes += serialized.length;
-      }
-      const { projection, relayAgentId } = entry;
-      if (
-        !attribution &&
-        projection.observations.length === 0 &&
-        projection.usage.contextTokens === undefined
-      )
-        continue;
-      sessions.push({
+      const session = sessionUsageFrom(
         threadId,
-        conversationId: attribution?.conversationId ?? threadId,
-        ...(attribution?.slug ? { agentSlug: attribution.slug } : {}),
-        ...(relayAgentId
-          ? {
-              memoryMirror: {
-                agentSlug: relayAgentId,
-                conversationId: threadId,
-              },
-            }
-          : {}),
-        ...projection,
-      });
+        this.deps.sessionAttributionFor(threadId),
+        this.threadUsage(threadId, store, refolds),
+      );
+      if (session) sessions.push(session);
     }
     // Only a caller that sees every session can say which cached folds
     // belong to no session any more.
-    store?.writeUsageProjections({
-      upserts: refolds,
-      ...(authority === INTERNAL_SESSION_READ_SCOPE
-        ? { retainOnly: new Set(threadIds) }
-        : {}),
-    });
-    usageProjectionRowsScanned.record(refoldedRows, {
+    refolds.flush(
+      store,
+      authority === INTERNAL_SESSION_READ_SCOPE
+        ? new Set(threadIds)
+        : undefined,
+    );
+    usageProjectionRowsScanned.record(refolds.rows, {
       mode: mode === 'full' ? 'full' : 'rebuild',
     });
     usageProjectionPassDuration.record(performance.now() - startedAt, {
       mode,
     });
     return sessions;
+  }
+
+  /**
+   * The pass's one-transaction catch-up. `incremental` when a checkpoint
+   * under this version is at or behind the store's high-water; otherwise
+   * (none, another version, ahead of the store, or a requested rebuild)
+   * `full`, which forgets every cached fold.
+   */
+  private catchUpUsageProjection(
+    store: UsageProjectionStore | undefined,
+    rebuild: boolean,
+  ): 'full' | 'incremental' {
+    const highWater = store?.currentGlobalSequence() ?? 0;
+    const checkpoint = rebuild
+      ? undefined
+      : store?.readUsageProjectionCheckpoint();
+    const since =
+      checkpoint?.version === USAGE_PROJECTION_VERSION &&
+      checkpoint.watermark <= highWater
+        ? checkpoint.watermark
+        : undefined;
+    const caughtUp = store?.advanceUsageProjection({
+      version: USAGE_PROJECTION_VERSION,
+      ...(since === undefined ? {} : { since }),
+      through: highWater,
+    });
+    if (since === undefined) return 'full';
+    usageProjectionRowsScanned.record(caughtUp?.rows ?? 0, {
+      mode: 'incremental',
+    });
+    return 'incremental';
+  }
+
+  /** A thread's cached fold, or a fresh one queued for the store. */
+  private threadUsage(
+    threadId: string,
+    store: UsageProjectionStore | undefined,
+    refolds: UsageRefoldBatch,
+  ): ThreadUsageProjection {
+    const cached = parseThreadUsageProjection(
+      store?.readUsageProjection(threadId),
+    );
+    if (cached) return cached;
+    const events = this.deps.listUsageEventPayloads(threadId);
+    const entry = this.foldThreadUsage(events);
+    refolds.add(threadId, entry, events.length);
+    return entry;
   }
 
   /** Everything a thread's cached usage entry holds, from its usage rows. */
@@ -899,4 +896,62 @@ function parseThreadUsageProjection(
     // Fall through: an unreadable row is a missing row.
   }
   return undefined;
+}
+
+/** Refolded threads awaiting a commit, and the event rows they cost. */
+class UsageRefoldBatch {
+  rows = 0;
+  private entries: Array<readonly [string, string]> = [];
+  private bytes = 0;
+
+  add(threadId: string, entry: ThreadUsageProjection, rows: number): void {
+    const serialized = JSON.stringify(entry);
+    this.entries.push([threadId, serialized]);
+    this.bytes += serialized.length;
+    this.rows += rows;
+  }
+
+  /** A commit per slice would make a full build mostly fsyncs. */
+  flushIfLarge(store: UsageProjectionStore | undefined): void {
+    if (this.bytes >= USAGE_PROJECTION_WRITE_BATCH_BYTES) this.flush(store);
+  }
+
+  flush(
+    store: UsageProjectionStore | undefined,
+    retainOnly?: ReadonlySet<string>,
+  ): void {
+    if (!this.entries.length && !retainOnly) return;
+    store?.writeUsageProjections({
+      upserts: this.entries,
+      ...(retainOnly ? { retainOnly } : {}),
+    });
+    this.entries = [];
+    this.bytes = 0;
+  }
+}
+
+/**
+ * The session as lifetime analytics consumes it, or `undefined` for a thread
+ * that was never configured and measured nothing.
+ */
+function sessionUsageFrom(
+  threadId: string,
+  attribution: { conversationId: string; slug?: string } | null | undefined,
+  { projection, relayAgentId }: ThreadUsageProjection,
+): OrchestrationSessionUsage | undefined {
+  if (
+    !attribution &&
+    projection.observations.length === 0 &&
+    projection.usage.contextTokens === undefined
+  )
+    return undefined;
+  return {
+    threadId,
+    conversationId: attribution?.conversationId ?? threadId,
+    ...(attribution?.slug ? { agentSlug: attribution.slug } : {}),
+    ...(relayAgentId
+      ? { memoryMirror: { agentSlug: relayAgentId, conversationId: threadId } }
+      : {}),
+    ...projection,
+  };
 }
