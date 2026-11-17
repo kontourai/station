@@ -828,7 +828,7 @@ export function ChatInputArea({
         ? 'This conversation continues from its original workspace — start a new chat to work here'
         : loadingConversation
           ? allowDraftWhileDisabled
-            ? 'Start typing — you can send once this chat opens…'
+            ? 'Start typing. You can send once this chat opens…'
             : 'Loading chat…'
           : allowDraftWhileDisabled
             ? turnInFlight

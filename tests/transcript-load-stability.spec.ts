@@ -37,7 +37,7 @@ test.use({
 
 const THREAD_ID = 'thread-load-stability';
 // The composer's placeholder while the conversation-open read is in flight.
-const OPENING_PLACEHOLDER = 'Start typing — you can send once this chat opens…';
+const OPENING_PLACEHOLDER = 'Start typing. You can send once this chat opens…';
 const CPU_THROTTLE_RATE = 4;
 // Code-split chunks a transcript row needs after its first paint: the Markdown
 // renderer, the worker-backed highlighter and the completed-turn footers.

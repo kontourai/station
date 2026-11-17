@@ -18,7 +18,6 @@
   height: 32px;
   margin-bottom: var(--k-space-1);
   opacity: 0.55;
-  animation: conversation-loading-breathe 2.4s ease-in-out infinite;
 }
 
 :root[data-startup-mark="dev"] .conversation-loading__mark {
@@ -56,23 +55,4 @@
   }
 }
 
-@keyframes conversation-loading-breathe {
-  0%,
-  100% {
-    opacity: 0.35;
-    transform: scale(0.96);
-  }
-  50% {
-    opacity: 0.7;
-    transform: scale(1);
-  }
-}
 
-@media (prefers-reduced-motion: reduce) {
-  .conversation-loading,
-  .conversation-loading__mark,
-  .conversation-loading__step,
-  .conversation-loading__long {
-    animation: none;
-  }
-}

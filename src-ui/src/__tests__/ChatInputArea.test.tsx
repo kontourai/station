@@ -298,7 +298,7 @@ describe('ChatInputArea', () => {
     const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
     expect(textarea.disabled).toBe(false);
     expect(textarea.placeholder).toBe(
-      'Start typing — you can send once this chat opens…',
+      'Start typing. You can send once this chat opens…',
     );
     fireEvent.change(textarea, { target: { value: 'typed while opening' } });
     expect(onInputChange).toHaveBeenCalledWith('typed while opening');
