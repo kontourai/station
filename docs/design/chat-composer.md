@@ -462,7 +462,10 @@ swipe and snap to reveal labelled actions. Only one row's tray stays open.
 Swiping only reveals; Snooze still opens its duration picker. Eligible
 conversations also offer Settle or Reopen when Open and Settled inbox is
 enabled. Dismiss from inbox hides work on this device; settling records the
-person's resolution across devices, and neither stops a running engine.
+person's resolution across devices, and neither stops a running engine. With
+that preview on, owned conversations offer Settle and no Dismiss, and
+third-party Sessions offer Hide, kept per person on the host (see
+[Inbox shelves](#inbox-shelves-and-conversation-resolution)).
 The Details sheet retains the complete available action set, including actions
 also offered as shortcuts. Destructive draft discard stays outside the swipe
 tray. A server Draft remains present for an eight-second Undo window before

@@ -505,7 +505,10 @@ work, or deleting a draft. Inbox search reveals matching dismissed items and
 their Restore action. Lifecycle changes use the existing debounce; running
 progress does not restore a dismissed row. Hidden Third-party sessions stay
 hidden through external updates and return to normal status handling when
-adopted into Station.
+adopted into Station. With Open and Settled inbox on, owned rows offer Settle
+instead of Dismiss, and Hide records a third-party Session on the host for the
+person rather than in the browser; the action keeps the same row, tray and
+Details placement.
 The swipe Snooze picker uses the dialog layer above its mobile inbox host.
 The Chromium journey in `inbox-swipe.browser.test.tsx` exercises touch reveal,
 hit targets, Snooze, Dismiss/Undo, preview-off recovery and desktop hover controls,
