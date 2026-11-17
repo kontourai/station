@@ -268,6 +268,30 @@ async function fulfillConversationRead(route: Route): Promise<boolean> {
     await json(route, []);
     return true;
   }
+  // conversations.ts GET /:slug/conversations/:id/summary: none written.
+  if (/^\/agents\/dev-agent\/conversations\/conv-[12]\/summary$/.test(path)) {
+    await json(route, null);
+    return true;
+  }
+  // projects.ts GET /:slug/chat-defaults; project-chat-defaults.ts view() for
+  // a Project with no default selections and no recorded starts.
+  if (path === '/api/projects/dev/chat-defaults') {
+    await json(route, {
+      version: 'station.project-chat-defaults/v1',
+      projectSlug: 'dev',
+      model: { selection: 'fixed', lastUsed: [] },
+      approvalMode: { selection: 'fixed', resolved: { source: 'none' } },
+    });
+    return true;
+  }
+  // terminal-runs.ts GET /api/terminal/runs?conversationId=: none waiting.
+  if (
+    path === '/api/terminal/runs' &&
+    /^conv-[12]$/.test(url.searchParams.get('conversationId') ?? '')
+  ) {
+    await json(route, { runs: [] });
+    return true;
+  }
   return false;
 }
 
@@ -493,10 +517,16 @@ async function tabTo(page: Page, target: Locator) {
   await expect(target).toBeFocused();
 }
 
-const headerTitle = (page: Page) =>
-  page.locator(
-    '[data-surface="chat-header"], .chat-dock__mobile-identity-lines',
-  );
+// The title the dock's bar names (ChatDock.tsx: the opening, imported and
+// active-chat identity branches; the phone header's own title on a phone).
+const headerTitle = (page: Page, phone: boolean) =>
+  page
+    .getByRole('region', { name: 'Dock' })
+    .locator(
+      phone
+        ? '.chat-dock__mobile-title'
+        : '.chat-dock__header-identity .chat-dock__active-identity-title',
+    );
 const openingStatus = (page: Page) =>
   page.getByRole('status', { name: 'Opening conversation' });
 
@@ -533,7 +563,9 @@ for (const [width, viewport] of [
           await openFromNotifications(page, 'Finished: Release notes', phone);
           await hold.reached;
           await expect(openingStatus(page)).toBeVisible();
-          await expect(headerTitle(page)).toContainText('Opening conversation');
+          await expect(headerTitle(page, phone)).toHaveText(
+            'Opening conversation',
+          );
           await expect(
             page.getByRole('log', { name: 'Conversation transcript' }),
           ).toHaveCount(0);
@@ -543,7 +575,7 @@ for (const [width, viewport] of [
             page.getByRole('log', { name: 'Conversation transcript' }),
           ).toContainText('Release notes are ready.');
           await expect(openingStatus(page)).toHaveCount(0);
-          await expect(headerTitle(page)).toContainText('Release notes');
+          await expect(headerTitle(page, phone)).toHaveText('Release notes');
         } finally {
           await hold.dispose();
         }
@@ -617,7 +649,7 @@ for (const [width, viewport] of [
           await expect(
             page.getByText('The imported transcript is here.'),
           ).toBeVisible();
-          await expect(headerTitle(page)).toContainText(IMPORTED_TITLE);
+          await expect(headerTitle(page, phone)).toHaveText(IMPORTED_TITLE);
           if (!phone)
             await expect(
               page
@@ -627,7 +659,7 @@ for (const [width, viewport] of [
           await openFromNotifications(page, 'Finished: Release notes', phone);
           await hold.reached;
           await expect(continueAction).toBeVisible();
-          await expect(headerTitle(page)).toContainText(IMPORTED_TITLE);
+          await expect(headerTitle(page, phone)).toHaveText(IMPORTED_TITLE);
           await expect(openingStatus(page)).toHaveCount(0);
           await capture(page, testInfo, 'imported');
           await tabTo(page, continueAction);
