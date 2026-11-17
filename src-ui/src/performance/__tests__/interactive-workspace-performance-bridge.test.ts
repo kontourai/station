@@ -58,6 +58,7 @@ const brief = vi.hoisted(() => ({
     | ((value: { kind: 'snapshot'; revision: string; text: string }) => void)
     | undefined,
   adopt: true,
+  corruptBatch: false,
 }));
 vi.mock('@kontourai/station-sdk/project-task-rooms', () => ({
   projectTaskRoomQueries: { document: () => ({ queryKey: ['brief'] }) },
@@ -77,12 +78,16 @@ vi.mock('@kontourai/station-sdk/project-task-rooms', () => ({
   }),
   useSubmitProjectTaskRoomBatchMutation: () => ({
     isPending: false,
-    mutateAsync: async (input: unknown) =>
+    mutateAsync: async (input: { intentId: string; intentDigest: string }) =>
       (
         await (
           await window.fetch('/api/tasks/task-1/room/batches', {
             method: 'POST',
-            body: JSON.stringify(input),
+            body: JSON.stringify(
+              brief.corruptBatch
+                ? { ...input, intentId: 'foreign-intent' }
+                : input,
+            ),
           })
         ).json()
       ).data,
@@ -551,24 +556,23 @@ async function mountedBrief(fault: BriefFault = 'none') {
   const after = `swsr-v2:${'b'.repeat(64)}`;
   brief.document.data = { kind: 'snapshot', revision: before, text: 'base' };
   brief.adopt = fault !== 'unsettled';
+  brief.corruptBatch = fault === 'wrong-intent';
   brief.discovery.data.capabilities.documentWrite = fault !== 'read-only';
   vi.spyOn(HTMLElement.prototype, 'getClientRects').mockReturnValue({
     length: 1,
   } as DOMRectList);
   let desired = '';
-  let plannedIntent = '';
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body));
       if (url.endsWith('/edit-plan')) {
         desired = body.desiredText;
-        plannedIntent = body.intentId;
         return Response.json({
           success: true,
           data: {
             kind: 'planned',
-            intentId: fault === 'wrong-intent' ? 'other-intent' : plannedIntent,
+            intentId: 'opaque-server-intent',
             digest: 'c'.repeat(64),
             selection: body.selection,
             operationCount: 1,
@@ -576,7 +580,8 @@ async function mountedBrief(fault: BriefFault = 'none') {
         });
       }
       expect(body).toEqual({
-        intentId: fault === 'wrong-intent' ? 'other-intent' : plannedIntent,
+        intentId:
+          fault === 'wrong-intent' ? 'foreign-intent' : 'opaque-server-intent',
         intentDigest: 'c'.repeat(64),
       });
       const epoch = browserEpochMs();

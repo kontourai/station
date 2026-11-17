@@ -1566,7 +1566,8 @@ function observeBatchFetches(): BatchObserver {
       if (editPlan) {
         if (
           result?.kind !== 'planned' ||
-          result.intentId !== body?.intentId ||
+          typeof result.intentId !== 'string' ||
+          result.intentId.length === 0 ||
           typeof result.digest !== 'string' ||
           !/^[0-9a-f]{64}$/.test(result.digest)
         )
