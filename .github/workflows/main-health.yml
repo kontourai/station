@@ -112,7 +112,7 @@ jobs:
           RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
         with:
           script: |
-            const { SILENT_CANCEL_CAUSES, classifyCancellation, supersededByNewerRun, decideMainHealthComment, failingLines, consolidateTracker, listTrackers, renderTrackerBody, summarizeRunFailure, trackerLabels, trackerTitle, unsuccessfulJobs } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/main-health-comment-policy.mjs`);
+            const { SILENT_CANCEL_CAUSES, classifyCancellation, closedRecently, supersededByNewerRun, decideMainHealthComment, failingLines, consolidateTracker, listTrackers, renderTrackerBody, summarizeRunFailure, trackerLabels, trackerTitle, unsuccessfulJobs } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/main-health-comment-policy.mjs`);
             const workflowName = process.env.WORKFLOW_NAME;
             const runUrl = process.env.RUN_URL;
             const headSha = process.env.HEAD_SHA;
@@ -204,6 +204,10 @@ jobs:
                 });
               }
               const reopened = existing.state !== 'open';
+              // A red within a day of the close is the same episode flapping:
+              // reopen it, but let the comment policy treat it as a repeat
+              // rather than announce it.
+              const announceReopen = reopened && !closedRecently(existing, Date.now());
               // The body always describes the latest red run, so whoever (or
               // whatever agent) picks the tracker up reads current evidence.
               // An edit sends no notification; the comment policy below
@@ -232,7 +236,7 @@ jobs:
                 runUrl,
                 headSha,
                 failures: summarizeRunFailure(jobs),
-                reopened,
+                reopened: announceReopen,
                 comments,
               });
               core.info(`main-health: ${decision.action} (${decision.reason})`);
@@ -246,6 +250,10 @@ jobs:
                   comment_id: decision.commentId,
                   body: decision.body,
                 });
+              } else if (reopened && !announceReopen) {
+                // A quiet reopen posts nothing; the rewritten body carries
+                // this run, and the next red past the window speaks.
+                core.info('main-health: reopened within a day of the close; no comment.');
               } else {
                 await github.rest.issues.createComment({
                   owner: context.repo.owner,
@@ -283,7 +291,7 @@ jobs:
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         with:
           script: |
-            const { consolidateTracker, listTrackers, trackerTitle } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/main-health-comment-policy.mjs`);
+            const { consolidateTracker, greenHasHeld, listTrackers, trackerTitle } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/main-health-comment-policy.mjs`);
             const { isOverdueBody } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/main-health-schedules.mjs`);
             const workflowName = process.env.WORKFLOW_NAME;
             const runUrl = process.env.RUN_URL;
@@ -332,6 +340,23 @@ jobs:
             // dispatch or workflow_run green says nothing about the cron.
             if (isOverdueBody(existing.body) && context.payload.workflow_run.event !== 'schedule') {
               core.info(`main-health: ${title} tracks a stopped schedule; a ${context.payload.workflow_run.event} run does not clear it.`);
+              return;
+            }
+            // Close only once the green has held: no red run of this
+            // workflow on main in the day before this green. A workflow that
+            // alternates red and green keeps one open tracker instead of
+            // opening and closing it several times a day.
+            const run = context.payload.workflow_run;
+            const { data: history } = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: run.workflow_id,
+              branch: 'main',
+              status: 'completed',
+              per_page: 50,
+            });
+            if (!greenHasHeld(run, history.workflow_runs)) {
+              core.info(`main-health: ${title} stays open: a red run on main within the last day.`);
               return;
             }
             await github.rest.issues.createComment({

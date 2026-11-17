@@ -454,7 +454,12 @@ SHA, failing jobs and steps, and up to 15 failing annotation lines, so an
 agent can start from the issue alone. Comments follow the
 [comment policy](../../scripts/main-health-comment-policy.mjs): a new comment
 only when the failure changes, the tracker reopens, or a day has passed. The
-next fully green run closes it.
+next fully green run closes it once the green has held: a tracker stays
+open while the workflow had a red run on `main` in the preceding day, and a
+red within a day of a close reopens it without a comment. Replaying
+2026-10-17..11-16 this cut tracker comments from 199 to 129 (Main:
+Qualification health from 66 to 20, Nightly from 40 to 20); opening is
+never delayed.
 
 A cancelled run is attributed from its jobs' annotations. Only a person's
 cancel ("The run was canceled by @…") and a run superseded in its concurrency
@@ -475,7 +480,7 @@ cron that just landed or changed gets one full tolerance first. GitHub fires
 this repository's schedules late and sparsely (largest gaps measured
 2026-10-17..11-16: 10.8 h for hourly crons, 15.8 h for six-hourly, 28.6 h for
 daily, 170 h for weekly), so the tolerance is 20 h, 20 h, 48 h and 14 days.
-The next successful scheduled run closes a tracker that check opened. The
+Only a successful run triggered by its `schedule` closes a tracker that check opened. The
 check runs only when Main: Health runs, that is when some watched workflow
 completes on `main`. Hourly `Nightly` and `Repo: Starved PR report` and every
 main push's secret scan normally trigger it many times a day; on a day when

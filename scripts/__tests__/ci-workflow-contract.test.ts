@@ -817,7 +817,12 @@ describe('CI verification workflow contracts', () => {
         };
         const github = {
           rest: {
-            actions: { listJobsForWorkflowRun: listJobs },
+            actions: {
+              listJobsForWorkflowRun: listJobs,
+              listWorkflowRuns: vi.fn(async () => ({
+                data: { workflow_runs: [] },
+              })),
+            },
             issues: { listForRepo, createComment: vi.fn(), update },
           },
           paginate: vi.fn(async (method) =>

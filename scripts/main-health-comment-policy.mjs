@@ -507,6 +507,60 @@ export function decideMainHealthComment({
   };
 }
 
+/**
+ * Damping, chosen by replaying 2026-10-17..11-16 for every watched scheduled
+ * workflow: a tracker closes only on a green with no red run of the same
+ * workflow on main in the preceding day, and a red within a day of a close
+ * reopens it without an announcement. Opening is never damped. Against
+ * closing on any green this cut replayed comments from 199 to 129; Main:
+ * Qualification health went from 34 opens and 66 comments to 8 and 20.
+ */
+export const CLOSE_HOLD_MS = 24 * 60 * 60 * 1000;
+
+/** Run conclusions that count as a red for the hold. */
+const RED_RUN_CONCLUSIONS = new Set([
+  'failure',
+  'timed_out',
+  'startup_failure',
+]);
+
+/**
+ * @param {{id: number, updated_at?: string, created_at: string}} run the green being considered
+ * @param {{id: number, conclusion?: string | null, updated_at?: string, created_at: string}[]} runs recent completed runs of the workflow on main
+ * @param {number} [holdMs]
+ */
+export function greenHasHeld(run, runs = [], holdMs = CLOSE_HOLD_MS) {
+  // The event payload carries the run's times; a payload without them is
+  // judged at the moment of the check.
+  const stamped = Date.parse(run?.updated_at ?? run?.created_at);
+  const at = Number.isFinite(stamped) ? stamped : Date.now();
+  return !(runs ?? []).some((other) => {
+    if (
+      other?.id === run.id ||
+      !RED_RUN_CONCLUSIONS.has(String(other?.conclusion))
+    )
+      return false;
+    const redAt = Date.parse(other.updated_at ?? other.created_at);
+    return Number.isFinite(redAt) && redAt <= at && at - redAt < holdMs;
+  });
+}
+
+/**
+ * Whether a closed tracker was closed within the damping window, so a red
+ * now continues the same episode.
+ *
+ * @param {{state?: string, closed_at?: string | null}} issue
+ * @param {number} now
+ */
+export function closedRecently(issue, now, holdMs = CLOSE_HOLD_MS) {
+  const closedAt = Date.parse(issue?.closed_at ?? '');
+  return (
+    issue?.state === 'closed' &&
+    Number.isFinite(closedAt) &&
+    now - closedAt < holdMs
+  );
+}
+
 /** Every tracker's title: the dedupe key, one issue per watched workflow. */
 export function trackerTitle(workflowName) {
   return `Main pipeline red: ${workflowName}`;

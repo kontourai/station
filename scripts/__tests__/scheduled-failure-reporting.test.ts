@@ -124,6 +124,8 @@ type Issue = {
   title: string;
   body: string;
   state: 'open' | 'closed';
+  closed_at?: string | null;
+  state_reason?: string | null;
   labels: string[];
   comments: { id: number; body: string; user: { type: string } }[];
 };
@@ -230,6 +232,8 @@ function fakeGithub({ labelExists = true } = {}) {
     } | null
   > = {};
   const fileChangedAt: Record<string, string> = {};
+  // The fake's own clock for closed_at; tests move it to replay a day.
+  const clock = { now: () => Date.now() };
   // Lets a test run another job between this job's read and its first write.
   const interleave: { beforeUpdate?: () => Promise<unknown> } = {};
   const otherRuns: {
@@ -376,7 +380,11 @@ function fakeGithub({ labelExists = true } = {}) {
           if (hook) await hook();
           writes.push(`update:${state ?? 'body'}`);
           const issue = find(issue_number);
-          if (state) issue.state = state;
+          if (state) {
+            issue.state = state;
+            issue.closed_at =
+              state === 'closed' ? new Date(clock.now()).toISOString() : null;
+          }
           if (body !== undefined) issue.body = body;
         },
         addLabels: async ({
@@ -437,6 +445,7 @@ function fakeGithub({ labelExists = true } = {}) {
     fileChangedAt,
     otherRuns,
     interleave,
+    clock,
     setRun(next: typeof run) {
       run = next;
     },
@@ -1214,6 +1223,61 @@ describe('scheduled workflows that stop running', () => {
       });
       expect(fake.issues.map((issue) => issue.title)).toEqual(expected);
     }
+  });
+
+  it("keeps a flapping workflow's tracker open until a green has held for a day, and reopens quietly", async () => {
+    const t0 = Date.parse('2026-11-16T00:00:00Z');
+    const at = (hours: number) => new Date(t0 + hours * HOUR).toISOString();
+    const fake = fakeGithub();
+    const event = (conclusion: string, hours: number, id: number) =>
+      workflowRunEvent('Repo: Dated TODO sweep', conclusion, {
+        id,
+        workflow_id: 55,
+        created_at: at(hours),
+        updated_at: at(hours),
+      });
+    const record = (id: number, conclusion: string, hours: number) =>
+      fake.otherRuns.push({
+        id,
+        workflow_id: 55,
+        head_branch: 'main',
+        conclusion,
+        created_at: at(hours),
+        updated_at: at(hours),
+      } as never);
+    // Red, then green an hour later: still the same red episode.
+    record(1, 'failure', 0);
+    fake.setRun(RED_SWEEP);
+    await runMainHealth(fake, event('failure', 0, 1), { only: REPORT });
+    record(2, 'success', 1);
+    fake.setRun(GREEN_SWEEP);
+    await runMainHealth(fake, event('success', 1, 2), { only: REPORT });
+    expect(fake.issues[0].state).toBe('open');
+    // Green 25 h after the last red: it held, so the tracker closes.
+    record(3, 'success', 25);
+    fake.clock.now = () => t0 + 25 * HOUR;
+    await runMainHealth(fake, event('success', 25, 3), { only: REPORT });
+    expect(fake.issues[0].state).toBe('closed');
+    const comments = fake.issues[0].comments.length;
+    // Red again two hours after the close: reopened without an announcement.
+    record(4, 'failure', 27);
+    fake.setRun(RED_SWEEP);
+    const realNow = Date.now;
+    Date.now = () => t0 + 27 * HOUR;
+    try {
+      await runMainHealth(fake, event('failure', 27, 4), { only: REPORT });
+    } finally {
+      Date.now = realNow;
+    }
+    expect(fake.issues[0].state).toBe('open');
+    expect(fake.issues[0].comments).toHaveLength(comments);
+    expect(
+      fake.issues[0].comments
+        .slice(comments)
+        .some((comment) =>
+          comment.body.startsWith('The workflow failed again on main.'),
+        ),
+    ).toBe(false);
   });
 
   it("clears a stopped schedule's tracker only with a successful scheduled run", async () => {
