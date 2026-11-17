@@ -139,8 +139,11 @@ export function ConversationOpenRevalidator({
   const heldForCatalog = useRef<{ landed: LandedOpen; child?: string }>(
     undefined,
   );
+  // The answer already bound in full: a later catalog or agent-list change
+  // has nothing left to reconcile, and must not re-read it.
+  const appliedOpen = useRef<LandedOpen>(undefined);
   useEffect(() => {
-    if (!landed || landed.cancelled()) return;
+    if (!landed || landed.cancelled() || appliedOpen.current === landed) return;
     if (!landed.current()) {
       // The answer outlived its read (a held answer applied seconds later
       // could span a stream epoch change): read again instead.
@@ -245,6 +248,7 @@ export function ConversationOpenRevalidator({
       return;
     }
     heldForCatalog.current = undefined;
+    appliedOpen.current = landed;
     // #2309: a turn end that arrived while this binding was being
     // re-proved held its queued follow-up; now that the chat is writable
     // again, send it.
