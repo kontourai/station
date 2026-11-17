@@ -1,6 +1,7 @@
 import { createReadStream, existsSync } from 'node:fs';
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { setImmediate as yieldToEventLoop } from 'node:timers/promises';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import type { UsageReceipt } from '@kontourai/station-contracts/usage-rollup';
 import type { OverlappingUsageMeasurements } from '@kontourai/station-contracts/usage-stats';
@@ -14,6 +15,7 @@ import {
   checkAchievement,
   computeStreakStats,
   createEmptyUsageStats,
+  type EngineUsageCoverage,
   getAchievementProgress,
   getCostConsciousProgressPercent,
   getCostMeasurementGap,
@@ -23,6 +25,9 @@ import {
 } from './usage-aggregator-state.js';
 
 const logger = createLogger({ name: 'usage-aggregator' });
+
+/** How long one synchronous slice of the engine-usage fold may hold the event loop. */
+const ENGINE_USAGE_SLICE_MS = 16;
 
 /**
  * The orchestration substrate as lifetime analytics reads it (archive#3245):
@@ -299,14 +304,30 @@ export class UsageAggregator {
       }
     }
     if (orchestrationSessions) {
-      currentStats.lifetime.engineUsageCoverage =
-        applyOrchestrationUsageToUsageStats(
+      // Session by session, in the same order, so yielding between slices
+      // changes nothing about the totals: coverage counts simply add up.
+      const coverage: EngineUsageCoverage = {
+        sessions: 0,
+        sessionsReportingTokens: 0,
+        sessionsReportingCost: 0,
+      };
+      let sliceStartedAt = performance.now();
+      for (const session of orchestrationSessions) {
+        if (ambiguousRelaySet.has(session)) continue;
+        if (performance.now() - sliceStartedAt >= ENGINE_USAGE_SLICE_MS) {
+          await yieldToEventLoop();
+          sliceStartedAt = performance.now();
+        }
+        const counted = applyOrchestrationUsageToUsageStats(
           currentStats,
-          orchestrationSessions.filter(
-            (session) => !ambiguousRelaySet.has(session),
-          ),
+          [session],
           memorySessionKeys,
         );
+        coverage.sessions += counted.sessions;
+        coverage.sessionsReportingTokens += counted.sessionsReportingTokens;
+        coverage.sessionsReportingCost += counted.sessionsReportingCost;
+      }
+      currentStats.lifetime.engineUsageCoverage = coverage;
     }
 
     const stats = mergeRescannedUsageStats(previousStats, currentStats);
