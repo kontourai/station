@@ -50,7 +50,7 @@ import {
 import { UNIFIED_SEARCH_V1 } from '@kontourai/station-contracts/unified-search';
 import { rmDirSyncRetrying } from '@kontourai/station-shared/fs-windows-compat';
 import { createStationHomeBackup } from '@kontourai/station-shared/station-home-archive';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { adoptNativeEngineConnection } from '../../domain/agent-registry.js';
 import { ConfigLoader } from '../../domain/config-loader.js';
@@ -759,12 +759,19 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       return { config: thread.params.config, token };
     };
     const off = await start('families-preview-off');
+    onTestFinished(() =>
+      adapter.stopSession('families-preview-off').catch(() => undefined),
+    );
     expect(off.config).not.toHaveProperty('features.mcp_tool_list_changed');
     expect(stationControlDisclosureForToken(off.token)).toBe(undefined);
     expect(probe).not.toHaveBeenCalled();
     await adapter.stopSession('families-preview-off');
     await subject.featurePreviews.setEnabled('codex-tool-families', true);
     const on = await start('families-preview-on');
+    // Stopped even when an assertion fails, so no Session outlives the case.
+    onTestFinished(() =>
+      adapter.stopSession('families-preview-on').catch(() => undefined),
+    );
     expect(on.config).toMatchObject({
       'features.mcp_tool_list_changed': true,
     });
@@ -803,7 +810,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     const kept = stationControlDisclosureForToken(on.token);
     expect(kept?.load('Agents')).toBe(true);
     expect(kept?.has('Agents')).toBe(true);
-    await adapter.stopSession('families-preview-on');
   });
 
   it('rejects an incompatible home before EventStore can create SQLite state', () => {
