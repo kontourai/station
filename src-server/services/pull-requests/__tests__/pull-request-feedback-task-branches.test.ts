@@ -516,6 +516,12 @@ describe('Task-branch discovery', () => {
     await t.discover();
     expect(t.reads).toHaveLength(2);
     expect(t.store.derivedLinks('chat-lead-91b')).toEqual([]);
+    // Recorded removed for the new incarnation: it is not read again.
+    for (const later of [31, 62, 93]) {
+      t.state.now += later * MINUTE;
+      await t.discover();
+    }
+    expect(t.reads).toHaveLength(2);
     expect(t.store.allClaims()).toEqual([]);
     expect(
       t.store.autoClaim({

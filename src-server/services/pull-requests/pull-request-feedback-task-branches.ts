@@ -291,8 +291,9 @@ export class PullRequestFeedbackTaskBranches {
       };
       const prKey = pullRequestFeedbackKey(prIdentity);
       // Removed from this Task's chat once: never again, whichever
-      // incarnation of the Task found it.
-      if (store.dismissedForTask(task.id, prKey)) continue;
+      // incarnation of the Task found it. Recorded removed for this
+      // incarnation too, so discovery is done with it.
+      const removed = store.dismissedForTask(task.id, prKey);
       store.recordDerivedLink({
         taskId: task.id,
         taskCreatedAt: task.createdAt,
@@ -302,7 +303,9 @@ export class PullRequestFeedbackTaskBranches {
         identity: prIdentity,
         headRef: worktree.branch,
         derivedAt: nowIso,
+        ...(removed ? { dismissedAt: nowIso } : {}),
       });
+      if (removed) continue;
       if (
         defaults &&
         pullRequestFeedbackSends(defaults.settings) &&

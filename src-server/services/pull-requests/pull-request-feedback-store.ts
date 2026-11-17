@@ -645,11 +645,11 @@ export class PullRequestFeedbackStore {
   // Derived links -------------------------------------------------------------
 
   /** Record a pull request found on a Task's branch; an existing row stays. */
-  recordDerivedLink(input: Omit<StoredDerivedLink, 'dismissedAt'>): void {
+  recordDerivedLink(input: StoredDerivedLink): void {
     this.db
       .prepare(
         `INSERT INTO derived_links (task_id, task_created_at, project_id, conversation_id, pr_key, identity, head_ref, derived_at, dismissed_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (task_id, task_created_at, pr_key) DO NOTHING`,
       )
       .run(
@@ -661,6 +661,7 @@ export class PullRequestFeedbackStore {
         JSON.stringify(input.identity),
         input.headRef,
         input.derivedAt,
+        input.dismissedAt ?? null,
       );
   }
 
