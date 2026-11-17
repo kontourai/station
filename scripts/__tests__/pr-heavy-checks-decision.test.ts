@@ -307,23 +307,29 @@ describe('heavy pull-request check decision entry point', () => {
     ) as { jobs: Record<string, { permissions?: Record<string, string> }> };
     const granted = workflow.jobs['pr-admission'].permissions ?? {};
     for (const [scope, level] of Object.entries(HEAD_STATUS_PERMISSION))
-      expect(['read', 'write'], `pr-admission ${scope}`).toContain(
-        granted[scope],
-      );
+      expect(
+        level === 'read' ? ['read', 'write'] : [level],
+        `pr-admission ${scope}`,
+      ).toContain(granted[scope]);
     expect(HEAD_STATUS_PERMISSION).toEqual({ statuses: 'read' });
   });
 
   test.each([
     [
       'verified',
-      async () => true,
+      async (): Promise<boolean> => true,
       'Arming: head already verified: cheap',
       false,
     ],
-    ['not verified', async () => false, 'Arming: not verified: heavy', true],
+    [
+      'not verified',
+      async (): Promise<boolean> => false,
+      'Arming: not verified: heavy',
+      true,
+    ],
     [
       'unreadable',
-      async () => {
+      async (): Promise<boolean> => {
         throw new Error('GitHub API 403');
       },
       'Arming: status unreadable: heavy',
