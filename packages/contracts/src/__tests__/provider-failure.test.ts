@@ -111,6 +111,7 @@ const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
     ['opencode_serve_denied_path', 'permission_denied', false],
     ['muse_turn_slot_releasing', 'busy', true],
     ['principal_unresolved', 'auth', false],
+    ['project_held', 'conflict', false],
     ['project_identity_not_prepared', 'input_unsupported', false],
     ['project_room_files_unavailable', 'unavailable', true],
     ['project_room_forbidden', 'permission_denied', false],
