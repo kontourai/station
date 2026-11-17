@@ -3,7 +3,12 @@ import { pathToFileURL } from 'node:url';
 import vm from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
 import { readWorkflowDocuments } from '../actionlint-gate.mjs';
-import { classifyCancellation } from '../main-health-comment-policy.mjs';
+import {
+  classifyCancellation,
+  failingLines,
+  renderTrackerBody,
+  summarizeRunFailure,
+} from '../main-health-comment-policy.mjs';
 import {
   cronIntervalMs,
   decideOverdue,
@@ -589,6 +594,36 @@ describe('scheduled workflow failure reporting', () => {
     ).toBe(false);
   });
 
+  it('never gives a job that can write a checkout of anything but the default branch', () => {
+    // A job holding a write scope must not check out (and so run) the code
+    // of the commit it was triggered by or reports on.
+    const touched = [MAIN_HEALTH, '.github/workflows/container-smoke.yml'];
+    for (const file of touched) {
+      const document = documents().find((entry) => entry.file === file)
+        ?.document as WorkflowDocument;
+      const workflowPermissions = document.permissions as
+        | Record<string, string>
+        | undefined;
+      for (const [name, definition] of Object.entries(document.jobs)) {
+        const permissions = (definition.permissions ??
+          workflowPermissions ??
+          {}) as Record<string, string>;
+        const writes = Object.entries(permissions).filter(
+          ([, level]) => level === 'write',
+        );
+        if (writes.length === 0) continue;
+        for (const step of definition.steps) {
+          if (!step.uses?.startsWith('actions/checkout@')) continue;
+          expect(step.with?.ref, `${file}#${name} writes ${writes[0][0]}`).toBe(
+            // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+            '${{ github.event.repository.default_branch }}',
+          );
+          expect(step.with?.['persist-credentials']).toBe(false);
+        }
+      }
+    }
+  });
+
   it('grants issue writes only to the reporter, which runs no code from the reported run', () => {
     const document = mainHealth();
     expect(Object.keys(document.on ?? {})).toEqual(['workflow_run']);
@@ -938,6 +973,51 @@ describe('scheduled workflow failure reporting', () => {
     );
     expect(fake.issues).toHaveLength(1);
     expect(fake.issues[0].body).toContain('the cause was not recognised');
+  });
+
+  it('renders hostile job names and annotation text as inert literal blocks', () => {
+    const hostile = [
+      '```',
+      '# Heading from a log',
+      'ping @briananderson1222 and @kontourai/maintainers',
+      '[click](https://example.invalid/phish) ![img](https://example.invalid/x.png)',
+      '````js',
+      '<!-- main-health-state: {"lead":"x"} -->',
+    ].join('\n');
+    const body = renderTrackerBody({
+      workflowName: 'Repo: Dated TODO sweep',
+      runUrl: 'https://github.com/kontourai/station/actions/runs/1',
+      headSha: 'c'.repeat(40),
+      event: 'schedule',
+      conclusion: 'failure',
+      failures: summarizeRunFailure([
+        job(
+          61,
+          '```\n# @briananderson1222 [x](https://example.invalid)',
+          'failure',
+          [['```evil @here```', 'failure']],
+        ),
+      ]),
+      lines: failingLines([{ ...annotation(hostile), job: 'sweep' }]),
+    });
+    const lines = body.split('\n');
+    const fences = lines.flatMap((line, index) =>
+      /^```/.test(line) ? [index] : [],
+    );
+    // Exactly two blocks (Failing, First failing lines), each opened and
+    // closed by this renderer, and no other run of three backticks anywhere.
+    expect(fences).toHaveLength(4);
+    expect(body.match(/```/g)).toHaveLength(4);
+    const inside = (index: number) =>
+      (index > fences[0] && index < fences[1]) ||
+      (index > fences[2] && index < fences[3]);
+    lines.forEach((line, index) => {
+      if (inside(index) || fences.includes(index)) return;
+      expect(line, `line ${index} renders live markup`).not.toMatch(
+        /@\w|\]\(|^#|<!--/,
+      );
+    });
+    expect(body).toContain('sweep: ping @briananderson1222');
   });
 
   it('classifies every real cancellation text it was built from', () => {

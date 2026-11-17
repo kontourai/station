@@ -134,6 +134,23 @@ function normalizeFailureLabel(value) {
 }
 
 /**
+ * Remote text (job and step names, annotation lines) as a literal block: a
+ * fenced block renders no headings, links, mentions or emphasis, and a run of
+ * three or more backticks inside it is rewritten so it cannot close the
+ * fence early.
+ *
+ * @param {string[]} lines
+ * @returns {string[]}
+ */
+function fenced(lines) {
+  return [
+    '```text',
+    ...lines.map((line) => String(line).replace(/`{3,}/g, "'''")),
+    '```',
+  ];
+}
+
+/**
  * Sorted and deduped, and deliberately NOT truncated — this is what the digest
  * is taken over.
  *
@@ -340,10 +357,15 @@ export function renderMainHealthComment(run, state) {
     `Head SHA: ${run.headSha}`,
   ];
   if (state.failures.length > 0) {
-    sections.push('', 'Failing:');
-    for (const failure of state.failures) sections.push(`- ${failure}`);
     const hidden = state.failureCount - state.failures.length;
-    if (hidden > 0) sections.push(`- …and ${hidden} more`);
+    sections.push(
+      '',
+      'Failing:',
+      ...fenced([
+        ...state.failures.map((failure) => `- ${failure}`),
+        ...(hidden > 0 ? [`- …and ${hidden} more`] : []),
+      ]),
+    );
   }
   if (state.redRunsSinceComment > 0) {
     const runs =
@@ -685,7 +707,7 @@ export const SILENT_CANCEL_CAUSES = Object.freeze(['person', 'superseded']);
 
 /**
  * Normalize one annotation line for a fenced block: no control characters,
- * no fence-closing backtick runs, bounded length.
+ * bounded length. `fenced` rewrites backtick runs for every fenced line.
  *
  * @param {unknown} value
  */
@@ -694,7 +716,6 @@ function quotedLine(value) {
     String(value ?? '')
       // biome-ignore lint/suspicious/noControlCharactersInRegex: annotation text is remote data.
       .replace(/[\u0000-\u0008\u000b-\u001f\u007f]+/g, ' ')
-      .replace(/`{3,}/g, "'''")
       .trimEnd()
       .slice(0, MAX_FAILING_LINE_LENGTH)
   );
@@ -767,14 +788,21 @@ export function renderTrackerBody({
     `Conclusion: ${conclusion || 'unknown'}`,
   ];
   if (shown.length > 0) {
-    sections.push('', 'Failing:');
-    for (const failure of shown.slice(0, MAX_TRACKED_FAILURES))
-      sections.push(`- ${failure}`);
-    if (shown.length > MAX_TRACKED_FAILURES)
-      sections.push(`- …and ${shown.length - MAX_TRACKED_FAILURES} more`);
+    sections.push(
+      '',
+      'Failing:',
+      ...fenced([
+        ...shown
+          .slice(0, MAX_TRACKED_FAILURES)
+          .map((failure) => `- ${failure}`),
+        ...(shown.length > MAX_TRACKED_FAILURES
+          ? [`- …and ${shown.length - MAX_TRACKED_FAILURES} more`]
+          : []),
+      ]),
+    );
   }
   if (lines.length > 0) {
-    sections.push('', 'First failing lines:', '', '```text', ...lines, '```');
+    sections.push('', 'First failing lines:', ...fenced(lines));
   }
   if (detailsError) {
     sections.push(
