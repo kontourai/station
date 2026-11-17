@@ -1,0 +1,7 @@
+{
+  "revision": "5504356c6d7040e80d91efa81f8298103d4e7723",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Main: Health still opens Main pipeline red: Repo: Dependency advisory with the owner assignment and closes on a green scan; only module loading and trust-root ownership changed.","inputs":["docs/guides/dependency-security.md",".github/workflows/main-health.yml"]}
+  ]
+}
