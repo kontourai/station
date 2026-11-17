@@ -86,6 +86,7 @@ import {
   CONVERSATION_CONTEXT_UNAVAILABLE_CODE,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   PENDING_TURN_INTERRUPT_TTL_MS,
+  SESSION_CONFIGURATION_REPLACED_CODE,
 } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type {
@@ -1024,13 +1025,13 @@ class ConversationSeedTurnRefusedError extends SendTurnRefusedError {
  * engine, with what the person can do.
  */
 export class PolicyReplacedSessionRefusedError extends SendTurnRefusedError {
-  readonly code = 'session_configuration_replaced';
+  readonly code = SESSION_CONFIGURATION_REPLACED_CODE;
   constructor(reason: 'busy' | 'successor') {
     super(
       reason === 'busy'
         ? "This agent's configuration changed while the session was still running work started under the old configuration. That work cannot use tools any more; once it ends, send your message again and the session restarts under the current configuration."
         : "This agent's configuration changed and this session's engine cannot resume. Continue from the conversation: its next message starts a new session under the current configuration.",
-      'conflict',
+      reason === 'busy' ? 'busy' : 'conflict',
     );
     this.name = 'PolicyReplacedSessionRefusedError';
   }
@@ -4554,8 +4555,9 @@ export class OrchestrationService {
     )
       return 'none';
     const now = Date.now();
-    if (!this.isParkableIdleSession(threadId, now, 0, true)) return 'busy';
-    return this.isParkableIdleSession(threadId, now, 0)
+    if (!this.isParkableIdleSession(threadId, now, 0, true, true))
+      return 'busy';
+    return this.isParkableIdleSession(threadId, now, 0, false, true)
       ? 'restart'
       : 'successor';
   }
@@ -10222,7 +10224,13 @@ export class OrchestrationService {
                     turnInput.threadId,
                     turnInput.modelOptions,
                   )) &&
-                this.isParkableIdleSession(turnInput.threadId, Date.now(), 0)
+                this.isParkableIdleSession(
+                  turnInput.threadId,
+                  Date.now(),
+                  0,
+                  false,
+                  policyRelaunch,
+                )
               ) {
                 try {
                   await this.parkIdleSession(
@@ -10230,6 +10238,8 @@ export class OrchestrationService {
                     adapter,
                     Date.now(),
                     0,
+                    undefined,
+                    policyRelaunch ? { freshAtRest: true } : undefined,
                   );
                 } catch (error) {
                   // A turn or transition holds the session: the send goes on
@@ -16717,6 +16727,11 @@ export class OrchestrationService {
     parkAfterMs: number,
     /** Retiring, not parking: no restart follows, so no cursor is needed. */
     retiring = false,
+    /**
+     * A Session that has not run a turn yet (`queued`) also counts as at
+     * rest: nothing it does can be lost by a restart.
+     */
+    freshAtRest = false,
   ): boolean {
     const owned = this.readOwnedWork(threadId);
     if (owned && (owned.runningChildCount > 0 || owned.pendingStopCount > 0))
@@ -16770,7 +16785,11 @@ export class OrchestrationService {
     // At rest only — a session waiting on the user (an open request) keeps
     // its engine, which is what holds that request.
     const lifecycle = this.readCurrentLifecycleState(threadId);
-    return lifecycle !== undefined && isSessionLifecycleStateAtRest(lifecycle);
+    return (
+      lifecycle !== undefined &&
+      (isSessionLifecycleStateAtRest(lifecycle) ||
+        (freshAtRest && lifecycle === 'queued'))
+    );
   }
 
   /**
@@ -16843,7 +16862,7 @@ export class OrchestrationService {
      * `resumable: false` retires an engine whose Session a successor
      * replaced: no resume cursor is needed, since nothing restarts it.
      */
-    retire?: { resumable: false },
+    retire?: { resumable?: false; freshAtRest?: true },
   ): Promise<boolean> {
     // Serialized with turn starts: a send that arrives first wins, and the
     // park re-checks everything under the lock before touching the engine.
@@ -16857,6 +16876,7 @@ export class OrchestrationService {
             now,
             parkAfterMs,
             retire?.resumable === false,
+            retire?.freshAtRest === true,
           ) ||
           refusedEarly?.()
         )

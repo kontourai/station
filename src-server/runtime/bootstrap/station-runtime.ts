@@ -192,6 +192,7 @@ import { BedrockModelCatalog } from '../../providers/llm/bedrock-models.js';
 import { disposeRetainedPreparedPluginProviders } from '../../providers/registries/registry.js';
 import type { BuildProvenanceSnapshot } from '../../routes/system/build-provenance.js';
 import { createStationConfinementPreflight } from '../../security/confinement/confinement-preflight.js';
+import { loadConfinedNetworkPlan } from '../../security/confinement/confinement-provider.js';
 import {
   createManagedListenerAdmission,
   type ManagedListenerAdmission,
@@ -307,6 +308,7 @@ import {
   type PreToolPolicyGeneration,
   PreToolPolicyGenerations,
   type PreToolPolicyLaunchRead,
+  unboundPreToolPolicyGeneration,
 } from '../agents/pre-tool-policy-generation.js';
 import {
   activatePreparedRuntimeAgentInstance,
@@ -1465,10 +1467,27 @@ export class StationRuntime {
     toolNameProvenance: 'authentic' | 'self-reported',
   ): Promise<StagedPreToolPolicyEvaluator | undefined> {
     if (!input.agent) return undefined;
-    const generation = await bindPreToolPolicyGeneration({
-      getStableRevision: () => this.getStableAgentConfigurationRevision(),
-      readLaunch: () => this.readExternalSessionLaunch(input),
-    });
+    let generation: PreToolPolicyGeneration;
+    try {
+      generation = await bindPreToolPolicyGeneration({
+        getStableRevision: () => this.getStableAgentConfigurationRevision(),
+        readLaunch: () => this.readExternalSessionLaunch(input),
+      });
+    } catch (error) {
+      // A start that raced a configuration change (or could not read its
+      // configuration) still refuses every tool, but is registered as
+      // replaced, so its next turn restarts and binds it. Throwing here left
+      // the adapter's deny-all policy with nothing registered: the session
+      // refused every call until it idled out.
+      this.logger?.warn?.(
+        'External session started unbound; it restarts at its next turn',
+        { threadId: input.threadId, error: errorMessage(error) },
+      );
+      generation = unboundPreToolPolicyGeneration({
+        name: input.agent.slug,
+        prompt: '',
+      });
+    }
     this.preToolPolicyGenerations.register(input.threadId, generation);
     // Rebuilt whenever the binding advances, so the approval guardian is
     // never one built from a replaced app configuration.
@@ -1526,7 +1545,37 @@ export class StationRuntime {
       return { state: 'unreadable' };
     }
     if (connection === EXTERNAL_CONNECTION_REVOKED) return { state: 'missing' };
-    return { state: 'read', spec, launch: { agent, connection } };
+    let settings: unknown;
+    try {
+      settings = await this.readExternalSessionSettings(input);
+    } catch {
+      // An invalid confined network policy refuses a confined start.
+      return { state: 'missing' };
+    }
+    return { state: 'read', spec, launch: { agent, connection, settings } };
+  }
+
+  /**
+   * Station settings a launch reads once and the engine keeps until it
+   * stops, so a change reaches a running session only by a restart:
+   * Claude's Artifact tool (`claudeArtifactsEnabled`), and, for a session
+   * started confined, the confined network policy its egress broker copied
+   * at start. New-chat defaults (approval mode, workspace isolation, the
+   * no-Project folder) are deliberately start-only: they choose how a new
+   * chat starts, not what a running one may do.
+   */
+  private async readExternalSessionSettings(
+    input: ProviderSessionStartInput,
+  ): Promise<unknown> {
+    const load = () => this.configLoader.loadAppConfig();
+    return {
+      ...(input.provider === 'claude'
+        ? { artifacts: (await load()).claudeArtifactsEnabled === true }
+        : {}),
+      ...(input.confinementPlan
+        ? { network: (await loadConfinedNetworkPlan(load)) ?? null }
+        : {}),
+    };
   }
 
   /**

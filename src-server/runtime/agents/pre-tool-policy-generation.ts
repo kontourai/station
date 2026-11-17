@@ -212,6 +212,23 @@ export async function bindPreToolPolicyGeneration(options: {
 }
 
 /**
+ * The binding of a session whose start could not be bound (a configuration
+ * change raced it, or its configuration could not be read): it refuses
+ * every call as replaced, and reports itself replaced, so the session's next
+ * turn restarts it and binds again rather than refusing until it is parked.
+ */
+export function unboundPreToolPolicyGeneration(
+  spec: AgentSpec,
+): PreToolPolicyGeneration {
+  return {
+    spec,
+    revision: () => -1,
+    state: () => 'replaced',
+    refresh: async () => 'replaced',
+  };
+}
+
+/**
  * Each external session's binding by its provider thread, read by the
  * conversation seam to start a successor once a binding is replaced. Held
  * weakly: the evaluator the engine adapter keeps for the session's life holds
