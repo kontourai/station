@@ -270,7 +270,8 @@ message, with digit runs folded so a changing pid or port does not count as a ne
 error. Other context fields are not compared. The first five identical warnings
 in a 60-second window are written. Later ones are dropped and counted. When the
 window ends, one `warn` line, `Suppressed K repeats of: <message>`, reports the
-count. `error` and `fatal` records are never limited, and neither are levels
+count. A graceful shutdown writes every summary still pending before it exits,
+so a window open at shutdown is not lost. `error` and `fatal` records are never limited, and neither are levels
 below `warn`. Suppressed records increment the `station.logs.suppressed_records`
 counter, with attributes `component` (the logger name) and `level`. At most 512
 identities are tracked at once, and the oldest is summarized and dropped first.

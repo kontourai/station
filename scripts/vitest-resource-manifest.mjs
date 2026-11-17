@@ -725,7 +725,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/typecheck-host-slots.test.ts',
   // Host heavy-check slots: runs the slot runner as short-lived children
   // against a PRIVATE slot directory (never the host's) to prove queueing
-  // order, dead-holder reclaim, the bounded wait and nested admission.
+  // order, dead-holder reclaim, the bounded wait and nested admission, and
+  // starts each self-slotted fallow entry point from an empty directory to
+  // prove it queues before analysing anything (#5080).
   'scripts/__tests__/heavy-check-slots.test.ts',
   // Drives verification CLI admission without launching compilers.
   'scripts/__tests__/live-service-verification.process.test.ts',
@@ -1977,6 +1979,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/supervisor/src/__tests__/handle-guard.test.ts',
   // Boots the real server entrypoint as a child with an oversized STATION_LOG_FILE.
   'src-server/__tests__/stdout-log-file-rotation.process.test.ts',
+  // Boots the real server entrypoint as a child and stops it with SIGTERM.
+  'src-server/__tests__/log-repeat-shutdown-flush.process.test.ts',
 ]);
 
 export const DOGFOOD_RECONCILE_PREFIX =
