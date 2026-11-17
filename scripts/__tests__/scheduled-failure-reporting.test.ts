@@ -215,7 +215,13 @@ const REAL_CANCELS = {
  * comments persist across calls, so "the second failure updates the first
  * issue" is observed, not asserted on a mock's arguments.
  */
-function fakeGithub({ labelExists = true } = {}) {
+function fakeGithub({
+  labelExists = true,
+  labelError = false,
+}: {
+  labelExists?: boolean;
+  labelError?: boolean;
+} = {}) {
   const issues: Issue[] = [];
   let nextComment = 1;
   let run: {
@@ -250,6 +256,7 @@ function fakeGithub({ labelExists = true } = {}) {
   };
   // The fake's own clock for closed_at; tests move it to replay a day.
   const clock = { now: () => Date.now() };
+  const failingRuns = new Set<string>();
   // Lets a test run another job between this job's read and its first write.
   const interleave: { beforeUpdate?: () => Promise<unknown> } = {};
   const otherRuns: {
@@ -295,6 +302,8 @@ function fakeGithub({ labelExists = true } = {}) {
           branch?: string;
         }) => {
           calls.push('listWorkflowRuns');
+          if (failingRuns.has(String(workflow_id)))
+            throw Object.assign(new Error('Server Error'), { status: 502 });
           if (event === 'schedule') {
             const last = scheduledRuns[String(workflow_id)];
             return { data: { workflow_runs: last ? [last] : [] } };
@@ -345,6 +354,8 @@ function fakeGithub({ labelExists = true } = {}) {
       issues: {
         getLabel: async ({ name }: { name: string }) => {
           calls.push('getLabel');
+          if (labelError)
+            throw Object.assign(new Error('Server Error'), { status: 502 });
           if (!labelExists || name !== 'ci:red')
             throw Object.assign(new Error('Not Found'), { status: 404 });
           return { data: { name } };
@@ -470,6 +481,7 @@ function fakeGithub({ labelExists = true } = {}) {
     otherRuns,
     interleave,
     clock,
+    failingRuns,
     setRun(next: typeof run) {
       run = next;
     },
@@ -889,6 +901,21 @@ describe('scheduled workflow failure reporting', () => {
     expect(fake.issues).toHaveLength(1);
   });
 
+  it('opens the tracker with the base labels when the label API fails, and says so', async () => {
+    const fake = fakeGithub({ labelError: true });
+    fake.setRun(RED_SWEEP);
+    await runMainHealth(
+      fake,
+      workflowRunEvent('Repo: Dated TODO sweep', 'failure'),
+      {
+        only: REPORT,
+      },
+    );
+    expect(fake.issues).toHaveLength(1);
+    expect(fake.issues[0].labels).toEqual(['bug', 'P1']);
+    expect(fake.issues[0].body).toContain('Label ci:red could not be checked');
+  });
+
   it.each([
     ['a person', REAL_CANCELS.person.message],
     [
@@ -1298,6 +1325,74 @@ describe('scheduled workflows that stop running', () => {
       ),
     ).toBe('2026-11-10T00:00:00Z');
     expect(scheduleEffectiveSince(['0 1 * * *'], [])).toBeNull();
+  });
+
+  it('checks every schedule even when one check fails, then fails once naming it', async () => {
+    const now = Date.parse('2026-11-16T12:00:00Z');
+    const fake = fakeGithub();
+    for (const { file } of readWatchedSchedules(root.href))
+      fake.scheduledRuns[file] = {
+        created_at: new Date(now - HOUR).toISOString(),
+        html_url: 'https://github.com/kontourai/station/actions/runs/8',
+        status: 'completed',
+        conclusion: 'success',
+      };
+    // The first file in the loop fails; a later one is overdue.
+    fake.failingRuns.add('backlog-priority-policy.yml');
+    fake.scheduledRuns['starved-pr-report.yml'] = {
+      created_at: '2026-11-15T10:17:00Z',
+      html_url: 'https://github.com/kontourai/station/actions/runs/9',
+      status: 'completed',
+      conclusion: 'success',
+    };
+    await expect(
+      runMainHealth(fake, workflowRunEvent('Nightly', 'success'), {
+        only: ['overdue-schedules'],
+        now,
+      }),
+    ).rejects.toThrow(
+      /Could not check 1 schedule\(s\): Repo: Backlog policy \(backlog-priority-policy\.yml\): Server Error/,
+    );
+    expect(fake.issues.map((issue) => issue.title)).toEqual([
+      'Main pipeline red: Repo: Starved PR report',
+    ]);
+  });
+
+  it('reports its own red through one tracker of its own', async () => {
+    const document = mainHealth();
+    const own = document.jobs['report-own-failure'] as Job & {
+      needs?: string[];
+    };
+    expect(own.if).toBe('${{ failure() }}');
+    expect(own.needs).toEqual([
+      'report-failure',
+      'close-after-success',
+      'overdue-schedules',
+    ]);
+    expect(
+      own.steps.some((step) => step.uses?.startsWith('actions/checkout@')),
+    ).toBe(false);
+    const fake = fakeGithub();
+    const script = String(own.steps[0].with?.script);
+    const run = vm.compileFunction(
+      `return async function (github, context) {\n${script}\n};`,
+      [],
+    )();
+    const context = {
+      repo: { owner: 'kontourai', repo: 'station' },
+      serverUrl: 'https://github.com',
+      runId: 42,
+      payload: {
+        workflow_run: {
+          html_url: 'https://github.com/kontourai/station/actions/runs/41',
+        },
+      },
+    };
+    await run(fake.github, context);
+    await run(fake.github, { ...context, runId: 43 });
+    expect(fake.issues).toHaveLength(1);
+    expect(fake.issues[0].title).toBe('Main: Health could not run');
+    expect(fake.issues[0].body).toContain('actions/runs/43');
   });
 
   it("keeps a flapping workflow's tracker open until a green has held for a day, and reopens quietly", async () => {

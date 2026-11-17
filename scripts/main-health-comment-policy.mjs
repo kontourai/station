@@ -580,23 +580,37 @@ export const MAIN_HEALTH_LABEL = 'ci:red';
 /**
  * The labels a tracker can carry right now. `ci:red` only once it exists:
  * adding a missing label would create it with an arbitrary colour, which the
- * label-manifest check then reports as drift.
+ * label-manifest check then reports as drift. A label API failure never
+ * stops a tracker: it is opened with the base labels and `note` says why,
+ * for the tracker body.
  *
  * @param {any} github Octokit
  * @param {{owner: string, repo: string}} repo
- * @param {{info: (line: string) => void}} core
- * @returns {Promise<string[]>}
+ * @param {{info: (line: string) => void, warning?: (line: string) => void}} core
+ * @returns {Promise<{labels: string[], note: string | null}>}
  */
 export async function trackerLabels(github, repo, core) {
   try {
     await github.rest.issues.getLabel({ ...repo, name: MAIN_HEALTH_LABEL });
-    return [...MAIN_HEALTH_BASE_LABELS, MAIN_HEALTH_LABEL];
+    return {
+      labels: [...MAIN_HEALTH_BASE_LABELS, MAIN_HEALTH_LABEL],
+      note: null,
+    };
   } catch (error) {
-    if (error?.status !== 404) throw error;
-    core.info(
-      `main-health: label ${MAIN_HEALTH_LABEL} does not exist yet; trackers stay unlabelled with it until the owner creates it.`,
+    if (error?.status === 404) {
+      core.info(
+        `main-health: label ${MAIN_HEALTH_LABEL} does not exist yet; trackers stay unlabelled with it until the owner creates it.`,
+      );
+      return { labels: [...MAIN_HEALTH_BASE_LABELS], note: null };
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    core.warning?.(
+      `main-health: could not read label ${MAIN_HEALTH_LABEL}: ${message}`,
     );
-    return [...MAIN_HEALTH_BASE_LABELS];
+    return {
+      labels: [...MAIN_HEALTH_BASE_LABELS],
+      note: `Label ${MAIN_HEALTH_LABEL} could not be checked, so this tracker may be missing it; the Main: Health run log has the error.`,
+    };
   }
 }
 

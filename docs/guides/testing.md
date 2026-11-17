@@ -486,7 +486,13 @@ check runs only when Main: Health runs, that is when some watched workflow
 completes on `main`. Hourly `Nightly` and `Repo: Starved PR report` and every
 main push's secret scan normally trigger it many times a day; on a day when
 no watched workflow completes on `main` at all, nothing checks, and the next
-completion catches up on every overdue schedule at once.
+completion catches up on every overdue schedule at once. Each schedule is
+checked on its own; a failed check does not stop the others, and the job then
+fails once, naming what it could not check. Main: Health cannot watch itself,
+so when any of its jobs fails, a final job opens or rewrites one `Main: Health
+could not run` issue, closed by hand once Main: Health runs green again. A
+label API failure never stops a tracker: it opens with `bug` and `P1` and says
+the label could not be checked.
 
 `scripts/__tests__/scheduled-failure-reporting.test.ts` refuses a scheduled
 workflow that is neither watched nor on its justified allowlist: `Main:

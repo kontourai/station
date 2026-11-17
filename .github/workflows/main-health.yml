@@ -167,6 +167,7 @@ jobs:
               core.info(`main-health: cancelled run attributed to ${cancelCause}`);
               if (SILENT_CANCEL_CAUSES.includes(cancelCause)) return;
             }
+            const { labels, note: labelNote } = await trackerLabels(github, context.repo, core);
             const body = renderTrackerBody({
               workflowName,
               runUrl,
@@ -177,13 +178,15 @@ jobs:
               lines: failingLines(annotations),
               detailsError,
               cancelCause,
-              notes: advisoryOwner ? [
-                `Owner: @${advisoryOwner} (dependency-policy CODEOWNER).`,
-                'Action: inspect the advisory report in the linked run, separate disclosed findings from scan/registry errors, and coordinate one compatible dependency repair. Do not renew exceptions or retry feature PRs to hide this result.',
-                'Preview/Stable publication remains blocked by its own fresh exact-source scan; feature and Nightly builds do not run advisory scans.',
-              ] : [],
+              notes: [
+                ...(advisoryOwner ? [
+                  `Owner: @${advisoryOwner} (dependency-policy CODEOWNER).`,
+                  'Action: inspect the advisory report in the linked run, separate disclosed findings from scan/registry errors, and coordinate one compatible dependency repair. Do not renew exceptions or retry feature PRs to hide this result.',
+                  'Preview/Stable publication remains blocked by its own fresh exact-source scan; feature and Nightly builds do not run advisory scans.',
+                ] : []),
+                ...(labelNote ? [labelNote] : []),
+              ],
             });
-            const labels = await trackerLabels(github, context.repo, core);
             const existing = await consolidateTracker(github, context.repo, await listTrackers(github, context.repo), title);
             if (!existing) {
               await github.rest.issues.create({
@@ -404,9 +407,14 @@ jobs:
             const { consolidateTracker, listTrackers, trackerLabels, trackerTitle } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/main-health-comment-policy.mjs`);
             const { cronIntervalMs, decideOverdue, isOverdueBody, readWatchedSchedules, renderOverdueBody, scheduleEffectiveSince, workflowSchedule } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/main-health-schedules.mjs`);
             const now = Date.now();
-            const labels = await trackerLabels(github, context.repo, core);
+            const { labels } = await trackerLabels(github, context.repo, core);
             const trackers = await listTrackers(github, context.repo);
+            // Each workflow is checked on its own: one failed API call must
+            // not stop the checks after it. Failures are collected and the
+            // job fails once, at the end, naming what could not be checked.
+            const failures = [];
             for (const { file, name, crons } of readWatchedSchedules(process.env.GITHUB_WORKSPACE)) {
+             try {
               const intervalMs = cronIntervalMs(crons);
               const { data } = await github.rest.actions.listWorkflowRuns({
                 ...context.repo,
@@ -462,4 +470,39 @@ jobs:
                 await github.rest.issues.createComment({ ...context.repo, issue_number: tracker.number, body: `Ran on its schedule again at ${last?.created_at}: ${last?.html_url}` });
                 await github.rest.issues.update({ ...context.repo, issue_number: tracker.number, state: 'closed' });
               }
+             } catch (error) {
+              const message = error instanceof Error ? error.message : String(error);
+              failures.push(`${name} (${file}): ${message}`);
+              core.warning(`main-health: could not check ${name}: ${message}`);
+             }
             }
+            if (failures.length) throw new Error(`Could not check ${failures.length} schedule(s): ${failures.join('; ')}`);
+
+  # Main: Health cannot watch itself through workflow_run, so its own red
+  # reaches a person here: one tracker, opened or rewritten by the smallest
+  # code path, with no checkout and no module. It is closed by hand once
+  # Main: Health runs green again.
+  report-own-failure:
+    needs: [report-failure, close-after-success, overdue-schedules]
+    if: ${{ failure() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: "Open or update the Main: Health tracker"
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const title = 'Main: Health could not run';
+            const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              "Main: Health failed, so a watched workflow's red run or stopped schedule may not have reached its tracker.",
+              '',
+              `Run: ${run}`,
+              `Watched run: ${context.payload.workflow_run?.html_url ?? 'unknown'}`,
+              '',
+              'Read the failed job in the run above. Close this issue by hand once Main: Health runs green again.',
+            ].join('\n');
+            const issues = await github.paginate(github.rest.issues.listForRepo, { ...context.repo, creator: 'github-actions[bot]', state: 'open', per_page: 100 });
+            const existing = issues.find((issue) => !issue.pull_request && issue.title === title);
+            if (existing) await github.rest.issues.update({ ...context.repo, issue_number: existing.number, body });
+            else await github.rest.issues.create({ ...context.repo, title, body, labels: ['bug', 'P1'] });

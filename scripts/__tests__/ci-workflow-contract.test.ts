@@ -441,6 +441,7 @@ describe('CI verification workflow contracts', () => {
     );
     const successJob = mainHealth.slice(
       mainHealth.indexOf('  close-after-success:'),
+      mainHealth.indexOf('  overdue-schedules:'),
     );
 
     expect(trigger).toContain('types: [completed]');
@@ -511,6 +512,7 @@ describe('CI verification workflow contracts', () => {
     const mainHealth = workflow('main-health.yml');
     const successJob = mainHealth.slice(
       mainHealth.indexOf('  close-after-success:'),
+      mainHealth.indexOf('  overdue-schedules:'),
     );
 
     expect(successJob).toContain('github.rest.actions.listJobsForWorkflowRun');
