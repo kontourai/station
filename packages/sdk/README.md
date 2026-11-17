@@ -691,6 +691,7 @@ out of the first-paint root barrel.
   captured host authority), `/answer-support` (support bundles, claims and
   cards), `/answer-assessment-events` and `/answer-narrative-events` (owner
   update events and the Basis queries they refresh).
+- Project Library: `/project-library` (Library page, upload and remove, content).
 - Outputs and Session inventory: `/task-outputs`, `/session-outputs`
   (inspection point queries), `/session-output-actions` (keep a Session output
   in a Task), `/session-inventory`, `/task-user-input-references`.
