@@ -42,7 +42,7 @@ function recordMemory(eventsFile, cgroupDirectory) {
 const [eventsFile, cgroupDirectory, command, ...args] = process.argv.slice(2);
 // The owner signals the whole process group, so an interruption ends this
 // wrapper and the command together, exactly as it would end the command alone.
-const child = spawn(command, args, { stdio: 'inherit' });
+const child = spawn(command, args, { stdio: 'inherit', windowsHide: true });
 child.on('error', (error) => {
   process.stderr.write(`${error.message}\n`);
   process.exit(127);
