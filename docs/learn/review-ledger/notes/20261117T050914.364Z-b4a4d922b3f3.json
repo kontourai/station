@@ -1,0 +1,7 @@
+{
+  "revision": "6bc5cb39506c20149219d7216b7363d5cfa6cfb6",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Re-read the scheduled-failure section against this round: job-less supersession, consistent bot-creator tracker lookup with duplicate convergence and orphaned renamed trackers, overdue measured from the schedule's last change and closed only after a successful run, once-a-day changed-failure comments, the stale-allowlist rule, and when the overdue check runs.","inputs":["docs/guides/testing.md","scripts/__tests__/ci-workflow-contract.test.ts","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

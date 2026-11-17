@@ -1,0 +1,7 @@
+{
+  "revision": "6bc5cb39506c20149219d7216b7363d5cfa6cfb6",
+
+  "notes": [
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Cites a source changed in this round (main-health.yml, the comment policy, container-smoke.yml or testing.md); no claim on this page concerns tracker lookup, cancel attribution, overdue timing, comment cadence or smoke timings, so it stays accurate.","inputs":["docs/guides/delegation-attempt-claims.md",".github/workflows/container-smoke.yml"]}
+  ]
+}
