@@ -34,7 +34,7 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { chromium } from 'playwright';
-import { pluginLifecyclePending } from '../../packages/contracts/src/plugin.ts';
+import { pluginLifecycleUnapplied } from '../../packages/contracts/src/plugin.ts';
 import { APP_DESTINATION_REGISTRY } from '../../src-ui/src/app-shell/destination-registry.ts';
 import {
   DEVELOPER_TABS,
@@ -407,43 +407,55 @@ async function installBundledPlugin(page, plugin) {
           : {}),
       },
     },
-    // A designed 202 (installed, activation not finished in time) is not an
-    // API failure; the plugin still has to become ready within our bound.
-    { acceptPending: true },
+    // A designed 202 (saved, activation not completed) is not an API
+    // failure; the plugin still has to become active (below).
+    { acceptSaved: true },
   );
-  if (pluginLifecyclePending(installed))
-    await waitForPluginReady(
+  if (pluginLifecycleUnapplied(installed))
+    await recoverOnce(
       page,
       installed.plugin?.name ?? previewed.manifest?.name ?? plugin.id,
     );
 }
 
 /**
- * Station leaves a plugin whose activation outran the server deadline as
- * Activation pending until a person runs Review recovery, so a pending
- * install that never turns ready inside this bound fails the walkthrough
- * with that state named, rather than as a failed API call.
+ * Station does not resume an activation that did not complete: the plugin
+ * reads Needs recovery until a person recovers it. The walkthrough takes that
+ * documented step once, approving exactly what the recovery review shows, and
+ * fails with the plugin's readiness named if it is still not active.
  */
-const PLUGIN_ACTIVATION_BOUND_MS = 30_000;
-async function waitForPluginReady(page, name) {
-  let readiness = 'absent';
-  try {
-    await poll(
-      `plugin ${name} to finish activating`,
-      PLUGIN_ACTIVATION_BOUND_MS,
-      async () => {
-        const listed = await apiOk(page, 'GET', '/api/plugins');
-        const row = listed?.plugins?.find((entry) => entry?.name === name);
-        readiness =
-          row?.installationReadiness?.state ?? (row ? 'ready' : 'absent');
-        return readiness === 'ready';
+async function recoverOnce(page, name) {
+  const path = `/api/plugins/${encodeURIComponent(name)}`;
+  const review = await apiOk(page, 'GET', `${path}/recovery-preview`);
+  await apiOk(
+    page,
+    'POST',
+    `${path}/recover`,
+    {
+      recoveryRevision: review.recoveryRevision,
+      consent: {
+        contentDigest: review.contentDigest,
+        grantRevision: review.grantRevision,
+        ...(review.registryTrustRevision
+          ? { registryTrustRevision: review.registryTrustRevision }
+          : {}),
+        permissions: review.permissions?.required ?? [],
+        dependencies: (review.dependencies ?? []).map((entry) => entry.id),
+        dependencyApprovals: (review.dependencies ?? []).map(
+          ({ id, consent }) => ({ id, ...consent }),
+        ),
       },
-    );
-  } catch {
+    },
+    { acceptSaved: true },
+  );
+  const listed = await apiOk(page, 'GET', '/api/plugins');
+  const row = listed?.plugins?.find((entry) => entry?.name === name);
+  const readiness =
+    row?.installationReadiness?.state ?? (row ? 'ready' : 'absent');
+  if (readiness !== 'ready')
     throw new Error(
-      `${name} was installed but its activation is still ${readiness} after ${PLUGIN_ACTIVATION_BOUND_MS}ms`,
+      `${name} was installed but is not active (readiness ${readiness}) after one recovery`,
     );
-  }
 }
 
 async function bundledContentSmoke(page) {

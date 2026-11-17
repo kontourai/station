@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs';
 import { arch, cpus, platform, release, totalmem } from 'node:os';
 import { join } from 'node:path';
 import {
-  pluginLifecyclePending,
+  pluginLifecycleUnapplied,
   readPluginLifecycleResponse,
 } from '../../../packages/contracts/src/plugin.ts';
 
@@ -138,28 +138,28 @@ export async function api(page, method, path, body) {
 }
 
 /**
- * `acceptPending`: a plugin lifecycle route's designed `202` (saved, runtime
- * activation not finished) is returned rather than thrown. Only a caller that
- * then waits for the plugin to become ready, within its own bound, may pass
- * it; the contract's reader decides what counts as pending.
+ * `acceptSaved`: a plugin lifecycle route's designed `202` (saved, not
+ * applied) is returned rather than thrown. Only a caller that then takes the
+ * step that applies it (for a plugin activation, recovery) and checks the
+ * result may pass it; the contract's reader decides what counts as saved.
  */
 export async function apiOk(
   page,
   method,
   path,
   body,
-  { acceptPending = false } = {},
+  { acceptSaved = false } = {},
 ) {
   const { status, payload } = await api(page, method, path, body);
   if (
-    acceptPending &&
-    readPluginLifecycleResponse(status, payload).state === 'pending'
+    acceptSaved &&
+    readPluginLifecycleResponse(status, payload).state === 'saved'
   )
     return payload;
   if (status >= 400 || payload?.success === false) {
     const verdict =
-      status === 202 && pluginLifecyclePending(payload)
-        ? 'was accepted but is still pending'
+      status === 202 && pluginLifecycleUnapplied(payload)
+        ? 'was saved but not applied'
         : 'failed';
     throw new Error(
       `${method} ${path} ${verdict}: HTTP ${status} ${JSON.stringify(payload)?.slice(0, 400)}`,
