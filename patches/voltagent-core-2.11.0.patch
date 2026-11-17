@@ -1,7 +1,34 @@
 diff --git a/dist/index.js b/dist/index.js
-index c27134bb2277fe30a95fb44455092657bf5d2be4..4801069f5a8728350a5aaecf54cd37e22f77a06d 100644
+index c27134b..90e51b4 100644
 --- a/dist/index.js
 +++ b/dist/index.js
+@@ -7152,7 +7152,7 @@ var WebSocketLogProcessor = class _WebSocketLogProcessor {
+ };
+ 
+ // src/observability/logs/remote-log-processor.ts
+-var import_exporter_logs_otlp_http = require("@opentelemetry/exporter-logs-otlp-http");
++var import_exporter_logs_otlp_http = { get OTLPLogExporter() { return require("@opentelemetry/exporter-logs-otlp-http").OTLPLogExporter; } };
+ var import_sdk_logs = require("@opentelemetry/sdk-logs");
+ var RemoteLogProcessor = class {
+   static {
+@@ -7271,7 +7271,7 @@ var RemoteLogProcessor = class {
+ };
+ 
+ // src/observability/processors/lazy-remote-export-processor.ts
+-var import_exporter_trace_otlp_http = require("@opentelemetry/exporter-trace-otlp-http");
++var import_exporter_trace_otlp_http = { get OTLPTraceExporter() { return require("@opentelemetry/exporter-trace-otlp-http").OTLPTraceExporter; } };
+ var import_sdk_trace_base = require("@opentelemetry/sdk-trace-base");
+ var LazyRemoteExportProcessor = class {
+   static {
+@@ -8027,7 +8027,7 @@ var VoltAgentObservability = class {
+ var import_api8 = require("@opentelemetry/api");
+ var import_api_logs3 = require("@opentelemetry/api-logs");
+ var import_core = require("@opentelemetry/core");
+-var import_otlp_transformer = require("@opentelemetry/otlp-transformer");
++var import_otlp_transformer = { get JsonLogsSerializer() { return require("@opentelemetry/otlp-transformer").JsonLogsSerializer; }, get JsonTraceSerializer() { return require("@opentelemetry/otlp-transformer").JsonTraceSerializer; } };
+ var import_resources2 = require("@opentelemetry/resources");
+ var import_sdk_logs3 = require("@opentelemetry/sdk-logs");
+ var import_sdk_trace_base3 = require("@opentelemetry/sdk-trace-base");
 @@ -13257,7 +13257,12 @@ var MemoryManager = class {
        });
      }
@@ -26,10 +53,70 @@ index c27134bb2277fe30a95fb44455092657bf5d2be4..4801069f5a8728350a5aaecf54cd37e2
                    oc.logger ?? this.logger,
                    this.observabilityAuthWarningState,
 diff --git a/dist/index.mjs b/dist/index.mjs
-index 0652f237fbf9ae47fa2d312ecfed2ea18cee3b18..07dcf96ca0304ddabb17fdba29def7558e7b3111 100644
+index 0652f23..03245a9 100644
 --- a/dist/index.mjs
 +++ b/dist/index.mjs
-@@ -13075,7 +13075,12 @@ var MemoryManager = class {
+@@ -6931,7 +6931,8 @@ var WebSocketLogProcessor = class _WebSocketLogProcessor {
+ };
+ 
+ // src/observability/logs/remote-log-processor.ts
+-import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
++import { createRequire as __voltagentOtlpCreateRequire } from "node:module";
++var __voltagentOtlpRequire = __voltagentOtlpCreateRequire(import.meta.url);
+ import {
+   BatchLogRecordProcessor
+ } from "@opentelemetry/sdk-logs";
+@@ -7024,6 +7025,7 @@ var RemoteLogProcessor = class {
+     try {
+       const baseUrl = voltOpsClient.getApiUrl();
+       const headers = voltOpsClient.getAuthHeaders();
++      const { OTLPLogExporter } = __voltagentOtlpRequire("@opentelemetry/exporter-logs-otlp-http");
+       const exporter = new OTLPLogExporter({
+         url: `${baseUrl}/api/public/otel/v1/logs`,
+         headers: {
+@@ -7052,7 +7054,6 @@ var RemoteLogProcessor = class {
+ };
+ 
+ // src/observability/processors/lazy-remote-export-processor.ts
+-import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+ import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
+ var LazyRemoteExportProcessor = class {
+   static {
+@@ -7145,6 +7146,7 @@ var LazyRemoteExportProcessor = class {
+     try {
+       const baseUrl = voltOpsClient.getApiUrl();
+       const headers = voltOpsClient.getAuthHeaders();
++      const { OTLPTraceExporter } = __voltagentOtlpRequire("@opentelemetry/exporter-trace-otlp-http");
+       const exporter = new OTLPTraceExporter({
+         url: `${baseUrl}/api/public/otel/v1/traces`,
+         headers: {
+@@ -7813,7 +7815,6 @@ var VoltAgentObservability = class {
+ import { SpanKind as SpanKind3, SpanStatusCode as SpanStatusCode4, context as context4, trace as trace7 } from "@opentelemetry/api";
+ import { logs as logs3 } from "@opentelemetry/api-logs";
+ import { ExportResultCode } from "@opentelemetry/core";
+-import { JsonLogsSerializer, JsonTraceSerializer } from "@opentelemetry/otlp-transformer";
+ import { defaultResource as defaultResource2, resourceFromAttributes as resourceFromAttributes2 } from "@opentelemetry/resources";
+ import {
+   LoggerProvider as LoggerProvider2,
+@@ -8224,7 +8225,7 @@ var FetchTraceExporter = class {
+       return;
+     }
+     try {
+-      const payloadBytes = JsonTraceSerializer.serializeRequest(items);
++      const payloadBytes = __voltagentOtlpRequire("@opentelemetry/otlp-transformer").JsonTraceSerializer.serializeRequest(items);
+       const body = (textDecoder ?? new TextDecoder()).decode(payloadBytes);
+       const performExport = /* @__PURE__ */ __name(async () => {
+         let attempt = 0;
+@@ -8297,7 +8298,7 @@ var FetchLogExporter = class {
+       return;
+     }
+     try {
+-      const payloadBytes = JsonLogsSerializer.serializeRequest(items);
++      const payloadBytes = __voltagentOtlpRequire("@opentelemetry/otlp-transformer").JsonLogsSerializer.serializeRequest(items);
+       const body = (textDecoder ?? new TextDecoder()).decode(payloadBytes);
+       const performExport = /* @__PURE__ */ __name(async () => {
+         let attempt = 0;
+@@ -13075,7 +13076,12 @@ var MemoryManager = class {
        });
      }
      if (options?.persistInput !== false) {
@@ -43,7 +130,7 @@ index 0652f237fbf9ae47fa2d312ecfed2ea18cee3b18..07dcf96ca0304ddabb17fdba29def755
      }
      return { messages, conversationId };
    }
-@@ -32204,7 +32209,7 @@ var Agent = class {
+@@ -32204,7 +32210,7 @@ var Agent = class {
                      oc.logger?.debug?.("Failed to persist deferred messages", { error });
                    });
                  }
