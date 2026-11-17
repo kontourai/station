@@ -362,7 +362,7 @@ export function composeStationInstructions(
     ];
     if (selects.length > 0) {
       loadingLines.push(
-        `Load these on-demand tools with ToolSearch \`select:${selects.join(',')}\`.`,
+        `Station tools load on demand. Load the ones named above with ToolSearch \`select:${selects.join(',')}\`.`,
       );
     }
   }
