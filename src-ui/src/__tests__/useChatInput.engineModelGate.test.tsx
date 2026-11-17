@@ -14,7 +14,11 @@
  * station matrix.
  */
 
-import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
+import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
+import {
+  type AgentConnectionView,
+  EXECUTION_MODE,
+} from '@kontourai/station-contracts/tool';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
@@ -76,12 +80,15 @@ const SESSION_ID = 'engine-model-gate-session';
 // verbatim shape: canonical engineId present, type is the '<id>-runtime'
 // convention that names no engine on its own.
 const opencodeConnection = {
-  id: 'opencode',
+  id: engineConnectionId('opencode'),
   engineId: 'opencode',
   kind: 'agent',
   type: 'opencode-runtime',
   name: 'OpenCode',
   enabled: true,
+  capabilities: ['acp'],
+  prerequisites: [],
+  setup: { state: 'ready', detected: true, configured: true },
   config: {},
   status: 'ready',
   runtimeCatalog: {
@@ -95,7 +102,7 @@ const opencodeConnection = {
     ],
     builtInModels: [],
   },
-};
+} satisfies AgentConnectionView & { engineId: string };
 
 // The new-chat provider-managed E2E lane's model-connection shape: a
 // user-chosen id and kind 'model' — nothing here names an engine.
@@ -124,11 +131,11 @@ const opencodeAgent = {
   },
 } as unknown as AgentData;
 
-const bigPickle: SelectableModel = {
+const bigPickle = {
   id: 'opencode/big-pickle',
   name: 'Big Pickle',
   originalId: 'opencode/big-pickle',
-};
+} satisfies SelectableModel;
 
 function renderChatInput(options: {
   runtimeConnection?: typeof opencodeConnection | null;
@@ -256,20 +263,18 @@ describe('useChatInput engine capability model gate', () => {
         provider,
         agentConnectionId: 'opencode',
       });
+      const runtimeConnection = {
+        ...opencodeConnection,
+        engineId: connectionEngine,
+      };
       const bindingStatus = resolveBindingStatus({
         agent: opencodeAgent,
         chatState: activeChatsStore.getSnapshot()[SESSION_ID],
-        runtimeConnection: {
-          ...opencodeConnection,
-          engineId: connectionEngine,
-        } as Parameters<typeof resolveBindingStatus>[0]['runtimeConnection'],
+        runtimeConnection,
         globalModels: [bigPickle],
       });
       const { result } = renderChatInput({
-        runtimeConnection: {
-          ...opencodeConnection,
-          engineId: connectionEngine,
-        },
+        runtimeConnection,
         bindingStatus,
       });
       expect(result.current.canModelSelect).toBe(available);

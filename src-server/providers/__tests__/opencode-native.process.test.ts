@@ -134,7 +134,7 @@ describe.skipIf(!real.binary)(
     let model: http.Server;
     let adapter: OpenCodeAdapter;
     let project: string;
-    let isolatedEnv: NodeJS.ProcessEnv;
+    let isolatedEnv: Record<string, string>;
     const observedModels: string[] = [];
     const events: Event[] = [];
     let pump: Promise<void>;
@@ -161,7 +161,7 @@ describe.skipIf(!real.binary)(
       const root = realpathSync(makeTempDir('opencode-native-'));
       const home = join(root, 'home');
       project = join(root, 'project');
-      const env: NodeJS.ProcessEnv = {
+      const env: Record<string, string> = {
         PATH: process.env.PATH ?? '/usr/bin:/bin',
         HOME: home,
         XDG_CONFIG_HOME: join(home, 'config'),

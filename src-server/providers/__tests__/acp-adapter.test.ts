@@ -7571,7 +7571,7 @@ describe('AcpAdapter.steerTurn', () => {
   // this separately from cancel's notification write to exercise the race.
   beforeEach(() => {
     vi.spyOn(FakeAcpProcess.prototype, 'cancel').mockImplementation(
-      async function () {
+      async function (this: FakeAcpProcess) {
         this.cancelCalls += 1;
         await this.cancelPromise;
         this.resolvePrompt('cancelled');
