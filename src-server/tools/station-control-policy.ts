@@ -1199,9 +1199,11 @@ export const STATION_CONTROL_TOOL_POLICY = {
 
   // #5065: the memory of the caller Session's OWN Project. The routes read
   // the Session from the verified caller and the Project from that Session's
-  // start, never the arguments, and hold it to the one scope rule. Writes are
-  // bounded: one short note at a time, capped in count and size, and a note
-  // is never an instruction or a grant.
+  // start, never the arguments, and hold it to the one scope rule. list and
+  // read are reads. remember is a bounded write: it appends one note, capped
+  // in count and size, and never overwrites or deletes; a note is never an
+  // instruction or a grant. forget deletes a note (possibly one a person
+  // wrote), so it is mutating and keeps the normal approval posture.
   list_project_notes: {
     ...SELF_READ,
     routes: [get('/api/orchestration/station-control/project-memory')],
@@ -1220,7 +1222,7 @@ export const STATION_CONTROL_TOOL_POLICY = {
   forget_project_note: {
     assurance: 'any',
     role: 'self',
-    toolClass: 'bounded-write',
+    toolClass: 'mutating',
     personOnly: 'never',
     routes: [del('/api/orchestration/station-control/project-memory/:id')],
   },
