@@ -1583,7 +1583,7 @@ function observeBatchFetches(): BatchObserver {
         receipt.taskId !== current.taskId ||
         result?.kind !== 'committed' ||
         typeof result.revision !== 'string' ||
-        !/^swsr-v1:[0-9a-f]{64}$/.test(result.revision) ||
+        !/^swsr-v[12]:[0-9a-f]{64}$/.test(result.revision) ||
         result.revision === current.workingRevision ||
         result.text !== current.text
       )
@@ -2134,7 +2134,7 @@ function validEditorIdentity(
     editor.dataset.stationPerformanceSurface === 'task-editor' &&
     editor.dataset.stationTaskId === taskId &&
     typeof revision === 'string' &&
-    /^swsr-v1:[0-9a-f]{64}$/.test(revision)
+    /^swsr-v[12]:[0-9a-f]{64}$/.test(revision)
   );
 }
 

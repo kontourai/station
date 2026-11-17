@@ -547,8 +547,8 @@ type BriefFault =
   | 'read-only';
 
 async function mountedBrief(fault: BriefFault = 'none') {
-  const before = `swsr-v1:${'a'.repeat(64)}`;
-  const after = `swsr-v1:${'b'.repeat(64)}`;
+  const before = `swsr-v2:${'a'.repeat(64)}`;
+  const after = `swsr-v2:${'b'.repeat(64)}`;
   brief.document.data = { kind: 'snapshot', revision: before, text: 'base' };
   brief.adopt = fault !== 'unsettled';
   brief.discovery.data.capabilities.documentWrite = fault !== 'read-only';
@@ -584,7 +584,7 @@ async function mountedBrief(fault: BriefFault = 'none') {
         brief.listener?.({
           kind: 'snapshot',
           revision:
-            fault === 'foreign-layout' ? `swsr-v1:${'d'.repeat(64)}` : after,
+            fault === 'foreign-layout' ? `swsr-v2:${'d'.repeat(64)}` : after,
           text: desired,
         });
       return Response.json(

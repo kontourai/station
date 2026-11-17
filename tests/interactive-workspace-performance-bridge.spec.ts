@@ -25,6 +25,7 @@ import {
   referenceHostGate,
 } from '../scripts/interactive-workspace-performance.mjs';
 import {
+  bridgeEvidence,
   prepareRemoteApplyBrief,
   typeRemoteApplyBrief,
 } from '../scripts/interactive-workspace-playwright-adapter.mjs';
@@ -706,14 +707,20 @@ test.describe('Brief driver functional controls', () => {
         repository,
         'brief-driver',
       );
-      await page.goto(`${live.ui}/tasks/${encodeURIComponent(taskId)}`);
+      await page.exposeBinding(
+        '__stationInteractiveWorkspacePerformanceDriver',
+        (_source, command) => typeRemoteApplyBrief(page, taskId, command),
+      );
+      await page.goto(
+        `${live.ui}/tasks/${encodeURIComponent(taskId)}?station-performance-reference=interactive-workspace-v3`,
+      );
       await prepareRemoteApplyBrief(page, taskId);
       const editor = page.getByRole('textbox', {
         name: 'Task brief',
         exact: true,
       });
       const before = await editor.getAttribute('data-station-working-revision');
-      expect(before).toMatch(/^swsr-v1:[0-9a-f]{64}$/);
+      expect(before).toMatch(/^swsr-v[12]:[0-9a-f]{64}$/);
       const desired = `${await editor.inputValue()}0`;
       // The functional check observes autosave, never a synthetic Save button.
       const batch = page.waitForResponse(
@@ -722,14 +729,24 @@ test.describe('Brief driver functional controls', () => {
             `/api/tasks/${encodeURIComponent(taskId)}/room/batches` &&
           response.request().method() === 'POST',
       );
-      const [response] = await Promise.all([
+      const contract = JSON.parse(
+        readFileSync(DEFAULT_CONFIG_PATH, 'utf8'),
+      ) as PerformanceConfig;
+      const [response, evidence] = await Promise.all([
         batch,
-        typeRemoteApplyBrief(page, taskId, {
-          iteration: 0,
-          workingRevision: before,
-          text: desired,
+        bridgeEvidence(page, {
+          ...contract,
+          sampling: { warmups: 0, samples: 1 },
+          fixtures: contract.fixtures.filter(
+            (fixture) => fixture.id === 'remote-apply',
+          ),
         }),
       ]);
+      expect(evidence.observations[0]).toMatchObject({
+        counts: { failures: 0, degraded: 0 },
+        autosave: { debounceMs: 450, samples: [{ iteration: 0 }] },
+      });
+      expect(evidence.observations[0].measurements).toHaveLength(1);
       expect(response.status()).toBe(200);
       const accepted = (await response.json()).data;
       expect(accepted).toMatchObject({ kind: 'committed', text: desired });

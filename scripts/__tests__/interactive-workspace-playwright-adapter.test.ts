@@ -18,7 +18,7 @@ const boardConfig = {
 test.each(['writable', 'hidden', 'read-only', 'wrong-task', 'stale-revision'])(
   'Brief keyboard driver requires its visible writable Task binding: %s',
   async (state) => {
-    const revision = `swsr-v1:${'a'.repeat(64)}`;
+    const revision = `swsr-v2:${'a'.repeat(64)}`;
     const press = vi.fn();
     const click = vi.fn();
     const editor = {
@@ -30,7 +30,7 @@ test.each(['writable', 'hidden', 'read-only', 'wrong-task', 'stale-revision'])(
             ? 'task-other'
             : 'task-1'
           : state === 'stale-revision'
-            ? `swsr-v1:${'b'.repeat(64)}`
+            ? `swsr-v2:${'b'.repeat(64)}`
             : revision,
       inputValue: async () => 'base',
       click,

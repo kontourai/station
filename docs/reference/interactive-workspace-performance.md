@@ -122,7 +122,7 @@ ingress. Missing or cross-epoch receipts make only that fixture
 `NOT_VERIFIED`. The bridge returns raw marks only; the adapter passes the
 checked-in v3 fixture/action definitions and the checker derives all metrics.
 Remote-apply verifies a visible, writable editor bound to the exact Task and
-working revision. It arms its observation before keyboard input, matches the
+working revision (the kernel supports `swsr-v1` and `swsr-v2`). It arms its observation before keyboard input, matches the
 planned text/intent/digest to the submitted batch and accepted revision/text,
 and then requires that revision's authoritative apply and layout marks. It
 waits for the editor-bound `Saved` status and exact adopted text/revision before

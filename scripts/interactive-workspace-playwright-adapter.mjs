@@ -1402,7 +1402,7 @@ export async function prepareRemoteApplyBrief(page, taskId) {
 
 export async function typeRemoteApplyBrief(page, taskId, command) {
   if (
-    !/^swsr-v1:[0-9a-f]{64}$/.test(command.workingRevision) ||
+    !/^swsr-v[12]:[0-9a-f]{64}$/.test(command.workingRevision) ||
     typeof command.text !== 'string' ||
     !command.text.endsWith(String(command.iteration % 10)) ||
     new URL(page.url()).pathname !== `/tasks/${encodeURIComponent(taskId)}`
