@@ -1364,7 +1364,12 @@ export class StationRuntime {
   private stationInstructionsPreview?: FeaturePreviewSelector;
   private coordinatorSessionPreview?: FeaturePreviewSelector;
   /** #5062/#5065/#5068: the `project-coordination` preview's composition. */
-  private projectCoordination!: ProjectCoordinationRuntime;
+  /**
+   * Composed with the services; absent until then, so every reader below
+   * (initialization deps, routes, dispatch) treats it as optional, like the
+   * other runtime collaborators a failed startup may never have built.
+   */
+  private projectCoordination?: ProjectCoordinationRuntime;
   private openCodeNativeEnginePreview?: FeaturePreviewSelector;
   private sshEnvironmentService: SshEnvironmentService;
   private timers: NodeJS.Timeout[] = [];
@@ -4570,9 +4575,9 @@ export class StationRuntime {
           orchestrationEventStore: this.orchestrationEventStore,
           hostImagesPreview: this.chatHostImagesPreview,
           coordinatorSessionPreview: this.coordinatorSessionPreview,
-          projectSessionContext: this.projectCoordination.sessionContext,
+          projectSessionContext: this.projectCoordination?.sessionContext,
           projectCoordinatorEffort: (projectSlug) => {
-            if (!this.projectCoordination.enabled()) return undefined;
+            if (this.projectCoordination?.enabled() !== true) return undefined;
             try {
               return this.storageAdapter.getProject(projectSlug)
                 .coordinatorEffort;
@@ -4908,7 +4913,8 @@ export class StationRuntime {
                 // #5068: the Project's Task model and effort, read at each
                 // dispatch, while the `project-coordination` preview is on.
                 projectTaskDefaults: (projectSlug) => {
-                  if (!this.projectCoordination.enabled()) return undefined;
+                  if (this.projectCoordination?.enabled() !== true)
+                    return undefined;
                   let project: ProjectConfig;
                   try {
                     project = this.storageAdapter.getProject(projectSlug);
