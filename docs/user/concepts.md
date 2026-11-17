@@ -93,7 +93,7 @@ people**, **Kept by Tasks**, or one Task; **Preview** opens text and PNG files
 inline and offers **Download** for the rest.
 
 - **Add files** or **Add folder** uploads into the Project. A folder keeps its
-  layout; hidden files (such as `.git` or `.env`) and `node_modules` are
+  layout; hidden files (such as `.git` or `.env`) and installed-package folders are
   skipped, and each file can be up to 25 MB.
 - Every chat in the Project can read the Library, whatever its engine: agents
   list it with `list_project_library` and read a file with
