@@ -11,7 +11,8 @@ export function openCodeSteerCustody(
   const store = new JsonFileStore<string[]>(
     join(
       home,
-      'engine-state',
+      'service',
+      'engine-effects',
       'opencode-steers',
       `${nativeSessionIdentityKey('opencode', bindingKey, sessionId)}.json`,
     ),

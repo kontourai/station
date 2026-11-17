@@ -239,11 +239,12 @@ describe('useChatInput engine capability model gate', () => {
   });
 
   test.each([
-    { provider: 'acp', available: false },
-    { provider: 'opencode', available: true },
+    { provider: 'acp', connectionEngine: 'acp', available: false },
+    { provider: 'opencode', connectionEngine: 'opencode', available: true },
+    { provider: 'acp', connectionEngine: 'opencode', available: false },
   ])(
-    'an existing $provider conversation follows its declared model override capability',
-    ({ provider, available }) => {
+    'an existing $provider conversation on $connectionEngine follows its retained model override capability',
+    ({ provider, connectionEngine, available }) => {
       mockAgent = opencodeAgent;
       activeChatsStore.initChat(SESSION_ID, {
         agentSlug: 'opencode',
@@ -260,12 +261,15 @@ describe('useChatInput engine capability model gate', () => {
         chatState: activeChatsStore.getSnapshot()[SESSION_ID],
         runtimeConnection: {
           ...opencodeConnection,
-          engineId: provider,
+          engineId: connectionEngine,
         } as Parameters<typeof resolveBindingStatus>[0]['runtimeConnection'],
         globalModels: [bigPickle],
       });
       const { result } = renderChatInput({
-        runtimeConnection: { ...opencodeConnection, engineId: provider },
+        runtimeConnection: {
+          ...opencodeConnection,
+          engineId: connectionEngine,
+        },
         bindingStatus,
       });
       expect(result.current.canModelSelect).toBe(available);

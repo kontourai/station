@@ -1,4 +1,7 @@
-import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engine-capability-matrix';
+import {
+  ENGINE_CAPABILITY_MATRICES,
+  resolveEngineCapabilityMatrix,
+} from '@kontourai/station-contracts/engine-capability-matrix';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import { setOrchestrationApprovalMode } from '@kontourai/station-sdk';
@@ -411,9 +414,12 @@ export function useChatInput({
   // (`conversation-lineage.ts` `needsModelRestart`), which is free for a
   // conversation that never ran a turn — nothing to carry over — so only a
   // conversation with engine history keeps the picker closed.
+  const continuationModelSelection =
+    ENGINE_CAPABILITY_MATRICES[activeChatState?.provider ?? '']
+      ?.modelSelection ?? engineModelSelection;
   const continuationOverrideUnsupported =
     Boolean(conversationId) &&
-    engineModelSelection.overridePerTurn === false &&
+    continuationModelSelection.overridePerTurn === false &&
     !conversationAwaitsFirstTurn(
       orchestrationSession,
       activeChatState?.turnInFlight ?? false,

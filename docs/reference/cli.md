@@ -2610,8 +2610,8 @@ records which version it runs. An update request
 into `versions/<version>`, nothing else changed). The launcher then stops the
 running version, backs up the home once, and starts the new version as a
 trial. The backup holds Station's own state: every entry but the service
-manifests, `instances.json`, logs, monitoring, quarantine, `tmp`, native-engine
-effect custody under `engine-state/`, and the update
+manifests (including native-engine effect custody under `service/engine-effects/`),
+`instances.json`, logs, monitoring, quarantine, `tmp` and the update
 restore marker `update-restore.json` (which the service and its updates own),
 versioned re-acquirable `media-tools/` and `engines/` (pinned engine installs),
 the default project directories under
@@ -3684,7 +3684,7 @@ corrupt databases, detected active instances, and
 configured size/count limits fail closed. Volatile logs, monitoring output,
 service state, temporary files, live instance records, and the top-level
 quarantine directory are excluded. Native-engine effect custody in
-`engine-state/` stays with the current home across update rollback and is also
+`service/engine-effects/` stays with the current home across update rollback and is also
 excluded from backups. Re-acquirable `media-tools/` downloads and
 pinned `engines/` installs are also excluded; a restored home requires host
 tools or fresh download consent.

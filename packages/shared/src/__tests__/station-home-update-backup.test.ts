@@ -837,7 +837,8 @@ describe('update backup and in-place restore (#2675 D)', () => {
     const fixture = serviceHome();
     const pendingSteers = join(
       fixture.home,
-      'engine-state',
+      'service',
+      'engine-effects',
       'opencode-steers',
       'session.json',
     );
