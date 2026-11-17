@@ -996,9 +996,15 @@ control or an open dialog. The open Paired people disclosure stays open.
 [UsageAggregator](../../src-server/analytics/usage-aggregator.ts) rebuilds the
 snapshot on an active read when the previous scan is at least a minute old.
 Concurrent readers join that rebuild. Idle Stations retain the existing
-30-minute startup timer. The Profile page displays the scan timestamp, failed
-refreshes, unavailable engine reads, and skipped message rows. **Rebuild usage**
-forces the existing rescan. Clearing the aggregate is not a history deletion;
+30-minute startup timer. A rebuild rereads only the engine sessions whose events
+changed since the previous one: each session's fold is kept in the event store
+behind a `global_sequence` watermark, and deleting or rewriting a session's
+events drops its fold, so the totals equal folding every retained event again.
+`station.usage_projection.pass.duration` and
+`station.usage_projection.rows_scanned` report each pass by mode. The Profile
+page displays the scan timestamp, failed refreshes, unavailable engine reads,
+and skipped message rows. **Rebuild usage** discards the kept folds and rereads
+every session. Clearing the aggregate is not a history deletion;
 retained transcripts and receipts rebuild it, so the profile does not offer a
 permanent-reset action.
 

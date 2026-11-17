@@ -322,6 +322,8 @@ Regenerate with `npm run docs:metrics:generate`; verify exact output with `npm r
 | "station.ui\_block.emitted" | createCounter | "uiBlockEmitted (exported declaration)" | "Chat-native UIBlocks emitted by the render\_component builtin tool (by type)" | not declared |
 | "station.uicommand.operations" | createCounter | "uiCommandOps (exported declaration)" | "UI command execution events" | not declared |
 | "station.unattended\_grant.operations" | createCounter | "unattendedGrantOperations (exported declaration)" | "Unattended exact-tool grant mutations by operation" | not declared |
+| "station.usage\_projection.pass.duration" | createHistogram | "usageProjectionPassDuration (exported declaration)" | "Lifetime usage projection pass duration by mode" | "ms" |
+| "station.usage\_projection.rows\_scanned" | createHistogram | "usageProjectionRowsScanned (exported declaration)" | "Event rows read per lifetime usage projection pass by mode" | not declared |
 | "station.usage\_telemetry.batches" | createCounter | "usageTelemetryBatches (exported declaration)" | "Usage telemetry batch delivery outcomes by bounded class" | not declared |
 | "station.usage\_telemetry.outcomes" | createCounter | "usageTelemetryOutcomes (exported declaration)" | "Usage telemetry delivery and drop outcomes" | not declared |
 | "station.usage\_telemetry.suppressed\_warnings" | createCounter | "usageTelemetrySuppressedWarnings (exported declaration)" | "Usage telemetry delivery warnings suppressed as repeats, by publisher and code" | not declared |
