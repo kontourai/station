@@ -55,6 +55,7 @@ function setup() {
     operator: 'owner' as string | undefined,
     projectReadable: true,
     mayContinue: true,
+    unreadable: [] as string[],
   };
   const ownership = new PullRequestFeedbackOwnership({
     store: () => store,
@@ -102,7 +103,7 @@ function setup() {
         current: () => true,
         canRead: () => true,
         operator: () => state.operator,
-        readerOf: () => () => true,
+        readerOf: () => (id) => !state.unreadable.includes(id),
         isPerson: () => state.person,
         mayContinue: () => state.mayContinue,
       },
@@ -244,5 +245,54 @@ describe('Project defaults routes', () => {
       ),
     ).toBe('access:manage');
     expect(findUnclassifiedRuntimeHttpRoutes(t.app.routes)).toEqual([]);
+  });
+
+  it('counts what the defaults still have on only in chats this reader may read', async () => {
+    const t = setup();
+    expect(
+      (await t.request('PUT', 'projects/widgets/defaults', t.on)).status,
+    ).toBe(200);
+    for (const [ref, chat] of [
+      ['42', 'lead-a'],
+      ['43', 'lead-b'],
+    ] as const) {
+      const identity = { ...PR, ref };
+      const prKey = pullRequestFeedbackKey(identity);
+      t.store.recordDerivedLink({
+        taskId: `t-${ref}`,
+        taskCreatedAt: '2026-11-16T08:00:00.000Z',
+        projectId: PROJECT.id,
+        conversationId: chat,
+        prKey,
+        identity,
+        headRef: `station/task/t-${ref}`,
+        derivedAt: '2026-11-16T09:00:00.000Z',
+      });
+      t.store.autoClaim({
+        prKey,
+        identity,
+        taskId: `t-${ref}`,
+        conversationId: chat,
+        settings: {
+          fixFailingChecks: true,
+          addressReviewComments: false,
+          reviewEachHead: false,
+        },
+        enabledBy: 'owner',
+        now: '2026-11-16T09:00:00.000Z',
+      });
+    }
+    const stillOn = async () =>
+      (
+        (await (
+          await t.request('GET', 'projects/widgets/defaults')
+        ).json()) as any
+      ).data.stillOn;
+    expect(await stillOn()).toBe(2);
+    t.state.unreadable = ['lead-b'];
+    expect(await stillOn()).toBe(1);
+    // The write answers with the same reader's count.
+    const written = await t.request('PUT', 'projects/widgets/defaults', t.on);
+    expect(((await written.json()) as any).data.stillOn).toBe(1);
   });
 });
