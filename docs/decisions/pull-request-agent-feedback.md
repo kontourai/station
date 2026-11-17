@@ -256,4 +256,6 @@ Choices the decisions left open, and departures from the plan:
   by-head read ignores its abort signal (gh offers no cancellation);
   the row offers "Remove from this chat" to a reader the route then
   refuses (it is not hidden for one who may not change the chat); and Task-branch pull requests are not yet on
-  Task board cards (the board's facts read kept pull requests only).
+  Task board cards (the board's facts read kept pull requests only). A
+  paired host from before Project defaults that has the preview but not the
+  defaults route shows the section's error state ("Project unavailable").
