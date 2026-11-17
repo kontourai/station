@@ -79,7 +79,7 @@ flag. Hosted Stations do not offer it, and GitLab reads as `unsupported`.
    waiting, is a Needs-you item (`pull-request-feedback`) for readers of
    that chat, and one push notification to them when it starts. Paused, the
    item's primary action is Send again; stopped, it is Open chat (Send again
-   would answer "not paused"). Open pull request and Turn off auto-fix
+   would answer "not paused"). Open pull request and Turn off agent feedback
    follow it. Who may Send again, turn feedback off or change a switch is
    one rule, for the routes and the item alike: a current, in-person
    operator who may read the chat and continue it. A reader it refuses sees
@@ -332,9 +332,11 @@ Departures from the plan:
 - Send to agent is the section's one primary when there is something to
   send; Review again is never a primary, so it does not sit as a second
   green button beside the panel's own tabs.
-- Not yet: the Project defaults section (#5138, not merged when this was
-  built) gains a third "Review each new head" switch, and its attention,
-  auto-claim and "still get feedback" counts use the preview-aware
-  `pullRequestFeedbackActive` where a review-only claim must count. The
-  attention card's "Turn off auto-fix" button keeps that label for a
-  review-only claim (its title and body say review feedback).
+- Project defaults gain a third switch, "Review each new head", shown only
+  while the head review preview is on. While it is off the defaults write
+  ignores it and an auto-claim does not copy it. A default with only that
+  switch on still claims a Task branch's pull request, and the "still get
+  feedback" count includes review-only claims, both only while the preview
+  is on.
+- The Needs-you item's button reads "Turn off agent feedback" (it was "Turn
+  off auto-fix"), true for a review-only claim too.
