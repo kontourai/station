@@ -140,7 +140,7 @@ beforeAll(async () => {
     }),
   );
   const resolvePrincipal = createOrchestrationRequestPrincipalResolver({
-    environmentSecurityService: { identifyDevice: () => undefined },
+    environmentSecurityService: { identifyDevice: () => null },
   });
   const middleware = createRequestStationControlMiddleware({
     resolvePrincipalId: (c) => resolvePrincipal(c as never).id,
@@ -293,11 +293,11 @@ test('outside a request run the tool acts for no one, and the raw internal token
       },
       body: JSON.stringify({ input: 'x', updates: {} }),
     });
-    expect([path, response.status, (await response.json()).code]).toEqual([
+    expect([
       path,
-      403,
-      'station_control_route_unmapped',
-    ]);
+      response.status,
+      ((await response.json()) as { code?: string }).code,
+    ]).toEqual([path, 403, 'station_control_route_unmapped']);
   }
   expect(seen).toEqual([]);
 });
