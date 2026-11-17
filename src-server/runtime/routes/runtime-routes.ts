@@ -10741,10 +10741,14 @@ export function configureRuntimeRoutes(
         context.taskGraphService.listKeptDeclaredPullRequests(taskId),
       holdTaskForPullRequestWatch: (input) =>
         context.taskGraphService.holdTaskForPullRequestWatch(input),
+      // A Task names its Project by id or, for Tasks created against a
+      // slug, by slug.
       project: (projectId) => {
         const summary = context.projectService
           .listProjects()
-          .find((project) => project.id === projectId);
+          .find(
+            (project) => project.id === projectId || project.slug === projectId,
+          );
         return summary
           ? context.storageAdapter.getProject(summary.slug)
           : undefined;

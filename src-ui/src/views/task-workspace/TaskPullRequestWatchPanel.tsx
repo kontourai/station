@@ -11,7 +11,7 @@ import {
   getTaskPullRequestWatch,
   setTaskPullRequestWatch,
 } from '@kontourai/station-sdk/pull-request-watch';
-import { type SemanticTone, StatusBadge } from '@kontourai/ui/react';
+import { Badge, type SemanticTone } from '@kontourai/ui/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Button } from '../../components/Button';
@@ -135,9 +135,9 @@ export function TaskPullRequestWatchPanel({ task }: { task: TaskRecord }) {
       <div className="task-pr-watch__header">
         <h2 id="task-pr-watch-heading">Pull request watch</h2>
         {data && (
-          <StatusBadge
+          <Badge
             tone={data.watching ? 'active' : 'neutral'}
-            status={data.watching ? 'Watching' : 'Not watching'}
+            value={data.watching ? 'Watching' : 'Not watching'}
           />
         )}
       </div>
@@ -222,7 +222,7 @@ export function TaskPullRequestWatchPanel({ task }: { task: TaskRecord }) {
                       )}
                     </span>
                     {data.watching && (
-                      <StatusBadge tone={badge.tone} status={badge.word} />
+                      <Badge tone={badge.tone} value={badge.word} />
                     )}
                     {data.watching && line && (
                       <span className="task-pr-watch__line">{line}</span>
@@ -248,11 +248,11 @@ export function TaskPullRequestWatchPanel({ task }: { task: TaskRecord }) {
                       <span className="task-pr-watch__name">
                         {PULL_REQUEST_WATCH_REFUSAL_WORDS[refusal.kind]}
                       </span>
-                      <StatusBadge
+                      <Badge
                         tone={
                           refusal.outcome === 'refused' ? 'caution' : 'active'
                         }
-                        status={
+                        value={
                           refusal.outcome === 'refused'
                             ? 'Refused'
                             : 'Asked you'
