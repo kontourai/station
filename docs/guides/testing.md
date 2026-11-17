@@ -474,9 +474,10 @@ A schedule that stops firing is a failure as well. On every Main: Health run,
 its `overdue-schedules` job reads each watched scheduled workflow's cron from
 the workflow file, takes the longest gap between firings as the interval, and
 opens the same tracker with a "has not run on its schedule since …" body when
-both the newest scheduled run and the newest commit to the workflow file (when
-the current schedule took effect) are older than max(2 × interval, 20 h), so a
-cron that just landed or changed gets one full tolerance first. GitHub fires
+both the newest scheduled run and the commit that last changed the file's cron
+lines (when the current schedule took effect) are older than max(2 × interval,
+20 h), so a cron that just landed or changed gets one full tolerance first and
+an unrelated edit to the file does not postpone detection. GitHub fires
 this repository's schedules late and sparsely (largest gaps measured
 2026-10-17..11-16: 10.8 h for hourly crons, 15.8 h for six-hourly, 28.6 h for
 daily, 170 h for weekly), so the tolerance is 20 h, 20 h, 48 h and 14 days.

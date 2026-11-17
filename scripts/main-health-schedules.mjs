@@ -145,13 +145,35 @@ export function overdueLimitMs(intervalMs) {
 }
 
 /**
+ * When the current schedule took effect: the oldest commit, walking back
+ * from the newest, whose cron lines still equal the current ones. A commit
+ * that changed anything else in the file does not count, so an unrelated
+ * edit cannot postpone detection; a history that never differs within the
+ * commits read yields the oldest one read, which can only report sooner.
+ *
+ * @param {string[]} crons the current cron lines
+ * @param {{date: string | null, crons: string[]}[]} history newest first
+ * @returns {string | null}
+ */
+export function scheduleEffectiveSince(crons, history = []) {
+  const current = crons.join('\n');
+  let since = null;
+  for (const entry of history ?? []) {
+    if (entry.crons.join('\n') !== current) break;
+    since = entry.date;
+  }
+  return since;
+}
+
+/**
  * Overdue is measured from the later of the newest scheduled run and the
- * moment the current schedule took effect: the newest commit to the
- * workflow file on the default branch. So a workflow that just gained a
- * cron, or whose cron just changed, gets one full tolerance before it can
- * page, rather than being measured from when the file first appeared (for
- * container smoke, 2026-08-27). Any edit to the file restarts the clock,
- * which delays detection by at most one tolerance.
+ * moment the current cron took effect (scheduleEffectiveSince), so a
+ * workflow that just gained a cron, or whose cron just changed, gets one
+ * full tolerance before it can page. Replayed against origin/main's history
+ * (2026-08-20..11-16), the worst detection delay is the tolerance itself
+ * for Dated TODO sweep (336 h), Gallery and Fresh-home (48 h), and 40 h for
+ * Nightly, whose cron really changed after a hypothetical stop; measuring
+ * from any edit instead gave 874 h, 238 h, 125 h and 79 h.
  *
  * @param {{
  *   intervalMs: number,

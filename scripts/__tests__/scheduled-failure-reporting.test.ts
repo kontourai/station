@@ -17,6 +17,7 @@ import {
   overdueLimitMs,
   readWatchedSchedules,
   renderOverdueBody,
+  scheduleEffectiveSince,
   watchedWorkflowNames,
   workflowSchedule,
 } from '../main-health-schedules.mjs';
@@ -231,7 +232,22 @@ function fakeGithub({ labelExists = true } = {}) {
       conclusion?: string;
     } | null
   > = {};
-  const fileChangedAt: Record<string, string> = {};
+  const fileHistory: Record<
+    string,
+    { sha: string; date: string; text: string }[]
+  > = {};
+  const historyOf = (path: string) => {
+    const file = path.replace('.github/workflows/', '');
+    return (
+      fileHistory[file] ?? [
+        {
+          sha: `base-${file}`,
+          date: '2026-09-01T00:00:00Z',
+          text: readFileSync(new URL(path, root), 'utf8'),
+        },
+      ]
+    );
+  };
   // The fake's own clock for closed_at; tests move it to replay a day.
   const clock = { now: () => Date.now() };
   // Lets a test run another job between this job's read and its first write.
@@ -295,19 +311,27 @@ function fakeGithub({ labelExists = true } = {}) {
         },
       },
       repos: {
+        // Each workflow file's history, newest first; by default one commit
+        // from 2026-09-01 holding the file as it is now.
         listCommits: async ({ path }: { path: string }) => ({
-          data: [
-            {
-              commit: {
-                committer: {
-                  date:
-                    fileChangedAt[path.replace('.github/workflows/', '')] ??
-                    '2026-09-01T00:00:00Z',
-                },
-              },
-            },
-          ],
+          data: historyOf(path).map((entry) => ({
+            sha: entry.sha,
+            commit: { committer: { date: entry.date } },
+          })),
         }),
+        getContent: async ({ path, ref }: { path: string; ref: string }) => {
+          const entry = historyOf(path).find(
+            (candidate) => candidate.sha === ref,
+          );
+          if (!entry)
+            throw Object.assign(new Error('Not Found'), { status: 404 });
+          return {
+            data: {
+              content: Buffer.from(entry.text).toString('base64'),
+              encoding: 'base64',
+            },
+          };
+        },
       },
       checks: {
         listAnnotations: async ({
@@ -442,7 +466,7 @@ function fakeGithub({ labelExists = true } = {}) {
     writes,
     calls,
     scheduledRuns,
-    fileChangedAt,
+    fileHistory,
     otherRuns,
     interleave,
     clock,
@@ -1196,17 +1220,50 @@ describe('scheduled workflows that stop running', () => {
     ).toBe(false);
   });
 
-  it('gives a schedule that just landed one full tolerance before reporting it', async () => {
+  it('gives a cron that just landed one full tolerance, and ignores edits that leave the cron alone', async () => {
     // Container smoke's file dates from 2026-08-27 but its cron lands now:
     // the first Main: Health run after landing must not call it never-run.
     const now = Date.parse('2026-11-16T12:00:00Z');
-    for (const [changed, expected] of [
-      [new Date(now - HOUR).toISOString(), []],
-      [
-        new Date(now - 21 * HOUR).toISOString(),
-        ['Main pipeline red: Main: Container smoke'],
-      ],
-    ] as const) {
+    const current = readFileSync(
+      new URL('.github/workflows/container-smoke.yml', root),
+      'utf8',
+    );
+    const withoutCron = current.replace(
+      /^ {2}schedule:\n {4}- cron: .*\n/m,
+      '',
+    );
+    expect(withoutCron).not.toEqual(current);
+    const hoursAgo = (hours: number) =>
+      new Date(now - hours * HOUR).toISOString();
+    const cases = [
+      {
+        name: 'cron added an hour ago',
+        history: [
+          { sha: 'c2', date: hoursAgo(1), text: current },
+          { sha: 'c1', date: hoursAgo(2000), text: withoutCron },
+        ],
+        expected: [],
+      },
+      {
+        name: 'cron added 21 hours ago',
+        history: [
+          { sha: 'c2', date: hoursAgo(21), text: current },
+          { sha: 'c1', date: hoursAgo(2000), text: withoutCron },
+        ],
+        expected: ['Main pipeline red: Main: Container smoke'],
+      },
+      {
+        // A comment edit an hour ago must not postpone a 21-hour-old cron.
+        name: 'unrelated edit after the cron',
+        history: [
+          { sha: 'c3', date: hoursAgo(1), text: `${current}\n# a comment\n` },
+          { sha: 'c2', date: hoursAgo(21), text: current },
+          { sha: 'c1', date: hoursAgo(2000), text: withoutCron },
+        ],
+        expected: ['Main pipeline red: Main: Container smoke'],
+      },
+    ];
+    for (const { name, history, expected } of cases) {
       const fake = fakeGithub();
       for (const { file } of readWatchedSchedules(root.href))
         fake.scheduledRuns[file] = {
@@ -1216,13 +1273,31 @@ describe('scheduled workflows that stop running', () => {
           conclusion: 'success',
         };
       fake.scheduledRuns['container-smoke.yml'] = null;
-      fake.fileChangedAt['container-smoke.yml'] = changed;
+      fake.fileHistory['container-smoke.yml'] = history;
       await runMainHealth(fake, workflowRunEvent('Nightly', 'success'), {
         only: ['overdue-schedules'],
         now,
       });
-      expect(fake.issues.map((issue) => issue.title)).toEqual(expected);
+      expect(
+        fake.issues.map((issue) => issue.title),
+        name,
+      ).toEqual(expected);
     }
+  });
+
+  it('dates a schedule from the oldest commit that still has the current cron lines', () => {
+    expect(
+      scheduleEffectiveSince(
+        ['0 1 * * *'],
+        [
+          { date: '2026-11-16T00:00:00Z', crons: ['0 1 * * *'] },
+          { date: '2026-11-10T00:00:00Z', crons: ['0 1 * * *'] },
+          { date: '2026-11-01T00:00:00Z', crons: ['0 2 * * *'] },
+          { date: '2026-10-01T00:00:00Z', crons: ['0 1 * * *'] },
+        ],
+      ),
+    ).toBe('2026-11-10T00:00:00Z');
+    expect(scheduleEffectiveSince(['0 1 * * *'], [])).toBeNull();
   });
 
   it("keeps a flapping workflow's tracker open until a green has held for a day, and reopens quietly", async () => {
