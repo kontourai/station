@@ -229,7 +229,9 @@ async function fulfillConversationRead(route: Route): Promise<boolean> {
   if (
     /^\/api\/orchestration\/sessions\/session-[12]\/turns\/[^/]+\/basis$/.test(
       path,
-    )
+    ) ||
+    path ===
+      `/api/orchestration/sessions/${encodeURIComponent(ATTACHED)}/turns/${encodeURIComponent(`${ATTACHED}-turn`)}/basis`
   ) {
     await route.fulfill({
       status: 404,
