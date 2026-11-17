@@ -8,6 +8,8 @@
  * Not composed on a hosted Station (no host forge login to read with, and
  * no conversation inbox), so every route there answers 404.
  */
+
+import { resolve } from 'node:path';
 import type {
   ConversationPullRequestLink,
   PullRequestLinkIdentity,
@@ -65,6 +67,7 @@ import {
   type TaskBranchTask as PullRequestFeedbackTaskBranchTask,
 } from '../../services/pull-requests/pull-request-feedback-task-branches.js';
 import { pullRequestFeedbackTaskFact } from '../../services/pull-requests/pull-request-feedback-task-fact.js';
+import { expandTilde } from '../../utils/paths.js';
 
 /**
  * A person, not Station acting for an agent (its internal principal) and
@@ -394,7 +397,16 @@ export function pullRequestFeedbackTaskBranchPorts(services: {
           (project) => project.id === idOrSlug || project.slug === idOrSlug,
         );
       try {
-        return listed ? services.projects.getProject(listed.slug) : undefined;
+        if (!listed) return undefined;
+        const project = services.projects.getProject(listed.slug);
+        // A recorded `~/…` folder is the host user's, as the pull request
+        // routes read it (station#3155).
+        return project.workingDirectory
+          ? {
+              ...project,
+              workingDirectory: resolve(expandTilde(project.workingDirectory)),
+            }
+          : project;
       } catch {
         return undefined;
       }

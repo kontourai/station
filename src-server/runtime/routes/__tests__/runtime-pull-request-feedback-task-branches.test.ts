@@ -8,6 +8,9 @@
  * claim missing from them). Removing it from the chat releases it.
  * Real store file in a temp home, the inbox harness's event store and inbox.
  */
+
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import type { PullRequestLinkIdentity } from '@kontourai/station-contracts/conversation-pull-request-links';
 import {
   type PullRequestFeedbackObservation,
@@ -27,7 +30,10 @@ import {
   PullRequestFeedbackStore,
   pullRequestFeedbackStorePath,
 } from '../../../services/pull-requests/pull-request-feedback-store.js';
-import { composePullRequestFeedbackRuntime } from '../runtime-pull-request-feedback.js';
+import {
+  composePullRequestFeedbackRuntime,
+  pullRequestFeedbackTaskBranchPorts,
+} from '../runtime-pull-request-feedback.js';
 
 const BRANCH = 'station/task/t-91';
 const PR: PullRequestLinkIdentity = {
@@ -308,5 +314,24 @@ describe('the composed Task-branch auto-claim', () => {
       ['42', 'explicit'],
       ['43', 'task-declared'],
     ]);
+  });
+
+  it("reads a Project's `~/` folder as the host user's, by id or by slug", () => {
+    const ports = pullRequestFeedbackTaskBranchPorts({
+      taskGraph: { listTasks: () => [], readTaskWorktree: () => undefined },
+      projects: {
+        listProjects: () => [{ id: 'p-1', slug: 'widgets' }],
+        getProject: () => ({
+          ...PROJECT,
+          workingDirectory: '~/repos/widgets',
+        }),
+      },
+      eventStore: undefined,
+      canReadProject: async () => true,
+    });
+    const expected = join(homedir(), 'repos', 'widgets');
+    expect(ports.project('p-1')?.workingDirectory).toBe(expected);
+    expect(ports.project('widgets')?.workingDirectory).toBe(expected);
+    expect(ports.project('nope')).toBeUndefined();
   });
 });

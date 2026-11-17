@@ -63,7 +63,11 @@ export function registerPullRequestFeedbackTaskBranchRoutes(
   app.get('/projects/:projectSlug/defaults', async (c) => {
     const projectSlug = param(c, 'projectSlug');
     if (!(await readable(c.req.raw, projectSlug))) return unavailable(c);
-    const view = ports.taskBranches.defaults(projectSlug, !!owner(c.req.raw));
+    const view = ports.taskBranches.defaults(
+      projectSlug,
+      !!owner(c.req.raw),
+      access.readerOf(c.req.raw),
+    );
     return view ? c.json({ success: true, data: view }) : unavailable(c);
   });
 
@@ -80,6 +84,7 @@ export function registerPullRequestFeedbackTaskBranchRoutes(
         projectSlug,
         body.settings,
         userId,
+        access.readerOf(c.req.raw),
       );
       return view ? c.json({ success: true, data: view }) : unavailable(c);
     },
