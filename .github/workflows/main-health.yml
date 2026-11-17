@@ -359,13 +359,12 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
-            const workspace = process.env.GITHUB_WORKSPACE;
-            const { listTrackers, pickTracker, trackerLabels, trackerTitle } = await import(`${workspace}/scripts/main-health-comment-policy.mjs`);
-            const { cronIntervalMs, decideOverdue, isOverdueBody, readWatchedSchedules, renderOverdueBody } = await import(`${workspace}/scripts/main-health-schedules.mjs`);
+            const { listTrackers, pickTracker, trackerLabels, trackerTitle } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/main-health-comment-policy.mjs`);
+            const { cronIntervalMs, decideOverdue, isOverdueBody, readWatchedSchedules, renderOverdueBody } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/main-health-schedules.mjs`);
             const now = Date.now();
             const labels = await trackerLabels(github, context.repo, core);
             const trackers = await listTrackers(github, context.repo, labels);
-            for (const { file, name, crons } of readWatchedSchedules(workspace)) {
+            for (const { file, name, crons } of readWatchedSchedules(process.env.GITHUB_WORKSPACE)) {
               const intervalMs = cronIntervalMs(crons);
               const { data } = await github.rest.actions.listWorkflowRuns({
                 ...context.repo,
