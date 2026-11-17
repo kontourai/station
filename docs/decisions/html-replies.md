@@ -235,7 +235,10 @@ sandboxed `srcdoc` frame while sandboxed frames get their own process; Chrome
 157 does not (#4917). With a served page the opaque frame keeps its own renderer
 process and opaque origin. Turning `IsolateSandboxedIframes` off also avoids the
 abort but would put authored HTML in its bootstrap page's process, so preview
-does not do that, and a test refuses it.
+does not do that, and a test refuses it. The served page sets `no-referrer` and
+an inert `data:` icon, so the frame still sees an empty `document.referrer` and
+the browser requests nothing else from that address. A real-browser probe logs
+whether the installed Chromium still aborts on the `about:blank` shape.
 
 
 The shared sandbox UDP regression requires Chromium. WebKit runs only when its
