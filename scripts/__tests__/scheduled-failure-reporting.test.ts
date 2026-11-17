@@ -8,6 +8,7 @@ import {
   failingLines,
   renderTrackerBody,
   summarizeRunFailure,
+  TRACKER_MARKER,
 } from '../main-health-comment-policy.mjs';
 import {
   cronIntervalMs,
@@ -404,10 +405,12 @@ function fakeGithub({
         update: async ({
           issue_number,
           state,
+          state_reason,
           body,
         }: {
           issue_number: number;
           state?: 'open' | 'closed';
+          state_reason?: string;
           body?: string;
         }) => {
           const hook = interleave.beforeUpdate;
@@ -417,6 +420,8 @@ function fakeGithub({
           const issue = find(issue_number);
           if (state) {
             issue.state = state;
+            issue.state_reason =
+              state === 'closed' ? (state_reason ?? 'completed') : null;
             issue.closed_at =
               state === 'closed' ? new Date(clock.now()).toISOString() : null;
           }
@@ -590,6 +595,16 @@ const GREEN_SWEEP = {
   annotations: {},
 };
 const REPORT = ['report-failure', 'close-after-success'];
+
+/** A tracker body as Main: Health wrote it before the tracker marker (#4037's shape). */
+const legacyBody = (workflowName: string) =>
+  [
+    'A required workflow failed on main.',
+    '',
+    `Workflow: ${workflowName}`,
+    'Run: https://github.com/kontourai/station/actions/runs/39804813824',
+    `Head SHA: ${'d'.repeat(40)}`,
+  ].join('\n');
 
 describe('scheduled workflow failure reporting', () => {
   it('watches every scheduled workflow from main-health or names who reports it instead', () => {
@@ -793,7 +808,7 @@ describe('scheduled workflow failure reporting', () => {
     fake.issues.push({
       number: 4037,
       title: 'Main pipeline red: Repo: Dated TODO sweep',
-      body: 'old',
+      body: legacyBody('Repo: Dated TODO sweep'),
       state: 'open',
       labels: ['bug', 'P1'],
       comments: [],
@@ -819,7 +834,7 @@ describe('scheduled workflow failure reporting', () => {
       fake.issues.push({
         number,
         title: 'Main pipeline red: Main: Container smoke',
-        body: 'old',
+        body: legacyBody('Main: Container smoke'),
         state: 'open',
         labels: ['bug', 'P1'],
         comments: [],
@@ -852,6 +867,84 @@ describe('scheduled workflow failure reporting', () => {
     );
     expect(byNumber(4037)?.comments).toHaveLength(1);
     expect(fake.issues).toHaveLength(2);
+  });
+
+  it('never reopens a tracker closed as a duplicate', async () => {
+    const fake = fakeGithub();
+    fake.issues.push(
+      {
+        number: 3403,
+        title: 'Main pipeline red: Main: Container smoke',
+        body: legacyBody('Main: Container smoke'),
+        state: 'closed',
+        state_reason: 'completed',
+        labels: ['bug', 'P1'],
+        comments: [],
+      },
+      {
+        number: 4037,
+        title: 'Main pipeline red: Main: Container smoke',
+        body: legacyBody('Main: Container smoke'),
+        state: 'closed',
+        state_reason: 'duplicate',
+        labels: ['bug', 'P1'],
+        comments: [],
+      },
+    );
+    fake.setRun({
+      jobs: [job(81, 'smoke', 'failure', [['Build', 'failure']])],
+      annotations: {},
+    });
+    await runMainHealth(
+      fake,
+      workflowRunEvent('Main: Container smoke', 'failure'),
+      {
+        only: REPORT,
+      },
+    );
+    const byNumber = (number: number) =>
+      fake.issues.find((issue) => issue.number === number);
+    expect(byNumber(3403)?.state).toBe('open');
+    expect(byNumber(4037)?.state).toBe('closed');
+  });
+
+  it('neither reuses nor closes a bot issue a person renamed to a tracker title', async () => {
+    const fake = fakeGithub();
+    fake.issues.push(
+      {
+        number: 3403,
+        title: 'Main pipeline red: Main: Container smoke',
+        body: legacyBody('Main: Container smoke'),
+        state: 'open',
+        labels: ['bug', 'P1'],
+        comments: [],
+      },
+      {
+        number: 4963,
+        title: 'Main pipeline red: Main: Container smoke',
+        body: 'Backlog policy findings\n\n- 21 actionable P1',
+        state: 'open',
+        labels: [],
+        comments: [],
+      },
+    );
+    fake.setRun({
+      jobs: [job(82, 'smoke', 'failure', [['Build', 'failure']])],
+      annotations: {},
+    });
+    await runMainHealth(
+      fake,
+      workflowRunEvent('Main: Container smoke', 'failure'),
+      {
+        only: REPORT,
+      },
+    );
+    const byNumber = (number: number) =>
+      fake.issues.find((issue) => issue.number === number);
+    expect(byNumber(4963)?.state).toBe('open');
+    expect(byNumber(4963)?.comments).toEqual([]);
+    expect(byNumber(4963)?.body).toContain('Backlog policy findings');
+    expect(byNumber(3403)?.body).toContain('- smoke > Build (failure)');
   });
 
   it('leaves a renamed tracker alone and opens a fresh one', async () => {
@@ -1082,7 +1175,8 @@ describe('scheduled workflow failure reporting', () => {
       (index > fences[0] && index < fences[1]) ||
       (index > fences[2] && index < fences[3]);
     lines.forEach((line, index) => {
-      if (inside(index) || fences.includes(index)) return;
+      if (inside(index) || fences.includes(index) || line === TRACKER_MARKER)
+        return;
       expect(line, `line ${index} renders live markup`).not.toMatch(
         /@\w|\]\(|^#|<!--/,
       );

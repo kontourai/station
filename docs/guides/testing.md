@@ -447,7 +447,12 @@ found with one consistent listing of the issues the workflow bot opened, not a
 scan of every issue or a search; report and close runs for one workflow share
 a concurrency group, so a second red reads the first one's tracker. When
 several trackers with one title are open, the oldest is kept and the others
-are closed as duplicates. Only exact titles match: a tracker a person renamed,
+are closed as duplicates; a tracker closed as a duplicate is never reopened.
+Only an issue whose body Main: Health wrote (its marker, or the `Workflow:
+<name>` line) counts as a tracker, so a bot issue a person renamed to a
+tracker title is neither reused nor closed. A tracker closed as not planned is
+reopened by the next red: to stop watching a workflow, remove it from the
+watch list. Only exact titles match: a tracker a person renamed,
 or the tracker of a workflow that was renamed, is left as it is and the next
 red opens a new one. Its body is rewritten for each red run with the run URL, trigger, head
 SHA, failing jobs and steps, and up to 15 failing annotation lines, so an

@@ -647,15 +647,55 @@ export async function listTrackers(github, repo) {
   );
 }
 
+/** Marks a tracker body written by Main: Health. */
+export const TRACKER_MARKER = '<!-- main-health-tracker -->';
+
+/**
+ * Whether an issue body is one Main: Health wrote for this workflow: the
+ * tracker marker, the overdue marker, or the line every tracker body has
+ * carried since before the markers (`Workflow: <name>`). Creator and title
+ * alone are not enough: a person can rename any bot-opened issue.
+ *
+ * @param {unknown} body
+ * @param {string} workflowName
+ */
+export function isTrackerBody(body, workflowName) {
+  const text = String(body ?? '');
+  return (
+    text.includes(TRACKER_MARKER) ||
+    text.startsWith('<!-- main-health-overdue -->') ||
+    text.split(/\r?\n/).includes(`Workflow: ${workflowName}`)
+  );
+}
+
+/**
+ * The trackers one title may reuse: Main: Health's own, never one closed as
+ * a duplicate. One closed as "not planned" is reused: closing a tracker does
+ * not stop a workflow being watched (remove it from the watch list for that),
+ * so its next red reopens it.
+ *
+ * @param {{number: number, title: string, state: string, state_reason?: string | null, body?: string | null}[]} trackers
+ * @param {string} title
+ */
+function candidates(trackers, title) {
+  const workflowName = title.slice(trackerTitle('').length);
+  return trackers.filter(
+    (issue) =>
+      issue.title === title &&
+      issue.state_reason !== 'duplicate' &&
+      isTrackerBody(issue.body, workflowName),
+  );
+}
+
 /**
  * The tracker for one title: the oldest open one, otherwise the newest
  * closed one.
  *
- * @param {{number: number, title: string, state: string}[]} trackers
+ * @param {{number: number, title: string, state: string, state_reason?: string | null, body?: string | null}[]} trackers
  * @param {string} title
  */
 export function pickTracker(trackers, title) {
-  const matches = trackers.filter((issue) => issue.title === title);
+  const matches = candidates(trackers, title);
   const open = matches
     .filter((issue) => issue.state === 'open')
     .sort((a, b) => a.number - b.number);
@@ -677,12 +717,8 @@ export function pickTracker(trackers, title) {
 export async function consolidateTracker(github, repo, trackers, title) {
   const kept = pickTracker(trackers, title);
   if (!kept || kept.state !== 'open') return kept;
-  for (const duplicate of trackers) {
-    if (
-      duplicate.title !== title ||
-      duplicate.state !== 'open' ||
-      duplicate.number === kept.number
-    )
+  for (const duplicate of candidates(trackers, title)) {
+    if (duplicate.state !== 'open' || duplicate.number === kept.number)
       continue;
     await github.rest.issues.createComment({
       ...repo,
@@ -696,6 +732,7 @@ export async function consolidateTracker(github, repo, trackers, title) {
       state_reason: 'duplicate',
     });
     duplicate.state = 'closed';
+    duplicate.state_reason = 'duplicate';
   }
   return kept;
 }
@@ -868,6 +905,7 @@ export function renderTrackerBody({
         : 'A watched workflow was cancelled on main and the cause was not recognised: not a person, not a newer run in its concurrency group, not a lost runner. Check who or what cancelled it.';
   const shown = normalizeFailures(failures);
   const sections = [
+    TRACKER_MARKER,
     lead,
     '',
     `Workflow: ${workflowName}`,

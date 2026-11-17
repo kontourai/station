@@ -600,6 +600,7 @@ describe('CI verification workflow contracts', () => {
               number: 42,
               state: issueState,
               title: 'Main pipeline red: Repo: Backlog policy',
+              body: 'A required workflow failed on main.\n\nWorkflow: Repo: Backlog policy',
             },
           ];
         throw new Error('unexpected paginate');
@@ -816,6 +817,7 @@ describe('CI verification workflow contracts', () => {
           number: 1,
           state: 'open',
           title: `Main pipeline red: ${workflowName}`,
+          body: `A required workflow failed on main.\n\nWorkflow: ${workflowName}`,
         };
         const github = {
           rest: {
