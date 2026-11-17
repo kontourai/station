@@ -1,0 +1,9 @@
+{
+  "revision": "1e21a6478680606801a5d95cb7e73d24305310c2",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked against the #2377 slice D round-3 ledger change: the pre-owner job set is now fixed at ledger construction and the owner migration sets unreadable records aside. No claim on these pages covers job-owner migration (docs/reference/api.md owns it and was updated); scheduler ledger, quarantine and Starter claims unchanged.","inputs":["src-server/services/scheduling/scheduler-ledger.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked against the #2377 slice D round-3 ledger change: the pre-owner job set is now fixed at ledger construction and the owner migration sets unreadable records aside. No claim on these pages covers job-owner migration (docs/reference/api.md owns it and was updated); scheduler ledger, quarantine and Starter claims unchanged.","inputs":["src-server/services/scheduling/scheduler-ledger.ts"]}
+  ]
+}

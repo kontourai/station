@@ -154,7 +154,6 @@ import {
 } from '../../services/infra/session-tmpdir.js';
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
 import { scrubBootInternalSecrets } from '../../utils/child-process-environment.js';
-import { INTERNAL_API_TOKEN_ENV } from '../../utils/internal-api-token.js';
 import {
   ProviderTurnEndedError,
   ProviderTurnInProgressError,
@@ -10012,7 +10011,7 @@ describe('ClaudeAdapter', () => {
       });
     });
 
-    test('injects the Station internal API token into the built-in station-control server only, never a third-party env-less server', async () => {
+    test('#2377 slice D: the stdio fallback for the built-in station-control server gets no internal API token, and a third-party server no env', async () => {
       mockQuery.mockReturnValue(createMockQuery([]));
       const adapter = new ClaudeAdapter();
       const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
@@ -10046,9 +10045,9 @@ describe('ClaudeAdapter', () => {
         type: 'stdio',
         command: 'node',
         args: [builtinStationControlServerPath()],
-        // The home's compile cache rides only the built-in child, like the token.
+        // The home's compile cache rides only the built-in child; no child
+        // receives the internal token.
         env: {
-          [INTERNAL_API_TOKEN_ENV]: expect.any(String),
           NODE_COMPILE_CACHE: resolve(
             resolveHomeDir(),
             'cache',

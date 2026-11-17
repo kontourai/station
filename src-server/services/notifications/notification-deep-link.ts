@@ -1,6 +1,16 @@
-import { OPENED_NOTIFICATION_QUERY_PARAM } from '@kontourai/station-contracts/notification';
-import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
-import { isRelativeStationPath } from '@kontourai/station-shared/notification-envelope';
+import {
+  isNotificationStationId,
+  NOTIFICATION_STATION_QUERY_PARAM,
+  type Notification,
+  type NotificationEnvelopeV1,
+  notificationSessionHref,
+  OPENED_NOTIFICATION_QUERY_PARAM,
+} from '@kontourai/station-contracts/notification';
+import {
+  isRelativeStationPath,
+  readNotificationEnvelope,
+} from '@kontourai/station-shared/notification-envelope';
+import { notificationOpenSession } from './notification-session.js';
 
 const LINK_BASE = 'https://station.invalid';
 /** Where an alert opens when its own link cannot be kept on Station. */
@@ -9,30 +19,80 @@ const SAFE_OPEN_PATH = '/notifications';
 /**
  * An OS alert's open link (Web Push, the desktop feed) with the opened
  * record's id added, so the client that loads it marks exactly that record
- * read as opened. Never off-origin: the link is resolved against a fixed
- * base and must stay on it as a single-`/` path with no backslash (dot
- * segments such as `/..//host` or `/%2e%2e//host` collapse to `//host`);
- * otherwise the alert opens `SAFE_OPEN_PATH`. The existing query is kept as
- * written; an `OPENED_NOTIFICATION_QUERY_PARAM` already in the link is
- * replaced, never trusted. The fragment is dropped: a Station link carries
- * none (`isRelativeStationPath`), `#station-ui-bootstrap` is a credential
+ * read as opened, and the sending Station's environment id
+ * (`NOTIFICATION_STATION_QUERY_PARAM`), so a client connected to another
+ * Station opens it on this one. Never off-origin: the link is resolved
+ * against a fixed base and must stay on it as a single-`/` path with no
+ * backslash (dot segments such as `/..//host` or `/%2e%2e//host` collapse to
+ * `//host`); otherwise the alert opens `SAFE_OPEN_PATH`. The existing query
+ * is kept as written; an `OPENED_NOTIFICATION_QUERY_PARAM` or
+ * `NOTIFICATION_STATION_QUERY_PARAM` already in the link is replaced, never
+ * trusted, and a Station id outside the contract grammar is left out. The
+ * fragment is dropped: a Station link carries none
+ * (`isRelativeStationPath`), `#station-ui-bootstrap` is a credential
  * exchange the UI acts on at load, and the desktop host refuses a link
  * with one, which would open nothing.
  */
 export function withOpenedNotification(
   href: string,
   notificationId: string,
+  stationId?: string,
 ): string {
   const url = onStationOrigin(href) ?? onStationOrigin(SAFE_OPEN_PATH)!;
-  let search: string;
-  if (url.searchParams.has(OPENED_NOTIFICATION_QUERY_PARAM)) {
-    url.searchParams.set(OPENED_NOTIFICATION_QUERY_PARAM, notificationId);
-    search = url.search;
-  } else {
-    const param = `${OPENED_NOTIFICATION_QUERY_PARAM}=${encodeURIComponent(notificationId)}`;
-    search = url.search ? `${url.search}&${param}` : `?${param}`;
+  // The query as the producer wrote it, unless a parameter this link owns
+  // has to be removed (which reserializes it).
+  if (
+    url.searchParams.has(OPENED_NOTIFICATION_QUERY_PARAM) ||
+    url.searchParams.has(NOTIFICATION_STATION_QUERY_PARAM)
+  ) {
+    url.searchParams.delete(OPENED_NOTIFICATION_QUERY_PARAM);
+    url.searchParams.delete(NOTIFICATION_STATION_QUERY_PARAM);
   }
+  const kept = url.search;
+  const added = [
+    `${OPENED_NOTIFICATION_QUERY_PARAM}=${encodeURIComponent(notificationId)}`,
+    ...(isNotificationStationId(stationId)
+      ? [`${NOTIFICATION_STATION_QUERY_PARAM}=${encodeURIComponent(stationId)}`]
+      : []),
+  ].join('&');
+  const search = kept ? `${kept}&${added}` : `?${added}`;
   return `${url.pathname}${search}`;
+}
+
+/**
+ * The one open link every OS channel sends for a record (Web Push, the
+ * desktop feed): {@link resolveNotificationTarget}, with the opened record
+ * and the sending Station added by {@link withOpenedNotification}.
+ */
+export function notificationOpenLink(
+  notification: Notification,
+  stationId: string | undefined,
+  envelope: NotificationEnvelopeV1 | undefined = readNotificationEnvelope(
+    notification,
+  ),
+): string {
+  return withOpenedNotification(
+    resolveNotificationTarget(notification, envelope),
+    notification.id,
+    stationId,
+  );
+}
+
+/**
+ * Where opening a record goes, the same for every channel: the envelope's
+ * path target; else the session `notificationOpenSession` names (the one
+ * the phones' sealed references name too); else the record's own validated
+ * `metadata.link`; else the inbox.
+ */
+export function resolveNotificationTarget(
+  notification: Pick<Notification, 'metadata'>,
+  envelope: NotificationEnvelopeV1 | undefined,
+): string {
+  const target = envelope?.target;
+  if (target?.kind === 'path') return target.path;
+  const session = notificationOpenSession(notification, envelope);
+  if (session) return notificationSessionHref(session);
+  return resolveRelativePathLink(notification.metadata?.link) ?? SAFE_OPEN_PATH;
 }
 
 function onStationOrigin(href: string): URL | undefined {
@@ -73,18 +133,17 @@ export function resolveNotificationOpenHref(
 ): string | undefined {
   const meta = metadata ?? {};
   const projectSlug = stringValue(meta.projectSlug);
-  // archive#1284 (AC4): both dock-targeting hrefs below carry `dock=open` so
-  // the deep link actually opens the chat dock (`navigation-store.ts`'s
-  // `isDockOpen` reads this param) — the Activity surface deep link is not a
-  // dock target and deliberately carries no `dock=open`.
-  if (projectSlug && sessionId) {
-    return `/projects/${encodeURIComponent(projectSlug)}?chat=${encodeURIComponent(sessionId)}&dock=open`;
-  }
-  if (sessionKind === 'runtime' && sessionId) {
-    return activityDeepLink({ sessionId });
-  }
-  if (sessionKind === 'managed' && sessionId) {
-    return `/?chat=${encodeURIComponent(sessionId)}&dock=open`;
+  // One href for every session kind (`notificationSessionHref`): the dock
+  // open on the session, inside its Project when it has one. `dock=open` is
+  // what opens the dock (archive#1284 AC4).
+  if (
+    sessionId &&
+    (projectSlug || sessionKind === 'runtime' || sessionKind === 'managed')
+  ) {
+    return notificationSessionHref({
+      sessionId,
+      ...(projectSlug ? { projectSlug } : {}),
+    });
   }
   // Final fallback (archive#1100 review fix MEDIUM): a notification with no
   // resolvable session (e.g. a scheduled job failure — no session at all)

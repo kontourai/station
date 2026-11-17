@@ -96,10 +96,10 @@ export type StationControlMcpTokenChannel =
  * entry at mint, never supplied by the presenter).
  *
  * - `bound`: `sdk-in-process` only. The token never leaves Station's own
- *   process (Claude's in-process station-control server, and Codex's bound
- *   `dynamicTools` channel, whose calls arrive on the app-server pipe
- *   Station owns), so presenting it proves the call came through that
- *   session's connection.
+ *   process (the per-session in-process station-control server of Claude and
+ *   of Station's own engine, #2377 slice D, and Codex's bound `dynamicTools`
+ *   channel, whose calls arrive on the app-server pipe Station owns), so
+ *   presenting it proves the call came through that session's connection.
  * - `delegated-custody`: `http-header-token`. Station hands the token to
  *   Codex as an `Authorization` header in its private `thread/start` (or
  *   `thread/resume`) configuration, or to an ACP agent app in `session/new`,

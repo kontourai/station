@@ -1,0 +1,7 @@
+{
+  "revision": "cae5c807c49b97fc8d6cd246587afc842294e65b",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"station-docs-content.ts regenerated: only the shipped content digest changed for the updated notification-delivery and web push topics; the station-docs reference's tool and topic claims are unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

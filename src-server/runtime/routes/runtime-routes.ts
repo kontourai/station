@@ -1164,6 +1164,10 @@ import {
   composeScheduledProjectRuns,
 } from './project-lifecycle-composition.js';
 import {
+  createRequestStationControlMiddleware,
+  REQUEST_STATION_CONTROL_PATHS,
+} from './request-station-control.js';
+import {
   mayAnswerDelegatedRequest,
   runtimeAttentionRouteOptions,
 } from './runtime-attention-route-options.js';
@@ -8319,6 +8323,17 @@ export function configureRuntimeRoutes(
       logger: context.logger,
     }),
   );
+  // #2377 slice D: an invoke run or raw tool call acts for the request's own
+  // principal through a per-run in-process station-control caller.
+  const requestStationControl = createRequestStationControlMiddleware({
+    resolvePrincipalId: (c) =>
+      resolveOrchestrationRequestPrincipal(
+        c as Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+      ).id,
+    tenantFor: (request) => tenantExecutionContextForRequest(request),
+  });
+  for (const path of REQUEST_STATION_CONTROL_PATHS)
+    context.app.use(path, requestStationControl);
   context.app.route(
     '/',
     createInvokeRoutes(runtimeContext, {
@@ -13054,6 +13069,7 @@ export function configureRuntimeRoutes(
       admitAutomationJob: agentSchedule.admitAutomationJob,
       mayReadAutomationJob: agentSchedule.mayReadAutomationJob,
       mayReadAutomationRun: agentSchedule.mayReadAutomationRun,
+      jobOwner: agentSchedule.jobOwner,
       ...(scheduledConversationRuns
         ? { admitAutomationTarget: agentSchedule.admitAutomationTarget }
         : {}),
