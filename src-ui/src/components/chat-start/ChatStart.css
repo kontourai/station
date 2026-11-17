@@ -68,6 +68,11 @@
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
 }
+/* --touch-target-min is set only on touch widths, so desktop keeps its size. */
+.chat-start__setup-details > summary {
+  min-height: var(--touch-target-min, auto);
+  align-content: center;
+}
 .chat-start__setup-details p {
   margin-block: var(--k-space-2);
 }

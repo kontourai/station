@@ -12,6 +12,7 @@ import { PassThrough, Writable } from 'node:stream';
 import type { ProviderSessionSourceAffinity } from '@kontourai/station-contracts/provider';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { builtinStationControlServerPath } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
 
 class FakeWritable extends Writable {
@@ -188,6 +189,62 @@ afterEach(() => {
 });
 
 describe('Codex native attached-session adoption', () => {
+  test('#2376 slice 3: an adopted fork never gets tool families, even when they are admitted', async () => {
+    const child = new FakeCodexProcess();
+    const mint = vi.fn(() => ({
+      url: 'http://127.0.0.1:4977/mcp/station-control',
+      token: 'adopted-header-token',
+    }));
+    const adapter = new CodexAdapter({
+      processFactory: () => child,
+      resolveSourceHome: () => '/source-home',
+      toolFamiliesEnabled: () => true,
+      findBinary: () => '/usr/local/bin/codex',
+      runCommand: async () => ({
+        code: 0,
+        stdout: 'codex-cli 0.167.0\n',
+        stderr: '',
+      }),
+      mintStationControlMcpAuth: mint,
+    });
+    // Admission itself says yes; only the adoption keeps families off.
+    await expect(adapter.toolFamiliesAdmitted()).resolves.toBe(true);
+    const adoption = adapter.adoptSession(
+      adoptInput({
+        agent: {
+          toolServers: [
+            {
+              id: 'station-control',
+              displayName: 'Station Control',
+              transport: 'stdio',
+              command: process.execPath,
+              args: [builtinStationControlServerPath()],
+            },
+          ],
+        },
+      }),
+      {
+        onProviderChildCreationStarted: vi.fn(async () => undefined),
+        onProviderChildCreated: vi.fn(async () => undefined),
+      },
+    );
+    await initialize(child);
+    const fork = await waitForCall(child, 'thread/fork');
+    expect(fork.params.config).toMatchObject({
+      'mcp_servers.station-control.url':
+        'http://127.0.0.1:4977/mcp/station-control',
+    });
+    expect(fork.params.config).not.toHaveProperty(
+      'features.mcp_tool_list_changed',
+    );
+    expect(mint).toHaveBeenCalledOnce();
+    expect(mint.mock.calls[0]).not.toContain(true);
+    respond(child, fork, forkResult());
+    const adopted = await adoption;
+    expect(adopted.resumeCursor).not.toHaveProperty('toolFamilies');
+    await adapter.stopSession(TARGET_ID);
+  });
+
   test('forks exactly once at the completed boundary and records the distinct child before returning it', async () => {
     const process = new FakeCodexProcess();
     const processFactory = vi.fn(() => process);

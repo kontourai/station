@@ -9684,6 +9684,8 @@ describe('ClaudeAdapter', () => {
         hooks: {
           Stop: [{ hooks: [expect.any(Function)] }],
           PostToolUse: [{ hooks: [expect.any(Function)] }],
+          PostToolUseFailure: [{ hooks: [expect.any(Function)] }],
+          UserPromptSubmit: [{ hooks: [expect.any(Function)] }],
         },
       });
     });

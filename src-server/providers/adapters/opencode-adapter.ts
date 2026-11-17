@@ -23,6 +23,7 @@ import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import {
   ACP_ENGINE_DURABILITY,
+  ACP_MODEL_OVERRIDE_PER_TURN,
   isOpenCodeAcpConnection,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { EngineCommandOutcome } from '@kontourai/station-contracts/engine-commands';
@@ -322,6 +323,18 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     engineId: engineId('opencode'),
     connectionBacking: 'acp-registry',
     approvalAcknowledgement: 'engine',
+    // A new session takes the requested model on either transport: the
+    // native `POST /api/session` names it, and ACP applies it as
+    // `AcpAdapter` does. A resumed session and a later turn keep the
+    // session's model on both, so neither accepts an override.
+    modelLaunch: {
+      defaultAtStart: 'engine-selected',
+      omissionAtResume: 'engine-selected',
+      omissionPerTurn: 'engine-selected',
+      overrideAtStart: true,
+      overrideAtResume: false,
+      overridePerTurn: ACP_MODEL_OVERRIDE_PER_TURN,
+    },
   };
 
   private readonly events = new AsyncEventQueue<CanonicalRuntimeEvent>();

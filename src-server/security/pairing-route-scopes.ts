@@ -3916,6 +3916,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/api/me/layouts/clone-project' },
     { method: 'POST', path: '/api/me/layouts/:layoutSlug/clone' },
     { method: 'PUT', path: '/api/projects/:slug/layout-policy' },
+    // #5066 whether the Project's Tasks watch the pull requests they keep. It
+    // writes one Project setting; the runtime Project guard admits only the
+    // owner, and no station-control tool names it.
+    { method: 'PUT', path: '/api/projects/:slug/pull-request-watch' },
     // #488 Explicitly shared Task reads retain the Project family's read tier;
     // exact membership/share/Task checks own resource visibility. Administration
     // retains the family's operate tier and separately requires Station operator.
@@ -3990,6 +3994,12 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // merge. It mutates only that Task's own record, so the task family's
     // operate tier is the intended scope; no station-control tool reaches it.
     { method: 'PUT', path: '/api/tasks/:taskId/close-on-merge' },
+    // #5066 a Task's pull request watch: what it watches, its fix attempts
+    // and refused agent actions (read tier), and a person's choice to watch
+    // or Stop watching (operate tier, that Task's own record). No
+    // station-control tool reaches either.
+    { method: 'GET', path: '/api/tasks/:taskId/pull-request-watch' },
+    { method: 'PUT', path: '/api/tasks/:taskId/pull-request-watch' },
     // #4003 Start Task on a board item, and the Task's linked-item header.
     // Both read one tracker item through the Station host's own `gh` login.
     // The POST reads only a ref the Project's board offers when it is

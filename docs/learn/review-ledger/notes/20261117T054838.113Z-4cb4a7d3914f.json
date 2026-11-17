@@ -1,0 +1,7 @@
+{
+  "revision": "07e9eb866ded5c54277ce1eb0a4294e69847762c",
+
+  "notes": [
+    {"path":"docs/guides/product-law-authoring.md","note":"Delta re-checked: pr-admission now grants statuses: read for the arming status read and the decision logs its arming path; this page's claims are unaffected.","inputs":["docs/guides/product-law-authoring.md",".github/workflows/ci.yml","scripts/actionlint-gate.mjs"]}
+  ]
+}

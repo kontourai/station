@@ -147,6 +147,20 @@ const starterQueryClient = vi.hoisted(() => ({
 }));
 vi.mock('@kontourai/station-sdk', () => ({
   useFeaturePreviewsQuery: () => ({ data: featurePreviews }),
+  // #5066: the Task's pull request watch panel; this host does not serve it.
+  usePullRequestFeedbackCapability: () => ({ data: false }),
+  useTaskPullRequestWatchQuery: () => ({
+    data: undefined,
+    isLoading: false,
+    isFetching: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  useSetTaskPullRequestWatchMutation: () => ({
+    isPending: false,
+    error: null,
+    mutate: vi.fn(),
+  }),
   useTaskCodeReviewQuery: () => ({
     data: undefined,
     error: new Error('Code review is unavailable in this Task-view fixture.'),

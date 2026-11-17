@@ -5,6 +5,7 @@ import { expect, test } from 'vitest';
 import { workloadBudgetEngineContext } from '../../../services/infra/workload-budget.js';
 import { hostImageAgentInstruction } from '../../../services/orchestration/host-image-turn-capture.js';
 import { createStationBrowserMcpServer } from '../../../tools/station-browser-mcp-server.js';
+import { StationControlDisclosure } from '../../../tools/station-control-disclosure.js';
 import {
   createSelectedStationControlMcpServer,
   stationControlToolCatalog,
@@ -125,6 +126,17 @@ test('Station-injected agent context matches the committed budget', async () => 
         undefined,
         'station-control',
         'delegated-custody',
+      ),
+    ),
+    // What a Codex Session admitted to tool families (#2376 slice 3) lists
+    // first: the family index, before it loads any family.
+    stationControlFamilyIndexToolListJsonBytes: await toolListJsonBytes(
+      createSelectedStationControlMcpServer(
+        undefined,
+        undefined,
+        'station-control',
+        'delegated-custody',
+        new StationControlDisclosure(() => true),
       ),
     ),
     // Codex's bound channel, offered as `dynamicTools` instead of it.

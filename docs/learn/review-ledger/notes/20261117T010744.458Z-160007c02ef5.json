@@ -1,0 +1,9 @@
+{
+  "revision": "2fb350a386662f00ce2606cd02e3d08bba3d1fbb",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"Checked: authority and reading-scope changes also clear the in-memory transcript reopen cache; offline reading and query-shelf claims unchanged.","inputs":["src-ui/src/contexts/AuthorityQueryContext.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked: authority and reading-scope changes also clear the in-memory transcript reopen cache; offline reading and query-shelf claims unchanged.","inputs":["src-ui/src/contexts/AuthorityQueryContext.tsx"]}
+  ]
+}
