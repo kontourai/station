@@ -396,14 +396,6 @@ export interface ChromiumServerHostOptions {
   denyHostResolution?: boolean;
   /** Refuse startup unless Chromium reports the restrictive effective policy. */
   requireRestrictedWebRtc?: boolean;
-  /**
-   * Disposable previews: keep a sandboxed frame in its parent page's renderer
-   * (IsolateSandboxedIframes off). Chrome 158 aborts the whole browser,
-   * `site_instance_impl.cc` CHECK `has_site_`, when an about:blank page adds
-   * a sandboxed `srcdoc` frame while that feature is on (#4917). Use only
-   * where the parent page holds nothing the frame is not already given.
-   */
-  shareSandboxedFrameProcess?: boolean;
   executablePath: string;
   faviconEnabled?: () => boolean;
   /**
@@ -495,18 +487,11 @@ function isAllowedSubframeUrl(url: string): boolean {
   return url === 'about:srcdoc' || isAllowedCommittedUrl(url);
 }
 
-const DISABLED_FEATURES = ['Translate', 'MediaRouter', 'OptimizationHints'];
-
 /** Pure launch argument list. */
 export function buildChromiumArgs(input: {
   profileDir: string;
   /** The egress proxy (`http://127.0.0.1:<port>`); required. */
   proxyServer: string;
-  /**
-   * Further features to disable. Chromium honours only the last
-   * `--disable-features` switch, so they join the one switch built here.
-   */
-  disableFeatures?: readonly string[];
 }): string[] {
   if (!/^http:\/\/127\.0\.0\.1:\d{1,5}$/.test(input.proxyServer)) {
     throw new Error(
@@ -528,7 +513,7 @@ export function buildChromiumArgs(input: {
     '--disable-extensions',
     '--disable-component-extensions-with-background-pages',
     '--disable-sync',
-    `--disable-features=${[...DISABLED_FEATURES, ...(input.disableFeatures ?? [])].join(',')}`,
+    '--disable-features=Translate,MediaRouter,OptimizationHints',
     '--mute-audio',
     // Never touch the user's real keychain / keyring from a headless profile.
     '--password-store=basic',
@@ -798,7 +783,19 @@ interface Running {
   created: Set<string>;
   /** Page targets awaiting the untracked-target check. */
   pendingUntracked: Map<string, NodeJS.Timeout>;
+  /** One-shot documents this host serves to its own targets' main frames. */
+  served: Map<string, string>;
 }
+
+/**
+ * Where {@link ChromiumServerHost.openTarget} serves a caller's document. The
+ * `.invalid` name never resolves and the request never leaves the browser:
+ * CDP Fetch answers it for that one target's main frame, once. A page with a
+ * real site matters: Chrome 158 aborts the whole browser (CHECK `has_site_`
+ * in site_instance_impl.cc) when an about:blank page adds a sandboxed srcdoc
+ * frame while sandboxed frames get their own process (#4917).
+ */
+export const SERVED_DOCUMENT_URL = 'http://station-document.invalid/';
 
 /** Grace before an unknown page target (not ours, not a popup) is closed. */
 const UNTRACKED_TARGET_GRACE_MS = 1_000;
@@ -979,6 +976,8 @@ export class ChromiumServerHost implements BrowserHost {
   async openTarget(p: {
     profileDir: string;
     viewport: BrowserViewport;
+    /** Load this HTML as the main document (see {@link SERVED_DOCUMENT_URL}). */
+    document?: string;
   }): Promise<BrowserTarget> {
     const running = await this.ensureRunning(p.profileDir);
     const transport = running.launch.transport;
@@ -1030,6 +1029,8 @@ export class ChromiumServerHost implements BrowserHost {
           { enabled: true },
           sessionId,
         );
+      if (p.document !== undefined)
+        await this.loadServedDocument(running, targetId, sessionId, p.document);
       return { targetId, cdpSessionId: sessionId };
     } catch (error) {
       if (targetId)
@@ -1199,9 +1200,6 @@ export class ChromiumServerHost implements BrowserHost {
           ...buildChromiumArgs({
             profileDir,
             proxyServer: proxy.proxyServerArg,
-            disableFeatures: this.options.shareSandboxedFrameProcess
-              ? ['IsolateSandboxedIframes']
-              : [],
           }),
           ...(this.options.denyHostResolution
             ? ['--host-resolver-rules=MAP * ~NOTFOUND']
@@ -1248,6 +1246,7 @@ export class ChromiumServerHost implements BrowserHost {
       creating: 0,
       created: new Set(),
       pendingUntracked: new Map(),
+      served: new Map(),
     };
     void launch.exited.then((reason) => {
       this.reportDiagnostic({
@@ -1651,6 +1650,40 @@ export class ChromiumServerHost implements BrowserHost {
     }
   }
 
+  private async loadServedDocument(
+    running: Running,
+    targetId: string,
+    sessionId: string,
+    document: string,
+  ): Promise<void> {
+    const transport = running.launch.transport;
+    running.served.set(targetId, document);
+    let off = () => {};
+    try {
+      const loaded = new Promise<void>((resolve) => {
+        off = transport.on('Page.loadEventFired', (_params, eventSessionId) => {
+          if (eventSessionId === sessionId) resolve();
+        });
+      });
+      const navigated = await transport.send<{ errorText?: string }>(
+        'Page.navigate',
+        { url: SERVED_DOCUMENT_URL },
+        sessionId,
+      );
+      if (navigated?.errorText)
+        throw new Error(`Served document failed: ${navigated.errorText}`);
+      await Promise.race([
+        loaded,
+        transport.closed.then(() => {
+          throw new Error('Browser closed while loading a served document');
+        }),
+      ]);
+    } finally {
+      off();
+      running.served.delete(targetId);
+    }
+  }
+
   private onRequestPaused(running: Running, params: unknown): void {
     const p = params as {
       requestId: string;
@@ -1659,6 +1692,26 @@ export class ChromiumServerHost implements BrowserHost {
       frameId?: string;
     };
     const transport = running.launch.transport;
+    const served =
+      p.resourceType === 'Document' &&
+      p.request.url === SERVED_DOCUMENT_URL &&
+      p.frameId !== undefined
+        ? running.served.get(p.frameId)
+        : undefined;
+    if (served !== undefined && p.frameId !== undefined) {
+      running.served.delete(p.frameId);
+      void transport
+        .send('Fetch.fulfillRequest', {
+          requestId: p.requestId,
+          responseCode: 200,
+          responseHeaders: [
+            { name: 'Content-Type', value: 'text/html; charset=utf-8' },
+          ],
+          body: Buffer.from(served, 'utf8').toString('base64'),
+        })
+        .catch(() => {});
+      return;
+    }
     const decision = decidePausedRequest(
       { url: p.request.url, resourceType: p.resourceType, frameId: p.frameId },
       {

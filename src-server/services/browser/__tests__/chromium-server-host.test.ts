@@ -22,6 +22,7 @@ import {
   MANDATORY_DENIED_PERMISSIONS,
   PAGE_SESSION_CDP_ALLOWLIST,
   type PreviewDiagnostic,
+  SERVED_DOCUMENT_URL,
 } from '../hosts/chromium-server-host.js';
 import { deriveStationListeners } from '../station-listeners.js';
 
@@ -352,11 +353,6 @@ describe('launch arguments and environment', () => {
         '--no-startup-window',
       ]),
     );
-    // The Browser pane keeps sandboxed frames in their own processes; only
-    // the disposable preview opts out (#4917).
-    expect(args.filter((arg) => arg.startsWith('--disable-features='))).toEqual(
-      ['--disable-features=Translate,MediaRouter,OptimizationHints'],
-    );
     // No launch URL: the host creates every page target itself.
     expect(args).not.toContain('about:blank');
     expect(args.some((arg) => arg.startsWith('--remote-debugging-port'))).toBe(
@@ -536,6 +532,70 @@ describe('ChromiumServerHost with a fake browser', () => {
       sessionId: undefined,
     });
     expect(events.filter((e) => e.kind === 'request-blocked')).toHaveLength(2);
+  });
+
+  test('a served document loads once, only into the target that asked for it', async () => {
+    // Chrome 158 aborts when an about:blank page adds a sandboxed srcdoc
+    // frame (#4917), so the preview's page must have a real site.
+    let emitEvent: (
+      event: string,
+      params: unknown,
+      sessionId?: string,
+    ) => void = () => {};
+    const { host, profileDir, emit, calls } = harness((call) => {
+      if (
+        call.method === 'Page.navigate' &&
+        (call.params as { url?: string }).url === SERVED_DOCUMENT_URL
+      ) {
+        emitEvent('Fetch.requestPaused', {
+          requestId: 'served',
+          request: { url: SERVED_DOCUMENT_URL },
+          resourceType: 'Document',
+          frameId: 'T1',
+        });
+        emitEvent('Page.loadEventFired', {}, call.sessionId);
+      }
+      return {};
+    });
+    emitEvent = emit;
+    const html = '<!doctype html><body>bootstrap ✓</body>';
+    await host.openTarget({ profileDir, viewport: VIEWPORT, document: html });
+    expect(calls).toContainEqual({
+      method: 'Page.navigate',
+      params: { url: SERVED_DOCUMENT_URL },
+      sessionId: 'S-T1',
+    });
+    expect(calls).toContainEqual({
+      method: 'Fetch.fulfillRequest',
+      params: {
+        requestId: 'served',
+        responseCode: 200,
+        responseHeaders: [
+          { name: 'Content-Type', value: 'text/html; charset=utf-8' },
+        ],
+        body: Buffer.from(html, 'utf8').toString('base64'),
+      },
+      sessionId: undefined,
+    });
+    // One-shot and per target: a later request for the same URL, from this
+    // target or another, is never answered with the document.
+    emit('Fetch.requestPaused', {
+      requestId: 'again',
+      request: { url: SERVED_DOCUMENT_URL },
+      resourceType: 'Document',
+      frameId: 'T1',
+    });
+    await host.openTarget({ profileDir, viewport: VIEWPORT });
+    emit('Fetch.requestPaused', {
+      requestId: 'other',
+      request: { url: SERVED_DOCUMENT_URL },
+      resourceType: 'Document',
+      frameId: 'T2',
+    });
+    await flush();
+    expect(
+      calls.filter((c) => c.method === 'Fetch.fulfillRequest'),
+    ).toHaveLength(1);
   });
 
   test('a popup from our target is closed and its URL loads in the opener', async () => {

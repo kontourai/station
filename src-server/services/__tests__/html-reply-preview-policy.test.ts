@@ -5,7 +5,10 @@ import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { installLoggerLineSink } from '../../utils/logger.js';
 import { BrowserEgressProxy } from '../browser/browser-egress-proxy.js';
 import type { CdpTransport } from '../browser/browser-host.js';
-import type { ChromiumServerHostOptions } from '../browser/hosts/chromium-server-host.js';
+import {
+  type ChromiumServerHostOptions,
+  SERVED_DOCUMENT_URL,
+} from '../browser/hosts/chromium-server-host.js';
 
 const probe = vi.hoisted(() => ({
   authored: false,
@@ -16,6 +19,7 @@ const probe = vi.hoisted(() => ({
   exitDuringRender: false,
   launchFailure: undefined as Error | undefined,
   launchArgs: undefined as readonly string[] | undefined,
+  navigations: [] as string[],
   observe: undefined as ChromiumServerHostOptions['onEvent'],
   late: undefined as (() => void) | undefined,
   cleanup: undefined as (() => Promise<void>) | undefined,
@@ -30,6 +34,7 @@ beforeEach(() => {
   probe.exitDuringRender = false;
   probe.launchFailure = undefined;
   probe.launchArgs = undefined;
+  probe.navigations = [];
   probe.observe = undefined;
   probe.late = undefined;
 });
@@ -86,8 +91,10 @@ vi.mock('../browser/hosts/chromium-server-host.js', async (importOriginal) => {
             }
             if (method === 'Target.attachToTarget')
               return { sessionId: 'policy-session' } as R;
-            if (method === 'Page.navigate')
+            if (method === 'Page.navigate') {
               policyUrl = (params as { url?: string })?.url ?? '';
+              probe.navigations.push(policyUrl);
+            }
             internal = [
               'chrome://prefs-internals/webrtc.ip_handling_policy',
               'chrome://prefs-internals/webrtc.ip_handling_url',
@@ -494,29 +501,31 @@ test('preview refuses a managed effective-policy override before author code and
   }
 });
 
-test('preview launches its browser with sandboxed frames sharing the bootstrap renderer, in the only feature switch', async () => {
-  // Chrome 158 aborts the browser (CHECK has_site_) when the about:blank
-  // bootstrap page adds its sandboxed srcdoc frame under
-  // IsolateSandboxedIframes (#4917). Chromium reads only the last
-  // --disable-features switch, so the feature must join the single one.
+test('preview hosts its sandboxed frame in a served page and keeps sandboxed frames in their own process', async () => {
+  // Chrome 158 aborts the browser (CHECK has_site_) when an about:blank page
+  // adds the sandboxed srcdoc frame (#4917). The fix is the served page; turning
+  // IsolateSandboxedIframes off would also stop the abort but would put
+  // authored HTML in its bootstrap page's renderer, so it stays refused here.
   probe.restrictive = true;
-  const service = new HtmlReplyPreview(makeTempDir('html-preview-features-'));
+  const service = new HtmlReplyPreview(makeTempDir('html-preview-shape-'));
   try {
     await expect(
       service.render({ html: '<p>x</p>', height: 400 }, 800, 'dark'),
     ).rejects.toThrow('Authored content reached an unverified browser');
-    const switches = (probe.launchArgs ?? []).filter((arg) =>
-      arg.startsWith('--disable-features='),
-    );
-    expect(switches).toHaveLength(1);
-    expect(switches[0]?.slice('--disable-features='.length).split(',')).toEqual(
-      expect.arrayContaining([
-        'Translate',
-        'MediaRouter',
-        'OptimizationHints',
-        'IsolateSandboxedIframes',
-      ]),
-    );
+    expect(probe.authored).toBe(true);
+    expect(probe.navigations.at(-1)).toBe(SERVED_DOCUMENT_URL);
+    for (const arg of probe.launchArgs ?? [])
+      if (arg.startsWith('--disable-features='))
+        expect(
+          arg.slice('--disable-features='.length).split(','),
+        ).not.toContain('IsolateSandboxedIframes');
+    expect(
+      (probe.launchArgs ?? []).some((arg) =>
+        /IsolateSandboxedIframes|disable-site-isolation|site-per-process/.test(
+          arg,
+        ),
+      ),
+    ).toBe(false);
   } finally {
     await probe.cleanup?.();
     await probe.removeProfile?.();

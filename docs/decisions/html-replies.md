@@ -226,16 +226,16 @@ object. Agent-authored bytes never become part of that function source. The
 real preview regression reads script delimiters, Unicode separators and template
 syntax back from inside the opaque frame without changing their UTF-8 bytes.
 
-Preview launches its browser with Chromium's `IsolateSandboxedIframes` feature
-off, so the opaque frame shares a renderer with its `about:blank` bootstrap page.
-Chrome for Testing 158 aborts the whole browser
+Preview's bootstrap page is a constant document the host serves at
+`http://station-document.invalid/`, answered through CDP `Fetch` once, for that
+target's main frame only; the request never reaches the network. It is not
+`about:blank` because Chrome for Testing 158 aborts the whole browser
 (`site_instance_impl.cc` CHECK `has_site_`) when an `about:blank` page adds a
-sandboxed `srcdoc` frame with the feature on; Chrome 157 does not (#4917). The
-bootstrap page holds only what it already hands the frame (its document and
-token), so sharing the process exposes nothing more to authored code. The
-frame's sandbox flags, opaque origin, CSP and the browser's egress controls are
-unchanged. Chromium honours only its last `--disable-features` switch, so the
-feature joins the host's single switch. The Browser pane keeps the feature on.
+sandboxed `srcdoc` frame while sandboxed frames get their own process; Chrome
+157 does not (#4917). With a served page the opaque frame keeps its own renderer
+process and opaque origin. Turning `IsolateSandboxedIframes` off also avoids the
+abort but would put authored HTML in its bootstrap page's process, so preview
+does not do that, and a test refuses it.
 
 
 The shared sandbox UDP regression requires Chromium. WebKit runs only when its
