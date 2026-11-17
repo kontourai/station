@@ -528,16 +528,19 @@ The Station side mirrors Web Push (`push-routes.ts`, `WebPushChannel`):
   and hands it to the web layer through `take_launch_route` (returns and
   clears), announced by a `launchRoute` plugin event while the app runs. The
   web layer (`agentActivitySessionTarget`) validates the grammar a third time
-  and navigates only when the route's Station is the connected one, to the
-  Station's exact-session deep link: `/projects/<slug>?chat=<id>&dock=open`,
-  or `/?chat=<id>&dock=open` without a project. A route for another Station
-  is dropped; switching Stations from a tap is not attempted. The check is
-  per Station, not per user: with two registrations for different users on
-  one Station, a card may navigate the app while it is connected as the
-  other user. Only navigation follows; the session itself stays behind the
+  and hands the route to the notification opener ([Opening a
+  notification](#opening-a-notification-on-the-station-that-sent-it)) with
+  the route's Station id: the notification href
+  (`/projects/<slug>?chat=<id>&dock=open`, or `/?chat=<id>&dock=open`
+  without a project) opens on that Station, switching to its saved
+  connection first when another one is connected, and a Station not saved on
+  the phone shows a notice instead of being dropped. The Station is matched
+  by id, not by user: with two registrations for different users on one
+  Station, a card may navigate the app while it is connected as the other
+  user. Only navigation follows; the session itself stays behind the
   server's per-session read checks. The iOS Live Activity receives the same
-  fields inside its seal and ignores them: an iOS tap opens the app without
-  routing.
+  fields inside its seal and ignores them: a Live Activity tap opens the app
+  without routing. An iOS alert tap routes (see the iOS alert section).
   The references count against the 2500-byte plaintext budget and are
   never cut: the card's reference stays for as long as row 0 does, and an
   alert's stays with the alert, so under a tight budget they displace tail
@@ -989,10 +992,26 @@ the route answers 503. The gateway is deployed by hand
   with a quiet "handled" push was rejected: it re-posts to the lock screen to
   say there is nothing to see. An iOS alert therefore stays in Notification
   Center until the person clears it.
-- **Remaining alert-specific work.** Foreground alert presentation, alert tap
-  routing, and web-layer alert-token registration are separate from the
-  implemented iOS Live Activity registration. A push-to-start registration does
-  not by itself enable regular alert pushes.
+- **Alert taps.** The sealed plaintext also carries `session_id` and
+  `project_slug` (the FCM alert's reference, from the same
+  `nativeSessionReference`; contract grammar only, kept with hidden content
+  and never cut to fit). The plugin wraps the notification-center delegate's
+  `userNotificationCenter(_:didReceive:withCompletionHandler:)` (the Tauri
+  notification plugin owns that delegate and ignores push taps) with
+  `NotificationResponseHook`, which runs the original after it. On a default
+  tap `AlertTapRouteResolver` opens the seal again with the registration's
+  key and the extension's checks (version, `rid`, pinned `sk`, alert domain,
+  `user_id`), takes the reference only in the contract grammar, and keeps
+  the route for `take_launch_route` with a `launchRoute` event: the same
+  path, shape and opener as Android. The route also carries the seal's
+  `notification_id` (record grammar only), so the tap reads the record. A
+  route has no freshness bound; it only navigates and reads. The hook and the take command are unit-tested on macOS
+  and compile for the iOS simulator; cold- and warm-start taps on a device
+  are not verified.
+- **Remaining alert-specific work.** Foreground alert presentation and
+  web-layer alert-token registration are separate from the implemented iOS
+  Live Activity registration. A push-to-start registration does not by
+  itself enable regular alert pushes.
 - **Enablement checklist** (in addition to the Live Activity slice D steps):
   1. Push on the App ID (alerts need no broadcast capability or extension),
      and the `ALERT_PER_TOKEN_LIMITER` binding deployed with the gateway.
@@ -1196,10 +1215,16 @@ runtime and the two can never both alert. A shell without the command answers
   there a retract only stops an alert not yet posted (a retract later in the
   same read). tauri-plugin-notification 2.4.0 cannot remove a delivered
   notification on any desktop platform either.
-- **Click** focuses the app and hands the entry's `link` to the main webview:
-  the host keeps it for 60 seconds and emits `station://notification-open`,
-  and the webview takes it once (`take_notification_open_link`) and
-  navigates. The link must be an in-app path (`/…`, optional query; no
+- **Click** focuses the app and hands the entry's `link` to the main webview,
+  with the Station origin the host read that entry from (its own record,
+  never a feed field): the host keeps `{ link, origin }` for 60 seconds and
+  emits `station://notification-open`, and the webview takes it once
+  (`take_notification_open_link`) and gives it to the notification opener,
+  which opens the link on the saved Station at that origin, switching first
+  when another Station is active by then. An alert clicked after a Station
+  switch therefore never looks its session up on the wrong Station. A link
+  naming a different Station than its origin's connection, or an origin no
+  saved connection serves, shows a notice instead. The link must be an in-app path (`/…`, optional query; no
   scheme, `//host`, backslash, fragment, whitespace or control character),
   and its NORMALIZED path must not be `//host` either (`/..//host`,
   `/%2e%2e//host`); it is checked natively and again in the webview
@@ -1214,3 +1239,91 @@ The retired host notification watch was not this: it posted raw titles and
 ignored envelopes, `hideContent`, quiet hours and mutes.
 Blocking-category alerts (`blockingAlert.ts`) still come from the webview and
 so still pause while it is hidden.
+
+## Opening a notification on the Station that sent it
+
+A device may be paired with several Stations, and a notification can arrive
+from one while another is active. Opening it must land on the right Station
+and the right conversation.
+
+- **One href.** Every channel opens a record at the same place, computed once
+  on the server: the envelope's path target; else the session
+  `notificationOpenSession` names (`notificationSessionIdentity`: the
+  metadata's session, then the envelope's audience, target or agent; the
+  session the read gate and audience were checked against) as
+  `notificationSessionHref` (`/projects/<slug>?chat=<id>&dock=open`, the
+  metadata's Project unless the metadata names another session, else
+  `/?chat=<id>&dock=open`, for runtime and managed sessions alike); else the
+  record's validated `metadata.link`; else `/notifications`. Web Push and the
+  desktop feed send it as a link (`notificationOpenLink`); FCM and APNs
+  alerts seal the same session as `session_id` / `project_slug`
+  (`nativeSessionReference`). The in-app toast and the attention inbox's
+  Open use the same href builder for a session.
+- **The sending Station.** An OS link carries `station=<environmentId>`
+  (`NOTIFICATION_STATION_QUERY_PARAM`, the id a client saved for that
+  Station when it connected), added by `withOpenedNotification` beside
+  `openedNotification`; one already in the link is replaced, never trusted,
+  and an id outside the contract grammar is left out. A phone's route
+  carries its registration's verified Station id, and an alert tap's route
+  also carries the alert's record id (the APNs seal's `notification_id`, the
+  FCM plaintext's `id`), which the web layer adds as `openedNotification` so
+  opening the alert reads it; an id outside the record grammar drops only the
+  read. The desktop host adds the origin it read the alert from. None of these names an origin to open: the
+  identity only selects among connections already saved on the device, and
+  the link stays a relative in-app path with every same-origin check intact.
+- **One opener.** `requestNotificationOpen` (`src-ui/src/lib/notificationStationOpen.ts`)
+  is the entry point for a desktop click, a Web Push tap, a cold load and a
+  phone tap. The active Station's id is its saved connection's, or the
+  verified authority observation's when the connection never saved one (a
+  same-origin browser connection does not); taps wait for it, up to eight
+  seconds, before they are placed. With no Station named (an older
+  Station) or the active one, it navigates at once. A Station id that
+  matches no saved connection while the active id is still unknown is never
+  opened on a guess: "Couldn't confirm the Station", with Retry. On the
+  desktop the host's origin outranks the link: an origin no saved
+  connection serves is "not saved", whatever id the link names. For another
+  saved Station it shows "Opening conversation on <Station>" with a spinner,
+  switches (`setActiveConnection`), and only then navigates, and only when
+  this is still the newest tap and the store committed that Station (the
+  connection provider resolves a selection a newer one overtook without
+  committing it). A tap for the active Station while an earlier tap is
+  still switching away re-selects the active Station, so the last tap wins.
+  A Station not saved on this device, or a failed or overtaken switch,
+  shows a notice with Manage Stations (and Retry for a failed switch)
+  instead of dropping the tap. On a phone-width screen the notice sits just
+  above the collapsed dock rather than over the top of the page.
+- **Cold loads.** A tab loaded on a link that names a Station has `chat`,
+  `dock`, `openedNotification` and `station` taken off the URL before the
+  first render, and the request waits for the opener: the dock never looks
+  the conversation up on whichever Station happened to be active, and the
+  read marker is sent to the right one. A request that waited is dropped
+  when the person navigated (or went Back) before the opener mounted
+  (`installNavigationPosition`, the navigation store's history index).
+- **No reload where the app runs.** The service worker posts
+  `station-notification-open` with the link's on-origin URL to the focused
+  tab and waits up to 1.5 seconds for its acknowledgement
+  (`NotificationStationOpener`); a tab that does not answer is navigated to
+  the link, and with no tab one is opened. The attention inbox's Open and
+  the in-app toast's Open navigate in the app (`openNotificationTargetHere`),
+  marked like a tap so a missing or refused conversation is reported; the
+  attention Open records its acknowledgement after.
+- **Opening and failure states.** While the dock resolves a deep-linked
+  conversation it shows a visible "Opening conversation" label ("Opening
+  conversation on <Station>" after a switch) over the conversation it showed
+  before, which stays mounted hidden and inert; the header names the open,
+  and the inbox selection and This Chat card stand down until it lands.
+  When a notification asked for the conversation, a miss is said rather
+  than only cleared: not found (also what an unreadable session answers),
+  no access (403, at once: a refusal is the Station's answer), or the
+  Station did not answer, with Retry. That Retry belongs to the Station that
+  did not answer: once another Station is active the notice is retired and
+  its Retry does nothing. A `?chat=` that no notification opened (a reload
+  of a draft that was never saved, #1582) keeps its quiet behavior,
+  including a 403, which keeps the bounded retry and then the Chat surface. A second attempt for the same chat
+  while its lookup is in flight (the agent catalog loading mid-lookup) reuses
+  that lookup.
+- **Not covered.** Approval notifications open their session, not the
+  pending request inside it: the dock's `?chat=` open does not read the
+  message anchor `surfaceDeepLink` can carry. Android still suppresses every
+  Station's notification while the app is in the foreground, including one
+  from a Station other than the connected one, which then shows nowhere.

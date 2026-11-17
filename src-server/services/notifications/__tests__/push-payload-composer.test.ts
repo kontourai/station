@@ -1,4 +1,3 @@
-import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import {
   DONE_TTL_MS,
   RUNNING_TTL_MS,
@@ -123,7 +122,7 @@ describe('composeWebPushPayload', () => {
     });
     const composed = composeWebPushPayload(approval, [failed, approval]);
     expect(composed?.payload.url).toBe(
-      `${activityDeepLink({ sessionId: 'thread-approval' })}&openedNotification=approval-1`,
+      '/?chat=thread-approval&dock=open&openedNotification=approval-1',
     );
   });
 });

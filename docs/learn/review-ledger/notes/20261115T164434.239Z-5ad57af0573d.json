@@ -1,0 +1,7 @@
+{
+  "revision": "b833a67c877bace3fa01e8d390fb9ff7cf519a69",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"station-docs-content.ts regenerated: the shipped Native notification feed architecture topic now carries the module map's updated click sentence (Station origin passed with the link); the station-docs reference's tool and topic-catalog claims are unchanged.","inputs":["docs/reference/station-docs.md"]}
+  ]
+}

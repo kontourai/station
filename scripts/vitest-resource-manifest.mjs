@@ -686,6 +686,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // discovery, which is itself a Vitest child. Single-shot spawns, no
   // wall-clock assertion.
   'scripts/__tests__/fast-checks-shard-cli.test.ts',
+  // #5010: plans one recorded incident diff through real related discovery,
+  // a Vitest child; it imports no child_process itself. Single-shot spawn,
+  // no wall-clock assertion.
+  'scripts/__tests__/test-impact-incidents.test.ts',
   // #3101: dependency-free planner CLI output and exit status in child processes.
   'scripts/__tests__/fast-checks-plan.test.ts',
   // Runs the merge-queue regression decision script and the required
@@ -1511,6 +1515,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/version-packages-lock.test.ts',
   // Executes the credential guard's real Bash bytes before a fixture action.
   'scripts/__tests__/version-pr-operation.test.ts',
+  // Runs real git and the installed `changeset version` in temporary
+  // repositories, plus the workflow's own Bash bytes.
+  'scripts/__tests__/version-pr-current.test.ts',
   // The room runtime intentionally hard-exits a child after durable history
   // commit and before recovery settlement, then reopens the same SQLite file.
   // That crash/reopen lifecycle must not overlap ordinary workers.
