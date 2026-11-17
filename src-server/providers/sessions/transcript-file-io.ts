@@ -77,19 +77,29 @@ export function readLeadingLine(
     let offset = 0;
     while (offset <= maxLineBytes) {
       const chunk = Buffer.alloc(Math.min(4096, maxLineBytes + 1 - offset));
-      const bytesRead = readSync(descriptor, chunk, 0, chunk.length, offset);
-      if (bytesRead === 0) break;
-      const content = chunk.subarray(0, bytesRead);
-      const newline = content.indexOf(0x0a);
-      chunks.push(newline < 0 ? content : content.subarray(0, newline));
-      offset += bytesRead;
-      if (newline >= 0) {
-        // Decode only after joining: a UTF-8 code point can cross reads.
-        return Buffer.concat(chunks).toString('utf8').trim() || undefined;
+      let filled = 0;
+      while (filled < chunk.length) {
+        const bytesRead = readSync(
+          descriptor,
+          chunk,
+          filled,
+          chunk.length - filled,
+          offset,
+        );
+        const newline = chunk
+          .subarray(filled, filled + bytesRead)
+          .indexOf(0x0a);
+        if (bytesRead === 0 || newline >= 0) {
+          chunks.push(chunk.subarray(0, filled + (newline < 0 ? 0 : newline)));
+          // Decode only after joining: a UTF-8 code point can cross reads.
+          return Buffer.concat(chunks).toString('utf8').trim() || undefined;
+        }
+        filled += bytesRead;
+        offset += bytesRead;
       }
+      chunks.push(chunk);
     }
-    if (offset > maxLineBytes) return null;
-    return Buffer.concat(chunks).toString('utf8').trim() || undefined;
+    return null;
   });
 }
 
