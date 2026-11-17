@@ -359,6 +359,31 @@ export async function captureScreen<Audit>(
   };
 }
 
+/**
+ * A failed screen's fields in `capture.json`. The first line of `error` is
+ * the failure's identity, which `scripts/gallery-ui-findings.mjs` reports as
+ * `capture-failed` (no `uiAudit`, so no layout findings for that state) and
+ * attribution compares; an app error surface's identity names its failed
+ * chunk requests. The bounded console and page errors stay as the last line,
+ * which attribution sets aside.
+ */
+export function failedScreenFields(
+  result: ScreenResult<unknown>,
+  browserErrors: readonly string[],
+): { ok: false; error: string; appError?: AppErrorObservation } {
+  const { final } = result;
+  return {
+    ok: false,
+    error: [
+      ...result.errorLines,
+      ...(browserErrors.length
+        ? [`Browser errors: ${JSON.stringify(browserErrors)}`]
+        : []),
+    ].join('\n'),
+    ...(!final.ok && final.appError ? { appError: final.appError } : {}),
+  };
+}
+
 /** What `captureScreens` needs of a screen. */
 export interface CapturedScreen<P> {
   name: string;

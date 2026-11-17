@@ -219,6 +219,50 @@ describe('ProjectTaskBoard', () => {
     ]);
   });
 
+  test('agent feedback adds a note to the card, never moves it', () => {
+    const HEAD = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678';
+    const fed = (
+      feedback: TaskPullRequestFact['feedback'],
+      ref = '41',
+    ): TaskPullRequestFact => ({
+      ...pr(ref, { readiness: 'checks-not-passing', headSha: HEAD }),
+      feedback,
+    });
+    const tasks = [
+      task('review', { sessionId: 'run-review' }),
+      task('running', { sessionId: 'run-running' }),
+    ];
+    given({
+      tasks,
+      sessions: [
+        session('run-review', { lifecycleState: 'completed' }),
+        session('run-running', {
+          lifecycleState: 'running',
+          hasActiveTurn: true,
+        }),
+      ],
+      pullRequests: {
+        review: [
+          fed({
+            state: 'sent',
+            headSha: HEAD,
+            at: new Date(NOW - 3 * 60_000).toISOString(),
+          }),
+        ],
+        running: [fed({ state: 'fixing', headSha: HEAD }, '42')],
+      },
+    });
+    render(<Harness tasks={tasks} />);
+    expect(cardTitles('In review')).toEqual(['Work review']);
+    expect(cardTitles('Running')).toEqual(['Work running']);
+    const line = (name: string) =>
+      within(lane(name))
+        .getByRole('article')
+        .querySelector('.task-card__status-line')?.textContent;
+    expect(line('In review')).toBe('Checks not passing · #41 · sent 3m');
+    expect(line('Running')).toBe('Running · fixing checks on #42');
+  });
+
   test('an empty lane says so, and still counts', () => {
     const tasks = [task('fresh', { status: 'ready' })];
     given({ tasks });

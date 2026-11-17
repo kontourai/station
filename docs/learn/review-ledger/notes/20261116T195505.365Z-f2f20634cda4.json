@@ -1,0 +1,7 @@
+{
+  "revision": "d6e7b35a63f0b841537cdf7f2b1e59548af366e7",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Checked the workload cleanup paragraph against WorkloadBudgetSettings.tsx: abandoned scopes render in Host options regardless of the budget preview.","inputs":["docs/guides/development.md"]}
+  ]
+}

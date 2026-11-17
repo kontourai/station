@@ -37,7 +37,19 @@ of the tracked and unignored tree, including extensionless launchers and native
 entrypoints. Unrecognized files remain visible instead of being silently excluded. The normal
 `npm run fallow:audit` command is a changed-file review, not a full-tree audit.
 `npm run fallow:dead-code` prints Fallow's dead-code summary grouped by package
-for a quick local look; it reads no baseline and gates nothing.
+for a quick local look; it reads no baseline and gates nothing. Every fallow
+entry point waits for a [host heavy-check slot](#host-heavy-check-slots).
+
+`fallow audit` builds a full checkout of its base commit (about 380 MB here) in
+its temp directory. The audit runners give each run a private directory under
+a disk-backed cache, removed when the run ends, and remove any run directory
+older than an hour that a killed run left behind. The cache is
+`$XDG_CACHE_HOME/station/fallow` (when `XDG_CACHE_HOME` is absolute), else
+`~/.cache/station/fallow`, created owner-only; `STATION_FALLOW_CACHE_DIR`
+overrides it. It is never the system temp directory by default: where `/tmp` is
+tmpfs, a checkout there is RAM charged to the caller's memory limit (#5080).
+The raw `npm run fallow` and `npm run fallow:audit` commands run the analyzer
+directly, without that private directory.
 
 For ongoing implementation, `ci:fast` runs the [code-health prevention gate](code-quality.md#code-health-prevention)
 with an explicit base and reports introduced versus inherited candidates. It
@@ -1173,9 +1185,10 @@ the context Station itself puts in front of every engine session: the
 `tools/list` of each built-in MCP server (name, description and input schema)
 and Station's injected text (orchestration instructions, workload budget,
 chat-image line). station-control is measured twice: `bound`, the listing
-Claude's in-process delivery receives, and `delegated-custody`, the subset Codex
-and ACP engines list. `codexBoundToolsJsonBytes` measures the `dynamicTools`
-Codex's bound browser and device channel offers at thread start, through the
+Claude's in-process delivery receives, and `delegated-custody`, the subset ACP
+engines, and Codex without its bound channel, list. `codexBoundToolsJsonBytes`
+measures the `dynamicTools` Codex's bound channel offers at thread start, the
+browser tools plus the whole station-control catalog at `bound`, through the
 mapping the adapter sends. `agent-context-budget.test.ts` beside it recomputes each
 number from live source and fails when the file disagrees, so update the JSON
 to the measured values in the same change. When text shrinks, lower the
@@ -1645,7 +1658,13 @@ a failure is never excused; a message whose own last line is
 current message ends that way. An app error surface's identity (below) leads
 the error and carries only the surfaces and the failed chunk paths with their
 content hashes masked, so the same chunk failing compares equal between two
-builds as long as it keeps its name.
+builds as long as it keeps its name. When every failure `main` does not have
+is such an identity naming a failed chunk request (not `no failed chunk
+request`), the comparison answers `infrastructure` instead of `pr`: the job
+still fails, under the title `Gallery chunk load failure` and with each screen
+and chunk listed as `CHUNK LOAD`, so a lost chunk is not reported as the pull
+request's layout (#5028). It is not excused, because a pull request that breaks
+a chunk's delivery fails the same way.
 So a break already on `main` does not turn unrelated
 PRs red, while breaking the same screen another way stays red. A crash or
 test-level assertion with no failing screen, a failing screen `main` lacks,
@@ -1865,7 +1884,13 @@ what differs between two captures of one failure: requests of the document a
 navigation was replacing, error text (one aborted chunk read `ERR_ABORTED` on one
 attempt and `ERR_FAILED` on another), whether it surfaced before or after the
 photo, counts, and a capture step's own error. All of that is in the screen's
-`appError` in `capture.json`, with the console errors.
+`appError` in `capture.json`, with the console errors. The capture's log and
+its final assertion name each failed screen; one that lost a chunk reads
+`lazy chunk unavailable: <screen> (<path> <error>)` with the real request paths.
+`scripts/__tests__/gallery-app-error-state.browser.test.ts` aborts a chunk on
+both attempts of one screen whose error row sits in a hard clip, and checks that
+reason and that the findings judge reports only `capture-failed`, though the
+same row audited directly yields `hit-target:unreachable` for Retry and Reload.
 
 A second capture needs both in the same attempt: a detected surface and a
 failed chunk request. A failed chunk request alone is not evidence that the
@@ -2263,6 +2288,21 @@ slot and then runs the script as the slot holder. These entry points use it:
 | Pre-push transfer budgets, static gates, SDK barrel | `pre-push:transfer-budgets`, `pre-push:static-gates`, `pre-push:sdk-barrel` |
 | A verification-coordinator lane that executes (`ci:fast`, `verify:static`, `test-changed`, …) | `verification:<lane>` |
 | Each `full:regression` phase, requested or submitted | `verification:full-regression:<phase>` |
+| `node scripts/code-health-gate.mjs` (also a `ci:fast` step), started any way | `code-health-gate` |
+| `npm run veritas:fallow:advisory` (a Veritas readiness evidence check), `npm run audit:code-health` | `fallow audit`, `fallow audit --whole-tree` |
+| `npm run fallow:baseline`, `npm run fallow:ceiling` (not with `--report`) | `fallow:baseline`, `fallow:ceiling` |
+| `npm run fallow`, `npm run fallow:dead-code`, `npm run fallow:audit` | the script name |
+
+The code-health gate and the fallow runners take the slot themselves, so a
+direct `node scripts/<script>.mjs` queues like a package script. One `fallow
+audit` reached 5.1 GiB, and two worktrees running the gate at once got a
+Station engine OOM-killed ([#5080](https://github.com/kontourai/station/issues/5080)).
+`npm run docs:review:record` takes no slot. It is single-threaded bookkeeping:
+it snapshots the repository's review inputs, checks them, and writes the review
+ledger (measured on 2026-11-16: 41 s, 1.1 cores, 1.1 GiB peak for
+`--show-delta`). The slot is sized for checks that saturate about four cores
+and hold several GiB, and with one slot, a ledger write would wait behind a
+whole test run.
 
 - N is the smaller of one slot per four logical CPUs (floored) and one per
   8 GiB of RAM (rounded), between 1 and 4. A 4-core, 15 GiB host gets 1.

@@ -96,15 +96,20 @@ export type StationControlMcpTokenChannel =
  * entry at mint, never supplied by the presenter).
  *
  * - `bound`: `sdk-in-process` only. The token never leaves Station's own
- *   process (Claude's in-process station-control server), so presenting it
- *   proves the call came through that session's MCP connection.
- * - `delegated-custody`: `http-header-token`. Station hands the token to an
- *   ACP agent app in `session/new` over a private pipe, but what the app does
- *   with it next is the app's business: a third-party agent may write it to
- *   its own config, argv or logs. Station cannot prove it stayed private.
- * - `bearer-exposed`: `url-token`. The token sits in Codex's
- *   `-c mcp_servers…url=` argv, which any same-user process can read with
- *   `ps`, so presenting it proves possession, not session identity.
+ *   process (Claude's in-process station-control server, and Codex's bound
+ *   `dynamicTools` channel, whose calls arrive on the app-server pipe
+ *   Station owns), so presenting it proves the call came through that
+ *   session's connection.
+ * - `delegated-custody`: `http-header-token`. Station hands the token to
+ *   Codex as an `Authorization` header in its private `thread/start` (or
+ *   `thread/resume`) configuration, or to an ACP agent app in `session/new`,
+ *   over a private pipe, but what the engine does with it next is its own
+ *   business: it may write it to its own config, argv or logs. Station
+ *   cannot prove it stayed private.
+ * - `bearer-exposed`: `url-token`. A token in a URL query string, such as
+ *   the `-c mcp_servers…url=` argv Codex once received (any same-user
+ *   process can read argv with `ps`), proves possession, not session
+ *   identity. No current engine receives a station-control one.
  *
  * Only `bound` may gate an action that must be attributable to the session
  * (a session-scoped browser tool, an owned child session).

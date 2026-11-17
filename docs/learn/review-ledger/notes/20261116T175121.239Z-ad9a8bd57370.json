@@ -1,0 +1,17 @@
+{
+  "revision": "b723ed81529944af9b790bfbd456ffdea9b8bfa9",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"#5054 adds flushLogRepeatSummaries, called only from graceful shutdown; logger seam, redaction, level and sink claims are unchanged.","inputs":["src-server/utils/logger.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"#5054 adds flushLogRepeatSummaries, called only from graceful shutdown; logger seam, redaction, level and sink claims are unchanged.","inputs":["src-server/utils/logger.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"#5054 adds flushLogRepeatSummaries, called only from graceful shutdown; logger seam, redaction, level and sink claims are unchanged.","inputs":["src-server/utils/logger.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"#5054 adds flushLogRepeatSummaries, called only from graceful shutdown; logger seam, redaction, level and sink claims are unchanged.","inputs":["src-server/utils/logger.ts"]},
+
+    {"path":"docs/reference/config.md","note":"#5054 adds flushLogRepeatSummaries, called only from graceful shutdown; logger seam, redaction, level and sink claims are unchanged.","inputs":["src-server/utils/logger.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"#5054 adds flushLogRepeatSummaries, called only from graceful shutdown; logger seam, redaction, level and sink claims are unchanged.","inputs":["src-server/utils/logger.ts"]}
+  ]
+}

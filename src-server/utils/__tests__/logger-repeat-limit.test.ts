@@ -12,7 +12,11 @@ import {
   logRepeatKey,
   resolveLogRepeatLimitPolicy,
 } from '../log-repeat-limiter.js';
-import { configureLogRepeatLimit, createLogger } from '../logger.js';
+import {
+  configureLogRepeatLimit,
+  createLogger,
+  flushLogRepeatSummaries,
+} from '../logger.js';
 
 const originalStdoutLogs = process.env.STATION_STDOUT_LOGS;
 
@@ -65,6 +69,34 @@ describe('logger repeat limit (#4995)', () => {
 
     // A new window admits the identity again.
     logger.warn('Station setup requirement probe failed', { err: error });
+    expect(capture.at('warn')).toHaveLength(5);
+  });
+
+  it('flushLogRepeatSummaries writes a pending summary before its window ends (#5054)', () => {
+    const logger = createLogger({ name: 'repeat-test' });
+    const capture = captureLoggerLines();
+    for (let index = 0; index < 5; index += 1) {
+      logger.warn('Probe failed', { attempt: index });
+    }
+    expect(capture.at('warn')).toHaveLength(3);
+
+    vi.advanceTimersByTime(1_000);
+    flushLogRepeatSummaries();
+
+    const written = capture.at('warn');
+    expect(written).toHaveLength(4);
+    expect(written[3]).toMatchObject({
+      msg: 'Suppressed 2 repeats of: Probe failed',
+      suppressedRepeats: 2,
+      name: 'repeat-test',
+    });
+    // Written once: the window's own end has nothing left to report, and a
+    // second flush is a no-op.
+    flushLogRepeatSummaries();
+    vi.advanceTimersByTime(60_000);
+    expect(capture.at('warn')).toHaveLength(4);
+    // The identity starts a fresh window after the flush.
+    logger.warn('Probe failed');
     expect(capture.at('warn')).toHaveLength(5);
   });
 

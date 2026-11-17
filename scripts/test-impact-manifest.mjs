@@ -1720,11 +1720,6 @@ export const TEST_IMPACT_MANIFEST = Object.freeze([
     reason: 'native hidden-window documentation source seam',
   },
   {
-    pattern: 'src-desktop/tauri.beta.conf.json',
-    tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
-    reason: 'Beta hidden-window documentation source seam',
-  },
-  {
     pattern: 'src-desktop/tauri.nightly.conf.json',
     tests: ['scripts/__tests__/native-recovery-docs.test.ts'],
     reason: 'Nightly hidden-window documentation source seam',
