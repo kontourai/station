@@ -378,8 +378,11 @@ describe('ProjectRoomCoordinator', () => {
     w.finish('task-1', 'completed', 'Fixed the redirect and added a test.');
     first.db.close();
 
+    // Boot reconciliation alone posts it: no turn event will ever arrive.
     const second = w.open();
     await second.coordinator.reconcile();
+    expect(w.room.size).toBe(1);
+    // A late event and further passes (another restart) post nothing more.
     second.coordinator.observe('session-task-1');
     await second.coordinator.reconcile();
     const third = w.open();
