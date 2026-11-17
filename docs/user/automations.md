@@ -111,7 +111,11 @@ Templates only ask for work an agent can do with its workspace and tools.
   chat. A dedicated chat is your choice. To change or run an automation that
   runs in a chat, you must be able to send to that chat.
 - An automation acts as the person who created it; editing it does not change
-  that. Its Station tools act for that person too.
+  that. Its Station tools act for that person too. Project schedules are the
+  exception for now: each run is a Task that acts as the Station's operator,
+  whoever created the schedule
+  ([#5126](https://github.com/kontourai/station/issues/5126) changes that).
+  Who may change or run one is still decided by who created it.
 - Only an automation's owner, or an agent acting for them, can change, run,
   turn on or off, or delete it. You, signed in as the Station's operator on
   this computer or with the operator credential, can also manage any
