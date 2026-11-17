@@ -828,6 +828,7 @@ export interface AcpSessionRecord {
   promptEpoch: number;
   promptSettled?: Promise<void>;
   steering?: boolean;
+  steerFallbackObserved?: boolean;
   /** Invalidation generation captured when this session start was accepted. */
   generation: number;
   /** A `session.started` receipt was published and needs a terminal peer. */
@@ -906,7 +907,7 @@ export interface AcpSessionRecord {
    */
   openCodeEditGrant?: boolean;
   /** #3290: launches a replacement process for this session on a floor. */
-  relaunch?: (floor: OpenCodeApprovalFloor | undefined) => ACPProcess;
+  relaunch?: (floor: OpenCodeApprovalFloor | undefined) => Promise<ACPProcess>;
   /**
    * chat-host-images: a relaunch is starting a replacement engine that
    * shares this launch's temp folder; the old process dying meanwhile must
@@ -1963,15 +1964,15 @@ export class AcpAdapter implements ProviderAdapterShape {
     // merged into whatever inline configuration it already had; the same
     // launch is reused to move the session onto another floor.
     const launchEnv = registryLaunchEnvFor(config);
-    const openCode2 =
-      approvalControl === 'station' &&
-      (await this.openCodeLaunchVersion(config.command))?.major === 2;
     // Resolved once: a relaunch onto another approval floor keeps the same
     // session directory.
     const tmpDir = engineSessionTmpDir(input.threadId);
     // Shared by relaunches: the start's failure quotes whichever launch spoke last.
     const stderrTail = createStderrTail();
-    const launchProcess = (floor: OpenCodeApprovalFloor | undefined) =>
+    const launchProcess = (
+      floor: OpenCodeApprovalFloor | undefined,
+      openCode2: boolean,
+    ) =>
       processFactory({
         command: config.command,
         args: config.args,
@@ -2021,8 +2022,15 @@ export class AcpAdapter implements ProviderAdapterShape {
     // process exits while it is still this session's current process and no
     // relaunch is starting its replacement (which shares the folder; a
     // relaunch swaps `record.process` before destroying the old one).
-    const launch = (floor: OpenCodeApprovalFloor | undefined) => {
-      const engine = launchProcess(floor);
+    const launch = async (floor: OpenCodeApprovalFloor | undefined) => {
+      const openCode2 =
+        approvalControl === 'station' &&
+        (await this.openCodeLaunchVersion(config.command))?.major === 2;
+      if (openCode2 && floor === 'confined')
+        throw new ApprovalGovernanceRefusedError(
+          openCodeAcpApprovalUnsupportedReason('2.x'),
+        );
+      const engine = launchProcess(floor, openCode2);
       (
         engine as { once?: (event: string, listener: () => void) => unknown }
       ).once?.('exit', () => {
@@ -2051,7 +2059,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       });
       return engine;
     };
-    const acpProcess = launch(startApprovalFloor);
+    const acpProcess = await launch(startApprovalFloor);
     record.process = acpProcess;
     record.relaunch = launch;
     let settleStart!: () => void;
@@ -3583,7 +3591,9 @@ export class AcpAdapter implements ProviderAdapterShape {
     const record = this.sessions.get(threadId);
     if (!record) return undefined;
     const channel = resolveAcpSteerChannel(record.process.initResult).channel;
-    return channel === 'cancel-reprompt'
+    return channel === 'cancel-reprompt' ||
+      record.steerFallbackObserved ||
+      (channel === 'run-steer' && !record.acpActiveRunId)
       ? ACP_ENGINE_DURABILITY
       : {
           ...ACP_ENGINE_DURABILITY,
@@ -5082,7 +5092,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     }
     const cwd = record.session.cwd ?? '';
     const previous = record.process;
-    const next = record.relaunch(floor);
+    const next = await record.relaunch(floor);
     let configOptions: unknown[] | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
     record.relaunching = true;
@@ -6552,6 +6562,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     turnId: string,
     text: string,
   ): Promise<void> {
+    record.steerFallbackObserved = true;
     const previousPrompt = record.promptSettled;
     record.promptEpoch += 1;
     const promptEpoch = record.promptEpoch;

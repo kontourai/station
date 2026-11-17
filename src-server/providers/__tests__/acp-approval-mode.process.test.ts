@@ -361,6 +361,45 @@ describe.skipIf(process.platform === 'win32')(
       ).rejects.toMatchObject({ code: 'acp_approval_governance_refused' });
     });
 
+    test('a new managed 1.x binary gets its verified confined overlay after a 2.x full-access start', async () => {
+      process.env.FAKE_OPENCODE_VERSION = 'opencode v2.3.0';
+      h = harness('opencode');
+      await start(h, 'pin-switch', 'never', 'host');
+      const pinned = join(makeTempDir('station-acp-pin-switch-'), 'opencode');
+      writeFileSync(
+        pinned,
+        `#!/bin/sh\nFAKE_OPENCODE_VERSION='1.18.18' exec "${process.execPath}" "${FIXTURE}" "$@"\n`,
+      );
+      chmodSync(pinned, 0o755);
+      const parsed = parseManagedPolicyDocument({
+        schemaVersion: 1,
+        organization: 'Acme',
+        limits: {
+          engines: {
+            allowed: ['acp'],
+            instances: { acp: { locked: true, binaryPath: pinned } },
+          },
+        },
+      });
+      if (!parsed.ok) throw new Error(JSON.stringify(parsed.problems));
+      installManagedEngineLimits({
+        document: parsed.document,
+        summary: summarizeManagedPolicy(parsed.document),
+      });
+      try {
+        const result = await turn(h, 'pin-switch', 'run: echo must-ask', {
+          approvalMode: 'ask',
+          confinement: 'host',
+          answer: 'decline',
+        });
+        expect(result.asked).toBeDefined();
+        expect(JSON.stringify(result.started)).not.toContain('bash ran');
+        expect(buildRules(launches(h).at(-1))).toMatchObject({ 'bas?': 'ask' });
+      } finally {
+        installManagedEngineLimits(null);
+      }
+    });
+
     test("ruling R1 reads the version of the binary a managed policy's acp pin launches, not the connection's command", async () => {
       // The connection's own `opencode` is 1.x; the pinned one is 2.3.0.
       h = harness('opencode');

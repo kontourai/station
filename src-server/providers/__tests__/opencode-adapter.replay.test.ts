@@ -144,6 +144,7 @@ async function setup(
       return inner as unknown as ProviderAdapterShape;
     },
     nativeEnabled: () => true,
+    managedWorkspaceHomeDir: makeTempDir('opencode-replay-state-'),
     pool: leaser,
     versionProbe: {
       probe: async () => ({ major: 2, minor: 3, patch: 0, text: '2.3.0' }),
@@ -492,6 +493,44 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
       ),
     ).toMatchObject({ turnId, prompt: 'STEER-delivered' });
     await h.waitFor(completedFor(turnId));
+  });
+
+  test('a failed steer POST and early DELETE 404 retain custody across stop and resume', async () => {
+    const home = makeTempDir('opencode-custody-');
+    const h = await setup(
+      {
+        scenario: 'steer',
+        omit: withdrawnSteer,
+        respond: (r) => {
+          if (
+            r.method === 'POST' &&
+            (r.body as { delivery?: string })?.delivery === 'steer'
+          )
+            return { status: 500 };
+          if (r.method === 'DELETE' && r.path.includes('/inbox/'))
+            return { status: 404 };
+          return undefined;
+        },
+      },
+      { managedWorkspaceHomeDir: home },
+    );
+    const session = await h.start();
+    const { turnId } = await h.turn('DO_BASH steer');
+    await h.waitFor((e) => e.method === 'request.opened');
+    await expect(
+      h.adapter.steerTurn('thread-1', 'STEER-delivered', turnId),
+    ).rejects.toThrow('may still be queued');
+    await h.adapter.stopSession('thread-1');
+    const resumed = await setup(
+      { scenario: 'basic' },
+      { managedWorkspaceHomeDir: home },
+    );
+    await expect(
+      resumed.start(undefined, { resumeCursor: session.resumeCursor }),
+    ).rejects.toThrow('unconfirmed steering input');
+    expect(resumed.replay.made('POST', '/api/session/:id/prompt')).toHaveLength(
+      0,
+    );
   });
 
   test.each([204, 500])(
@@ -1228,7 +1267,7 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
             ? { status }
             : undefined,
       });
-      await h.start();
+      await h.start(undefined, { modelId: 'mock/mock-1' });
       const sending = h.adapter.sendTurn({
         threadId: 'thread-1',
         input: 'hello basic',
@@ -2173,50 +2212,67 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     ).toEqual([steerId]);
   });
 
-  test('a steer still in flight when the session stops is withdrawn once its prompt lands', async () => {
-    const steerId = 'msg_1d71b024d001crEY1solwrshJq';
-    let released = false;
-    let withdrawn = false;
-    const h = await setup({
-      scenario: 'steer',
-      omit: withdrawnSteer,
-      holdUntil: (request) => {
-        if (JSON.stringify(request.body ?? null).includes('STEER-delivered'))
-          return () => released;
-        // The stop's interrupt answers only once the steer, its prompt landed,
-        // has taken its own item back, so the stop's sweep runs after that:
-        // it must not take the item back a second time.
-        if (request.method === 'DELETE' && request.path.includes('/inbox/'))
-          withdrawn = true;
-        if (request.method === 'POST' && request.path.endsWith('/interrupt'))
-          return () => withdrawn;
-        return undefined;
-      },
-    });
-    await h.start();
-    const { turnId } = await h.turn('DO_BASH steer');
-    await h.waitFor((event) => event.method === 'request.opened');
-    const steer = h.adapter.steerTurn('thread-1', 'STEER-delivered', turnId);
-    await h.waitFor(
-      () => h.replay.made('POST', '/api/session/:id/prompt').length === 2,
-    );
-    // Refused as soon as its own withdrawal is done, which can be before
-    // the stop returns.
-    const refused = expect(steer).rejects.toBeInstanceOf(
-      ProviderTurnEndedError,
-    );
-    released = true;
-    await h.adapter.stopSession('thread-1');
-    await refused;
-    await h.waitFor(
-      () => h.replay.made('DELETE', '/api/session/:id/inbox/:id').length > 0,
-    );
-    expect(
-      h.replay
-        .made('DELETE', '/api/session/:id/inbox/:id')
-        .map((request) => request.path.split('/').at(-1)),
-    ).toEqual([steerId]);
-  });
+  test.each([204, 500])(
+    'a stopped in-flight steer keeps resume custody until withdrawal (%s)',
+    async (deleteStatus) => {
+      const home = makeTempDir('opencode-held-custody-');
+      let released = false;
+      const h = await setup(
+        {
+          scenario: 'steer',
+          omit: withdrawnSteer,
+          respond: (r) =>
+            r.method === 'DELETE' && r.path.includes('/inbox/')
+              ? { status: deleteStatus }
+              : undefined,
+          holdUntil: (r) =>
+            JSON.stringify(r.body ?? null).includes('STEER-delivered')
+              ? () => released
+              : undefined,
+        },
+        { managedWorkspaceHomeDir: home },
+      );
+      const session = await h.start();
+      const { turnId } = await h.turn('DO_BASH steer');
+      await h.waitFor((e) => e.method === 'request.opened');
+      const steering = h.adapter.steerTurn(
+        'thread-1',
+        'STEER-delivered',
+        turnId,
+      );
+      const outcome = steering.then(
+        () => 'delivered',
+        (error: unknown) => error,
+      );
+      await h.waitFor(
+        () => h.replay.made('POST', '/api/session/:id/prompt').length === 2,
+      );
+      await h.adapter.stopSession('thread-1');
+      const resumed = await setup(
+        {
+          scenario: 'basic',
+          fallbacks: ['mode-switch', 'catalog', 'mcp', 'reconnect'],
+          ungated: (r) => r.path === '/api/session',
+        },
+        { managedWorkspaceHomeDir: home },
+      );
+      await expect(
+        resumed.start(undefined, { resumeCursor: session.resumeCursor }),
+      ).rejects.toThrow('unconfirmed steering input');
+      released = true;
+      if (deleteStatus === 500) {
+        expect(String(await outcome)).toContain('withdrawal is unconfirmed');
+        await expect(
+          resumed.start(undefined, { resumeCursor: session.resumeCursor }),
+        ).rejects.toThrow('unconfirmed steering input');
+      } else {
+        expect(await outcome).toBeInstanceOf(ProviderTurnEndedError);
+        await expect(
+          resumed.start(undefined, { resumeCursor: session.resumeCursor }),
+        ).resolves.toBeDefined();
+      }
+    },
+  );
 
   test("the plan agent's deny survives Station's rules under Auto: OpenCode asks and Station rejects", async () => {
     const h = await setup({ scenario: 'plan-deny' });

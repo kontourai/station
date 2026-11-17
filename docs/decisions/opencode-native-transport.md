@@ -144,7 +144,7 @@ findings a to j):
 
 A new native session validates a requested `provider/model` selector against
 `GET /api/model` before creating the session. An unqualified, missing, or
-disabled model is refused. A subsequent turn switches through
+disabled model is refused. Every subsequent turn with an explicit selector switches through
 `POST /api/session/{id}/model` before sending its prompt. A failed switch sends
 no prompt and requires a confirmed model selection before more work. ACP
 fallback keeps its existing model; choosing another model requires a new chat.
@@ -157,8 +157,14 @@ that fallback; an explicit Steer interrupts the current step.
 After a native feed gap, only the exact steer message in history establishes
 delivery. Absence from the inbox alone is not an acknowledgement. If withdrawing
 a late steer fails, the session accepts no successor work and reports that the
-input may remain queued. A resume refuses a session with queued input until it
-is resolved in OpenCode.
+input may remain queued. Before each steer POST, Station records its id in a
+crash-safe journal under its runtime home (`engine-state/opencode-steers/`),
+scoped by the native data-home binding and session id. It clears the id only
+after a confirmed POST and delivery or withdrawal. An uncertain POST keeps
+the record even if a subsequent DELETE says 404: the POST may still finish
+later. A session with such a record cannot resume on either transport; start
+a new chat. The journal stores ids, never message text. A resume also refuses
+a session whose OpenCode inbox still has queued input.
 
 ## Server pool and isolation
 

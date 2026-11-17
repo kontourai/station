@@ -224,6 +224,7 @@ describe.skipIf(!real.binary)(
       adapter = new OpenCodeAdapter({
         getConnections: async () => [connection],
         nativeEnabled: () => true,
+        managedWorkspaceHomeDir: join(root, 'station'),
         // An Agent's staged pre-tool policy, as the runtime resolves it.
         acp: {
           resolvePreToolPolicy: async () => async (tool) =>
@@ -307,6 +308,7 @@ describe.skipIf(!real.binary)(
       const acpEvents: Event[] = [];
       const acp = new OpenCodeAdapter({
         nativeEnabled: () => false,
+        managedWorkspaceHomeDir: join(isolatedEnv.HOME!, 'station-acp'),
         getConnections: async () => [
           {
             id: 'real-acp',

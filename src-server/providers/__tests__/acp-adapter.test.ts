@@ -8043,7 +8043,13 @@ describe('AcpAdapter.steerTurn', () => {
       'thread-goose-steer',
       { connectionOverrides: gooseConnection, onProcess: asGoose },
     );
+    expect(
+      adapter.sessionDurability('thread-goose-steer')?.steerPlacement.state,
+    ).toBe('emulated');
     await announceGooseRun(processes[0]!, GOOSE_RUN);
+    expect(
+      adapter.sessionDurability('thread-goose-steer')?.steerPlacement.state,
+    ).toBe('native');
 
     await adapter.steerTurn('thread-goose-steer', 'go left', turn.turnId);
 
@@ -8224,6 +8230,7 @@ describe('AcpAdapter.steerTurn', () => {
       turn.turnId,
     );
     await sentCancel;
+    await new Promise<void>((resolve) => setImmediate(resolve));
     expect(proc.promptContents).toHaveLength(1);
     await expect(
       adapter.steerTurn('wait-cancel', 'a second steer', turn.turnId),

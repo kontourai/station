@@ -55,11 +55,13 @@ import {
   findOpenCodeProjectCode as defaultFindProjectCode,
   openCodeProjectCodeRefusal,
 } from '../../services/acp/opencode-project-config.js';
+import { openCodeSteerCustody } from '../../services/acp/opencode-steer-custody.js';
 import {
   sharedUntrustedContentLedger,
   untrustedContentAncestry,
 } from '../../services/plugins/untrusted-content-policy.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { resolveHomeDir } from '../../utils/paths.js';
 import {
   ApprovalGovernanceRefusedError,
   AttachmentInputUnsupportedError,
@@ -975,6 +977,12 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     config: ACPConnectionConfig,
   ): Promise<ProviderSession> {
     this.pumpInner();
+    if (isOpenCodeResumeCursor(input.resumeCursor))
+      openCodeSteerCustody(
+        this.options.managedWorkspaceHomeDir ?? resolveHomeDir(),
+        input.resumeCursor.bindingKey,
+        input.resumeCursor.sessionId,
+      ).assertClear();
     const acpInput = this.acpStartInput(input, config);
     const bindingKey = this.bindingKey(
       await (this.options.launchEnv ?? (() => augmentedSpawnEnv()))(),
@@ -1018,6 +1026,12 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       ? input.resumeCursor
       : undefined;
     const bindingKey = this.bindingKey(plan.env, input);
+    if (cursor)
+      openCodeSteerCustody(
+        this.options.managedWorkspaceHomeDir ?? resolveHomeDir(),
+        bindingKey,
+        cursor.sessionId,
+      ).assertClear();
     if (cursor && cursor.bindingKey !== bindingKey)
       throw new Error(
         'This OpenCode session belongs to another OpenCode data home or profile, so it cannot resume here.',
@@ -1111,6 +1125,11 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       () => undefined;
     let onMustStop: () => void = () => undefined;
     const native = new OpenCodeNativeSession({
+      steerCustody: openCodeSteerCustody(
+        this.options.managedWorkspaceHomeDir ?? resolveHomeDir(),
+        bindingKey,
+        sessionId!,
+      ),
       threadId: input.threadId,
       provider: this.provider,
       engineName: ENGINE_NAME,
@@ -1414,10 +1433,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
         'Select a model again to confirm the OpenCode session model before sending.',
         'unavailable',
       );
-    if (
-      input.modelId &&
-      (record.modelUnconfirmed || input.modelId !== record.session.model)
-    ) {
+    if (input.modelId) {
       const model = await this.assertModel(record.lease.client, input.modelId);
       try {
         await record.lease.client.request(
