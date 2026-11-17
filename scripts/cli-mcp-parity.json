@@ -1353,14 +1353,6 @@
       "exempt": "agent-self",
       "reason": "Brief for the caller's own dispatched session (route uses authority.caller.sessionId)."
     },
-    "list_project_library": {
-      "exempt": "agent-self",
-      "reason": "The caller's own Project Library (route uses authority.caller's recorded Project). People use the Project page's Files & connections."
-    },
-    "read_project_library_file": {
-      "exempt": "agent-self",
-      "reason": "One file from the caller's own Project Library (route uses authority.caller's recorded Project)."
-    },
     "get_task_events": {
       "cli": ["delegate events"]
     },
@@ -1457,6 +1449,10 @@
     "list_project_layouts": {
       "cli": ["projects layouts"],
       "note": "CLI layouts also creates/updates/deletes layouts; MCP is read-only."
+    },
+    "list_project_library": {
+      "exempt": "agent-self",
+      "reason": "The caller's own Project Library (route uses authority.caller's recorded Project). People use the Project page's Files & connections."
     },
     "list_project_s3_objects": {
       "missing": 4283,
@@ -1556,6 +1552,10 @@
     },
     "read_monitoring_events": {
       "cli": ["monitoring events", "insights events"]
+    },
+    "read_project_library_file": {
+      "exempt": "agent-self",
+      "reason": "One file from the caller's own Project Library (route uses authority.caller's recorded Project)."
     },
     "read_project_s3_object": {
       "missing": 4283,

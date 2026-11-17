@@ -4498,6 +4498,194 @@ function channelNavigationScreens(): Screen[] {
   );
 }
 
+/**
+ * #5067 / #5071: the Project Library on Files & connections and a new
+ * Project's Setup recommendations, both behind their Feature Previews. Each
+ * screen turns its preview on for the shot and restores the operator's
+ * previous choice afterwards. The Library's answer is a fixed fixture (an
+ * upload, a kept file and an orphaned one) so the shot is deterministic; the
+ * Setup card is the real card on a real new Project, with a chat
+ * continuation pending in this tab.
+ */
+const PROJECT_LIBRARY_SCENES = ['library', 'setup'] as const;
+
+function projectLibraryScreens(): Screen[] {
+  return PROJECT_LIBRARY_SCENES.flatMap((scene) =>
+    (['dark', 'light'] as const).flatMap((theme) =>
+      [DESKTOP, MOBILE].map((viewport): Screen => {
+        const width = viewport.width === DESKTOP.width ? 'desktop' : 'mobile';
+        const slug = `gallery-${scene}-${theme}-${viewport.width}`;
+        const previewId =
+          scene === 'library' ? 'project-library' : 'continue-in-project';
+        let request: ReturnType<typeof createAuthenticatedE2ERequest>;
+        let previousEnabled: boolean | undefined;
+        let projectCreated = false;
+        const screen: Screen = {
+          name: `project-${scene}-${theme}-${width}`,
+          title:
+            scene === 'library'
+              ? `Project Library — ${theme}, ${viewport.width}px`
+              : `Setup recommendations — ${theme}, ${viewport.width}px`,
+          path:
+            scene === 'library'
+              ? `/projects/${slug}?section=sources`
+              : `/projects/${slug}`,
+          viewport,
+          async beforeGoto(page) {
+            request = createAuthenticatedE2ERequest(page.request);
+            const previews = await request.get(
+              `${resolveE2EApiBase()}/api/feature-previews`,
+            );
+            expect(previews.ok()).toBe(true);
+            const preview = (await previews.json()).data.find(
+              (entry: { id: string }) => entry.id === previewId,
+            );
+            expect(preview).toBeDefined();
+            previousEnabled = preview.enabled;
+            const enabled = await request.put(
+              `${resolveE2EApiBase()}/api/feature-previews/${previewId}`,
+              { data: { enabled: true } },
+            );
+            expect(enabled.ok()).toBe(true);
+            const project = await request.post(
+              `${resolveE2EApiBase()}/api/projects`,
+              { data: { name: 'Quarterly research', slug } },
+            );
+            expect(project.ok()).toBe(true);
+            projectCreated = true;
+            const projectId = (await project.json()).data.id as string;
+            if (scene === 'library') {
+              await page.route(
+                `**/api/projects/${slug}/library`,
+                async (route) => {
+                  if (route.request().method() !== 'GET')
+                    return route.continue();
+                  await route.fulfill({
+                    json: {
+                      success: true,
+                      data: {
+                        version: 'project-library/v1',
+                        projectId,
+                        partial: false,
+                        truncated: false,
+                        items: [
+                          {
+                            kind: 'upload',
+                            relativePath: 'sources/interview-notes.md',
+                            byteLength: 18_432,
+                            mediaType: 'text/markdown',
+                            modifiedAt: '2026-11-14T16:20:00.000Z',
+                          },
+                          {
+                            kind: 'task-output',
+                            outputId: 'gallery-output-report',
+                            taskId: 'gallery-task-report',
+                            title: 'Findings report',
+                            fileName: 'findings-report.md',
+                            sourcePath: 'out/findings-report.md',
+                            mediaType: 'text/markdown',
+                            byteLength: 9_216,
+                            contentAvailable: true,
+                            createdAt: '2026-11-13T11:05:00.000Z',
+                            task: {
+                              state: 'present',
+                              title: 'Summarize the customer interviews',
+                            },
+                          },
+                          {
+                            kind: 'task-output',
+                            outputId: 'gallery-output-draft',
+                            taskId: 'gallery-task-deleted',
+                            title: 'Early draft',
+                            fileName: 'early-draft.txt',
+                            sourcePath: 'early-draft.txt',
+                            mediaType: 'text/plain',
+                            byteLength: 2_048,
+                            contentAvailable: true,
+                            createdAt: '2026-11-02T09:40:00.000Z',
+                            task: { state: 'orphaned' },
+                          },
+                        ],
+                      },
+                    },
+                  });
+                },
+              );
+            } else {
+              await page.addInitScript(
+                (savedAt) =>
+                  sessionStorage.setItem(
+                    'station.continue-in-project.pending',
+                    JSON.stringify({
+                      sessionId: 'gallery-session',
+                      turnId: 'gallery-turn',
+                      title: 'Continue: Quarterly research plan',
+                      description:
+                        'Continued from the chat “Quarterly research plan”.',
+                      savedAt,
+                    }),
+                  ),
+                new Date().toISOString(),
+              );
+            }
+          },
+          async afterGoto(page) {
+            await page.evaluate(
+              (selected) =>
+                document.documentElement.setAttribute('data-theme', selected),
+              theme,
+            );
+            if (scene === 'library') {
+              const list = page.getByRole('list', { name: 'Library files' });
+              await expect(list).toBeVisible();
+              await expect(list.getByText('Orphaned')).toBeVisible();
+              await expect(
+                list.getByRole('button', {
+                  name: 'From Summarize the customer interviews',
+                }),
+              ).toBeVisible();
+              await list.scrollIntoViewIfNeeded();
+            } else {
+              const card = page.getByRole('region', {
+                name: 'Setup recommendations',
+              });
+              await expect(card).toBeVisible();
+              await expect(
+                card.getByRole('checkbox', {
+                  name: /New Task: Continue: Quarterly research plan/,
+                }),
+              ).toBeChecked();
+              await expect(
+                card.getByRole('button', { name: 'Apply', exact: true }),
+              ).toBeVisible();
+              await card.scrollIntoViewIfNeeded();
+            }
+            await page.mouse.move(0, 0);
+          },
+          async cleanup() {
+            if (projectCreated) {
+              const removed = await request.delete(
+                `${resolveE2EApiBase()}/api/projects/${slug}`,
+              );
+              expect(removed.ok()).toBe(true);
+              projectCreated = false;
+            }
+            if (previousEnabled !== undefined) {
+              const restored = await request.put(
+                `${resolveE2EApiBase()}/api/feature-previews/${previewId}`,
+                { data: { enabled: previousEnabled } },
+              );
+              expect(restored.ok()).toBe(true);
+              previousEnabled = undefined;
+            }
+          },
+        };
+        return screen;
+      }),
+    ),
+  );
+}
+
 /** Real dock composition with an engine-owned child transcript, under a controlled provider. */
 function childChatScreens(): Screen[] {
   const parent = 'gallery-child-parent';
@@ -4930,6 +5118,7 @@ const SCREENS: Screen[] = [
   ...roomConversationScreens(),
   ...personMentionScreens(),
   ...channelNavigationScreens(),
+  ...projectLibraryScreens(),
   ...appsLibraryScreens(),
   ...appsLibraryScreens(true),
   ...projectRepositorySourceScreens(),
