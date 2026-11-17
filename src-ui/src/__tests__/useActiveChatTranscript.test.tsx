@@ -1723,7 +1723,9 @@ describe('useActiveChatTranscript', () => {
       await waitFor(() => expect(view.result.current.error).toBeTruthy());
       expect(view.result.current.catchingUp).toBe(false);
       expect(view.result.current.messages).toEqual([]);
-      expect(view.result.current.events).toEqual([]);
+      // The live tail's events stay available (e.g. to answer a live
+      // approval), as they do while catching up.
+      expect(view.result.current.events.length).toBeGreaterThan(0);
     });
 
     test('another authority never paints a cached window for the same conversation id', async () => {
