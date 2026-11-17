@@ -1717,8 +1717,9 @@ test('pasting an image into a Station-engine composer attaches it and sends it a
   // Visible in the composer itself, not behind the paperclip popover.
   const strip = page.getByRole('list', { name: 'Attached files' });
   await expect(strip).toBeVisible();
+  // The thumbnail is its Preview button; the image inside is decorative.
   await expect(
-    strip.getByRole('img', { name: 'pasted-screenshot.png' }),
+    strip.getByRole('button', { name: 'Preview pasted-screenshot.png' }),
   ).toBeVisible();
   const remove = strip.getByRole('button', {
     name: 'Remove pasted-screenshot.png',
