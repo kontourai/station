@@ -1,0 +1,11 @@
+{
+  "revision": "d6e7b35a63f0b841537cdf7f2b1e59548af366e7",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"TelemetryDelivery adds lastFailure.detail as plain text while product delivery has failed; no status, metric, or settings-structure claims change; usage-telemetry.md now states it.","inputs":["src-ui/src/views/settings/TelemetryDelivery.tsx"]},
+
+    {"path":"docs/guides/monitoring.md","note":"TelemetryDelivery adds lastFailure.detail as plain text while product delivery has failed; no status, metric, or settings-structure claims change; usage-telemetry.md now states it.","inputs":["src-ui/src/views/settings/TelemetryDelivery.tsx"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"TelemetryDelivery adds lastFailure.detail as plain text while product delivery has failed; no status, metric, or settings-structure claims change; usage-telemetry.md now states it.","inputs":["src-ui/src/views/settings/TelemetryDelivery.tsx"]}
+  ]
+}

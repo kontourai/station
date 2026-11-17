@@ -1,0 +1,7 @@
+{
+  "revision": "f4f9afcc931dc65cde5c95e2d6bae7fbbeb0cd55",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Adds the Archived toggle's style only.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.css"]}
+  ]
+}

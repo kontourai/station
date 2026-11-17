@@ -1,0 +1,7 @@
+{
+  "revision": "56b39aa885ac9d25a929748260dc5a6bb8385a53",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"The coverage matrix lists mobile-chat-composer for composer reachability with mocked responses; the change only finds the pasted image by its Preview button, so the row stays accurate.","inputs":["tests/mobile-chat-composer.spec.ts"]}
+  ]
+}

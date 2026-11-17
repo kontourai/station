@@ -1,0 +1,7 @@
+{
+  "revision": "1638ee7117ff20d565846ce0b879b59ffa4fb155",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"States the limit of the version PR probe process-group cleanup: a descendant that starts its own session is not covered. Matches scripts/version-pr-current.mjs.","inputs":["docs/guides/releasing.md"]}
+  ]
+}

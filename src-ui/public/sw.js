@@ -214,27 +214,61 @@ self.addEventListener('notificationclick', (event) => {
     return;
   }
 
-  // Default tap — focus an existing tab (navigating it to the deep link) or
-  // open a new one. Defaults to the attention inbox (/notifications) since
-  // that's the canonical landing surface for an approval-request push.
+  // Default tap — focus an existing tab and hand it the link, so the running
+  // app opens it in place (on the Station the link names) instead of
+  // reloading; a tab that does not answer (an older bundle, or one still
+  // loading) is navigated to the link instead. With no tab, open one.
   const targetUrl = sameOriginTarget(url);
   event.waitUntil(
     self.clients
       .matchAll({ type: 'window', includeUncontrolled: true })
       .then((clients) => {
-        const existing = clients.find((c) => c.focus);
+        const existing =
+          clients.find((c) => c.focused) ?? clients.find((c) => c.focus);
         if (existing) {
-          return Promise.resolve(existing.focus()).then(() => {
-            if ('navigate' in existing) {
+          return Promise.resolve(existing.focus())
+            .then(() => askClientToOpen(existing, targetUrl))
+            .then((handled) => {
+              if (handled || !('navigate' in existing)) return undefined;
               return existing.navigate(targetUrl).catch(() => undefined);
-            }
-            return undefined;
-          });
+            });
         }
         return self.clients.openWindow(targetUrl);
       }),
   );
 });
+
+/** How long a tab has to say it opened the link before it is navigated. */
+const OPEN_ANSWER_TIMEOUT_MS = 1500;
+
+/**
+ * Asks a tab's running app to open `targetUrl` (`station-notification-open`,
+ * answered by `NotificationStationOpener`). Resolves whether it answered.
+ */
+function askClientToOpen(client, targetUrl) {
+  if (
+    typeof client.postMessage !== 'function' ||
+    typeof MessageChannel === 'undefined'
+  )
+    return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const channel = new MessageChannel();
+    const timer = setTimeout(() => resolve(false), OPEN_ANSWER_TIMEOUT_MS);
+    channel.port1.onmessage = (message) => {
+      clearTimeout(timer);
+      resolve(Boolean(message.data?.handled));
+    };
+    try {
+      client.postMessage(
+        { type: 'station-notification-open', url: targetUrl },
+        [channel.port2],
+      );
+    } catch {
+      clearTimeout(timer);
+      resolve(false);
+    }
+  });
+}
 
 /**
  * The tap's destination as an absolute URL on this worker's own origin, or

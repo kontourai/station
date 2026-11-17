@@ -445,6 +445,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/new-chat-provider-managed.spec.ts',
     'tests/new-chat-mobile-context-sheet.spec.ts',
     'tests/chat-settings-and-task-notices.spec.ts',
+    'tests/notification-deep-link-opening.spec.ts',
     'tests/cross-runtime-chat-switching.spec.ts',
     'tests/daily-driver-scenarios.spec.ts',
     'tests/daily-driver-switching.spec.ts',
@@ -1710,7 +1711,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      '#2459 Agents pane child work: opened from the dock row, per-chat Claude Stop kept exactly once (the bridge retires since #2533 wired the cell), All scope with one Stop per running child showing a CLI delegate and a chatless subagent live with provenance, an exit read as No result, and the scope remembered across reload; #2510 at 390px the header ⋯ sheet’s Background tasks row (44px) opens the Background tasks sheet with the seeded running task.',
+      '#2459 Agents pane child work: opened from the dock row, per-chat Claude Stop kept exactly once (the bridge retires since #2533 wired the cell), All chats scope with one Stop per running child showing a CLI delegate and a chatless subagent live with provenance, an exit read as No result, and the scope remembered across reload; seeded running subagents and tool calls laid out at 380px and 600px in dark theme with actions clear of the text and All chats grouped by chat; #2510 at 390px the header ⋯ sheet’s Background tasks row (44px) opens the Background tasks sheet with the seeded running task.',
     exceptions: [],
   },
   {
@@ -1854,6 +1855,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'At a phone and a desktop width through the real dock: Chat Settings keeps Done inside the panel and hittable at any scroll position, its replay import is a styled button, and backgrounded-task settles arriving over the orchestration SSE seam use shared child-work disclosures with distinct outcomes and expandable results, a non-repeating successful command title, and no separate finished-task banners.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/notification-deep-link-opening.spec.ts',
+    bucket: 'product',
+    surface: 'Chat',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'At 390 and 1440 in light and dark, through the notification panel and the real dock: a held deep-linked conversation shows its opening identity and covers the previous transcript, a refused one says why with a keyboard-dismissable notice, and an imported conversation opened from the Inbox keeps its header and Continue over the pending open, with Continue reachable by Tab and sending the real continue-session launch.',
     exceptions: [],
   },
   {

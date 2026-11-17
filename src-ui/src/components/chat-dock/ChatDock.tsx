@@ -12,6 +12,7 @@ import type {
 } from './ChildChatNavigationContext';
 import { ChildChatOutlet } from './ChildChatNavigationContext';
 import '../chat/TaskShaping.css';
+import './ChatDockDeepLinkOpening.css';
 import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engine-capability-matrix';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
@@ -105,6 +106,7 @@ import { useChatDockKeyboardShortcuts } from '../../hooks/useChatDockKeyboardSho
 import { useChatDockState } from '../../hooks/useChatDockState';
 import { useChatInput } from '../../hooks/useChatInput';
 import { useCoarseNow } from '../../hooks/useCoarseNow';
+import { hasUploadsInFlight } from '../../hooks/useComposerAttachments';
 import { useConversationInboxSnapshot } from '../../hooks/useConversationInbox';
 import { useDerivedSessions } from '../../hooks/useDerivedSessions';
 import {
@@ -127,6 +129,7 @@ import {
   newChatIntentCarriesPayload,
   readNewChatIntent,
 } from '../../lib/newChatIntent';
+import { openingConversationLabel } from '../../lib/notificationStationOpen';
 import {
   OPEN_PROJECT_CHATS_EVENT,
   type OpenProjectChatsDetail,
@@ -163,6 +166,10 @@ import { useOptionalObservedWorkStatus } from '../../views/home/useObservedWorkS
 import { useWorkFacts } from '../../views/home/useWorkFacts';
 import type { ConversationOpenResult } from '../../views/home/work-item-open-policy';
 import { workStatusText } from '../../views/home/work-status';
+import {
+  threadInChat,
+  uniqueChatKey,
+} from '../../workspace-panes/agents/childWorkSelectors';
 import { agentRunnability } from '../agent-runnability';
 import { durableMentionAuthority } from '../chat/composer-mentions';
 import { publishReferenceableConversations } from '../chat/conversationReferenceDrag';
@@ -232,7 +239,7 @@ import {
 } from './sessionInventoryOccurrence';
 import { useAcknowledgeVisibleConversation } from './useAcknowledgeVisibleConversation';
 import { useChatDockActiveChatSync } from './useChatDockActiveChatSync';
-import { useChatDockOverlays } from './useChatDockOverlays';
+import { useChatDockOverlays, type WorkingParent } from './useChatDockOverlays';
 import { useChatDockViewModel } from './useChatDockViewModel';
 import {
   type ForkFollowUp,
@@ -957,10 +964,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const notifyTaskStarted = useTaskStartedNotice(collapseDockForNavigation);
 
   const childChatController = useRef<ChildChatController | null>(null);
-  const hostSessionRef = useRef<Pick<
-    ChatSession,
-    'id' | 'conversationId' | 'currentSessionId'
-  > | null>(null);
+  const hostSessionRef = useRef<WorkingParent | null>(null);
   const readerIntent = useRef(0);
   const pendingReaderOpen = useRef<{ accepted: boolean } | null>(null);
   const cancelReaderOpen = useCallback(() => {
@@ -1016,6 +1020,23 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     [cancelReaderOpenAndChildren, requestAuthority, workObservation],
   );
   const { setDeviceSetting } = useDeviceSettingsActions();
+  // A cold load names a chat the store already holds before the dock makes
+  // it the working chat. A child request waits for that, so its parent is
+  // matched against the chat it was opened from.
+  const requestedChatKey = useMemo(
+    () =>
+      activeChat
+        ? uniqueChatKey(
+            Object.fromEntries(
+              allSessions.map((session) => [session.id, session]),
+            ),
+            activeChat,
+          )
+        : undefined,
+    [activeChat, allSessions],
+  );
+  const workingParentPending =
+    requestedChatKey !== undefined && activeSessionId === null;
   const {
     importedSessionId,
     readerSurfaceIntent,
@@ -1058,6 +1079,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     hasConversationIntent: Boolean(activeChat),
     onReaderIntent: cancelReaderOpenAndChildren,
     hostSessionRef,
+    workingParentPending,
     composerMenuTriggerRef,
     setDeviceSetting,
     setShowNewChatModalState,
@@ -1554,6 +1576,14 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     // generic toast must not be suppressed in that case.
     isChatVisible: isPaneOpen && !readerCovered,
   });
+  // Start's first message is held here until its files stage; the composer
+  // shows it waiting rather than offering a second Send.
+  const startSendWaitsForUploads = Boolean(
+    pendingGoalSend &&
+      pendingGoalSend.sessionId === activeSessionId &&
+      pendingGoalSend.prompt !== undefined &&
+      (pendingGoalSend.files || pendingGoalSend.filesPhase),
+  );
   useEffect(() => {
     if (!pendingGoalSend) return;
     if (pendingGoalSend.authority && !pendingGoalSend.authority.isCurrent()) {
@@ -1589,12 +1619,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     if (pendingGoalSend.filesPhase === 'staging') return;
     if (pendingGoalSend.filesPhase === 'staged') {
       const stages = chatInput.attachmentStages;
-      if (
-        stages.some(
-          (stage) => stage.state === 'queued' || stage.state === 'uploading',
-        )
-      )
-        return;
+      if (hasUploadsInFlight(stages)) return;
       // A file this engine refused is not added (the composer says why); one
       // that did not stage stays with its retry. Either way the message
       // waits in the composer for the person instead of going without it.
@@ -1670,8 +1695,31 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     sessionModel: activeSession?.model,
     agentDefaultModel: agentDefaultModelId,
   });
+  // The working chat runs on this Station: a host route, or a chat of this
+  // Station that needs no route (a local chat resolves none).
+  const hostBound = Boolean(
+    activeSession &&
+      (conversationConnection
+        ? conversationConnection.routeKind === 'host'
+        : chatBelongsToStation(activeSession)),
+  );
+  // A child request names its reporting session. It is this chat's when
+  // that session is, by the Agents pane's own rule (`threadInChat`): this
+  // chat's ids, or an earlier session of its conversation.
   hostSessionRef.current =
-    conversationConnection?.routeKind === 'host' ? activeSession : null;
+    hostBound && activeSession
+      ? {
+          id: activeSession.id,
+          owns: threadInChat(
+            {
+              sessions: orchestrationSessions,
+              chatKeyFor: (threadId) =>
+                uniqueChatKey(activeChatsStore.getSnapshot(), threadId),
+            },
+            activeSession.id,
+          ),
+        }
+      : null;
   const initialChildChat = useMemo<ChildChatTarget | undefined>(() => {
     if (
       !readerSurfaceIntent?.session ||
@@ -1681,7 +1729,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     const workingParent =
       importedSessionId === null &&
       readerSurfaceIntent.workingSessionId === activeSessionId &&
-      conversationConnection?.routeKind === 'host';
+      hostBound;
     if (!workingParent && readerSurfaceIntent.session !== importedSessionId)
       return;
     return {
@@ -1709,6 +1757,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     readerSurfaceIntent,
     importedSessionId,
     activeSessionId,
+    hostBound,
     conversationConnection,
     apiBase,
     requestAuthority,
@@ -2867,7 +2916,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     };
   }, [beginReaderOpen]);
   // Sync activeChat (conversationId) from URL to local state
-  useChatDockActiveChatSync({
+  const { pendingChat: openingChat } = useChatDockActiveChatSync({
     activeChat,
     agentCatalogKey: agents
       .map((agent) => agent.slug)
@@ -2882,6 +2931,18 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     updateParams,
     showSurface,
   });
+  // The dock still holds the conversation it showed before; until the one
+  // the URL names opens, cover it with the opening state.
+  const coveringStaleChat =
+    openingChat !== null &&
+    activeSession?.conversationId !== openingChat &&
+    activeSession?.id !== openingChat;
+  // The opening state replaces the previous conversation everywhere it is
+  // named: the header, the inbox selection and the This Chat card. A draft
+  // or an imported session in front of it keeps its own identity.
+  const showOpeningIdentity =
+    coveringStaleChat && !showNewChatModal && !importedSessionId;
+  const openingLabel = openingConversationLabel(openingChat);
 
   useEffect(() => {
     const openProjectChats = (event: Event) => {
@@ -3727,14 +3788,14 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   // covered chat's route and the dock's destination controls would
                   // disagree with the draft's own project chip (the one destination).
                   stationName={
-                    showNewChatModal
+                    showNewChatModal || showOpeningIdentity
                       ? undefined
                       : activeSession?.stationBinding?.affinity.kind !== 'host'
                         ? activeSession?.stationBinding?.stationName
                         : undefined
                   }
                   routeLabel={
-                    showNewChatModal
+                    showNewChatModal || showOpeningIdentity
                       ? undefined
                       : activeOrchestrationSession?.modelRoute?.label
                   }
@@ -3751,16 +3812,21 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       ? newChatDraftTitle
                       : importedSessionId
                         ? importedTitle
-                        : activeSession?.title === 'New chat' &&
-                            activeOrchestrationSession?.displayTitle
-                          ? activeOrchestrationSession.displayTitle
-                          : activeSession?.title || 'Chat'
+                        : showOpeningIdentity
+                          ? openingLabel
+                          : activeSession?.title === 'New chat' &&
+                              activeOrchestrationSession?.displayTitle
+                            ? activeOrchestrationSession.displayTitle
+                            : activeSession?.title || 'Chat'
                   }
                   // station#3309: same identity the desktop header leads with,
                   // from the same session-committed slug — artwork only when the
                   // catalog resolved this agent, identicon from the slug otherwise.
                   agentIdentity={
-                    !showNewChatModal && !importedSessionId && activeSession
+                    !showNewChatModal &&
+                    !importedSessionId &&
+                    !showOpeningIdentity &&
+                    activeSession
                       ? {
                           name:
                             activeChatAgent?.name ?? activeSession.agentName,
@@ -3770,7 +3836,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       : null
                   }
                   sessionProjectMismatchLabel={
-                    showNewChatModal
+                    showNewChatModal || showOpeningIdentity
                       ? undefined
                       : visibleSessionProjectMismatchLabel
                   }
@@ -3959,6 +4025,14 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                           ref={setImportedActionSlot}
                         />
                       </>
+                    ) : showOpeningIdentity ? (
+                      <div className="chat-dock__active-identity">
+                        <div className="chat-dock__active-identity-text">
+                          <span className="chat-dock__active-identity-title">
+                            {openingLabel}
+                          </span>
+                        </div>
+                      </div>
                     ) : activeSession ? (
                       <ChatDockActiveIdentity
                         // D3: a reopened chat's tab is titled "New chat" until its
@@ -4099,8 +4173,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                           projectAccentBySlug,
                           projectIconBySlug,
                           openChatSessionIds: openInboxChatSessionIds,
-                          activeChatSessionId:
-                            importedSessionId ?? activeSessionId,
+                          activeChatSessionId: showOpeningIdentity
+                            ? null
+                            : (importedSessionId ?? activeSessionId),
                           triggerRef: inboxTriggerRef,
                           onClose: closeMobileInbox,
                           onFocusChat: focusSessionInPane,
@@ -4146,8 +4221,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                             projectAccentBySlug,
                             projectIconBySlug,
                             workFacts,
-                            activeChatSessionId:
-                              importedSessionId ?? activeSessionId,
+                            activeChatSessionId: showOpeningIdentity
+                              ? null
+                              : (importedSessionId ?? activeSessionId),
                             openChatSessionIds: openInboxChatSessionIds,
                             onFocusChat: focusSessionInPane,
                             onOpenConversation:
@@ -4553,6 +4629,19 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                               />
                             </ConversationHeaderActionSlot.Provider>
                           ) : null}
+                          {/* A deep link (a notification tap) is opening another
+                      conversation: say so instead of showing the previous one
+                      until it opens. */}
+                          {workspaceShown &&
+                          coveringStaleChat &&
+                          !showNewChatModal &&
+                          !importedSessionId ? (
+                            <SkeletonBlock
+                              count={2}
+                              label={openingLabel}
+                              className="chat-dock__deep-link-opening"
+                            />
+                          ) : null}
                           {/* The chat the draft opened over stays mounted under it,
                       hidden and inert, so its form answers, reply text and
                       scroll survive a draft that is dismissed. */}
@@ -4561,8 +4650,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                           !importedSessionId ? (
                             <div
                               className="chat-dock__covered-chat"
-                              hidden={showNewChatModal}
-                              inert={showNewChatModal}
+                              hidden={showNewChatModal || coveringStaleChat}
+                              inert={showNewChatModal || coveringStaleChat}
                             >
                               <ChatDockContentArea
                                 connection={conversationConnection}
@@ -4647,6 +4736,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                                 onComposerEnabledChange={
                                   onComposerEnabledChange
                                 }
+                                sendQueuedForUploads={startSendWaitsForUploads}
                                 secondaryActions={secondaryActions}
                                 onOpenAgentHandoff={() =>
                                   openConversationHandoff(
@@ -4685,7 +4775,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       </div>
                     </div>
                     {sessionContextCardPresence.mounted &&
-                    sessionContextCardRenderedProps ? (
+                    sessionContextCardRenderedProps &&
+                    !showOpeningIdentity ? (
                       <LazyBoundary
                         load={loadSessionContextCard}
                         // A regrow mounts it in the commit that starts the chip's

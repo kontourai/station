@@ -10,8 +10,8 @@ import {
 
 /**
  * The splash in `index.html` paints before any app module runs, so the
- * channel the native host reports cannot reach it. A nightly, beta or dev
- * install must still open on its own mark, not the stable one: this loads the
+ * channel the native host reports cannot reach it. A nightly or dev install
+ * must still open on its own mark, not the stable one: this loads the
  * real `index.html`, `startup-theme.js` and `startup-screen.css` in Chromium,
  * with the app entry stubbed so nothing after first paint can intervene, and
  * reads which image the splash logo actually shows.
@@ -80,7 +80,7 @@ describe.skipIf(!chromiumAvailable)('first-paint splash mark', () => {
     }
   }
 
-  test.each(['nightly', 'beta', 'dev'])(
+  test.each(['nightly', 'dev'])(
     'a %s install opens on its own mark',
     async (channel) => {
       const { content, requested } = await splash(channel);
@@ -89,8 +89,9 @@ describe.skipIf(!chromiumAvailable)('first-paint splash mark', () => {
     },
   );
 
-  test('stable, a first launch, or an unknown value keeps the stable mark', async () => {
-    for (const remembered of ['stable', null, 'violet']) {
+  test('stable, a first launch, an unknown value or the retired beta mark keeps the stable mark', async () => {
+    // #4929 retired Beta: a mark an older Beta install remembered is unknown.
+    for (const remembered of ['stable', null, 'violet', 'beta']) {
       const { content, requested, mark } = await splash(remembered);
       expect(mark).toBeNull();
       expect(content).toBe('normal');

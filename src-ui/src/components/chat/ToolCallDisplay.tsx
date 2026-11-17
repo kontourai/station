@@ -79,11 +79,13 @@ import {
   type ToolCallKind,
   toolCallPhase,
 } from './tool-call-labels';
+import type { ToolCallLike } from './tool-call-runs';
 import { toolDisplayView } from './tool-display-view';
 import {
   type ApprovalContentGate,
   useApprovalContent,
 } from './useApprovalContent';
+import { useCallWithObservedRunning } from './useObservedRunningToolCalls';
 
 const loadTranscriptMCPApp = () => import('./TranscriptMCPApp');
 
@@ -1401,10 +1403,20 @@ function rememberToggle(key: string, expanded: boolean): void {
 export const ToolCallDisplay = memo(function ToolCallDisplay(
   props: ToolCallDisplayProps,
 ) {
+  // A call still running in the background reads as running, as its tool
+  // batch and the Agents pane read it, not as "No result recorded".
+  // ToolCallData is the narrower view of the same transcript part.
+  const toolCall = useCallWithObservedRunning(
+    props.toolCall as ToolCallLike,
+  ) as ToolCallData;
   return (
-    <TranscriptAppTools calls={[props.toolCall]}>
+    <TranscriptAppTools calls={[toolCall]}>
       {(appTools) => (
-        <ToolCallDisplayComponent {...props} appTools={appTools} />
+        <ToolCallDisplayComponent
+          {...props}
+          toolCall={toolCall}
+          appTools={appTools}
+        />
       )}
     </TranscriptAppTools>
   );
