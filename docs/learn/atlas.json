@@ -59,6 +59,7 @@
         "TurnDeduplicator",
         "SessionMessageDelivery",
         "SessionDigest",
+        "ToolProgressCompaction",
         "CoordinatorWakeDelivery",
         "WorkClaimStore",
         "AdoptionLedger",
