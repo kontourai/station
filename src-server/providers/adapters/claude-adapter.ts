@@ -59,6 +59,7 @@ import type {
   Prerequisite,
 } from '@kontourai/station-contracts/tool';
 import {
+  type ChildWorkloadNotice,
   type ChildWorkloadOutcome,
   childWorkloadMemoryExhausted,
 } from '@kontourai/station-shared/child-workload';
@@ -298,6 +299,10 @@ import {
   sweepStaleSkillOverlays,
 } from './claude-skills-overlay.js';
 import { applyEngineProxyAuthPrerequisite } from './engine-proxy-auth-prerequisite.js';
+import {
+  EngineWorkloadNotices,
+  workloadNoticeWarning,
+} from './engine-workload-notices.js';
 import { externalPreToolPolicyIdentity } from './external-pre-tool-policy-identity.js';
 import { claudeAnswers, claudeInputRequest } from './harness-questions.js';
 import {
@@ -825,6 +830,13 @@ type ClaudeSessionRecord = {
   lastDispatchedTurnId?: string;
   /** Stops observing the engine process's exit. */
   stopWatchingEngineExit?: () => void;
+  /**
+   * #5113: workload notices the engine has not been told yet, drained into
+   * its context by the PostToolUse, PostToolUseFailure and UserPromptSubmit
+   * hooks; and the unsubscribe from the engine process's notices.
+   */
+  workloadNotices?: EngineWorkloadNotices;
+  stopWatchingWorkloadNotices?: () => void;
   promptQueue: AsyncUserMessageQueue;
   query: Query;
   mcpServers: Record<string, McpServerConfig>;
@@ -2177,6 +2189,62 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     };
   }
 
+  /**
+   * #5113: a transition in this engine's own workload scope. The transcript
+   * shows it at once as a `runtime.warning`; the engine is told at its next
+   * tool result (PostToolUse/PostToolUseFailure `additionalContext`, which
+   * Claude Code adds to the model's context as a system reminder) or, when
+   * no tool runs first, with its next prompt (UserPromptSubmit).
+   */
+  private receiveWorkloadNotice(
+    record: ClaudeSessionRecord,
+    notice: ChildWorkloadNotice,
+  ): void {
+    const threadId = record.session.threadId;
+    if (
+      record.stopping ||
+      record.engineExit ||
+      this.sessions.get(threadId) !== record
+    )
+      return;
+    record.workloadNotices?.receive(notice);
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId,
+      createdAt: new Date().toISOString(),
+      method: 'runtime.warning',
+      ...(record.activeTurnId ? { turnId: record.activeTurnId } : {}),
+      ...workloadNoticeWarning(notice),
+    });
+  }
+
+  /** The hook result, carrying any workload notices the engine has not seen. */
+  private withWorkloadNotices(
+    threadId: string,
+    hookEventName: 'PostToolUse' | 'PostToolUseFailure' | 'UserPromptSubmit',
+    delivery: 'mid-turn' | 'turn-start',
+  ) {
+    const record = this.sessions.get(threadId);
+    const notices =
+      record && !record.stopping && !record.engineExit
+        ? record.workloadNotices
+        : undefined;
+    const batch = notices?.take();
+    if (!notices || !batch) return { continue: true };
+    notices.delivered(batch, delivery);
+    return {
+      continue: true,
+      hookSpecificOutput: { hookEventName, additionalContext: batch.text },
+    };
+  }
+
+  private endWorkloadNotices(record: ClaudeSessionRecord): void {
+    record.stopWatchingWorkloadNotices?.();
+    record.stopWatchingWorkloadNotices = undefined;
+    record.workloadNotices?.end();
+  }
+
   private publishNetworkDenial(
     threadId: string,
     message: string,
@@ -2822,6 +2890,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       commitHostImageLaunch();
       record.stopWatchingEngineExit = engineProcess.onExit((exit) =>
         this.observeEngineExit(record, exit),
+      );
+      record.workloadNotices = new EngineWorkloadNotices('claude');
+      record.stopWatchingWorkloadNotices = engineProcess.onWorkloadNotice(
+        (notice) => this.receiveWorkloadNotice(record, notice),
       );
       record.streamTask = this.consumeMessages(record);
 
@@ -3926,6 +3998,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // callback never hangs on a stopped session (mirrors acp-adapter, archive#148).
     this.cancelPendingRequests(record, threadId);
     record.stopping = true;
+    this.endWorkloadNotices(record);
     record.promptQueue.close();
     record.query.close();
     await record.engineProcess?.terminate();
@@ -5241,8 +5314,40 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                   : undefined;
                 if (delegatedTool && DELEGATED_RESULT_TOOLS.has(delegatedTool))
                   ledger.carryDescendantRead(input.threadId);
-                return { continue: true };
+                return this.withWorkloadNotices(
+                  input.threadId,
+                  'PostToolUse',
+                  'mid-turn',
+                );
               },
+            ],
+          },
+        ],
+        // #5113: a failed command (one the kernel killed, often) is where a
+        // pending workload notice matters most.
+        PostToolUseFailure: [
+          {
+            hooks: [
+              async () =>
+                this.withWorkloadNotices(
+                  input.threadId,
+                  'PostToolUseFailure',
+                  'mid-turn',
+                ),
+            ],
+          },
+        ],
+        // #5113: a notice that arrived while no tool ran reaches the engine
+        // with its next prompt.
+        UserPromptSubmit: [
+          {
+            hooks: [
+              async () =>
+                this.withWorkloadNotices(
+                  input.threadId,
+                  'UserPromptSubmit',
+                  'turn-start',
+                ),
             ],
           },
         ],
@@ -5567,6 +5672,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     if (record.stopping || record.engineExit) return;
     record.engineExit = exit;
     record.stopWatchingEngineExit?.();
+    this.endWorkloadNotices(record);
     // The stream already ended (stdout closed before the exit was seen):
     // nothing else will record this death.
     if (record.streamEnded) {

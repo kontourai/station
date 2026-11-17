@@ -3433,6 +3433,8 @@ export class CodexAdapter implements ProviderAdapterShape {
         ),
       };
     };
+    // #5113: workload notices that arrived while no turn ran.
+    const workloadNotices = record.workloadNotices?.take();
     let result: ProviderTurnStartResult;
     try {
       result = await this.transport.sendRequest(
@@ -3441,6 +3443,15 @@ export class CodexAdapter implements ProviderAdapterShape {
         {
           threadId: record.codexThreadId,
           input: [
+            ...(workloadNotices
+              ? [
+                  {
+                    type: 'text',
+                    text: workloadNotices.text,
+                    text_elements: [],
+                  },
+                ]
+              : []),
             ...(input.input
               ? [
                   {
@@ -3468,6 +3479,8 @@ export class CodexAdapter implements ProviderAdapterShape {
         },
         { mapResult: acceptTurn },
       );
+      if (workloadNotices)
+        record.workloadNotices?.delivered(workloadNotices, 'turn-start');
       // Applies to this turn and every later one (TurnStartParams), and
       // replaces a permission profile (#3800).
       if (sandboxPolicy) {
@@ -3480,6 +3493,7 @@ export class CodexAdapter implements ProviderAdapterShape {
         model_options: hasModelOptions ? 'applied' : 'none',
       });
     } catch (error) {
+      if (workloadNotices) record.workloadNotices?.restore(workloadNotices);
       if (hasModelOptions) {
         providerOps.add(1, {
           operation: 'adapter-model-options',

@@ -122,6 +122,7 @@ const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
     ['provider_session_starting', 'busy', true],
     ['provider_turn_in_progress', 'busy', true],
     ['resource_engine_start_capacity', 'busy', true],
+    ['project_held', 'conflict', false],
     ['session-reattach-conflict', 'conflict', false],
     ['session_ended', 'session_gone', false],
     ['managed-policy-approval-ceiling', 'permission_denied', false],
@@ -130,6 +131,8 @@ const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
     ['session_start_in_flight', 'busy', true],
     ['transcript-line-skipped', 'warning', false],
     ['workload-command-oom-killed', 'warning', false],
+    ['workload-memory-pressure', 'warning', false],
+    ['workload-memory-pressure-cleared', 'warning', false],
   ];
 
 describe('provider failure wire contract', () => {

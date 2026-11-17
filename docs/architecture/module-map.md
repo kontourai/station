@@ -5115,7 +5115,18 @@ read from cgroup v2 files, including each scope's kernel `oom_kill` count
 normally killed). The launcher's 1 s poll logs each kill as it sees it with
 the scope's largest processes, reports near-cap memory pressure on entering
 and leaving it, and raises an engine's commands' `oom_score_adj` above the
-engine's so the kernel takes a command first. Orchestration's first-turn composition adds the
+engine's so the kernel takes a command first. Each pressure transition and
+each kill announced while the engine lives is also a workload notice to the
+engine process's subscribers (`watchChildWorkloadNotices`), never one per poll;
+WorkloadResources knows no adapter. The
+[engine notice queue](../../src-server/providers/adapters/engine-workload-notices.ts)
+words, coalesces and counts them per session, and each adapter delivers through
+its own channel: Claude through the `additionalContext` of its next
+`PostToolUse`/`PostToolUseFailure` hook (a system reminder after the next tool
+result) or, with no tool first, its next `UserPromptSubmit`; Codex through a
+`turn/steer` into the running turn or, between turns or when refused, an extra
+input item of the next `turn/start`. Both adapters also publish a
+`runtime.warning` the transcript shows at once. Orchestration's first-turn composition adds the
 budget statement for adapters declaring `workloadScope: 'engine-process'`
 (omitted, with the chat-images line, when the Session's `session.started`
 records that its engine resumed an existing native transcript, which already
