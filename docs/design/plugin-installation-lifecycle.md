@@ -339,6 +339,17 @@ recovered first, from leaves to parent. Changed bytes, grants, dependency
 selections, or activation evidence require a new preview or a reviewed original
 source. A previously ready installation is not a pending recovery candidate.
 
+An activation that outruns the runtime's activation deadline, or fails after
+the installation is saved, also leaves a pending recovery candidate. The
+deadline releases the configuration queues, the epoch bump bars the abandoned
+pass from publishing, and its activation session closes; neither
+reconciliation nor a restart reopens admission. The install, update or
+recovery answers `202` with a receipt that says the plugin is not active and
+must be recovered, and the client offers that recovery on the plugin's row.
+Finishing such an activation without a person (continuing the stopped pass
+under the queues, or replaying the recorded decision at startup) is not
+implemented: it would change the fresh-decision rule above.
+
 Real process tests terminate the installer before host effects, after host effects,
 and before ready publication. Fresh processes exercise original-source recovery,
 alias-free retained recovery, and dependency-first graph recovery with data
