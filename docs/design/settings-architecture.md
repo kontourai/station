@@ -504,6 +504,11 @@ moment someone added one. `PROJECT_OVERRIDE_FIELD_ALIASES` records the one
 name the two sides spell differently; neither side is being renamed, because
 a rename on either is a stored-data migration.
 
+The Project brief and model fields (`goal`, `instructions`,
+`coordinatorEffort`, `taskProviderId`, `taskModel`, `taskEffort`; #5062, #5068)
+are likewise Project fields, edited in Project settings → Brief and Models and
+effort behind the `project-coordination` preview, never Station overrides.
+
 A Project's new-chat selections (`defaultModelSelection`,
 `defaultApprovalMode`, `defaultApprovalModeSelection`;
 `packages/contracts/src/project-chat-defaults.ts`) are Project fields edited in
