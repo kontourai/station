@@ -7,6 +7,7 @@ import {
 } from '@kontourai/station-contracts/pull-request-feedback';
 import {
   getConversationPullRequestFeedback,
+  getPullRequestFeedbackByPullRequest,
   pullRequestFeedbackOwnerOf,
   readPullRequestFeedbackCapability,
   sendPullRequestFeedbackAgain,
@@ -163,4 +164,42 @@ export function usePullRequestFeedback(conversationId: string) {
         ),
       ),
   };
+}
+
+/**
+ * One pull request's feedback, whichever chat is open (the pull request
+ * panel's strip and its check rows). Never read unless the preview is on
+ * and the host serves it; re-read every 30 s while mounted.
+ */
+export function usePullRequestFeedbackByPullRequest(
+  identity: PullRequestLinkIdentity,
+) {
+  const scope = useHostRequestAuthorityScope();
+  const preview = useSurfaceVisibilityFlags().has(
+    PULL_REQUEST_FEEDBACK_PREVIEW_ID,
+  );
+  const capability = useQuery({
+    queryKey: ['pull-request-feedback-capability', scope?.apiBase],
+    queryFn: () => readPullRequestFeedbackCapability(scope!.apiBase),
+    enabled: preview && !!scope?.isCurrent(),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const exact = identityOf(identity);
+  return useQuery({
+    queryKey: [
+      'pull-request-feedback-by-pull-request',
+      scope?.apiBase,
+      scope?.authorityKey,
+      pullRequestFeedbackKey(exact),
+    ],
+    queryFn: ({ signal }) =>
+      getPullRequestFeedbackByPullRequest(scope!.apiBase, exact, {
+        signal,
+        requestScope: scope!,
+      }),
+    enabled: preview && capability.data === true && !!scope?.isCurrent(),
+    refetchInterval: REFRESH_MS,
+    retry: false,
+  });
 }
