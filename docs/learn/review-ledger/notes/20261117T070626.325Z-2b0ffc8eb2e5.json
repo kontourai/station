@@ -1,0 +1,7 @@
+{
+  "revision": "5c4dce776c4401e9e671a3ed5f9029f025b4bc41",
+
+  "notes": [
+    {"path":"docs/guides/browser-workspace.md","note":"Edited in round 2: states the blank-tab refusal applies on every Chrome version and that an agent shows generated HTML with html_preview or html_render (both exist in station-control-html-reply-tools.ts). Checked against EVALUATE_ON_BLANK_PAGE in browser-automation.ts and the evaluate tool description.","inputs":["docs/guides/browser-workspace.md"]}
+  ]
+}
