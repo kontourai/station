@@ -1,0 +1,7 @@
+{
+  "revision": "4ed2c09f36c9e556c51032d2f3fa0c393c1ee7b1",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Added that with the preview on owned rows offer Settle not Dismiss and Hide is a per-person host record using the same row/tray/Details placement (close action id unchanged in inbox-row-actions.ts). Show older reuses the existing ghost show-more Button class; responsive and mobile CSS ratchets pass.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/useInboxGroups.ts"]}
+  ]
+}
