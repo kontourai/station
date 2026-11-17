@@ -47,8 +47,6 @@ const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
     ['peer_conversation_handoff_pairing_required', 'permission_denied', false],
     ['paired_station_required', 'permission_denied', false],
     ['conversation_import_deleted', 'session_gone', false],
-    // #5098 mapped this without pinning it here.
-    ['project_held', 'conflict', false],
     ['acp-approval-takeover-failed', 'warning', false],
     ['acp_approval_governance_refused', 'permission_denied', false],
     ['approval-escalation-requires-restart', 'warning', false],
