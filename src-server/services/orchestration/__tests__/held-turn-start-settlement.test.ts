@@ -338,6 +338,62 @@ describe('a turn start held over an engine exit', () => {
     expect(h.adapter.sends.map((sent) => sent.input)).toEqual(['real work']);
   });
 
+  // Reachable only if `engineEnded` was wrong: the store then holds
+  // started, recovery abort, banner, completed for one turn. Every fact is
+  // kept; the person is told the turn finished after all.
+  test('a completion arriving after the turn was recorded as interrupted is logged and shown', async () => {
+    const h = await boot();
+    h.adapter.onSend = async (input) => {
+      await h.persisted(
+        h.adapter.turnStarted(THREAD, 'turn-late', input.invocationId),
+      );
+      throw new Error('socket hang up');
+    };
+    await h.outcome('real work');
+    // Wrongly judged gone: no exit was reported.
+    h.adapter.engineEnded = () => true;
+    h.adapter.onSend = undefined;
+    await h.outcome('second');
+    expect(h.banner()).toBeDefined();
+    h.adapter.events.push({
+      eventId: 'late-done',
+      provider: 'claude',
+      threadId: THREAD,
+      turnId: 'turn-late',
+      createdAt: new Date().toISOString(),
+      method: 'turn.completed',
+      outputText: 'done after all',
+    } as CanonicalRuntimeEvent);
+    await h.persisted('late-done');
+    await h.persisted('turn-completed-after-interruption:late-done');
+    const notice = h.store
+      .listEvents(THREAD)
+      .find(
+        (event) => event.id === 'turn-completed-after-interruption:late-done',
+      );
+    expect(notice?.payload).toMatchObject({
+      method: 'runtime.warning',
+      code: 'turn-completed-after-interruption',
+      turnId: 'turn-late',
+    });
+    expect(
+      h.warned('A turn recorded as interrupted reported that it completed'),
+    ).toHaveLength(1);
+    const order = h.store
+      .listEvents(THREAD)
+      .filter((event) =>
+        ['turn.aborted', 'turn.completed', 'runtime.warning'].includes(
+          (event.payload as { method: string }).method,
+        ),
+      )
+      .map((event) => (event.payload as { method: string }).method);
+    expect(order).toEqual([
+      'turn.aborted',
+      'turn.completed',
+      'runtime.warning',
+    ]);
+  });
+
   test('the engine exited between the request and its confirmation: its exit retires the claim', async () => {
     const h = await boot();
     h.adapter.onSend = async () => {

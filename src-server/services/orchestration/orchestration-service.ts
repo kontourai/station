@@ -179,7 +179,10 @@ import {
   validateInputRequestContent,
 } from '@kontourai/station-shared/input-request';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
-import { TURN_ENGINE_ENDED_MESSAGE } from '@kontourai/station-shared/runtime-event-projection';
+import {
+  TURN_COMPLETED_AFTER_INTERRUPTION_CODE,
+  TURN_ENGINE_ENDED_MESSAGE,
+} from '@kontourai/station-shared/runtime-event-projection';
 import { toolRequestSessionGrantFromPayload } from '@kontourai/station-shared/tool-request-preview';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import {
@@ -14043,6 +14046,7 @@ export class OrchestrationService {
           )
             continue;
           this.cooperativeStop.applyPendingTurnInterrupt(adapter, normalized);
+          this.noticeCompletionAfterInterruption(normalized);
           if (normalized.method === 'session.exited') {
             this.sessionAdapters.delete(normalized.threadId);
             this.lastEngineActivityAt.delete(normalized.threadId);
@@ -14592,6 +14596,57 @@ export class OrchestrationService {
         { threadId, boundaryId, provider, reason: 'engine-ended' },
       );
     return { settled: released.length > 0, engineObservable };
+  }
+
+  /**
+   * A turn already recorded as interrupted (its recovery abort is in the
+   * store) reported a successful completion after all. Reachable only if an
+   * engine was judged gone while it still ran, so it is logged as that, and
+   * the conversation gets a notice after the reply saying the turn finished
+   * and the interruption notice was premature. Nothing is removed: every
+   * fact stays in the order it happened. Idempotent by the completion's id.
+   */
+  private noticeCompletionAfterInterruption(
+    event: CanonicalRuntimeEvent,
+  ): void {
+    if (
+      event.method !== 'turn.completed' ||
+      event.finishReason === 'cancelled' ||
+      event.turnId === undefined
+    )
+      return;
+    const store = this.options.eventStore;
+    if (!store) return;
+    const recovery = store
+      .listEventsForTurn(event.threadId, event.turnId, 64)
+      .find(
+        (stored) =>
+          stored.payload.method === 'turn.aborted' &&
+          stored.payload.recoveryTerminal === true,
+      );
+    if (!recovery) return;
+    const eventId = `turn-completed-after-interruption:${event.eventId}`;
+    if (store.hasEventId(eventId)) return;
+    this.options.logger.warn(
+      'A turn recorded as interrupted reported that it completed: its engine was judged gone while it still ran',
+      {
+        threadId: event.threadId,
+        turnId: event.turnId,
+        recoveryEventId: recovery.id,
+      },
+    );
+    this.projectAndPublishEvent({
+      eventId,
+      provider: event.provider,
+      threadId: event.threadId,
+      turnId: event.turnId,
+      createdAt: new Date().toISOString(),
+      method: 'runtime.warning',
+      severity: 'warning',
+      code: TURN_COMPLETED_AFTER_INTERRUPTION_CODE,
+      message:
+        'This turn finished after all: Station had recorded it as interrupted, but the agent completed it. Its reply above is what the agent did.',
+    });
   }
 
   /**

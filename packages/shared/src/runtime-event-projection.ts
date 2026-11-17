@@ -136,6 +136,17 @@ export const TURN_ENGINE_ENDED_MESSAGE =
   'Turn interrupted — the engine process ended before Station could confirm this turn started. Nothing is running now; your next message starts a new turn.';
 
 /**
+ * `runtime.warning.code` Station writes when a turn it already recorded as
+ * interrupted reports a successful completion after all: possible only if
+ * the engine was wrongly judged gone. The transcript keeps every fact in
+ * order (the interruption notice, then the turn's reply) and shows this
+ * warning's message after them, so the earlier notice is not left reading
+ * as the last word.
+ */
+export const TURN_COMPLETED_AFTER_INTERRUPTION_CODE =
+  'turn-completed-after-interruption';
+
+/**
  * What the chat's Continue sends after a restart interrupted a turn: an
  * ordinary turn from the person, in the same conversation.
  */
@@ -1665,6 +1676,11 @@ export function projectRuntimeEventsToMessages(
         // A late one names no turns it hid; its marker is all there is.
         const late = sessionRewoundLateMarker(ev);
         if (late) holdOrPushMarker(ev, late);
+        if (ev.code === TURN_COMPLETED_AFTER_INTERRUPTION_CODE)
+          holdOrPushMarker(ev, {
+            betweenTurns: ev.message,
+            duringTurn: ev.message,
+          });
         break;
       }
       case 'session.exited':
