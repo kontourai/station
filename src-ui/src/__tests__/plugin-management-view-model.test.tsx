@@ -73,6 +73,8 @@ const mocks = vi.hoisted(() => ({
   removeMutate: vi.fn(),
   // #2323 S4: what `GET /api/plugin-sources` reported.
   localSources: [] as unknown[],
+  // Absent unless a test mounts the toast surface.
+  toast: null as null | { showToast: ReturnType<typeof vi.fn> },
 }));
 
 vi.mock('@tanstack/react-query', () => ({
@@ -88,6 +90,10 @@ vi.mock('../contexts/NavigationContext', () => ({
     setLayout: mocks.setLayout,
     updateParams: mocks.updateParams,
   }),
+}));
+
+vi.mock('../contexts/ToastContext', () => ({
+  useToast: () => mocks.toast,
 }));
 
 vi.mock('../contexts/ProjectsContext', () => ({
@@ -201,6 +207,7 @@ describe('usePluginManagementViewModel', () => {
     mocks.proposalError = null;
     mocks.proposalQueryIds = [];
     mocks.updateMutate.mockReset();
+    mocks.toast = null;
     mocks.removeMutate.mockReset();
     mocks.localSources = [];
     window.history.replaceState(null, '', '/plugins');
@@ -1474,6 +1481,26 @@ describe('update and remove saved without being applied', () => {
       type: 'warning',
       text: 'network-kit was updated, but Station did not say whether it is active. If its row reads Needs recovery, choose Recover plugin there.',
     });
+  });
+
+  test('a removal is reported as a toast, which reads at phone width where the empty list hides the detail message', async () => {
+    mocks.toast = { showToast: vi.fn() };
+    mocks.removeMutate.mockImplementation((_target, options) =>
+      options.onSuccess({ success: true }),
+    );
+    const { result } = renderHook(() => usePluginManagementViewModel());
+    await act(async () => {
+      result.current.remove('network-kit');
+    });
+    expect(mocks.toast.showToast).toHaveBeenCalledWith(
+      'Removed network-kit.',
+      undefined,
+      undefined,
+      undefined,
+      'success',
+    );
+    expect(result.current.message).toBeNull();
+    mocks.toast = null;
   });
 
   test('a saved removal is reported as removed, finishing in the background, not as a failure', async () => {

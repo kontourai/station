@@ -33,6 +33,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useProjects } from '../../contexts/ProjectsContext';
+import { useToast } from '../../contexts/ToastContext';
 import { usePermissions } from '../../core/PermissionManager';
 import { pluginRegistry } from '../../core/PluginRegistry';
 import {
@@ -94,6 +95,9 @@ export function usePluginManagementViewModel() {
   const { setLayout, updateParams } = useNavigation();
   const queryClient = useQueryClient();
   const { requestConsent, requestInstallConsent } = usePermissions();
+  // Optional: a removal's outcome is a toast, which reads at phone width
+  // too, where the empty list hides the detail pane's message.
+  const toast = useToast(true);
   const { projects } = useProjects();
   const {
     selectedId: selectedPlugin,
@@ -832,14 +836,24 @@ export function usePluginManagementViewModel() {
             : '';
         // A removal activates nothing, so a saved removal whose runtime reload
         // did not finish is completed by Station's next reconciliation.
-        setMessage({
+        const removed: PluginMessage = {
           type: 'success',
           text: pluginLifecycleUnapplied(result)
             ? `Removed ${name} from Station. It finishes unloading in the background.${retained}`
             : retained
               ? `Removed ${name} from Station.${retained}`
               : `Removed ${name}.`,
-        });
+        };
+        if (toast) {
+          setMessage(null);
+          toast.showToast(
+            removed.text,
+            undefined,
+            undefined,
+            undefined,
+            'success',
+          );
+        } else setMessage(removed);
         deselectPlugin();
         await reloadClientPluginRegistry();
       },
