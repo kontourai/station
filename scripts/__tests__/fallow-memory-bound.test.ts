@@ -53,7 +53,7 @@ describe('where a fallow child gets a memory budget', () => {
     });
     expect(plan).toMatchObject({ kind: 'uncapped', threads: 1 });
     expect(plan.warning).toMatch(
-      /without its 4096 MiB memory budget: \/usr\/bin\/systemd-run could not start a memory-capped user scope/,
+      /without its 5120 MiB memory budget: \/usr\/bin\/systemd-run could not start a memory-capped user scope/,
     );
   });
 

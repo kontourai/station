@@ -250,11 +250,12 @@ with fallow 3.42:
 | Gate audit (`--gate new-only`), base and head both uncached | 5.5 GiB | 2.9 GiB |
 | Gate audit, head cached, base not cached (67–233 changed files) | 5.3 GiB | 3.7 GiB |
 | Gate audit, both cached | 2.7 GiB | 2.7 GiB |
-| Gate audit, 904 changed files, base not cached | killed at 6 GiB | MEASURE_BIG |
+| Gate audit, 907 changed files, base not cached | killed at a 6 GiB cap | 3.8 GiB |
 | Head only (`--gate all`), uncached | 2.9 GiB | 2.9 GiB |
-WHOLE_TREE_ROWS
+| Whole tree (`npm run audit:code-health`): `health`, `dead-code`, `dupes`, uncached | 2.7, 1.4, 0.9 GiB | 2.7, 1.4, 0.9 GiB |
 
-Changed-file count barely matters, and duplication is not the driver: an audit
+Changed-file count matters little (67 to 907 files moved the one-thread peak
+from 3.7 to 3.8 GiB), and duplication is not the driver: an audit
 with only its dupes analysis peaked lower than one with only health or dead
 code. What doubles the peak is the base snapshot's analysis, which
 `--gate new-only` needs to tell new findings from inherited ones. With two
@@ -270,8 +271,10 @@ times as long (114 s measured on a loaded host), so the per-command watchdog is
 skipping the base pass (`--gate all`) or dropping an analysis would change the
 verdict.
 
-The budget is `STATION_FALLOW_MEMORY_MAX_MIB`, default 4096 MiB: the measured
-single-thread peak with headroom. On Linux with a systemd user manager, the
+The budget is `STATION_FALLOW_MEMORY_MAX_MIB`, default 5120 MiB: the largest
+measured single-thread peak (3.8 GiB) with about 1.2 GiB of headroom for
+repository growth and the scope's page cache, which the kernel reclaims
+before it kills anything. On Linux with a systemd user manager, the
 child runs in its own transient user scope (`systemd-run --user --scope`,
 `MemoryMax` set to the budget, no swap, `OOMPolicy=continue`). That scope sits
 under the user manager, outside the caller's own scope, so the caller is no

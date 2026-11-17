@@ -200,6 +200,11 @@ export async function runFallowAnalysis(
           memory.peakMib,
         ),
       );
+    // Evidence for tuning the budget; stderr, so JSON stdout stays parseable.
+    if (memory?.peakMib != null)
+      console.error(
+        `fallow ${command}: memory peak ${memory.peakMib} MiB of a ${memoryCap.budgetMib} MiB budget`,
+      );
     // Exit 1 can be a finding verdict. It is usable only with a complete,
     // separately written JSON report; a truncated stdout is never parsed.
     if (

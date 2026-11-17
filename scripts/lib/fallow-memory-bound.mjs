@@ -5,9 +5,9 @@ import { fileURLToPath } from 'node:url';
 /**
  * A memory budget for each fallow child (#5111).
  *
- * One `fallow audit` against a base whose analysis fallow has not cached
- * peaks at about 5.5 GiB of resident memory on this repository; the same
- * audit with a warm cache, about 2.8 GiB. Uncapped, that memory is charged to
+ * With two analysis threads, one `fallow audit` against a base whose
+ * analysis fallow has not cached peaked at about 5.5 GiB of resident memory
+ * on this repository; the same audit with a warm cache, about 2.7 GiB. Uncapped, that memory is charged to
  * whatever cgroup started it, and inside a Station engine scope (9298 MiB) it
  * OOM-killed the engine itself twice.
  *
@@ -34,7 +34,7 @@ import { fileURLToPath } from 'node:url';
 
 export const FALLOW_MEMORY_MAX_ENV = 'STATION_FALLOW_MEMORY_MAX_MIB';
 /** The measured single-thread peak plus headroom; see docs/guides/code-quality.md. */
-export const DEFAULT_FALLOW_MEMORY_MAX_MIB = 4096;
+export const DEFAULT_FALLOW_MEMORY_MAX_MIB = 5120;
 /** Analysis threads: one locally, so base and head run in turn; two on CI. */
 const LOCAL_FALLOW_THREADS = 1;
 const CI_FALLOW_THREADS = 2;
@@ -60,7 +60,7 @@ export function resolveFallowMemoryBudgetMib(env = process.env) {
     );
   if (value < MIN_FALLOW_MEMORY_MAX_MIB)
     throw new Error(
-      `code-health gate needs more than ${value} MiB; ${FALLOW_MEMORY_MAX_ENV} must be at least ${MIN_FALLOW_MEMORY_MAX_MIB} (one fallow audit of this repository peaks near 3 GiB without a warm cache)`,
+      `code-health gate needs more than ${value} MiB; ${FALLOW_MEMORY_MAX_ENV} must be at least ${MIN_FALLOW_MEMORY_MAX_MIB} (one fallow audit of this repository peaks near 4 GiB without a warm cache)`,
     );
   return value;
 }
@@ -128,7 +128,7 @@ export function planFallowMemoryCap({
     kind: 'uncapped',
     budgetMib,
     threads,
-    warning: `fallow runs without its ${budgetMib} MiB memory budget: ${why}. One audit can peak near 3 GiB, charged to whatever started it.`,
+    warning: `fallow runs without its ${budgetMib} MiB memory budget: ${why}. One audit can peak near 4 GiB, charged to whatever started it.`,
   });
   if (platform !== 'linux')
     return uncapped(`memory-capped scopes need Linux, not ${platform}`);
