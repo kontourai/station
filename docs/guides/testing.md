@@ -948,6 +948,18 @@ succeed, with bounded exact-source reuse. A manual `workflow_dispatch` of `PR: C
 Nightly runs independently. Its hourly decision checks the default six-hour
 minimum publication interval before running lint, all typecheck lanes, native
 boundary checks and deterministic browser smoke against one exact source SHA.
+Those checks are a subset of `fast-checks statics`, which the merge queue runs
+on the exact commit it then fast-forwards `main` to. The gate first looks for
+that receipt ([`nightly-source-gate-receipt.mjs`](../../scripts/nightly-source-gate-receipt.mjs)):
+exactly one successful `merge_group` run of `ci.yml` from a
+`gh-readonly-queue/main/` branch at the Nightly source SHA, whose statics job
+passed with its `ci:fast` and browser-journey steps executed. It then records
+that run in a notice and the job summary and skips its own checks; the job,
+its name and its `source_sha` output are unchanged for everything downstream.
+Anything else, including a deploy-ledger commit (a pass on a ledger-equivalent
+ancestor never counts, because tests read the ledger), several runs, an API
+error or a failure of the lookup itself, runs the checks as before.
+Installation and the Chromium cache steps run either way.
 Signing, staged inventory, provenance, provider admission and readback remain
 mandatory. This usability gate does not claim full qualification.
 
