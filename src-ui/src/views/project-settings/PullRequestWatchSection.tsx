@@ -4,13 +4,11 @@ import {
   MAX_PULL_REQUEST_FIX_ATTEMPTS,
   type ProjectPullRequestWatchSettings,
 } from '@kontourai/station-contracts/pull-request-watch';
-import { setProjectPullRequestWatch } from '@kontourai/station-sdk/pull-request-watch';
-import { useMutation } from '@tanstack/react-query';
+import { useSetProjectPullRequestWatchMutation } from '@kontourai/station-sdk';
 import { PageRow } from '../../components/PageRow';
 import { PageSection } from '../../components/PageSection';
 import { ErrorState } from '../../components/state';
 import { Toggle } from '../../components/Toggle';
-import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { userFacingErrorMessage } from '../../utils/errorText';
 
@@ -33,7 +31,6 @@ export function PullRequestWatchSection({
   settings: ProjectPullRequestWatchSettings | undefined;
   onSaved(): void;
 }) {
-  const scope = useHostRequestAuthorityScope();
   const preview = useSurfaceVisibilityFlags().has(
     PULL_REQUEST_FEEDBACK_PREVIEW_ID,
   );
@@ -41,17 +38,7 @@ export function PullRequestWatchSection({
     enabled: false,
     maxFixAttempts: DEFAULT_PULL_REQUEST_FIX_ATTEMPTS,
   };
-  const save = useMutation({
-    mutationFn: (next: ProjectPullRequestWatchSettings) => {
-      if (!scope?.isCurrent()) throw new Error('Project connection changed.');
-      return setProjectPullRequestWatch(scope.apiBase, slug, next, {
-        requestScope: scope,
-      });
-    },
-    onSuccess: () => {
-      if (scope?.isCurrent()) onSaved();
-    },
-  });
+  const save = useSetProjectPullRequestWatchMutation(slug);
   const disabled = save.isPending || !preview;
   return (
     <PageSection
@@ -75,7 +62,9 @@ export function PullRequestWatchSection({
             label="Watch Task pull requests"
             checked={current.enabled}
             disabled={disabled}
-            onChange={(enabled) => save.mutate({ ...current, enabled })}
+            onChange={(enabled) =>
+              save.mutate({ ...current, enabled }, { onSuccess: onSaved })
+            }
           />
         }
       />
@@ -90,10 +79,10 @@ export function PullRequestWatchSection({
             value={current.maxFixAttempts}
             disabled={disabled}
             onChange={(event) =>
-              save.mutate({
-                ...current,
-                maxFixAttempts: Number(event.target.value),
-              })
+              save.mutate(
+                { ...current, maxFixAttempts: Number(event.target.value) },
+                { onSuccess: onSaved },
+              )
             }
           >
             {ATTEMPT_CHOICES.map((count) => (

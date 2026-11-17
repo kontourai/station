@@ -1,24 +1,21 @@
 import { PULL_REQUEST_FEEDBACK_PREVIEW_ID } from '@kontourai/station-contracts/pull-request-feedback';
 import {
   PULL_REQUEST_WATCH_REFUSAL_WORDS,
-  type TaskPullRequestWatchModeInput,
   type TaskPullRequestWatchState,
   type TaskPullRequestWatchView,
 } from '@kontourai/station-contracts/pull-request-watch';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
-import { readPullRequestFeedbackCapability } from '@kontourai/station-sdk/pull-request-feedback';
 import {
-  getTaskPullRequestWatch,
-  setTaskPullRequestWatch,
-} from '@kontourai/station-sdk/pull-request-watch';
+  usePullRequestFeedbackCapability,
+  useSetTaskPullRequestWatchMutation,
+  useTaskPullRequestWatchQuery,
+} from '@kontourai/station-sdk';
 import { Badge, type SemanticTone } from '@kontourai/ui/react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { DisclosureToggle } from '../../components/DisclosureToggle';
 import { ErrorState, SkeletonList } from '../../components/state';
-import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import './TaskPullRequestWatchPanel.css';
@@ -70,49 +67,16 @@ export function watchStateLine(
 }
 
 function useTaskPullRequestWatch(task: TaskRecord) {
-  const scope = useHostRequestAuthorityScope();
   const preview = useSurfaceVisibilityFlags().has(
     PULL_REQUEST_FEEDBACK_PREVIEW_ID,
   );
-  // The same key as the chat's feedback hook, so one read serves both.
-  const capability = useQuery({
-    queryKey: ['pull-request-feedback-capability', scope?.apiBase],
-    queryFn: () => readPullRequestFeedbackCapability(scope!.apiBase),
-    enabled: preview && !!scope?.isCurrent(),
-    staleTime: 5 * 60_000,
-    retry: false,
-  });
+  const capability = usePullRequestFeedbackCapability();
   const available = preview && capability.data === true;
-  const queryKey = [
-    'task-pull-request-watch',
-    scope?.apiBase,
-    scope?.authorityKey,
-    task.id,
-    task.createdAt,
-  ];
-  const view = useQuery({
-    queryKey,
-    queryFn: ({ signal }) =>
-      getTaskPullRequestWatch(scope!.apiBase, task.id, {
-        signal,
-        requestScope: scope!,
-      }),
-    enabled: available && !!scope?.isCurrent(),
+  const view = useTaskPullRequestWatchQuery(task.id, {
+    enabled: available,
     refetchInterval: REFRESH_MS,
-    retry: false,
   });
-  const queryClient = useQueryClient();
-  const setMode = useMutation({
-    mutationFn: (mode: TaskPullRequestWatchModeInput) => {
-      if (!scope?.isCurrent()) throw new Error('Task connection changed.');
-      return setTaskPullRequestWatch(scope.apiBase, task.id, mode, {
-        requestScope: scope,
-      });
-    },
-    onSuccess: (data) => {
-      if (scope?.isCurrent()) queryClient.setQueryData(queryKey, data);
-    },
-  });
+  const setMode = useSetTaskPullRequestWatchMutation(task.id);
   return { available, view, setMode };
 }
 
