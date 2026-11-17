@@ -50,7 +50,7 @@ import {
 import { UNIFIED_SEARCH_V1 } from '@kontourai/station-contracts/unified-search';
 import { rmDirSyncRetrying } from '@kontourai/station-shared/fs-windows-compat';
 import { createStationHomeBackup } from '@kontourai/station-shared/station-home-archive';
-import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { adoptNativeEngineConnection } from '../../domain/agent-registry.js';
 import { ConfigLoader } from '../../domain/config-loader.js';
@@ -758,58 +758,63 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       ].Authorization.replace('Bearer ', '');
       return { config: thread.params.config, token };
     };
-    const off = await start('families-preview-off');
-    onTestFinished(() =>
-      adapter.stopSession('families-preview-off').catch(() => undefined),
-    );
-    expect(off.config).not.toHaveProperty('features.mcp_tool_list_changed');
-    expect(stationControlDisclosureForToken(off.token)).toBe(undefined);
-    expect(probe).not.toHaveBeenCalled();
-    await adapter.stopSession('families-preview-off');
-    await subject.featurePreviews.setEnabled('codex-tool-families', true);
-    const on = await start('families-preview-on');
-    // Stopped even when an assertion fails, so no Session outlives the case.
-    onTestFinished(() =>
-      adapter.stopSession('families-preview-on').catch(() => undefined),
-    );
-    expect(on.config).toMatchObject({
-      'features.mcp_tool_list_changed': true,
-    });
-    // The runtime's own mint made this credential start at the index.
-    expect(stationControlDisclosureForToken(on.token)?.has('Agents')).toBe(
-      false,
-    );
-    // The composed session resolver asks the same admission question for
-    // the instructions' families line.
-    await subject.featurePreviews.setEnabled(
-      'station-orchestration-instructions',
-      true,
-    );
-    const instructions = async () => {
-      const resolved =
-        await subject.orchestrationService.options.resolveSessionAgent({
-          provider: 'codex',
-          threadId: 'families-resolve',
-          cwd: home,
-          metadata: { agentSlug: 'families-test' },
-        });
-      return (
-        resolved.metadata?.capabilityDelivery?.stationInstructions
-          ?.firstTurnText ?? ''
-      );
+    // Sessions stop inside the case, even when it fails: a stop after the
+    // runtime's teardown emits session.exited, whose deferred worktree
+    // retry would land in a later case.
+    const stopAll = async () => {
+      for (const id of ['families-preview-off', 'families-preview-on'])
+        await adapter.stopSession(id).catch(() => undefined);
+      await new Promise((resolve) => setImmediate(resolve));
     };
-    const withFamilies = await instructions();
-    expect(withFamilies).toContain('delegate_task');
-    expect(withFamilies).toContain('list_tool_families');
-    // Turning it off changes new Sessions only: the running one keeps its
-    // family credential, which Codex cannot be told to re-list away from.
-    await subject.featurePreviews.setEnabled('codex-tool-families', false);
-    const withoutFamilies = await instructions();
-    expect(withoutFamilies).toContain('delegate_task');
-    expect(withoutFamilies).not.toContain('list_tool_families');
-    const kept = stationControlDisclosureForToken(on.token);
-    expect(kept?.load('Agents')).toBe(true);
-    expect(kept?.has('Agents')).toBe(true);
+    try {
+      const off = await start('families-preview-off');
+      expect(off.config).not.toHaveProperty('features.mcp_tool_list_changed');
+      expect(stationControlDisclosureForToken(off.token)).toBe(undefined);
+      expect(probe).not.toHaveBeenCalled();
+      await adapter.stopSession('families-preview-off');
+      await subject.featurePreviews.setEnabled('codex-tool-families', true);
+      const on = await start('families-preview-on');
+      expect(on.config).toMatchObject({
+        'features.mcp_tool_list_changed': true,
+      });
+      // The runtime's own mint made this credential start at the index.
+      expect(stationControlDisclosureForToken(on.token)?.has('Agents')).toBe(
+        false,
+      );
+      // The composed session resolver asks the same admission question for
+      // the instructions' families line.
+      await subject.featurePreviews.setEnabled(
+        'station-orchestration-instructions',
+        true,
+      );
+      const instructions = async () => {
+        const resolved =
+          await subject.orchestrationService.options.resolveSessionAgent({
+            provider: 'codex',
+            threadId: 'families-resolve',
+            cwd: home,
+            metadata: { agentSlug: 'families-test' },
+          });
+        return (
+          resolved.metadata?.capabilityDelivery?.stationInstructions
+            ?.firstTurnText ?? ''
+        );
+      };
+      const withFamilies = await instructions();
+      expect(withFamilies).toContain('delegate_task');
+      expect(withFamilies).toContain('list_tool_families');
+      // Turning it off changes new Sessions only: the running one keeps its
+      // family credential, which Codex cannot be told to re-list away from.
+      await subject.featurePreviews.setEnabled('codex-tool-families', false);
+      const withoutFamilies = await instructions();
+      expect(withoutFamilies).toContain('delegate_task');
+      expect(withoutFamilies).not.toContain('list_tool_families');
+      const kept = stationControlDisclosureForToken(on.token);
+      expect(kept?.load('Agents')).toBe(true);
+      expect(kept?.has('Agents')).toBe(true);
+    } finally {
+      await stopAll();
+    }
   });
 
   it('rejects an incompatible home before EventStore can create SQLite state', () => {
