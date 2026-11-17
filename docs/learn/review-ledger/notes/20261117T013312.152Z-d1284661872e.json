@@ -1,0 +1,7 @@
+{
+  "revision": "84ee5f659c3ae4d0717c530555781931816a795d",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Checked against the STATION_PR_HEAVY_CHECKS change: routing, fail-closed gate and resource-manifest guidance unaffected; new tests spawn no child processes beyond the classified job-graph file.","inputs":["scripts/AGENTS.md","docs/guides/code-quality.md","docs/guides/testing.md"]}
+  ]
+}
