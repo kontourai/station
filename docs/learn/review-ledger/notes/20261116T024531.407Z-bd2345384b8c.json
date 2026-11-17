@@ -1,0 +1,7 @@
+{
+  "revision": "a21eb8e52d4abd581d05c312e75d6028252d092c",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Mid-turn now says what Station measures per source and that a single silent command past five minutes is not seen; Wait renamed Not now; checked against the derivation, the Claude source and AttachedSessionDetail.","inputs":["docs/user/getting-started.md","src-server/providers/sessions/claude-transcript-session-source.ts","src-server/services/orchestration/attached-session-follow-service.ts"]}
+  ]
+}

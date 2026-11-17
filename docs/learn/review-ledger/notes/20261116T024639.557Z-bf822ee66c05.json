@@ -1,0 +1,15 @@
+{
+  "revision": "a21eb8e52d4abd581d05c312e75d6028252d092c",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"AttachedSessionSourceMetadata gains optional lastWriteAt (documented in session-api.md); other provider contract claims are unchanged.","inputs":["packages/contracts/src/provider.ts"]},
+
+    {"path":"docs/reference/api.md","note":"AttachedSessionSourceMetadata gains optional lastWriteAt (documented in session-api.md); other provider contract claims are unchanged.","inputs":["packages/contracts/src/provider.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"AttachedSessionSourceMetadata gains optional lastWriteAt (documented in session-api.md); other provider contract claims are unchanged.","inputs":["packages/contracts/src/provider.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"AttachedSessionSourceMetadata gains optional lastWriteAt (documented in session-api.md); other provider contract claims are unchanged.","inputs":["packages/contracts/src/provider.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"AttachedSessionSourceMetadata gains optional lastWriteAt (documented in session-api.md); other provider contract claims are unchanged.","inputs":["packages/contracts/src/provider.ts"]}
+  ]
+}

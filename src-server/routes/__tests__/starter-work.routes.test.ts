@@ -363,6 +363,34 @@ describe('starter work routes', () => {
     expect(launchContinueSession).toHaveBeenCalledTimes(1);
   });
 
+  it('passes continuing anyway to the registry and refuses any other value', async () => {
+    const launched = registry();
+    const launchContinueSession = vi.fn(launched.launchContinueSession);
+    launched.launchContinueSession = launchContinueSession as never;
+    const app = createStarterWorkRoutes(
+      launched as never,
+      STARTER_ROUTE_OPTIONS,
+    );
+    const launch = (value: unknown) =>
+      app.request('/launch', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          starterId: 'continue-session',
+          operationId: 'continue-override',
+          sourceSessionId: 'external-session',
+          continueWhileSourceActive: value,
+        }),
+      });
+    expect((await launch(true)).status).toBe(201);
+    expect((launchContinueSession.mock.calls[0] as unknown[])[0]).toMatchObject(
+      { continueWhileSourceActive: true },
+    );
+    expect((await launch(false)).status).toBe(400);
+    expect((await launch('yes')).status).toBe(400);
+    expect(launchContinueSession).toHaveBeenCalledTimes(1);
+  });
+
   it('routes the bounded Session continuation intent separately', async () => {
     const response = await createStarterWorkRoutes(
       registry() as never,

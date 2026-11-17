@@ -1,0 +1,7 @@
+{
+  "revision": "a21eb8e52d4abd581d05c312e75d6028252d092c",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"AttachedSessionReadResult gains optional sourceWriteAt; the provider-neutral boundary described by citing pages is unchanged.","inputs":["src-server/providers/sessions/attached-session-source.ts"]}
+  ]
+}
