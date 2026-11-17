@@ -1305,6 +1305,12 @@ export interface AttachedSessionSourceMetadata {
   completedBoundary?: ProviderSessionContinuationBoundary;
   externalSessionId: string;
   revision?: string;
+  /**
+   * The newest write the source reported for this session (to the nearest
+   * 30 seconds), including writes that produce no event. Read by
+   * `attachedSourceActivity`.
+   */
+  lastWriteAt?: string;
 }
 
 // ── #895 wave A: per-agent capability delivery (agent-engine-unification.md §3.2/§5/§6.2) ──

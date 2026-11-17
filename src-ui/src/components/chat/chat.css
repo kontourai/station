@@ -1500,10 +1500,11 @@
     min-height: 44px;
   }
 
-  /* The Agent/engine handoff picker's agent rows and the attached-session
-     "Continue in Station" action. */
+  /* The Agent/engine handoff picker's agent rows, the attached-session
+     "Continue in Station" action and its still-running caution's choices. */
   .conversation-handoff-dialog__agent.conversation-handoff-dialog__agent,
-  .sessions-detail__continue-action.sessions-detail__continue-action {
+  .sessions-detail__continue-action.sessions-detail__continue-action,
+  .sessions-detail__source-active-actions .button.button {
     min-height: 44px;
   }
 

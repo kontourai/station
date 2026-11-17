@@ -135,6 +135,8 @@ export type StarterSessionOwner = {
     operationId: string;
     /** #3386: `adoptSession`'s `target`, passed through unchanged. */
     target?: AdoptSessionTarget;
+    /** `adoptSession`'s `continueWhileSourceActive`, passed through unchanged. */
+    continueWhileSourceActive?: true;
     /**
      * #2493: the launching request's full-access grant. The adopted child's
      * confinement stamp records it (`host` only with one), the same as a
@@ -161,6 +163,8 @@ export type StarterSessionOwner = {
         reason: string;
         retrySafe: boolean;
         receiptId?: string;
+        /** The source is still running; see `ContinueSessionStarterLaunchResult`. */
+        code?: 'continuation_source_active';
       }
   >;
 };
@@ -670,6 +674,9 @@ export class StarterRegistry {
         sourceSessionId: input.sourceSessionId,
         operationId: input.operationId,
         ...(input.target ? { target: input.target } : {}),
+        ...(input.continueWhileSourceActive
+          ? { continueWhileSourceActive: true as const }
+          : {}),
         fullAccessGrant,
         owner,
         ...(clientOrigin ? { clientOrigin } : {}),

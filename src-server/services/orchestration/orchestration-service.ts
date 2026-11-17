@@ -1022,6 +1022,7 @@ class DraftDiscardedError extends Error {
 export {
   AdoptionContinuationInProgressError,
   AdoptionEngineNotReadyError,
+  AdoptionSourceActiveError,
 } from './attached-session-adoption.js';
 export { ModelLaunchPlanUnavailableError } from './model-launch-planning.js';
 
@@ -9754,6 +9755,7 @@ export class OrchestrationService {
             adoptionConfinement(context?.fullAccessGrant),
             // #3386: where a conversation no project claims continues.
             command.target,
+            command.continueWhileSourceActive === true,
           );
         case 'sendTurn': {
           const submittedInput = command.input.clientTurnId

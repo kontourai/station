@@ -1,0 +1,7 @@
+{
+  "revision": "a21eb8e52d4abd581d05c312e75d6028252d092c",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Added continueWhileSourceActive pass-through and refusal-code tests; starter-work.md's continuation claims match.","inputs":["src-server/services/starter-work/__tests__/starter-registry.test.ts"]}
+  ]
+}

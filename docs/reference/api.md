@@ -166,6 +166,14 @@ and returns `{success:true}`. Invalid input returns 400; missing person or stale
 authority returns 403; an unreadable conversation returns 404. A disabled
 preview returns 404 with `code:feature_preview_disabled` and a Settings link.
 
+The GET also returns `hidden:{[sessionThreadId]:timestamp}`: third-party
+Sessions the person hid from their inbox. `PUT /api/conversations/:id/inbox-hidden`
+accepts exactly `{hidden:boolean}` for a Session thread id, under the same
+preview, person and current-authority checks; it rechecks Session read
+admission and returns 404 for an unreadable Session. A host without `hidden` in
+its GET cannot hide Sessions. Deleting a conversation removes every person's
+settled and hidden record for it.
+
 State is personal and durable across devices. Settlement changes neither
 provider execution nor history, and is separate from dismissal and deletion.
 The host clears it whether or not the preview is on: a person's own message
@@ -1665,7 +1673,9 @@ HTTP status alone does not prove useful-work completion.
 - **Continue a Session:** the body names the Starter ID, operation ID, and
   exact source Session ID, plus an optional `target` for a Session no Project
   claims (`adoptSession`'s `target`, [Session API](session-api.md)); it never
-  names a folder. The [session owner](../../src-server/services/starter-work/starter-session-owner.ts)
+  names a folder. A source still running is refused as `state: "failed"`,
+  `retrySafe: true`, `code: "continuation_source_active"`; the same launch
+  with `continueWhileSourceActive: true` proceeds. The [session owner](../../src-server/services/starter-work/starter-session-owner.ts)
   validates and adopts the source through the existing idempotency ledger.
   Its child Session/command receipt proves admission, not useful completion.
 - **Inspect approval/receipt:** candidate reads return exact typed references.

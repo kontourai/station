@@ -1097,6 +1097,7 @@ non-retryable.
 | `confinement_not_observed` | `permission_denied` | `false` |
 | `confinement_workspace_incompatible` | `permission_denied` | `false` |
 | `continuation_engine_not_ready` | `unavailable` | `true` |
+| `continuation_source_active` | `busy` | `true` |
 | `continuation_workspace_corrupt_worktree_binding` | `input_unsupported` | `false` |
 | `continuation_workspace_different_project` | `input_unsupported` | `false` |
 | `continuation_workspace_direct_mismatch` | `input_unsupported` | `false` |
@@ -1104,6 +1105,7 @@ non-retryable.
 | `continuation_workspace_unbound` | `input_unsupported` | `false` |
 | `continuation_workspace_worktree_gone` | `input_unsupported` | `false` |
 | `continuation_workspace_worktree_moved` | `input_unsupported` | `false` |
+| `conversation_handoff_predecessor_busy` | `busy` | `true` |
 | `conversation-context-unavailable` | `conflict` | `false` |
 | `engine-credential-profile-unsupported` | `input_unsupported` | `false` |
 | `engine-decision-not-sent` | `warning` | `false` |

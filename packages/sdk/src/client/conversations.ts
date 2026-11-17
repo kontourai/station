@@ -321,19 +321,26 @@ export async function acknowledgeConversation(
   }
 }
 
-/** Personal explicit resolution. A 404 means this host does not offer the preview. */
+/**
+ * Personal explicit resolution. A 404 means this host does not offer the
+ * preview. `hidden` (third-party Session thread id to when it was hidden) is
+ * absent from a host that cannot hide third-party Sessions.
+ */
+export interface ConversationWorkState {
+  settled: Record<string, string>;
+  hidden?: Record<string, string>;
+}
 export async function getConversationWorkState(
   apiBase: string,
   opts?: ClientRequestOptions,
-): Promise<{ settled: Record<string, string> } | null> {
+): Promise<ConversationWorkState | null> {
   const response = await getJson(
     `${apiBase}/api/conversations/work-state`,
     opts,
   );
   if (response.status === 404) return null;
-  const result = await readConversationEnvelope<{
-    settled: Record<string, string>;
-  }>(response);
+  const result =
+    await readConversationEnvelope<ConversationWorkState>(response);
   if (!response.ok || !result.success || !result.data)
     throw envelopeError(response, result, 'Could not read inbox resolution');
   return result.data;
@@ -358,6 +365,32 @@ export async function setConversationWorkState(
       response.status === 404
         ? 'This host does not support conversation resolution. Enable its preview or update Station.'
         : 'Could not update conversation resolution',
+    );
+}
+
+/**
+ * Hide or unhide a third-party Session (by thread id) in the caller's own
+ * inbox, on every device. Call only against a host whose work state carries
+ * `hidden`.
+ */
+export async function setConversationInboxHidden(
+  apiBase: string,
+  sessionId: string,
+  hidden: boolean,
+  opts?: ClientRequestOptions,
+): Promise<void> {
+  const response = await mutateJson(
+    `${apiBase}/api/conversations/${encodeURIComponent(sessionId)}/inbox-hidden`,
+    'PUT',
+    opts,
+    { hidden },
+  );
+  const result = await readConversationEnvelope<unknown>(response);
+  if (!response.ok || !result.success)
+    throw envelopeError(
+      response,
+      result,
+      'Could not update this session in your inbox',
     );
 }
 
