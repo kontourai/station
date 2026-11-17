@@ -130,7 +130,7 @@ export function AgentFeedbackDefaultsSection({ slug }: { slug: string }) {
       id="section-agent-feedback"
       className="project-settings__section"
       title="Agent feedback"
-      description="For pull requests opened from a Task's own branch. Ones already set up keep theirs."
+      description="For pull requests a Task opens from its branch and doesn't watch. Existing ones keep theirs."
     >
       {defaults.isPending ? (
         <Skeleton variant="block" />

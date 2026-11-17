@@ -88,7 +88,7 @@ describe('Agent feedback defaults', () => {
     renderSection();
     expect(
       await screen.findByText(
-        "For pull requests opened from a Task's own branch. Ones already set up keep theirs.",
+        "For pull requests a Task opens from its branch and doesn't watch. Existing ones keep theirs.",
       ),
     ).toBeTruthy();
     expect((await fixChecks()).getAttribute('aria-checked')).toBe('false');

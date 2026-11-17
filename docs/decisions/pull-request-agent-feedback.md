@@ -327,23 +327,29 @@ existing independent review (`ReviewEvidenceModule`) once per head.
 
 With a Task watching the pull request ([task-owned pull requests](task-owned-pull-requests.md)):
 
-- Review of each head stays its own opt-in. A watch claim turns on the two
-  sending switches only; "Review each new head" is turned on in the chat or
-  the Project's Agent feedback defaults, under the same preview rule.
+- A Task's watch claim and "Review each new head" do not combine today. A
+  watch claim turns on the two sending switches only. Turning review on in
+  the chat makes it a person's claim, which ends the Task's watch for that
+  pull request (its Ready for you report and fix budget; the merge refusals
+  still apply while the Task watches). Turning both sending switches off in
+  the chat ends it the same way, so the watch does not turn it back on.
 - Required findings are not failing checks, so a message carrying them is
   not a fix attempt (the budget counts only messages that carried failing
   checks). They share the 3-rounds-per-head and 10-a-day caps.
 - A watch that stops or moves a claim releases or rewrites it through the
   same store paths, so the review epoch goes up with it; the watch adds no
   other way to drop a claim's reviews.
-- With "Review each new head" on, Ready for you waits for Station's review
-  of that head: until one has run (any outcome) and its required findings
-  were sent. One held by the Project's daily review limit holds Ready until
-  a review runs.
 - Project settings keep two sections: Pull requests (a Task watches the pull
-  requests kept on it) and Agent feedback (defaults for a pull request
-  opened from a Task's own branch). Agent feedback's lead now says which
-  pull requests it is for; folding both into one section is a follow-up.
+  requests kept on it) and Agent feedback (defaults for a pull request a
+  Task opens from its branch and does not watch). Folding both into one
+  section is a follow-up.
+- Follow-up: compose a Task's watch with review of each head (review on
+  watch claims, and Ready for you waiting for the head's review). Whoever
+  builds it must handle four cases that would otherwise hold Ready for
+  good: a findings delivery a person dismissed; feedback waiting on another
+  pull request of the same chat, which keeps the agent from counting as
+  idle and so blocks this head's review; a fix-budget pause; and the person
+  who turned review on losing permission to continue the chat.
 
 Departures from the plan:
 
