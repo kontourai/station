@@ -533,7 +533,7 @@ export const STATION_DOCS_BUNDLE: StationDocsBundle = {
       source: 'docs/learn/atlas.json',
       url: 'https://github.com/kontourai/station/blob/HEAD/docs/learn/atlas.json',
       markdown:
-        "How a Project gives work a durable identity, binds it to files, and carries Tasks from intent to an execution attempt.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Which record owns the work when no engine is running?\n- Can a workspace move without silently changing the Task's identity?\n- What does a failed or uncertain dispatch leave behind?\n\nRead module topics with get_station_docs_topic:\n- architecture-projectfiletransactions: ProjectFileTransactions\n- architecture-projectidentity: ProjectIdentity\n- architecture-project-tool-defaults: Project tool defaults\n- architecture-taskdispatcher-and-taskgraph: TaskDispatcher and TaskGraph\n- architecture-taskreviewthreads: TaskReviewThreads\n- architecture-whole-task-basis-collection: Whole Task Basis collection\n- architecture-project-session-directory: Project session directory\n- architecture-starterworkregistry: StarterWorkRegistry\n- architecture-project-working-configuration: Project working configuration\n\nCanonical reading:\n- docs/user/concepts.md\n- docs/design/portable-project-identity.md\n- docs/design/task-dispatcher.md\n- docs/reference/task-basis-mcp-app.md\n- docs/learn/walkthroughs.md#projects-and-tasks\n- docs/guides/agent-efficiency.md",
+        "How a Project gives work a durable identity, binds it to files, and carries Tasks from intent to an execution attempt.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Which record owns the work when no engine is running?\n- Can a workspace move without silently changing the Task's identity?\n- What does a failed or uncertain dispatch leave behind?\n\nRead module topics with get_station_docs_topic:\n- architecture-projectfiletransactions: ProjectFileTransactions\n- architecture-projectidentity: ProjectIdentity\n- architecture-project-tool-defaults: Project tool defaults\n- architecture-taskdispatcher-and-taskgraph: TaskDispatcher and TaskGraph\n- architecture-taskreviewthreads: TaskReviewThreads\n- architecture-whole-task-basis-collection: Whole Task Basis collection\n- architecture-project-session-directory: Project session directory\n- architecture-starterworkregistry: StarterWorkRegistry\n- architecture-project-working-configuration: Project working configuration\n- architecture-project-library: Project Library\n\nCanonical reading:\n- docs/user/concepts.md\n- docs/design/portable-project-identity.md\n- docs/design/task-dispatcher.md\n- docs/reference/task-basis-mcp-app.md\n- docs/learn/walkthroughs.md#projects-and-tasks\n- docs/guides/agent-efficiency.md",
       summary:
         'How a Project gives work a durable identity, binds it to files, and carries Tasks from intent to an execution attempt.',
       tags: ['architecture', 'work'],
@@ -645,6 +645,18 @@ export const STATION_DOCS_BUNDLE: StationDocsBundle = {
       summary:
         'Interface, composition, invariants, and documented evidence for Project working configuration.',
       tags: ['architecture', 'work', 'Project working configuration'],
+      parentId: 'architecture-work',
+    },
+    {
+      id: 'architecture-project-library',
+      title: 'Project Library',
+      source: 'docs/architecture/module-map.md#project-library',
+      url: 'https://github.com/kontourai/station/blob/HEAD/docs/architecture/module-map.md#project-library',
+      markdown:
+        "Shipped architecture reference. Source and test links describe evidence to inspect; they do not establish live state or that those tests have been executed for this installation.\n\n## Project Library\n\n[Library routes](../../src-server/routes/projects/project-library-routes.ts)\nproject uploads from the Project's folder\n([ProjectLibraryUploads](../../src-server/services/projects/project-library-uploads.ts))\nand kept outputs from [TaskOutputModule](../../src-server/services/projects/task-output-module.ts)\n(`listForProject`, `readContentForProject`). Nothing is copied. The\n[composer](../../src-server/runtime/routes/runtime-project-library.ts) mounts\nnothing on a hosted Station, and every route selects the `project-library`\npreview. The station-control side reads the Project recorded on the verified\ncaller's Session.",
+      summary:
+        'Interface, composition, invariants, and documented evidence for Project Library.',
+      tags: ['architecture', 'work', 'Project Library'],
       parentId: 'architecture-work',
     },
     {
