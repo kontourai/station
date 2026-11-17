@@ -1,0 +1,9 @@
+{
+  "revision": "5439ec4e393c30077aee4bd5d5204525c721f0dc",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"#5126 change: listViews labels an ownerless Project job ownerNeeded with PROJECT_JOB_OWNER_NEEDED_REASON instead of omitting it. Backfill, claims and storage are unchanged; checked this page's scheduler claims stay accurate.","inputs":["src-server/services/scheduling/scheduler-ledger.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"#5126 change: listViews labels an ownerless Project job ownerNeeded with PROJECT_JOB_OWNER_NEEDED_REASON instead of omitting it. Backfill, claims and storage are unchanged; checked this page's scheduler claims stay accurate.","inputs":["src-server/services/scheduling/scheduler-ledger.ts"]}
+  ]
+}

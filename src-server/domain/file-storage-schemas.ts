@@ -22,6 +22,7 @@ import {
   PROJECT_GOAL_MAX_CHARS,
   PROJECT_INSTRUCTIONS_MAX_CHARS,
 } from '@kontourai/station-contracts/project-session-context';
+import { MAX_PULL_REQUEST_FIX_ATTEMPTS } from '@kontourai/station-contracts/pull-request-watch';
 import { isSafeToolServerId } from '@kontourai/station-contracts/tool';
 import { z } from 'zod';
 import type { ConversationRecord, DocumentRecord } from './storage-adapter.js';
@@ -119,6 +120,17 @@ const projectSchema = z
       .enum(['off', 'project-panes', 'allowed-plugins'])
       .optional(),
     personalLayoutAllowedPlugins: z.array(nonEmptyString).optional(),
+    pullRequestWatch: z
+      .object({
+        enabled: z.boolean(),
+        maxFixAttempts: z
+          .number()
+          .int()
+          .min(1)
+          .max(MAX_PULL_REQUEST_FIX_ATTEMPTS),
+      })
+      .strict()
+      .optional(),
     position: z.number().int().nonnegative().optional(),
     // #5069: server-written by the lifecycle route only.
     lifecycle: z

@@ -292,6 +292,13 @@ export interface SessionQueryModule {
   read(
     query: SessionQuery,
     authority: SessionReadAuthority | InternalSessionReadScope,
+    /**
+     * The Session's whole event history, already read for this same thread
+     * within the caller's request (the conversation-open point read reads it
+     * once for the current child). The Session lookup and read check still
+     * run; only the second whole-history read is skipped.
+     */
+    prefetched?: { events: readonly CanonicalRuntimeEvent[] },
   ): Promise<SessionQueryOutcome>;
   readAssistantTurn(
     query: SessionAssistantTurnQuery,
@@ -510,14 +517,14 @@ export function createSessionQueryModule<Session>(
   source: SessionConversationQuerySource<Session>,
 ): SessionQueryModule {
   return {
-    async read(query, authority) {
+    async read(query, authority, prefetched) {
       try {
         const session = await source.findSession(query.threadId);
         if (!session) return { status: 'not-found' };
         if (!source.canReadSession(query.threadId, authority)) {
           return { status: 'not-found' };
         }
-        const events = source.listEvents(query.threadId);
+        const events = prefetched?.events ?? source.listEvents(query.threadId);
         const conversationSession = source.projectConversation(session, events);
         if (!conversationSession?.assignedAgentSlug) {
           return { status: 'not-found' };

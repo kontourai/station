@@ -1,0 +1,11 @@
+{
+  "revision": "5e8bf36269cc9d7a43b0145578db35eedc2a0c68",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"#5066 follow-up: the task-pr-watch scenes now route the gallery handshake with the pullRequestFeedback capability and restore it in cleanup. Checked: no existing scene, capture rule, motion or telemetry fixture these pages cite changed.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"#5066 follow-up: the task-pr-watch scenes now route the gallery handshake with the pullRequestFeedback capability and restore it in cleanup. Checked: no existing scene, capture rule, motion or telemetry fixture these pages cite changed.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"#5066 follow-up: the task-pr-watch scenes now route the gallery handshake with the pullRequestFeedback capability and restore it in cleanup. Checked: no existing scene, capture rule, motion or telemetry fixture these pages cite changed.","inputs":["tests/screenshots.spec.ts"]}
+  ]
+}

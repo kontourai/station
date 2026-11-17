@@ -1,0 +1,9 @@
+{
+  "revision": "05c7686e80786403aee2f2a383f8194e3b7fdbcb",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"settings.md changed only the codex-tool-families row's resume wording; feature-previews.md links to the settings table and makes no claim about that row's resume behaviour.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"settings.md changed only the codex-tool-families row's resume wording; feature-previews.md links to the settings table and makes no claim about that row's resume behaviour.","inputs":["docs/user/settings.md"]}
+  ]
+}

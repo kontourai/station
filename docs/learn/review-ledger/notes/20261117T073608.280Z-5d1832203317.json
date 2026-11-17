@@ -1,0 +1,7 @@
+{
+  "revision": "c7bb984e1d18d194e3fb51c42404367b6efc65ad",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Only an export keyword was removed from the minimum-version constant; its value (0.167.0) and every claim citing it are unchanged.","inputs":["src-server/providers/adapters/codex-tool-families.ts"]}
+  ]
+}

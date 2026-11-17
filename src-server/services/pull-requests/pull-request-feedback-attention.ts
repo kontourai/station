@@ -24,7 +24,11 @@ import type { NotificationService } from '../notifications/notification-service.
 const NOTICE_SOURCE = 'pull-request-feedback';
 export const PULL_REQUEST_FEEDBACK_NOTIFICATION_SOURCE = NOTICE_SOURCE;
 
-type NoticeReason = 'round-limit' | 'repeated-failure' | 'agent-stopped';
+type NoticeReason =
+  | 'round-limit'
+  | 'repeated-failure'
+  | 'fix-budget'
+  | 'agent-stopped';
 
 /** What delivery reports once when feedback starts needing a person. */
 export interface PullRequestFeedbackNotice {
@@ -157,6 +161,11 @@ export function pullRequestFeedbackAttentionCopy(
         title: `${pr} has feedback waiting`,
         body: `Its agent stopped, so ${waitingClause(source.waiting ?? [])} not sent.`,
       };
+    case 'fix-budget':
+      return {
+        title: `${pr}: every fix attempt is used`,
+        body: `${checkNames(source.failing ?? [])} still failing on ${head}. The Task waits for you.`,
+      };
     case 'repeated-failure':
       return {
         title: `${pr}: the same checks failed on ${REPEATED_FAILURE_HEADS} pushes`,
@@ -191,13 +200,15 @@ function pushCopy(notice: PullRequestFeedbackNotice): {
   const title =
     notice.reason === 'agent-stopped'
       ? `${pr} has feedback waiting; its agent stopped`
-      : notice.reason === 'repeated-failure'
-        ? `Agent paused on ${pr}: same checks failed on ${REPEATED_FAILURE_HEADS} pushes`
-        : notice.cap === 'day'
-          ? `Agent paused on ${pr}: ${MAX_SENT_PER_DAY} messages in 24 hours`
-          : notice.failing?.length
-            ? `Agent paused on ${pr}: checks still failing after ${rounds} rounds`
-            : `Agent paused on ${pr} after ${rounds} rounds of feedback`;
+      : notice.reason === 'fix-budget'
+        ? `${pr}: every fix attempt is used; the Task waits for you`
+        : notice.reason === 'repeated-failure'
+          ? `Agent paused on ${pr}: same checks failed on ${REPEATED_FAILURE_HEADS} pushes`
+          : notice.cap === 'day'
+            ? `Agent paused on ${pr}: ${MAX_SENT_PER_DAY} messages in 24 hours`
+            : notice.failing?.length
+              ? `Agent paused on ${pr}: checks still failing after ${rounds} rounds`
+              : `Agent paused on ${pr} after ${rounds} rounds of feedback`;
   const body =
     notice.reason === 'agent-stopped'
       ? `${where}: ${waitingClause(notice.waiting ?? [])} not sent. Open the chat to continue.`

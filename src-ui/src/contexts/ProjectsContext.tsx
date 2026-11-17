@@ -21,6 +21,7 @@ import type {
   ProjectSharedTaskPublication,
   ProjectSharedTaskSummary,
 } from '@kontourai/station-contracts/project-shared-task';
+import type { ProjectPullRequestWatchSettings } from '@kontourai/station-contracts/pull-request-watch';
 import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
 import type { ConnectionReadTarget } from '@kontourai/station-sdk';
 import {
@@ -658,6 +659,8 @@ export interface ProjectConfig extends ProjectMetadata {
   similarityThreshold?: number;
   topK?: number;
   agents?: AgentId[];
+  /** See `ProjectConfig` in `@kontourai/station-contracts/project`. */
+  pullRequestWatch?: ProjectPullRequestWatchSettings;
   createdAt: string;
   updatedAt: string;
 }

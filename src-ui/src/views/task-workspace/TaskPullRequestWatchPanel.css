@@ -1,0 +1,55 @@
+.task-pr-watch__title {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  flex-wrap: wrap;
+}
+
+.task-pr-watch__title h2 {
+  margin: 0;
+}
+
+.task-pr-watch__meta {
+  margin: 0;
+  color: var(--k-text-muted);
+}
+
+.task-pr-watch__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+}
+
+.task-pr-watch__list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-1) var(--k-space-2);
+}
+
+.task-pr-watch__name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.task-pr-watch__line {
+  flex-basis: 100%;
+  color: var(--k-text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* Touch layouts get the shell's 44px floor (`--touch-target-min`, set only
+   on phones and coarse pointers); desktop keeps the compact row. */
+.task-pr-watch__name a {
+  display: inline-flex;
+  align-items: center;
+  min-width: var(--touch-target-min, auto);
+  min-height: var(--touch-target-min, auto);
+}
+
+.task-pr-watch .disclosure-toggle {
+  min-height: var(--touch-target-min, auto);
+}

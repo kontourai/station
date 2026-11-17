@@ -60,6 +60,11 @@ import { isTurnInFlight } from '../contexts/active-chats-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 import {
+  readTranscriptWindow,
+  transcriptWindowCacheKey,
+  writeTranscriptWindow,
+} from '../hooks/orchestration/transcriptWindowCache';
+import {
   AUTHORITY_CACHE_KEY_PREFIX,
   authorityPersistenceKey,
   buildAuthorityNamespace,
@@ -587,10 +592,25 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
       }),
     );
 
+    // A's recently read transcript window, as A's reader would cache it.
+    const windowKey = transcriptWindowCacheKey({
+      namespace: NS_A,
+      apiBase: urlA,
+      conversationId,
+    });
+    writeTranscriptWindow(windowKey, {
+      events: [],
+      watermark: 9_000,
+      handoffs: [],
+      contextBoundaries: [],
+      partialTurnStartEventIds: [],
+    });
+
     await switchTo(idB);
     await waitFor(() =>
       expect(probe().getAttribute('data-namespace')).toBe(NS_B),
     );
+    expect(readTranscriptWindow(windowKey)).toBeUndefined();
     const afterSwitch = activeChatsStore.getSnapshot()[conversationId];
     expect(afterSwitch?.conversationActivity).toBeUndefined();
     // Nothing of A's is left for the fallback clock or liveness to read.

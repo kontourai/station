@@ -237,6 +237,7 @@
     "./pull-request-provider": "./src/pull-request-provider.ts",
     "./conversation-pull-request-links": "./src/conversation-pull-request-links.ts",
     "./pull-request-feedback": "./src/pull-request-feedback.ts",
+    "./pull-request-watch": "./src/pull-request-watch.ts",
     "./workflow": "./src/workflow.ts",
     "./work-reference": "./src/work-reference.ts",
     "./starter-work": "./src/starter-work.ts",

@@ -7,16 +7,15 @@
  *   interrupts through `OrchestrationService.interruptTurn`.
  * - The scheduler reads which Projects hold their schedules from the same
  *   records (`projectHold`).
- * - A Project job's run becomes a Task in its Project (`ScheduledProjectRuns`).
+ * - A Project job's run becomes a Task in its Project (`ScheduledProjectRuns`),
+ *   acting as the job's creator (#5126).
  */
 import type {
   FeaturePreviewRegistry,
   FeaturePreviewSelector,
 } from '../../services/feature-previews/feature-preview-registry.js';
-import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import type { EventStore } from '../../services/orchestration/event-store.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
-import { UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION } from '../../services/orchestration/session-owner-attribution.js';
 import { ProjectLifecycleService } from '../../services/projects/project-lifecycle-service.js';
 import type { ProjectService } from '../../services/projects/project-service.js';
 import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js';
@@ -100,6 +99,8 @@ export function composeScheduledProjectRuns(context: {
   taskDispatcher: TaskDispatcher;
   eventStore: Pick<EventStore, 'conversationForSession' | 'taskMemoryStore'>;
   conversationRuns: ScheduledConversationRunner;
+  /** #5126: whether a job's creator holds `execute` in the Project now. */
+  creatorMayRunInProject(creatorId: string, projectId: string): boolean;
   logger: Logger;
 }): ScheduledProjectRuns {
   return new ScheduledProjectRuns({
@@ -109,28 +110,30 @@ export function composeScheduledProjectRuns(context: {
         'scheduled-job',
         key,
       ),
-    dispatchTask: ({ taskId, agentId, principal, signal }) =>
+    dispatchTask: ({ taskId, agentId, principal, owner, signal }) =>
       runWithUnattendedPrincipal(principal, principal.runId, () =>
         context.taskDispatcher.dispatch(taskId, {
           agentId,
           sourceSurface: 'scheduled-job',
-          // A schedule acts for no request: it may not grant full access,
-          // and it runs as the operator's Task acting for no one, like an
-          // automation rule's Task.
+          // A schedule acts for no request: it may not grant full access.
           fullAccessGrant: null,
-          ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
-          ownerAttribution: UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
+          // #5126: the Session belongs to the job's creator and acts as
+          // recorded: a person's job for that person, a verified agent's
+          // for its owner (`verified-bound`), an unverified agent's for no
+          // one (`unattributed-agent`). Its Station-control caller, Project
+          // role and scope follow from that owner.
+          ownerUserId: owner.userId,
+          ...(owner.ownerAttribution
+            ? { ownerAttribution: owner.ownerAttribution }
+            : {}),
           signal,
           runtimeConfig: { modelOptions: { approvalMode: 'ask' } },
         }),
       ),
+    creatorMayRunInProject: context.creatorMayRunInProject,
     conversationForSession: (sessionId) =>
       context.eventStore.conversationForSession(sessionId)?.conversationId,
     conversationRuns: context.conversationRuns,
-    actor: {
-      userId: LOCAL_OPERATOR_PRINCIPAL_ID,
-      ownerAttribution: UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
-    },
     recordSummary: ({ projectId, taskId, taskCreatedAt, sessionId, text }) => {
       const store = context.eventStore.taskMemoryStore();
       const current = store.readSummary({ taskId, taskCreatedAt });

@@ -1,0 +1,7 @@
+{
+  "revision": "f18db47905491b9778f928a5f3ffd28960c667a7",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Its 'taking longer than usual' text describes the desktop boot cover, not the conversation loading stage; ConversationBody's module description and ownership are unchanged by this change (loading presentation and composer draft gating only).","inputs":["docs/architecture/module-map.md","src-ui/src/components/conversation/ConversationBody.tsx"]}
+  ]
+}
