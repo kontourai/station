@@ -66,6 +66,8 @@ import {
   PROVIDER_TURN_IN_PROGRESS_CODE,
   SESSION_REATTACH_CONFLICT_CODE,
   WORKLOAD_COMMAND_OOM_KILLED_CODE,
+  WORKLOAD_MEMORY_PRESSURE_CLEARED_CODE,
+  WORKLOAD_MEMORY_PRESSURE_CODE,
 } from './provider.js';
 import { SESSION_ENDED_REJECTION_CODE } from './session-lifecycle.js';
 
@@ -247,6 +249,9 @@ export const PROVIDER_FAILURE_KINDS = {
   [ENGINE_MEMORY_EXHAUSTED_CODE]: 'engine_crashed',
   // A command inside the engine's scope was killed; the engine kept running.
   [WORKLOAD_COMMAND_OOM_KILLED_CODE]: 'warning',
+  // The engine's own scope neared its memory limit, or left that state.
+  [WORKLOAD_MEMORY_PRESSURE_CODE]: 'warning',
+  [WORKLOAD_MEMORY_PRESSURE_CLEARED_CODE]: 'warning',
   [ENGINE_SIGN_IN_REQUIRED_CODE]: 'auth',
   [ENGINE_CREDENTIAL_PROFILE_UNSUPPORTED_CODE]: 'input_unsupported',
   [MUSE_TURN_IDLE_TIMEOUT_CODE]: 'timeout',

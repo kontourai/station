@@ -478,10 +478,34 @@ pressure: it also counts routine page-cache reclaim at the limit, which a
 scope that reads many files hits continually. While the scope is near its
 limit, `GET /api/system/workload` and `/api/system/resource-posture` list its
 `pressure`, and the engine's own `workload_status` read returns it with the
-largest processes, so an engine that checks can back off. Station does not
-push the warning into the engine's turn. The
+largest processes. The
 `station.workload.scope.memory_pressure` metric counts `enter` and `exit`
 transitions.
+
+Station also tells the engine whose scope it is (#5113). Entering pressure,
+leaving it, and a kill announced while the engine lives each become one short
+notice, such as "This session's memory is at 91% of its 7.0 GiB limit;
+largest: fallow 5.1 GiB. Stop or serialize memory-heavy commands before the
+kernel kills one." It names only kernel command names (`comm`, sanitized),
+sizes and counts, at most 360 characters. The transcript shows it at once as a
+`runtime.warning` (`workload-memory-pressure`,
+`workload-memory-pressure-cleared` or `workload-command-oom-killed`). When the
+engine sees it depends on the adapter:
+
+- **Claude**: with the result of its next tool call, as the
+  `additionalContext` of Station's `PostToolUse` or `PostToolUseFailure` hook,
+  which Claude Code adds as a system reminder. When no tool runs first, it
+  arrives with the next prompt (`UserPromptSubmit`). A tool call in a subagent
+  delivers it to that subagent.
+- **Codex**: through a `turn/steer` into the running turn, which Codex reads at
+  its next model request. With no turn running, or a steer refused, it arrives
+  as an extra text item of the next `turn/start`.
+
+Undelivered notices are coalesced. Entering and leaving pressure before the
+engine hears of either says nothing, and kills add up into one notice. A
+notice still undelivered after 10 minutes is dropped, and none is delivered
+after the session ends. `station.engine.workload_notices` counts each one by
+`provider_family`, `kind` and `outcome`.
 
 Each poll also puts an engine's commands ahead of the engine for the OOM
 killer. Station does not start those commands (the engine does, inside its
