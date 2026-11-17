@@ -4278,6 +4278,15 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'POST',
       path: '/agents/:slug/conversations/:conversationId/fork',
     },
+    // A paired Station continues one of its conversations here: like a fork,
+    // it creates a conversation for this Agent from history, but the history
+    // is the caller's own bounded record rather than one this Station holds.
+    // It reads and returns nothing of any other conversation, so it is no
+    // more sensitive than fork or POST /agents and takes the operate tier.
+    {
+      method: 'POST',
+      path: '/agents/:slug/conversation-imports',
+    },
     {
       method: 'GET',
       path: '/agents/:slug/conversations/:conversationId/messages',

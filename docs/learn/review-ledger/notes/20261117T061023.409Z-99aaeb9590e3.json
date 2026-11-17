@@ -1,0 +1,7 @@
+{
+  "revision": "7ea07e98c65c24cac77cbf54404162254b32d696",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Checked: the PR browser smoke contract and its selected specs are unchanged; the test change only pins the handoff spec's shared-instance classification.","inputs":["docs/testing/browser-smoke.md","scripts/__tests__/e2e-manifest.test.ts"]}
+  ]
+}

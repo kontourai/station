@@ -247,6 +247,23 @@ export function isPeerChatMutation(method: string, pathname: string): boolean {
   );
 }
 
+/**
+ * The owner's own device may continue one of its conversations on a paired
+ * Station, as it may chat there (D14). Exact leaf only: every other peer
+ * mutation stays operator-only.
+ */
+export function isPeerConversationHandoff(
+  method: string,
+  pathname: string,
+): boolean {
+  return (
+    method.toUpperCase() === 'POST' &&
+    /^\/api\/environments\/peers\/[A-Za-z0-9_-]+\/conversation-handoffs$/.test(
+      pathname,
+    )
+  );
+}
+
 const PEER_CHAT_COMMANDS = new Set([
   'interruptTurn',
   'steerTurn',

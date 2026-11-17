@@ -1788,6 +1788,37 @@ export class ConversationLineage {
     ];
   }
 
+  /**
+   * The messages a handoff to another Station carries: the same lineage,
+   * context-boundary filtering, authorization and seed-message reads an
+   * Agent/engine handoff builds its transcript seed from. Only text survives
+   * the receiver's projection; the caller bounds what it sends.
+   */
+  async readConversationCarriedMessages(
+    conversationId: string,
+    authority: SessionReadScope,
+  ): Promise<ConversationMessage[]> {
+    const lineage =
+      this.deps.eventStore?.conversationSessions(conversationId) ?? [];
+    if (lineage.length === 0)
+      throw new Error('The requested conversation was not found');
+    const filtered = this.contextSources(lineage);
+    for (const source of filtered.seed?.sourceCutoffs ?? [])
+      if (!(await this.deps.readSession(source.sessionId, authority)))
+        throw new ConversationStartContextError(
+          'Retained summary source is no longer authorized.',
+        );
+    for (const entry of filtered.sources)
+      if (!(await this.deps.readSession(entry.sessionId, authority)))
+        throw new Error('Conversation context is not authorized.');
+    return [
+      ...this.summaryMessages(filtered.seed),
+      ...filtered.sources.flatMap((entry) =>
+        this.deps.readSessionSeedMessages(entry.sessionId, authority),
+      ),
+    ];
+  }
+
   private contextSources(sources: readonly { sessionId: string }[]) {
     let start = 0;
     let seed:

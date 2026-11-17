@@ -1,0 +1,11 @@
+{
+  "revision": "404936c3346fded10f9f7907c821ea61c1f571e1",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Checked: the only change to the contracts reference removed a duplicate conversation_handoff_predecessor_busy table row; this page links to the reference and none of its claims depend on that row.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked: the only change to the contracts reference removed a duplicate conversation_handoff_predecessor_busy table row; this page links to the reference and none of its claims depend on that row.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Checked: the only change to the contracts reference removed a duplicate conversation_handoff_predecessor_busy table row; this page links to the reference and none of its claims depend on that row.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

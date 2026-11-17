@@ -887,6 +887,7 @@ import {
 import { TaskReviewSend } from '../../services/orchestration/task-review-send.js';
 import { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
 import { resolveWorkspaceIdentity } from '../../services/orchestration/workspace-identity.js';
+import { pairedStationImportCaller } from '../../services/peers/peer-conversation-handoff.js';
 import { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
 import { PeerEnrollmentService } from '../../services/peers/peer-enrollment-service.js';
 import { PeerReadinessService } from '../../services/peers/peer-readiness-service.js';
@@ -11072,6 +11073,13 @@ export function configureRuntimeRoutes(
       preview: peerChatPreview,
       previewGeneration: () =>
         context.featurePreviews.generation('paired-station-chats'),
+      handoff: {
+        readSource: (c, conversationId) =>
+          context.orchestrationService.readConversationCarriedHistory(
+            conversationId,
+            conversationReadAuthorityForContext(c),
+          ),
+      },
     }),
   );
   // station#1423: the operator's own answer-share management family. The base
@@ -12522,6 +12530,11 @@ export function configureRuntimeRoutes(
             : undefined,
         service: context.orchestrationService,
       },
+      // A conversation import comes only from a paired Station, named as it
+      // named itself when requesting pairing (see pairedStationImportCaller).
+      pairedStationImportCaller((credential) =>
+        context.environmentSecurityService.identifyDevice(credential),
+      ),
     ),
   );
   // The bytes behind a transcript's attachment chips. Separate from
