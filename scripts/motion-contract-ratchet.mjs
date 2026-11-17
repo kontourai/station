@@ -25,10 +25,12 @@ const DURATION_LITERAL = /(?:^|[\s,(])(?:\d*\.)?\d+(?:ms|s)\b/i;
 const EASING_LITERAL =
   /(?:^|[\s,(])(?:ease(?:-in|-out|-in-out)?|linear|cubic-bezier\s*\()/i;
 const TRANSITION_ALL = /\btransition\s*:\s*all(?:\s|;|$)/i;
-// `ease-in-out` is a different curve and must not match. A declared
-// `--ease-in` token does not legalize a use: the keyword and the var()
-// both fail with no ceiling.
-const EASE_IN_LAYER = /(?:^|[\s,(])ease-in(?![\w-])|var\(\s*--ease-in\s*\)/;
+// `ease-in-out` is a different curve and must not match. Keywords are
+// case-insensitive; custom properties are not, so `var(--EASE-IN)` is a
+// different token. `var()` is a function name, and a fallback argument is
+// still a use. A declared `--ease-in` legalizes neither form. No ceiling.
+const EASE_IN_KEYWORD = /(?:^|[\s,(])ease-in(?![\w-])/i;
+const EASE_IN_VAR = /[vV][aA][rR]\(\s*--ease-in\s*[,)]/;
 
 // Matches a custom-property *declaration* (`--name:`), not a `var(--name)`
 // reference — the character before `--` must be whitespace, `;`, `{`, or the
@@ -166,7 +168,11 @@ export function inspectMotionCss(content, declaredTokens) {
     const value = match[1].trim();
     const declaration = match[0];
     if (TRANSITION_ALL.test(declaration)) transitionAll.push(declaration);
-    if (motionLayers(value).some((layer) => EASE_IN_LAYER.test(layer))) {
+    if (
+      motionLayers(value).some(
+        (layer) => EASE_IN_KEYWORD.test(layer) || EASE_IN_VAR.test(layer),
+      )
+    ) {
       easeIn.push(declaration);
     }
     // Per LAYER, not per declaration. Testing the whole value let a

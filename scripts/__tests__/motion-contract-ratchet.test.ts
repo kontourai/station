@@ -143,13 +143,62 @@ describe('motion contract ratchet', () => {
     );
   });
 
+  it('rejects an ease-in fallback and an uppercase keyword with no ceiling', () => {
+    const declared = new Set([...REAL_TOKENS, '--ease-in']);
+    const fallback = inspectMotionCss(
+      '.out { animation: leave var(--motion-fast) var(--ease-in, var(--ease-out)) both; }',
+      declared,
+    );
+    expect(fallback.unresolvedToken).toEqual([]);
+    expect(fallback.hardCoded).toEqual([]);
+    expect(fallback.easeIn).toHaveLength(1);
+    expect(
+      evaluateMotionContract(
+        fallback.easeIn.map((declaration) => ({
+          file: 'out.css',
+          kind: 'ease-in' as const,
+          declaration,
+        })),
+        0,
+      ).passed,
+    ).toBe(false);
+    const upper = inspectMotionCss(
+      '.out { animation: leave var(--motion-fast) EASE-IN both; } .fn { transition: opacity var(--motion-fast) VAR(--ease-in); }',
+      declared,
+    );
+    expect(upper.easeIn).toHaveLength(2);
+    const findings = [
+      ...upper.hardCoded.map((declaration) => ({
+        file: 'out.css',
+        kind: 'hard-coded' as const,
+        declaration,
+      })),
+      ...upper.easeIn.map((declaration) => ({
+        file: 'out.css',
+        kind: 'ease-in' as const,
+        declaration,
+      })),
+    ];
+    expect(evaluateMotionContract(findings, 10, { 'out.css': 10 }).passed).toBe(
+      false,
+    );
+    const withoutEaseIn = findings.filter(
+      (finding) => finding.kind !== 'ease-in',
+    );
+    expect(
+      evaluateMotionContract(withoutEaseIn, 10, { 'out.css': 10 }).passed,
+    ).toBe(true);
+  });
+
   it('does not treat ease-in-out or ease-out as ease-in', () => {
+    const declared = new Set([...REAL_TOKENS, '--EASE-IN']);
     const mixed = inspectMotionCss(
-      '.a { animation: pulse 1.2s ease-in-out infinite; } .b { transition: opacity var(--motion-fast) var(--ease-out); }',
-      REAL_TOKENS,
+      '.a { animation: pulse 1.2s ease-in-out infinite; } .b { transition: opacity var(--motion-fast) var(--ease-out); } .c { animation: pulse 1.2s EASE-IN-OUT infinite; } .d { animation: leave var(--motion-fast) var(--EASE-IN) both; }',
+      declared,
     );
     expect(mixed.easeIn).toEqual([]);
-    expect(mixed.hardCoded).toHaveLength(1);
+    expect(mixed.unresolvedToken).toEqual([]);
+    expect(mixed.hardCoded).toHaveLength(2);
   });
 
   it('binds ease-out to the kit curve and declares no ease-in token', () => {
