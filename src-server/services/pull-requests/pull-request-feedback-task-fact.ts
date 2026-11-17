@@ -8,6 +8,7 @@
 import {
   type PullRequestFeedbackByPullRequest,
   pullRequestFeedbackKey,
+  pullRequestFeedbackSends,
 } from '@kontourai/station-contracts/pull-request-feedback';
 import type { TaskPullRequestFeedbackFact } from '@kontourai/station-contracts/task-lane';
 import type { PullRequestFeedbackStore } from './pull-request-feedback-store.js';
@@ -61,7 +62,11 @@ export function pullRequestFeedbackTaskFact(input: {
   if (view.last?.state === 'sent' && view.last.headSha === head)
     return { state: 'sent', headSha: head, at: view.last.at };
   // Busy or waiting on a person: feedback still goes when it can. A
-  // stopped agent or an owner who can no longer send gets no note.
+  // stopped agent or an owner who can no longer send gets no note, and
+  // neither does a claim that only reviews each head ("auto-fix on" would
+  // overstate it).
+  if (view.settings && !pullRequestFeedbackSends(view.settings))
+    return undefined;
   if (
     status.state === 'watching' ||
     (status.state === 'held' &&

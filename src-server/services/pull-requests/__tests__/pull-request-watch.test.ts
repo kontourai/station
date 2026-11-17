@@ -29,6 +29,7 @@ import { createStagedPreToolPolicyEvaluator } from '../../../runtime/agents/pre-
 import { createFeedbackSessionReaders } from '../../../runtime/routes/runtime-pull-request-feedback.js';
 import { normalizeGitHubFeedbackObservation } from '../github-feedback-observation.js';
 import { PullRequestFeedbackDelivery } from '../pull-request-feedback-delivery.js';
+import { PullRequestFeedbackOwnership } from '../pull-request-feedback-ownership.js';
 import { PullRequestFeedbackStore } from '../pull-request-feedback-store.js';
 import { PullRequestWatch } from '../pull-request-watch.js';
 import recordedFixture from './fixtures/github-feedback-observation.json' with {
@@ -412,5 +413,60 @@ describe('a Task watches the pull request it keeps (#5066)', () => {
       source: 'project',
       projectEnabled: false,
     });
+  });
+});
+
+describe('a person turning feedback off in the chat ends the watch for that pull request', () => {
+  const ownershipFor = (t: Awaited<ReturnType<typeof setup>>) =>
+    new PullRequestFeedbackOwnership({
+      store: () => t.store,
+      readStore: () => t.store,
+      linkedIdentities: async () => [IDENTITY],
+      session: () => ({ state: 'idle', ownerUserId: OWNER }),
+      mayContinue: () => true,
+      title: () => 'Chat',
+      headReviewEnabled: () => true,
+    });
+  const viewer = { userId: OWNER, canRead: () => true };
+
+  it('both sending switches off through the switches write: the next sync leaves it off', async () => {
+    const t = await setup({ project: { enabled: true, maxFixAttempts: 3 } });
+    t.watch.sync();
+    expect(t.store.claim(PR_KEY)?.watch?.taskId).toBe('task-1');
+    const result = await ownershipFor(t).write({
+      conversationId: CONVERSATION,
+      identity: IDENTITY,
+      settings: {
+        fixFailingChecks: false,
+        addressReviewComments: false,
+        reviewEachHead: false,
+      },
+      viewer,
+    });
+    expect(result.kind).toBe('ok');
+    t.watch.sync();
+    const claim = t.store.claim(PR_KEY);
+    expect(claim?.watch).toBeUndefined();
+    expect(claim?.settings).toMatchObject({
+      fixFailingChecks: false,
+      addressReviewComments: false,
+    });
+  });
+
+  it('turning it off: the next sync leaves it off', async () => {
+    const t = await setup({ project: { enabled: true, maxFixAttempts: 3 } });
+    t.watch.sync();
+    expect(
+      (
+        await ownershipFor(t).off({
+          conversationId: CONVERSATION,
+          identity: IDENTITY,
+          viewer,
+        })
+      ).kind,
+    ).toBe('ok');
+    t.watch.sync();
+    expect(t.store.claim(PR_KEY)?.watch).toBeUndefined();
+    expect(t.store.claim(PR_KEY)?.settings.fixFailingChecks).toBe(false);
   });
 });

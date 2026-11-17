@@ -11,6 +11,10 @@ evidence:
     ref: https://github.com/kontourai/station/pull/5044
   - kind: doc
     ref: src-server/services/pull-requests/pull-request-feedback-task-branches.ts
+  - kind: doc
+    ref: src-server/services/pull-requests/pull-request-head-review.ts
+  - kind: pr
+    ref: https://github.com/kontourai/station/pull/5159
 ---
 
 # Forge feedback goes to the agent that owns the pull request
@@ -78,7 +82,7 @@ flag. Hosted Stations do not offer it, and GitLab reads as `unsupported`.
    waiting, is a Needs-you item (`pull-request-feedback`) for readers of
    that chat, and one push notification to them when it starts. Paused, the
    item's primary action is Send again; stopped, it is Open chat (Send again
-   would answer "not paused"). Open pull request and Turn off auto-fix
+   would answer "not paused"). Open pull request and Turn off agent feedback
    follow it. Who may Send again, turn feedback off or change a switch is
    one rule, for the routes and the item alike: a current, in-person
    operator who may read the chat and continue it. A reader it refuses sees
@@ -247,8 +251,6 @@ Choices the decisions left open, and departures from the plan:
     the preview.
   - Derived links are never pruned; a claim pruned after two weeks off is
     not made again, because discovery skips a Task that has one.
-- The `review-findings` category and `reviewEachHead` setting exist for
-  the later per-head review and drive nothing.
 - Project defaults follow-ups: a second pull request opened from the same
   Task branch after the first is never discovered (discovery skips a Task
   with a derived link); the head is not checked against the Task
@@ -259,3 +261,118 @@ Choices the decisions left open, and departures from the plan:
   Task board cards (the board's facts read kept pull requests only). A
   paired host from before Project defaults that has the preview but not the
   defaults route shows the section's error state ("Project unavailable").
+
+## Station's review of each new head
+
+Behind a second preview, `pull-request-head-review` (it needs
+`pull-request-agent-feedback` too), "Review each new head" runs Station's
+existing independent review (`ReviewEvidenceModule`) once per head.
+
+10. **When.** The pull request is open and not a draft, its head has held
+   still (read twice, or a turn ended after it was first seen), and the
+   owning agent is idle, not waiting on a person, with no feedback message
+   open or waiting. A claim with only this switch on is active
+   (`pullRequestFeedbackActive`): it is read, owned (a second chat is
+   refused) and its messages are placed, but only while the
+   `pull-request-head-review` preview is on; while it is off the switch
+   does nothing and a write cannot turn it on. A write that leaves
+   `reviewEachHead` out keeps the chat's stored value, deliberately: review
+   settings stored while the preview was on resume when it is turned back
+   on (its Feature Preview description says so). While the newest
+   head has no review, the panel says why (`headReviewWaiting`: settling,
+   the agent busy, waiting or stopped, feedback waiting, another review
+   in the Project, the daily limit, a draft, closed, or starting soon);
+   "Waiting for a push" only before Station has read the pull request.
+11. **What is reviewed.** The Project's own checkout, which a Task's
+    worktree shares objects with; Station never fetches. A head that is not
+    there reads "Head a1b2c3d isn't on this Station yet" and is tried again
+    on the next read. The base is the merge base of the head with the
+    observed base commit (when local), else `origin/<base branch>`, else the
+    Task's recorded base commit. When the previous reviewed head is an
+    ancestor, its receipt had 1 to 100 findings and both heads share that
+    merge base, it is a delta review from that head; a force-push, or a
+    push that merged the base branch in, reviews from the merge base again.
+    A head already in the base branch is not reviewed.
+12. **Once.** The request id is `prh-` and 40 hex of a hash of the pull
+    request and head; Review again adds `:rerun:<n>`. A pull request's
+    epoch (`:e<n>`, absent while 0) goes up whenever its review rows are
+    dropped: the claim moves, is turned off, or is pruned or deleted. It is
+    kept forever, so a new owner or a re-enable never reuses an earlier
+    request id, and a review whose claim changed epoch under it writes
+    nothing. The row is written
+    before the review starts; a review a restart left running reads "Result
+    unknown" ("Station doesn't know how this review ended") and never runs
+    again by itself. Review again keeps the finished review until a new
+    request is submitted: one that stops first (no reviewer, head not here,
+    a busy Project, the daily limit) only tells the person why. A claim
+    that moves to another chat or is turned off drops its head reviews.
+13. **Reviewers and bounds.** Repo Map selection when it is available,
+    otherwise one `correctness` reviewer by the Task code review's rule
+    (an Agent of the Project, not the implementer, that reviews read-only).
+    Today only a Codex connection can review read-only, so "No reviewer"
+    says to connect Codex. One review per Project at a time, at most 10
+    submitted per Project in 24 hours (every request counts, Review again
+    included), the module's 10-minute reviewer window and 2 concurrent
+    reviewers.
+14. **What reaches the agent.** Required findings only: critical or high
+    severity with high or medium confidence, plus earlier findings the
+    reviewer found still present or regressed that pass the same filter.
+    They go as a `review-findings` block under "Address review comments",
+    or when a person chooses Send to agent; either way under the same caps
+    as the rest (Send to agent on a paused pull request says so). The rest
+    stay in Station, folded. Findings are listed most severe first, then
+    most certain; only the current head's review can be sent. Reviewer text
+    is made inert like forge text. The head reviewer has no forge provider:
+    it never approves, merges, comments or posts a review.
+
+With a Task watching the pull request ([task-owned pull requests](task-owned-pull-requests.md)):
+
+- A Task's watch claim and "Review each new head" do not combine today. A
+  watch claim turns on the two sending switches only. Turning review on in
+  the chat makes it a person's claim, which ends the Task's watch for that
+  pull request (its Ready for you report and fix budget; the merge refusals
+  still apply while the Task watches). Turning both sending switches off in
+  the chat ends it the same way, so the watch does not turn it back on.
+- Required findings are not failing checks, so a message carrying them is
+  not a fix attempt (the budget counts only messages that carried failing
+  checks). They share the 3-rounds-per-head and 10-a-day caps.
+- A watch that stops or moves a claim releases or rewrites it through the
+  same store paths, so the review epoch goes up with it; the watch adds no
+  other way to drop a claim's reviews.
+- Project settings keep two sections: Pull requests (a Task watches the pull
+  requests kept on it) and Agent feedback (defaults for a pull request a
+  Task opens from its branch and does not watch). Folding both into one
+  section is a follow-up.
+- Follow-up: compose a Task's watch with review of each head (review on
+  watch claims, and Ready for you waiting for the head's review). Whoever
+  builds it must handle four cases that would otherwise hold Ready for
+  good: a findings delivery a person dismissed; feedback waiting on another
+  pull request of the same chat, which keeps the agent from counting as
+  idle and so blocks this head's review; a fix-budget pause; and the person
+  who turned review on losing permission to continue the chat.
+
+Departures from the plan:
+
+- The panel reads "2 required findings · Sent 1m", not "sent to agent 1m
+  ago": Station's relative time has no "ago".
+- A finding's location is an inline code span (`` `src/foo.ts:88` ``) so a
+  path cannot open markdown, and the opening line adds that review findings
+  come from Station's reviewer agents.
+- The fallback reviewer is chosen before the review starts (Station asks
+  the Repo Map selection first), so a request has one id whichever route it
+  takes. Repo Map selection may route more than 2 lenses; 2 run at a time.
+- A chat with no Agent (an engine-only chat) cannot be reviewed: the review
+  module resolves the implementer as an Agent. It reads "Not reviewed".
+- With the preview off, turning both sending switches off still turns the
+  claim off (one turn-off path), review included.
+- Send to agent is the section's one primary when there is something to
+  send; Review again is never a primary, so it does not sit as a second
+  green button beside the panel's own tabs.
+- Project defaults gain a third switch, "Review each new head", shown only
+  while the head review preview is on. While it is off the defaults write
+  ignores it and an auto-claim does not copy it. A default with only that
+  switch on still claims a Task branch's pull request, and the "still get
+  feedback" count includes review-only claims, both only while the preview
+  is on.
+- The Needs-you item's button reads "Turn off agent feedback" (it was "Turn
+  off auto-fix"), true for a review-only claim too.

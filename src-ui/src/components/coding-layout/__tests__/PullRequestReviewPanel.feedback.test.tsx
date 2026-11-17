@@ -90,6 +90,7 @@ vi.mock('@kontourai/station-sdk/pull-request-feedback', () => ({
     };
   }),
   pullRequestFeedbackOwnerOf: () => undefined,
+  pullRequestHeadReviewRefusal: () => undefined,
   writePullRequestFeedback: vi.fn(),
   sendPullRequestFeedbackAgain: vi.fn(),
 }));

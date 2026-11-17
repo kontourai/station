@@ -1016,7 +1016,7 @@ describe('AttentionCard — pull request feedback needs you', () => {
     );
     expect(
       [...(actions?.children ?? [])].map((element) => element.textContent),
-    ).toEqual(['Send again', 'Open pull request', 'Turn off auto-fix']);
+    ).toEqual(['Send again', 'Open pull request', 'Turn off agent feedback']);
     expect(screen.getByText('Agent feedback')).toBeTruthy();
     expect(screen.getByText('#42 still failing after 3 rounds')).toBeTruthy();
     const send = screen.getByRole('button', { name: 'Send again' });
@@ -1054,14 +1054,14 @@ describe('AttentionCard — pull request feedback needs you', () => {
       '/projects/p?chat=session-a&dock=open',
     );
     expect(open.className).toContain('notice-action--primary');
-    expect(buttons()).toContain('Turn off auto-fix');
+    expect(buttons()).toContain('Turn off agent feedback');
   });
 
   test('Turn off turns this pull request off in its own chat', async () => {
     renderCard(feedbackItem());
     await act(async () =>
       fireEvent.click(
-        screen.getByRole('button', { name: 'Turn off auto-fix' }),
+        screen.getByRole('button', { name: 'Turn off agent feedback' }),
       ),
     );
     expect(feedbackSdk.turnOff).toHaveBeenCalledWith(
@@ -1077,7 +1077,7 @@ describe('AttentionCard — pull request feedback needs you', () => {
     renderCard(feedbackItem({ viewerMayChange: false }));
     expect(screen.queryByRole('button', { name: 'Send again' })).toBeNull();
     expect(
-      screen.queryByRole('button', { name: 'Turn off auto-fix' }),
+      screen.queryByRole('button', { name: 'Turn off agent feedback' }),
     ).toBeNull();
     expect(screen.getByTestId('attention-pr-feedback-remedy').textContent).toBe(
       "Change this from the chat on this Station's owner device.",

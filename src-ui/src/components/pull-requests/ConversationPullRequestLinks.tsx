@@ -17,6 +17,7 @@ import { PullRequestFeedbackDialog } from './PullRequestFeedbackDialog';
 import { PullRequestRow } from './PullRequestRow';
 import { pullRequestStateChip } from './pull-request-chips';
 import {
+  headReviewMeta,
   pullRequestFeedbackChip,
   pullRequestFeedbackLine,
 } from './pull-request-feedback-presentation';
@@ -200,7 +201,10 @@ export function ConversationPullRequestLinks({
                     </>
                   ) : undefined
                 }
-                meta={[PROVENANCE[link.source]]}
+                meta={[
+                  PROVENANCE[link.source],
+                  ...headReviewMeta(view?.headReview),
+                ]}
                 note={status.state === 'current' ? undefined : status.reason}
                 onOpen={
                   onOpen && status.state === 'current'
@@ -266,6 +270,7 @@ export function ConversationPullRequestLinks({
       {feedbackFor && (
         <PullRequestFeedbackDialog
           reference={`${feedbackFor.repository.owner}/${feedbackFor.repository.name} #${feedbackFor.ref}`}
+          headReview={feedback.headReview}
           view={feedback.viewFor(feedbackFor)}
           pending={feedback.pending !== null}
           error={
