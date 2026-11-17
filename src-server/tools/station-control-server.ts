@@ -10,8 +10,8 @@ import { adoptStationCompileCache } from '../runtime/bootstrap/adopt-compile-cac
 import { createStationControlMcpServer } from './station-control-mcp-server.js';
 import { installStationControlStdioEntry } from './station-control-shared.js';
 
-// A stdio child is a pooled, caller-less station-control process: mark it so
-// nothing it sends carries the server-self attestation.
+// A stdio child carries no caller (and, since #2377 slice D, no internal
+// token): mark it so nothing it sends carries the server-self attestation.
 installStationControlStdioEntry();
 // Keep Station's compile cache out of anything this child starts, and write
 // it now: an engine may end this child with a signal.

@@ -9,6 +9,8 @@ evidence:
     ref: src-server/services/pull-requests/pull-request-feedback-delivery.ts
   - kind: pr
     ref: https://github.com/kontourai/station/pull/5044
+  - kind: doc
+    ref: src-server/services/pull-requests/pull-request-feedback-task-branches.ts
 ---
 
 # Forge feedback goes to the agent that owns the pull request
@@ -41,8 +43,11 @@ flag. Hosted Stations do not offer it, and GitLab reads as `unsupported`.
    new head whose feedback differs. A 24-hour pause moves to a new head while
    the 10 are still spent, rather than lifting and pausing again, so a person
    is told once and Send again grants its round on the head being read.
-4. **New claims only.** Project defaults would apply only when a claim is
-   created, never retroactively (not built in this slice).
+4. **New claims only.** Project defaults apply only when Station creates a
+   claim for a Task-branch pull request (decision 9), never retroactively:
+   changing or turning off the defaults never changes a claim already made.
+   Turned off with claims they made still sending, the settings say how many
+   and that each is turned off from its chat.
 5. **Overlap with Task follow-ups.** For a pull request whose feedback is on,
    [Task tracker follow-ups](task-tracker-followups.md) still record its
    checks and reviews in the Task brief, but stop waking the lead for each
@@ -84,6 +89,34 @@ flag. Hosted Stations do not offer it, and GitLab reads as `unsupported`.
    Station's other system notices it has no per-source mute; quiet hours
    and a surface's minimum urgency still apply, and turning auto-fix off
    stops it.
+
+9. **Project defaults and Task-branch pull requests.** This Station's
+   owner, in person, turns feedback on once for a Project (its settings'
+   Agent feedback; never Station's internal principal or a delegation
+   credential). Station then looks for an open pull request whose head is
+   exactly a live Task's own recorded worktree branch
+   (`TaskWorktreeStore`, for that Task incarnation; never a branch-name
+   prefix, which policy can change), whose head is not a fork and is owned
+   by the repository's owner, in the repository the Project's checkout and
+   the Task worktree's repository both name. That pull request shows in the
+   Task lead's chat as "from this Task's branch" (`branch-derived`). It is
+   claimed, with the defaults' switches and as the person who set them
+   (`origin: project-default`), only when no claim row exists for it (any
+   row, even one with every switch off, means a person engaged), it was not
+   removed from that Task, and that person may continue the lead's chat.
+   A person changing it from the chat makes it theirs. "Remove from this
+   chat" removes it from that Task's chat for good, keyed by the pull
+   request and the Task id, so a Task created again under the same id does
+   not bring it back; it releases the claim unless the pull request is also
+   linked or kept there, and the confirmation says which. A Project's
+   defaults belong to that incarnation of the Project (its id and creation
+   time), and its settings count only claims on open pull requests in chats
+   the reader may read. A Project recorded with a `~/` folder is read as the
+   host user's. The chat's pull request list never depends on these links:
+   a failing read adds none. Bounds: at most 3 forge reads per
+   tick on the feedback poller's own tick, single flight and backoff; a Task
+   at most every 10 minutes after its lead's turn ends, otherwise every 30;
+   never a Task that already has a derived link.
 
 ## The message
 
@@ -193,7 +226,36 @@ Choices the decisions left open, and departures from the plan:
   interrupt twice. A later stop with the same feedback still waiting is the
   same notice. A pause recorded before pauses kept their start time is
   stamped once when first read.
-- Not yet built: Project defaults (and so automatic claims of a Task
-  branch's pull request, `branch-derived`). The `review-findings` category
-  and `reviewEachHead` setting exist for the later per-head review and drive
-  nothing.
+- Project defaults (decision 9) differ from the plan where the code
+  disagreed:
+  - Setting them needs this Station's owner in person rather than the chat
+    writer rule: there is no chat when they are set. Whether that person may
+    continue the Task lead's chat is checked when a claim is made.
+  - A turn ending marks its Task for the next tick (at most a minute later)
+    instead of reading at once, so every read stays inside the tick's bounds.
+    An agent's `declare_pull_request` happens inside a turn, so its turn's
+    end covers that trigger; there is no separate one.
+  - The Task is found from the lead's conversation (its `sessionId`), and
+    also from a Task room execution binding when the Session has one.
+  - The derived link keeps its Project's id, so the settings can count the
+    claims the defaults made.
+  - `gh pr list` has no `--hostname`; `--repo host/owner/name` names the
+    host instead.
+  - "Remove from this chat" asks first: it cannot be undone for that Task.
+  - The Project settings section is shown with its Feature Preview alone,
+    like Schedules: a Station that cannot serve feedback never registers
+    the preview.
+  - Derived links are never pruned; a claim pruned after two weeks off is
+    not made again, because discovery skips a Task that has one.
+- The `review-findings` category and `reviewEachHead` setting exist for
+  the later per-head review and drive nothing.
+- Project defaults follow-ups: a second pull request opened from the same
+  Task branch after the first is never discovered (discovery skips a Task
+  with a derived link); the head is not checked against the Task
+  worktree's commits (`headRefOid` reachability, defense in depth); the
+  by-head read ignores its abort signal (gh offers no cancellation);
+  the row offers "Remove from this chat" to a reader the route then
+  refuses (it is not hidden for one who may not change the chat); and Task-branch pull requests are not yet on
+  Task board cards (the board's facts read kept pull requests only). A
+  paired host from before Project defaults that has the preview but not the
+  defaults route shows the section's error state ("Project unavailable").

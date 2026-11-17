@@ -1,0 +1,17 @@
+{
+  "revision": "83e95a400e219db6d569aab52ca91f6800689998",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Contract change is the createdBy doc comment only (Project jobs run as the local operator until #5126); no type change, so citing pages' type listings and automation design claims are unchanged.","inputs":["packages/contracts/src/scheduler.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Contract change is the createdBy doc comment only (Project jobs run as the local operator until #5126); no type change, so citing pages' type listings and automation design claims are unchanged.","inputs":["packages/contracts/src/scheduler.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Contract change is the createdBy doc comment only (Project jobs run as the local operator until #5126); no type change, so citing pages' type listings and automation design claims are unchanged.","inputs":["packages/contracts/src/scheduler.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Contract change is the createdBy doc comment only (Project jobs run as the local operator until #5126); no type change, so citing pages' type listings and automation design claims are unchanged.","inputs":["packages/contracts/src/scheduler.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Contract change is the createdBy doc comment only (Project jobs run as the local operator until #5126); no type change, so citing pages' type listings and automation design claims are unchanged.","inputs":["packages/contracts/src/scheduler.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Contract change is the createdBy doc comment only (Project jobs run as the local operator until #5126); no type change, so citing pages' type listings and automation design claims are unchanged.","inputs":["packages/contracts/src/scheduler.ts"]}
+  ]
+}

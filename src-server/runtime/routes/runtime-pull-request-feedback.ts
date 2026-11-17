@@ -8,6 +8,8 @@
  * Not composed on a hosted Station (no host forge login to read with, and
  * no conversation inbox), so every route there answers 404.
  */
+
+import { resolve } from 'node:path';
 import type {
   ConversationPullRequestLink,
   PullRequestLinkIdentity,
@@ -27,6 +29,7 @@ import type {
 } from '@kontourai/station-contracts/task-graph';
 import type { TaskPullRequestFeedbackFact } from '@kontourai/station-contracts/task-lane';
 import { parseGitHubWorkItemRef } from '@kontourai/station-contracts/work-item-provider';
+import type { WorktreeSessionMetadata } from '@kontourai/station-contracts/workspace-isolation';
 import {
   type createPullRequestFeedbackRoutes,
   type PullRequestFeedbackRouteAccess,
@@ -34,6 +37,7 @@ import {
 } from '../../routes/pull-requests/pull-request-feedback.js';
 import { isOperatorInPersonNotAgent } from '../../security/coding-authority.js';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
+import { readReviewRepositoryIdentity } from '../../services/evidence/git-review-workspace-source.js';
 import type { FeaturePreviewRegistry } from '../../services/feature-previews/feature-preview-registry.js';
 import type { NotificationService } from '../../services/notifications/notification-service.js';
 import type { EventStore } from '../../services/orchestration/event-store.js';
@@ -61,8 +65,15 @@ import {
   pullRequestFeedbackStorePath,
   type StoredClaimCondition,
 } from '../../services/pull-requests/pull-request-feedback-store.js';
+import {
+  PullRequestFeedbackTaskBranches,
+  type PullRequestFeedbackTaskBranchPorts,
+  type TaskBranchProject as PullRequestFeedbackTaskBranchProject,
+  type TaskBranchTask as PullRequestFeedbackTaskBranchTask,
+} from '../../services/pull-requests/pull-request-feedback-task-branches.js';
 import { pullRequestFeedbackTaskFact } from '../../services/pull-requests/pull-request-feedback-task-fact.js';
 import { PullRequestWatch } from '../../services/pull-requests/pull-request-watch.js';
+import { expandTilde } from '../../utils/paths.js';
 import type { PullRequestWatchPolicy } from '../agents/pre-tool-policy.js';
 
 /**
@@ -177,6 +188,20 @@ export interface PullRequestFeedbackRuntimeDeps {
     warn(message: string, meta?: Record<string, unknown>): void;
     info?(message: string, meta?: Record<string, unknown>): void;
   };
+  /**
+   * Project defaults and Task-branch discovery (C2c): the Projects, Tasks
+   * and Task worktrees it reads. Absent: neither is offered.
+   */
+  taskBranches?: Pick<
+    PullRequestFeedbackTaskBranchPorts,
+    | 'tasks'
+    | 'project'
+    | 'taskWorktree'
+    | 'taskOfSession'
+    | 'repositoryIdentity'
+  > & {
+    canReadProject(request: Request, projectSlug: string): Promise<boolean>;
+  };
 }
 
 type FeedbackNotifier = Pick<
@@ -194,6 +219,11 @@ export interface PullRequestFeedbackRuntime {
     conversationId: string;
     clientTurnId: string;
   }): { reasonCode: string; reason: string } | undefined;
+  /**
+   * Pull requests found on the chat's Task's own branch, for the chat's
+   * pull request list. Empty while the preview is off.
+   */
+  derivedLinks(conversationId: string): ConversationPullRequestLink[];
   /**
    * A kept pull request's feedback for the Task board, as this request may
    * see it: undefined while the preview is off or unless it may read the
@@ -346,6 +376,8 @@ export function subscribeFeedbackTriggers(deps: {
   hasClaims(conversationId: string): boolean;
   refresh(conversationId: string): void;
   deliver(conversationId: string): void;
+  /** Any finished turn, claims or not: Task-branch discovery looks soon. */
+  turnCompleted?(conversationId: string, sessionId: string): void;
 }): () => void {
   return deps.eventBus.subscribe((frame) => {
     if (frame.event !== 'orchestration:event' || !deps.enabled()) return;
@@ -355,10 +387,61 @@ export function subscribeFeedbackTriggers(deps: {
     const refresh = event.method === 'turn.completed';
     if (!refresh && !REDELIVER_METHODS.has(event.method)) return;
     const conversationId = deps.conversationOf(event.threadId);
+    if (refresh) deps.turnCompleted?.(conversationId, event.threadId);
     if (!deps.hasClaims(conversationId)) return;
     if (refresh) deps.refresh(conversationId);
     else deps.deliver(conversationId);
   });
+}
+
+/**
+ * `taskBranches` from Station's own services, so runtime-routes binds it in
+ * one call: Tasks and their recorded worktrees from the Task graph, a
+ * Project by id or slug, the Task a Session is bound to, and a checkout's
+ * repository as review reads it (its normalized origin).
+ */
+export function pullRequestFeedbackTaskBranchPorts(services: {
+  taskGraph: {
+    listTasks(): readonly PullRequestFeedbackTaskBranchTask[];
+    readTaskWorktree(taskId: string): WorktreeSessionMetadata | undefined;
+  };
+  projects: {
+    listProjects(): readonly { id: string; slug: string }[];
+    getProject(slug: string): PullRequestFeedbackTaskBranchProject;
+  };
+  eventStore:
+    | Pick<EventStore, 'readProjectTaskRoomExecutionBinding'>
+    | undefined;
+  canReadProject(request: Request, projectSlug: string): Promise<boolean>;
+}): NonNullable<PullRequestFeedbackRuntimeDeps['taskBranches']> {
+  return {
+    tasks: () => services.taskGraph.listTasks(),
+    project: (idOrSlug) => {
+      const listed = services.projects
+        .listProjects()
+        .find(
+          (project) => project.id === idOrSlug || project.slug === idOrSlug,
+        );
+      try {
+        if (!listed) return undefined;
+        const project = services.projects.getProject(listed.slug);
+        // A recorded `~/…` folder is the host user's, as the pull request
+        // routes read it (station#3155).
+        const workingDirectory =
+          project.workingDirectory &&
+          resolve(expandTilde(project.workingDirectory));
+        return workingDirectory ? { ...project, workingDirectory } : project;
+      } catch {
+        return undefined;
+      }
+    },
+    taskWorktree: (taskId) => services.taskGraph.readTaskWorktree(taskId),
+    taskOfSession: (sessionId) =>
+      services.eventStore?.readProjectTaskRoomExecutionBinding(sessionId)
+        ?.taskId,
+    repositoryIdentity: readReviewRepositoryIdentity,
+    canReadProject: services.canReadProject,
+  };
 }
 
 export function composePullRequestFeedbackRuntime(
@@ -390,7 +473,13 @@ export function composePullRequestFeedbackRuntime(
     orchestration: deps.orchestration,
     inbox,
   });
-  /** What a person linked to the chat (any Session of it) or kept on its Task. */
+  // Assigned below when composed; linkedNow reads its derived links.
+  let taskBranches: PullRequestFeedbackTaskBranches | undefined;
+  /**
+   * What a person linked to the chat (any Session of it) or kept on its
+   * Task, and what Station found on its Task's own branch and nobody
+   * removed. Delivery and the poller release a claim missing from it.
+   */
   const linkedNow = (conversationId: string) => {
     const ids = lineage(conversationId);
     const explicit: ConversationPullRequestLink[] = ids.flatMap((id) =>
@@ -402,6 +491,7 @@ export function composePullRequestFeedbackRuntime(
         { lineageSessionIds: () => ids, keptForSessions: deps.keptForSessions },
         conversationId,
       ),
+      ...(taskBranches?.derivedLinks(conversationId) ?? []),
     ];
   };
   const linkedIdentities = async (conversationId: string) =>
@@ -496,7 +586,30 @@ export function composePullRequestFeedbackRuntime(
     }),
     logger: deps.logger,
   });
+  const branchPorts = deps.taskBranches;
+  if (branchPorts)
+    taskBranches = new PullRequestFeedbackTaskBranches({
+      enabled,
+      store: () => holder.forWrite(),
+      readStore: () => holder.forRead(),
+      tasks: () => branchPorts.tasks(),
+      project: (idOrSlug) => branchPorts.project(idOrSlug),
+      taskWorktree: (taskId) => branchPorts.taskWorktree(taskId),
+      ...(branchPorts.taskOfSession
+        ? { taskOfSession: branchPorts.taskOfSession }
+        : {}),
+      repositoryIdentity: (path) => branchPorts.repositoryIdentity(path),
+      providers: deps.providers,
+      conversationOf,
+      session,
+      mayContinue: (conversationId, userId) =>
+        inbox.mayContinue(conversationId, userId),
+      logger: deps.logger,
+    });
   const poller = new PullRequestFeedbackPoller({
+    ...(taskBranches
+      ? { discover: (input) => taskBranches!.discover(input) }
+      : {}),
     linked: linkedNow,
     enabled,
     store: () => holder.forRead(),
@@ -594,6 +707,8 @@ export function composePullRequestFeedbackRuntime(
     hasClaims,
     refresh: (conversationId) => void poller.refresh(conversationId),
     deliver: (conversationId) => void delivery.deliver(conversationId),
+    turnCompleted: (conversationId, sessionId) =>
+      taskBranches?.nudge(conversationId, sessionId),
   });
   return {
     routeArgs: [
@@ -601,8 +716,32 @@ export function composePullRequestFeedbackRuntime(
       () => delivery,
       (conversationId) => void poller.refresh(conversationId),
       access,
+      taskBranches && branchPorts
+        ? {
+            taskBranches,
+            canReadProject: branchPorts.canReadProject,
+            // Released on delivery's next run, unless still linked.
+            dismissed: (conversationId: string) =>
+              void delivery.deliver(conversationId),
+          }
+        : undefined,
     ],
     placementRefusal: (input) => delivery.placementRefusal(input),
+    // Fail-soft: the chat's pull request list never depends on agent
+    // feedback. A preview or store read that throws contributes nothing.
+    derivedLinks: (conversationId) => {
+      try {
+        return enabled()
+          ? (taskBranches?.derivedLinks(conversationId) ?? [])
+          : [];
+      } catch (error) {
+        deps.logger.warn('Task-branch pull requests not read', {
+          conversationId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return [];
+      }
+    },
     factFor: (identity, request, taskSessionId) => {
       const store = enabled() ? holder.forRead() : undefined;
       if (!store || !deps.access.current(request)) return undefined;

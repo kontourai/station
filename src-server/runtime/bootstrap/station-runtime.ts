@@ -527,7 +527,6 @@ import { replaceRuntimeTemplateVariables } from '../agents/runtime-template-vari
 import { bootstrapRuntimeVoiceAgent } from '../agents/runtime-voice-agent.js';
 import { RuntimeEventLog } from '../conversation/runtime-event-log.js';
 import type { StrandsFramework } from '../frameworks/strands-adapter.js';
-import { releaseAllNativeStationControlClients } from '../frameworks/strands-native-client-pool.js';
 import { VoltAgentFramework } from '../frameworks/voltagent-adapter.js';
 import {
   createStationControlCallerRecordResolver,
@@ -4535,6 +4534,14 @@ export class StationRuntime {
               enabled: () => true,
               disabled: () => false,
             }) ?? false,
+          // #2377 slice D: Station's own engine derives its station-control
+          // caller from the same records as in-process Claude.
+          stationControlCallerRecords: () =>
+            this.orchestrationService
+              ? createStationControlCallerRecordResolver(
+                  this.stationControlRecordSources(),
+                )
+              : undefined,
           codexBoundToolsEnabled: () =>
             this.codexBoundToolsPreview?.select({
               enabled: () => true,
@@ -6437,14 +6444,6 @@ export class StationRuntime {
         configLoader: undefined,
         optionalNetworkShutdownTasks,
       });
-    } catch (error) {
-      failures.push(error);
-    }
-    try {
-      await Promise.all([
-        MCPManager.releaseAllNativeStationControlConnections(this.mcpCustody),
-        releaseAllNativeStationControlClients(this.mcpCustody),
-      ]);
     } catch (error) {
       failures.push(error);
     }

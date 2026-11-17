@@ -135,6 +135,9 @@ vi.mock('../components/ModelSelector', () => ({
   ),
 }));
 
+vi.mock('../views/project-settings/AgentFeedbackDefaultsSection', () => ({
+  AgentFeedbackDefaultsSection: () => <p>Agent feedback defaults</p>,
+}));
 vi.mock('../components/PathAutocomplete', () => ({
   PathAutocomplete: ({
     value,
@@ -954,6 +957,25 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       ].map((option) => option.value);
       expect(options).toEqual(['', 'openai-main']);
     });
+  });
+
+  test('offers Agent feedback only with its preview', () => {
+    const { unmount } = renderProjectSettings('agent-feedback');
+    expect(screen.queryByRole('link', { name: 'Agent feedback' })).toBeNull();
+    expect(screen.queryByText('Agent feedback defaults')).toBeNull();
+    unmount();
+    sdkMocks.previews = [{ id: 'pull-request-agent-feedback', enabled: true }];
+    renderProjectSettings('agent-feedback');
+    expect(
+      screen
+        .getByRole('link', { name: 'Agent feedback' })
+        .getAttribute('aria-current'),
+    ).toBe('location');
+    expect(screen.getByText('Agent feedback defaults')).toBeTruthy();
+    // It saves on its own, not with the page's Save.
+    expect(
+      screen.getByText('Changes in this section save automatically.'),
+    ).toBeTruthy();
   });
 
   test('section picker shows one topic and keeps hidden project drafts mounted', () => {
