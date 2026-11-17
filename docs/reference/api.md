@@ -5927,10 +5927,12 @@ over the same fixed set. A job stored without an owner afterwards stays
 ownerless. Such a job's view
 carries `ownerNeeded` (the reason). Its runs get no Station caller and the model
 is told so; the Station tools are still listed to it, and every call is
-refused. A Project job (`projectId`) is the exception: each run is a Task
-that currently acts as the local operator whoever created it (acting as the
-creator is #5126), so an ownerless one carries no `ownerNeeded`; who may
-change or run it is still decided by its creator. The scheduler routes answer
+refused. A Project job (`projectId`) runs as a Task that belongs to its
+creator and replays the creator's recorded owner attribution, so its Session's
+Station tools, Project role and scope are the creator's. A run starts only
+while the creator holds `execute` in the Project; otherwise, and for an
+ownerless Project job (whose view carries `ownerNeeded` with its own reason),
+it creates no Task and fails without invoking anything. The scheduler routes answer
 404 on a hosted Station, so hosted jobs are out of reach here.
 
 For a job that already has a `target`, every edit (any field), `run`,
