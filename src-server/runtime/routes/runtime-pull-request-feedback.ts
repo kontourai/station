@@ -401,12 +401,10 @@ export function pullRequestFeedbackTaskBranchPorts(services: {
         const project = services.projects.getProject(listed.slug);
         // A recorded `~/…` folder is the host user's, as the pull request
         // routes read it (station#3155).
-        return project.workingDirectory
-          ? {
-              ...project,
-              workingDirectory: resolve(expandTilde(project.workingDirectory)),
-            }
-          : project;
+        const workingDirectory =
+          project.workingDirectory &&
+          resolve(expandTilde(project.workingDirectory));
+        return workingDirectory ? { ...project, workingDirectory } : project;
       } catch {
         return undefined;
       }

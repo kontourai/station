@@ -19,6 +19,8 @@
  * ends, otherwise once every 30 minutes; never a Task that already has a
  * derived link.
  */
+
+import { resolve } from 'node:path';
 import type {
   ConversationPullRequestLink,
   PullRequestLinkIdentity,
@@ -32,6 +34,7 @@ import {
 import type { IPullRequestProvider } from '@kontourai/station-contracts/pull-request-provider';
 import type { WorktreeSessionMetadata } from '@kontourai/station-contracts/workspace-isolation';
 import { errorMessage } from '../../utils/error-message.js';
+import { expandTilde } from '../../utils/paths.js';
 import type { FeedbackSessionState } from './pull-request-feedback-delivery.js';
 import type { PullRequestFeedbackStore } from './pull-request-feedback-store.js';
 
@@ -193,7 +196,11 @@ export class PullRequestFeedbackTaskBranches {
         : SWEEP_INTERVAL_MS;
       if (last !== undefined && input.now - last < interval) continue;
       const project = projectOf(task.projectId);
-      if (!project?.workingDirectory) continue;
+      // A recorded `~/…` folder is the host user's (station#3155).
+      const workingDirectory = project?.workingDirectory
+        ? resolve(expandTilde(project.workingDirectory))
+        : undefined;
+      if (!project || !workingDirectory) continue;
       const defaults = store.projectDefaults(project.id, project.createdAt);
       if (!defaults || !pullRequestFeedbackSends(defaults.settings)) continue;
       if (store.hasDerivedLinks(task.id, task.createdAt)) continue;
@@ -243,7 +250,9 @@ export class PullRequestFeedbackTaskBranches {
     input: { now: number; signal: AbortSignal },
   ): Promise<'ok' | 'rate-limited'> {
     const { task, project, worktree, conversationId } = entry;
-    const projectRepository = await identity(project.workingDirectory!);
+    const projectRepository = await identity(
+      resolve(expandTilde(project.workingDirectory ?? '')),
+    );
     // The worktree is the Project's own repository, and that repository
     // is on a forge (not a local-only checkout).
     if (
