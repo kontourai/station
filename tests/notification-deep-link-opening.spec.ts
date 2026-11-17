@@ -634,8 +634,12 @@ async function openFromNotifications(
     .getByRole('button', { name: 'Open' })
     .click();
   // The panel stays open after Open; close it the way a person does, by
-  // pressing outside it, so it covers nothing in the captures.
-  if (phone) await page.getByTestId('notification-history-backdrop').click();
+  // pressing outside it, so it covers nothing in the captures. On a phone
+  // that is the backdrop's top strip: a taller sheet covers its centre.
+  if (phone)
+    await page
+      .getByTestId('notification-history-backdrop')
+      .click({ position: { x: 195, y: 24 } });
   else
     await page.getByRole('heading', { name: 'Continue', exact: true }).click();
   await expect(page.locator('.notification-history')).toHaveCount(0);
