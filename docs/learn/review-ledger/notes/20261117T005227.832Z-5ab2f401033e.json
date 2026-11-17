@@ -1,0 +1,7 @@
+{
+  "revision": "e94e61016756929bf46b9fbf65d5a93254bc7144",
+
+  "notes": [
+    {"path":"docs/learn/media/project-start-before.png","note":"Opened the image: it shows a ready Agent with no setup card and no 'start without a project' link, so the setup-card and underline changes are not visible; still accurate.","inputs":["docs/learn/media/project-start-before.png","src-ui/src/components/home/HomeStartComposer.tsx"]}
+  ]
+}
