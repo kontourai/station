@@ -62,6 +62,7 @@ export type BuiltinStationApiMcpId = 'station-control' | 'station-knowledge';
 export type StationMcpCredentialPurpose =
   | BuiltinStationApiMcpId
   | 'codex-tools'
+  | 'codex-control'
   | 'coordinator-control'
   | 'coordinator-knowledge'
   | `oauth-proxy:${string}`;
