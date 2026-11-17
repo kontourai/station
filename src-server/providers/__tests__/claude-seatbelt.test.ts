@@ -31,6 +31,7 @@ import {
 import {
   type ConfinedClaudeLaunch,
   confinedClaudeConfigDir,
+  confinedClaudeDecision,
   confinedClaudeSpawn,
   confinedEnvAllows,
   prepareConfinedClaudeLaunch,
@@ -434,6 +435,31 @@ describe.skipIf(process.platform === 'win32')(
         expect(swap('/tmp')).toBeUndefined();
       } finally {
         launch.cleanup();
+      }
+    });
+
+    test('a workspace overlapping session temp roots is refused before launch and by grant validation', async () => {
+      const at = layout();
+      const sibling = join(at.shortRoot, 'session-1-sibling');
+      mkdirSync(sibling, { recursive: true });
+      for (const workspace of [at.base, at.shortRoot, sibling]) {
+        expect(
+          confinedClaudeDecision({
+            cwd: workspace,
+            appHomeEnv: undefined,
+            env: { ANTHROPIC_API_KEY: 'fixture' },
+            globalConfigPinned: false,
+            stationHome: at.stationHome,
+            stationRoot: join(at.home, '.station'),
+            home: at.home,
+          }),
+        ).toEqual({ fallback: 'workspace-too-broad' });
+        const launch = await prepare({ ...at, workspace });
+        try {
+          expect(launch.writeGrants).toBeUndefined();
+        } finally {
+          launch.cleanup();
+        }
       }
     });
 
