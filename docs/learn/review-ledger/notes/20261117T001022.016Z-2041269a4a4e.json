@@ -1,0 +1,13 @@
+{
+  "revision": "6e0048ed71c47ef3aeaf08e136a0820d7a79a70b",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Checked responsive-ui, theming and backend/frontend patterns: they cite the action-surface inventory and its ratchet generally and name neither ComposerAttachmentStrip nor the removed AttachmentPreviewMenu; the inventory change only drops an entry for a file with no actions/footer/toolbar row, so no claim changes.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"Checked responsive-ui, theming and backend/frontend patterns: they cite the action-surface inventory and its ratchet generally and name neither ComposerAttachmentStrip nor the removed AttachmentPreviewMenu; the inventory change only drops an entry for a file with no actions/footer/toolbar row, so no claim changes.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"Checked responsive-ui, theming and backend/frontend patterns: they cite the action-surface inventory and its ratchet generally and name neither ComposerAttachmentStrip nor the removed AttachmentPreviewMenu; the inventory change only drops an entry for a file with no actions/footer/toolbar row, so no claim changes.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Checked responsive-ui, theming and backend/frontend patterns: they cite the action-surface inventory and its ratchet generally and name neither ComposerAttachmentStrip nor the removed AttachmentPreviewMenu; the inventory change only drops an entry for a file with no actions/footer/toolbar row, so no claim changes.","inputs":["docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

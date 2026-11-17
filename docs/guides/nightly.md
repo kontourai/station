@@ -82,6 +82,10 @@ non-allocation version shapes remain visible unchanged.
 A manual `source_sha` may only echo the current workflow event SHA. It cannot
 select an older Stable/TestFlight candidate. Native staging needs the successful exact-SHA source usability gate; promotion
 requires that gate and completed staging. Full regression runs independently.
+The gate accepts the merge queue's passing `fast-checks statics` run on the
+same exact SHA instead of repeating it, and runs its own checks otherwise; the
+run's notice and job summary name the accepted run (see
+[testing](testing.md#default-implementation-loop)).
 
 **Signing and upload.** `nightly-native-stage.yml` authenticates through Google
 OIDC, fetches the upload key from Secret Manager, and checks the APK/AAB package,

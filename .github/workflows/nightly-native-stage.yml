@@ -216,6 +216,9 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # The four platform builds need only the plan and start together. None reads
+  # another's output; assemble-desktop is the only join (macOS and Windows).
+  # Nightly therefore holds two macOS runners at once (macOS and iOS).
   stage-android:
     name: Build Android (sign arm64 AAB + APK)
     needs: plan-cohort
@@ -497,8 +500,8 @@ jobs:
 
   stage-ios:
     name: Build iOS
-    needs: [plan-cohort, stage-macos]
-    if: ${{ always() && !cancelled() && needs.plan-cohort.result == 'success' && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.plan-cohort.outputs.build == 'true' }}
+    needs: plan-cohort
+    if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.plan-cohort.outputs.build == 'true' }}
     permissions:
       contents: read
       id-token: write
@@ -526,8 +529,8 @@ jobs:
 
   stage-windows:
     name: Build Windows NSIS installer (updater sign + verify)
-    needs: [plan-cohort, stage-android]
-    if: ${{ always() && !cancelled() && needs.plan-cohort.result == 'success' && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.plan-cohort.outputs.build == 'true' }}
+    needs: plan-cohort
+    if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.plan-cohort.outputs.build == 'true' }}
     runs-on: windows-latest
     environment: native-release
     timeout-minutes: 120

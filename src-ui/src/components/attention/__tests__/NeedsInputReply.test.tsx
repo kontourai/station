@@ -21,7 +21,11 @@ vi.mock('@kontourai/station-sdk/client', async (original) => ({
 vi.mock('../../../contexts/ModelCapabilitiesContext', () => ({
   useModelImageSupport: () => 'unknown',
 }));
-vi.mock('../../../hooks/useComposerAttachments', () => ({
+vi.mock('../../../hooks/useComposerAttachments', async (importOriginal) => ({
+  // Keep the module's pure helpers (hasUploadsInFlight); only the hook is faked.
+  ...(await importOriginal<
+    typeof import('../../../hooks/useComposerAttachments')
+  >()),
   useComposerAttachments: () => ({
     selectFiles: vi.fn(),
     remove: vi.fn(),

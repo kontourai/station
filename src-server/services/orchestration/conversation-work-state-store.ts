@@ -101,4 +101,29 @@ export class ConversationWorkStateStore {
       settled: { ...data.settled, [person]: entries },
     });
   }
+  /**
+   * Clears the settled record for any of `conversationIds` (aliases of one
+   * conversation): `person`'s only, or everyone's when `person` is absent.
+   * Writes only when a record existed; answers whether one did.
+   */
+  reopen(conversationIds: readonly string[], person?: string): boolean {
+    const data = this.store.read();
+    let changed = false;
+    const settled: Record<string, Record<string, string>> = {};
+    for (const [key, entries] of Object.entries(data.settled)) {
+      if (person !== undefined && key !== person) {
+        settled[key] = entries;
+        continue;
+      }
+      const kept = { ...entries };
+      for (const id of conversationIds)
+        if (Object.hasOwn(kept, id)) {
+          delete kept[id];
+          changed = true;
+        }
+      settled[key] = kept;
+    }
+    if (changed) this.store.write({ version: 1, settled });
+    return changed;
+  }
 }
