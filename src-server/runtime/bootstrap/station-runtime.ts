@@ -172,6 +172,7 @@ import type { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-sto
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
 import type { ProviderSessionStartInput } from '../../providers/adapter-shape.js';
 import { isAcpResumeCursor } from '../../providers/adapters/acp-adapter.js';
+import { acpLaunchToolServerDefinitions } from '../../providers/adapters/acp-launch-tool-servers.js';
 import { BedrockAdapter } from '../../providers/adapters/bedrock-adapter.js';
 import { ClaudeAdapter } from '../../providers/adapters/claude-adapter.js';
 import { CodexAdapter } from '../../providers/adapters/codex-adapter.js';
@@ -1519,7 +1520,7 @@ export class StationRuntime {
     if (!agent) return { state: 'unreadable' };
     let connection: unknown;
     try {
-      connection = await this.readExternalSessionConnection(input);
+      connection = await this.readExternalSessionConnection(input, agent);
     } catch {
       return { state: 'unreadable' };
     }
@@ -1537,6 +1538,7 @@ export class StationRuntime {
    */
   private async readExternalSessionConnection(
     input: ProviderSessionStartInput,
+    agent: ProviderSessionStartInput['agent'],
   ): Promise<unknown> {
     if (input.provider === 'claude' || input.provider === 'codex') {
       const config = await this.configLoader.loadAppConfig();
@@ -1566,10 +1568,23 @@ export class StationRuntime {
             : undefined;
       if (id === undefined) return null;
       const config = await this.configLoader.loadACPConfig();
-      return (
-        config.connections.find((candidate) => candidate.id === id) ??
-        EXTERNAL_CONNECTION_REVOKED
+      const record = config.connections.find(
+        (candidate) => candidate.id === id,
       );
+      if (!record) return EXTERNAL_CONNECTION_REVOKED;
+      const { name: _name, icon: _icon, ...launched } = record;
+      return {
+        record: launched,
+        // The servers the adapter resolves itself at launch from this
+        // connection's `provideToolServers` (or `toolServerMode: 'add'`),
+        // through the same resolution the ACP adapter and OpenCode use.
+        toolServers: await acpLaunchToolServerDefinitions(
+          agent,
+          record,
+          (serverId) =>
+            this.configLoader.loadIntegration(serverId).catch(() => null),
+        ),
+      };
     }
     return null;
   }

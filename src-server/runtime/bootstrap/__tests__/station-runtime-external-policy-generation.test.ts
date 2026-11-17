@@ -111,9 +111,12 @@ function policyRuntime(home: string, config: Config) {
 }
 
 const ENGINES = ['claude', 'codex', 'acp'] as const;
-type Engine = (typeof ENGINES)[number];
+type Engine = (typeof ENGINES)[number] | 'opencode';
 
-function world(engine: Engine, options: { resumable?: boolean } = {}) {
+function world(
+  engine: Engine,
+  options: { resumable?: boolean; openWork?: () => boolean } = {},
+) {
   const home = makeTempDir('external-policy-generation-');
   const config: Config = {
     agents: new Map<string, AgentSpec>([
@@ -260,6 +263,9 @@ function world(engine: Engine, options: { resumable?: boolean } = {}) {
     async hasSession(threadId: string) {
       return policies.has(threadId);
     },
+    // Work the engine still runs past its turn (a subagent, a background
+    // task): parking would kill it.
+    hasOpenEngineWork: () => options.openWork?.() === true,
     async stopAll() {},
     streamEvents: (streamOptions) => events.iterable(streamOptions),
   };
@@ -310,7 +316,9 @@ function world(engine: Engine, options: { resumable?: boolean } = {}) {
             userId: 'owner',
             agentSlug: 'claude',
             conversationId: 'conversation',
-            ...(engine === 'acp' ? { connectionId: 'opencode' } : {}),
+            ...(engine === 'acp' || engine === 'opencode'
+              ? { connectionId: 'opencode' }
+              : {}),
             ...extra,
           },
         },
@@ -594,8 +602,12 @@ describe('external engine pre-tool policy generation', () => {
       name: 'its engine connection settings change',
       engines: ['claude', 'codex'],
       change: (config) => {
-        config.appConfig.agentConnections.claude.provideSkills = ['review'];
-        config.appConfig.agentConnections.codex.provideSkills = ['review'];
+        config.appConfig.agentConnections.claude.config.provideSkills = [
+          'review',
+        ];
+        config.appConfig.agentConnections.codex.config.provideSkills = [
+          'review',
+        ];
       },
       afterRestart: () => {},
     },
@@ -762,6 +774,59 @@ describe('external engine pre-tool policy generation', () => {
     );
     expect(await w.call('conversation')).toMatchObject(replaced);
   });
+
+  // Tool servers an ACP-family launch resolves itself from its connection,
+  // outside the session agent resolver.
+  test.each([
+    {
+      name: 'connection default (no authored tool servers)',
+      engine: 'acp' as const,
+      tools: { autoApprove: ['Bash', 'mcp__github__*'] },
+    },
+    {
+      name: "connection servers kept by `mcpMode: 'add'`",
+      engine: 'acp' as const,
+      tools: {
+        mcpServers: ['linear'],
+        mcpMode: 'add' as const,
+        autoApprove: ['Bash', 'mcp__github__*'],
+      },
+    },
+    {
+      name: 'OpenCode native MCP, connection default',
+      engine: 'opencode' as const,
+      tools: { autoApprove: ['Bash', 'mcp__github__*'] },
+    },
+  ])(
+    'a connection-provided tool server removed under a running session replaces it: $name',
+    async ({ engine, tools }) => {
+      const w = world(engine);
+      w.config.acpConnections = [
+        {
+          id: 'opencode',
+          command: 'opencode',
+          args: ['acp'],
+          provideToolServers: ['github'],
+        },
+      ];
+      w.config.agents.set('claude', {
+        name: 'Claude',
+        prompt: 'Help the person.',
+        tools: tools as AgentSpec['tools'],
+      });
+      await w.start('conversation');
+      expect(await w.call('conversation', 'mcp__github__delete_repo')).toEqual(
+        allowed,
+      );
+      await w.mutate(() => w.config.integrations.delete('github'));
+      expect(
+        await w.call('conversation', 'mcp__github__delete_repo'),
+      ).toMatchObject(replaced);
+      expect(
+        await w.runtime.preToolPolicyGenerations.replaced('conversation'),
+      ).toBe(true);
+    },
+  );
 
   test('a deleted Agent is a replaced one', async () => {
     const w = world('acp');
