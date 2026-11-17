@@ -469,7 +469,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`ios-rust-cache-warm.yml`](../../.github/workflows/ios-rust-cache-warm.yml) | Warm iOS Rust build cache | **Nightly: iOS Rust cache** | main pushes (path filtered); UTC schedule: `23 5 * * *`; manual dispatch. |
 | [`issue-lifecycle.yml`](../../.github/workflows/issue-lifecycle.yml) | Issue lifecycle | **Repo: Issue lifecycle** | issue events: opened, reopened, labeled; new comments on issues (pull-request comments skip at job level). |
 | [`landing-automation.yml`](../../.github/workflows/landing-automation.yml) | Landing automation | **Repo: Landing automation** | PR events; after `PR: CI`. |
-| [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `PR: Security analysis`, `Main: Android tests`, `PR: iOS build`, `Repo: Docs freshness sweep`, `Repo: CI throughput health`, filtered to runs on `main`. |
+| [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `PR: Security analysis`, `Main: Android tests`, `PR: iOS build`, `Repo: Docs freshness sweep`, filtered to runs on `main`. |
 | [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | main pushes (source qualification only); UTC schedule: `17 */6 * * *`; manual dispatch. |
 | [`merge-queue-regression.yml`](../../.github/workflows/merge-queue-regression.yml) | Merge integration | **Diagnostic (manual): Merge integration** | manual full-corpus diagnosis, never a required check; automatic integration belongs to `PR: CI`. |
 | [`native-store-preflight.yml`](../../.github/workflows/native-store-preflight.yml) | Native store credential preflight | **Tool: Native store preflight** | manual dispatch. |
@@ -548,8 +548,8 @@ that ref without checking out or advancing local `main`.
 ```bash
 npm run ci:health -- --hours=6
 npm run ci:health -- --since=2026-10-01T00:00:00Z --until=2026-10-02T00:00:00Z --json
-npm run ci:health -- --hours=6 --record --issue=3101
-npm run ci:health -- --history --issue=3101
+npm run ci:health -- --hours=6 --record --issue=<n>
+npm run ci:health -- --history --issue=<n>
 ```
 
 The default window is the last 24 hours; `--since` and `--hours` are alternatives.
