@@ -194,10 +194,10 @@ export async function requestRegistryCatalogAction<
     error?: string;
     message?: string;
   };
-  // A plugin install's designed pending `202` is accepted, as in
-  // `requestPluginRegistryInstallAction`.
+  // A plugin install's or uninstall's designed saved `202` is accepted, as
+  // in `requestPluginRegistryInstallAction`.
   const accepted =
-    tab === 'plugins' && action === 'install'
+    tab === 'plugins'
       ? readPluginLifecycleResponse(response.status, result).state !== 'refused'
       : result.success;
   if (!accepted) {

@@ -9,6 +9,7 @@ vi.mock('../api', () => ({
   _getApiBase: vi.fn().mockResolvedValue('http://example.test'),
 }));
 
+import { requestRegistryCatalogAction } from '../query-domains/catalogRequests';
 import {
   requestPluginRegistryInstallAction,
   usePluginInstallMutation,
@@ -217,3 +218,40 @@ test.each([
     }
   },
 );
+
+/**
+ * `DELETE /api/registry/plugins/:id` answers the same saved `202` when its
+ * runtime reload outruns the deadline (registry.ts, a non-plugin activation
+ * path, so `recovery: 'none'`). Both registry clients accept it.
+ */
+test('a saved registry uninstall resolves instead of reporting "uninstall failed"', async () => {
+  const saved = {
+    success: false,
+    configurationActivation: { status: 'pending', recovery: 'none' },
+  };
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json(saved, { status: 202 })),
+  );
+  const direct = await requestPluginRegistryInstallAction(
+    'slow-activation',
+    'uninstall',
+  );
+  expect(pluginLifecycleUnapplied(direct)).toMatchObject({
+    kind: 'activation',
+    recovery: 'none',
+  });
+  await expect(
+    requestRegistryCatalogAction('plugins', {
+      id: 'slow-activation',
+      action: 'uninstall',
+    }),
+  ).resolves.toMatchObject({ success: false });
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json({ success: false }, { status: 202 })),
+  );
+  await expect(
+    requestPluginRegistryInstallAction('slow-activation', 'uninstall'),
+  ).rejects.toThrow('uninstall failed');
+});

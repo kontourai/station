@@ -495,11 +495,10 @@ export async function requestPluginRegistryInstallAction(
           },
         );
   const result = await response.json();
-  // Only an install has a designed pending outcome (see the direct install).
+  // Install and uninstall both answer the designed saved `202`; a saved
+  // uninstall finishes unloading on the next reconciliation.
   const accepted =
-    action === 'install'
-      ? readPluginLifecycleResponse(response.status, result).state !== 'refused'
-      : result.success;
+    readPluginLifecycleResponse(response.status, result).state !== 'refused';
   if (!accepted) {
     throw new Error(
       apiErrorMessage(result, result.message || `${action} failed`),
