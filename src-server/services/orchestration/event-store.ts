@@ -16337,7 +16337,9 @@ export class EventStore {
         const starting = new Set(
           relations.filter((row) => row.starting).map((row) => row.child_id),
         );
-        const events = this.listSessionProjectionEventsForThreads(childIds);
+        const events = childIds.length
+          ? this.listSessionProjectionEventsForThreads(childIds)
+          : new Map<string, PersistedRuntimeEvent[]>();
         const sessions = new Map<string, ProviderSession>();
         for (
           let offset = 0;
