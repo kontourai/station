@@ -270,7 +270,7 @@ export function servesRemoteSessionReads(
  * contexts have no durable tenant ownership, so a hosted deployment refuses
  * both routes.
  */
-export function servesConversationStationHandoff(
+function servesConversationStationHandoff(
   deployment: StationCapabilityDeployment,
 ): boolean {
   return !deployment.hosted;
