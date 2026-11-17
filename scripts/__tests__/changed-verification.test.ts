@@ -4234,14 +4234,31 @@ describe('an escalated path also runs its near importers in the hosted plan (#50
         'packages/shared/src/ports.ts',
         'packages/shared/src/product-telemetry.ts',
       ];
-      // Real suites, so the plan can validate and partition them.
-      const suites = execFileSyncBounded(
-        'git',
-        ['ls-files', 'src-ui/src/**/*.test.tsx'],
-        { cwd: process.cwd(), encoding: 'utf8' },
-      )
-        .trim()
-        .split('\n')
+      // Real suites, so the plan can validate and partition them: the test
+      // files the recorded incident diffs touched that still exist (a list,
+      // not a walk of the tree).
+      const incidents: Record<string, { paths: string[] }> = JSON.parse(
+        readFileSync(
+          join(
+            process.cwd(),
+            'scripts/__tests__/fixtures/test-impact-incidents/changed-paths.json',
+          ),
+          'utf8',
+        ),
+      );
+      const suites = [
+        ...new Set(
+          Object.values(incidents).flatMap(({ paths }) =>
+            paths.filter(
+              (path) =>
+                /\.test\.tsx?$/.test(path) &&
+                !path.startsWith('tests/') &&
+                existsSync(join(process.cwd(), path)),
+            ),
+          ),
+        ),
+      ]
+        .sort()
         .slice(0, total);
       expect(suites).toHaveLength(total);
       const sizes = [100, 100, total - 200];
