@@ -1019,6 +1019,24 @@ class ConversationSeedTurnRefusedError extends SendTurnRefusedError {
 }
 
 /**
+ * A turn on a Session whose launch configuration (its Agent, tool servers or
+ * engine connection) was replaced, refused before anything reaches the
+ * engine, with what the person can do.
+ */
+export class PolicyReplacedSessionRefusedError extends SendTurnRefusedError {
+  readonly code = 'session_configuration_replaced';
+  constructor(reason: 'busy' | 'successor') {
+    super(
+      reason === 'busy'
+        ? "This agent's configuration changed while the session was still running work started under the old configuration. That work cannot use tools any more; once it ends, send your message again and the session restarts under the current configuration."
+        : "This agent's configuration changed and this session's engine cannot resume. Continue from the conversation: its next message starts a new session under the current configuration.",
+      'conflict',
+    );
+    this.name = 'PolicyReplacedSessionRefusedError';
+  }
+}
+
+/**
  * A `sendTurn` refused because the session's folded lifecycle state is
  * terminal (`completed`). This used to be a bare
  * `Error('Session state completed is terminal')` — an internal lifecycle
@@ -3538,8 +3556,7 @@ export class OrchestrationService {
             // by the turn's own dispatch instead (`policyRelaunch`); only one
             // that cannot resume needs a successor.
             needsPolicySuccessor: async (threadId: string) =>
-              (await options.preToolPolicyReplaced!(threadId)) &&
-              !this.isParkableIdleSession(threadId, Date.now(), 0),
+              (await this.policyReplacement(threadId)) === 'successor',
             retireReplacedSession: (threadId: string) =>
               this.retirePolicyReplacedEngine(threadId),
           }
@@ -4509,6 +4526,38 @@ export class OrchestrationService {
     const resolver = this.options.resolveSessionAgent;
     if (!resolver) return input.agent;
     return (await resolver({ ...input, agent: undefined })).agent;
+  }
+
+  /**
+   * What a turn on this Session must do when what its engine was launched
+   * with was replaced:
+   * - `restart`: at rest with a resume cursor; park it and restart in place.
+   * - `successor`: at rest but cannot resume; a successor takes the turn and
+   *   this engine is retired.
+   * - `busy`: still running work started under the old configuration (an
+   *   active turn, child or engine work, an open request). Its tools are
+   *   refused, so that work ends; the turn is refused until it does, so the
+   *   conversation never has two engines and keeps its native context.
+   */
+  private async policyReplacement(
+    threadId: string,
+  ): Promise<'none' | 'restart' | 'successor' | 'busy'> {
+    if ((await this.options.preToolPolicyReplaced?.(threadId)) !== true)
+      return 'none';
+    // No live engine (parked, exited, never attached here): whatever starts
+    // next binds the current configuration.
+    const status = this.sessionReadModel.get(threadId)?.status;
+    if (
+      !this.sessionAdapters.has(threadId) ||
+      status === 'closed' ||
+      status === 'dead'
+    )
+      return 'none';
+    const now = Date.now();
+    if (!this.isParkableIdleSession(threadId, now, 0, true)) return 'busy';
+    return this.isParkableIdleSession(threadId, now, 0)
+      ? 'restart'
+      : 'successor';
   }
 
   /**
@@ -10161,10 +10210,12 @@ export class OrchestrationService {
               // (its own Agent, tool servers or connection changed): it
               // refuses every tool, and a restart in place binds the current
               // configuration on the same native conversation.
-              const policyRelaunch =
-                (await this.options.preToolPolicyReplaced?.(
-                  turnInput.threadId,
-                )) === true;
+              const replacement = await this.policyReplacement(
+                turnInput.threadId,
+              );
+              if (replacement === 'busy' || replacement === 'successor')
+                throw new PolicyReplacedSessionRefusedError(replacement);
+              const policyRelaunch = replacement === 'restart';
               if (
                 (policyRelaunch ||
                   adapter.turnNeedsEngineRelaunch?.(

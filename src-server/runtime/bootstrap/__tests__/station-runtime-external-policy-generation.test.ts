@@ -889,6 +889,48 @@ describe('external engine pre-tool policy generation', () => {
     expect(await w.call('conversation')).toMatchObject(replaced);
   });
 
+  test('a replaced session still running work refuses the next turn until that work ends, then restarts in place: one engine throughout', async () => {
+    let working = false;
+    const w = world('claude', { openWork: () => working });
+    await w.start('conversation');
+    await w.turn('conversation', 'Start the long job.');
+    working = true;
+    await w.saveAgent('claude', {
+      name: 'Claude',
+      prompt: 'Help the person.',
+      tools: { mcpServers: ['github'], autoApprove: [] },
+    });
+    expect(await w.call('conversation')).toMatchObject(replaced);
+
+    // No successor while the old engine still runs work: the next turn
+    // stays on this Session and is refused with what to do.
+    expect(await w.next()).toMatchObject({
+      sessionId: 'conversation',
+      startRequired: false,
+    });
+    await expect(
+      w.service.dispatch(
+        {
+          type: 'sendTurn',
+          input: { threadId: 'conversation', input: 'Status?' },
+        },
+        { userId: 'owner' },
+      ),
+    ).rejects.toThrow(/still running work started under the old configuration/);
+    expect(w.stops).toEqual([]);
+    expect(w.starts).toHaveLength(1);
+
+    // The work ends: the next turn parks and restarts it in place.
+    working = false;
+    await w.turn('conversation', 'Status?');
+    expect(w.stops).toEqual(['conversation']);
+    expect(w.starts.map((input) => input.threadId)).toEqual([
+      'conversation',
+      'conversation',
+    ]);
+    expect(await w.call('conversation')).toEqual({ behavior: 'defer' });
+  });
+
   test('a deleted Agent is a replaced one', async () => {
     const w = world('acp');
     await w.start('conversation');
