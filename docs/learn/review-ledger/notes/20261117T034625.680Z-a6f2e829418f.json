@@ -1,0 +1,9 @@
+{
+  "revision": "f91b85f21e1d09b17d2ceb5f1f0d246746848cdc",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"CONTEXT.md and CONTEXT-MAP.md link the glossary for vocabulary only; the Open / Settled entry edit changes no context boundary they describe.","inputs":["docs/glossary.md"]},
+
+    {"path":"CONTEXT.md","note":"CONTEXT.md and CONTEXT-MAP.md link the glossary for vocabulary only; the Open / Settled entry edit changes no context boundary they describe.","inputs":["docs/glossary.md"]}
+  ]
+}
