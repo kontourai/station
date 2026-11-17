@@ -3,8 +3,12 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 
 const SOURCE_VERIFICATION_CONTEXT = 'Source verification policy';
 const CI_PATH = '.github/workflows/ci.yml';
-const METADATA_RUN_NAME =
-  "run-name: ${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'PR metadata' || 'Source verification' }}";
+// Every ci.yml run-name line that names metadata-only edits `PR metadata`;
+// the second also names arming `PR armed` (STATION_PR_HEAVY_CHECKS).
+const METADATA_RUN_NAMES = Object.freeze([
+  "run-name: ${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'PR metadata' || 'Source verification' }}",
+  "run-name: ${{ github.event_name == 'pull_request_target' && github.event.action == 'edited' && !github.event.changes.base && 'PR metadata' || github.event_name == 'pull_request_target' && github.event.action == 'auto_merge_enabled' && 'PR armed' || 'Source verification' }}",
+]);
 const SHA = /^[a-f0-9]{40}$/;
 /**
  * #1706: the fast-checks aggregate runs this step only when it passed a plan
@@ -15,6 +19,18 @@ const SHA = /^[a-f0-9]{40}$/;
 export const FAST_CHECKS_PROVISIONAL_STEP = 'Mark fast-checks provisional';
 const PROVISIONAL_NOTE =
   ' (provisional: ci-fast/test-full deferred to full qualification)';
+/**
+ * The fast-checks aggregate runs exactly one of these (ci.yml): the first
+ * when STATION_PR_HEAVY_CHECKS deferred the heavy checks on this run, the
+ * second when they ran. A run carrying either name is verified only by the
+ * second; a run carrying neither predates the switch and ran everything.
+ */
+export const HEAVY_DEFERRED_STEP = 'Record heavy checks deferred until armed';
+export const HEAVY_RAN_STEP = 'Record heavy checks ran';
+export const CHEAP_ONLY_DESCRIPTION =
+  'Cheap checks passed; heavy checks run once armed (or add the full-checks label and re-run)';
+/** ci.yml's run-name for `auto_merge_enabled`. */
+const ARMED_RUN_NAME = 'PR armed';
 const pending = (description) => ({ state: 'pending', description });
 const failure = (description) => ({ state: 'failure', description });
 
@@ -149,6 +165,30 @@ function isCompletedMetadata(jobs, run, trustedCancelledMetadata) {
   return jobs.every((job) => job === title[0] || jobState(job) === 'skipped');
 }
 
+/**
+ * Null when the run predates the switch (neither marker step exists), else
+ * the pending verdict unless the heavy checks demonstrably ran. A missing
+ * step inventory never reads as verified.
+ */
+function heavyVerdict(aggregate) {
+  const steps = aggregate?.steps;
+  if (!Array.isArray(steps))
+    return pending('Heavy-check evidence unavailable for the newest run');
+  const marker = (name) => steps.filter((step) => step?.name === name);
+  const ran = marker(HEAVY_RAN_STEP);
+  const deferred = marker(HEAVY_DEFERRED_STEP);
+  if (ran.length === 0 && deferred.length === 0) return null;
+  if (
+    ran.length === 1 &&
+    ran[0].conclusion === 'success' &&
+    deferred.every((step) => step.conclusion !== 'success')
+  )
+    return null;
+  if (deferred.length === 1 && deferred[0].conclusion === 'success')
+    return pending(CHEAP_ONLY_DESCRIPTION);
+  return pending('Heavy-check evidence is incomplete for the newest run');
+}
+
 function sourceVerdict(jobs, fork, run, trustedCancelledMetadata = false) {
   const plan = jobState(proofJob(jobs, 'fast-checks plan'));
   const statics = jobState(proofJob(jobs, 'fast-checks statics'));
@@ -157,6 +197,14 @@ function sourceVerdict(jobs, fork, run, trustedCancelledMetadata = false) {
   // the actual producer jobs, never the aggregate's display-name expression.
   if (plan === 'skipped' && statics === 'skipped' && forkSmoke === 'skipped') {
     if (isCompletedMetadata(jobs, run, trustedCancelledMetadata)) return null;
+    // Arming with the switch off, or a fork's arming: nothing ran, so the
+    // run proves and refutes nothing and the older run's verdict stands.
+    if (
+      run.display_title === ARMED_RUN_NAME &&
+      jobState(proofJob(jobs, ['fast-checks', 'Fast checks execution'])) ===
+        'skipped'
+    )
+      return null;
     const aggregate = jobState(
       proofJob(jobs, ['fast-checks', 'Fast checks execution']),
     );
@@ -187,6 +235,12 @@ function sourceVerdict(jobs, fork, run, trustedCancelledMetadata = false) {
   if (required.includes('failure'))
     return failure('Newest source proof failed or was cancelled');
   if (required.every((state) => state === 'success')) {
+    if (!fork) {
+      const heavy = heavyVerdict(
+        proofJob(jobs, ['fast-checks', 'Fast checks execution']),
+      );
+      if (heavy) return heavy;
+    }
     const provisional =
       !fork &&
       (
@@ -361,7 +415,8 @@ export async function reconcileSourceVerification({
           .split(/\r?\n/);
         metadataWorkflows.set(
           revision,
-          header[0] === 'name: "PR: CI"' && header[1] === METADATA_RUN_NAME,
+          header[0] === 'name: "PR: CI"' &&
+            METADATA_RUN_NAMES.includes(header[1]),
         );
       }
       return metadataWorkflows.get(revision) ? revision : false;

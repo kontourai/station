@@ -885,6 +885,36 @@ the conflict without a head change, use "Re-run failed jobs" on the run: the
 source-policy publisher reads each run's newest attempt, so the rerun supersedes
 the deferred verdict. Merge-queue, dispatch and push runs never evaluate it.
 
+#### Heavy checks when armed
+
+The repository variable `STATION_PR_HEAVY_CHECKS` chooses when a
+same-repository pull request runs the heavy part of `PR: CI`: the
+affected-test shards, the critical browser journeys, `Repository source
+scans`, the `UI entry bundle delta` report and delivery validation. Unset or
+`every-push`, every push runs them, as before the switch existed. `when-armed`
+runs only the cheap part on an unarmed push (the plan and the `ci:fast` statics,
+which include lint, every typecheck lane and the `git diff --check` whitespace
+gate) and the heavy part once the pull request is armed for auto-merge. Merge
+groups, pushes to `main`, manual dispatches and fork pull requests always run
+everything. The `PR source admission` job decides with
+[`pr-heavy-checks-decision.mjs`](../../scripts/pr-heavy-checks-decision.mjs)
+and prints its reason; anything it cannot read decides heavy.
+
+Arming (`auto_merge_enabled`, run name `PR armed`) starts a run that spends
+the heavy part on the current head, and a push to an armed pull request runs
+heavy. Under `when-armed` a head whose newest run deferred the heavy part
+reads `Source verification policy` pending ("heavy checks run once armed"),
+never success, so arming cannot enqueue it before the armed run passes; a head
+already verified enqueues at once. With the switch off an arming run skips
+every job and the publishers ignore it. To get a full run before arming, add
+the `full-checks` label and push, or re-run the newest `PR: CI` run (a re-run
+also reads the live auto-merge state). To roll back, set the variable to
+`every-push` or delete it; heads left pending by a cheap-only run need one
+push or re-run. A workflow whose own required check would skip before arming
+cannot adopt the switch by itself: a `skipped` required check passes, so the
+source policy must also hold the head until that check has run (see the
+decision script's header).
+
 Source execution and admission are separate: the `fast-checks` aggregate validates
 the actual plan, statics and shard receipts. The trusted source-policy publisher
 reconciles that result for the newest applicable exact-head source run, keeping

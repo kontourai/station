@@ -5,7 +5,10 @@ import { fileURLToPath } from 'node:url';
 import { JSON_SCHEMA, load } from 'js-yaml';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
+  CHEAP_ONLY_DESCRIPTION,
   FAST_CHECKS_PROVISIONAL_STEP,
+  HEAVY_DEFERRED_STEP,
+  HEAVY_RAN_STEP,
   reconcileSourceVerification,
 } from '../source-verification-policy.mjs';
 
@@ -40,6 +43,8 @@ const jobs = [
   name,
   status: 'completed',
   conclusion: name.startsWith('Fork') ? 'skipped' : 'success',
+  // The jobs API lists every job's steps; the policy reads the aggregate's.
+  steps: [] as Array<{ name: string; conclusion: string }>,
 }));
 // Observed run 38949134941: title bootstrap failed; all thirteen source jobs skipped.
 const legacyMetadataJobs = [
@@ -274,6 +279,61 @@ function fixture() {
 
 describe('source verification reconciler API boundary', () => {
   afterEach(() => vi.restoreAllMocks());
+  // STATION_PR_HEAVY_CHECKS: only a run that ran the heavy checks verifies.
+  test.each([
+    [
+      'cheap-only',
+      [
+        [HEAVY_DEFERRED_STEP, 'success'],
+        [HEAVY_RAN_STEP, 'skipped'],
+      ],
+      { state: 'pending', description: CHEAP_ONLY_DESCRIPTION },
+    ],
+    [
+      'heavy',
+      [
+        [HEAVY_DEFERRED_STEP, 'skipped'],
+        [HEAVY_RAN_STEP, 'success'],
+      ],
+      { state: 'success' },
+    ],
+    [
+      'contradictory markers',
+      [
+        [HEAVY_DEFERRED_STEP, 'success'],
+        [HEAVY_RAN_STEP, 'success'],
+      ],
+      { state: 'pending' },
+    ],
+    [
+      'ran marker skipped alone',
+      [[HEAVY_RAN_STEP, 'skipped']],
+      { state: 'pending' },
+    ],
+    ['pre-switch run without markers', [], { state: 'success' }],
+  ] as const)(
+    'a %s aggregate publishes %j',
+    async (_name, markers, expected) => {
+      const { state, execute } = fixture();
+      const aggregate = state.jobs
+        .get(10)
+        ?.find((job) => job.name === 'Fast checks execution');
+      if (!aggregate) throw new Error('Expected the aggregate job.');
+      Object.assign(aggregate, {
+        steps: markers.map(([name, conclusion]) => ({ name, conclusion })),
+      });
+      expect(await execute()).toMatchObject(expected);
+    },
+  );
+  test('an aggregate without a step inventory never reads verified', async () => {
+    const { state, execute } = fixture();
+    const aggregate = state.jobs
+      .get(10)
+      ?.find((job) => job.name === 'Fast checks execution');
+    if (!aggregate) throw new Error('Expected the aggregate job.');
+    Object.assign(aggregate, { steps: 'unavailable' });
+    expect((await execute()).state).toBe('pending');
+  });
   test('a successful diagnostic signer run cannot qualify a PR source', async () => {
     const { state, execute } = fixture();
     state.runs = [
@@ -989,22 +1049,32 @@ describe('source verification reconciler API boundary', () => {
 function evaluateGithubExpression(
   expression: string,
   github: Record<string, unknown>,
+  vars: Record<string, string> = {},
 ) {
   const body = expression.trim().replace(/^\$\{\{([\s\S]*)\}\}$/, '$1');
   const stripped = body
     .replace(/'[^']*'/g, '')
-    .replace(/github(?:\.[A-Za-z_]+)+/g, '')
+    .replace(/(?:github|vars)(?:\.[A-Za-z_]+)+/g, '')
     .replace(/\b(?:true|false|\d+)\b/g, '')
     .replace(/==|!=|&&|\|\||[!()>\s]/g, '');
   if (stripped) throw new Error(`unsupported expression syntax: ${stripped}`);
   const js = body
     .replace(
-      /github((?:\.[A-Za-z_]+)+)/g,
-      (_m, path: string) => `github${path.replaceAll('.', '?.')}`,
+      /(github|vars)((?:\.[A-Za-z_]+)+)/g,
+      (_m, root: string, path: string) =>
+        `${root}${path.replaceAll('.', '?.')}`,
     )
     .replace(/==/g, '===')
     .replace(/!===/g, '!==');
-  return new Function('github', `return (${js});`)(github) as unknown;
+  // An unset repository variable reads as '' in GitHub expressions.
+  const variables = new Proxy(vars, {
+    get: (target, key) =>
+      typeof key === 'string' ? (target[key] ?? '') : undefined,
+  });
+  return new Function('github', 'vars', `return (${js});`)(
+    github,
+    variables,
+  ) as unknown;
 }
 
 describe('publisher admission for PR: CI lifecycle events', () => {
@@ -1025,20 +1095,25 @@ describe('publisher admission for PR: CI lifecycle events', () => {
     runAttempt: number,
     displayTitle = 'Source verification',
     event = 'pull_request_target',
+    vars: Record<string, string> = {},
   ) =>
     Boolean(
-      evaluateGithubExpression(guard, {
-        ref: 'refs/heads/main',
-        event_name: 'workflow_run',
-        event: {
-          action,
-          workflow_run: {
-            event,
-            run_attempt: runAttempt,
-            display_title: displayTitle,
+      evaluateGithubExpression(
+        guard,
+        {
+          ref: 'refs/heads/main',
+          event_name: 'workflow_run',
+          event: {
+            action,
+            workflow_run: {
+              event,
+              run_attempt: runAttempt,
+              display_title: displayTitle,
+            },
           },
         },
-      }),
+        vars,
+      ),
     );
 
   test.each([
@@ -1072,6 +1147,25 @@ describe('publisher admission for PR: CI lifecycle events', () => {
     'a metadata-only run %s on attempt %i runs the reconcile: %s',
     (action, attempt, expected) => {
       expect(admits(action, attempt, 'PR metadata')).toBe(expected);
+    },
+  );
+
+  // STATION_PR_HEAVY_CHECKS: an arming run publishes only its completed
+  // verdict and only under when-armed; with the switch off it ran nothing.
+  test.each([
+    ['requested', 1, {}, false],
+    ['completed', 1, {}, false],
+    ['completed', 1, { STATION_PR_HEAVY_CHECKS: 'every-push' }, false],
+    ['requested', 1, { STATION_PR_HEAVY_CHECKS: 'when-armed' }, false],
+    ['in_progress', 2, { STATION_PR_HEAVY_CHECKS: 'when-armed' }, false],
+    ['completed', 1, { STATION_PR_HEAVY_CHECKS: 'when-armed' }, true],
+    ['completed', 2, { STATION_PR_HEAVY_CHECKS: 'when-armed' }, true],
+  ] as const)(
+    'an arming run %s on attempt %i with %j runs the reconcile: %s',
+    (action, attempt, vars, expected) => {
+      expect(
+        admits(action, attempt, 'PR armed', 'pull_request_target', vars),
+      ).toBe(expected);
     },
   );
 
