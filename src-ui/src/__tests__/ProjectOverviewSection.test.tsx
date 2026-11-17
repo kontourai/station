@@ -138,7 +138,13 @@ function groupOf(title: string): string | null {
   const list = row?.closest('ul');
   const labelId = list?.getAttribute('aria-labelledby');
   const heading = labelId ? document.getElementById(labelId) : null;
-  return heading?.firstChild?.textContent ?? heading?.textContent ?? null;
+  // A plain heading reads "Label<count>"; the Resolved disclosure reads
+  // "Label · count" in its label span.
+  const label =
+    heading?.querySelector('.disclosure-toggle__label')?.textContent ??
+    heading?.firstChild?.textContent ??
+    null;
+  return label?.split(' · ')[0] ?? null;
 }
 
 beforeEach(() => {
@@ -223,7 +229,7 @@ describe('ProjectOverviewSection', () => {
     fireEvent.click(screen.getByRole('button', { name: /Resolved · 1/ }));
     const row = screen.getByText('Work quiet').closest('li')!;
     expect(within(row).getByText('Auto-resolved')).toBeTruthy();
-    fireEvent.click(within(row).getByRole('button', { name: /Work quiet/ }));
+    fireEvent.click(within(row).getByRole('button', { name: /^Work quiet/ }));
     expect(navigate).toHaveBeenCalledWith('/tasks/quiet');
     fireEvent.click(
       within(row).getByRole('button', { name: 'More actions for Work quiet' }),
