@@ -13,7 +13,7 @@
 import type { CliCommandResult } from '../auth/cli-auth.js';
 
 /** The oldest codex-cli the live qualification passed. */
-export const CODEX_TOOL_FAMILIES_MIN_VERSION = [0, 167, 0] as const;
+const CODEX_TOOL_FAMILIES_MIN_VERSION = [0, 167, 0] as const;
 
 /** The `thread/start` configuration key that makes Codex re-list after a load. */
 export const CODEX_TOOL_LIST_CHANGED_FEATURE = 'features.mcp_tool_list_changed';
