@@ -317,8 +317,18 @@ Codex's own MCP calls never pass through this evaluator, on any build: it
 decides only Station's bound browser and device tools. A Codex Agent session
 still holds a launch binding, so when its Agent or integrations change, its
 next turn restarts it under the current configuration; until then it keeps
-calling the tools it was launched with. The following is the interactive
-branch, not every possible tool outcome:
+calling the tools it was launched with, for the rest of the turn in
+progress too.
+
+The launch also binds Claude's Artifact tool setting and, for a session
+started confined, the confined network policy its egress broker copied at
+start; changing either replaces such a session. New-chat defaults (approval
+mode, workspace isolation, the no-Project folder) apply to the next chat
+only. A session that started while a change was still being applied
+refuses its tools and restarts at its next turn. Known limit: nothing in the
+conversation shows that a session was replaced until its next message
+restarts it. The following is the interactive branch, not every possible
+tool outcome:
 
 1. `beforeToolCall` invokes the staged policy with the current invocation.
 2. If the result requires interaction and a requester exists, the hook calls
