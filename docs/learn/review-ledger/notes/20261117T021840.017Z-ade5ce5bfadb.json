@@ -1,0 +1,7 @@
+{
+  "revision": "3b5f84f937ba9fb38f8392437373dd8a7b5a29bc",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Added the turn_start_held paragraph: checked TURN_START_HELD_CODE in packages/contracts/src/orchestration.ts, its forwarding in orchestration-service.ts dispatch, and that it is not in PROVIDER_FAILURE_KINDS.","inputs":["docs/reference/contracts.md","packages/contracts/src/orchestration.ts","src-server/providers/adapter-shape.ts","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/orchestration-session-state.ts","src-ui/src/utils/chatErrorTranslation.ts"]}
+  ]
+}

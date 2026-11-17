@@ -1,0 +1,7 @@
+{
+  "revision": "3b5f84f937ba9fb38f8392437373dd8a7b5a29bc",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Added the held-start paragraph after the indeterminate outcome: refusal text, runtime settlement on engine gone, boot fallback, and the earlier-Session hint, checked against held-turn-start-settlement.test.ts.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/claude-adapter.ts","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/orchestration-session-state.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "3b5f84f937ba9fb38f8392437373dd8a7b5a29bc",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Added the Held turn starts paragraph: checked each claim against session-execution-coordinator.ts (settle only on busy, under the turn lock), session-boundary.ts heldTurnStarts filter, orchestration-service.ts settleHeldTurnStarts (engineEnded true only), interrupted-turn-recovery.ts runtime pass (no durable handoff), claude-adapter.ts engineEnded and session_gone refusal, and the two log lines.","inputs":["docs/architecture/module-map.md","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/session-execution-coordinator.ts","src-server/providers/adapters/claude-adapter.ts","packages/monument/src/session-boundary.ts"]}
+  ]
+}
