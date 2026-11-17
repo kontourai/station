@@ -1,10 +1,11 @@
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
+import { scaleLivenessMs } from '../../../../scripts/lib/liveness-scale.mjs';
 
 /**
  * The 2.11.0 VoltAgent patch loads the OTLP exporters and serializers only
- * when a VoltOps client exports remotely (each copy of the OTLP transformer
+ * when they are first needed (each copy of the OTLP transformer
  * costs megabytes of heap, and VoltAgent's tree holds several). Importing
  * VoltAgent, as the server does at boot, must load none of them. The remote
  * export itself is covered by the VoltOps control cases in
@@ -38,7 +39,7 @@ function otlpPackagesLoadedBy(load: string): string[] {
   const output = execFileSync(
     process.execPath,
     ['--input-type=module', '-e', script],
-    { cwd: root, encoding: 'utf8', timeout: 20_000 },
+    { cwd: root, encoding: 'utf8', timeout: scaleLivenessMs(20_000) },
   );
   return JSON.parse(output) as string[];
 }

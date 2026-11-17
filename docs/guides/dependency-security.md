@@ -382,8 +382,8 @@ is not proof that every exporter or other run resource has settled. This change
 does not extend the 2.10.0 patch or qualify cancellation and early-return paths.
 
 The 2.11.0 patch also loads VoltAgent's OTLP log and trace exporters and its
-JSON serializers when they are first needed: the exporters once a VoltOps
-client is configured, the serializers on the first export of VoltAgent's
+JSON serializers when they are first needed: the exporters once VoltAgent's default
+observability finds a VoltOps client, the serializers on the first export of VoltAgent's
 serverless observability, which Station does not use. Before, importing the
 module loaded them. VoltAgent's tree holds several copies of the OTLP
 transformer, each costing megabytes of heap, and Station's default
