@@ -10,7 +10,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { PageRow } from '../../components/PageRow';
-import { PageSection } from '../../components/PageSection';
 import { ErrorState, Skeleton } from '../../components/state';
 import { Toggle } from '../../components/Toggle';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
@@ -126,12 +125,11 @@ export function AgentFeedbackDefaultsSection({ slug }: { slug: string }) {
   );
 
   return (
-    <PageSection
-      id="section-agent-feedback"
-      className="project-settings__section"
-      title="Agent feedback"
-      description="For pull requests a Task opens from its branch and doesn't watch. Existing ones keep theirs."
-    >
+    <div className="content-stack">
+      <h3 className="page-section__title">Other Task pull requests</h3>
+      <p className="agent-feedback-defaults__note">
+        Automatically send feedback for new pull requests from Task branches.
+      </p>
       {defaults.isPending ? (
         <Skeleton variant="block" />
       ) : defaults.isError || !data ? (
@@ -174,8 +172,7 @@ export function AgentFeedbackDefaultsSection({ slug }: { slug: string }) {
           ))}
           {on && (
             <p className="agent-feedback-defaults__note">
-              A pull request opened from a Task's own branch gets feedback
-              without asking.
+              Existing pull requests keep their settings.
             </p>
           )}
           {!on && data.stillOn > 0 && (
@@ -195,6 +192,6 @@ export function AgentFeedbackDefaultsSection({ slug }: { slug: string }) {
           )}
         </>
       )}
-    </PageSection>
+    </div>
   );
 }

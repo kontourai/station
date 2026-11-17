@@ -137,6 +137,7 @@ export function usePullRequestFeedback(conversationId: string) {
 
   return {
     available,
+    viewerMayChange: available && feedback.data?.viewerMayChange === true,
     /** Station's review of each head is offered (its preview is on). */
     headReview,
     feedback,

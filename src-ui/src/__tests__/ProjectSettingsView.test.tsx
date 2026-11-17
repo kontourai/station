@@ -959,7 +959,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     });
   });
 
-  test('offers Agent feedback only with its preview', () => {
+  test('one Pull requests destination includes preview controls and preserves former Agent feedback links', () => {
     const { unmount } = renderProjectSettings('agent-feedback');
     expect(screen.queryByRole('link', { name: 'Agent feedback' })).toBeNull();
     expect(screen.queryByText('Agent feedback defaults')).toBeNull();
@@ -968,10 +968,19 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     renderProjectSettings('agent-feedback');
     expect(
       screen
-        .getByRole('link', { name: 'Agent feedback' })
+        .getByRole('link', { name: 'Pull requests' })
         .getAttribute('aria-current'),
     ).toBe('location');
+    expect(screen.queryByRole('link', { name: 'Agent feedback' })).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Pull requests' })).toBeTruthy();
+    expect(new URLSearchParams(window.location.search).get('section')).toBe(
+      'pull-requests',
+    );
+    expect(
+      screen.getByRole('switch', { name: 'Watch Task pull requests' }),
+    ).toBeTruthy();
     expect(screen.getByText('Agent feedback defaults')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
     // It saves on its own, not with the page's Save.
     expect(
       screen.getByText('Changes in this section save automatically.'),

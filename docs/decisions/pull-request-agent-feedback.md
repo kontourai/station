@@ -96,7 +96,7 @@ flag. Hosted Stations do not offer it, and GitLab reads as `unsupported`.
 
 9. **Project defaults and Task-branch pull requests.** This Station's
    owner, in person, turns feedback on once for a Project (its settings'
-   Agent feedback; never Station's internal principal or a delegation
+   Pull requests; never Station's internal principal or a delegation
    credential). Station then looks for an open pull request whose head is
    exactly a live Task's own recorded worktree branch
    (`TaskWorktreeStore`, for that Task incarnation; never a branch-name
@@ -256,8 +256,7 @@ Choices the decisions left open, and departures from the plan:
   with a derived link); the head is not checked against the Task
   worktree's commits (`headRefOid` reachability, defense in depth); the
   by-head read ignores its abort signal (gh offers no cancellation);
-  the row offers "Remove from this chat" to a reader the route then
-  refuses (it is not hidden for one who may not change the chat); and Task-branch pull requests are not yet on
+  Task-branch pull requests are not yet on
   Task board cards (the board's facts read kept pull requests only). A
   paired host from before Project defaults that has the preview but not the
   defaults route shows the section's error state ("Project unavailable").
@@ -337,10 +336,11 @@ With a Task watching the pull request ([task-owned pull requests](task-owned-pul
 - A watch that stops or moves a claim releases or rewrites it through the
   same store paths, so the review epoch goes up with it; the watch adds no
   other way to drop a claim's reviews.
-- Project settings keep two sections: Pull requests (a Task watches the pull
-  requests kept on it) and Agent feedback (defaults for a pull request a
-  Task opens from its branch and does not watch). Folding both into one
-  section is a follow-up.
+- Project settings has one Pull requests section: watch and fix budget first,
+  then defaults for unclaimed pull requests from Task branches. Both save
+  automatically to their existing stores; neither setting is migrated or
+  reset. Existing Agent feedback links open this section. A reader sees
+  Remove from this chat only when the host confirms they may change it.
 - When head review is enabled, Ready for you waits for this head's completed
   review with no required findings. Pending review and recovery reasons show
   on the Task watch panel. Dismissed findings remain dismissed and direct

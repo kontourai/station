@@ -90,7 +90,6 @@ const PROJECT_SETTINGS_SECTIONS = [
   ['agents', 'Agents'],
   ['tools', 'Tools'],
   ['layouts', 'Layouts'],
-  ['agent-feedback', 'Agent feedback'],
   ['pull-requests', 'Pull requests'],
   ['resources', 'Sources'],
   ['access', 'People and access'],
@@ -114,7 +113,7 @@ const PROJECT_COORDINATION_SECTIONS: ReadonlySet<string> = new Set([
 const SECTION_SAVE_HINTS: Partial<Record<string, string>> = {
   layouts: 'Actions in this section apply when confirmed.',
   overview: 'Changes in this section save automatically.',
-  'agent-feedback': 'Changes in this section save automatically.',
+  'pull-requests': 'Changes in this section save automatically.',
   resources: 'Actions in this section apply when confirmed.',
   access: 'Actions in this section apply when confirmed.',
   knowledge: 'Actions in this section apply when confirmed.',
@@ -230,14 +229,20 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   // offered in the list and rendered only with its Feature Preview, which a
   // Station that cannot serve agent feedback never registers.
   const agentFeedback = previewFlags.has(PULL_REQUEST_FEEDBACK_PREVIEW_ID);
-  const { activeSection, hrefForSection, navigateToSection } =
-    // Every section stays navigable, so a link to a preview's section
+  const {
+    activeSection,
+    hrefForSection,
+    navigateToSection,
+  } = // Every section stays navigable, so a link to a preview's section
     // survives a reload before the preview flags load; the list and the
     // panels show it only with its preview (like agent feedback).
     useSectionNavigation(
       PROJECT_SETTINGS_SECTIONS.map(([id]) => id),
       'workspace',
-      { scrollOnNavigate: false },
+      {
+        scrollOnNavigate: false,
+        sectionAliases: { 'agent-feedback': 'pull-requests' },
+      },
     );
 
   const {
@@ -431,15 +436,17 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
         }
       >
         <Button onClick={() => navigate(`/projects/${slug}`)}>← Back</Button>
-        <Button
-          variant="primary"
-          disabled={
-            saveMutation.isPending || !form.name.trim() || !!iconProblem
-          }
-          onClick={() => void saveProject()}
-        >
-          {saveMutation.isPending ? 'Saving…' : 'Save'}
-        </Button>
+        {(activeSection !== 'pull-requests' || isDirty) && (
+          <Button
+            variant="primary"
+            disabled={
+              saveMutation.isPending || !form.name.trim() || !!iconProblem
+            }
+            onClick={() => void saveProject()}
+          >
+            {saveMutation.isPending ? 'Saving…' : 'Save'}
+          </Button>
+        )}
       </DetailHeader>
 
       <div className="section-nav-rail project-settings__layout">
@@ -447,11 +454,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           label="Project settings sections"
           pickerLabel="Project settings section"
           items={settingsSections
-            .filter(
-              ([id]) =>
-                (id !== 'overview' || projectOverviewOn) &&
-                (id !== 'agent-feedback' || agentFeedback),
-            )
+            .filter(([id]) => id !== 'overview' || projectOverviewOn)
             .map(([id, label]) => ({
               key: id,
               label,
@@ -904,15 +907,6 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             <LayoutsSection slug={slug} />
           </div>
 
-          {agentFeedback && (
-            <div
-              className="project-settings__panel"
-              hidden={activeSection !== 'agent-feedback'}
-            >
-              <AgentFeedbackDefaultsSection slug={slug} />
-            </div>
-          )}
-
           <div
             className="project-settings__panel"
             hidden={activeSection !== 'pull-requests'}
@@ -921,7 +915,9 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
               slug={slug}
               settings={project?.pullRequestWatch}
               onSaved={refetchProject}
-            />
+            >
+              {agentFeedback && <AgentFeedbackDefaultsSection slug={slug} />}
+            </PullRequestWatchSection>
           </div>
 
           <div

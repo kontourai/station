@@ -231,7 +231,8 @@ export function ConversationPullRequestLinks({
                         },
                       ]
                     : []),
-                  ...(link.source === 'branch-derived' && feedback.available
+                  ...(link.source === 'branch-derived' &&
+                  feedback.viewerMayChange
                     ? [
                         {
                           key: 'remove-derived',
@@ -263,7 +264,8 @@ export function ConversationPullRequestLinks({
         onConfirm={() => {
           const link = removing;
           setRemoving(null);
-          if (link) void mutate('remove-derived', link);
+          if (link && feedback.viewerMayChange)
+            void mutate('remove-derived', link);
         }}
         onCancel={() => setRemoving(null)}
       />

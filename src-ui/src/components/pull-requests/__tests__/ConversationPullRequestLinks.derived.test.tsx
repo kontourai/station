@@ -78,6 +78,7 @@ const sdk = vi.hoisted(() => ({
   remove: vi.fn(async () => undefined),
   /** Whether #43's switches are on (it is owned here either way). */
   on43: true,
+  viewerMayChange: true as boolean | undefined,
 }));
 vi.mock('@kontourai/station-sdk/pull-request-feedback', () => {
   const view = (ref: string): PullRequestFeedbackView => ({
@@ -103,6 +104,7 @@ vi.mock('@kontourai/station-sdk/pull-request-feedback', () => {
     getConversationPullRequestFeedback: () =>
       Promise.resolve({
         conversationId: 'c1',
+        viewerMayChange: sdk.viewerMayChange,
         pullRequests: [view('42'), view('43')],
       }),
     writePullRequestFeedback: vi.fn(),
@@ -144,11 +146,24 @@ beforeEach(() => {
   flags.preview = true;
   sdk.remove.mockClear();
   sdk.on43 = true;
+  sdk.viewerMayChange = true;
   links.read.mockClear();
 });
 afterEach(cleanup);
 
 describe('a pull request from the Task branch', () => {
+  test.each([false, undefined])(
+    'a reader cannot remove a branch PR when writer permission is %s',
+    async (permission) => {
+      sdk.viewerMayChange = permission;
+      renderLinks();
+      const menu = await menuOf(0, 'github.com/acme/widgets #43');
+      expect(
+        within(menu).queryByRole('menuitem', { name: 'Remove from this chat' }),
+      ).toBeNull();
+      expect(sdk.remove).not.toHaveBeenCalled();
+    },
+  );
   test("reads as from this Task's branch", async () => {
     renderLinks();
     await screen.findByText('Opened by the Task');
