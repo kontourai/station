@@ -1,0 +1,7 @@
+{
+  "revision": "9a287e04e4f1456b0209812af93227727484b720",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Required-context rollout and source policy claims re-read: the policy now also reports a cheap-only head pending; Source verification policy remains the required context.","inputs":["docs/guides/releasing.md",".github/workflows/ci.yml",".github/workflows/source-verification-policy.yml","scripts/__tests__/actionlint-gate.test.ts","scripts/actionlint-gate.mjs","scripts/source-verification-policy.mjs"]}
+  ]
+}

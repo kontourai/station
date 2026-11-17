@@ -1,0 +1,7 @@
+{
+  "revision": "84ee5f659c3ae4d0717c530555781931816a795d",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Added that ui-bundle-delta waits for arming under when-armed; repo-scans non-required claim and docs-gate claims unchanged.","inputs":["docs/guides/code-quality.md",".github/workflows/ci.yml","docs/guides/testing.md","scripts/__tests__/ci-fast-checks-job-graph.test.ts"]}
+  ]
+}

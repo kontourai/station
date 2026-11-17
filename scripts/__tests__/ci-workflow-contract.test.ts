@@ -1086,8 +1086,10 @@ describe('CI verification workflow contracts', () => {
     // The head sha is part of the group identity, not decoration: without it
     // two runs for the same PR at different heads collide and
     // `cancel-in-progress` picks a winner by arrival order (#1445).
+    // An arming run (STATION_PR_HEAVY_CHECKS) gets its own identity, so it
+    // and the push run on the same head never cancel each other.
     expect(ci).toContain(
-      `group: ci-fast-\${{ github.event_name }}-\${{ github.event.pull_request.number || github.ref }}-\${{ github.event.pull_request.head.sha || github.sha }}`,
+      `group: ci-fast-\${{ github.event_name }}\${{ github.event.action == 'auto_merge_enabled' && '-armed' || '' }}-\${{ github.event.pull_request.number || github.ref }}-\${{ github.event.pull_request.head.sha || github.sha }}`,
     );
     expect(containerSmoke).toContain(
       `group: container-smoke-\${{ github.ref }}`,
@@ -2010,11 +2012,12 @@ describe('CI verification workflow contracts', () => {
     };
     const job = document.jobs['ui-bundle-delta'];
     expect(job.if).toBe(
-      "${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository }}",
+      "${{ always() && !cancelled() && needs.pr-admission.outputs.heavy != 'false' && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && (github.event.action != 'auto_merge_enabled' || vars.STATION_PR_HEAVY_CHECKS == 'when-armed') && github.event.pull_request.head.repo.full_name == github.repository }}",
     );
     expect(job.if).not.toContain('merge_group');
-    // Parallel to fast-checks, never behind it.
-    expect(job.needs).toBeUndefined();
+    // Parallel to fast-checks, never behind it; only the heavy-check
+    // decision (STATION_PR_HEAVY_CHECKS) comes first.
+    expect(job.needs).toBe('pr-admission');
     expect(job['continue-on-error']).toBeUndefined();
     expect(job.concurrency?.group).toContain(
       'github.event.pull_request.head.sha',
@@ -2117,6 +2120,7 @@ describe('CI verification workflow contracts', () => {
         expect(job.name ?? id, id).not.toBe('fast-checks');
     expect(jobs['fast-checks'].needs).toEqual([
       'classify',
+      'pr-admission',
       'fast-checks-plan',
       'fast-checks-shard',
       'fast-checks-statics',
@@ -2169,9 +2173,10 @@ describe('CI verification workflow contracts', () => {
       );
     expect(jobs['fast-checks-shard'].if).toBe(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
-      "${{ always() && !cancelled() && needs.fast-checks-plan.result == 'success' && needs.actionlint-artifact.result == 'success' && needs.fast-checks-plan.outputs.legacy == 'false' && needs.fast-checks-plan.outputs.empty != 'true' }}",
+      "${{ always() && !cancelled() && needs.fast-checks-plan.result == 'success' && needs.actionlint-artifact.result == 'success' && needs.fast-checks-plan.outputs.legacy == 'false' && needs.fast-checks-plan.outputs.empty != 'true' && needs.pr-admission.outputs.heavy != 'false' }}",
     );
     expect(jobs['fast-checks-shard'].needs).toEqual([
+      'pr-admission',
       'fast-checks-plan',
       'actionlint-artifact',
     ]);
