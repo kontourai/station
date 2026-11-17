@@ -277,3 +277,20 @@ test('a database locked during the first-start migration does not widen it to jo
   expect(storedOwner(directory, 'older')).toEqual(operator);
   expect(storedOwner(directory, 'newer')).toBeUndefined();
 });
+
+test('an ownerless Project job is not labelled as needing an owner: its runs are operator Tasks (until #5126)', () => {
+  const ledger = createSchedulerLedger({
+    directory: join(makeTempDir('station-job-owner-project-'), 'scheduler'),
+  });
+  for (const job of [
+    { ...(olderJob('plain') as object), name: 'plain' },
+    { ...(olderJob('project') as object), name: 'project', projectId: 'p-1' },
+  ])
+    expect(ledger.create(job as never).kind).toBe('created');
+  const byName = new Map(views(ledger).map((job) => [job.name, job]));
+  // The control: the same ownerless job without a Project is labelled.
+  expect(byName.get('plain')?.ownerNeeded).toBe(JOB_OWNER_NEEDED_REASON);
+  expect(byName.get('project')).not.toHaveProperty('ownerNeeded');
+  expect(byName.get('project')).not.toHaveProperty('createdBy');
+  ledger.close();
+});

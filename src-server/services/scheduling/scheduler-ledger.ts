@@ -1338,9 +1338,13 @@ class SqliteSchedulerLedger implements SchedulerLedger {
         return {
           ...rest,
           // Only who created it is public; the replayed actor stays private.
+          // A Project job's run is an operator Task whoever created it
+          // (until #5126), so a missing owner costs it no Station tools.
           ...(createdBy
             ? { createdBy: { userId: createdBy.userId } }
-            : { ownerNeeded: JOB_OWNER_NEEDED_REASON }),
+            : job.projectId
+              ? {}
+              : { ownerNeeded: JOB_OWNER_NEEDED_REASON }),
           consecutiveFailures: countConsecutiveFailures(
             this.finalizedLogsUnsafe(job.name),
             failureCountResetAt,

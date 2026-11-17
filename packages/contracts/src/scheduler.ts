@@ -245,7 +245,9 @@ export interface SchedulerJob {
   projectId?: string;
   /**
    * Server-recorded creator every run acts as (#2377 slice D: untargeted
-   * jobs too). Read-only.
+   * jobs too), except a Project job (`projectId`): its runs are Tasks that
+   * currently act as the local operator; acting as the creator is #5126.
+   * Who may change or run a job is decided by it for every job. Read-only.
    */
   createdBy?: Readonly<{ userId: string }>;
   /**
