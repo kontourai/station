@@ -2019,8 +2019,8 @@ waiting, as a Needs-you item: its `source` names the owning chat and pull
 request, and `viewerMayChange` says whether the reader could send again or
 turn it off. `client-origin`'s `pull-request-feedback` sender labels the
 delivered message as Station's. `ProjectPullRequestFeedbackDefaults` is a
-Project's defaults as a reader sees them (`canChange`, and `stillOn`: pull
-requests they turned on that still send). The optional
+Project's defaults as a reader sees them (`canChange`, and `stillOn`: open pull
+requests they turned on that still send, in chats the reader may read). The optional
 `IPullRequestProvider.findOpenPullRequestsByHead` lists open pull requests by
 exact head branch name (`PullRequestByHead`, with where each head lives),
 answering `PullRequestsByHeadResult`. See

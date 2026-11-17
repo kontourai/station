@@ -103,10 +103,17 @@ flag. Hosted Stations do not offer it, and GitLab reads as `unsupported`.
    claimed, with the defaults' switches and as the person who set them
    (`origin: project-default`), only when no claim row exists for it (any
    row, even one with every switch off, means a person engaged), it was not
-   removed from that chat, and that person may continue the lead's chat.
+   removed from that Task, and that person may continue the lead's chat.
    A person changing it from the chat makes it theirs. "Remove from this
-   chat" removes it from that Task's chat for good and releases its claim
-   unless it is also linked or kept there. Bounds: at most 3 forge reads per
+   chat" removes it from that Task's chat for good, keyed by the pull
+   request and the Task id, so a Task created again under the same id does
+   not bring it back; it releases the claim unless the pull request is also
+   linked or kept there, and the confirmation says which. A Project's
+   defaults belong to that incarnation of the Project (its id and creation
+   time), and its settings count only claims on open pull requests in chats
+   the reader may read. A Project recorded with a `~/` folder is read as the
+   host user's. The chat's pull request list never depends on these links:
+   a failing read adds none. Bounds: at most 3 forge reads per
    tick on the feedback poller's own tick, single flight and backoff; a Task
    at most every 10 minutes after its lead's turn ends, otherwise every 30;
    never a Task that already has a derived link.
@@ -235,8 +242,18 @@ Choices the decisions left open, and departures from the plan:
   - `gh pr list` has no `--hostname`; `--repo host/owner/name` names the
     host instead.
   - "Remove from this chat" asks first: it cannot be undone for that Task.
+  - The Project settings section is shown with its Feature Preview alone,
+    like Schedules: a Station that cannot serve feedback never registers
+    the preview.
   - Derived links are never pruned; a claim pruned after two weeks off is
     not made again, because discovery skips a Task that has one.
 - The `review-findings` category and `reviewEachHead` setting exist for
-  the later per-head review and drive
-  nothing.
+  the later per-head review and drive nothing.
+- Project defaults follow-ups: a second pull request opened from the same
+  Task branch after the first is never discovered (discovery skips a Task
+  with a derived link); the head is not checked against the Task
+  worktree's commits (`headRefOid` reachability, defense in depth); the
+  by-head read ignores its abort signal (gh offers no cancellation);
+  the row offers "Remove from this chat" to a reader the route then
+  refuses (it is not hidden for one who may not change the chat); and Task-branch pull requests are not yet on
+  Task board cards (the board's facts read kept pull requests only).

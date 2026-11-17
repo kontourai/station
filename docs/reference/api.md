@@ -1566,7 +1566,8 @@ hosted Station withdraws:
   is also linked or kept there; 404 when there is no such row.
 - `GET /api/pull-request-feedback/projects/:projectSlug/defaults` reads a
   Project's defaults (`ProjectPullRequestFeedbackDefaults`) for a reader of
-  the Project, with `canChange` and `stillOn`. `PUT` on the same path, body
+  the Project, with `canChange` and `stillOn` (open pull requests they still
+  send for, in chats the reader may read). `PUT` on the same path, body
   `{ settings: { fixFailingChecks, addressReviewComments, reviewEachHead? } }`,
   sets them; a switch left out keeps its stored value. Only this Station's
   owner in person may set them; anyone else is answered 404.
