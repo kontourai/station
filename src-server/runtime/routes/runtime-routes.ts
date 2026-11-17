@@ -12527,6 +12527,8 @@ export function configureRuntimeRoutes(
             authority,
           ),
         ),
+      canReadSession: (id, authority) =>
+        context.orchestrationService.canUserReadSession(id, authority),
       current: isRequestPrincipalCurrent,
     }),
   );

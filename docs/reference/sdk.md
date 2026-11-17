@@ -7120,7 +7120,9 @@ read or change explicit personal settlement under the `conversation-resolution`
 Feature Preview. State is separate from turn completion and dismissal. Reads
 return `null` on a 404 (unsupported host or disabled preview); mutations preserve
 a refusal with an update/preview remedy. Requests accept `ClientRequestOptions`
-for authority and cancellation.
+for authority and cancellation. `ConversationWorkState.hidden` lists hidden
+third-party Sessions by thread id and is absent from a host that cannot hide
+them; `setConversationInboxHidden` hides or unhides one for the caller.
 
 `getConversationTurnDirectory` reads paginated, indexed turn metadata from the
 existing Session digest under `session-cli-reads`; it returns `null` when that

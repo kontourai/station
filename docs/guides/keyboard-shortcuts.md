@@ -85,7 +85,8 @@ After dismissing an inbox conversation, choose **Undo** in the toast or press
 **⌘Z** on macOS / **Ctrl+Z** on Windows and Linux. **Undo inbox dismissal** can
 be rebound in Keyboard shortcuts. The command declines inside text fields,
 contenteditable editors, CodeMirror and terminals, preserving their own Undo.
-Dismissal does not stop work or delete conversation history.
+Dismissal does not stop work or delete conversation history. The same Undo
+reverses **Hide** on a third-party session with Open and Settled inbox on.
 
 ## Undo the last action
 
