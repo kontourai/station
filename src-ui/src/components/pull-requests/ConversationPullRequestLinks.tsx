@@ -73,11 +73,34 @@ export function ConversationPullRequestLinks({
   const feedbackRow = new Set<string>();
   const firstFor = new Set<string>();
   for (const link of visibleLinks) {
-    const key = linkKey(link);
+    // By the feedback key: owner and name compare as the forge does, so a
+    // link typed with capitals and one found on the branch are one pull
+    // request.
+    const key = feedbackKeyOf(link);
     if (firstFor.has(key)) continue;
     firstFor.add(key);
     feedbackRow.add(`${link.source}:${key}`);
   }
+
+  /** What removing a branch row does, in this case. */
+  const removalMessage = (link: ConversationPullRequestLinkObservation) => {
+    const key = feedbackKeyOf(link);
+    const reference = `${link.repository.owner}/${link.repository.name} #${link.ref}`;
+    const view = feedback.viewFor(link);
+    const onHere = !!view?.ownedHere && view.owner !== null;
+    if (
+      visibleLinks.some(
+        (other) =>
+          other.source !== 'branch-derived' && feedbackKeyOf(other) === key,
+      )
+    )
+      return `${reference} stays linked here${onHere ? ', with its agent feedback' : ''}. Only its Task-branch row goes.`;
+    if (view && !view.ownedHere && view.owner)
+      return `Station stops showing ${reference} here. Its agent feedback goes to another chat and stays on.`;
+    return onHere
+      ? `Station stops showing ${reference} here and turns its agent feedback off. It won't come back for this Task.`
+      : `Station stops showing ${reference} here. It won't come back for this Task.`;
+  };
 
   return (
     <section
@@ -144,7 +167,7 @@ export function ConversationPullRequestLinks({
             const reference = `${link.host}/${link.repository.owner}/${link.repository.name} #${link.ref}`;
             const view =
               feedback.available &&
-              feedbackRow.has(`${link.source}:${linkKey(link)}`)
+              feedbackRow.has(`${link.source}:${feedbackKeyOf(link)}`)
                 ? feedback.viewFor(link)
                 : undefined;
             const feedbackChip = pullRequestFeedbackChip(view);
@@ -227,11 +250,7 @@ export function ConversationPullRequestLinks({
         role="alertdialog"
         variant="danger"
         title="Remove from this chat"
-        message={
-          removing
-            ? `Station stops showing ${removing.repository.owner}/${removing.repository.name} #${removing.ref} here and stops its agent feedback. It won't come back for this Task.`
-            : ''
-        }
+        message={removing ? removalMessage(removing) : ''}
         confirmLabel="Remove"
         onConfirm={() => {
           const link = removing;

@@ -85,6 +85,18 @@ const PROJECT_SETTINGS_SECTIONS = [
   ['danger', 'Danger zone'],
 ] as const;
 
+/**
+ * Sections that do not go through the page's Save, and how each applies.
+ * Every other section is saved with Save.
+ */
+const SECTION_SAVE_HINTS: Partial<Record<string, string>> = {
+  layouts: 'Actions in this section apply when confirmed.',
+  'agent-feedback': 'Changes in this section save automatically.',
+  resources: 'Actions in this section apply when confirmed.',
+  access: 'Actions in this section apply when confirmed.',
+  knowledge: 'Actions in this section apply when confirmed.',
+};
+
 /** How each stored workspace mode reads in this picker. */
 const WORKSPACE_MODE_LABELS: Record<WorkspaceIsolationMode, string> = {
   worktree: 'a fresh git worktree',
@@ -410,15 +422,8 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
         {/* Body */}
         <div className="section-nav-rail__body project-settings__body">
           <p className="project-settings__save-hint">
-            {[
-              'layouts',
-              'agent-feedback',
-              'resources',
-              'access',
-              'knowledge',
-            ].includes(activeSection)
-              ? 'Actions in this section apply when confirmed.'
-              : 'Save to apply changes to project defaults.'}
+            {SECTION_SAVE_HINTS[activeSection] ??
+              'Save to apply changes to project defaults.'}
           </p>
           {activeSection !== 'basic-info' &&
             (!form.name.trim() || iconProblem) && (

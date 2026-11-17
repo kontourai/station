@@ -959,6 +959,10 @@ describe('ProjectSettingsView (#250 shell port)', () => {
         .getAttribute('aria-current'),
     ).toBe('location');
     expect(screen.getByText('Agent feedback defaults')).toBeTruthy();
+    // It saves on its own, not with the page's Save.
+    expect(
+      screen.getByText('Changes in this section save automatically.'),
+    ).toBeTruthy();
   });
 
   test('section picker shows one topic and keeps hidden project drafts mounted', () => {

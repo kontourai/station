@@ -43,10 +43,15 @@ const links = vi.hoisted(() => ({ read: vi.fn() }));
 vi.mock('@kontourai/station-sdk/conversation-pull-request-links', () => ({
   getConversationPullRequestLinks: (...args: unknown[]) => {
     links.read(...args);
-    const row = (ref: string, source: string, title: string) => ({
+    const row = (
+      ref: string,
+      source: string,
+      title: string,
+      repository = { owner: 'acme', name: 'widgets' },
+    ) => ({
       provider: 'github',
       host: 'github.com',
-      repository: { owner: 'acme', name: 'widgets' },
+      repository,
       ref,
       source,
       observedAt: '2026-11-16T12:00:00Z',
@@ -56,7 +61,11 @@ vi.mock('@kontourai/station-sdk/conversation-pull-request-links', () => ({
       conversationId: 'c1',
       observedAt: '2026-11-16T12:00:00Z',
       links: [
-        row('42', 'explicit', 'Linked by hand'),
+        // Typed with the forge's capitals: still the same pull request.
+        row('42', 'explicit', 'Linked by hand', {
+          owner: 'Acme',
+          name: 'Widgets',
+        }),
         row('42', 'branch-derived', 'Linked by hand'),
         row('43', 'branch-derived', 'Opened by the Task'),
       ],
@@ -104,9 +113,11 @@ vi.mock('@kontourai/station-sdk/pull-request-feedback', () => {
 
 import { ConversationPullRequestLinks } from '../ConversationPullRequestLinks';
 
+let client = new QueryClient();
 function renderLinks() {
+  client = new QueryClient();
   return render(
-    <QueryClientProvider client={new QueryClient()}>
+    <QueryClientProvider client={client}>
       <ConversationPullRequestLinks conversationId="c1" />
     </QueryClientProvider>,
   );
@@ -143,7 +154,7 @@ describe('a pull request from the Task branch', () => {
 
   test('Agent feedback goes on the first row for a pull request only', async () => {
     renderLinks();
-    const linked = await menuOf(0, 'github.com/acme/widgets #42');
+    const linked = await menuOf(0, 'github.com/Acme/Widgets #42');
     expect(
       within(linked).getByRole('menuitem', { name: 'Agent feedback…' }),
     ).toBeTruthy();
@@ -151,7 +162,7 @@ describe('a pull request from the Task branch', () => {
       within(linked).getByRole('menuitem', { name: 'Unlink' }),
     ).toBeTruthy();
     fireEvent.keyDown(linked, { key: 'Escape' });
-    const derivedDuplicate = await menuOf(1, 'github.com/acme/widgets #42');
+    const derivedDuplicate = await menuOf(0, 'github.com/acme/widgets #42');
     expect(
       within(derivedDuplicate).queryByRole('menuitem', {
         name: 'Agent feedback…',
@@ -169,6 +180,21 @@ describe('a pull request from the Task branch', () => {
     ).toBeTruthy();
   });
 
+  test('removing the branch row of a pull request also linked here says it stays linked', async () => {
+    renderLinks();
+    const menu = await menuOf(0, 'github.com/acme/widgets #42');
+    fireEvent.click(
+      within(menu).getByRole('menuitem', { name: 'Remove from this chat' }),
+    );
+    const confirm = await screen.findByRole('alertdialog', {
+      name: 'Remove from this chat',
+    });
+    expect(confirm.textContent).toContain(
+      'acme/widgets #42 stays linked here, with its agent feedback. Only its Task-branch row goes.',
+    );
+    expect(confirm.textContent).not.toContain("won't come back");
+  });
+
   test('Remove from this chat asks first, then removes it and reads the list again', async () => {
     renderLinks();
     const menu = await menuOf(0, 'github.com/acme/widgets #43');
@@ -178,9 +204,12 @@ describe('a pull request from the Task branch', () => {
     const confirm = await screen.findByRole('alertdialog', {
       name: 'Remove from this chat',
     });
-    expect(confirm.textContent).toContain("It won't come back for this Task.");
+    expect(confirm.textContent).toContain(
+      "Station stops showing acme/widgets #43 here and turns its agent feedback off. It won't come back for this Task.",
+    );
     expect(sdk.remove).not.toHaveBeenCalled();
     const reads = links.read.mock.calls.length;
+    const invalidated = vi.spyOn(client, 'invalidateQueries');
     fireEvent.click(within(confirm).getByRole('button', { name: 'Remove' }));
     await waitFor(() =>
       expect(sdk.remove).toHaveBeenCalledWith(
@@ -192,6 +221,15 @@ describe('a pull request from the Task branch', () => {
     );
     await waitFor(() =>
       expect(links.read.mock.calls.length).toBeGreaterThan(reads),
+    );
+    // The chat's feedback and the Project's still-on count are read again.
+    expect(
+      invalidated.mock.calls.map(([filters]) => filters?.queryKey),
+    ).toEqual(
+      expect.arrayContaining([
+        ['pull-request-feedback'],
+        ['pull-request-feedback-defaults'],
+      ]),
     );
   });
 

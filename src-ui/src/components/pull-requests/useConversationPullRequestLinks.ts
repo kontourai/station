@@ -80,8 +80,13 @@ export function useConversationPullRequestLinks(conversationId: string) {
           },
           { requestScope: scope },
         );
+        // The chat's feedback, and a Project's count of what its defaults
+        // still have on.
         void queryClient.invalidateQueries({
           queryKey: ['pull-request-feedback'],
+        });
+        void queryClient.invalidateQueries({
+          queryKey: ['pull-request-feedback-defaults'],
         });
       } else
         await unlinkConversationPullRequest(
