@@ -1,0 +1,9 @@
+{
+  "revision": "850a6832f06cb8e68db58a579ecdcac2cd04ea5e",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"#5078 follow-up: settings.md changed only the compaction decision link to an absolute GitHub URL; the feature-previews guide's claims about the settings table still hold.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"#5078 follow-up: settings.md changed only the compaction decision link to an absolute GitHub URL; the feature-previews guide's claims about the settings table still hold.","inputs":["docs/user/settings.md"]}
+  ]
+}
