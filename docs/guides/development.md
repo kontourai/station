@@ -997,6 +997,15 @@ gh api repos/kontourai/station/rules/branches/main
   `gh pr merge <n> --repo kontourai/station --auto`. Auto-merge is opt-in per
   PR: a green PR that nobody armed sits forever, which is the usual reason a
   ready PR has not landed.
+- **With `STATION_PR_HEAVY_CHECKS=when-armed`, arming starts the heavy
+  checks.** An unarmed push then runs only the cheap part of `PR: CI`, and
+  `Source verification policy` stays pending with "heavy checks run once
+  armed" until the run that arming starts (`PR armed`) passes on that head;
+  a push to an armed PR runs everything. Arm at your final push as before. For
+  a full run before arming, add the `full-checks` label and push or use
+  **Re-run all jobs** (**Re-run failed jobs** repeats the old decision).
+  Unset or `every-push` (the default), every push runs everything. See
+  [heavy checks when armed](testing.md#heavy-checks-when-armed).
 - **Pass no merge-method flag.** The `merge_queue` rule's `merge_method` owns
   the strategy, and `gh pr merge --squash` is refused with `The merge strategy
   for main is set by the merge queue`. The `pull_request` rule's
