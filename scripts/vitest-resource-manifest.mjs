@@ -206,6 +206,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Small loopback responses exercise dependency stream ownership in naturally exiting children.
   'scripts/__tests__/dependency-http-availability.process.test.ts',
   'src-server/runtime/frameworks/__tests__/voltagent-stream-finish-flush.process.test.ts',
+  // Fresh Node children import VoltAgent and record which modules load.
+  'src-server/runtime/frameworks/__tests__/voltagent-otlp-on-first-use.process.test.ts',
   // Fake startup/cleanup owners and real Windows ConPTY releases;
   // an owned child exercises 30 concurrent native shell exits and resizes.
   'src-server/adapters/__tests__/node-pty-adapter.test.ts',
