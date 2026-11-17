@@ -2027,6 +2027,8 @@ function LiveConversationBody({
                 ? transcript.events
                 : undefined,
               approvalEventsSettled: transcript.settled,
+              // A cached paint offers no answer until its re-read lands.
+              approvalsHeld: transcript.revalidating === true,
               historyLoading: transcript.loading,
               // The status pill owns turn activity for a live chat.
               suppressActivity: statusInPill || Boolean(streamStatus),
