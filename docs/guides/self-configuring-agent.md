@@ -35,7 +35,10 @@ When asked to install, connect or sign in an engine:
 1. Read `list_engine_setup` and use the built-in id and `setupPath` it returns.
 2. Call `open_engine_setup` for that id. Check its result. If no client accepted
    navigation, give the person the returned internal setup link.
-3. Let the person complete setup in Station and return to this chat. Never ask
+3. Let the person review installation, complete sign-in, and choose **Add Station
+   tools** when the resulting Agent needs them. A saved alias is reused; the pane
+   can repair missing launch arguments without replacing its Agent or history.
+   Let the person return to this chat. Never ask
    for authorization codes or tokens in ordinary messages, edit Station home
    files, or run a shell login as a workaround.
 4. Re-read setup and `list_agents` before using the resulting Agent. A recorded

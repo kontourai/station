@@ -1153,7 +1153,10 @@ export function createACPRoutes(
     const connection = ctx.acpBridge
       .getStatus()
       .connections.find((entry) => entry.id === id);
-    if (!connection) {
+    const persisted = (await ctx.configLoader.loadACPConfig()).connections.some(
+      (entry) => entry.id === id,
+    );
+    if (!connection || persisted) {
       // A saved connection can outlive its probe (failed first contact or a
       // restart). Recover through the same serialized probe/register path as
       // Retry check, preserving the saved command and authored Agent.

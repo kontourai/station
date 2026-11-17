@@ -1,9 +1,11 @@
+import { isDeepStrictEqual } from 'node:util';
 import {
   type ACPConnectionConfig,
   type ACPConnectionRegistryEntry,
   type ACPEngineSetupEntry,
   ACPStatus,
 } from '@kontourai/station-contracts/acp';
+import { namesSameExecutable } from './acp-engine-descriptors.js';
 import type { getACPManagerStatus } from './acp-manager-view.js';
 
 /** Project only setup facts; executable configuration stays with the human pane. */
@@ -16,8 +18,36 @@ export function engineSetupEntries(
   const ids = new Set([...choices.keys(), ...saved.map((entry) => entry.id)]);
   return [...ids].map((id) => {
     const entry = choices.get(id);
-    const connection = saved.find((item) => item.id === id);
-    const observed = live.find((item) => item.id === id);
+    const programs = entry
+      ? saved.filter(
+          (item) =>
+            namesSameExecutable(item.command, entry.command) &&
+            (!choices.has(item.id) || item.id === id),
+        )
+      : [];
+    const exact = entry
+      ? programs.filter((item) =>
+          isDeepStrictEqual(item.args ?? [], entry.args ?? []),
+        )
+      : [];
+    const variants = entry
+      ? entries.filter(
+          (item) =>
+            item.source === 'core' &&
+            namesSameExecutable(item.command, entry.command),
+        ).length
+      : 0;
+    const related = exact.length ? exact : programs;
+    const ambiguous = !exact.length && variants > 1 && programs.length > 0;
+    const connection =
+      saved.find((item) => item.id === id) ??
+      (!ambiguous && related.length === 1 ? related[0] : undefined);
+    const observed = live.find((item) => item.id === (connection?.id ?? id));
+    const mismatch =
+      entry &&
+      connection &&
+      !isDeepStrictEqual(entry.args ?? [], connection.args ?? []) &&
+      observed?.capabilities?.mcpCapabilities?.http !== true;
     const configured = connection !== undefined;
     const enabled = connection?.enabled ?? true;
     const detected = entry?.detected ?? null;
@@ -29,24 +59,32 @@ export function engineSetupEntries(
       configured,
       enabled,
       status: observed?.status ?? 'not-connected',
-      setupPath: configured
-        ? `/connections/engines/${encodeURIComponent(id)}`
-        : `/connections/engines/new/${encodeURIComponent(id)}`,
+      setupPath: connection
+        ? `/connections/engines/${encodeURIComponent(connection.id)}`
+        : ambiguous || related.length > 1
+          ? '/connections/engines'
+          : `/connections/engines/new/${encodeURIComponent(id)}`,
+      connectionId: connection?.id ?? null,
+      relatedConnectionIds: related.map((item) => item.id),
       handshakeObservedAt: observed?.handshakeObservedAt ?? null,
       httpTools: observed?.handshakeObservedAt
         ? observed.capabilities?.mcpCapabilities?.http === true
           ? 'advertised'
           : 'not-advertised'
         : 'unknown',
-      nextAction: configured
-        ? !enabled
-          ? 'enable'
-          : observed?.status === ACPStatus.AVAILABLE
-            ? 'inspect'
-            : 'check'
-        : detected === false
-          ? 'install'
-          : 'connect',
+      nextAction: mismatch
+        ? 'review-setup'
+        : !connection && (ambiguous || related.length > 1)
+          ? 'choose-existing'
+          : configured
+            ? !enabled
+              ? 'enable'
+              : observed?.status === ACPStatus.AVAILABLE
+                ? 'inspect'
+                : 'check'
+            : detected === false
+              ? 'install'
+              : 'connect',
     };
   });
 }

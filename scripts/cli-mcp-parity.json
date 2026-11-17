@@ -1,5 +1,21 @@
 {
-  "app": {},
+  "app": {
+    "engine-install-terminal": {
+      "route": "POST /acp/registry/:id/install-terminal",
+      "exempt": "person-only",
+      "reason": "A person confirms the exact reviewed installer and operates its owned terminal; chat only opens the existing setup pane."
+    },
+    "engine-recommended-setup": {
+      "route": "POST /acp/connections/:id/recommended-setup",
+      "exempt": "person-only",
+      "reason": "A person reviews and applies built-in launch arguments while preserving the saved connection and Agent."
+    },
+    "engine-station-tools": {
+      "route": "POST /acp/connections/:id/station-tools",
+      "exempt": "person-only",
+      "reason": "A person explicitly selects Station tools for the canonical Agent; agent tools cannot grant themselves this selection."
+    }
+  },
   "cli": {
     "acp command-options": {
       "missing": 4286,

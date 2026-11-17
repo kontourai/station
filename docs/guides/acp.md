@@ -14,10 +14,39 @@ then `open_engine_setup` with the chosen entry's id. The same read is available
 as `station acp setup`. On an older host without these tools, use
 Connections → Engines or update the host.
 
-The tool opens the existing engine-specific pane. Review the installation or
-connection there, complete sign-in, and return to the originating chat. Closing
-setup leaves the chat intact. Device permissions still control installation,
+The tool opens the existing engine-specific pane. Complete the steps there:
+
+1. If the CLI is missing, choose **Install … on Station** and review the exact
+   installer command. A terminal shows its progress on the Station computer;
+   **Stop installation** ends that attempt. Successful completion re-checks
+   detection; an exit alone does not claim that the CLI is installed.
+2. Choose **Connect**. If sign-in is required, open the sign-in panel and use
+   its offered method. Grok and Kiro CLI offer a device-code terminal login
+   only after the installed CLI's help advertises the reviewed flag.
+   Antigravity advertises its terminal login through ACP. These complete on
+   the Station host while the person uses their current device. A completed
+   CLI login is verified with the engine's own status command, then setup
+   checks the connection again.
+3. If an existing connection needs the supported launch arguments, choose
+   **Use recommended setup** and review them. The connection id, authored Agent
+   and history stay in place. A connection with multiple possible variants is
+   left for the person to choose, rather than silently selecting another mode.
+4. Choose **Add Station tools** if this Agent should use Station Control,
+   Knowledge and Docs. This is an explicit choice; it preserves the Agent's
+   prompt, existing tools and tool restrictions. Selection is not delivery
+   proof. Then start its chat, or return to the originating chat for a check.
+
+Closing setup leaves the chat intact. Device permissions still control installation,
 terminal access and engine sign-in; enabling the preview grants none of them.
+Permission notices link to **Device access** instead of requiring a host shell.
+Only reviewed built-in installer recipes can run this way. Public/plugin
+listings retain their own inspection/install paths. Installer requests are
+serialized per engine, carry a durable operation id in the terminal record,
+and reuse that record after a lost response. Stop names the exact attempt.
+The terminal host enforces a 15-minute lifetime even while no core is attached;
+an older host that cannot negotiate that bound refuses before the installer
+starts. Turning the preview off retains inspection and Stop for an existing
+installer while refusing new work.
 The catalog is an owner-scoped projection, not a dump of commands,
 configuration paths, accounts or credentials. Hosted Stations refuse this read.
 
@@ -33,6 +62,10 @@ recorded initialize handshake, sign-in, a successful chat turn and tool delivery
 are separate observations. `httpTools: advertised` reports the handshake's
 channel capability, not a tool invocation. Run the intended bounded work only
 after the selected Agent is available and report these limits explicitly.
+
+The catalog reports `connectionId` and related saved connections. It reuses an
+unambiguous saved alias rather than creating a duplicate. It does not replace
+custom arguments that already deliver the required HTTP channel.
 
 A saved connection can be checked with `station acp connections reconnect <id>`
 even if its live probe is absent. This preserves its saved setup and authored

@@ -53,6 +53,13 @@ const KIRO_CLI_AUTH: BuiltinEngine['auth'] = {
   // Amazon Q CLI it grew from (crates/chat-cli/src/cli/user.rs). Other
   // output (a login kind that code does not print) stays unknown.
   statusCommand: ['kiro-cli', 'whoami'],
+  terminalLogin: {
+    id: 'station:device-login',
+    name: 'Sign in from this device',
+    args: ['login', '--use-device-flow'],
+    helpArgs: ['login', '--help'],
+    requiredHelpText: '--use-device-flow',
+  },
   statusRule: {
     signedOutText: ['Not logged in'],
     signedInText: ['Logged in with'],
@@ -317,6 +324,13 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
       // 1.0.77, live: "You are logged in with grok.com." / "You are not
       // authenticated."). Other output stays unknown.
       statusCommand: ['grok', 'models'],
+      terminalLogin: {
+        id: 'station:device-login',
+        name: 'Sign in with a device code',
+        args: ['login', '--device-auth'],
+        helpArgs: ['login', '--help'],
+        requiredHelpText: '--device-auth',
+      },
       statusRule: {
         signedOutText: ['You are not authenticated'],
         signedInText: ['You are logged in with'],

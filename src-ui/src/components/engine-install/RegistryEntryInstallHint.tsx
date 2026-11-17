@@ -7,6 +7,7 @@ import {
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import { hostActionCopy } from '../host-action/host-action-copy';
 import { EngineInstallHint } from './EngineInstallHint';
+import { EngineInstallTerminal } from './EngineInstallTerminal';
 import { registryEntryDiscovery } from './registryEntryDiscovery';
 
 /**
@@ -46,29 +47,46 @@ function LiveRegistryEntryInstallHint({
     entries?.find((candidate) => candidate.id === entry.id) ?? entry;
   if (registryEntryDiscovery(current) !== 'not-installed') return null;
   return (
-    <EngineInstallHint
-      name={current.name}
-      recipe={current.hostInstall}
-      devicePresentation={devicePresentation}
-      provenance={current.source === 'core' ? undefined : current.sourceName}
-      onCheckAgain={() => {
-        setRechecking(true);
-        // The re-read updates the host's search PATH; the refetch then
-        // carries the fresh detection into the shared catalogue query.
-        void recheckACPConnectionRegistry()
-          .then((result) =>
-            setRecheckRefused(result.status === 'not-permitted'),
-          )
-          .catch(() => undefined)
-          .then(() => refetch())
-          .finally(() => setRechecking(false));
-      }}
-      checking={rechecking || isFetching}
-      checkAgainNotice={
-        recheckRefused
-          ? hostActionCopy('engine-recheck-not-permitted', devicePresentation)
-          : undefined
-      }
-    />
+    <>
+      <EngineInstallHint
+        name={current.name}
+        recipe={current.hostInstall}
+        devicePresentation={devicePresentation}
+        provenance={current.source === 'core' ? undefined : current.sourceName}
+        onCheckAgain={() => {
+          setRechecking(true);
+          // The re-read updates the host's search PATH; the refetch then
+          // carries the fresh detection into the shared catalogue query.
+          void recheckACPConnectionRegistry()
+            .then((result) =>
+              setRecheckRefused(result.status === 'not-permitted'),
+            )
+            .catch(() => undefined)
+            .then(() => refetch())
+            .finally(() => setRechecking(false));
+        }}
+        checking={rechecking || isFetching}
+        checkAgainNotice={
+          recheckRefused
+            ? hostActionCopy('engine-recheck-not-permitted', devicePresentation)
+            : undefined
+        }
+      />
+      {current.source === 'core' ? (
+        <EngineInstallTerminal
+          id={current.id}
+          onFinished={() => {
+            setRechecking(true);
+            void recheckACPConnectionRegistry()
+              .then((result) =>
+                setRecheckRefused(result.status === 'not-permitted'),
+              )
+              .catch(() => setRecheckRefused(true))
+              .then(() => refetch())
+              .finally(() => setRechecking(false));
+          }}
+        />
+      ) : null}
+    </>
   );
 }

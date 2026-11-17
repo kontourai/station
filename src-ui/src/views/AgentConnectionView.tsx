@@ -35,6 +35,7 @@ import {
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { ACPConnectionDetailsField } from '../components/acp-connections/ACPConnectionDetailsField';
 import { ConnectionIcon } from '../components/acp-connections/ConnectionIcon';
+import { EngineStationTools } from '../components/acp-connections/EngineStationTools';
 import { Checkbox } from '../components/Checkbox';
 import { ConnectionReadinessNotice } from '../components/connections/ConnectionReadinessNotice';
 import { DetailHeader } from '../components/DetailHeader';
@@ -677,6 +678,9 @@ export function AgentConnectionView({
                 }
               />
             )}
+            {selectedAcpConnectionId ? (
+              <EngineStationTools connectionId={selectedAcpConnectionId} />
+            ) : null}
             {/* #4520: a policy-disallowed engine is explained by the managed
                 notice; "turn this on" would offer a fix the policy refuses. */}
             {health?.verdict !== 'ready' &&
@@ -1032,10 +1036,12 @@ export function AgentConnectionView({
                   )}
                 </div>
                 {selectedAcpConnection && (
-                  <ACPConnectionDetailsField
-                    connection={selectedAcpConnection}
-                    agents={agents}
-                  />
+                  <>
+                    <ACPConnectionDetailsField
+                      connection={selectedAcpConnection}
+                      agents={agents}
+                    />
+                  </>
                 )}
                 <div className="editor-field">
                   <button

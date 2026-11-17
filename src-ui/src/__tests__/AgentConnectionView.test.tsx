@@ -439,6 +439,8 @@ describe('AgentConnectionView', () => {
           new Response(JSON.stringify(data), {
             headers: { 'Content-Type': 'application/json' },
           });
+        if (path === '/api/feature-previews')
+          return reply({ success: true, data: [] });
         if (path.endsWith('/sign-in/attempt'))
           return reply({ success: true, data: null });
         if (path.endsWith('/sign-in'))

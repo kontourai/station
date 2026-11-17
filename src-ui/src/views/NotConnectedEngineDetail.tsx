@@ -105,6 +105,7 @@ export function NotConnectedEngineDetail({
         <EngineSignInDisclosure
           connectionId={connection.id}
           engineName={connection.name}
+          onSignedIn={() => onRepairingChange('recheck')}
         />
         <ActionRow
           className="engine-setup__actions"

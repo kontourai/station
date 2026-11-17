@@ -116,7 +116,7 @@ function proposalToolResult(
 export function registerPlatformTools(server: StationControlToolRegistry) {
   server.tool(
     'list_engine_setup',
-    'Find supported engines and their exact setup pages on this Station. Read-only: reports detection and recorded handshake/HTTP-tool evidence, never installs, signs in, or runs a chat. Requires the Guided engine setup Feature Preview on a personal Station. Use the built-in setupPath; do not edit Station home files or rediscover engine commands. After the person completes setup, re-read this and list_agents. A successful chat alone does not prove Station tools were delivered.',
+    'Find supported engines and their exact setup pages on this Station. Read-only: reports detection and recorded handshake/HTTP-tool evidence, never installs, signs in, or runs a chat. Requires the Guided engine setup Feature Preview on a personal Station. Use setupPath to reuse an existing connection or connect the built-in. The person can install, sign in, apply recommended arguments and choose Add Station tools in that pane; do not edit Station home files or rediscover commands. After the person completes setup, re-read this and list_agents. A successful chat alone does not prove Station tools were delivered.',
     {},
     async () => jsonToolResult(await api('/acp/setup')),
   );

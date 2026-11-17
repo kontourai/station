@@ -334,6 +334,7 @@ export function composeStationInstructions(
       has('open_engine_setup')
         ? 'Use `open_engine_setup` for the chosen id to hand setup to the person; check whether navigation succeeded and offer setupPath if it did not.'
         : 'Give the person the returned setupPath to complete setup in Station.',
+      'Reuse an existing connection when setup reports one. The pane can apply reviewed launch arguments in place; do not create a duplicate. For an Agent that needs Station tools, ask the person to choose Add Station tools before starting its chat.',
       'Installation and sign-in belong to the person in Station. The engine runs on the Station host, which can differ from the phone or browser. Never request OAuth codes or tokens in chat, edit Station home configuration, or improvise a shell login to bypass this handoff.',
       'Ask the person to return to this chat after setup, then re-read `list_engine_setup`. A handshake, sign-in, successful chat turn and actual Station-tool delivery are separate facts; report only what each observation proves.',
     ];

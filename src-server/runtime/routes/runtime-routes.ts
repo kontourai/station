@@ -1,5 +1,6 @@
 import { hostname } from 'node:os';
 import { isDeepStrictEqual } from 'node:util';
+import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import {
   APPLICATION_SESSION_HEADER,
   APPLICATION_SESSION_NATIVE_HEADER,
@@ -401,6 +402,8 @@ import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import { servesCoordinatorSession } from '../../capabilities/station-capability-flags.js';
 import {
   loadOrCreateAgentRegistry,
+  materializeEngineAgent,
+  registerEngineConnection,
   replacePluginEngineConnections,
 } from '../../domain/agent-registry.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
@@ -468,6 +471,7 @@ import { createACPSignInRoutes } from '../../routes/connections/acp-sign-in.js';
 import { createAppHomeRoutes } from '../../routes/connections/app-home.js';
 import { createBedrockRoutes } from '../../routes/connections/bedrock.js';
 import { createConnectionRoutes } from '../../routes/connections/connections.js';
+import { createEngineSetupActionsRoutes } from '../../routes/connections/engine-setup-actions.js';
 import { createModelsRoutes } from '../../routes/connections/models.js';
 import { createProviderRoutes } from '../../routes/connections/providers.js';
 import { createConsentNativeRoutes } from '../../routes/consent/consent-native-routes.js';
@@ -789,7 +793,10 @@ import {
 import { TrustBundleService } from '../../services/evidence/trust-bundle-service.js';
 import { VeritasReadinessService } from '../../services/evidence/veritas-readiness-service.js';
 import { WorkflowSidecarService } from '../../services/evidence/workflow-sidecar-service.js';
-import type { FeaturePreviewRegistry } from '../../services/feature-previews/feature-preview-registry.js';
+import type {
+  FeaturePreviewRegistry,
+  FeaturePreviewSelector,
+} from '../../services/feature-previews/feature-preview-registry.js';
 import type { FeedbackService } from '../../services/feedback/feedback-service.js';
 import { createFeedbackRatingTarget } from '../../services/feedback/feedback-target.js';
 import { FlowMcpUiEvidenceBridge } from '../../services/flow/flow-mcp-ui-evidence-bridge.js';
@@ -8318,6 +8325,57 @@ export function configureRuntimeRoutes(
     }),
   );
 
+  const engineSetupPreview: FeaturePreviewSelector = isPersonalHost
+    ? context.featurePreviews.bind({
+        id: 'guided-engine-setup',
+        label: 'Guided engine setup',
+        description:
+          'Let chat find engine setup pages. Install, sign in and choose Station tools from one pane.',
+      })
+    : { select: (branches) => branches.disabled() };
+  context.app.route(
+    '/acp',
+    createEngineSetupActionsRoutes({
+      configLoader: context.configLoader,
+      preview: engineSetupPreview,
+      personalHost: isPersonalHost,
+      terminals: () => scopedTerminals.sessions,
+      apply: runtimeContext.applyAgentConfigurationMutation,
+      reconnect: async (config) => {
+        if (!config.enabled) return false;
+        const connected = await context.acpBridge.addConnection(config);
+        const saved = (
+          await context.configLoader.loadACPConfig()
+        ).connections.find((entry) => entry.id === config.id);
+        if (!isDeepStrictEqual(saved, config)) return false;
+        if (connected) {
+          await registerEngineConnection(
+            context.configLoader,
+            engineConnectionId(config.id),
+            { kind: 'user-acp' },
+          );
+          await materializeEngineAgent(
+            context.configLoader,
+            config.id,
+            config.name,
+          );
+        }
+        return connected;
+      },
+      current: isRequestPrincipalCurrent,
+      changed: () => context.eventBus.emit(SERVER_EVENTS.AGENTS_CHANGED),
+      advertisedHttp: (id) =>
+        context.acpBridge
+          .getStatus()
+          .connections.some(
+            (entry) =>
+              entry.id === id &&
+              entry.status === ACPStatus.AVAILABLE &&
+              !!entry.handshakeObservedAt &&
+              entry.capabilities?.mcpCapabilities?.http === true,
+          ),
+    }),
+  );
   context.app.route(
     '/acp',
     createACPRoutes(runtimeContext, {
@@ -8325,12 +8383,7 @@ export function configureRuntimeRoutes(
         context.configLoader.getProjectHomeDir(),
       ),
       personalHost: isPersonalHost,
-      engineSetupPreview: context.featurePreviews.bind({
-        id: 'guided-engine-setup',
-        label: 'Guided engine setup',
-        description:
-          'Let chat find engine setup pages and report connection checks. You complete installation and sign-in.',
-      }),
+      engineSetupPreview,
     }),
   );
   // Sign-in terminals are server-owned TerminalSessions launches.

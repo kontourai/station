@@ -381,6 +381,7 @@ export function ACPConnectionSetupStatus({
   attempt = 'add',
   engineName,
   connectionId,
+  onSignedIn,
 }: {
   stage: ACPConnectionSetupStage;
   label?: string;
@@ -400,6 +401,7 @@ export function ACPConnectionSetupStatus({
   /** A first add, a re-check, or a saved edit: they are said differently. */
   attempt?: ACPConnectionSetupAttempt;
   engineName?: string;
+  onSignedIn?: () => void;
 }) {
   const engine = engineName ?? 'this engine';
   if (stage === 'checking') {
@@ -464,6 +466,7 @@ export function ACPConnectionSetupStatus({
           <EngineSignInDisclosure
             connectionId={connectionId}
             engineName={engine}
+            onSignedIn={onSignedIn}
           />
         )}
       </div>

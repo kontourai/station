@@ -12,6 +12,7 @@ import {
   ACPConnectionSetupHeader,
   ACPConnectionSetupStatus,
 } from './ACPConnectionSetupStages';
+import { EngineStationTools } from './EngineStationTools';
 import type { ACPConnectionDraft } from './types';
 import {
   type InstallRegistryEntry,
@@ -191,7 +192,13 @@ export function ACPConnectionSetupPanel({
           firstContact={awaitingFirstContact}
           attempt={state.attempt}
           engineName={engineName}
+          onSignedIn={() => void retryCheck()}
         />
+        {state.stage === 'result' &&
+        resultConnection &&
+        readiness?.statusLabel === 'Ready' ? (
+          <EngineStationTools connectionId={resultConnection.id} />
+        ) : null}
         <ACPConnectionSetupActions
           stage={state.stage}
           isCustom={isCustom}
