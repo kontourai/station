@@ -550,6 +550,8 @@ export class PullRequestHeadReviewer {
     const conversationId = claim.conversationId;
     const headSha = observation.headSha;
     const nowIso = new Date(this.now()).toISOString();
+    // The claim's ownership token: its owner, generation and epoch.
+    const epoch = store.headReviewEpoch(claim.prKey);
     const rerun = existing ? existing.rerun + (submitted(existing) ? 1 : 0) : 0;
     // A re-run of a head that was never submitted keeps the first id.
     if (!manual && existing && submitted(existing))
@@ -656,12 +658,7 @@ export class PullRequestHeadReviewer {
             ? `Head ${short(headSha)} is already in the base branch: there is nothing to review.`
             : "Station can't find this pull request's base branch here.",
         );
-      const requestId = requestIdFor(
-        claim.prKey,
-        headSha,
-        store.headReviewEpoch(claim.prKey),
-        rerun,
-      );
+      const requestId = requestIdFor(claim.prKey, headSha, epoch, rerun);
       const request: IndependentReviewRequest = {
         requestId,
         mode: range.delta ? 'delta' : 'initial',
@@ -692,6 +689,19 @@ export class PullRequestHeadReviewer {
         baseSha: range.baseSha,
         ...(range.delta ? { priorReceiptId: range.delta.priorReceiptId } : {}),
       };
+      // The awaits above (git, reviewers, the prior receipt) let the claim
+      // move, turn off or the head move: nothing is written for a claim
+      // that is no longer the one this started for.
+      const latest = store.claim(claim.prKey);
+      if (
+        !latest ||
+        latest.conversationId !== conversationId ||
+        latest.generation !== claim.generation ||
+        !latest.settings.reviewEachHead ||
+        store.headReviewEpoch(claim.prKey) !== epoch ||
+        store.observation(claim.prKey)?.observation.headSha !== headSha
+      )
+        return { outcome: 'not-eligible', reason: NOT_ELIGIBLE };
       // Counted when submitted, reruns included: the daily limit reads it.
       // Logged before the module admits it, so one whose currency check
       // then fails is counted with no module record: that errs safe.
@@ -706,7 +716,7 @@ export class PullRequestHeadReviewer {
       const key = keyOf(claim.prKey, headSha);
       this.running.add(key);
       handedOff = true;
-      const run = this.execute(store, claim, started, planned, chat)
+      const run = this.execute(store, claim, started, planned, chat, epoch)
         .catch((error) =>
           this.ports.logger.warn('Pull request head review failed', {
             conversationId,
@@ -811,6 +821,8 @@ export class PullRequestHeadReviewer {
     row: StoredHeadReview,
     request: IndependentReviewRequest,
     chat: HeadReviewChat,
+    /** The claim's epoch when the request was built. */
+    epoch: number,
   ): Promise<void> {
     const reviews = this.ports.reviews();
     const ownerUserId = chat.ownerUserId!;
@@ -823,6 +835,7 @@ export class PullRequestHeadReviewer {
         latest.conversationId !== claim.conversationId ||
         latest.generation !== claim.generation ||
         !latest.settings.reviewEachHead ||
+        store.headReviewEpoch(claim.prKey) !== epoch ||
         observation?.state !== 'OPEN' ||
         observation.headSha !== row.headSha ||
         !this.ports.mayContinue(claim.conversationId, ownerUserId) ||
@@ -837,7 +850,8 @@ export class PullRequestHeadReviewer {
         !latest ||
         latest.conversationId !== claim.conversationId ||
         latest.generation !== claim.generation ||
-        !latest.settings.reviewEachHead
+        !latest.settings.reviewEachHead ||
+        store.headReviewEpoch(claim.prKey) !== epoch
       );
     };
     try {

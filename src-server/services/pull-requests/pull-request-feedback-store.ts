@@ -655,6 +655,8 @@ export class PullRequestFeedbackStore {
       this.db.prepare('DELETE FROM deliveries WHERE pr_key = ?').run(prKey);
       this.db.prepare('DELETE FROM rounds WHERE pr_key = ?').run(prKey);
       this.db.prepare('DELETE FROM head_reviews WHERE pr_key = ?').run(prKey);
+      // Claimed again later, it reviews under request ids of its own.
+      this.bumpHeadReviewEpoch(prKey);
     });
   }
 
@@ -1306,6 +1308,8 @@ export class PullRequestFeedbackStore {
             this.db
               .prepare(`DELETE FROM ${table} WHERE pr_key = ?`)
               .run(claim.prKey);
+          // Reopened and claimed again, it reviews under new request ids.
+          this.bumpHeadReviewEpoch(claim.prKey);
           continue;
         }
         this.db

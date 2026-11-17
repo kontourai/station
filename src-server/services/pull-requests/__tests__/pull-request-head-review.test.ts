@@ -280,7 +280,11 @@ async function setup(settings: PullRequestFeedbackSettings = REVIEW_ONLY) {
   });
   delivery = new PullRequestFeedbackDelivery(deliveryPorts());
   const reviews = reviewModule();
-  const reviewerAvailable = { yes: true };
+  const reviewerAvailable: {
+    yes: boolean;
+    gate?: Promise<void>;
+    reached?: boolean;
+  } = { yes: true };
   // The forge: reads answer the current observation; every write throws.
   // Head review must never approve, merge, comment or submit a review.
   const forge = {
@@ -323,8 +327,10 @@ async function setup(settings: PullRequestFeedbackSettings = REVIEW_ONLY) {
       ownerUserId: OWNER,
     }),
     projectRoot: () => repo.root,
-    reviewers: async () =>
-      reviewerAvailable.yes
+    reviewers: async () => {
+      reviewerAvailable.reached = true;
+      if (reviewerAvailable.gate) await reviewerAvailable.gate;
+      return reviewerAvailable.yes
         ? {
             reviewers: [
               {
@@ -334,7 +340,8 @@ async function setup(settings: PullRequestFeedbackSettings = REVIEW_ONLY) {
               },
             ],
           }
-        : undefined,
+        : undefined;
+    },
     reviews: () => reviews.module,
     delivery: () => delivery,
     logger: { warn: vi.fn() },
@@ -1474,5 +1481,94 @@ describe('fix round 2', () => {
       error: 'Station already ran 10 reviews in this Project today.',
       details: { outcome: 'daily-limit' },
     });
+  });
+});
+
+describe('fix round 3: the epoch is the ownership token', () => {
+  const reclaim = (
+    t: Awaited<ReturnType<typeof setup>>,
+    conversationId = CONVERSATION,
+  ) =>
+    t.store.writeClaim({
+      prKey: PR_KEY,
+      identity: IDENTITY,
+      conversationId,
+      settings: REVIEW_ONLY,
+      enabledBy: OWNER,
+      now: new Date().toISOString(),
+    });
+
+  it('turned off and on in the same chat mid-run, the old run writes nothing', async () => {
+    const t = await setup();
+    const release = t.reviews.hold();
+    t.observe(t.repo.first);
+    await t.tickOnly();
+    await t.tickOnly();
+    await vi.waitFor(() => expect(t.reviews.run).toHaveBeenCalledTimes(1));
+    t.store.releaseClaim(PR_KEY, new Date().toISOString());
+    reclaim(t);
+    release();
+    await t.reviewer().settled();
+    expect(t.store.headReviews(PR_KEY)).toEqual([]);
+    expect((await t.reviewer().reviewAgain(PR_KEY)).outcome).toBe('started');
+    await t.reviewer().settled();
+    expect(t.reviews.requests()[1]!.requestId).toBe(
+      `${expectedRequestId(t.repo.first)}:e1`,
+    );
+  });
+
+  it('a claim pruned after it closed and made again reviews under a fresh id', async () => {
+    const t = await setup();
+    t.observe(t.repo.first);
+    await t.tick();
+    await t.tick();
+    t.store.setCondition(PR_KEY, {
+      state: 'closed',
+      at: new Date(Date.now() - 15 * 24 * 60 * MINUTE).toISOString(),
+    });
+    t.store.prune(Date.now());
+    expect(t.store.claim(PR_KEY)).toBeUndefined();
+    reclaim(t);
+    await t.tick();
+    expect((await t.reviewer().reviewAgain(PR_KEY)).outcome).toBe('started');
+    await t.reviewer().settled();
+    expect(t.reviews.requests()[1]!.requestId).toBe(
+      `${expectedRequestId(t.repo.first)}:e1`,
+    );
+  });
+
+  it('a deleted claim made again reviews under a fresh id', async () => {
+    const t = await setup();
+    t.observe(t.repo.first);
+    await t.tick();
+    await t.tick();
+    t.store.deleteClaim(PR_KEY);
+    reclaim(t);
+    await t.tick();
+    expect((await t.reviewer().reviewAgain(PR_KEY)).outcome).toBe('started');
+    await t.reviewer().settled();
+    expect(t.reviews.requests()[1]!.requestId).toBe(
+      `${expectedRequestId(t.repo.first)}:e1`,
+    );
+  });
+
+  it('a claim that moves while its review is being prepared writes nothing', async () => {
+    const t = await setup();
+    t.observe(t.repo.first);
+    await t.tick();
+    let open!: () => void;
+    t.reviewerAvailable.gate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    const preparing = t.reviewer().reviewAgain(PR_KEY);
+    // Prepare is waiting on the reviewers port: past every earlier check.
+    await vi.waitFor(() => expect(t.reviewerAvailable.reached).toBe(true));
+    reclaim(t, 'another-chat');
+    t.reviewerAvailable.gate = undefined;
+    open();
+    expect((await preparing).outcome).toBe('not-eligible');
+    expect(t.store.headReview(PR_KEY, t.repo.first)).toBeUndefined();
+    expect(t.store.headReviewsStartedSince('widgets', '1970-01-01')).toBe(0);
+    expect(t.reviews.run).not.toHaveBeenCalled();
   });
 });
