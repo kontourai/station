@@ -196,6 +196,10 @@ const DAYS = ['2026-08-01', '2026-08-02', '2026-08-03', '2026-08-04'];
  * an earlier day, rows deleted out of the middle of a thread (#5078's
  * compaction, or a repair), a rewritten row, and a thread deleted and then
  * recreated under the same id with no events.
+ *
+ * `maintenance` keeps to those edits alone, as a compaction or repair runs
+ * between appends: an append to the same thread in the same chunk would
+ * otherwise mark it changed and hide a missed invalidation.
  */
 function randomStep(
   store: EventStore,
@@ -203,9 +207,11 @@ function randomStep(
   pick: (bound: number) => number,
   live: Map<string, { provider: (typeof PROVIDERS)[number]; turns: number }>,
   cumulative: Map<string, number>,
+  maintenance: boolean,
 ): void {
   const threadId = `random-thread-${pick(6)}`;
   const thread = live.get(threadId);
+  if (maintenance && !thread) return;
   if (!thread) {
     const provider = PROVIDERS[pick(PROVIDERS.length)]!;
     store.upsertSession({
@@ -232,7 +238,7 @@ function randomStep(
   const day = DAYS[pick(DAYS.length)]!;
   const createdAt = `${day}T${String(pick(24)).padStart(2, '0')}:00:00.000Z`;
   const turnId = `${threadId}-turn-${thread.turns}`;
-  switch (pick(12)) {
+  switch (maintenance ? 8 + pick(3) : pick(12)) {
     case 0:
       append(store, threadId, provider, {
         method: 'session.configured',
@@ -409,7 +415,14 @@ describe('lifetime usage projection (#373)', () => {
         for (let chunk = 0; chunk < 25; chunk++) {
           const steps = 1 + pick(20);
           for (let step = 0; step < steps; step++)
-            randomStep(h.store, external, pick, live, cumulative);
+            randomStep(
+              h.store,
+              external,
+              pick,
+              live,
+              cumulative,
+              chunk % 3 === 2,
+            );
           const incremental = await h.incrementalStats.fullRescan();
           const reference = await h.referenceStats.fullRescan();
           expect(comparable(incremental)).toBe(comparable(reference));
