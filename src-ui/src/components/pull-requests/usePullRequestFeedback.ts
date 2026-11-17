@@ -152,7 +152,7 @@ export function usePullRequestFeedback(conversationId: string) {
     ) =>
       run(identity, () =>
         // The last switch off is turning feedback off: the one path the
-        // Needs-you item's Turn off auto-fix also takes. "Review each new
+        // Needs-you item's Turn off agent feedback also takes. "Review each new
         // head" still on keeps the claim.
         !move &&
         !settings.fixFailingChecks &&

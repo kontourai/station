@@ -428,7 +428,7 @@ function PullRequestFeedbackActions({
             disabled={change.isPending}
             onClick={() => change.mutate('turn-off')}
           >
-            Turn off auto-fix
+            Turn off agent feedback
           </NoticeAction>
         )}
       </div>

@@ -29,6 +29,11 @@ const sdk = vi.hoisted(() => ({
   read: vi.fn(),
   write: vi.fn(),
 }));
+const flags = vi.hoisted(() => ({ headReview: false }));
+vi.mock('../../../hooks/useSurfaceVisibilityFlags', () => ({
+  useSurfaceVisibilityFlags: () =>
+    new Set(flags.headReview ? ['pull-request-head-review'] : []),
+}));
 vi.mock('@kontourai/station-sdk/pull-request-feedback', () => ({
   getProjectPullRequestFeedbackDefaults: (...args: unknown[]) =>
     sdk.read(...args),
@@ -73,6 +78,7 @@ const fixChecks = () =>
 beforeEach(() => {
   sdk.read.mockReset();
   sdk.write.mockReset();
+  flags.headReview = false;
 });
 afterEach(cleanup);
 
@@ -156,5 +162,49 @@ describe('Agent feedback defaults', () => {
     sdk.read.mockResolvedValue(defaults());
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(await fixChecks()).toBeTruthy();
+  });
+});
+
+describe('"Review each new head" in the defaults', () => {
+  test('hidden while its preview is off, and left out of a write', async () => {
+    sdk.read.mockResolvedValue(defaults({}, { reviewEachHead: true }));
+    sdk.write.mockResolvedValue(defaults({}, { fixFailingChecks: true }));
+    renderSection();
+    fireEvent.click(await fixChecks());
+    expect(
+      screen.queryByRole('switch', { name: 'Review each new head' }),
+    ).toBeNull();
+    // Review alone does nothing while off: no consent line for it.
+    await waitFor(() =>
+      expect(sdk.write).toHaveBeenCalledWith(
+        'http://station.test',
+        'widgets',
+        { fixFailingChecks: true, addressReviewComments: false },
+        expect.anything(),
+      ),
+    );
+  });
+
+  test('shown with its preview, saves at once, and alone counts as on', async () => {
+    flags.headReview = true;
+    sdk.read.mockResolvedValue(defaults());
+    sdk.write.mockResolvedValue(defaults({}, { reviewEachHead: true }));
+    renderSection();
+    fireEvent.click(
+      await screen.findByRole('switch', { name: 'Review each new head' }),
+    );
+    await waitFor(() =>
+      expect(sdk.write).toHaveBeenCalledWith(
+        'http://station.test',
+        'widgets',
+        {
+          fixFailingChecks: false,
+          addressReviewComments: false,
+          reviewEachHead: true,
+        },
+        expect.anything(),
+      ),
+    );
+    expect(await screen.findByText(CONSENT)).toBeTruthy();
   });
 });
