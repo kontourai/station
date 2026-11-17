@@ -227,6 +227,10 @@ jobs:
           node scripts/play-upload-retry.mjs
       - name: Record only a reported-success Android provider state
         id: android_provider_state
+        # The Play readback ends by itself within 65 s (its retry budget plus
+        # the edit-cleanup floor); this bounds anything else that stalls. A
+        # timed-out step fails, so the next step records the unknown claim.
+        timeout-minutes: 3
         run: |
           node scripts/release-cohort.mjs begin-promotion cohort/cohort-admission.json > promotion-state.json
           if [ '${{ steps.publisher.outputs.android_needed }}' = 'true' ]; then

@@ -5,15 +5,21 @@ import { canonicalJson } from './release-cohort.mjs';
 
 const ANDROID_PUBLISHER =
   'https://androidpublisher.googleapis.com/androidpublisher/v3';
-// A healthy readback takes 1-2 s for all four requests; 15 s per request is
-// the bound a stalled one waits before the read is retried from a new edit.
+// A healthy readback takes 1-2 s for its token and four requests; 15 s per
+// step is the bound a stalled one waits before the read is retried.
 const REQUEST_TIMEOUT_MS = 15_000;
 const MAX_ATTEMPTS = 3;
-// The whole readback, retries included, stays under the protected verifier's
-// 90 s bound on this adapter (verify-release-cohort.mjs). A cleanup started
-// near the deadline still gets CLEANUP_FLOOR_MS, so the worst case is 75 s.
-const TOTAL_BUDGET_MS = 70_000;
+// Worst case for the whole CLI. Every step but the edit cleanup is clipped to
+// the deadline (TOTAL_BUDGET_MS after the start), and no attempt starts with
+// less than MIN_ATTEMPT_BUDGET_MS left. A cleanup that starts at the deadline
+// still gets CLEANUP_FLOOR_MS, so the readback ends by
+// TOTAL_BUDGET_MS + CLEANUP_FLOOR_MS = 65 s, leaving 25 s of the protected
+// verifier's 90 s bound on this adapter (verify-release-cohort.mjs) for node
+// start-up and module loading.
+const TOTAL_BUDGET_MS = 60_000;
 const CLEANUP_FLOOR_MS = 5_000;
+const MIN_ATTEMPT_BUDGET_MS = 10_000;
+export const READBACK_WORST_CASE_MS = TOTAL_BUDGET_MS + CLEANUP_FLOOR_MS;
 const RETRY_DELAYS_MS = [2_000, 5_000];
 const NETWORK_ERROR_CODES = new Set([
   'ECONNRESET',
@@ -34,8 +40,15 @@ const require = createRequire(import.meta.url);
 export const googleAuthLibraryVersion =
   require('google-auth-library/package.json').version;
 
+/** A verification failure of this module's own: never retried. */
+class VerificationFailure extends Error {
+  constructor(message, options) {
+    super(`Google Play cohort verification failed: ${message}`, options);
+    this.detail = message;
+  }
+}
 const fail = (message) => {
-  throw new Error(`Google Play cohort verification failed: ${message}`);
+  throw new VerificationFailure(message);
 };
 const plain = (value) =>
   value !== null &&
@@ -137,8 +150,8 @@ export function parseGooglePlayObservation(
   };
 }
 
-/** A failed publisher request, named by request and attempt. */
-class PublisherRequestError extends Error {
+/** A failed step of one attempt, named by step and attempt. */
+class ReadbackStepError extends Error {
   constructor(message, { retryable, retryAfterMs, cause }) {
     super(`Google Play cohort verification failed: ${message}`, { cause });
     this.detail = message;
@@ -151,8 +164,7 @@ const httpStatus = (error) => {
   const status = error?.response?.status ?? error?.status;
   return Number.isSafeInteger(status) ? status : undefined;
 };
-const timedOut = (error, signal) =>
-  signal.aborted ||
+const abortError = (error) =>
   [error?.name, error?.cause?.name].some(
     (name) => name === 'AbortError' || name === 'TimeoutError',
   );
@@ -177,13 +189,15 @@ function retryAfterMs(error, nowMs) {
 /**
  * Only a timeout, a network failure, 408, 429 and 5xx are retryable. Any
  * other HTTP status (a 403 or 404 means the identity or grant is wrong) and
- * any non-transport error fail at once.
+ * any non-transport error fail at once. This module's own verification
+ * failures pass through unchanged.
  */
-function classifyRequestFailure(error, label, timeoutMs, signal, context) {
+function classifyStepFailure(error, label, timeoutMs, timedOut, context) {
+  if (error instanceof VerificationFailure) return error;
   const suffix = `(attempt ${context.attempt} of ${context.maxAttempts})`;
   const status = httpStatus(error);
   if (status !== undefined)
-    return new PublisherRequestError(
+    return new ReadbackStepError(
       `${label} failed with HTTP ${status}: ${error.message} ${suffix}`,
       {
         retryable: status === 408 || status === 429 || status >= 500,
@@ -192,81 +206,169 @@ function classifyRequestFailure(error, label, timeoutMs, signal, context) {
         cause: error,
       },
     );
-  if (timedOut(error, signal))
-    return new PublisherRequestError(
+  if (timedOut || abortError(error))
+    return new ReadbackStepError(
       `${label} timed out after ${timeoutMs} ms ${suffix}`,
       { retryable: true, cause: error },
     );
-  return new PublisherRequestError(
+  return new ReadbackStepError(
     `${label} failed: ${error?.message ?? String(error)} ${suffix}`,
     { retryable: networkFailure(error), cause: error },
   );
 }
 
-async function publisherRequest(client, request, label, timeoutMs, context) {
+/**
+ * Runs one named step under a hard time limit. The limit does not depend on
+ * the step honouring a signal: google-auth-library's STS token exchange
+ * takes none, so a stalled exchange is abandoned here, not cancelled (the
+ * CLI exits explicitly so an abandoned socket cannot hold it open).
+ */
+async function timeLimitedStep(label, timeoutMs, context, run) {
   const signal = AbortSignal.timeout(timeoutMs);
+  let timer;
+  const expired = new Promise((_resolve, reject) => {
+    timer = setTimeout(() => reject(TIME_LIMIT_EXPIRED), timeoutMs);
+  });
   try {
-    return await client.request({
-      ...request,
-      signal,
-      timeout: timeoutMs,
-    });
+    return await Promise.race([run(signal, timeoutMs), expired]);
   } catch (error) {
-    throw classifyRequestFailure(error, label, timeoutMs, signal, context);
+    throw classifyStepFailure(
+      error,
+      label,
+      timeoutMs,
+      error === TIME_LIMIT_EXPIRED || signal.aborted,
+      context,
+    );
+  } finally {
+    clearTimeout(timer);
   }
 }
+const TIME_LIMIT_EXPIRED = Symbol('time limit expired');
 
-/** Each request waits at most its own bound and never past the deadline. */
-function requestTimeout(label, context) {
+/** Each step waits at most its own bound and never past the deadline. */
+function stepTimeout(label, context) {
   const remaining = context.deadline - context.now();
   if (remaining <= 0)
-    throw new PublisherRequestError(
+    throw new ReadbackStepError(
       `${label} was not started: the ${context.totalBudgetMs} ms readback budget is spent (attempt ${context.attempt} of ${context.maxAttempts})`,
       { retryable: false },
     );
   return Math.min(context.requestTimeoutMs, remaining);
 }
 
-async function defaultAuthFactory() {
-  const { GoogleAuth } = await import('google-auth-library');
-  return new GoogleAuth({
-    scopes: ['https://www.googleapis.com/auth/androidpublisher'],
-  });
+function defaultAuthFactory() {
+  return import('google-auth-library').then(
+    ({ GoogleAuth }) =>
+      new GoogleAuth({
+        scopes: ['https://www.googleapis.com/auth/androidpublisher'],
+        // Bounds the subject-token and impersonation requests, which share
+        // the client's transporter; the STS exchange has its own transporter
+        // and is bounded only by timeLimitedStep.
+        clientOptions: { transporterOptions: { timeout: REQUEST_TIMEOUT_MS } },
+      }),
+  );
 }
 
 /**
- * One complete readback from its own temporary edit. The edit is never
- * committed; it is deleted in `finally`, and a failed cleanup fails closed.
- * Nothing read here outlives the attempt: an observation is parsed only from
- * the track and bundles this attempt's edit returned.
+ * A new ADC client and access token for every attempt: the client
+ * de-duplicates token refreshes, so a retry on the same client would wait on
+ * the same stalled exchange.
  */
-async function observeOnce(client, identity, encodedPackage, context) {
-  const request = (spec, label, timeoutMs = requestTimeout(label, context)) =>
-    publisherRequest(client, spec, label, timeoutMs, context);
-  let editId;
+function acquireClient(context) {
+  const label = 'acquire access token';
+  return timeLimitedStep(
+    label,
+    stepTimeout(label, context),
+    context,
+    async () => {
+      const auth = await context.authFactory();
+      if (!auth || typeof auth.getClient !== 'function')
+        fail('ADC auth is unavailable');
+      const client = await auth.getClient();
+      if (
+        !client ||
+        typeof client.request !== 'function' ||
+        typeof client.getAccessToken !== 'function'
+      )
+        fail('ADC client is unavailable');
+      const token = await client.getAccessToken();
+      if (typeof token?.token !== 'string' || !token.token)
+        fail('ADC returned no access token');
+      return client;
+    },
+  );
+}
+
+function publisherRequest(client, spec, label, context, timeoutMs) {
+  return timeLimitedStep(
+    label,
+    timeoutMs ?? stepTimeout(label, context),
+    context,
+    (signal, timeoutMs) =>
+      client.request({ ...spec, signal, timeout: timeoutMs }),
+  );
+}
+
+/**
+ * Deletes this attempt's edit. After a good observation a failed delete is
+ * only a warning: the edit is uncommitted, so it never changes the app, and
+ * Google invalidates it when this account next creates an edit. Returns the
+ * failure for the caller to decide.
+ */
+async function deleteEdit(client, editUrl, context) {
+  try {
+    await publisherRequest(
+      client,
+      { url: editUrl, method: 'DELETE' },
+      'delete temporary edit',
+      context,
+      Math.min(
+        context.requestTimeoutMs,
+        Math.max(context.deadline - context.now(), CLEANUP_FLOOR_MS),
+      ),
+    );
+    return undefined;
+  } catch (error) {
+    return error;
+  }
+}
+
+/**
+ * One complete readback: a fresh token, its own temporary edit, the track
+ * and bundles read from that edit, and the edit's deletion. Nothing read
+ * here outlives the attempt: an observation is parsed only from the track
+ * and bundles this attempt's edit returned.
+ */
+async function observeOnce(identity, encodedPackage, context) {
+  const client = await acquireClient(context);
+  const created = await publisherRequest(
+    client,
+    {
+      url: `${ANDROID_PUBLISHER}/applications/${encodedPackage}/edits`,
+      method: 'POST',
+      data: {},
+    },
+    'create temporary edit',
+    context,
+  );
+  const editId = created?.data?.id;
+  if (typeof editId !== 'string' || !editId)
+    fail('temporary edit creation returned no id');
+  const editUrl = `${ANDROID_PUBLISHER}/applications/${encodedPackage}/edits/${encodeURIComponent(editId)}`;
   let result;
   let operationError;
-  let cleanupError;
   try {
-    const created = await request(
-      {
-        url: `${ANDROID_PUBLISHER}/applications/${encodedPackage}/edits`,
-        method: 'POST',
-        data: {},
-      },
-      'create temporary edit',
-    );
-    editId = created?.data?.id;
-    if (typeof editId !== 'string' || !editId)
-      fail('temporary edit creation returned no id');
-    const editPath = `${ANDROID_PUBLISHER}/applications/${encodedPackage}/edits/${encodeURIComponent(editId)}`;
-    const track = await request(
-      { url: `${editPath}/tracks/internal`, method: 'GET' },
+    const track = await publisherRequest(
+      client,
+      { url: `${editUrl}/tracks/internal`, method: 'GET' },
       'read internal track',
+      context,
     );
-    const bundles = await request(
-      { url: `${editPath}/bundles`, method: 'GET' },
+    const bundles = await publisherRequest(
+      client,
+      { url: `${editUrl}/bundles`, method: 'GET' },
       'read bundles',
+      context,
     );
     result = parseGooglePlayObservation(
       identity,
@@ -275,35 +377,51 @@ async function observeOnce(client, identity, encodedPackage, context) {
     );
   } catch (error) {
     operationError = error;
-  } finally {
-    if (editId) {
-      try {
-        await request(
-          {
-            url: `${ANDROID_PUBLISHER}/applications/${encodedPackage}/edits/${encodeURIComponent(editId)}`,
-            method: 'DELETE',
-          },
-          'delete temporary edit',
-          Math.min(
-            context.requestTimeoutMs,
-            Math.max(context.deadline - context.now(), CLEANUP_FLOOR_MS),
-          ),
-        );
-      } catch (error) {
-        cleanupError = error;
-      }
-    }
   }
-  if (cleanupError) {
-    const detail = (error) => error.detail ?? error.message;
-    const cleanup = new Error(
-      `Google Play cohort verification failed: temporary edit cleanup failed: ${detail(cleanupError)}${operationError ? `; operation also failed: ${detail(operationError)}` : ''}`,
+  const cleanupError = await deleteEdit(client, editUrl, context);
+  return settleAttempt(result, operationError, cleanupError, editId, context);
+}
+
+/**
+ * A failed read whose cleanup also failed is final. A good read whose
+ * cleanup failed returns the observation with a warning naming the edit.
+ */
+function settleAttempt(result, operationError, cleanupError, editId, context) {
+  const detail = (error) => error.detail ?? error.message;
+  if (cleanupError && operationError) {
+    const cleanup = new VerificationFailure(
+      `temporary edit cleanup failed: ${detail(cleanupError)}; operation also failed: ${detail(operationError)}`,
     );
-    if (operationError) cleanup.cause = operationError;
+    cleanup.cause = operationError;
     throw cleanup;
   }
   if (operationError) throw operationError;
+  if (cleanupError)
+    context.log(
+      `Google Play readback warning: temporary edit ${editId} was not deleted: ${detail(cleanupError)}; it was never committed and Play invalidates it at this account's next edit`,
+    );
   return result;
+}
+
+/** The wait before the next attempt, or a final error when none fits. */
+function nextAttemptDelay(error, context) {
+  if (
+    !(error instanceof ReadbackStepError) ||
+    !error.retryable ||
+    context.attempt >= context.maxAttempts
+  )
+    throw error;
+  const delayMs = Math.max(
+    RETRY_DELAYS_MS[context.attempt - 1] ?? RETRY_DELAYS_MS.at(-1),
+    error.retryAfterMs ?? 0,
+  );
+  const remainingAfterDelay = context.deadline - context.now() - delayMs;
+  if (remainingAfterDelay < context.minAttemptBudgetMs)
+    throw new VerificationFailure(
+      `readback budget spent: ${remainingAfterDelay} ms of the ${context.totalBudgetMs} ms budget would remain after a ${delayMs} ms wait, below the ${context.minAttemptBudgetMs} ms an attempt needs; last failure: ${error.detail}`,
+      { cause: error },
+    );
+  return delayMs;
 }
 
 const positiveInteger = (value, label) => {
@@ -311,23 +429,15 @@ const positiveInteger = (value, label) => {
   return value;
 };
 
-/**
- * Google exposes track state only through an edit. The readback is
- * read-only (no edit is committed), so a transient failure is retried from a
- * fresh edit, within MAX_ATTEMPTS and TOTAL_BUDGET_MS. A cleanup failure, an
- * observation the parser rejects, and any non-transient error are final.
- */
-/** @param {any} options */
-export async function queryGooglePlayInternal(identity, options = {}) {
-  const authFactory = options.authFactory ?? defaultAuthFactory;
-  const now = options.now ?? (() => Date.now());
-  const sleep =
-    options.sleep ??
-    ((ms) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms)));
-  const log = options.log ?? ((line) => process.stderr.write(`${line}\n`));
-  const context = {
+function readbackContext(options) {
+  return {
+    authFactory: options.authFactory ?? defaultAuthFactory,
     clock: options.clock ?? (() => new Date()),
-    now,
+    now: options.now ?? (() => Date.now()),
+    sleep:
+      options.sleep ??
+      ((ms) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms))),
+    log: options.log ?? ((line) => process.stderr.write(`${line}\n`)),
     requestTimeoutMs: positiveInteger(
       options.requestTimeoutMs ?? REQUEST_TIMEOUT_MS,
       'request timeout',
@@ -340,9 +450,26 @@ export async function queryGooglePlayInternal(identity, options = {}) {
       options.totalBudgetMs ?? TOTAL_BUDGET_MS,
       'readback budget',
     ),
+    minAttemptBudgetMs: positiveInteger(
+      options.minAttemptBudgetMs ?? MIN_ATTEMPT_BUDGET_MS,
+      'minimum attempt budget',
+    ),
     attempt: 0,
     deadline: 0,
   };
+}
+
+/**
+ * Google exposes track state only through an edit. The readback is
+ * read-only (no edit is committed), so a transient failure (token, request
+ * or network) is retried from a new client and a new edit, within
+ * MAX_ATTEMPTS and TOTAL_BUDGET_MS. Still final: a non-transient HTTP status,
+ * an observation the parser rejects, and a cleanup failure after a failed
+ * read.
+ */
+/** @param {any} options */
+export async function queryGooglePlayInternal(identity, options = {}) {
+  const context = readbackContext(options);
   exactKeys(
     identity,
     ['packageName', 'versionCode', 'versionName'],
@@ -351,48 +478,47 @@ export async function queryGooglePlayInternal(identity, options = {}) {
   if (identity.packageName !== 'io.kontourai.station.nightly')
     fail('package name is not the Nightly listing');
   const encodedPackage = encodeURIComponent(identity.packageName);
-  const auth = await authFactory();
-  if (!auth || typeof auth.getClient !== 'function')
-    fail('ADC auth is unavailable');
-  const client = await auth.getClient();
-  if (!client || typeof client.request !== 'function')
-    fail('ADC client is unavailable');
-  context.deadline = now() + context.totalBudgetMs;
+  context.deadline = context.now() + context.totalBudgetMs;
   for (context.attempt = 1; ; context.attempt += 1) {
     try {
-      return await observeOnce(client, identity, encodedPackage, context);
+      return await observeOnce(identity, encodedPackage, context);
     } catch (error) {
-      if (
-        !(error instanceof PublisherRequestError) ||
-        !error.retryable ||
-        context.attempt >= context.maxAttempts
-      )
-        throw error;
-      const delayMs = Math.max(
-        RETRY_DELAYS_MS[context.attempt - 1] ?? RETRY_DELAYS_MS.at(-1),
-        error.retryAfterMs ?? 0,
+      const delayMs = nextAttemptDelay(error, context);
+      context.log(
+        `${error.message}; retrying in ${delayMs} ms from a new edit`,
       );
-      if (now() + delayMs >= context.deadline)
-        throw new Error(
-          `${error.message}; no retry: waiting ${delayMs} ms would pass the ${context.totalBudgetMs} ms readback budget`,
-          { cause: error },
-        );
-      log(`${error.message}; retrying in ${delayMs} ms from a new edit`);
-      await sleep(delayMs);
+      await context.sleep(delayMs);
     }
   }
 }
 
 const json = (value) => JSON.parse(value);
-async function main(argv = process.argv.slice(2)) {
+async function main(argv, options) {
   if (argv.length !== 2 || argv[0] !== 'query-json')
     fail('usage: query-google-play-release.mjs query-json <identity-json>');
-  const observation = await queryGooglePlayInternal(json(argv[1]));
+  const observation = await queryGooglePlayInternal(json(argv[1]), options);
   process.stdout.write(`${JSON.stringify(observation, null, 2)}\n`);
 }
-if (invokedDirectly(import.meta.url)) {
-  main().catch((error) => {
-    process.stderr.write(`${error.message}\n`);
-    process.exitCode = 1;
-  });
+
+/**
+ * The CLI entry: the observation JSON is the only stdout; retries, warnings
+ * and the final error go to stderr. It exits explicitly once both streams
+ * drain, because a token exchange abandoned at its time limit can leave a
+ * socket that would otherwise keep the process alive.
+ */
+export function runCli(argv = process.argv.slice(2), options = {}) {
+  return main(argv, options).then(
+    () => exitAfterDrain(0),
+    (error) => {
+      process.stderr.write(`${error.message}\n`);
+      return exitAfterDrain(1);
+    },
+  );
 }
+function exitAfterDrain(code) {
+  process.exitCode = code;
+  process.stderr.write('', () =>
+    process.stdout.write('', () => process.exit(code)),
+  );
+}
+if (invokedDirectly(import.meta.url)) runCli();

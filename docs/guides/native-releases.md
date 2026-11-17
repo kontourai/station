@@ -247,12 +247,19 @@ with the run reference when its provider step did not succeed — as a
 per-platform state artifact. The Play readback
 (`scripts/query-google-play-release.mjs`, which the protected verifier also
 runs) reads the internal track and bundles through a temporary edit that it
-never commits. It retries a timed-out request, a network failure, a 408, a 429
-(after `Retry-After` when Play sends one) or a 5xx, up to three attempts in
-all, each from a new edit that it deletes, within 15 s per request and 70 s
-overall. Any other HTTP status, an observation the parser rejects, and a failed
-edit cleanup end the readback at once. Each failure names the request and the
-attempt.
+never commits. Each attempt acquires a new access token, creates its own edit
+and deletes it. A step that times out, a network failure, a 408, a 429 (after
+`Retry-After` when Play sends one) or a 5xx is retried, up to three attempts.
+Each step is limited to 15 s, the readback to a 60 s budget, and no attempt
+starts with less than 10 s left. An edit cleanup that starts at the deadline
+still gets 5 s, so the readback ends within 65 s; the verifier allows it 90 s,
+and the workflow step allows 3 minutes. A 400, 403, 404 or other non-retryable
+status, an observation the parser rejects, and a cleanup that fails after a
+failed read end the readback at once. A cleanup that fails after a good read
+is a warning that names the edit: Play invalidates an uncommitted edit when
+the same account next creates one. Each failure names the step and the
+attempt. Three Nightly runs (43418305981, 43530636495 and 44019513466) went
+red because a single 15 s attempt stalled after a successful upload.
 
 The protected verifier (`protected-finalize`) runs whenever at least one of
 Android or the shared desktop release published. It joins all three platform

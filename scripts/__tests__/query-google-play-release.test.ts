@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import {
   parseGooglePlayObservation,
   queryGooglePlayInternal,
+  READBACK_WORST_CASE_MS,
 } from '../query-google-play-release.mjs';
 
 const identity = {
@@ -22,6 +23,14 @@ const response = () => ({
   bundles: {
     bundles: [{ versionCode: identity.versionCode, sha256: 'a'.repeat(64) }],
   },
+});
+const withToken = (client: any) => ({
+  getAccessToken: async () => ({ token: 'token' }),
+  ...client,
+});
+const adc = (client: any) => ({
+  authFactory: async () => ({ getClient: async () => withToken(client) }),
+  log: () => {},
 });
 
 describe('Google Play internal observation', () => {
@@ -70,9 +79,7 @@ describe('Google Play internal observation', () => {
       },
     };
     await expect(
-      queryGooglePlayInternal(identity, {
-        authFactory: async () => ({ getClient: async () => client }),
-      }),
+      queryGooglePlayInternal(identity, adc(client)),
     ).resolves.toMatchObject({ provider: 'google-play' });
     expect(calls.map((call) => call.method)).toEqual([
       'POST',
@@ -94,26 +101,9 @@ describe('Google Play internal observation', () => {
       },
     };
     await expect(
-      queryGooglePlayInternal(identity, {
-        authFactory: async () => ({ getClient: async () => failingClient }),
-      }),
+      queryGooglePlayInternal(identity, adc(failingClient)),
     ).rejects.toThrow('provider timeout');
     expect(calls.at(-1).method).toBe('DELETE');
-
-    const cleanupFailure = {
-      request: async (request: any) => {
-        if (request.method === 'POST') return { data: { id: 'edit' } };
-        if (request.method === 'DELETE') throw new Error('cleanup timeout');
-        return request.url.endsWith('/tracks/internal')
-          ? { data: response().track }
-          : { data: response().bundles };
-      },
-    };
-    await expect(
-      queryGooglePlayInternal(identity, {
-        authFactory: async () => ({ getClient: async () => cleanupFailure }),
-      }),
-    ).rejects.toThrow('temporary edit cleanup failed');
 
     const dualFailure = {
       request: async (request: any) => {
@@ -123,33 +113,9 @@ describe('Google Play internal observation', () => {
       },
     };
     await expect(
-      queryGooglePlayInternal(identity, {
-        authFactory: async () => ({ getClient: async () => dualFailure }),
-      }),
+      queryGooglePlayInternal(identity, adc(dualFailure)),
     ).rejects.toThrow(
       'temporary edit cleanup failed: delete temporary edit failed: cleanup failed (attempt 1 of 3); operation also failed: read internal track failed: track read failed (attempt 1 of 3)',
-    );
-
-    const hangingClient = {
-      request: async (request: any) => {
-        if (request.method === 'POST') return { data: { id: 'edit' } };
-        if (request.method === 'DELETE') return { data: {} };
-        return new Promise((_resolve, reject) =>
-          request.signal.addEventListener('abort', () =>
-            reject(new Error('aborted')),
-          ),
-        );
-      },
-    };
-    await expect(
-      queryGooglePlayInternal(identity, {
-        authFactory: async () => ({ getClient: async () => hangingClient }),
-        requestTimeoutMs: 1,
-        sleep: async () => {},
-        log: () => {},
-      }),
-    ).rejects.toThrow(
-      'read internal track timed out after 1 ms (attempt 3 of 3)',
     );
   });
 });
@@ -174,6 +140,7 @@ const waitForAbort = (request: any) =>
   new Promise((_resolve, reject) =>
     request.signal.addEventListener('abort', () => reject(gaxiosAbort())),
   );
+const never = () => new Promise(() => {});
 
 type Fault = (request: any, attempt: number) => Promise<any> | undefined;
 const step = (request: any) =>
@@ -207,18 +174,34 @@ function playFake(
   return { calls, client };
 }
 
-function harness(extra: Record<string, unknown> = {}) {
+/**
+ * A fake clock and sleep. `token(attempt)` decides each attempt's access
+ * token; every attempt gets a new client, as the real factory gives.
+ */
+function harness(
+  extra: Record<string, unknown> = {},
+  token: (attempt: number) => Promise<any> = async () => ({ token: 't' }),
+) {
   let nowMs = 1_000_000;
   const sleeps: number[] = [];
   const logs: string[] = [];
+  let clients = 0;
   return {
     sleeps,
     logs,
+    clients: () => clients,
     advance: (ms: number) => {
       nowMs += ms;
     },
+    elapsed: () => nowMs - 1_000_000,
     options: (client: any) => ({
-      authFactory: async () => ({ getClient: async () => client }),
+      authFactory: async () => ({
+        getClient: async () => {
+          clients += 1;
+          const attempt = clients;
+          return { ...client, getAccessToken: () => token(attempt) };
+        },
+      }),
       now: () => nowMs,
       sleep: async (ms: number) => {
         sleeps.push(ms);
@@ -243,6 +226,33 @@ describe('Google Play readback retries', () => {
     bundles: 'read bundles',
   } as const;
 
+  test('a stalled token acquisition is abandoned at its limit and retried with a new client', async () => {
+    const { calls, client } = playFake(() => undefined);
+    const run = harness({ requestTimeoutMs: 5 }, async (attempt) =>
+      attempt === 1 ? never() : { token: 't' },
+    );
+    await expect(
+      queryGooglePlayInternal(identity, run.options(client)),
+    ).resolves.toMatchObject({ provider: 'google-play' });
+    expect(run.clients()).toBe(2);
+    expect(created(calls)).toEqual([1]);
+    expect(run.logs).toEqual([
+      'Google Play cohort verification failed: acquire access token timed out after 5 ms (attempt 1 of 3); retrying in 2000 ms from a new edit',
+    ]);
+  });
+
+  test('a token exchange refused with 400 is final', async () => {
+    const { calls, client } = playFake(() => undefined);
+    const run = harness({}, () => Promise.reject(httpError(400)));
+    await expect(
+      queryGooglePlayInternal(identity, run.options(client)),
+    ).rejects.toThrow(
+      'acquire access token failed with HTTP 400: Request failed with status code 400 (attempt 1 of 3)',
+    );
+    expect(run.clients()).toBe(1);
+    expect(calls).toEqual([]);
+  });
+
   for (const failing of ['create', 'track', 'bundles'] as const)
     test(`a timeout in ${LABEL[failing]} is retried from a new edit`, async () => {
       const { calls, client } = playFake((request, attempt) =>
@@ -265,18 +275,38 @@ describe('Google Play readback retries', () => {
       ]);
     });
 
-  test('a cleanup timeout fails closed and is not retried, even after a good read', async () => {
+  test('a stalled cleanup after a good read warns and returns the observation', async () => {
     const { calls, client } = playFake((request) =>
       step(request) === 'delete' ? waitForAbort(request) : undefined,
     );
     const run = harness({ requestTimeoutMs: 5 });
     await expect(
       queryGooglePlayInternal(identity, run.options(client)),
-    ).rejects.toThrow(
-      'Google Play cohort verification failed: temporary edit cleanup failed: delete temporary edit timed out after 5 ms (attempt 1 of 3)',
-    );
+    ).resolves.toMatchObject({
+      provider: 'google-play',
+      observed: { versionCode: identity.versionCode },
+    });
     expect(created(calls)).toEqual([1]);
     expect(run.sleeps).toEqual([]);
+    expect(run.logs).toEqual([
+      "Google Play readback warning: temporary edit edit-1 was not deleted: delete temporary edit timed out after 5 ms (attempt 1 of 3); it was never committed and Play invalidates it at this account's next edit",
+    ]);
+  });
+
+  test('a failed cleanup after a failed read stays final and is not retried', async () => {
+    const { calls, client } = playFake((request) => {
+      if (step(request) === 'delete') return Promise.reject(httpError(500));
+      if (step(request) === 'bundles') return Promise.reject(httpError(503));
+      return undefined;
+    });
+    const run = harness();
+    await expect(
+      queryGooglePlayInternal(identity, run.options(client)),
+    ).rejects.toThrow(
+      'temporary edit cleanup failed: delete temporary edit failed with HTTP 500: Request failed with status code 500 (attempt 1 of 3); operation also failed: read bundles failed with HTTP 503',
+    );
+    expect(created(calls)).toEqual([1]);
+    expect(run.logs).toEqual([]);
   });
 
   test('a gaxios timeout that fires before our own signal is still a timeout', async () => {
@@ -310,24 +340,26 @@ describe('Google Play readback retries', () => {
     expect(run.sleeps).toEqual([2_000, 5_000]);
   });
 
-  test('a network failure and a 5xx are retried', async () => {
-    const { calls, client } = playFake((request, attempt) => {
-      if (step(request) !== 'track') return undefined;
-      if (attempt === 1)
-        return Promise.reject(
-          Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }),
-        );
-      if (attempt === 2) return Promise.reject(httpError(503));
-      return undefined;
-    });
-    const run = harness();
-    await expect(
-      queryGooglePlayInternal(identity, run.options(client)),
-    ).resolves.toMatchObject({ provider: 'google-play' });
-    expect(created(calls)).toEqual([1, 2, 3]);
-    expect(run.logs[1]).toContain(
-      'read internal track failed with HTTP 503: Request failed with status code 503 (attempt 2 of 3)',
-    );
+  test('a network failure, a 500 and a 503 are retried', async () => {
+    for (const second of [500, 503]) {
+      const { calls, client } = playFake((request, attempt) => {
+        if (step(request) !== 'track') return undefined;
+        if (attempt === 1)
+          return Promise.reject(
+            Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }),
+          );
+        if (attempt === 2) return Promise.reject(httpError(second));
+        return undefined;
+      });
+      const run = harness();
+      await expect(
+        queryGooglePlayInternal(identity, run.options(client)),
+      ).resolves.toMatchObject({ provider: 'google-play' });
+      expect(created(calls)).toEqual([1, 2, 3]);
+      expect(run.logs[1]).toContain(
+        `read internal track failed with HTTP ${second}: Request failed with status code ${second} (attempt 2 of 3)`,
+      );
+    }
   });
 
   test('a 429 waits for Retry-After, or the backoff when it has none', async () => {
@@ -350,18 +382,22 @@ describe('Google Play readback retries', () => {
     }
   });
 
-  test('a 403 is the wrong identity or grant and is never retried', async () => {
-    const { calls, client } = playFake((request) =>
-      step(request) === 'create' ? Promise.reject(httpError(403)) : undefined,
-    );
-    const run = harness();
-    await expect(
-      queryGooglePlayInternal(identity, run.options(client)),
-    ).rejects.toThrow(
-      'create temporary edit failed with HTTP 403: Request failed with status code 403 (attempt 1 of 3)',
-    );
-    expect(created(calls)).toEqual([1]);
-    expect(run.sleeps).toEqual([]);
+  test('a 403, a 404 or a 499 means the wrong identity or grant and is never retried', async () => {
+    for (const status of [403, 404, 499]) {
+      const { calls, client } = playFake((request) =>
+        step(request) === 'create'
+          ? Promise.reject(httpError(status))
+          : undefined,
+      );
+      const run = harness();
+      await expect(
+        queryGooglePlayInternal(identity, run.options(client)),
+      ).rejects.toThrow(
+        `create temporary edit failed with HTTP ${status}: Request failed with status code ${status} (attempt 1 of 3)`,
+      );
+      expect(created(calls)).toEqual([1]);
+      expect(run.sleeps).toEqual([]);
+    }
   });
 
   test('an observation the parser rejects is final, not retried', async () => {
@@ -404,49 +440,96 @@ describe('Google Play readback retries', () => {
       '2:delete',
     ]);
   });
+});
 
-  test('the total budget bounds each request and refuses a retry that would pass it', async () => {
+describe('Google Play readback budget', () => {
+  test('each step is clipped to the deadline', async () => {
     const run = harness();
     const { calls, client } = playFake((request) => {
       if (step(request) !== 'create') return undefined;
-      run.advance(30_000);
+      run.advance(20_000);
       return Promise.reject(httpError(503));
     });
     await expect(
       queryGooglePlayInternal(identity, run.options(client)),
     ).rejects.toThrow('(attempt 3 of 3)');
-    // 0 s: attempt 1 (30 s); +2 s; 32 s: attempt 2 (30 s); +5 s; 67 s:
-    // attempt 3 gets only the 3 s left of the 70 s budget.
-    expect(calls.map((call) => call.timeout)).toEqual([15_000, 15_000, 3_000]);
+    // 0 s: attempt 1 (20 s); +2 s; 22 s: attempt 2 (20 s); +5 s; 47 s:
+    // attempt 3 gets only the 13 s left of the 60 s budget.
+    expect(calls.map((call) => call.timeout)).toEqual([15_000, 15_000, 13_000]);
     expect(run.sleeps).toEqual([2_000, 5_000]);
+  });
 
-    const late = harness();
-    const lateFake = playFake((request, attempt) =>
+  test('no attempt starts with less than the minimum budget left, and the error names the last failure', async () => {
+    const run = harness();
+    const { calls, client } = playFake((request) => {
+      if (step(request) !== 'create') return undefined;
+      run.advance(25_000);
+      return Promise.reject(httpError(503));
+    });
+    await expect(
+      queryGooglePlayInternal(identity, run.options(client)),
+    ).rejects.toThrow(
+      'readback budget spent: 3000 ms of the 60000 ms budget would remain after a 5000 ms wait, below the 10000 ms an attempt needs; last failure: create temporary edit failed with HTTP 503: Request failed with status code 503 (attempt 2 of 3)',
+    );
+    expect(created(calls)).toEqual([1, 2]);
+    expect(run.sleeps).toEqual([2_000]);
+  });
+
+  test('a Retry-After past the budget ends the readback at once', async () => {
+    const run = harness();
+    const { calls, client } = playFake((request, attempt) =>
       attempt === 1 && step(request) === 'create'
         ? Promise.reject(httpError(429, { 'retry-after': '120' }))
         : undefined,
     );
     await expect(
-      queryGooglePlayInternal(identity, late.options(lateFake.client)),
-    ).rejects.toThrow(
-      'no retry: waiting 120000 ms would pass the 70000 ms readback budget',
-    );
-    expect(created(lateFake.calls)).toEqual([1]);
-    expect(late.sleeps).toEqual([]);
+      queryGooglePlayInternal(identity, run.options(client)),
+    ).rejects.toThrow('readback budget spent: -60000 ms');
+    expect(created(calls)).toEqual([1]);
+    expect(run.sleeps).toEqual([]);
   });
 
   test('a request is not started once the budget is spent, and the edit is still deleted', async () => {
     const run = harness();
     const { calls, client } = playFake((request) => {
-      if (step(request) === 'create') run.advance(70_000);
+      if (step(request) === 'create') run.advance(60_000);
       return undefined;
     });
     await expect(
       queryGooglePlayInternal(identity, run.options(client)),
     ).rejects.toThrow(
-      'read internal track was not started: the 70000 ms readback budget is spent (attempt 1 of 3)',
+      'read internal track was not started: the 60000 ms readback budget is spent (attempt 1 of 3)',
     );
     expect(calls.map((call) => call.step)).toEqual(['create', 'delete']);
     expect(calls.at(-1).timeout).toBe(5_000);
+  });
+
+  test('with the real defaults no stall pattern runs past the stated worst case', async () => {
+    // 60 s budget + 5 s cleanup floor; the protected verifier allows 90 s.
+    expect(READBACK_WORST_CASE_MS).toBe(65_000);
+    let longest = 0;
+    // Each of the first ten requests either answers at once or uses its whole
+    // time limit; every later request uses it. A slow create still succeeds,
+    // which leaves an edit to clean up; any other slow request times out.
+    for (let pattern = 0; pattern < 1 << 10; pattern += 1) {
+      const run = harness();
+      let index = 0;
+      const { client } = playFake((request) => {
+        const stalls = index >= 10 || (pattern >> index) & 1;
+        index += 1;
+        if (!stalls) return undefined;
+        run.advance(request.timeout);
+        return step(request) === 'create'
+          ? undefined
+          : Promise.reject(gaxiosAbort());
+      });
+      await queryGooglePlayInternal(identity, run.options(client)).catch(
+        () => undefined,
+      );
+      longest = Math.max(longest, run.elapsed());
+    }
+    expect(longest).toBeLessThanOrEqual(READBACK_WORST_CASE_MS);
+    // The bound is reached, so the sweep exercises the cleanup floor.
+    expect(longest).toBe(65_000);
   });
 });
