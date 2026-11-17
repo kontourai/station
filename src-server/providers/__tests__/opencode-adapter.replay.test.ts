@@ -544,15 +544,22 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
         (record.kind === 'sse' &&
           (record.event?.data?.inboxID === 'msg_1d71b024d001crEY1solwrshJq' ||
             record.event?.type === 'session.inbox.cancelled'));
-      const h = await setup({
-        scenario: 'steer',
-        omit: delivered,
-        ungated: (record) => record.method === 'DELETE',
-        respond: (request) =>
-          request.method === 'DELETE' && request.path.includes('/inbox/')
-            ? { status: deleteStatus }
-            : undefined,
-      });
+      const ids = [
+        ...recordedPromptIds('steer', delivered),
+        'msg_additional_successor',
+      ];
+      const h = await setup(
+        {
+          scenario: 'steer',
+          omit: delivered,
+          ungated: (record) => record.method === 'DELETE',
+          respond: (request) =>
+            request.method === 'DELETE' && request.path.includes('/inbox/')
+              ? { status: deleteStatus }
+              : undefined,
+        },
+        { newMessageId: () => ids.shift()! },
+      );
       await h.start();
       const { turnId } = await h.adapter.sendTurn({
         threadId: 'thread-1',
@@ -1298,6 +1305,98 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
       }
     },
   );
+
+  test.each(['catalog', 'model'])(
+    'Stop wins while native %s preparation is held',
+    async (heldOperation) => {
+      let release = false;
+      const h = await setup({
+        scenario: 'basic',
+        holdUntil: (r) =>
+          (
+            heldOperation === 'catalog'
+              ? r.method === 'GET' && r.path === '/api/model'
+              : r.method === 'POST' && r.path.endsWith('/model')
+          )
+            ? () => release
+            : undefined,
+        respond: (r) =>
+          r.method === 'POST' && r.path.endsWith('/model')
+            ? { status: 204 }
+            : undefined,
+      });
+      await h.start();
+      const sending = h.adapter.sendTurn({
+        threadId: 'thread-1',
+        input: 'must not run',
+        modelId: 'mock/mock-1',
+      });
+      const outcome = sending.catch((e: unknown) => e);
+      await h.waitFor(
+        () =>
+          h.replay.made(
+            heldOperation === 'catalog' ? 'GET' : 'POST',
+            heldOperation === 'catalog'
+              ? '/api/model'
+              : '/api/session/:id/model',
+          ).length > 0,
+      );
+      await h.adapter.stopSession('thread-1');
+      release = true;
+      expect(String(await outcome)).toContain('has stopped');
+      expect(h.replay.made('POST', '/api/session/:id/prompt')).toHaveLength(0);
+    },
+  );
+
+  test('an exact delivery receipt wins over a lost steer POST response', async () => {
+    const home = makeTempDir('opencode-positive-receipt-');
+    const h = await setup(
+      {
+        scenario: 'steer',
+        omit: withdrawnSteer,
+        holdUntil: (r) =>
+          (r.body as { delivery?: string })?.delivery === 'steer'
+            ? (frame) =>
+                frame.event?.type === 'session.inbox.delivered' &&
+                frame.event?.data?.inboxID === 'msg_1d71b024d001crEY1solwrshJq'
+            : undefined,
+        respond: (r) =>
+          (r.body as { delivery?: string })?.delivery === 'steer'
+            ? { status: 500 }
+            : undefined,
+      },
+      { managedWorkspaceHomeDir: home },
+    );
+    const session = await h.start();
+    const { turnId } = await h.turn('DO_BASH steer');
+    const opened = await h.waitFor((e) => e.method === 'request.opened');
+    const steering = h.adapter.steerTurn('thread-1', 'STEER-delivered', turnId);
+    await h.waitFor(
+      () => h.replay.made('POST', '/api/session/:id/prompt').length === 2,
+    );
+    await h.adapter.respondToRequest(
+      'thread-1',
+      opened.requestId as string,
+      'accept',
+    );
+    await expect(steering).resolves.toBeUndefined();
+    await h.waitFor(completedFor(turnId));
+    expect(h.replay.made('DELETE', '/api/session/:id/inbox/:id')).toHaveLength(
+      0,
+    );
+    await h.adapter.stopSession('thread-1');
+    const resumed = await setup(
+      {
+        scenario: 'basic',
+        fallbacks: ['mode-switch', 'catalog', 'mcp', 'reconnect'],
+        ungated: (r) => r.path === '/api/session',
+      },
+      { managedWorkspaceHomeDir: home },
+    );
+    await expect(
+      resumed.start(undefined, { resumeCursor: session.resumeCursor }),
+    ).resolves.toBeDefined();
+  });
 
   test('/compact runs OpenCode compaction as the command turn', async () => {
     const h = await setup({ scenario: 'compact' });

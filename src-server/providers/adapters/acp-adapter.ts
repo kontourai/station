@@ -3362,6 +3362,11 @@ export class AcpAdapter implements ProviderAdapterShape {
       }
       if (applied.configOptions) record.configOptions = applied.configOptions;
     }
+    if (record.stopping || this.sessions.get(input.threadId) !== record)
+      throw new SendTurnRefusedError(
+        'This ACP session has stopped.',
+        'unavailable',
+      );
     // No rewind can have begun meanwhile: it refuses while a send prepares.
     if (record.activeTurnId)
       throw new SendTurnRefusedError(
@@ -5093,12 +5098,33 @@ export class AcpAdapter implements ProviderAdapterShape {
     const cwd = record.session.cwd ?? '';
     const previous = record.process;
     const next = await record.relaunch(floor);
+    if (
+      record.stopping ||
+      this.sessions.get(record.session.threadId) !== record ||
+      !this.isCurrentGeneration(record.session.threadId, record.generation)
+    ) {
+      await next.destroy();
+      return {
+        ok: false,
+        reason: 'the session stopped while preparing its replacement',
+      };
+    }
     let configOptions: unknown[] | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
     record.relaunching = true;
     try {
       const establish = (async () => {
+        if (
+          record.stopping ||
+          this.sessions.get(record.session.threadId) !== record
+        )
+          throw new ProviderTurnEndedError();
         await next.start();
+        if (
+          record.stopping ||
+          this.sessions.get(record.session.threadId) !== record
+        )
+          throw new ProviderTurnEndedError();
         if (canResume) {
           const resumed = await next.resumeSession(
             cursor.acpSessionId,
@@ -5177,6 +5203,16 @@ export class AcpAdapter implements ProviderAdapterShape {
       record.exitedDuringRelaunch = false;
     }
 
+    if (
+      record.stopping ||
+      this.sessions.get(record.session.threadId) !== record
+    ) {
+      await next.destroy();
+      return {
+        ok: false,
+        reason: 'the session stopped while resuming its replacement',
+      };
+    }
     record.process = next;
     record.approvalFloor = floor;
     // The replaced process ran the open wake; the new one never ends it.

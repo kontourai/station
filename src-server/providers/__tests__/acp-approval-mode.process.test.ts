@@ -69,7 +69,10 @@ function launcher(dir: string, name: string): string {
   return path;
 }
 
-function harness(command: 'opencode' | 'kiro-cli'): Harness {
+function harness(
+  command: 'opencode' | 'kiro-cli',
+  extra: Partial<ConstructorParameters<typeof AcpAdapter>[0]> = {},
+): Harness {
   const dir = makeTempDir('station-acp-approval-');
   const cwd = makeTempDir('station-acp-approval-cwd-');
   mkdirSync(join(cwd, '.git'));
@@ -84,6 +87,7 @@ function harness(command: 'opencode' | 'kiro-cli'): Harness {
   };
   process.env.FAKE_OPENCODE_RECORD = recordPath;
   const adapter = new AcpAdapter({
+    ...extra,
     getConnections: async () => [connection],
     logger: {
       debug: () => {},
@@ -398,6 +402,45 @@ describe.skipIf(process.platform === 'win32')(
       } finally {
         installManagedEngineLimits(null);
       }
+    });
+
+    test('Stop wins while the replacement launch is probing its binary', async () => {
+      let probes = 0;
+      let release!: () => void;
+      let held!: () => void;
+      const ready = new Promise<void>((resolve) => {
+        held = resolve;
+      });
+      const waiting = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      h = harness('opencode', {
+        probeOpenCodeVersion: async () => {
+          if (++probes === 3) {
+            held();
+            await waiting;
+          }
+          return { major: 1, minor: 18, patch: 18, text: '1.18.18' };
+        },
+      });
+      await start(h, 'stop-probe');
+      const sending = h.adapter.sendTurn({
+        threadId: 'stop-probe',
+        input: 'run: echo must-not-run',
+        confinement: 'host',
+        modelOptions: { approvalMode: 'never' },
+      });
+      const outcome = sending.catch((error: unknown) => error);
+      await ready;
+      await h.adapter.stopSession('stop-probe');
+      release();
+      expect(await outcome).toBeInstanceOf(Error);
+      expect(launches(h)).toHaveLength(1);
+      expect(
+        records(h).some((entry) =>
+          JSON.stringify(entry).includes('must-not-run'),
+        ),
+      ).toBe(false);
     });
 
     test("ruling R1 reads the version of the binary a managed policy's acp pin launches, not the connection's command", async () => {

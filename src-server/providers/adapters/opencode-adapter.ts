@@ -1428,6 +1428,14 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     input: ProviderSendTurnInput,
     files: Array<{ uri: string; name: string }>,
   ): Promise<ProviderTurnStartResult> {
+    const assertCurrent = () => {
+      if (this.native.get(input.threadId) !== record || record.native.isStopped)
+        throw new SendTurnRefusedError(
+          'This OpenCode session has stopped.',
+          'unavailable',
+        );
+    };
+    assertCurrent();
     if (record.modelUnconfirmed && !input.modelId)
       throw new SendTurnRefusedError(
         'Select a model again to confirm the OpenCode session model before sending.',
@@ -1435,6 +1443,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       );
     if (input.modelId) {
       const model = await this.assertModel(record.lease.client, input.modelId);
+      assertCurrent();
       try {
         await record.lease.client.request(
           'POST',
@@ -1448,6 +1457,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
           'unavailable',
         );
       }
+      assertCurrent();
       record.modelUnconfirmed = false;
       record.session.model = input.modelId;
       this.publish({
@@ -1460,7 +1470,9 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
         model: input.modelId,
       });
     }
+    assertCurrent();
     await this.applyTurnSettings(record, input);
+    assertCurrent();
     const turnId = crypto.randomUUID();
     const displayText = input.displayInput ?? input.input;
     // A turn with attachments is a prompt, never a command (as on ACP).

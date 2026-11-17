@@ -640,6 +640,11 @@ export class OpenCodeNativeSession {
 
   /** Refuse, before anything reaches the engine, while a turn runs. */
   assertIdle(): void {
+    if (this.stopped)
+      throw new SendTurnRefusedError(
+        'This OpenCode session has stopped.',
+        'unavailable',
+      );
     if (this.withdrawalUnconfirmed || this.withdrawingSteers.size > 0)
       throw new SendTurnRefusedError(
         'OpenCode steer withdrawal is unconfirmed; this session cannot accept more work.',
@@ -799,6 +804,10 @@ export class OpenCodeNativeSession {
         { id: inboxId, text, delivery: 'steer' },
       );
     } catch (error) {
+      if (steer.delivered) {
+        this.deps.steerCustody?.complete(inboxId);
+        return;
+      }
       this.steers.delete(inboxId);
       // An HTTP failure does not establish that the prompt was never queued.
       await this.deleteInboxItem(inboxId, false);
