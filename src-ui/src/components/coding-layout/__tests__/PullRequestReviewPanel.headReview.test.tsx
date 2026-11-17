@@ -374,7 +374,7 @@ describe('Station review in the pull request panel', () => {
   });
 
   test.each([
-    [{ state: 'reviewing' as const }, 'Reviewing', 'Reviewing aaaaaaa.'],
+    [{ state: 'reviewing' as const }, 'Reviewing aaaaaaa', undefined],
     [
       {
         state: 'head-not-local' as const,
@@ -410,11 +410,31 @@ describe('Station review in the pull request panel', () => {
     mount();
     const region = await section();
     expect(within(region).getByText(badge)).toBeTruthy();
-    expect(within(region).getByText(line)).toBeTruthy();
+    if (line) expect(within(region).getByText(line)).toBeTruthy();
+    else expect(region.querySelector('.pr-head-review__line')).toBeNull();
     const again = within(region).getByRole('button', { name: 'Review again' });
     expect((again as HTMLButtonElement).disabled).toBe(
       review.state === 'reviewing',
     );
+  });
+
+  test('a closed pull request keeps its review but offers no Review again', async () => {
+    withReview({
+      headSha: HEAD,
+      state: 'reviewed',
+      at: minutesAgo(2),
+      findings: [finding(0, true)],
+      required: 1,
+      others: 0,
+    });
+    state.byPullRequest = {
+      ...(state.byPullRequest as PullRequestFeedbackByPullRequest),
+      status: { state: 'closed' },
+    };
+    mount();
+    const region = await section();
+    expect(within(region).getByText('Reviewed aaaaaaa')).toBeTruthy();
+    expect(within(region).queryByRole('button')).toBeNull();
   });
 
   test('nothing for a reader who may not read the owning chat, or with the preview off', async () => {

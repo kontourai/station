@@ -6,8 +6,8 @@
   display: grid;
   gap: var(--k-space-2);
   min-width: 0;
-  padding-block: var(--k-space-2);
-  border-top: var(--k-border-thin) solid var(--k-line);
+  padding-block: var(--k-space-2) var(--k-space-3);
+  border-block: var(--k-border-thin) solid var(--k-line);
   font-size: var(--k-text-sm);
   color: var(--k-text-muted);
 }
@@ -45,8 +45,14 @@
   min-width: 0;
 }
 .pr-head-review__where {
+  /* One line: a path never breaks mid-name; a long one already reads
+     "…/file.ts:88", and anything longer still ellipsizes. */
+  flex: 1 0 100%;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--k-text);
-  overflow-wrap: anywhere;
 }
 .pr-head-review__finding[data-required="true"] .pr-head-review__severity {
   color: var(--k-text);

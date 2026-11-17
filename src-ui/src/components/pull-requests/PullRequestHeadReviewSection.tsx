@@ -3,7 +3,6 @@ import type {
   PullRequestHeadReviewFinding,
 } from '@kontourai/station-contracts/pull-request-feedback';
 import { pullRequestFeedbackKey } from '@kontourai/station-contracts/pull-request-feedback';
-import { StatusBadge } from '@kontourai/ui/react';
 import { useId, useState } from 'react';
 import { useCoarseNow } from '../../hooks/useCoarseNow';
 import { ActionRow } from '../ActionRow';
@@ -11,6 +10,10 @@ import { Button } from '../Button';
 import { DisclosureToggle } from '../DisclosureToggle';
 import { SkeletonBlock } from '../Skeleton';
 import type { usePullRequestFeedbackStrip } from './PullRequestFeedbackStrip';
+import {
+  PullRequestChip,
+  type PullRequestChipValue,
+} from './pull-request-chips';
 import { RelativeTime } from './RelativeTime';
 import './PullRequestHeadReviewSection.css';
 
@@ -21,25 +24,27 @@ const short = (sha: string) => sha.slice(0, 7);
 const plural = (count: number, one: string, many: string) =>
   `${count} ${count === 1 ? one : many}`;
 
-/** The section's badge: the review's state, as a word and a tone. */
-function headReviewBadge(review: PullRequestHeadReview | undefined): {
-  label: string;
-  tone: 'positive' | 'caution' | 'negative' | 'neutral';
-} {
+/**
+ * The section's chip: the review's state, as a word and a tone, in the pull
+ * request strip's own chip so the two lines read alike.
+ */
+function headReviewBadge(
+  review: PullRequestHeadReview | undefined,
+): PullRequestChipValue {
   switch (review?.state) {
     case 'reviewed':
       return {
         label: `Reviewed ${short(review.headSha)}`,
-        tone: review.required ? 'caution' : 'positive',
+        tone: review.required ? 'pending' : 'success',
       };
     case 'reviewing':
-      return { label: 'Reviewing', tone: 'neutral' };
+      return { label: `Reviewing ${short(review.headSha)}`, tone: 'neutral' };
     case 'head-not-local':
       return { label: 'Head not local', tone: 'neutral' };
     case 'no-reviewer':
       return { label: 'No reviewer', tone: 'neutral' };
     case 'unknown':
-      return { label: 'Result unknown', tone: 'caution' };
+      return { label: 'Result unknown', tone: 'pending' };
     case 'not-verified':
       return { label: 'Not reviewed', tone: 'neutral' };
     default:
@@ -54,8 +59,6 @@ function headReviewNote(
   switch (review?.state) {
     case undefined:
       return 'Reviews each new head once it holds still.';
-    case 'reviewing':
-      return `Reviewing ${short(review.headSha)}.`;
     case 'unknown':
       return 'Station restarted before this review finished.';
     case 'head-not-local':
@@ -68,11 +71,32 @@ function headReviewNote(
   }
 }
 
+/** Characters of a path shown before its leading folders give way. */
+const PATH_SHOWN = 40;
+
+/**
+ * The finding's place, short enough for one line of the narrow panel: a
+ * long path keeps its file name ("…/delivery.ts:998"), with the whole path
+ * on hover.
+ */
+function findingPlace(finding: PullRequestHeadReviewFinding) {
+  const parts = finding.file.split('/');
+  const short =
+    finding.file.length > PATH_SHOWN && parts.length > 2
+      ? `…/${parts.at(-1)}`
+      : finding.file;
+  return { text: `${short}:${finding.line}`, full: finding.file !== short };
+}
+
 function FindingRow({ finding }: { finding: PullRequestHeadReviewFinding }) {
+  const place = findingPlace(finding);
   return (
     <li className="pr-head-review__finding" data-required={finding.required}>
-      <code className="pr-head-review__where">
-        {finding.file}:{finding.line}
+      <code
+        className="pr-head-review__where"
+        {...(place.full ? { title: `${finding.file}:${finding.line}` } : {})}
+      >
+        {place.text}
       </code>
       <span className="pr-head-review__severity">[{finding.severity}]</span>
       <span className="pr-head-review__summary">{finding.summary}</span>
@@ -124,7 +148,7 @@ export function PullRequestHeadReviewSection({
     <section className="pr-head-review" aria-label="Station review">
       <div className="pr-head-review__head">
         <span className="pr-head-review__label">Station review</span>
-        <StatusBadge status={badge.label} tone={badge.tone} />
+        <PullRequestChip {...badge} />
       </div>
       {review?.state === 'reviewed' && (
         <p className="pr-head-review__line">
@@ -166,48 +190,54 @@ export function PullRequestHeadReviewSection({
             ))}
           </ul>
           {findings.length > FINDINGS_SHOWN && (
-            <DisclosureToggle
-              expanded={expanded}
-              controls={listId}
-              onToggle={() => setExpanded((open) => !open)}
-            >
-              {expanded
-                ? 'Fewer findings'
-                : `${findings.length - FINDINGS_SHOWN} more`}
-            </DisclosureToggle>
+            // An __actions row: the shared touch floor sizes it on phones.
+            <div className="pr-head-review__more-actions">
+              <DisclosureToggle
+                expanded={expanded}
+                controls={listId}
+                onToggle={() => setExpanded((open) => !open)}
+              >
+                {expanded
+                  ? 'Fewer findings'
+                  : `${findings.length - FINDINGS_SHOWN} more`}
+              </DisclosureToggle>
+            </div>
           )}
         </>
       )}
-      <ActionRow
-        className="pr-head-review__actions"
-        overflowLabel="More Station review actions"
-        primary={
-          <Button
-            size="sm"
-            variant="primary"
-            pending={pending}
-            disabled={review?.state === 'reviewing'}
-            onClick={() =>
-              void chat.reviewAgain(identity).then((ok) => ok && refetch())
-            }
-          >
-            Review again
-          </Button>
-        }
-        secondary={
-          review?.state === 'reviewed' && required > 0 && !delivery ? (
+      {/* A closed pull request is not reviewed again. */}
+      {data.status?.state !== 'closed' && (
+        <ActionRow
+          className="pr-head-review__actions"
+          overflowLabel="More Station review actions"
+          primary={
             <Button
               size="sm"
+              variant="primary"
               pending={pending}
+              disabled={review?.state === 'reviewing'}
               onClick={() =>
-                void chat.sendFindings(identity).then((ok) => ok && refetch())
+                void chat.reviewAgain(identity).then((ok) => ok && refetch())
               }
             >
-              Send to agent
+              Review again
             </Button>
-          ) : undefined
-        }
-      />
+          }
+          secondary={
+            review?.state === 'reviewed' && required > 0 && !delivery ? (
+              <Button
+                size="sm"
+                pending={pending}
+                onClick={() =>
+                  void chat.sendFindings(identity).then((ok) => ok && refetch())
+                }
+              >
+                Send to agent
+              </Button>
+            ) : undefined
+          }
+        />
+      )}
       {error && (
         <p className="pr-head-review__error" role="status">
           {error}
