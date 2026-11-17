@@ -5003,11 +5003,28 @@ function personMentionScreens(): Screen[] {
  * notes are real records on the e2e Station; usage is a fixed rollup, since
  * no engine reports usage here.
  */
+/**
+ * Project settings are shot as whole pages. Measured in the real page at
+ * 1440×900 and 390×844: the section rail and the form are inside the page's
+ * scrolling content view, and that scrollport ends at the collapsed dock, so
+ * scrolling brings the last rail tabs (Schedules, Danger zone), the Brief
+ * Instructions field and the Task model field fully clear of it. In a fixed
+ * frame some of them always sit at the dock edge, so the frame, not the page,
+ * is what the shot has to change.
+ */
+const PROJECT_SETTINGS_DESKTOP_PAGE = { width: 1440, height: 2500 } as const;
+const PROJECT_SETTINGS_PHONE_PAGE = { width: 390, height: 1200 } as const;
+
 function projectCoordinationScreens(): Screen[] {
   const sections = ['brief', 'memory', 'models', 'usage'] as const;
   return sections.flatMap((section) =>
     (['dark', 'light'] as const).flatMap((theme) =>
-      [DESKTOP, MOBILE].map((viewport): Screen => {
+      [
+        PROJECT_SETTINGS_DESKTOP_PAGE,
+        section === 'brief' || section === 'models'
+          ? PROJECT_SETTINGS_PHONE_PAGE
+          : MOBILE,
+      ].map((viewport): Screen => {
         const size = viewport.width === DESKTOP.width ? 'desktop' : 'mobile';
         const slug = `gallery-brief-${section}-${theme}-${size}`;
         let request: ReturnType<typeof createAuthenticatedE2ERequest>;
