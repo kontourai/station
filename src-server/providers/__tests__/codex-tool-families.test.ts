@@ -373,6 +373,32 @@ describe('admission for a new Codex Session', () => {
     await h.adapter.stopSession('families-shared');
   });
 
+  test('a held yes only narrows: the preview switched off before the start withdraws it', async () => {
+    let preview = true;
+    const h = harness({ preview: () => preview });
+    await expect(
+      h.adapter.toolFamiliesAdmitted('families-narrow'),
+    ).resolves.toBe(true);
+    preview = false;
+    await expect(
+      h.adapter.toolFamiliesAdmitted('families-narrow'),
+    ).resolves.toBe(false);
+  });
+
+  test('a start composed as bound holds a no, so a preview flip before the start cannot admit it', async () => {
+    const h = harness({ version: 'codex-cli 0.167.0' });
+    await expect(
+      h.adapter.toolFamiliesAdmitted('families-bound', false),
+    ).resolves.toBe(false);
+    // The bound-tools preview turned off between composing and starting:
+    // the start is now eligible, but its instructions carry no families
+    // line, so it must still get the whole catalog.
+    await expect(
+      h.adapter.toolFamiliesAdmitted('families-bound'),
+    ).resolves.toBe(false);
+    expect(h.runCommand).not.toHaveBeenCalled();
+  });
+
   test('turning the preview off leaves a running admitted Session its index and families', async () => {
     let preview = true;
     const h = harness({ preview: () => preview });

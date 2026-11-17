@@ -1140,10 +1140,18 @@ export class CodexAdapter implements ProviderAdapterShape {
    * cannot disagree and one start probes the version at most once.
    * `startWithReservation` narrows the answer to the header-token path.
    */
-  toolFamiliesAdmitted(threadId?: string): Promise<boolean> {
+  toolFamiliesAdmitted(threadId?: string, eligible = true): Promise<boolean> {
     const now = this.now().getTime();
     const enabled = this.options.toolFamiliesEnabled?.() === true;
     const held = threadId ? this.toolFamilyAdmissions.get(threadId) : undefined;
+    // The resolver composed this start without a families line for another
+    // reason (its station-control was bound): hold a no, so a preview that
+    // flips before the start cannot admit an index credential the
+    // instructions never explain.
+    if (threadId && !eligible) {
+      this.holdToolFamilyAdmission(threadId, Promise.resolve(false), now);
+      return Promise.resolve(false);
+    }
     // A held answer can only narrow: the preview switched off since then
     // withdraws it, and one that said no never turns into yes (its
     // instructions carry no families line).
@@ -1152,19 +1160,25 @@ export class CodexAdapter implements ProviderAdapterShape {
     const admitted = enabled
       ? this.toolFamilyQualification.admitted()
       : Promise.resolve(false);
-    if (threadId) {
-      // An answer nobody took (the start failed or never came) is dropped
-      // once it is older than the hold, and the map stays bounded.
-      for (const [key, entry] of this.toolFamilyAdmissions)
-        if (now - entry.at >= TOOL_FAMILY_ADMISSION_HOLD_MS)
-          this.toolFamilyAdmissions.delete(key);
-      if (this.toolFamilyAdmissions.size >= TOOL_FAMILY_ADMISSIONS_MAX)
-        this.toolFamilyAdmissions.delete(
-          this.toolFamilyAdmissions.keys().next().value!,
-        );
-      this.toolFamilyAdmissions.set(threadId, { admitted, at: now });
-    }
+    if (threadId) this.holdToolFamilyAdmission(threadId, admitted, now);
     return admitted;
+  }
+
+  private holdToolFamilyAdmission(
+    threadId: string,
+    admitted: Promise<boolean>,
+    now: number,
+  ): void {
+    // An answer nobody took (the start failed or never came) is dropped
+    // once it is older than the hold, and the map stays bounded.
+    for (const [key, entry] of this.toolFamilyAdmissions)
+      if (now - entry.at >= TOOL_FAMILY_ADMISSION_HOLD_MS)
+        this.toolFamilyAdmissions.delete(key);
+    if (this.toolFamilyAdmissions.size >= TOOL_FAMILY_ADMISSIONS_MAX)
+      this.toolFamilyAdmissions.delete(
+        this.toolFamilyAdmissions.keys().next().value!,
+      );
+    this.toolFamilyAdmissions.set(threadId, { admitted, at: now });
   }
 
   /** The answer the resolver got for this start, or a fresh one; used once. */

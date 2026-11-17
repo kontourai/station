@@ -108,9 +108,12 @@ An admitted Session's credential starts at the family index, Station adds
 configuration that carries the credential, and the orchestration instructions
 gain the family-loading line. The instructions and the Session start share one
 admission answer per start (one version probe at most), so the line appears
-when the listing starts at the index. The one exception narrows: if the
-preview is switched off between composing the instructions and starting the
-engine, the Session gets the full catalog. Knowledge keeps its full listing.
+when the listing starts at the index. A start whose instructions were composed
+without the line, including one composed for the bound catalog, holds a no, so
+a preview change before the engine starts cannot admit it. The one exception
+narrows: if this preview is switched off between composing the instructions
+and starting the engine, the Session gets the full catalog. Knowledge keeps its
+full listing.
 
 Every start and resume mints a new credential, and loaded families belong to a
 credential, so a resumed thread starts at the index again. Codex rejects a

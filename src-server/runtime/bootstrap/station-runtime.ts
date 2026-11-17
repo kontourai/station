@@ -4531,8 +4531,8 @@ export class StationRuntime {
             }) ?? false,
           // The adapter's own admission question, so the families line in
           // the instructions and the credential's listing agree.
-          codexToolFamiliesAdmitted: (threadId) =>
-            this.codexAdapter.toolFamiliesAdmitted(threadId),
+          codexToolFamiliesAdmitted: (threadId, eligible) =>
+            this.codexAdapter.toolFamiliesAdmitted(threadId, eligible),
           resolveProjectToolServers: async (input) => {
             const slug = input.metadata?.projectSlug;
             if (typeof slug !== 'string' || !slug) return [];

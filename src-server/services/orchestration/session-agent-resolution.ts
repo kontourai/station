@@ -115,7 +115,10 @@ interface SessionAgentResolverOptions {
    * instructions carry the family-loading line. Claude and ACP engines never
    * get families.
    */
-  codexToolFamiliesAdmitted?: (threadId: string) => Promise<boolean>;
+  codexToolFamiliesAdmitted?: (
+    threadId: string,
+    eligible?: boolean,
+  ) => Promise<boolean>;
   /** The `codex-bound-browser-device-tools` preview (Codex browser/device tools). */
   codexBoundToolsEnabled?: () => boolean;
 }
@@ -376,11 +379,16 @@ async function resolveStationInstructions(args: {
     // adapter admits it. A `bound` session (Claude's in-process server,
     // Codex's bound catalog) is served without disclosure, and a resumed
     // thread is told nothing here (it returns below before any stamp).
+    // A bound Codex start still asks, as ineligible, so the adapter holds a
+    // no for it whatever the previews do before the start.
     progressiveFamilies:
       provider === 'codex' &&
-      assurance !== 'bound' &&
       input.resumeCursor === undefined &&
-      (await options.codexToolFamiliesAdmitted?.(input.threadId)) === true,
+      (await options.codexToolFamiliesAdmitted?.(
+        input.threadId,
+        assurance !== 'bound',
+      )) === true &&
+      assurance !== 'bound',
   });
   if (!composed) return;
   const base = {
