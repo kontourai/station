@@ -24,6 +24,7 @@ import {
 } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
+  PROJECT_MEMORY_FULL_CODE,
   PROJECT_MEMORY_MAX_NOTES,
   PROJECT_MEMORY_NOTE_ID_PATTERN,
   type ProjectMemoryNote,
@@ -39,7 +40,7 @@ const HEADER_FENCE = '---';
 export const PROJECT_MEMORY_FULL_MESSAGE = `This Project's memory holds ${PROJECT_MEMORY_MAX_NOTES} notes. Forget one before saving another.`;
 
 export class ProjectMemoryLimitError extends Error {
-  readonly code = 'project_memory_full';
+  readonly code = PROJECT_MEMORY_FULL_CODE;
   constructor() {
     super(PROJECT_MEMORY_FULL_MESSAGE);
   }

@@ -30,6 +30,7 @@ import {
   PROJECT_ROOM_FORBIDDEN_CODE,
   PROJECT_ROOM_PROJECT_NOT_FOUND_CODE,
 } from './project-room.js';
+import { PROJECT_MEMORY_FULL_CODE } from './project-session-context.js';
 import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
@@ -280,9 +281,10 @@ export const PROVIDER_FAILURE_KINDS = {
   [MANAGED_POLICY_CAPABILITY_DISABLED_CODE]: 'permission_denied',
   // #4517: a managed policy locks the setting a write would change.
   managed_setting_locked: 'permission_denied',
-  // #5065: a Project's memory holds its maximum notes. Not retryable: it
-  // conflicts with what is stored until a person or agent forgets a note.
-  project_memory_full: 'conflict',
+  // #5065: a Project's memory holds its maximum notes. Not retryable: like
+  // `project_held`, it is a state refusal that lasts until the state changes
+  // (a person or agent forgets a note), not a transient capacity limit.
+  [PROJECT_MEMORY_FULL_CODE]: 'conflict',
   // #4520: an engine the managed policy does not allow, or a launch that
   // cannot honor a locked pin.
   [MANAGED_POLICY_ENGINE_REFUSED_CODE]: 'permission_denied',

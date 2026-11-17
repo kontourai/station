@@ -24,6 +24,12 @@ export const PROJECT_MEMORY_NOTE_TITLE_MAX_CHARS = 120;
 export const PROJECT_MEMORY_NOTE_BODY_MAX_CHARS = 4_000;
 /** Notes past this count are refused, so the index stays a short read. */
 export const PROJECT_MEMORY_MAX_NOTES = 200;
+/**
+ * The refusal a full Project memory answers (`PROJECT_MEMORY_MAX_NOTES`). It
+ * maps to the `conflict` failure kind, not retryable: the store stays full
+ * until a person or agent forgets a note.
+ */
+export const PROJECT_MEMORY_FULL_CODE = 'project_memory_full';
 /** Note ids are server-minted: lowercase letters, digits and dashes. */
 export const PROJECT_MEMORY_NOTE_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
