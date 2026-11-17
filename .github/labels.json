@@ -37,6 +37,11 @@
       "description": "Something isn't working"
     },
     {
+      "name": "ci:red",
+      "color": "b60205",
+      "description": "A watched workflow is red on main; opened and closed by Main: Health"
+    },
+    {
       "name": "decision-needed",
       "color": "FBCA04",
       "description": "Requires an owner or product decision before implementation"
