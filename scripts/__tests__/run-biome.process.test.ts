@@ -143,7 +143,9 @@ test.skipIf(process.platform === 'win32')(
       { timeout: 15_000 },
     );
     child.stderr!.pause();
+    // Both are subscribed now: 'close' can follow 'exit' in the same tick.
     const exit = once(child, 'exit');
+    const closed = once(child, 'close');
     holder.finish();
     await vi.waitFor(() => expect(stdout).toContain('flood-start'), {
       timeout: 15_000,
@@ -153,7 +155,7 @@ test.skipIf(process.platform === 'win32')(
     await new Promise((settle) => setTimeout(settle, 500));
     child.stderr!.resume();
     const [code] = await exit;
-    await once(child, 'close');
+    await closed;
     expect(stdout).toContain('flood-exit=0');
     expect(code).toBe(0);
     expect(stderrBytes).toBeGreaterThanOrEqual(4096 * 1024);
