@@ -25,81 +25,138 @@ const DURATION_LITERAL = /(?:^|[\s,(])(?:\d*\.)?\d+(?:ms|s)\b/i;
 const EASING_LITERAL =
   /(?:^|[\s,(])(?:ease(?:-in|-out|-in-out)?|linear|cubic-bezier\s*\()/i;
 const TRANSITION_ALL = /\btransition\s*:\s*all(?:\s|;|$)/i;
-// `ease-in-out` is a different curve. CSS still forms the keyword when it
-// sits against `)` (`var(--motion-fast)ease-in`), and a hex escape spells
-// the same ident (`\65 ase-in`, `ease-in\2d out`, `v\61r(--ease-in)`). A
-// non-ASCII character continues the ident, so `ease-iné` is not `ease-in`.
-// Keywords are case-insensitive. Custom properties are not, so
-// `var(--EASE-IN)` is a different token. `var()` is a function name, and a
-// fallback argument is still a use. A declared `--ease-in` legalizes
-// neither form. No ceiling.
+// `ease-in-out` is a different curve. The keyword is one CSS ident: a
+// missing space still splits tokens (`var(--motion-fast)ease-in`), a hex
+// escape spells that ident (`\65 ase-in`, `ease-in\2d out`), and a
+// non-ASCII character continues it (`ease-iné`). Case folding is ASCII
+// only: Unicode `İ` lowercases to two code points and would shift a match
+// taken from the folded string. A quoted string is a name or a URL, not a
+// timing keyword. Custom properties are case-sensitive, so `var(--EASE-IN)`
+// is a different token. `var()` is a function name, and a fallback argument
+// is still a use. A declared `--ease-in` legalizes neither form. No ceiling.
 const EASE_IN_VAR = /[vV][aA][rR]\(\s*--ease-in\s*[,)]/;
 const CSS_HEX_DIGIT = /[0-9a-f]/i;
 // One whitespace code point terminates a hex escape and is not output.
 const CSS_ESCAPE_WHITESPACE = /[ \t\n\r\f]/;
 
-function decodeCssEscapes(value) {
-  let decoded = '';
-  for (let index = 0; index < value.length; index += 1) {
-    if (value[index] !== '\\') {
-      decoded += value[index];
-      continue;
-    }
-    if (index + 1 >= value.length) {
-      decoded += '\uFFFD';
-      break;
-    }
-    if (!CSS_HEX_DIGIT.test(value[index + 1])) {
-      decoded += value[index + 1];
-      index += 1;
-      continue;
-    }
-    let hex = '';
-    let cursor = index + 1;
-    while (
-      cursor < value.length &&
-      hex.length < 6 &&
-      CSS_HEX_DIGIT.test(value[cursor])
-    ) {
-      hex += value[cursor];
-      cursor += 1;
-    }
-    if (cursor < value.length && CSS_ESCAPE_WHITESPACE.test(value[cursor])) {
-      cursor += 1;
-    }
-    const code = Number.parseInt(hex, 16);
-    const illegal =
-      code === 0 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff);
-    decoded += illegal ? '\uFFFD' : String.fromCodePoint(code);
-    index = cursor - 1;
+function consumeCssEscape(value, index) {
+  if (index + 1 >= value.length) return { char: '\uFFFD', next: value.length };
+  if (!CSS_HEX_DIGIT.test(value[index + 1])) {
+    return { char: value[index + 1], next: index + 2 };
   }
-  return decoded;
+  let hex = '';
+  let cursor = index + 1;
+  while (
+    cursor < value.length &&
+    hex.length < 6 &&
+    CSS_HEX_DIGIT.test(value[cursor])
+  ) {
+    hex += value[cursor];
+    cursor += 1;
+  }
+  if (cursor < value.length && CSS_ESCAPE_WHITESPACE.test(value[cursor])) {
+    cursor += 1;
+  }
+  const code = Number.parseInt(hex, 16);
+  const illegal =
+    code === 0 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff);
+  return {
+    char: illegal ? '\uFFFD' : String.fromCodePoint(code),
+    next: cursor,
+  };
+}
+
+function skipCssString(value, index) {
+  const quote = value[index];
+  let cursor = index + 1;
+  while (cursor < value.length) {
+    if (value[cursor] === '\\') {
+      cursor = consumeCssEscape(value, cursor).next;
+      continue;
+    }
+    if (value[cursor] === quote) return cursor + 1;
+    if (
+      value[cursor] === '\n' ||
+      value[cursor] === '\r' ||
+      value[cursor] === '\f'
+    ) {
+      return cursor;
+    }
+    cursor += 1;
+  }
+  return value.length;
+}
+
+function isCssIdentStart(char) {
+  const code = char.codePointAt(0) ?? 0;
+  return code >= 0x80 || /[A-Za-z_]/.test(char);
 }
 
 function isCssIdentChar(char) {
-  if (char === '') return false;
   const code = char.codePointAt(0) ?? 0;
   return code >= 0x80 || /[A-Za-z0-9_-]/.test(char);
 }
 
-/** True when `ease-in` is its own ident, not a prefix of a longer one. */
-function hasEaseInKeyword(decoded) {
-  const lower = decoded.toLowerCase();
-  let from = 0;
-  while (from < lower.length) {
-    const at = lower.indexOf('ease-in', from);
-    if (at === -1) return false;
-    const before = at === 0 ? '' : decoded[at - 1];
-    const after = decoded[at + 'ease-in'.length] ?? '';
-    if (!isCssIdentChar(before) && !isCssIdentChar(after)) return true;
-    from = at + 1;
+function consumeCssIdent(value, index) {
+  let text = '';
+  let cursor = index;
+  while (cursor < value.length) {
+    if (value[cursor] === '\\') {
+      const escaped = consumeCssEscape(value, cursor);
+      text += escaped.char;
+      cursor = escaped.next;
+      continue;
+    }
+    const char = value[cursor];
+    if (text.length === 0) {
+      if (char !== '-' && !isCssIdentStart(char)) break;
+    } else if (!isCssIdentChar(char)) {
+      break;
+    }
+    text += char;
+    cursor += 1;
   }
-  return false;
+  return { text, next: cursor };
+}
+
+/** CSS keywords compare as ASCII. `İ`.toLowerCase() is two code points. */
+function asciiEqualsEaseIn(text) {
+  if (text.length !== 7) return false;
+  const expected = 'ease-in';
+  for (let index = 0; index < expected.length; index += 1) {
+    const code = text.charCodeAt(index);
+    const folded = code >= 65 && code <= 90 ? code + 32 : code;
+    if (folded !== expected.charCodeAt(index)) return false;
+  }
+  return true;
 }
 
 function layerUsesEaseIn(layer) {
-  const decoded = decodeCssEscapes(layer);
-  return hasEaseInKeyword(decoded) || EASE_IN_VAR.test(decoded);
+  let visible = '';
+  let index = 0;
+  while (index < layer.length) {
+    const char = layer[index];
+    if (char === '"' || char === "'") {
+      index = skipCssString(layer, index);
+      visible += ' ';
+      continue;
+    }
+    if (char === '\\' || char === '-' || isCssIdentStart(char)) {
+      const ident = consumeCssIdent(layer, index);
+      if (ident.next === index) {
+        visible += char;
+        index += 1;
+        continue;
+      }
+      if (asciiEqualsEaseIn(ident.text)) return true;
+      visible += ident.text;
+      index = ident.next;
+      continue;
+    }
+    visible += char;
+    index += 1;
+  }
+  return EASE_IN_VAR.test(visible);
 }
 
 // Matches a custom-property *declaration* (`--name:`), not a `var(--name)`

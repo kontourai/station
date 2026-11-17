@@ -225,6 +225,41 @@ describe('motion contract ratchet', () => {
     expect(escapedOut.easeIn).toEqual([]);
   });
 
+  it('rejects ease-in after a non-ASCII ident and ignores a quoted name', () => {
+    const rejected = [
+      '.u { animation: I var(--motion-fast) var(--ease-custom, ease-in); }',
+      '.u { animation: \u0130 var(--motion-fast) var(--ease-custom, ease-in); }',
+    ];
+    for (const css of rejected) {
+      const found = inspectMotionCss(css, REAL_TOKENS);
+      expect(found.hardCoded, css).toEqual([]);
+      expect(found.unresolvedToken, css).toEqual([]);
+      expect(found.easeIn, css).toHaveLength(1);
+      expect(
+        evaluateMotionContract(
+          found.easeIn.map((declaration) => ({
+            file: 'a.css',
+            kind: 'ease-in' as const,
+            declaration,
+          })),
+          0,
+        ).passed,
+        css,
+      ).toBe(false);
+    }
+    const allowed = [
+      '.a { animation: "ease-in" var(--motion-fast) var(--ease-out); }',
+      '.b { animation: x var(--motion-fast) var(--ease-out, url("ease-in")); }',
+      '.c { animation: "slide ease-in" var(--motion-fast) var(--ease-out); }',
+      '.d { animation: "var(--ease-in)" var(--motion-fast) var(--ease-out); }',
+    ];
+    for (const css of allowed) {
+      const found = inspectMotionCss(css, REAL_TOKENS);
+      expect(found.easeIn, css).toEqual([]);
+      expect(found.hardCoded, css).toEqual([]);
+    }
+  });
+
   it('does not treat ease-in-out or ease-out as ease-in', () => {
     const declared = new Set([...REAL_TOKENS, '--EASE-IN']);
     const mixed = inspectMotionCss(
