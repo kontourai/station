@@ -1,0 +1,7 @@
+{
+  "revision": "a1c40ee2fee48d9d4ac8d3e8aba0f6138e9c0eff",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Re-reviewed against the tests/e2e-manifest.mjs change since e308051c: it only adds tests/notification-deep-link-opening.spec.ts as a primary product-bucket spec (surface Chat) in the parallel-safe execution class. The eight-bucket list, the product bucket's route (npm run test:e2e:product through scripts/run-e2e-suite.mjs), the manifest-as-ownership rule and the representative, non-exhaustive Core Nav table all remain accurate; no prose change. Source and manifest inspection only: no browser run is claimed, and the new spec's matrix is not qualified at this revision.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/e2e-manifest.mjs"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "a1c40ee2fee48d9d4ac8d3e8aba0f6138e9c0eff",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Re-reviewed against the tests/e2e-manifest.mjs change since e308051c: PR_BROWSER_SMOKE_CONTRACT is unchanged and still selects nine journeys; the added tests/notification-deep-link-opening.spec.ts is a product-bucket spec, not a smoke member. The nine-row table and the CI execution policy remain accurate; no prose change. Source and manifest inspection only.","inputs":["docs/testing/browser-smoke.md","tests/e2e-manifest.mjs"]}
+  ]
+}
