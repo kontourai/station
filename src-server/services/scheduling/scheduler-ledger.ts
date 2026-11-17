@@ -470,6 +470,15 @@ export const ANNOUNCEMENT_OUTBOX_MIGRATION_KEY = 'announcement-outbox-migrated';
 /** #2377 slice D: records that older ownerless jobs were given an owner, once. */
 export const JOB_OWNER_MIGRATION_KEY = 'job-owner-backfill-v1';
 
+/**
+ * #2377 slice D: the job ids that had no recorded owner when this ledger was
+ * first opened by owner-aware code. Captured during ledger construction, so
+ * no job can be stored before it; the backfill reads only these ids, and a
+ * job stored ownerless afterwards is never treated as pre-owner, however
+ * late the backfill itself manages to run.
+ */
+export const JOB_OWNER_CANDIDATES_KEY = 'job-owner-candidates-v1';
+
 /** #2377 slice D: why a job with no recorded owner has no Station tools. */
 export const JOB_OWNER_NEEDED_REASON =
   'This job has no recorded owner, so its runs have no Station tools. Re-create it to make you its owner.';
@@ -952,6 +961,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
       this.ensureSchedulerLedgerColumns();
       this.transaction(() => this.ensureExternalMonitorColumns());
       this.importLegacyJsonOnce();
+      this.recordPreOwnerJobsOnce();
     } catch (error) {
       LIVE_OWNER_IDS.delete(this.owner.id);
       try {
@@ -1025,17 +1035,27 @@ class SqliteSchedulerLedger implements SchedulerLedger {
   ): number {
     return this.transaction(() => {
       // Decided under the write lock: two instances over one home migrate
-      // once between them.
+      // once between them. Personal-ness is whatever this start says when the
+      // marker is written; a start that could not write it decides nothing.
       const migrated = this.db
         .prepare('SELECT value FROM scheduler_ledger_meta WHERE key = ?')
         .get(JOB_OWNER_MIGRATION_KEY);
       if (migrated !== undefined) return 0;
-      const rows = this.db
-        .prepare('SELECT name, data FROM scheduler_jobs')
-        .all() as Array<{ name: string; data: string }>;
       let changed = 0;
-      for (const row of owner ? rows : []) {
-        const job = parseStoredJob(row.data);
+      for (const jobId of owner ? this.preOwnerJobIds() : []) {
+        const row = this.db
+          .prepare('SELECT name, data FROM scheduler_jobs WHERE job_id = ?')
+          .get(jobId) as { name: string; data: string } | undefined;
+        if (!row) continue;
+        let job: StoredSchedulerJob;
+        try {
+          job = parseStoredJob(row.data);
+        } catch {
+          // An unreadable record is set aside, as `claimDue` sets it aside
+          // (#3563): it must not hold the marker back, or a later start would
+          // run the migration over whatever the ledger holds by then.
+          continue;
+        }
         if (job.createdBy) continue;
         this.db
           .prepare(
@@ -1048,6 +1068,46 @@ class SqliteSchedulerLedger implements SchedulerLedger {
         .prepare('INSERT INTO scheduler_ledger_meta(key, value) VALUES (?, ?)')
         .run(JOB_OWNER_MIGRATION_KEY, new Date().toISOString());
       return changed;
+    });
+  }
+
+  private preOwnerJobIds(): string[] {
+    const row = this.db
+      .prepare('SELECT value FROM scheduler_ledger_meta WHERE key = ?')
+      .get(JOB_OWNER_CANDIDATES_KEY) as { value: string } | undefined;
+    if (!row) return [];
+    const ids: unknown = JSON.parse(row.value);
+    return Array.isArray(ids)
+      ? ids.filter((id): id is string => typeof id === 'string')
+      : [];
+  }
+
+  /**
+   * Runs inside construction, with the legacy import, so the ledger serves no
+   * write before the pre-owner set is fixed. An unreadable record is counted
+   * as pre-owner: it was stored before this code, whatever its bytes say.
+   */
+  private recordPreOwnerJobsOnce(): void {
+    this.transaction(() => {
+      const recorded = this.db
+        .prepare('SELECT value FROM scheduler_ledger_meta WHERE key = ?')
+        .get(JOB_OWNER_CANDIDATES_KEY);
+      if (recorded !== undefined) return;
+      const rows = this.db
+        .prepare('SELECT job_id, data FROM scheduler_jobs')
+        .all() as Array<{ job_id: string; data: string }>;
+      const ids = rows
+        .filter((row) => {
+          try {
+            return !parseStoredJob(row.data).createdBy;
+          } catch {
+            return true;
+          }
+        })
+        .map((row) => row.job_id);
+      this.db
+        .prepare('INSERT INTO scheduler_ledger_meta(key, value) VALUES (?, ?)')
+        .run(JOB_OWNER_CANDIDATES_KEY, JSON.stringify(ids));
     });
   }
 
