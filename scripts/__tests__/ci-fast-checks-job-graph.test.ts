@@ -2184,12 +2184,7 @@ describe('heavy pull-request checks switch under GitHub job-status semantics', (
       )
       .map((step) => step.name);
   };
-  const HEAVY_JOBS = [
-    'fast-checks-shard',
-    'repo-scans',
-    'ui-bundle-delta',
-    'delivery-plan',
-  ];
+  const HEAVY_JOBS = ['fast-checks-shard', 'ui-bundle-delta', 'delivery-plan'];
 
   test('when-armed: an unarmed push runs the cheap jobs only, the aggregate passes and records the deferral', () => {
     const context = {
@@ -2203,6 +2198,8 @@ describe('heavy pull-request checks switch under GitHub job-status semantics', (
       'fast-checks-statics',
       'fast-checks',
       'source-policy',
+      // Nothing before landing runs the source scans except a push run.
+      'repo-scans',
     ])
       expect(state.results.get(id), id).toBe('success');
     for (const id of HEAVY_JOBS)
@@ -2236,6 +2233,10 @@ describe('heavy pull-request checks switch under GitHub job-status semantics', (
       expect(state.shards.get('fast-checks-shard')).toEqual([1, 2]);
       expect(aggregatorPartResults(jobs, state)).toBe(0);
       expect(aggregateSteps(state)).toEqual(['Record heavy checks ran']);
+      // The push run of that head already scanned it; arming does not repeat.
+      expect(state.results.get('repo-scans')).toBe(
+        armedAtEvent ? 'success' : 'skipped',
+      );
     },
   );
 

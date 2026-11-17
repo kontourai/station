@@ -377,7 +377,7 @@ const SAME_REPOSITORY_FAST_CHECKS_CONDITION = `\${{ always() && !cancelled() && 
 const FORK_SMOKE_CONDITION = `\${{ always() && !cancelled() && needs.${ACTIONLINT_ARTIFACT_JOB}.result == 'success' && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.action != 'auto_merge_enabled' && github.event.pull_request.head.repo.full_name != github.repository }}`;
 // #2176: the whole-tree source scans run for same-repository pull requests
 // only. A fork candidate never reaches it (fork-smoke owns forks).
-const REPO_SCANS_CONDITION = `\${{ always() && !cancelled() && needs.pr-admission.outputs.heavy != 'false' && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && (github.event.action != 'auto_merge_enabled' || vars.STATION_PR_HEAVY_CHECKS == 'when-armed') && github.event.pull_request.head.repo.full_name == github.repository }}`;
+const REPO_SCANS_CONDITION = `\${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.action != 'auto_merge_enabled' && github.event.pull_request.head.repo.full_name == github.repository }}`;
 const PULL_REQUEST_TARGET = 'pull_request_target';
 const MERGE_GROUP = 'merge_group';
 const MERGE_GROUP_TYPES = ['checks_requested'];

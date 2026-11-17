@@ -1247,9 +1247,10 @@ jobs:
     # verdict: a red here is feedback that does not block landing. The merge
     # queue runs only a bounded selection, not these suites, so a violation
     # that lands is caught next by post-landing full qualification.
-    # Heavy: under STATION_PR_HEAVY_CHECKS=when-armed it waits for arming.
-    needs: pr-admission
-    if: ${{ always() && !cancelled() && needs.pr-admission.outputs.heavy != 'false' && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && (github.event.action != 'auto_merge_enabled' || vars.STATION_PR_HEAVY_CHECKS == 'when-armed') && github.event.pull_request.head.repo.full_name == github.repository }}
+    # Cheap under STATION_PR_HEAVY_CHECKS: every push runs it (about 4 runner-
+    # minutes), because nothing before landing would run it otherwise, and an
+    # arming run skips it since the head's push run already scanned.
+    if: ${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.action != 'auto_merge_enabled' && github.event.pull_request.head.repo.full_name == github.repository }}
     permissions:
       contents: read
     concurrency:
