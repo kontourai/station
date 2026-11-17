@@ -2628,7 +2628,7 @@ export function evaluateRun(
       result.gate.reasons.unshift(`no baseline file at ${baselinePath}`);
     if (record) {
       assert(
-        !result.requestConversation,
+        !multiTurn && !result.requestConversation,
         'multi-turn diagnostics cannot record a baseline',
       );
       const next = recordBaseline(result, baseline);

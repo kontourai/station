@@ -355,34 +355,28 @@ export function analyzeConversationTurn({
   if (calls.some((call) => call.refused))
     throw new Error(`turn ${index + 1}: stub refused a request`);
   const messages = request.body.messages;
-  const userOrdinals = messages.flatMap((message) =>
-    message.role === 'user'
-      ? turns.flatMap((turn, ordinal) =>
-          lastUserText({ messages: [message] }).some((text) =>
-            text.trimEnd().endsWith(turn.prompt),
-          )
-            ? [ordinal]
-            : [],
-        )
-      : [],
-  );
-  if (
-    JSON.stringify(userOrdinals) !==
-    JSON.stringify(turns.slice(0, index + 1).map((_, ordinal) => ordinal))
-  )
+  const history = messages.flatMap((message) => {
+    const blocks = textBlocks({ messages: [message] });
+    if (message.role === 'assistant')
+      return blocks.map((block) => `assistant:${block.text}`);
+    if (message.role !== 'user') return [];
+    return turns.flatMap((turn, ordinal) =>
+      blocks.some((block) => block.text.trimEnd().endsWith(turn.prompt))
+        ? [`user:${ordinal}`]
+        : [],
+    );
+  });
+  const expectedHistory = turns
+    .slice(0, index + 1)
+    .flatMap((turn, ordinal) =>
+      ordinal < index
+        ? [`user:${ordinal}`, `assistant:${turn.reply}`]
+        : [`user:${ordinal}`],
+    );
+  if (JSON.stringify(history) !== JSON.stringify(expectedHistory))
     throw new Error(
-      `turn ${index + 1}: missing, replayed or out-of-order prompt history`,
+      `turn ${index + 1}: missing, replayed or invalid interleaved history`,
     );
-  const replies = messages
-    .filter((message) => message.role === 'assistant')
-    .flatMap((message) =>
-      textBlocks({ messages: [message] }).map((block) => block.text),
-    );
-  if (
-    JSON.stringify(replies) !==
-    JSON.stringify(turns.slice(0, index).map((turn) => turn.reply))
-  )
-    throw new Error(`turn ${index + 1}: missing or replayed reply history`);
   const rules = markersReached(request.body, markers);
   if (Object.values(rules).some((reached) => !reached))
     throw new Error(`turn ${index + 1}: repository rules missing`);

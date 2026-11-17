@@ -319,12 +319,20 @@ describe('station-weight request analysis', () => {
               : message,
           ),
         },
-        'reply history',
+        'history',
+      ],
+      [
+        'reply after next prompt',
+        {
+          ...next,
+          messages: [next.messages[0], next.messages[2], next.messages[1]],
+        },
+        'interleaved history',
       ],
       [
         'skipped ordinal',
         { ...next, messages: [next.messages.at(-1)] },
-        'prompt history',
+        'history',
       ],
     ] as const) {
       const from = endpoint.requests.length;

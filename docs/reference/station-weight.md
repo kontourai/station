@@ -273,7 +273,7 @@ The Station conversation uses `/api/orchestration/chat` with the same
 conversation id for both follow-ups. The SDK control resumes its own session,
 using the same bundled executable, fixture directory and model at ordinals
 1, 2 and 3. Each prompt and canned reply carries a distinct run/ordinal marker.
-There are no model/API/plan calls, tool calls, tool-discovery transitions, or
+There are no real provider API or plan calls, tool calls, discovery transitions, or
 context edits in this workload. Required instructions and tools remain enabled.
 The control must receive `CLAUDE.md`; Station must receive both `CLAUDE.md`
 and `AGENTS.md` on every turn.
