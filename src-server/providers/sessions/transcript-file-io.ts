@@ -72,11 +72,25 @@ export function readLeadingLine(
   path: string,
   maxLineBytes: number,
 ): string | null | undefined {
-  const content = readWindow(path, 0, maxLineBytes + 1);
-  const newline = content.indexOf(0x0a);
-  if (newline < 0 && content.length > maxLineBytes) return null;
-  const end = newline < 0 ? content.length : newline;
-  return content.subarray(0, end).toString('utf8').trim() || undefined;
+  return withTranscriptFile(path, (descriptor) => {
+    const chunks: Buffer[] = [];
+    let offset = 0;
+    while (offset <= maxLineBytes) {
+      const chunk = Buffer.alloc(Math.min(4096, maxLineBytes + 1 - offset));
+      const bytesRead = readSync(descriptor, chunk, 0, chunk.length, offset);
+      if (bytesRead === 0) break;
+      const content = chunk.subarray(0, bytesRead);
+      const newline = content.indexOf(0x0a);
+      chunks.push(newline < 0 ? content : content.subarray(0, newline));
+      offset += bytesRead;
+      if (newline >= 0) {
+        // Decode only after joining: a UTF-8 code point can cross reads.
+        return Buffer.concat(chunks).toString('utf8').trim() || undefined;
+      }
+    }
+    if (offset > maxLineBytes) return null;
+    return Buffer.concat(chunks).toString('utf8').trim() || undefined;
+  });
 }
 
 export interface LeadingLineScanLimits {
@@ -164,6 +178,17 @@ export function readWindow(
   offset: number,
   length: number,
 ): Buffer {
+  return withTranscriptFile(path, (descriptor) => {
+    const content = Buffer.alloc(length);
+    const bytesRead = readSync(descriptor, content, 0, length, offset);
+    return content.subarray(0, bytesRead);
+  });
+}
+
+function withTranscriptFile<T>(
+  path: string,
+  read: (descriptor: number) => T,
+): T {
   // O_NOFOLLOW plus the descriptor identity check closes final-component swaps.
   // Replacing a parent directory after discovery remains a local-trust residual
   // on platforms without openat-style directory handles.
@@ -184,9 +209,7 @@ export function readWindow(
     ) {
       throw new Error('Transcript source changed during secure open.');
     }
-    const content = Buffer.alloc(length);
-    const bytesRead = readSync(descriptor, content, 0, length, offset);
-    return content.subarray(0, bytesRead);
+    return read(descriptor);
   } finally {
     closeSync(descriptor);
   }
