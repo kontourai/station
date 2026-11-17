@@ -1,0 +1,7 @@
+{
+  "revision": "940be3079c4399a864e8e2ec18ab76ffc8a99af8",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"web-push guide's focus paragraph now states per-session focus for done/info records and the older-host 400 fallback. abstraction-review.md cites it for the delivery router seam, which is unchanged.","inputs":["docs/guides/web-push-notifications.md"]}
+  ]
+}

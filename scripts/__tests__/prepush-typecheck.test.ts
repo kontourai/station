@@ -158,7 +158,7 @@ module.exports = (gate) => {
   }
   if (process.env.STATION_FIXTURE_FAIL_GATE === gate) {
     console.error('INTENTIONAL_GATE_REFUSAL ' + gate);
-    process.exit(37);
+    process.exit(Number(process.env.STATION_FIXTURE_FAIL_STATUS || 37));
   }
 };
 `,
@@ -183,7 +183,7 @@ const { spawnSync } = require('node:child_process');
 // covered in prepush-pure-merge.test.ts, so this probe records the gate.
 const raw = process.argv.slice(2);
 const args = raw[0] === 'scripts/heavy-check-slot.mjs' ? raw.slice(2) : raw;
-const gates = ['check-prepush-orchestration-transfer.mjs', 'check-prepush-static-gates.mjs', 'check-prepush-sdk-barrel.mjs', 'commit-message-gate.mjs'];
+const gates = ['prepush-main-conflict.mjs', 'check-prepush-push-range.mjs', 'check-prepush-docs-freshness.mjs', 'check-prepush-orchestration-transfer.mjs', 'check-prepush-static-gates.mjs', 'check-prepush-sdk-barrel.mjs', 'commit-message-gate.mjs'];
 if (gates.some(gate => args[0] === 'scripts/' + gate)) {
   require(${JSON.stringify(probe)})(args[0]);
 } else {
@@ -203,7 +203,7 @@ if (gates.some(gate => args[0] === 'scripts/' + gate)) {
       ]);
       return {
         pushedHead,
-        push: (branch: string, failGate = '') =>
+        push: (branch: string, failGate = '', failStatus = '') =>
           spawnSync(
             'git',
             [
@@ -223,6 +223,7 @@ if (gates.some(gate => args[0] === 'scripts/' + gate)) {
                 GIT_CONFIG_KEY_0: 'station.fixture-local',
                 GIT_CONFIG_VALUE_0: 'environment-local',
                 STATION_FIXTURE_FAIL_GATE: failGate,
+                STATION_FIXTURE_FAIL_STATUS: failStatus,
               },
               encoding: 'utf8',
               windowsHide: true,
@@ -266,8 +267,11 @@ if (gates.some(gate => args[0] === 'scripts/' + gate)) {
       expect(remote.status, remote.stderr).toBe(0);
       expect(remote.stdout.trim()).toBe(f.pushedHead);
       expect(f.observations().map((entry) => entry.gate)).toEqual([
+        'scripts/prepush-main-conflict.mjs',
         'lint:check',
         'proof:repo-governance',
+        'scripts/check-prepush-push-range.mjs',
+        'scripts/check-prepush-docs-freshness.mjs',
         'scripts/check-prepush-orchestration-transfer.mjs',
         'scripts/check-prepush-static-gates.mjs',
         'scripts/check-prepush-sdk-barrel.mjs',
@@ -286,6 +290,30 @@ if (gates.some(gate => args[0] === 'scripts/' + gate)) {
         expect(f.observations().map((entry) => entry.gate)).not.toContain(
           'scripts/check-prepush-orchestration-transfer.mjs',
         );
+      },
+    );
+
+    it.each([
+      'scripts/check-prepush-push-range.mjs',
+      'scripts/check-prepush-docs-freshness.mjs',
+    ])(
+      'refuses the push when %s reports a finding (exit 40), and only then',
+      (gate) => {
+        const f = fixture();
+        const refused = f.push('found', gate, '40');
+        expect(refused.status).not.toBe(0);
+        expect(f.remoteRef('found').status).not.toBe(0);
+        // Any other failure is not a verdict: a warning, and the push lands.
+        // 1 is an uncaught error or a module that will not load, and 10 is
+        // Node's own internal run-time failure.
+        for (const status of ['1', '10', '37']) {
+          const crashed = f.push(`crashed-${status}`, gate, status);
+          expect(crashed.status, crashed.stderr).toBe(0);
+          expect(f.remoteRef(`crashed-${status}`).status).toBe(0);
+          expect(`${crashed.stdout}${crashed.stderr}`).toContain(
+            `did not reach a verdict (exit ${status}); that is not a finding in the pushed commit, so the push continues`,
+          );
+        }
       },
     );
   },

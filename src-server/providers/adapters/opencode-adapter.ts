@@ -526,7 +526,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     if (!evaluator) return undefined;
     const evaluate = evaluator;
     const agentSlug = input.agent.slug ?? 'unknown';
-    return (tool) =>
+    return (tool, fullAccess) =>
       evaluate(
         {
           toolName: tool.toolName,
@@ -537,6 +537,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
         {
           interaction: 'external',
           identity: externalPreToolPolicyIdentity(tool.toolName),
+          ...(fullAccess ? { fullAccess } : {}),
         },
       );
   }

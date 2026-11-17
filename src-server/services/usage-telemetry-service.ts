@@ -1340,7 +1340,10 @@ export class UsageTelemetryService {
           failure,
           retryInMs,
         );
-        await this.recordFull(batch, 'dropped', 'transport', wireId);
+        // #5053: the batch stays queued, so nothing is dropped yet. The ledger
+        // records a batch once, when it leaves the queue (sent, rejected,
+        // withdrawn or shutdown); attempt history lives in the delivery counts
+        // and the batches metric.
       } finally {
         clearTimeout(timeoutId);
         if (this.requestAbort === controller) this.requestAbort = undefined;
@@ -1410,6 +1413,8 @@ export class UsageTelemetryService {
       if (signal?.aborted) {
         this.recordDropped(this.buffer, 'transport');
         this.counts.shutdownDropped += this.buffer.length;
+        if (this.buffer.length > 0)
+          this.recordOutcome('shutdown_dropped', this.buffer.length);
         this.buffer.length = 0;
         // The request is already aborted; what remains is local ledger work
         // beneath the home (the cancelled flush and the dropped record).

@@ -16,6 +16,7 @@ import { classifyToolCallRun, type ToolCallGroup } from './tool-call-groups';
 import { runningCallLabelParts } from './tool-call-labels';
 import type { ToolCallLike, ToolCallRun } from './tool-call-runs';
 import { toolDisplayView } from './tool-display-view';
+import { useRunWithObservedRunningCalls } from './useObservedRunningToolCalls';
 import './chat.css';
 import './ToolCallBatch.css';
 
@@ -73,10 +74,11 @@ export interface ToolCallBatchProps<P extends ToolCallLike> {
  * than in the eager split — see `tool-call-groups.ts`'s module doc.
  */
 export function ToolCallBatch<P extends ToolCallLike>({
-  run,
+  run: recordedRun,
   renderCall,
   renderInterlude,
 }: ToolCallBatchProps<P>) {
+  const run = useRunWithObservedRunningCalls(recordedRun);
   const [isOpen, setIsOpen] = useState(false);
   const titleId = useId();
   const sessionTitle = useStationSessionTitle();

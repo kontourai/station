@@ -737,7 +737,7 @@ export const APP_SETTINGS_REGISTRY = [
         'connection-default': 'Default',
         ask: 'Ask first',
         auto: 'Auto',
-        never: 'Never ask (full access)',
+        never: 'Full access',
       },
     },
     label: 'Default approval mode',

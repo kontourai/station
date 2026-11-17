@@ -89,12 +89,11 @@ describe('channel colours stay clear of the brand purple', () => {
 
   it('covers every channel, icon palette entry and Android colour', () => {
     expect(Object.keys(CHANNEL_PALETTES).sort()).toEqual([
-      'beta',
       'dev',
       'nightly',
       'stable',
     ]);
-    expect(colours).toHaveLength(4 * (13 + 2));
+    expect(colours).toHaveLength(3 * (13 + 2));
   });
 
   it.each(colours.filter(({ hex }) => hsl(hex).s > 0))(
@@ -121,7 +120,7 @@ describe('the vector icon source', () => {
   // regeneration.
   it('builds exactly the SVG the committed icons were rendered from', () => {
     const svgKeys = Object.keys(manifest.svg).sort();
-    expect(svgKeys).toHaveLength(4 * ICON_TARGETS.length);
+    expect(svgKeys).toHaveLength(3 * ICON_TARGETS.length);
     expect(iconSourceDigests()).toEqual(manifest.svg);
   });
 
@@ -144,7 +143,7 @@ describe('the vector icon source', () => {
       'src-desktop/icons/icon.ico',
       'src-desktop/icons/icon.icns',
       'src-desktop/icons/nightly/32x32.png',
-      'src-desktop/icons/beta/android/mipmap-xxxhdpi/ic_launcher_foreground.png',
+      'src-desktop/icons/dev/android/mipmap-xxxhdpi/ic_launcher_foreground.png',
       'src-desktop/icons/nightly/ios/AppIcon-512@2x.png',
       'src-desktop/gen/apple/Assets.xcassets/AppIcon.appiconset/AppIcon-60x60@3x.png',
       'src-desktop/gen/android/app/src/debug/res/mipmap-mdpi/ic_launcher.png',
@@ -186,7 +185,7 @@ describe('desktop icon composition', () => {
   // The parchment face is above 200; every channel backdrop is below 60.
   const PARCHMENT = 200;
   const BACKDROP = 60;
-  const dirs = ['', 'beta/', 'nightly/', 'dev/'];
+  const dirs = ['', 'nightly/', 'dev/'];
 
   // Just inside the rounded body, at mid-height on the left edge, the old
   // framed icon showed the dark channel backdrop around a small tile. The
@@ -256,7 +255,6 @@ describe('startup animation geometry', () => {
   // layer, bank or parchment are 70+ away in RGB.
   it.each([
     ['stable', 'favicon.png'],
-    ['beta', 'favicon-beta.png'],
     ['nightly', 'favicon-nightly.png'],
     ['dev', 'favicon-dev.png'],
   ] as const)(

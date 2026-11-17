@@ -2,11 +2,13 @@
  * The shared inbox row (#3043): the dock inbox, the mobile sheet, Home's work
  * lanes and the sidebar's open chats all render this.
  *
- * Fixed line budget: meta, title, one status line, and a chip line that
- * exists only when a chip does. Every line is a single non-wrapping line, so
- * a row's height is decided by which lines it has and never by their text.
+ * Fixed line budget: the headline (title and time), then on a hover row one
+ * state line (the agent's mark, status, project) and on a touch row the status
+ * and meta lines, and a chip line that exists only when a chip does. Every line is a single non-wrapping line, so a row's height is decided
+ * by which lines it has and never by their text. What the row is about comes
+ * first; who and where, last.
  *
- * The time at the end of the meta line and the hover/focus actions share one
+ * The time at the end of the headline and the hover/focus actions share one
  * slot. The actions are absolutely positioned over that slot, so revealing
  * them moves nothing: no reflow, no height change, no text shift.
  */
@@ -85,7 +87,53 @@
   outline-offset: -2px;
 }
 
-/* Meta line: agent mark, agent and project, then the time slot. */
+/* Headline: the title, then the time slot the hover actions cover. */
+.inbox-row__headline {
+  display: flex;
+  min-width: 0;
+  /* One line tall, like the meta line it replaced at the top: the hover
+     actions' offset (--inbox-row-action-top) centres them on this line. */
+  height: var(--inbox-row-line);
+  align-items: center;
+  gap: var(--k-space-2);
+}
+.inbox-row__headline > .inbox-row__title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* A hover row's second line: the agent's mark, the status, then the project.
+   The status keeps its word whole; the project gives way first. */
+.inbox-row__state {
+  display: flex;
+  min-width: 0;
+  min-height: var(--inbox-row-line);
+  align-items: center;
+  gap: var(--k-space-2);
+}
+.inbox-row__state > .identity-marks {
+  flex: 0 0 auto;
+}
+.inbox-row__state > .inbox-row__status {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.inbox-row__context {
+  /* Yields all of its width before the status detail loses any: the
+     project is also in the row's name and hover card; the state is not. */
+  flex: 0 10000 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--k-text-muted);
+  font-size: var(--inbox-row-text-size);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inbox-row__context::before {
+  content: "· ";
+}
+
+/* Meta line: agent mark, agent and project. */
 .inbox-row__meta {
   display: flex;
   min-width: 0;

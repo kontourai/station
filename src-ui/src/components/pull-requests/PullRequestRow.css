@@ -71,6 +71,26 @@ button.pull-request-row__open:hover {
   color: var(--text-secondary);
   overflow-wrap: anywhere;
 }
+/* What Station last did for the row: muted, under the meta, time last. */
+.pull-request-row__detail {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--k-space-2);
+  margin: 0;
+  padding: 0 0 var(--k-space-2);
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+  overflow-wrap: anywhere;
+}
+.pull-request-row__detail-time {
+  white-space: nowrap;
+}
+.pull-request-row__detail time {
+  color: var(--k-text-faint);
+  font-variant-numeric: tabular-nums;
+}
 /* The row's `⋯`: a 28px round icon with a 44px hit area, no border. */
 .pull-request-row__more {
   position: relative;

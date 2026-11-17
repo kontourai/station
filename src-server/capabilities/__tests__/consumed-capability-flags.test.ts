@@ -28,15 +28,18 @@ import { createMemoryRoutes } from '../../routes/knowledge/memory-routes.js';
 import { createPushRoutes } from '../../routes/operations/push-routes.js';
 import { createRecipientCandidateRoutes } from '../../routes/operations/recipient-candidates.js';
 import { createSchedulerRoutes } from '../../routes/operations/scheduler.js';
+import { createSshEnvironmentRoutes } from '../../routes/operations/ssh-environments.js';
 import { createInboxHarness } from '../../routes/orchestration/__tests__/helpers/thread-inbox-harness.js';
 import { createCoordinatorRoutes } from '../../routes/orchestration/coordinator.js';
 import { createOrchestrationRoutes } from '../../routes/orchestration/orchestration.js';
 import { createSessionPersonActivityRoutes } from '../../routes/orchestration/session-project-activity.js';
 import { createProjectRoomRoutes } from '../../routes/projects/project-room-routes.js';
+import { createPullRequestFeedbackRoutes } from '../../routes/pull-requests/pull-request-feedback.js';
 import { createReadMarkerRoutes } from '../../routes/read-markers/read-marker-routes.js';
 import { createDiagnosticsRoutes } from '../../routes/system/diagnostics.js';
 import { createSystemStatusRoutes } from '../../routes/system/system-status-routes.js';
 import { HOSTED_TENANT_REGISTRY_FILE_ENV } from '../../runtime/bootstrap/hosted-tenant-mode.js';
+import { composePullRequestFeedbackRuntime } from '../../runtime/routes/runtime-pull-request-feedback.js';
 import {
   resolveRuntimeConnectionRoutesEnabled,
   resolveRuntimeWebPushEnabled,
@@ -59,6 +62,7 @@ import {
   STATION_CAPABILITY_FLAGS,
   servesCoordinatorSession,
   servesFollowUpAttachments,
+  servesRemoteSessionReads,
 } from '../station-capability-flags.js';
 import { TABLED_CAPABILITY_FLAGS } from './consumed-capability-flag-names.js';
 
@@ -489,6 +493,54 @@ const CONSUMED_FLAGS: Record<
       runtime.close();
     }
   },
+  // GET /:slug/rooms/live streams the room; typing and members answer too.
+  projectRoomLive: async () => {
+    const runtime = createProjectRoomRuntime(makeTempDir('room-live-flag-'));
+    try {
+      const scope = {
+        stationId: 'station',
+        localProjectId: 'project-id',
+        portableProjectId: 'portable',
+        localProjectSlug: 'project',
+      };
+      const actor = { id: 'ada', displayName: 'Ada', kind: 'person' as const };
+      const caps = { view: true, discuss: true, edit: true, execute: false };
+      const service = new ProjectRoomService(runtime.store, {
+        withAction: async (_request, _slug, _action, _actorId, operation) =>
+          operation(scope, actor, caps, () => {}),
+        current: async () => true,
+      });
+      const { roomId } = runtime.store.ensureRoom(scope, () => {});
+      const routes = createProjectRoomRoutes(service);
+      const live = await routes.request(
+        `/project/rooms/live?channel=${roomId}&client=${randomUUID()}`,
+      );
+      const first = live.body
+        ? new TextDecoder().decode((await live.body.getReader().read()).value)
+        : '';
+      const typing = await routes.request('/project/room/typing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          expectedRoomId: roomId,
+          expectedProjectId: scope.localProjectId,
+          expectedActorId: actor.id,
+          clientId: randomUUID(),
+          typing: true,
+        }),
+      });
+      const members = await routes.request('/project/room/members');
+      service.close();
+      return (
+        live.status === 200 &&
+        first.includes('event: subscribed') &&
+        typing.status === 200 &&
+        members.status === 200
+      );
+    } finally {
+      runtime.close();
+    }
+  },
   // GET /sessions/:threadId/event-window answers a bounded window.
   sessionEventWindow: async (deployment) => {
     const routes = orchestrationRoutes(deployment, {
@@ -496,6 +548,40 @@ const CONSUMED_FLAGS: Record<
     });
     const response = await routes.request(
       '/sessions/session-a/event-window?turnLimit=1',
+    );
+    return response.status === 200;
+  },
+  // GET /sessions/:environmentId/:threadId/history relays one remote page.
+  // Built with the same deployment predicate runtime-routes.ts composes.
+  remoteSessionHistory: async ({ hosted }) => {
+    const service = {
+      list: () => [
+        {
+          profile: { id: 'env-1', name: 'Box', environmentId: null },
+          state: { phase: 'connected', localUrl: 'http://127.0.0.1:1' },
+        },
+      ],
+    };
+    const routes = createSshEnvironmentRoutes(
+      service as never,
+      undefined,
+      undefined,
+      undefined,
+      async (_apiBase, threadId) => ({
+        protocolVersion: 1,
+        session: { threadId } as never,
+        events: [],
+        hasMore: false,
+        watermark: 0,
+      }),
+      {
+        hosted: !servesRemoteSessionReads({ hosted }),
+        current: () => true,
+        owner: () => true,
+      },
+    );
+    const response = await routes.request(
+      '/sessions/env-1/external:claude:abc/history',
     );
     return response.status === 200;
   },
@@ -569,6 +655,47 @@ const CONSUMED_FLAGS: Record<
     });
     return response.status === 202;
   },
+  // GET /api/pull-request-feedback/conversations/:id answers only where the
+  // runtime composes pull request feedback (not hosted), preview on.
+  pullRequestFeedback: async ({ hosted }) => {
+    const world = inboxStation();
+    const runtime = composePullRequestFeedbackRuntime({
+      homeDir: makeTempDir('pr-feedback-flag-'),
+      hosted,
+      featurePreviews: {
+        bind: () => ({
+          select: (branches: { enabled: () => unknown }) => branches.enabled(),
+        }),
+      } as never,
+      eventStore: world.store,
+      inbox: world.inbox,
+      orchestration: world.service,
+      eventBus: { subscribe: () => () => {} },
+      providers: () => [],
+      links: { list: () => [] } as never,
+      keptForSessions: () => [],
+      access: {
+        current: () => true,
+        canRead: () => true,
+        operator: () => 'owner',
+        readerOf: () => () => true,
+      },
+      logger: { warn: vi.fn() },
+    });
+    if (!runtime) return false;
+    try {
+      const app = new Hono().route(
+        '/api/pull-request-feedback',
+        createPullRequestFeedbackRoutes(...runtime.routeArgs),
+      );
+      const response = await app.request(
+        '/api/pull-request-feedback/conversations/conversation-a',
+      );
+      return response.status === 200;
+    } finally {
+      await runtime.close();
+    }
+  },
   // GET /api/system/routes answers the Station routes only where runtime
   // route support composes a resolver, from the same predicate as the flag.
   connectionRoutes: async ({ hosted }) => {
@@ -592,6 +719,35 @@ const CONSUMED_FLAGS: Record<
   // POST /scheduler/jobs accepts a job `target` (an automation that runs in
   // a conversation). The scheduler routes answer 404 to every hosted request,
   // whatever the body, because scheduler storage has no tenant binding.
+  projectSchedules: async ({ hosted }) => {
+    const addJob = vi.fn(async () => "Job 'digest' created");
+    const routes = createSchedulerRoutes(
+      { addJob } as never,
+      { error: vi.fn(), info: vi.fn(), debug: vi.fn() } as never,
+      {
+        readAuthorityForRequest: () =>
+          ({ mode: hosted ? 'hosted' : 'personal' }) as never,
+        // Runtime composition passes it only where a Project runner exists.
+        ...(hosted ? {} : { projectJobs: true }),
+      },
+    );
+    const response = await routes.request('/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'digest',
+        schedule: { kind: 'every', everyMs: 3_600_000 },
+        prompt: 'Summarize',
+        projectId: 'project-a',
+      }),
+    });
+    return (
+      response.status === 200 &&
+      addJob.mock.calls.length === 1 &&
+      ((addJob.mock.calls[0] as unknown[])[0] as { projectId?: unknown })
+        .projectId === 'project-a'
+    );
+  },
   scheduledConversationTarget: async ({ hosted }) => {
     const addJob = vi.fn(async () => "Job 'digest' created");
     const routes = createSchedulerRoutes(
@@ -776,9 +932,12 @@ describe('consumed capability flags match what their routes serve', () => {
     privateMemoryReview: { personal: true, hosted: false },
     privateOperationalOutcomes: { personal: true, hosted: true },
     projectRoomMessageActions: { personal: true, hosted: true },
+    projectRoomLive: { personal: true, hosted: true },
     readMarkers: { personal: true, hosted: true },
     scheduledConversationTarget: { personal: true, hosted: false },
+    projectSchedules: { personal: true, hosted: false },
     sessionEventWindow: { personal: true, hosted: true },
+    remoteSessionHistory: { personal: true, hosted: false },
     sessionInventoryInputRead: { personal: true, hosted: false },
     eventStreamResume: { personal: true, hosted: true },
     sessionPersonReads: { personal: true, hosted: true },
@@ -786,6 +945,7 @@ describe('consumed capability flags match what their routes serve', () => {
     connectionRoutes: { personal: true, hosted: false },
     coordinatorSession: { personal: true, hosted: false },
     followUpAttachments: { personal: true, hosted: false },
+    pullRequestFeedback: { personal: true, hosted: false },
     troubleshootPrepare: { personal: true, hosted: true },
   };
 

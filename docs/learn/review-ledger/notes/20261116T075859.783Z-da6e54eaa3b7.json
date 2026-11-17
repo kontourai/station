@@ -1,0 +1,7 @@
+{
+  "revision": "60fd22348d954097ebd393bab0a1dc3b74813efd",
+
+  "notes": [
+    {"path":"packages/contracts/README.md","note":"Added the /pull-request-feedback subpath line beside conversation-pull-request-links; checked against packages/contracts/package.json exports.","inputs":["packages/contracts/README.md"]}
+  ]
+}

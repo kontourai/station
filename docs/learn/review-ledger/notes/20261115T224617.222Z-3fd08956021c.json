@@ -1,0 +1,7 @@
+{
+  "revision": "dda782fc179791048d20713a2ac49eff256047ca",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Pure-merge paragraph now names the push-range, documentation-freshness and code-health skips; heavy-slot table gains pre-push:code-health; PR source admission paragraph names the offline pre-push conflict warning. Checked against .githooks/pre-push and scripts/prepush-main-conflict.mjs.","inputs":["docs/guides/testing.md",".githooks/pre-push","docs/guides/development.md","scripts/__tests__/fast-checks-shard-cli.test.ts","scripts/__tests__/prepush-typecheck.test.ts","scripts/fast-checks-shard.mjs","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

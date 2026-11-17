@@ -206,7 +206,6 @@ describe('desktop startup readiness static boundary', () => {
   it('keeps release main windows hidden in every desktop channel config', () => {
     for (const path of [
       'src-desktop/tauri.conf.json',
-      'src-desktop/tauri.beta.conf.json',
       'src-desktop/tauri.nightly.conf.json',
     ]) {
       const config = JSON.parse(read(path)) as {

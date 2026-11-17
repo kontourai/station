@@ -976,6 +976,31 @@ alone does not prove a returned result. These rules qualify the dated
 “complete list” wording above; transcript cards can still represent loaded
 spawns beyond the live registry's bounded history.
 
+**Agents pane layout and scope amendment (2026-11-16).** The scopes are
+**This chat** and **All chats**, the glossary's word for a conversation.
+All chats is a superset of every chat's own scope: besides the session read
+model's delegates and the child-work registry, it lists every chat's
+tool-call and delegated-task cards from the background-tasks store, grouped
+by chat. Every row reaches its group through one resolver; a subagent's
+reporting session follows the store's reporter-to-chat binding, so a chat
+stays one group after it closes. The current chat's group leads, a group's
+title (a heading) opens the chat by its durable id, and the group shows the
+project only as the open chat's display name, never a session row's slug.
+Collapsed groups are a per-device convenience. The store holds what this
+window has seen, so when tool calls are listed the pane notes that they are
+listed from when the window opened; finished tool calls of a closed chat
+are dropped as before. The global finished bound trims only delegates,
+because the registry already bounds engine subagents. Section headings count
+agents, commands, monitors and tools by name; a Bash call that leaves a
+background command is counted once, as that command. `TaskRow` and
+`ChildWorkRow` share one sentence-case status pill (`WorkStatusPill`) with
+one tone per status. An agent card's completed turn reads **Run finished**
+like a child-work row, and **Completed** is kept for a tool call that
+reported success. A row's
+text keeps at least 22rem; actions that do not fit beside it wrap to their
+own line below (flex wrap, no at-rule), which qualifies the 2026-10-14
+“actions beside each row” wording above.
+
 **Implemented by #1969 (the Device pane), 2026-09-14.** A captured
 simulator or emulator screen as a dock tab (`device`, `exposure: 'catalog'`,
 no chord, dock regions only, `right` by default because a device screen is
@@ -2076,7 +2101,7 @@ crowded and that nothing said what belonged in it. The rule:
 | Identity, one line: title, then agent and engine, muted. The engine is the one the chat's Session runs on, by the composer chip's rule ([chat composer §3.1](chat-composer.md#31-provider-and-model-picker)). When they do not all fit, the engine and then the agent step off the line (they wrap onto a clipped second line) before the title truncates; the title's tooltip names all three, and model and route are the context's tooltip. | Model and route: the composer's model picker names them. |
 | Inbox toggle at the far left, before the region tabs or Coding breadcrumb, with the working chats' count (the inbox's Running rows) as a badge and unread as a dot; both are in its name. While it shows a number, the More trigger shows its background-task count as a dot, not a second number. | "N chats working" dropdown: the working chats are the More menu's first rows (with their ⌘1–9 chords); the unread pill: the toggle. |
 | Icon-only New chat. The start composer owns its Project choice. | Future-project selector: removed from an active conversation’s header. The chat’s fixed project and branch remain in session context. |
-| One overflow (⋯). Where the region host offers its commands (`RegionMenu` in `RegionChromeSlots`), Chat folds the region's Move to …, Add pane… and Maximize/Restore size into it as a last group. | Region Move, "+" and maximize buttons: rows of that menu. The bar drops its own buttons only while a pane absorbs the rows; other panes keep them. |
+| A Chat settings gear, then one overflow (⋯), in groups divided by a rule (`groupDockMoreActions`, 2026-11-15): the working chats and Open chat…; this chat's commands and panels (New Task from this, Changed files and Task context as checked toggles, History, coordinator, Background tasks, Chat inventory, Browse turns); the Copy rows; where the chat came from (a disabled note); and, where the region host offers its commands (`RegionMenu` in `RegionChromeSlots`), the region's Move to …, Add pane… and Maximize/Restore size. Open in Coding is a composer "+" action, beside Open terminal ([chat composer §3](chat-composer.md#3-target-composer)). What the This chat card carries leaves the menu while the card shows it (2026-11-16): beside the transcript, Background tasks, the Copy rows and the origin note are the card's (its Activity row, footer and From row; Chat inventory stays a row, since it opens the full reader and the card's footer link the compact view); folded behind the chip, the Copy rows and the origin note are the chip's sheet's while Background tasks keeps its row and its count on the trigger; a card that has not loaded leaves them all in the menu. A lone working chat stays behind the trigger, which carries its count. | Region Move, "+" and maximize buttons: rows of that menu. The bar drops its own buttons only while a pane absorbs the rows; other panes keep them. |
 | The region's ⋮⋮ grab (shown on hover or focus) and the show/hide chevron. | In a side region narrower than its 400px default, the grab and the agent avatar step aside and the spacing tightens, so the title keeps room beside the × (#4401); Move to … stays in the overflow. |
 | The "This chat" chip, only while the card is folded away. | — |
 | — | Context meter: an unboxed ring with its percentage inside, beside Send; on a phone, also the Actions sheet's Conversation stats row. |
@@ -2108,7 +2133,7 @@ pane, a region or a side panel of the Coding workbench, and it adds no
 server read beyond the pull request links Chat details already reads.
 
 - **Rows are facts the dock already holds.** Workspace (the session's
-  project and directory; opens Open in Coding under the More menu's own gate,
+  project and directory; opens Open in Coding under the composer menu's own gate,
   otherwise the project page), Branch (`gitStatus`: branch, changed-file
   count, ahead/behind; opens the Active work Changed files panel), Activity
   (the inbox row's status-ladder line for this chat from
@@ -2116,10 +2141,13 @@ server read beyond the pull request links Chat details already reads.
   pending-message list's own count, from the same rule as the list
   (`pendingMessageCount`); opens Background tasks through the dock's
   own router, so a desktop dock reveals the Agents pane), Pull requests
-  (only when links exist or the read failed; opens Chat details). The footer
+  (only when links exist or the read failed; opens Chat details), From (a
+  delegated chat's origin, a fact rather than a command). The footer also
+  carries the Copy commands (chat ID, session ID, folder path) as compact
+  44px links. Its Chat inventory link
   presses the dock's one Chat inventory host and appears only once that host
   has registered, so a host that never arrives (no authority yet, a chunk
-  that failed) leaves no footer rather than a standing "loading" label. A
+  that failed) leaves no link rather than a standing "loading" label. A
   row whose fact is absent is
   omitted rather than worded as a state. There is no Kept row: no inventory
   read runs for the active chat until the inventory opens, and adding one per

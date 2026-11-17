@@ -4,12 +4,18 @@
  * a repeated identical failure warns once. Exercised at the service seam with
  * a fake transport.
  */
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import type { AppConfig } from '@kontourai/station-contracts/config';
-import type { ProductTelemetryBatch } from '@kontourai/station-contracts/product-telemetry';
+import type {
+  ProductTelemetryBatch,
+  TelemetryOutboxEntry,
+} from '@kontourai/station-contracts/product-telemetry';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
   usageTelemetryBatches,
+  usageTelemetryOutcomes,
   usageTelemetrySuppressedWarnings,
 } from '../../telemetry/metrics.js';
 import { FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION } from '../usage-telemetry-inventory.js';
@@ -74,8 +80,9 @@ function transport(...answers: Answer[]) {
 
 async function subject(fetch: typeof globalThis.fetch) {
   const logger = { warn: vi.fn(), debug: vi.fn() };
+  const homeDir = makeTempDir('station-telemetry-retry-');
   const service = new UsageTelemetryService({
-    homeDir: makeTempDir('station-telemetry-retry-'),
+    homeDir,
     appConfig: configuredApp(),
     version: '1.2.3',
     logger,
@@ -90,7 +97,7 @@ async function subject(fetch: typeof globalThis.fetch) {
   const track = () =>
     service.track('engine_turn', { engine: 'codex', outcome: 'completed' });
   const at = (ms: number) => vi.setSystemTime(START + ms);
-  return { service, logger, track, at };
+  return { service, logger, track, at, homeDir };
 }
 
 function clock() {
@@ -369,5 +376,133 @@ describe('usage telemetry delivery failures (#4994)', () => {
     } finally {
       await service.shutdown();
     }
+  });
+});
+
+/** Unsent ledger records, read from the file the outbox API serves. */
+async function droppedLedger(homeDir: string) {
+  const entries = JSON.parse(
+    await readFile(join(homeDir, 'config', 'telemetry-outbox.json'), 'utf8'),
+  ) as TelemetryOutboxEntry[];
+  return entries
+    .filter((entry) => entry.outcome === 'dropped')
+    .map((entry) => ({
+      reason: entry.reason,
+      count: 'count' in entry.payload ? entry.payload.count : undefined,
+    }));
+}
+
+describe('usage telemetry ledger dispositions (#5053)', () => {
+  test('a batch retried three times then acknowledged records no drop', async () => {
+    clock();
+    vi.spyOn(Math, 'random').mockReturnValue(1);
+    const { fetch } = transport(
+      'network',
+      { status: 503 },
+      'network',
+      'accept',
+    );
+    const { service, track, at, homeDir } = await subject(fetch);
+    try {
+      await track();
+      await track();
+      await service.flush();
+      at(10_000);
+      await service.flush();
+      at(10_000 + 20_000);
+      await service.flush();
+      at(10_000 + 20_000 + 40_000);
+      await service.flush();
+      expect(fetch).toHaveBeenCalledTimes(4);
+      expect(await service.deliveryStatus()).toMatchObject({
+        queued: 0,
+        counts: {
+          acknowledged: 2,
+          failedAttempts: 3,
+          shutdownDropped: 0,
+          withdrawn: 0,
+        },
+      });
+      expect(
+        (await service.outbox('operator')).filter(
+          (entry) => entry.outcome === 'dropped',
+        ),
+        'a retried batch was recorded as dropped',
+      ).toEqual([]);
+    } finally {
+      await service.shutdown();
+    }
+    expect(await droppedLedger(homeDir)).toEqual([]);
+  });
+
+  test('shutdown records a still-queued batch as dropped exactly once', async () => {
+    clock();
+    // Every attempt fails: two ordinary flushes, then each of shutdown's
+    // bounded final attempts, which ignore the backoff.
+    const { fetch } = transport(...Array<Answer>(20).fill('network'));
+    const { service, track, at, homeDir } = await subject(fetch);
+    for (let index = 0; index < 3; index++) await track();
+    await service.flush();
+    at(60 * 60_000);
+    await service.flush();
+    expect(service.bufferedCount).toBe(3);
+    await service.shutdown();
+    expect(
+      fetch.mock.calls.length,
+      'shutdown made no final attempt',
+    ).toBeGreaterThan(2);
+    expect(await droppedLedger(homeDir)).toEqual([
+      { reason: 'transport', count: 3 },
+    ]);
+    expect(await service.deliveryStatus()).toMatchObject({
+      queued: 0,
+      counts: { shutdownDropped: 3, withdrawn: 0, acknowledged: 0 },
+    });
+  });
+
+  test('an aborted shutdown records a retried batch as dropped once and counts it', async () => {
+    clock();
+    const outcomes = vi.spyOn(usageTelemetryOutcomes, 'add');
+    const { fetch } = transport('network', 'network');
+    const { service, track, at, homeDir } = await subject(fetch);
+    for (let index = 0; index < 2; index++) await track();
+    await service.flush();
+    at(60 * 60_000);
+    await service.flush();
+    const stop = new AbortController();
+    stop.abort();
+    await service.shutdown(stop.signal);
+    expect(fetch, 'an aborted shutdown sent again').toHaveBeenCalledTimes(2);
+    expect(await droppedLedger(homeDir)).toEqual([
+      { reason: 'transport', count: 2 },
+    ]);
+    expect(await service.deliveryStatus()).toMatchObject({
+      queued: 0,
+      counts: { shutdownDropped: 2, failedAttempts: 2 },
+    });
+    expect(
+      outcomes.mock.calls.filter(
+        ([, attributes]) => attributes?.outcome === 'shutdown_dropped',
+      ),
+    ).toEqual([[2, { outcome: 'shutdown_dropped' }]]);
+  });
+
+  test('withdrawing consent after retries records the queue as withdrawn once, not as transport drops', async () => {
+    clock();
+    const { fetch } = transport('network', 'network');
+    const { service, track, at, homeDir } = await subject(fetch);
+    for (let index = 0; index < 2; index++) await track();
+    await service.flush();
+    at(60 * 60_000);
+    await service.flush();
+    expect(fetch).toHaveBeenCalledTimes(2);
+    service.reconfigure({ ...configuredApp(), telemetryEnabled: false });
+    expect(service.bufferedCount).toBe(0);
+    await service.shutdown();
+    expect(fetch, 'withdrawn events were sent').toHaveBeenCalledTimes(2);
+    expect(await droppedLedger(homeDir)).toEqual([{ reason: 'off', count: 2 }]);
+    expect(await service.deliveryStatus()).toMatchObject({
+      counts: { withdrawn: 2, shutdownDropped: 0, failedAttempts: 2 },
+    });
   });
 });

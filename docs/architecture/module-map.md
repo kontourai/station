@@ -178,7 +178,8 @@ it is delivered; resolvers and adapters own the channel, the preview and receipt
 **Interface and ownership.** Every tool name in the text is gated on the
 `controlTools` set the caller passes, which `effectiveStationControlTools`
 derives from the Agent's selection and `stationControlToolListable` at the
-engine's assurance (`stationControlAssuranceFor`: Claude `bound`; Codex and ACP
+engine's assurance (`stationControlAssuranceFor`: Claude `bound`; Codex `bound`
+when its bound channel carries the catalog, otherwise `delegated-custody`; ACP
 `delegated-custody`; other engines none). A section with no offered tool is
 omitted. A delegated session gets the delegated-child section in place of
 orchestration and is never told to use `delegate_task` or `send_message`.
@@ -353,7 +354,12 @@ retains the canonical human actor, account state and Device binding;
 [management authority](../../src-server/security/relay-management-authority.ts)
 rechecks explicit Device scope and provider currentness after asynchronous work.
 Target approval/revision is rechecked before issuance or revocation. Public SDK
-projections expose route/trust facts, never issuer credentials.
+projections expose route/trust facts, never issuer credentials. The
+[SDK read owner](../../packages/sdk/src/relay-management.ts) validates every
+wire row's Station scope before excluding legacy Beta approvals and pending
+Devices from actionable arrays and reporting their counts. Active setup links
+use Stable/Nightly; the protocol-1 wire response retains the old public Beta
+route-intent link only for old readers, without enrollment authority.
 
 The [operator panel](../../src-ui/src/views/connections-hub/RelayOperatorPanel.tsx)
 serves desktop and selected native relay views. `relay:manage` (**Manage remote
@@ -2817,7 +2823,7 @@ Recovery must distinguish a requested retry, an observed provider turn, and an a
 
 An automatic profile change is a compensation protocol, not a switch followed by a blind retry. The [recovery module](../../src-server/services/orchestration/credential-recovery-module.ts) stages a candidate, dispatches through the existing session owner, and commits or rolls back from exact provider and registry outcomes.
 
-**Interface.** `recover`, `complete`, `abandon`, and `reconcile` form one compensation protocol for credential-profile recovery. Each returns a total recovery or reconciliation outcome rather than making callers infer stage/commit/rollback order.
+**Interface.** `recover`, `complete`, `abandon`, and `reconcile` form one compensation protocol for credential-profile recovery. Each returns a total recovery or reconciliation outcome rather than making callers infer stage/commit/rollback order. A `recover` observation may carry `consentedProfileRef`, a person's "Continue on <label>" choice from a waiting usage-limit stop (`SessionRecoveryCoordinator.continueUsageLimitOnProfile`); the Adapter's `stage` then selects exactly that profile with the consent replacing only the `automatic` opt-in, and `listContinueOnProfiles` offers the candidates. The execution Adapter marks its pre-send boundary explicitly: a failure before the provider's `sendTurn` is called (the profile session cannot restart, posture or workspace checks refuse) throws `RecoveryNotSentError` and dispatches as `rejected` (with `sessionTouched` unless the restart refused before stopping anything, marked with `markSessionUntouched`), so the module rolls the profile back, restores a touched session, and ends the intent `failed`, which the coordinator records (or returns a person's Continue on to waiting, or retires it as `session-ended` when the session had to be quarantined). Any failure after `sendTurn` is called stays indeterminate.
 
 **Behavior.** A recovery call waits for shared startup reconciliation and stages only when its result is `reconciled`. An `indeterminate` result or an unavailable durable scan blocks staging across connections, because an unreadable or unresolved obligation cannot prove that a different connection is safe. The coordinator backs off refused automatic recovery from 60 seconds to a 10-minute cap; only a `reconciled` result latches the startup pass. The module warns when readiness becomes blocked, when its blocking reason changes, and when it recovers. Refused automatic attempts emit `station.recovery.admission_refused` with a bounded reason. Session recovery projections expose a blocked admission reason and next retry time, while preserving the durable intent outcome; the existing usage-limit banner names the credential-read or unconfirmed-change reason and displays the next check time when known. An unavailable scan, like a visible linked receipt, suppresses the identity-free orphan sweep while independent scoped compensation still drains. `unavailable` stage truth alone permits ordinary recovery fallback; a staged or indeterminate attempt remains exact compensation work. Candidate session restore or quarantine happens independently of registry cleanup. Commit, rollback, inspect, and acknowledgement are exact, typed facts; cleanup failure keeps durable authority for later scoped retry. A live completion acts only through its original claim; bulk prepared reconciliation runs only in the startup pass, retried by later callers until it reconciles.
 
@@ -2868,7 +2874,10 @@ the inspector does not start its own timeout. It distinguishes a `TimeoutError` 
 from other aborts. Built-in adapters declaring awaited abort settlement get a separate
 bounded cleanup wait; arbitrary asynchronous work is not forcibly stopped. The
 launchable-model refresh supplies a signal, while ordinary runtime inventory calls can
-omit one. Command/prerequisite inclusion and discovery policy are explicit inputs.
+omit one. Command, model-catalog and prerequisite inclusion and discovery policy are
+explicit inputs. The boot-time built-in agent binding excludes model discovery and
+commands, because either can start an engine's program and readiness comes from
+prerequisites alone.
 Public connection identity is mapped at the composition Seam from the Adapter's
 canonical EngineId. Partial results state whether facts came from live observation,
 built-in fallback, or neither. Adapter failure cannot throw through the total Interface
@@ -3216,6 +3225,22 @@ Google/GitHub portal flow with its loopback callback in
 session or probe registry. Its import graph never reaches Station's own
 principals; launch facts are injected at bootstrap.
 
+Remote task engines ([the decision](../decisions/remote-task-engines.md)) send
+work to cloud coding agents.
+[`services/remote-task-engines/service.ts`](../../src-server/services/remote-task-engines/service.ts)
+owns connections, the vendor-naming acknowledgement, the gate (Feature Preview,
+`limits.engines.remoteTasks`, acknowledgement, credential, capability) and every
+vendor call. The credential sits in the engine host-auth vault, one bucket per
+`remote-task-` connection
+([`credentials.ts`](../../src-server/services/remote-task-engines/credentials.ts)).
+Each vendor is a binding in
+[`bindings/`](../../src-server/services/remote-task-engines/bindings/index.ts).
+[`tracker.ts`](../../src-server/services/remote-task-engines/tracker.ts)
+polls an active task only while a client has read it lately, storing a
+bounded window of its messages under `<home>/remote-task-engines/tasks/`, and
+[`remote-task-engine-routes.ts`](../../src-server/routes/remote-task-engines/remote-task-engine-routes.ts)
+serves them under `/remote-task-engines`.
+
 [Exact-set tests](../../src-shared/__tests__/extension-notification-bindings.test.ts),
 ACP mapper tests and UI handler tests check lookup and current handling.
 Observation and pinned SDK contract tags are evidence pointers, not a fresh provider run.
@@ -3241,6 +3266,18 @@ The rename commits the visible value. Directory sync is attempted afterward;
 its failure does not turn already published bytes into a retryable failed write,
 and the directory-sync helper is a no-op on Windows. This is not a tested
 power-loss guarantee for every filesystem.
+
+The `${path}.mutation` lock is published by hard-linking a
+`${path}.mutation.<uuid>.tmp` owner record onto it
+([lock protocol](../../packages/shared/src/lifecycle-events.ts)). Every exit of
+an acquisition, including a thrown error, removes that temporary. A process
+that dies mid-acquisition can still leave one, so server startup runs
+`sweepOrphanedFileMutationLockTemporaries` over the Station home
+([startup](../../src-server/runtime/bootstrap/runtime-startup.ts)). It walks
+three levels and at most 20,000 entries, and removes only exactly-named
+temporaries at least 24 hours old that are not hard-linked as a lock and name
+no live owner. Results are counted as `station.file_mutation_lock.orphan_temporaries`
+and logged once when anything is found.
 
 A caller-supplied `maxBytes` limits the serialized document; there is no default
 byte cap. Serialization happens before that size check. Schema validation,
@@ -3925,7 +3962,18 @@ composes Project membership with current transport grants and checks again at
 mutation commit and delivery. Reading, discussion, note editing and Agent execution
 are separate actions. Presence expires and is not restored as live after restart.
 The [routes](../../src-server/routes/projects/project-room-routes.ts) expose bounded
-history and guarded live delivery. The [SDK](../reference/sdk.md#shared-project-room)
+history and guarded live delivery. [One live stream](../../src-server/routes/projects/project-room-live.ts)
+per client and Project carries up to 50 channels, each admitted as its own history
+read and re-checked before each frame (#4798). It sends the next message and the
+messages a reaction, edit or delete changed, from the store's commit hints, with the
+sequence and activity range each covers; a change it cannot describe exactly (an
+other-process writer, a burst) is a `resync`. Typing and stream-bound presence live
+in the service's memory and clear when their stream closes. Structured person
+mentions (#4799) are validated against the access adapter's member directory and
+told once per newly named person through the notification service's principal
+feed (`project-room-mention-notifications.ts`). The stream also carries each room's
+newest Agent request records and its newest 50 still working (unsettled with no
+recorded failure), never their Sessions (#4800). The [SDK](../reference/sdk.md#shared-project-room)
 retains exact send intents and retires protected content when authority changes.
 
 [ProjectRoomAgentModule](../../src-server/services/projects/project-room-agent-module.ts)
@@ -5377,6 +5425,21 @@ public `station` Agent; the adapter alone maps it to the private runtime key.
 The operator projection exposes the principal for standing-grant management,
 but creation/update does not accept caller-declared execution authority.
 
+**Project jobs and Project lifecycle (#5069, #5070).** A job with a
+`projectId` replaces the scheduled-turn adapter with
+[ScheduledProjectRuns](../../src-server/services/scheduling/scheduled-project-runs.ts):
+each run creates a Task in that Project (keyed by run id), dispatches it
+through the Task dispatcher, queues the prompt on the Task's chat through
+ScheduledConversationRuns, and writes a run summary as the Task summary. The
+[ProjectLifecycleService](../../src-server/services/projects/project-lifecycle-service.ts),
+composed in [project-lifecycle-composition](../../src-server/runtime/routes/project-lifecycle-composition.ts),
+is an orchestration turn admission (a paused or archived Project's chats admit
+no turn), interrupts a Project's running turns through
+`OrchestrationService.interruptTurn`, and tells the scheduler which Projects
+hold their jobs: `SchedulerLedger.claimDue`'s `held` predicate leaves those
+occurrences unclaimed. Both are behind Feature Previews (`project-pause-archive`,
+`project-schedules`).
+
 **Conversation targets (Automations).** A job with a `target` never uses the
 scheduled-turn adapter. [ScheduledConversationRuns](../../src-server/services/scheduling/scheduled-conversation-runs.ts)
 queues each run on the target conversation's thread inbox as a framed Station
@@ -5655,7 +5718,7 @@ conversation nor grants execution.
 
 **Close-out on merge (#3161).** A person can opt a Task in to closing when its pull requests merge (`TaskRecord.closeOnMerge`, `PUT /api/tasks/:taskId/close-on-merge`; no Station Control tool reaches that route). [`task-close-out.ts`](../../src-server/services/projects/task-close-out.ts) is a reconciliation, not a loop: when the conversation pull request refresh observes a merged pull request for a viewer holding the operate tier (the scope `PATCH /api/tasks/:taskId/status` needs; never a Station Control tool call), it reads each pull request kept on the Tasks that kept it, at its exact identity and four at a time, and `TaskGraphService.completeTaskOnMerge` moves a Task to `done` only if every kept pull request is `MERGED`, the Task is the same incarnation (`createdAt`) the reads were for, no pull request was kept since (matched by declaration and target, since one turn's declarations share an event), and `canTransitionTaskStatus` allows `done` (never from todo, ready, triage or blocked). A pull request closed without merging never completes a Task. Nothing re-runs it: a merge is noticed when an operate-tier viewer next refreshes that conversation, and nothing reconciles without one. A pull request declared through Station Control waits in memory for its turn's terminal event (a turn-lifetime lease, not the native 60 seconds) and is lost if Station restarts first. The tests in `task-close-out.test.ts` and `runtime-routes-declare-pull-request-engine.test.ts` cover it.
 
-**Start Task from a tracker item (#4003, in delivery).** `POST /api/tasks/from-work-item` takes a `github:owner/repo#N` ref that the Project's board lists (the runtime re-reads the board through `WorkItemProviderService`; a ref the board does not list is refused before the open-Task lookup and before the tracker is read). `parseGitHubWorkItemRef` lowercases owner and repository, and refs compare by `workItemRefKey`. `TaskGraphService.createTaskForWorkItem` returns the item's open Task, in any Project, with `existing: true` (another Project's as `{id, projectId}` only), checked under the store's mutation lock; otherwise it records the Task with `sourceProvider: 'github'`, the ref, `workItemObservedAt` and `workItemProvenance: 'project-board'`. Every create that names a work item keeps one open Task per item under that lock (`TaskWorkItemTakenError`, `409` from `POST /api/tasks`): across Projects only for board-checked GitHub refs, within the Project (compared through `localProjectIdFor`) for every other ref, and `POST /api/tasks` takes a `github:` ref only when the board lists it, recording the same provenance. Dispatch, `get_task_brief` and the Task header read the tracker only for a ref with that provenance. The room runtime seeds the Task document from [`work-item-task-brief.ts`](../../src-server/services/work-item-providers/work-item-task-brief.ts): the issue body and its last three comments, quoted so tracker headings never become document headings, plus a link back, cut to 3,000 characters with a visible marker (the room refused a single-batch document of about 3,650 characters). `GET /api/tasks/:taskId/work-item` re-reads the item for the Task header, with comments created after `workItemObservedAt`; the header reads it when the Task opens and nothing polls. Both routes are personal-only, and no Station Control tool names them. Reads go through the runtime's one [`GitHubWorkItemObserver`](../../src-server/services/work-item-providers/github-work-item-observer.ts) (the `workItemObserver` route context): the host's `gh` login, started in an empty directory with prompts off, a deadline, a caller's abort signal, an output bound and `--hostname github.com`, with an observed answer kept 30 s per ref and comments-since mark. GitHub Enterprise hosts and pull requests are `unsupported`. **Task tracker follow-ups (#4508, preview `task-tracker-follow-ups`).** [`TaskFollowUpPoller`](../../src-server/services/work-item-providers/task-follow-up-poller.ts) is started, not awaited, on each built-in scheduler `automationPoller` tick (composed in `runtime-route-support.ts`, not in hosted mode), on its own single flight with a 60-second deadline and a 15-minute backoff when `gh` is missing, signed out or rate limited. It reads each eligible Task's primary item and the kept pull requests in that item's repository through [`GhGitHubFollowUpReader`](../../src-server/services/work-item-providers/github-follow-up-reader.ts) (`gh api graphql`, keyset cursors), and records into [`TaskFollowUpStore`](../../src-server/services/work-item-providers/task-follow-up-store.ts), the runtime's one `taskFollowUps` holder that `composeTaskBriefSource` also reads for the brief's "Tracker follow-ups" section. [`TaskFollowUpWake`](../../src-server/services/work-item-providers/task-follow-up-wake.ts), composed beside the poller, sends a Task's lead one conversation-inbox entry (`tf-` key) for the items the poller marked to wake (members' comments and reviews, failing checks), through the same durable inbox path as the Task question lead wake; `configureRuntimeRoutes` chains its placement re-check into `ThreadInboxDelivery`. Evidence: `task-follow-ups.test.ts`. Evidence: `github-work-item-observer.test.ts` (a fake `gh` at the process seam), `task-from-work-item.routes.test.ts`, `work-item-ref.test.ts`, and the `ProjectTasksSection` and `TaskWorkspaceView` UI tests. See [Tracker-backed Tasks](../design/tracker-backed-tasks.md).
+**Start Task from a tracker item (#4003, in delivery).** `POST /api/tasks/from-work-item` takes a `github:owner/repo#N` ref that the Project's board lists (the runtime re-reads the board through `WorkItemProviderService`; a ref the board does not list is refused before the open-Task lookup and before the tracker is read). `parseGitHubWorkItemRef` lowercases owner and repository, and refs compare by `workItemRefKey`. `TaskGraphService.createTaskForWorkItem` returns the item's open Task, in any Project, with `existing: true` (another Project's as `{id, projectId}` only), checked under the store's mutation lock; otherwise it records the Task with `sourceProvider: 'github'`, the ref, `workItemObservedAt` and `workItemProvenance: 'project-board'`. Every create that names a work item keeps one open Task per item under that lock (`TaskWorkItemTakenError`, `409` from `POST /api/tasks`): across Projects only for board-checked GitHub refs, within the Project (compared through `localProjectIdFor`) for every other ref, and `POST /api/tasks` takes a `github:` ref only when the board lists it, recording the same provenance. Dispatch, `get_task_brief` and the Task header read the tracker only for a ref with that provenance. The room runtime seeds the Task document from [`work-item-task-brief.ts`](../../src-server/services/work-item-providers/work-item-task-brief.ts): the issue body and its last three comments, quoted so tracker headings never become document headings, plus a link back, cut to 3,000 characters with a visible marker (the room refused a single-batch document of about 3,650 characters). `GET /api/tasks/:taskId/work-item` re-reads the item for the Task header, with comments created after `workItemObservedAt`; the header reads it when the Task opens and nothing polls. Both routes are personal-only, and no Station Control tool names them. Reads go through the runtime's one [`GitHubWorkItemObserver`](../../src-server/services/work-item-providers/github-work-item-observer.ts) (the `workItemObserver` route context): the host's `gh` login, started in an empty directory with prompts off, a deadline, a caller's abort signal, an output bound and `--hostname github.com`, with an observed answer kept 30 s per ref and comments-since mark. GitHub Enterprise hosts and pull requests are `unsupported`. **Task tracker follow-ups (#4508, preview `task-tracker-follow-ups`).** [`TaskFollowUpPoller`](../../src-server/services/work-item-providers/task-follow-up-poller.ts) is started, not awaited, on each built-in scheduler `automationPoller` tick (composed in `runtime-route-support.ts`, not in hosted mode), on its own single flight with a 60-second deadline and a 15-minute backoff when `gh` is missing, signed out or rate limited. It reads each eligible Task's primary item and the kept pull requests in that item's repository through [`GhGitHubFollowUpReader`](../../src-server/services/work-item-providers/github-follow-up-reader.ts) (`gh api graphql`, keyset cursors), and records into [`TaskFollowUpStore`](../../src-server/services/work-item-providers/task-follow-up-store.ts), the runtime's one `taskFollowUps` holder that `composeTaskBriefSource` also reads for the brief's "Tracker follow-ups" section. [`TaskFollowUpWake`](../../src-server/services/work-item-providers/task-follow-up-wake.ts), composed beside the poller, sends a Task's lead one conversation-inbox entry (`tf-` key) for the items the poller marked to wake (members' comments and reviews, failing checks), through the same durable inbox path as the Task question lead wake; `configureRuntimeRoutes` chains its placement re-check into `ThreadInboxDelivery`. Evidence: `task-follow-ups.test.ts`. Evidence: `github-work-item-observer.test.ts` (a fake `gh` at the process seam), `task-from-work-item.routes.test.ts`, `work-item-ref.test.ts`, and the `ProjectTasksSection` and `TaskWorkspaceView` UI tests. See [Tracker-backed Tasks](../design/tracker-backed-tasks.md). **Pull request agent feedback (preview `pull-request-agent-feedback`).** [`composePullRequestFeedbackRuntime`](../../src-server/runtime/routes/runtime-pull-request-feedback.ts) (not in hosted mode, and only with an event store and conversation inbox) composes [`PullRequestFeedbackStore`](../../src-server/services/pull-requests/pull-request-feedback-store.ts) (`<home>/pull-request-feedback/pull-request-feedback.sqlite`), [`PullRequestFeedbackOwnership`](../../src-server/services/pull-requests/pull-request-feedback-ownership.ts) (one owning conversation per pull request, claimable only for an explicit link or a Task-kept pull request), [`PullRequestFeedbackPoller`](../../src-server/services/pull-requests/pull-request-feedback-poller.ts) (started, not awaited, on the same `automationPoller` tick, one [`gh api graphql`](../../src-server/services/pull-requests/github-feedback-observation.ts) per due pull request) and [`PullRequestFeedbackDelivery`](../../src-server/services/pull-requests/pull-request-feedback-delivery.ts), which sends the owning conversation one `prf-` inbox entry through `submitStationFramedTurn` while its agent is idle; `configureRuntimeRoutes` chains its placement re-check into `ThreadInboxDelivery` and mounts `/api/pull-request-feedback`. `TaskFollowUpWake` skips checks and reviews on a pull request it owns. The same routes answer one pull request's feedback whichever chat is open (`by-pull-request`, for the pull request panel), and the runtime's `factFor` gives `GET /api/tasks/pull-request-facts` a kept pull request's feedback ([`pull-request-feedback-task-fact.ts`](../../src-server/services/pull-requests/pull-request-feedback-task-fact.ts)), both naming the owning chat only to a reader of it. Evidence: `pull-request-feedback.test.ts` (real inbox harness), `pull-request-feedback-ownership.test.ts`, `pull-request-feedback-poller.test.ts`, `github-pull-request-provider-feedback.test.ts`, `pull-request-feedback.routes.test.ts`, `pull-request-feedback-by-pull-request.routes.test.ts`, `runtime-pull-request-feedback-facts.test.ts` (real inbox harness). See [the decision](../decisions/pull-request-agent-feedback.md).
 
 **Task memory and the Task brief (#4003, in delivery).** Task memory is the judgment layer above the facts the event store derives. [`task-memory-store.ts`](../../src-server/services/orchestration/task-memory-store.ts) (`EventStore.taskMemoryStore()`, migration [`020-task-memory.ts`](../../src-server/domain/migrations/020-task-memory.ts)) keeps every revision of one bounded Task summary and every version of keyed decisions, questions and dead ends, in two append-only tables whose CHECKs and triggers hold the shape. Each write runs in one `BEGIN IMMEDIATE` transaction with the caller's authority re-check, the base-revision or record-state read, the live-record cap and the insert; bounds are refusals, never cuts. Shapes, defaults and refusal wording are the [`task-memory` contract](../../packages/contracts/src/task-memory.ts). `ProjectTaskRoomRuntime` owns authority: a Session writes the Task its immutable room execution binding names while it is that Task's lead or a recorded independent request, through `task_summary_update` and `task_record` ([tools](../../src-server/tools/station-control-task-memory-tools.ts), [routes](../../src-server/routes/orchestration/task-memory.ts)); a person reads and writes through the room's request authority (`/api/tasks/:taskId/room/memory`, `…/summary`, `…/summary/revisions`, `…/records`). Neither reaches Task status or the Task document. [`task-brief.ts`](../../src-server/services/projects/task-brief.ts) renders everything agents, people or a tracker wrote as quoted lines under a label naming who wrote it, and composes the digest-pinned brief from the Task, the observed work item, the summary, standing records, open questions, recent dead ends, a line per Session from the session digest facts ([`readSessionDigestHead`](../../src-server/services/orchestration/session-digest.ts), the same fold as `get_session_digest`) with each Session's active Task-scoped claims (`listActiveClaims({ projectId, taskId })` from [`work-claims.ts`](../../src-server/services/orchestration/work-claims.ts)), and counted omissions; [`task-brief-source.ts`](../../src-server/services/projects/task-brief-source.ts) gathers it for dispatch and for `get_task_brief`, whose `include` option lists every record or the summary history. `GET /api/tasks` adds `openQuestionCount`, which the Home and inbox Task fold (`taskLifecycleLabel`, `buildWorkFacts`) turns into "Task · Needs input" in Needs you. The Task workspace shows it in [`TaskMemoryPanel`](../../src-ui/src/views/task-workspace/TaskMemoryPanel.tsx). Evidence: `task-memory-store.test.ts`, `project-task-room-task-memory.test.ts`, `runtime-routes-task-memory-engine.test.ts` (the real Station Control MCP connection), `task-brief.test.ts`, `task-brief-dispatch.test.ts`, `TaskMemoryPanel.test.tsx` and `work-status.test.ts`. **Learning (layer 4):** when a Task is done, [`task-learning.ts`](../../src-server/services/projects/task-learning.ts) derives promotion candidates from its active standing decisions and dead ends, reads "promoted" back from the Project's knowledge stores, and promotes one, as a person edited it, with one `create` through the store's adapter under an id derived from the Task incarnation and record version. Before that write it inserts an append-only row naming the chosen store (`task_learning_promotions`, migration [`022-task-learning-promotions.ts`](../../src-server/domain/migrations/022-task-learning-promotions.ts)), so a version is written once across the Project's stores. Dismissals are kept in `task_learning_dismissals` (migration [`021-task-learning-dismissals.ts`](../../src-server/domain/migrations/021-task-learning-dismissals.ts)). Its [routes](../../src-server/routes/orchestration/task-learning.ts) (`/api/tasks/:taskId/room/memory/learning`, `…/promote`, `…/dismiss`) take the room's request authority through `ProjectTaskRoomRuntime.personTaskLearningAccess`, and no Station Control tool names them; the Task workspace shows them in [`TaskLearningPanel`](../../src-ui/src/views/task-workspace/TaskLearningPanel.tsx). Evidence: `runtime-routes-task-learning.test.ts` (closing, candidates, promotion with provenance, idempotency, search after reindex, dismissal, agent refusal, no store), `task-learning-promotion.test.ts` (two concurrent promotions into two stores write one record), `task-memory-store.test.ts` and `TaskLearningPanel.test.tsx`.
 
@@ -6026,8 +6089,15 @@ appearance are registry-applied emulation shared by every viewer and Agent; the
 pane sizes a page it just opened from a narrow stage once and announces changes
 it did not make ([decision](../decisions/browser-viewport-is-shared-fit-is-per-viewer.md)).
 The off-by-default **Inline browser activity** preview places the same browser
-beside its qualified transcript calls. The conversation boundary supplies the
-Station request scope; exact session selection also requires the Project,
+beside its qualified transcript calls. The
+[turn projection](../../src-ui/src/components/chat/BrowserTurnActivity.tsx) owns one
+activity per execution thread, turn and browser session from loaded messages
+and the current stream. The active viewer has a stable transcript-tail owner;
+new browser calls update its action strip without remounting the canvas.
+Completed activity becomes a compact historical summary. Distinct terminal
+results retain their source-event identity and ordinary tool/approval controls.
+The conversation boundary supplies the Station request scope; exact session
+selection also requires the Project,
 principal and conversation binding. Inline and floating placements share
 `float-over-chat/BrowserSessionSurface.tsx`, including input, page dialogs and
 navigation. Existing source-visibility arbitration suppresses duplicate viewers.
@@ -6054,7 +6124,10 @@ live-surface binder restores the saved human appearance on human claims. The cur
 records the authority constraints and Codex's default-off bound-channel preview.
 `codex-bound-tool-channel.ts` fences calls to the Session's current stream and
 turn; `codex-bound-request.ts` carries in-process proof through the HTTP
-bounded-body replacement. ACP remains unavailable without independent binding.
+bounded-body replacement. With the preview on, `createCodexBoundToolServer`
+also serves the Station Control catalog at `bound` and the adapter mints no
+header token; the resume cursor's `boundCatalog` says whether a resumed thread
+holds that catalog. ACP remains unavailable without independent binding.
 Control operations capture a lease fence and check it around asynchronous steps. JavaScript evaluation additionally needs the
 Project's default-off permission; timeout/preemption does not undo an effect
 already sent to Chromium. Closing a viewer only stops its capture subscription.

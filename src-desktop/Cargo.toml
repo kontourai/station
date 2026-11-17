@@ -1,6 +1,6 @@
 [package]
 name = "station"
-version = "0.1.11"
+version = "0.2.0"
 description = "Station — local-first AI agent system"
 authors = ["you"]
 edition = "2021"

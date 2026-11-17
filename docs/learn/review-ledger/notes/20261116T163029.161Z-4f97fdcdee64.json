@@ -1,0 +1,17 @@
+{
+  "revision": "0d10f0f69697ae8d86474c3aef25a262c4b0f37f",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Re-read the pages citing testing.md after its added native-literal paragraph; none restates test selection for src-desktop or path-read pins, so their claims are unchanged.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Re-read the pages citing testing.md after its added native-literal paragraph; none restates test selection for src-desktop or path-read pins, so their claims are unchanged.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Re-read the pages citing testing.md after its added native-literal paragraph; none restates test selection for src-desktop or path-read pins, so their claims are unchanged.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Re-read the pages citing testing.md after its added native-literal paragraph; none restates test selection for src-desktop or path-read pins, so their claims are unchanged.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Re-read the pages citing testing.md after its added native-literal paragraph; none restates test selection for src-desktop or path-read pins, so their claims are unchanged.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Re-read the pages citing testing.md after its added native-literal paragraph; none restates test selection for src-desktop or path-read pins, so their claims are unchanged.","inputs":["docs/guides/testing.md"]}
+  ]
+}

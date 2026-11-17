@@ -970,7 +970,6 @@ fn binding_from_store(
 fn owner_for_binding(binding: &TrustProfileBinding) -> Result<NativeProofKeyOwner, String> {
     let channel = match binding.channel.as_str() {
         "stable" => NativeProofKeyChannel::Stable,
-        "beta" => NativeProofKeyChannel::Beta,
         "nightly" => NativeProofKeyChannel::Nightly,
         "dev" => NativeProofKeyChannel::Dev,
         _ => return Err("Station could not identify the current application channel.".into()),

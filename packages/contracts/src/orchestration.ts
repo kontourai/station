@@ -1471,6 +1471,14 @@ export interface OrchestrationSessionEventPage {
   hasMore: boolean;
   /** Per-thread sequence to resume from. */
   nextSequence: number;
+  /**
+   * #5077: the thread's highest per-thread `sequence` (0 for none), read in
+   * the same snapshot as `events`. Per-thread sequences may have gaps once
+   * rows are compacted, so `session.eventCount` is a count and not a bound
+   * on any sequence or cursor; this is. Optional because older hosts omit
+   * it. Their logs are gap-free, so their `session.eventCount` equals it.
+   */
+  highWaterSequence?: number;
 }
 
 /** Derived SSE envelope routing, resolved from Station's lineage at delivery time. */

@@ -1,0 +1,13 @@
+{
+  "revision": "930b5af26cac6bdabb8174e55be8e25772df7dc9",
+
+  "notes": [
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed: findByDedupeTag now reads metadata.dedupeTag through the declared Record<string, unknown> type instead of an any cast, the same typed read the file already uses for the agent dedupe lookup. Lookup behavior, routes, API, SDK and record shape are unchanged.","inputs":["src-server/services/notifications/notification-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed: findByDedupeTag now reads metadata.dedupeTag through the declared Record<string, unknown> type instead of an any cast, the same typed read the file already uses for the agent dedupe lookup. Lookup behavior, routes, API, SDK and record shape are unchanged.","inputs":["src-server/services/notifications/notification-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed: findByDedupeTag now reads metadata.dedupeTag through the declared Record<string, unknown> type instead of an any cast, the same typed read the file already uses for the agent dedupe lookup. Lookup behavior, routes, API, SDK and record shape are unchanged.","inputs":["src-server/services/notifications/notification-service.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Reviewed: findByDedupeTag now reads metadata.dedupeTag through the declared Record<string, unknown> type instead of an any cast, the same typed read the file already uses for the agent dedupe lookup. Lookup behavior, routes, API, SDK and record shape are unchanged.","inputs":["src-server/services/notifications/notification-service.ts"]}
+  ]
+}

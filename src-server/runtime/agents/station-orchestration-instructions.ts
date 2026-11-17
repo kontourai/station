@@ -40,7 +40,7 @@ export interface StationInstructionCapabilities {
   devices: boolean;
   delegated: boolean;
   harness: 'claude' | 'codex' | 'acp' | 'muse' | 'other';
-  /** Claude and `toolServerLoading !== 'always'`. */
+  /** Claude, with Station turning its tool search on (`claude-tool-search.ts`). */
   toolSearch: boolean;
   /** HTTP progressive disclosure is on. */
   progressiveFamilies: boolean;
@@ -51,17 +51,21 @@ export interface StationInstructionCapabilities {
  * the engine's token is minted (`station-control-mcp-token.ts`
  * `stationControlTokenAssurance`): Claude's in-process server is `bound`;
  * Codex and ACP both receive a header-only bearer (`http-header-token`), which
- * is `delegated-custody`. `bearer-exposed` (a query-string URL token) is a
+ * is `delegated-custody`. A Codex session whose station-control travels on
+ * the bound channel (`codexBoundCatalog`, #2376 slice 2) gets no header token
+ * and is `bound` too. `bearer-exposed` (a query-string URL token) is a
  * legacy channel no current engine uses. An engine with no Station-control
  * delivery (Muse, command engines) has none.
  */
 export function stationControlAssuranceFor(
   provider: EngineId,
+  codexBoundCatalog = false,
 ): StationControlPolicyCaller['assurance'] | undefined {
   switch (provider) {
     case 'claude':
       return 'bound';
     case 'codex':
+      return codexBoundCatalog ? 'bound' : 'delegated-custody';
     case 'acp':
       return 'delegated-custody';
     default:

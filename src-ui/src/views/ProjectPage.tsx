@@ -37,6 +37,7 @@ import {
   workspacePaneRequiresLayoutIdentity,
 } from '../workspace-panes/workspacePaneDirectRoute';
 import { MemberProjectPage } from './project-page/MemberProjectPage';
+import { ProjectHeldBanner } from './project-page/ProjectHeldBanner';
 import { ProjectKnowledgeSection } from './project-page/ProjectKnowledgeSection';
 import {
   ProjectAddLayoutModal,
@@ -52,6 +53,7 @@ import { ProjectPluginPublishSection } from './project-page/ProjectPluginPublish
 import type { ProjectRoomProps } from './project-page/ProjectRoom';
 import { ProjectRoom } from './project-page/ProjectRoom';
 import { ProjectTasksSection } from './project-page/ProjectTasksSection';
+import { useProjectSearch } from './project-page/project-room-navigation';
 import type { AvailableLayout } from './project-page/types';
 import { useListScrollMemory } from './project-page/useListScrollMemory';
 import { ProjectSourcesSection } from './project-settings/ProjectSourcesSection';
@@ -210,7 +212,13 @@ function ProjectOperatorPage({
   project: ProjectConfig;
   requestScope: ProjectRoomProps['requestScope'];
 }) {
-  const { setLayout, navigate } = useNavigation();
+  const { setLayout, navigate, updateParams } = useNavigation();
+  // The Tasks section's presentation: the board unless the address asks
+  // for the list (`?tasksView=list`).
+  const tasksView =
+    new URLSearchParams(useProjectSearch()).get('tasksView') === 'list'
+      ? 'list'
+      : 'board';
   const {
     destination,
     selectDestination,
@@ -354,6 +362,9 @@ function ProjectOperatorPage({
             gitStatus={gitStatus}
             navigateToSettings={() => navigate(`/projects/${slug}/edit`)}
           />
+        )}
+        {!roomScreen && (
+          <ProjectHeldBanner slug={slug} lifecycle={project.lifecycle} />
         )}
 
         <div className="section-nav-rail project-page__layout">
@@ -561,6 +572,10 @@ function ProjectOperatorPage({
                 projectWorkingDirectory={project.workingDirectory}
                 gitStatus={gitStatus}
                 agents={project.agents}
+                presentation={tasksView}
+                onPresentationChange={(view) =>
+                  updateParams({ tasksView: view === 'board' ? null : view })
+                }
               />
             </section>
 

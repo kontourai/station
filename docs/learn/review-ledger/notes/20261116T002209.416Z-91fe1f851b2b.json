@@ -1,0 +1,7 @@
+{
+  "revision": "97e1eefda198a51bd315b249b226e75f4655f5a5",
+
+  "notes": [
+    {"path":"tests/AGENTS.md","note":"testing.md still owns lanes and escalation and the fixture-fidelity anchor resolves; Gallery addition changes no cited rule.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

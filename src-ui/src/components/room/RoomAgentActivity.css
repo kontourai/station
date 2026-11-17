@@ -1,0 +1,86 @@
+/* A live Agent request in the conversation (#4800): the row sits in the
+   message grid (avatar column, then body) so it reads as the Agent's turn. */
+.room-agent-activity {
+  display: grid;
+  grid-template-columns: var(--room-avatar-size) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--k-space-1) var(--k-space-3);
+  margin: var(--k-space-2) var(--room-inset) 0;
+  padding: var(--k-space-2) var(--k-space-3);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: color-mix(in oklab, var(--k-brand) 6%, var(--k-panel));
+}
+.room-agent-activity--failed {
+  border-color: color-mix(in oklab, var(--k-negative) 45%, var(--k-line));
+  background: color-mix(in oklab, var(--k-negative) 7%, var(--k-panel));
+}
+.room-agent-activity--stopped {
+  background: var(--k-panel);
+}
+.room-agent-activity__body {
+  min-width: 0;
+}
+.room-agent-activity__line,
+.room-agent-activity__meta {
+  margin: 0;
+}
+.room-agent-activity__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--k-space-2);
+  font: var(--k-text-md) / var(--room-line) var(--k-font-ui);
+}
+.room-agent-activity__name {
+  color: var(--k-text);
+  font-weight: 600;
+}
+.room-agent-activity__step {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  color: var(--k-text-muted);
+}
+.room-agent-activity--failed .room-agent-activity__step {
+  color: var(--k-text);
+  font-weight: 600;
+}
+.room-agent-activity__meta {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  overflow-wrap: anywhere;
+}
+/* Three soft beats, then a steady dot while the request runs: motion that
+   says "working" without a spinner's urgency, settling beside the words
+   "Working on it…". */
+.room-agent-activity__pulse {
+  inline-size: var(--k-space-2);
+  block-size: var(--k-space-2);
+  border-radius: 50%;
+  background: var(--k-brand);
+  animation: room-agent-pulse var(--motion-status-pulse) var(--ease-standard) 3;
+}
+/* Each beat starts and ends at the resting dot, so it settles without a jump. */
+@keyframes room-agent-pulse {
+  50% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+}
+.room-agent-activity__actions {
+  display: inline-flex;
+  gap: var(--k-space-1);
+}
+/* Phone: the action drops under the text, full touch height. */
+.room-conversation--compact .room-agent-activity {
+  grid-template-columns: var(--room-avatar-size) minmax(0, 1fr);
+  margin-inline: var(--k-space-3);
+}
+.room-conversation--compact .room-agent-activity__actions {
+  grid-column: 2;
+}
+.room-conversation--compact .room-agent-activity__actions .button {
+  min-height: 44px;
+  min-width: 44px;
+}

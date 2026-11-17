@@ -1,0 +1,19 @@
+{
+  "revision": "60fd22348d954097ebd393bab0a1dc3b74813efd",
+
+  "notes": [
+    {"path":"docs/adr/0021-separate-plugin-and-agent-sdk-surfaces.md","note":"Added the ./pull-request-feedback client subpath only; no existing export changed or moved. Citing pages describe export families, not an exhaustive list.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"docs/architecture.md","note":"Added the ./pull-request-feedback client subpath only; no existing export changed or moved. Citing pages describe export families, not an exhaustive list.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"docs/guides/agent-development.md","note":"Added the ./pull-request-feedback client subpath only; no existing export changed or moved. Citing pages describe export families, not an exhaustive list.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"docs/guides/build-your-first-plugin.md","note":"Added the ./pull-request-feedback client subpath only; no existing export changed or moved. Citing pages describe export families, not an exhaustive list.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"docs/reference/sdk.md","note":"Added the ./pull-request-feedback client subpath only; no existing export changed or moved. Citing pages describe export families, not an exhaustive list.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Added the ./pull-request-feedback client subpath only; no existing export changed or moved. Citing pages describe export families, not an exhaustive list.","inputs":["packages/sdk/package.json#/exports"]},
+
+    {"path":"packages/sdk/README.md","note":"Added the ./pull-request-feedback client subpath only; no existing export changed or moved. Citing pages describe export families, not an exhaustive list.","inputs":["packages/sdk/package.json#/exports"]}
+  ]
+}

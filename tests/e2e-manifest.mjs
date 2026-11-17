@@ -467,6 +467,8 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     // Starts its own Station with local accounts and sharing, pairs browsers
     // and approves an account-bound device, as device-pairing-mobile does.
     'tests/project-room-message-actions.spec.ts',
+    // The same isolated Station shape for the live stream (#4798).
+    'tests/project-room-live.spec.ts',
     'tests/conversation-surfaces.spec.ts',
     'tests/owned-work-custody.spec.ts',
     // Owns its HTTPS listeners, private home, virtual authenticator and CLI child.
@@ -1215,6 +1217,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/project-room-live.spec.ts',
+    bucket: 'product',
+    surface: 'Project channels',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      "#4798/#4799/#4800 on a real isolated Station: ten channels ride one live connection with no per-room stream, and a message in the tenth marks its sidebar row; a frame dropped by a proxy is backfilled from history; a contributor's typing shows, clears on stop and when their own stream closes; a contributor's mention reaches only the operator, opens the exact message from For you, and a non-member mention is refused; an Agent request's row comes from its record and leaves once the conversation moves on. The contributor acts through their account-bound session API; their room UI is not exercised.",
+    exceptions: [],
+  },
+  {
     path: 'tests/project-room-message-actions.spec.ts',
     bucket: 'product',
     surface: 'Project channels',
@@ -1709,7 +1721,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      '#2459 Agents pane child work: opened from the dock row, per-chat Claude Stop kept exactly once (the bridge retires since #2533 wired the cell), All scope with one Stop per running child showing a CLI delegate and a chatless subagent live with provenance, an exit read as No result, and the scope remembered across reload; #2510 at 390px the header ⋯ sheet’s Background tasks row (44px) opens the Background tasks sheet with the seeded running task.',
+      '#2459 Agents pane child work: opened from the dock row, per-chat Claude Stop kept exactly once (the bridge retires since #2533 wired the cell), All chats scope with one Stop per running child showing a CLI delegate and a chatless subagent live with provenance, an exit read as No result, and the scope remembered across reload; seeded running subagents and tool calls laid out at 380px and 600px in dark theme with actions clear of the text and All chats grouped by chat; #2510 at 390px the header ⋯ sheet’s Background tasks row (44px) opens the Background tasks sheet with the seeded running task.',
     exceptions: [],
   },
   {

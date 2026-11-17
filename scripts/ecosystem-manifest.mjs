@@ -28,6 +28,7 @@ import {
 import {
   assertEnvelopeShape,
   assertEnvelopeSignature,
+  CHANNEL_VERSION,
   canonicalManifestJson,
   hasExactKeys,
   isCanonicalUrl,
@@ -41,6 +42,7 @@ import {
   validateCommonPayload,
   validateReleaseManifestPayloadV2,
 } from '../packages/shared/src/release-manifest.mjs';
+import { STATION_RELEASE_RINGS } from '../packages/shared/src/release-rings.generated.mjs';
 import { parseReleaseTag } from './lib/release-tag.mjs';
 
 const RELEASE = '(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)';
@@ -287,6 +289,8 @@ function assemblePayload({
   publishedAt,
   targets,
 }) {
+  if (!['stable', 'nightly'].includes(channel))
+    throw new Error(`invalid --channel ${channel}`);
   const releaseTag = `v${version}`;
   const assetTag = assetLocationTag({ version, channel, locationTag });
   if (!isHttpsArtifactUrl(baseUrl) || !baseUrl.endsWith('/'))
@@ -334,13 +338,51 @@ function assemblePayload({
     if (!Number.isSafeInteger(descriptor.size) || descriptor.size <= 0)
       throw new Error(`${where}: malformed size`);
     const release = descriptor.release;
+    const ring = STATION_RELEASE_RINGS[channel];
+    const keys =
+      release && typeof release === 'object' ? Object.keys(release).sort() : [];
+    const expectedKeys =
+      release?.schemaVersion === 3
+        ? [
+            'channel',
+            'createdAt',
+            'prerelease',
+            'releaseChannel',
+            'schemaVersion',
+            'sha',
+            'version',
+          ]
+        : [
+            'channel',
+            'createdAt',
+            'prerelease',
+            'ref',
+            'releaseChannel',
+            'schemaVersion',
+            'sha',
+          ];
+    const validIdentity =
+      release?.schemaVersion === 3
+        ? (channel === 'stable' || channel === 'nightly') &&
+          release.version === version &&
+          release.version.length <= 127 &&
+          CHANNEL_VERSION[channel]?.test(release.version)
+        : release?.schemaVersion === 2 && release.ref === releaseTag;
     if (
-      release?.sha !== sourceSha ||
-      release?.ref !== releaseTag ||
-      release?.releaseChannel !== channel
+      !ring ||
+      keys.length !== expectedKeys.length ||
+      keys.some((key, index) => key !== expectedKeys[index]) ||
+      !validIdentity ||
+      release.sha !== sourceSha ||
+      release.releaseChannel !== channel ||
+      release.channel !== ring.runtimeChannel ||
+      release.prerelease !== ring.prerelease ||
+      typeof release.createdAt !== 'string' ||
+      !Number.isFinite(Date.parse(release.createdAt)) ||
+      new Date(release.createdAt).toISOString() !== release.createdAt
     )
       throw new Error(
-        `${where}: built for ${String(release?.ref)} (${String(release?.releaseChannel)}) at ${String(release?.sha)}, not ${releaseTag} (${channel}) at ${sourceSha}`,
+        `${where}: built for ${String(release?.version ?? release?.ref)} (${String(release?.releaseChannel)}) at ${String(release?.sha)}, not ${releaseTag} (${channel}) at ${sourceSha}`,
       );
     if (byTarget.has(descriptor.target))
       throw new Error(`duplicate archive descriptor for ${descriptor.target}`);

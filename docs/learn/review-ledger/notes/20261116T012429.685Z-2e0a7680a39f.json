@@ -1,0 +1,25 @@
+{
+  "revision": "f3920b0f12df533b5bbf7b55ad44772559fdd8e2",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked the bound-channel thread/start dynamicTools: now built by codexDynamicTools with the same type/name/description/inputSchema shape. Searched this document for dynamicTools and bound-channel claims; none here is changed by it.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Checked the bound-channel thread/start dynamicTools: now built by codexDynamicTools with the same type/name/description/inputSchema shape. Searched this document for dynamicTools and bound-channel claims; none here is changed by it.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Checked the bound-channel thread/start dynamicTools: now built by codexDynamicTools with the same type/name/description/inputSchema shape. Searched this document for dynamicTools and bound-channel claims; none here is changed by it.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked the bound-channel thread/start dynamicTools: now built by codexDynamicTools with the same type/name/description/inputSchema shape. Searched this document for dynamicTools and bound-channel claims; none here is changed by it.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the bound-channel thread/start dynamicTools: now built by codexDynamicTools with the same type/name/description/inputSchema shape. Searched this document for dynamicTools and bound-channel claims; none here is changed by it.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Checked the bound-channel thread/start dynamicTools: now built by codexDynamicTools with the same type/name/description/inputSchema shape. Searched this document for dynamicTools and bound-channel claims; none here is changed by it.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the bound-channel thread/start dynamicTools: now built by codexDynamicTools with the same type/name/description/inputSchema shape. Searched this document for dynamicTools and bound-channel claims; none here is changed by it.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked the bound-channel thread/start dynamicTools: now built by codexDynamicTools with the same type/name/description/inputSchema shape. Searched this document for dynamicTools and bound-channel claims; none here is changed by it.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the bound-channel thread/start dynamicTools: now built by codexDynamicTools with the same type/name/description/inputSchema shape. Searched this document for dynamicTools and bound-channel claims; none here is changed by it.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked the bound-channel thread/start dynamicTools: now built by codexDynamicTools with the same type/name/description/inputSchema shape. Searched this document for dynamicTools and bound-channel claims; none here is changed by it.","inputs":["src-server/providers/adapters/codex-adapter.ts"]}
+  ]
+}

@@ -3,18 +3,14 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { homedir, platform } from 'node:os';
 import nodePath from 'node:path';
-import {
-  deleteSession,
-  forkSession,
-  listSessions,
-  type McpServerConfig,
-  type Options,
-  type PermissionMode,
-  type PermissionResult,
-  type PermissionUpdate,
-  type Query,
-  query,
-  type SDKMessage,
+import type {
+  McpServerConfig,
+  Options,
+  PermissionMode,
+  PermissionResult,
+  PermissionUpdate,
+  Query,
+  SDKMessage,
 } from '@anthropic-ai/claude-agent-sdk';
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages/messages';
 import {
@@ -83,8 +79,10 @@ import {
   toolRequestRuleGrant,
   toolRequestServerGrant,
   toolRequestSessionGrant,
+  toolRequestStrictSessionGrant,
 } from '@kontourai/station-shared/tool-request-preview';
 import { NATIVE_SESSION_RESUMED_METADATA_KEY } from '@kontourai/station-shared/usage-fold';
+import { claudeToolSearchEnv } from '../../runtime/agents/claude-tool-search.js';
 import {
   delegatedApprovalDenial,
   type PreToolPolicyDecision,
@@ -320,6 +318,12 @@ type PendingRequest = {
    */
   sessionGrant: ToolRequestSessionGrant;
   /**
+   * The request is an escalation (`toolRequestStrictSessionGrant` gives no
+   * tool grant): a session answer to it also covers the tool's later
+   * escalations, where one given on a plain call covers plain calls only.
+   */
+  escalation: boolean;
+  /**
    * Whether the request offered the server-wide Station browser grant: the
    * same `toolRequestServerGrant` computation the surfaces offer from.
    */
@@ -333,6 +337,25 @@ type PendingRequest = {
   inputRequest?: InputRequestForm;
   eventId: string;
 };
+
+type ClaudeAgentSdk = typeof import('@anthropic-ai/claude-agent-sdk');
+let claudeAgentSdk: Promise<ClaudeAgentSdk> | undefined;
+/**
+ * The Agent SDK is loaded on first use, not at boot: loading it costs tens
+ * of MiB of memory, and an idle server never calls it. A failed load rejects where the SDK call would have
+ * thrown, and is not memoized here, so a later caller loads again.
+ * scripts/lib/server-static-imports.mjs fails the build if a static value
+ * import of it returns.
+ */
+function loadClaudeAgentSdk(): Promise<ClaudeAgentSdk> {
+  claudeAgentSdk ??= import('@anthropic-ai/claude-agent-sdk').catch(
+    (error: unknown) => {
+      claudeAgentSdk = undefined;
+      throw error;
+    },
+  );
+  return claudeAgentSdk;
+}
 
 /** The command Station resolves on PATH for this engine. */
 const CLAUDE_CLI_COMMAND = 'claude';
@@ -895,6 +918,15 @@ type ClaudeSessionRecord = {
    * `approvedTools`) so the grant covers the whole tool for this session.
    */
   approvedTools: Set<string>;
+  /**
+   * Owner decision (2026-11-16): tools a person allowed for the session when
+   * answering an ESCALATION of them (a safety check, a path outside the
+   * session's folders, a rule- or hook-forced ask). Only these grants answer
+   * a later escalation; one given on a plain call (`approvedTools` alone)
+   * never does, so an ordinary "allow all" cannot silently cover the risky
+   * case.
+   */
+  approvedToolEscalations: Set<string>;
   /**
    * Server-wide session grants from an `acceptForSession` answer carrying
    * `sessionGrantScope: 'server'`: the MCP server ids whose every later
@@ -1621,6 +1653,8 @@ async function evaluateClaudePreToolPolicy(
     toolName: string,
     toolInput: unknown,
   ) => void,
+  /** The engine runs at `bypassPermissions` for this call. */
+  fullAccess = false,
 ) {
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -1635,6 +1669,7 @@ async function evaluateClaudePreToolPolicy(
         {
           interaction: 'external',
           identity: externalPreToolPolicyIdentity(input.tool_name),
+          ...(fullAccess ? { fullAccess } : {}),
         },
       ),
       new Promise<PreToolPolicyDecision>((resolve) => {
@@ -1869,11 +1904,13 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       const usageAccountKey = resolvedHome
         ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
         : undefined;
+      const sdk = await loadClaudeAgentSdk();
       // #2494: a plan that engages Seatbelt confines this start, or (for a
       // reason a check derives) runs it at Auto with nothing engaged. Every
       // other start takes the same synchronous path as before.
       if (!isClaudeSpawnWrapMechanism(input.confinementPlan?.mechanism))
         return this.startTrackedSession(
+          sdk,
           input,
           input.persistSession === true,
           skillsReport,
@@ -1897,6 +1934,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         usageAccountKey,
       });
       const session = await this.startTrackedSession(
+        sdk,
         seatbelt.input,
         seatbelt.input.persistSession === true,
         skillsReport,
@@ -2310,8 +2348,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         sourceAffinity: snapshotSessionSourceAffinity(input.sourceAffinity!),
       };
     }
+    // Before the creation hook: a failed load creates no child, so it must
+    // not enter the reservation-cleanup path.
+    const sdk = await loadClaudeAgentSdk();
     await hooks?.onProviderChildCreationStarted?.();
-    const fork = await forkSession(input.sourceSessionId, {
+    const fork = await sdk.forkSession(input.sourceSessionId, {
       dir: input.cwd,
       title: adoptionTitle(input.threadId),
     });
@@ -2363,6 +2404,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       );
       if (!adoptionFallback)
         return this.startTrackedSession(
+          sdk,
           { ...input, resumeCursor, persistSession: true },
           true,
           skillsReport,
@@ -2379,6 +2421,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           artifactsEnv,
         );
       const session = await this.startTrackedSession(
+        sdk,
         { ...input, resumeCursor, persistSession: true },
         true,
         skillsReport,
@@ -2401,7 +2444,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // the reservation marker) and owns cleanup. Deleting here too would
       // make its subsequent SDK deletion fail as "session not found".
       if (!hooks)
-        await deleteSession(fork.sessionId, { dir: input.cwd }).catch(() => {});
+        await sdk
+          .deleteSession(fork.sessionId, { dir: input.cwd })
+          .catch(() => {});
       throw error;
     }
   }
@@ -2443,6 +2488,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       recovery.createdAt
     ) {
       const earliest = Date.parse(recovery.createdAt);
+      const { listSessions } = await loadClaudeAgentSdk();
       const candidates = (await listSessions({ dir: cwd })).filter(
         (session) =>
           session.customTitle === adoptionTitle(recovery.adoptionKey!) &&
@@ -2464,6 +2510,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     }
     if (typeof cursor === 'string') {
       if (recovery?.adoptionKey) {
+        const { deleteSession } = await loadClaudeAgentSdk();
         await deleteSession(cursor, { dir: cwd });
         return;
       }
@@ -2472,11 +2519,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       // `deleteSession` call resolves (archive#896, decision 5) — Station owns the
       // profile dir, so an orphaned transcript there is not a discard
       // failure. Profile GC is a wave-2 follow-up, not implemented here.
-      await deleteSession(cursor, { dir: cwd }).catch((error) => {
-        (this.options.logger ?? console).warn?.(
-          `Claude discardSession: deleteSession failed for cursor '${cursor}' (possibly an app-home-profile session whose transcript lives under a different config root): ${errorMessage(error)}`,
-        );
-      });
+      // The load joins the chain so a failed load is warned like a failed
+      // deletion, not thrown.
+      await loadClaudeAgentSdk()
+        .then(({ deleteSession }) => deleteSession(cursor, { dir: cwd }))
+        .catch((error) => {
+          (this.options.logger ?? console).warn?.(
+            `Claude discardSession: deleteSession failed for cursor '${cursor}' (possibly an app-home-profile session whose transcript lives under a different config root): ${errorMessage(error)}`,
+          );
+        });
     }
   }
 
@@ -2496,6 +2547,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   }
 
   private startTrackedSession(
+    sdk: ClaudeAgentSdk,
     input: ProviderSessionStartInput,
     persistSession: boolean,
     skillsReport?: CapabilityDeliveryChannelReport,
@@ -2609,7 +2661,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       seatbeltSpawn?.wrap,
       input.threadId,
     );
-    let sdkQuery: ReturnType<typeof query>;
+    let sdkQuery: Query;
     // After station-control, so the browser server reuses its credential.
     let builtinServers: Record<string, McpServerConfig> | undefined;
     try {
@@ -2619,7 +2671,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       ]);
       // After station-control, so the browser server reuses its credential.
       builtinServers = this.resolveStationBrowser(input);
-      sdkQuery = query({
+      sdkQuery = sdk.query({
         prompt: promptQueue,
         options: this.buildOptions(
           input,
@@ -2703,6 +2755,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         : {}),
       pendingRequests: new Map(),
       approvedTools: new Set(),
+      approvedToolEscalations: new Set(),
       serverGrants: new Set(),
       stationBrowserVerified: false,
       stationBrowserDelivered:
@@ -3781,6 +3834,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       scope === undefined
     ) {
       record.approvedTools.add(pending.toolName);
+      if (pending.escalation)
+        record.approvedToolEscalations.add(pending.toolName);
     }
     // Owner decision: the typed `sessionGrantScope: 'server'` widens the
     // answer to the Station browser server, only where the request offered it
@@ -3811,7 +3866,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             // Full access is the server's recorded decision alone: an
             // engine-suggested switch into it is never forwarded, even under
             // a tool grant that forwards every other suggestion.
-            sessionGrantPermissionUpdates(grant, pending.suggestions).filter(
+            sessionGrantPermissionUpdates(
+              // A tool grant widened onto an escalation (owner decision
+              // 2026-11-16) is Station's own: it forwards none of the
+              // engine's suggestions, so a full-access or plan-mode session
+              // is never switched to acceptEdits by it.
+              grant === 'tool' && pending.escalation ? 'none' : grant,
+              pending.suggestions,
+            ).filter(
               (update) =>
                 !(
                   update.type === 'setMode' &&
@@ -4300,8 +4362,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     signal.addEventListener('abort', abortProbe, { once: true });
     const promptQueue = new AsyncUserMessageQueue();
     const engineProcess = createClaudeEngineProcess();
-    let sdkQuery: ReturnType<typeof query> | undefined;
+    let sdkQuery: Query | undefined;
     try {
+      const { query } = await loadClaudeAgentSdk();
+      // An abort during the first load must not start the probe.
+      signal.throwIfAborted();
       sdkQuery = query({
         prompt: promptQueue,
         options: {
@@ -4704,6 +4769,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         : [CLAUDE_ARTIFACT_TOOL_NAME]),
     ];
     const resumeSessionId = claudeResumeSessionId(input.resumeCursor);
+    const toolSearchEnv = claudeToolSearchEnv(input.agent?.toolServerLoading);
     return {
       cwd: input.cwd,
       ...(disallowedTools.length ? { disallowedTools } : {}),
@@ -4840,12 +4906,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         ...(augmentedEnv ?? process.env),
         ...connectionEnv,
         ...appHomeEnv,
-        ...(input.agent?.toolServerLoading
-          ? {
-              ENABLE_TOOL_SEARCH:
-                input.agent.toolServerLoading === 'always' ? 'false' : 'true',
-            }
-          : {}),
+        // The same rule decides whether Station's instructions say its
+        // tools load on demand (`session-agent-resolution.ts`).
+        ...(toolSearchEnv ? { ENABLE_TOOL_SEARCH: toolSearchEnv } : {}),
         // After every caller/ambient layer: the Station setting owns this
         // key (see `claudeArtifactsSpawnEnv`).
         ...artifactsEnv,
@@ -4998,11 +5061,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         const sessionGrant = toolRequestSessionGrant(request);
         const serverGrant = toolRequestServerGrant(request);
         const ruleGrant = toolRequestRuleGrant(request);
+        // A plain call is answered by any tool grant; an escalation only by a
+        // grant a person gave on an escalation of the same tool.
+        const escalation = toolRequestStrictSessionGrant(request) !== 'tool';
         if (
           !inputRequest &&
           !explicitAsk &&
-          record.approvedTools.has(toolName) &&
-          sessionGrant === 'tool'
+          sessionGrant === 'tool' &&
+          (escalation
+            ? record.approvedToolEscalations.has(toolName)
+            : record.approvedTools.has(toolName))
         ) {
           return { behavior: 'allow', updatedInput: toolInput };
         }
@@ -5099,6 +5167,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             toolName,
             ...(options.agentID ? { agentId: options.agentID } : {}),
             sessionGrant,
+            escalation,
             serverGrant,
             ...(ruleGrant ? { ruleGrant } : {}),
             eventId,
@@ -5240,6 +5309,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
                         this.options.preToolPolicyTimeoutMs ??
                           DEFAULT_PRE_TOOL_POLICY_TIMEOUT_MS,
                         rememberPolicyAllow,
+                        // Read per call: a mid-chat switch changes it.
+                        this.sessions.get(input.threadId)
+                          ?.currentPermissionMode === 'bypassPermissions',
                       );
                     },
                   ],

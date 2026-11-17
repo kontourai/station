@@ -49,7 +49,7 @@ it('debug build entrypoints carry the scheme expected by the native development 
     expect(line).toContain('--config tauri.android.dev.conf.json');
 });
 
-function generatedFixture(namespace = 'io.kontourai.station.beta') {
+function generatedFixture(namespace = 'io.kontourai.station.nightly') {
   const root = mkdtempSync(join(tmpdir(), 'station-channel-generation-'));
   const android = join(root, 'src-desktop', 'gen', 'android');
   const gradlePath = join(android, 'app', 'build.gradle.kts');
@@ -75,11 +75,7 @@ android {
 }
 
 describe('clean Android channel release generation', () => {
-  it.each([
-    'io.kontourai.station',
-    'io.kontourai.station.beta',
-    'io.kontourai.station.nightly',
-  ])(
+  it.each(['io.kontourai.station', 'io.kontourai.station.nightly'])(
     'applies one complete signing contract without changing %s',
     (namespace) => {
       const { gradlePath, root } = generatedFixture(namespace);

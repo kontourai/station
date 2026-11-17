@@ -10,7 +10,9 @@ name: "Nightly: Native cohort"
 # verifier grant finality to whichever subset actually published. A
 # provider-side failure on one platform is disclosed — in the final receipt,
 # on every ledger row this run writes, and in the recovery receipt — but it
-# never withholds another platform's publication, ledger row, or marker. The
+# never withholds another platform's publication, ledger row, or marker. A
+# verifier GitHub never gave a runner gets one second attempt in the same run
+# (`confirm-finalize-runner-loss`); a verifier that ran is never retried. The
 # fence is cleared at the end of every run whose fence job ran, whether or
 # not that job succeeded, and automation never writes
 # `refs/tags/nightly-recovery-lock`: that tag is an owner-placed halt only. iOS delivery runs beside the chain from the same admission and
@@ -62,6 +64,15 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - run: npm run dependencies:ci
+      - name: Refuse a Nightly base at or below a published RC or final
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_PRODUCT_BASE: ${{ inputs.marketing_version }}
+        run: |
+          set -euo pipefail
+          expected=()
+          if [ -n "$EXPECTED_PRODUCT_BASE" ]; then expected=(--expected-base "$EXPECTED_PRODUCT_BASE"); fi
+          node scripts/nightly-release-base.mjs --package-json package.json --repository "$GITHUB_REPOSITORY" "${expected[@]}"
       - name: Admit only byte-for-byte staged assets
         run: |
           node scripts/release-cohort-workflow.mjs artifact-input artifacts.json android=station-nightly-universal.aab=cohort/cohort-android/station-nightly-universal.aab macos=latest.json=cohort/cohort-macos/latest.json macos=station-nightly-desktop-macos-aarch64.app.tar.gz=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz macos=station-nightly-desktop-macos-aarch64.app.tar.gz.sig=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz.sig macos=station-nightly-desktop-macos-aarch64.dmg=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.dmg windows=station-nightly-desktop-windows-x86_64-setup.exe=cohort/cohort-windows/station-nightly-desktop-windows-x86_64-setup.exe windows=station-nightly-desktop-windows-x86_64-setup.exe.sig=cohort/cohort-windows/station-nightly-desktop-windows-x86_64-setup.exe.sig windows=windows-build-receipt.json=cohort/cohort-windows/windows-build-receipt.json
@@ -310,6 +321,21 @@ jobs:
           node scripts/release-cohort.mjs promotion-receipt promotion-state.json windows-claim.json > promotion-windows-state.json
           node scripts/release-cohort.mjs group-desktop-states promotion-macos-state.json promotion-windows-state.json > promotion-desktop-state.pending.json
           mv promotion-desktop-state.pending.json promotion-desktop-state.json
+      # #3593: keeps the rolling release under GitHub's 1,000-asset cap. Runs
+      # only after this cohort's publication is read back and its claims are
+      # recorded, and always prints its plan; it deletes only when
+      # vars.STATION_NIGHTLY_DESKTOP_PRUNE is exactly `enabled` (a native-release
+      # environment variable of that name wins over the repository's). Its
+      # failure is a warning, never this publication's outcome; its timeout is
+      # kept small because it counts against the job's 60 minutes.
+      - name: Prune versioned desktop downloads past the retention window
+        if: ${{ steps.publisher.outputs.desktop_needed == 'true' && steps.macos_provider_state.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STATION_NIGHTLY_DESKTOP_PRUNE: ${{ vars.STATION_NIGHTLY_DESKTOP_PRUNE }}
+        run: node scripts/retain-nightly-desktop-assets.mjs cohort/cohort-plan.json
       - name: Record unknown macOS provider state for disclosure
         if: ${{ always() && steps.macos_provider_state.outcome != 'success' }}
         run: |
@@ -473,13 +499,161 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
+  confirm-finalize-runner-loss:
+    name: Confirm the verifier never got a runner
+    # GitHub cancels a hosted job it cannot place on a runner after about 15
+    # minutes ("not acquired by Runner of type hosted even after multiple
+    # attempts"); macOS capacity made that cost run 43863134706 its whole
+    # already-published cohort. Only that shape — concluded `cancelled` with
+    # no runner assigned and no step run, read from this run attempt's jobs
+    # API — earns a second verifier attempt. A verifier that ran and failed,
+    # timed out or succeeded is a verdict, never retried. A cancelled run
+    # skips this job, so a human cancel gets no second attempt.
+    needs: [protected-finalize]
+    if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.protected-finalize.result == 'cancelled' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions: { contents: read, actions: read }
+    outputs:
+      runner_lost: ${{ steps.decide.outputs.runner_lost }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version-file: .nvmrc, package-manager-cache: false }
+      - id: decide
+        name: Read the first verifier attempt from this run attempt's jobs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FIRST_ATTEMPT_RESULT: ${{ needs.protected-finalize.result }}
+        run: |
+          set -euo pipefail
+          jobs="$RUNNER_TEMP/run-attempt-jobs.json"
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100" > "$jobs"
+          node scripts/nightly-finalize-runner-loss.mjs "$jobs" "$FIRST_ATTEMPT_RESULT"
+
+  protected-finalize-retry:
+    name: Verify providers and finalize (second attempt, no runner)
+    # The same protected verifier on the same image, step for step (a test
+    # holds the jobs equal), run only when `confirm-finalize-runner-loss`
+    # read that the first attempt never started. Both attempts upload the one
+    # final-receipt artifact name, so at most one receipt exists per run. A
+    # second loss is not retried again; the guides' manual path remains.
+    needs: [create-promotion-fence, promote-android, promote-macos, protected-finalize, confirm-finalize-runner-loss]
+    if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.create-promotion-fence.result == 'success' && (needs.promote-android.result == 'success' || needs.promote-macos.result == 'success') && needs.protected-finalize.result == 'cancelled' && needs.confirm-finalize-runner-loss.result == 'success' && needs.confirm-finalize-runner-loss.outputs.runner_lost == 'true' }}
+    runs-on: macos-15
+    timeout-minutes: 60
+    environment: native-release
+    permissions: { contents: read, id-token: write, attestations: write }
+    env:
+      GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_PLAY_SERVICE_ACCOUNT: ${{ vars.GCP_PLAY_SERVICE_ACCOUNT }}
+      STATION_BUNDLETOOL_VERSION: '1.18.3'
+      STATION_BUNDLETOOL_SHA256: a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: { pattern: nightly-cohort-*, path: cohort, merge-multiple: true }
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with: { install: false }
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with: { distribution: temurin, java-version: 17 }
+      - run: npm run dependencies:ci
+      - name: Resolve protected verifier paths
+        run: |
+          test -n "$RUNNER_TEMP"
+          printf '%s\n' "STATION_BUNDLETOOL_PATH=$RUNNER_TEMP/bundletool.jar" "STATION_UPDATER_PUBLIC_KEY_FILE=$RUNNER_TEMP/station-updater.pub" >> "$GITHUB_ENV"
+      - name: Install checksum-pinned Android App Bundle verifier
+        run: |
+          curl --fail --location --retry 3 --max-time 120 "https://github.com/google/bundletool/releases/download/$STATION_BUNDLETOOL_VERSION/bundletool-all-$STATION_BUNDLETOOL_VERSION.jar" --output "$STATION_BUNDLETOOL_PATH"
+          printf '%s  %s\n' "$STATION_BUNDLETOOL_SHA256" "$STATION_BUNDLETOOL_PATH" | shasum -a 256 -c -
+      - name: Fail closed and authenticate the protected verifier
+        env:
+          TAURI_SIGNING_PUBLIC_KEY: ${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}
+        run: test -n "$GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER" && test -n "$GCP_PLAY_SERVICE_ACCOUNT" && test -n "$TAURI_SIGNING_PUBLIC_KEY" && printf '%s' "$TAURI_SIGNING_PUBLIC_KEY" > "$STATION_UPDATER_PUBLIC_KEY_FILE"
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ env.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_PLAY_SERVICE_ACCOUNT }}
+          create_credentials_file: true
+      - name: Join per-platform claims, verify the published subset, and finalize
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PROMOTE_ANDROID_RESULT: ${{ needs.promote-android.result }}
+          PROMOTE_DESKTOP_RESULT: ${{ needs.promote-macos.result }}
+        run: |
+          set -euo pipefail
+          # A platform whose job left no state is joined from its job result,
+          # never inferred: a skipped job attempted no provider effect
+          # (not_attempted → NOT_PUBLISHED); a job that ran and died before
+          # retaining its state may already have had its effect (unknown →
+          # NOT_VERIFIED).
+          for group in android desktop; do
+            if [ ! -f "cohort/promotion-$group-state.json" ]; then
+              result_variable="PROMOTE_$(printf '%s' "$group" | tr '[:lower:]' '[:upper:]')_RESULT"
+              if [ "${!result_variable}" = skipped ]; then
+                claim=not-attempted-claim
+              else
+                claim=unknown-claim
+              fi
+              platforms=(android)
+              if [ "$group" = desktop ]; then platforms=(macos windows); fi
+              node scripts/release-cohort.mjs begin-promotion cohort/cohort-admission.json > "promotion-$group-started.json"
+              for platform in "${platforms[@]}"; do
+                node scripts/release-cohort-workflow.mjs "$claim" "$platform-absent-claim.json" cohort/cohort-plan.json "$platform" "run:$GITHUB_RUN_ID:$group-state-absent:${!result_variable}"
+                node scripts/release-cohort.mjs promotion-receipt "promotion-$group-started.json" "$platform-absent-claim.json" > "promotion-$platform-next.json"
+              done
+              if [ "$group" = desktop ]; then
+                node scripts/release-cohort.mjs group-desktop-states promotion-macos-next.json promotion-windows-next.json > promotion-desktop-pending.json
+                mv promotion-desktop-pending.json cohort/promotion-desktop-state.json
+              else
+                mv promotion-android-next.json cohort/promotion-android-state.json
+              fi
+            fi
+          done
+          node scripts/release-cohort.mjs finalize cohort/promotion-android-state.json cohort/promotion-desktop-state.json > verification-candidate.json
+          node scripts/release-cohort-workflow.mjs artifact-input final-artifacts.json android=station-nightly-universal.aab=cohort/cohort-android/station-nightly-universal.aab macos=latest.json=cohort/cohort-macos/latest.json macos=station-nightly-desktop-macos-aarch64.app.tar.gz=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz macos=station-nightly-desktop-macos-aarch64.app.tar.gz.sig=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz.sig macos=station-nightly-desktop-macos-aarch64.dmg=cohort/cohort-macos/station-nightly-desktop-macos-aarch64.dmg windows=station-nightly-desktop-windows-x86_64-setup.exe=cohort/cohort-windows/station-nightly-desktop-windows-x86_64-setup.exe windows=station-nightly-desktop-windows-x86_64-setup.exe.sig=cohort/cohort-windows/station-nightly-desktop-windows-x86_64-setup.exe.sig windows=windows-build-receipt.json=cohort/cohort-windows/windows-build-receipt.json
+          node scripts/verify-release-cohort.mjs verify-finalize verification-candidate.json final-artifacts.json > final-cohort-receipt.json
+          node scripts/release-cohort-workflow.mjs assert-final final-cohort-receipt.json "${{ inputs.source_sha }}"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with: { subject-path: final-cohort-receipt.json }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nightly-cohort-final-${{ github.run_id }}
+          path: final-cohort-receipt.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Retain finalization diagnostics on a verifier failure
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nightly-cohort-finalization-diagnostics-${{ github.run_id }}
+          path: |
+            verification-candidate.json
+            final-artifacts.json
+            final-cohort-receipt.json
+          if-no-files-found: ignore
+          retention-days: 30
+
   record-native-completion:
     name: Record ledger and markers
     # `deliver-ios` is a dependency only so its outcome can be disclosed in
     # the ledger rows; the status functions keep this job reachable when iOS
-    # failed, and finality is still granted by `protected-finalize` alone.
-    needs: [protected-finalize, deliver-ios]
-    if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.protected-finalize.result == 'success' }}
+    # failed, and finality is still granted by the protected verifier alone:
+    # its first attempt, or the second attempt that runs only when the first
+    # never got a runner. Exactly one of the two may have succeeded.
+    needs: [protected-finalize, protected-finalize-retry, deliver-ios]
+    if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && ((needs.protected-finalize.result == 'success' && needs.protected-finalize-retry.result == 'skipped') || (needs.protected-finalize.result == 'cancelled' && needs.protected-finalize-retry.result == 'success')) }}
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     permissions: { contents: write, attestations: read }
@@ -664,7 +838,7 @@ jobs:
     # exactly the case the plan-time fence check exists for. The same
     # GITHUB_TOKEN that created the fence removes it; no tag ruleset protects
     # this ref.
-    needs: [create-promotion-fence, promote-android, promote-macos, deliver-ios, protected-finalize, record-native-completion]
+    needs: [create-promotion-fence, promote-android, promote-macos, deliver-ios, protected-finalize, protected-finalize-retry, record-native-completion]
     if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.create-promotion-fence.result != 'skipped' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 15
@@ -722,8 +896,8 @@ jobs:
     # normally. `deliver-ios` is a dependency only so its outcome is disclosed;
     # an iOS-only failure never triggers this job. A failed fence clear does:
     # the receipt's fence block is the disclosure of a fence left standing.
-    needs: [create-promotion-fence, promote-android, promote-macos, deliver-ios, protected-finalize, record-native-completion, clear-promotion-fence]
-    if: ${{ always() && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && inputs.build == 'true' && (needs.promote-android.result != 'success' || needs.promote-macos.result != 'success' || needs.protected-finalize.result != 'success' || needs.record-native-completion.result != 'success' || needs.clear-promotion-fence.result != 'success') }}
+    needs: [create-promotion-fence, promote-android, promote-macos, deliver-ios, protected-finalize, protected-finalize-retry, record-native-completion, clear-promotion-fence]
+    if: ${{ always() && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && inputs.build == 'true' && (needs.promote-android.result != 'success' || needs.promote-macos.result != 'success' || (needs.protected-finalize.result != 'success' && needs.protected-finalize-retry.result != 'success') || needs.record-native-completion.result != 'success' || needs.clear-promotion-fence.result != 'success') }}
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     permissions: { contents: read }
@@ -741,7 +915,7 @@ jobs:
         env:
           SOURCE_SHA: ${{ inputs.source_sha }}
           JOB_RESULTS: >-
-            {"promotion-fence":"${{ needs.create-promotion-fence.result }}","promote-android":"${{ needs.promote-android.result }}","promote-macos":"${{ needs.promote-macos.result }}","deliver-ios":"${{ needs.deliver-ios.result }}","protected-finalize":"${{ needs.protected-finalize.result }}","record-native-completion":"${{ needs.record-native-completion.result }}","final-attestation":"${{ needs.record-native-completion.outputs.final_attestation }}","app-token":"${{ needs.record-native-completion.outputs.app_token }}","ledger":"${{ needs.record-native-completion.outputs.ledger }}","tag":"${{ needs.record-native-completion.outputs.tag }}","promotion-fence-clear":"${{ needs.clear-promotion-fence.result }}"}
+            {"promotion-fence":"${{ needs.create-promotion-fence.result }}","promote-android":"${{ needs.promote-android.result }}","promote-macos":"${{ needs.promote-macos.result }}","deliver-ios":"${{ needs.deliver-ios.result }}","protected-finalize":"${{ needs.protected-finalize.result }}","protected-finalize-retry":"${{ needs.protected-finalize-retry.result }}","record-native-completion":"${{ needs.record-native-completion.result }}","final-attestation":"${{ needs.record-native-completion.outputs.final_attestation }}","app-token":"${{ needs.record-native-completion.outputs.app_token }}","ledger":"${{ needs.record-native-completion.outputs.ledger }}","tag":"${{ needs.record-native-completion.outputs.tag }}","promotion-fence-clear":"${{ needs.clear-promotion-fence.result }}"}
         run: |
           printf '%s\n' "$JOB_RESULTS" > recovery-job-results.json
           node scripts/release-cohort-workflow.mjs recovery-receipt native-cohort-recovery.json "$SOURCE_SHA" "$GITHUB_RUN_ID" cohort/cohort-plan.json recovery-job-results.json cohort/cohort-admission.json cohort/verification-candidate.json cohort/play-observation.json cohort/github-release-observation.json cohort/promotion-android-state.json cohort/promotion-desktop-state.json cohort/promotion-desktop-state.json

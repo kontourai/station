@@ -1,0 +1,7 @@
+{
+  "revision": "8b13dd88d6a59e5a31174fa9d2b3082ed6bd620d",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Pure-merge paragraph states the freshness step's refuse-or-warn rule; checked against scripts/check-prepush-docs-freshness.mjs.","inputs":["docs/guides/testing.md",".githooks/pre-push","scripts/__tests__/fast-checks-shard-cli.test.ts"]}
+  ]
+}

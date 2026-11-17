@@ -289,8 +289,10 @@ describe('ChatDockBody usage-limit banner (#3157)', () => {
     const banner = await screen.findByTestId('usage-limit-banner');
     expect(banner.textContent).toContain('Usage limit reached · Resets');
     expect(banner.textContent).not.toContain('automatically');
+    // The banner reads its stop, and the accounts it may offer to continue on.
     expect(requested).toEqual([
       `http://localhost:3242/api/orchestration/sessions/${SESSION}/usage-limit`,
+      `http://localhost:3242/api/orchestration/sessions/${SESSION}/usage-limit/continue-on`,
     ]);
 
     act(() => {

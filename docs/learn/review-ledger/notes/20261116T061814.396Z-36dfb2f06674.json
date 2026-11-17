@@ -1,0 +1,9 @@
+{
+  "revision": "09b80320a68452339d33b156da008e238f1d1c15",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Only links the SDK reference as the route for calling Station from another application; the added live-room sentences change no claim in this row.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Only routes SDK work to the canonical SDK reference; the added live-room sentences there are the documented public behavior, consistent with this instruction.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

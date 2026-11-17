@@ -9,6 +9,9 @@
 > Provisioning and delivery-status entries retain their recorded evidence;
 > this review did not inspect a live gateway, provider account, installed app,
 > or physical phone, and does not claim that those deployments remain current.
+> Beta is retired by [#4929](https://github.com/kontourai/station/issues/4929);
+> historical Beta provisioning receipts below do not grant a current runtime
+> or push-delivery identity. Current release channels are Stable and Nightly.
 
 The contract for how a Station notification reaches the person who needs to act
 on it, and why the obvious implementations do not work.
@@ -77,6 +80,152 @@ They remain available in Activity and the imported conversation reader. A
 Station-owned session using an external engine, or a new Station-owned
 continuation of an external transcript, keeps its ordinary notification
 behavior. Automation triggers are separate from this notification policy.
+
+## Finished alerts: one per completion episode
+
+"Your agent finished" means the work is done, not that one turn ended. The
+[completion producer](../../src-server/services/orchestration/turn-completion-notifications.ts)
+holds a `done` or `replied` outcome. It writes the record once nothing holds
+it and no turn has started for `FINISHED_ALERT_CONFIRM_MS` (5 s). This window
+avoids announcing completion between a finished turn and an immediately queued
+follow-up. One completion episode per thread gets one alert. A later turn's
+completion joins the episode and its turn id names the record. So a user turn
+followed by Claude's own reply after a background
+child settles is one "finished", not "finished" then "replied". An episode
+made only of engine-opened turns reads "replied".
+
+What holds it ([finished-alert-hold.ts](../../src-server/services/orchestration/finished-alert-hold.ts),
+read by `OrchestrationService.readFinishedAlertHold`, plus the inbox's
+`hasWaitingFollowUp` composed in
+[runtime-route-support.ts](../../src-server/runtime/routes/runtime-route-support.ts)):
+
+| Fact | Holds |
+| --- | --- |
+| A running child of kind `agent` (engine subagent or Station delegate) | Always |
+| A running `command` or `monitor` child | Only while not `backgrounded` |
+| An owned child session running, or a cascade stop pending | Always |
+| The adapter's `hasOpenEngineWork` | Only when the child-work record is not reported, absent, or lists nothing running |
+| Claude's `provider/follow-up-pending` (5 s) | Always |
+| A follow-up queued, being placed, or unconfirmed in the inbox | Always |
+
+Child-work carries no "the agent is awaiting this" signal. `backgrounded`
+("outlives the turn that spawned it") is the closest fact, so a dev server
+left running in the background never holds "finished". Claude counts every
+background shell task as open engine work, so the engine flag alone is not
+trusted when the record can classify what is running. A hold is read again
+on events that can release it (child-work, session exit and state, any
+turn terminal, a session projection update such as Claude's pending
+follow-up expiring) and every `FINISHED_ALERT_RECHECK_MS` (10 s) while held.
+A hold that cannot be read fails open and the alert is sent.
+
+Failures, stops, approvals and questions are not held: a failure or stop ends
+the episode and is pushed at once, and the held finish is never sent. A
+Station-delegated child whose result returns to its parent conversation
+(#3158's owner record) announces no finish of its own. The parent's own
+completion covers it, and the parent's finish is held while the child runs.
+Its failures, approvals and questions still notify.
+
+The record is written when the alert is decided, not earlier and later
+upgraded, so the in-app list never shows "finished" while work runs. The
+coordinator wake reads the same `NOTIFICATION_DELIVERED` frame, so it wakes on
+the settled finish.
+
+Each finish persists in `finished-alert-episodes.json` in the Station home as
+it moves through three states, at most one row of each per thread:
+
+- `held`: a hold or the confirmation window still applies.
+- `writing`: the release was decided. This row is saved before the record
+  is written, and nothing is announced if that save fails (the next recheck
+  tries again). A failed write keeps the row, gives the card no release, and
+  is retried after 10 s, doubling to at most 10 min, with each failure
+  logged.
+- `released`: the record exists. The row is saved before the card hears of
+  the release and is kept for the card's two-minute alert window. If that
+  save fails, the card is still told (the record exists), and a restart
+  reads the row as `writing`, finds the record and does not write it again.
+
+A restart replays the rows by state. A `released` row inside the window
+restores the card's release. A `held` row is read again with no turn open and
+sent once nothing holds it. A `writing` row is looked up by its dedupe tag
+before anything is written:
+
+- No record: it was either never written, cleared by the person, or removed
+  by [retention](../reference/config.md#notification-retention) after it
+  settled, and the saved state cannot tell these apart. The replay is dropped and logged as
+  `replay_ambiguous`: no notification is written, no phone is pushed, the
+  coordinator is not woken, and the card gets no release. Without a record of
+  what the person cleared, this recovery is not exactly-once.
+- This producer's own record for that turn, still delivered and not leased,
+  with a reader for the thread: it is handed to the coordinator wake, whose
+  durable item dedupe drops a repeat. It is not rewritten, which would reset
+  its read state, and `NOTIFICATION_DELIVERED` is not emitted again, which
+  would push the phones again. A read record is still handed on: the person
+  reading it is not the coordinator seeing it.
+- Dismissed, actioned, expired, snoozed (`pending`), leased or readerless,
+  or another producer's record: the person's decision or the other owner
+  stands. Nothing is replayed and the card gets no release, so it reads Done
+  without an "Agent finished". A snoozed record is delivered by the
+  notification service when the snooze ends.
+
+Only that finish's own row ends: a newer held finish on the thread keeps the
+card held, and an earlier release is kept. A live write ends the same way,
+with no card release, when the session has lost its reader or is an external
+transcript before the record is written.
+
+A newer finish on a thread replaces an older one whose write failed, so an
+old turn never shadows the new one. A new turn takes a finish waiting on a
+write retry back as held with that turn open, and a failure or stop ends it.
+A finish a restart has not looked up yet is left to its lookup, so its record
+is never rewritten. A lookup that fails retries with the same backoff, and a
+dedupe tag another producer owns ends the finish without a record or a card
+release. A terminal for a turn the thread has moved
+past is already rejected by the turn anchor. The file holds at most 2,000
+rows. A new held finish is admitted only below that, after released rows give
+way (past the window first, then oldest first). When every row is held or
+writing, the new finish is refused: no row and no "finished", a warning
+(`finished-alert episodes full (2000); finish for <thread> not held`) and the
+`overflow` result on the turn-completion counter. Accepted finishes are kept,
+and the thread's next completion is admitted once the store drains. Failures,
+stops, approvals and questions never enter the store. An unreadable or
+oversized file replays nothing and is logged.
+
+One Station process writes a home. `station start` refuses a second instance
+on the same home
+([lifecycle.ts](../../packages/cli/src/commands/lifecycle.ts)), and the
+unsupported `--allow-shared-home` override already warns that two processes
+can lose each other's writes; this file shares that limit. The server holds no
+home lock of its own, so entry paths that bypass the CLI are not shown to be
+exclusive. A race reproduced on a supported path is a bug to fix.
+
+The agent-activity card reads the same episodes
+([finished-alert-episodes.ts](../../src-server/services/orchestration/finished-alert-episodes.ts)),
+not the hold facts, so the card and the push agree on one finish per episode,
+after confirmation. The producer marks a completed turn pending as the bus
+publishes it, before its queued task decides, so the card cannot read Done in
+between. An attached session with a pending episode reads Running
+(`finishHeld`). A detached one reads Done without an alert until the release.
+The release names the episode's last terminal event, the same key the card
+derives from the event log, and the card dates that Done from the release on
+every rebuild. A finish held past the two-minute alert window therefore still
+alerts once, even when the send waits out the per-phone floor. The Station
+notification is left to the card, so this is the phone's only alert. A
+change to the episodes flushes the card, so a hold that releases with no bus
+event updates it by the next recheck. A Done alerts only under its released
+key: a successful `session.exited` after the turn keeps the released entry
+rather than naming a second one, and a Done the producer never released (no
+turn terminal, a refused or dropped finish) shows without an alert. A
+Station-delegated
+child's Done raises no "Agent finished" on the card either. Its Failed and
+attention phases still alert.
+
+Focus is per session for these records. A focus report may list the sessions
+its document shows (`viewingSessionIds` in
+`@kontourai/station-contracts/presence`, at most four ids). The policy then
+counts a focused surface for a session-targeted `done` or `info` record only
+while that surface shows the record's session. A focused laptop showing
+another chat, or none, leaves the phone's alert in place and gets its own.
+Attention and failed keep surface-wide focus, and so does a surface whose
+client does not report what it shows.
 
 ## Approval actions in the running client
 
@@ -503,7 +652,8 @@ The Station side mirrors Web Push (`push-routes.ts`, `WebPushChannel`):
   derives from an unresolved non-input `request.opened`) →
   `waiting_for_approval`, `needs_input` → `waiting_for_input`, `blocked` →
   `stale` (live, but not counted as attention: the phone's attention means an
-  approval or input request), `completed` → `completed`, `failed` → `failed`;
+  approval or input request), `completed` → `completed` (`running` while the
+  finish is held, see "Finished alerts" above), `failed` → `failed`;
   canceled sessions leave the card. Failed sessions leave after 15 minutes
   like any other finished one, and live phases require the session to be
   attached in this process.
@@ -861,7 +1011,10 @@ the route answers 503. The gateway is deployed by hand
 
 - Firebase project `kontour-station` under the kontourai.io organization,
   Spark plan, Analytics and Gemini off. Android apps are registered for
-  `io.kontourai.station` and its `.nightly`, `.beta` and `.debug` variants.
+  `io.kontourai.station` and its `.nightly`, `.beta` and `.debug` variants in
+  the recorded setup. `.beta` is now retired; current configured gateway
+  allowlists exclude it. This source change does not delete provider records
+  or establish that a new gateway configuration was deployed.
 - Service account `station-push-gateway`, whose only role is Firebase Cloud
   Messaging API Admin. The organization blocks service-account keys; the
   project alone carries an exception (`iam.managed.disableServiceAccountKeyCreation`
@@ -881,10 +1034,10 @@ the route answers 503. The gateway is deployed by hand
 | One card per Station on the phone | built: each registration has its own card, replay state and intents; cards open only with that registration's key and must carry its Station's key thumbprint |
 | APNs in the gateway (`/v1/apns/live-activity`, `/v1/apns/channels`) | built: one broadcast channel per activity, created inside its start, bound to the Station key by `channelAuth`, and recorded in a SQLite-backed Durable Object ledger that a three-minute sweep reconciles against Apple, so a channel left behind is reclaimed about 12 hours after its creation. The Durable Object is chosen for correctness (a strongly consistent single writer: Workers KV's eventual consistency could let the sweep miss a fresh record and delete a live channel); the sweep's cadence and per-run caps are shaped by the Workers Free plan's 50-subrequest limit, and Free's CPU limit is not yet verified. The ledger also keeps a guard of six accepted starts per device per UTC day against a runaway honest Station (not an abuse bound; the per-key and global limiters are); an end may carry the fixed alert. Live on a gateway deployed with the `APNS_AUTH_KEY` and `APNS_CHANNEL_AUTH_SECRET` secrets set, dark without them; the gateway is deployed by hand, no workflow deploys it; tested against a fake APNs only |
 | iOS Station side (registration, `native-push-ios-registrations.json`, planner, tombstones, live-activity and channel requests) | built; every request body is checked against the gateway's own APNs request parsers, and every gateway answer against the Station's handling |
-| iOS Live Activity: widget extension and Swift plugin (#2513 slice C) | built, off by default. Enabling takes both halves: `STATION_IOS_LIVE_ACTIVITY=1` builds the plugin, and `scripts/ensure-ios-agent-activity-extension.mjs` adds the extension and the app's keychain groups to the rendered `gen/apple/project.yml`, followed by `xcodegen generate`. The committed project carries neither half; Beta and Nightly TestFlight builds enable it (slice D); Stable uses the same path only after the owner sets `STATION_IOS_STABLE_PUSH_ENABLED=true` in `native-release`. The widget shows a card only if it opens and verifies; at or past `activity_expires_at` (or once ActivityKit marks it stale) it shows "Waiting for Station" with no card content. A relay can replay an earlier genuine card until that card's expiry; the phone keeps no record of the last card it accepted. Shared card code is tested on macOS only (`swift test`); no device build has been verified |
-| iOS enablement and App Store signing (#2513 slice D) | enabled in CI for Beta and Nightly; not yet verified on a device. The Beta and Nightly App IDs have Push Notifications and Broadcast. Their App Store profiles carry `aps-environment=production`, and `<app id>.AgentActivity` has its own profile in the `ios-beta` and `ios-nightly` environments. The gateway has its APNs secrets. `testflight-delivery.yml` builds both halves for those channels. It declares `NSSupportsLiveActivities` in the shipped app `Info.plist`, and signs the extension with its own profile. It audits the embedded widget, both profiles, both sets of entitlements, and the compiled plugin class in the IPA ([mobile-release.md](../guides/mobile-release.md#live-activity-in-beta-and-nightly)). Stable defaults off, with both extensions available behind its environment switch and separate profiles. See the [Stable owner checklist](../guides/mobile-release.md#stable-push-owner-checklist). Signed-package evidence and physical delivery must be obtained separately; #2808 owns physical verification |
+| iOS Live Activity: widget extension and Swift plugin (#2513 slice C) | built, off by default. Enabling takes both halves: `STATION_IOS_LIVE_ACTIVITY=1` builds the plugin, and `scripts/ensure-ios-agent-activity-extension.mjs` adds the extension and the app's keychain groups to the rendered `gen/apple/project.yml`, followed by `xcodegen generate`. The committed project carries neither half; current Nightly TestFlight builds enable it (slice D); Stable uses the same path only after the owner sets `STATION_IOS_STABLE_PUSH_ENABLED=true` in `native-release`. The widget shows a card only if it opens and verifies; at or past `activity_expires_at` (or once ActivityKit marks it stale) it shows "Waiting for Station" with no card content. A relay can replay an earlier genuine card until that card's expiry; the phone keeps no record of the last card it accepted. Shared card code is tested on macOS only (`swift test`); no device build has been verified |
+| iOS enablement and App Store signing (#2513 slice D) | source-enabled in CI for Nightly; not verified here on a device. The earlier Beta/Nightly provisioning report records Push Notifications, Broadcast, production profiles and gateway APNs secrets; it does not establish current provider state. Beta is retired. Current `testflight-delivery.yml` builds both halves for Nightly through `ios-nightly`, with separately provisioned profiles. It declares `NSSupportsLiveActivities` in the shipped app `Info.plist`, and signs the extension with its own profile. It audits the embedded widget, both profiles, both sets of entitlements, and the compiled plugin class in the IPA ([mobile-release.md](../guides/mobile-release.md#live-activity-in-stable-and-nightly)). Stable defaults off, with both extensions available behind its environment switch and separate profiles. See the [Stable owner checklist](../guides/mobile-release.md#stable-push-owner-checklist). Signed-package evidence and physical delivery must be obtained separately; #2808 owns physical verification |
 | iOS notification alerts, fixed text (#2589) | built. The Station side is dormant until a phone sends an alert token. Gateway `/v1/apns/alert` is live on a gateway deployed with the APNs secrets set and the `ALERT_PER_TOKEN_LIMITER` binding (without the binding it answers 503); the gateway is deployed by hand, no workflow deploys it; tested against a fake APNs only. Also built: the optional `alertToken` on the iOS registration, `ApnsAlertChannel` in the delivery router, and the plugin's `alert_token` command (off with the rest of the plugin; the delegate hook is tested on macOS only and needs device verification before enabling). See the enablement checklist in "iOS: notification alerts" |
-| iOS Notification Service Extension (#2590) | built, off by default: `scripts/ensure-ios-agent-activity-extension.mjs` with `--notification-service` adds it on top of the Live Activity's project half, a separate switch because it needs a third App ID and profile (`<app>.NotificationService`). The committed project does not carry it; `testflight-delivery.yml` enables it for Beta and Nightly (its own App Store profile in the `ios-beta` and `ios-nightly` environments) and audits its embedded profile and signed entitlements in the IPA. Stable defaults off and can opt into the same extension pair after owner provisioning. The opening logic has macOS `swift test` coverage; physical decrypted-alert delivery remains a separate check (#2808) |
+| iOS Notification Service Extension (#2590) | built, off by default: `scripts/ensure-ios-agent-activity-extension.mjs` with `--notification-service` adds it on top of the Live Activity's project half, a separate switch because it needs a third App ID and profile (`<app>.NotificationService`). The committed project does not carry it; `testflight-delivery.yml` enables it for Nightly (its own App Store profile in `ios-nightly`) and audits its embedded profile and signed entitlements in the IPA. Stable defaults off and can opt into the same extension pair after owner provisioning. The opening logic has macOS `swift test` coverage; physical decrypted-alert delivery remains a separate check (#2808) |
 
 The Android plugin builds with or without Firebase. Its Firebase identity comes
 from `STATION_FIREBASE_APP_ID`, `_API_KEY`, `_PROJECT_ID` and `_SENDER_ID` at

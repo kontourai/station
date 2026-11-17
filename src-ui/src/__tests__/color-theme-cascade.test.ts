@@ -868,7 +868,7 @@ describe('color theme cascade', () => {
     test.each([
       ['dark', ''],
       ['light', ''],
-      ['dark', 'beta'],
+      ['dark', 'nightly'],
       ['light', 'nightly'],
       ['dark', 'dev'],
     ] as const)(
@@ -904,7 +904,7 @@ describe('color theme cascade', () => {
     const mauve = { flavor: 'mocha', accent: 'mauve' };
 
     test.each([
-      ['beta', 'dark', "r.dataset.appChannel = 'beta';"],
+      ['nightly', 'dark', "r.dataset.appChannel = 'nightly';"],
       ['nightly', 'light', "r.dataset.appChannel = 'nightly';"],
       ['dev', 'dark', "r.classList.add('is-dev-build');"],
       ['dev', 'light', "r.classList.add('is-dev-build');"],
@@ -934,7 +934,7 @@ describe('color theme cascade', () => {
         'catppuccin',
         'dark',
         mauve,
-        "r.dataset.appChannel = 'beta';",
+        "r.dataset.appChannel = 'nightly';",
       );
       try {
         await page.evaluate(() => {

@@ -74,7 +74,7 @@ function validateNativeRelayBinding(
     !safeInteger(value.scope?.routingGeneration) ||
     value.surface?.kind !== 'station-native' ||
     !value.surface.appIdentifier ||
-    !['dev', 'stable', 'beta', 'nightly'].includes(value.surface.channel) ||
+    !['dev', 'stable', 'nightly'].includes(value.surface.channel) ||
     !value.surface.clientInstanceId ||
     !value.surface.keyThumbprint ||
     value.signingKey?.kty !== 'EC' ||

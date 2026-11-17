@@ -14,7 +14,7 @@ Tauri 2.12.1 forwards its `devtools` Cargo feature to Wry 0.57. In a release
 build that makes the default WebView inspectable: Android enables WebView
 remote debugging, iOS enables Safari inspection, and desktop exposes its
 platform inspector. Station's default Cargo dependency no longer enables this
-feature. Stable and Beta release configurations therefore exclude release
+feature. Stable RC/final release configurations therefore exclude release
 inspection; ordinary development/debug builds retain it through Tauri's debug
 configuration.
 
@@ -28,11 +28,11 @@ Android development identity:
 npm run tauri -- android build --apk --target aarch64 --features native-devtools --config tauri.android.dev.conf.json
 ```
 
-The boundary reduces unintended inspection of shipped Stable/Beta WebViews by
+The boundary reduces unintended inspection of shipped Stable WebViews by
 someone with access to the OS/browser debugging connection. It does not defend
 against a hostile device owner, root access, or a separately modified build.
 Cargo/config checks establish feature selection; verify actual inspector
-absence on installed Stable/Beta release artifacts and availability on an
+absence on installed Stable RC/final release artifacts and availability on an
 installed Nightly or debug artifact before claiming packaged-platform proof.
 
 ## Build a development iOS simulator app
@@ -571,11 +571,12 @@ the key-approval and grant-lifecycle lanes are explicit opt-ins. Harness
 availability is source evidence, not an executed platform result. Record the
 exact binary, revision, host and completed lane result when running it.
 
-The desktop sidecar starts Node with a home-scoped compile cache
+The desktop sidecar starts the server without a compile cache and removes
+any inherited `NODE_COMPILE_CACHE`
 ([desktop build](desktop-build.md#startup-cost-and-linux-graphics)). The first
 [server bootstrap import](../../src-server/runtime/bootstrap/server-compile-cache.ts)
 loads `.env`, then removes `NODE_COMPILE_CACHE` from the server environment
-after Node has consumed its startup setting, so dotenv cannot restore it for
+after Node has consumed any startup setting, so dotenv cannot restore it for
 generic child launchers. The server gives the home's cache directory only to
 the built-in station-control and station-knowledge children.
 Targeted child environment scrubs remain in place. The process supervisor keeps
@@ -812,7 +813,6 @@ has a distinct path:
 | Channel | Tauri identifier | macOS | Linux | Windows |
 | --- | --- | --- | --- | --- |
 | Stable | `io.kontourai.station` | `~/Library/Logs/io.kontourai.station/station.log` | `$XDG_DATA_HOME/io.kontourai.station/logs/station.log`, or `~/.local/share/io.kontourai.station/logs/station.log` | `%LOCALAPPDATA%\io.kontourai.station\logs\station.log` |
-| Beta | `io.kontourai.station.beta` | `~/Library/Logs/io.kontourai.station.beta/station.log` | `$XDG_DATA_HOME/io.kontourai.station.beta/logs/station.log`, or `~/.local/share/io.kontourai.station.beta/logs/station.log` | `%LOCALAPPDATA%\io.kontourai.station.beta\logs\station.log` |
 | Nightly | `io.kontourai.station.nightly` | `~/Library/Logs/io.kontourai.station.nightly/station.log` | `$XDG_DATA_HOME/io.kontourai.station.nightly/logs/station.log`, or `~/.local/share/io.kontourai.station.nightly/logs/station.log` | `%LOCALAPPDATA%\io.kontourai.station.nightly\logs\station.log` |
 
 These are separate from installed service output. macOS LaunchAgents write

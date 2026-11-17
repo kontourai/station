@@ -207,7 +207,6 @@ function MessageContentComponent({
                 <BrowserActivityRun
                   key={block.key}
                   run={block}
-                  active={false}
                   renderCall={renderToolCall}
                 />
               );
@@ -344,6 +343,15 @@ function MessageContentComponent({
               <LazyMarkdown key={block.key ?? index}>
                 {part.content}
               </LazyMarkdown>
+            );
+          }
+          // A record's own note inside a turn (a stop, hook feedback, a
+          // part left out): shown, but not the agent's words.
+          if (part.type === 'notice' && part.content) {
+            return (
+              <p key={index} className="message-notice">
+                {part.content}
+              </p>
             );
           }
           if (part.type === 'file') {

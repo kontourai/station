@@ -1,0 +1,45 @@
+{
+  "revision": "b874f58bf7d818e014de42f96836d8e312f96fdf",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Only change: the acp matrix entry declares externalSessionContinuation unsupported with a reason (previously absent, which read as unknown). No citing document claimed ACP continuation was offered or unknown; the Muse unsupported row in contracts.md is unchanged.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"CONTEXT.md","note":"Only change: the acp matrix entry declares externalSessionContinuation unsupported with a reason (previously absent, which read as unknown). No citing document claimed ACP continuation was offered or unknown; the Muse unsupported row in contracts.md is unchanged.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"README.md","note":"Only change: the acp matrix entry declares externalSessionContinuation unsupported with a reason (previously absent, which read as unknown). No citing document claimed ACP continuation was offered or unknown; the Muse unsupported row in contracts.md is unchanged.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Only change: the acp matrix entry declares externalSessionContinuation unsupported with a reason (previously absent, which read as unknown). No citing document claimed ACP continuation was offered or unknown; the Muse unsupported row in contracts.md is unchanged.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/contexts/extension-ecosystem/CONTEXT.md","note":"Only change: the acp matrix entry declares externalSessionContinuation unsupported with a reason (previously absent, which read as unknown). No citing document claimed ACP continuation was offered or unknown; the Muse unsupported row in contracts.md is unchanged.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/design/agent-engine-unification.md","note":"Only change: the acp matrix entry declares externalSessionContinuation unsupported with a reason (previously absent, which read as unknown). No citing document claimed ACP continuation was offered or unknown; the Muse unsupported row in contracts.md is unchanged.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Only change: the acp matrix entry declares externalSessionContinuation unsupported with a reason (previously absent, which read as unknown). No citing document claimed ACP continuation was offered or unknown; the Muse unsupported row in contracts.md is unchanged.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Only change: the acp matrix entry declares externalSessionContinuation unsupported with a reason (previously absent, which read as unknown). No citing document claimed ACP continuation was offered or unknown; the Muse unsupported row in contracts.md is unchanged.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Only change: the acp matrix entry declares externalSessionContinuation unsupported with a reason (previously absent, which read as unknown). No citing document claimed ACP continuation was offered or unknown; the Muse unsupported row in contracts.md is unchanged.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/glossary.md","note":"Only change: the acp matrix entry declares externalSessionContinuation unsupported with a reason (previously absent, which read as unknown). No citing document claimed ACP continuation was offered or unknown; the Muse unsupported row in contracts.md is unchanged.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Only change: the acp matrix entry declares externalSessionContinuation unsupported with a reason (previously absent, which read as unknown). No citing document claimed ACP continuation was offered or unknown; the Muse unsupported row in contracts.md is unchanged.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Only change: the acp matrix entry declares externalSessionContinuation unsupported with a reason (previously absent, which read as unknown). No citing document claimed ACP continuation was offered or unknown; the Muse unsupported row in contracts.md is unchanged.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Only change: the acp matrix entry declares externalSessionContinuation unsupported with a reason (previously absent, which read as unknown). No citing document claimed ACP continuation was offered or unknown; the Muse unsupported row in contracts.md is unchanged.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Only change: the acp matrix entry declares externalSessionContinuation unsupported with a reason (previously absent, which read as unknown). No citing document claimed ACP continuation was offered or unknown; the Muse unsupported row in contracts.md is unchanged.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Only change: the acp matrix entry declares externalSessionContinuation unsupported with a reason (previously absent, which read as unknown). No citing document claimed ACP continuation was offered or unknown; the Muse unsupported row in contracts.md is unchanged.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Only change: the acp matrix entry declares externalSessionContinuation unsupported with a reason (previously absent, which read as unknown). No citing document claimed ACP continuation was offered or unknown; the Muse unsupported row in contracts.md is unchanged.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Only change: the acp matrix entry declares externalSessionContinuation unsupported with a reason (previously absent, which read as unknown). No citing document claimed ACP continuation was offered or unknown; the Muse unsupported row in contracts.md is unchanged.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Only change: the acp matrix entry declares externalSessionContinuation unsupported with a reason (previously absent, which read as unknown). No citing document claimed ACP continuation was offered or unknown; the Muse unsupported row in contracts.md is unchanged.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Only change: the acp matrix entry declares externalSessionContinuation unsupported with a reason (previously absent, which read as unknown). No citing document claimed ACP continuation was offered or unknown; the Muse unsupported row in contracts.md is unchanged.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Only change: the acp matrix entry declares externalSessionContinuation unsupported with a reason (previously absent, which read as unknown). No citing document claimed ACP continuation was offered or unknown; the Muse unsupported row in contracts.md is unchanged.","inputs":["packages/contracts/src/engine-capability-matrix.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "760e8960b616c06b1beda3085b920518e669d168",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Re-reviewed after the second fix round: released-save fallback, a new turn re-holding a retrying finish (not one awaiting its restart lookup), failure ending it, lookup retry and tag-conflict end, against turn-completion-notifications.ts.","inputs":["docs/design/notification-delivery.md","src-server/services/orchestration/turn-completion-notifications.ts"]}
+  ]
+}

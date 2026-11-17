@@ -48,6 +48,7 @@ import {
   getProject,
   getProjectChatDefaults,
   getProjectCheckoutFreshness,
+  getProjectDeletionPreview,
   getProjectLayout,
   getProjectResolution,
   isRepositoryBusyError,
@@ -60,6 +61,7 @@ import {
   previewProjectWorkspaceFile,
   readProjectWorkspaceFileChanges,
   reorderProjects as reorderProjectsRaw,
+  setProjectLifecycle,
   updateProject as updateProjectRaw,
 } from '../client/projects';
 import {
@@ -1387,6 +1389,43 @@ export function useDeleteProjectMutation(
       options?.onError?.(error as Error, slug);
     },
   });
+}
+
+/**
+ * #5069: Pause/Resume and Archive/Unarchive. Refreshes the Project list (the
+ * sidebar hides an archived Project) and the Project itself.
+ */
+export function useProjectLifecycleMutation(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (
+      action: import('@kontourai/station-contracts/project-lifecycle').ProjectLifecycleAction,
+    ) => {
+      const apiBase = await _getApiBase();
+      return setProjectLifecycle(apiBase, slug, action);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['scheduler'] });
+    },
+  });
+}
+
+/** #5069: the counts Delete's confirmation states. */
+export function useProjectDeletionPreviewQuery(
+  slug: string,
+  config?: QueryConfig<
+    import('@kontourai/station-contracts/project-lifecycle').ProjectDeletionPreview
+  >,
+) {
+  return useApiQuery(
+    ['projects', slug, 'deletion-preview'],
+    async () => {
+      const apiBase = await _getApiBase();
+      return getProjectDeletionPreview(apiBase, slug);
+    },
+    { ...config, enabled: !!slug && (config?.enabled ?? true) },
+  );
 }
 
 export function useCreateLayoutMutation(projectSlug: string) {

@@ -1,0 +1,9 @@
+{
+  "revision": "60fd22348d954097ebd393bab0a1dc3b74813efd",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Only added the Pull request agent feedback section; existing sections and anchors unchanged.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Only added the Pull request agent feedback section; existing sections and anchors unchanged.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

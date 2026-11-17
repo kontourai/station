@@ -267,6 +267,11 @@ management routes; Project membership and its `manage-members` action remain
 independent requirements. It grants no Agent, terminal, or Task publication
 (share/unshare) authority.
 
+The app choices are Stable and Nightly. Legacy Beta approvals and pending
+requests from an older host are retained there and excluded from actionable
+lists after Station-scope validation. The panel shows their excluded count;
+malformed or foreign-Station records still make the read fail.
+
 **Invite device** opens three steps:
 
 1. **Send the app link.** Choose the recipient app and copy its setup link. The
@@ -395,6 +400,11 @@ request does not revoke an already approved receiver grant. After confirmed
 cancellation, **Choose another Station** returns to destination selection.
 A saved peer
 credential establishes permission, not observed reachability or Project readiness.
+Reachability is observed separately: this Station keeps each paired
+Station's last public-handshake answer (probed with no credential, refreshed
+in the background while its list is being read, every few seconds while the
+**Runs on** list is open), so that list greys out one that is recovering, unreachable or answering as a
+different Station, and delegation to it fails at once with that reason.
 
 Tap the Station chip (its dot and name, in every state) on a phone, or the
 connection name on desktop, to
@@ -445,7 +455,8 @@ still loading its data says so after six seconds and offers **Back to** and
 
 Forget a Station on this device with the × beside it (Delete on a focused
 row) and confirm. With two or more unreachable, **Forget N unreachable**
-forgets them together after a confirmation that names each one. The current Station cannot be
+forgets them together after a confirmation that names each one. Forgetting leaves
+the menu open, with focus on the next Station (else the previous one). The current Station cannot be
 forgotten here. On the desktop app, Stations other channels or development
 instances left in the shared profile file can be forgotten like any other;
 only the app's own local Station is refused, and the × is not offered for it.
@@ -1508,7 +1519,10 @@ receive the connection's `env`; they use the selected profile's config home
 over the process environment. Changing `configHome` does not migrate existing
 history. Ordinary resumes resolve the current connection/profile environment,
 so changing it can make an older transcript unavailable. Adopted sessions with
-a recorded source-home binding follow that binding instead. Saving silently
+a recorded source-home binding follow that binding instead. Station also lists
+Codex conversations found in the connection's config home and in each
+profile's home, not only in `CODEX_HOME`, and continues one in the home it was
+found in ([conversations started outside Station](../user/getting-started.md#see-conversations-started-outside-station)). Saving silently
 drops invalid `env` entries, including values containing
 NUL or longer than 32,768 JavaScript string code units. It retains at most the
 first 64 valid entries. These rules are also applied when spawning from
@@ -1565,7 +1579,9 @@ one an Agent pins, the one credential recovery is trying, or else the
 connection's active profile. The overlay reaches Claude Code, Codex and Muse
 session starts and Codex quota reads for that profile. Muse has no connection
 `env` layer, and its profile's config-home key is `XDG_CONFIG_HOME`. It is not applied to model
-discovery, adopted sessions and source-home resumes, login readiness checks,
+discovery, adopted sessions and source-home resumes (except a Codex
+conversation found in a profile's own home, which continues with that
+profile's overlay), login readiness checks,
 login/enrolment into the profile, or the per-profile usage read
 (`GET /api/connections/agent/<engine>/credential-usage`), which reads the
 profile home directly.
@@ -1642,6 +1658,38 @@ Omitting `allowancePreference` from a policy update preserves the saved
 preference; send `"allowancePreference": null` to clear it. The existing SDK
 `useSetCredentialRecoveryAutomaticPolicyMutation` accepts the same optional
 field. This policy remains opt-in and automatic recovery remains off by default.
+
+### Continue a usage-limited conversation on another account
+
+With automatic recovery off, a Codex conversation stopped by a usage limit
+still offers **Continue on <label>** on its usage-limit banner, one per
+enrolled profile that automatic recovery could select (same routing, not the
+active profile). The first takes the banner's free button slot; the rest sit in
+its actions menu. Choosing one runs the same stage, restart and replay as
+automatic recovery, with the click in place of the `automatic` opt-in, and
+switches the connection's active profile like any profile application: every
+chat that starts or restarts on that connection without its own pinned profile
+uses it, including other people's chats and restored ones. The button's
+tooltip and the resuming line say so.
+Station does not know whether that account is limited too; if it is, the
+replay stops on its own usage limit. An `allowancePreference` does not rank or
+exclude these choices. A profile that no longer qualifies leaves the stop
+waiting. So does a failure before the replay reaches the engine's send (for
+example the chosen account is signed out and its session cannot start):
+Station rolls the account back, restarts the session on the connection's
+account and keeps the reset. If that session cannot restart either, Station
+closes it and retires the stop ("the session has ended") rather than promising
+a resume; an automatic attempt that ends this way says the same. A failure after the send was called stops as
+"may not have gone through" and does not resume on its own, so the turn is
+never sent twice. Nothing is offered while automatic recovery is paused (see
+above).
+
+Claude Code offers no account here: its adapter declares profile application
+`unsupported`, because `CLAUDE_CONFIG_DIR` does not isolate the macOS Keychain
+sign-in, so Station cannot show a profile switch changed accounts. The offer
+needs the `access:manage` pairing scope, like the profile routes, and a hosted
+Station never makes it. Routes:
+[usage-limit recovery](../reference/session-api.md#usage-limit-recovery-sessionsthreadidusage-limit).
 
 The overlay is not secret. It is visible to the engine and to every tool it
 runs (an agent can read these variables, for example from a shell), and to
