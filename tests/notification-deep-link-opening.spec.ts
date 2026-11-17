@@ -1,6 +1,11 @@
 import { constants, copyFile, mkdir, writeFile } from 'node:fs/promises';
 import { basename, isAbsolute, join } from 'node:path';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import { AGENT_NOTIFICATION_CATEGORIES } from '@kontourai/station-contracts/notification';
+import {
+  defaultNotificationPreferences,
+  NOTIFICATION_PREFERENCES_PATH,
+} from '@kontourai/station-contracts/notification-preferences';
 import {
   expect,
   type Locator,
@@ -124,6 +129,39 @@ const NOTIFICATIONS = [
   notification('n-open', 'Finished: Release notes', 'conv-2'),
   notification('n-refused', 'Finished: Private review', 'conv-3'),
 ];
+
+// The record AgentNotificationGate writes when notify_user names a link
+// (agent-notification-gate.ts): an agent source, a path target, the link.
+const AGENT_LINK = '/?chat=conv-3&dock=open';
+const AGENT_LINKED = {
+  id: 'n-agent-link',
+  source: 'agent',
+  category: AGENT_NOTIFICATION_CATEGORIES.attention,
+  title: 'Review the private notes',
+  priority: 'high',
+  status: 'delivered',
+  createdAt: NOW,
+  updatedAt: NOW,
+  metadata: {
+    projectSlug: 'dev',
+    link: AGENT_LINK,
+    envelope: {
+      v: 1,
+      source: {
+        kind: 'agent',
+        sessionId: 'session-1',
+        projectId: DEV_CONFIG.id,
+        agent: 'dev-agent',
+        conversationId: 'conv-1',
+        assurance: 'bound',
+      },
+      audience: { kind: 'session-readers', sessionId: 'session-1' },
+      urgency: 'attention',
+      target: { kind: 'path', path: AGENT_LINK },
+      interrupt: 'default',
+    },
+  },
+};
 
 const json = (route: Route, data: unknown, status = 200) =>
   route.fulfill({ status, json: { success: status < 400, data } });
@@ -501,6 +539,51 @@ async function refuseLookup(page: Page) {
   return { reached: wasReached };
 }
 
+/**
+ * Adds the agent's linked record to the feed, its read mark, and the
+ * preferences read its Mute actions make (notification-preferences.ts).
+ */
+async function offerAgentLink(page: Page) {
+  await page.route(
+    (url) => url.pathname === '/notifications',
+    (route) =>
+      route.request().method() === 'GET'
+        ? json(route, [...NOTIFICATIONS, AGENT_LINKED])
+        : rejectUnexpectedFixtureRequest(route),
+  );
+  await page.route(
+    (url) => url.pathname === `/notifications/${AGENT_LINKED.id}/read`,
+    (route) =>
+      route.request().method() === 'POST'
+        ? json(route, { outcome: 'read' })
+        : rejectUnexpectedFixtureRequest(route),
+  );
+  await page.route(
+    (url) => url.pathname === NOTIFICATION_PREFERENCES_PATH,
+    (route) =>
+      route.request().method() === 'GET'
+        ? json(route, defaultNotificationPreferences())
+        : rejectUnexpectedFixtureRequest(route),
+  );
+}
+
+// One refused open per producer that names the conversation: a finished
+// turn's session target, and an agent's notify_user link.
+const REFUSALS = [
+  {
+    name: 'a refused conversation says why and is dismissed from the keyboard',
+    row: 'Finished: Private review',
+    capture: 'refused',
+    install: async (_page: Page) => {},
+  },
+  {
+    name: 'an agent-linked refused conversation says why and is dismissed from the keyboard',
+    row: AGENT_LINKED.title,
+    capture: 'refused-agent-link',
+    install: offerAgentLink,
+  },
+] as const;
+
 /** Holds the dock's conv-2 lookup, which owns the opening state; always unrouted. */
 async function holdLookup(page: Page) {
   let reached!: () => void;
@@ -647,29 +730,29 @@ for (const [width, viewport] of [
         }
       });
 
-      test('a refused conversation says why and is dismissed from the keyboard', async ({
-        page,
-      }, testInfo) => {
-        const refused = await refuseLookup(page);
-        await openFirstChat(page);
-        await openFromNotifications(page, 'Finished: Private review', phone);
-        await refused.reached;
-        const notice = page
-          .getByRole('alert')
-          .filter({ hasText: 'No access to this conversation' });
-        await expect(notice).toBeVisible();
-        await expect(notice).toContainText(
-          'This device is not allowed to read it.',
-        );
-        await expect(
-          notice.getByRole('button', { name: 'Manage Stations' }),
-        ).toBeVisible();
-        await capture(page, testInfo, 'refused');
-        const dismiss = notice.getByRole('button', { name: 'Dismiss' });
-        await tabTo(page, dismiss);
-        await page.keyboard.press('Enter');
-        await expect(notice).toHaveCount(0);
-      });
+      for (const refusal of REFUSALS)
+        test(refusal.name, async ({ page }, testInfo) => {
+          await refusal.install(page);
+          const refused = await refuseLookup(page);
+          await openFirstChat(page);
+          await openFromNotifications(page, refusal.row, phone);
+          await refused.reached;
+          const notice = page
+            .getByRole('alert')
+            .filter({ hasText: 'No access to this conversation' });
+          await expect(notice).toBeVisible();
+          await expect(notice).toContainText(
+            'This device is not allowed to read it.',
+          );
+          await expect(
+            notice.getByRole('button', { name: 'Manage Stations' }),
+          ).toBeVisible();
+          await capture(page, testInfo, refusal.capture);
+          const dismiss = notice.getByRole('button', { name: 'Dismiss' });
+          await tabTo(page, dismiss);
+          await page.keyboard.press('Enter');
+          await expect(notice).toHaveCount(0);
+        });
 
       test('an imported conversation keeps its header and Continue over a pending open', async ({
         page,
