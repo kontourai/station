@@ -33,18 +33,8 @@ export function registerProjectLibraryTools(
     'read_project_library_file',
     READ_DESCRIPTION,
     {
-      path: z
-        .string()
-        .min(1)
-        .max(1024)
-        .optional()
-        .describe('An upload relativePath.'),
-      outputId: z
-        .string()
-        .min(1)
-        .max(240)
-        .optional()
-        .describe('A Task output outputId.'),
+      path: z.string().min(1).max(1024).optional(),
+      outputId: z.string().min(1).max(240).optional(),
     },
     async (args) => {
       const query = new URLSearchParams();
