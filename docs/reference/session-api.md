@@ -1736,10 +1736,13 @@ could not be made durable. Foreground execution can return
 the known Session/receipt detail. Inspect that Session; do not resend the
 request merely because it returned an error or the receipt lookup is empty.
 Until Station can tell whether that turn reached the engine, later sends to the
-same Session are refused with `Session already has a turn start in progress`.
-Once the Session's engine process is observed gone, the next send records the
-held turn as interrupted (the same banner and abort boot recovery writes, with
-an engine-ended reason) and proceeds; otherwise the next boot settles it. A
+same Session are refused with `turn_start_held` (or
+`turn_start_held_until_restart` on an engine that cannot report its process
+ending). Once the Session's engine process is observed gone, the next send
+records the held turn as interrupted (the same banner and abort boot recovery
+writes, with an engine-ended reason) and proceeds; otherwise the turn's own
+end or the next boot settles it. A Claude engine observed to exit ends its
+Session, so the next message by the conversation id runs in a new Session. A
 send that names an earlier Session of a conversation whose engine cannot be
 resumed is refused with the conversation id to continue by instead.
 A transport failure after dispatch can also leave the outcome uncertain.
