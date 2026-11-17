@@ -39,7 +39,8 @@ import {
   projectLiveLabel,
   projectLiveLanesBySlug,
 } from '../../views/project-page/project-live-work-model';
-import { useProjectsWaitingOnYou } from '../../views/project-page/useProjectsWaitingOnYou';
+import { useProjectOverviewPreview } from '../../views/project-page/projectOverviewPreview';
+import { useWaitingOnYouCounts } from '../../views/project-page/waitingOnYouStore';
 import { DisclosureToggle } from '../DisclosureToggle';
 import { HomeGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
@@ -56,6 +57,14 @@ const loadProjectSidebarFooter = () =>
   import('./ProjectSidebarFooter').then((module) => ({
     default: module.ProjectSidebarFooter,
   }));
+
+// #5064: the Waiting on you count runs in its own chunk, only while the
+// project-overview preview is on, so the sidebar's first paint reads no
+// Tasks and carries no Overview rule.
+const loadWaitingOnYouSource = () =>
+  import('../../views/project-page/ProjectWaitingOnYouSource').then(
+    (module) => ({ default: module.ProjectWaitingOnYouSource }),
+  );
 
 const loadProjectSidebarBoards = () =>
   import('./ProjectSidebarBoards').then((module) => ({
@@ -193,7 +202,8 @@ function ProjectSidebarImpl() {
   // list it sends the reader to cannot disagree. The badge previously folded
   // the conversation inventory here inline; see that module for what changed
   // and why.
-  const waitingOnYouBySlug = useProjectsWaitingOnYou();
+  const projectOverviewOn = useProjectOverviewPreview();
+  const waitingOnYouBySlug = useWaitingOnYouCounts();
   const liveLanesByProject = useMemo(
     () =>
       projectLiveLanesBySlug({
@@ -460,6 +470,15 @@ function ProjectSidebarImpl() {
             {/* A keyboard reorder is otherwise silent: the rows swap with no
               announcement and no visible change a screen reader can report.
               Keyboard-only — a pointer drag already shows what it did. */}
+            {projectOverviewOn && (
+              <LazyBoundary
+                key={`waiting-on-you:${durableAuthorityNamespace ?? ''}`}
+                load={loadWaitingOnYouSource}
+                pending={null}
+                unavailable={() => null}
+                componentProps={{}}
+              />
+            )}
             <LazyBoundary
               key={durableAuthorityNamespace ?? ''}
               load={loadProjectSidebarBoards}

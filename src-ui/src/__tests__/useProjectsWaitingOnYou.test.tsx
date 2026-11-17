@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
-import { renderHook, waitFor } from '@testing-library/react';
+import { render, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const sdk = vi.hoisted(() => ({
@@ -17,7 +17,9 @@ vi.mock('../hooks/useSurfaceVisibilityFlags', () => ({
   useSurfaceVisibilityFlags: () => flags.current,
 }));
 
+import { ProjectWaitingOnYouSource } from '../views/project-page/ProjectWaitingOnYouSource';
 import { useProjectsWaitingOnYou } from '../views/project-page/useProjectsWaitingOnYou';
+import { useWaitingOnYouCounts } from '../views/project-page/waitingOnYouStore';
 
 function task(id: string, projectId: string): TaskRecord {
   return {
@@ -90,5 +92,19 @@ describe('useProjectsWaitingOnYou', () => {
     expect(sdk.useTasksQuery).toHaveBeenCalledWith(undefined, {
       enabled: true,
     });
+  });
+
+  test('the lazy source publishes the counts the sidebar rows read, and clears them when it unmounts', async () => {
+    flags.current = new Set(['project-overview']);
+    const reader = renderHook(() => useWaitingOnYouCounts());
+    const source = render(<ProjectWaitingOnYouSource />);
+    await waitFor(() =>
+      expect(Object.fromEntries(reader.result.current)).toEqual({
+        alpha: 1,
+        beta: 1,
+      }),
+    );
+    source.unmount();
+    await waitFor(() => expect(reader.result.current.size).toBe(0));
   });
 });

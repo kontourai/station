@@ -1,13 +1,12 @@
-import { useProjectsWaitingOnYou } from './useProjectsWaitingOnYou';
-
-// Gated by `useProjectsWaitingOnYou`: with the preview off it counts nothing.
+import { useWaitingOnYouCounts } from './waitingOnYouStore';
 
 /**
  * The Room header's "Waiting on you" dot (#5064): the sidebar's signal, on
- * the Project the Room belongs to. Nothing renders when nothing waits.
+ * the Project the Room belongs to, from the counts the sidebar's lazily
+ * loaded source publishes (empty with the preview off). Nothing renders when nothing waits.
  */
 export function ProjectWaitingOnYouDot({ slug }: { slug: string }) {
-  const count = useProjectsWaitingOnYou().get(slug) ?? 0;
+  const count = useWaitingOnYouCounts().get(slug) ?? 0;
   if (count === 0) return null;
   return (
     <span className="project-room__waiting">
