@@ -1335,7 +1335,7 @@ continuation opens, and pressing Send continues the same way. Claude and Codex c
 Sessions; the original terminal Session can keep running.
 
 If the conversation is still mid-turn in its terminal, Station says **Still
-running in Claude Code — continuing now forks it** instead of continuing.
+running in Claude Code. Continuing now forks it** instead of continuing.
 Mid-turn means its latest turn has not finished and Station saw it written in
 the last five minutes: for Claude Code, its transcript or a subagent's (while
 the conversation's own transcript changed in the last two hours); for Codex, the

@@ -67,7 +67,7 @@ remains available in its original app. When the server reads the original as
 still mid-turn (`attachedSourceActivity` is `active`), or refuses the
 continuation for that reason, a caution row appears under the origin, at
 the top of the content area rather than in the title bar's action slot:
-"Still running in Claude Code — continuing now forks it", with **Continue
+"Still running in Claude Code. Continuing now forks it", with **Continue
 anyway** and **Not now**; it is not a dialog. Focus moves to **Continue anyway**,
 which the caution describes, and returns to **Continue in Station** on **Not
 now** or when Continue anyway fails; the caution is a status announcement, so a

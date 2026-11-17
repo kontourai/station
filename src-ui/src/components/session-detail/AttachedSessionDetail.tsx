@@ -703,7 +703,7 @@ export function AttachedSessionDetail({
         role="status"
         className="sessions-detail__source-active-text"
       >
-        Still running in {displayProvider(session)} — continuing now forks it
+        Still running in {displayProvider(session)}. Continuing now forks it
       </p>
       <div className="sessions-detail__source-active-actions">
         <Button

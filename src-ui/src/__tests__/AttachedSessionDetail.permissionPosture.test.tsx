@@ -1491,7 +1491,7 @@ describe('a source still running in its own harness', () => {
     fireEvent.click(continueButton());
     const warning = await screen.findByTestId('attached-source-active');
     expect(warning.textContent).toContain(
-      'Still running in Claude Code — continuing now forks it',
+      'Still running in Claude Code. Continuing now forks it',
     );
     // Inline, not a modal.
     expect(screen.queryByRole('dialog')).toBeNull();
