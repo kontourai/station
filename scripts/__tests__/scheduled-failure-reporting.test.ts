@@ -218,6 +218,12 @@ function fakeGithub({ labelExists = true } = {}) {
     { created_at: string; html_url: string } | null
   > = {};
   const workflowCreated: Record<string, string> = {};
+  const otherRuns: {
+    id: number;
+    workflow_id: number;
+    head_branch: string;
+    created_at: string;
+  }[] = [];
   const writes: string[] = [];
   const calls: string[] = [];
   const find = (number: number) => {
@@ -240,10 +246,29 @@ function fakeGithub({ labelExists = true } = {}) {
     rest: {
       actions: {
         listJobsForWorkflowRun: listJobs,
-        listWorkflowRuns: async ({ workflow_id }: { workflow_id: string }) => {
+        listWorkflowRuns: async ({
+          workflow_id,
+          event,
+          branch,
+        }: {
+          workflow_id: string | number;
+          event?: string;
+          branch?: string;
+        }) => {
           calls.push('listWorkflowRuns');
-          const last = scheduledRuns[workflow_id];
-          return { data: { workflow_runs: last ? [last] : [] } };
+          if (event === 'schedule') {
+            const last = scheduledRuns[String(workflow_id)];
+            return { data: { workflow_runs: last ? [last] : [] } };
+          }
+          return {
+            data: {
+              workflow_runs: otherRuns.filter(
+                (other) =>
+                  other.workflow_id === workflow_id &&
+                  other.head_branch === branch,
+              ),
+            },
+          };
         },
         getWorkflow: async ({ workflow_id }: { workflow_id: string }) => ({
           data: {
@@ -388,6 +413,7 @@ function fakeGithub({ labelExists = true } = {}) {
     calls,
     scheduledRuns,
     workflowCreated,
+    otherRuns,
     setRun(next: typeof run) {
       run = next;
     },
@@ -787,6 +813,52 @@ describe('scheduled workflow failure reporting', () => {
       {
         only: REPORT,
       },
+    );
+    expect(fake.issues).toHaveLength(1);
+    expect(fake.issues[0].body).toContain('the cause was not recognised');
+  });
+
+  // Real pair: Main: Qualification health run 43099494704 (cancelled, zero
+  // jobs, no annotation) and 43099513706, created 7 s later on main.
+  const SUPERSEDED_PENDING = {
+    id: 43099494704,
+    workflow_id: 375855583,
+    head_branch: 'main',
+    created_at: '2026-11-11T21:01:24Z',
+  };
+  const NEWER = {
+    id: 43099513706,
+    workflow_id: 375855583,
+    head_branch: 'main',
+    created_at: '2026-11-11T21:01:31Z',
+  };
+
+  it('writes nothing for a pending run a newer run replaced in its workflow-level group', async () => {
+    const fake = fakeGithub();
+    fake.otherRuns.push(NEWER, SUPERSEDED_PENDING);
+    fake.setRun({ jobs: [], annotations: {} });
+    await runMainHealth(
+      fake,
+      workflowRunEvent('Main: Qualification health', 'cancelled', {
+        ...SUPERSEDED_PENDING,
+        event: 'workflow_run',
+      }),
+      { only: REPORT },
+    );
+    expect(fake.writes).toEqual([]);
+  });
+
+  it('reports a job-less unannotated cancel with no newer run', async () => {
+    const fake = fakeGithub();
+    fake.otherRuns.push(SUPERSEDED_PENDING);
+    fake.setRun({ jobs: [], annotations: {} });
+    await runMainHealth(
+      fake,
+      workflowRunEvent('Main: Qualification health', 'cancelled', {
+        ...SUPERSEDED_PENDING,
+        event: 'workflow_run',
+      }),
+      { only: REPORT },
     );
     expect(fake.issues).toHaveLength(1);
     expect(fake.issues[0].body).toContain('the cause was not recognised');

@@ -633,6 +633,27 @@ export function classifyCancellation(annotations = []) {
   return 'unknown';
 }
 
+/**
+ * A cancelled run with no jobs was replaced while still pending: a newer run
+ * of the same workflow on the same ref took its place in a workflow-level
+ * concurrency group, which records no annotation (Main: Qualification health
+ * run 43099494704, replaced 7 s later by 43099513706). Without a newer run
+ * the cancel stays unrecognised and is reported.
+ *
+ * @param {{id: number, head_branch?: string, created_at: string}} run
+ * @param {{id: number, head_branch?: string, created_at: string}[]} runs the workflow's runs on that branch
+ */
+export function supersededByNewerRun(run, runs = []) {
+  const created = Date.parse(run?.created_at);
+  if (!Number.isFinite(created)) return false;
+  return (runs ?? []).some(
+    (other) =>
+      other?.id !== run.id &&
+      other?.head_branch === run.head_branch &&
+      Date.parse(other?.created_at) > created,
+  );
+}
+
 /** Cancel causes that write nothing. */
 export const SILENT_CANCEL_CAUSES = Object.freeze(['person', 'superseded']);
 

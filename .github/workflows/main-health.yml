@@ -115,7 +115,7 @@ jobs:
           RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
         with:
           script: |
-            const { SILENT_CANCEL_CAUSES, classifyCancellation, decideMainHealthComment, failingLines, listTrackers, pickTracker, renderTrackerBody, summarizeRunFailure, trackerLabels, trackerTitle, unsuccessfulJobs } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/main-health-comment-policy.mjs`);
+            const { SILENT_CANCEL_CAUSES, classifyCancellation, supersededByNewerRun, decideMainHealthComment, failingLines, listTrackers, pickTracker, renderTrackerBody, summarizeRunFailure, trackerLabels, trackerTitle, unsuccessfulJobs } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/main-health-comment-policy.mjs`);
             const workflowName = process.env.WORKFLOW_NAME;
             const runUrl = process.env.RUN_URL;
             const headSha = process.env.HEAD_SHA;
@@ -153,6 +153,20 @@ jobs:
             let cancelCause = null;
             if (conclusion === 'cancelled') {
               cancelCause = classifyCancellation(annotations);
+              // A newer run replacing a pending one in a workflow-level
+              // concurrency group leaves a cancelled run with no jobs and so
+              // no annotation; the newer run on the same ref is the evidence.
+              if (cancelCause === 'unknown' && !detailsError && jobs.length === 0) {
+                const run = context.payload.workflow_run;
+                const { data } = await github.rest.actions.listWorkflowRuns({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  workflow_id: run.workflow_id,
+                  branch: run.head_branch,
+                  per_page: 20,
+                });
+                if (supersededByNewerRun(run, data.workflow_runs)) cancelCause = 'superseded';
+              }
               core.info(`main-health: cancelled run attributed to ${cancelCause}`);
               if (SILENT_CANCEL_CAUSES.includes(cancelCause)) return;
             }
