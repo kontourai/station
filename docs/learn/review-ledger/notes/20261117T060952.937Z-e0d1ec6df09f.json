@@ -1,0 +1,7 @@
+{
+  "revision": "8d908c396441c33d2735dbe78977883515774947",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Rewrote Held turn starts for the fix round: checked bound-adapter-and-current rule (orchestration-service settleHeldTurnStarts), owner and retry filters (session-boundary heldTurnStarts and its test), the three refusal codes (session-execution-coordinator), the late-completion notice, and Claude ending the Session on an observed exit (finalizeUnexpectedEngineExit) against their tests.","inputs":["docs/architecture/module-map.md","src-server/providers/adapters/claude-adapter.ts","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/session-execution-coordinator.ts","src-ui/src/components/conversation/ConversationBody.tsx","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}
