@@ -34,6 +34,7 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { chromium } from 'playwright';
+import { pluginLifecyclePending } from '../../packages/contracts/src/plugin.ts';
 import { APP_DESTINATION_REGISTRY } from '../../src-ui/src/app-shell/destination-registry.ts';
 import {
   DEVELOPER_TABS,
@@ -377,31 +378,72 @@ async function installBundledPlugin(page, plugin) {
   if (!previewed.contentDigest || !previewed.permissions) {
     throw new Error(`preview for ${plugin.id} returned no basis to approve`);
   }
-  await apiOk(page, 'POST', '/api/plugins/install', {
-    source,
-    consent: {
-      permissions: previewed.permissions.required ?? [],
-      contentDigest: previewed.contentDigest,
-      dependencies: (previewed.dependencies ?? []).map((entry) => entry.id),
-      ...((previewed.dependencies ?? []).some((entry) => entry.consent)
-        ? {
-            dependencyApprovals: (previewed.dependencies ?? []).flatMap(
-              (entry) =>
-                entry.consent
-                  ? [
-                      {
-                        id: entry.id,
-                        permissions: entry.consent.permissions,
-                        contentDigest: entry.consent.contentDigest,
-                        dependencies: entry.consent.dependencies,
-                      },
-                    ]
-                  : [],
-            ),
-          }
-        : {}),
+  const installed = await apiOk(
+    page,
+    'POST',
+    '/api/plugins/install',
+    {
+      source,
+      consent: {
+        permissions: previewed.permissions.required ?? [],
+        contentDigest: previewed.contentDigest,
+        dependencies: (previewed.dependencies ?? []).map((entry) => entry.id),
+        ...((previewed.dependencies ?? []).some((entry) => entry.consent)
+          ? {
+              dependencyApprovals: (previewed.dependencies ?? []).flatMap(
+                (entry) =>
+                  entry.consent
+                    ? [
+                        {
+                          id: entry.id,
+                          permissions: entry.consent.permissions,
+                          contentDigest: entry.consent.contentDigest,
+                          dependencies: entry.consent.dependencies,
+                        },
+                      ]
+                    : [],
+              ),
+            }
+          : {}),
+      },
     },
-  });
+    // A designed 202 (installed, activation not finished in time) is not an
+    // API failure; the plugin still has to become ready within our bound.
+    { acceptPending: true },
+  );
+  if (pluginLifecyclePending(installed))
+    await waitForPluginReady(
+      page,
+      installed.plugin?.name ?? previewed.manifest?.name ?? plugin.id,
+    );
+}
+
+/**
+ * Station leaves a plugin whose activation outran the server deadline as
+ * Activation pending until a person runs Review recovery, so a pending
+ * install that never turns ready inside this bound fails the walkthrough
+ * with that state named, rather than as a failed API call.
+ */
+const PLUGIN_ACTIVATION_BOUND_MS = 30_000;
+async function waitForPluginReady(page, name) {
+  let readiness = 'absent';
+  try {
+    await poll(
+      `plugin ${name} to finish activating`,
+      PLUGIN_ACTIVATION_BOUND_MS,
+      async () => {
+        const listed = await apiOk(page, 'GET', '/api/plugins');
+        const row = listed?.plugins?.find((entry) => entry?.name === name);
+        readiness =
+          row?.installationReadiness?.state ?? (row ? 'ready' : 'absent');
+        return readiness === 'ready';
+      },
+    );
+  } catch {
+    throw new Error(
+      `${name} was installed but its activation is still ${readiness} after ${PLUGIN_ACTIVATION_BOUND_MS}ms`,
+    );
+  }
 }
 
 async function bundledContentSmoke(page) {

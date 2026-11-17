@@ -13,6 +13,10 @@ import { execFileSync, spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { arch, cpus, platform, release, totalmem } from 'node:os';
 import { join } from 'node:path';
+import {
+  pluginLifecyclePending,
+  readPluginLifecycleResponse,
+} from '../../../packages/contracts/src/plugin.ts';
 
 /**
  * Marks requests a SUITE issues through api() so a console budget can tell
@@ -133,11 +137,32 @@ export async function api(page, method, path, body) {
   return result;
 }
 
-export async function apiOk(page, method, path, body) {
+/**
+ * `acceptPending`: a plugin lifecycle route's designed `202` (saved, runtime
+ * activation not finished) is returned rather than thrown. Only a caller that
+ * then waits for the plugin to become ready, within its own bound, may pass
+ * it; the contract's reader decides what counts as pending.
+ */
+export async function apiOk(
+  page,
+  method,
+  path,
+  body,
+  { acceptPending = false } = {},
+) {
   const { status, payload } = await api(page, method, path, body);
+  if (
+    acceptPending &&
+    readPluginLifecycleResponse(status, payload).state === 'pending'
+  )
+    return payload;
   if (status >= 400 || payload?.success === false) {
+    const verdict =
+      status === 202 && pluginLifecyclePending(payload)
+        ? 'was accepted but is still pending'
+        : 'failed';
     throw new Error(
-      `${method} ${path} failed: HTTP ${status} ${JSON.stringify(payload)?.slice(0, 400)}`,
+      `${method} ${path} ${verdict}: HTTP ${status} ${JSON.stringify(payload)?.slice(0, 400)}`,
     );
   }
   return payload;
