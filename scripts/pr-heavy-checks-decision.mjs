@@ -135,6 +135,13 @@ export function decideHeavyChecks({
 }
 
 const SOURCE_VERIFICATION_CONTEXT = 'Source verification policy';
+/**
+ * The token permission readHeadVerified needs: GitHub lists
+ * `GET /repos/{owner}/{repo}/commits/{ref}/status` under "Commit statuses"
+ * read. ci.yml's `pr-admission` job must grant it (a test pins that), or every
+ * re-arm silently runs the heavy checks.
+ */
+export const HEAD_STATUS_PERMISSION = Object.freeze({ statuses: 'read' });
 
 /** Whether the head's `Source verification policy` status reads success. */
 async function readHeadVerified(env, sha) {
@@ -219,9 +226,14 @@ export async function main(
       )
         try {
           headVerified = await readVerified(env, head);
+          console.log(
+            headVerified
+              ? 'Arming: head already verified: cheap'
+              : 'Arming: not verified: heavy',
+          );
         } catch (error) {
           console.log(
-            `::warning::head status unreadable (${error.message}); running the heavy checks`,
+            `::warning::Arming: status unreadable: heavy (${error.message})`,
           );
         }
     }

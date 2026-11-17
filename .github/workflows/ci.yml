@@ -102,6 +102,10 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      # The heavy-check decision reads the head's Source verification policy
+      # status when the pull request is armed (commits/{sha}/status), which
+      # GitHub lists under "Commit statuses" read.
+      statuses: read
     outputs:
       admitted: ${{ steps.admit.outputs.admitted }}
       # Only an explicit `false` defers the heavy checks; an empty output (this

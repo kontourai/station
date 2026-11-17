@@ -922,7 +922,19 @@ admission`, which reads the label and the live auto-merge state. **Re-run
 failed jobs** does not re-run a successful admission job, so it repeats that
 run's earlier decision. To roll back, set the variable to `every-push` or
 delete it; a head left pending by a cheap-only run needs one push or **Re-run
-all jobs**. A workflow whose own required check would skip before arming
+all jobs**.
+
+The saving for `PR: CI` alone is modest: on the 2026-11-09 to 11-16 runs,
+roughly 350–480 runner-minutes a day (about 3,330 a week: 11,871 heavy minutes
+before arming, less a full run for each first arm and a cheap run for each
+re-arm), about 1.6% of daily runner time. The switch is meant to be turned on
+together with the Gallery, iOS and Windows adoptions of the same decision.
+Before turning it on, with it still off: arm one pull request and confirm a
+`PR armed` run appears (GitHub delivered the event), then push to that armed
+pull request and confirm its `Decide whether the heavy checks run` step prints
+`pull_request.auto_merge populated`. Under `when-armed` an arming run's step
+prints which path it took: `head already verified: cheap`, `not verified:
+heavy` or `status unreadable: heavy`. A workflow whose own required check would skip before arming
 cannot adopt the switch by itself: a `skipped` required check passes, so the
 source policy must also hold the head until that check has run (see the
 decision script's header).

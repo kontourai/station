@@ -1,10 +1,12 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { JSON_SCHEMA, load } from 'js-yaml';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { EXPECTED_LABEL_NAMES } from '../label-manifest.mjs';
 import {
   decideHeavyChecks,
+  HEAD_STATUS_PERMISSION,
   HEAVY_CHECKS_OPT_IN_LABEL,
   main,
 } from '../pr-heavy-checks-decision.mjs';
@@ -294,6 +296,67 @@ describe('heavy pull-request check decision entry point', () => {
     expect(pushed.logged).toContain('pull_request.auto_merge null');
     expect(verified).toHaveBeenCalledTimes(1);
   });
+
+  test('the admission job grants the permission the arming status read needs', () => {
+    const workflow = load(
+      readFileSync(
+        new URL('../../.github/workflows/ci.yml', import.meta.url),
+        'utf8',
+      ),
+      { schema: JSON_SCHEMA },
+    ) as { jobs: Record<string, { permissions?: Record<string, string> }> };
+    const granted = workflow.jobs['pr-admission'].permissions ?? {};
+    for (const [scope, level] of Object.entries(HEAD_STATUS_PERMISSION))
+      expect(['read', 'write'], `pr-admission ${scope}`).toContain(
+        granted[scope],
+      );
+    expect(HEAD_STATUS_PERMISSION).toEqual({ statuses: 'read' });
+  });
+
+  test.each([
+    [
+      'verified',
+      async () => true,
+      'Arming: head already verified: cheap',
+      false,
+    ],
+    ['not verified', async () => false, 'Arming: not verified: heavy', true],
+    [
+      'unreadable',
+      async () => {
+        throw new Error('GitHub API 403');
+      },
+      'Arming: status unreadable: heavy',
+      true,
+    ],
+  ] as const)(
+    'arming prints the path it took when the head status is %s',
+    async (_name, readVerified, line, heavy) => {
+      const dir = makeTempDir('heavy-decision-');
+      const eventPath = join(dir, 'event.json');
+      writeFileSync(
+        eventPath,
+        JSON.stringify({
+          action: 'auto_merge_enabled',
+          pull_request: pullRequest({ autoMerge: true }),
+        }),
+      );
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      const decision = await main(
+        {
+          GITHUB_EVENT_NAME: 'pull_request_target',
+          GITHUB_EVENT_PATH: eventPath,
+          GITHUB_RUN_ATTEMPT: '1',
+          GITHUB_REPOSITORY: REPOSITORY,
+          STATION_PR_HEAVY_CHECKS: 'when-armed',
+        },
+        async () => pullRequest({ autoMerge: true }),
+        readVerified,
+      );
+      expect(log.mock.calls.flat().join('\n')).toContain(line);
+      expect(decision.heavy).toBe(heavy);
+    },
+  );
 
   test('a failed live read on a re-run, or an unreadable event file, decides heavy', async () => {
     const failing = async () => {
