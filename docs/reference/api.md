@@ -166,6 +166,14 @@ and returns `{success:true}`. Invalid input returns 400; missing person or stale
 authority returns 403; an unreadable conversation returns 404. A disabled
 preview returns 404 with `code:feature_preview_disabled` and a Settings link.
 
+The GET also returns `hidden:{[sessionThreadId]:timestamp}`: third-party
+Sessions the person hid from their inbox. `PUT /api/conversations/:id/inbox-hidden`
+accepts exactly `{hidden:boolean}` for a Session thread id, under the same
+preview, person and current-authority checks; it rechecks Session read
+admission and returns 404 for an unreadable Session. A host without `hidden` in
+its GET cannot hide Sessions. Deleting a conversation removes every person's
+settled and hidden record for it.
+
 State is personal and durable across devices. Settlement changes neither
 provider execution nor history, and is separate from dismissal and deletion.
 See the [route owner](../../src-server/routes/chat/conversation-work-state.ts),

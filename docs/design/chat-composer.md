@@ -1467,6 +1467,27 @@ the agent named in words beside its mark (#4266). Dismissal offers a
 transient Undo toast and the configurable inbox Undo shortcut. Native editor
 and terminal undo retain their keys.
 
+With the preview on, Settle is the one way to put an owned conversation away:
+its row offers no Dismiss. A third-party Session of this host offers **Hide**
+instead, kept on the host per person by Session thread id
+(`PUT /api/conversations/:id/inbox-hidden`, in `conversation-inbox-hidden.json`
+beside the settled records), so it is hidden on every device of that person.
+It stays hidden through its status updates and returns when the row is no
+longer third-party (adopted into Station), which also clears the record, or
+when the person restores it from search, where hidden rows are listed as
+Hidden. Hide and Restore share the dismissal Undo toast and shortcut. A host
+whose work-state read carries no `hidden` map, and a row from another Station,
+keep local Dismiss. Existing local third-party dismissals of this host move to
+the host when it first offers hiding and are then removed from the browser; a
+Session the host refuses as unreadable is dropped. Deleting a conversation
+removes every person's settled and hidden record for it, and each person keeps
+at most 1,000 hidden Sessions, newest first. The Settled shelf shows work
+settled in the last seven days (the settled record, else when the work ended,
+as for a closed Task) and the Third-party shelf Sessions active in the last
+seven days; older rows sit behind **Show older**, and search shows every row.
+The window is a default, not a setting. With the preview off, Dismiss and both
+shelves behave as before.
+
 Customize → Appearance offers Comfortable, Wide and Full answer widths.
 The compact context ring places its percentage inside the ring beside Send;
 Agent, model, Mode and Approval remain choices inside Run setup. Basis stays
