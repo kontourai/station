@@ -63,6 +63,7 @@ const sdkMocks = vi.hoisted(() => ({
   previews: [] as Array<{ id: string; enabled: boolean }>,
   repository: true,
   repositoryError: false,
+  repositoryFetching: false,
   repositoryRefetch: vi.fn(),
   setPullRequestWatch: vi.fn(),
   checkoutFreshness: undefined as ProjectCheckoutFreshness | null | undefined,
@@ -201,6 +202,7 @@ vi.mock('@kontourai/station-sdk', () => ({
       : { available: false, reason: 'No repository attached.' },
     isPending: false,
     isError: sdkMocks.repositoryError,
+    isFetching: sdkMocks.repositoryFetching,
     refetch: sdkMocks.repositoryRefetch,
   }),
   useIntegrationsQuery: () =>
@@ -477,6 +479,7 @@ function expectPageFullRoot(container: HTMLElement) {
 beforeEach(() => {
   sdkMocks.repository = true;
   sdkMocks.repositoryError = false;
+  sdkMocks.repositoryFetching = false;
   sdkMocks.repositoryRefetch.mockClear();
   sdkMocks.previews = [];
   sdkMocks.checkoutFreshness = undefined;
@@ -1904,6 +1907,24 @@ describe('Pull requests section (#5066)', () => {
     ).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(sdkMocks.repositoryRefetch).toHaveBeenCalledOnce();
+  });
+
+  test('a repository recheck hides retained controls until the refreshed result arrives', () => {
+    sdkMocks.repositoryFetching = true;
+    const { rerender } = renderProjectSettings('pull-requests');
+    const section = document.getElementById('section-pull-requests')!;
+    section.focus();
+    expect(document.activeElement).toBe(section);
+    expect(
+      screen.queryByRole('switch', { name: 'Watch Task pull requests' }),
+    ).toBeNull();
+    sdkMocks.repositoryFetching = false;
+    rerender(<ProjectSettingsView slug="demo" />);
+    expect(document.getElementById('section-pull-requests')).toBe(section);
+    expect(document.activeElement).toBe(section);
+    expect(
+      screen.getByRole('switch', { name: 'Watch Task pull requests' }),
+    ).toBeTruthy();
   });
 
   test('without a repository, offers Sources instead of irrelevant switches and keeps saved choices', () => {

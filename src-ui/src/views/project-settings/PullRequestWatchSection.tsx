@@ -7,7 +7,6 @@ import {
 import { useSetProjectPullRequestWatchMutation } from '@kontourai/station-sdk';
 import type { ReactNode } from 'react';
 import { PageRow } from '../../components/PageRow';
-import { PageSection } from '../../components/PageSection';
 import { ErrorState } from '../../components/state';
 import { Toggle } from '../../components/Toggle';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
@@ -44,12 +43,7 @@ export function PullRequestWatchSection({
   const save = useSetProjectPullRequestWatchMutation(slug);
   const disabled = save.isPending || !preview;
   return (
-    <PageSection
-      id="section-pull-requests"
-      className="project-settings__section"
-      title="Pull requests"
-      description="Tasks push fixes and report when ready. You decide when to merge."
-    >
+    <>
       {!preview && (
         <p>
           Turn on Pull request agent feedback in Settings → Feature previews to
@@ -104,6 +98,6 @@ export function PullRequestWatchSection({
         />
       )}
       {children}
-    </PageSection>
+    </>
   );
 }

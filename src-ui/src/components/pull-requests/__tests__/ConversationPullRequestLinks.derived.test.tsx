@@ -79,6 +79,7 @@ const sdk = vi.hoisted(() => ({
   /** Whether #43's switches are on (it is owned here either way). */
   on43: true,
   viewerMayChange: true as boolean | undefined,
+  readFails: false,
 }));
 vi.mock('@kontourai/station-sdk/pull-request-feedback', () => {
   const view = (ref: string): PullRequestFeedbackView => ({
@@ -102,11 +103,13 @@ vi.mock('@kontourai/station-sdk/pull-request-feedback', () => {
     pullRequestFeedbackOwnerOf: () => undefined,
     readPullRequestFeedbackCapability: vi.fn(async () => true),
     getConversationPullRequestFeedback: () =>
-      Promise.resolve({
-        conversationId: 'c1',
-        viewerMayChange: sdk.viewerMayChange,
-        pullRequests: [view('42'), view('43')],
-      }),
+      sdk.readFails
+        ? Promise.reject(new Error('Permission refresh failed'))
+        : Promise.resolve({
+            conversationId: 'c1',
+            viewerMayChange: sdk.viewerMayChange,
+            pullRequests: [view('42'), view('43')],
+          }),
     writePullRequestFeedback: vi.fn(),
     sendPullRequestFeedbackAgain: vi.fn(),
     turnOffPullRequestFeedback: vi.fn(),
@@ -147,11 +150,37 @@ beforeEach(() => {
   sdk.remove.mockClear();
   sdk.on43 = true;
   sdk.viewerMayChange = true;
+  sdk.readFails = false;
   links.read.mockClear();
 });
 afterEach(cleanup);
 
 describe('a pull request from the Task branch', () => {
+  test.each(['revoked', 'failed-refresh'])(
+    'an open removal confirmation stops when permission is %s',
+    async (change) => {
+      renderLinks();
+      const menu = await menuOf(0, 'github.com/acme/widgets #43');
+      fireEvent.click(
+        within(menu).getByRole('menuitem', { name: 'Remove from this chat' }),
+      );
+      const dialog = await screen.findByRole('alertdialog', {
+        name: 'Remove from this chat',
+      });
+      if (change === 'revoked') sdk.viewerMayChange = false;
+      else sdk.readFails = true;
+      await act(async () => {
+        await client.invalidateQueries({ queryKey: ['pull-request-feedback'] });
+      });
+      await waitFor(() =>
+        expect(
+          within(dialog).getByRole('button', { name: 'Remove' }),
+        ).toHaveProperty('disabled', true),
+      );
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Remove' }));
+      expect(sdk.remove).not.toHaveBeenCalled();
+    },
+  );
   test.each([false, undefined])(
     'a reader cannot remove a branch PR when writer permission is %s',
     async (permission) => {

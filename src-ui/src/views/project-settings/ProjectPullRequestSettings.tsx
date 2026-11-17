@@ -22,27 +22,38 @@ export function ProjectPullRequestSettings({
   onSources(): void;
 }) {
   const repository = usePullRequestContextQuery(
-    { project: slug },
-    { enabled: active && !!project, retry: false, keepPreviousData: false },
+    { project: slug, workingDirectory: project?.workingDirectory },
+    {
+      enabled: active && !!project,
+      retry: false,
+      keepPreviousData: false,
+      staleTime: 0,
+    },
   );
-  const context = repository.isError ? undefined : repository.data;
-  if (context?.available && context.provider === 'github' && project)
-    return (
-      <PullRequestWatchSection
-        slug={slug}
-        settings={project.pullRequestWatch}
-        onSaved={onSaved}
-      >
-        {feedbackAvailable && <AgentFeedbackDefaultsSection slug={slug} />}
-      </PullRequestWatchSection>
-    );
+  const context =
+    repository.isError || repository.isFetching ? undefined : repository.data;
+  const controlsAvailable =
+    context?.available && context.provider === 'github' && project;
   return (
     <PageSection
       id="section-pull-requests"
       className="project-settings__section"
       title="Pull requests"
+      description={
+        controlsAvailable
+          ? 'Tasks push fixes and report when ready. You decide when to merge.'
+          : undefined
+      }
     >
-      {repository.isPending || !project ? (
+      {controlsAvailable ? (
+        <PullRequestWatchSection
+          slug={slug}
+          settings={project.pullRequestWatch}
+          onSaved={onSaved}
+        >
+          {feedbackAvailable && <AgentFeedbackDefaultsSection slug={slug} />}
+        </PullRequestWatchSection>
+      ) : repository.isPending || repository.isFetching || !project ? (
         <SkeletonBlock />
       ) : repository.isError ? (
         <ErrorState

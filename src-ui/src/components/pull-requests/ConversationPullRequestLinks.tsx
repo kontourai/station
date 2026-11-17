@@ -261,6 +261,7 @@ export function ConversationPullRequestLinks({
         title="Remove from this chat"
         message={removing ? removalMessage(removing) : ''}
         confirmLabel="Remove"
+        confirmDisabled={!feedback.viewerMayChange}
         onConfirm={() => {
           const link = removing;
           setRemoving(null);
