@@ -1,8 +1,8 @@
 {
-  "stationControlToolListJsonBytes": 98310,
-  "stationControlDelegatedToolListJsonBytes": 76872,
+  "stationControlToolListJsonBytes": 98431,
+  "stationControlDelegatedToolListJsonBytes": 76993,
   "stationControlFamilyIndexToolListJsonBytes": 423,
-  "codexBoundToolsJsonBytes": 113759,
+  "codexBoundToolsJsonBytes": 113880,
   "stationBrowserToolListJsonBytes": 12534,
   "stationKnowledgeToolListJsonBytes": 2008,
   "stationDocsToolListJsonBytes": 1580,

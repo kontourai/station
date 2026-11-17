@@ -1,0 +1,7 @@
+{
+  "revision": "e6379790f297f4bf8dc11ae1b4dfc0cc697204dd",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Read Child Conversations re-checked: child transcript laid out as one chat turn per run of child work with its prompt first (childTranscriptMessages, ChildWorkTranscript), breadcrumb Parent / Subagent with the parent crumb as the way back on wide bars and ‹ plus the child title on phones (ChildChatNavigation + CSS), ancestors return to the working chat (useChatDockOverlays.onChildCoveredChange). Escape, swipe and Text output unavailable claims unchanged.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/activity-retirement.test.ts","src-ui/src/__tests__/child-transcript-navigation.test.tsx","src-ui/src/components/chat-dock/ChildChatNavigation.tsx","src-ui/src/components/chat-dock/__tests__/useChatDockOverlays.child-intents.test.tsx"]}
+  ]
+}

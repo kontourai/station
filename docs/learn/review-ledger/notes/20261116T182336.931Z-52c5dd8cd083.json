@@ -1,0 +1,127 @@
+{
+  "revision": "50be642daa052938f0a880e12241ee065e8c45af",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/design/placement.md","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/guides/connections.md","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/guides/knowledge.md","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/guides/starter-work.md","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/guides/theming.md","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-compaction.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-1440-dark.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-1440-light.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-390-dark.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-390-light.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-supervision.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-usage.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-working-configuration.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/child-tool-text-after-1440-light.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/child-tool-text-after-390-dark.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/child-tool-text-before-1440-light.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/child-tool-text-before-390-dark.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/oauth-mcp-picker-comparison.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/oauth-mcp-sign-in-comparison.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-consent-sign-in.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-other-browser-refused.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-paired-after-sign-in.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-paired-before-sign-in.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-1440-dark.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-1440-light.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-390-dark.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-390-light.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-1440-dark.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-1440-light.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-390-dark.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-390-light.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-after-1440-light.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-after-390-dark.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-before-1440-light.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-before-390-dark.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-history-after-390-dark.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-notes-after-390-light.png","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/patterns/backend.md","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/patterns/frontend.md","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"examples/knowledge-library/README.md","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"src-desktop/icons/README.md","note":"index.css: the background strip card no longer clips (overflow removed), its button's hover fill uses the card's inner radius, and the ineffective card-local focus rule is gone; the product-wide focus ring rule is unchanged. Citing documents make no claim about the strip's styling.","inputs":["src-ui/src/index.css"]}
+  ]
+}
