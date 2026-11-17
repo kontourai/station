@@ -244,7 +244,15 @@ replaces `latest.json` last. It records separate macOS and Windows claims for
 that one provider operation; the two desktop outcomes must agree. The Android
 job records its own provider claim — `reported_success` from a provider readback, or `unknown`
 with the run reference when its provider step did not succeed — as a
-per-platform state artifact.
+per-platform state artifact. The Play readback
+(`scripts/query-google-play-release.mjs`, which the protected verifier also
+runs) reads the internal track and bundles through a temporary edit that it
+never commits. It retries a timed-out request, a network failure, a 408, a 429
+(after `Retry-After` when Play sends one) or a 5xx, up to three attempts in
+all, each from a new edit that it deletes, within 15 s per request and 70 s
+overall. Any other HTTP status, an observation the parser rejects, and a failed
+edit cleanup end the readback at once. Each failure names the request and the
+attempt.
 
 The protected verifier (`protected-finalize`) runs whenever at least one of
 Android or the shared desktop release published. It joins all three platform
