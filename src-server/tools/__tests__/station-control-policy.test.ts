@@ -920,6 +920,24 @@ describe('station-control authority table: declare_pull_request and Task close-o
         policy.routes.some((entry) => entry.path.includes('close-on-merge')),
       ]).toEqual([name, false]);
   });
+
+  test('no tool reaches the route a person reopens a Task on the Overview with (#5064)', () => {
+    const route = '/api/tasks/task-1/overview-reopen';
+    expect(matchStationControlRoute('POST', route)).toBeUndefined();
+    for (const [name, caller] of Object.entries(CALLERS))
+      expect([
+        name,
+        authorizeStationControlRequest('POST', route, {
+          caller,
+          isOperatorPrincipal,
+        })?.code,
+      ]).toEqual([name, 'station_control_route_unmapped']);
+    for (const [name, policy] of TABLE)
+      expect([
+        name,
+        policy.routes.some((entry) => entry.path.includes('overview-reopen')),
+      ]).toEqual([name, false]);
+  });
 });
 
 // #3413 part B: the work-claim tools. Written out here, independently of the

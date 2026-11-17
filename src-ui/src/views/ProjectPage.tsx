@@ -23,6 +23,7 @@ import {
   type ProjectConfig,
   useScopedProjectPageViewQuery,
 } from '../contexts/ProjectsContext';
+import { useForegroundProject } from '../hooks/projectForeground';
 import { useDegradedQueryState } from '../hooks/useDegradedQueryState';
 import { useGitLog, useGitStatus } from '../hooks/useGitStatus';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -49,6 +50,7 @@ import {
   ProjectNavigation,
   useProjectDestination,
 } from './project-page/ProjectNavigation';
+import { ProjectOverviewSection } from './project-page/ProjectOverviewSection';
 import { ProjectPageHeader } from './project-page/ProjectPageHeader';
 import { ProjectPluginPublishSection } from './project-page/ProjectPluginPublishSection';
 import type { ProjectRoomProps } from './project-page/ProjectRoom';
@@ -216,6 +218,8 @@ function ProjectOperatorPage({
   requestScope: ProjectRoomProps['requestScope'];
 }) {
   const { setLayout, navigate, updateParams } = useNavigation();
+  // #5072: this Project's own alerts are not sent here while it is shown.
+  useForegroundProject(project.id);
   // The Tasks section's presentation: the board unless the address asks
   // for the list (`?tasksView=list`).
   const tasksView =
@@ -434,6 +438,11 @@ function ProjectOperatorPage({
                   Add files
                 </Button>
               </div>
+              <ProjectOverviewSection
+                slug={slug}
+                projectId={project.id}
+                autoResolveDays={project.overviewAutoResolveDays}
+              />
               <ProjectLiveWorkSection slug={slug} />
             </section>
 

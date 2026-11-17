@@ -76,6 +76,11 @@ interface ApprovalInboxDependencies {
     | 'resolveSessionProjectSlug'
     | 'readApprovalContentBinding'
   >;
+  /**
+   * #5072: the local Project (`ProjectConfig.id`) a session recorded at its
+   * start, so the Project's notification level applies to its requests.
+   */
+  resolveSessionProjectId?: (threadId: string) => string | undefined;
 }
 
 const APPROVAL_INBOX_SOURCE = 'approval-inbox';
@@ -418,6 +423,15 @@ export class ApprovalInboxNotificationProvider
     }
   }
 
+  /** #5072: the session's recorded Project id; fail-soft like the slug. */
+  resolveProjectId(threadId: string): string | undefined {
+    try {
+      return this.deps.resolveSessionProjectId?.(threadId) || undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   /**
    * #2589: whether `threadId` is in the session read model the
    * agent-activity card is built from (`listSessionReadModel`, which leaves
@@ -503,6 +517,7 @@ export function wireApprovalInboxNotifications(
     needsLoad: boolean,
   ) => {
     const projectSlug = provider.resolveProjectSlug(event.threadId);
+    const projectId = provider.resolveProjectId(event.threadId);
     // #1545: the standing grant has to say what it grants. "Allow for
     // Session" reads as a grant for the one call in front of you, and it is
     // a grant for every later call to the same tool in this session. This
@@ -594,6 +609,7 @@ export function wireApprovalInboxNotifications(
           detail: runtimeEventContentDisplayText(event.description),
           provider: event.provider,
           ...(projectSlug ? { projectSlug } : {}),
+          ...(projectId ? { projectId } : {}),
           requestId: event.requestId,
           requestEventId: event.eventId,
           requestKey: buildOrchestrationRequestKey(event),

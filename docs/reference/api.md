@@ -1118,7 +1118,9 @@ Agents write through Station Control: `task_summary_update` and
 and `…/task-record`, internal-only, keyed on the verified caller's own bound
 Task). `GET /api/orchestration/station-control/task-brief` takes an optional
 `include=all_records|summary_history`. `GET /api/tasks` adds
-`openQuestionCount` to a Task with open questions.
+`openQuestionCount` to a Task with open questions, and `latestReport`
+(`{text, at}`: the first line of its current Task summary, at most 160
+characters, and when that revision was written) to a Task with a summary.
 
 Task-list rows can also include `workChatConversationIds`, an optional array
 of canonical Conversation IDs for Inbox presentation. It combines the Task's
@@ -1567,6 +1569,15 @@ is dropped if the turn is aborted, interrupted, ends in an error or is replaced
 (a retried transient error keeps the turn alive), or if Station
 restarts before the turn completes (declarations wait in memory until the
 terminal event is stored). The keep above applies to it unchanged.
+
+`POST /api/tasks/:taskId/overview-reopen` accepts `{}` and sets the Task's
+`overviewReopenedAt` to now, restarting the Project Overview's auto-resolve
+clock (#5064). It leaves `updatedAt` alone, refuses a done or canceled Task
+with 400, and no Station Control tool reaches it. A paired device needs
+`orchestration:operate`, the Task family operate tier that close-on-merge also uses. With the `project-overview`
+Feature Preview off it answers 404 with `code: 'feature_preview_disabled'`;
+an older host answers a plain 404, which the SDK reports as
+`TaskOverviewReopenUnsupportedError`.
 
 `PUT /api/tasks/:taskId/close-on-merge` accepts `{enabled}` and sets or clears the
 Task's `closeOnMerge` flag. It is a person's opt-in: no Station Control tool

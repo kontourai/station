@@ -65,6 +65,11 @@ export interface FocusEntry {
    * Absent: the surface did not say, and its focus is not session-scoped.
    */
   viewingSessionIds?: readonly string[];
+  /**
+   * The local Projects (`ProjectConfig.id`) the focused surface has in the
+   * foreground (#5072). Absent or empty: none, or an older client.
+   */
+  viewingProjectIds?: readonly string[];
 }
 
 export interface PlanSurface {
@@ -99,6 +104,12 @@ export interface PlanInput {
   preferencesUnreadable?: boolean;
   /** IANA zone quiet hours are read in; the process's zone when absent. */
   timeZone?: string;
+  /**
+   * #5072, the `project-overview` Feature Preview: a record's Project applies
+   * that Project's level and foreground suppression. Off (absent): system
+   * records are planned as if they named no Project, as before.
+   */
+  projectSettings?: boolean;
 }
 
 export type PlanAction = 'send' | 'defer' | 'skip';
@@ -149,7 +160,8 @@ function isFocused(entry: FocusEntry | undefined, now: number): boolean {
  * Whether a focused surface is watching what this notification is about.
  * Only a `done` or `info` record that names a session is scoped: the person
  * looking at another chat, or at no chat, has not seen it finish, so their
- * other surfaces still get it. Attention and failed keep surface-wide
+ * other surfaces still get it, unless the surface shows the record's
+ * Project (#5072). Attention and failed keep surface-wide
  * focus (they are deferred, never dropped). A surface that did not report
  * what it shows (an older client) counts as watching, as before.
  */
@@ -160,7 +172,32 @@ function watchesNotification(
   if (env.urgency !== 'done' && env.urgency !== 'info') return true;
   if (env.target?.kind !== 'session') return true;
   if (entry.viewingSessionIds === undefined) return true;
-  return entry.viewingSessionIds.includes(env.target.sessionId);
+  if (entry.viewingSessionIds.includes(env.target.sessionId)) return true;
+  // #5072: a person looking at the Project is watching its work.
+  const projectId = notificationProjectId(env);
+  return (
+    projectId !== undefined &&
+    entry.viewingProjectIds?.includes(projectId) === true
+  );
+}
+
+/** A system record as planned before per-Project settings (#5072). */
+function withoutSystemProject(
+  env: NotificationEnvelopeV1,
+): NotificationEnvelopeV1 {
+  if (env.source.kind !== 'system' || env.source.projectId === undefined)
+    return env;
+  const { projectId: _projectId, ...source } = env.source;
+  return { ...env, source };
+}
+
+/** The local Project a record is about, when its source names one. */
+function notificationProjectId(
+  env: Pick<NotificationEnvelopeV1, 'source'>,
+): string | undefined {
+  return env.source.kind === 'agent' || env.source.kind === 'system'
+    ? env.source.projectId
+    : undefined;
 }
 
 /**
@@ -179,7 +216,11 @@ function focusedPrincipals(input: PlanInput): Map<string, Set<SurfaceId>> {
   return result;
 }
 
-export function plan(input: PlanInput): PlanStep[] {
+export function plan(planInput: PlanInput): PlanStep[] {
+  const input =
+    planInput.projectSettings === true
+      ? planInput
+      : { ...planInput, env: withoutSystemProject(planInput.env) };
   const { env, now, prefs } = input;
   const phase = input.phase ?? 'initial';
   const steps: PlanStep[] = [];

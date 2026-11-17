@@ -48,6 +48,7 @@ import { useSectionNavigation } from '../hooks/useSectionNavigation';
 import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { userFacingErrorMessage } from '../utils/errorText';
+import { useProjectOverviewPreview } from './project-page/projectOverviewPreview';
 import { AccessSection } from './project-settings/AccessSection';
 import { AgentFeedbackDefaultsSection } from './project-settings/AgentFeedbackDefaultsSection';
 import { AgentsSection } from './project-settings/AgentsSection';
@@ -56,6 +57,7 @@ import { KnowledgeSection } from './project-settings/KnowledgeSection';
 import { LayoutsSection } from './project-settings/LayoutsSection';
 import { MemorySection } from './project-settings/MemorySection';
 import { NewChatDefaultsSection } from './project-settings/NewChatDefaultsSection';
+import { OverviewNotificationsSection } from './project-settings/OverviewNotificationsSection';
 import { ProjectCheckoutFreshnessNotice } from './project-settings/ProjectCheckoutFreshnessNotice';
 import { ProjectLifecycleSection } from './project-settings/ProjectLifecycleSection';
 import { ProjectModelsSection } from './project-settings/ProjectModelsSection';
@@ -83,6 +85,7 @@ const PROJECT_SETTINGS_SECTIONS = [
   ['models', 'Models and effort'],
   ['usage', 'Usage'],
   ['new-chat', 'New chats'],
+  ['overview', 'Overview and notifications'],
   ['thread-execution', 'Chat workspace'],
   ['agents', 'Agents'],
   ['tools', 'Tools'],
@@ -110,6 +113,7 @@ const PROJECT_COORDINATION_SECTIONS: ReadonlySet<string> = new Set([
  */
 const SECTION_SAVE_HINTS: Partial<Record<string, string>> = {
   layouts: 'Actions in this section apply when confirmed.',
+  overview: 'Changes in this section save automatically.',
   'agent-feedback': 'Changes in this section save automatically.',
   resources: 'Actions in this section apply when confirmed.',
   access: 'Actions in this section apply when confirmed.',
@@ -217,6 +221,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   const previewFlags = useSurfaceVisibilityFlags();
   const [savedForm, setSavedForm] = useState<ProjectForm | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const projectOverviewOn = useProjectOverviewPreview();
   const projectCoordination = useProjectCoordinationPreview();
   const settingsSections = PROJECT_SETTINGS_SECTIONS.filter(
     ([id]) => projectCoordination || !PROJECT_COORDINATION_SECTIONS.has(id),
@@ -442,7 +447,11 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           label="Project settings sections"
           pickerLabel="Project settings section"
           items={settingsSections
-            .filter(([id]) => id !== 'agent-feedback' || agentFeedback)
+            .filter(
+              ([id]) =>
+                (id !== 'overview' || projectOverviewOn) &&
+                (id !== 'agent-feedback' || agentFeedback),
+            )
             .map(([id, label]) => ({
               key: id,
               label,
@@ -873,6 +882,19 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             hidden={activeSection !== 'tools'}
           >
             <ToolsSection slug={slug} form={form} setForm={setForm} />
+          </div>
+
+          <div
+            className="project-settings__panel"
+            hidden={activeSection !== 'overview'}
+          >
+            {projectOverviewOn && (
+              <OverviewNotificationsSection
+                slug={slug}
+                projectId={project?.id}
+                autoResolveDays={project?.overviewAutoResolveDays}
+              />
+            )}
           </div>
 
           <div

@@ -23,6 +23,7 @@ import {
   PROJECT_INSTRUCTIONS_MAX_CHARS,
 } from '@kontourai/station-contracts/project-session-context';
 import { MAX_PULL_REQUEST_FIX_ATTEMPTS } from '@kontourai/station-contracts/pull-request-watch';
+import { TASK_OVERVIEW_AUTO_RESOLVE_MAX_DAYS } from '@kontourai/station-contracts/task-overview';
 import { isSafeToolServerId } from '@kontourai/station-contracts/tool';
 import { z } from 'zod';
 import type { ConversationRecord, DocumentRecord } from './storage-adapter.js';
@@ -120,6 +121,12 @@ const projectSchema = z
       .enum(['off', 'project-panes', 'allowed-plugins'])
       .optional(),
     personalLayoutAllowedPlugins: z.array(nonEmptyString).optional(),
+    overviewAutoResolveDays: z
+      .number()
+      .int()
+      .min(0)
+      .max(TASK_OVERVIEW_AUTO_RESOLVE_MAX_DAYS)
+      .optional(),
     pullRequestWatch: z
       .object({
         enabled: z.boolean(),

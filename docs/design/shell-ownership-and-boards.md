@@ -242,8 +242,10 @@ backups retain their stored section values for compatibility.
 - **Projects** keep their model. Their live-work count reads the shared
   session classifier. The selected project's child rows name its actual
   Layout records; these are not a hard-coded list of built-in features.
-  Member presence and a separate project attention count remain subject to
-  their own backing projections; the map does not manufacture either.
+  Member presence remains subject to its own backing projection; the map
+  does not manufacture it. With the `project-overview` preview on, a dot
+  marks a Project with Tasks in the Overview's Waiting on you group (#5064),
+  from the Overview's own rule over the Tasks list and session summaries.
 - **Chat is a Layout.** A configured Chat view opens the existing fullscreen
   chat workspace. Individual conversations and composer drafts remain in
   the chat dock (⌘D), which retains its own inbox.

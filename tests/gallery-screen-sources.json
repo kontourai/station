@@ -1046,6 +1046,50 @@
     "task-pr-watch-light-mobile": ["src-ui/src/views/TaskWorkspaceView.tsx"],
     "project-pull-requests-light-mobile": [
       "src-ui/src/views/ProjectSettingsView.tsx"
+    ],
+    "project-overview-groups-dark-desktop": [
+      "src-ui/src/views/project-page/ProjectOverviewSection.tsx",
+      "src-ui/src/views/project-page/ProjectOverviewSection.css",
+      "src-ui/src/views/project-page/project-overview-model.ts",
+      "src-ui/src/views/project-page/ProjectWaitingOnYouSource.tsx",
+      "packages/contracts/src/task-overview.ts"
+    ],
+    "project-overview-settings-dark-desktop": [
+      "src-ui/src/views/project-settings/OverviewNotificationsSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx"
+    ],
+    "project-overview-groups-dark-mobile": [
+      "src-ui/src/views/project-page/ProjectOverviewSection.tsx",
+      "src-ui/src/views/project-page/ProjectOverviewSection.css",
+      "src-ui/src/views/project-page/project-overview-model.ts",
+      "src-ui/src/views/project-page/ProjectWaitingOnYouSource.tsx",
+      "packages/contracts/src/task-overview.ts"
+    ],
+    "project-overview-settings-dark-mobile": [
+      "src-ui/src/views/project-settings/OverviewNotificationsSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx"
+    ],
+    "project-overview-groups-light-desktop": [
+      "src-ui/src/views/project-page/ProjectOverviewSection.tsx",
+      "src-ui/src/views/project-page/ProjectOverviewSection.css",
+      "src-ui/src/views/project-page/project-overview-model.ts",
+      "src-ui/src/views/project-page/ProjectWaitingOnYouSource.tsx",
+      "packages/contracts/src/task-overview.ts"
+    ],
+    "project-overview-settings-light-desktop": [
+      "src-ui/src/views/project-settings/OverviewNotificationsSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx"
+    ],
+    "project-overview-groups-light-mobile": [
+      "src-ui/src/views/project-page/ProjectOverviewSection.tsx",
+      "src-ui/src/views/project-page/ProjectOverviewSection.css",
+      "src-ui/src/views/project-page/project-overview-model.ts",
+      "src-ui/src/views/project-page/ProjectWaitingOnYouSource.tsx",
+      "packages/contracts/src/task-overview.ts"
+    ],
+    "project-overview-settings-light-mobile": [
+      "src-ui/src/views/project-settings/OverviewNotificationsSection.tsx",
+      "src-ui/src/views/ProjectSettingsView.tsx"
     ]
   }
 }

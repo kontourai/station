@@ -1808,6 +1808,15 @@ export function configureRuntimeRoutes(
   const unattendedGrantStore = new UnattendedGrantStore(
     context.configLoader.getProjectHomeDir(),
   );
+  // #5064/#5072: the Project Overview's groups, its reopen, the merge-queue
+  // read behind "Landing" and per-Project notification settings. One
+  // binding; every consumer selects it at its own branch.
+  const projectOverviewPreview = context.featurePreviews.bind({
+    id: 'project-overview',
+    label: 'Project Overview',
+    description:
+      'Group a Project’s Tasks by what they need next, and choose per Project when Station notifies you. Checks each open pull request’s merge queue on GitHub.',
+  });
   const connectedClientPresence = new ClientConnectionPresence({
     record: (op) => connectedClientPresenceOps.add(1, { op }),
   });
@@ -5923,6 +5932,8 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/tasks',
     createTaskRoutes(context.taskGraphService, {
+      // #5064: reopening on the Project Overview is part of its preview.
+      overviewPreview: projectOverviewPreview,
       // Read per request: pull request feedback is composed after these
       // routes are mounted.
       pullRequestWatch: () => pullRequestFeedback?.watch,
@@ -5981,6 +5992,19 @@ export function configureRuntimeRoutes(
                 ? context
                     .orchestrationEventStore!.taskMemoryStore()
                     .countOpenQuestions(
+                      tasks.map((task) => ({
+                        taskId: task.id,
+                        taskCreatedAt: task.createdAt,
+                      })),
+                    )
+                : new Map(),
+            // #5064: the Overview's one-line latest report, from the same
+            // store and under the same condition.
+            currentSummaries: (tasks: readonly TaskRecord[]) =>
+              projectTaskRoomRuntime && !isHostedTenantExecutionRequired()
+                ? context
+                    .orchestrationEventStore!.taskMemoryStore()
+                    .currentSummaries(
                       tasks.map((task) => ({
                         taskId: task.id,
                         taskCreatedAt: task.createdAt,
@@ -10790,7 +10814,17 @@ export function configureRuntimeRoutes(
   // station#2037: persistent exact-tool grants share the runtime's STATION_HOME
   // with the resolver already wired by slice 3. The narrower route-family
   // scope below makes this an operator-management surface, never an agent tool.
-  registerPullRequestProvider(new GitHubPullRequestProvider());
+  // #5064: the Overview's "Landing" asks GitHub about the merge queue only
+  // while the `project-overview` Feature Preview is on.
+  registerPullRequestProvider(
+    new GitHubPullRequestProvider(undefined, undefined, {
+      readMergeQueue: () =>
+        projectOverviewPreview.select({
+          enabled: () => true,
+          disabled: () => false,
+        }),
+    }),
+  );
   registerPullRequestProvider(new GitLabPullRequestProvider());
   const reviewGuides = new PullRequestReviewGuideService(
     new PullRequestReviewGuideStore(context.configLoader.getProjectHomeDir()),
@@ -12907,6 +12941,7 @@ export function configureRuntimeRoutes(
     coordinatorWakes: () => coordinatorPlacement,
     focus: focusPresence,
     inAppLiveness: clientStreamPresence.inAppLiveness,
+    projectOverviewPreview,
     ...(scheduledConversationRuns
       ? { conversationRuns: scheduledConversationRuns }
       : {}),

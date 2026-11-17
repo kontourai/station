@@ -43,6 +43,7 @@ export function ProjectSidebarRow({
   accent,
   liveCount = 0,
   liveLabel = '',
+  waitingOnYou = 0,
   reorder,
 }: {
   project: ProjectMetadata;
@@ -63,6 +64,11 @@ export function ProjectSidebarRow({
    * composed here, so the number and its explanation cannot drift.
    */
   liveLabel?: string;
+  /**
+   * #5064: Tasks in this Project's Overview group "Waiting on you". Drawn as
+   * a dot, with the count in its accessible name.
+   */
+  waitingOnYou?: number;
   /** archive#3315: drag/keyboard reorder wiring from `useProjectListReorder`. */
   reorder?: ProjectRowReorderProps;
 }) {
@@ -258,14 +264,20 @@ export function ProjectSidebarRow({
               <span className="sidebar__project-live-label">{liveLabel}</span>
             </>
           )}
-          {/* SEAM — per-project attention count (#2064, design record D4).
-              It belongs HERE, after the live-work count, as the "1 needs you"
-              half of the row the record draws. #2064 closed without wiring
-              one (its unused hook was deleted), so nothing renders here: a
-              count with no derivation behind it is a number that means
-              whatever the reader assumes.
-
-              SEAM — member avatars (#2066, design record D5). The record
+          {/* #5064 (the #2064 D4 seam): Tasks Waiting on you, from the
+              Overview's own rule (`useProjectsWaitingOnYou`). */}
+          {waitingOnYou > 0 && (
+            <span className="sidebar__project-waiting">
+              <span
+                className="sidebar__project-waiting-dot"
+                aria-hidden="true"
+              />
+              <span className="sidebar__project-live-label">
+                {`Waiting on you: ${waitingOnYou}`}
+              </span>
+            </span>
+          )}
+          {/* SEAM — member avatars (#2066, design record D5). The record
               draws "[J][M]" here, but presence is what it draws: the avatars
               of members PRESENT. No per-project presence authority exists in
               the UI today — the live-activity read is a host-wide

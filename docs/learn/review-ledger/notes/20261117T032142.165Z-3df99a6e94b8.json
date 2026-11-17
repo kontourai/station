@@ -1,0 +1,201 @@
+{
+  "revision": "0e0bbae3b37777f4f61df71461e16255454e4899",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Edited: added the Project Overview groups paragraph (contract, reopen route, landing state, latest report, UI owners, evidence), checked against the code.","inputs":["docs/architecture/module-map.md","packages/contracts/src/task-graph.ts","src-server/routes/orchestration/tasks.ts","src-server/services/projects/task-graph-service.ts","src-ui/src/views/project-page/ProjectRoom.tsx","src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Edited: added the per-Project settings section (Project id on turn and approval records, level scope, viewingProjectId, preview gating), checked against policy.ts and router.ts.","inputs":["docs/design/notification-delivery.md","src-server/services/approvals/approval-inbox.ts","src-server/services/orchestration/turn-completion-notifications.ts"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Edited: the sidebar now shows a Waiting on you dot from the Overview rule behind the project-overview preview; checked against ProjectSidebarRow and useProjectsWaitingOnYou.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/components/project-sidebar/ProjectSidebar.tsx","src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Edited: documented latestReport on GET /api/tasks and POST /api/tasks/:taskId/overview-reopen, checked against tasks.ts and its route tests.","inputs":["docs/reference/api.md","packages/contracts/src/task-graph.ts","packages/sdk/src/queries.ts","src-server/domain/file-storage-schemas.ts","src-server/routes/orchestration/tasks.ts","src-server/routes/schemas/schema-definitions/content.ts","src-server/services/projects/task-graph-service.ts","src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/reference/contracts.md","note":"Edited: added the task-overview subpath row, checked against task-overview.ts.","inputs":["docs/reference/contracts.md","packages/contracts/package.json","packages/contracts/package.json#/exports","packages/contracts/src/project.ts","packages/contracts/src/pull-request-provider.ts","packages/contracts/src/task-graph.ts","src-server/services/projects/task-graph-service.ts","src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Edited: added the Project Overview groups table and settings paragraph, checked against ProjectOverviewSection and OverviewNotificationsSection.","inputs":["docs/user/getting-started.md","packages/contracts/src/project.ts","packages/contracts/src/task-graph.ts","src-server/routes/orchestration/tasks.ts","src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Edited: added the project-overview Feature previews row; docs:feature-previews:check passes.","inputs":["docs/user/settings.md","src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Edited: a Project page counts as watching its finished turns and Project settings apply to turn and approval alerts with the preview on; checked against policy.ts.","inputs":["docs/guides/web-push-notifications.md","src-server/runtime/routes/notification-delivery-wiring.ts","src-server/services/notifications/delivery/policy.ts","src-server/services/notifications/delivery/router.ts","src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the citing pages: this adds the persisted optional overviewReopenedAt (validated as a canonical timestamp) and reopenOnOverview, which leaves updatedAt alone. Their dispatch, cache, close-out and relationship claims are unchanged; module-map documents the reopen.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked the citing pages: this adds the persisted optional overviewReopenedAt (validated as a canonical timestamp) and reopenOnOverview, which leaves updatedAt alone. Their dispatch, cache, close-out and relationship claims are unchanged; module-map documents the reopen.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the citing pages: this adds the persisted optional overviewReopenedAt (validated as a canonical timestamp) and reopenOnOverview, which leaves updatedAt alone. Their dispatch, cache, close-out and relationship claims are unchanged; module-map documents the reopen.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the citing pages: this adds the persisted optional overviewReopenedAt (validated as a canonical timestamp) and reopenOnOverview, which leaves updatedAt alone. Their dispatch, cache, close-out and relationship claims are unchanged; module-map documents the reopen.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Checked the citing pages: this adds the persisted optional overviewReopenedAt (validated as a canonical timestamp) and reopenOnOverview, which leaves updatedAt alone. Their dispatch, cache, close-out and relationship claims are unchanged; module-map documents the reopen.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the citing pages: this adds the persisted optional overviewReopenedAt (validated as a canonical timestamp) and reopenOnOverview, which leaves updatedAt alone. Their dispatch, cache, close-out and relationship claims are unchanged; module-map documents the reopen.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked the citing pages: this adds the persisted optional overviewReopenedAt (validated as a canonical timestamp) and reopenOnOverview, which leaves updatedAt alone. Their dispatch, cache, close-out and relationship claims are unchanged; module-map documents the reopen.","inputs":["src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the citing pages: support services now resolve a session's recorded Project id for turn and approval notifications and pass the project-overview preview to delivery. Composition, task dispatch, automations and governance claims are unchanged; notification-delivery.md and web-push-notifications.md document the rule.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Checked the citing pages: support services now resolve a session's recorded Project id for turn and approval notifications and pass the project-overview preview to delivery. Composition, task dispatch, automations and governance claims are unchanged; notification-delivery.md and web-push-notifications.md document the rule.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Checked the citing pages: support services now resolve a session's recorded Project id for turn and approval notifications and pass the project-overview preview to delivery. Composition, task dispatch, automations and governance claims are unchanged; notification-delivery.md and web-push-notifications.md document the rule.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Checked the citing pages: support services now resolve a session's recorded Project id for turn and approval notifications and pass the project-overview preview to delivery. Composition, task dispatch, automations and governance claims are unchanged; notification-delivery.md and web-push-notifications.md document the rule.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Checked the citing pages: support services now resolve a session's recorded Project id for turn and approval notifications and pass the project-overview preview to delivery. Composition, task dispatch, automations and governance claims are unchanged; notification-delivery.md and web-push-notifications.md document the rule.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked the citing pages: support services now resolve a session's recorded Project id for turn and approval notifications and pass the project-overview preview to delivery. Composition, task dispatch, automations and governance claims are unchanged; notification-delivery.md and web-push-notifications.md document the rule.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the citing pages: support services now resolve a session's recorded Project id for turn and approval notifications and pass the project-overview preview to delivery. Composition, task dispatch, automations and governance claims are unchanged; notification-delivery.md and web-push-notifications.md document the rule.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the citing pages: GET /api/tasks adds latestReport, and POST /:taskId/overview-reopen is new (preview-gated, no Station Control tool). api.md documents both; the other route claims are unchanged.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the citing pages: GET /api/tasks adds latestReport, and POST /:taskId/overview-reopen is new (preview-gated, no Station Control tool). api.md documents both; the other route claims are unchanged.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the citing pages: GET /api/tasks adds latestReport, and POST /:taskId/overview-reopen is new (preview-gated, no Station Control tool). api.md documents both; the other route claims are unchanged.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the citing pages: GET /api/tasks adds latestReport, and POST /:taskId/overview-reopen is new (preview-gated, no Station Control tool). api.md documents both; the other route claims are unchanged.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/task-basis-mcp-app.md","note":"Checked the citing pages: GET /api/tasks adds latestReport, and POST /:taskId/overview-reopen is new (preview-gated, no Station Control tool). api.md documents both; the other route claims are unchanged.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the citing pages: GET /api/tasks adds latestReport, and POST /:taskId/overview-reopen is new (preview-gated, no Station Control tool). api.md documents both; the other route claims are unchanged.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Checked the citing pages: GET /api/tasks adds latestReport, and POST /:taskId/overview-reopen is new (preview-gated, no Station Control tool). api.md documents both; the other route claims are unchanged.","inputs":["src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Checked the citing pages: the sidebar adds a Waiting on you dot behind the project-overview preview and keeps the live-work count. shell-ownership-and-boards.md now says so; the personal Boards, theming and workspace-map claims are unchanged.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"docs/reviews/sidebar-focus-20261107/README.md","note":"Checked the citing pages: the sidebar adds a Waiting on you dot behind the project-overview preview and keeps the live-work count. shell-ownership-and-boards.md now says so; the personal Boards, theming and workspace-map claims are unchanged.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"docs/reviews/sidebar-focus-20261107/manager-audit-addendum.md","note":"Checked the citing pages: the sidebar adds a Waiting on you dot behind the project-overview preview and keeps the live-work count. shell-ownership-and-boards.md now says so; the personal Boards, theming and workspace-map claims are unchanged.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"docs/reviews/workspace-map-20261015/README.md","note":"Checked the citing pages: the sidebar adds a Waiting on you dot behind the project-overview preview and keeps the live-work count. shell-ownership-and-boards.md now says so; the personal Boards, theming and workspace-map claims are unchanged.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Checked the citing pages: the sidebar adds a Waiting on you dot behind the project-overview preview and keeps the live-work count. shell-ownership-and-boards.md now says so; the personal Boards, theming and workspace-map claims are unchanged.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"examples/custom-branding/README.md","note":"Checked the citing pages: the sidebar adds a Waiting on you dot behind the project-overview preview and keeps the live-work count. shell-ownership-and-boards.md now says so; the personal Boards, theming and workspace-map claims are unchanged.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the citing pages: TaskRecord gains only the optional overviewReopenedAt. The Task shape, proposal and dispatch claims are unchanged.","inputs":["packages/contracts/src/task-graph.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the citing pages: TaskRecord gains only the optional overviewReopenedAt. The Task shape, proposal and dispatch claims are unchanged.","inputs":["packages/contracts/src/task-graph.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the citing pages: TaskRecord gains only the optional overviewReopenedAt. The Task shape, proposal and dispatch claims are unchanged.","inputs":["packages/contracts/src/task-graph.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the citing pages: TaskRecord gains only the optional overviewReopenedAt. The Task shape, proposal and dispatch claims are unchanged.","inputs":["packages/contracts/src/task-graph.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked the citing pages: TaskRecord gains only the optional overviewReopenedAt. The Task shape, proposal and dispatch claims are unchanged.","inputs":["packages/contracts/src/task-graph.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the citing pages: TaskRecord gains only the optional overviewReopenedAt. The Task shape, proposal and dispatch claims are unchanged.","inputs":["packages/contracts/src/task-graph.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the citing pages: Overview mounts ProjectOverviewSection above Live work (nothing renders with the preview off) and marks the Project as foreground for focus reports. The claim that the Project page opens on Overview still holds.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked the citing pages: Overview mounts ProjectOverviewSection above Live work (nothing renders with the preview off) and marks the Project as foreground for focus reports. The claim that the Project page opens on Overview still holds.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/media/project-start-after.png","note":"Checked the citing pages: Overview mounts ProjectOverviewSection above Live work (nothing renders with the preview off) and marks the Project as foreground for focus reports. The claim that the Project page opens on Overview still holds.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/media/project-start-before.png","note":"Checked the citing pages: Overview mounts ProjectOverviewSection above Live work (nothing renders with the preview off) and marks the Project as foreground for focus reports. The claim that the Project page opens on Overview still holds.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"Checked the citing pages: Overview mounts ProjectOverviewSection above Live work (nothing renders with the preview off) and marks the Project as foreground for focus reports. The claim that the Project page opens on Overview still holds.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Checked the citing pages: Overview mounts ProjectOverviewSection above Live work (nothing renders with the preview off) and marks the Project as foreground for focus reports. The claim that the Project page opens on Overview still holds.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the citing pages: Overview mounts ProjectOverviewSection above Live work (nothing renders with the preview off) and marks the Project as foreground for focus reports. The claim that the Project page opens on Overview still holds.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the citing pages: Overview mounts ProjectOverviewSection above Live work (nothing renders with the preview off) and marks the Project as foreground for focus reports. The claim that the Project page opens on Overview still holds.","inputs":["src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the citing pages: adds the Overview reopen exports to the task-graph re-export list. The query-hook claims are unchanged.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Checked the citing pages: adds the Overview reopen exports to the task-graph re-export list. The query-hook claims are unchanged.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Checked the citing pages: adds the Overview reopen exports to the task-graph re-export list. The query-hook claims are unchanged.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Checked the citing pages: adds the Overview reopen exports to the task-graph re-export list. The query-hook claims are unchanged.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the citing pages: adds the Overview reopen exports to the task-graph re-export list. The query-hook claims are unchanged.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked the citing pages: adds the ./task-overview subpath, listed in contracts.md. It follows the subpath-export rule they describe.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Checked the citing pages: adds the ./task-overview subpath, listed in contracts.md. It follows the subpath-export rule they describe.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the citing pages: adds the ./task-overview subpath, listed in contracts.md. It follows the subpath-export rule they describe.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Checked the citing pages: adds the ./task-overview subpath, listed in contracts.md. It follows the subpath-export rule they describe.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"packages/contracts/README.md","note":"Checked the citing pages: adds the ./task-overview subpath, listed in contracts.md. It follows the subpath-export rule they describe.","inputs":["packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the citing pages: the Room header adds the Waiting on you dot, which renders nothing when nothing waits or the preview is off. The channel, thread and presence claims are unchanged.","inputs":["src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the citing pages: the Room header adds the Waiting on you dot, which renders nothing when nothing waits or the preview is off. The channel, thread and presence claims are unchanged.","inputs":["src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the citing pages: the Room header adds the Waiting on you dot, which renders nothing when nothing waits or the preview is off. The channel, thread and presence claims are unchanged.","inputs":["src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the citing pages: the Room header adds the Waiting on you dot, which renders nothing when nothing waits or the preview is off. The channel, thread and presence claims are unchanged.","inputs":["src-ui/src/views/project-page/ProjectRoom.tsx"]},
+
+    {"path":"docs/glossary.md","note":"Checked the citing pages against the edit: it adds one task-overview row. Glossary and reference claims about other subpaths are unchanged.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked the citing pages against the edit: it adds one task-overview row. Glossary and reference claims about other subpaths are unchanged.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Checked the citing pages against the edit: it adds one task-overview row. Glossary and reference claims about other subpaths are unchanged.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Checked the citing pages: adds an Overview and notifications section, shown only with the preview on, that saves on change. The section navigation and skeleton claims still hold.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/design/shell-skeletons.md","note":"Checked the citing pages: adds an Overview and notifications section, shown only with the preview on, that saves on change. The section navigation and skeleton claims still hold.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Checked the citing pages: adds an Overview and notifications section, shown only with the preview on, that saves on change. The section navigation and skeleton claims still hold.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","note":"Checked the citing pages: the project schema accepts overviewAutoResolveDays (0-365). The schema and boot-flag claims are unchanged.","inputs":["src-server/routes/schemas/schema-definitions/content.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked the citing pages: the project schema accepts overviewAutoResolveDays (0-365). The schema and boot-flag claims are unchanged.","inputs":["src-server/routes/schemas/schema-definitions/content.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the citing pages: the project schema accepts overviewAutoResolveDays (0-365). The schema and boot-flag claims are unchanged.","inputs":["src-server/routes/schemas/schema-definitions/content.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the citing pages: ProjectConfig gains the optional overviewAutoResolveDays. Their claims are unaffected.","inputs":["packages/contracts/src/project.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Checked the citing pages: ProjectConfig gains the optional overviewAutoResolveDays. Their claims are unaffected.","inputs":["packages/contracts/src/project.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the citing pages: ProjectConfig gains the optional overviewAutoResolveDays. Their claims are unaffected.","inputs":["packages/contracts/src/project.ts"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Checked the citing pages against the edit: it adds the project-overview row to the Feature previews table. The guides' claims about how previews are offered are unchanged.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Checked the citing pages against the edit: it adds the project-overview row to the Feature previews table. The guides' claims about how previews are offered are unchanged.","inputs":["docs/user/settings.md"]},
+
+    {"path":"docs/design/terminal.md","note":"Checked the citing pages against the edit: it adds latestReport and the overview-reopen route. Their claims are unchanged.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked the citing pages against the edit: it adds latestReport and the overview-reopen route. Their claims are unchanged.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"Checked the citing pages: the row renders the Waiting on you dot in the former #2064 D4 seam. shell-ownership-and-boards.md is updated; the sidebar-focus review notes are historical.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx"]},
+
+    {"path":"docs/reviews/workspace-map-20261015/README.md","note":"Checked the citing pages: the row renders the Waiting on you dot in the former #2064 D4 seam. shell-ownership-and-boards.md is updated; the sidebar-focus review notes are historical.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebarRow.tsx"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked the citing pages: approval records add metadata.projectId beside projectSlug. Card actions and tool-policy claims are unchanged; notification-delivery.md documents the Project id.","inputs":["src-server/services/approvals/approval-inbox.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Checked the citing pages: approval records add metadata.projectId beside projectSlug. Card actions and tool-policy claims are unchanged; notification-delivery.md documents the Project id.","inputs":["src-server/services/approvals/approval-inbox.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the citing pages: the system NotificationSource gains the optional projectId, documented in notification-delivery.md. Other claims are unchanged.","inputs":["packages/contracts/src/notification.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Checked the citing pages: the system NotificationSource gains the optional projectId, documented in notification-delivery.md. Other claims are unchanged.","inputs":["packages/contracts/src/notification.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Checked the citing pages against the edit: it adds the per-Project settings section. The web-push guide is updated to match.","inputs":["docs/design/notification-delivery.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the citing page: the UI ProjectConfig gains overviewAutoResolveDays. The claim is unchanged.","inputs":["src-ui/src/contexts/ProjectsContext.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the citing page: adds the Waiting on you dot styles with --k tokens and no responsive at-rule. The responsive guidance still holds.","inputs":["src-ui/src/components/project-sidebar/ProjectSidebar.css"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked: regenerated by docs:mcp:generate after the module-map edit. The citing page's claim about generation holds.","inputs":["src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Checked the citing page: turn records add source.projectId when the session recorded one. Documented in notification-delivery.md.","inputs":["src-server/services/orchestration/turn-completion-notifications.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked the citing page: the router passes projectSettings (the preview) to each plan. The web-push guide documents the effect.","inputs":["src-server/services/notifications/delivery/router.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked the citing page: the policy applies a Project's level and viewingProjectIds only with projectSettings on. The web-push guide documents it.","inputs":["src-server/services/notifications/delivery/policy.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Checked the citing page: wiring passes the optional projectNotificationSettings through. The web-push claims are updated.","inputs":["src-server/runtime/routes/notification-delivery-wiring.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the citing page: the project file schema accepts overviewAutoResolveDays (0-365). Unchanged otherwise.","inputs":["src-server/domain/file-storage-schemas.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Checked the citing page: the system source parser accepts an optional canonical projectId. Unchanged otherwise.","inputs":["packages/shared/src/notification-envelope.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the citing page: adds latestReport to TaskListRecord and the reopen mutation. Unchanged otherwise.","inputs":["packages/sdk/src/query-domains/taskGraph.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the citing page: PullRequest gains the optional landing (auto-merge, merge-queue, not-queued). Documented in contracts.md and module-map.","inputs":["packages/contracts/src/pull-request-provider.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the citing page: adds the ./task-overview export. Unchanged otherwise.","inputs":["packages/contracts/package.json"]}
+  ]
+}

@@ -337,6 +337,25 @@
   text-align: center;
 }
 
+.sidebar__project-waiting {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.sidebar__project-waiting-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--k-brand);
+}
+
+.sidebar--collapsed .sidebar__project-waiting {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+}
+
 .sidebar__project-live-label {
   position: absolute;
   width: 1px;

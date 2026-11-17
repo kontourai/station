@@ -660,6 +660,7 @@ export interface ProjectConfig extends ProjectMetadata {
   topK?: number;
   agents?: AgentId[];
   /** See `ProjectConfig` in `@kontourai/station-contracts/project`. */
+  overviewAutoResolveDays?: number;
   pullRequestWatch?: ProjectPullRequestWatchSettings;
   createdAt: string;
   updatedAt: string;

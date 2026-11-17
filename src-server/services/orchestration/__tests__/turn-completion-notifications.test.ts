@@ -247,6 +247,8 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
   let resolveSessionPresenceSubject: (
     threadId: string,
   ) => OrchestrationStreamPresenceSubject | undefined;
+  /** #5072: the Project a session recorded at its start. */
+  let projectOf: (threadId: string) => string | undefined;
   let logger: {
     warn: ReturnType<
       typeof vi.fn<(message: string, meta?: Record<string, unknown>) => void>
@@ -260,6 +262,7 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
     notificationService = new NotificationService(bus, dir, 999_999);
     resolveSessionPresenceSubject = () =>
       orchestrationStreamPresenceSubjectForSession('owner-1');
+    projectOf = () => undefined;
     logger = {
       warn: vi.fn<(message: string, meta?: Record<string, unknown>) => void>(),
     };
@@ -279,7 +282,10 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
       },
       notificationService,
       logger,
-      { setTimer: timers.setTimer },
+      {
+        setTimer: timers.setTimer,
+        resolveProjectId: (threadId) => projectOf(threadId),
+      },
     );
     await notificationService.start();
   });
@@ -829,6 +835,31 @@ describe('wireTurnCompletionNotifications (station#1225)', () => {
       expect(read).toBe('read');
     },
   );
+
+  test('names the session’s Project on the record, so its settings apply (#5072)', async () => {
+    projectOf = (threadId) =>
+      threadId === 'thread-1' ? 'project-alpha' : undefined;
+    await emit('orchestration:event', { event: baseEvent() });
+    const [notification] = await notificationService.list();
+    expect(
+      (notification.metadata!.envelope as { source: unknown }).source,
+    ).toEqual({
+      kind: 'system',
+      subsystem: 'turn-completion',
+      projectId: 'project-alpha',
+    });
+  });
+
+  test('a Project lookup that throws still delivers the record, without a Project', async () => {
+    projectOf = () => {
+      throw new Error('project store unavailable');
+    };
+    await emit('orchestration:event', { event: baseEvent() });
+    const [notification] = await notificationService.list();
+    expect(
+      (notification.metadata!.envelope as { source: unknown }).source,
+    ).toEqual({ kind: 'system', subsystem: 'turn-completion' });
+  });
 
   test('never leaks response text into the push body', async () => {
     await emit('orchestration:event', {

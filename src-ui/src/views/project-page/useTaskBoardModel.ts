@@ -204,7 +204,7 @@ export function useTaskBoardModel({
  * current child the list does not hold is unread. Without `currentSessionId`
  * (an older host), the named session is the run.
  */
-function currentExecution(
+export function currentExecution(
   sessionsById: ReadonlyMap<string, OrchestrationSessionSummary>,
   sessionId: string,
 ): OrchestrationSessionSummary | 'unreadable' {

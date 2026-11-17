@@ -151,7 +151,15 @@ export interface PullRequest {
    * required check reads `blocked`. Absent: the provider did not report it.
    */
   mergeReadiness?: PullRequestMergeReadiness;
+  /**
+   * Whether the forge will merge this open pull request by itself (#5064):
+   * `auto-merge` (armed, waiting on its checks), `merge-queue` (in the merge
+   * queue), or `not-queued` (neither). Absent: not observed. Only the
+   * status read observes it, and only for an open pull request.
+   */
+  landing?: PullRequestLanding;
 }
+export type PullRequestLanding = 'auto-merge' | 'merge-queue' | 'not-queued';
 export type PullRequestMergeReadiness =
   | 'clean'
   | 'blocked'

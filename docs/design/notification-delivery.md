@@ -227,6 +227,24 @@ another chat, or none, leaves the phone's alert in place and gets its own.
 Attention and failed keep surface-wide focus, and so does a surface whose
 client does not report what it shows.
 
+### Per-Project settings (#5072, `project-overview` preview)
+
+Turn-completion records and approval-inbox requests name the session's local
+Project: `source.projectId` on the turn envelope, and `metadata.projectId` on
+the approval record, which `deliveryEnvelopeFor` lifts onto its legacy system
+source. The id is the one the session recorded at its start, resolved by the
+same session-record resolver station-control callers use. With the
+`project-overview` Feature Preview on, the policy applies that Project's
+`perProject` level to those two subsystems only: `attention-only` lets needs-input
+or approval (`attention`) and `failed` through and keeps finished turns in the
+inbox, and `off` interrupts no surface. The global agent level and every other
+system subsystem are unaffected, and the in-app record is always written. A focus
+report may also carry `viewingProjectId`. A focused surface showing that Project
+then counts as watching that Project's `done` and `info` records, as if it showed
+the session. With the preview off, the router plans these records as if they
+named no Project. That keeps an earlier inbox **Mute this project**, which writes
+the same `perProject` level, from silently muting turn and approval alerts.
+
 ## Approval actions in the running client
 
 The in-app approval toast sends the selected decision and opens its originating

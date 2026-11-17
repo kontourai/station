@@ -178,7 +178,10 @@ and can defer `attention`/`failed`. For an `info`/`done` record that names a
 session, such as a finished turn, a document counts as focused only while it
 shows that session. Its report lists the open chat's ids (`viewingSessionIds`,
 sent as `[]` when no chat is on screen). A document showing another chat
-neither quiets the other surfaces nor skips its own alert. A client that does
+neither quiets the other surfaces nor skips its own alert. With the
+`project-overview` preview on, a document showing a Project page also counts as
+watching that Project's finished turns (`viewingProjectId`), and each Project's
+notification setting applies to its turn and approval alerts. A client that does
 not send the field keeps the device-wide rule. A host built before the field
 answers 400, and the client then reports without it
 ([notification delivery](../design/notification-delivery.md#finished-alerts-one-per-completion-episode)). Default escalation is three minutes. It is

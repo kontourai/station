@@ -94,6 +94,11 @@ export interface NotificationDeliveryRouterOptions {
   focus?: FocusSource;
   inAppLiveness?: InAppLiveness;
   /**
+   * #5072: whether per-Project notification settings apply (the
+   * `project-overview` Feature Preview), read at each plan. Absent: off.
+   */
+  projectNotificationSettings?: () => boolean;
+  /**
    * The current record, for the escalation re-check. Absent or resolving to
    * undefined means "cannot confirm it is still unread", and nothing is sent.
    */
@@ -133,6 +138,14 @@ export function wireNotificationDeliveryRouter(
   const liveness = options.inAppLiveness ?? NO_LIVE_IN_APP;
   const now = options.now ?? Date.now;
   const setTimer = options.setTimer ?? defaultSetTimer;
+  const projectSettings = () => {
+    try {
+      return options.projectNotificationSettings?.() === true;
+    } catch {
+      // An unreadable choice is the preview's disabled branch.
+      return false;
+    }
+  };
   const tracked = new Map<string, Tracked>();
   const channelByKind = new Map(channels.map((c) => [c.kind, c]));
   /** Content last routed per enveloped record, to tell an edit from a touch. */
@@ -377,6 +390,7 @@ export function wireNotificationDeliveryRouter(
       liveInApp,
       prefs: options.preferences.current(),
       preferencesUnreadable: preferencesUnreadable(),
+      projectSettings: projectSettings(),
       priorDeliveries: new Set(),
       ...(options.timeZone ? { timeZone: options.timeZone } : {}),
     });
@@ -464,6 +478,7 @@ export function wireNotificationDeliveryRouter(
       liveInApp,
       prefs: options.preferences.current(),
       preferencesUnreadable: preferencesUnreadable(),
+      projectSettings: projectSettings(),
       priorDeliveries,
       phase: 'escalation',
       ...(options.timeZone ? { timeZone: options.timeZone } : {}),
