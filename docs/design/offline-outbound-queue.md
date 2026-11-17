@@ -265,7 +265,9 @@ at most 12 windows and about 4 MB, least recently used first, keyed by the
 verified app authority, the target Station's authority, the API base, request
 scope and conversation. Switching back to a conversation paints its last window
 while the ordinary read revalidates it; the paint grants no write, which the
-conversation-open read still decides. A connection switch, authority change or
+conversation-open read still decides. It never names the current child Session,
+offers no approval answer until the re-read lands, and a failed re-read drops
+the painted rows (so the failure shows) and forgets the copy. A connection switch, authority change or
 sign-out clears it, and a read that began before a clear cannot repopulate it.
 Inbox rows warm it after a short hover or keyboard-focus dwell, one read at a
 time.

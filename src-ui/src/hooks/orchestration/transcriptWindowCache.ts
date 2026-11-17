@@ -23,7 +23,6 @@ export interface TranscriptWindowSnapshot {
   events: readonly OrchestrationSequencedEvent[];
   cursor?: string;
   watermark: number;
-  currentSessionId?: string;
   sessionLineage?: NonNullable<
     OrchestrationConversationEventWindow['sessionLineage']
   >;
@@ -81,6 +80,11 @@ function remove(key: string): void {
   if (!entry) return;
   entries.delete(key);
   totalBytes -= entry.bytes;
+}
+
+/** Forget one window: the server would not confirm it. */
+export function evictTranscriptWindow(key: string | undefined): void {
+  if (key) remove(key);
 }
 
 export function readTranscriptWindow(

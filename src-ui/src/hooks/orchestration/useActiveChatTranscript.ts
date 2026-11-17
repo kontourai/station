@@ -543,6 +543,9 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     const currentSessionId = window.currentSessionId;
     const latest = activeChatsStore.getSnapshot()[session.id];
     if (
+      // A cached paint is not a conversation read: only the read that
+      // revalidates it may name the current child.
+      !window.revalidating &&
       currentSessionId &&
       session.currentSessionId !== currentSessionId &&
       latest?.currentSessionId === session.currentSessionId
@@ -567,6 +570,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     session.currentSessionId,
     session.id,
     window.currentSessionId,
+    window.revalidating,
   ]);
   // #2304: seed the open turn's server start when this client attached to a
   // turn already running (fresh load, reconnect), so the "Working for" clock

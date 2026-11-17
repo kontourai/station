@@ -73,7 +73,11 @@ import {
   recordSequencedLiveEvent,
   resetSequencedLiveEventsForTests,
 } from '../hooks/orchestration/sequencedLiveEvents';
-import { clearTranscriptWindowCache } from '../hooks/orchestration/transcriptWindowCache';
+import {
+  clearTranscriptWindowCache,
+  readTranscriptWindow,
+  transcriptWindowCacheKey,
+} from '../hooks/orchestration/transcriptWindowCache';
 import { handleTurnStartedEvent } from '../hooks/orchestration/turnHandlers';
 import { useActiveChatTranscript } from '../hooks/orchestration/useActiveChatTranscript';
 import { buildOutgoingUserMessage } from '../hooks/useActiveChatSessions.helpers';
@@ -1519,6 +1523,108 @@ describe('useActiveChatTranscript', () => {
       expect(view.result.current.settled).toBe(true);
     });
 
+    test('a cached paint never names the current child over the one open bound since', async () => {
+      const namespace = { value: NS_A };
+      activeChatsStore.initChat('adopt-a', {
+        agentSlug: 'codex',
+        agentName: 'Codex',
+        title: 'Adopt',
+      });
+      activeChatsStore.updateChat('adopt-a', {
+        conversationId: 'adopt-a',
+        currentSessionId: 'child-1',
+        orchestrationSessionStarted: true,
+      });
+      const fromStore = (): ChatSession =>
+        ({
+          ...baseSession,
+          ...activeChatsStore.getSnapshot()['adopt-a'],
+          id: 'adopt-a',
+        }) as unknown as ChatSession;
+      fetchConversationWindow.mockImplementation(async (id: string) =>
+        id === 'adopt-a'
+          ? { ...page('adopt question'), currentSessionId: 'child-1' }
+          : page('other'),
+      );
+      const view = renderReader(fromStore(), namespace);
+      await waitFor(() => expect(view.result.current.settled).toBe(true));
+      view.rerender({ session: chat('adopt-b') });
+      await waitFor(() => expect(view.result.current.settled).toBe(true));
+      // While away, the conversation moved on and `/open` bound its new child.
+      activeChatsStore.updateChat('adopt-a', {
+        currentSessionId: 'child-2',
+        conversationOpenPending: false,
+        orchestrationTurnOpen: true,
+        openTurnId: 'live-turn',
+      });
+      let answer: (value: unknown) => void = () => {};
+      fetchConversationWindow.mockImplementation(
+        () => new Promise((resolve) => (answer = resolve)),
+      );
+      view.rerender({ session: fromStore() });
+      expect(view.result.current.revalidating).toBe(true);
+      await waitFor(() =>
+        expect(fetchConversationWindow).toHaveBeenLastCalledWith(
+          'adopt-a',
+          expect.anything(),
+          expect.anything(),
+          expect.anything(),
+        ),
+      );
+      expect(activeChatsStore.getSnapshot()['adopt-a']).toMatchObject({
+        currentSessionId: 'child-2',
+        conversationOpenPending: false,
+        orchestrationTurnOpen: true,
+        openTurnId: 'live-turn',
+      });
+      await act(async () =>
+        answer({ ...page('adopt question', 2), currentSessionId: 'child-2' }),
+      );
+      await waitFor(() => expect(view.result.current.revalidating).toBe(false));
+      expect(activeChatsStore.getSnapshot()['adopt-a']).toMatchObject({
+        currentSessionId: 'child-2',
+        conversationOpenPending: false,
+        openTurnId: 'live-turn',
+      });
+      view.unmount();
+      activeChatsStore.removeChat('adopt-a');
+    });
+
+    test.each([
+      { label: 'refused (404)', failure: { status: 404 } },
+      { label: 'offline', failure: new Error('Failed to fetch') },
+    ])(
+      'a $label re-read drops the cached rows so its failure shows, and forgets them',
+      async ({ failure }) => {
+        const namespace = { value: NS_A };
+        fetchConversationWindow.mockImplementation(async (id: string) =>
+          id === 'gone-a' ? page('cached only question') : page('other'),
+        );
+        const view = renderReader(chat('gone-a'), namespace);
+        await waitFor(() => expect(view.result.current.settled).toBe(true));
+        view.rerender({ session: chat('gone-b') });
+        await waitFor(() =>
+          expect(
+            view.result.current.messages.map((message) => message.content),
+          ).toContain('other'),
+        );
+        const key = transcriptWindowCacheKey({
+          namespace: NS_A,
+          apiBase: 'http://station.test',
+          conversationId: 'gone-a',
+        });
+        expect(readTranscriptWindow(key)).toBeDefined();
+        fetchConversationWindow.mockRejectedValue(failure);
+        view.rerender({ session: chat('gone-a') });
+        await waitFor(() => expect(view.result.current.error).toBeTruthy());
+        expect(view.result.current.messages).toEqual([]);
+        expect(view.result.current.events).toEqual([]);
+        expect(view.result.current.settled).toBe(true);
+        expect(view.result.current.revalidating).toBe(false);
+        expect(readTranscriptWindow(key)).toBeUndefined();
+      },
+    );
+
     test('another authority never paints a cached window for the same conversation id', async () => {
       const namespace = { value: NS_A };
       fetchConversationWindow.mockResolvedValue(page('authority A only'));
@@ -1533,6 +1639,40 @@ describe('useActiveChatTranscript', () => {
       expect(view.result.current.revalidating).toBe(false);
       expect(view.result.current.messages).toEqual([]);
     });
+  });
+
+  test('a 404 the fallback could not take is read again once the reader names the conversation itself', async () => {
+    fetchConversationWindow.mockRejectedValue({ status: 404 });
+    fetchWindow.mockResolvedValue({
+      protocolVersion: 1,
+      watermark: 1,
+      hasMore: false,
+      events: [
+        event('legacy-1', 'turn.started', {
+          turnId: 'legacy-turn',
+          prompt: 'legacy after child cleared',
+        }),
+      ],
+    });
+    const session: ChatSession = {
+      ...baseSession,
+      id: 'legacy-conversation',
+      conversationId: 'legacy-conversation',
+      currentSessionId: 'legacy-child',
+    };
+    const { result, rerender } = renderHook(
+      ({ session }) => useActiveChatTranscript('http://station.test', session),
+      { initialProps: { session } },
+    );
+    await waitFor(() => expect(result.current.error).toBeTruthy());
+    expect(fetchWindow).not.toHaveBeenCalled();
+    rerender({ session: { ...session, currentSessionId: undefined } });
+    await waitFor(() =>
+      expect(
+        result.current.messages.map((message) => message.content),
+      ).toContain('legacy after child cleared'),
+    );
+    expect(fetchWindow).toHaveBeenCalledTimes(1);
   });
 
   test('falls back once to a legacy single-session endpoint when an older channel lacks conversation reads', async () => {

@@ -25,6 +25,7 @@ import {
   removeHistoryForCapture,
 } from './replay/capture-tap';
 import {
+  evictTranscriptWindow,
   readTranscriptWindow,
   type TranscriptWindowSnapshot,
   transcriptWindowCacheGeneration,
@@ -261,9 +262,6 @@ function snapshotOfNewestPage(
     events: page.events,
     ...(page.nextCursor ? { cursor: page.nextCursor } : {}),
     watermark: page.watermark,
-    ...(page.currentSessionId
-      ? { currentSessionId: page.currentSessionId }
-      : {}),
     ...(page.sessionLineage ? { sessionLineage: page.sessionLineage } : {}),
     handoffs: page.handoffs ?? [],
     contextBoundaries: page.contextBoundaries ?? [],
@@ -344,6 +342,8 @@ export function useSessionEventWindow(
   // wipe and restart the window it is reading.
   const legacySessionIdRef = useRef(legacySessionId);
   legacySessionIdRef.current = legacySessionId;
+  // Set when the newest read failed 404 while the fallback could not apply.
+  const legacyFallbackOwedRef = useRef(false);
   const readerKey = threadId
     ? JSON.stringify([
         apiBase,
@@ -460,9 +460,11 @@ export function useSessionEventWindow(
     requestControllerRef.current = controller;
     setLoading(true);
     // A cached paint is already a reading; the read replaces it in place.
-    if (!revalidatingRef.current) setSettled(false);
+    const revalidatingCachedPaint = revalidatingRef.current;
+    if (!revalidatingCachedPaint) setSettled(false);
     setMemoryContinuation(undefined);
     let fill: { cursor: string; floor: number } | undefined;
+    let failed = false;
     try {
       const capability = requestScope
         ? true
@@ -475,6 +477,7 @@ export function useSessionEventWindow(
         return;
       if (capability !== true) {
         if (requestGeneration !== generation.current) return;
+        failed = true;
         read?.failed();
         const upgradeRequired = capability === false;
         setUpgradeRequired(upgradeRequired);
@@ -602,6 +605,7 @@ export function useSessionEventWindow(
       setWatermark(page.watermark);
       watermarkRef.current = page.watermark;
       setError(undefined);
+      legacyFallbackOwedRef.current = false;
     } catch (cause) {
       if (controller.signal.aborted) return;
       if (
@@ -609,8 +613,16 @@ export function useSessionEventWindow(
         requestSerial !== requestSerialRef.current
       )
         return;
+      failed = true;
       read?.failed();
       const failure = cause instanceof Error ? cause : new Error(String(cause));
+      // A 404 the older-server fallback could not take (the reader then named
+      // a child, not the conversation) is retried if it later can.
+      legacyFallbackOwedRef.current =
+        typeof cause === 'object' &&
+        cause !== null &&
+        (cause as { status?: unknown }).status === 404 &&
+        legacySessionIdRef.current !== threadId;
       setError(failure);
       setUpgradeRequired(false);
     } finally {
@@ -621,6 +633,22 @@ export function useSessionEventWindow(
         unsettledReloadRef.current = undefined;
         revalidatingRef.current = false;
         setRevalidating(false);
+        // A cached paint the server would not confirm is not shown as if it
+        // were current: drop it so the failure (and its Retry) shows, and
+        // forget the copy so it does not paint again.
+        if (failed && revalidatingCachedPaint) {
+          evictTranscriptWindow(stamp.key);
+          windowStampRef.current = undefined;
+          setEvents([]);
+          setSessionLineage(undefined);
+          setHandoffs([]);
+          setContextBoundaries([]);
+          setCursor(undefined);
+          setWatermark(0);
+          watermarkRef.current = 0;
+          partialRef.current = new Set();
+          setPartialTurnStartEventIds(NO_PARTIAL_TURNS);
+        }
         setLoading(false);
         // A failed or upgrade-refused read is still a reading: the caller now
         // knows something, and `error`/`upgradeRequired` say what. Only a read
@@ -863,12 +891,15 @@ export function useSessionEventWindow(
     revalidatingRef.current = false;
     setRevalidating(false);
     windowStampRef.current = undefined;
+    legacyFallbackOwedRef.current = false;
     // A window this client read recently paints at once, as a settled
     // reading; the read below revalidates and replaces it in place.
     const cached = readTranscriptWindow(cacheKeyRef.current);
     if (threadId && cached) {
       setEvents([...cached.events]);
-      setCurrentSessionId(cached.currentSessionId);
+      // Never the cached child: which Session is current is the server's
+      // answer now, not the one this window last saw (`/open` may already
+      // have bound a newer child, which an adopted stale id would undo).
       setSessionLineage(cached.sessionLineage);
       setHandoffs([...cached.handoffs]);
       setContextBoundaries([...cached.contextBoundaries]);
@@ -897,6 +928,20 @@ export function useSessionEventWindow(
       readerKeyRef.current = undefined;
     };
   }, [readerKey, reload, threadId]);
+
+  // The fallback reads only a conversation that is its own Session, so it
+  // waits for the reader to name the conversation itself (the child id was
+  // cleared); then the failed read is owed once more.
+  useEffect(() => {
+    if (
+      !threadId ||
+      legacySessionId !== threadId ||
+      !legacyFallbackOwedRef.current
+    )
+      return;
+    legacyFallbackOwedRef.current = false;
+    void reload();
+  }, [legacySessionId, threadId, reload]);
 
   const previousRevision = useRef(reconcileRevision);
   useEffect(() => {
@@ -973,7 +1018,6 @@ export function useSessionEventWindow(
         events,
         ...(cursor ? { cursor } : {}),
         watermark,
-        ...(currentSessionId ? { currentSessionId } : {}),
         ...(sessionLineage ? { sessionLineage } : {}),
         handoffs,
         contextBoundaries,
@@ -993,7 +1037,6 @@ export function useSessionEventWindow(
     events,
     cursor,
     watermark,
-    currentSessionId,
     sessionLineage,
     handoffs,
     contextBoundaries,

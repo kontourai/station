@@ -37,8 +37,13 @@ interface LandedOpen {
   resolution: Awaited<
     ReturnType<OpenController['resolveConversationOpenAuthoritatively']>
   >;
-  /** False once the read that produced it is cancelled or superseded. */
-  isCurrent: () => boolean;
+  /** True once the effect that read it was cleaned up. */
+  cancelled: () => boolean;
+  /**
+   * False once the answer no longer describes now: its read was superseded
+   * (a stream epoch change, a newer read of this conversation).
+   */
+  current: () => boolean;
 }
 
 /** Re-proves a persisted child binding before the surrounding pane mutates. */
@@ -96,7 +101,12 @@ export function ConversationOpenRevalidator({
             ...(connection ? [connection] : []),
           );
         if (cancelled || read?.current() === false) return;
-        setLanded({ controller, resolution, isCurrent: () => !cancelled });
+        setLanded({
+          controller,
+          resolution,
+          cancelled: () => cancelled,
+          current: () => !cancelled && read?.current() !== false,
+        });
       })
       .catch(() => {
         if (cancelled || read?.current() === false) return;
@@ -130,7 +140,14 @@ export function ConversationOpenRevalidator({
     undefined,
   );
   useEffect(() => {
-    if (!landed?.isCurrent()) return;
+    if (!landed || landed.cancelled()) return;
+    if (!landed.current()) {
+      // The answer outlived its read (a held answer applied seconds later
+      // could span a stream epoch change): read again instead.
+      heldForCatalog.current = undefined;
+      setReadGeneration((generation) => generation + 1);
+      return;
+    }
     const { controller, resolution } = landed;
     const previous = activeChatsStore.getSnapshot()[sessionId];
     const held =

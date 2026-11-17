@@ -212,6 +212,12 @@ interface ChatMessageListProps {
   approvalEvents?: readonly { event: CanonicalRuntimeEvent }[];
   /** Whether `approvalEvents`' window has finished its first read (#2344). */
   approvalEventsSettled?: boolean;
+  /**
+   * The rows are this client's recent copy, still being re-read: a request
+   * on them may already be answered elsewhere, so none is offered to answer
+   * until the read lands.
+   */
+  approvalsHeld?: boolean;
 }
 
 // Stable fallback so `agent || FALLBACK_AGENT` doesn't allocate a new object
@@ -329,6 +335,7 @@ function ChatMessageListComponent({
   onQuote,
   approvalEvents,
   approvalEventsSettled,
+  approvalsHeld = false,
 }: ChatMessageListProps & {
   sendMessage: ReturnType<typeof useSendMessage>;
   apiBase: string;
@@ -399,6 +406,7 @@ function ChatMessageListComponent({
     () =>
       approvalEvents &&
       approvalEvents.length > 0 &&
+      !approvalsHeld &&
       !activeSession.replay &&
       !target?.record?.readOnly
         ? unansweredApprovalRequests(
@@ -423,6 +431,7 @@ function ChatMessageListComponent({
       activeSession.openTurnId,
       suppressStreamingRow,
       approvalEvents,
+      approvalsHeld,
       target?.record?.readOnly,
     ],
   );
@@ -432,7 +441,7 @@ function ChatMessageListComponent({
   );
   const sheetRequests = useMemo(
     () =>
-      activeSession.replay || target?.record?.readOnly
+      activeSession.replay || target?.record?.readOnly || approvalsHeld
         ? []
         : unansweredApprovalRequests(
             [],
@@ -442,7 +451,12 @@ function ChatMessageListComponent({
           ).filter(
             (request) => !request.inputRequest && !request.inputRequestUrl,
           ),
-    [activeSession.replay, approvalEvents, target?.record?.readOnly],
+    [
+      activeSession.replay,
+      approvalEvents,
+      approvalsHeld,
+      target?.record?.readOnly,
+    ],
   );
   // A reconnect replays what this view missed one event at a time; the sheet
   // holds its list until the replay ends (`ApprovalSheetProvider`).
@@ -1915,7 +1929,7 @@ function ChatMessageListComponent({
       resendSource={rowPresentation.get(rowId)?.resend}
       onResendFromMessage={onResendFromMessage}
       onToolApproval={
-        activeSession.replay || target?.record?.readOnly
+        activeSession.replay || target?.record?.readOnly || approvalsHeld
           ? undefined
           : handleToolApproval
       }
@@ -2036,7 +2050,10 @@ function ChatMessageListComponent({
         toolCall={part}
         showDetails={showToolDetails}
         onApprove={
-          !activeSession.replay && part.needsApproval && part.approvalId
+          !activeSession.replay &&
+          !approvalsHeld &&
+          part.needsApproval &&
+          part.approvalId
             ? (action) =>
                 handleToolApproval(
                   activeSession.id,
@@ -2057,6 +2074,7 @@ function ChatMessageListComponent({
       activeSession.id,
       activeSession.agentSlug,
       activeSession.replay,
+      approvalsHeld,
     ],
   );
 

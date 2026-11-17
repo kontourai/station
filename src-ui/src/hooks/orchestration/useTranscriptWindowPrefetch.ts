@@ -97,6 +97,12 @@ export function useTranscriptWindowPrefetch(conversationId?: string) {
     if (!target || !conversationId) return;
     // A touch-only device focuses the row it is opening; nothing to warm.
     if (globalThis.matchMedia?.('(hover: none)').matches) return;
+    // The person asked the browser to spend less data: warm nothing.
+    if (
+      (globalThis.navigator as { connection?: { saveData?: boolean } })
+        ?.connection?.saveData === true
+    )
+      return;
     timer.current = setTimeout(
       () => startPrefetch(target, conversationId),
       TRANSCRIPT_PREFETCH_DWELL_MS,
