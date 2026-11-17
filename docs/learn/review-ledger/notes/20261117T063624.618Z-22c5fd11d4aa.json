@@ -1,0 +1,31 @@
+{
+  "revision": "05c7686e80786403aee2f2a383f8194e3b7fdbcb",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Checked this page's claims about the source against the change: it only threads an 'eligible' flag from the session resolver to the Codex adapter's tool-family admission so a start composed as bound holds a no. No claim on this page describes tool-family admission timing; unchanged.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked this page's claims about the source against the change: it only threads an 'eligible' flag from the session resolver to the Codex adapter's tool-family admission so a start composed as bound holds a no. No claim on this page describes tool-family admission timing; unchanged.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Checked this page's claims about the source against the change: it only threads an 'eligible' flag from the session resolver to the Codex adapter's tool-family admission so a start composed as bound holds a no. No claim on this page describes tool-family admission timing; unchanged.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/design/strands-migration.md","note":"Checked this page's claims about the source against the change: it only threads an 'eligible' flag from the session resolver to the Codex adapter's tool-family admission so a start composed as bound holds a no. No claim on this page describes tool-family admission timing; unchanged.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked this page's claims about the source against the change: it only threads an 'eligible' flag from the session resolver to the Codex adapter's tool-family admission so a start composed as bound holds a no. No claim on this page describes tool-family admission timing; unchanged.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked this page's claims about the source against the change: it only threads an 'eligible' flag from the session resolver to the Codex adapter's tool-family admission so a start composed as bound holds a no. No claim on this page describes tool-family admission timing; unchanged.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Checked this page's claims about the source against the change: it only threads an 'eligible' flag from the session resolver to the Codex adapter's tool-family admission so a start composed as bound holds a no. No claim on this page describes tool-family admission timing; unchanged.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked this page's claims about the source against the change: it only threads an 'eligible' flag from the session resolver to the Codex adapter's tool-family admission so a start composed as bound holds a no. No claim on this page describes tool-family admission timing; unchanged.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked this page's claims about the source against the change: it only threads an 'eligible' flag from the session resolver to the Codex adapter's tool-family admission so a start composed as bound holds a no. No claim on this page describes tool-family admission timing; unchanged.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked this page's claims about the source against the change: it only threads an 'eligible' flag from the session resolver to the Codex adapter's tool-family admission so a start composed as bound holds a no. No claim on this page describes tool-family admission timing; unchanged.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked this page's claims about the source against the change: it only threads an 'eligible' flag from the session resolver to the Codex adapter's tool-family admission so a start composed as bound holds a no. No claim on this page describes tool-family admission timing; unchanged.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked this page's claims about the source against the change: it only threads an 'eligible' flag from the session resolver to the Codex adapter's tool-family admission so a start composed as bound holds a no. No claim on this page describes tool-family admission timing; unchanged.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked this page's claims about the source against the change: it only threads an 'eligible' flag from the session resolver to the Codex adapter's tool-family admission so a start composed as bound holds a no. No claim on this page describes tool-family admission timing; unchanged.","inputs":["src-server/runtime/bootstrap/runtime-initialize.ts"]}
+  ]
+}
