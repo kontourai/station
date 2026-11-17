@@ -222,7 +222,12 @@ function fakeGithub({ labelExists = true } = {}) {
   } = { jobs: [], annotations: {} };
   const scheduledRuns: Record<
     string,
-    { created_at: string; html_url: string } | null
+    {
+      created_at: string;
+      html_url: string;
+      status?: string;
+      conclusion?: string;
+    } | null
   > = {};
   const fileChangedAt: Record<string, string> = {};
   // Lets a test run another job between this job's read and its first write.

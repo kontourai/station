@@ -1,8 +1,8 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { readWorkflowDocuments } from '../actionlint-gate.mjs';
 import {
   lastSmokedSha,
@@ -11,6 +11,7 @@ import {
 } from '../container-smoke-range.mjs';
 
 const REPO = 'kontourai/station';
+const makeTempDir = trackTempDirs();
 const sha = (c: string) => c.repeat(40);
 
 /** Real-shaped `actions/workflows/.../runs` entries. */
@@ -145,10 +146,7 @@ describe('container smoke range', () => {
     expect(Number(step?.env?.SMOKE_BOUND_MINUTES)).toBe(
       smoke['timeout-minutes'],
     );
-    const summary = join(
-      mkdtempSync(join(tmpdir(), 'smoke-timings-')),
-      'summary.md',
-    );
+    const summary = join(makeTempDir('smoke-timings-'), 'summary.md');
     const now = Math.floor(Date.now() / 1000);
     // A run that died inside the container smoke: the ingress phase never started.
     execFileSync('bash', ['-c', String(step?.run)], {
@@ -162,6 +160,7 @@ describe('container smoke range', () => {
         SMOKE_T_SMOKE: String(now - 1140),
       },
       timeout: 10_000,
+      windowsHide: true,
     });
     const text = readFileSync(summary, 'utf8');
     expect(text).toContain('| Checkout and setup | 1m 00s |');
