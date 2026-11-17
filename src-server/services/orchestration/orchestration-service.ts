@@ -270,6 +270,7 @@ import {
   assertEngineAllowedByManagedPolicy,
   isManagedEngineRefusal,
 } from '../../security/managed-engine-limits.js';
+import { runEngineOutsideStationServerScope } from '../../security/station-server-scope.js';
 import {
   adapterSessionStartDuration,
   adapterTurnDuration,
@@ -1008,6 +1009,7 @@ class DraftDiscardedError extends Error {
 export {
   AdoptionContinuationInProgressError,
   AdoptionEngineNotReadyError,
+  AdoptionSourceActiveError,
 } from './attached-session-adoption.js';
 export { ModelLaunchPlanUnavailableError } from './model-launch-planning.js';
 
@@ -9675,6 +9677,7 @@ export class OrchestrationService {
             adoptionConfinement(context?.fullAccessGrant),
             // #3386: where a conversation no project claims continues.
             command.target,
+            command.continueWhileSourceActive === true,
           );
         case 'sendTurn': {
           const submittedInput = command.input.clientTurnId
@@ -10568,13 +10571,17 @@ export class OrchestrationService {
                                 turnInput.invocationId,
                               );
                             providerInvoked = true;
+                            // #2377 slice D: the turn never inherits a
+                            // dispatch route's server scope.
                             const send = () =>
-                              nativeForeground
-                                ? runWithNativeForegroundRelay(
-                                    nativeForeground,
-                                    () => adapter.sendTurn(turnInput),
-                                  )
-                                : adapter.sendTurn(turnInput);
+                              runEngineOutsideStationServerScope(() =>
+                                nativeForeground
+                                  ? runWithNativeForegroundRelay(
+                                      nativeForeground,
+                                      () => adapter.sendTurn(turnInput),
+                                    )
+                                  : adapter.sendTurn(turnInput),
+                              );
                             return adapter.provider === 'station-agent' &&
                               turnCorrelation &&
                               experienceContext
@@ -13213,7 +13220,9 @@ export class OrchestrationService {
       runSessionStartWithBoundary(
         this.sessionStartBoundaries,
         threadId,
-        invoke,
+        // #2377 slice D: the engine's session never inherits a dispatch
+        // route's server scope.
+        () => runEngineOutsideStationServerScope(invoke),
         admission,
       ),
     );
@@ -17395,7 +17404,9 @@ export class OrchestrationService {
           stored.capture.intent.invocationId,
         );
         try {
-          const result = await adapter.sendTurn(stored.capture.adapterInput);
+          const result = await runEngineOutsideStationServerScope(() =>
+            adapter.sendTurn(stored.capture.adapterInput),
+          );
           if (
             owned.claim.accepted(result.turnId, new Date().toISOString())
               .kind !== 'applied'

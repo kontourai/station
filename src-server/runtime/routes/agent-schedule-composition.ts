@@ -11,6 +11,7 @@ import type {
 } from '@kontourai/station-contracts/agent-schedule';
 import type { RunSummary } from '@kontourai/station-contracts/runs';
 import type {
+  SchedulerAutomationCreator,
   SchedulerAutomationTarget,
   SchedulerJob,
   SchedulerLogEntry,
@@ -32,7 +33,10 @@ import type {
   AutomationProposalOperator,
   AutomationProposalRoutesDeps,
 } from '../../routes/orchestration/automation-proposals.js';
-import { requestMayBeAnAgent } from '../../security/coding-authority.js';
+import {
+  isOperatorAtHostNotAgent,
+  requestMayBeAnAgent,
+} from '../../security/coding-authority.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import {
   type AutomationProposalStore,
@@ -146,6 +150,8 @@ export interface AgentScheduleComposition {
   readonly jobProposals: JobProposalApproval;
   /** The scheduler create/edit routes' rule for a job `target`. */
   readonly admitAutomationTarget: AutomationTargetAdmission;
+  /** #2377 slice D: who an untargeted job created by this request runs as. */
+  readonly jobOwner: (c: Context) => SchedulerAutomationCreator | undefined;
   /** The scheduler routes' rule for acting on a job with a stored target. */
   readonly admitAutomationJob: AutomationJobAdmission;
   readonly mayReadAutomationRun: (
@@ -256,6 +262,33 @@ function admitAutomationTargetFor(
 }
 
 /**
+ * #2377 slice D: who an untargeted job's runs act as. An agent's request
+ * records its dispatch actor, as a targeted automation does; a person's
+ * records that person. Neither resolved: no owner.
+ */
+function jobOwnerFor(
+  deps: Pick<AgentScheduleCompositionDeps, 'dispatchActor'>,
+  person: (c: Context) => AgentSchedulePerson | undefined,
+): (c: Context) => SchedulerAutomationCreator | undefined {
+  return (c) => {
+    if (requestMayBeAnAgent(c.req.raw)) {
+      if (stationControlRequestAuthority(c.req.raw)?.kind !== 'caller')
+        return undefined;
+      const actor = deps.dispatchActor(c);
+      return {
+        userId: actor.userId,
+        ...(actor.principal ? { principal: actor.principal } : {}),
+        ...(actor.ownerAttribution
+          ? { ownerAttribution: actor.ownerAttribution }
+          : {}),
+      };
+    }
+    const requester = person(c);
+    return requester ? { userId: requester.userId } : undefined;
+  };
+}
+
+/**
  * Who may edit, run, enable, disable or delete an existing automation that
  * targets a conversation, decided on its STORED target: its runs act as the
  * stored creator there, so a change by anyone who could not send to that
@@ -275,6 +308,13 @@ function admitAutomationJobFor(
     if (requestMayBeAnAgent(c.req.raw)) {
       const authority = stationControlRequestAuthority(c.req.raw);
       if (authority?.kind !== 'caller') return TARGET_OUT_OF_SCOPE;
+      // #2377 slice D: an untargeted job's runs act as its owner, so only
+      // an agent acting for that same person may change or run it.
+      if (!job.target)
+        return job.createdBy?.userId !== undefined &&
+          authority.caller.principal?.id === job.createdBy.userId
+          ? { ok: true }
+          : TARGET_OUT_OF_SCOPE;
       const own = authority.caller.conversationId ?? authority.caller.sessionId;
       return job.target?.kind === 'conversation' && conversationId === own
         ? { ok: true }
@@ -288,6 +328,17 @@ function admitAutomationJobFor(
         code: 'automation_target_person_required',
         error: 'Sign in again to change this automation.',
       };
+    // #2377 slice D, owner decision 2026-11-16: the operator in person (the
+    // operator credential or home-possession, never an agent, never an owner
+    // device) may manage ANY owned untargeted job. Its runs still act as the
+    // job's recorded owner, never as the operator.
+    if (
+      conversationId === undefined &&
+      requester.userId !== job.createdBy?.userId &&
+      !job.target &&
+      isOperatorAtHostNotAgent(c.req.raw)
+    )
+      return { ok: true, operatorOverride: true };
     const allowed =
       conversationId !== undefined
         ? requester.mayMutate(conversationId)
@@ -540,6 +591,7 @@ export function composeAgentSchedule(
     automationProposalRouteDeps,
     person,
     admitAutomationTarget: admitAutomationTargetFor(deps, person),
+    jobOwner: jobOwnerFor(deps, person),
     admitAutomationJob: admitAutomationJobFor(person),
     mayReadAutomationJob: (c, job) => {
       if (requestMayBeAnAgent(c.req.raw)) {

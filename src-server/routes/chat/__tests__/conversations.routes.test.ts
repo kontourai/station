@@ -16,6 +16,7 @@ import {
   FileConversationAcknowledgementStore,
   PERSONAL_OWNER_ACKNOWLEDGEMENT_KEY,
 } from '../../../services/orchestration/conversation-acknowledgement-store.js';
+import { ConversationWorkStateStore } from '../../../services/orchestration/conversation-work-state-store.js';
 import { resolveRuntimeAgent } from '../../agents/runtime-agent-resolver.js';
 
 vi.mock('../../../telemetry/metrics.js', async (importOriginal) => ({
@@ -1891,6 +1892,65 @@ describe('Conversation Routes', () => {
       ownerScope: 'user:delete-user',
       agentSlug: 'default',
       conversationId: 'c1',
+    });
+  });
+
+  test("DELETE /:slug/conversations/:id prunes every person's settled and hidden records for it", async () => {
+    const home = makeForkDir('station-delete-prune-');
+    const workState = new ConversationWorkStateStore(home);
+    workState.set('personal:owner', 'c1', true, '2026-11-01T00:00:00.000Z');
+    workState.set('personal:owner', 'kept', true, '2026-11-01T00:00:00.000Z');
+    workState.set(
+      'human:tailnet:other',
+      'c1',
+      true,
+      '2026-11-02T00:00:00.000Z',
+    );
+    workState.setHidden(
+      'personal:owner',
+      'c1',
+      true,
+      '2026-11-03T00:00:00.000Z',
+    );
+    workState.setHidden(
+      'personal:owner',
+      'thread',
+      true,
+      '2026-11-03T00:00:00.000Z',
+    );
+    const adapter = createMockAdapter();
+    const app = createConversationRoutes(
+      new Map([['default', adapter]]) as any,
+      mockLogger,
+      undefined,
+      undefined,
+      { getProjectHomeDir: () => home } as any,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => 'delete-user',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { read: vi.fn(), write: vi.fn(), dismiss: vi.fn() },
+    );
+    const response = await app.request('/station/conversations/c1', {
+      method: 'DELETE',
+    });
+    expect(response.status).toBe(200);
+    expect(adapter.deleteConversation).toHaveBeenCalledWith('c1');
+    const after = new ConversationWorkStateStore(home);
+    expect(after.read('personal:owner')).toEqual({
+      kept: '2026-11-01T00:00:00.000Z',
+    });
+    expect(after.read('human:tailnet:other')).toEqual({});
+    expect(after.readHidden('personal:owner')).toEqual({
+      thread: '2026-11-03T00:00:00.000Z',
     });
   });
 

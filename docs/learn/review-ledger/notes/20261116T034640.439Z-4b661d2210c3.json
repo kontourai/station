@@ -1,0 +1,7 @@
+{
+  "revision": "8cbe9bbfd1addb45446dce86d51850f87b118b7a",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Subagent signal now states the separate 1024-transcript and 4096-entry bounds (refused past either) and the 25-second scan reuse while no subagent is added; checked against claude-transcript-session-source.ts and its bound tests.","inputs":["docs/reference/session-api.md","src-server/providers/sessions/claude-transcript-session-source.ts","src-server/services/orchestration/attached-session-adoption.ts"]}
+  ]
+}

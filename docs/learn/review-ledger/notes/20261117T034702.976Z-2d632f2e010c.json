@@ -1,0 +1,7 @@
+{
+  "revision": "f91b85f21e1d09b17d2ceb5f1f0d246746848cdc",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"abstraction-review.md cites the shortcut guide for the Undo inbox dismissal versus Undo last action distinction, which is unchanged; the guide now also says the same Undo reverses Hide.","inputs":["docs/guides/keyboard-shortcuts.md"]}
+  ]
+}

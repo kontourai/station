@@ -1,0 +1,7 @@
+{
+  "revision": "f283653281c995a57733c459227c113f9cfafa98",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Checked the diff: one new process test is added to scripts/vitest-resource-manifest.mjs beside voltagent-stream-finish-flush.process.test.ts; the manifest rules described here are unchanged.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

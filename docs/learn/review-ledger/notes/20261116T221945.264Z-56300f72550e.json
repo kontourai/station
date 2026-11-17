@@ -1,0 +1,9 @@
+{
+  "revision": "ea60d720910ce6d78a3a747891862c3c73623353",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Only the pull request agent feedback route list gained Project defaults and derived-link removal; the integration and terminal guidance citing api.md is unaffected.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Only the pull request agent feedback route list gained Project defaults and derived-link removal; the integration and terminal guidance citing api.md is unaffected.","inputs":["docs/reference/api.md"]}
+  ]
+}

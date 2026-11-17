@@ -82,6 +82,8 @@ export class WebPushChannel implements DeliveryChannel {
     private readonly devicePairing: WebPushDeliveryDevicePairing,
     private readonly webPushService: Pick<WebPushService, 'send'>,
     private readonly logger: WebPushDeliveryLogger,
+    /** This Station's environment id, carried in each link. */
+    private readonly stationId: () => string | undefined = () => undefined,
   ) {}
 
   /** Only categories the composer can rank: the ones Web Push has always carried. */
@@ -120,7 +122,11 @@ export class WebPushChannel implements DeliveryChannel {
     _envelope: NotificationEnvelopeV1,
     to: ChannelTarget[],
   ): Promise<DeliveryOutcome[]> {
-    const composed = composeWebPushPayload(notification);
+    const composed = composeWebPushPayload(
+      notification,
+      [notification],
+      this.stationId(),
+    );
     if (!composed) return to.map(({ ref }) => ({ ref, result: 'suppressed' }));
     const { payload, ttlSeconds } = composed;
     return Promise.all(

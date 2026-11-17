@@ -63,7 +63,16 @@ with **Send**: Send (or the configured Return shortcut, except during IME
 composition) continues with the draft; Shift+Return adds a line. Either way the continuation opens
 through the normal dock controller, and a draft, when there is one, goes to the
 normal sender once. The original conversation
-remains available in its original app. A failed opening retains the reader and offers a
+remains available in its original app. When the server reads the original as
+still mid-turn (`attachedSourceActivity` is `active`), or refuses the
+continuation for that reason, a caution row appears under the origin, at
+the top of the content area rather than in the title bar's action slot:
+"Still running in Claude Code. Continuing now forks it", with **Continue
+anyway** and **Not now**; it is not a dialog. Focus moves to **Continue anyway**,
+which the caution describes, and returns to **Continue in Station** on **Not
+now** or when Continue anyway fails; the caution is a status announcement, so a
+refusal of a stale read is heard too. Station offers no take-over: it cannot
+stop the original app. A failed opening retains the reader and offers a
 retry that does not create another continuation. Metadata is available through
 an explicit Details action.
 
@@ -502,7 +511,10 @@ swipe and snap to reveal labelled actions. Only one row's tray stays open.
 Swiping only reveals; Snooze still opens its duration picker. Eligible
 conversations also offer Settle or Reopen when Open and Settled inbox is
 enabled. Dismiss from inbox hides work on this device; settling records the
-person's resolution across devices, and neither stops a running engine.
+person's resolution across devices, and neither stops a running engine. With
+that preview on, owned conversations offer Settle and no Dismiss, and
+third-party Sessions offer Hide, kept per person on the host (see
+[Inbox shelves](#inbox-shelves-and-conversation-resolution)).
 The Details sheet retains the complete available action set, including actions
 also offered as shortcuts. Destructive draft discard stays outside the swipe
 tray. A server Draft remains present for an eight-second Undo window before
@@ -538,8 +550,13 @@ layer replaces the personal default in **Permissions**
 message to the dock’s existing sender once; Home's Start hands the dock its
 exact chip selection, which the dock starts through the same path. Setup actions retain the draft
 through the authority-fenced return journey. A removed preference requires an
-explicit replacement; an unavailable preference keeps its reason and repair.
-Home’s composer shows the same remembered Agent, repair included; only with no Agent to offer does its Start run the quick-start preparation. The mobile overflow holds
+explicit replacement. Only an Agent that can start is remembered or chosen by
+default: a remembered, recent or configured Agent that cannot start yields to
+the next one that can, and an Agent chosen on the way into setup shows only
+once setup makes it ready. An Agent picked from the menu in this tab still
+shows with its repair, so it can run on another Station. The dock's setup card appears
+only when no Agent can start, with each reason under **Details**.
+Home’s composer shows the same Agent and offers setup only for a menu pick that cannot start; with no Agent to offer, its Start runs the quick-start preparation instead. The mobile overflow holds
 chat actions rather than repeating the app header’s connection-health row.
 When fullscreen chat hides that header, its actions sheet retains Station
 management and connection state.
@@ -1270,7 +1287,9 @@ simple per-device preference rather than claiming to detect an attached keyboard
   dictates through its mic, like a reply. Folder drops show a file-selection
   error; ordinary text paste keeps its normal behavior. It cannot know what the new chat's
   engine accepts, so Start hands the files to the chat it opens, which runs
-  them through its own intake and staging before its first send. If that
+  them through its own intake and staging before its first send. While they
+  upload, that chat's composer shows their progress and **Sends when uploads
+  finish**, with Send disabled so the message cannot go twice. If that
   engine refuses a file or a file does not stage, the message waits in the
   chat's composer with the reason instead of going out without it. A task
   started on another Station takes text only, so Start with files attached
@@ -1303,6 +1322,23 @@ simple per-device preference rather than claiming to detect an attached keyboard
   listed, listing unavailable or not yet read) to the note above; absent is
   never treated as "no". It outranks the Bedrock-only capability catalog,
   which has no row for an OpenCode model id.
+- The chip strip above the draft is the one place attachments are reviewed.
+  An image thumbnail (reply, room and start composers) is a **Preview**
+  button that opens the same previewer as an image in a sent message, with
+  prev/next across the draft's images. The paperclip always opens the file
+  picker and adds to what is attached; there is no separate attachments
+  panel and no bulk clear, since each chip has its own **Remove**.
+- An upload in progress is not an error. Its chip reads **Uploading N%**
+  with a progress bar (or **Waiting to upload**) and **Stop**, and Send stays
+  enabled. Sending (button or Return) while a file is still uploading holds
+  the message: Send is disabled, the line under the chips reads **Sends when
+  uploads finish** with **Don't send**, and the message goes by itself once
+  every upload completes (or joins Queue then, during a running turn). The
+  hold is dropped, and nothing is sent, when an upload fails, expires or is
+  stopped (the chip then shows why, with Retry or Remove), when a file is
+  removed, or when the chat changes. Dispatch independently refuses any
+  attachment that is not completely staged, so a message never goes without
+  its files.
 - Each chip shows one short status that names what happened, such as
   **Upload expired**, **Upload didn't finish** or **Upload limit reached**, and
   its action (**Upload again**, **Retry**, **Remove**). A full staging capacity
@@ -1483,6 +1519,22 @@ snoozing, dismissal and deletion. A closed Task is Settled; automatic Task closu
 continues to follow its existing close-on-merge setting. Linked pull requests
 alone do not automatically settle standalone conversations.
 
+Settled stays a decision about the conversation's current state, so the host
+clears it when the conversation needs the person again. The person's own
+message (a send, a steer or a queued message, from any client including the
+CLI) clears that person's record at the send route
+([`createSenderReopen`](../../src-server/services/orchestration/conversation-resolution-reopen.ts));
+another person's record is untouched. A question or approval request, a failed
+turn or a stop clears every person's record for the conversation through an
+event observer (`wireConversationResolutionReopen`). A turn the engine opens on
+its own (a background-task reply, a scheduled wake-up) that starts and finishes
+normally keeps it settled, as it keeps a dismissal. A delegated, automatic
+background or agent-sent message is not the person's and reopens nothing. The
+end of a settled conversation's transcript reads "Settled 2h ago · Reopen", and
+the composer says "Sending reopens this conversation". Agents settle or reopen
+with Station Control's `settle_conversation` only when the person asks; people
+can also use `station conversation settle|reopen`.
+
 Every populated shelf can be collapsed; collapsed shelves sit below expanded
 work, with Settled at the bottom by default. With no shelf expanded they stack
 from the top of the list. A collapsed shelf still lists the row of the chat on
@@ -1506,6 +1558,27 @@ agent, and a row with no mark keeps the agent in words. A touch row keeps
 the agent named in words beside its mark (#4266). Dismissal offers a
 transient Undo toast and the configurable inbox Undo shortcut. Native editor
 and terminal undo retain their keys.
+
+With the preview on, Settle is the one way to put an owned conversation away:
+its row offers no Dismiss. A third-party Session of this host offers **Hide**
+instead, kept on the host per person by Session thread id
+(`PUT /api/conversations/:id/inbox-hidden`, in `conversation-inbox-hidden.json`
+beside the settled records), so it is hidden on every device of that person.
+It stays hidden through its status updates and returns when the row is no
+longer third-party (adopted into Station), which also clears the record, or
+when the person restores it from search, where hidden rows are listed as
+Hidden. Hide and Restore share the dismissal Undo toast and shortcut. A host
+whose work-state read carries no `hidden` map, and a row from another Station,
+keep local Dismiss. Existing local third-party dismissals of this host move to
+the host when it first offers hiding and are then removed from the browser; a
+Session the host refuses as unreadable is dropped. Deleting a conversation
+removes every person's settled and hidden record for it, and each person keeps
+at most 1,000 hidden Sessions, newest first. The Settled shelf shows work
+settled in the last seven days (the settled record, else when the work ended,
+as for a closed Task) and the Third-party shelf Sessions active in the last
+seven days; older rows sit behind **Show older**, and search shows every row.
+The window is a default, not a setting. With the preview off, Dismiss and both
+shelves behave as before.
 
 Customize → Appearance offers Comfortable, Wide and Full answer widths.
 The compact context ring places its percentage inside the ring beside Send;

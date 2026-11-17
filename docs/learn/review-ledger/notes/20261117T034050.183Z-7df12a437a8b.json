@@ -1,0 +1,7 @@
+{
+  "revision": "4ed2c09f36c9e556c51032d2f3fa0c393c1ee7b1",
+
+  "notes": [
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"Added that the inbox Undo shortcut also reverses Hide: inbox-dismissals.tsx sets undoLastDismiss to the host unhide for a hidden third-party Session; shortcut registration is unchanged.","inputs":["docs/guides/keyboard-shortcuts.md","src-ui/src/components/chat-dock/inbox-dismissals.tsx"]}
+  ]
+}

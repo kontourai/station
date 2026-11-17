@@ -615,7 +615,9 @@ export function NewChatModal({
     },
   });
   const beginSetup = (path: string, agentSlug?: string) => {
-    if (showStart && agentSlug) start.chooseAgent(agentSlug);
+    // Shown once setup makes it ready; backing out leaves the working choice.
+    if (showStart && agentSlug)
+      start.chooseAgent(agentSlug, { untilReady: true });
     if (!setupReturn.begin(path)) {
       setSelectFeedback('Reconnect to this Station before opening setup.');
       return;
@@ -1270,8 +1272,12 @@ export function NewChatModal({
     if (seededSelection.current || !startSelection?.agentSlug || automaticMode)
       return;
     seededSelection.current = true;
-    start.chooseAgent(startSelection.agentSlug);
-  }, [start, startSelection, automaticMode]);
+    // A hand-off for setup carries an Agent that is not ready yet; the draft
+    // shows it once it is, and the working default until then.
+    start.chooseAgent(startSelection.agentSlug, {
+      untilReady: handoff?.kind === 'repair',
+    });
+  }, [start, startSelection, automaticMode, handoff?.kind]);
   const seededModel = useRef(false);
   useEffect(() => {
     if (

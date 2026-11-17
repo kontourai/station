@@ -56,7 +56,8 @@ export function inboxRowActions({
     isSnoozed: boolean;
     choose: InboxRowSnoozeAction['choose'];
   };
-  close?: { dismiss: boolean; select: SelectAction };
+  /** `hide` puts a third-party Session away on the host instead of dismissing. */
+  close?: { dismiss: boolean; hide?: boolean; select: SelectAction };
   restore?: SelectAction;
   resolution?: {
     settled: boolean;
@@ -111,11 +112,15 @@ export function inboxRowActions({
     actions.push({
       kind: 'command',
       id: 'close',
-      label: close.dismiss ? 'Dismiss from inbox' : 'Close chat',
-      shortLabel: close.dismiss ? 'Dismiss' : 'Close',
-      accessibleLabel: close.dismiss
-        ? `Dismiss ${title} from inbox`
-        : `Close ${title}`,
+      label: !close.dismiss
+        ? 'Close chat'
+        : close.hide
+          ? 'Hide from inbox'
+          : 'Dismiss from inbox',
+      shortLabel: !close.dismiss ? 'Close' : close.hide ? 'Hide' : 'Dismiss',
+      accessibleLabel: !close.dismiss
+        ? `Close ${title}`
+        : `${close.hide ? 'Hide' : 'Dismiss'} ${title} from inbox`,
       icon: 'close',
       select: close.select,
     });

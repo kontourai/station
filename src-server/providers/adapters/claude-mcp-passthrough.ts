@@ -16,12 +16,12 @@
  * `mcp-manager.ts` already does for Station's own engine. There is no
  * external protocol boundary the env crosses. That is what makes it safe
  * for this module — and only this module, not acp-mcp-passthrough.ts — to
- * reuse `withStationControlRuntimeEnv` (the same reviewed mechanism
- * `mcp-manager.ts` uses) to inject Station's internal API token into the
- * built-in `station-control` server. `withStationControlRuntimeEnv` gates
- * the injection on an exact command/args match against the built-in
- * station-control server path, so an env-less third-party MCP server the
- * agent author points at never receives it.
+ * hand the built-in `station-control` stdio fallback its operational env
+ * through `withStationControlRuntimeEnv`, which gates on an exact
+ * command/args match against the built-in server path. Since #2377 slice D
+ * no child receives Station's internal API token: the built-in is served
+ * in-process (`inProcess` below), and a stdio fallback has no credential
+ * and is refused by the authority guard.
  *
  * Review fix (archive#1157 round 2, HIGH companion): `ResolvedAgentToolServer`
  * structurally cannot carry `env` (secret boundary at resolution — see
@@ -48,7 +48,6 @@ import type {
   CapabilityUndeliveredReason,
   ResolvedAgentToolServer,
 } from '@kontourai/station-contracts/provider';
-import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import {
   builtinStationApiServerId,
   withStationControlRuntimeEnv,
@@ -79,8 +78,6 @@ export interface ClaudeStationControlDelivery {
    */
   inProcess?: () => unknown;
   knowledgeInProcess?: (allowedTools?: readonly string[]) => unknown;
-  /** Passed to the stdio child so its REST calls keep their tenant. */
-  tenantExecutionContext?: TenantExecutionContext;
 }
 
 /**
@@ -155,7 +152,6 @@ export function resolveClaudeMcpServers(
         server.id,
         toolDef,
         builtin ? stationControlEnv : undefined,
-        builtin ? stationControl.tenantExecutionContext : undefined,
       );
       servers[server.id] = {
         type: 'stdio',

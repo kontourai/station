@@ -1,0 +1,7 @@
+{
+  "revision": "f283653281c995a57733c459227c113f9cfafa98",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Checked the diff: one new test, src-server/runtime/frameworks/__tests__/voltagent-otlp-on-first-use.process.test.ts, is listed beside the other VoltAgent process test because it spawns fresh Node children. The manifest groups and rules this page describes are unchanged.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}
