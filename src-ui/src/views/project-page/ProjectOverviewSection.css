@@ -127,3 +127,8 @@
   font-size: var(--k-text-sm);
   cursor: pointer;
 }
+
+/* The folded Resolved group's toggle is a touch target like any row. */
+.project-overview__resolved-toggle {
+  min-height: 44px;
+}

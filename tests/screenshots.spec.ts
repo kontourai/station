@@ -3300,6 +3300,289 @@ function appsLibraryScreens(details = false): Screen[] {
   );
 }
 
+/**
+ * #5064/#5072: the Project Overview groups and the Overview and notifications
+ * settings section, both behind the `project-overview` Feature Preview. The
+ * Tasks, their runs and their pull request facts are fixtures (no forge is
+ * read), seeded so every group is populated, including the green pull request
+ * nobody armed ("Not queued") and an auto-resolved Task with its Reopen menu.
+ */
+function projectOverviewScreens(): Screen[] {
+  const DAY = 86_400_000;
+  return (['dark', 'light'] as const).flatMap((theme) =>
+    [DESKTOP, MOBILE].flatMap((viewport) =>
+      (['overview', 'settings'] as const).map((surface): Screen => {
+        const size = viewport.width === DESKTOP.width ? 'desktop' : 'mobile';
+        const slug = `gallery-overview-${surface}-${theme}-${viewport.width}`;
+        let request: ReturnType<typeof createAuthenticatedE2ERequest>;
+        const cleanups: (() => Promise<void>)[] = [];
+        let created = false;
+        let previousPreview = false;
+        return {
+          name: `project-overview-${surface === 'overview' ? 'groups' : 'settings'}-${theme}-${size}`,
+          title:
+            surface === 'overview'
+              ? `Project Overview groups — ${theme}, ${viewport.width}px`
+              : `Project Overview and notifications settings — ${theme}, ${viewport.width}px`,
+          path:
+            surface === 'overview'
+              ? `/projects/${slug}`
+              : `/projects/${slug}/edit?section=overview`,
+          viewport,
+          async beforeGoto(page) {
+            request = createAuthenticatedE2ERequest(page.request);
+            const previews = await request.get(
+              `${resolveE2EApiBase()}/api/feature-previews`,
+            );
+            expect(previews.ok()).toBe(true);
+            const preview = (await previews.json()).data.find(
+              (item: { id: string }) => item.id === 'project-overview',
+            );
+            expect(preview).toBeDefined();
+            previousPreview = preview.enabled;
+            const enabled = await request.put(
+              `${resolveE2EApiBase()}/api/feature-previews/project-overview`,
+              { data: { enabled: true } },
+            );
+            expect(enabled.ok()).toBe(true);
+            cleanups.push(async () => {
+              const restored = await request.put(
+                `${resolveE2EApiBase()}/api/feature-previews/project-overview`,
+                { data: { enabled: previousPreview } },
+              );
+              expect(restored.ok()).toBe(true);
+            });
+            const response = await request.post(
+              `${resolveE2EApiBase()}/api/projects`,
+              { data: { name: 'Billing platform', slug } },
+            );
+            expect(response.ok()).toBe(true);
+            created = true;
+            if (surface === 'settings') return;
+
+            const now = Date.now();
+            const at = (msAgo: number) => new Date(now - msAgo).toISOString();
+            const task = (
+              id: string,
+              title: string,
+              overrides: Record<string, unknown> = {},
+            ) => ({
+              id: `${slug}-${id}`,
+              projectId: slug,
+              title,
+              description: '',
+              priority: 'normal',
+              status: 'in_progress',
+              agentId: 'claude',
+              createdBy: 'user',
+              createdAt: at(20 * DAY),
+              updatedAt: at(2 * 3_600_000),
+              sessionId: `${slug}-run-${id}`,
+              ...overrides,
+            });
+            const tasks = [
+              task('ask', 'Choose the invoice numbering scheme'),
+              task('blocked', 'Unblock the tax provider sandbox', {
+                status: 'blocked',
+                sessionId: undefined,
+              }),
+              task('run', 'Refresh the onboarding copy'),
+              task('review', 'Review the export redesign'),
+              task('stall', 'Ship the billing banner'),
+              task('queued', 'Tighten the API rate limits'),
+              task('idle', 'Write the release notes', {
+                latestReport: {
+                  text: 'Drafted notes for 4.2; waiting on the final changelog.',
+                  at: at(3_600_000),
+                },
+              }),
+              task('quiet', 'Audit unused feature flags', {
+                updatedAt: at(10 * DAY),
+              }),
+              task('merged', 'Migrate settings storage'),
+            ];
+            const session = (
+              id: string,
+              overrides: Record<string, unknown> = {},
+            ) => ({
+              provider: 'claude',
+              threadId: `${slug}-run-${id}`,
+              status: 'ready',
+              controlMode: 'station-owned',
+              answerability: { answerable: true },
+              isLoaded: true,
+              isPersisted: true,
+              eventCount: 6,
+              createdAt: at(DAY),
+              updatedAt: at(2 * 3_600_000),
+              ...overrides,
+            });
+            const sessions = [
+              session('ask', {
+                lifecycleState: 'needs_input',
+                transitionReason: 'input_requested',
+              }),
+              session('run', {
+                lifecycleState: 'running',
+                hasActiveTurn: true,
+              }),
+              session('review'),
+              session('stall'),
+              session('queued'),
+              session('idle'),
+              session('quiet', {
+                createdAt: at(11 * DAY),
+                updatedAt: at(10 * DAY),
+              }),
+              session('merged'),
+            ];
+            const pr = (
+              ref: string,
+              status: Record<string, unknown>,
+            ): Record<string, unknown> => ({
+              provider: 'github',
+              host: 'github.com',
+              repository: { owner: 'example', name: 'billing' },
+              ref,
+              url: `https://github.com/example/billing/pull/${ref}`,
+              observedAt: at(60_000),
+              status: {
+                state: 'current',
+                pullRequestState: 'OPEN',
+                mergeability: 'mergeable',
+                ...status,
+              },
+            });
+            const facts: Record<string, Record<string, unknown>[]> = {
+              review: [
+                pr('412', {
+                  readiness: 'blocked',
+                  reviewDecision: 'review_required',
+                }),
+              ],
+              stall: [pr('415', { readiness: 'clean', landing: 'not-queued' })],
+              queued: [
+                pr('418', { readiness: 'clean', landing: 'merge-queue' }),
+              ],
+              merged: [pr('409', { pullRequestState: 'MERGED' })],
+            };
+            const tasksRoute = (url: URL) => url.pathname === '/api/tasks';
+            const tasksHandler = (route: Route) => {
+              if (route.request().method() !== 'GET')
+                return rejectUnexpectedFixtureRequest(route);
+              return route.fulfill({ json: { success: true, data: tasks } });
+            };
+            await page.route(tasksRoute, tasksHandler);
+            cleanups.push(() => page.unroute(tasksRoute, tasksHandler));
+            cleanups.push(
+              await withRoute(
+                page,
+                '**/api/tasks/pull-request-facts*',
+                (route) => {
+                  if (route.request().method() !== 'GET')
+                    return rejectUnexpectedFixtureRequest(route);
+                  return route.fulfill({
+                    json: {
+                      success: true,
+                      data: {
+                        observedAt: at(60_000),
+                        tasks: Object.fromEntries(
+                          tasks.map((item) => [
+                            item.id,
+                            {
+                              taskCreatedAt: item.createdAt,
+                              pullRequests:
+                                facts[item.id.slice(slug.length + 1)] ?? [],
+                            },
+                          ]),
+                        ),
+                      },
+                    },
+                  });
+                },
+              ),
+            );
+            cleanups.push(
+              await withRoute(
+                page,
+                '**/api/orchestration/sessions/read-model',
+                (route) => {
+                  if (route.request().method() !== 'GET')
+                    return rejectUnexpectedFixtureRequest(route);
+                  return route.fulfill({
+                    json: { success: true, data: sessions },
+                  });
+                },
+              ),
+            );
+          },
+          async afterGoto(page) {
+            await page.evaluate(
+              (selected) =>
+                document.documentElement.setAttribute('data-theme', selected),
+              theme,
+            );
+            if (surface === 'settings') {
+              const section = page.locator('#section-overview');
+              await expect(
+                section.getByRole('combobox', { name: 'Resolve idle Tasks' }),
+              ).toHaveValue('7');
+              await expect(
+                section.getByRole('combobox', { name: 'Notify me' }),
+              ).toBeEnabled();
+              await section.scrollIntoViewIfNeeded();
+              return;
+            }
+            const overview = page.locator('.project-overview');
+            for (const label of [
+              'Waiting on you',
+              'Ready for review',
+              'Working',
+              'Landing',
+              'Idle',
+            ])
+              await expect(
+                overview.getByRole('heading', {
+                  name: new RegExp(`^${label}`),
+                }),
+              ).toBeVisible();
+            await expect(overview.getByText(/Not queued/)).toBeVisible();
+            await overview
+              .getByRole('button', { name: /^Resolved · 2$/ })
+              .click();
+            await expect(
+              overview.getByText('Auto-resolved', { exact: true }),
+            ).toBeVisible();
+            // The last row can be scrolled clear of the collapsed dock: the
+            // page reserves room for it below the list. Shown that way, and
+            // asserted, so the capture proves it is reachable.
+            const last = overview.locator('.project-overview__row').last();
+            await last.evaluate((row) =>
+              row.scrollIntoView({ block: 'center' }),
+            );
+            const dock = await page
+              .locator('.chat-dock.is-collapsed')
+              .boundingBox();
+            const lastBox = await last.boundingBox();
+            expect(lastBox).not.toBeNull();
+            if (dock)
+              expect(lastBox!.y + lastBox!.height).toBeLessThanOrEqual(dock.y);
+          },
+          async cleanup() {
+            for (const cleanup of cleanups.splice(0)) await cleanup();
+            if (created) {
+              const removed = await request.delete(
+                `${resolveE2EApiBase()}/api/projects/${slug}`,
+              );
+              expect(removed.ok()).toBe(true);
+            }
+          },
+        };
+      }),
+    ),
+  );
+}
+
 function projectRepositorySourceScreens(): Screen[] {
   return (['dark', 'light'] as const).flatMap((theme) =>
     [false, true].flatMap((accessDetails) =>
@@ -5004,6 +5287,7 @@ const SCREENS: Screen[] = [
   ...appsLibraryScreens(),
   ...appsLibraryScreens(true),
   ...projectRepositorySourceScreens(),
+  ...projectOverviewScreens(),
   ...telemetryConsentScreens(),
   ...[DESKTOP, MOBILE].map((viewport): Screen => {
     const slug = 'gallery-project-retry-board';

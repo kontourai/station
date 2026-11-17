@@ -203,6 +203,7 @@ function ProjectOverviewGroups({
         >
           <DisclosureToggle
             id={headingId}
+            className="project-overview__resolved-toggle"
             expanded={resolvedOpen}
             onToggle={() => setResolvedOpen((open) => !open)}
             controls={listId}
