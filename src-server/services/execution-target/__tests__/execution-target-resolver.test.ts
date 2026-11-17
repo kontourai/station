@@ -1181,9 +1181,7 @@ describe('the model a turn launches with', () => {
           available: true,
           execution: { agentConnectionId: engineConnectionId('opencode') },
         })),
-        getConnection: vi.fn(async (_access, id) =>
-          connection(id, 'opencode'),
-        ),
+        getConnection: vi.fn(async (_access, id) => connection(id, 'opencode')),
         getProviderAdapter: vi.fn((provider) =>
           provider === 'opencode' ? opencode : undefined,
         ),
