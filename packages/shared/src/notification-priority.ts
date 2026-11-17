@@ -150,6 +150,9 @@ const CATEGORY_OUTCOME: Record<string, NotificationOutcome> = {
   'agent-failed': 'failed',
   'agent-done': 'done',
   'agent-info': 'info',
+  // Pull request agent feedback paused, or its chat's agent stopped with
+  // feedback waiting: a person has to look, like a pending approval.
+  'pull-request-feedback': 'needs-input',
 };
 
 export function classifyNotificationCategory(

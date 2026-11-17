@@ -46,9 +46,21 @@ export type StoredClaimCondition =
   | {
       state: 'paused';
       reason: 'round-limit' | 'repeated-failure' | 'fix-budget';
+      /** round-limit: rounds on one head, or messages in 24 hours. */
+      cap?: 'head' | 'day';
       headSha: string;
-      /** repeated-failure, fix-budget: the failing check names. */
+      /**
+       * The failing check names: the ones that kept failing
+       * (repeated-failure), the ones waiting when it paused (round-limit), or
+       * the ones still failing when every fix attempt was used (fix-budget).
+       */
       failing?: string[];
+      /** The same names as a person reads them: required checks first. */
+      shown?: string[];
+      /** cap head: the rounds that head had when it paused. */
+      rounds?: number;
+      /** When it paused; absent on a pause recorded before it was kept. */
+      at?: string;
     }
   | { state: 'unavailable'; cause: PullRequestFeedbackUnavailableCause }
   | { state: 'closed'; at: string };

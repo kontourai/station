@@ -1,0 +1,7 @@
+{
+  "revision": "355d3c3247ec6a54f3165039544c85e6b0b37498",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Re-reviewed after restoring the phone Actions sheet to main (Chat inventory, Background tasks, Copy and origin stay there) and moving desktop e2e journeys to the card-or-menu helpers and the Chat settings gear; the phone sheet still holds Chat inventory; the paragraph naming the This chat card's footer for desktop remains accurate.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

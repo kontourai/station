@@ -36,9 +36,11 @@ flag. Hosted Stations do not offer it, and GitLab reads as `unsupported`.
    gap: a person writing with that login *during* an agent turn is read as the
    agent.
 3. **Bounds.** At most 3 placed messages per head, and 10 per pull request
-   per day. The same failing checks on 3 heads in a row pauses instead of
+   in 24 hours. The same failing checks on 3 heads in a row pauses instead of
    sending. A pause lifts on Send again (one more round on that head) or on a
-   new head whose feedback differs.
+   new head whose feedback differs. A 24-hour pause moves to a new head while
+   the 10 are still spent, rather than lifting and pausing again, so a person
+   is told once and Send again grants its round on the head being read.
 4. **New claims only.** Project defaults would apply only when a claim is
    created, never retroactively (not built in this slice).
 5. **Overlap with Task follow-ups.** For a pull request whose feedback is on,
@@ -48,10 +50,13 @@ flag. Hosted Stations do not offer it, and GitLab reads as `unsupported`.
    "Address review comments"). While feedback is paused, unavailable or
    closed, the lead is woken as before. Issue comments always wake.
 6. **Origin.** The message is a Station-framed turn: Station's internal
-   client origin, the chat's recorded owner as sender, no dispatch origin
-   (the inbox records `task-dispatch` on a Task's Session, `unknown`
-   elsewhere). Never `interactive`, never a person's typed text, never
-   `automation`. A distinct `forge-feedback` origin is a follow-up.
+   client origin with the `pull-request-feedback` sender naming the Session
+   it reaches (so the chat labels it "Pull request feedback from Station",
+   not an unknown sender), the
+   chat's recorded owner as actor, no dispatch origin (the inbox records
+   `task-dispatch` on a Task's Session, `unknown` elsewhere). Never
+   `interactive`, never a person's typed text, never `automation`. A
+   distinct `forge-feedback` dispatch origin is a follow-up.
 7. **Ownership.** One owning chat per pull request. Only a pull request a
    person linked to the chat (`explicit`) or kept on its Task
    (`task-declared`) can be claimed; an agent's declaration alone never can.
@@ -63,6 +68,22 @@ flag. Hosted Stations do not offer it, and GitLab reads as `unsupported`.
    anything waiting dropped, and a message already queued is refused at
    placement (`pr_feedback_unlinked`); it can always be turned off from its
    chat. Task follow-ups wake the lead again for an unlinked pull request.
+
+8. **Needs you.** A pause, or the chat's agent stopped with feedback
+   waiting, is a Needs-you item (`pull-request-feedback`) for readers of
+   that chat, and one push notification to them when it starts. Paused, the
+   item's primary action is Send again; stopped, it is Open chat (Send again
+   would answer "not paused"). Open pull request and Turn off auto-fix
+   follow it. Who may Send again, turn feedback off or change a switch is
+   one rule, for the routes and the item alike: a current, in-person
+   operator who may read the chat and continue it. A reader it refuses sees
+   a remedy line instead of those buttons. Acknowledging it holds until the
+   next pause. Copy never says a pause lifts by itself, and lists required
+   checks first. The notification is one per pause or stop (keyed by when
+   it began) and is settled (expired) once that pause or stop is over. Like
+   Station's other system notices it has no per-source mute; quiet hours
+   and a surface's minimum urgency still apply, and turning auto-fix off
+   stops it.
 
 ## The message
 
@@ -102,14 +123,50 @@ Items past a block's cap are counted ("3 more threads; see the pull
 request") and count as delivered: the agent reads them on the pull request,
 and they are not listed again unless they change.
 
+## Where a person sees it
+
+Wherever a person looks at a pull request, they can tell whether its agent
+is getting feedback without opening a dialog, and never learn more about a
+chat than they may read:
+
+- **The pull request panel** shows one line under its head: "Agent
+  feedback", the status, the chat that gets it (a link; "this chat" when it
+  is the open one), the last message sent about the head it shows and when,
+  and a gear to the dialog (naming the owning chat when it is not the open
+  one). It may appear a moment after the review and move it down: the two
+  reads settle apart. To a
+  reader who may not read the owning chat it says only "goes to another
+  chat", with no title, status or settings. When no chat gets it and the
+  open chat holds the pull request, it says "Off · Turn on…". Otherwise,
+  while loading, or on an error, there is no line at all.
+- **A failing check** the agent was sent says "Sent 3m" beside it, only for
+  checks sent about the head the panel shows.
+- **A Task board card** in In review adds "auto-fix on", "sent 3m",
+  "waiting on checks" or "auto-fix paused" after its pull request; a Running
+  card adds "fixing checks on #42" while the feedback goes to that Task's
+  own run and its open turn is the one Station started to send that pull
+  request's failing checks (an In review card the facts say is fixing reads
+  "fixing checks"). Another Task keeping the same pull request, or a run
+  doing other work, is never fixing. The note never changes the
+  card's lane, rung, tone or certainty, and shows only while the feedback is
+  about the head the provider reported. It is read for a reader of the
+  owning chat only.
+- `GET /api/pull-request-feedback/by-pull-request` answers all of this for
+  one pull request, whichever chat is open. The 409 for turning feedback on
+  in a second chat, and a chat's own feedback read, name the owning chat
+  (id and title) only to a reader of it; to anyone else a chat's own read
+  also shows that pull request's switches off and its status `off`, never
+  the owning chat's.
+
 ## Implementation status
 
 Implemented: detection (one `gh api graphql --hostname` per pull request, on
 the built-in scheduler's existing tick, at most 20 per tick, 2/10/15-minute
 cadence, a re-read when the owning agent's turn ends), the store, ownership,
 delivery with holds and the placement re-check (`pr_feedback_stale`,
-`pr_feedback_session_waiting`, `pr_feedback_owner_changed`), the routes, and
-the Session details pull request rows with the Agent feedback dialog.
+`pr_feedback_session_waiting`, `pr_feedback_owner_changed`), the routes,
+the Session details pull request rows with the Agent feedback dialog, and the
+Needs-you item, push notification and chat label (decisions 6 and 8).
 
 Choices the decisions left open, and departures from the plan:
 
@@ -121,11 +178,22 @@ Choices the decisions left open, and departures from the plan:
   running turn. A message queued behind a turn in which the agent pushed a fix
   would carry the old head's failures.
 - Merge conflicts ride the "Fix failing checks" switch.
+- The panel and card times read "Sent 3m", not "3m ago": Station's one
+  relative-time format has no "ago". A card's note travels beside its status
+  detail (`feedbackNote`) rather than in it: the lane derivation reads no
+  clock, and a run's own words replace the detail on a Running card.
+  "Fixing" is only a turn that carried failing checks; a turn about review
+  threads alone adds no note.
 - Sign-in and rate-limit failures are read from the one GraphQL call's error
   output rather than a separate `gh auth status` probe.
-- Not yet built: the pull request panel strip, Project defaults (and so
-  automatic claims of a Task branch's pull request, `branch-derived`), the
-  `pull-request-feedback` attention item and push notification for a pause,
-  and the `by-pull-request` read. A pause shows on the pull request's row and
-  in its dialog only. The `review-findings` category and `reviewEachHead`
-  setting exist for the later per-head review and drive nothing.
+- A stopped agent is noticed once per pull request until it is no longer
+  stopped, remembered in memory: after a restart it is noticed again, and the
+  notification's dedupe tag (pull request, reason, and the oldest waiting
+  feedback's time) finds the record it already wrote, so it does not
+  interrupt twice. A later stop with the same feedback still waiting is the
+  same notice. A pause recorded before pauses kept their start time is
+  stamped once when first read.
+- Not yet built: Project defaults (and so automatic claims of a Task
+  branch's pull request, `branch-derived`). The `review-findings` category
+  and `reviewEachHead` setting exist for the later per-head review and drive
+  nothing.

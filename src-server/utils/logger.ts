@@ -101,6 +101,20 @@ export function configureLogRepeatLimit(
   );
 }
 
+/**
+ * Writes every pending "Suppressed K repeats" summary now, before its window
+ * ends (#5054). Graceful shutdown in `index.ts` is the one caller: a process
+ * that exits mid-window would otherwise never write the summary, leaving only
+ * the `station.logs.suppressed_records` count. Never throws.
+ */
+export function flushLogRepeatSummaries(): void {
+  try {
+    repeatLimiter.flush();
+  } catch {
+    // Shutdown must never fail on a log summary.
+  }
+}
+
 // Lazy for the same reason as `services/infra/server-log-store.ts`: a static
 // import of the OTel instruments from the logger seam would load them ahead
 // of vi.mock hoisting in nearly every suite. The import happens only once a

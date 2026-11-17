@@ -1047,13 +1047,34 @@ async function selectProductPath(page: Page, path: ProductPath) {
   const activeChat = chatList.locator('button[aria-current="true"]');
   const projectContext = activeChat.locator('.inbox-row__project');
   await expect(activeChat).toBeVisible();
-  await expect(activeChat).toContainText(path.runtimeName);
+  await expectActiveRowRuntime(chatList, path.runtimeName);
   // Authoritative open resolves the current Session before its event window
   // finishes hydrating. Establish the known one-row historical baseline
   // before a submitted turn is measured, or that restored row is miscounted
   // as a second response from the new turn.
   await expect(assistantRows(page)).toHaveCount(1);
   return { activeChat, projectContext };
+}
+
+/**
+ * The active Inbox row names this runtime: a hover row draws it as its mark,
+ * named in the mark's tooltip; a row with no mark names it in words.
+ */
+async function expectActiveRowRuntime(
+  chatList: ReturnType<Page['getByRole']>,
+  runtimeName: string,
+) {
+  const row = chatList.locator('button[aria-current="true"]');
+  await expect
+    .poll(async () => {
+      const marks = row.locator('[data-testid="identity-marks"]');
+      const title =
+        (await marks.count()) > 0
+          ? await marks.first().getAttribute('title')
+          : null;
+      return `${title ?? ''} ${(await row.textContent()) ?? ''}`;
+    })
+    .toContain(runtimeName);
 }
 
 async function openConversationHistoryFromInbox(
@@ -1094,9 +1115,7 @@ async function selectInventoryConversation(
       hasText: title,
     })
     .click();
-  await expect(chatList.locator('button[aria-current="true"]')).toContainText(
-    runtimeName,
-  );
+  await expectActiveRowRuntime(chatList, runtimeName);
   if (project) await expectChatProject(page, project);
 }
 
@@ -1380,9 +1399,7 @@ async function assertConversationHistory(
     .locator('.session-item__content', { hasText: 'Claude Alpha Chat' })
     .click();
   await expectChatProject(page, 'Alpha Project');
-  await expect(chatList.locator('button[aria-current="true"]')).toContainText(
-    'Claude Code',
-  );
+  await expectActiveRowRuntime(chatList, 'Claude Code');
   await expect(
     page
       .locator('.chat-messages .message.assistant p')

@@ -6295,12 +6295,20 @@ own explicit links separately from provider-derived or Task-kept references.
 `@kontourai/station-sdk/pull-request-feedback` reads a chat's pull request
 feedback (`getConversationPullRequestFeedback`), sets a pull request's
 switches (`writePullRequestFeedback`, with `move` to take it from another
-chat), and lifts a pause (`sendPullRequestFeedbackAgain`). A 409 naming
+chat), lifts a pause (`sendPullRequestFeedbackAgain`), and turns every
+switch off for a pull request the chat owns (`turnOffPullRequestFeedback`,
+which the Needs-you item calls). A 409 naming
 another chat is read with `pullRequestFeedbackOwnerOf`. Gate the calls on
 `readPullRequestFeedbackCapability` (the `pullRequestFeedback` flag) and the
 `pull-request-agent-feedback` Feature Preview; the routes answer 404 while the
 preview is off. The [client](../../packages/sdk/src/client/pull-request-feedback.ts)
 calls the [routes](../../src-server/routes/pull-requests/pull-request-feedback.ts).
+
+`getPullRequestFeedbackByPullRequest(apiBase, identity)` reads one pull
+request's feedback whichever chat is open, for the pull request panel; it
+refuses an answer about another pull request. An owner the reader may not
+read is `{ readable: false }`, and a 409 about such a chat reads through
+`pullRequestFeedbackOwnerOf` as `{}` (no id, no title).
 
 `@kontourai/station-sdk/pull-request-watch` reads a Task's pull request watch
 (`getTaskPullRequestWatch`), sets the Task's own choice

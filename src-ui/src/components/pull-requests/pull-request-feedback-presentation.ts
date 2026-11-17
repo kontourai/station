@@ -119,7 +119,9 @@ export function pullRequestFeedbackLine(
             ? `Paused: the same checks failed on 3 pushes (${short(status.headSha)})`
             : status.reason === 'fix-budget'
               ? `Paused: every fix attempt is used (${short(status.headSha)})`
-              : `Paused after 3 rounds on ${short(status.headSha)}`,
+              : status.cap === 'day'
+                ? 'Paused after 10 messages in 24 hours'
+                : `Paused after 3 rounds on ${short(status.headSha)}`,
       };
     case 'held': {
       if (status.reason === 'checks-running')

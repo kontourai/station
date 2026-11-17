@@ -170,6 +170,7 @@ async function setup(options: {
     logger,
   });
   const onReady = vi.fn();
+  const notify = vi.fn();
   delivery = new PullRequestFeedbackDelivery({
     store: () => store,
     enabled: () => true,
@@ -184,6 +185,7 @@ async function setup(options: {
     logger,
     onFixBudgetSpent: (input) => watch.fixBudgetSpent(input),
     onReady,
+    notify,
   });
   const observe = (observation: PullRequestFeedbackObservation) =>
     store.writeObservation(PR_KEY, {
@@ -233,6 +235,7 @@ async function setup(options: {
     delivery,
     holds,
     onReady,
+    notify,
     observe,
     feedbackPrompts,
     deliverPlaced,
@@ -304,6 +307,13 @@ describe('a Task watches the pull request it keeps (#5066)', () => {
       hold: { pullRequest: 'acme/widgets#42' },
     });
     expect(t.holds[0]!.hold.checks).toContain('ci / unit-tests');
+    // One Needs-you notice (and push) for the person, naming the checks.
+    expect(t.notify).toHaveBeenCalledTimes(1);
+    expect(t.notify.mock.calls[0]![0]).toMatchObject({
+      reason: 'fix-budget',
+      headSha: HEADS[2],
+    });
+    expect(t.notify.mock.calls[0]![0].failing).toContain('ci / unit-tests');
     expect(t.watch.view(t.task).pullRequests[0]).toMatchObject({
       watch: { state: 'budget-spent', headSha: HEADS[2] },
       fixAttempts: 2,
@@ -315,6 +325,7 @@ describe('a Task watches the pull request it keeps (#5066)', () => {
     expect((await t.delivery.deliver(CONVERSATION)).kind).toBe('none');
     expect(t.feedbackPrompts()).toHaveLength(2);
     expect(t.holds).toHaveLength(1);
+    expect(t.notify).toHaveBeenCalledTimes(1);
 
     // Send again grants the person's one more attempt.
     const again = await t.delivery.sendAgain(PR_KEY);

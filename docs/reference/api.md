@@ -895,8 +895,13 @@ for the Project's live Tasks (not done or canceled). Each entry lists the
 pull requests kept on that Task whose declaring session the requester may
 read, each read from its provider at its exact identity:
 `status: {state: "current", pullRequestState, title, draft?, reviewDecision?,
-readiness?, mergeability, sourceBranch}` or `{state: "unavailable" |
-"unsupported", reason}`. `readiness` is `clean`, `blocked`, `checks-not-passing`,
+readiness?, mergeability, sourceBranch, headSha?}` or `{state: "unavailable" |
+"unsupported", reason}`. A current fact carries `feedback: {state, headSha,
+at?}` (`watching`, `waiting-on-checks`, `sent`, `fixing` or `paused`) only
+while the `pull-request-agent-feedback` preview is on and the requester may
+read the chat that gets that pull request's feedback. It is per Task:
+`fixing` only when that chat is the Task's own run and its open turn is a
+failing-checks feedback message. `readiness` is `clean`, `blocked`, `checks-not-passing`,
 `conflicting`, `behind`, `draft` or `unknown`; absent means the provider did
 not report it. On GitHub `checks-not-passing` is `UNSTABLE`: some checks are
 failing or still pending, none of them required. A failing required check is
@@ -1524,16 +1529,31 @@ hosted Station withdraws:
   and newest 20 deliveries (`ConversationPullRequestFeedback`).
 - `PUT` on the same path, body `{ identity, settings, move? }`, sets a pull
   request's switches. A pull request another chat owns answers 409
-  `pull_request_feedback_owned_elsewhere` with `details.owner`; `move: true`
-  takes it. A pull request not linked or kept on this chat answers 409
+  `pull_request_feedback_owned_elsewhere` with `details.owner`, whose
+  `conversationId` and `title` are present only when the requester may read
+  that chat (the GET's `owner` follows the same rule, and to such a
+  requester the GET also reports that pull request's switches off and status
+  `off`); `move: true` takes it. A pull request not linked or kept on this chat answers 409
   `pull_request_not_linked`.
 - `DELETE` on the same path, body `{ identity }`, turns every switch off.
 - `POST …/send-again`, body `{ identity }`, lifts a pause for one round; 409
   `pull_request_feedback_not_paused` otherwise.
+- `GET /api/pull-request-feedback/by-pull-request?provider&host&owner&name&ref`
+  answers one pull request's feedback whichever chat is open
+  (`PullRequestFeedbackByPullRequest`): `owner` is `null` when no chat gets
+  it, `{ readable: false }` (and nothing else) when the requester may not
+  read the owning chat, else `{ readable: true, conversationId, title }` with
+  `status`, `settings`, the newest message sent about the head Station last
+  observed (`last`, absent when the newest send was about an earlier push)
+  and `sentChecks`, the failing checks sent about that head. 400 for a
+  malformed identity.
 
 Reads need the chat's read access (`orchestration:read`). Writes need the
 operator in person (`access:manage`); Station's internal principal (an agent's
-tool call) and a delegation credential are answered 404. See
+tool call) and a delegation credential are answered 404. A paused pull request,
+or one whose chat's agent stopped with feedback waiting, also appears in
+`GET /api/attention` as a `pull-request-feedback` item for readers of that
+chat, with `viewerMayChange` derived from the same writer rule. See
 [the decision](../decisions/pull-request-agent-feedback.md).
 
 ### Task-owned pull requests

@@ -92,7 +92,7 @@ agent's own, and each failure or comment wakes it once. The Task's **Pull
 request watch** panel shows each pull request as Watching, Fixing, or **Ready
 for you** once checks pass and reviews are answered. After the Project's
 number of fix attempts (3 unless changed) the Task moves to Needs you as **Fix
-attempts used**, with the failing checks named. Merging stays with you: the
+attempts used**, with the failing checks named, and Station notifies you once. Merging stays with you: the
 agent's attempts to merge, arm auto-merge or force-push are refused, a change
 to CI configuration asks you first, and each is listed under **Refused
 actions**. **Stop watching** turns it off for that Task. See

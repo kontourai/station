@@ -46,7 +46,9 @@ capability flag, so hosted Stations do not offer it.
    failing head finds them all used, the claim pauses (`fix-budget`) instead
    of sending, and Station moves the Task to `blocked` with the failing checks
    and pull request named (`TaskRecord.pullRequestWatchHold`). The board shows
-   it under **Needs you** as **Fix attempts used**. Any status change clears
+   it under **Needs you** as **Fix attempts used**, and the pause raises the
+   feedback loop's one Agent feedback item in Needs you and one push to the
+   chat's readers, with Send again. Any status change clears
    the hold. **Send again** on the pull request grants one more attempt. The
    budget replaces the feedback loop's repeated-failure pause for watched pull
    requests; the 3-rounds-per-head and 10-per-day caps still apply.
@@ -75,7 +77,8 @@ capability flag, so hosted Stations do not offer it.
   shell commands go through Codex's sandbox and approvals, so a Codex agent's
   `gh pr merge --auto` or force-push is not refused by this stage. An engine
   that runs with no Station policy hook is not covered either.
-- Not built: a post in the Project Room and a push notification when a pull
-  request is ready or its budget is spent. The report is the Task's own
-  **Pull request watch** panel and the board lane. Work-item sync (#3703)
+- Not built: a post in the Project Room, and a push notification when a pull
+  request is ready. Ready is reported on the Task's own **Pull request watch**
+  panel and by the board's existing Ready to merge lane; a spent budget also
+  notifies (decision 4). Work-item sync (#3703)
   reads the Task's `blocked` status like any other.

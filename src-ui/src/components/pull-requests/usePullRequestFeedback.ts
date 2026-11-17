@@ -7,9 +7,11 @@ import {
 } from '@kontourai/station-contracts/pull-request-feedback';
 import {
   getConversationPullRequestFeedback,
+  getPullRequestFeedbackByPullRequest,
   pullRequestFeedbackOwnerOf,
   readPullRequestFeedbackCapability,
   sendPullRequestFeedbackAgain,
+  turnOffPullRequestFeedback,
   writePullRequestFeedback,
 } from '@kontourai/station-sdk/pull-request-feedback';
 import { useQuery } from '@tanstack/react-query';
@@ -134,12 +136,21 @@ export function usePullRequestFeedback(conversationId: string) {
       move = false,
     ) =>
       run(identity, () =>
-        writePullRequestFeedback(
-          scope!.apiBase,
-          conversationId,
-          { identity: identityOf(identity), settings, move },
-          { requestScope: scope! },
-        ),
+        // The last switch off is turning feedback off: the one path the
+        // Needs-you item's Turn off auto-fix also takes.
+        !move && !settings.fixFailingChecks && !settings.addressReviewComments
+          ? turnOffPullRequestFeedback(
+              scope!.apiBase,
+              conversationId,
+              identityOf(identity),
+              { requestScope: scope! },
+            )
+          : writePullRequestFeedback(
+              scope!.apiBase,
+              conversationId,
+              { identity: identityOf(identity), settings, move },
+              { requestScope: scope! },
+            ),
       ),
     sendAgain: (identity: PullRequestLinkIdentity) =>
       run(identity, () =>
@@ -153,4 +164,42 @@ export function usePullRequestFeedback(conversationId: string) {
         ),
       ),
   };
+}
+
+/**
+ * One pull request's feedback, whichever chat is open (the pull request
+ * panel's strip and its check rows). Never read unless the preview is on
+ * and the host serves it; re-read every 30 s while mounted.
+ */
+export function usePullRequestFeedbackByPullRequest(
+  identity: PullRequestLinkIdentity,
+) {
+  const scope = useHostRequestAuthorityScope();
+  const preview = useSurfaceVisibilityFlags().has(
+    PULL_REQUEST_FEEDBACK_PREVIEW_ID,
+  );
+  const capability = useQuery({
+    queryKey: ['pull-request-feedback-capability', scope?.apiBase],
+    queryFn: () => readPullRequestFeedbackCapability(scope!.apiBase),
+    enabled: preview && !!scope?.isCurrent(),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const exact = identityOf(identity);
+  return useQuery({
+    queryKey: [
+      'pull-request-feedback-by-pull-request',
+      scope?.apiBase,
+      scope?.authorityKey,
+      pullRequestFeedbackKey(exact),
+    ],
+    queryFn: ({ signal }) =>
+      getPullRequestFeedbackByPullRequest(scope!.apiBase, exact, {
+        signal,
+        requestScope: scope!,
+      }),
+    enabled: preview && capability.data === true && !!scope?.isCurrent(),
+    refetchInterval: REFRESH_MS,
+    retry: false,
+  });
 }

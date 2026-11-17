@@ -5884,6 +5884,7 @@ export function configureRuntimeRoutes(
       pullRequestWatch: () => pullRequestFeedback?.watch,
       pullRequestProviders: () =>
         listProviders('pullRequest').map((entry) => entry.provider),
+      pullRequestFeedbackFor: (...a) => pullRequestFeedback?.factFor(...a),
       logger: context.logger,
       workChatConversations: taskInboxProjection,
       onRoomSystemLine: async ({
@@ -13097,6 +13098,7 @@ export function configureRuntimeRoutes(
         resolvePrincipal: resolveOrchestrationRequestPrincipal,
         security: context.environmentSecurityService,
         stationControlDispatchScope,
+        pullRequestFeedback,
       }),
     ),
   );

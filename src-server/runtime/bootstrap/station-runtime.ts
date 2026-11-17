@@ -1827,7 +1827,7 @@ export class StationRuntime {
           id: 'codex-bound-browser-device-tools',
           label: 'Codex browser and device tools',
           description:
-            'Let Codex Sessions use authorized browser and device tools through a bound channel.',
+            'Let Codex Sessions use authorized browser and device tools through a bound channel. New Sessions also get Station Control there instead of a header token, adding about 110 KB of tool definitions to each thread.',
         });
       }
       // Journal consumers wire after the quarantine notice: the runtime must
@@ -2296,21 +2296,26 @@ export class StationRuntime {
       controlPlaneObservation?: ControlPlaneObservation;
     }>
   > {
-    return (await this.connectionService.listRuntimeConnections()).map(
-      (connection) => ({
-        id: engineConnectionId(connection.id),
-        type: connection.type,
-        name: connection.name,
-        enabled: connection.enabled,
-        status: connection.status,
-        engineId: parseEngineId(connection.config.engineId),
-        capabilities: connection.capabilities,
-        // archive#1549: per connection, from the projection the picker
-        // reads — so the bootstrap binding and the picker derive the same
-        // capability from the same evidence.
-        controlPlaneObservation: connection.controlPlaneObservation,
-      }),
-    );
+    // Readiness comes from prerequisites, so the binding asks for neither
+    // model discovery nor commands: both can start an engine at every boot.
+    return (
+      await this.connectionService.listRuntimeConnections({
+        includeModelCatalog: false,
+        includeCommands: false,
+      })
+    ).map((connection) => ({
+      id: engineConnectionId(connection.id),
+      type: connection.type,
+      name: connection.name,
+      enabled: connection.enabled,
+      status: connection.status,
+      engineId: parseEngineId(connection.config.engineId),
+      capabilities: connection.capabilities,
+      // archive#1549: per connection, from the projection the picker
+      // reads — so the bootstrap binding and the picker derive the same
+      // capability from the same evidence.
+      controlPlaneObservation: connection.controlPlaneObservation,
+    }));
   }
 
   /**

@@ -1003,6 +1003,12 @@ receipt does not certify completion. Do not repeatedly launch `npm test`,
 `test:full`, `verify:static`, `verify:local`, or full E2E while editing; those
 host-coordinated lanes consume shared CPU and mutable-output leases.
 
+`test:focused`, `test:changed`, `typecheck`, the code-health gate
+(`node scripts/code-health-gate.mjs`) and the fallow audits wait for one
+[host heavy-check slot](testing.md#host-heavy-check-slots) shared by every
+worktree, so concurrent runs from several agents serialize instead of sharing
+one memory limit. Let them wait rather than working around the queue.
+
 `npm run ci:fast` runs affected tests
 against `STATION_CI_FAST_BASE` first, then fixed runtime, lockfile, workflow,
 evidence-check registration, generated-output, documentation,
