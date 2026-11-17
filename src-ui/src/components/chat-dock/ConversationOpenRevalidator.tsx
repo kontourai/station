@@ -142,6 +142,27 @@ export function ConversationOpenRevalidator({
   // The answer already bound in full: a later catalog or agent-list change
   // has nothing left to reconcile, and must not re-read it.
   const appliedOpen = useRef<LandedOpen>(undefined);
+  // But a chat marked pending again after that answer bound (a newer child
+  // adopted in the same batch keeps this mounted) needs a fresh read: the
+  // bound answer no longer settles it.
+  useEffect(() => {
+    if (!landed) return;
+    const check = () => {
+      if (appliedOpen.current !== landed || landed.cancelled()) return;
+      if (
+        activeChatsStore.getSnapshot()[sessionId]?.conversationOpenPending !==
+        true
+      )
+        return;
+      appliedOpen.current = undefined;
+      setReadGeneration((generation) => generation + 1);
+    };
+    check();
+    const unsubscribe = activeChatsStore.subscribe(check);
+    return () => {
+      unsubscribe();
+    };
+  }, [landed, sessionId]);
   useEffect(() => {
     if (!landed || landed.cancelled() || appliedOpen.current === landed) return;
     if (!landed.current()) {

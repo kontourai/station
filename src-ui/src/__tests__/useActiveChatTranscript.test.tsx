@@ -1658,6 +1658,39 @@ describe('useActiveChatTranscript', () => {
       expect(view.result.current.currentSessionId).toBeUndefined();
     });
 
+    test('a failed re-read past the live buffer shows its failure, not an endless catch-up', async () => {
+      const namespace = { value: NS_A };
+      fetchConversationWindow.mockImplementation(async (id: string) =>
+        id === 'gap-a' ? page('gap question') : page('other'),
+      );
+      const view = renderReader(chat('gap-a'), namespace);
+      await waitFor(() => expect(view.result.current.settled).toBe(true));
+      view.rerender({ session: chat('gap-b') });
+      await waitFor(() => expect(view.result.current.settled).toBe(true));
+      // More live events than the buffer keeps: everything up to the overflow
+      // is truncated, far past the cached window's watermark.
+      act(() => {
+        for (let sequence = 10; sequence < 10 + 2_100; sequence += 1)
+          recordSequencedLiveEvent(
+            'http://station.test',
+            {
+              eventId: `live-${sequence}`,
+              method: 'content.text-delta',
+              provider: 'codex',
+              threadId: 'elsewhere',
+              createdAt: '2026-11-01T00:00:00.000Z',
+            } as never,
+            sequence,
+          );
+      });
+      fetchConversationWindow.mockRejectedValue({ status: 404 });
+      view.rerender({ session: chat('gap-a') });
+      await waitFor(() => expect(view.result.current.error).toBeTruthy());
+      expect(view.result.current.revalidating).toBe(false);
+      expect(view.result.current.catchingUp).toBe(false);
+      expect(view.result.current.messages).toEqual([]);
+    });
+
     test('another authority never paints a cached window for the same conversation id', async () => {
       const namespace = { value: NS_A };
       fetchConversationWindow.mockResolvedValue(page('authority A only'));
