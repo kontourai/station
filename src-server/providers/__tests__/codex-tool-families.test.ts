@@ -9,7 +9,7 @@
  * Station writes on the app-server pipe, take the credential from it, and
  * list tools with it as Codex would.
  */
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
@@ -19,15 +19,8 @@ import type {
 } from '@kontourai/station-contracts/provider';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  describe,
-  expect,
-  test,
-  vi,
-} from 'vitest';
+import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
   createStationControlMcpRoutes,
   STATION_CONTROL_MCP_PATH,
@@ -62,15 +55,13 @@ const PORT = 4977;
 const FEATURE = 'features.mcp_tool_list_changed';
 const INDEX = ['list_tool_families', 'load_tool_family'];
 
-let binaryDir: string;
+const makeTempDir = trackTempDirs({ lifetime: 'file' });
 let binary: string;
 beforeAll(() => {
   // The probe keys its cache on the real file, so the binary must exist.
-  binaryDir = mkdtempSync(join(tmpdir(), 'codex-tool-families-'));
-  binary = join(binaryDir, 'codex');
+  binary = join(makeTempDir('codex-tool-families-'), 'codex');
   writeFileSync(binary, '#!/bin/sh\n');
 });
-afterAll(() => rmSync(binaryDir, { recursive: true, force: true }));
 afterEach(() => __resetStationControlMcpTokensForTests());
 
 const route = createStationControlMcpRoutes({
