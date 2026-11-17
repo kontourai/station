@@ -16,7 +16,7 @@ import {
 import { RegistryEntryInstallHint } from '../components/engine-install/RegistryEntryInstallHint';
 import { registryEntryDiscovery } from '../components/engine-install/registryEntryDiscovery';
 import { BrandIcon } from '../components/icons/BrandIcon';
-import { Empty } from '../components/state';
+import { Empty, ErrorState, SkeletonBlock } from '../components/state';
 import type {
   ACPConnectionInfo,
   ACPConnectionRegistryEntry,
@@ -473,6 +473,9 @@ function CommandEngineSetup({
  */
 export function EngineAddFlow({
   initialChoiceId,
+  catalogPending = false,
+  catalogError,
+  onRetryCatalog,
   notConnected,
   connections,
   commandEntries,
@@ -480,6 +483,9 @@ export function EngineAddFlow({
   onOpenEngine,
 }: {
   initialChoiceId?: string;
+  catalogPending?: boolean;
+  catalogError?: unknown;
+  onRetryCatalog?: () => void;
   notConnected: NotConnectedEngine[];
   connections: AgentConnectionViewData[];
   commandEntries: ACPConnectionRegistryEntry[];
@@ -511,6 +517,30 @@ export function EngineAddFlow({
 
   const back = () => setChoice(null);
   if (!choice) {
+    if (initialChoiceId && handledChoiceId.current !== initialChoiceId) {
+      if (catalogPending) return <SkeletonBlock />;
+      if (catalogError)
+        return (
+          <ErrorState
+            title="Couldn't load engine setup"
+            action={<Button onClick={onRetryCatalog}>Retry</Button>}
+          />
+        );
+      // The effect opens a known entry after render. Only a missing choice
+      // needs recovery; never silently substitute a custom engine form.
+      const known =
+        initialChoiceId === 'custom' ||
+        commandEntries.some((entry) => entry.id === initialChoiceId) ||
+        connections.some((entry) => entry.id === initialChoiceId);
+      if (!known)
+        return (
+          <ErrorState
+            title="Engine not found"
+            description="Choose an engine from this Station's catalog."
+            action={<Button onClick={onDone}>Browse engines</Button>}
+          />
+        );
+    }
     return (
       <EngineAddCatalog
         notConnected={notConnected}

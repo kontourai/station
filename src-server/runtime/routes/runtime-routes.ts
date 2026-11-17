@@ -8324,6 +8324,13 @@ export function configureRuntimeRoutes(
       publicAgentRegistry: createPublicAgentRegistrySource(
         context.configLoader.getProjectHomeDir(),
       ),
+      personalHost: isPersonalHost,
+      engineSetupPreview: context.featurePreviews.bind({
+        id: 'guided-engine-setup',
+        label: 'Guided engine setup',
+        description:
+          'Let chat find engine setup pages and report connection checks. You complete installation and sign-in.',
+      }),
     }),
   );
   // Sign-in terminals are server-owned TerminalSessions launches.

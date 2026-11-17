@@ -4,6 +4,22 @@ import {
 } from './managed-engine-install.js';
 import { isObjectRecord } from './record-guard.js';
 
+/** Safe setup facts: no commands, paths, accounts, or credential values. */
+export interface ACPEngineSetupEntry {
+  id: string;
+  name: string;
+  source: 'core' | 'plugin' | 'custom';
+  detected: boolean | null;
+  configured: boolean;
+  enabled: boolean;
+  status: ACPStatusValue | 'not-connected';
+  setupPath: string;
+  handshakeObservedAt: string | null;
+  /** An advertised channel is not proof that tools were delivered to a turn. */
+  httpTools: 'advertised' | 'not-advertised' | 'unknown';
+  nextAction: 'install' | 'connect' | 'enable' | 'check' | 'inspect';
+}
+
 export interface ACPConnectionConfig {
   id: string;
   name: string;

@@ -98,6 +98,8 @@ export const STATION_TOOL_FAMILY_MEMBERS = {
     'get_integration',
     'install_plugin',
     'install_registry_integration',
+    'list_engine_setup',
+    'open_engine_setup',
     'list_integrations',
     'list_plugins',
     'list_providers',

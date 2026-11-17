@@ -753,6 +753,11 @@ export const STATION_CONTROL_TOOL_POLICY = {
   // bundled playbook; a redacted, bounded issue-form link) and call nothing.
   get_troubleshoot_playbook: { ...READ, routes: [] },
   draft_troubleshoot_report: { ...READ, routes: [] },
+  list_engine_setup: { ...SELF_READ, routes: [get('/acp/setup')] },
+  open_engine_setup: {
+    ...SELF_READ,
+    routes: [get('/acp/setup'), NAVIGATE_ROUTE],
+  },
   // Delivered only to the owner's own Station clients (`/events`).
   navigate_to: {
     ...SELF_READ,

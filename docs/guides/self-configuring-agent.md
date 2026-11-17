@@ -22,6 +22,33 @@ It does not provide filesystem inspection, create a new skill, or change Project
 configuration by itself. Those require a separately authorized surface; the
 example does not grant one implicitly.
 
+## Help a person set up an engine
+
+With **Guided engine setup** enabled on a personal Station, Station Control's
+Integrations family includes `list_engine_setup` and `open_engine_setup`.
+These are discovery and UI handoff tools. The owner's Agent can inspect the
+bounded setup projection; other principals are refused. Installation and
+credential operations retain their person-only boundaries.
+
+When asked to install, connect or sign in an engine:
+
+1. Read `list_engine_setup` and use the built-in id and `setupPath` it returns.
+2. Call `open_engine_setup` for that id. Check its result. If no client accepted
+   navigation, give the person the returned internal setup link.
+3. Let the person complete setup in Station and return to this chat. Never ask
+   for authorization codes or tokens in ordinary messages, edit Station home
+   files, or run a shell login as a workaround.
+4. Re-read setup and `list_agents` before using the resulting Agent. A recorded
+   handshake or advertised HTTP channel does not establish an authenticated
+   turn or delivery of the Agent's Station tools.
+
+The server runs on the Station computer, which may differ from the device
+holding the chat. The [ACP guide](acp.md#set-up-an-engine-from-chat) describes
+this handoff and saved-connection recovery. If the preview is disabled, offer
+its returned Settings link; an Agent does not enable it for the person.
+With the separate **Station orchestration instructions** preview on, this
+workflow is included only when the Agent is actually offered these tools.
+
 ## Visual replies
 
 Attach `station-control` and select `html_preview` and `html_render` to let an

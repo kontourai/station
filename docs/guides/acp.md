@@ -6,6 +6,39 @@ This guide is for developers who want to connect their own external engine to St
 
 ---
 
+## Set up an engine from chat
+
+On a personal Station, enable **Guided engine setup** in Settings → Advanced →
+Feature previews. An Agent with Station Control can call `list_engine_setup`,
+then `open_engine_setup` with the chosen entry's id. The same read is available
+as `station acp setup`. On an older host without these tools, use
+Connections → Engines or update the host.
+
+The tool opens the existing engine-specific pane. Review the installation or
+connection there, complete sign-in, and return to the originating chat. Closing
+setup leaves the chat intact. Device permissions still control installation,
+terminal access and engine sign-in; enabling the preview grants none of them.
+The catalog is an owner-scoped projection, not a dump of commands,
+configuration paths, accounts or credentials. Hosted Stations refuse this read.
+
+Use Station's built-in entry for supported engines. Antigravity uses
+`agy acp --process-per-session` so it can receive HTTP MCP servers. A custom
+`agy acp` connection answering a prompt does not establish that Station Control
+was delivered. A browser on a phone is not the browser on the Station computer.
+Complete sign-in through the pane's offered method, rather than pasting OAuth
+codes into chat.
+
+After setup, the Agent re-reads the catalog and `list_agents`. Detection,
+recorded initialize handshake, sign-in, a successful chat turn and tool delivery
+are separate observations. `httpTools: advertised` reports the handshake's
+channel capability, not a tool invocation. Run the intended bounded work only
+after the selected Agent is available and report these limits explicitly.
+
+A saved connection can be checked with `station acp connections reconnect <id>`
+even if its live probe is absent. This preserves its saved setup and authored
+Agent. Disabled connections must be enabled in their engine page. A generic
+`station acp commands` listing does not start or test a named engine.
+
 ## What is ACP?
 
 Station is a UI and session-management layer. It handles conversations, memory, tool approval, and streaming responses. ACP is the protocol that lets an external engine plug into all of that as an Agent app connection.

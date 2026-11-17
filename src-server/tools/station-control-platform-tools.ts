@@ -1,3 +1,4 @@
+import type { ACPEngineSetupEntry } from '@kontourai/station-contracts/acp';
 import {
   createIntegration,
   deleteIntegration,
@@ -17,6 +18,7 @@ import {
   api,
   controlRequestOptions,
   jsonToolResult,
+  navigateTo,
   resolveControlApiBase,
   toToolEnvelope as toPlatformEnvelope,
 } from './station-control-shared.js';
@@ -112,6 +114,36 @@ function proposalToolResult(
 }
 
 export function registerPlatformTools(server: StationControlToolRegistry) {
+  server.tool(
+    'list_engine_setup',
+    'Find supported engines and their exact setup pages on this Station. Read-only: reports detection and recorded handshake/HTTP-tool evidence, never installs, signs in, or runs a chat. Requires the Guided engine setup Feature Preview on a personal Station. Use the built-in setupPath; do not edit Station home files or rediscover engine commands. After the person completes setup, re-read this and list_agents. A successful chat alone does not prove Station tools were delivered.',
+    {},
+    async () => jsonToolResult(await api('/acp/setup')),
+  );
+  server.tool(
+    'open_engine_setup',
+    'Open the supported setup/sign-in page for an engine returned by list_engine_setup. Only navigates the person’s Station UI: it does not install, save configuration, or sign in. Check the navigation result; if refused, give the returned setupPath as a link. Ask the person to return to this chat after completing setup, then re-check. Never request OAuth codes or tokens in chat.',
+    { id: z.string().min(1).max(128) },
+    async ({ id }) => {
+      const catalog: { success: boolean; data?: ACPEngineSetupEntry[] } =
+        await api('/acp/setup');
+      if (catalog.success !== true) return jsonToolResult(catalog);
+      const entry = catalog.data?.find((item) => item.id === id);
+      if (!entry)
+        return jsonToolResult({
+          success: false,
+          error:
+            'Engine not found. Read list_engine_setup and use an id it returns.',
+        });
+      return jsonToolResult({
+        ...(await navigateTo(entry.setupPath)),
+        setupPath: entry.setupPath,
+        nextAction: entry.nextAction,
+        message:
+          'Complete setup in Station, then return to this chat so I can check the result.',
+      });
+    },
+  );
   server.tool(
     'list_integrations',
     'List configured MCP tool servers',

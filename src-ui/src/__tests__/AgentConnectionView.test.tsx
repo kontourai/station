@@ -197,6 +197,8 @@ let agentCatalog: unknown[] = DEFAULT_AGENT_CATALOG;
  * exercise the ACP half set this explicitly.
  */
 let acpRegistryEntries: unknown[] = [];
+let acpRegistryPending = false;
+let acpRegistryError: Error | null = null;
 /**
  * The ACP bridge's live connection set — the projection that gates (and the
  * reconnect route 404s against) the detail header's Reconnect action. Empty
@@ -253,7 +255,10 @@ vi.mock('@kontourai/station-sdk', () => ({
     error: agentConnectionsQueryError,
     refetch: refetchAgentConnections,
   }),
-  useAgentConnectionCatalogQuery: () => ({ data: agentCatalog }),
+  useAgentConnectionCatalogQuery: () => ({
+    data: agentCatalog,
+    refetch: vi.fn(),
+  }),
   useAgentConnectionQuery: (id: unknown, config?: { enabled?: boolean }) => {
     connectionReads.push([id, config?.enabled]);
     return { data: connectionQueryData };
@@ -406,6 +411,8 @@ vi.mock('../hooks/useACPConnections', () => ({
   useACPConnectionProbeStatuses: () => ({ data: undefined }),
   useACPConnectionRegistry: () => ({
     data: acpRegistryEntries,
+    isPending: acpRegistryPending,
+    error: acpRegistryError,
     refetch: refetchRegistry,
     isFetching: false,
   }),
@@ -415,6 +422,8 @@ import { AgentConnectionView } from '../views/AgentConnectionView';
 
 describe('AgentConnectionView', () => {
   beforeEach(() => {
+    acpRegistryPending = false;
+    acpRegistryError = null;
     queryClient = new QueryClient({
       defaultOptions: {
         queries: { retry: false },
@@ -912,6 +921,50 @@ describe('AgentConnectionView', () => {
     // Leaving while it checks cancels nothing and returns to the list.
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(onNavigate).toHaveBeenCalledWith({ type: 'connections-engines' });
+  });
+
+  test('an engine setup link waits for discovery and offers retry after a failed read', async () => {
+    acpRegistryEntries = [];
+    acpRegistryPending = true;
+    const mounted = await render(
+      <AgentConnectionView
+        selectedRuntimeId="new"
+        addChoiceId="antigravity"
+        onNavigate={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('heading', { name: 'Add engine' })).toBeNull();
+    expect(screen.queryByText('Engine not found')).toBeNull();
+    acpRegistryPending = false;
+    acpRegistryError = new Error('Discovery failed');
+    mounted.rerender(
+      <AgentConnectionView
+        selectedRuntimeId="new"
+        addChoiceId="antigravity"
+        onNavigate={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Couldn't load engine setup")).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(refetchRegistry).toHaveBeenCalled();
+    expect(acpInstall).not.toHaveBeenCalled();
+  });
+
+  test('a missing engine setup target offers the catalog without substituting a custom command', async () => {
+    acpRegistryEntries = [];
+    agentCatalog = [];
+    const onNavigate = vi.fn();
+    await render(
+      <AgentConnectionView
+        selectedRuntimeId="new"
+        addChoiceId="missing"
+        onNavigate={onNavigate}
+      />,
+    );
+    expect(screen.getByText('Engine not found')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Browse engines' }));
+    expect(onNavigate).toHaveBeenCalledWith({ type: 'connections-engines' });
+    expect(acpInstall).not.toHaveBeenCalled();
   });
 
   test('a deep link to one entry opens its confirm step in the same pane', async () => {

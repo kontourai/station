@@ -58,7 +58,6 @@ import {
 } from '../components/state';
 import {
   type ACPConnectionInfo,
-  type ACPConnectionRegistryEntry,
   useACPConnectionRegistry,
   useACPConnections,
   useUnregisteredACPConnections,
@@ -161,15 +160,21 @@ export function AgentConnectionView({
     error?: unknown;
     refetch: () => unknown;
   };
-  const { data: catalog = [] } = useAgentConnectionCatalogQuery() as {
-    data?: AgentConnectionViewData[];
-  };
+  const {
+    data: catalog = [],
+    isPending: catalogPending,
+    error: catalogError,
+    refetch: refetchCatalog,
+  } = useAgentConnectionCatalogQuery();
   // The merged Add-engine catalogue's second population (#592 slice 2):
   // registry entries not yet installed as a connection. `installed` already
   // reflects a configured connection.
-  const { data: acpRegistryEntries = [] } = useACPConnectionRegistry() as {
-    data?: ACPConnectionRegistryEntry[];
-  };
+  const {
+    data: acpRegistryEntries = [],
+    isPending: registryPending,
+    error: registryError,
+    refetch: refetchRegistry,
+  } = useACPConnectionRegistry();
   const availableCommandEntries = useMemo(
     () => acpRegistryEntries.filter((entry) => !entry.installed),
     [acpRegistryEntries],
@@ -283,10 +288,8 @@ export function AgentConnectionView({
   const testMutation = useSmokeAgentConnectionMutation();
   const refreshMutation = useTestAgentConnectionMutation();
 
-  // The handshake retry the refusal sentence names (enriched-agents.ts). The
-  // bridge's live connection set is the same projection the reconnect route
-  // 404s against, so it is also the gate: a non-ACP engine gets no button
-  // that could only ever answer "Connection not found".
+  // Retry the saved ACP connection, including one without a live probe.
+  // Native engines retain their own connection check.
   const { data: acpBridgeConnections = [] } = useACPConnections();
   const reconnectMutation = useReconnectACPConnectionMutation({
     onSuccess: () => {
@@ -528,6 +531,12 @@ export function AgentConnectionView({
         isAddRoute ? (
           <EngineAddFlow
             initialChoiceId={addChoiceId}
+            catalogPending={catalogPending || registryPending}
+            catalogError={catalogError ?? registryError}
+            onRetryCatalog={() => {
+              void refetchCatalog();
+              void refetchRegistry();
+            }}
             notConnected={notConnected}
             connections={availableEngines}
             commandEntries={availableCommandEntries}

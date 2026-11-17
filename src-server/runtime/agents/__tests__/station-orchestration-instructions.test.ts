@@ -95,6 +95,8 @@ describe('registry', () => {
       [
         'delegate_task',
         'list_delegation_targets',
+        'list_engine_setup',
+        'open_engine_setup',
         'list_agents',
         'continue_task',
         'get_task',
@@ -257,6 +259,7 @@ describe('composition', () => {
     const r = compose(caps());
     expect(r.sections.map((s) => s.id)).toEqual([
       'orchestration',
+      'engine-setup',
       'sessions',
       'replies',
       'browser',

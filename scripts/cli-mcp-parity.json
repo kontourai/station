@@ -13,6 +13,7 @@
       "missing": 4286,
       "want": "List|create|update|delete|reconnect_acp_connection"
     },
+    "acp setup": { "tools": ["list_engine_setup"] },
     "acp status": {
       "missing": 4286,
       "want": "Acp_status"
@@ -1428,6 +1429,7 @@
     "list_delegation_targets": {
       "cli": ["delegate targets"]
     },
+    "list_engine_setup": { "cli": ["acp setup"] },
     "list_integrations": {
       "cli": ["tools list"]
     },
@@ -1525,6 +1527,10 @@
     "notify_user": {
       "cli": ["notifications create"],
       "note": "The tool posts an agent-attributed notification (POST /api/notifications/agent); the CLI posts as the person (POST /notifications)."
+    },
+    "open_engine_setup": {
+      "exempt": "agent-ui",
+      "reason": "Navigates to the existing engine setup pane via POST /api/ui; station acp setup returns its setupPath."
     },
     "preview_schedule": {
       "cli": ["schedule preview"]

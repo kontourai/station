@@ -2859,6 +2859,25 @@ worker exit or response completion for accounting settlement.
 
 ## ConnectionInspector
 
+### Engine setup handoff
+
+The [ACP routes](../../src-server/routes/connections/acp.ts) expose a bounded,
+owner-only setup read on personal Stations behind **Guided engine setup**.
+[engine-setup](../../src-server/services/acp/engine-setup.ts) projects existing
+catalog, saved configuration and recorded probe facts into destinations for the
+existing engine pane, without executable configuration or credential values.
+Station Control's `list_engine_setup` and `open_engine_setup` use that read;
+`station acp setup` is its CLI counterpart. Navigation preserves its refusal,
+and install/sign-in remain in the person's existing authority boundary.
+The [instruction composer](../../src-server/runtime/agents/station-orchestration-instructions.ts)
+names these tools only when offered. Reconnect recovers a persisted-only
+connection through the configuration mutation owner and the same probe/register
+path as Retry check; it preserves authored Agent content.
+
+Route, MCP caller and mounted pane regressions exercise these seams. They do
+not establish real provider login or native-device qualification. See the
+[setup journey](../guides/acp.md#set-up-an-engine-from-chat).
+
 [ConnectionInspector](../../src-server/services/connections/connection-inspector.ts)
 turns adapter observations into an inventory with explicit freshness and gaps.
 [ConnectionService](../../src-server/services/connections/connection-service.ts) owns

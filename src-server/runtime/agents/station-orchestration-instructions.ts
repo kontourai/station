@@ -25,6 +25,7 @@ export const STATION_INSTRUCTION_SECTION_MAX_BYTES = 3_500;
 export const STATION_INSTRUCTIONS_MAX_BYTES = 12_000;
 
 export type StationInstructionSectionId =
+  | 'engine-setup'
   | 'orchestration'
   | 'delegated-child'
   | 'sessions'
@@ -326,6 +327,21 @@ export function composeStationInstructions(
     }
   } else {
     push(orchestrationSection(has));
+  }
+  if (has('list_engine_setup')) {
+    const lines = [
+      'When asked to install, connect or sign in an engine, call `list_engine_setup` and reuse its built-in identity and setupPath. If the preview is off, direct the person to the returned Settings path; do not enable it yourself.',
+      has('open_engine_setup')
+        ? 'Use `open_engine_setup` for the chosen id to hand setup to the person; check whether navigation succeeded and offer setupPath if it did not.'
+        : 'Give the person the returned setupPath to complete setup in Station.',
+      'Installation and sign-in belong to the person in Station. The engine runs on the Station host, which can differ from the phone or browser. Never request OAuth codes or tokens in chat, edit Station home configuration, or improvise a shell login to bypass this handoff.',
+      'Ask the person to return to this chat after setup, then re-read `list_engine_setup`. A handshake, sign-in, successful chat turn and actual Station-tool delivery are separate facts; report only what each observation proves.',
+    ];
+    if (has('list_agents'))
+      lines.push(
+        'Read `list_agents` after setup and use its actual Agent id for new work.',
+      );
+    push({ id: 'engine-setup', text: bulleted('## Engine setup', lines) });
   }
   push(sessionsSection(has));
   push(repliesSection(has));

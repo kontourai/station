@@ -1139,6 +1139,8 @@ describe('#4769: the tools a restricted session keeps', () => {
    * (`RESTRICTED_NETWORK_STATION_CONTROL_TOOLS`) or listed below.
    */
   const WITHHELD = [
+    'list_engine_setup',
+    'open_engine_setup',
     'device_list',
     'device_open',
     'device_screenshot',
