@@ -211,7 +211,11 @@ export type PullRequestFeedbackStatus =
     }
   | {
       state: 'paused';
-      reason: 'round-limit' | 'repeated-failure';
+      /**
+       * `fix-budget` (#5066): a watching Task's pull request used every fix
+       * attempt its Project allows.
+       */
+      reason: 'round-limit' | 'repeated-failure' | 'fix-budget';
       /**
        * round-limit only: `head` after the rounds one head allows, `day`
        * after the messages a pull request allows in 24 hours. Absent on a

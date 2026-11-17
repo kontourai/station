@@ -898,6 +898,22 @@
     "detected-project-desktop": [
       "src-ui/src/views/HomeView.tsx",
       "src-ui/src/components/chat-dock/ChatDock.tsx"
+    ],
+    "task-pr-watch-dark-desktop": ["src-ui/src/views/TaskWorkspaceView.tsx"],
+    "project-pull-requests-dark-desktop": [
+      "src-ui/src/views/ProjectSettingsView.tsx"
+    ],
+    "task-pr-watch-dark-mobile": ["src-ui/src/views/TaskWorkspaceView.tsx"],
+    "project-pull-requests-dark-mobile": [
+      "src-ui/src/views/ProjectSettingsView.tsx"
+    ],
+    "task-pr-watch-light-desktop": ["src-ui/src/views/TaskWorkspaceView.tsx"],
+    "project-pull-requests-light-desktop": [
+      "src-ui/src/views/ProjectSettingsView.tsx"
+    ],
+    "task-pr-watch-light-mobile": ["src-ui/src/views/TaskWorkspaceView.tsx"],
+    "project-pull-requests-light-mobile": [
+      "src-ui/src/views/ProjectSettingsView.tsx"
     ]
   }
 }

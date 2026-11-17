@@ -19,9 +19,14 @@ import {
   pullRequestFeedbackSends,
 } from '@kontourai/station-contracts/pull-request-feedback';
 import type { IPullRequestProvider } from '@kontourai/station-contracts/pull-request-provider';
+import type { ProjectPullRequestWatchSettings } from '@kontourai/station-contracts/pull-request-watch';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { isSessionLifecycleStateStopped } from '@kontourai/station-contracts/session-lifecycle';
-import type { TaskKeptDeclaredPullRequest } from '@kontourai/station-contracts/task-graph';
+import type {
+  TaskKeptDeclaredPullRequest,
+  TaskPullRequestWatchHold,
+  TaskRecord,
+} from '@kontourai/station-contracts/task-graph';
 import type { TaskPullRequestFeedbackFact } from '@kontourai/station-contracts/task-lane';
 import { parseGitHubWorkItemRef } from '@kontourai/station-contracts/work-item-provider';
 import type { WorktreeSessionMetadata } from '@kontourai/station-contracts/workspace-isolation';
@@ -67,7 +72,9 @@ import {
   type TaskBranchTask as PullRequestFeedbackTaskBranchTask,
 } from '../../services/pull-requests/pull-request-feedback-task-branches.js';
 import { pullRequestFeedbackTaskFact } from '../../services/pull-requests/pull-request-feedback-task-fact.js';
+import { PullRequestWatch } from '../../services/pull-requests/pull-request-watch.js';
 import { expandTilde } from '../../utils/paths.js';
+import type { PullRequestWatchPolicy } from '../agents/pre-tool-policy.js';
 
 /**
  * A person, not Station acting for an agent (its internal principal) and
@@ -159,12 +166,27 @@ export interface PullRequestFeedbackRuntimeDeps {
   keptForSessions(
     sessionIds: readonly string[],
   ): readonly TaskKeptDeclaredPullRequest[];
+  /** #5066: the Tasks that watch the pull requests they keep. */
+  tasks?: {
+    listTasks(): readonly TaskRecord[];
+    listKeptDeclaredPullRequests(
+      taskId: string,
+    ): readonly TaskKeptDeclaredPullRequest[];
+    holdTaskForPullRequestWatch(input: {
+      taskId: string;
+      hold: TaskPullRequestWatchHold;
+    }): Promise<boolean>;
+    project(
+      projectId: string,
+    ): { pullRequestWatch?: ProjectPullRequestWatchSettings } | undefined;
+  };
   access: Omit<
     PullRequestFeedbackRouteAccess,
     'enabled' | 'isPerson' | 'mayContinue'
   >;
   logger: {
     warn(message: string, meta?: Record<string, unknown>): void;
+    info?(message: string, meta?: Record<string, unknown>): void;
   };
   /**
    * Project defaults and Task-branch discovery (C2c): the Projects, Tasks
@@ -231,6 +253,10 @@ export interface PullRequestFeedbackRuntime {
   bindNotifier(service: FeedbackNotifier): void;
   /** Whether this request could Send again or turn feedback off for the chat. */
   viewerMayChange(request: Request, conversationId: string): boolean;
+  /** #5066: a Task's pull request watch, when Tasks are composed. */
+  watch?: PullRequestWatch;
+  /** #5066: the pre-tool refusals for a watching Task's agent. */
+  pullRequestWatchPolicy?: PullRequestWatchPolicy;
   close(): Promise<void>;
 }
 
@@ -481,10 +507,48 @@ export function composePullRequestFeedbackRuntime(
   // Assigned below; delivery settles notices after each run through it.
   let attentionSources: () => PullRequestFeedbackAttentionSource[] = () => [];
 
+  const tasks = deps.tasks;
+  const live = (task: TaskRecord) =>
+    task.status !== 'done' && task.status !== 'canceled';
+  const ownerOf = (conversationId: string) =>
+    deps.orchestration.sessionRecordedOwnerId(
+      deps.orchestration.currentConversationSessionId(conversationId),
+    );
+  const watch = tasks
+    ? new PullRequestWatch({
+        enabled,
+        store: () => holder.forWrite(),
+        readStore: () => holder.forRead(),
+        liveTasks: () => tasks.listTasks().filter(live),
+        project: (projectId) => tasks.project(projectId),
+        keeps: (taskId) => tasks.listKeptDeclaredPullRequests(taskId),
+        linked: linkedNow,
+        conversationOf,
+        ownerOf,
+        taskForConversation: (conversationId) =>
+          tasks
+            .listTasks()
+            .find(
+              (task) =>
+                live(task) &&
+                !!task.sessionId &&
+                conversationOf(task.sessionId) === conversationId,
+            ),
+        holdTask: (input) => tasks.holdTaskForPullRequestWatch(input),
+        logger: deps.logger,
+      })
+    : undefined;
+
   // Set before the store closes: a run finishing during shutdown would
   // read no sources and expire every live notice.
   let closing = false;
   const delivery = new PullRequestFeedbackDelivery({
+    onFixBudgetSpent: (input) => watch?.fixBudgetSpent(input),
+    onReady: ({ claim, observation }) =>
+      deps.logger.info?.('Watched pull request is ready for its person', {
+        taskId: claim.watch?.taskId,
+        headSha: observation.headSha,
+      }),
     settleNotices: () => {
       const service = notifier;
       if (!service || closing) return;
@@ -697,7 +761,23 @@ export function composePullRequestFeedbackRuntime(
           : {}),
       });
     },
-    tick: (input) => poller.tick(input),
+    tick: (input) => {
+      // Claims first, so a pull request kept since the last tick is read
+      // on this one.
+      watch?.sync();
+      poller.tick(input);
+    },
+    ...(watch
+      ? {
+          watch,
+          pullRequestWatchPolicy: (input) => {
+            const verdict = watch.guard(input);
+            return verdict
+              ? { decision: verdict.decision, predicate: verdict.predicate }
+              : undefined;
+          },
+        }
+      : {}),
     owns: (itemRef, kind) => {
       if (!enabled()) return false;
       const parsed = parseGitHubWorkItemRef(itemRef);

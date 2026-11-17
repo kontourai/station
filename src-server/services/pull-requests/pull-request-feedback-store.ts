@@ -29,11 +29,14 @@ import {
   type PullRequestFeedbackUnavailableCause,
   parsePullRequestFeedbackSettings,
 } from '@kontourai/station-contracts/pull-request-feedback';
+import type { PullRequestWatchRefusalKind } from '@kontourai/station-contracts/pull-request-watch';
 
 /** Deliveries kept per pull request; the oldest settled go past it. */
 const MAX_DELIVERIES_PER_PULL_REQUEST = 200;
 /** A closed pull request's claim and history are kept this long. */
 const CLOSED_CLAIM_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
+/** A watched Task's refusals are kept this long. */
+const REFUSAL_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 export function pullRequestFeedbackStorePath(homeDir: string): string {
   return join(homeDir, 'pull-request-feedback', 'pull-request-feedback.sqlite');
@@ -43,13 +46,14 @@ export function pullRequestFeedbackStorePath(homeDir: string): string {
 export type StoredClaimCondition =
   | {
       state: 'paused';
-      reason: 'round-limit' | 'repeated-failure';
+      reason: 'round-limit' | 'repeated-failure' | 'fix-budget';
       /** round-limit: rounds on one head, or messages in 24 hours. */
       cap?: 'head' | 'day';
       headSha: string;
       /**
        * The failing check names: the ones that kept failing
-       * (repeated-failure), or the ones waiting when it paused (round-limit).
+       * (repeated-failure), the ones waiting when it paused (round-limit), or
+       * the ones still failing when every fix attempt was used (fix-budget).
        */
       failing?: string[];
       /** The same names as a person reads them: required checks first. */
@@ -62,6 +66,21 @@ export type StoredClaimCondition =
   | { state: 'unavailable'; cause: PullRequestFeedbackUnavailableCause }
   | { state: 'closed'; at: string };
 
+/**
+ * #5066: the claim was made because a Task watches the pull requests it
+ * keeps, not by a person in the chat. A person writing the claim's switches
+ * takes it over and clears this.
+ */
+export interface ClaimWatch {
+  taskId: string;
+  /** The Project's (or default) fix attempts for this pull request. */
+  maxFixAttempts: number;
+  /** Attempts a person granted beyond it (Send again). */
+  extra: number;
+  /** Fix attempts are counted from here. */
+  since: string;
+}
+
 export interface PullRequestFeedbackClaim {
   prKey: string;
   identity: PullRequestLinkIdentity;
@@ -73,6 +92,8 @@ export interface PullRequestFeedbackClaim {
   condition?: StoredClaimCondition;
   /** repeated-failure was overridden for this head by Send again. */
   overrideHead?: string;
+  watch?: ClaimWatch;
+
   /**
    * `project-default`: Station turned it on from the Project's defaults and
    * no person has changed it since. Absent: a person set it.
@@ -102,6 +123,28 @@ export interface StoredDerivedLink {
   headRef: string;
   derivedAt: string;
   dismissedAt?: string;
+}
+
+export type WatchReportKind = 'ready' | 'budget-spent';
+
+export interface StoredWatchReport {
+  prKey: string;
+  headSha: string;
+  kind: WatchReportKind;
+  at: string;
+  /** budget-spent: the failing check names. */
+  failing?: string[];
+}
+
+export interface StoredWatchRefusal {
+  id: string;
+  taskId: string;
+  conversationId: string;
+  kind: PullRequestWatchRefusalKind;
+  outcome: 'refused' | 'asked';
+  toolName: string;
+  detail: string;
+  at: string;
 }
 
 export type StoredDeliveryState =
@@ -223,6 +266,25 @@ const SCHEMA = [
     settled_at TEXT
   ) STRICT`,
   `CREATE INDEX IF NOT EXISTS batches_by_conversation ON batches (conversation_id, state)`,
+  `CREATE TABLE IF NOT EXISTS watch_reports (
+    pr_key TEXT NOT NULL,
+    head_sha TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    at TEXT NOT NULL,
+    failing TEXT,
+    PRIMARY KEY (pr_key, head_sha, kind)
+  ) STRICT`,
+  `CREATE TABLE IF NOT EXISTS watch_refusals (
+    id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    conversation_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    outcome TEXT NOT NULL,
+    tool_name TEXT NOT NULL,
+    detail TEXT NOT NULL,
+    at TEXT NOT NULL
+  ) STRICT`,
+  `CREATE INDEX IF NOT EXISTS watch_refusals_by_task ON watch_refusals (task_id, at)`,
   `CREATE TABLE IF NOT EXISTS project_defaults (
     project_id TEXT NOT NULL,
     project_created_at TEXT NOT NULL,
@@ -277,6 +339,7 @@ function readClaim(row: Record<string, unknown>): PullRequestFeedbackClaim {
   if (!settings) throw new Error('Pull request feedback settings unreadable.');
   const condition = optStr(row, 'condition');
   const overrideHead = optStr(row, 'override_head');
+  const watch = optStr(row, 'watch');
   const origin = optStr(row, 'origin');
   return {
     prKey: str(row, 'pr_key'),
@@ -288,6 +351,7 @@ function readClaim(row: Record<string, unknown>): PullRequestFeedbackClaim {
     generation: int(row, 'generation'),
     ...(condition ? { condition: JSON.parse(condition) } : {}),
     ...(overrideHead ? { overrideHead } : {}),
+    ...(watch ? { watch: JSON.parse(watch) as ClaimWatch } : {}),
     ...(origin === 'project-default' ? { origin } : {}),
   };
 }
@@ -373,6 +437,8 @@ export class PullRequestFeedbackStore {
         .prepare('PRAGMA table_info(claims)')
         .all()
         .map((row) => row.name);
+      if (!claimColumns.includes('watch'))
+        db.exec('ALTER TABLE claims ADD COLUMN watch TEXT');
       if (!claimColumns.includes('origin'))
         db.exec('ALTER TABLE claims ADD COLUMN origin TEXT');
     } catch (error) {
@@ -422,6 +488,8 @@ export class PullRequestFeedbackStore {
    * Write a claim's switches. A new claim starts at generation 1; an
    * existing one keeps its generation unless `move` names a new owner,
    * which bumps it so a message queued for the old owner is refused.
+   * `watch` marks a claim a watching Task made; a write without it (a
+   * person's) clears the mark.
    */
   writeClaim(input: {
     prKey: string;
@@ -430,6 +498,7 @@ export class PullRequestFeedbackStore {
     settings: PullRequestFeedbackSettings;
     enabledBy: string;
     now: string;
+    watch?: ClaimWatch;
   }): PullRequestFeedbackClaim {
     return this.transaction(() => {
       const prior = this.claim(input.prKey);
@@ -437,12 +506,12 @@ export class PullRequestFeedbackStore {
       const generation = prior ? prior.generation + (moved ? 1 : 0) : 1;
       this.db
         .prepare(
-          `INSERT INTO claims (pr_key, identity, conversation_id, settings, enabled_by, enabled_at, generation, condition, override_head)
-           VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL)
+          `INSERT INTO claims (pr_key, identity, conversation_id, settings, enabled_by, enabled_at, generation, condition, override_head, watch)
+           VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?)
            ON CONFLICT (pr_key) DO UPDATE SET identity = excluded.identity,
              conversation_id = excluded.conversation_id, settings = excluded.settings,
              enabled_by = excluded.enabled_by, enabled_at = excluded.enabled_at,
-             generation = excluded.generation, next_due_at = 0, origin = NULL,
+             generation = excluded.generation, next_due_at = 0, watch = excluded.watch, origin = NULL,
              condition = CASE WHEN claims.conversation_id = excluded.conversation_id THEN claims.condition ELSE NULL END,
              override_head = CASE WHEN claims.conversation_id = excluded.conversation_id THEN claims.override_head ELSE NULL END`,
         )
@@ -454,6 +523,7 @@ export class PullRequestFeedbackStore {
           input.enabledBy,
           input.now,
           generation,
+          input.watch ? JSON.stringify(input.watch) : null,
         );
       if (moved)
         // What waited for the old owner is not the new owner's.
@@ -517,6 +587,7 @@ export class PullRequestFeedbackStore {
       this.db.prepare('DELETE FROM observations WHERE pr_key = ?').run(prKey);
       this.db.prepare('DELETE FROM deliveries WHERE pr_key = ?').run(prKey);
       this.db.prepare('DELETE FROM rounds WHERE pr_key = ?').run(prKey);
+      this.db.prepare('DELETE FROM watch_reports WHERE pr_key = ?').run(prKey);
     });
   }
 
@@ -551,6 +622,13 @@ export class PullRequestFeedbackStore {
     this.db
       .prepare('UPDATE claims SET condition = ? WHERE pr_key = ?')
       .run(condition ? JSON.stringify(condition) : null, prKey);
+  }
+
+  /** Change a watching Task's mark on a claim without touching its switches. */
+  setWatch(prKey: string, watch: ClaimWatch | null): void {
+    this.db
+      .prepare('UPDATE claims SET watch = ? WHERE pr_key = ?')
+      .run(watch ? JSON.stringify(watch) : null, prKey);
   }
 
   setOverrideHead(prKey: string, headSha: string | null): void {
@@ -861,6 +939,94 @@ export class PullRequestFeedbackStore {
       .map(readDelivery);
   }
 
+  /**
+   * #5066: fix attempts sent for this pull request since `since`: each
+   * placed message that carried its failing checks is one.
+   */
+  fixAttempts(prKey: string, since: string): number {
+    const row = this.db
+      .prepare(
+        `SELECT COUNT(DISTINCT batch_key) AS sent FROM deliveries
+         WHERE pr_key = ? AND category = 'failing-checks' AND state = 'sent'
+           AND settled_at >= ?`,
+      )
+      .get(prKey, since);
+    return row ? int(row, 'sent') : 0;
+  }
+
+  // Watch reports and refusals (#5066) ----------------------------------------
+
+  /** Record a report once per pull request, head and kind; true when new. */
+  recordWatchReport(report: StoredWatchReport): boolean {
+    const result = this.db
+      .prepare(
+        `INSERT INTO watch_reports (pr_key, head_sha, kind, at, failing)
+         VALUES (?, ?, ?, ?, ?) ON CONFLICT (pr_key, head_sha, kind) DO NOTHING`,
+      )
+      .run(
+        report.prKey,
+        report.headSha,
+        report.kind,
+        report.at,
+        report.failing ? JSON.stringify(report.failing) : null,
+      );
+    return Number(result.changes) > 0;
+  }
+
+  /** The newest report for this pull request, if any. */
+  latestWatchReport(prKey: string): StoredWatchReport | undefined {
+    const row = this.db
+      .prepare(
+        'SELECT * FROM watch_reports WHERE pr_key = ? ORDER BY at DESC, kind LIMIT 1',
+      )
+      .get(prKey);
+    if (!row) return undefined;
+    const failing = optStr(row, 'failing');
+    return {
+      prKey: str(row, 'pr_key'),
+      headSha: str(row, 'head_sha'),
+      kind: str(row, 'kind') as WatchReportKind,
+      at: str(row, 'at'),
+      ...(failing ? { failing: JSON.parse(failing) as string[] } : {}),
+    };
+  }
+
+  recordWatchRefusal(refusal: StoredWatchRefusal): void {
+    this.db
+      .prepare(
+        `INSERT INTO watch_refusals (id, task_id, conversation_id, kind, outcome, tool_name, detail, at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        refusal.id,
+        refusal.taskId,
+        refusal.conversationId,
+        refusal.kind,
+        refusal.outcome,
+        refusal.toolName,
+        refusal.detail,
+        refusal.at,
+      );
+  }
+
+  watchRefusals(taskId: string, limit: number): StoredWatchRefusal[] {
+    return this.db
+      .prepare(
+        'SELECT * FROM watch_refusals WHERE task_id = ? ORDER BY at DESC, id DESC LIMIT ?',
+      )
+      .all(taskId, limit)
+      .map((row) => ({
+        id: str(row, 'id'),
+        taskId: str(row, 'task_id'),
+        conversationId: str(row, 'conversation_id'),
+        kind: str(row, 'kind') as PullRequestWatchRefusalKind,
+        outcome: str(row, 'outcome') as 'refused' | 'asked',
+        toolName: str(row, 'tool_name'),
+        detail: str(row, 'detail'),
+        at: str(row, 'at'),
+      }));
+  }
+
   // Batches ------------------------------------------------------------------
 
   /** Messages not yet settled by the inbox that carry this pull request. */
@@ -1040,6 +1206,7 @@ export class PullRequestFeedbackStore {
             'observations',
             'deliveries',
             'rounds',
+            'watch_reports',
           ])
             this.db
               .prepare(`DELETE FROM ${table} WHERE pr_key = ?`)
@@ -1053,6 +1220,9 @@ export class PullRequestFeedbackStore {
           )
           .run(claim.prKey, claim.prKey, MAX_DELIVERIES_PER_PULL_REQUEST);
       }
+      this.db
+        .prepare('DELETE FROM watch_refusals WHERE at < ?')
+        .run(new Date(now - REFUSAL_RETENTION_MS).toISOString());
       this.db
         .prepare(
           `DELETE FROM batches WHERE state NOT IN ('submitting', 'queued')

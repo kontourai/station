@@ -313,6 +313,23 @@ describe('the lane table, one row at a time', () => {
       'Open PR',
     ],
     [
+      '16a fix attempts used (#5066)',
+      {
+        task: task({
+          status: 'blocked',
+          pullRequestWatchHold: {
+            checks: ['ci / unit-tests'],
+            pullRequest: 'acme/widgets#42',
+            at: OBSERVED,
+          },
+        }),
+      },
+      'lane:needs_you',
+      'fixAttemptsUsed',
+      'Fix attempts used',
+      'Open Task',
+    ],
+    [
       '16 marked blocked',
       { task: task({ status: 'blocked' }) },
       'lane:needs_you',

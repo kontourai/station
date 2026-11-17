@@ -1608,6 +1608,32 @@ request found on a Task's own branch also appears in
 `branch-derived` while the preview is on. See
 [the decision](../decisions/pull-request-agent-feedback.md).
 
+### Task-owned pull requests
+
+Served wherever pull request agent feedback is composed (the
+`pullRequestFeedback` capability flag; a hosted Station answers 404). While the
+Feature Preview is off the routes still answer, nothing is watched, and the
+view says `available: false`:
+
+- `GET /api/tasks/:taskId/pull-request-watch` returns the Task's
+  `TaskPullRequestWatchView`: whether it watches, whose choice decided
+  (`source`), its own `mode`, the Project's setting, each kept pull request's
+  watch state (`watching`, `fixing`, `ready`, `budget-spent` with the failing
+  checks, `elsewhere`, `unavailable`, `closed`) with fix attempts used and
+  allowed, and the newest 20 refused agent actions.
+- `PUT` on the same path, body `{ mode: 'on' | 'off' | 'project' }`, sets the
+  Task's own choice (`off` is Stop watching; `project` follows the Project)
+  and claims or releases its kept pull requests at once. A done or canceled
+  Task answers 400.
+- `PUT /api/projects/:slug/pull-request-watch`, body
+  `{ enabled, maxFixAttempts? }` (1–10, default 3), sets
+  `ProjectConfig.pullRequestWatch` and answers the Project. The runtime Project
+  guard admits only the Project's owner.
+
+No Station Control tool names these routes, so the authority guard refuses an
+agent's request to them. See
+[the decision](../decisions/task-owned-pull-requests.md).
+
 
 ## Table of Contents
 

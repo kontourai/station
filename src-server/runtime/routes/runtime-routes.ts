@@ -1250,6 +1250,14 @@ export async function pullRequestSessionForReader<
 }
 
 export interface ConfigureRuntimeRoutesContext {
+  /**
+   * #5066: hand every agent's pre-tool policy the watching-Task refusals
+   * once pull request feedback is composed. Absent in embedders without
+   * agents.
+   */
+  bindPullRequestWatchPolicy?: (
+    policy: import('../agents/pre-tool-policy.js').PullRequestWatchPolicy,
+  ) => void;
   discordGateway?: Pick<DiscordGatewayService, 'getGatewayStatus'>;
   retainProjectRoomRuntime?: (runtime: { close(): Promise<void> }) => void;
   relayInvitationOwner?: RelayInvitationOwner;
@@ -5871,6 +5879,9 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/tasks',
     createTaskRoutes(context.taskGraphService, {
+      // Read per request: pull request feedback is composed after these
+      // routes are mounted.
+      pullRequestWatch: () => pullRequestFeedback?.watch,
       pullRequestProviders: () =>
         listProviders('pullRequest').map((entry) => entry.provider),
       pullRequestFeedbackFor: (...a) => pullRequestFeedback?.factFor(...a),
@@ -10823,6 +10834,25 @@ export function configureRuntimeRoutes(
       listProviders('pullRequest').map((entry) => entry.provider),
     keptForSessions: (ids) =>
       context.taskGraphService.listKeptDeclaredPullRequestsForSessions(ids),
+    tasks: {
+      listTasks: () => context.taskGraphService.listTasks(),
+      listKeptDeclaredPullRequests: (taskId) =>
+        context.taskGraphService.listKeptDeclaredPullRequests(taskId),
+      holdTaskForPullRequestWatch: (input) =>
+        context.taskGraphService.holdTaskForPullRequestWatch(input),
+      // A Task names its Project by id or, for Tasks created against a
+      // slug, by slug.
+      project: (projectId) => {
+        const summary = context.projectService
+          .listProjects()
+          .find(
+            (project) => project.id === projectId || project.slug === projectId,
+          );
+        return summary
+          ? context.storageAdapter.getProject(summary.slug)
+          : undefined;
+      },
+    },
     taskBranches: pullRequestFeedbackTaskBranchPorts({
       taskGraph: context.taskGraphService,
       projects: context.projectService,
@@ -10849,6 +10879,10 @@ export function configureRuntimeRoutes(
     context.app.route(
       '/api/pull-request-feedback',
       createPullRequestFeedbackRoutes(...pullRequestFeedback.routeArgs),
+    );
+  if (pullRequestFeedback?.pullRequestWatchPolicy)
+    context.bindPullRequestWatchPolicy?.(
+      pullRequestFeedback.pullRequestWatchPolicy,
     );
   context.app.route(
     '/api/pull-requests',
