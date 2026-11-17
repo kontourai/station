@@ -1,0 +1,7 @@
+{
+  "revision": "0785eee3d8c53a0a6fe97ae97b2d236452c80ef8",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"Named the connection-provided tool servers (provideToolServers, mcpMode add), the launch-bound connection fields and volatile exclusions, the refusal while a replaced session still runs work, and the Codex limit exactly: its own MCP calls never pass through this evaluator; a Codex Agent session holds a launch binding so its next turn restarts after an Agent or integration change. Checked against station-runtime.ts, acp-launch-tool-servers.ts, orchestration-service.ts and codex-adapter.ts.","inputs":["docs/guides/agent-configuration.md"]}
+  ]
+}
