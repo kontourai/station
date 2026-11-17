@@ -28,6 +28,7 @@ export function ProjectPullRequestSettings({
       retry: false,
       keepPreviousData: false,
       staleTime: 0,
+      refetchOnMount: 'always',
     },
   );
   const context =
