@@ -178,6 +178,9 @@ export class PullRequestFeedbackOwnership {
     ) {
       // Every switch off is turning it off: what waited is dropped, as `off`.
       store.releaseClaim(prKey, new Date(this.now()).toISOString());
+      // A person turned it off here: a watching Task does not turn it on
+      // again (as `off`).
+      if (existing?.watch) store.setWatch(prKey, null);
       return {
         kind: 'ok',
         view: this.viewOf(
