@@ -2888,6 +2888,7 @@ function pullRequestWatchScreens(): Screen[] {
       let taskFixture: ReturnType<typeof preview> | undefined;
       let taskProject = false;
       let pageForTask: Page | undefined;
+      let restoreHandshake: (() => Promise<void>) | undefined;
       const watchRoute = async (route: Route) => {
         if (route.request().method() !== 'GET') return route.continue();
         const taskId = decodeURIComponent(
@@ -2985,6 +2986,16 @@ function pullRequestWatchScreens(): Screen[] {
           expect(task.ok()).toBe(true);
           const created = await task.json();
           taskScreen.path = `/tasks/${encodeURIComponent(created.data.id)}?taskView=overview`;
+          // The gallery's global handshake names no capability; the panel
+          // shows only on a host that serves pull request feedback.
+          restoreHandshake = await withRoute(
+            page,
+            '**/.well-known/station/v1',
+            (route) =>
+              fulfillGalleryStationHandshake(route, false, {
+                pullRequestFeedback: true,
+              }),
+          );
           await page.route('**/api/tasks/*/pull-request-watch', watchRoute);
         },
         async afterGoto(page) {
@@ -3011,6 +3022,7 @@ function pullRequestWatchScreens(): Screen[] {
               '**/api/tasks/*/pull-request-watch',
               watchRoute,
             );
+            await restoreHandshake?.();
             if (taskProject) {
               const deleted = await taskFixture!.request.delete(
                 `${resolveE2EApiBase()}/api/projects/${taskSlug}`,
