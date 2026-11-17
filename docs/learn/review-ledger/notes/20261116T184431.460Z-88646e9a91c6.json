@@ -1,0 +1,7 @@
+{
+  "revision": "382eb00677f99b2c727952fc724f921d5fc8bc9c",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed for #5056: the catalog is now sorted by name without digest, count or line links. The page only claims the generated catalog prevents declaration drift and cannot prove recording or export; docs:metrics:check still compares the exact rendering, so both claims hold.","inputs":["docs/architecture/abstraction-review.md","docs/reference/metrics.md"]}
+  ]
+}

@@ -360,7 +360,7 @@ describe('consumers multiply their liveness bound', () => {
       const scratch = makeTempDir('liveness-fallow-interrupted-');
       const stationRoot = join(scratch, 'station-root');
       const report = join(scratch, 'health.json');
-      vi.stubEnv('STATION_TEMP_ROOT', stationRoot);
+      vi.stubEnv('STATION_FALLOW_CACHE_DIR', join(stationRoot, 'fallow'));
       const signalsBefore = ['SIGINT', 'SIGTERM'].map((signal) =>
         process.listenerCount(signal),
       );

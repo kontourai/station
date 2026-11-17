@@ -165,6 +165,10 @@ import { useOptionalObservedWorkStatus } from '../../views/home/useObservedWorkS
 import { useWorkFacts } from '../../views/home/useWorkFacts';
 import type { ConversationOpenResult } from '../../views/home/work-item-open-policy';
 import { workStatusText } from '../../views/home/work-status';
+import {
+  threadInChat,
+  uniqueChatKey,
+} from '../../workspace-panes/agents/childWorkSelectors';
 import { agentRunnability } from '../agent-runnability';
 import { durableMentionAuthority } from '../chat/composer-mentions';
 import { publishReferenceableConversations } from '../chat/conversationReferenceDrag';
@@ -234,7 +238,7 @@ import {
 } from './sessionInventoryOccurrence';
 import { useAcknowledgeVisibleConversation } from './useAcknowledgeVisibleConversation';
 import { useChatDockActiveChatSync } from './useChatDockActiveChatSync';
-import { useChatDockOverlays } from './useChatDockOverlays';
+import { useChatDockOverlays, type WorkingParent } from './useChatDockOverlays';
 import { useChatDockViewModel } from './useChatDockViewModel';
 import {
   type ForkFollowUp,
@@ -959,10 +963,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const notifyTaskStarted = useTaskStartedNotice(collapseDockForNavigation);
 
   const childChatController = useRef<ChildChatController | null>(null);
-  const hostSessionRef = useRef<Pick<
-    ChatSession,
-    'id' | 'conversationId' | 'currentSessionId'
-  > | null>(null);
+  const hostSessionRef = useRef<WorkingParent | null>(null);
   const readerIntent = useRef(0);
   const pendingReaderOpen = useRef<{ accepted: boolean } | null>(null);
   const cancelReaderOpen = useCallback(() => {
@@ -1018,6 +1019,23 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     [cancelReaderOpenAndChildren, requestAuthority, workObservation],
   );
   const { setDeviceSetting } = useDeviceSettingsActions();
+  // A cold load names a chat the store already holds before the dock makes
+  // it the working chat. A child request waits for that, so its parent is
+  // matched against the chat it was opened from.
+  const requestedChatKey = useMemo(
+    () =>
+      activeChat
+        ? uniqueChatKey(
+            Object.fromEntries(
+              allSessions.map((session) => [session.id, session]),
+            ),
+            activeChat,
+          )
+        : undefined,
+    [activeChat, allSessions],
+  );
+  const workingParentPending =
+    requestedChatKey !== undefined && activeSessionId === null;
   const {
     importedSessionId,
     readerSurfaceIntent,
@@ -1060,6 +1078,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     hasConversationIntent: Boolean(activeChat),
     onReaderIntent: cancelReaderOpenAndChildren,
     hostSessionRef,
+    workingParentPending,
     composerMenuTriggerRef,
     setDeviceSetting,
     setShowNewChatModalState,
@@ -1672,8 +1691,31 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     sessionModel: activeSession?.model,
     agentDefaultModel: agentDefaultModelId,
   });
+  // The working chat runs on this Station: a host route, or a chat of this
+  // Station that needs no route (a local chat resolves none).
+  const hostBound = Boolean(
+    activeSession &&
+      (conversationConnection
+        ? conversationConnection.routeKind === 'host'
+        : chatBelongsToStation(activeSession)),
+  );
+  // A child request names its reporting session. It is this chat's when
+  // that session is, by the Agents pane's own rule (`threadInChat`): this
+  // chat's ids, or an earlier session of its conversation.
   hostSessionRef.current =
-    conversationConnection?.routeKind === 'host' ? activeSession : null;
+    hostBound && activeSession
+      ? {
+          id: activeSession.id,
+          owns: threadInChat(
+            {
+              sessions: orchestrationSessions,
+              chatKeyFor: (threadId) =>
+                uniqueChatKey(activeChatsStore.getSnapshot(), threadId),
+            },
+            activeSession.id,
+          ),
+        }
+      : null;
   const initialChildChat = useMemo<ChildChatTarget | undefined>(() => {
     if (
       !readerSurfaceIntent?.session ||
@@ -1683,7 +1725,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     const workingParent =
       importedSessionId === null &&
       readerSurfaceIntent.workingSessionId === activeSessionId &&
-      conversationConnection?.routeKind === 'host';
+      hostBound;
     if (!workingParent && readerSurfaceIntent.session !== importedSessionId)
       return;
     return {
@@ -1711,6 +1753,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     readerSurfaceIntent,
     importedSessionId,
     activeSessionId,
+    hostBound,
     conversationConnection,
     apiBase,
     requestAuthority,
@@ -2203,6 +2246,15 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       (isPaneOpen || isCollapsedDragPreview),
     SESSION_CONTEXT_EXIT_MS,
   );
+  // The This chat card (or, too narrow for it, its chip) is where Background
+  // tasks, Chat inventory, the Copy commands and where the chat came from
+  // live; the More menu drops them only while one of the two is actually on
+  // screen. A card whose chunk has not loaded (or failed to) leaves them in
+  // the menu, so no command is ever reachable from nowhere.
+  const sessionContextOwnsRows =
+    !isMobile &&
+    (sessionContextCardShown ||
+      (sessionContextChipPresence.mounted && !sessionContextCardVisible));
   // The composer's context meter: for a chat the inbox lists as open (the
   // same gate the header meter had), never for an imported session.
   const contextMeterShown = Boolean(
@@ -3184,6 +3236,11 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
    * opening a surface that already exists. Rows a fact cannot fill are
    * omitted by the card rather than worded as a state nothing computes.
    */
+  // A string, so the memoised card compares it by value: the origin record is
+  // rebuilt on every session-list read.
+  const sessionOriginLabel = activeOrchestrationSession?.inputOrigin
+    ? delegatedTaskLabel(activeOrchestrationSession.inputOrigin)
+    : undefined;
   const sessionContextCardProps = useMemo(() => {
     if (!sessionContextAvailable) return null;
     const actions = () => sessionContextActionsRef.current;
@@ -3246,9 +3303,13 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
             },
           }
         : undefined,
+      origin: sessionOriginLabel,
+      copyActions,
       onPresentChange: setSessionContextCardPresent,
     };
   }, [
+    sessionOriginLabel,
+    copyActions,
     sessionContextAvailable,
     sessionContextProjectSlug,
     sessionProjectName,
@@ -4031,7 +4092,17 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       />
                     ) : null
                   }
-                  moreActions={importedSessionId ? [] : dockMoreActions}
+                  moreActions={
+                    importedSessionId
+                      ? []
+                      : sessionContextOwnsRows
+                        ? dockMoreActions.filter(
+                            (action) =>
+                              action.group !== 'copy' &&
+                              action.group !== 'about',
+                          )
+                        : dockMoreActions
+                  }
                   // #3309: the tab strip's controls fold into the header — one
                   // chrome bar, every reclaimed pixel is transcript space. Only
                   // while the pane is open; the collapsed bar stays minimal.

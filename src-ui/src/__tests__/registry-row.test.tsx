@@ -252,7 +252,7 @@ describe('renderSettingRow', () => {
       'Default',
       'Ask first',
       'Auto',
-      'Never ask (full access)',
+      'Full access',
     ]);
     // The stored values are unchanged.
     expect(Array.from(select.options).map((o) => o.value)).toEqual([

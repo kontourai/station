@@ -1,0 +1,7 @@
+{
+  "revision": "50be642daa052938f0a880e12241ee065e8c45af",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-read the running-call rule, the post-turn strip paragraph and the turn-rail bullet against the fix round. Updated: settled calls read running from the live tool record in batches, inline rows and browser summaries; a reconnect snapshot keeps a post-turn tool running while the conversation reports running child work; the strip and pill read one work list, the pill names it before Station's count catches up, and work the transcript shows is counted 'above' and not listed again. Added the accepted gap: a chat reopened mid-run reads 'no result' until the call's next event. Checked against BackgroundTaskActivity, useObservedRunningToolCalls, background-tasks-store, chatStatus, ChatMessageList, MessageBubble, chat.css and index.css.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/components/chat/MessageBubble.tsx","src-ui/src/components/chat/chat.css","src-ui/src/components/status/chatStatus.ts","src-ui/src/index.css"]}
+  ]
+}

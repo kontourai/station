@@ -1,0 +1,53 @@
+{
+  "revision": "61456989822bfc7e38dafb3437b32b18a881aaff",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Only the child-work transcript route changed: it accepts tail=1 (rejected with an offset) and passes offset/limit/tail explicitly to the module. No other route, auth, streaming or config behavior changed; session-api.md documents the new query and page fields.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Only the child-work transcript route changed: it accepts tail=1 (rejected with an offset) and passes offset/limit/tail explicitly to the module. No other route, auth, streaming or config behavior changed; session-api.md documents the new query and page fields.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture.md","note":"Only the child-work transcript route changed: it accepts tail=1 (rejected with an offset) and passes offset/limit/tail explicitly to the module. No other route, auth, streaming or config behavior changed; session-api.md documents the new query and page fields.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Only the child-work transcript route changed: it accepts tail=1 (rejected with an offset) and passes offset/limit/tail explicitly to the module. No other route, auth, streaming or config behavior changed; session-api.md documents the new query and page fields.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Only the child-work transcript route changed: it accepts tail=1 (rejected with an offset) and passes offset/limit/tail explicitly to the module. No other route, auth, streaming or config behavior changed; session-api.md documents the new query and page fields.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Only the child-work transcript route changed: it accepts tail=1 (rejected with an offset) and passes offset/limit/tail explicitly to the module. No other route, auth, streaming or config behavior changed; session-api.md documents the new query and page fields.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Only the child-work transcript route changed: it accepts tail=1 (rejected with an offset) and passes offset/limit/tail explicitly to the module. No other route, auth, streaming or config behavior changed; session-api.md documents the new query and page fields.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Only the child-work transcript route changed: it accepts tail=1 (rejected with an offset) and passes offset/limit/tail explicitly to the module. No other route, auth, streaming or config behavior changed; session-api.md documents the new query and page fields.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Only the child-work transcript route changed: it accepts tail=1 (rejected with an offset) and passes offset/limit/tail explicitly to the module. No other route, auth, streaming or config behavior changed; session-api.md documents the new query and page fields.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Only the child-work transcript route changed: it accepts tail=1 (rejected with an offset) and passes offset/limit/tail explicitly to the module. No other route, auth, streaming or config behavior changed; session-api.md documents the new query and page fields.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Only the child-work transcript route changed: it accepts tail=1 (rejected with an offset) and passes offset/limit/tail explicitly to the module. No other route, auth, streaming or config behavior changed; session-api.md documents the new query and page fields.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Only the child-work transcript route changed: it accepts tail=1 (rejected with an offset) and passes offset/limit/tail explicitly to the module. No other route, auth, streaming or config behavior changed; session-api.md documents the new query and page fields.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Only the child-work transcript route changed: it accepts tail=1 (rejected with an offset) and passes offset/limit/tail explicitly to the module. No other route, auth, streaming or config behavior changed; session-api.md documents the new query and page fields.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Only the child-work transcript route changed: it accepts tail=1 (rejected with an offset) and passes offset/limit/tail explicitly to the module. No other route, auth, streaming or config behavior changed; session-api.md documents the new query and page fields.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Only the child-work transcript route changed: it accepts tail=1 (rejected with an offset) and passes offset/limit/tail explicitly to the module. No other route, auth, streaming or config behavior changed; session-api.md documents the new query and page fields.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Only the child-work transcript route changed: it accepts tail=1 (rejected with an offset) and passes offset/limit/tail explicitly to the module. No other route, auth, streaming or config behavior changed; session-api.md documents the new query and page fields.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Only the child-work transcript route changed: it accepts tail=1 (rejected with an offset) and passes offset/limit/tail explicitly to the module. No other route, auth, streaming or config behavior changed; session-api.md documents the new query and page fields.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Only the child-work transcript route changed: it accepts tail=1 (rejected with an offset) and passes offset/limit/tail explicitly to the module. No other route, auth, streaming or config behavior changed; session-api.md documents the new query and page fields.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Only the child-work transcript route changed: it accepts tail=1 (rejected with an offset) and passes offset/limit/tail explicitly to the module. No other route, auth, streaming or config behavior changed; session-api.md documents the new query and page fields.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Only the child-work transcript route changed: it accepts tail=1 (rejected with an offset) and passes offset/limit/tail explicitly to the module. No other route, auth, streaming or config behavior changed; session-api.md documents the new query and page fields.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Only the child-work transcript route changed: it accepts tail=1 (rejected with an offset) and passes offset/limit/tail explicitly to the module. No other route, auth, streaming or config behavior changed; session-api.md documents the new query and page fields.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Only the child-work transcript route changed: it accepts tail=1 (rejected with an offset) and passes offset/limit/tail explicitly to the module. No other route, auth, streaming or config behavior changed; session-api.md documents the new query and page fields.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Only the child-work transcript route changed: it accepts tail=1 (rejected with an offset) and passes offset/limit/tail explicitly to the module. No other route, auth, streaming or config behavior changed; session-api.md documents the new query and page fields.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Only the child-work transcript route changed: it accepts tail=1 (rejected with an offset) and passes offset/limit/tail explicitly to the module. No other route, auth, streaming or config behavior changed; session-api.md documents the new query and page fields.","inputs":["src-server/routes/orchestration/orchestration.ts"]}
+  ]
+}

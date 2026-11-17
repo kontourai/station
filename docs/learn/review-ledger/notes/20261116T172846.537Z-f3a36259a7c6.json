@@ -1,0 +1,9 @@
+{
+  "revision": "8ea5e664bdebcf99c6cfebb31884d6e8ca450e2c",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"TranscriptTurnRail.css only dims ticks at rest (opacity, thinner) and brightens on hover/focus; current and marked ticks stay full strength. Rail geometry, hit strip, narrow/short hiding and dialog/layer rules in the citing guide are unchanged.","inputs":["src-ui/src/components/chat/TranscriptTurnRail.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"TranscriptTurnRail.css only dims ticks at rest (opacity, thinner) and brightens on hover/focus; current and marked ticks stay full strength. Rail geometry, hit strip, narrow/short hiding and dialog/layer rules in the citing guide are unchanged.","inputs":["src-ui/src/components/chat/TranscriptTurnRail.css"]}
+  ]
+}

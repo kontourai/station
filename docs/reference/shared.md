@@ -732,6 +732,7 @@ interface ProjectMetadata {
   hasKnowledge: boolean;
   defaultProviderId?: string;
   position?: number;
+  lifecycle?: ProjectLifecycle; // paused or archived; absent is active
 }
 ```
 

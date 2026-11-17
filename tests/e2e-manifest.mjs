@@ -1711,7 +1711,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      '#2459 Agents pane child work: opened from the dock row, per-chat Claude Stop kept exactly once (the bridge retires since #2533 wired the cell), All scope with one Stop per running child showing a CLI delegate and a chatless subagent live with provenance, an exit read as No result, and the scope remembered across reload; #2510 at 390px the header ⋯ sheet’s Background tasks row (44px) opens the Background tasks sheet with the seeded running task.',
+      '#2459 Agents pane child work: opened from the dock row, per-chat Claude Stop kept exactly once (the bridge retires since #2533 wired the cell), All chats scope with one Stop per running child showing a CLI delegate and a chatless subagent live with provenance, an exit read as No result, and the scope remembered across reload; seeded running subagents and tool calls laid out at 380px and 600px in dark theme with actions clear of the text and All chats grouped by chat; #2510 at 390px the header ⋯ sheet’s Background tasks row (44px) opens the Background tasks sheet with the seeded running task.',
     exceptions: [],
   },
   {
