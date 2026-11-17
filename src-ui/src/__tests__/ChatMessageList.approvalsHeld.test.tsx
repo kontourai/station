@@ -205,7 +205,7 @@ describe('approvals on a cached paint', () => {
   test('a bound transcript row offers no answer while held, then offers it', async () => {
     windowEvents.current = boundRowRequest();
     const view = renderList(chatSession(), true);
-    await screen.findByText(/ls plugins/);
+    await screen.findAllByText(/ls plugins/);
     expect(screen.queryByRole('button', ALLOW)).toBeNull();
     expect(screen.queryByRole('button', { name: 'Deny' })).toBeNull();
     view.release();
@@ -243,7 +243,7 @@ describe('approvals on a cached paint', () => {
       chatSession({ orchestrationTurnOpen: true, status: 'sending' }),
       true,
     );
-    await screen.findByText(/rm -r build/);
+    await screen.findAllByText(/rm -r build/);
     expect(screen.queryByRole('button', ALLOW)).toBeNull();
     view.release();
     expect(await screen.findByRole('button', ALLOW)).toBeTruthy();
