@@ -423,3 +423,45 @@ export function describePullRequestFeedbackCategories(
   if (parts.length === 1) return parts[0]!;
   return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
 }
+
+/**
+ * An open pull request whose head branch has the asked-for name, as a forge
+ * lists it. The name alone proves nothing: a fork can push a branch of the
+ * same name, so `crossRepository` and `headOwner` say where it lives.
+ */
+export interface PullRequestByHead {
+  /** The pull request's number. */
+  ref: string;
+  headRefName: string;
+  /** The owner of the repository the head branch lives in. */
+  headOwner: string;
+  /** The head branch lives in another repository (a fork). */
+  crossRepository: boolean;
+  url: string;
+}
+
+export type PullRequestsByHeadResult =
+  | { state: 'read'; pullRequests: PullRequestByHead[] }
+  | {
+      state: 'unavailable';
+      cause: PullRequestFeedbackUnavailableCause;
+      reason: string;
+    };
+
+/**
+ * A Project's agent feedback defaults: the switches Station turns on for a
+ * pull request one of the Project's Tasks opens from its own branch, when
+ * nobody has set that pull request up yet. Never applied to a pull request
+ * already set up, and changing them never changes one.
+ */
+export interface ProjectPullRequestFeedbackDefaults {
+  projectSlug: string;
+  settings: PullRequestFeedbackSettings;
+  /** Whether the reader may change them: this Station's owner, in person. */
+  canChange: boolean;
+  /**
+   * Pull requests these defaults turned feedback on for that still get it.
+   * Turning the defaults off leaves them on; each is turned off from its chat.
+   */
+  stillOn: number;
+}

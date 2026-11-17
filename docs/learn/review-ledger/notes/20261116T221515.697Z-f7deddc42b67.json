@@ -1,0 +1,7 @@
+{
+  "revision": "ea60d720910ce6d78a3a747891862c3c73623353",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Added getProjectPullRequestFeedbackDefaults, writeProjectPullRequestFeedbackDefaults (two switches only) and removeDerivedPullRequest, matching packages/sdk/src/client/pull-request-feedback.ts; conversation link client unchanged.","inputs":["docs/reference/sdk.md","src-server/routes/pull-requests/conversation-pull-request-links.ts"]}
+  ]
+}

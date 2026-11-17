@@ -10,6 +10,7 @@ evidence:
   - kind: pr
     ref: https://github.com/kontourai/station/pull/5044
   - kind: doc
+    ref: src-server/services/pull-requests/pull-request-feedback-task-branches.ts
     ref: src-server/services/pull-requests/pull-request-head-review.ts
 ---
 
@@ -43,8 +44,11 @@ flag. Hosted Stations do not offer it, and GitLab reads as `unsupported`.
    new head whose feedback differs. A 24-hour pause moves to a new head while
    the 10 are still spent, rather than lifting and pausing again, so a person
    is told once and Send again grants its round on the head being read.
-4. **New claims only.** Project defaults would apply only when a claim is
-   created, never retroactively (not built in this slice).
+4. **New claims only.** Project defaults apply only when Station creates a
+   claim for a Task-branch pull request (decision 9), never retroactively:
+   changing or turning off the defaults never changes a claim already made.
+   Turned off with claims they made still sending, the settings say how many
+   and that each is turned off from its chat.
 5. **Overlap with Task follow-ups.** For a pull request whose feedback is on,
    [Task tracker follow-ups](task-tracker-followups.md) still record its
    checks and reviews in the Task brief, but stop waking the lead for each
@@ -86,6 +90,34 @@ flag. Hosted Stations do not offer it, and GitLab reads as `unsupported`.
    Station's other system notices it has no per-source mute; quiet hours
    and a surface's minimum urgency still apply, and turning auto-fix off
    stops it.
+
+9. **Project defaults and Task-branch pull requests.** This Station's
+   owner, in person, turns feedback on once for a Project (its settings'
+   Agent feedback; never Station's internal principal or a delegation
+   credential). Station then looks for an open pull request whose head is
+   exactly a live Task's own recorded worktree branch
+   (`TaskWorktreeStore`, for that Task incarnation; never a branch-name
+   prefix, which policy can change), whose head is not a fork and is owned
+   by the repository's owner, in the repository the Project's checkout and
+   the Task worktree's repository both name. That pull request shows in the
+   Task lead's chat as "from this Task's branch" (`branch-derived`). It is
+   claimed, with the defaults' switches and as the person who set them
+   (`origin: project-default`), only when no claim row exists for it (any
+   row, even one with every switch off, means a person engaged), it was not
+   removed from that Task, and that person may continue the lead's chat.
+   A person changing it from the chat makes it theirs. "Remove from this
+   chat" removes it from that Task's chat for good, keyed by the pull
+   request and the Task id, so a Task created again under the same id does
+   not bring it back; it releases the claim unless the pull request is also
+   linked or kept there, and the confirmation says which. A Project's
+   defaults belong to that incarnation of the Project (its id and creation
+   time), and its settings count only claims on open pull requests in chats
+   the reader may read. A Project recorded with a `~/` folder is read as the
+   host user's. The chat's pull request list never depends on these links:
+   a failing read adds none. Bounds: at most 3 forge reads per
+   tick on the feedback poller's own tick, single flight and backoff; a Task
+   at most every 10 minutes after its lead's turn ends, otherwise every 30;
+   never a Task that already has a derived link.
 
 ## The message
 
@@ -195,9 +227,37 @@ Choices the decisions left open, and departures from the plan:
   interrupt twice. A later stop with the same feedback still waiting is the
   same notice. A pause recorded before pauses kept their start time is
   stamped once when first read.
-- Not yet built: Project defaults (and so automatic claims of a Task
-  branch's pull request, `branch-derived`), including a Project default for
-  "Review each new head".
+- Project defaults (decision 9) differ from the plan where the code
+  disagreed:
+  - Setting them needs this Station's owner in person rather than the chat
+    writer rule: there is no chat when they are set. Whether that person may
+    continue the Task lead's chat is checked when a claim is made.
+  - A turn ending marks its Task for the next tick (at most a minute later)
+    instead of reading at once, so every read stays inside the tick's bounds.
+    An agent's `declare_pull_request` happens inside a turn, so its turn's
+    end covers that trigger; there is no separate one.
+  - The Task is found from the lead's conversation (its `sessionId`), and
+    also from a Task room execution binding when the Session has one.
+  - The derived link keeps its Project's id, so the settings can count the
+    claims the defaults made.
+  - `gh pr list` has no `--hostname`; `--repo host/owner/name` names the
+    host instead.
+  - "Remove from this chat" asks first: it cannot be undone for that Task.
+  - The Project settings section is shown with its Feature Preview alone,
+    like Schedules: a Station that cannot serve feedback never registers
+    the preview.
+  - Derived links are never pruned; a claim pruned after two weeks off is
+    not made again, because discovery skips a Task that has one.
+- Project defaults follow-ups: a second pull request opened from the same
+  Task branch after the first is never discovered (discovery skips a Task
+  with a derived link); the head is not checked against the Task
+  worktree's commits (`headRefOid` reachability, defense in depth); the
+  by-head read ignores its abort signal (gh offers no cancellation);
+  the row offers "Remove from this chat" to a reader the route then
+  refuses (it is not hidden for one who may not change the chat); and Task-branch pull requests are not yet on
+  Task board cards (the board's facts read kept pull requests only). A
+  paired host from before Project defaults that has the preview but not the
+  defaults route shows the section's error state ("Project unavailable").
 
 ## Station's review of each new head
 
@@ -205,7 +265,7 @@ Behind a second preview, `pull-request-head-review` (it needs
 `pull-request-agent-feedback` too), "Review each new head" runs Station's
 existing independent review (`ReviewEvidenceModule`) once per head.
 
-9. **When.** The pull request is open and not a draft, its head has held
+10. **When.** The pull request is open and not a draft, its head has held
    still (read twice, or a turn ended after it was first seen), and the
    owning agent is idle, not waiting on a person, with no feedback message
    open or waiting. A claim with only this switch on is active
@@ -218,7 +278,7 @@ existing independent review (`ReviewEvidenceModule`) once per head.
    the agent busy, waiting or stopped, feedback waiting, another review
    in the Project, the daily limit, a draft, closed, or starting soon);
    "Waiting for a push" only before Station has read the pull request.
-10. **What is reviewed.** The Project's own checkout, which a Task's
+11. **What is reviewed.** The Project's own checkout, which a Task's
     worktree shares objects with; Station never fetches. A head that is not
     there reads "Head a1b2c3d isn't on this Station yet" and is tried again
     on the next read. The base is the merge base of the head with the
@@ -228,7 +288,7 @@ existing independent review (`ReviewEvidenceModule`) once per head.
     merge base, it is a delta review from that head; a force-push, or a
     push that merged the base branch in, reviews from the merge base again.
     A head already in the base branch is not reviewed.
-11. **Once.** The request id is `prh-` and 40 hex of a hash of the pull
+12. **Once.** The request id is `prh-` and 40 hex of a hash of the pull
     request and head; Review again adds `:rerun:<n>`. The row is written
     before the review starts; a review a restart left running reads "Result
     unknown" ("Station doesn't know how this review ended") and never runs
@@ -236,7 +296,7 @@ existing independent review (`ReviewEvidenceModule`) once per head.
     request is submitted: one that stops first (no reviewer, head not here,
     a busy Project, the daily limit) only tells the person why. A claim
     that moves to another chat or is turned off drops its head reviews.
-12. **Reviewers and bounds.** Repo Map selection when it is available,
+13. **Reviewers and bounds.** Repo Map selection when it is available,
     otherwise one `correctness` reviewer by the Task code review's rule
     (an Agent of the Project, not the implementer, that reviews read-only).
     Today only a Codex connection can review read-only, so "No reviewer"
@@ -244,7 +304,7 @@ existing independent review (`ReviewEvidenceModule`) once per head.
     submitted per Project in 24 hours (every request counts, Review again
     included), the module's 10-minute reviewer window and 2 concurrent
     reviewers.
-13. **What reaches the agent.** Required findings only: critical or high
+14. **What reaches the agent.** Required findings only: critical or high
     severity with high or medium confidence, plus earlier findings the
     reviewer found still present or regressed that pass the same filter.
     They go as a `review-findings` block under "Address review comments",

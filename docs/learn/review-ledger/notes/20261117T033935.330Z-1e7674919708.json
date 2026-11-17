@@ -1,0 +1,7 @@
+{
+  "revision": "4ed2c09f36c9e556c51032d2f3fa0c393c1ee7b1",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Open / Settled entry now names Settle-only owned rows, per-person host Hide for third-party Sessions held until adoption or restore, and the seven-day Settled/Third-party window with Show older; checked against inbox-dismissals.tsx, ChatDockInboxRows.tsx and useInboxGroups.ts. runtime-routes.ts change (canReadSession wiring) does not affect other glossary claims.","inputs":["docs/glossary.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

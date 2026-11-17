@@ -1,0 +1,7 @@
+{
+  "revision": "4ed2c09f36c9e556c51032d2f3fa0c393c1ee7b1",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Added the preview-on paragraph: Settle-only owned rows, Hide for third-party sessions across devices until adoption or Restore, one-time move of local dismissals, seven-day Settled/Third-party with Show older, search finds all. Checked against ChatDockInboxRows.tsx, inbox-dismissals.tsx and useInboxGroups.ts and the jsdom journey tests; the preview-off dismissal text is unchanged and still accurate.","inputs":["docs/user/getting-started.md","src-server/routes/chat/conversations.ts","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/inbox-dismissals.tsx","src-ui/src/components/chat-dock/useInboxGroups.ts","src-ui/src/components/chat-dock/useInboxPanelController.ts","src-ui/src/components/inbox-row/inbox-row-actions.ts","src-ui/src/utils/inbox-dismissal-store.ts"]}
+  ]
+}

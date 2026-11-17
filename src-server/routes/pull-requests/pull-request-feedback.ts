@@ -17,6 +17,10 @@ import type { PullRequestFeedbackOwnership } from '../../services/pull-requests/
 import type { PullRequestHeadReviewer } from '../../services/pull-requests/pull-request-head-review.js';
 import { getBody, param, validate } from '../schemas/schemas.js';
 import { pullRequestLinkIdentitySchema } from './conversation-pull-request-links.js';
+import {
+  type PullRequestFeedbackTaskBranchRoutePorts,
+  registerPullRequestFeedbackTaskBranchRoutes,
+} from './pull-request-feedback-task-branches.js';
 
 export interface PullRequestFeedbackRouteAccess {
   enabled(): boolean;
@@ -85,6 +89,8 @@ export function createPullRequestFeedbackRoutes(
   delivery: () => PullRequestFeedbackDelivery | undefined,
   refresh: (conversationId: string) => void,
   access: PullRequestFeedbackRouteAccess,
+  /** Project defaults and Task-branch pull requests, when composed. */
+  taskBranches?: PullRequestFeedbackTaskBranchRoutePorts,
   /**
    * Station's review of each head; undefined while the
    * `pull-request-head-review` preview is off (its routes then answer 404).
@@ -323,5 +329,13 @@ export function createPullRequestFeedbackRoutes(
     headReviewAction('send'),
   );
 
+  if (taskBranches)
+    registerPullRequestFeedbackTaskBranchRoutes(
+      app,
+      access,
+      taskBranches,
+      (request, conversationId) =>
+        pullRequestFeedbackWriterId(access, request, conversationId),
+    );
   return app;
 }

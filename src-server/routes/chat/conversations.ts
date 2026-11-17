@@ -72,6 +72,7 @@ import {
   forkRequestMatches,
 } from '../../services/orchestration/conversation-fork-context.js';
 import { readConversationContextSeedPin } from '../../services/orchestration/conversation-handoff-module.js';
+import { ConversationWorkStateStore } from '../../services/orchestration/conversation-work-state-store.js';
 import type { ConversationForkProvenance } from '../../services/orchestration/event-store.js';
 import {
   type AgentConversationVersion,
@@ -782,6 +783,10 @@ export function createConversationRoutes(
         : '.station',
     );
   const summaryCoordinator = new SessionSummaryCoordinator();
+  const conversationWorkState =
+    typeof configLoader?.getProjectHomeDir === 'function'
+      ? new ConversationWorkStateStore(configLoader.getProjectHomeDir())
+      : undefined;
   const summarySource = new AuthoritativeConversationIntentSummarySource();
   const sourceForSummary = (
     messages: ConversationMessage[],
@@ -1847,6 +1852,16 @@ export function createConversationRoutes(
       if (sessionSummaries.delete)
         await sessionSummaries.delete(summaryCoordinate);
       else await sessionSummaries.dismiss(summaryCoordinate);
+      // Nobody's settled or hidden record outlives the conversation, so the
+      // per-person inbox maps stay bounded by what still exists. The delete
+      // has happened; a failed prune is logged, not reported as a failure.
+      try {
+        conversationWorkState?.forget([conversationId]);
+      } catch (error) {
+        logger.warn('Could not prune inbox records of a deleted conversation', {
+          error,
+        });
+      }
 
       return c.json({ success: true });
     } catch (error: unknown) {

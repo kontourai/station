@@ -737,6 +737,7 @@ describe('the switches keep "Review each new head"', () => {
           isPerson: () => true,
           mayContinue: () => true,
         },
+        undefined,
         // The head review preview is on.
         () => ({
           reviewAgain: async () => ({ outcome: 'not-eligible' as const }),
@@ -867,7 +868,7 @@ describe('the head review routes', () => {
       logger: { warn: vi.fn() },
     })!;
     closers.push(() => void runtime.close());
-    const [ownership, delivery, refresh, routeAccess, headReview] =
+    const [ownership, delivery, refresh, routeAccess, taskBranches, headReview] =
       runtime.routeArgs;
     const app = new Hono().route(
       '/api/pull-request-feedback',
@@ -876,6 +877,7 @@ describe('the head review routes', () => {
         delivery,
         refresh,
         { ...routeAccess, isPerson: () => access.person },
+        taskBranches,
         headReview,
       ),
     );
@@ -1201,6 +1203,7 @@ describe('with the head review preview off', () => {
           isPerson: () => true,
           mayContinue: () => true,
         },
+        undefined,
         () => undefined,
       ),
     );

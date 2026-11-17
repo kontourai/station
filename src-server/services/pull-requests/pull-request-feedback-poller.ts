@@ -78,6 +78,14 @@ export interface PullRequestFeedbackPollerPorts {
   headReviewEnabled?(): boolean;
   /** As the delivery's: a claim no longer linked is released, not read. */
   linked?(conversationId: string): readonly PullRequestLinkIdentity[];
+  /**
+   * Project defaults' Task-branch discovery, first on each tick, inside the
+   * same deadline and backoff: `rate-limited` backs every read off.
+   */
+  discover?(input: {
+    now: number;
+    signal: AbortSignal;
+  }): Promise<'ok' | 'rate-limited'>;
   readonly logger: {
     warn(message: string, meta?: Record<string, unknown>): void;
   };
@@ -197,6 +205,14 @@ export class PullRequestFeedbackPoller {
       this.ports.deadlineMs ?? TICK_DEADLINE_MS,
     );
     const signal = AbortSignal.any([input.signal, deadline]);
+    // Before the reads: a pull request claimed now is read this tick.
+    if (
+      (await this.ports.discover?.({ now: input.now, signal })) ===
+      'rate-limited'
+    ) {
+      this.backoffUntil = input.now + BACKOFF_MS;
+      return { outcome: 'backing-off', read: 0 };
+    }
     const due = store
       .allClaims()
       .filter((claim) =>

@@ -75,7 +75,10 @@ import {
 } from '../ResponsiveDialogSurface';
 import { ErrorState } from '../state';
 import type { MobileActivityGroup } from './mobile-activity-groups';
-import { useConversationWorkState } from './useConversationWorkState';
+import {
+  inboxHideTarget,
+  useConversationWorkState,
+} from './useConversationWorkState';
 import './ChatDockInboxPanel.css';
 import {
   endConversationReferenceDrag,
@@ -434,6 +437,8 @@ interface InboxRowProps {
   onDismiss?: (item: HomeWorkItem, action: HTMLButtonElement) => void;
   onRestore?: (item: HomeWorkItem, action: HTMLButtonElement) => void;
   resolution?: { settled: boolean; pending: boolean; onChange: () => void };
+  /** `hide`: the put-away action hides a third-party Session on the host. */
+  dismissVerb?: 'dismiss' | 'hide';
   isDismissed?: boolean;
   swipeActions?: boolean;
   swipeOpen?: boolean;
@@ -569,6 +574,7 @@ export function InboxRow({
   onDismiss,
   onRestore,
   resolution,
+  dismissVerb = 'dismiss',
   isDismissed = false,
   swipeActions = false,
   swipeOpen,
@@ -657,6 +663,7 @@ export function InboxRow({
       (onDismiss || (onCloseChat && isOpenChat && item.chatSessionId))
         ? {
             dismiss: Boolean(onDismiss),
+            hide: Boolean(onDismiss) && dismissVerb === 'hide',
             select: (trigger) => {
               if (onDismiss) onDismiss(item, trigger);
               else if (item.chatSessionId)
@@ -1319,6 +1326,10 @@ export function InboxGroupList({
   const resolutionState = useConversationWorkState();
   const [settledVisibleCount, setSettledVisibleCount] =
     useState(SETTLED_PAGE_SIZE);
+  // Shelves whose rows past the recency window the person asked to see.
+  const [olderShown, setOlderShown] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   // Owned here, by item id, so the sheet outlives the row's remount when
   // the item moves to another lane.
   const [detailsFor, setDetailsFor] = useState<string | null>(null);
@@ -1334,19 +1345,29 @@ export function InboxGroupList({
    * one. A collapsed section still shows the open chat's row under its
    * header, so the chat on screen is never hidden from the list.
    */
+  /** The shelf's rows within reach: its window, then older ones once asked. */
+  const reachableItems = (group: MobileActivityGroup): HomeWorkItem[] =>
+    group.older?.length
+      ? olderShown.has(group.id)
+        ? [...group.items, ...group.older]
+        : [
+            ...group.items,
+            ...group.older.filter((item) => holdsCurrent(group, item)),
+          ]
+      : group.items;
   const renderedItems = (group: MobileActivityGroup): HomeWorkItem[] => {
     const collapsed =
       collapsible &&
       group.id !== 'dismissed' &&
       collapsible.sections[group.id] === false;
-    if (collapsed)
-      return group.items.filter((item) => holdsCurrent(group, item));
+    const reachable = reachableItems(group);
+    if (collapsed) return reachable.filter((item) => holdsCurrent(group, item));
     if (group.id === 'earlier' || group.id === 'settled')
-      return group.items.filter(
+      return reachable.filter(
         (item, index) =>
           index < settledVisibleCount || holdsCurrent(group, item),
       );
-    return group.items;
+    return reachable;
   };
   // A sheet belongs to a row that is on screen. Once its row is gone
   // (collapsed, folded away, discarded, snoozed) the open state is cleared,
@@ -1394,7 +1415,23 @@ export function InboxGroupList({
         onActivate={onActivate}
         onSnoozeWake={group.id === 'dismissed' ? undefined : onSnoozeWake}
         onCloseChat={onCloseChat}
-        onDismiss={onDismiss}
+        // With Open and Settled, Settle is how owned conversations are put
+        // away; a third-party Session is hidden on the host instead.
+        onDismiss={
+          resolutionState.supported &&
+          workFacts?.get(item.id)?.hostDetails !== false &&
+          item.kind !== 'remote-session' &&
+          item.controlMode !== 'read-only-attached' &&
+          item.conversationId
+            ? undefined
+            : onDismiss
+        }
+        dismissVerb={
+          resolutionState.hideSupported &&
+          inboxHideTarget(item, workFacts?.get(item.id))
+            ? 'hide'
+            : 'dismiss'
+        }
         onRestore={onRestore}
         isDismissed={group.id === 'dismissed'}
         resolution={
@@ -1495,7 +1532,7 @@ export function InboxGroupList({
         ? 0
         : 1;
   const visibleGroups = groups
-    .filter((group) => group.items.length > 0)
+    .filter((group) => group.items.length > 0 || Boolean(group.older?.length))
     .sort(
       (left, right) =>
         shelfRank(left) - shelfRank(right) ||
@@ -1560,7 +1597,7 @@ export function InboxGroupList({
           showGroupCounts
             ? group.id === 'needsYou'
               ? workAttentionCount(group.items, now, group.childrenById)
-              : group.items.length
+              : group.items.length + (group.older?.length ?? 0)
             : undefined;
         const label = <WorkGroupLabel label={group.label} count={count} />;
         const labelId = `${idPrefix}-${group.id}`;
@@ -1610,7 +1647,7 @@ export function InboxGroupList({
             {renderedItems(group).map((item) => renderRow(group, item))}
             {isExpanded &&
               (group.id === 'earlier' || group.id === 'settled') &&
-              settledVisibleCount < group.items.length && (
+              settledVisibleCount < reachableItems(group).length && (
                 <Button
                   variant="ghost"
                   className="chat-dock-inbox__show-more"
@@ -1641,6 +1678,43 @@ export function InboxGroupList({
                   }}
                 >
                   Show more
+                </Button>
+              )}
+            {isExpanded &&
+              Boolean(group.older?.length) &&
+              !olderShown.has(group.id) &&
+              (group.id !== 'settled' ||
+                settledVisibleCount >= group.items.length) && (
+                <Button
+                  variant="ghost"
+                  className="chat-dock-inbox__show-more"
+                  aria-label={`Show ${group.older!.length} older ${group.label} ${group.older!.length === 1 ? 'item' : 'items'}`}
+                  onClick={(event) => {
+                    const container = event.currentTarget.closest('section');
+                    const previous = new Set(
+                      container?.querySelectorAll('.chat-dock-inbox__item'),
+                    );
+                    const restoreFocus =
+                      document.activeElement === event.currentTarget;
+                    setOlderShown((shown) => new Set(shown).add(group.id));
+                    // The first page of older rows shows at once.
+                    if (group.id === 'settled')
+                      setSettledVisibleCount((count) =>
+                        Math.max(count, group.items.length + SETTLED_PAGE_SIZE),
+                      );
+                    if (restoreFocus)
+                      requestAnimationFrame(() => {
+                        Array.from(
+                          container?.querySelectorAll<HTMLButtonElement>(
+                            '.chat-dock-inbox__item',
+                          ) ?? [],
+                        )
+                          .find((row) => !previous.has(row))
+                          ?.focus();
+                      });
+                  }}
+                >
+                  Show older
                 </Button>
               )}
           </section>
