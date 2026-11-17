@@ -35,6 +35,7 @@ import {
   readEnvelopeOrThrow,
   readJsonBody,
 } from '../client/http';
+import { rethrowDeadline } from '../client/request-deadline';
 import {
   type AttachTaskUserInputReferenceInput,
   attachTaskUserInputReference as attachTaskUserInputReferenceClient,
@@ -307,7 +308,8 @@ async function hasEnvelope(response: Response): Promise<boolean> {
   try {
     const body: unknown = await response.json();
     return typeof body === 'object' && body !== null && 'success' in body;
-  } catch {
+  } catch (error) {
+    rethrowDeadline(error);
     return false;
   }
 }
