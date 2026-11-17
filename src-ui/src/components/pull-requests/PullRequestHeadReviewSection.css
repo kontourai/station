@@ -67,3 +67,8 @@
   margin: 0;
   color: var(--k-negative);
 }
+/* An earlier push's review, kept while the newest head waits. */
+.pr-head-review__earlier {
+  display: grid;
+  gap: var(--k-space-1);
+}

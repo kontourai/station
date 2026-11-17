@@ -37,7 +37,7 @@ const SWITCHES: Array<{
     key: 'reviewEachHead',
     label: 'Review each new head',
     description: () =>
-      "Station's reviewer agents read each push; you choose what reaches the agent.",
+      "Station's Codex reviewers read each push; you choose what reaches the agent.",
   },
 ];
 

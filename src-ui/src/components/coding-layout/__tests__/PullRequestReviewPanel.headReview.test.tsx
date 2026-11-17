@@ -100,6 +100,11 @@ vi.mock('@kontourai/station-sdk/pull-request-feedback', () => ({
     };
   }),
   pullRequestFeedbackOwnerOf: () => undefined,
+  // The SDK's own test pins which refusals count; here, one that does.
+  pullRequestHeadReviewRefusal: (error: unknown) =>
+    error instanceof Error && error.name === 'Refusal'
+      ? error.message
+      : undefined,
   writePullRequestFeedback: actions.write,
   sendPullRequestFeedbackAgain: vi.fn(),
   reviewPullRequestHeadAgain: actions.reviewAgain,
@@ -281,14 +286,18 @@ const finding = (index: number, required: boolean) => ({
   required,
 });
 
-function withReview(headReview?: PullRequestHeadReview) {
+function withReview(
+  headReview?: Omit<PullRequestHeadReview, 'current'> & { current?: boolean },
+  headReviewWaiting?: PullRequestFeedbackByPullRequest['headReviewWaiting'],
+) {
   state.byPullRequest = readable({
     settings: {
       fixFailingChecks: true,
       addressReviewComments: false,
       reviewEachHead: true,
     },
-    ...(headReview ? { headReview } : {}),
+    ...(headReview ? { headReview: { current: true, ...headReview } } : {}),
+    ...(headReviewWaiting ? { headReviewWaiting } : {}),
   });
   state.views['chat-owner'] = {
     ...view('chat-owner'),
@@ -306,7 +315,7 @@ const section = async () =>
   })) as HTMLElement;
 
 describe('Station review in the pull request panel', () => {
-  test('reviewed: badge with the head, required findings sent, rows folded past 8', async () => {
+  test('reviewed: badge with the head, required findings sent, the others folded', async () => {
     withReview({
       headSha: HEAD,
       state: 'reviewed',
@@ -324,20 +333,20 @@ describe('Station review in the pull request panel', () => {
     mount();
     const region = await section();
     expect(within(region).getByText('Reviewed aaaaaaa')).toBeTruthy();
-    expect(region.textContent).toContain(
-      '2 required findings · 8 others · Sent 1m',
-    );
-    expect(within(region).getAllByRole('listitem')).toHaveLength(8);
+    expect(region.textContent).toContain('2 required findings · Sent 1m');
+    // Required only; the others wait behind their own disclosure.
+    expect(within(region).getAllByRole('listitem')).toHaveLength(2);
     expect(region.textContent).toContain('src/file-0.ts:1[high]Finding 0.');
-    fireEvent.click(within(region).getByRole('button', { name: '2 more' }));
+    fireEvent.click(within(region).getByRole('button', { name: '8 others' }));
     expect(within(region).getAllByRole('listitem')).toHaveLength(10);
-    // Sent already: Review again is the only action.
+    // Sent already: Review again is the only action, and not a primary
+    // beside the panel's own tabs.
     expect(
       within(region).queryByRole('button', { name: 'Send to agent' }),
     ).toBeNull();
-    fireEvent.click(
-      within(region).getByRole('button', { name: 'Review again' }),
-    );
+    const again = within(region).getByRole('button', { name: 'Review again' });
+    expect(again.className).not.toContain('button--primary');
+    fireEvent.click(again);
     await waitFor(() =>
       expect(actions.reviewAgain).toHaveBeenCalledWith(
         'http://station.test',
@@ -360,9 +369,13 @@ describe('Station review in the pull request panel', () => {
     mount();
     const region = await section();
     expect(region.textContent).toContain('1 required finding');
-    fireEvent.click(
-      within(region).getByRole('button', { name: 'Send to agent' }),
-    );
+    // Send is the one primary; Review again stays secondary.
+    const send = within(region).getByRole('button', { name: 'Send to agent' });
+    expect(send.className).toContain('button--primary');
+    expect(
+      within(region).getByRole('button', { name: 'Review again' }).className,
+    ).not.toContain('button--primary');
+    fireEvent.click(send);
     await waitFor(() =>
       expect(actions.sendFindings).toHaveBeenCalledWith(
         'http://station.test',
@@ -386,15 +399,16 @@ describe('Station review in the pull request panel', () => {
     [
       {
         state: 'no-reviewer' as const,
-        failureReason: 'No reviewer agent can review this Project read-only.',
+        failureReason:
+          'No reviewer can read this Project read-only. Connect Codex to review.',
       },
       'No reviewer',
-      'No reviewer agent can review this Project read-only.',
+      'No reviewer can read this Project read-only. Connect Codex to review.',
     ],
     [
       { state: 'unknown' as const },
       'Result unknown',
-      'Station restarted before this review finished.',
+      "Station doesn't know how this review ended.",
     ],
     [
       {
@@ -415,6 +429,98 @@ describe('Station review in the pull request panel', () => {
     const again = within(region).getByRole('button', { name: 'Review again' });
     expect((again as HTMLButtonElement).disabled).toBe(
       review.state === 'reviewing',
+    );
+  });
+
+  test.each([
+    ['settling' as const, 'Head aaaaaaa · waiting for the push to settle'],
+    ['agent-busy' as const, 'Head aaaaaaa · the agent is working'],
+    [
+      'feedback-waiting' as const,
+      'Head aaaaaaa · feedback is waiting for the agent',
+    ],
+    [
+      'project-busy' as const,
+      'Head aaaaaaa · reviewing another pull request in this Project',
+    ],
+    [
+      'daily-limit' as const,
+      'Head aaaaaaa · 10 reviews ran in this Project today',
+    ],
+    ['draft' as const, 'Head aaaaaaa · the pull request is a draft'],
+  ])(
+    'no review yet (%s) says why, never "Waiting for a push"',
+    async (reason, line) => {
+      withReview(undefined, { headSha: HEAD, reason });
+      mount();
+      const region = await section();
+      expect(within(region).getByText('Not reviewed yet')).toBeTruthy();
+      expect(within(region).getByText(line)).toBeTruthy();
+      expect(within(region).queryByText('Waiting for a push')).toBeNull();
+    },
+  );
+
+  test('an earlier push keeps its review, labelled, with nothing to send', async () => {
+    withReview(
+      {
+        headSha: 'b'.repeat(40),
+        current: false,
+        state: 'reviewed',
+        at: minutesAgo(9),
+        findings: [finding(0, true)],
+        required: 1,
+        others: 0,
+      },
+      { headSha: HEAD, reason: 'agent-busy' },
+    );
+    mount();
+    const region = await section();
+    expect(within(region).getByText('Not reviewed yet')).toBeTruthy();
+    expect(
+      within(region).getByText(
+        'Reviewed bbbbbbb · an earlier push · 1 required finding',
+      ),
+    ).toBeTruthy();
+    expect(
+      within(region).queryByRole('button', { name: 'Send to agent' }),
+    ).toBeNull();
+  });
+
+  test('"Waiting for a push" only before Station has read the pull request', async () => {
+    withReview();
+    mount();
+    const region = await section();
+    expect(within(region).getByText('Waiting for a push')).toBeTruthy();
+  });
+
+  test("a refused Review again shows the server's reason and reads again", async () => {
+    withReview({
+      headSha: HEAD,
+      state: 'reviewed',
+      at: minutesAgo(2),
+      findings: [],
+      required: 0,
+      others: 0,
+    });
+    actions.reviewAgain.mockRejectedValueOnce(
+      Object.assign(
+        new Error('Station already ran 10 reviews in this Project today.'),
+        { name: 'Refusal' },
+      ),
+    );
+    mount();
+    const region = await section();
+    const reads = state.byPullRequestReads;
+    fireEvent.click(
+      within(region).getByRole('button', { name: 'Review again' }),
+    );
+    expect(
+      await within(region).findByText(
+        'Station already ran 10 reviews in this Project today.',
+      ),
+    ).toBeTruthy();
+    await waitFor(() =>
+      expect(state.byPullRequestReads).toBeGreaterThan(reads),
     );
   });
 

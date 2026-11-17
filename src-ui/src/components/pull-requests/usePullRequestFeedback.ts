@@ -10,6 +10,7 @@ import {
   getConversationPullRequestFeedback,
   getPullRequestFeedbackByPullRequest,
   pullRequestFeedbackOwnerOf,
+  pullRequestHeadReviewRefusal,
   readPullRequestFeedbackCapability,
   reviewPullRequestHeadAgain,
   sendPullRequestFeedbackAgain,
@@ -116,14 +117,17 @@ export function usePullRequestFeedback(conversationId: string) {
     } catch (caught) {
       if (!scope.isCurrent()) return false;
       const owner = pullRequestFeedbackOwnerOf(caught);
+      // Display text Station composed for a refused Review again or Send.
+      const refusalDisplayText = pullRequestHeadReviewRefusal(caught);
       if (owner) setConflict({ key, owner });
       else
         setError({
           key,
           text:
-            caught instanceof Error
+            refusalDisplayText ??
+            (caught instanceof Error
               ? userFacingErrorMessage(caught)
-              : 'Pull request feedback could not be changed',
+              : 'Pull request feedback could not be changed'),
         });
       return false;
     } finally {

@@ -184,8 +184,10 @@ export function historyRowParts(row: PullRequestFeedbackDelivery): {
 export function headReviewMeta(
   review: PullRequestHeadReview | undefined,
 ): string[] {
-  if (review?.state === 'reviewing') return ['Reviewing'];
-  if (review?.state !== 'reviewed') return [];
+  // Only about the newest head: an earlier push's review says nothing now.
+  if (!review?.current) return [];
+  if (review.state === 'reviewing') return ['Reviewing'];
+  if (review.state !== 'reviewed') return [];
   const required = review.required ?? 0;
   return required
     ? ['Reviewed', `${required} ${required === 1 ? 'finding' : 'findings'}`]
