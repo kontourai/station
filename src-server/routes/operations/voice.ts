@@ -367,6 +367,16 @@ export function attachVoiceWebSocket(
           loopbackAuth.recognizesDeviceCredential,
         )
       : undefined;
+    // A peer over its failure budget is refused before any verification,
+    // exactly as an auth frame is: a cookie is a credential guess too.
+    if (
+      credential &&
+      failureLimiter.retryAfterSeconds(limiterKey) !== undefined
+    ) {
+      auditVoiceFailure(loopbackAuth, peerClass, 'too_many_failures', true);
+      ws.close(...WEBSOCKET_AUTH_CLOSE.rateLimited);
+      return;
+    }
     let verified = false;
     try {
       verified =

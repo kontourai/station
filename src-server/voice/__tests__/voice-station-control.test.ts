@@ -372,6 +372,33 @@ test('a cookie whose credential fails verification gives the session no Station 
   ws.close();
 });
 
+test('a peer over its failure budget is refused before its cookie is verified, as an auth frame is', async () => {
+  const overBudget = vi.spyOn(limiter, 'retryAfterSeconds').mockReturnValue(30);
+  try {
+    // Even a cookie that would verify is not tried.
+    const ws = new WebSocket(voiceUrl, {
+      headers: { cookie: UI_COOKIE, origin: STATION_ORIGIN },
+    });
+    const [code] = (await once(ws, 'close')) as [number];
+    expect(code).toBe(4429);
+    expect(createSession).not.toHaveBeenCalled();
+    expect(audit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'station.auth.rate_limited',
+        reason: 'too_many_failures',
+        peerClass: 'loopback',
+      }),
+    );
+    // The control: a cookie-free loopback session is not a credential
+    // guess, so it still gets speech.
+    const { ws: speech, provider } = await connect();
+    expect(provider).toBeDefined();
+    speech.close();
+  } finally {
+    overBudget.mockRestore();
+  }
+});
+
 test('a verified cookie is neither counted nor audited as a failure', async () => {
   const { ws } = await connect(undefined, {
     cookie: UI_COOKIE,
