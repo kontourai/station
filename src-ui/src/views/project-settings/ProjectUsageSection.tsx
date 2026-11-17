@@ -142,7 +142,7 @@ export function ProjectUsageSection({ slug }: { slug: string }) {
         >
           {showingPreviousData && (
             <p className="project-settings__usage-note" role="status">
-              Updating for this Project — showing the previous figures.
+              Showing the previous figures while this Project updates.
             </p>
           )}
           <dl className="project-settings__usage-totals">
