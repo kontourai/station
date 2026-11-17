@@ -163,6 +163,18 @@ export function endedTurnStopDetail(
 }
 
 /**
+ * The reason an interrupted-turn notice (`[SYSTEM_EVENT] [TURN_INTERRUPTED]
+ * <reason>`, written by recovery) carries, or undefined for any other text.
+ */
+export function interruptionNoticeReason(
+  content: string | undefined,
+): string | undefined {
+  return /^\[SYSTEM_EVENT\]\s*\[TURN_INTERRUPTED\]\s*([\s\S]*)$/.exec(
+    content ?? '',
+  )?.[1];
+}
+
+/**
  * Drops the restart notice recovery writes after a turn Station's restart
  * cut off (`[SYSTEM_EVENT] [TURN_INTERRUPTED] …`) when the row just above it
  * already says so: an empty row reads "Stopped / Station restarted mid-turn",
@@ -187,9 +199,7 @@ export function withoutRepeatedRestartNotice<
   messages.forEach((message, index) => {
     const notice =
       message.role === 'user'
-        ? /^\[SYSTEM_EVENT\]\s*\[TURN_INTERRUPTED\]\s*([\s\S]*)$/.exec(
-            message.content ?? '',
-          )?.[1]
+        ? interruptionNoticeReason(message.content)
         : undefined;
     const previous = messages[index - 1];
     const repeated =

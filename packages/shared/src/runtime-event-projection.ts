@@ -142,6 +142,29 @@ export const TURN_ENGINE_ENDED_MESSAGE =
 export const TURN_INTERRUPTED_CONTINUE_PROMPT =
   "Station restarted while you were working and your last turn was cut off. Before you continue, check what already happened: run `git status` and `git log` in the working directory, check the state of the Task's pull request and issue if this work has them, and look for background processes you started. Do not repeat a push, a pull request, a comment or any other action outside this working directory until you have confirmed it did not already happen. Then continue from where you stopped.";
 
+/**
+ * The Continue prompt after Station settled an interrupted turn without a
+ * restart (`TURN_ENGINE_ENDED_MESSAGE`): Station kept running, the engine
+ * process ended. The restart prompt above would tell the agent something
+ * that did not happen.
+ */
+export const TURN_ENGINE_ENDED_CONTINUE_PROMPT =
+  "Your engine process ended while your last turn was starting, so that turn may not have run, or may have run only in part. Before you continue, check what already happened: run `git status` and `git log` in the working directory, check the state of the Task's pull request and issue if this work has them, and look for background processes you started. Do not repeat a push, a pull request, a comment or any other action outside this working directory until you have confirmed it did not already happen. Then continue from where you stopped.";
+
+/**
+ * The Continue prompt for an interruption notice, chosen by the notice's
+ * reason (the text after `[SYSTEM_EVENT] [TURN_INTERRUPTED]`): an exact
+ * engine-ended reason gets its own prompt, every other one the restart
+ * prompt, as before.
+ */
+export function turnInterruptedContinuePrompt(
+  reason: string | undefined,
+): string {
+  return reason?.trim() === TURN_ENGINE_ENDED_MESSAGE
+    ? TURN_ENGINE_ENDED_CONTINUE_PROMPT
+    : TURN_INTERRUPTED_CONTINUE_PROMPT;
+}
+
 export {
   turnInterruptedContinueBoundaryId,
   turnInterruptedContinueClientTurnId,

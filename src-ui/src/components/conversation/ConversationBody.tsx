@@ -19,8 +19,8 @@ import {
 } from '@kontourai/station-sdk';
 import { listConversationInbox } from '@kontourai/station-sdk/client';
 import {
-  TURN_INTERRUPTED_CONTINUE_PROMPT,
   turnInterruptedContinueClientTurnId,
+  turnInterruptedContinuePrompt,
 } from '@kontourai/station-shared/runtime-event-projection';
 import React, {
   useCallback,
@@ -118,6 +118,7 @@ import type {
   MessageResendRequest,
 } from '../chat/fork-turn-source';
 import { preloadMarkdownRenderer } from '../chat/LazyMarkdown';
+import { interruptionNoticeReason } from '../chat/message-bubble/visibleContent';
 import { outboxNeedsReview } from '../chat/pendingMessages';
 import type { OutboxRows } from '../chat/QueuedMessages';
 import { SessionRewindProvider } from '../chat/SessionRewind';
@@ -1321,13 +1322,13 @@ function LiveConversationBody({
   sendComposedRef.current = chatInput.sendComposedMessage;
   const continuingInterruptedRef = useRef(new Set<string>());
   const continueInterruptedTurn = useCallback(
-    async (boundaryId: string) => {
+    async (boundaryId: string, prompt: string) => {
       const continuing = continuingInterruptedRef.current;
       if (continuing.has(boundaryId)) return;
       continuing.add(boundaryId);
       try {
         await sendComposedRef.current(
-          TURN_INTERRUPTED_CONTINUE_PROMPT,
+          prompt,
           turnInterruptedContinueClientTurnId(boundaryId),
         );
       } catch (error) {
@@ -1361,7 +1362,15 @@ function LiveConversationBody({
       return boundaryId
         ? {
             label: 'Continue',
-            onClick: () => void continueInterruptedTurn(boundaryId),
+            // The prompt follows the notice's reason: an engine that ended
+            // under a running Station is not a restart.
+            onClick: () =>
+              void continueInterruptedTurn(
+                boundaryId,
+                turnInterruptedContinuePrompt(
+                  interruptionNoticeReason(msg.content),
+                ),
+              ),
           }
         : undefined;
     },
