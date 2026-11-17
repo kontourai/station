@@ -948,6 +948,46 @@ export const eventContentOrphansSwept = meter.createCounter(
       'Out-of-line event content rows removed at open because their thread has no events',
   },
 );
+/**
+ * #5078: one `tool.progress` compaction pass, by bounded `outcome`
+ * (`completed`, `partial`, `budget_exhausted`, `disabled`, `killed`,
+ * `skipped_running`, `failed`). No thread or turn identity.
+ */
+export const toolProgressCompactionPasses = meter.createCounter(
+  'station.orchestration.tool_progress_compaction.passes',
+  {
+    description:
+      'Scheduled tool.progress compaction passes, by outcome (docs/decisions/tool-progress-compaction.md)',
+  },
+);
+/** #5078: rows a pass deleted, by `table` (`events` or `content`). */
+export const toolProgressCompactionRows = meter.createCounter(
+  'station.orchestration.tool_progress_compaction.rows',
+  {
+    description:
+      'Rows tool.progress compaction deleted: superseded event rows and the out-of-line content only they referenced',
+  },
+);
+/**
+ * #5078: stored bytes those rows held, by `table`. SQLite reuses the freed
+ * pages; the database file does not shrink.
+ */
+export const toolProgressCompactionBytes = meter.createCounter(
+  'station.orchestration.tool_progress_compaction.bytes',
+  {
+    description:
+      'Payload and content bytes tool.progress compaction deleted (freed pages are reused; the file does not shrink)',
+    unit: 'By',
+  },
+);
+export const toolProgressCompactionDuration = meter.createHistogram(
+  'station.orchestration.tool_progress_compaction.duration',
+  {
+    description:
+      'Wall time of one tool.progress compaction pass, including yields between its transactions',
+    unit: 'ms',
+  },
+);
 export const attachmentBytesStripped = meter.createCounter(
   'station.chat.attachment_bytes_stripped',
   {

@@ -195,8 +195,9 @@ CREATE TABLE IF NOT EXISTS orchestration_message_search_backfill_v3 (
 
 -- The completed-turn provenance projection is assembled once while the live
 -- turn is still available, then replayed by its narrow primary key.  This is
--- deliberately a sidecar rather than another event: the canonical event log
--- remains byte-for-byte provider output.
+-- deliberately a sidecar rather than another event: every row the canonical
+-- event log keeps remains byte-for-byte provider output. (Superseded
+-- tool.progress rows may be deleted: docs/decisions/tool-progress-compaction.md.)
 CREATE TABLE IF NOT EXISTS orchestration_turn_provenance (
   thread_id TEXT NOT NULL,
   turn_id TEXT NOT NULL,
