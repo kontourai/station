@@ -580,6 +580,7 @@ describe('ChromiumServerHost with a fake browser', () => {
         responseCode: 200,
         responseHeaders: [
           { name: 'Content-Type', value: 'text/html; charset=utf-8' },
+          { name: 'Referrer-Policy', value: 'no-referrer' },
         ],
         body: Buffer.from(html, 'utf8').toString('base64'),
       },

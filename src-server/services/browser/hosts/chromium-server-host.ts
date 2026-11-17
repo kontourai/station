@@ -1717,6 +1717,7 @@ export class ChromiumServerHost implements BrowserHost {
           responseCode: 200,
           responseHeaders: [
             { name: 'Content-Type', value: 'text/html; charset=utf-8' },
+            { name: 'Referrer-Policy', value: 'no-referrer' },
           ],
           body: Buffer.from(served, 'utf8').toString('base64'),
         })

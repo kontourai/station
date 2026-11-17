@@ -494,7 +494,7 @@ test('Chromium preview returns PNG, measured height and console stacks inside th
     const service = new HtmlReplyPreview(makeTempDir('html-preview-'));
     const result = await service.render(
       {
-        html: `<h1>Preview integration</h1><script>console.log('preview log');console.log('heap limit',performance.memory.jsHeapSizeLimit);console.warn('preview warning');console.error('preview error');try{parent.document.body;console.log('PARENT ACCESS ALLOWED')}catch{console.log('parent blocked')}setTimeout(()=>{throw new Error('preview uncaught')},0)</script>`,
+        html: `<h1>Preview integration</h1><script>console.log('preview log');console.log('heap limit',performance.memory.jsHeapSizeLimit);console.warn('preview warning');console.error('preview error');try{parent.document.body;console.log('PARENT ACCESS ALLOWED')}catch{console.log('parent blocked')}setTimeout(()=>{throw new Error('preview uncaught')},0);console.log('referrer',JSON.stringify(document.referrer))</script>`,
         height: 400,
       },
       800,
@@ -535,6 +535,8 @@ test('Chromium preview returns PNG, measured height and console stacks inside th
           level: 'log',
           text: expect.stringContaining('parent blocked'),
         }),
+        // The served bootstrap page must not leak its address to the frame.
+        expect.objectContaining({ level: 'log', text: 'referrer ""' }),
       ]),
     );
     expect(
