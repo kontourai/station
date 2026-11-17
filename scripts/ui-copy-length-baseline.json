@@ -98,9 +98,6 @@
     "src-ui/src/components/report-problem/ReportProblemDialog.tsx": {
       "long-copy:text:p": 1
     },
-    "src-ui/src/components/session-detail/AttachedSessionDetail.tsx": {
-      "multi-sentence:text:p": 1
-    },
     "src-ui/src/components/skill-experiences/SkillExperiencePanel.tsx": {
       "long-copy:text:p": 1
     },

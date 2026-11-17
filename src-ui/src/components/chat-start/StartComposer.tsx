@@ -11,6 +11,7 @@ import {
 } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
+import { useOptionalPreview } from '../../contexts/PreviewContext';
 import { useChatPaneFileDrop } from '../../hooks/useChatPaneFileDrop';
 import { useFileAttachment } from '../../hooks/useFileAttachment';
 import { useDockSlotDevice } from '../../hooks/useIsMobile';
@@ -45,21 +46,42 @@ export interface StartComposerFiles {
   onRemove: (index: number) => void;
 }
 
+/** An image file's thumbnail; it opens the transcript's previewer. */
 function StartFileThumbnail({ file }: { file: File }) {
   const [preview, setPreview] = useState<string>();
+  const previewer = useOptionalPreview();
   useEffect(() => {
     if (!file.type.startsWith('image/')) return;
     const url = URL.createObjectURL(file);
     setPreview(url);
     return () => URL.revokeObjectURL(url);
   }, [file]);
-  return preview ? (
+  if (!preview) return null;
+  const image = (
     <img
       className="start-composer__file-thumbnail"
       src={preview}
-      alt={file.name}
+      alt={previewer ? '' : file.name}
     />
-  ) : null;
+  );
+  if (!previewer) return image;
+  return (
+    <button
+      type="button"
+      className="start-composer__file-preview"
+      aria-label={`Preview ${file.name}`}
+      title={`Preview ${file.name}`}
+      onClick={() =>
+        previewer.openPreview({
+          url: preview,
+          mediaType: file.type,
+          name: file.name,
+        })
+      }
+    >
+      {image}
+    </button>
+  );
 }
 
 /** Dictation into the prompt; the same control the chat composer offers. */
