@@ -59,6 +59,7 @@ export const ROOT_DECISIONS = Object.freeze({
   agents: 'keep',
   analytics: 'keep',
   'conversation-acknowledgements.json': 'keep',
+  'conversation-inbox-hidden.json': 'keep',
   'conversation-intent-summaries': 'keep',
   'conversation-pull-request-links.json': 'keep',
   'conversation-work-state.json': 'keep',
