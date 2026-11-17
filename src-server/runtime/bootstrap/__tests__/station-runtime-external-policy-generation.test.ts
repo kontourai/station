@@ -129,6 +129,7 @@ function world(engine: (typeof ENGINES)[number]) {
   const policies = new Map<string, StagedPreToolPolicyEvaluator>();
   const starts: ProviderSessionStartInput[] = [];
   const events = new AsyncEventQueue<any>();
+  let turns = 0;
   const adapter: ProviderAdapterShape = {
     provider: engine,
     metadata: {
@@ -163,7 +164,8 @@ function world(engine: (typeof ENGINES)[number]) {
       };
     },
     async sendTurn(input) {
-      const turnId = `turn-${input.threadId}`;
+      turns += 1;
+      const turnId = `turn-${input.threadId}-${turns}`;
       const base = {
         provider: engine,
         threadId: input.threadId,
@@ -192,8 +194,9 @@ function world(engine: (typeof ENGINES)[number]) {
     async listSessions() {
       return [];
     },
-    async hasSession() {
-      return false;
+    // A live engine process: the session keeps its policy across turns.
+    async hasSession(threadId: string) {
+      return policies.has(threadId);
     },
     async stopAll() {},
     streamEvents: (options) => events.iterable(options),
@@ -249,11 +252,16 @@ function world(engine: (typeof ENGINES)[number]) {
     await waitFor(threadId, 'session.started');
   };
   const turn = async (threadId: string, input: string, extra = {}) => {
+    const completed = () =>
+      store.listEventsByMethods(threadId, ['turn.completed']).length;
+    const before = completed();
     await service.dispatch(
       { type: 'sendTurn', input: { threadId, input, ...extra } },
       { userId: 'owner' },
     );
-    await waitFor(threadId, 'turn.completed');
+    for (let i = 0; i < 200 && completed() === before; i++)
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(completed()).toBe(before + 1);
   };
   /** The engine's PreToolUse (or permission request) for one Bash call. */
   const bash = (threadId: string) =>
@@ -288,6 +296,10 @@ describe('external engine pre-tool policy generation', () => {
         prompt: 'Repair main.',
       });
       expect(w.runtime.agentConfigurationRevision).toBe(2);
+      // The engine process outlives turns (Claude's stream-json session):
+      // a later turn in the same session reaches the same evaluator.
+      await w.turn('conversation', 'Now commit.');
+      expect(w.starts.map((input) => input.threadId)).toEqual(['conversation']);
       expect(await w.bash('conversation')).toEqual({
         behavior: 'allow',
         toolGrant: true,
