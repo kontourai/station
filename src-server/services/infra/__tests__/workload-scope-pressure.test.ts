@@ -6,6 +6,7 @@
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
+  type ChildWorkloadNotice,
   closeChildWorkload,
   prepareChildWorkload,
   trackChildWorkload,
@@ -343,6 +344,64 @@ describe('workload scope memory visibility (fake cgroup and /proc)', () => {
       [1, { transition: 'enter', scope_kind: 'engine' }],
       [1, { transition: 'exit', scope_kind: 'engine' }],
     ]);
+    await closeChildWorkload(LEADER);
+  });
+
+  test("an engine scope's notice subscribers hear each transition once, never once per poll (#5113)", async () => {
+    await start();
+    const { launch, scope } = await launchScope('thread-notices');
+    const notices: ChildWorkloadNotice[] = [];
+    const stop = launch.watchNotices?.((notice) => notices.push(notice));
+    expect(stop).toBeDefined();
+    const engine = { pid: LEADER, name: 'claude', rssMiB: 240 };
+    const fallow = { pid: 2301, name: 'fallow', rssMiB: 600 };
+    await processes(scope, [engine, fallow]);
+    await memory(scope, { currentMiB: 900 });
+    // Three polls above the threshold: one entering.
+    for (let poll = 0; poll < 3; poll += 1)
+      await __workloadTestHooks.pollOomKills();
+    expect(notices).toEqual([
+      {
+        kind: 'pressure-enter',
+        workingSetBytes: 900 * MIB,
+        memoryMaxBytes: 1000 * MIB,
+        thresholdPercent: 85,
+        largestProcesses: [
+          { pid: 2301, name: 'fallow', rssBytes: 600 * MIB },
+          { pid: LEADER, name: 'claude', rssBytes: 240 * MIB },
+        ],
+      },
+    ]);
+
+    // The kernel kills fallow: announced once the engine is seen alive
+    // after it, with what survived, and never again for the same count.
+    await processes(scope, [engine]);
+    await memory(scope, { currentMiB: 300, oomKills: 1 });
+    for (let poll = 0; poll < 3; poll += 1)
+      await __workloadTestHooks.pollOomKills();
+    expect(notices.slice(1)).toEqual([
+      {
+        kind: 'pressure-exit',
+        workingSetBytes: 300 * MIB,
+        memoryMaxBytes: 1000 * MIB,
+        thresholdPercent: 85,
+      },
+      {
+        kind: 'oom-kill',
+        // The limit the scope was launched with.
+        kill: { oomKills: 1, newKills: 1, memoryMaxBytes: expect.any(Number) },
+        largestProcesses: [
+          { pid: LEADER, name: 'claude', rssBytes: 240 * MIB },
+        ],
+      },
+    ]);
+
+    // Unsubscribed: a later transition reaches nobody.
+    stop?.();
+    await memory(scope, { currentMiB: 950, oomKills: 1 });
+    await __workloadTestHooks.pollOomKills();
+    expect(notices).toHaveLength(3);
+    expect(messages(log.warn, PRESSURE_WARNING)).toHaveLength(2);
     await closeChildWorkload(LEADER);
   });
 

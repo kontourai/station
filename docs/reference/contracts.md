@@ -1157,6 +1157,8 @@ non-retryable.
 | `session-reattach-conflict` | `conflict` | `false` |
 | `transcript-line-skipped` | `warning` | `false` |
 | `workload-command-oom-killed` | `warning` | `false` |
+| `workload-memory-pressure` | `warning` | `false` |
+| `workload-memory-pressure-cleared` | `warning` | `false` |
 | `sandbox_unavailable` | `permission_denied` | `false` |
 | `provider_model_unavailable` | `model_unavailable` | `false` |
 
