@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { github } from './qualification-evidence.mjs';
 
 const SHA = /^[0-9a-f]{40}$/;
