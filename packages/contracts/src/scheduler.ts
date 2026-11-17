@@ -245,15 +245,15 @@ export interface SchedulerJob {
   projectId?: string;
   /**
    * Server-recorded creator every run acts as (#2377 slice D: untargeted
-   * jobs too), except a Project job (`projectId`): its runs are Tasks that
-   * currently act as the local operator; acting as the creator is #5126.
-   * Who may change or run a job is decided by it for every job. Read-only.
+   * jobs too; #5126: a Project job's Task too). Who may change or run a job
+   * is decided by it for every job. Read-only.
    */
   createdBy?: Readonly<{ userId: string }>;
   /**
    * #2377 slice D: present when the job has no recorded owner (a job created
    * before owners were recorded, on a shared or hosted Station). Its runs
-   * have no Station tools until a person re-creates it. Read-only.
+   * have no Station tools until a person re-creates it; a Project job's
+   * runs start no Task at all (#5126). Read-only.
    */
   ownerNeeded?: string;
   /** Failed runs since the last success, newest first. Read-only. */

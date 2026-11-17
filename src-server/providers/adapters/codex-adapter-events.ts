@@ -78,6 +78,12 @@ export function isResumeCursor(value: unknown): value is {
    * channel without the header-token server.
    */
   boundCatalog?: true;
+  /**
+   * #2376 slice 3: the thread started with station-control as tool
+   * families. Its history may name family tools; a continuation keeps
+   * families (and a fresh credential that starts at the index) only then.
+   */
+  toolFamilies?: true;
 } {
   return (
     isRecord(value) &&
@@ -85,6 +91,7 @@ export function isResumeCursor(value: unknown): value is {
     value.codexThreadId.length > 0 &&
     Buffer.byteLength(value.codexThreadId) <= 512 &&
     (value.boundCatalog === undefined || value.boundCatalog === true) &&
+    (value.toolFamilies === undefined || value.toolFamilies === true) &&
     (value.sourceAffinity === undefined ||
       isSessionSourceAffinity(value.sourceAffinity))
   );
@@ -99,6 +106,7 @@ export function codexResumeCursor(
   turnId?: string;
   sourceAffinity?: ProviderSessionSourceAffinity;
   boundCatalog?: true;
+  toolFamilies?: true;
 } {
   const prior = isResumeCursor(previous) ? previous : undefined;
   return {
@@ -108,6 +116,9 @@ export function codexResumeCursor(
     // persisted for it.
     ...(prior?.boundCatalog && prior.codexThreadId === codexThreadId
       ? { boundCatalog: true as const }
+      : {}),
+    ...(prior?.toolFamilies && prior.codexThreadId === codexThreadId
+      ? { toolFamilies: true as const }
       : {}),
     ...(prior?.sourceAffinity
       ? { sourceAffinity: { ...prior.sourceAffinity } }

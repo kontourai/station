@@ -624,6 +624,12 @@ import {
 import { WorkspaceExecutionBarrier } from './workspace-execution-barrier.js';
 import { resolveWorkspaceIdentity } from './workspace-identity.js';
 
+/** The open point read's one read of the current child, reused by the resolver. */
+interface CurrentConversationOpenRead {
+  detail: OrchestrationSessionDetail;
+  messageCount: number;
+}
+
 type UsageTelemetryObserver = {
   trackSessionRecovery(
     properties: UsageTelemetryProperties<'session_recovery'>,
@@ -2405,7 +2411,7 @@ export class OrchestrationService {
   private readonly sessionCommandImplementation: SessionCommandImplementation;
   readonly sessionQueries: SessionQueryModule;
   /** Authoritative inventory-to-session open state; routes do not restitch it. */
-  readonly conversationOpenResolver: ConversationOpenResolver;
+  readonly conversationOpenResolver: ConversationOpenResolver<CurrentConversationOpenRead>;
   /** Explicit declared-output inventory; separate from transcript/Basis reads. */
   readonly sessionOutputs: SessionOutputsModule;
   /** #3163: a child's own read-only transcript, resolved from persisted facts. */
@@ -3600,12 +3606,13 @@ export class OrchestrationService {
     this.conversationOpenResolver = createConversationOpenResolver({
       currentSessionId: (conversationId) =>
         this.conversationLineage.currentConversationSessionId(conversationId),
-      readCurrent: async ({ conversationId, authority }) => {
-        const detail =
-          await this.conversationLineage.readCurrentConversationSession(
-            conversationId,
-            authority,
-          );
+      readCurrent: async ({ conversationId, authority, prefetched }) => {
+        const detail = prefetched
+          ? prefetched.detail
+          : await this.conversationLineage.readCurrentConversationSession(
+              conversationId,
+              authority,
+            );
         if (!detail) return null;
         const session = detail.session;
         const lineageTail =
@@ -3691,10 +3698,9 @@ export class OrchestrationService {
                 },
               }
             : {}),
-          messages: this.readSessionMessages(
-            detail.session.threadId,
-            authority,
-          ),
+          messageCount:
+            prefetched?.messageCount ??
+            this.readSessionMessages(detail.session.threadId, authority).length,
           answerability: detail.session.answerability,
           // Continuation is a server decision over the CURRENT replaceable
           // Session. A historical/nonmutable inventory row, a read-only
@@ -8202,9 +8208,15 @@ export class OrchestrationService {
         this.conversationLineage.plainReservationPredecessor(conversationId)
         ? detail.session.threadId
         : currentSessionId;
+    // One whole-history read per open: the conversation query and the
+    // resolver both describe the Session `detail` already holds, so they
+    // reuse its events instead of each replaying the history again.
+    const described =
+      detail?.session.threadId === subjectSessionId ? detail : undefined;
     const query = await this.sessionQueries.read(
       { type: 'conversation', threadId: subjectSessionId },
       authority,
+      described ? { events: described.events } : undefined,
     );
     if (query.status === 'unavailable') return null;
     if (query.status !== 'found') return null;
@@ -8243,6 +8255,18 @@ export class OrchestrationService {
       conversation,
       authority,
       expectedSessionId: currentSessionId,
+      ...(described
+        ? {
+            prefetched: {
+              detail: described,
+              // `readSessionMessages`' count: copied fork context plus the
+              // Session's own projected transcript, projected once above.
+              messageCount:
+                this.forkContexts.copiedForSession(subjectSessionId, authority)
+                  .length + query.messages.length,
+            },
+          }
+        : {}),
     });
   }
 

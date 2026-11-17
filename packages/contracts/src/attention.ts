@@ -596,7 +596,8 @@ export interface PullRequestFeedbackAttentionItem extends AttentionItemBase {
     /** The push notification for this pause, while it is active. */
     notificationId?: string;
   };
-  reason: 'round-limit' | 'repeated-failure' | 'agent-stopped';
+  /** `fix-budget` (#5066): a watching Task's pull request used every fix attempt. */
+  reason: 'round-limit' | 'repeated-failure' | 'fix-budget' | 'agent-stopped';
   /** round-limit: rounds on one head, or messages in 24 hours. */
   cap?: 'head' | 'day';
   headSha?: string;

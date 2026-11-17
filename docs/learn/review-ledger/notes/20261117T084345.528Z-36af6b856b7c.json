@@ -1,0 +1,9 @@
+{
+  "revision": "5439ec4e393c30077aee4bd5d5204525c721f0dc",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"#5126 edit to api.md is the scheduler owner paragraph only (Project jobs now run as their creator, execute check, ownerless refusal); the sections this page cites are unchanged.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#5126 edit to api.md is the scheduler owner paragraph only (Project jobs now run as their creator, execute check, ownerless refusal); the sections this page cites are unchanged.","inputs":["docs/reference/api.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "5439ec4e393c30077aee4bd5d5204525c721f0dc",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"#5126: replaced the Project-job exception in the scheduler owner paragraph: a Project job's Task belongs to its creator with their recorded attribution, starts only while the creator holds execute, and an ownerless one carries ownerNeeded and creates no Task. Checked against scheduled-project-runs.ts, project-lifecycle-composition.ts and scheduler-ledger.ts.","inputs":["docs/reference/api.md"]}
+  ]
+}

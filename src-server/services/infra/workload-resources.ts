@@ -18,6 +18,7 @@ import type {
 } from '@kontourai/station-contracts/system-status';
 import {
   type ChildWorkloadLaunch,
+  type ChildWorkloadNotice,
   type ChildWorkloadOomKill,
   type ChildWorkloadOutcome,
   closeChildWorkload,
@@ -80,7 +81,7 @@ interface ActiveWorkload {
   observed?: (outcome: ChildWorkloadOutcome | undefined) => void;
   /** The scope's cgroup path, resolved once the scope exists. */
   controlGroup?: string;
-  /** `oom_kill` count already announced to {@link oomListeners}. */
+  /** `oom_kill` count already announced to {@link noticeListeners}. */
   oomKillsReported: number;
   /** An engine scope launched with a holder (see holderLaunch). */
   holderLaunched?: boolean;
@@ -112,7 +113,8 @@ interface ActiveWorkload {
   oomScoreRaised?: Set<string>;
   /** Set once raising a command's OOM score failed: no further attempts. */
   oomScoreRaiseFailed?: boolean;
-  oomListeners: Set<(kill: ChildWorkloadOomKill) => void>;
+  /** The scope's workload-notice subscribers (#5113), engines normally. */
+  noticeListeners: Set<(notice: ChildWorkloadNotice) => void>;
 }
 
 let state: 'unmanaged' | 'ready' | 'unavailable' | 'stopping' = 'unmanaged';
@@ -836,6 +838,26 @@ async function raiseCommandOomScores(
   }
 }
 
+/**
+ * Tells a scope's subscribers about one transition. A listener that throws
+ * is logged and does not stop the others.
+ */
+function announceNotice(
+  entry: ActiveWorkload,
+  notice: ChildWorkloadNotice,
+): void {
+  for (const listener of entry.noticeListeners) {
+    try {
+      listener(notice);
+    } catch (error) {
+      logger.warn('Workload notice listener failed', {
+        kind: notice.kind,
+        error,
+      });
+    }
+  }
+}
+
 /** Points below the threshold a scope must fall to leave pressure. */
 const PRESSURE_EXIT_MARGIN_PERCENT = 5;
 
@@ -896,6 +918,13 @@ async function observePressure(
       ...context,
       ...(largest ? { largestProcesses: largest } : {}),
     });
+    announceNotice(entry, {
+      kind: 'pressure-enter',
+      workingSetBytes,
+      memoryMaxBytes,
+      thresholdPercent,
+      ...(largest ? { largestProcesses: largest } : {}),
+    });
     return;
   }
   if (share >= thresholdPercent - PRESSURE_EXIT_MARGIN_PERCENT) return;
@@ -908,6 +937,12 @@ async function observePressure(
   logger.info('A workload scope is no longer near its memory limit', {
     ...context,
     pressureSince: since,
+  });
+  announceNotice(entry, {
+    kind: 'pressure-exit',
+    workingSetBytes,
+    memoryMaxBytes,
+    thresholdPercent,
   });
 }
 
@@ -990,7 +1025,7 @@ async function pollOomKills(): Promise<void> {
           oomKills - seenKills,
         );
       if (reading) await observePressure(entry, controlGroup, reading);
-      if (entry.oomListeners.size === 0) return;
+      if (entry.noticeListeners.size === 0) return;
       if (oomKills === undefined || oomKills <= entry.oomKillsReported) return;
       // A kill is a command's only once the engine is seen alive after it:
       // a count waits one poll as pending, and the next poll that finds the
@@ -1020,13 +1055,13 @@ async function pollOomKills(): Promise<void> {
         unit: entry.unit,
         ...kill,
       });
-      for (const listener of entry.oomListeners) {
-        try {
-          listener(kill);
-        } catch (error) {
-          logger.warn('Workload OOM listener failed', { error });
-        }
-      }
+      announceNotice(entry, {
+        kind: 'oom-kill',
+        kill,
+        ...(entry.lastOomKillProcesses
+          ? { largestProcesses: entry.lastOomKillProcesses }
+          : {}),
+      });
     }),
   );
 }
@@ -1277,7 +1312,7 @@ function installScopeLauncher(
       observed,
       memoryMaxBytes: limits.memoryMaxBytes,
       oomKillsReported: 0,
-      oomListeners: new Set(),
+      noticeListeners: new Set(),
     };
     active.set(unit, entry);
     // Only the two user-bus coordinates are borrowed. Restore the target's
@@ -1336,10 +1371,10 @@ function installScopeLauncher(
         monitorLeaders();
       },
       close: () => closeScope(entry, 'close'),
-      watchOomKills(listener) {
-        entry.oomListeners.add(listener);
+      watchNotices(listener) {
+        entry.noticeListeners.add(listener);
         monitorLeaders();
-        return () => entry.oomListeners.delete(listener);
+        return () => entry.noticeListeners.delete(listener);
       },
     } satisfies ChildWorkloadLaunch;
   });
