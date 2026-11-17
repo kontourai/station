@@ -396,6 +396,14 @@ export interface ChromiumServerHostOptions {
   denyHostResolution?: boolean;
   /** Refuse startup unless Chromium reports the restrictive effective policy. */
   requireRestrictedWebRtc?: boolean;
+  /**
+   * Disposable previews: keep a sandboxed frame in its parent page's renderer
+   * (IsolateSandboxedIframes off). Chrome 158 aborts the whole browser,
+   * `site_instance_impl.cc` CHECK `has_site_`, when an about:blank page adds
+   * a sandboxed `srcdoc` frame while that feature is on (#4917). Use only
+   * where the parent page holds nothing the frame is not already given.
+   */
+  shareSandboxedFrameProcess?: boolean;
   executablePath: string;
   faviconEnabled?: () => boolean;
   /**
@@ -487,11 +495,18 @@ function isAllowedSubframeUrl(url: string): boolean {
   return url === 'about:srcdoc' || isAllowedCommittedUrl(url);
 }
 
+const DISABLED_FEATURES = ['Translate', 'MediaRouter', 'OptimizationHints'];
+
 /** Pure launch argument list. */
 export function buildChromiumArgs(input: {
   profileDir: string;
   /** The egress proxy (`http://127.0.0.1:<port>`); required. */
   proxyServer: string;
+  /**
+   * Further features to disable. Chromium honours only the last
+   * `--disable-features` switch, so they join the one switch built here.
+   */
+  disableFeatures?: readonly string[];
 }): string[] {
   if (!/^http:\/\/127\.0\.0\.1:\d{1,5}$/.test(input.proxyServer)) {
     throw new Error(
@@ -513,7 +528,7 @@ export function buildChromiumArgs(input: {
     '--disable-extensions',
     '--disable-component-extensions-with-background-pages',
     '--disable-sync',
-    '--disable-features=Translate,MediaRouter,OptimizationHints',
+    `--disable-features=${[...DISABLED_FEATURES, ...(input.disableFeatures ?? [])].join(',')}`,
     '--mute-audio',
     // Never touch the user's real keychain / keyring from a headless profile.
     '--password-store=basic',
@@ -1184,6 +1199,9 @@ export class ChromiumServerHost implements BrowserHost {
           ...buildChromiumArgs({
             profileDir,
             proxyServer: proxy.proxyServerArg,
+            disableFeatures: this.options.shareSandboxedFrameProcess
+              ? ['IsolateSandboxedIframes']
+              : [],
           }),
           ...(this.options.denyHostResolution
             ? ['--host-resolver-rules=MAP * ~NOTFOUND']

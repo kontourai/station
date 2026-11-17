@@ -352,6 +352,11 @@ describe('launch arguments and environment', () => {
         '--no-startup-window',
       ]),
     );
+    // The Browser pane keeps sandboxed frames in their own processes; only
+    // the disposable preview opts out (#4917).
+    expect(args.filter((arg) => arg.startsWith('--disable-features='))).toEqual(
+      ['--disable-features=Translate,MediaRouter,OptimizationHints'],
+    );
     // No launch URL: the host creates every page target itself.
     expect(args).not.toContain('about:blank');
     expect(args.some((arg) => arg.startsWith('--remote-debugging-port'))).toBe(

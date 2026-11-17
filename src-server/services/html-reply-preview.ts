@@ -274,6 +274,9 @@ export class HtmlReplyPreview {
         jsHeapLimitMb: 128,
         denyHostResolution: true,
         requireRestrictedWebRtc: true,
+        // The about:blank bootstrap page hands the frame its document and
+        // token; sharing its renderer exposes nothing more.
+        shareSandboxedFrameProcess: true,
         onEvent: diagnostic.onEvent,
         egressPolicy: {
           listeners: () => ({ ports: [], hostnames: [] }),

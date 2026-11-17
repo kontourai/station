@@ -15,6 +15,7 @@ const probe = vi.hoisted(() => ({
   flood: false,
   exitDuringRender: false,
   launchFailure: undefined as Error | undefined,
+  launchArgs: undefined as readonly string[] | undefined,
   observe: undefined as ChromiumServerHostOptions['onEvent'],
   late: undefined as (() => void) | undefined,
   cleanup: undefined as (() => Promise<void>) | undefined,
@@ -28,6 +29,7 @@ beforeEach(() => {
   probe.flood = false;
   probe.exitDuringRender = false;
   probe.launchFailure = undefined;
+  probe.launchArgs = undefined;
   probe.observe = undefined;
   probe.late = undefined;
 });
@@ -158,6 +160,7 @@ vi.mock('../browser/hosts/chromium-server-host.js', async (importOriginal) => {
             options.onEvent?.(event);
           },
           launcher: (request) => {
+            probe.launchArgs = request.args;
             const directory = request.args
               .find((arg) => arg.startsWith('--user-data-dir='))
               ?.slice('--user-data-dir='.length);
@@ -488,5 +491,34 @@ test('preview refuses a managed effective-policy override before author code and
     );
   } finally {
     installLoggerLineSink(undefined);
+  }
+});
+
+test('preview launches its browser with sandboxed frames sharing the bootstrap renderer, in the only feature switch', async () => {
+  // Chrome 158 aborts the browser (CHECK has_site_) when the about:blank
+  // bootstrap page adds its sandboxed srcdoc frame under
+  // IsolateSandboxedIframes (#4917). Chromium reads only the last
+  // --disable-features switch, so the feature must join the single one.
+  probe.restrictive = true;
+  const service = new HtmlReplyPreview(makeTempDir('html-preview-features-'));
+  try {
+    await expect(
+      service.render({ html: '<p>x</p>', height: 400 }, 800, 'dark'),
+    ).rejects.toThrow('Authored content reached an unverified browser');
+    const switches = (probe.launchArgs ?? []).filter((arg) =>
+      arg.startsWith('--disable-features='),
+    );
+    expect(switches).toHaveLength(1);
+    expect(switches[0]?.slice('--disable-features='.length).split(',')).toEqual(
+      expect.arrayContaining([
+        'Translate',
+        'MediaRouter',
+        'OptimizationHints',
+        'IsolateSandboxedIframes',
+      ]),
+    );
+  } finally {
+    await probe.cleanup?.();
+    await probe.removeProfile?.();
   }
 });
