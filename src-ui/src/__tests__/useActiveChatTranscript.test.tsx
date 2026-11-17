@@ -1691,6 +1691,41 @@ describe('useActiveChatTranscript', () => {
       expect(view.result.current.messages).toEqual([]);
     });
 
+    // The chat's OWN live events past the buffer: the stitched tail would
+    // start mid-conversation, so a failed, empty window draws none of it.
+    test('a failed re-read past the live buffer draws none of its own truncated tail', async () => {
+      const namespace = { value: NS_A };
+      fetchConversationWindow.mockImplementation(async (id: string) =>
+        id === 'gap-a' ? page('gap question') : page('other'),
+      );
+      const view = renderReader(chat('gap-a'), namespace);
+      await waitFor(() => expect(view.result.current.settled).toBe(true));
+      view.rerender({ session: chat('gap-b') });
+      await waitFor(() => expect(view.result.current.settled).toBe(true));
+      act(() => {
+        for (let sequence = 10; sequence < 10 + 2_100; sequence += 1)
+          recordSequencedLiveEvent(
+            'http://station.test',
+            {
+              eventId: `own-${sequence}`,
+              method: 'turn.started',
+              provider: 'codex',
+              threadId: 'gap-a',
+              turnId: `own-turn-${sequence}`,
+              prompt: `tail prompt ${sequence}`,
+              createdAt: '2026-11-01T00:00:00.000Z',
+            } as never,
+            sequence,
+          );
+      });
+      fetchConversationWindow.mockRejectedValue({ status: 404 });
+      view.rerender({ session: chat('gap-a') });
+      await waitFor(() => expect(view.result.current.error).toBeTruthy());
+      expect(view.result.current.catchingUp).toBe(false);
+      expect(view.result.current.messages).toEqual([]);
+      expect(view.result.current.events).toEqual([]);
+    });
+
     test('another authority never paints a cached window for the same conversation id', async () => {
       const namespace = { value: NS_A };
       fetchConversationWindow.mockResolvedValue(page('authority A only'));

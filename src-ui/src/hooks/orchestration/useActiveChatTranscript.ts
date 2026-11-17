@@ -417,10 +417,13 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
   const windowFailedEmpty = Boolean(
     serverWindow.error && serverWindow.events.length === 0,
   );
-  const liveGap =
-    !replay &&
-    !windowFailedEmpty &&
-    windowWatermark < readSequencedLiveTruncation(apiBase);
+  const truncatedPastWindow =
+    !replay && windowWatermark < readSequencedLiveTruncation(apiBase);
+  const liveGap = truncatedPastWindow && !windowFailedEmpty;
+  // The same failed, empty window must not draw the buffered live tail as
+  // its transcript either: past the truncation that tail starts mid-chat.
+  // Its rows are withheld without counting as a catch-up.
+  const failedTailWithheld = windowFailedEmpty && truncatedPastWindow;
   const gapReloadKey = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (
@@ -1138,12 +1141,14 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
       ? { error: new Error('The owning Station connection is unavailable.') }
       : {}),
     loading: resolving || window.loading,
-    events: stitchedEvents,
+    events: failedTailWithheld ? window.events : stitchedEvents,
     enabled,
     catchingUp: !replay && (serverWindow.catchingUp || liveGap),
     openTurnProjected,
     messages:
-      enabled && !replay && (serverWindow.catchingUp || liveGap)
+      enabled &&
+      !replay &&
+      (serverWindow.catchingUp || liveGap || failedTailWithheld)
         ? EMPTY_MESSAGES
         : enabled
           ? messages
