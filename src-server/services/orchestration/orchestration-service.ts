@@ -6116,7 +6116,11 @@ export class OrchestrationService {
       provider === undefined
         ? undefined
         : this.options.adapterRegistry.get(provider);
-    const profile = readProviderDurabilityProfile(adapter?.metadata);
+    const profile =
+      (threadId === undefined
+        ? undefined
+        : adapter?.sessionDurability?.(threadId)) ??
+      readProviderDurabilityProfile(adapter?.metadata);
     if (
       !profile ||
       threadId === undefined ||
@@ -6177,13 +6181,22 @@ export class OrchestrationService {
 
   async steerFidelityForThread(
     threadId: string,
-  ): Promise<'native' | 'emulated' | 'none' | 'pending'> {
+  ): Promise<'native' | 'interrupting' | 'emulated' | 'none' | 'pending'> {
     const provider =
       this.threadProviders.get(threadId) ??
       this.sessionReadModel.get(threadId)?.provider ??
       this.options.eventStore?.readSessionByThread(threadId)?.provider;
+    const placement = this.durabilityProfileForProvider(
+      provider,
+      threadId,
+    )?.steerPlacement;
+    if (
+      placement?.state === 'emulated' &&
+      placement.boundary === 'engine-defined'
+    )
+      return 'interrupting';
     return (
-      this.durabilityProfileForProvider(provider)?.steerPlacement.state ??
+      placement?.state ??
       ((!provider || !this.options.adapterRegistry.get(provider)) &&
       (this.startingSessionThreads.has(threadId) ||
         this.materializingSessions.has(threadId))

@@ -316,6 +316,51 @@ describe.skipIf(process.platform === 'win32')(
       expect(launches(h)[0]?.OPENCODE_CONFIG_CONTENT ?? null).toBeNull();
     });
 
+    test('OpenCode 2.x host never-ask starts, takes over, and resumes without a 1.x overlay', async () => {
+      process.env.FAKE_OPENCODE_VERSION = 'opencode v2.3.0';
+      process.env.FAKE_OPENCODE_USER_CONFIG = JSON.stringify({
+        permission: 'ask',
+      });
+      h = harness('opencode');
+      await start(h, 'v2-full', 'never', 'host');
+      const first = await turn(h, 'v2-full', 'run: echo first', {
+        confinement: 'host',
+      });
+      expect(first.asked).toBeUndefined();
+      expect(JSON.stringify(first.started)).toContain('bash ran');
+      expect(turnStarted(first.started)?.metadata?.approvalMode).toBe('never');
+      const [session] = await h.adapter.listSessions();
+      await h.adapter.stopSession('v2-full');
+      await h.adapter.startSession({
+        provider: 'acp',
+        threadId: 'v2-resumed',
+        cwd: h.cwd,
+        confinement: 'host',
+        metadata: { connectionId: 'engine-under-test' },
+        resumeCursor: session?.resumeCursor,
+        modelOptions: { approvalMode: 'never' },
+      });
+      const resumed = await turn(h, 'v2-resumed', 'run: echo resumed', {
+        confinement: 'host',
+      });
+      expect(resumed.asked).toBeUndefined();
+      expect(JSON.stringify(resumed.started)).toContain('bash ran');
+      await start(h, 'v2-default');
+      const takeover = await turn(h, 'v2-default', 'run: echo takeover', {
+        approvalMode: 'never',
+        confinement: 'host',
+      });
+      expect(takeover.asked).toBeUndefined();
+      expect(JSON.stringify(takeover.started)).toContain('bash ran');
+      expect(agentReads(h)).toEqual([]);
+      expect(
+        launches(h).every((launch) => launch.OPENCODE_CONFIG_CONTENT === null),
+      ).toBe(true);
+      await expect(
+        start(h, 'v2-confined-never', 'never', 'workspace'),
+      ).rejects.toMatchObject({ code: 'acp_approval_governance_refused' });
+    });
+
     test("ruling R1 reads the version of the binary a managed policy's acp pin launches, not the connection's command", async () => {
       // The connection's own `opencode` is 1.x; the pinned one is 2.3.0.
       h = harness('opencode');

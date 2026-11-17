@@ -826,6 +826,8 @@ export interface AcpSessionRecord {
    * cannot complete or fail the still-open turn.
    */
   promptEpoch: number;
+  promptSettled?: Promise<void>;
+  steering?: boolean;
   /** Invalidation generation captured when this session start was accepted. */
   generation: number;
   /** A `session.started` receipt was published and needs a terminal peer. */
@@ -1961,6 +1963,9 @@ export class AcpAdapter implements ProviderAdapterShape {
     // merged into whatever inline configuration it already had; the same
     // launch is reused to move the session onto another floor.
     const launchEnv = registryLaunchEnvFor(config);
+    const openCode2 =
+      approvalControl === 'station' &&
+      (await this.openCodeLaunchVersion(config.command))?.major === 2;
     // Resolved once: a relaunch onto another approval floor keeps the same
     // session directory.
     const tmpDir = engineSessionTmpDir(input.threadId);
@@ -1986,7 +1991,7 @@ export class AcpAdapter implements ProviderAdapterShape {
               },
             }
           : {}),
-        ...(floor
+        ...(floor && !openCode2
           ? {
               spawnEnv: (env: NodeJS.ProcessEnv) =>
                 withStationOpenCodeApprovalConfig(env, floor),
@@ -3574,6 +3579,22 @@ export class AcpAdapter implements ProviderAdapterShape {
     return { outcome: 'cancelled', turnId: targetTurnId } as const;
   }
 
+  sessionDurability(threadId: string) {
+    const record = this.sessions.get(threadId);
+    if (!record) return undefined;
+    const channel = resolveAcpSteerChannel(record.process.initResult).channel;
+    return channel === 'cancel-reprompt'
+      ? ACP_ENGINE_DURABILITY
+      : {
+          ...ACP_ENGINE_DURABILITY,
+          steerPlacement: {
+            state: 'native' as const,
+            boundary: 'engine-defined' as const,
+            detail: 'Additional input uses the live engine steering channel.',
+          },
+        };
+  }
+
   async steerTurn(
     threadId: string,
     input: string,
@@ -3587,21 +3608,36 @@ export class AcpAdapter implements ProviderAdapterShape {
     if (!text) {
       throw new Error('Steer input is empty.');
     }
-    const native = await this.tryNativeAcpSteer(record, threadId, turnId, text);
-    if (!native) {
-      await this.steerByCancelReprompt(record, threadId, turnId, text);
+    if (record.steering)
+      throw new SendTurnRefusedError(
+        'A steer is already being applied.',
+        'busy',
+      );
+    record.steering = true;
+    try {
+      const native = await this.tryNativeAcpSteer(
+        record,
+        threadId,
+        turnId,
+        text,
+      );
+      if (!native) {
+        await this.steerByCancelReprompt(record, threadId, turnId, text);
+      }
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId,
+        createdAt: new Date().toISOString(),
+        turnId,
+        method: 'turn.started',
+        prompt: text,
+        inputKind: 'steer',
+        ...(native ? {} : { steerInterruptedRun: true as const }),
+      });
+    } finally {
+      record.steering = false;
     }
-    this.publish({
-      eventId: crypto.randomUUID(),
-      provider: this.provider,
-      threadId,
-      createdAt: new Date().toISOString(),
-      turnId,
-      method: 'turn.started',
-      prompt: text,
-      inputKind: 'steer',
-      ...(native ? {} : { steerInterruptedRun: true as const }),
-    });
   }
 
   async respondToRequest(
@@ -5211,6 +5247,21 @@ export class AcpAdapter implements ProviderAdapterShape {
     return code.length > 0 ? openCodeProjectCodeRefusal(code) : undefined;
   }
 
+  private openCodeLaunchCommand(command: string): string {
+    return managedEngineLaunch('acp', { command, args: [], env: {} }, 'user')
+      .command;
+  }
+
+  private async openCodeLaunchVersion(command: string) {
+    const resolved = await findCliBinaryAsync(
+      this.openCodeLaunchCommand(command),
+    );
+    if (!resolved) return undefined;
+    return (this.options.probeOpenCodeVersion ?? openCodeVersionProbe.probe)(
+      resolved,
+    );
+  }
+
   private async verifyApprovalFloor(
     command: string,
     cwd: string,
@@ -5220,37 +5271,28 @@ export class AcpAdapter implements ProviderAdapterShape {
     // since OpenCode imports such code as it loads its configuration.
     const refusal = await this.projectCodeRefusal(cwd, floor);
     if (refusal) return { ok: false, reason: refusal };
+    const version = await this.openCodeLaunchVersion(command);
+    if (version && openCodeServesNatively(version)) {
+      // Host never-ask answers the asks OpenCode makes. It does not promise
+      // to force an ask or override the engine's denies, so saved allows do
+      // not invalidate it. Confined modes still require verifiable rules.
+      if (version.major === 2 && floor === 'full') return { ok: true };
+      return {
+        ok: false,
+        reason: openCodeAcpApprovalUnsupportedReason(version.text),
+      };
+    }
     let env: NodeJS.ProcessEnv;
     try {
       env = withStationOpenCodeApprovalConfig(await augmentedSpawnEnv(), floor);
     } catch (error) {
       return { ok: false, reason: errorMessage(error) };
     }
-    // The binary a launch would run: a managed policy's `acp` pin replaces
-    // the connection's command (`acp-process.ts`), so the version and the
-    // rules are read from that one.
-    const launched = managedEngineLaunch(
-      'acp',
-      { command, args: [], env: {} },
-      'user',
-    ).command;
-    const resolved = await findCliBinaryAsync(launched);
-    if (!resolved) {
-      return { ok: false, reason: `${launched} could not be found` };
-    }
-    // Ruling R1: Station's check reads 1.x's `debug agent <name>`, which
-    // 2.x does not have, and 2.x keeps saved approvals the check cannot
-    // see. Over ACP Station does not govern a 2.x OpenCode; its own
-    // approvals still apply when Station's mode is not asked for.
-    const version = await (
-      this.options.probeOpenCodeVersion ?? openCodeVersionProbe.probe
-    )(resolved);
-    if (version && openCodeServesNatively(version)) {
-      return {
-        ok: false,
-        reason: openCodeAcpApprovalUnsupportedReason(version.text),
-      };
-    }
+    const resolved = await findCliBinaryAsync(
+      this.openCodeLaunchCommand(command),
+    );
+    if (!resolved)
+      return { ok: false, reason: `${command} could not be found` };
     const reader = (this.options.readOpenCodeAgents ?? openCodeAgentReader)({
       command: resolved,
       cwd,
@@ -6297,6 +6339,10 @@ export class AcpAdapter implements ProviderAdapterShape {
     promptEpoch: number,
     prompt: Promise<PromptResponse>,
   ): void {
+    record.promptSettled = prompt.then(
+      () => undefined,
+      () => undefined,
+    );
     prompt
       .then((response) => {
         // archive#4084: unquarantine unconditionally —
@@ -6506,21 +6552,53 @@ export class AcpAdapter implements ProviderAdapterShape {
     turnId: string,
     text: string,
   ): Promise<void> {
+    const previousPrompt = record.promptSettled;
     record.promptEpoch += 1;
     const promptEpoch = record.promptEpoch;
     record.toolUpdateSupervisor.cancelAll();
     this.settleRequestsAtPromptEnd(record, threadId, turnId);
     this.settlePromptEndState(record, threadId, turnId, 'cancelled');
-    await record.process.cancel();
-    if (record.activeTurnId !== turnId) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        (async () => {
+          await record.process.cancel();
+          await previousPrompt;
+        })(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () =>
+              reject(
+                new Error(
+                  'The engine did not finish cancelling the active prompt.',
+                ),
+              ),
+            10_000,
+          );
+        }),
+      ]);
+    } catch (error) {
+      // This epoch has superseded the old prompt: stop owns its terminal
+      // outcome when cancellation cannot be confirmed, never a replacement.
+      await this.stopSession(threadId);
+      throw error;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    if (
+      record.activeTurnId !== turnId ||
+      record.stopping ||
+      this.sessions.get(threadId) !== record
+    ) {
       throw new ProviderTurnEndedError();
     }
+    const continuation = `Continue the current task from where you stopped, taking this additional user instruction into account. If it changes the task, follow the new direction.\n\n${text}`;
     this.bindPromptSettlement(
       record,
       threadId,
       turnId,
       promptEpoch,
-      record.process.prompt([{ type: 'text', text }]),
+      record.process.prompt([{ type: 'text', text: continuation }]),
     );
   }
 }

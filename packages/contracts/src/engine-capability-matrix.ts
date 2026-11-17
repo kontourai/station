@@ -374,8 +374,9 @@ export const ACP_ENGINE_DURABILITY: ProviderDurabilityProfile = {
   ...EXTERNAL_ENGINE_DURABILITY,
   steerPlacement: {
     state: 'emulated',
+    boundary: 'engine-defined',
     detail:
-      'Orchestration commands can steer through a live extension or cancel and reprompt. The chat composer does not offer ACP steering.',
+      'Steering cancels the active prompt, waits for its answer, and continues the same task with the additional instruction.',
   },
 };
 
@@ -1485,8 +1486,8 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
     // own commands run through `engine-command-dispatch.ts`.
     commands: { state: 'unsupported' },
     // Native: `POST /api/session` carries `model: {providerID, id}`
-    // (`readModelRef`); ACP: the session's catalog, as for `acp`. Start
-    // time only on both.
+    // after checking the model catalog; subsequent native turns switch with
+    // `POST /api/session/{id}/model`. ACP fallback selects only at start.
     modelSelection: { state: 'session', channel: 'wire' },
     // Station's staged policy, for a session started as an Agent, on both
     // transports. ACP: at `requestPermission`, exactly as on the `acp` row

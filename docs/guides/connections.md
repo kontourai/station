@@ -912,7 +912,9 @@ previews), new chats on it run on Station's `opencode` engine instead. That
 engine drives OpenCode 2 through its own local server (`opencode serve`) when
 Station has verified that version's API, and over the Agent Client Protocol
 otherwise. A chat keeps the engine it started with. The connection's engine
-reads `opencode` only while the preview is on. See
+reads `opencode` only while the preview is on. OpenCode 2.x supports host
+Never ask on both transports. Native chats can change models between turns;
+ACP fallback needs a new chat for another model. See
 [the decision](../decisions/opencode-native-transport.md).
 
 An engine Station did not find reads **Not installed**. Its card shows the

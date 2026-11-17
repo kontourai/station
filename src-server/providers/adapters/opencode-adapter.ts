@@ -23,7 +23,6 @@ import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import {
   ACP_ENGINE_DURABILITY,
-  ACP_MODEL_OVERRIDE_PER_TURN,
   isOpenCodeAcpConnection,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { EngineCommandOutcome } from '@kontourai/station-contracts/engine-commands';
@@ -281,6 +280,7 @@ interface NativeRecord {
   dirty: boolean;
   /** A turn is being set up (settings, prompt): a second one is refused. */
   busy: boolean;
+  modelUnconfirmed?: boolean;
   /**
    * The server's key carries this session's own credentials
    * (`OpenCodeNativeMcp.sessionScoped`): no other session can share it, so
@@ -323,17 +323,15 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     engineId: engineId('opencode'),
     connectionBacking: 'acp-registry',
     approvalAcknowledgement: 'engine',
-    // A new session takes the requested model on either transport: the
-    // native `POST /api/session` names it, and ACP applies it as
-    // `AcpAdapter` does. A resumed session and a later turn keep the
-    // session's model on both, so neither accepts an override.
+    // Native sessions apply a catalog-checked model before the next prompt.
+    // ACP fallback keeps its original model and refuses a changed selector.
     modelLaunch: {
       defaultAtStart: 'engine-selected',
       omissionAtResume: 'engine-selected',
       omissionPerTurn: 'engine-selected',
       overrideAtStart: true,
       overrideAtResume: false,
-      overridePerTurn: ACP_MODEL_OVERRIDE_PER_TURN,
+      overridePerTurn: true,
     },
   };
 
@@ -1043,6 +1041,14 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
         `/api/session/${sessionId}`,
       );
       stored = readString(ownRecord(existing?.data)?.agent);
+      const inbox = await lease.client.request<{ data?: unknown }>(
+        'GET',
+        `/api/session/${sessionId}/inbox`,
+      );
+      if ((ownArray(inbox?.data) ?? []).length > 0)
+        throw new Error(
+          'OpenCode still has queued input for this session. Resolve it in OpenCode before resuming here.',
+        );
       cwd =
         readString(ownRecord(ownRecord(existing?.data)?.location)?.directory) ??
         cwd;
@@ -1061,6 +1067,8 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
         : undefined;
     const permissions = floor ? openCodeNativeApprovalRules(floor) : undefined;
     const model = readModelRef(input.modelId);
+    if (input.modelId && !cursor)
+      await this.assertModel(lease.client, input.modelId);
     // Before the session runs, so its first step sees them.
     await this.addMcpServers(input.threadId, lease.client, mcp);
     if (cursor) {
@@ -1303,6 +1311,16 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     input: ProviderSendTurnInput,
   ): Promise<ProviderTurnStartResult> {
     if (this.overAcp.has(input.threadId)) {
+      if (input.modelId) {
+        const session = (await this.inner.listSessions()).find(
+          (item) => item.threadId === input.threadId,
+        );
+        if (input.modelId !== session?.model)
+          throw new SendTurnRefusedError(
+            'Changing the model in this chat requires the OpenCode native transport. Start a new chat with the selected model.',
+            'input_unsupported',
+          );
+      }
       const result = await this.inner.sendTurn(input);
       const binding = this.acpBindings.get(input.threadId);
       return binding
@@ -1355,11 +1373,77 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     }
   }
 
+  private async assertModel(
+    client: OpenCodeServeLease['client'],
+    modelId: string,
+  ) {
+    const model = readModelRef(modelId);
+    if (!model)
+      throw new SendTurnRefusedError(
+        `OpenCode requires a provider/model selector: ${modelId}`,
+        'input_unsupported',
+      );
+    const available = await client.request<{ data?: unknown }>(
+      'GET',
+      '/api/model',
+    );
+    if (
+      !(ownArray(available?.data) ?? []).some((entry) => {
+        const candidate = ownRecord(entry);
+        return (
+          candidate?.id === model.id &&
+          candidate?.providerID === model.providerID &&
+          candidate?.enabled !== false
+        );
+      })
+    )
+      throw new SendTurnRefusedError(
+        `OpenCode model is unavailable: ${modelId}`,
+        'input_unsupported',
+      );
+    return model;
+  }
+
   private async sendNativeTurn(
     record: NativeRecord,
     input: ProviderSendTurnInput,
     files: Array<{ uri: string; name: string }>,
   ): Promise<ProviderTurnStartResult> {
+    if (record.modelUnconfirmed && !input.modelId)
+      throw new SendTurnRefusedError(
+        'Select a model again to confirm the OpenCode session model before sending.',
+        'unavailable',
+      );
+    if (
+      input.modelId &&
+      (record.modelUnconfirmed || input.modelId !== record.session.model)
+    ) {
+      const model = await this.assertModel(record.lease.client, input.modelId);
+      try {
+        await record.lease.client.request(
+          'POST',
+          `/api/session/${record.cursor.sessionId}/model`,
+          { model },
+        );
+      } catch (error) {
+        record.modelUnconfirmed = true;
+        throw new SendTurnRefusedError(
+          `OpenCode did not confirm the model change, so this message was not sent: ${errorMessage(error)}`,
+          'unavailable',
+        );
+      }
+      record.modelUnconfirmed = false;
+      record.session.model = input.modelId;
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId: input.threadId,
+        createdAt: new Date().toISOString(),
+        method: 'session.configured',
+        sessionId: input.threadId,
+        model: input.modelId,
+      });
+    }
     await this.applyTurnSettings(record, input);
     const turnId = crypto.randomUUID();
     const displayText = input.displayInput ?? input.input;
@@ -1632,6 +1716,21 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       ];
     });
     return options?.maxEntries ? models.slice(0, options.maxEntries) : models;
+  }
+
+  sessionDurability(threadId: string) {
+    if (this.overAcp.has(threadId))
+      return this.inner.sessionDurability?.(threadId);
+    if (!this.native.has(threadId)) return undefined;
+    return {
+      ...ACP_ENGINE_DURABILITY,
+      steerPlacement: {
+        state: 'native' as const,
+        boundary: 'engine-defined' as const,
+        detail:
+          'Additional input is acknowledged when OpenCode delivers it to the active execution.',
+      },
+    };
   }
 
   async steerTurn(

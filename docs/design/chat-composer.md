@@ -1166,8 +1166,10 @@ everywhere else, including safe-stop steering. A chosen mode holds until the
 conversation changes. Claude Code, Codex and Muse on `muse serve` have additive
 steering; a Muse Session on the `muse exec` fallback reports no steering in
 its Session summary, so it defaults to **Queue**, and refuses a steer.
-ACP's capability matrix also includes cancel-and-reprompt, which is not proof
-of native steering for the current session.
+ACP sessions report their live handshake's native channel, or an interrupting
+cancel-and-reprompt fallback. Explicit Steer on the fallback cancels the current
+prompt, waits for its terminal answer, and continues the same task with the
+additional instruction. It does not claim additive native steering.
 After a device's full access is revoked, a turn that started unconfined is not
 steerable: the server refuses with `confinement-changed` before claiming the
 input, and the message stays for the next turn, which runs confined (#2898).

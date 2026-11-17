@@ -28,7 +28,15 @@ import {
   toolRequestSessionGrantFromPayload,
 } from '@kontourai/station-shared/tool-request-preview';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
-import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+} from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { createStagedPreToolPolicyEvaluator } from '../../runtime/agents/pre-tool-policy.js';
 import {
@@ -4584,7 +4592,14 @@ describe('AcpAdapter', () => {
     const own = { turnId: turn.turnId, invocationId: 'invocation-reprompt' };
     await nextOf('turn.started');
 
-    await adapter.steerTurn('thread-origin-reprompt', 'go left', turn.turnId);
+    const steering = adapter.steerTurn(
+      'thread-origin-reprompt',
+      'go left',
+      turn.turnId,
+    );
+    await vi.waitFor(() => expect(processes[0]!.cancelCalls).toBe(1));
+    processes[0]!.resolvePrompt('cancelled');
+    await steering;
     expect(processes[0]!.cancelCalls).toBe(1);
     expect(processes[0]!.promptContents).toHaveLength(2);
     expect(await nextOf('turn.started')).toMatchObject({
@@ -4592,8 +4607,7 @@ describe('AcpAdapter', () => {
       inputKind: 'steer',
       steerInterruptedRun: true,
     });
-    // The cancelled prompt's settlement does not end the steered turn.
-    processes[0]!.resolvePrompt('cancelled');
+    // The cancelled prompt's settlement did not end the steered turn.
     await processes[0]!.client.sessionUpdate({
       sessionId: 'native-kiro-cli',
       update: {
@@ -7552,6 +7566,19 @@ const KIRO_AGENT_INFO = { name: 'Kiro CLI Agent', version: '2.33.0' };
 const GROK_INITIALIZE_META = { grokShell: true, agentVersion: '1.0.50' };
 
 describe('AcpAdapter.steerTurn', () => {
+  // Real ACP engines eventually answer the cancelled prompt. Tests may hold
+  // this separately from cancel's notification write to exercise the race.
+  beforeEach(() => {
+    vi.spyOn(FakeAcpProcess.prototype, 'cancel').mockImplementation(
+      async function () {
+        this.cancelCalls += 1;
+        await this.cancelPromise;
+        this.resolvePrompt('cancelled');
+      },
+    );
+  });
+  afterEach(() => vi.restoreAllMocks());
+
   async function startSteerableTurn(
     threadId: string,
     options: Parameters<typeof createAdapter>[0],
@@ -7807,7 +7834,7 @@ describe('AcpAdapter.steerTurn', () => {
     expect(processes[0]?.cancelCalls).toBe(0);
     expect(processes[0]?.promptContents).toEqual([
       [{ type: 'text', text: 'start' }],
-      [{ type: 'text', text: 'go left' }],
+      [{ type: 'text', text: expect.stringContaining('go left') }],
     ]);
     const steer = await nextEvent(iterator, 'steer turn.started');
     expect(steer).toMatchObject({
@@ -7945,7 +7972,7 @@ describe('AcpAdapter.steerTurn', () => {
 
     expect(processes[0]?.cancelCalls).toBe(1);
     expect(processes[0]?.promptContents).toEqual([
-      [{ type: 'text', text: 'go left' }],
+      [{ type: 'text', text: expect.stringContaining('go left') }],
     ]);
     await adapter.stopAll();
   });
@@ -8136,6 +8163,86 @@ describe('AcpAdapter.steerTurn', () => {
     await adapter.stopAll();
   });
 
+  test.each(['cancel-error', 'timeout'])(
+    'fallback stops without a replacement on %s',
+    async (failure) => {
+      const { adapter, processes, turn } = await startSteerableTurn(
+        'cancel-failure',
+        { connectionOverrides: [{ id: 'kiro', command: 'other-cli' }] },
+      );
+      const proc = processes[0]!;
+      let cancelled!: () => void;
+      const sentCancel = new Promise<void>((resolve) => {
+        cancelled = resolve;
+      });
+      proc.cancel = async () => {
+        cancelled();
+        if (failure === 'cancel-error') throw new Error('cancel failed');
+      };
+      vi.useFakeTimers();
+      try {
+        const steering = adapter.steerTurn(
+          'cancel-failure',
+          'continue with checks',
+          turn.turnId,
+        );
+        const refused = expect(steering).rejects.toThrow(
+          failure === 'cancel-error'
+            ? 'cancel failed'
+            : 'did not finish cancelling',
+        );
+        await sentCancel;
+        if (failure === 'timeout') await vi.advanceTimersByTimeAsync(10_000);
+        await refused;
+        expect(proc.promptContents).toHaveLength(1);
+        expect(await adapter.hasSession('cancel-failure')).toBe(false);
+        proc.resolvePrompt('end_turn');
+      } finally {
+        vi.useRealTimers();
+        await adapter.stopAll();
+      }
+    },
+  );
+
+  test('fallback waits for the cancelled prompt to settle before sending the continuation', async () => {
+    const { adapter, processes, turn } = await startSteerableTurn(
+      'wait-cancel',
+      { connectionOverrides: [{ id: 'kiro', command: 'other-cli' }] },
+    );
+    const proc = processes[0]!;
+    let cancelled!: () => void;
+    const sentCancel = new Promise<void>((resolve) => {
+      cancelled = resolve;
+    });
+    proc.cancel = async () => {
+      proc.cancelCalls += 1;
+      cancelled();
+    };
+    const steering = adapter.steerTurn(
+      'wait-cancel',
+      'also run the checks',
+      turn.turnId,
+    );
+    await sentCancel;
+    expect(proc.promptContents).toHaveLength(1);
+    await expect(
+      adapter.steerTurn('wait-cancel', 'a second steer', turn.turnId),
+    ).rejects.toThrow('already being applied');
+    proc.resolvePrompt('cancelled');
+    await steering;
+    expect(proc.promptContents).toHaveLength(2);
+    expect(proc.promptContents[1]).toEqual([
+      { type: 'text', text: expect.stringContaining('also run the checks') },
+    ]);
+    expect(proc.promptContents[1]).toEqual([
+      {
+        type: 'text',
+        text: expect.stringContaining('Continue the current task'),
+      },
+    ]);
+    await adapter.stopAll();
+  });
+
   test('unknown ACP cancels and re-prompts on the same turn', async () => {
     const { adapter, processes } = createAdapter({
       connectionOverrides: [{ id: 'kiro', command: 'other-cli' }],
@@ -8165,7 +8272,10 @@ describe('AcpAdapter.steerTurn', () => {
     expect(processes[0]?.cancelCalls).toBe(1);
     expect(processes[0]?.promptContents).toHaveLength(2);
     expect(processes[0]?.promptContents[1]).toEqual([
-      { type: 'text', text: 'take this instead' },
+      {
+        type: 'text',
+        text: expect.stringContaining('Continue the current task'),
+      },
     ]);
     await expect(
       nextEvent(iterator, 'steer turn.started'),
@@ -8177,8 +8287,6 @@ describe('AcpAdapter.steerTurn', () => {
       steerInterruptedRun: true,
     });
 
-    processes[0]?.resolvePrompt('end_turn');
-    await Promise.resolve();
     await expect(
       adapter.sendTurn({
         threadId: 'thread-acp-fallback',

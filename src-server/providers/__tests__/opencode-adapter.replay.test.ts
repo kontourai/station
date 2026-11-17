@@ -494,49 +494,73 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
     await h.waitFor(completedFor(turnId));
   });
 
-  test('a steer the execution ended before reading is withdrawn and refused', async () => {
-    const delivered = (record: OpenCodeReplayRecord) =>
-      (record.kind === 'http' &&
-        (JSON.stringify(record.body ?? null).includes('STEER-delivered') ||
-          (record.method === 'GET' &&
-            record.path?.endsWith('/inbox') === true))) ||
-      (record.kind === 'sse' &&
-        (record.event?.data?.inboxID === 'msg_1d71b024d001crEY1solwrshJq' ||
-          record.event?.type === 'session.inbox.cancelled'));
-    const h = await setup({
-      scenario: 'steer',
-      omit: delivered,
-      ungated: (record) => record.method === 'DELETE',
-    });
-    await h.start();
-    const { turnId } = await h.adapter.sendTurn({
-      threadId: 'thread-1',
-      input: 'DO_BASH steer',
-    });
-    const opened = await h.waitFor(
-      (event) => event.method === 'request.opened',
-    );
-    const steer = h.adapter.steerTurn('thread-1', 'STEER-withdrawn', turnId);
-    const outcome = steer.then(
-      () => 'delivered',
-      (error: unknown) => error,
-    );
-    await h.waitFor(
-      () => h.replay.made('POST', '/api/session/:id/prompt').length === 2,
-    );
-    await h.adapter.respondToRequest(
-      'thread-1',
-      opened.requestId as string,
-      'accept',
-    );
-    await h.waitFor(completedFor(turnId));
-    expect(await outcome).toBeInstanceOf(ProviderTurnEndedError);
-    expect(
-      h.replay.made('DELETE', '/api/session/:id/inbox/:id').map((r) => r.path),
-    ).toEqual([
-      '/api/session/ses_e28e4fdf4ffet6a4RsosGDLmTS/inbox/msg_1d71b0245001rPumuccI4tfOcM',
-    ]);
-  });
+  test.each([204, 500])(
+    'a late steer is withdrawn or blocks successor work when withdrawal fails (%s)',
+    async (deleteStatus) => {
+      const delivered = (record: OpenCodeReplayRecord) =>
+        (record.kind === 'http' &&
+          (JSON.stringify(record.body ?? null).includes('STEER-delivered') ||
+            (record.method === 'GET' &&
+              record.path?.endsWith('/inbox') === true))) ||
+        (record.kind === 'sse' &&
+          (record.event?.data?.inboxID === 'msg_1d71b024d001crEY1solwrshJq' ||
+            record.event?.type === 'session.inbox.cancelled'));
+      const h = await setup({
+        scenario: 'steer',
+        omit: delivered,
+        ungated: (record) => record.method === 'DELETE',
+        respond: (request) =>
+          request.method === 'DELETE' && request.path.includes('/inbox/')
+            ? { status: deleteStatus }
+            : undefined,
+      });
+      await h.start();
+      const { turnId } = await h.adapter.sendTurn({
+        threadId: 'thread-1',
+        input: 'DO_BASH steer',
+      });
+      const opened = await h.waitFor(
+        (event) => event.method === 'request.opened',
+      );
+      const steer = h.adapter.steerTurn('thread-1', 'STEER-withdrawn', turnId);
+      const outcome = steer.then(
+        () => 'delivered',
+        (error: unknown) => error,
+      );
+      await h.waitFor(
+        () => h.replay.made('POST', '/api/session/:id/prompt').length === 2,
+      );
+      await h.adapter.respondToRequest(
+        'thread-1',
+        opened.requestId as string,
+        'accept',
+      );
+      await h.waitFor(completedFor(turnId));
+      if (deleteStatus === 204)
+        expect(await outcome).toBeInstanceOf(ProviderTurnEndedError);
+      else expect(String(await outcome)).toContain('withdrawal is unconfirmed');
+      if (deleteStatus === 500) {
+        await h.waitFor(
+          (event) =>
+            event.method === 'runtime.warning' &&
+            String(event.message).includes('withdrawn'),
+        );
+        await expect(h.turn('next')).rejects.toThrow(
+          'withdrawal is unconfirmed',
+        );
+        expect(h.replay.made('POST', '/api/session/:id/prompt')).toHaveLength(
+          2,
+        );
+      }
+      expect(
+        h.replay
+          .made('DELETE', '/api/session/:id/inbox/:id')
+          .map((r) => r.path),
+      ).toEqual([
+        '/api/session/ses_e28e4fdf4ffet6a4RsosGDLmTS/inbox/msg_1d71b0245001rPumuccI4tfOcM',
+      ]);
+    },
+  );
 
   test('an interrupt aborts the running turn', async () => {
     const h = await setup({ scenario: 'interrupt' });
@@ -696,6 +720,13 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
     expect(turnText(h.events, command.turnId)).toBe(
       'OpenCode rewound to before that turn.',
     );
+    expect(
+      h.events.find(
+        (event) =>
+          event.method === 'content.text-delta' &&
+          event.turnId === command.turnId,
+      ),
+    ).toMatchObject({ itemId: expect.stringMatching(/^text:/) });
     expect(
       h.replay.made('POST', '/api/session/:id/revert/stage')[0]?.body,
     ).toEqual({ messageID: 'msg_1d71b155b001aSHsV3kqKgeSj7', files: true });
@@ -1025,6 +1056,69 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
     expect(completed).toMatchObject({ finishReason: 'stop' });
   });
 
+  test('synthetic text, tool, text parts within one assistant message retain both text ordinals', async () => {
+    const h = await setup({
+      scenario: 'basic',
+      omit: (record) =>
+        record.event?.type === 'session.execution.succeeded' ||
+        record.kind === 'sse-close',
+    });
+    await h.start();
+    const { turnId } = await h.turn('hello basic');
+    await h.waitFor((e) => e.method === 'token-usage.updated');
+    const sessionID = recordedSessionId('basic');
+    const assistantMessageID = 'msg_1d71adc1f001pAM06JQG2JhsQi';
+    const data = { sessionID, assistantMessageID };
+    h.replay.push({
+      type: 'session.tool.input.started',
+      data: { ...data, id: 'call_between', name: 'read' },
+    });
+    h.replay.push({
+      type: 'session.tool.called',
+      data: {
+        ...data,
+        id: 'call_between',
+        input: { path: 'a.txt' },
+        executed: false,
+      },
+    });
+    h.replay.push({
+      type: 'session.tool.success',
+      data: { ...data, id: 'call_between', output: 'read result' },
+    });
+    h.replay.push({
+      type: 'session.text.started',
+      data: { ...data, ordinal: 1 },
+    });
+    h.replay.push({
+      type: 'session.text.delta',
+      data: { ...data, ordinal: 1, delta: ' after tool' },
+    });
+    h.replay.push({
+      type: 'session.text.ended',
+      data: { ...data, ordinal: 1, text: ' after tool' },
+    });
+    h.replay.push({ type: 'session.execution.succeeded', data: { sessionID } });
+    await h.waitFor(completedFor(turnId));
+    expect(turnText(h.events, turnId)).toBe(
+      'mock reply: hello basic after tool',
+    );
+    expect(
+      h.events.find(
+        (e) => e.method === 'tool.completed' && e.toolCallId === 'call_between',
+      ),
+    ).toMatchObject({ status: 'success', toolName: 'read' });
+    expect(
+      new Set(
+        h.events
+          .filter(
+            (e) => e.method === 'content.text-delta' && e.turnId === turnId,
+          )
+          .map((e) => e.itemId),
+      ).size,
+    ).toBe(2);
+  });
+
   test('a reply after reasoning streams as text, beside its reasoning', async () => {
     const h = await setup({ scenario: 'reasoning' });
     await h.start();
@@ -1104,6 +1198,67 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
     );
     expect(completed).toMatchObject({ finishReason: 'stop' });
   });
+
+  test.each(['unqualified', 'mock/missing'])(
+    'an unavailable requested model %s refuses before creating a session',
+    async (modelId) => {
+      const h = await setup({ scenario: 'basic' });
+      await expect(h.start(undefined, { modelId })).rejects.toThrow(
+        /provider\/model|unavailable/,
+      );
+      expect(h.replay.made('POST', '/api/session')).toHaveLength(0);
+    },
+  );
+
+  test('a catalog model is applied to a newly created session', async () => {
+    const h = await setup({ scenario: 'basic' });
+    await h.start(undefined, { modelId: 'mock/mock-1' });
+    expect(h.replay.made('POST', '/api/session')[0]?.body).toMatchObject({
+      model: { providerID: 'mock', id: 'mock-1' },
+    });
+  });
+
+  test.each([204, 500])(
+    'a per-turn model change must be accepted before the prompt (%s)',
+    async (status) => {
+      const h = await setup({
+        scenario: 'basic',
+        respond: (request) =>
+          request.path.endsWith('/model') && request.method === 'POST'
+            ? { status }
+            : undefined,
+      });
+      await h.start();
+      const sending = h.adapter.sendTurn({
+        threadId: 'thread-1',
+        input: 'hello basic',
+        modelId: 'mock/mock-1',
+      });
+      if (status === 500) {
+        await expect(sending).rejects.toThrow(
+          'did not confirm the model change',
+        );
+        await expect(h.turn('hello basic')).rejects.toThrow(
+          'Select a model again',
+        );
+        expect(h.replay.made('POST', '/api/session/:id/prompt')).toHaveLength(
+          0,
+        );
+      } else {
+        const { turnId } = await sending;
+        await h.waitFor(completedFor(turnId));
+        expect(
+          h.replay.made('POST', '/api/session/:id/model')[0]?.body,
+        ).toEqual({ model: { providerID: 'mock', id: 'mock-1' } });
+        const paths = h.replay.requests
+          .filter((r) => r.method === 'POST')
+          .map((r) => r.path);
+        expect(paths.findIndex((p) => p.endsWith('/model'))).toBeLessThan(
+          paths.findIndex((p) => p.endsWith('/prompt')),
+        );
+      }
+    },
+  );
 
   test('/compact runs OpenCode compaction as the command turn', async () => {
     const h = await setup({ scenario: 'compact' });
@@ -2375,7 +2530,7 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     const sessionId = recordedSessionId('basic');
     const h = await setup({
       scenario: 'basic',
-      fallbacks: ['mode-switch', 'catalog', 'mcp'],
+      fallbacks: ['mode-switch', 'catalog', 'mcp', 'reconnect'],
       // Resuming creates no session: the feed does not wait for one.
       ungated: (record) => record.path === '/api/session',
     });
@@ -2402,7 +2557,7 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     const sessionId = recordedSessionId('basic');
     const h = await setup({
       scenario: 'basic',
-      fallbacks: ['mode-switch', 'catalog', 'mcp'],
+      fallbacks: ['mode-switch', 'catalog', 'mcp', 'reconnect'],
       // Resuming creates no session: the feed does not wait for one.
       ungated: (record) => record.path === '/api/session',
     });
@@ -5303,6 +5458,102 @@ describe('OpenCodeAdapter native reconnect re-reads (2.3.0 replay)', () => {
     };
   const warnings = (events: Event[]) =>
     events.filter((event) => event.method === 'runtime.warning');
+
+  test.each([
+    { delivered: false, running: true, posting: false },
+    { delivered: true, running: false, posting: false },
+    { delivered: false, running: true, posting: true },
+  ])(
+    'reconnect proves steer delivery by exact history id ($delivered, running=$running, posting=$posting)',
+    async ({ delivered, running, posting }) => {
+      const steerId = 'msg_1e28b1steerHistoryProof01';
+      const ids = [...recordedPromptIds('reconnect'), steerId];
+      let replay: OpenCodeServeReplay | undefined;
+      let releasePost = !posting;
+      const h = await setup(
+        {
+          scenario: 'reconnect',
+          omit: (record) =>
+            record.tap === 'B' &&
+            record.kind === 'sse' &&
+            record.event?.type !== 'server.connected' &&
+            record.event?.type !== 'session.execution.succeeded',
+          rewrite: (record) =>
+            record.tap === 'B' &&
+            record.event?.type === 'session.execution.succeeded'
+              ? {
+                  ...record,
+                  event: {
+                    type: 'session.model.selected',
+                    data: {
+                      sessionID: RECONNECT_ROOT,
+                      model: { providerID: 'barrier', id: 'done' },
+                    },
+                  },
+                }
+              : record,
+          historyRewrite: (history) =>
+            delivered
+              ? [
+                  ...history,
+                  {
+                    id: steerId,
+                    role: 'user',
+                    content: [{ type: 'text', text: 'STEER history proof' }],
+                  },
+                ]
+              : history,
+          holdFrame: (record) =>
+            record.kind === 'sse-close' && record.tap === 'A'
+              ? () =>
+                  (replay?.made('POST', '/api/session/:id/prompt').length ??
+                    0) >= 2
+              : undefined,
+          holdUntil: (request) =>
+            request.method === 'POST' &&
+            (request.body as { delivery?: string })?.delivery === 'steer'
+              ? () => releasePost
+              : undefined,
+          respond: (request) => {
+            if (
+              request.method === 'GET' &&
+              request.path === '/api/session/active'
+            )
+              return {
+                status: 200,
+                body: { data: running ? { [RECONNECT_ROOT]: {} } : {} },
+              };
+            if (request.method === 'GET' && request.path.endsWith('/inbox'))
+              return { status: 200, body: { data: [] } };
+            return undefined;
+          },
+        },
+        { newMessageId: () => ids.shift()! },
+      );
+      replay = h.replay;
+      await h.start();
+      const { turnId } = await h.turn('DO_SLOW stream');
+      await h.waitFor((e) => e.method === 'content.text-delta');
+      let outcome = 'pending';
+      const steering = h.adapter
+        .steerTurn('thread-1', 'STEER history proof', turnId)
+        .then(
+          () => {
+            outcome = 'delivered';
+          },
+          () => {
+            outcome = 'refused';
+          },
+        );
+      await h.waitFor(
+        (e) => e.method === 'session.configured' && e.model === 'barrier/done',
+      );
+      expect(outcome).toBe(delivered ? 'delivered' : 'pending');
+      releasePost = true;
+      await h.adapter.stopSession('thread-1');
+      await steering;
+    },
+  );
 
   test('a reconnect that cannot read which sessions run settles nothing: the live turn, a running child and a queued steer all stay as they were', async () => {
     const STEER = 'msg_1e28b1steerKeptAcrossGap01';

@@ -3,7 +3,6 @@ import {
   resolveEngineCapabilityMatrix,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
-import { isAcpFamilyEngine } from '@kontourai/station-contracts/provider';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import { setOrchestrationApprovalMode } from '@kontourai/station-sdk';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
@@ -409,15 +408,15 @@ export function useChatInput({
       ? { engineId: 'station' }
       : (runtimeConnection ?? { type: activeChatState?.provider }),
   ).modelSelection;
-  // ACP applies a model only at session start, and so does an engine that
-  // runs saved ACP connections (`opencode`). The server honours a changed
+  // ACP applies a model only at session start. OpenCode can switch its
+  // native session model before the next prompt. The server honours a changed
   // model on the next send by starting a successor session with it
   // (`conversation-lineage.ts` `needsModelRestart`), which is free for a
   // conversation that never ran a turn — nothing to carry over — so only a
   // conversation with engine history keeps the picker closed.
   const continuationOverrideUnsupported =
     Boolean(conversationId) &&
-    isAcpFamilyEngine(activeChatState?.provider) &&
+    activeChatState?.provider === 'acp' &&
     !ACP_MODEL_OVERRIDE_PER_TURN &&
     !conversationAwaitsFirstTurn(
       orchestrationSession,

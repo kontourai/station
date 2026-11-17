@@ -238,6 +238,33 @@ describe('useChatInput engine capability model gate', () => {
     expect(result.current.canModelSelect).toBe(true);
   });
 
+  test('an existing OpenCode conversation keeps its model picker available', () => {
+    mockAgent = opencodeAgent;
+    activeChatsStore.initChat(SESSION_ID, {
+      agentSlug: 'opencode',
+      agentName: 'OpenCode',
+      title: 'Model switch',
+    });
+    activeChatsStore.updateChat(SESSION_ID, {
+      executionMode: EXECUTION_MODE.EXTERNAL,
+      provider: 'opencode',
+      agentConnectionId: 'opencode',
+    });
+    const bindingStatus = resolveBindingStatus({
+      agent: opencodeAgent,
+      chatState: activeChatsStore.getSnapshot()[SESSION_ID],
+      runtimeConnection: opencodeConnection as Parameters<
+        typeof resolveBindingStatus
+      >[0]['runtimeConnection'],
+      globalModels: [bigPickle],
+    });
+    const { result } = renderChatInput({
+      runtimeConnection: opencodeConnection,
+      bindingStatus,
+    });
+    expect(result.current.canModelSelect).toBe(true);
+  });
+
   test('a chat with no connection and an engine-less provider stays honestly gated', () => {
     mockAgent = opencodeAgent;
     activeChatsStore.initChat(SESSION_ID, {
