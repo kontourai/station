@@ -465,6 +465,9 @@ export function useSessionEventWindow(
     setMemoryContinuation(undefined);
     let fill: { cursor: string; floor: number } | undefined;
     let failed = false;
+    // The fallback decision is the request's: the id it was sent with.
+    const legacyAtSend = legacySessionIdRef.current;
+    let retryWithFallback = false;
     try {
       const capability = requestScope
         ? true
@@ -506,7 +509,7 @@ export function useSessionEventWindow(
         apiBase,
         { turnLimit: 10 },
         { signal: controller.signal, requestScope },
-        legacySessionIdRef.current,
+        legacyAtSend,
       );
       if (
         requestGeneration !== generation.current ||
@@ -618,11 +621,16 @@ export function useSessionEventWindow(
       const failure = cause instanceof Error ? cause : new Error(String(cause));
       // A 404 the older-server fallback could not take (the reader then named
       // a child, not the conversation) is retried if it later can.
-      legacyFallbackOwedRef.current =
+      const fallbackOwed =
         typeof cause === 'object' &&
         cause !== null &&
         (cause as { status?: unknown }).status === 404 &&
-        legacySessionIdRef.current !== threadId;
+        legacyAtSend !== threadId;
+      // Named the conversation itself while this read was in flight: the
+      // change that would have retried it has already passed, so retry now.
+      retryWithFallback =
+        fallbackOwed && legacySessionIdRef.current === threadId;
+      legacyFallbackOwedRef.current = fallbackOwed && !retryWithFallback;
       setError(failure);
       setUpgradeRequired(false);
     } finally {
@@ -658,6 +666,12 @@ export function useSessionEventWindow(
       }
     }
     if (fill) void fillRef.current(fill.cursor, fill.floor);
+    if (
+      retryWithFallback &&
+      requestGeneration === generation.current &&
+      requestSerial === requestSerialRef.current
+    )
+      void reload();
   }, [apiBase, observation, threadId, namespace, requestScope, station, bound]);
 
   /**
