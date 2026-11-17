@@ -78,7 +78,10 @@ history-failure notice (Retry). While the open read is pending, the composer
 stays editable for a draft but runs nothing: Send, Enter and slash commands
 wait, and with a draft Send says it can send once the chat opens
 ([stage](../../src-ui/src/components/conversation/ConversationLoadingStage.tsx),
-[body](../../src-ui/src/components/conversation/ConversationBody.tsx)).
+[body](../../src-ui/src/components/conversation/ConversationBody.tsx)). A skill
+shortcut follows the composer's rule: it runs a command only where the
+composer could send, and otherwise says why in a toast
+([registrar](../../src-ui/src/components/SkillShortcutRegistrar.tsx)).
 
 Message action rows reserve their layout space. Hover and keyboard focus may
 reveal controls, but must not change bubble size or the position of later messages.
