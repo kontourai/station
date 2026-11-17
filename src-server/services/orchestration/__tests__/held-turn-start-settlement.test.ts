@@ -103,14 +103,32 @@ afterEach(async () => {
   for (const close of open.splice(0)) await close();
 });
 
-async function boot() {
+/** A registry whose adapter a plugin reload can replace. */
+function replaceableRegistry(first: EngineFake) {
+  let current = first;
+  return {
+    replace(next: EngineFake) {
+      current = next;
+    },
+    registry: {
+      register() {},
+      get: (provider: string) =>
+        provider === current.provider ? current : undefined,
+      list: () => [current],
+    } as unknown as ReturnType<typeof createGateTestRegistry>,
+  };
+}
+
+async function boot(
+  adapter = new EngineFake(),
+  registry = createGateTestRegistry(adapter),
+) {
   const store = new EventStore(
     join(makeTempDir('station-held-turn-start-'), 'orchestration.sqlite'),
   );
-  const adapter = new EngineFake();
   const logger = { debug: vi.fn(), warn: vi.fn() };
   const service = new OrchestrationService({
-    adapterRegistry: createGateTestRegistry(adapter),
+    adapterRegistry: registry,
     eventBus: new EventBus(),
     eventStore: store,
     logger,
@@ -218,6 +236,33 @@ describe('a turn start held over an engine exit', () => {
     }
     // Refused before the adapter: the held turn is never joined by another.
     expect(h.adapter.sends).toHaveLength(1);
+    expect(h.banner()).toBeUndefined();
+    expect(h.warned('Held turn start settled')).toHaveLength(0);
+  });
+
+  test('an adapter replaced while the start is held (its engine alive) does not answer for the old engine', async () => {
+    const original = new EngineFake();
+    const replaced = replaceableRegistry(original);
+    const h = await boot(original, replaced.registry);
+    original.onSend = async () => {
+      throw new Error('Timed out waiting for the engine to accept the turn');
+    };
+    expect(await h.outcome('slow')).toMatchObject({
+      kind: 'failed',
+      code: MAY_HAVE_STARTED,
+    });
+    // A plugin adapter replaces the built-in one while the old engine still
+    // runs; the replacement has no record of it and answers "ended".
+    const replacement = new EngineFake();
+    replacement.relaunch(THREAD);
+    replacement.engineEnded = () => true;
+    replaced.replace(replacement);
+    open.unshift(async () => replacement.events.close());
+    const after = await h.outcome('after the replacement');
+    expect(after).toMatchObject({ kind: 'failed' });
+    expect(after.kind === 'failed' ? after.message : '').toMatch(BUSY);
+    expect(replacement.sends).toHaveLength(0);
+    expect(original.sends).toHaveLength(1);
     expect(h.banner()).toBeUndefined();
     expect(h.warned('Held turn start settled')).toHaveLength(0);
   });

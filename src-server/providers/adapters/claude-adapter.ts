@@ -4077,7 +4077,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
    * no turn reached it); a record that stays (a
    * failed stream keeps it, `status: 'error'`) answers from the process's
    * own observed exit. An engine this adapter did not spawn cannot be seen,
-   * so it answers false.
+   * so it answers false. "No record" speaks only for this instance: a
+   * replacement adapter has no record of the engines its predecessor owned,
+   * so a caller asks the instance the thread is bound to.
    */
   engineEnded(threadId: string): boolean {
     const record = this.sessions.get(threadId);

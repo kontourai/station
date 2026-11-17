@@ -14556,15 +14556,19 @@ export class OrchestrationService {
     threadId: string,
     held: readonly SessionTurnBoundaryRecord[],
   ): Promise<boolean> {
-    const provider =
-      this.threadProviders.get(threadId) ??
-      this.sessionReadModel.get(threadId)?.provider ??
-      this.options.eventStore?.readSessionByThread(threadId)?.provider;
-    const adapter =
-      provider === undefined
-        ? undefined
-        : this.options.adapterRegistry.get(provider);
-    if (adapter?.engineEnded?.(threadId) !== true) return false;
+    // Only the adapter instance the thread is bound to (the one whose events
+    // it last observed) knows that thread's engine, and only while it is
+    // still the registry's adapter: a replaced adapter may still be stopping
+    // its engines, and its replacement has never seen them, so "no record"
+    // from either proves nothing.
+    const adapter = this.sessionAdapters.get(threadId);
+    if (
+      adapter === undefined ||
+      this.options.adapterRegistry.get(adapter.provider) !== adapter ||
+      adapter.engineEnded?.(threadId) !== true
+    )
+      return false;
+    const provider = adapter.provider;
     const settled = await this.interruptedTurns.settleHeldTurnStarts(
       held,
       TURN_ENGINE_ENDED_MESSAGE,
