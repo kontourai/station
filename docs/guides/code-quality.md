@@ -155,7 +155,7 @@ change. A separate, non-required `ui-bundle-delta` job reports each
 same-repository pull request's entry-bundle delta against its merge base,
 in parallel with `fast-checks` and exiting zero once started, so growth
 stays attributed to the change that added it. It does not run in the merge
-queue.
+queue, and under `STATION_PR_HEAVY_CHECKS=when-armed` it waits for arming.
 
 ### What the entry-bundle ceiling is for
 
