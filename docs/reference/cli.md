@@ -4340,14 +4340,36 @@ station plugin install https://github.com/org/plugin.git --skip=agent:plugin:cha
 ```
 
 When Station saves the plugin but its runtime activation does not finish (a
-`202` the server marks as not applied), `station plugin install`,
+`202` whose receipt says `recovery: "required"`), `station plugin install`,
 `station plugin update` and `station registry install` print `⚠️ Installed …,
-but its activation did not finish, so it is not active.` (or `Updated …`) and
-exit successfully. Station does not retry the activation: the plugin reads
-**Needs recovery** in Plugins until you choose **Recover plugin** there; do not
-install it again. `station plugin remove` reports a removal saved this way as
-removed, finishing its unloading in the background. A `202` without that
-marker is still an error.
+but … so it is not active.` (or `Updated …`) and **exit 2**, so a script does
+not continue as if the plugin were active. Station does not retry the
+activation: recover it with `station plugin recover <name>` or **Recover
+plugin** in Plugins; do not install it again. A change the receipt says
+Station finishes on its own (`recovery: "none"`, such as a legacy git update)
+prints that it finishes in the background and exits 0, and `station plugin
+remove` reports a removal saved this way as removed, exit 0. A receipt from an
+older Station without `recovery` exits 2 and says to check the plugin's row. A
+`202` without the saved marker is still an error.
+
+### `plugin recover <name>`
+
+Recover an installed plugin that reads **Needs recovery**, as **Recover
+plugin** does in Plugins, for example on a headless home server.
+
+```
+station plugin recover <name> [--yes]
+```
+
+It reads the recovery review and prints what it found: the retained contents
+digest, the registry claim, the permissions it requires and the ones awaiting
+approval, and each retained dependency. Then it asks for your decision; a
+non-interactive run is refused unless `--yes` approves what was printed.
+It sends exactly the reviewed revisions. Recovery uses the retained code and
+data and downloads nothing. When it activates the plugin, any trusted
+permissions it still needs are listed for the separate host approval in
+Plugins. When the host is too busy to finish within the activation limit, it
+says so and exits 2: try again when the host is idle, or remove the plugin.
 
 ### `plugin preview <source>`
 

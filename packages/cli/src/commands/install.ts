@@ -120,9 +120,20 @@ function unappliedLines(
     : 'its activation did not finish';
   return [
     `⚠️ ${verb} ${name}, but ${stopped}, so it is not active.`,
-    '  Choose Recover plugin in Plugins on the Station host to activate it.',
+    '  Run `station plugin recover <name>`, or choose Recover plugin in Plugins on the Station host, to activate it.',
     `  Do not ${verb === 'Installed' ? 'install' : 'update'} it again; trusted permissions are approved after recovery.`,
   ];
+}
+
+/**
+ * Exit status for a saved-but-unapplied change, after the CLI's precedent
+ * for distinct outcomes (`home recovery-plan` exits 2): a plugin left
+ * inactive is not a success a script should continue from. A change Station
+ * finishes on its own (`recovery: 'none'`) keeps exit 0.
+ */
+function markUnappliedExit(unapplied: PluginLifecycleUnapplied): void {
+  if (unapplied.kind === 'activation' && unapplied.recovery === 'none') return;
+  process.exitCode = 2;
 }
 
 async function pluginRequest<T>(
@@ -419,6 +430,7 @@ export async function install(
       unapplied,
     ))
       console.log(line);
+    markUnappliedExit(unapplied);
     return { pluginName: name, version: version ?? '' };
   }
   const installed = result.plugin;
@@ -467,6 +479,150 @@ export async function install(
     pluginName: installed.name,
     version: installed.version,
   };
+}
+
+/** What `GET /api/plugins/:name/recovery-preview` reports: the review. */
+interface PluginRecoveryReview {
+  manifest?: { name?: string; displayName?: string; version?: string };
+  recoveryRevision: string;
+  contentDigest: string;
+  grantRevision: string;
+  registryTrustRevision?: string;
+  registryTrust?: { state?: string };
+  permissions: {
+    required: string[];
+    pendingConsent: Array<{ permission: string; tier: string }>;
+  };
+  dependencies: Array<{
+    id: string;
+    consent: {
+      contentDigest: string;
+      permissions: string[];
+      dependencies: string[];
+      grantRevision: string;
+      registryTrustRevision?: string;
+    };
+  }>;
+}
+
+/**
+ * Recover an installed plugin whose activation did not finish (Needs
+ * recovery), as the Plugins view does: read the recovery review, print what
+ * it found, take the operator's explicit decision (interactively, or
+ * `--yes` typed with the name), then send exactly the reviewed revisions.
+ * Nothing is approved that the review did not show, and a non-interactive
+ * run without `--yes` is refused, as for `install`.
+ */
+export async function recover(
+  name: string,
+  parsed: ParsedCoreArgs = NO_FLAGS,
+  confirm: ((question: string) => Promise<boolean>) | null = process.stdin.isTTY
+    ? promptYN
+    : null,
+): Promise<void> {
+  if (!name) throw new Error('Usage: station plugin recover <name> [--yes]');
+  const target = resolvePluginTarget(parsed);
+  const path = `/${encodeURIComponent(name)}`;
+  const review = await pluginRequest<PluginRecoveryReview>(
+    parsed,
+    `${path}/recovery-preview`,
+    { readOnly: true },
+    target,
+  );
+  const label = review.manifest?.displayName || review.manifest?.name || name;
+  const required = review.permissions.required;
+  const lines = [
+    `Recover ${label}${review.manifest?.version ? `@${review.manifest.version}` : ''} from its retained code and data?`,
+    `  contents  ${review.contentDigest}`,
+    `  registry  ${review.registryTrust?.state ?? 'no verified registry claim'}`,
+    `  requires  ${required.length > 0 ? required.join(', ') : 'no permissions'}`,
+  ];
+  if (review.permissions.pendingConsent.length > 0)
+    lines.push(
+      `  approving ${review.permissions.pendingConsent
+        .map((entry) => `${entry.permission} (${entry.tier})`)
+        .join(', ')}`,
+    );
+  for (const dependency of review.dependencies)
+    lines.push(
+      `  dependency ${dependency.id} requires ${dependency.consent.permissions.join(', ') || 'no permissions'}`,
+    );
+  if (
+    review.permissions.pendingConsent.some((entry) => entry.tier === 'trusted')
+  )
+    lines.push(
+      '  Trusted permissions still need the separate host approval in Plugins afterwards.',
+    );
+  for (const line of lines) console.log(line);
+  if (parsed.flags.yes !== true) {
+    if (!confirm)
+      throw new Error(
+        'Not recovered: nothing approved it, and there is no terminal to ask. Re-run with --yes to approve what is listed above. Nothing was changed.',
+      );
+    if (!(await confirm('Recover it?')))
+      throw new Error(
+        'Not recovered: the recovery was not approved. Nothing was changed.',
+      );
+  }
+  const { payload: result, unapplied } = await pluginLifecycleRequest<{
+    success: boolean;
+    permissions?: {
+      pendingConsent?: Array<{ permission: string; tier: string }>;
+    };
+  }>(
+    parsed,
+    `${path}/recover`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        recoveryRevision: review.recoveryRevision,
+        consent: {
+          contentDigest: review.contentDigest,
+          grantRevision: review.grantRevision,
+          ...(review.registryTrustRevision
+            ? { registryTrustRevision: review.registryTrustRevision }
+            : {}),
+          permissions: required,
+          dependencies: review.dependencies.map((dependency) => dependency.id),
+          dependencyApprovals: review.dependencies.map(({ id, consent }) => ({
+            id,
+            ...consent,
+          })),
+        },
+      }),
+    },
+    target,
+  );
+  if (unapplied) {
+    if (unapplied.kind === 'activation' && unapplied.recovery !== 'none') {
+      const stopped = unapplied.deadlineMs
+        ? `Station was too busy to finish activating it within ${Math.round(unapplied.deadlineMs / 1000)} seconds`
+        : 'its activation did not finish';
+      console.log(
+        `⚠️ Recovery of ${label} was saved, but it is still not active: ${stopped}.`,
+      );
+      console.log(
+        '  Trying again when the host is idle usually works; `station plugin remove` is the way out.',
+      );
+    } else
+      for (const line of unappliedLines('Installed', label, unapplied))
+        console.log(line);
+    markUnappliedExit(unapplied);
+    return;
+  }
+  const owed = result.permissions?.pendingConsent ?? [];
+  if (owed.length > 0) {
+    console.log(
+      `⚠️ Recovered ${label}; it is active but still needs host approval.`,
+    );
+    for (const entry of owed)
+      console.log(`  ${label} requires host approval for ${entry.permission}.`);
+    console.log(
+      '  Finish these reviews on the Station host in the Plugins page.',
+    );
+    return;
+  }
+  console.log(`✅ Recovered ${label}; it is active.`);
 }
 
 async function installedPlugins(
@@ -585,6 +741,7 @@ export async function update(
       unapplied,
     ))
       console.log(line);
+    markUnappliedExit(unapplied);
     return;
   }
   const note = commandEffectsNote(
@@ -645,6 +802,7 @@ export async function installRegistryPlugin(
       outcome.unapplied,
     ))
       console.log(line);
+    markUnappliedExit(outcome.unapplied);
     return;
   }
   console.log(`✅ Installed registry plugin ${id} through Station`);
