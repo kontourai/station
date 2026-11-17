@@ -3279,6 +3279,7 @@ describe('acting on an untargeted job is admitted against its owner', () => {
   const makeTempDir = trackTempDirs();
   const turns: string[] = [];
   const runOwners: Array<string | undefined> = [];
+  const projectRuns: string[] = [];
 
   async function ownedWorld(
     owner: string,
@@ -3287,6 +3288,8 @@ describe('acting on an untargeted job is admitted against its owner', () => {
     extra: {
       ownerStanding?: boolean;
       target?: SchedulerAutomationTarget;
+      /** A Project job (#5070), whose runs go to the Project runner. */
+      projectId?: string;
     } = {},
   ) {
     const scheduler = new SchedulerService({
@@ -3303,6 +3306,21 @@ describe('acting on an untargeted job is admitted against its owner', () => {
             return { kind: 'completed', output: '' };
           },
         },
+        ...(extra.projectId
+          ? {
+              projectRuns: {
+                invoke: async (input: { prompt: string }) => {
+                  projectRuns.push(input.prompt);
+                  return { kind: 'completed' as const, output: '' };
+                },
+              },
+              projectHold: {
+                heldProjectIds: () => new Set<string>(),
+                heldProjectSlugs: () => new Set<string>(),
+                projectExists: (id: string) => id === extra.projectId,
+              },
+            }
+          : {}),
       },
     });
     const served = await boot({
@@ -3319,6 +3337,7 @@ describe('acting on an untargeted job is admitted against its owner', () => {
       prompt: 'Original',
       createdBy: { userId: owner },
       ...(extra.target ? { target: extra.target } : {}),
+      ...(extra.projectId ? { projectId: extra.projectId } : {}),
     });
     return {
       scheduler,
@@ -3333,6 +3352,7 @@ describe('acting on an untargeted job is admitted against its owner', () => {
   afterEach(() => {
     turns.length = 0;
     runOwners.length = 0;
+    projectRuns.length = 0;
   });
 
   test.each([
@@ -3520,6 +3540,72 @@ describe('acting on an untargeted job is admitted against its owner', () => {
       expect((await world.scheduler.listJobs())[0]?.prompt).toBe('Original');
     } finally {
       await world.close();
+    }
+  });
+
+  // Owner decision 2026-11-16 (#5126): a Project job is gated on its
+  // creator like any untargeted job (its run acting as the creator follows).
+  test('a Project job is gated on its creator, and the operator in person may still manage it', async () => {
+    const other = await ownedWorld(
+      'human:local:person-a',
+      () => 'human:local:person-b',
+      'device-credential',
+      { projectId: 'project-1' },
+    );
+    try {
+      // The control: the job really is a Project job.
+      expect((await other.scheduler.listJobs())[0]?.projectId).toBe(
+        'project-1',
+      );
+      const edited = await personRequest(
+        'PUT',
+        '/scheduler/jobs/owned-job',
+        { prompt: 'Injected' },
+        other.at.baseUrl,
+      );
+      expect([edited.status, edited.body.code]).toEqual([
+        404,
+        'automation_not_found',
+      ]);
+      const ran = await personRequest(
+        'POST',
+        '/scheduler/jobs/owned-job/run',
+        undefined,
+        other.at.baseUrl,
+      );
+      expect(ran.status).toBe(404);
+      expect(projectRuns).toEqual([]);
+    } finally {
+      await other.close();
+    }
+    const operator = await ownedWorld(
+      'human:local:person-a',
+      undefined,
+      undefined,
+      {
+        projectId: 'project-1',
+      },
+    );
+    try {
+      const edited = await personRequest(
+        'PUT',
+        '/scheduler/jobs/owned-job',
+        { prompt: 'Revised by the operator' },
+        operator.at.baseUrl,
+      );
+      expect(edited.status).toBe(200);
+      const ran = await personRequest(
+        'POST',
+        '/scheduler/jobs/owned-job/run',
+        undefined,
+        operator.at.baseUrl,
+      );
+      expect(ran.status).toBe(200);
+      await vi.waitFor(() =>
+        expect(projectRuns).toEqual(['Revised by the operator']),
+      );
+    } finally {
+      await operator.close();
     }
   });
 
