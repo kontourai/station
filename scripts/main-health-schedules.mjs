@@ -145,26 +145,39 @@ export function overdueLimitMs(intervalMs) {
 }
 
 /**
+ * Overdue is measured from the later of the newest scheduled run and the
+ * moment the current schedule took effect: the newest commit to the
+ * workflow file on the default branch. So a workflow that just gained a
+ * cron, or whose cron just changed, gets one full tolerance before it can
+ * page, rather than being measured from when the file first appeared (for
+ * container smoke, 2026-08-27). Any edit to the file restarts the clock,
+ * which delays detection by at most one tolerance.
+ *
  * @param {{
  *   intervalMs: number,
  *   lastRunAt: string | null,
- *   workflowCreatedAt?: string | null,
+ *   scheduleChangedAt?: string | null,
  *   now: number,
  * }} input
  */
 export function decideOverdue({
   intervalMs,
   lastRunAt,
-  workflowCreatedAt = null,
+  scheduleChangedAt = null,
   now,
 }) {
   const limitMs = overdueLimitMs(intervalMs);
-  // A workflow that has never run is measured from when the file appeared,
-  // so a newly added schedule gets its full tolerance before it pages.
-  const since = lastRunAt ?? workflowCreatedAt;
-  const sinceMs = since ? Date.parse(since) : Number.NaN;
+  const candidates = [lastRunAt, scheduleChangedAt]
+    .map((value) => (value ? Date.parse(value) : Number.NaN))
+    .filter(Number.isFinite);
+  const sinceMs = candidates.length ? Math.max(...candidates) : Number.NaN;
   const overdue = !Number.isFinite(sinceMs) || now - sinceMs > limitMs;
-  return { overdue, limitMs, since, neverRan: lastRunAt == null };
+  return {
+    overdue,
+    limitMs,
+    since: Number.isFinite(sinceMs) ? new Date(sinceMs).toISOString() : null,
+    neverRan: lastRunAt == null,
+  };
 }
 
 function hours(ms) {
@@ -197,7 +210,7 @@ export function renderOverdueBody({
     OVERDUE_MARKER,
     lastRunAt
       ? `${workflowName} has not run on its schedule since ${lastRunAt}.`
-      : `${workflowName} has never run on its schedule (workflow present since ${since ?? 'unknown'}).`,
+      : `${workflowName} has never run on its schedule (schedule in effect since ${since ?? 'unknown'}).`,
     '',
     `Workflow: ${file}`,
     `Schedule: ${crons.map((cron) => `\`${cron}\``).join(', ')} (UTC; longest gap between firings ${hours(intervalMs)})`,

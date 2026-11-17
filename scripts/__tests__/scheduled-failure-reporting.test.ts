@@ -217,7 +217,7 @@ function fakeGithub({ labelExists = true } = {}) {
     string,
     { created_at: string; html_url: string } | null
   > = {};
-  const workflowCreated: Record<string, string> = {};
+  const fileChangedAt: Record<string, string> = {};
   // Lets a test run another job between this job's read and its first write.
   const interleave: { beforeUpdate?: () => Promise<unknown> } = {};
   const otherRuns: {
@@ -272,10 +272,20 @@ function fakeGithub({ labelExists = true } = {}) {
             },
           };
         },
-        getWorkflow: async ({ workflow_id }: { workflow_id: string }) => ({
-          data: {
-            created_at: workflowCreated[workflow_id] ?? '2026-01-01T00:00:00Z',
-          },
+      },
+      repos: {
+        listCommits: async ({ path }: { path: string }) => ({
+          data: [
+            {
+              commit: {
+                committer: {
+                  date:
+                    fileChangedAt[path.replace('.github/workflows/', '')] ??
+                    '2026-09-01T00:00:00Z',
+                },
+              },
+            },
+          ],
         }),
       },
       checks: {
@@ -417,7 +427,7 @@ function fakeGithub({ labelExists = true } = {}) {
     writes,
     calls,
     scheduledRuns,
-    workflowCreated,
+    fileChangedAt,
     otherRuns,
     interleave,
     setRun(next: typeof run) {
@@ -984,12 +994,12 @@ describe('scheduled workflows that stop running', () => {
     expect(
       decideOverdue({ intervalMs: daily, lastRunAt: at(49), now }).overdue,
     ).toBe(true);
-    // Never ran: measured from when the workflow appeared.
+    // Never ran: measured from when the schedule took effect.
     expect(
       decideOverdue({
         intervalMs: daily,
         lastRunAt: null,
-        workflowCreatedAt: at(5),
+        scheduleChangedAt: at(5),
         now,
       }),
     ).toMatchObject({ overdue: false, neverRan: true });
@@ -997,10 +1007,13 @@ describe('scheduled workflows that stop running', () => {
       decideOverdue({
         intervalMs: daily,
         lastRunAt: null,
-        workflowCreatedAt: at(72),
+        scheduleChangedAt: at(72),
         now,
       }),
     ).toMatchObject({ overdue: true, neverRan: true });
+    expect(
+      decideOverdue({ intervalMs: daily, lastRunAt: null, now }).overdue,
+    ).toBe(true);
     // A weekly cron changed to hourly: 30 h without a run is now overdue.
     const weekly = cronIntervalMs(['41 4 * * 1']);
     expect(
@@ -1013,6 +1026,44 @@ describe('scheduled workflows that stop running', () => {
         now,
       }).overdue,
     ).toBe(true);
+    // ...but not while the change itself is younger than the new tolerance.
+    expect(
+      decideOverdue({
+        intervalMs: cronIntervalMs(['41 * * * *']),
+        lastRunAt: at(30),
+        scheduleChangedAt: at(2),
+        now,
+      }).overdue,
+    ).toBe(false);
+  });
+
+  it('gives a schedule that just landed one full tolerance before reporting it', async () => {
+    // Container smoke's file dates from 2026-08-27 but its cron lands now:
+    // the first Main: Health run after landing must not call it never-run.
+    const now = Date.parse('2026-11-16T12:00:00Z');
+    for (const [changed, expected] of [
+      [new Date(now - HOUR).toISOString(), []],
+      [
+        new Date(now - 21 * HOUR).toISOString(),
+        ['Main pipeline red: Main: Container smoke'],
+      ],
+    ] as const) {
+      const fake = fakeGithub();
+      for (const { file } of readWatchedSchedules(root.href))
+        fake.scheduledRuns[file] = {
+          created_at: new Date(now - HOUR).toISOString(),
+          html_url: 'https://github.com/kontourai/station/actions/runs/5',
+          status: 'completed',
+          conclusion: 'success',
+        };
+      fake.scheduledRuns['container-smoke.yml'] = null;
+      fake.fileChangedAt['container-smoke.yml'] = changed;
+      await runMainHealth(fake, workflowRunEvent('Nightly', 'success'), {
+        only: ['overdue-schedules'],
+        now,
+      });
+      expect(fake.issues.map((issue) => issue.title)).toEqual(expected);
+    }
   });
 
   it('opens one tracker for an overdue schedule, stays quiet while it stays overdue, and clears on the next run', async () => {
@@ -1031,7 +1082,6 @@ describe('scheduled workflows that stop running', () => {
       html_url: 'https://github.com/kontourai/station/actions/runs/2',
     };
     fake.scheduledRuns['dated-todo-sweep.yml'] = null;
-    fake.workflowCreated['dated-todo-sweep.yml'] = '2026-09-01T00:00:00Z';
     const trigger = workflowRunEvent('Nightly', 'success');
 
     const { started } = await runMainHealth(fake, trigger, {
@@ -1091,7 +1141,6 @@ describe('scheduled workflows that stop running', () => {
       for (const { file } of readWatchedSchedules(root.href))
         fake.scheduledRuns[file] = ok;
       fake.scheduledRuns['dated-todo-sweep.yml'] = null;
-      fake.workflowCreated['dated-todo-sweep.yml'] = '2026-09-01T00:00:00Z';
       await runMainHealth(fake, workflowRunEvent('Nightly', 'success'), {
         only: ['overdue-schedules'],
         now,

@@ -388,8 +388,19 @@ jobs:
                 per_page: 1,
               });
               const last = data.workflow_runs?.[0] ?? null;
-              const workflowCreatedAt = last ? null : (await github.rest.actions.getWorkflow({ ...context.repo, workflow_id: file })).data.created_at;
-              const verdict = decideOverdue({ intervalMs, lastRunAt: last?.created_at ?? null, workflowCreatedAt, now });
+              let verdict = decideOverdue({ intervalMs, lastRunAt: last?.created_at ?? null, now });
+              if (verdict.overdue) {
+                // Only then: when did this schedule take effect? The newest
+                // commit to the file on the default branch, so a cron added
+                // or changed by the latest landing is not reported at once.
+                const { data: commits } = await github.rest.repos.listCommits({
+                  ...context.repo,
+                  sha: context.payload.repository?.default_branch ?? 'main',
+                  path: `.github/workflows/${file}`,
+                  per_page: 1,
+                });
+                verdict = decideOverdue({ intervalMs, lastRunAt: last?.created_at ?? null, scheduleChangedAt: commits[0]?.commit?.committer?.date ?? null, now });
+              }
               const title = trackerTitle(name);
               const tracker = pickTracker(trackers, title);
               core.info(`main-health: ${name} last scheduled run ${last?.created_at ?? 'never'}; overdue=${verdict.overdue}`);
