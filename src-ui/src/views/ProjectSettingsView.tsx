@@ -50,7 +50,6 @@ import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { userFacingErrorMessage } from '../utils/errorText';
 import { useProjectOverviewPreview } from './project-page/projectOverviewPreview';
 import { AccessSection } from './project-settings/AccessSection';
-import { AgentFeedbackDefaultsSection } from './project-settings/AgentFeedbackDefaultsSection';
 import { AgentsSection } from './project-settings/AgentsSection';
 import { BriefSection } from './project-settings/BriefSection';
 import { KnowledgeSection } from './project-settings/KnowledgeSection';
@@ -61,10 +60,10 @@ import { OverviewNotificationsSection } from './project-settings/OverviewNotific
 import { ProjectCheckoutFreshnessNotice } from './project-settings/ProjectCheckoutFreshnessNotice';
 import { ProjectLifecycleSection } from './project-settings/ProjectLifecycleSection';
 import { ProjectModelsSection } from './project-settings/ProjectModelsSection';
+import { ProjectPullRequestSettings } from './project-settings/ProjectPullRequestSettings';
 import { ProjectSchedulesSection } from './project-settings/ProjectSchedulesSection';
 import { ProjectSourcesSection } from './project-settings/ProjectSourcesSection';
 import { ProjectUsageSection } from './project-settings/ProjectUsageSection';
-import { PullRequestWatchSection } from './project-settings/PullRequestWatchSection';
 import { useProjectCoordinationPreview } from './project-settings/projectCoordinationPreview';
 import { ToolsSection } from './project-settings/ToolsSection';
 import type { ProjectForm } from './project-settings/types';
@@ -911,13 +910,14 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             className="project-settings__panel"
             hidden={activeSection !== 'pull-requests'}
           >
-            <PullRequestWatchSection
+            <ProjectPullRequestSettings
+              project={project}
               slug={slug}
-              settings={project?.pullRequestWatch}
+              active={activeSection === 'pull-requests'}
+              feedbackAvailable={agentFeedback}
               onSaved={refetchProject}
-            >
-              {agentFeedback && <AgentFeedbackDefaultsSection slug={slug} />}
-            </PullRequestWatchSection>
+              onSources={() => navigateToSection('resources')}
+            />
           </div>
 
           <div

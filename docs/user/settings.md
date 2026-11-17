@@ -107,6 +107,11 @@ own automations. See
 
 ## Feature previews
 
+Project settings → **Pull requests** uses the Project's repository. If Station
+cannot resolve a GitHub repository there, it offers **Open Sources** to attach
+or repair it. Stored watch and feedback choices are preserved. A readable
+checkout is also needed for Station's review of each new head.
+
 **Paired Station chats** lets New Chat use another paired Station. Choose its
 Project; the chat header says **Via <Station>**. Full access, folder selection,
 mentions, offline copies and local integrations are unavailable over relay.

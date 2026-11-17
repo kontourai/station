@@ -61,6 +61,9 @@ const sdkMocks = vi.hoisted(() => ({
   chatDefaultsQuery: vi.fn(),
   // Station-wide previews the host reports, and the checkout freshness read.
   previews: [] as Array<{ id: string; enabled: boolean }>,
+  repository: true,
+  repositoryError: false,
+  repositoryRefetch: vi.fn(),
   setPullRequestWatch: vi.fn(),
   checkoutFreshness: undefined as ProjectCheckoutFreshness | null | undefined,
   checkoutFreshnessError: null as Error | null,
@@ -187,6 +190,19 @@ vi.mock('../views/project-settings/ProjectSourcesSection', () => ({
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
+  usePullRequestContextQuery: () => ({
+    data: sdkMocks.repository
+      ? {
+          available: true,
+          provider: 'github',
+          host: 'github.com',
+          repository: { owner: 'acme', name: 'widgets' },
+        }
+      : { available: false, reason: 'No repository attached.' },
+    isPending: false,
+    isError: sdkMocks.repositoryError,
+    refetch: sdkMocks.repositoryRefetch,
+  }),
   useIntegrationsQuery: () =>
     ({
       data: [],
@@ -459,6 +475,9 @@ function expectPageFullRoot(container: HTMLElement) {
 // Every suite here renders the Workspace section, so the stale checkout
 // warning's state starts empty for each test.
 beforeEach(() => {
+  sdkMocks.repository = true;
+  sdkMocks.repositoryError = false;
+  sdkMocks.repositoryRefetch.mockClear();
   sdkMocks.previews = [];
   sdkMocks.checkoutFreshness = undefined;
   sdkMocks.checkoutFreshnessError = null;
@@ -470,6 +489,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
   beforeEach(() => {
     window.history.replaceState({}, '', '/projects/demo/settings');
     sdkMocks.project = projectFixture;
+    sdkMocks.repository = true;
     sdkMocks.isLoading = false;
     sdkMocks.isError = false;
     sdkMocks.error = undefined;
@@ -1868,8 +1888,46 @@ describe('ProjectSettingsView: changing the icon after creation', () => {
 
 describe('Pull requests section (#5066)', () => {
   beforeEach(() => {
+    sdkMocks.repository = true;
     sdkMocks.setPullRequestWatch.mockClear();
     sdkMocks.refetch.mockClear();
+  });
+
+  test('a failed repository refresh hides stale switches and offers Retry', () => {
+    sdkMocks.repositoryError = true;
+    renderProjectSettings('pull-requests');
+    expect(
+      screen.getByText("Could not check the Project's repository"),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('switch', { name: 'Watch Task pull requests' }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(sdkMocks.repositoryRefetch).toHaveBeenCalledOnce();
+  });
+
+  test('without a repository, offers Sources instead of irrelevant switches and keeps saved choices', () => {
+    sdkMocks.repository = false;
+    sdkMocks.project = {
+      ...projectFixture,
+      pullRequestWatch: { enabled: true, maxFixAttempts: 7 },
+    };
+    renderProjectSettings('pull-requests');
+    expect(
+      screen.getByText('Add a GitHub repository to use pull requests'),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('switch', { name: 'Watch Task pull requests' }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Open Sources' }));
+    expect(new URLSearchParams(window.location.search).get('section')).toBe(
+      'resources',
+    );
+    expect(sdkMocks.setPullRequestWatch).not.toHaveBeenCalled();
+    expect(sdkMocks.project?.pullRequestWatch).toEqual({
+      enabled: true,
+      maxFixAttempts: 7,
+    });
   });
 
   test('cannot be changed while the pull request agent feedback preview is off', () => {

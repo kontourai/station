@@ -3077,7 +3077,13 @@ function pullRequestWatchScreens(): Screen[] {
           ).toBe(true);
           const project = await projectFixture.request.post(
             `${resolveE2EApiBase()}/api/projects`,
-            { data: { name: projectSlug, slug: projectSlug } },
+            {
+              data: {
+                name: projectSlug,
+                slug: projectSlug,
+                workingDirectory: process.cwd(),
+              },
+            },
           );
           expect(project.ok()).toBe(true);
           projectCreated = true;

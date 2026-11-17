@@ -10,6 +10,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { PageRow } from '../../components/PageRow';
+import { PageSectionGroup } from '../../components/PageSection';
 import { ErrorState, Skeleton } from '../../components/state';
 import { Toggle } from '../../components/Toggle';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
@@ -125,11 +126,10 @@ export function AgentFeedbackDefaultsSection({ slug }: { slug: string }) {
   );
 
   return (
-    <div className="content-stack">
-      <h3 className="page-section__title">Other Task pull requests</h3>
-      <p className="agent-feedback-defaults__note">
-        Automatically send feedback for new pull requests from Task branches.
-      </p>
+    <PageSectionGroup
+      title="Other Task pull requests"
+      description="Automatically send feedback for new pull requests from Task branches."
+    >
       {defaults.isPending ? (
         <Skeleton variant="block" />
       ) : defaults.isError || !data ? (
@@ -192,6 +192,6 @@ export function AgentFeedbackDefaultsSection({ slug }: { slug: string }) {
           )}
         </>
       )}
-    </div>
+    </PageSectionGroup>
   );
 }
