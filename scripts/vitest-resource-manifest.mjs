@@ -551,6 +551,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/evidence/__tests__/git-review-workspace-source.test.ts',
   'src-server/services/evidence/__tests__/review-lens-router.test.ts',
   'src-server/services/evidence/__tests__/repo-map-review-selection.test.ts',
+  // Builds a throwaway Project repository (and a second clone for a head
+  // that is not local) with real Git; the head reviewer runs Git in it.
+  'src-server/services/pull-requests/__tests__/pull-request-head-review.test.ts',
   // Creates two disposable Git roots and invokes the transfer gate's real Git
   // provenance/capture boundary under a hostile hook environment.
   'scripts/__tests__/orchestration-transfer-gate.test.ts',

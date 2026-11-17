@@ -81,6 +81,7 @@ afterEach(() => {
 const git = (root: string, ...args: string[]) =>
   execFileSync('git', ['-C', root, ...args], {
     encoding: 'utf8',
+    windowsHide: true,
     env: {
       ...process.env,
       GIT_AUTHOR_NAME: 'Station Test',
