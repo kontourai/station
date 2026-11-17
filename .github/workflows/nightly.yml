@@ -40,8 +40,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '[.[][] | {tag_name, draft, prerelease}]' > "$RUNNER_TEMP/published-product-releases.json"
-          node scripts/nightly-release-base.mjs --package-json package.json --release-history "$RUNNER_TEMP/published-product-releases.json"
+          node scripts/nightly-release-base.mjs --package-json package.json --repository "$GITHUB_REPOSITORY"
       - id: decide
         name: Decide configured cadence and bounded terminal delivery recovery
         env:

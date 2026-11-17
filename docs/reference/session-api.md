@@ -1880,7 +1880,8 @@ the conversation's lineage as its parent:
 - by its delegation context (`metadata.delegation.parentConversationId`).
   When a Claude Code or Codex session calls `delegate_task` through its
   session-bound station-control (Claude Code's in-process server, Codex's
-  per-session HTTP server), Station derives it from the calling session's own
+  per-session HTTP server or, with its bound-channel preview on, its bound
+  `dynamicTools` channel), Station derives it from the calling session's own
   record. For Station's own agent, the runtime attests it from the
   conversation it ran the tool call in. Neither comes from the request. On a
   direct request it is the requester's own claim. A paired-Station dispatch
@@ -2151,9 +2152,14 @@ authorized like the session's other reads and are never cached
 (`Cache-Control: private, no-store`).
 
 Query: `offset` (message index, default `0`) and `limit` (messages per page,
-`1`–`50`, default `30`). The response's `data` is a `ChildWorkTranscriptPage`:
-`entries` (prompt and reply text, tool calls, tool results; inline image data
-replaced by a placeholder, then each text cut at 4,000 characters and flagged) and `nextOffset` when another page follows.
+`1`–`50`, default `30`), or `tail=1` for the last `limit` messages (a tail
+read names no offset; `400` otherwise). The response's `data` is a
+`ChildWorkTranscriptPage`: `entries` (prompt and reply text, tool calls, tool
+results; inline image data replaced by a placeholder, then each text cut at
+4,000 characters and flagged), `offset` and `endOffset` (the message indexes
+where the page starts and just past where it ends, so a reader continues from
+`endOffset`; a read from past the end names the end as both), and
+`nextOffset` when another page follows an offset read.
 Tool calls and results carry an optional engine-issued `toolCallId`. Readers join
 only matching IDs; legacy entries without IDs remain readable without assuming
 that adjacent records belong to the same call.

@@ -241,11 +241,42 @@ export interface PullRequestFeedbackDelivery {
   reason?: string;
 }
 
-/** The conversation that receives a pull request's feedback. */
+/**
+ * The conversation that receives a pull request's feedback. Both fields are
+ * absent when the reader may not read that conversation: the reader learns
+ * only that another chat owns it.
+ */
 export interface PullRequestFeedbackOwner {
-  conversationId: string;
-  /** Absent when the reader may not read that conversation. */
+  conversationId?: string;
   title?: string;
+}
+
+/**
+ * One pull request's feedback as anyone looking at the pull request sees it
+ * (`GET /api/pull-request-feedback/by-pull-request`), whichever chat is open.
+ * Everything past `owner` is present only when the reader may read the
+ * owning chat; to anyone else the owner is `{ readable: false }` and nothing
+ * else is said.
+ */
+export interface PullRequestFeedbackByPullRequest {
+  identity: PullRequestLinkIdentity;
+  /** null when no chat gets feedback for it (none claimed it, or it is off). */
+  owner:
+    | null
+    | { readable: false }
+    | { readable: true; conversationId: string; title: string };
+  status?: PullRequestFeedbackStatus;
+  settings?: PullRequestFeedbackSettings;
+  /**
+   * The newest message sent about the head Station last observed. Absent
+   * when the newest send was about an earlier push.
+   */
+  last?: PullRequestFeedbackDelivery;
+  /** Failing checks the agent was sent on the head Station last observed. */
+  sentChecks?: {
+    headSha: string;
+    checks: Array<{ name: string; url?: string; at: string }>;
+  };
 }
 
 /** One pull request's feedback, as one conversation's reader sees it. */

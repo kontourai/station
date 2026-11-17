@@ -39,3 +39,84 @@
   /* The rows' secondary text size, legible at 390px. */
   font-size: var(--k-text-sm);
 }
+
+/* "All chats": what is running and finished, by kind, above the groups. */
+.agents-pane__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-1) var(--k-space-3);
+  margin: 0;
+  padding: var(--k-space-2) var(--k-space-2) 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+/* One chat's work in "All chats". */
+.agents-pane__group-header {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: var(--k-space-1);
+  padding: var(--k-space-2) var(--k-space-2) var(--k-space-1);
+}
+
+.agents-pane__group-toggle {
+  min-width: 32px;
+  min-height: 32px;
+  justify-content: center;
+  border-radius: var(--k-radius-sm);
+}
+
+.agents-pane__group-toggle:hover {
+  background: var(--k-panel-raised);
+}
+
+.agents-pane__group-text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  padding-top: var(--k-space-1);
+}
+
+.agents-pane__group-heading {
+  display: flex;
+  min-width: 0;
+  margin: 0;
+  font: inherit;
+}
+
+.agents-pane__group-title {
+  overflow: hidden;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--k-text);
+  font: inherit;
+  font-size: var(--k-text-sm);
+  font-weight: 600;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.agents-pane__group-title {
+  cursor: pointer;
+}
+
+button.agents-pane__group-title:hover {
+  text-decoration: underline;
+}
+
+.agents-pane__group-meta {
+  overflow: hidden;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agents-pane__group + .agents-pane__group {
+  border-top: 1px solid var(--k-line);
+}

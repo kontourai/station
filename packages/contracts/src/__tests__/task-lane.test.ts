@@ -7,6 +7,7 @@ import {
   type TaskLaneDerivation,
   type TaskLaneInput,
   type TaskPullRequestFact,
+  type TaskPullRequestFeedbackFact,
 } from '../task-lane.js';
 
 const OBSERVED = '2026-11-15T12:00:00.000Z';
@@ -672,5 +673,98 @@ describe('stable lane order', () => {
     expect(shelves.done).toHaveLength(20);
     expect(shelves.done[0]).toBe('d22');
     expect(shelfTotals.done).toBe(23);
+  });
+});
+
+describe('agent feedback adds a note, never a lane', () => {
+  const HEAD = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678';
+  const withFeedback = (
+    feedback: TaskPullRequestFact['feedback'],
+    status: Parameters<typeof pr>[1] = {},
+  ): TaskPullRequestFact => ({
+    ...pr('42', { readiness: 'checks-not-passing', headSha: HEAD, ...status }),
+    ...(feedback ? { feedback } : {}),
+  });
+  /** Everything but the note: what feedback must never change. */
+  const placement = (d: TaskLaneDerivation) => {
+    const { feedbackNote: _note, ...rest } = d;
+    return rest;
+  };
+
+  test.each<[TaskPullRequestFeedbackFact['state'], string, string | undefined]>(
+    [
+      ['watching', 'auto-fix on', undefined],
+      ['waiting-on-checks', 'waiting on checks', undefined],
+      ['sent', 'sent', '2026-11-15T11:57:00.000Z'],
+      ['paused', 'auto-fix paused', undefined],
+    ],
+  )('In review: %s reads "%s"', (state, text, at) => {
+    const plain = derive({ pullRequests: [withFeedback(undefined)] });
+    const noted = derive({
+      pullRequests: [
+        withFeedback({ state, headSha: HEAD, ...(at ? { at } : {}) }),
+      ],
+    });
+    expect(placed(noted)).toBe('lane:in_review');
+    expect(noted.feedbackNote).toEqual({ text, ...(at ? { at } : {}) });
+    expect(noted.detail).toBe('#42');
+    // Lane, rung, tone, certainty, words and action: all as without it.
+    expect(placement(noted)).toEqual(
+      placement({
+        ...plain,
+        evidence: {
+          ...plain.evidence,
+          pullRequests: noted.evidence.pullRequests,
+        },
+      }),
+    );
+  });
+
+  test('only while it is about the head the provider reported', () => {
+    for (const headSha of [undefined, 'f'.repeat(40)])
+      expect(
+        derive({
+          pullRequests: [
+            withFeedback({ state: 'watching', headSha: HEAD }, { headSha }),
+          ],
+        }).feedbackNote,
+      ).toBeUndefined();
+  });
+
+  test('fixing names the pull request on a Running card, and still shows on an In review one', () => {
+    const fixing = withFeedback({ state: 'fixing', headSha: HEAD });
+    const running = derive({
+      session: session({ ...RUNNING }),
+      pullRequests: [fixing],
+    });
+    expect(placed(running)).toBe('lane:running');
+    expect(running.rung).toBe('running');
+    expect(running.tone).toBe('active');
+    expect(running.feedbackNote).toEqual({ text: 'fixing checks on #42' });
+    // The facts say this Task's run is fixing, but the run list read it as
+    // finished: the In review card still says so instead of hiding it.
+    const idle = derive({ pullRequests: [fixing] });
+    expect(placed(idle)).toBe('lane:in_review');
+    expect(idle.feedbackNote).toEqual({ text: 'fixing checks' });
+    // A Running card says nothing for feedback that is not a fix in flight.
+    expect(
+      derive({
+        session: session({ ...RUNNING }),
+        pullRequests: [withFeedback({ state: 'sent', headSha: HEAD })],
+      }).feedbackNote,
+    ).toBeUndefined();
+  });
+
+  test('a ready pull request is not noted, and stays ready', () => {
+    const ready = derive({
+      pullRequests: [
+        withFeedback(
+          { state: 'watching', headSha: HEAD },
+          { readiness: 'clean' },
+        ),
+      ],
+    });
+    expect(placed(ready)).toBe('lane:ready_to_merge');
+    expect(ready.feedbackNote).toBeUndefined();
   });
 });

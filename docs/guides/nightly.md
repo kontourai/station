@@ -69,8 +69,8 @@ After an immutable RC/final cut, the
 [release-cut command](native-releases.md#product-version-and-release-cut)
 advances main to the next minor through normal review. Nightly admission reads
 public release history and refuses a base at or below the highest public
-RC/final base. Unavailable or malformed history does not count as first-run
-bootstrap. This check runs at top-level decision, portable publication and
+RC/final base. Unavailable, empty or malformed history does not count as
+first-run bootstrap. This check runs at top-level decision, portable publication and
 native cohort admission; it does not change CLI/library package versioning.
 
 Update summaries display recognized Nightly allocations as
@@ -112,6 +112,14 @@ Desktop has its own `nightly-desktop` publication marker. Partial or ambiguous
 provider outcomes retain their own status; a failed overall run can already have
 published a subset. See the [cohort and recovery contract](native-releases.md#native-nightly-cohort)
 before retrying or changing a marker.
+
+The protected verifier runs on a hosted macOS runner. When GitHub never gives
+it one, it cancels the job after about 15 minutes ("The job was not acquired by
+Runner of type hosted even after multiple attempts"), with the cohort already
+public. The same run then starts one second verifier attempt and records the
+ledger and marker from it if it verifies. A run whose verifier never ran in
+either attempt has a [manual finalize path](native-releases.md#when-the-verifier-gets-no-runner)
+that is only safe within a day of staging.
 
 ## Portable server nightly
 

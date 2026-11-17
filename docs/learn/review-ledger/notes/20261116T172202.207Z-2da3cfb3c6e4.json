@@ -1,0 +1,7 @@
+{
+  "revision": "36107935587385671d6b0f9270e1da502082f398",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-read the tool-batch running rule, the background banner paragraph and the turn rail bullet against this change. Updated: a settled batch now counts a call the live tool record still holds open as running (useObservedRunningToolCalls); the post-turn strip counts work by kind like the status pill (background-work-label) and lists uncarded running tasks inside the same card with kind glyphs; rail ticks are faint at rest and brighten on hover/focus. Checked chatStatus, ChatMessageList, ToolCallBatch, MessageBubble (Basis chip now ends the footer bar; doc claim 'no Basis chip without answer text' unchanged), ConversationBody (passes apiBase only), index.css and TranscriptTurnRail.css. Not re-reviewed: unrelated composer sections.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/components/chat/MessageBubble.tsx","src-ui/src/components/chat/ToolCallBatch.tsx","src-ui/src/components/chat/TranscriptTurnRail.css","src-ui/src/components/conversation/ConversationBody.tsx","src-ui/src/components/status/chatStatus.ts","src-ui/src/index.css"]}
+  ]
+}
