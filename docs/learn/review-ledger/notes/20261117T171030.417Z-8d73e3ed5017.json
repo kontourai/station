@@ -1,0 +1,7 @@
+{
+  "revision": "18014c66d4c83328b8f1a64273a4f8ffb1c773ba",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Re-checked the easing section. A comma inside a quoted name is not a layer boundary, so a later ease-in fallback still fails at ceiling 0. The same quoted name with var(--ease-out) is not an ease-in finding. An escaped comma is not a boundary either. Restored the old splitter: the quoted name split in two and the later ease-in was missed. Restored, and all 21 tests passed. The ratchet test has no separate prose owner. No screenshot or computed timing.","inputs":["docs/design/motion.md","scripts/motion-contract-ratchet.mjs"]}
+  ]
+}
