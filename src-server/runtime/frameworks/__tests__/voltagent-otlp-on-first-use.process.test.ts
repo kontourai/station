@@ -38,7 +38,7 @@ function otlpPackagesLoadedBy(load: string): string[] {
   const output = execFileSync(
     process.execPath,
     ['--input-type=module', '-e', script],
-    { cwd: root, encoding: 'utf8', timeout: 60_000 },
+    { cwd: root, encoding: 'utf8', timeout: 20_000 },
   );
   return JSON.parse(output) as string[];
 }
