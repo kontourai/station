@@ -62,6 +62,7 @@ function labelNames(labels) {
  *   pullRequest?: any,
  *   repository?: string,
  *   live?: any,
+ *   headVerified?: boolean,
  * }} input
  * @returns {{ heavy: boolean, reason: string }}
  */
@@ -73,6 +74,7 @@ export function decideHeavyChecks({
   pullRequest,
   repository,
   live,
+  headVerified,
 }) {
   if (mode === undefined || mode === '' || mode === 'every-push')
     return heavy(
@@ -93,7 +95,14 @@ export function decideHeavyChecks({
   if (pullRequest.head?.repo?.full_name !== repository)
     return heavy('fork pull request: its isolated smoke is not split');
   if (action === 'auto_merge_enabled')
-    return heavy('the pull request was armed for auto-merge');
+    // A re-arm (after an ejection or a disarm) of a head the source policy
+    // already verified needs no second heavy run: the cheap part alone runs,
+    // and the policy keeps a verified head verified.
+    return headVerified === true
+      ? cheap(
+          'the pull request was re-armed on a head the source policy already verified',
+        )
+      : heavy('the pull request was armed for auto-merge');
   if (!Object.hasOwn(pullRequest, 'auto_merge'))
     return heavy(
       'event payload has no auto-merge state: failing towards the heavy checks',
@@ -125,6 +134,31 @@ export function decideHeavyChecks({
   );
 }
 
+const SOURCE_VERIFICATION_CONTEXT = 'Source verification policy';
+
+/** Whether the head's `Source verification policy` status reads success. */
+async function readHeadVerified(env, sha) {
+  const response = await fetch(
+    `${env.GITHUB_API_URL || 'https://api.github.com'}/repos/${env.GITHUB_REPOSITORY}/commits/${sha}/status`,
+    {
+      headers: {
+        Authorization: `Bearer ${env.GH_TOKEN}`,
+        Accept: 'application/vnd.github+json',
+      },
+      signal: AbortSignal.timeout(20_000),
+    },
+  );
+  if (!response.ok) throw new Error(`GitHub API ${response.status}`);
+  const combined = await response.json();
+  if (combined?.sha !== sha || !Array.isArray(combined.statuses))
+    throw new Error('commit status mismatch');
+  return combined.statuses.some(
+    (status) =>
+      status?.context === SOURCE_VERIFICATION_CONTEXT &&
+      status.state === 'success',
+  );
+}
+
 async function readLivePullRequest(env, number) {
   const response = await fetch(
     `${env.GITHUB_API_URL || 'https://api.github.com'}/repos/${env.GITHUB_REPOSITORY}/pulls/${number}`,
@@ -142,14 +176,30 @@ async function readLivePullRequest(env, number) {
   return pr;
 }
 
-export async function main(env = process.env, read = readLivePullRequest) {
+export async function main(
+  env = process.env,
+  read = readLivePullRequest,
+  readVerified = readHeadVerified,
+) {
   let decision;
   try {
     const event = env.GITHUB_EVENT_PATH
       ? JSON.parse(readFileSync(env.GITHUB_EVENT_PATH, 'utf8'))
       : {};
     const mode = env[HEAVY_CHECKS_VARIABLE];
+    // Rollout evidence: whether this event carried an auto-merge state.
+    const autoMerge = event.pull_request
+      ? !Object.hasOwn(event.pull_request, 'auto_merge')
+        ? 'absent'
+        : event.pull_request.auto_merge === null
+          ? 'null'
+          : 'populated'
+      : 'no pull_request';
+    console.log(
+      `Event ${env.GITHUB_EVENT_NAME || 'unknown'}/${event.action ?? 'none'}: pull_request.auto_merge ${autoMerge}`,
+    );
     let live = null;
+    let headVerified;
     if (
       mode === 'when-armed' &&
       env.GITHUB_EVENT_NAME === 'pull_request_target' &&
@@ -162,6 +212,18 @@ export async function main(env = process.env, read = readLivePullRequest) {
           `::warning::live pull request unreadable (${error.message}); using the event payload`,
         );
       }
+      const head = event.pull_request.head?.sha;
+      if (
+        event.action === 'auto_merge_enabled' &&
+        /^[0-9a-f]{40}$/.test(head ?? '')
+      )
+        try {
+          headVerified = await readVerified(env, head);
+        } catch (error) {
+          console.log(
+            `::warning::head status unreadable (${error.message}); running the heavy checks`,
+          );
+        }
     }
     decision = decideHeavyChecks({
       mode,
@@ -171,6 +233,7 @@ export async function main(env = process.env, read = readLivePullRequest) {
       pullRequest: event.pull_request,
       repository: env.GITHUB_REPOSITORY,
       live,
+      headVerified,
     });
   } catch (error) {
     decision = heavy(

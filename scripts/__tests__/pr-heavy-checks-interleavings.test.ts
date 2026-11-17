@@ -69,7 +69,9 @@ function world(mode: string | undefined) {
       conclusion: string | null,
       steps?: unknown[],
     ) => ({
-      id: run.id * 10 + name.length,
+      id:
+        run.id * 1000 +
+        [...name].reduce((sum, c, i) => sum + c.charCodeAt(0) * (i + 1), 0),
       name,
       status: conclusion === null ? 'in_progress' : 'completed',
       conclusion,
@@ -84,6 +86,8 @@ function world(mode: string | undefined) {
       ].map((name) => job(name, 'skipped', []));
     const result = done ? run.outcome : null;
     return [
+      // ci.yml: admission runs first in every same-repository source run.
+      job('PR source admission', 'success'),
       job('fast-checks plan', done ? 'success' : null),
       job('fast-checks statics', done ? 'success' : null),
       job('Fork pull-request smoke', 'skipped'),
@@ -102,7 +106,10 @@ function world(mode: string | undefined) {
               },
               {
                 name: HEAVY_RAN_STEP,
-                conclusion: run.kind === 'heavy' ? 'success' : 'skipped',
+                conclusion:
+                  run.kind === 'heavy' && run.outcome === 'success'
+                    ? 'success'
+                    : 'skipped',
               },
             ]
           : [],
@@ -208,6 +215,7 @@ function world(mode: string | undefined) {
         pullRequest: payload,
         repository: REPOSITORY,
         live: structuredClone(pr),
+        headVerified: statuses.get(pr.head.sha)?.state === 'success',
       }).heavy
         ? 'heavy'
         : 'cheap';
@@ -468,9 +476,35 @@ describe('STATION_PR_HEAVY_CHECKS=when-armed admission interleavings', () => {
     expect(w.head()?.state).toBe('success');
   });
 
-  test('a re-arm on a verified head keeps it verified until the new verdict, which then wins', async () => {
+  test('a re-arm on a verified head spends no heavy run and stays verified, even if its cheap run fails', async () => {
     const { w } = await play('when-armed', SCENARIOS[4][1], 'fifo');
-    // The re-armed heavy run failed: its newer verdict replaces the success.
+    expect(w.runs.map((run) => run.kind)).toEqual(['cheap', 'heavy', 'cheap']);
+    expect(w.head()?.state).toBe('success');
+  });
+
+  test('a newer possibly-heavy run holds a verified head pending, and its failure fails it', async () => {
+    const { w } = await play(
+      'when-armed',
+      [
+        ((world: World, r: Record<string, SimRun>) => {
+          r.push = world.push('2');
+          world.complete(r.push);
+          r.armed = world.arm();
+          world.complete(r.armed);
+          // A late heavy run on the same head (a push of the same commit
+          // while armed) that fails.
+          r.again = world.event('reopened');
+        }) as Step,
+        'drain',
+        ((world: World, r: Record<string, SimRun>) => {
+          // A newer run that may be heavy is never assumed to pass.
+          expect(world.head()?.state).toBe('pending');
+          world.complete(r.again, 'failure');
+        }) as Step,
+      ],
+      'fifo',
+    );
+    expect(w.runs.map((run) => run.kind)).toEqual(['cheap', 'heavy', 'heavy']);
     expect(w.head()?.state).toBe('failure');
   });
 

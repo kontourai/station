@@ -118,6 +118,23 @@ describe('heavy pull-request check decision', () => {
     expect(decide({ action, pr: pullRequest(shape) }).heavy).toBe(expected);
   });
 
+  test('a re-arm of a head the source policy already verified skips the heavy part', () => {
+    const armedPr = pullRequest({ autoMerge: true });
+    expect(
+      decide({ action: 'auto_merge_enabled', pr: armedPr, headVerified: true }),
+    ).toMatchObject({ heavy: false });
+    for (const headVerified of [false, undefined])
+      expect(
+        decide({ action: 'auto_merge_enabled', pr: armedPr, headVerified })
+          .heavy,
+      ).toBe(true);
+    // Only arming consults it: a push to an armed, verified head is a new
+    // head, so it is never verified already.
+    expect(
+      decide({ action: 'synchronize', pr: armedPr, headVerified: true }).heavy,
+    ).toBe(true);
+  });
+
   test('merge groups and other events are always heavy under when-armed', () => {
     for (const eventName of ['merge_group', 'push', 'workflow_dispatch'])
       expect(decide({ eventName }).heavy).toBe(true);
@@ -235,6 +252,47 @@ describe('heavy pull-request check decision entry point', () => {
     );
     expect(off.output).toBe('heavy=true\n');
     expect(read).toHaveBeenCalledTimes(1);
+  });
+
+  test('prints whether the event carried pull_request.auto_merge, and reads the head status only when arming', async () => {
+    const verified = vi.fn(async () => true);
+    const dir = makeTempDir('heavy-decision-');
+    const output = join(dir, 'output');
+    const eventPath = join(dir, 'event.json');
+    writeFileSync(output, '');
+    writeFileSync(
+      eventPath,
+      JSON.stringify({
+        action: 'auto_merge_enabled',
+        pull_request: pullRequest({ autoMerge: true }),
+      }),
+    );
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const decision = await main(
+      {
+        GITHUB_EVENT_NAME: 'pull_request_target',
+        GITHUB_EVENT_PATH: eventPath,
+        GITHUB_RUN_ATTEMPT: '1',
+        GITHUB_REPOSITORY: REPOSITORY,
+        GITHUB_OUTPUT: output,
+        STATION_PR_HEAVY_CHECKS: 'when-armed',
+      },
+      async () => pullRequest({ autoMerge: true }),
+      verified,
+    );
+    expect(log.mock.calls.flat().join('\n')).toContain(
+      'Event pull_request_target/auto_merge_enabled: pull_request.auto_merge populated',
+    );
+    expect(verified).toHaveBeenCalledWith(expect.anything(), HEAD);
+    expect(decision.heavy).toBe(false);
+    expect(readFileSync(output, 'utf8')).toBe('heavy=false\n');
+    const pushed = await run(
+      undefined,
+      { action: 'synchronize', pull_request: pullRequest() },
+      async () => pullRequest(),
+    );
+    expect(pushed.logged).toContain('pull_request.auto_merge null');
+    expect(verified).toHaveBeenCalledTimes(1);
   });
 
   test('a failed live read on a re-run, or an unreadable event file, decides heavy', async () => {
