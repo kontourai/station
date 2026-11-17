@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import * as loggerUtils from '../../utils/logger.js';
 import { CdpPipeTransport } from '../browser/cdp-pipe-transport.js';
+import { ChromiumAcquisition } from '../browser/chromium-acquisition.js';
 import { ChromiumServerHost } from '../browser/hosts/chromium-server-host.js';
 import { HtmlReplyPreview } from '../html-reply-preview.js';
 
@@ -733,3 +734,59 @@ test('preview blocks ICE UDP in nested srcdoc and declarative closed shadow fram
     for (const socket of sockets) socket.close();
   }
 }, 30000);
+
+test('records whether the installed Chromium still aborts when an about:blank page adds a sandboxed srcdoc frame (#4917)', async () => {
+  // The preview serves its bootstrap page only because of this abort. This
+  // probe never fails on the answer; it fails only when it cannot get one, so
+  // the run log shows the day Chromium stops aborting and the served page's
+  // reason can be revisited.
+  const executablePath = new ChromiumAcquisition(
+    makeTempDir('html-preview-abort-probe-home-'),
+  ).resolveExecutable();
+  expect(
+    executablePath,
+    'the preview process tests need Chromium',
+  ).toBeDefined();
+  if (!executablePath) return;
+  const host = new ChromiumServerHost({
+    executablePath,
+    launchTimeoutMs: 15_000,
+    denyHostResolution: true,
+    egressPolicy: {
+      listeners: () => ({ ports: [], hostnames: [] }),
+      interfaceAddresses: () => [],
+      reach: { kind: 'none' },
+    },
+  });
+  let outcome: 'aborts' | 'survives' | undefined;
+  try {
+    const target = await host.openTarget({
+      profileDir: makeTempDir('html-preview-abort-probe-'),
+      viewport: { width: 400, height: 300, deviceScaleFactor: 1 },
+    });
+    try {
+      const answer = await host.cdp().send<{ result: { value?: unknown } }>(
+        'Runtime.evaluate',
+        {
+          expression: `new Promise(resolve=>{const frame=document.createElement('iframe');frame.sandbox='allow-scripts';frame.srcdoc='<script>parent.postMessage(1,"*")<\\/script>';addEventListener('message',()=>resolve('survives'));document.body.append(frame)})`,
+          awaitPromise: true,
+          returnByValue: true,
+        },
+        target.cdpSessionId,
+      );
+      if (answer.result.value === 'survives') outcome = 'survives';
+    } catch (error) {
+      await expect
+        .poll(() => host.exited, { timeout: 5_000, interval: 50 })
+        .toBeDefined();
+      if (!/signal SIG(ABRT|TRAP)/.test(host.exited ?? '')) throw error;
+      outcome = 'aborts';
+    }
+  } finally {
+    await host.shutdown().catch(() => {});
+  }
+  process.stdout.write(
+    `Chromium about:blank + sandboxed srcdoc frame probe: ${outcome} (${executablePath})\n`,
+  );
+  expect(['aborts', 'survives']).toContain(outcome);
+}, 30_000);
