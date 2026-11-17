@@ -1,0 +1,11 @@
+{
+  "revision": "12e97229c3ec2e11f44bee0e1f6d7aa27ad0fd28",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"contracts.md gained one paragraph on turn_start_held; these pages cite it for other contracts and their claims are unchanged.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"contracts.md gained one paragraph on turn_start_held; these pages cite it for other contracts and their claims are unchanged.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"contracts.md gained one paragraph on turn_start_held; these pages cite it for other contracts and their claims are unchanged.","inputs":["docs/reference/contracts.md"]}
+  ]
+}
