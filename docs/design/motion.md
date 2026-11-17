@@ -43,8 +43,9 @@ it looks alive, and the person will see it often, leave it still.
 `ease-in` delays the frames someone is watching, so the ratchet rejects that
 timing keyword and `var(--ease-in)`, in any ASCII case and with CSS escapes
 decoded, with no ceiling. A longer identifier, including `ease-in-out`, is
-not that keyword. A quoted string is not that keyword. A fallback argument
-is still a use. A custom property in another case is not that token.
+not that keyword. A quoted string is not that keyword, and a comma
+inside it does not hide a later one. A fallback argument is still a
+use. A custom property in another case is not that token.
 Declaring an `--ease-in` token does not make a use of it legal.
 
 A hover rule that translates or scales is wrapped in

@@ -250,23 +250,39 @@ export function findUnresolvedTokenReferences(value, declaredTokens) {
 }
 
 /**
- * Splits a shorthand value into its comma-separated layers, respecting
- * parentheses so `cubic-bezier(0.4, 0, 0.2, 1)` stays one layer rather than
- * four.
+ * Splits a shorthand value into its comma-separated layers. A comma inside
+ * parentheses, a quoted string, or a CSS escape is not a layer boundary.
+ * `cubic-bezier(0.4, 0, 0.2, 1)` stays one layer, and so does `"x,y"`.
  */
 export function motionLayers(value) {
   const layers = [];
   let depth = 0;
   let current = '';
-  for (const char of value) {
+  let index = 0;
+  while (index < value.length) {
+    const char = value[index];
+    if (char === '"' || char === "'") {
+      const next = skipCssString(value, index);
+      current += value.slice(index, next);
+      index = next;
+      continue;
+    }
+    if (char === '\\') {
+      const escaped = consumeCssEscape(value, index);
+      current += value.slice(index, escaped.next);
+      index = escaped.next;
+      continue;
+    }
     if (char === '(') depth += 1;
     else if (char === ')') depth -= 1;
     if (char === ',' && depth === 0) {
       layers.push(current);
       current = '';
+      index += 1;
       continue;
     }
     current += char;
+    index += 1;
   }
   if (current.trim()) layers.push(current);
   return layers.length > 0 ? layers : [value];

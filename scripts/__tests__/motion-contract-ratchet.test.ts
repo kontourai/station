@@ -72,6 +72,16 @@ describe('per-layer detection (#3223)', () => {
     expect(motionLayers('a 1s, b 2s, c 3s')).toHaveLength(3);
   });
 
+  it('does not split inside a quoted name or an escaped comma', () => {
+    expect(
+      motionLayers('"x,y" var(--motion-fast) var(--ease-out)'),
+    ).toHaveLength(1);
+    expect(
+      motionLayers('a\\2c b var(--motion-fast) var(--ease-out)'),
+    ).toHaveLength(1);
+    expect(motionLayers('"x,\\"y", ease-in')).toHaveLength(2);
+  });
+
   it('judges a layer on its own duration and easing', () => {
     expect(isHardCodedLayer('border-color 0.15s')).toBe(true);
     expect(isHardCodedLayer('border-color var(--motion-fast)')).toBe(false);
@@ -258,6 +268,29 @@ describe('motion contract ratchet', () => {
       expect(found.easeIn, css).toEqual([]);
       expect(found.hardCoded, css).toEqual([]);
     }
+  });
+
+  it('rejects ease-in after a comma inside a quoted name', () => {
+    const hidden =
+      '.x { animation: "x,y" var(--motion-fast) var(--ease-custom, ease-in); }';
+    const found = inspectMotionCss(hidden, REAL_TOKENS);
+    expect(found.hardCoded, hidden).toEqual([]);
+    expect(found.unresolvedToken, hidden).toEqual([]);
+    expect(found.easeIn, hidden).toHaveLength(1);
+    expect(
+      evaluateMotionContract(
+        found.easeIn.map((declaration) => ({
+          file: 'a.css',
+          kind: 'ease-in' as const,
+          declaration,
+        })),
+        0,
+      ).passed,
+    ).toBe(false);
+    const clean = '.x { animation: "x,y" var(--motion-fast) var(--ease-out); }';
+    const allowed = inspectMotionCss(clean, REAL_TOKENS);
+    expect(allowed.easeIn, clean).toEqual([]);
+    expect(allowed.hardCoded, clean).toEqual([]);
   });
 
   it('does not treat ease-in-out or ease-out as ease-in', () => {
