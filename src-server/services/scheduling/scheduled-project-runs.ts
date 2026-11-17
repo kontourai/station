@@ -13,12 +13,21 @@
  *    Station turn under the key `scheduler:<runId>`), and waits for it;
  * 4. writes a run summary as the Task's summary.
  *
- * The run acts for no one (`unattributed-agent`) and is owned by the local
- * operator, like an automation rule's Task. A held Project (paused or
- * archived, #5069) refuses the turn at admission; the scheduler does not
- * claim its occurrences in the first place.
+ * #5126: the run acts as the job's recorded creator (`createdBy`), exactly as
+ * recorded: the Task's Session belongs to that person and carries the
+ * creator's owner attribution, and the first turn is sent as them. So the
+ * Session's Station-control caller, Project role and scope are the
+ * creator's, never the operator's. Before anything is created the creator
+ * must still hold `execute` in the Project; a job with no recorded owner
+ * starts nothing (`PROJECT_JOB_OWNER_NEEDED_REASON`).
+ *
+ * A held Project (paused or archived, #5069) refuses the turn at admission;
+ * the scheduler does not claim its occurrences in the first place.
  */
-import { automationRunClientTurnId } from '@kontourai/station-contracts/scheduler';
+import {
+  automationRunClientTurnId,
+  type SchedulerAutomationCreator,
+} from '@kontourai/station-contracts/scheduler';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { errorMessage } from '../../utils/error-message.js';
 import type { DispatchOutcome } from '../projects/task-dispatcher.js';
@@ -30,6 +39,7 @@ import type {
   ScheduledConversationRunner,
   ScheduledConversationRunOutcome,
 } from './scheduled-conversation-runs.js';
+import { PROJECT_JOB_OWNER_NEEDED_REASON } from './scheduler-ledger.js';
 
 export interface ScheduledProjectRunsPorts {
   createTask(
@@ -41,19 +51,23 @@ export interface ScheduledProjectRunsPorts {
     },
     idempotencyKey: string,
   ): Promise<Pick<TaskRecord, 'id' | 'createdAt' | 'projectId'>>;
-  /** Dispatches the Task for its Agent under the run's unattended principal. */
+  /**
+   * Dispatches the Task for its Agent under the run's unattended principal,
+   * as a Session owned by `owner` with its recorded attribution.
+   */
   dispatchTask(input: {
     taskId: string;
     agentId: string;
     principal: { kind: 'scheduled-job'; jobId: string; runId: string };
+    owner: SchedulerAutomationCreator;
     signal: AbortSignal;
   }): Promise<DispatchOutcome>;
+  /** Whether the creator may start work (`execute`) in the Project now. */
+  creatorMayRunInProject(creatorId: string, projectId: string): boolean;
   /** The conversation a dispatched Session belongs to. */
   conversationForSession(sessionId: string): string | undefined;
   /** Queues and awaits the framed turn, as for a chat-targeted automation. */
   conversationRuns: ScheduledConversationRunner;
-  /** The actor the queued turn is sent as (the Task's recorded owner). */
-  actor: { userId: string; ownerAttribution?: 'unattributed-agent' };
   /** Records the run summary on the Task. Failures are logged, not fatal. */
   recordSummary(input: {
     projectId: string;
@@ -100,6 +114,27 @@ export class ScheduledProjectRuns implements ScheduledProjectRunner {
   ): Promise<ScheduledTurnOutcome> {
     if (input.signal.aborted)
       return { kind: 'definitely-not-invoked', error: 'Scheduler is stopping' };
+    const owner = input.createdBy;
+    if (!owner)
+      return {
+        kind: 'definitely-not-invoked',
+        error: PROJECT_JOB_OWNER_NEEDED_REASON,
+      };
+    let permitted: boolean;
+    try {
+      permitted = this.ports.creatorMayRunInProject(
+        owner.userId,
+        input.projectId,
+      );
+    } catch {
+      permitted = false;
+    }
+    if (!permitted)
+      return {
+        kind: 'definitely-not-invoked',
+        error:
+          "The job's creator may no longer start work in this Project, so it did not run.",
+      };
     const runId = input.principal.runId;
     let task: Pick<TaskRecord, 'id' | 'createdAt' | 'projectId'>;
     try {
@@ -124,6 +159,7 @@ export class ScheduledProjectRuns implements ScheduledProjectRunner {
         taskId: task.id,
         agentId: input.agentSlug,
         principal: input.principal,
+        owner,
         signal: input.signal,
       });
     } catch (error) {
@@ -155,12 +191,8 @@ export class ScheduledProjectRuns implements ScheduledProjectRunner {
       runId,
       prompt: input.prompt,
       target: { kind: 'conversation', conversationId },
-      createdBy: {
-        userId: this.ports.actor.userId,
-        ...(this.ports.actor.ownerAttribution
-          ? { ownerAttribution: this.ports.actor.ownerAttribution }
-          : {}),
-      },
+      // Sent as the creator exactly as recorded, never strengthened.
+      createdBy: owner,
       lastSuccessAt: undefined,
       onConversationStarted: () => undefined,
       onHandedOff: () => undefined,

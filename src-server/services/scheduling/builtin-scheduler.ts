@@ -236,6 +236,11 @@ export interface ScheduledProjectRunner {
     input: Parameters<ScheduledTurnAdapter['invoke']>[0] & {
       projectId: string;
       jobName: string;
+      /**
+       * #5126: who the run acts as, the claimed job's recorded creator.
+       * `undefined`: the job has no owner and must not start a Task.
+       */
+      createdBy: SchedulerAutomationCreator | undefined;
     },
   ): Promise<ScheduledTurnOutcome>;
 }
@@ -1044,7 +1049,14 @@ export class BuiltinScheduler implements ISchedulerProvider {
     return {
       invoke: (input) =>
         runner
-          ? runner.invoke({ ...input, projectId, jobName })
+          ? runner.invoke({
+              ...input,
+              projectId,
+              jobName,
+              // The claimed receipt's own job, so an edit between claim and
+              // run never changes who this run acts as.
+              createdBy: input.receipt.job.createdBy,
+            })
           : Promise.resolve({
               kind: 'definitely-not-invoked',
               error: 'Project schedules are unavailable on this Station',
