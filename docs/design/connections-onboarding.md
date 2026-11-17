@@ -61,8 +61,9 @@ questions or mark the optional setup run complete. **Open setup** on the
 **Finish setup** card opens that run explicitly after the work entry.
 
 New chat opens the start composer (Run setup, Project and Start) as a draft
-in the chat dock. A setup helper appears when the
-selected Agent cannot respond. It shows server-supplied prerequisites and links
+in the chat dock. A setup card appears when no Agent can respond (or the
+Agent picked in the menu cannot). Under each Agent's **Details** it shows the
+server's reason, server-supplied prerequisites and links
 to engine installation instructions, existing account sign-in, or **Add a
 model connection**. For Station's own agent, **Choose AI for Station** opens the
 existing engine chooser, including ready external engines, before requiring a

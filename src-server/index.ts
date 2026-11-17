@@ -84,7 +84,11 @@ import {
 } from './services/infra/workload-resources.js';
 import { readTelemetryCompanionSavedPorts } from './services/telemetry-companion-control.js';
 import { lifecycleService } from './telemetry/metrics.js';
-import { createLogger, resolveLogLevel } from './utils/logger.js';
+import {
+  createLogger,
+  flushLogRepeatSummaries,
+  resolveLogLevel,
+} from './utils/logger.js';
 import { resolveHomeDir } from './utils/paths.js';
 
 assertSupportedNodeVersion();
@@ -454,7 +458,15 @@ async function main() {
         try {
           await runtime.shutdown();
         } finally {
-          await stopWorkloadResources();
+          try {
+            await stopWorkloadResources();
+          } finally {
+            // #5054: a repeat window still open at exit would otherwise lose
+            // its "Suppressed K repeats" line. Synchronous and never throws,
+            // so it cannot delay or fail the shutdown. The uncaughtException
+            // path reaches this too: its crash handler calls this function.
+            flushLogRepeatSummaries();
+          }
         }
         logger.info('Station shutdown complete', { signal, exitCode });
       } catch (error) {

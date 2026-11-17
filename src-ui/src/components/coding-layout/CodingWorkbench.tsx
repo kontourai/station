@@ -1423,6 +1423,7 @@ export function CodingWorkbench({
             <Button
               variant="ghost"
               size="sm"
+              className="coding-workbench__open-browser"
               disabled={
                 !hostOpen || browserPreviewAvailability.state !== 'available'
               }
@@ -1728,7 +1729,7 @@ export function CodingWorkbench({
                 key={instance.instanceId}
                 variant="ghost"
                 aria-label={
-                  badges[instance.descriptorId] === undefined
+                  shownCount(badges[instance.descriptorId]) === undefined
                     ? paneLabel(instance)
                     : `${paneLabel(instance)}, ${badges[instance.descriptorId]} changed ${badges[instance.descriptorId] === 1 ? 'file' : 'files'}`
                 }
@@ -1743,7 +1744,8 @@ export function CodingWorkbench({
               >
                 {railGlyph(instance.descriptorId, paneLabel(instance))}
                 <span>{paneLabel(instance)}</span>
-                {badges[instance.descriptorId] === undefined ? null : (
+                {shownCount(badges[instance.descriptorId]) ===
+                undefined ? null : (
                   <span className="coding-workbench__tool-count">
                     {badges[instance.descriptorId]}
                   </span>
@@ -1977,6 +1979,14 @@ const CenterChat = memo(function CenterChat({
   );
 });
 
+/**
+ * A rail count worth drawing: a badge of 0 says nothing a plain icon does
+ * not, so it is never drawn (or announced).
+ */
+function shownCount(count: number | undefined): number | undefined {
+  return count !== undefined && count > 0 ? count : undefined;
+}
+
 /** A glyph per built-in drill-in; anything else draws the generic pane mark. */
 function railGlyph(descriptorId: string, label: string): ReactNode {
   switch (descriptorId) {
@@ -2056,7 +2066,7 @@ function CodingViewRail({
     <nav className="coding-workbench__rail" aria-label="Views">
       {instances.map((instance) => {
         const label = paneLabel(instance);
-        const count: number | undefined = badges[instance.descriptorId];
+        const count = shownCount(badges[instance.descriptorId]);
         const name =
           count === undefined
             ? label
@@ -2236,7 +2246,9 @@ function BrowserRailItem({ launcher }: { launcher: ReactNode }) {
   }, [open, panelRef]);
   return (
     <div className="coding-workbench__rail-slot">
-      <RailTip label="Open Browser">
+      {/* Opens ANOTHER Browser pane, beside any Browser already on the rail:
+          the "+" mark and the tip say so, or the two globes read as one. */}
+      <RailTip label="Open a new Browser pane">
         <button
           ref={triggerRef}
           type="button"
@@ -2247,6 +2259,9 @@ function BrowserRailItem({ launcher }: { launcher: ReactNode }) {
           onClick={() => setOpen((value) => !value)}
         >
           <GlobeGlyph />
+          <span className="coding-workbench__rail-add-mark" aria-hidden="true">
+            +
+          </span>
         </button>
       </RailTip>
       {open

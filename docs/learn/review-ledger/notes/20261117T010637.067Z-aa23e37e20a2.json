@@ -1,0 +1,7 @@
+{
+  "revision": "cd5f59d514e5225de8712bb41baa731640c7e124",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Operations vocabulary unaffected by the selection paragraph.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]}
+  ]
+}

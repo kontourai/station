@@ -1750,6 +1750,45 @@ describe('the plan records its related-discovery cost (#2803)', () => {
       '[fast-checks] related discovery: 34.2s of its 265.0s timeout\n',
     );
   });
+
+  test('the plan command prints the union added and names every escalated path it did not cover (#5010)', async () => {
+    const { directory, head } = repository();
+    const lines: string[] = [];
+    const entry = (path: string, disposition: string, suites = 0) => ({
+      path,
+      disposition,
+      depth: disposition === 'selected' ? 2 : null,
+      suites,
+    });
+    const status = await runFastChecksShardCli(['plan', '--out=plan.json'], {
+      cwd: directory,
+      env: { STATION_CI_FAST_BASE: 'HEAD' },
+      report: (message) => lines.push(message),
+      error: () => {},
+      planShards: async () => ({
+        ...planFor(head, ['a/a.test.ts']),
+        escalatedImporters: {
+          limits: { depth1: 100, depth2: 100 },
+          totalCap: 250,
+          // Two seeds of 75 suites sharing 25: the union is 125, not 150.
+          suites: 125,
+          added: 40,
+          paths: [
+            entry('packages/shared/src/a.ts', 'selected', 75),
+            entry('packages/shared/src/b.ts', 'selected', 75),
+            entry('packages/contracts/src/catalog.ts', 'no-suite-within-bound'),
+            entry('packages/contracts/src/agent-identity.ts', 'deferred'),
+            entry('packages/contracts/src/gone.ts', 'absent'),
+            entry('pnpm-lock.yaml', 'not-importable'),
+          ],
+        },
+      }),
+    });
+    expect(status).toBe(0);
+    expect(lines.join('')).toContain(
+      '[fast-checks] escalated paths: 125 importing suite(s) (40 not otherwise planned) for 2 of 6; no importing suite within the bound: packages/contracts/src/catalog.ts; over the bound: packages/contracts/src/agent-identity.ts; no importer graph (not importable): pnpm-lock.yaml; no importer graph (deleted): packages/contracts/src/gone.ts\n',
+    );
+  });
 });
 
 describe('hosted mapped tests beside broad deferred obligations', () => {

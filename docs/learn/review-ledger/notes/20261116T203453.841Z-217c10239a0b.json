@@ -1,0 +1,7 @@
+{
+  "revision": "86a601bb95062539dfad0a4176fc4ea1e6aa3085",
+
+  "notes": [
+    {"path":"src-server/AGENTS.md","note":"Cited sources changed only by a landing bullet in development.md, the release-bot slot sentence in testing.md and a new child-process manifest entry; no claim here describes those, so it stays accurate.","inputs":["src-server/AGENTS.md","docs/guides/development.md","docs/guides/testing.md"]}
+  ]
+}

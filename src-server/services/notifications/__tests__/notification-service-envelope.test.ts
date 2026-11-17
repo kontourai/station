@@ -22,6 +22,7 @@ import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   notificationOps: { add: vi.fn() },
+  notificationRetentionPruned: { add: vi.fn() },
   jsonFileStoreWriteBytes: { record: vi.fn() },
 }));
 
@@ -119,7 +120,12 @@ describe('NotificationService envelope (#2583)', () => {
   });
 
   function freshReader() {
-    return new NotificationService(new EventBus(), dir, 999_999);
+    // The hand-authored legacy fixture has fixed dates; retention (#5052,
+    // notification-retention.test.ts) would otherwise prune its dismissed
+    // record once the real clock is a month past them.
+    return new NotificationService(new EventBus(), dir, 999_999, {
+      retentionDays: 36_500,
+    });
   }
 
   function updatedEvents() {

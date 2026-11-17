@@ -1,0 +1,11 @@
+{
+  "revision": "0b924faf370a40c1c5065593b893ffa3c791a6b1",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Regenerated metrics catalog adds two workload counters (station.workload.scope.oom_kills, station.workload.scope.memory_pressure); existing instrument rows only shift line numbers, so citing claims stay accurate.","inputs":["docs/reference/metrics.md"]},
+
+    {"path":"docs/design/terminal.md","note":"#5081: only the /api/system/workload section changed (optional lastOomKillProcesses and pressure on scopes and the session read); terminal and integration routes cited by these pages are unchanged.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#5081: only the /api/system/workload section changed (optional lastOomKillProcesses and pressure on scopes and the session read); terminal and integration routes cited by these pages are unchanged.","inputs":["docs/reference/api.md"]}
+  ]
+}

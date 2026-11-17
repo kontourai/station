@@ -289,6 +289,13 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
     const title = quoted(text(args, 'title'));
     return title ? `a Session to ${title}` : 'a Session';
   }),
+  settle_conversation: entry(
+    'Moved',
+    'Moving',
+    'Move',
+    (context) =>
+      `${conversation(context)} to ${context.args.settled === false ? 'Open' : 'Settled'}`,
+  ),
   send_to_session: entry('Sent to', 'Sending to', 'Send to', (context) =>
     session(context, ['sessionId']),
   ),

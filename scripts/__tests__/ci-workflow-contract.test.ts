@@ -407,9 +407,8 @@ describe('CI verification workflow contracts', () => {
       // build of a UI-only change happens there (build-ios.yml).
       '.github/workflows/build-ios.yml',
       // Scheduled housekeeping that went red unnoticed: the docs sweep for
-      // weeks (#4270), CI throughput health on most windows.
+      // weeks (#4270).
       '.github/workflows/docs-freshness-sweep.yml',
-      '.github/workflows/ci-throughput-health.yml',
       // Every other scheduled workflow (owner decision: a scheduled red must
       // open an issue). scheduled-failure-reporting.test.ts holds the whole
       // scheduled set to this list or a justified allowlist.

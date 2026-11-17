@@ -1,0 +1,9 @@
+{
+  "revision": "61456989822bfc7e38dafb3437b32b18a881aaff",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Child admission reads WorkingParent.owns (threadInChat) and waits while workingParentPending; the earlier close-time re-check was removed. Module-map and placement ownership claims still hold.","inputs":["src-ui/src/components/chat-dock/useChatDockOverlays.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Child admission reads WorkingParent.owns (threadInChat) and waits while workingParentPending; the earlier close-time re-check was removed. Module-map and placement ownership claims still hold.","inputs":["src-ui/src/components/chat-dock/useChatDockOverlays.ts"]}
+  ]
+}

@@ -70,7 +70,11 @@ import {
 } from '../../services/projects/attention-projection.js';
 import { FileAttentionSnoozeStore } from '../../services/projects/attention-snooze-store.js';
 import { defaultedProjectWorkingDirectory } from '../../services/projects/project-service.js';
-import type { ScheduledTurnAdapter } from '../../services/scheduling/builtin-scheduler.js';
+import type {
+  ScheduledProjectHold,
+  ScheduledProjectRunner,
+  ScheduledTurnAdapter,
+} from '../../services/scheduling/builtin-scheduler.js';
 import { MonitorTaskTurnSupervisor } from '../../services/scheduling/monitor-task-supervisor.js';
 import type { ScheduledConversationRunner } from '../../services/scheduling/scheduled-conversation-runs.js';
 import { SchedulerService } from '../../services/scheduling/scheduler-service.js';
@@ -523,6 +527,10 @@ export function configureRuntimeSupportServices(
      * Absent (hosted, or no inbox): such a job fails without invoking.
      */
     conversationRuns?: ScheduledConversationRunner;
+    /** #5070: runs a Project job as a Task. Absent: no Project jobs. */
+    projectRuns?: ScheduledProjectRunner;
+    /** #5069: which Projects hold their schedules. */
+    projectHold?: ScheduledProjectHold;
   } = {},
 ) {
   // The hosted registry is immutable deployment configuration. Until pairing
@@ -769,6 +777,8 @@ export function configureRuntimeSupportServices(
       ...(options.conversationRuns
         ? { conversationRuns: options.conversationRuns }
         : {}),
+      ...(options.projectRuns ? { projectRuns: options.projectRuns } : {}),
+      ...(options.projectHold ? { projectHold: options.projectHold } : {}),
       integrationSecretResolver,
       automationPoller: {
         async poll(input) {

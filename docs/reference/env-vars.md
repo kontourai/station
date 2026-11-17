@@ -22,7 +22,9 @@ rewrites. See [configuration and logging](config.md#logging).
 
 The trusted `STATION_WORKLOAD_*` settings configure managed Linux service
 resource limits. See [Linux service workload budgets](../guides/development.md#linux-service-workload-budgets)
-for defaults, platform support and refusal behavior. The two memory budgets
+for defaults, platform support and refusal behavior, including
+`STATION_WORKLOAD_PRESSURE_PERCENT`, the share of a scope's memory limit at
+which Station reports it near the limit. The two memory budgets
 override the matching saved Station setting.
 
 | Variable | Default | Description | Source |
@@ -112,11 +114,13 @@ on `station.console.emissions` and logged once per outage.
 
 - [Server logs and attachment retention](config.md#logging): `STATION_LOG_LEVEL`, `STATION_SERVER_LOG_RETENTION_DAYS`, `STATION_SERVER_LOG_MAX_BYTES`, `STATION_LOG_REPEAT_LIMIT`, `STATION_LOG_REPEAT_WINDOW_SECONDS`, `STATION_LOG_FILE_MAX_BYTES`, `STATION_LOG_FILE_GENERATIONS`, `STATION_ATTACHMENT_RETENTION_DAYS`, and `STATION_ATTACHMENT_MAX_BYTES`.
 - [Monitoring history](../guides/monitoring.md#environment-variables): `STATION_EVENT_LOG_RETENTION_DAYS` and `STATION_EVENT_LOG_MAX_BYTES`.
+- [Notification retention](config.md#notification-retention): `STATION_NOTIFICATION_RETENTION_DAYS`.
 - [Native recovery](../user/native-recovery.md#check-the-local-diagnosis): `STATION_DESKTOP_LOG_LEVEL` and the shell's separate logs.
 - [Conversations started outside Station](../user/getting-started.md#see-conversations-started-outside-station): `STATION_EXTERNAL_CLAUDE_SOURCE_ROOT`, `STATION_EXTERNAL_CODEX_SOURCE_ROOT`, `STATION_EXTERNAL_GROK_SOURCE_ROOT` and `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT` select the folders Station reads Claude Code, Codex, Grok and OpenCode history from, instead of `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GROK_HOME` and OpenCode's `XDG_DATA_HOME` data folder and their defaults ([details](session-api.md), [OpenCode source](../../src-server/providers/sessions/opencode-session-source.ts)); a Codex root also replaces the other Codex homes Station configures. `STATION_EXTERNAL_ACP_SESSIONS=1` also lists the sessions ACP engines report, without their messages ([source](../../src-server/services/acp/acp-session-listing.ts)).
 - [Engines from the public registry](../guides/connections.md#engines-from-the-public-registry): `STATION_PUBLIC_AGENT_REGISTRY` set to `off`, `0`, `false` or `no` (any case) stops Station downloading and listing the public agent registry ([source](../../src-server/services/acp/public-agent-registry.ts)).
 - [Integrations from MCP subregistries](../guides/connections.md#integrations-from-mcp-subregistries): `STATION_MCP_CURATED_REGISTRY` set to `off`, `0`, `false` or `no` (any case) withdraws Station's curated MCP servers; `STATION_MCP_SUBREGISTRY_URL` adds one https subregistry whose entries are unqualified; `STATION_MCP_SUBREGISTRY_ALLOW_PRIVATE_ADDRESSES` set to `on`, `1`, `true` or `yes` lets catalog entries use loopback and private network endpoints ([source](../../src-server/providers/registries/mcp-subregistry-provider.ts)).
 - [Testing](../guides/testing.md): test prerequisites, fixture paths, transfer baselines, and verification timeouts.
+- [Code-health audits](../guides/testing.md#repository-wide-code-health): `STATION_FALLOW_CACHE_DIR` selects the disk-backed directory that holds each fallow audit's private base checkout, instead of `$XDG_CACHE_HOME/station/fallow` or `~/.cache/station/fallow` ([source](../../scripts/lib/fallow-base-cache.mjs)).
 - [Deployment authentication](../guides/deployment-authentication.md) and [Web Push](../guides/web-push-notifications.md): deployment-specific identity and notification setup.
 
 Launchers also set process identity, bound ports, and short-lived credentials for

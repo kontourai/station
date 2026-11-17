@@ -270,7 +270,8 @@ message, with digit runs folded so a changing pid or port does not count as a ne
 error. Other context fields are not compared. The first five identical warnings
 in a 60-second window are written. Later ones are dropped and counted. When the
 window ends, one `warn` line, `Suppressed K repeats of: <message>`, reports the
-count. `error` and `fatal` records are never limited, and neither are levels
+count. A graceful shutdown writes every summary still pending before it exits,
+so a window open at shutdown is not lost. `error` and `fatal` records are never limited, and neither are levels
 below `warn`. Suppressed records increment the `station.logs.suppressed_records`
 counter, with attributes `component` (the logger name) and `level`. At most 512
 identities are tracked at once, and the oldest is summarized and dropped first.
@@ -456,6 +457,32 @@ invokes the scheduled-turn adapter after durable admission; a job with a
 attempt into any resulting session, rather than assuming the IDs match.
 
 ---
+
+## Notification retention
+
+The notification feed (`<STATION_HOME>/notifications.json`) keeps a record
+while it is pending or delivered, however old. A settled record (expired,
+actioned or dismissed) is removed once its settle time is older than the
+retention window. The settle time is the record's last change, so a producer
+that keeps updating a settled record by its dedupe tag keeps it. Removal
+happens inside the notification service's own locked write: every change to
+the feed first drops what is due, and startup does the same for a home that
+went quiet. Open inbox and history views are told to refetch. The principal
+feed (`principal-notifications.json`) is separate and keeps its own 100-record
+cap per person.
+
+A removed record that held a dedupe tag leaves a tombstone (tag, id, source,
+status, settle time) in `<STATION_HOME>/notification-tombstones.json`. A
+producer that schedules that tag again gets the settled record's id and status
+back, and nothing is created, delivered or pushed. A tombstone is kept for one
+window after the removal or after the last schedule that hit it, so a tag is
+forgotten only once its producer has been silent for a whole window. A record
+someone clears by hand leaves no tombstone, as before.
+([source](../../src-server/services/notifications/notification-service.ts))
+
+| variable | default | description |
+|---|---|---|
+| `STATION_NOTIFICATION_RETENTION_DAYS` | `30` | Days a settled notification record is kept after it settled, and a dedupe tombstone after its last use. A value that is not a positive integer falls back to the default. |
 
 ## agent.json
 

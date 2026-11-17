@@ -698,20 +698,16 @@ describe('AttentionCard — device pairing kind (#765 D5)', () => {
  * already acknowledged; Open did not, and that asymmetry was the bug.
  */
 describe('AttentionCard — opening acknowledges (#3203)', () => {
-  test('opening a failed session acknowledges it, then navigates', async () => {
+  test('opening a failed session navigates in the app, then acknowledges it', async () => {
     renderCard(baseFailure());
 
     screen.getByRole('link', { name: 'Open session' }).click();
 
-    expect(acknowledgeAsync).toHaveBeenCalledWith('session-failed:thread-boom');
-    // The navigation is deferred until the ack resolves — otherwise the
-    // destination's own `/api/attention` read races the write it depends on.
-    expect(navigate).not.toHaveBeenCalled();
-    await vi.waitFor(() =>
-      expect(navigate).toHaveBeenCalledWith(
-        '/?surface=activity&session=thread-boom',
-      ),
+    // In-app navigation unloads nothing, so opening does not wait for the ack.
+    expect(navigate).toHaveBeenCalledWith(
+      '/?surface=activity&session=thread-boom',
     );
+    expect(acknowledgeAsync).toHaveBeenCalledWith('session-failed:thread-boom');
   });
 
   test('a failing acknowledgement still opens the session', async () => {
@@ -727,7 +723,7 @@ describe('AttentionCard — opening acknowledges (#3203)', () => {
     );
   });
 
-  test('an approval row still opens with the plain anchor and acknowledges nothing', () => {
+  test('an approval row opens in the app and acknowledges nothing', () => {
     // Only `session-failed` is acknowledgeable; the projection ignores an ack
     // recorded against any other kind, so recording one here would be a write
     // that changes nothing while claiming the row was seen.
@@ -736,7 +732,7 @@ describe('AttentionCard — opening acknowledges (#3203)', () => {
     screen.getByRole('link', { name: 'Open session' }).click();
 
     expect(acknowledgeAsync).not.toHaveBeenCalled();
-    expect(navigate).not.toHaveBeenCalled();
+    expect(navigate).toHaveBeenCalledWith('/projects/demo?chat=thread-1');
   });
 });
 
