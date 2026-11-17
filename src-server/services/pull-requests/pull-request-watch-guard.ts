@@ -341,6 +341,63 @@ function shellText(toolArgs: unknown): string | undefined {
   return typeof command === 'string' ? command : undefined;
 }
 
+/** A simple command that opens a pull request or merge request. */
+function segmentOpensPullRequest(words: readonly string[]): boolean {
+  const text = words.join(' ');
+  // GitHub's GraphQL mutation, however it is reached (`gh api graphql`).
+  if (/\bcreatePullRequest\b/.test(text)) return true;
+  const [program = '', ...args] = commandOf(words);
+  const verbs = args.filter((word) => !word.startsWith('-'));
+  if (program === 'gh') {
+    if (verbs[0] === 'pr' && verbs[1] === 'create') return true;
+    // REST: `gh api repos/o/r/pulls` with fields or an explicit POST.
+    if (
+      verbs[0] === 'api' &&
+      args.some((word) => /(?:^|\/)pulls\/?$/.test(word)) &&
+      args.some(
+        (word, at) =>
+          ['-f', '-F', '--field', '--raw-field', '--input'].includes(word) ||
+          /^--(?:raw-)?field=/.test(word) ||
+          ((word === '-X' || word === '--method') &&
+            args[at + 1]?.toUpperCase() === 'POST') ||
+          /^--method=post$/i.test(word),
+      )
+    )
+      return true;
+  }
+  if (program === 'glab' && verbs[0] === 'mr' && verbs[1] === 'create')
+    return true;
+  if (program === 'hub' && verbs[0] === 'pull-request') return true;
+  if (program === 'git') {
+    const sub = gitSubcommand(args);
+    // GitLab's push option opens a merge request.
+    if (
+      sub.name === 'push' &&
+      sub.rest.some((word) => /merge_request\.create/.test(word))
+    )
+      return true;
+  }
+  return false;
+}
+
+/**
+ * #5063: whether a tool call opens a pull request (or merge request): a
+ * forge CLI or API call in a shell tool, or a forge MCP tool such as
+ * GitHub's `create_pull_request`. It reads the call, not its effect, like
+ * the watch refusals above.
+ */
+export function matchPullRequestOpen(
+  toolName: string,
+  toolArgs: unknown,
+): boolean {
+  const name = key(toolName);
+  if (name.endsWith('createpullrequest') || name.endsWith('createmergerequest'))
+    return true;
+  if (!SHELL_TOOLS.has(name)) return false;
+  const text = shellText(toolArgs);
+  return !!text && shellSegments(text).some(segmentOpensPullRequest);
+}
+
 /**
  * What a tool call would do that a watched Task's agent may not, or
  * nothing. `toolName` is the operation's own name (an engine built-in, or an

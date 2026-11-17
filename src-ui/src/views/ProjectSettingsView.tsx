@@ -1,3 +1,4 @@
+import { PROJECT_ROOM_COORDINATOR_PREVIEW_ID } from '@kontourai/station-contracts/project-room-coordinator';
 import { PULL_REQUEST_FEEDBACK_PREVIEW_ID } from '@kontourai/station-contracts/pull-request-feedback';
 import type { ModelConnectionConfig } from '@kontourai/station-contracts/tool';
 import {
@@ -64,6 +65,7 @@ import { ProjectSourcesSection } from './project-settings/ProjectSourcesSection'
 import { ProjectUsageSection } from './project-settings/ProjectUsageSection';
 import { PullRequestWatchSection } from './project-settings/PullRequestWatchSection';
 import { useProjectCoordinationPreview } from './project-settings/projectCoordinationPreview';
+import { RoomCoordinatorSection } from './project-settings/RoomCoordinatorSection';
 import { ToolsSection } from './project-settings/ToolsSection';
 import type { ProjectForm } from './project-settings/types';
 import {
@@ -89,6 +91,7 @@ const PROJECT_SETTINGS_SECTIONS = [
   ['layouts', 'Layouts'],
   ['agent-feedback', 'Agent feedback'],
   ['pull-requests', 'Pull requests'],
+  ['coordinator', 'Coordinator'],
   ['resources', 'Sources'],
   ['access', 'People and access'],
   ['knowledge', 'Project knowledge'],
@@ -225,6 +228,8 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   // offered in the list and rendered only with its Feature Preview, which a
   // Station that cannot serve agent feedback never registers.
   const agentFeedback = previewFlags.has(PULL_REQUEST_FEEDBACK_PREVIEW_ID);
+  // #5063: the `#general` coordinator's limits, with its preview.
+  const roomCoordinator = previewFlags.has(PROJECT_ROOM_COORDINATOR_PREVIEW_ID);
   const { activeSection, hrefForSection, navigateToSection } =
     // Every section stays navigable, so a link to a preview's section
     // survives a reload before the preview flags load; the list and the
@@ -443,6 +448,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           pickerLabel="Project settings section"
           items={settingsSections
             .filter(([id]) => id !== 'agent-feedback' || agentFeedback)
+            .filter(([id]) => id !== 'coordinator' || roomCoordinator)
             .map(([id, label]) => ({
               key: id,
               label,
@@ -901,6 +907,19 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
               onSaved={refetchProject}
             />
           </div>
+
+          {roomCoordinator && (
+            <div
+              className="project-settings__panel"
+              hidden={activeSection !== 'coordinator'}
+            >
+              <RoomCoordinatorSection
+                slug={slug}
+                settings={project?.roomCoordinator}
+                onSaved={refetchProject}
+              />
+            </div>
+          )}
 
           <div
             className="project-settings__panel"

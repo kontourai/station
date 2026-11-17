@@ -15,6 +15,7 @@ import type {
 import type { ProjectCheckoutFreshness } from '@kontourai/station-contracts/project-checkout-freshness';
 import type { ProjectIdentityView } from '@kontourai/station-contracts/project-identity';
 import type { ProjectMemberAction } from '@kontourai/station-contracts/project-membership';
+import type { ProjectRoomCoordinatorSettings } from '@kontourai/station-contracts/project-room-coordinator';
 import type {
   ProjectSharedTaskDocument,
   ProjectSharedTaskHistory,
@@ -661,6 +662,8 @@ export interface ProjectConfig extends ProjectMetadata {
   agents?: AgentId[];
   /** See `ProjectConfig` in `@kontourai/station-contracts/project`. */
   pullRequestWatch?: ProjectPullRequestWatchSettings;
+  /** See `ProjectConfig` in `@kontourai/station-contracts/project`. */
+  roomCoordinator?: ProjectRoomCoordinatorSettings;
   createdAt: string;
   updatedAt: string;
 }

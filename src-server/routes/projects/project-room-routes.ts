@@ -10,9 +10,11 @@ import {
   parseProjectRoomNoteInput,
   parseProjectRoomReactionInput,
 } from '@kontourai/station-contracts/project-room';
+import { PROJECT_ROOM_COORDINATOR_PREVIEW_ID } from '@kontourai/station-contracts/project-room-coordinator';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
 import { ProjectNotFoundError } from '../../domain/project-file-transactions.js';
+import { FeaturePreviewDisabledError } from '../../services/feature-previews/feature-preview-refusal.js';
 import { ProjectMembershipRefusal } from '../../services/projects/project-membership-store.js';
 import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
 import type {
@@ -20,6 +22,10 @@ import type {
   ProjectRoomAgentHandle,
   ProjectRoomAgentModule,
 } from '../../services/projects/project-room-agent-module.js';
+import {
+  CoordinatorRefusal,
+  type ProjectRoomCoordinator,
+} from '../../services/projects/project-room-coordinator.js';
 import type { ProjectRoomMutationGuard } from '../../services/projects/project-room-service.js';
 import { ProjectRoomService } from '../../services/projects/project-room-service.js';
 import { ProjectRoomRefusal } from '../../services/projects/project-room-store.js';
@@ -67,7 +73,20 @@ export interface ProjectRoomAgentRoutes {
     /** The addressed channel; absent means the Project's default room. */
     channelId?: string,
   ): Promise<T>;
+  /** #5063: the `#general` coordinator; absent where it is not composed. */
+  coordinator?: ProjectRoomCoordinatorRoutes;
 }
+/** What the `#general` coordinator routes need from the runtime. */
+export interface ProjectRoomCoordinatorRoutes {
+  /** The `project-room-coordinator` preview, read per request. */
+  enabled(): boolean;
+  service: Pick<ProjectRoomCoordinator, 'view' | 'start' | 'sweep'>;
+  /** The Project's `#general` room, or undefined before it is opened. */
+  roomId(scope: ProjectRoomAgentAuthority['scope']): string | undefined;
+  /** Post as the coordinator under the request's current authority. */
+  post(authority: ProjectRoomAgentAuthority, text: string): string;
+}
+const COORDINATOR_PREVIEW_LABEL = 'Coordinator in #general';
 /**
  * Room routes are registered twice, with literal paths the pairing-scope leaf
  * scan can read: under `/:slug/room` for the Project's default channel
@@ -114,6 +133,10 @@ export function createProjectRoomRoutes(
         );
       if (error instanceof ProjectMembershipRefusal)
         return c.json({ error: { code: 'project_room_access_changed' } }, 403);
+      if (error instanceof FeaturePreviewDisabledError)
+        return c.json(error.refusal, 404);
+      if (error instanceof CoordinatorRefusal)
+        return c.json({ error: { code: 'project_room_not_found' } }, 404);
       // No such Project on this Station: not an outage (#4855).
       if (error instanceof ProjectNotFoundError)
         return c.json(
@@ -258,6 +281,87 @@ export function createProjectRoomRoutes(
           }),
         );
       }
+    }
+    // #5063: the coordinator lives in `#general` only, so these leaves exist
+    // under the default room's prefix alone.
+    const coordinator = agents.coordinator;
+    if (coordinator) {
+      const general = (authority: ProjectRoomAgentAuthority) => {
+        if (!coordinator.enabled())
+          throw new FeaturePreviewDisabledError(
+            PROJECT_ROOM_COORDINATOR_PREVIEW_ID,
+            COORDINATOR_PREVIEW_LABEL,
+          );
+        const roomId = coordinator.roomId(authority.scope);
+        if (!roomId) throw new ProjectRoomRefusal('not_found');
+        return roomId;
+      };
+      app.get('/:slug/room/coordinator', (c) =>
+        perform(c, () =>
+          runAgent(
+            c,
+            'view',
+            undefined,
+            (authority) =>
+              coordinator.service.view(authority.scope, general(authority)),
+            undefined,
+          ),
+        ),
+      );
+      app.post('/:slug/room/coordinator/proposals/:proposalId/start', (c) =>
+        perform(c, async () => {
+          const { rowIds, ...guard } = guards
+            .extend({
+              rowIds: z
+                .array(z.string().min(1).max(64))
+                .min(1)
+                .max(8)
+                .optional(),
+            })
+            .strict()
+            .parse(await body(c));
+          const proposalId = z
+            .string()
+            .min(1)
+            .max(64)
+            .parse(c.req.param('proposalId'));
+          return runAgent(
+            c,
+            'execute',
+            guard,
+            (authority) =>
+              coordinator.service.start({
+                scope: authority.scope,
+                roomId: general(authority),
+                proposalId,
+                ...(rowIds ? { rowIds } : {}),
+                starter: {
+                  id: authority.requester.id,
+                  displayName: authority.requester.displayName,
+                },
+              }),
+            undefined,
+          );
+        }),
+      );
+      app.post('/:slug/room/coordinator/sweep', (c) =>
+        perform(c, async () => {
+          const guard = guards.strict().parse(await body(c));
+          return runAgent(
+            c,
+            'execute',
+            guard,
+            (authority) =>
+              coordinator.service.sweep({
+                scope: authority.scope,
+                roomId: general(authority),
+                requesterId: authority.requester.id,
+                post: (text) => coordinator.post(authority, text),
+              }),
+            undefined,
+          );
+        }),
+      );
     }
   }
   app.get('/:slug/channels', (c) =>

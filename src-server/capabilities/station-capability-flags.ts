@@ -77,6 +77,10 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // `GET …/members` in src-server/routes/projects/project-room-routes.ts.
   // Served wherever Project rooms are; each room's own read check decides.
   projectRoomLive: true,
+  // #5063: the `#general` coordinator's routes (`…/room/coordinator…` in
+  // project-room-routes.ts, `PUT /:slug/room-coordinator` in projects.ts).
+  // Served wherever Project rooms are; the preview decides if they answer.
+  projectRoomCoordinator: true,
   // Scoped pairing (archive#1098): pairing grants/device sessions carry an
   // OAuth-style scope string, enforced by one route -> required-scope table.
   // src-server/security/pairing-route-scopes.ts,
@@ -233,6 +237,16 @@ function servesScheduledConversationTarget(
   return !deployment.hosted;
 }
 
+/**
+ * #5063: the `#general` coordinator sends each Task its first message
+ * through the conversation inbox, which hosted Stations do not compose.
+ */
+function servesProjectRoomCoordinator(
+  deployment: StationCapabilityDeployment,
+): boolean {
+  return !deployment.hosted;
+}
+
 /** Hosted Stations have no conversation inbox through which to wake a coordinator. */
 export function servesCoordinatorSession(
   deployment: StationCapabilityDeployment,
@@ -298,6 +312,7 @@ const DEPLOYMENT_SERVED_FLAGS: Readonly<
   followUpAttachments: servesFollowUpAttachments,
   pullRequestFeedback: servesPullRequestFeedback,
   projectSchedules: servesScheduledConversationTarget,
+  projectRoomCoordinator: servesProjectRoomCoordinator,
   remoteSessionHistory: servesRemoteSessionReads,
 };
 
