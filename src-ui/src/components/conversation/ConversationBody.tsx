@@ -849,11 +849,7 @@ function LiveConversationBody({
   }
   if (transcript.messages.length > 0) {
     stickyTranscriptRef.current.messages = transcript.messages;
-  } else if (
-    transcript.settled &&
-    transcript.error &&
-    !transcript.catchingUp
-  ) {
+  } else if (transcript.settled && transcript.error && !transcript.catchingUp) {
     // A read that settled failed with no rows and is not catching up (a
     // cached paint whose re-read failed drops its rows so the failure shows)
     // leaves nothing to keep: a later Retry must not bring the dropped rows
