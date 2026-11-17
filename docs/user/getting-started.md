@@ -1136,7 +1136,9 @@ In new chats and New Task conversations, drop an image onto the composer or past
 a screenshot into the text field (Ctrl/Cmd+V on desktop). On a phone, use **Attach** to choose an image. In the Android app
 you can also share images from another app to Station, then pick a
 conversation or **New chat** in a project. Review its thumbnail and remove it
-before sending if needed.
+before sending if needed; tap a thumbnail to see the image full size. **Attach**
+always adds more files. If you send while a file is still uploading, the
+message waits and goes once the upload finishes; a failed upload offers Retry.
 The existing Task room, Project channels and agent-thread replies accept
 images the same way, including messages with only an image; their room composer also retains **Paste image** on supported touch devices. You can attach up to five files, 5 MiB
 each and 15 MiB combined. Keep unsent local files in the open draft; reloading

@@ -359,6 +359,8 @@ export interface ConversationBodyProps {
   /** #4406: Regenerate and Edit and resend, gated with the fork. */
   onResendFromMessage?: (request: MessageResendRequest) => void;
   onComposerEnabledChange?: (element: HTMLTextAreaElement | null) => void;
+  /** The host sends this draft once its uploads finish (Start's first message). */
+  sendQueuedForUploads?: boolean;
   chatInput: ReturnType<typeof useChatInput>;
   setShowStatsPanel: (show: boolean) => void;
 }
@@ -577,6 +579,7 @@ function LiveConversationBody({
   modelsLoading = false,
   chatInput,
   onComposerEnabledChange,
+  sendQueuedForUploads = false,
   owner,
   secondaryActions: dockSecondaryActions,
   onOpenAgentHandoff,
@@ -3072,6 +3075,7 @@ function LiveConversationBody({
                         undefined
                       : chatInput.sendBlockedReason
             }
+            sendQueuedForUploads={sendQueuedForUploads}
             onRetryAttachmentStage={chatInput.retryAttachmentStage}
             onCancelAttachmentStage={chatInput.cancelAttachmentStage}
             onReplaceAttachmentFile={chatInput.replaceAttachmentFile}
