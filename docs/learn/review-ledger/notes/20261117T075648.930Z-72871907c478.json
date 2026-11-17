@@ -1,0 +1,7 @@
+{
+  "revision": "f3cf8d62ed12c651add3dd68f8b01be4d097ebfe",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated bundle only carries the #5113 module-map and development-guide workload-notice prose; station-docs.md's claims about the bundle's generation, topics and MCP serving are unchanged.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}
