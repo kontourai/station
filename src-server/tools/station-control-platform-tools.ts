@@ -116,13 +116,13 @@ function proposalToolResult(
 export function registerPlatformTools(server: StationControlToolRegistry) {
   server.tool(
     'list_engine_setup',
-    'Find supported engines and their exact setup pages on this Station. Read-only: reports detection and recorded handshake/HTTP-tool evidence, never installs, signs in, or runs a chat. Requires the Guided engine setup Feature Preview on a personal Station. Use setupPath to reuse an existing connection or connect the built-in. The person can install, sign in, apply recommended arguments and choose Add Station tools in that pane; do not edit Station home files or rediscover commands. After the person completes setup, re-read this and list_agents. A successful chat alone does not prove Station tools were delivered.',
+    'Read engine detection, saved connections, setupPath and handshake/tool-channel evidence. Personal preview only; the person completes setup. No home edits or OAuth secrets in chat.',
     {},
     async () => jsonToolResult(await api('/acp/setup')),
   );
   server.tool(
     'open_engine_setup',
-    'Open the supported setup/sign-in page for an engine returned by list_engine_setup. Only navigates the person’s Station UI: it does not install, save configuration, or sign in. Check the navigation result; if refused, give the returned setupPath as a link. Ask the person to return to this chat after completing setup, then re-check. Never request OAuth codes or tokens in chat.',
+    'Open a list_engine_setup entry for the person; navigation only. If refused, give setupPath. Re-check after their return.',
     { id: z.string().min(1).max(128) },
     async ({ id }) => {
       const catalog: { success: boolean; data?: ACPEngineSetupEntry[] } =
@@ -276,11 +276,9 @@ export function registerPlatformTools(server: StationControlToolRegistry) {
     // refusing rather than turning it into a proposing alias: an agent that
     // called a tool named "install" and got success would report the plugin
     // installed. It now names the tool that does what it can: propose.
-    'Explain how to get a plugin installed. This tool cannot install one: a person approves every install on a preview. Call propose_plugin_install to ask a person to install it.',
+    'Cannot install plugins. Use propose_plugin_install; a person reviews the preview and approves installation.',
     {
-      source: z
-        .string()
-        .describe('Plugin source — local path, git URL, or npm package'),
+      source: z.string().describe('Source: local path, git URL or npm package'),
     },
     async ({ source }) =>
       // The alternative was a preview-then-install two-step, and it is the
@@ -318,19 +316,17 @@ export function registerPlatformTools(server: StationControlToolRegistry) {
     // records an ask and nothing else: the person completes it through the
     // ordinary preview → consent → install flow, and nothing this returns
     // can be echoed into `/install` as a decision.
-    'Ask a person to install a plugin. Records a proposal the person sees in Needs attention; they review the install preview and install it themselves. Nothing is installed by this call. Local folders (absolute path) or git URLs. Run validate_plugin first for a local folder.',
+    'Propose installation in Needs attention; installs nothing. A person reviews the preview and installs. Accepts git URLs or absolute local folders; validate_plugin first for local folders.',
     {
       source: z
         .string()
         .min(1)
-        .describe(
-          'Absolute path to the local plugin folder (containing plugin.json), or a git URL',
-        ),
+        .describe('Absolute plugin folder (plugin.json) or git URL'),
       rationale: z
         .string()
         .min(1)
         .max(2000)
-        .describe('Why this plugin should be installed, for the person'),
+        .describe('Install rationale for the person'),
       _sourceContext: sourceContextSchema,
     },
     async ({ source, rationale, _sourceContext }) =>
@@ -360,14 +356,12 @@ export function registerPlatformTools(server: StationControlToolRegistry) {
     // It is auto-approved as read-only, so it takes LOCAL folders only: a git
     // URL would make it a network fetch on an agent's say-so. The route
     // refuses those too; refusing here as well means no request is made.
-    'Check a local plugin folder for authoring errors without installing it: the manifest, its Workspace Panes, prompt-file safety, and conflicts with what is already installed. Returns diagnostics. Local folders only (an absolute path); it refuses git URLs and network paths, and it does not resolve dependencies, install, or build the bundle. A person installs from Plugins → Install plugin after reviewing the preview. Read the station-docs topic `plugin-authoring` for the format.',
+    'Validate an absolute local plugin folder: manifest, Workspace Panes, prompt safety and installed conflicts. Returns diagnostics; no dependencies, install or build. Refuses git URLs/network paths. A person reviews Plugins → Install plugin. Format: station-docs `plugin-authoring`.',
     {
       source: z
         .string()
         .min(1)
-        .describe(
-          'Absolute path to the local plugin folder (the one containing plugin.json)',
-        ),
+        .describe('Absolute plugin folder (plugin.json)'),
     },
     async ({ source }) => {
       // The route's own refusal, applied here so a refused source makes no
@@ -400,7 +394,7 @@ export function registerPlatformTools(server: StationControlToolRegistry) {
     // #2323 S5 (owner decision 3): an update pulls new code into Station, so
     // it is a person's decision like an install. This records a proposal;
     // `POST /api/plugins/:name/update` refuses this caller class.
-    'Ask a person to update an installed plugin. Records a proposal the person sees in Needs attention; they run the update from Plugins. Nothing is updated by this call.',
+    'Propose an installed plugin update in Needs attention. Updates nothing; a person runs it from Plugins.',
     {
       name: z.string().describe('Plugin name'),
       rationale: z
@@ -408,7 +402,7 @@ export function registerPlatformTools(server: StationControlToolRegistry) {
         .min(1)
         .max(2000)
         .optional()
-        .describe('Why it should be updated, for the person'),
+        .describe('Update rationale'),
       _sourceContext: sourceContextSchema,
     },
     async ({ name, rationale, _sourceContext }) =>
@@ -432,7 +426,7 @@ export function registerPlatformTools(server: StationControlToolRegistry) {
   server.tool(
     'remove_plugin',
     // #2323 S5 (owner decision 3): same path as update.
-    'Ask a person to remove an installed plugin. Records a proposal the person sees in Needs attention; they confirm the removal in Plugins. Nothing is removed by this call.',
+    'Propose plugin removal in Needs attention. Removes nothing; a person confirms in Plugins.',
     {
       name: z.string().describe('Plugin name'),
       rationale: z
@@ -440,7 +434,7 @@ export function registerPlatformTools(server: StationControlToolRegistry) {
         .min(1)
         .max(2000)
         .optional()
-        .describe('Why it should be removed, for the person'),
+        .describe('Removal rationale'),
       _sourceContext: sourceContextSchema,
     },
     async ({ name, rationale, _sourceContext }) =>

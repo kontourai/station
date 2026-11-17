@@ -279,22 +279,23 @@ describe('Station orchestration instructions on the first turn', () => {
     expect(first?.input).toContain(AUTHORED_PROMPT);
     expect(first?.input).toContain(text);
     expect(first?.input).toContain(
-      'call `list_engine_setup` and reuse its built-in identity and setupPath',
+      'call `list_engine_setup`; reuse its id/setupPath and saved connection',
     );
     expect(first?.input).toContain(
-      'Use `open_engine_setup` for the chosen id to hand setup to the person',
+      'Use `open_engine_setup` for that id; check navigation or give setupPath',
     );
     expect(first?.input).toContain(
-      'Installation and sign-in belong to the person in Station.',
+      'The person installs/signs in on the Station host',
     );
     expect(first?.input).toContain(
-      'Never request OAuth codes or tokens in chat, edit Station home configuration',
+      'Never request OAuth codes/tokens in chat, edit Station home config, or bypass with shell login',
     );
     expect(first?.input).toContain(
-      'A handshake, sign-in, successful chat turn and actual Station-tool delivery are separate facts',
+      'Handshake, sign-in, chat and Station-tool delivery are separate facts',
     );
+    expect(first?.input).toContain('chooses Add Station tools if needed');
     expect(first?.input).toContain(
-      'Read `list_agents` after setup and use its actual Agent id for new work.',
+      'Read `list_agents` after setup; use its actual Agent id.',
     );
     expect(first?.input.indexOf(AUTHORED_PROMPT)).toBeLessThan(
       first?.input.indexOf(text) as number,

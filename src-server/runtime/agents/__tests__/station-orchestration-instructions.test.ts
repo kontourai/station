@@ -346,7 +346,7 @@ describe('composition', () => {
     );
     // A refused Artifact tool must not strand the visual as a local file.
     expect(text).toContain(
-      'If an Artifact tool refuses with an auth-token message, publish the same page with `html_render` instead of leaving a local file',
+      'On Artifact auth-token refusal, use `html_render` for the same page; no local-file-only result or server',
     );
     // Neither line exists when the visual tools are not offered.
     const without = compose(
