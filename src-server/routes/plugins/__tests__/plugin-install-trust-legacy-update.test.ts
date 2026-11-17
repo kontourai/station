@@ -123,7 +123,7 @@ describe('legacy git update and install trust', () => {
     try {
       const app = withOperatorPrincipal(
         createPluginRoutes(home, makeLogger(), undefined, {
-          applyConfigurationMutation: (operation, options) =>
+          applyConfigurationMutation: (operation: unknown, options: unknown) =>
             runtime.applyAgentConfigurationMutation(operation, options),
           settleProviderAdapterRetirements: async () => {},
         } as never),
