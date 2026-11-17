@@ -1861,6 +1861,43 @@ describe('BrowserAutomation: D4 evaluation', () => {
     expect(h.fake.ran).toEqual([]);
   });
 
+  test('a blank-page check the browser fails (protocol error) refuses, and the script never runs', async () => {
+    const h = await evaluating();
+    h.fake.onSend((method, p) => {
+      if (method === 'Runtime.evaluate' && p.silent === true)
+        throw new CdpProtocolError(
+          'Runtime.evaluate',
+          -32603,
+          'Internal error',
+        );
+      return undefined;
+    });
+    const result = await h.evaluate('1');
+    expect(result).toMatchObject({ ok: false });
+    expect(h.fake.ran).toEqual([]);
+    expect(
+      h.fake.sent.filter(
+        (s) => s.method === 'Runtime.evaluate' && s.params.silent !== true,
+      ),
+    ).toHaveLength(0);
+  });
+
+  test('a blank-page check that never answers times out, refuses, and the script never runs', async () => {
+    const h = await evaluating({ stepDeadlineMs: 20 });
+    h.fake.onSend((method, p) =>
+      method === 'Runtime.evaluate' && p.silent === true
+        ? new Promise<void>(() => {})
+        : undefined,
+    );
+    expect(await h.evaluate('1')).toMatchObject({ ok: false, code: 'timeout' });
+    expect(h.fake.ran).toEqual([]);
+    expect(
+      h.fake.sent.filter(
+        (s) => s.method === 'Runtime.evaluate' && s.params.silent !== true,
+      ),
+    ).toHaveLength(0);
+  });
+
   test('a page with no page-world context yet (between documents) refuses without evaluating', async () => {
     const h = await evaluating();
     h.fake.page.context = undefined;
