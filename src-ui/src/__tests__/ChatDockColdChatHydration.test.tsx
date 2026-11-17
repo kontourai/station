@@ -42,6 +42,8 @@ import { RegionPaneHost } from '../workspace-panes/RegionPaneHost';
 import { subscribeRequiredSlotFailures } from '../workspace-panes/requiredSlotRecovery';
 
 const renderFault = vi.hoisted(() => ({ enabled: false }));
+/** The conversation the dock showed before a deep link asked for another. */
+const shown = vi.hoisted(() => ({ session: null as unknown }));
 const fetchConversationById = vi.hoisted(() => vi.fn());
 const openConversationAction = vi.hoisted(() => vi.fn());
 
@@ -197,10 +199,10 @@ vi.mock('../components/chat-dock/useChatDockViewModel', () => ({
       throw new Error('injected real Chat render failure');
     }
     return {
-      activeSession: null,
+      activeSession: shown.session,
       activeChatAgent: undefined,
       activeChatModelLabel: undefined,
-      activeSessionForHook: null,
+      activeSessionForHook: shown.session,
       gitStatus: undefined,
       sessionProjectName: undefined,
       sessionDisplayCwd: undefined,
@@ -212,6 +214,16 @@ vi.mock('../components/chat-dock/useChatDockViewModel', () => ({
       fileAttachmentsSupported: false,
     };
   },
+}));
+
+// The reader body is out of scope here; this stand-in names the
+// conversation it is given, so a covered one is observable.
+vi.mock('../components/chat-dock/ChatDockContentArea', () => ({
+  ChatDockContentArea: ({
+    activeSession,
+  }: {
+    activeSession?: { title?: string } | null;
+  }) => <p data-testid="reader">{activeSession?.title ?? 'no session'}</p>,
 }));
 
 vi.mock('../components/chat/ShareIntakeController', () => ({
@@ -245,6 +257,7 @@ function params() {
 
 beforeEach(() => {
   renderFault.enabled = false;
+  shown.session = null;
   window.localStorage.clear();
   fetchConversationById.mockReset();
   openConversationAction.mockReset();
@@ -354,6 +367,53 @@ describe('a cold conversation pointer hydrates without moving the dock', () => {
     );
     expect(params().get('dock')).toBeNull();
     expect(navigationStore.getSnapshot().isDockOpen).toBe(false);
+  });
+});
+
+describe('a warm deep link while another conversation is shown', () => {
+  test('the dock says it is opening the new one and stops naming the previous one', async () => {
+    shown.session = {
+      id: 'session-prev',
+      conversationId: 'conversation-prev',
+      agentSlug: 'claude',
+      agentName: 'Claude',
+      title: 'PREVIOUS THREAD',
+      source: 'manual',
+      messages: [],
+      input: '',
+      attachments: [],
+      queuedMessages: [],
+    };
+    // The lookup for the tapped conversation has not answered yet.
+    fetchConversationById.mockReturnValue(new Promise(() => {}));
+    navigationStore.navigate('/', {
+      chat: 'conversation-new',
+      dock: 'open',
+      maximize: null,
+    });
+
+    mountChat();
+
+    const opening = await screen.findByRole('status', {
+      name: 'Opening conversation',
+    });
+    // Said, not only announced: the label is the skeleton's visible text.
+    expect(opening.textContent).toContain('Opening conversation');
+    const shownOutsideHidden = (text: string) =>
+      screen
+        .queryAllByText(text)
+        .filter((element) => !element.closest('[hidden]'));
+    // The previous thread's reader is kept (hidden and inert), not shown,
+    // and the header names the open in progress, never the previous thread.
+    const reader = screen.getByTestId('reader');
+    expect(reader.textContent).toBe('PREVIOUS THREAD');
+    expect(reader.closest('[hidden]')).not.toBeNull();
+    expect(shownOutsideHidden('PREVIOUS THREAD')).toEqual([]);
+    expect(
+      shownOutsideHidden('Opening conversation').some((element) =>
+        element.classList.contains('chat-dock__active-identity-title'),
+      ),
+    ).toBe(true);
   });
 });
 

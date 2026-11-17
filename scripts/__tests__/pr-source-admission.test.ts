@@ -18,7 +18,7 @@ type Mergeable = boolean | null;
 async function withGithub<T>(
   mergeable: Mergeable | (() => Mergeable),
   run: (url: string, requests: () => number) => Promise<T>,
-  options: { failPulls?: boolean } = {},
+  options: { failPulls?: boolean; moveOnSecondRead?: 'head' | 'base' } = {},
 ) {
   let pullReads = 0;
   const server = createServer((request, response) => {
@@ -38,6 +38,10 @@ async function withGithub<T>(
         return;
       }
       const value = typeof mergeable === 'function' ? mergeable() : mergeable;
+      // The check reads the pull request twice per observation; the owner
+      // moves between those two reads (every even-numbered read).
+      const moved = pullReads % 2 === 0 ? options.moveOnSecondRead : undefined;
+      const movedSha = 'c'.repeat(40);
       response.end(
         JSON.stringify({
           number: 42,
@@ -46,12 +50,12 @@ async function withGithub<T>(
           merge_commit_sha: value === true ? merge : null,
           base: {
             ref: 'main',
-            sha: base,
+            sha: moved === 'base' ? movedSha : base,
             repo: { full_name: repository, id: 1 },
           },
           head: {
             ref: 'feature',
-            sha: head,
+            sha: moved === 'head' ? movedSha : head,
             repo: { full_name: repository, id: 1 },
           },
         }),
@@ -120,6 +124,24 @@ test('a conflict confirmed by a second observation is deferred', async () => {
     expect(reads()).toBe(4);
   });
 });
+
+test.each(['head', 'base'] as const)(
+  'a conflict is not deferred when the pull request %s moves between the two reads',
+  async (moving) => {
+    await withGithub(
+      false,
+      async (url) => {
+        expect(
+          await admitPullRequest({ env: environment(url), ...noWait }),
+        ).toEqual({
+          admitted: true,
+          reason: 'inconclusive: identity-or-base-changed',
+        });
+      },
+      { moveOnSecondRead: moving },
+    );
+  },
+);
 
 test('a mergeable candidate is admitted', async () => {
   await withGithub(true, async (url) => {

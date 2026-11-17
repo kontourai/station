@@ -1,0 +1,15 @@
+{
+  "revision": "0b924faf370a40c1c5065593b893ffa3c791a6b1",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked workload-resources claims: scopes, OOMPolicy=continue, holder, cleanup retry and poll behaviour are unchanged; the poll now also logs kills live, reports near-cap pressure and raises engine commands' oom_score_adj, documented in the development guide's Linux service workload budgets section.","inputs":["src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"Checked workload-resources claims: scopes, OOMPolicy=continue, holder, cleanup retry and poll behaviour are unchanged; the poll now also logs kills live, reports near-cap pressure and raises engine commands' oom_score_adj, documented in the development guide's Linux service workload budgets section.","inputs":["src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Checked workload-resources claims: scopes, OOMPolicy=continue, holder, cleanup retry and poll behaviour are unchanged; the poll now also logs kills live, reports near-cap pressure and raises engine commands' oom_score_adj, documented in the development guide's Linux service workload budgets section.","inputs":["src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked workload-resources claims: scopes, OOMPolicy=continue, holder, cleanup retry and poll behaviour are unchanged; the poll now also logs kills live, reports near-cap pressure and raises engine commands' oom_score_adj, documented in the development guide's Linux service workload budgets section.","inputs":["src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"packages/shared/README.md","note":"Checked workload-resources claims: scopes, OOMPolicy=continue, holder, cleanup retry and poll behaviour are unchanged; the poll now also logs kills live, reports near-cap pressure and raises engine commands' oom_score_adj, documented in the development guide's Linux service workload budgets section.","inputs":["src-server/services/infra/workload-resources.ts"]}
+  ]
+}
