@@ -322,6 +322,11 @@ describe.skipIf(!probe.ok)(
         stdout: result.stdout,
         stderr: result.stderr,
         launch,
+        posture: spawn.pending()?.observe({
+          spawned: { command: wrapped.command, args: wrapped.args },
+          handshake: 'completed',
+          bounds: launch.bounds,
+        }),
       };
     }
 
@@ -626,6 +631,19 @@ describe.skipIf(!probe.ok)(
       } finally {
         for (const sibling of siblings)
           rmSync(sibling, { recursive: true, force: true });
+      }
+    });
+
+    test('a process with an overlapping workspace is never observed confined', async () => {
+      const [shortRoot] = shortSessionTmpRoots();
+      expect(shortRoot).toBeDefined();
+      const sibling = join(shortRoot!, 'session-1-workspace');
+      mkdirSync(sibling, { recursive: true });
+      for (const workspace of [dirname(shortRoot!), shortRoot!, sibling]) {
+        const result = await confined(workspace, 'exit 0');
+        expect(result.status).toBe(0);
+        expect(result.launch.writeGrants).toBeUndefined();
+        expect(result.posture).toBe('configured-but-failed');
       }
     });
 

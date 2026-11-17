@@ -641,6 +641,14 @@ export function seatbeltWorkspaceRefusal(
     isCanonicalPathWithin(bounds.stationHome, workspace)
   )
     return "it is or overlaps Station's data";
+  if (
+    shortSessionTmpRoots().some(
+      (root) =>
+        isCanonicalPathWithin(workspace, root) ||
+        isCanonicalPathWithin(root, workspace),
+    )
+  )
+    return "it overlaps Station's session temp roots";
   if (strictlyWithin(bounds.home, workspace)) {
     const [first = ''] = relative(bounds.home, workspace).split(sep);
     if (first.startsWith('.') || first === 'Library')

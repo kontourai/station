@@ -1113,6 +1113,8 @@ A `spawn-wrapper` `os-profile` provider for Claude only. Mechanism `seatbelt`.
     and runtime home, and the short per-user session temp roots
     (`<system temp>/stn-<uid>`), which hold other sessions' temp
     directories. Station's `installs` stay readable.
+    A workspace that contains, equals or sits inside a short session root is
+    refused; its write grant could otherwise reopen other sessions' files.
   - Writes are allowed to the workspace, a per-session Station temp directory
     (`session-<pid>-*`, a fresh one for each launch, also the engine's
     `TMPDIR`), and the Station-owned Claude configuration directory. The
