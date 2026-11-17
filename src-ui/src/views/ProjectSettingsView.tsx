@@ -1,3 +1,4 @@
+import { PULL_REQUEST_FEEDBACK_PREVIEW_ID } from '@kontourai/station-contracts/pull-request-feedback';
 import type { ModelConnectionConfig } from '@kontourai/station-contracts/tool';
 import {
   resolveWorkspaceIsolationMode,
@@ -48,6 +49,7 @@ import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { userFacingErrorMessage } from '../utils/errorText';
 import { AccessSection } from './project-settings/AccessSection';
+import { AgentFeedbackDefaultsSection } from './project-settings/AgentFeedbackDefaultsSection';
 import { AgentsSection } from './project-settings/AgentsSection';
 import { BriefSection } from './project-settings/BriefSection';
 import { KnowledgeSection } from './project-settings/KnowledgeSection';
@@ -84,6 +86,7 @@ const PROJECT_SETTINGS_SECTIONS = [
   ['agents', 'Agents'],
   ['tools', 'Tools'],
   ['layouts', 'Layouts'],
+  ['agent-feedback', 'Agent feedback'],
   ['resources', 'Sources'],
   ['access', 'People and access'],
   ['knowledge', 'Project knowledge'],
@@ -98,6 +101,23 @@ const PROJECT_COORDINATION_SECTIONS: ReadonlySet<string> = new Set([
   'models',
   'usage',
 ]);
+
+/**
+ * Sections that do not go through the page's Save, and how each applies.
+ * Every other section is saved with Save.
+ */
+const SECTION_SAVE_HINTS: Partial<Record<string, string>> = {
+  layouts: 'Actions in this section apply when confirmed.',
+  'agent-feedback': 'Changes in this section save automatically.',
+  resources: 'Actions in this section apply when confirmed.',
+  access: 'Actions in this section apply when confirmed.',
+  knowledge: 'Actions in this section apply when confirmed.',
+  memory: 'Actions in this section apply when confirmed.',
+  brief: 'Save to apply. Changes reach new Sessions, not ones already running.',
+  models:
+    'Save to apply. Changes reach new Sessions, not ones already running.',
+  usage: 'Usage on this Station only.',
+};
 
 /** How each stored workspace mode reads in this picker. */
 const WORKSPACE_MODE_LABELS: Record<WorkspaceIsolationMode, string> = {
@@ -199,6 +219,10 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   const settingsSections = PROJECT_SETTINGS_SECTIONS.filter(
     ([id]) => projectCoordination || !PROJECT_COORDINATION_SECTIONS.has(id),
   );
+  // Like Schedules: always a section (so a link to it survives a reload),
+  // offered in the list and rendered only with its Feature Preview, which a
+  // Station that cannot serve agent feedback never registers.
+  const agentFeedback = previewFlags.has(PULL_REQUEST_FEEDBACK_PREVIEW_ID);
   const { activeSection, hrefForSection, navigateToSection } =
     useSectionNavigation(
       settingsSections.map(([id]) => id),
@@ -412,11 +436,13 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
         <SectionNavigation
           label="Project settings sections"
           pickerLabel="Project settings section"
-          items={settingsSections.map(([id, label]) => ({
-            key: id,
-            label,
-            href: hrefForSection(id),
-          }))}
+          items={settingsSections
+            .filter(([id]) => id !== 'agent-feedback' || agentFeedback)
+            .map(([id, label]) => ({
+              key: id,
+              label,
+              href: hrefForSection(id),
+            }))}
           activeKey={activeSection}
           onNavigate={navigateToSection}
         />
@@ -424,19 +450,8 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
         {/* Body */}
         <div className="section-nav-rail__body project-settings__body">
           <p className="project-settings__save-hint">
-            {activeSection === 'brief' || activeSection === 'models'
-              ? 'Save to apply. Changes reach new Sessions, not ones already running.'
-              : activeSection === 'usage'
-                ? 'Usage on this Station only.'
-                : [
-                      'layouts',
-                      'resources',
-                      'access',
-                      'knowledge',
-                      'memory',
-                    ].includes(activeSection)
-                  ? 'Actions in this section apply when confirmed.'
-                  : 'Save to apply changes to project defaults.'}
+            {SECTION_SAVE_HINTS[activeSection] ??
+              'Save to apply changes to project defaults.'}
           </p>
           {activeSection !== 'basic-info' &&
             (!form.name.trim() || iconProblem) && (
@@ -861,6 +876,15 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           >
             <LayoutsSection slug={slug} />
           </div>
+
+          {agentFeedback && (
+            <div
+              className="project-settings__panel"
+              hidden={activeSection !== 'agent-feedback'}
+            >
+              <AgentFeedbackDefaultsSection slug={slug} />
+            </div>
+          )}
 
           <div
             className="project-settings__panel"

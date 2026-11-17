@@ -1,0 +1,7 @@
+{
+  "revision": "ea60d720910ce6d78a3a747891862c3c73623353",
+
+  "notes": [
+    {"path":"docs/guides/knowledge.md","note":"Test-only: mocks the Agent feedback availability hook and section and adds one gating test; knowledge section behaviour unchanged.","inputs":["src-ui/src/__tests__/ProjectSettingsView.test.tsx"]}
+  ]
+}
