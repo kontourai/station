@@ -12,7 +12,7 @@ import {
   useProjectLibraryQuery,
   useUploadProjectLibraryFileMutation,
 } from '@kontourai/station-sdk/project-library';
-import { Select, StatusBadge } from '@kontourai/ui/react';
+import { Badge, Select } from '@kontourai/ui/react';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState } from 'react';
 import { ActionRow } from '../../components/ActionRow';
@@ -272,27 +272,29 @@ function ProjectLibrary({ slug, scope }: { slug: string; scope: Scope }) {
             />
           )}
           <div className="project-library__filters">
-            <label htmlFor={sourceId}>Show</label>
-            <Select
-              id={sourceId}
-              value={taskId ? 'tasks' : source}
-              onChange={(event) => {
-                setSource(
-                  event.currentTarget.value as ProjectLibrarySourceFilter,
-                );
-                setTaskId('');
-              }}
-            >
-              {(Object.keys(SOURCE_LABELS) as ProjectLibrarySourceFilter[]).map(
-                (key) => (
+            <span className="project-library__filter">
+              <label htmlFor={sourceId}>Show</label>
+              <Select
+                id={sourceId}
+                value={taskId ? 'tasks' : source}
+                onChange={(event) => {
+                  setSource(
+                    event.currentTarget.value as ProjectLibrarySourceFilter,
+                  );
+                  setTaskId('');
+                }}
+              >
+                {(
+                  Object.keys(SOURCE_LABELS) as ProjectLibrarySourceFilter[]
+                ).map((key) => (
                   <option key={key} value={key}>
                     {SOURCE_LABELS[key]}
                   </option>
-                ),
-              )}
-            </Select>
+                ))}
+              </Select>
+            </span>
             {tasks.length > 0 && (
-              <>
+              <span className="project-library__filter">
                 <label htmlFor={taskFilterId}>Task</label>
                 <Select
                   id={taskFilterId}
@@ -306,7 +308,7 @@ function ProjectLibrary({ slug, scope }: { slug: string; scope: Scope }) {
                     </option>
                   ))}
                 </Select>
-              </>
+              </span>
             )}
           </div>
           {visible.length === 0 ? (
@@ -341,7 +343,7 @@ function ProjectLibrary({ slug, scope }: { slug: string; scope: Scope }) {
                         </span>
                         <span className="project-library__origin">
                           {item.kind === 'upload' ? (
-                            <StatusBadge tone="neutral" status="Added" />
+                            <Badge tone="neutral" value="Added" />
                           ) : item.task.state === 'present' ? (
                             <button
                               type="button"
@@ -355,7 +357,7 @@ function ProjectLibrary({ slug, scope }: { slug: string; scope: Scope }) {
                               From {item.task.title}
                             </button>
                           ) : (
-                            <StatusBadge tone="caution" status="Orphaned" />
+                            <Badge tone="caution" value="Orphaned" />
                           )}
                           {item.kind === 'task-output' &&
                             item.task.state === 'orphaned' && (
@@ -378,17 +380,19 @@ function ProjectLibrary({ slug, scope }: { slug: string; scope: Scope }) {
                             {expanded ? 'Hide' : 'Preview'}
                           </Button>
                         }
-                        secondary={
-                          item.kind === 'upload' ? (
-                            <Button
-                              size="sm"
-                              variant="danger"
-                              aria-label={`Remove ${item.relativePath}`}
-                              onClick={() => setRemoving(item.relativePath)}
-                            >
-                              Remove
-                            </Button>
-                          ) : undefined
+                        overflow={
+                          item.kind === 'upload'
+                            ? [
+                                {
+                                  key: 'remove',
+                                  label: 'Remove…',
+                                  tone: 'danger',
+                                  haspopup: 'dialog',
+                                  onSelect: () =>
+                                    setRemoving(item.relativePath),
+                                },
+                              ]
+                            : []
                         }
                       />
                     </div>

@@ -17,6 +17,13 @@
   gap: var(--k-space-2);
 }
 
+.project-library__filter {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-width: 0;
+}
+
 .project-library__list {
   display: flex;
   flex-direction: column;
