@@ -40,3 +40,16 @@
   color: var(--k-text-muted);
   overflow-wrap: anywhere;
 }
+
+/* Touch layouts get the shell's 44px floor (`--touch-target-min`, set only
+   on phones and coarse pointers); desktop keeps the compact row. */
+.task-pr-watch__name a {
+  display: inline-flex;
+  align-items: center;
+  min-width: var(--touch-target-min, auto);
+  min-height: var(--touch-target-min, auto);
+}
+
+.task-pr-watch .disclosure-toggle {
+  min-height: var(--touch-target-min, auto);
+}
