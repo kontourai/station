@@ -864,7 +864,9 @@ export class PullRequestHeadReviewer {
           : {}),
         assertCurrent,
       });
-      this.settle(store, row, status);
+      // The claim may have been released or moved after the module's last
+      // check: its reviews were dropped, and a row now would be stale.
+      if (!ownerChanged()) this.settle(store, row, status);
     } catch (error) {
       let superseded = error instanceof HeadReviewSuperseded;
       if (!superseded)

@@ -149,7 +149,7 @@ function reviewModule() {
     assessments: Omit<ReviewDeltaAssessment, 'reviewerId' | 'lensId'>[];
   } = { findings: [], assessments: [] };
   /** While set, every run waits for it: a review still running. */
-  const held: { gate?: Promise<void> } = {};
+  const held: { gate?: Promise<void>; after?: Promise<void> } = {};
   const hold = () => {
     let release!: () => void;
     held.gate = new Promise<void>((resolve) => {
@@ -157,6 +157,17 @@ function reviewModule() {
     });
     return () => {
       held.gate = undefined;
+      release();
+    };
+  };
+  /** Waits after the module's last currency check: its receipt is decided. */
+  const holdAfterCheck = () => {
+    let release!: () => void;
+    held.after = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return () => {
+      held.after = undefined;
       release();
     };
   };
@@ -174,6 +185,7 @@ function reviewModule() {
         // As the real module does before it writes the receipt.
         context.assertCurrent?.();
       }
+      if (held.after) await held.after;
       const at = new Date().toISOString();
       const receipt: IndependentReviewReceipt = {
         schemaVersion: 1,
@@ -225,6 +237,7 @@ function reviewModule() {
   return {
     answer,
     hold,
+    holdAfterCheck,
     run,
     module: {
       run: run as never,
@@ -1564,6 +1577,43 @@ describe('fix round 3: the epoch is the ownership token', () => {
     // Prepare is waiting on the reviewers port: past every earlier check.
     await vi.waitFor(() => expect(t.reviewerAvailable.reached).toBe(true));
     reclaim(t, 'another-chat');
+    t.reviewerAvailable.gate = undefined;
+    open();
+    expect((await preparing).outcome).toBe('not-eligible');
+    expect(t.store.headReview(PR_KEY, t.repo.first)).toBeUndefined();
+    expect(t.store.headReviewsStartedSince('widgets', '1970-01-01')).toBe(0);
+    expect(t.reviews.run).not.toHaveBeenCalled();
+  });
+
+  it('a claim released after the review module committed writes no settled row', async () => {
+    const t = await setup();
+    const release = t.reviews.holdAfterCheck();
+    t.observe(t.repo.first);
+    await t.tickOnly();
+    await t.tickOnly();
+    await vi.waitFor(() => expect(t.reviews.run).toHaveBeenCalledTimes(1));
+    // The module passed its last check; the claim is released before the
+    // review settles here.
+    t.store.releaseClaim(PR_KEY, new Date().toISOString());
+    release();
+    await t.reviewer().settled();
+    expect(t.store.headReviews(PR_KEY)).toEqual([]);
+  });
+
+  it('turned off and on in the same chat while its review is being prepared, it writes nothing', async () => {
+    const t = await setup();
+    t.observe(t.repo.first);
+    await t.tick();
+    let open!: () => void;
+    t.reviewerAvailable.gate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    const preparing = t.reviewer().reviewAgain(PR_KEY);
+    await vi.waitFor(() => expect(t.reviewerAvailable.reached).toBe(true));
+    // Same chat, same generation, same switch, same head: only the epoch
+    // tells the re-enabled claim from the one this review was prepared for.
+    t.store.releaseClaim(PR_KEY, new Date().toISOString());
+    reclaim(t);
     t.reviewerAvailable.gate = undefined;
     open();
     expect((await preparing).outcome).toBe('not-eligible');
