@@ -3762,6 +3762,18 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // (404 otherwise) and keyed on the verified station-control caller's own
     // Task binding, so a paired credential reaches nothing through it.
     { method: 'GET', path: '/api/orchestration/station-control/task-brief' },
+    // #5067 `list_project_library` and `read_project_library_file`'s REST
+    // side. Internal-only at the route (404 otherwise) and keyed on the
+    // Project Station recorded for the verified caller's own Session, so a
+    // paired credential reaches nothing through them. Reads only.
+    {
+      method: 'GET',
+      path: '/api/orchestration/station-control/project-library',
+    },
+    {
+      method: 'GET',
+      path: '/api/orchestration/station-control/project-library/file',
+    },
     // #4003 `task_summary_update` and `task_record`'s REST side.
     // Internal-only at the route like the leaf above; the Task they write is
     // the verified caller Session's own bound Task, and each write is one
@@ -4987,6 +4999,20 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // root/content-currentness checks still fence both family-tier leaves.
     { method: 'GET', path: '/api/projects/:slug/working-configuration' },
     { method: 'PUT', path: '/api/projects/:slug/working-configuration' },
+    // #5067: the Project Library. Files this Station keeps for the Project
+    // (its Library folder and its Tasks' kept outputs), behind the
+    // `project-library` preview and the current Project operator. Upload and
+    // remove write only inside the Project's Library folder; no command,
+    // model call or other-Station data. Reads take the read tier, writes the
+    // operate tier, as their family does.
+    { method: 'GET', path: '/api/projects/:slug/library' },
+    { method: 'GET', path: '/api/projects/:slug/library/uploads/content' },
+    { method: 'PUT', path: '/api/projects/:slug/library/uploads' },
+    { method: 'DELETE', path: '/api/projects/:slug/library/uploads' },
+    {
+      method: 'GET',
+      path: '/api/projects/:slug/library/outputs/:outputId/content',
+    },
     // How far the Project's checkout is behind its upstream, from local git
     // refs: its branch, upstream name, commit counts and an update command
     // naming the working directory `GET /:slug` already returns. A read that

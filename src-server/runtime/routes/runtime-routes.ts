@@ -607,6 +607,10 @@ import {
   createProjectContributionRoutes,
   delegationContributionQueryAuthorized,
 } from '../../routes/projects/project-contribution-routes.js';
+import {
+  createProjectLibraryRoutes,
+  createSessionProjectLibraryRoutes,
+} from '../../routes/projects/project-library-routes.js';
 import { createProjectS3SourceRoutes } from '../../routes/projects/project-s3-source-routes.js';
 import { createProjectWorkingConfigurationRoutes } from '../../routes/projects/project-working-configuration-routes.js';
 import {
@@ -1162,7 +1166,7 @@ import {
   mayAnswerDelegatedRequest,
   runtimeAttentionRouteOptions,
 } from './runtime-attention-route-options.js';
-import { composeProjectLibraryRoutes } from './runtime-project-library.js';
+import { composeProjectLibraryDeps } from './runtime-project-library.js';
 import { composePullRequestFeedbackRuntime } from './runtime-pull-request-feedback.js';
 import {
   configureRuntimeSupportServices,
@@ -9441,7 +9445,7 @@ export function configureRuntimeRoutes(
 
   // #5067: the Project Library. Personal Stations only: uploads live in the
   // Station home, and Task outputs are a personal-home store.
-  const projectLibrary = composeProjectLibraryRoutes({
+  const projectLibrary = composeProjectLibraryDeps({
     hosted: isHostedTenantExecutionRequired(),
     homeDir: context.configLoader.getProjectHomeDir(),
     preview: context.featurePreviews.bind({
@@ -9492,8 +9496,14 @@ export function configureRuntimeRoutes(
     },
   });
   if (projectLibrary) {
-    context.app.route('/api/projects', projectLibrary.projectRoutes);
-    context.app.route('/api/orchestration', projectLibrary.sessionRoutes);
+    context.app.route(
+      '/api/projects',
+      createProjectLibraryRoutes(projectLibrary.project),
+    );
+    context.app.route(
+      '/api/orchestration',
+      createSessionProjectLibraryRoutes(projectLibrary.session),
+    );
   }
 
   /**

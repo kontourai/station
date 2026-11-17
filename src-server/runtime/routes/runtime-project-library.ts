@@ -2,6 +2,7 @@ import {
   createProjectLibraryRoutes,
   createSessionProjectLibraryRoutes,
   type ProjectLibraryAdmission,
+  type ProjectLibraryDeps,
   type ProjectLibraryOutputsPort,
   type ProjectLibraryPreview,
   type ProjectLibraryProject,
@@ -9,15 +10,13 @@ import {
 import { ProjectLibraryUploads } from '../../services/projects/project-library-uploads.js';
 
 /**
- * #5067: the Project Library's two mounts, or nothing on a hosted Station.
- * Uploads live in the Station home and Task outputs are a personal-home
- * store, so a hosted tenant has neither; `servesProjectLibrary` withdraws
- * the handshake flag from the same fact.
+ * #5067: what the Project Library's two route factories take, or nothing on
+ * a hosted Station. The runtime calls the factories itself, at the mount, so
+ * the pairing-scope leaf scan reads every Library leaf.
  */
-export function composeProjectLibraryRoutes(input: {
+export function composeProjectLibraryDeps(input: {
   hosted: boolean;
   homeDir: string;
-  /** Selected at every route; off answers the typed preview refusal. */
   preview: ProjectLibraryPreview;
   outputs?: ProjectLibraryOutputsPort;
   readTask(
@@ -31,26 +30,44 @@ export function composeProjectLibraryRoutes(input: {
   ): Promise<ProjectLibraryAdmission | undefined>;
 }) {
   if (input.hosted) return undefined;
-  const deps = {
+  const deps: ProjectLibraryDeps = {
     uploads: new ProjectLibraryUploads({ homeDir: input.homeDir }),
     preview: input.preview,
     ...(input.outputs ? { outputs: input.outputs } : {}),
     readTask: input.readTask,
   };
   return {
-    /** Mount at `/api/projects`. */
-    projectRoutes: createProjectLibraryRoutes({
+    /** For `createProjectLibraryRoutes`, mounted at `/api/projects`. */
+    project: {
       ...deps,
-      authorize: (request, slug) =>
+      authorize: (request: Request, slug: string) =>
         input.isInternalRequest(request)
           ? Promise.resolve(undefined)
           : input.authorize(request, slug),
-    }),
-    /** Mount at `/api/orchestration`. */
-    sessionRoutes: createSessionProjectLibraryRoutes({
+    },
+    /** For `createSessionProjectLibraryRoutes`, mounted at `/api/orchestration`. */
+    session: {
       ...deps,
       isInternalRequest: input.isInternalRequest,
       projectById: input.projectById,
-    }),
+    },
+  };
+}
+
+/**
+ * #5067: the Project Library's two mounts, or nothing on a hosted Station,
+ * built from {@link composeProjectLibraryDeps}. Tests and the capability-flag
+ * probe mount these; the runtime calls the factories at its own mount.
+ */
+export function composeProjectLibraryRoutes(
+  input: Parameters<typeof composeProjectLibraryDeps>[0],
+) {
+  const deps = composeProjectLibraryDeps(input);
+  if (!deps) return undefined;
+  return {
+    /** Mount at `/api/projects`. */
+    projectRoutes: createProjectLibraryRoutes(deps.project),
+    /** Mount at `/api/orchestration`. */
+    sessionRoutes: createSessionProjectLibraryRoutes(deps.session),
   };
 }
