@@ -1482,6 +1482,38 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       expect(region.querySelector('[role="status"]')).toBeNull();
   });
 
+  // Rows a failed read dropped stay dropped: Retry (or any reload) must not
+  // redraw the last kept copy while it reads, with approval answers live.
+  test('rows dropped by a failed read do not come back while Retry reads', async () => {
+    transcriptMock.enabled = true;
+    transcriptMock.messages = [
+      { role: 'user', content: 'earlier question', timestamp: 1 },
+      { role: 'assistant', content: 'earlier answer', timestamp: 2 },
+    ];
+    const session = buildSession({ conversationId: 'cool', messages: [] });
+    const view = renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'idle',
+        lifecycleState: 'idle',
+      }),
+      session,
+    });
+    expect(await screen.findByText('earlier answer')).toBeTruthy();
+    // The re-read fails and the reader drops the rows.
+    transcriptMock.messages = [];
+    transcriptMock.error = new Error('history read failed');
+    view.rerenderSession({ ...session });
+    await waitFor(() =>
+      expect(screen.queryByText('earlier answer')).toBeNull(),
+    );
+    // Retry: the reader is reading again, with no rows yet.
+    transcriptMock.error = null;
+    transcriptMock.settled = false;
+    view.rerenderSession({ ...session });
+    await act(async () => {});
+    expect(screen.queryByText('earlier answer')).toBeNull();
+  });
+
   /*
    * Screen readers announce a change to a live region that already exists. A
    * region inserted together with its words (or naming the wait only in

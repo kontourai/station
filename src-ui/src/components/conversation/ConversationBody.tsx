@@ -849,6 +849,17 @@ function LiveConversationBody({
   }
   if (transcript.messages.length > 0) {
     stickyTranscriptRef.current.messages = transcript.messages;
+  } else if (
+    transcript.settled &&
+    transcript.error &&
+    !transcript.catchingUp
+  ) {
+    // A read that settled failed with no rows and is not catching up (a
+    // cached paint whose re-read failed drops its rows so the failure shows)
+    // leaves nothing to keep: a later Retry must not bring the dropped rows
+    // back while it reads. A rejected revision reload is still catching up,
+    // so its retained rows stay (station#2530).
+    stickyTranscriptRef.current.messages = [];
   }
   const displayedTranscriptMessages =
     transcript.messages.length > 0
@@ -1104,9 +1115,9 @@ function LiveConversationBody({
    * "loaded" is not a convention this app announces anywhere else. React
    * writes the text only when it changes, so re-renders announce nothing.
    *
-   * The long-wait sentence uses the visible long-wait row's own condition, so
-   * the two cannot disagree (a history failure hides the skeleton, not the
-   * row).
+   * The long-wait sentence uses the stage's own long-wait condition, so the
+   * two cannot disagree. A history failure replaces the stage and is spoken
+   * by its own alert, so it is never announced as a long wait.
    */
   const showLoadingLongRow =
     conversationLoading &&
