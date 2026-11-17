@@ -195,6 +195,24 @@ describe('inbox row transcript prefetch', () => {
     expect(readTranscriptWindow(cacheKey('conv-b'))).toBeDefined();
   });
 
+  test('a browser asked to save data never prefetches', async () => {
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      connection: { saveData: true },
+    });
+    try {
+      renderRows(['conv-a']);
+      fireEvent.pointerEnter(rows()[0]!, { pointerType: 'mouse' });
+      fireEvent.focusIn(rows()[0]!);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(TRANSCRIPT_PREFETCH_DWELL_MS * 2);
+      });
+      expect(fetchConversationWindow).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   test('a touch pointer never prefetches', async () => {
     renderRows(['conv-a']);
     fireEvent.pointerEnter(rows()[0]!, { pointerType: 'touch' });
