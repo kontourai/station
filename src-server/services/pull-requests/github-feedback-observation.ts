@@ -316,7 +316,7 @@ export function normalizeGitHubFeedbackObservation(
 }
 
 /** Why gh failed, from its stderr: sign-in, rate limit, or anything else. */
-function classifyGitHubFeedbackFailure(error: unknown): {
+export function classifyGitHubFeedbackFailure(error: unknown): {
   cause: 'credentials' | 'rate-limited' | 'error';
   reason: string;
 } {

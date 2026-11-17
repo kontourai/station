@@ -140,7 +140,7 @@ describe('station#1157 e2e: resolver → Claude adapter delivers the REAL statio
     ]);
     expect(toolServersReport(resolved)?.undelivered).toEqual([]);
 
-    // (b) reaches Options.mcpServers with the token and THIS running
+    // (b) reaches Options.mcpServers (with no token) and THIS running
     // instance's own port (4321) — not the stale 9999 baked into the
     // persisted record resolved above.
     mockQuery.mockReturnValue(createMockQuery());
@@ -163,7 +163,7 @@ describe('station#1157 e2e: resolver → Claude adapter delivers the REAL statio
       env: {
         STATION_API_BASE: 'http://127.0.0.1:4321',
         STATION_PORT: '4321',
-        [INTERNAL_API_TOKEN_ENV]: expect.any(String),
+        // #2377 slice D: no child receives the internal token.
         NODE_COMPILE_CACHE: resolve(resolveHomeDir(), 'cache', 'node-compile'),
       },
     });

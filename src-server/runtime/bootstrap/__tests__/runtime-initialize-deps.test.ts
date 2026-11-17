@@ -33,6 +33,9 @@ describe('createRuntimeInitializationDeps', () => {
       approvalRegistry: { has: vi.fn(), resolve: vi.fn() } as any,
       environmentSecurityService: {
         verifyCredential: vi.fn(() => true),
+        verifyOperatorCredential: vi.fn(() => true),
+        credentialLocality: vi.fn(() => undefined),
+        credentialHasOwnerStanding: vi.fn(() => false),
         authorizeCredential: vi.fn(() => true),
         identifyDevice: vi.fn(() => null),
         canSharePersonalConversation: vi.fn(() => false),

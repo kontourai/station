@@ -1,0 +1,33 @@
+{
+  "revision": "96ce2ef9462357f5d7cebe8ba2b6344fb55f9137",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Checked the operator override against admitAutomationJobFor (isOperatorAtHostNotAgent, untargeted only, runs still as createdBy) and the migration boundary against backfillJobOwners and BuiltinScheduler.","inputs":["docs/reference/api.md","src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked the desktop-voice known gap: the desktop host does not open the voice socket with an operator credential, so its sessions are credential-free (speech only).","inputs":["docs/security/remote-access-threat-model.md","src-server/routes/operations/voice.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#2377 slice D delta review: the one-time owner migration is settled at every Station's first start (backfilling only on a personal Station). The API reference and automations guide describe it.","inputs":["src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"#2377 slice D delta review: the one-time owner migration is settled at every Station's first start (backfilling only on a personal Station). The API reference and automations guide describe it.","inputs":["src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#2377 slice D delta review: the one-time owner migration is settled at every Station's first start (backfilling only on a personal Station). The API reference and automations guide describe it.","inputs":["src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/reference/config.md","note":"#2377 slice D delta review: the one-time owner migration is settled at every Station's first start (backfilling only on a personal Station). The API reference and automations guide describe it.","inputs":["src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#2377 slice D delta review: a device cookie that fails verification records a limiter failure and the invalid_credential audit before falling back to speech only. The threat-model voice passage stays accurate.","inputs":["src-server/routes/operations/voice.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"#2377 slice D delta review: a device cookie that fails verification records a limiter failure and the invalid_credential audit before falling back to speech only. The threat-model voice passage stays accurate.","inputs":["src-server/routes/operations/voice.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"#2377 slice D delta review: a device cookie that fails verification records a limiter failure and the invalid_credential audit before falling back to speech only. The threat-model voice passage stays accurate.","inputs":["src-server/routes/operations/voice.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#2377 slice D delta review: the migration records its marker with or without an owner, and defers over a corrupt ledger. Citing starter-work and module-map passages do not describe it.","inputs":["src-server/services/scheduling/scheduler-ledger.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"#2377 slice D delta review: the migration records its marker with or without an owner, and defers over a corrupt ledger. Citing starter-work and module-map passages do not describe it.","inputs":["src-server/services/scheduling/scheduler-ledger.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"#2377 slice D delta review extends the job-owner passage; citing documents do not depend on it.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#2377 slice D delta review extends the job-owner passage; citing documents do not depend on it.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/design/automations.md","note":"#2377 slice D delta review adds the desktop-voice gap sentence; citing documents do not depend on it.","inputs":["docs/security/remote-access-threat-model.md"]}
+  ]
+}
