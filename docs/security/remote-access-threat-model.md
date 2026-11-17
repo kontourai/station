@@ -446,7 +446,10 @@ session's Station tools act only for a person. A loopback upgrade carrying the
 local UI's HttpOnly device session cookie authenticates with it (parsed and
 verified as the HTTP boundary does), and only on loopback, where `verifyClient`
 has already held a browser-shaped upgrade to an allowed Station Origin, so
-another site's page cannot ride the browser's ambient cookie. A client holding
+another site's page cannot ride the browser's ambient cookie. A cookie that
+fails verification is audited and counted against the peer's failure budget,
+and a peer over that budget is refused (4429) before its cookie is verified,
+as an auth frame is. A client holding
 a bearer credential presents it in the auth frame (a loopback one asks with
 `?authenticate=1`). Either way the session's tools act for the person the
 credential resolves to. A credential that verifies but names no person (an
