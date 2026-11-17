@@ -2387,12 +2387,21 @@ export class CodexAdapter implements ProviderAdapterShape {
       record.closeBoundTools = boundTools?.close;
       record.boundChannelCurrent = boundTools ? bindingCurrent : undefined;
       let boundPolicy: StagedPreToolPolicyEvaluator | undefined;
-      if (boundTools && this.options.resolveBoundToolPolicy) {
+      // Resolved for every Agent session, bound tools or not, and kept on the
+      // record: holding it keeps the session's launch binding, so a change to
+      // its Agent or integrations restarts it at the next turn. Only bound
+      // tools are decided by it.
+      if (input.agent && this.options.resolveBoundToolPolicy) {
         try {
-          boundPolicy = await this.options.resolveBoundToolPolicy(input);
+          record.launchPolicy =
+            await this.options.resolveBoundToolPolicy(input);
         } catch {
-          boundPolicy = undefined;
+          record.launchPolicy = undefined;
         }
+        if (boundTools)
+          boundPolicy = record.launchPolicy as
+            | StagedPreToolPolicyEvaluator
+            | undefined;
       }
       // Every station-control tool (devices included) is held to the
       // Agent's selection again here; browser tools follow `browserTools`.

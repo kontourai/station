@@ -296,16 +296,28 @@ its engine process was launched with. A
 therefore re-reads what the session was launched with when any configuration
 change lands: its Agent record, the Agent definition resolved the way a start
 resolves it (each tool server's definition, whether it exists and is enabled,
-its disabled tools, Project default tool servers, skills and grants), and the
-engine connection it runs on (Claude and Codex connection settings with their
-model proxy connection, or the ACP connection record). If all of that is
+its disabled tools, Project default tool servers, skills and grants), the
+tool servers an ACP or OpenCode connection provides by itself
+(`provideToolServers`, also kept beside the Agent's own with
+`mcpMode: 'add'`), and the engine connection it runs on (Claude and Codex
+connection config with their model proxy connection and active credential
+profile, or the ACP connection record). Recovery bookkeeping, probe
+timestamps and the order of tool-name lists do not count. If all of that is
 unchanged, the session keeps running, whatever else changed. If any of it
 changed, or the Agent was deleted, every later call in that session is
 refused. The conversation's next message then restarts the engine in place
 from its resume cursor under the current configuration, or, for an engine
-that cannot resume, starts a successor session and stops the old engine. While
-a change is still being applied, or the configuration cannot be read, a call
-is refused with a request to retry it. The following is the interactive
+that cannot resume, starts a successor session and stops the old engine. A
+session still running work it started under the old configuration refuses
+that message until the work ends, so a conversation never has two engines.
+While a change is still being applied, or the configuration cannot be read,
+a call is refused with a request to retry it.
+
+Codex's own MCP calls never pass through this evaluator, on any build: it
+decides only Station's bound browser and device tools. A Codex Agent session
+still holds a launch binding, so when its Agent or integrations change, its
+next turn restarts it under the current configuration; until then it keeps
+calling the tools it was launched with. The following is the interactive
 branch, not every possible tool outcome:
 
 1. `beforeToolCall` invokes the staged policy with the current invocation.
