@@ -34,14 +34,14 @@
  * transaction re-checks only what can still move: the thread's control mode,
  * its head, side-table references and that the superseding row still exists.
  */
-import type { SQLInputValue } from 'node:sqlite';
 import { collectRuntimeEventContentRefs } from '@kontourai/station-contracts/runtime-event-content';
 
+/** EventStore's connection, narrowed to what compaction uses. */
 interface CompactionDatabase {
   prepare(sql: string): {
-    all(...args: SQLInputValue[]): unknown[];
-    get(...args: SQLInputValue[]): unknown;
-    run(...args: SQLInputValue[]): unknown;
+    all(...args: unknown[]): unknown[];
+    get(...args: unknown[]): unknown;
+    run(...args: unknown[]): unknown;
   };
 }
 

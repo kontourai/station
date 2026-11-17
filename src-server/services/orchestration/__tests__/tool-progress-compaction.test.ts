@@ -438,7 +438,7 @@ describe('tool.progress compaction (#5078)', () => {
     seedMainThread();
     const read = () =>
       service.sessionQueries.readAnswerBasis?.(
-        { threadId: MAIN, turnId: 'turn-old' },
+        { type: 'answer-basis', threadId: MAIN, turnId: 'turn-old' },
         authority,
       );
     const before = await read();
