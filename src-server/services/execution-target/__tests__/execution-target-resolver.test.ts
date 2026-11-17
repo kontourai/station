@@ -5,6 +5,7 @@ import {
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
 import { environmentId } from '@kontourai/station-contracts/execution-target';
+import { resolveModelLaunchPlan } from '@kontourai/station-contracts/provider';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -1191,6 +1192,32 @@ describe('the model a turn launches with', () => {
     expect(resolved.provider).toBe('opencode');
     expect(resolved.modelId).toBe('zai-coding-plan/glm-5.3-flash');
     expect(resolved.modelLaunchPlan.kind).not.toBe('unavailable');
+
+    // The resolver only asks whether an override is accepted somewhere; the
+    // orchestrator's start, resume and turn gates read the declaration as is
+    // (`assertAcceptedModelLaunchPlan`).
+    const plan = (
+      lifecycle: 'start' | 'resume' | 'turn',
+      requestedModelId: string,
+      retainedModelId?: string,
+    ) =>
+      resolveModelLaunchPlan(opencode.metadata.modelLaunch, {
+        lifecycle,
+        requestedModelId,
+        retainedModelId,
+      });
+    expect(plan('start', 'zai-coding-plan/glm-5.3-flash').kind).not.toBe(
+      'unavailable',
+    );
+    // A later turn or resume restating the session's model is kept, and
+    // another model is refused: neither transport changes it mid-session.
+    for (const lifecycle of ['resume', 'turn'] as const) {
+      expect(plan(lifecycle, 'a/b', 'a/b').kind).not.toBe('unavailable');
+      expect(plan(lifecycle, 'a/c', 'a/b')).toEqual({
+        kind: 'unavailable',
+        reason: `${lifecycle}-override-unsupported`,
+      });
+    }
   });
 
   test('a blank declared model is treated as unstated, never sent as an empty id', async () => {

@@ -843,7 +843,7 @@ export class OpenCodeNativeSession {
           : undefined;
     if (!turn || turn.settled) return;
     if (!turn.startPublished) this.publishStart(turn, {});
-    this.appendText(turn, `${turnId}:command`, text);
+    this.appendText(turn, `text:${turnId}:command`, text);
     if (!turn.executing && this.pendingStart !== turn)
       this.settle(turn, { method: 'turn.completed', finishReason: 'stop' });
   }
@@ -1614,7 +1614,6 @@ export class OpenCodeNativeSession {
         if (!key.startsWith(openCodePartKey('text', id, '')) || !text) continue;
         const part = this.parts.get(key);
         if (part) {
-          if (part.kind !== 'text') continue;
           if (
             text.length > part.streamed.length &&
             text.startsWith(part.streamed)

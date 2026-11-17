@@ -1057,7 +1057,7 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
     expect(h.replay.misses).toEqual([]);
   });
 
-  test('after a feed drop, a reply that followed reasoning equals what OpenCode kept', async () => {
+  test('after a feed drop, a reply that followed reasoning streams on to what OpenCode kept', async () => {
     const h = await setup({ scenario: 'reasoning-reconnect' });
     await h.start();
     const { turnId } = await h.adapter.sendTurn({
