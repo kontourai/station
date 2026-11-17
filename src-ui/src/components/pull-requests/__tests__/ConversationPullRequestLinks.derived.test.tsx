@@ -76,6 +76,8 @@ vi.mock('@kontourai/station-sdk/conversation-pull-request-links', () => ({
 }));
 const sdk = vi.hoisted(() => ({
   remove: vi.fn(async () => undefined),
+  /** Whether #43's switches are on (it is owned here either way). */
+  on43: true,
 }));
 vi.mock('@kontourai/station-sdk/pull-request-feedback', () => {
   const view = (ref: string): PullRequestFeedbackView => ({
@@ -88,11 +90,11 @@ vi.mock('@kontourai/station-sdk/pull-request-feedback', () => {
     ownedHere: true,
     owner: { conversationId: 'c1' },
     settings: {
-      fixFailingChecks: true,
-      addressReviewComments: true,
+      fixFailingChecks: ref !== '43' || sdk.on43,
+      addressReviewComments: ref !== '43' || sdk.on43,
       reviewEachHead: false,
     },
-    status: { state: 'watching' },
+    status: ref !== '43' || sdk.on43 ? { state: 'watching' } : { state: 'off' },
     history: [],
   });
   return {
@@ -141,6 +143,7 @@ async function menuOf(rowIndex: number, reference: string) {
 beforeEach(() => {
   flags.preview = true;
   sdk.remove.mockClear();
+  sdk.on43 = true;
   links.read.mockClear();
 });
 afterEach(cleanup);
@@ -193,6 +196,31 @@ describe('a pull request from the Task branch', () => {
       'acme/widgets #42 stays linked here, with its agent feedback. Only its Task-branch row goes.',
     );
     expect(confirm.textContent).not.toContain("won't come back");
+  });
+
+  test('removing one whose feedback is off here does not say it turns feedback off', async () => {
+    sdk.on43 = false;
+    renderLinks();
+    await screen.findByText('Opened by the Task');
+    await act(async () => {});
+    await waitFor(() =>
+      expect(screen.getAllByText('Auto-fix on').length).toBe(1),
+    );
+    fireEvent.click(
+      screen.getAllByRole('button', {
+        name: 'More actions for github.com/acme/widgets #43',
+      })[0]!,
+    );
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: 'Remove from this chat' }),
+    );
+    const confirm = await screen.findByRole('alertdialog', {
+      name: 'Remove from this chat',
+    });
+    expect(confirm.textContent).toContain(
+      "Station stops showing acme/widgets #43 here. It won't come back for this Task.",
+    );
+    expect(confirm.textContent).not.toContain('turns its agent feedback off');
   });
 
   test('Remove from this chat asks first, then removes it and reads the list again', async () => {

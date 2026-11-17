@@ -2,7 +2,10 @@ import type {
   ConversationPullRequestLinkObservation,
   PullRequestLinkIdentity,
 } from '@kontourai/station-contracts/conversation-pull-request-links';
-import { pullRequestFeedbackKey as feedbackKeyOf } from '@kontourai/station-contracts/pull-request-feedback';
+import {
+  pullRequestFeedbackKey as feedbackKeyOf,
+  pullRequestFeedbackSends,
+} from '@kontourai/station-contracts/pull-request-feedback';
 import { useState } from 'react';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import { IconButton } from '../IconButton';
@@ -87,7 +90,8 @@ export function ConversationPullRequestLinks({
     const key = feedbackKeyOf(link);
     const reference = `${link.repository.owner}/${link.repository.name} #${link.ref}`;
     const view = feedback.viewFor(link);
-    const onHere = !!view?.ownedHere && view.owner !== null;
+    // Owned here with a switch on: an owned claim may have every switch off.
+    const onHere = !!view?.ownedHere && pullRequestFeedbackSends(view.settings);
     if (
       visibleLinks.some(
         (other) =>
