@@ -531,7 +531,7 @@ jobs:
 
       # Every regeneration force-pushes the version PR, which restarts all of
       # its checks, cancels the run in progress and drops it from the merge
-      # queue. On 2026-11-16, 29 of 36 regenerations changed nothing the PR
+      # queue. On 2026-11-16, 28 of 36 regenerations changed nothing the PR
       # releases. The probe runs the version script itself and reports
       # `current=true` only when merging the open PR into this main yields
       # exactly the tree a regeneration would push. Any failure or doubt

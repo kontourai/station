@@ -686,7 +686,7 @@ the probed `main` gives the bytes a regeneration would have pushed. When the
 merge queue builds it behind other entries, it is squashed onto that later
 base instead, as a regenerated head would be; a note one of those entries adds
 stays pending for the next version PR, and the push that lands it probes again.
-On 2026-11-16, 29 of the 36 regenerations would have been skipped. Manual
+On 2026-11-16, 28 of the 36 regenerations would have been skipped. Manual
 package publication remains available and requires exact-source qualification.
 The separately authorized published
 pointer-repair break glass retains its existing inventory/provenance checks and
