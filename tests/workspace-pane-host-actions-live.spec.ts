@@ -187,14 +187,14 @@ test('retained plugin recovers through responsive UI and its host default Agent 
   await leaveRetainedActivationPending();
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/plugins');
-  await page
-    .getByRole('button', { name: /Host action proof.*Needs recovery/ })
-    .click();
+  // A list row's accessible name is its title; the readiness is its
+  // description (SplitPaneLayout, #2983).
+  const pendingRow = page.getByRole('button', { name: 'Host action proof' });
+  await expect(pendingRow).toHaveAccessibleDescription(/^Needs recovery/);
+  await pendingRow.click();
   const observer = await page.context().newPage();
   await observer.goto('/plugins');
-  await observer
-    .getByRole('button', { name: /Host action proof.*Needs recovery/ })
-    .click();
+  await observer.getByRole('button', { name: 'Host action proof' }).click();
   await expect(
     observer
       .locator('.detail-panel')
