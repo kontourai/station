@@ -1851,8 +1851,9 @@ describe('Orchestration Routes', () => {
       failurePhase: 'indeterminate',
       retryable: false,
       success: false,
-      error:
-        'Foreground Agent message may have started. Do not retry automatically.',
+      error: expect.stringMatching(
+        /^Foreground Agent message may have started\. Do not retry automatically: check the conversation for that turn\./,
+      ),
       code: 'foreground_message_indeterminate',
       outcome: 'indeterminate',
       receipt,
@@ -2469,8 +2470,9 @@ describe('Orchestration Routes', () => {
       failurePhase: 'indeterminate',
       retryable: false,
       success: false,
-      error:
-        'Foreground Agent continuation may have started. Do not retry automatically.',
+      error: expect.stringMatching(
+        /^Foreground Agent continuation may have started\. Do not retry automatically: check the conversation for that turn\./,
+      ),
       code: 'foreground_message_indeterminate',
       outcome: 'indeterminate',
     });
@@ -2566,8 +2568,9 @@ describe('Orchestration Routes', () => {
       failurePhase: 'indeterminate',
       retryable: false,
       success: false,
-      error:
-        'Foreground Agent continuation may have started. Do not retry automatically.',
+      error: expect.stringMatching(
+        /^Foreground Agent continuation may have started\. Do not retry automatically: check the conversation for that turn\./,
+      ),
       code: 'foreground_message_indeterminate',
       outcome: 'indeterminate',
       receipt,

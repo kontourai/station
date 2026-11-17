@@ -2,7 +2,10 @@ import {
   CONTINUATION_WORKSPACE_REFUSAL_CODES,
   EXECUTION_ENGINE_CHANGED_CODE,
 } from '@kontourai/station-contracts/execution-target';
-import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
+import {
+  APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
+  TURN_START_HELD_CODE,
+} from '@kontourai/station-contracts/orchestration';
 import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principal';
 import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
@@ -422,6 +425,19 @@ export function translateChatError(
         noSend: 'Station may already have started this session.',
         neither: 'Station may already have started this session.',
       },
+    };
+  }
+
+  // An earlier message on this Session may still have reached its engine,
+  // so Station refuses to start another turn beside it. Nothing was sent.
+  // "Try again in a moment" would be wrong: it clears only when that start
+  // settles, which the hint says how.
+  if (code === TURN_START_HELD_CODE) {
+    return {
+      title: 'Your earlier message may still be running',
+      body: 'Station cannot yet tell whether your earlier message reached the agent, so this one was not sent.',
+      hint: 'Wait for that turn to finish, or stop it. If the agent has stopped, send again: Station then records the earlier turn as interrupted instead of refusing.',
+      retryable: false,
     };
   }
 

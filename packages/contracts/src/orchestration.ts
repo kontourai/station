@@ -626,6 +626,14 @@ export const FOREGROUND_MESSAGE_INDETERMINATE_CODE =
   'foreground_message_indeterminate' as const;
 
 /**
+ * Refusal code when a Session already holds a turn start Station cannot yet
+ * confirm or rule out (a running start, or one that may have reached the
+ * engine). Nothing was sent. It clears when that start settles: its terminal,
+ * the next message after its engine is observed gone, or the next boot.
+ */
+export const TURN_START_HELD_CODE = 'turn_start_held' as const;
+
+/**
  * Exact evidence returned when foreground start effects completed but the
  * accepted command receipt is not known durable. Callers must not retry.
  */

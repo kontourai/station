@@ -339,6 +339,21 @@ export interface SessionTurnBoundaryAuthority<C extends BoundaryCapture, T, E> {
   hasPossibleEffect(
     threadId: string,
   ): { kind: 'available'; active: boolean } | { kind: 'unavailable' };
+  /**
+   * The sent turns THIS process left `indeterminate` on the thread. Their
+   * dispatch has already given up confirming them, so no live claim moves
+   * them again: only a terminal of the session or turn, or interrupted-turn
+   * recovery, retires them. Not listed: rows another process owns (boot
+   * recovery settles those once that owner is dead), rows still retrying a
+   * transition, and session-start, task-dispatch and engine-opened rows.
+   * Read-only: a caller settles a listed row only once it has shown that no
+   * turn from it can still be running.
+   */
+  heldTurnStarts?(
+    threadId: string,
+  ):
+    | { kind: 'available'; records: SessionTurnBoundaryRecord[] }
+    | { kind: 'unavailable' };
   readInputlessTurnDisposition(threadId: string): InputlessTurnDisposition;
   retryPendingTransitions(): void;
   readInvocationTerminal(
@@ -1073,6 +1088,26 @@ export function createSessionTurnBoundaryAuthority<
         return {
           kind: 'available',
           active: options.coordinator.hasPossibleEffect(threadId),
+        };
+      } catch {
+        return { kind: 'unavailable' };
+      }
+    },
+    heldTurnStarts(threadId) {
+      try {
+        return {
+          kind: 'available',
+          records: options.coordinator
+            .active()
+            .filter(
+              (record) =>
+                record.threadId === threadId &&
+                record.state === 'indeterminate' &&
+                record.ownerId === options.owner.id &&
+                record.purpose === undefined &&
+                record.boundaryId.startsWith(TURN_BOUNDARY_PREFIX) &&
+                !pendingTransitions.has(record.boundaryId),
+            ),
         };
       } catch {
         return { kind: 'unavailable' };

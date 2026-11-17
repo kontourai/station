@@ -8,6 +8,7 @@ import type { TurnDeduplicator } from '@kontourai/monument';
 import { TurnIdempotencySettledError } from '@kontourai/monument';
 import {
   ORCHESTRATION_SHUTDOWN_EXIT_REASON,
+  type SessionTurnBoundaryRecord,
   type SessionTurnBoundaryTransition,
 } from '@kontourai/monument/session-boundary';
 import {
@@ -178,6 +179,7 @@ import {
   validateInputRequestContent,
 } from '@kontourai/station-shared/input-request';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
+import { TURN_ENGINE_ENDED_MESSAGE } from '@kontourai/station-shared/runtime-event-projection';
 import { toolRequestSessionGrantFromPayload } from '@kontourai/station-shared/tool-request-preview';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import {
@@ -543,6 +545,7 @@ import { SessionEventReads } from './session-event-reads.js';
 import {
   SessionExecutionCoordinator,
   SessionLifecycleClaimRefusedError,
+  SessionTurnStartHeldError,
   SessionTurnStartIndeterminateError,
 } from './session-execution-coordinator.js';
 import {
@@ -3180,6 +3183,10 @@ export class OrchestrationService {
     this.sessionExecutionCoordinator = new SessionExecutionCoordinator(
       this.sessionStartBoundaries,
       this.workspaceExecutionBarrier,
+      {
+        settle: (threadId, held) => this.settleHeldTurnStarts(threadId, held),
+        logger: options.logger,
+      },
     );
     this.hostImages = new HostImageTurnCapture({
       preview: options.hostImagesPreview,
@@ -9662,6 +9669,8 @@ export class OrchestrationService {
           let engineMaterialized = false;
           const adapter = await resolveOrchestrationAdapterForThread({
             threadId: submittedInput.threadId,
+            missingSessionHint: (threadId) =>
+              this.staleConversationSessionHint(threadId),
             threadProviders: this.threadProviders,
             requireAdapter: (provider) => this.requireAdapter(provider),
             adapters: this.options.adapterRegistry.list(),
@@ -10796,7 +10805,7 @@ export class OrchestrationService {
                         }
                         claimOutcome = 'retain';
                         boundary.indeterminate(new Date().toISOString());
-                        throw new SessionTurnStartIndeterminateError();
+                        throw new SessionTurnStartIndeterminateError(error);
                       }
                     };
                     // #484 phase A follow-up: the receiver-owned offer/binding
@@ -12277,7 +12286,10 @@ export class OrchestrationService {
         // client can say the same send will be refused again instead of
         // offering a blind retry. #3290: so is an approval-governance
         // refusal, whose next step is a configuration or mode change.
+        // A held turn start's code: nothing was sent, and the client says
+        // what will clear it instead of "try again".
         error instanceof SessionEndedError ||
+          error instanceof SessionTurnStartHeldError ||
           error instanceof SessionStopWhileStartingError ||
           error instanceof DraftDiscardRefusedError ||
           error instanceof DraftDiscardedError ||
@@ -14527,6 +14539,69 @@ export class OrchestrationService {
       });
       return event;
     }
+  }
+
+  /**
+   * A turn start this process could not confirm is held: it may have reached
+   * the engine, so no later start may run beside it. It is settled here,
+   * without a restart, only when the Session's own adapter has observed that
+   * no engine process for the thread can still run it (`engineEnded`).
+   * Then the turn either never started or ended with that process, which is
+   * exactly what boot recovery concludes from a dead owner, and it is
+   * recorded the same way: interrupted, with its banner. Any other answer
+   * (an adapter that cannot tell, an engine still alive, an unknown engine)
+   * keeps it held.
+   */
+  private async settleHeldTurnStarts(
+    threadId: string,
+    held: readonly SessionTurnBoundaryRecord[],
+  ): Promise<boolean> {
+    const provider =
+      this.threadProviders.get(threadId) ??
+      this.sessionReadModel.get(threadId)?.provider ??
+      this.options.eventStore?.readSessionByThread(threadId)?.provider;
+    const adapter =
+      provider === undefined
+        ? undefined
+        : this.options.adapterRegistry.get(provider);
+    if (adapter?.engineEnded?.(threadId) !== true) return false;
+    const settled = await this.interruptedTurns.settleHeldTurnStarts(
+      held,
+      TURN_ENGINE_ENDED_MESSAGE,
+    );
+    // Proof from the store, not the pass: a row the pass left in place
+    // (recovery declined, or a fence it does not release) stays held.
+    const remaining = new Set(
+      (() => {
+        const read = this.sessionStartBoundaries.heldTurnStarts?.(threadId);
+        return read?.kind === 'available'
+          ? read.records.map((record) => record.boundaryId)
+          : held.map((record) => record.boundaryId);
+      })(),
+    );
+    const released = settled.filter((id) => !remaining.has(id));
+    for (const boundaryId of released)
+      this.options.logger.warn(
+        'Held turn start settled: the engine process for this Session ended, so the turn is recorded as interrupted and the Session takes new turns',
+        { threadId, boundaryId, provider, reason: 'engine-ended' },
+      );
+    return released.length > 0;
+  }
+
+  /**
+   * What works instead when a turn names an earlier Session of a
+   * conversation whose engine is gone and cannot be resumed: continuing the
+   * conversation by its own id, which routes to its current Session and
+   * starts a new one when that cannot take the turn. The message names the
+   * conversation; the turn is not redirected, since the caller named one
+   * Session and a different one would run it with a different engine state.
+   */
+  private staleConversationSessionHint(threadId: string): string | undefined {
+    const conversationId =
+      this.options.eventStore?.conversationForSession(threadId)?.conversationId;
+    return conversationId !== undefined && conversationId !== threadId
+      ? `This is an earlier Session of conversation ${conversationId}. Continue the conversation by that id; Station sends the message to its current Session, starting a new one if needed.`
+      : undefined;
   }
 
   private isAdapterCurrent(adapter: ProviderAdapterShape): boolean {

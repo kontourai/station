@@ -129,6 +129,13 @@ export const TURN_INTERRUPTED_MESSAGE =
   'Turn interrupted — the process restarted while this turn was in progress.';
 
 /**
+ * The same banner when Station settles, without a restart, a turn start it
+ * could not confirm because the Session's engine process ended around it.
+ */
+export const TURN_ENGINE_ENDED_MESSAGE =
+  'Turn interrupted — the engine process ended before Station could confirm this turn started. Nothing is running now; your next message starts a new turn.';
+
+/**
  * What the chat's Continue sends after a restart interrupted a turn: an
  * ordinary turn from the person, in the same conversation.
  */

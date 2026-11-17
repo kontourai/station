@@ -1735,6 +1735,13 @@ could not be made durable. Foreground execution can return
 `outcome: "indeterminate"` and `code: "foreground_message_indeterminate"` with
 the known Session/receipt detail. Inspect that Session; do not resend the
 request merely because it returned an error or the receipt lookup is empty.
+Until Station can tell whether that turn reached the engine, later sends to the
+same Session are refused with `Session already has a turn start in progress`.
+Once the Session's engine process is observed gone, the next send records the
+held turn as interrupted (the same banner and abort boot recovery writes, with
+an engine-ended reason) and proceeds; otherwise the next boot settles it. A
+send that names an earlier Session of a conversation whose engine cannot be
+resumed is refused with the conversation id to continue by instead.
 A transport failure after dispatch can also leave the outcome uncertain.
 In the [chat UI](../../src-ui/src/hooks/orchestration/queueDrain.ts), an intermediary's
 error page during a queued send leaves the message in the queue; the page does

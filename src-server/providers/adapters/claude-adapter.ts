@@ -3032,9 +3032,14 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   ): Promise<ProviderTurnStartResult> {
     this.options.nativeSessionOwnership?.assertMutable(input.threadId);
     const record = this.requireSession(input.threadId);
-    if (record.session.status === 'error' || record.session.status === 'dead') {
-      throw new ProviderTurnEndedError();
-    }
+    // Refused before anything reaches the engine: its stream has ended, so
+    // this turn cannot start. A refusal releases the turn-start claim; any
+    // other error would hold it as a turn that may have started.
+    if (record.session.status === 'error' || record.session.status === 'dead')
+      throw new SendTurnRefusedError(
+        'This Claude Session has stopped and takes no more turns. Continue its conversation by the conversation id to start a new Session.',
+        'session_gone',
+      );
     // #2494: no turn runs before a confined start's posture is observed.
     if (record.confinementPending)
       throw new SendTurnRefusedError(
@@ -4063,6 +4068,20 @@ export class ClaudeAdapter implements ProviderAdapterShape {
 
   async hasSession(threadId: string): Promise<boolean> {
     return this.sessions.has(threadId);
+  }
+
+  /**
+   * A record leaves `sessions` only after its engine's exit was observed or
+   * its stop awaited the process's termination (an abandoned confined start
+   * leaves first, but `sendTurn` refuses until confinement is observed, so
+   * no turn reached it); a record that stays (a
+   * failed stream keeps it, `status: 'error'`) answers from the process's
+   * own observed exit. An engine this adapter did not spawn cannot be seen,
+   * so it answers false.
+   */
+  engineEnded(threadId: string): boolean {
+    const record = this.sessions.get(threadId);
+    return record === undefined || record.engineProcess?.exited() === true;
   }
 
   /**
