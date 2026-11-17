@@ -830,9 +830,14 @@ import type { ActionOperationService } from '../../services/operations/action-op
 import { AttachmentStagingService } from '../../services/orchestration/attachment-staging-service.js';
 import { recoverCompletedTaskDispatches } from '../../services/orchestration/completed-task-dispatch-recovery.js';
 import {
+  conversationAcknowledgementKey,
   FileConversationAcknowledgementStore,
   ownerDevicePredicate,
 } from '../../services/orchestration/conversation-acknowledgement-store.js';
+import {
+  createSenderReopen,
+  wireConversationResolutionReopen,
+} from '../../services/orchestration/conversation-resolution-reopen.js';
 import { ConversationWorkStateStore } from '../../services/orchestration/conversation-work-state-store.js';
 import {
   type CoordinatorWakeDelivery,
@@ -7679,10 +7684,42 @@ export function configureRuntimeRoutes(
     cols: record.cols,
     rows: record.rows,
   });
+  // Open and Settled inbox: one personal resolution record per person. A
+  // person's own message reopens their record (the send routes below); a
+  // question, failure or stop reopens everyone's (the bus observer).
+  const conversationWorkStateStore = new ConversationWorkStateStore(
+    context.configLoader.getProjectHomeDir(),
+  );
+  const conversationIdForResolution = (id: string) =>
+    context.orchestrationEventStore?.conversationForSession(id)?.conversationId;
+  wireConversationResolutionReopen(context.eventBus, {
+    store: conversationWorkStateStore,
+    conversationIdOf: conversationIdForResolution,
+    logger: context.logger,
+  });
+  const reopenSettledConversation = createSenderReopen<
+    Parameters<typeof resolveOrchestrationRequestPrincipal>[0]
+  >({
+    store: conversationWorkStateStore,
+    personFor: (c) =>
+      conversationAcknowledgementKey(
+        conversationReadAuthorityForContext(c),
+        ownerDevicePredicate(() =>
+          context.environmentSecurityService.devicePairing.listDevices(),
+        ),
+      ),
+    conversationIdOf: conversationIdForResolution,
+    logger: context.logger,
+  });
   context.app.route(
     '/api/orchestration',
     createOrchestrationRoutes(context.orchestrationService, {
       eventBus: context.eventBus,
+      reopenSettledConversation: (c, id) =>
+        reopenSettledConversation(
+          c as Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+          id,
+        ),
       readMarkerPersonKey: (c) =>
         readMarkerPersonKeyFor(
           c as Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
@@ -12482,9 +12519,7 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/conversations',
     createConversationWorkStateRoutes({
-      store: new ConversationWorkStateStore(
-        context.configLoader.getProjectHomeDir(),
-      ),
+      store: conversationWorkStateStore,
       preview: conversationResolutionPreview,
       authorityFor: conversationReadAuthorityForRequest,
       isOwnerDevice: ownerDevicePredicate(() =>

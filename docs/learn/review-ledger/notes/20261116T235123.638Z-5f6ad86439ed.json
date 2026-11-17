@@ -1,0 +1,7 @@
+{
+  "revision": "041d04f42340cfb76040a27bbefde54ce90d6514",
+
+  "notes": [
+    {"path":"docs/guides/nightly.md","note":"Added that the source gate accepts the merge queue's exact-SHA statics run, names it in a notice and job summary, and otherwise runs its own checks. Checked against nightly.yml test-gate and the receipt script.","inputs":["docs/guides/nightly.md"]}
+  ]
+}

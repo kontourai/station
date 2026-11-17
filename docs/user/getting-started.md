@@ -811,7 +811,9 @@ With **Open and Settled inbox** enabled in Feature previews, unfinished
 conversations stay **Open** after an Agent finishes a turn. Choose **Settle**
 when the conversation's work is done, or **Reopen** to bring it back. Closed
 Tasks follow their existing close-on-merge setting; standalone linked PRs do
-not settle a conversation automatically. Settlement syncs across your devices
+not settle a conversation automatically. Sending a message reopens a settled
+conversation, as does a question, a failure or a stop; the end of a settled
+conversation shows when you settled it and a **Reopen**. Settlement syncs across your devices
 and is separate from dismissal or deletion. **Working** holds running and
 monitoring chats and armed check-backs, which show **Waiting**; **Needs attention** takes priority whenever input is owed.
 Drafts appear as a pencil on the chat row in its current status. Collapse a
@@ -1160,7 +1162,9 @@ In new chats and New Task conversations, drop an image onto the composer or past
 a screenshot into the text field (Ctrl/Cmd+V on desktop). On a phone, use **Attach** to choose an image. In the Android app
 you can also share images from another app to Station, then pick a
 conversation or **New chat** in a project. Review its thumbnail and remove it
-before sending if needed.
+before sending if needed; tap a thumbnail to see the image full size. **Attach**
+always adds more files. If you send while a file is still uploading, the
+message waits and goes once the upload finishes; a failed upload offers Retry.
 The existing Task room, Project channels and agent-thread replies accept
 images the same way, including messages with only an image; their room composer also retains **Paste image** on supported touch devices. You can attach up to five files, 5 MiB
 each and 15 MiB combined. Keep unsent local files in the open draft; reloading
