@@ -1196,7 +1196,6 @@ export class PullRequestFeedbackDelivery {
   ): void {
     if (!claim.watch || !pullRequestReadyForPerson(observation)) return;
     if (this.ports.session(conversationId).state !== 'idle') return;
-    if (this.headReviewPending(store, claim, observation.headSha)) return;
     if (
       !store.recordWatchReport({
         prKey: claim.prKey,
@@ -1213,34 +1212,6 @@ export class PullRequestFeedbackDelivery {
         error: errorMessage(error),
       });
     }
-  }
-
-  /**
-   * With "Review each new head" on, Station's own review of this head is
-   * not done with: not run yet, still running, or its required findings not
-   * yet sent. Ready for you waits for it (the review writes a row however it
-   * ends, so a review that cannot run does not hold Ready; one held by the
-   * Project's daily limit holds it until a review runs).
-   */
-  private headReviewPending(
-    store: PullRequestFeedbackStore,
-    claim: PullRequestFeedbackClaim,
-    headSha: string,
-  ): boolean {
-    if (!this.ports.headReviewEnabled?.() || !claim.settings.reviewEachHead)
-      return false;
-    const review = store.headReview(claim.prKey, headSha);
-    if (!review || review.state === 'running') return true;
-    if (review.state !== 'reviewed' || !review.requiredIds.length) return false;
-    const signature = reviewFindingsSignature(headSha, review.requiredIds);
-    return !store
-      .deliveriesForPullRequest(claim.prKey, 200)
-      .some(
-        (delivery) =>
-          delivery.category === 'review-findings' &&
-          delivery.signature === signature &&
-          delivery.state === 'sent',
-      );
   }
 
   /** What is new for one pull request, recorded, after the caps. */
