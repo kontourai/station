@@ -59,6 +59,7 @@ class World {
   /** Throw on dispatch of these Tasks' titles (a crash mid-Start-all). */
   crashOnDispatch = new Set<string>();
   mayStart = true;
+  dieAfterPublish = false;
 
   open(): { coordinator: ProjectRoomCoordinator; db: DatabaseSync } {
     const db = new DatabaseSync(join(this.dir, 'coordinator.sqlite'));
@@ -130,6 +131,12 @@ class World {
         if (!this.mayStart) throw new Error('access changed');
         // The room store accepts one message per intent.
         if (!this.room.has(intentId)) this.room.set(intentId, text);
+        // The process dies once the room has the message and before the
+        // coordinator records it: its own database goes away mid-step.
+        if (this.dieAfterPublish) {
+          this.dieAfterPublish = false;
+          db.close();
+        }
         return `message-${intentId}`;
       },
     };
@@ -371,6 +378,36 @@ describe('ProjectRoomCoordinator', () => {
     const row = third.coordinator.view(scope, ROOM).proposals[0]!.tasks[0]!;
     expect(row.state).toBe('done');
     expect(row.resultMessageId).toMatch(/^message-/);
+  });
+
+  it('a restart between posting a result and recording it still leaves one result', async () => {
+    const w = world();
+    const first = w.open();
+    await propose(first.coordinator, THREE);
+    const [card] = first.coordinator.view(scope, ROOM).proposals;
+    await first.coordinator.start({
+      scope,
+      roomId: ROOM,
+      proposalId: card!.proposalId,
+      rowIds: [card!.tasks[0]!.rowId],
+      starter: PERSON,
+    });
+    w.finish('task-1', 'completed', 'Fixed the redirect.');
+    w.dieAfterPublish = true;
+    // The dying process's own pass ends with its database gone.
+    await first.coordinator.reconcile().catch(() => undefined);
+    // The room has the result; the row was never marked settled.
+    expect(w.room.size).toBe(1);
+    expect(w.publishCalls).toBe(1);
+
+    const second = w.open();
+    await second.coordinator.reconcile();
+    // The restarted coordinator posts again, under the same intent.
+    expect(w.publishCalls).toBe(2);
+    expect(w.room.size).toBe(1);
+    expect(
+      second.coordinator.view(scope, ROOM).proposals[0]!.tasks[0]!.state,
+    ).toBe('done');
   });
 
   it('posts nothing for a starter who lost access, and still frees the slot', async () => {
