@@ -209,4 +209,32 @@ describe('a held open answer under the real patch', () => {
     });
     expect(resolveConversationOpen).toHaveBeenCalledTimes(1);
   });
+
+  test('a chat marked pending again after its answer bound is read again', async () => {
+    activeChatsStore.updateChat(TAB, { requestedModel: null });
+    resolveConversationOpen.mockResolvedValueOnce(resolved('child-1'));
+    renderRevalidator(false);
+    await waitFor(() =>
+      expect(activeChatsStore.getSnapshot()[TAB]?.conversationOpenPending).toBe(
+        false,
+      ),
+    );
+    // A newer child adopted while the revalidator is still mounted.
+    resolveConversationOpen.mockResolvedValueOnce(resolved('child-2'));
+    act(() =>
+      activeChatsStore.updateChat(TAB, {
+        currentSessionId: 'child-2',
+        conversationOpenPending: true,
+      }),
+    );
+    await waitFor(() =>
+      expect(resolveConversationOpen).toHaveBeenCalledTimes(2),
+    );
+    await waitFor(() =>
+      expect(activeChatsStore.getSnapshot()[TAB]).toMatchObject({
+        conversationOpenPending: false,
+        currentSessionId: 'child-2',
+      }),
+    );
+  });
 });
