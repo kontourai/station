@@ -475,19 +475,24 @@ export class PullRequestFeedbackStore {
   autoClaim(input: {
     prKey: string;
     identity: PullRequestLinkIdentity;
+    /** The Task that found it: a removal from any incarnation of it holds. */
+    taskId: string;
     conversationId: string;
     settings: PullRequestFeedbackSettings;
     enabledBy: string;
     now: string;
-  }): boolean {
+  }): 'claimed' | 'claim-exists' | 'removed' {
     return this.transaction(() => {
-      if (this.claim(input.prKey)) return false;
+      // Any row, even every switch off, is a person's: never overwritten,
+      // and checked here rather than left to the primary key.
+      if (this.claim(input.prKey)) return 'claim-exists';
       const dismissed = this.db
         .prepare(
-          'SELECT 1 FROM derived_links WHERE conversation_id = ? AND pr_key = ? AND dismissed_at IS NOT NULL LIMIT 1',
+          `SELECT 1 FROM derived_links WHERE pr_key = ? AND dismissed_at IS NOT NULL
+             AND (conversation_id = ? OR task_id = ?) LIMIT 1`,
         )
-        .get(input.conversationId, input.prKey);
-      if (dismissed) return false;
+        .get(input.prKey, input.conversationId, input.taskId);
+      if (dismissed) return 'removed';
       this.db
         .prepare(
           `INSERT INTO claims (pr_key, identity, conversation_id, settings, enabled_by, enabled_at, generation, condition, override_head, origin)
@@ -501,7 +506,7 @@ export class PullRequestFeedbackStore {
           input.enabledBy,
           input.now,
         );
-      return true;
+      return 'claimed';
     });
   }
 
@@ -613,10 +618,13 @@ export class PullRequestFeedbackStore {
   }
 
   /**
-   * Claims a Project's defaults turned on that still send and no person has
-   * changed since.
+   * Claims a Project's defaults turned on that still send, on a pull request
+   * not closed, that no person has changed since, in chats `canRead` allows.
    */
-  projectDefaultClaimsOn(projectId: string): number {
+  projectDefaultClaimsOn(
+    projectId: string,
+    canRead: (conversationId: string) => boolean,
+  ): number {
     return this.db
       .prepare(
         `SELECT DISTINCT claims.* FROM claims JOIN derived_links ON derived_links.pr_key = claims.pr_key
@@ -627,8 +635,10 @@ export class PullRequestFeedbackStore {
       .map(readClaim)
       .filter(
         (claim) =>
-          claim.settings.fixFailingChecks ||
-          claim.settings.addressReviewComments,
+          (claim.settings.fixFailingChecks ||
+            claim.settings.addressReviewComments) &&
+          claim.condition?.state !== 'closed' &&
+          canRead(claim.conversationId),
       ).length;
   }
 
@@ -652,6 +662,15 @@ export class PullRequestFeedbackStore {
         input.headRef,
         input.derivedAt,
       );
+  }
+
+  /** Whether a person removed this pull request from any incarnation of the Task's chat. */
+  dismissedForTask(taskId: string, prKey: string): boolean {
+    return !!this.db
+      .prepare(
+        'SELECT 1 FROM derived_links WHERE task_id = ? AND pr_key = ? AND dismissed_at IS NOT NULL LIMIT 1',
+      )
+      .get(taskId, prKey);
   }
 
   /** Whether discovery already found something for this Task incarnation. */

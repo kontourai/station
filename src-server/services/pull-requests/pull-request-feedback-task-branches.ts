@@ -85,6 +85,33 @@ export interface PullRequestFeedbackTaskBranchPorts {
   now?(): number;
 }
 
+/**
+ * The repository as the forge spells it in the pull request's own URL, when
+ * that URL names this repository; otherwise the checkout origin's
+ * (lowercased) spelling. Keeps one pull request one row beside a link a
+ * person typed with the forge's capitals.
+ */
+function forgeSpelling(
+  url: string,
+  host: string,
+  owner: string,
+  name: string,
+): { owner: string; name: string } {
+  try {
+    const parsed = new URL(url);
+    const [urlOwner, urlName] = parsed.pathname.split('/').filter(Boolean);
+    if (
+      parsed.host.toLowerCase() === host &&
+      urlOwner?.toLowerCase() === owner.toLowerCase() &&
+      urlName?.toLowerCase() === name.toLowerCase()
+    )
+      return { owner: urlOwner, name: urlName };
+  } catch {
+    // An unreadable URL keeps the origin's spelling.
+  }
+  return { owner, name };
+}
+
 const LIVE = (status: string) => status !== 'done' && status !== 'canceled';
 const taskKey = (task: Pick<TaskBranchTask, 'id' | 'createdAt'>) =>
   `${task.id}\u0000${task.createdAt}`;
@@ -150,6 +177,13 @@ export class PullRequestFeedbackTaskBranches {
     const store = this.ports.readStore();
     if (!store?.anyProjectDefaultsOn()) return 'ok';
     const due = [];
+    // One Project read per tick, however many of its Tasks there are.
+    const projects = new Map<string, TaskBranchProject | undefined>();
+    const projectOf = (idOrSlug: string) => {
+      if (!projects.has(idOrSlug))
+        projects.set(idOrSlug, this.ports.project(idOrSlug));
+      return projects.get(idOrSlug);
+    };
     for (const task of this.ports.tasks()) {
       if (!LIVE(task.status) || !task.sessionId) continue;
       const key = taskKey(task);
@@ -158,7 +192,7 @@ export class PullRequestFeedbackTaskBranches {
         ? NUDGED_INTERVAL_MS
         : SWEEP_INTERVAL_MS;
       if (last !== undefined && input.now - last < interval) continue;
-      const project = this.ports.project(task.projectId);
+      const project = projectOf(task.projectId);
       if (!project?.workingDirectory) continue;
       const defaults = store.projectDefaults(project.id, project.createdAt);
       if (!defaults || !pullRequestFeedbackSends(defaults.settings)) continue;
@@ -252,10 +286,13 @@ export class PullRequestFeedbackTaskBranches {
       const prIdentity: PullRequestLinkIdentity = {
         provider: provider.id,
         host,
-        repository: { owner, name },
+        repository: forgeSpelling(pr.url, host, owner, name),
         ref: pr.ref,
       };
       const prKey = pullRequestFeedbackKey(prIdentity);
+      // Removed from this Task's chat once: never again, whichever
+      // incarnation of the Task found it.
+      if (store.dismissedForTask(task.id, prKey)) continue;
       store.recordDerivedLink({
         taskId: task.id,
         taskCreatedAt: task.createdAt,
@@ -274,6 +311,7 @@ export class PullRequestFeedbackTaskBranches {
         store.autoClaim({
           prKey,
           identity: prIdentity,
+          taskId: task.id,
           conversationId,
           settings: { ...defaults.settings },
           enabledBy: defaults.setBy,
@@ -314,6 +352,8 @@ export class PullRequestFeedbackTaskBranches {
   defaults(
     projectSlug: string,
     canChange: boolean,
+    /** Only claims in chats this reader may read are counted. */
+    canRead: (conversationId: string) => boolean = () => false,
   ): ProjectPullRequestFeedbackDefaults | undefined {
     const project = this.ports.project(projectSlug);
     if (!project || project.slug !== projectSlug) return undefined;
@@ -329,7 +369,7 @@ export class PullRequestFeedbackTaskBranches {
             reviewEachHead: false,
           },
       canChange,
-      stillOn: store?.projectDefaultClaimsOn(project.id) ?? 0,
+      stillOn: store?.projectDefaultClaimsOn(project.id, canRead) ?? 0,
     };
   }
 
@@ -341,6 +381,7 @@ export class PullRequestFeedbackTaskBranches {
     projectSlug: string,
     settings: Partial<PullRequestFeedbackSettings>,
     userId: string,
+    canRead: (conversationId: string) => boolean = () => false,
   ): ProjectPullRequestFeedbackDefaults | undefined {
     const project = this.ports.project(projectSlug);
     if (!project || project.slug !== projectSlug) return undefined;
@@ -364,6 +405,6 @@ export class PullRequestFeedbackTaskBranches {
       setBy: userId,
       now: new Date(this.now()).toISOString(),
     });
-    return this.defaults(projectSlug, true);
+    return this.defaults(projectSlug, true, canRead);
   }
 }

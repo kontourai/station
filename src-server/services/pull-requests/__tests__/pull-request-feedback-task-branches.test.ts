@@ -76,6 +76,8 @@ function setup(
   options: {
     answer?: (branch: string) => PullRequestsByHeadResult;
     tasks?: TaskBranchTask[];
+    /** Runs during the forge read, before it answers. */
+    duringRead?: () => void;
   } = {},
 ) {
   const store = new PullRequestFeedbackStore(
@@ -83,6 +85,7 @@ function setup(
   );
   closers.push(() => store.close());
   const state = {
+    project: { ...PROJECT },
     now: T0,
     mayContinue: true,
     stopped: false,
@@ -105,6 +108,8 @@ function setup(
   };
   const reads: Array<{ host: string; repository: unknown; branch: string }> =
     [];
+  const warn = vi.fn();
+  const mayContinueCalls: Array<[string, string]> = [];
   const provider = {
     id: 'github',
     canServeHost: (host: string) => host === 'github.com',
@@ -113,6 +118,7 @@ function setup(
       branch: string,
     ) => {
       reads.push({ ...context, branch });
+      options.duringRead?.();
       return (
         options.answer?.(branch) ?? { state: 'read', pullRequests: [own()] }
       );
@@ -124,8 +130,8 @@ function setup(
     readStore: () => store,
     tasks: () => state.tasks,
     project: (idOrSlug) =>
-      idOrSlug === PROJECT.id || idOrSlug === PROJECT.slug
-        ? PROJECT
+      idOrSlug === state.project.id || idOrSlug === state.project.slug
+        ? state.project
         : undefined,
     taskWorktree: (taskId) => state.worktrees[taskId],
     repositoryIdentity: async (path) =>
@@ -133,8 +139,11 @@ function setup(
     providers: () => [provider],
     conversationOf: (sessionId) => `chat-${sessionId}`,
     session: () => ({ state: state.stopped ? 'stopped' : 'idle' }),
-    mayContinue: () => state.mayContinue,
-    logger: { warn: vi.fn() },
+    mayContinue: (conversationId, userId) => {
+      mayContinueCalls.push([conversationId, userId]);
+      return state.mayContinue;
+    },
+    logger: { warn },
     now: () => state.now,
   });
   const turnOn = (setBy = 'owner') =>
@@ -154,7 +163,16 @@ function setup(
       now: state.now,
       signal: new AbortController().signal,
     });
-  return { store, state, reads, branches, turnOn, discover };
+  return {
+    store,
+    state,
+    reads,
+    warn,
+    mayContinueCalls,
+    branches,
+    turnOn,
+    discover,
+  };
 }
 
 describe('Task-branch discovery', () => {
@@ -282,6 +300,7 @@ describe('Task-branch discovery', () => {
       t.store.autoClaim({
         prKey: PR_KEY,
         identity: PR,
+        taskId: 't-91',
         conversationId: 'chat-lead-91',
         settings: {
           fixFailingChecks: true,
@@ -291,7 +310,7 @@ describe('Task-branch discovery', () => {
         enabledBy: 'owner',
         now: new Date(T0).toISOString(),
       }),
-    ).toBe(false);
+    ).toBe('removed');
     // Nor is the Task looked at again.
     t.state.mayContinue = true;
     t.state.now += 60 * MINUTE;
@@ -310,7 +329,7 @@ describe('Task-branch discovery', () => {
       'owner',
     );
     expect(t.store.claim(PR_KEY)?.settings.fixFailingChecks).toBe(true);
-    expect(t.branches.defaults('widgets', true)).toEqual({
+    expect(t.branches.defaults('widgets', true, () => true)).toEqual({
       projectSlug: 'widgets',
       settings: {
         fixFailingChecks: false,
@@ -333,7 +352,7 @@ describe('Task-branch discovery', () => {
       enabledBy: 'owner',
       now: new Date(T0).toISOString(),
     });
-    expect(t.branches.defaults('widgets', true)?.stillOn).toBe(0);
+    expect(t.branches.defaults('widgets', true, () => true)?.stillOn).toBe(0);
   });
 
   it('a defaults write without a switch keeps its stored value', () => {
@@ -418,5 +437,155 @@ describe('Task-branch discovery', () => {
     const t = setup();
     await t.discover();
     expect(t.reads).toEqual([]);
+  });
+
+  it('asks whether the setter may continue the lead chat, with exactly those two', async () => {
+    const t = setup();
+    t.turnOn('owner');
+    await t.discover();
+    expect(t.mayContinueCalls).toEqual([['chat-lead-91', 'owner']]);
+  });
+
+  it("an existing claim is reported as a person's, without a failed insert or a warning", async () => {
+    const t = setup();
+    t.turnOn();
+    t.store.writeClaim({
+      prKey: PR_KEY,
+      identity: PR,
+      conversationId: 'someone-else',
+      settings: {
+        fixFailingChecks: true,
+        addressReviewComments: false,
+        reviewEachHead: false,
+      },
+      enabledBy: 'person',
+      now: '2026-11-16T11:00:00.000Z',
+    });
+    expect(
+      t.store.autoClaim({
+        prKey: PR_KEY,
+        identity: PR,
+        taskId: 't-91',
+        conversationId: 'chat-lead-91',
+        settings: {
+          fixFailingChecks: true,
+          addressReviewComments: true,
+          reviewEachHead: false,
+        },
+        enabledBy: 'owner',
+        now: new Date(T0).toISOString(),
+      }),
+    ).toBe('claim-exists');
+    await t.discover();
+    expect(t.warn).not.toHaveBeenCalled();
+    expect(t.store.claim(PR_KEY)?.conversationId).toBe('someone-else');
+  });
+
+  it('reads the defaults of this incarnation of the Project only', async () => {
+    const t = setup();
+    t.turnOn();
+    // The Project removed and created again under the same id.
+    t.state.project = { ...PROJECT, createdAt: '2026-11-16T10:00:00.000Z' };
+    expect(t.branches.defaults('widgets', true)?.settings).toEqual({
+      fixFailingChecks: false,
+      addressReviewComments: false,
+      reviewEachHead: false,
+    });
+    await t.discover();
+    expect(t.reads).toEqual([]);
+    expect(t.store.allClaims()).toEqual([]);
+  });
+
+  it('a pull request removed from a Task stays out when the Task is created again', async () => {
+    const t = setup();
+    t.turnOn();
+    await t.discover();
+    expect(t.branches.dismiss('chat-lead-91', PR)).toBe(true);
+    // Released, then pruned: no claim row is left to hold it.
+    t.store.deleteClaim(PR_KEY);
+    t.state.tasks = [
+      {
+        id: 't-91',
+        createdAt: '2026-11-17T09:00:00.000Z',
+        projectId: 'p-1',
+        status: 'in_progress',
+        sessionId: 'lead-91b',
+      },
+    ];
+    t.state.now += 31 * MINUTE;
+    await t.discover();
+    expect(t.reads).toHaveLength(2);
+    expect(t.store.derivedLinks('chat-lead-91b')).toEqual([]);
+    expect(t.store.allClaims()).toEqual([]);
+    expect(
+      t.store.autoClaim({
+        prKey: PR_KEY,
+        identity: PR,
+        taskId: 't-91',
+        conversationId: 'chat-lead-91b',
+        settings: {
+          fixFailingChecks: true,
+          addressReviewComments: false,
+          reviewEachHead: false,
+        },
+        enabledBy: 'owner',
+        now: new Date(t.state.now).toISOString(),
+      }),
+    ).toBe('removed');
+  });
+
+  it('never reads a worktree recorded for another Task', async () => {
+    const t = setup();
+    t.turnOn();
+    t.state.worktrees['t-91'] = {
+      ...worktreeFor('t-91'),
+      owner: { kind: 'task', taskId: 't-other' },
+    };
+    await t.discover();
+    expect(t.reads).toEqual([]);
+  });
+
+  it('defaults turned off during the forge read leave the link but make no claim', async () => {
+    let t: ReturnType<typeof setup> | undefined;
+    t = setup({
+      duringRead: () =>
+        t!.branches.writeDefaults(
+          'widgets',
+          { fixFailingChecks: false, addressReviewComments: false },
+          'owner',
+        ),
+    });
+    t.turnOn();
+    await t.discover();
+    expect(t.store.derivedLinks('chat-lead-91')).toHaveLength(1);
+    expect(t.store.allClaims()).toEqual([]);
+  });
+
+  it("keeps the forge's spelling of the repository, so a typed link and this one are one pull request", async () => {
+    const t = setup({
+      answer: () => ({
+        state: 'read',
+        pullRequests: [own({ url: 'https://github.com/Acme/Widgets/pull/42' })],
+      }),
+    });
+    t.turnOn();
+    await t.discover();
+    expect(t.branches.derivedLinks('chat-lead-91')).toMatchObject([
+      { repository: { owner: 'Acme', name: 'Widgets' }, ref: '42' },
+    ]);
+    expect(t.store.claim(PR_KEY)?.prKey).toBe(PR_KEY);
+  });
+
+  it('counts only open pull requests in chats the reader may read', async () => {
+    const t = setup();
+    t.turnOn();
+    await t.discover();
+    expect(t.branches.defaults('widgets', true, () => true)?.stillOn).toBe(1);
+    expect(t.branches.defaults('widgets', true, () => false)?.stillOn).toBe(0);
+    t.store.setCondition(PR_KEY, {
+      state: 'closed',
+      at: new Date(T0).toISOString(),
+    });
+    expect(t.branches.defaults('widgets', true, () => true)?.stillOn).toBe(0);
   });
 });
