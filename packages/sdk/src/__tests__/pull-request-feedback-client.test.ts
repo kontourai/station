@@ -9,6 +9,7 @@ vi.mock('../client/http', async (importOriginal) => ({
 }));
 
 import {
+  pullRequestHeadReviewRefusal,
   reviewPullRequestHeadAgain,
   sendPullRequestHeadReviewFindings,
   turnOffPullRequestFeedback,
@@ -104,7 +105,15 @@ test("Review again and Send to agent post to the chat's head review", async () =
       { status: 409, headers: { 'content-type': 'application/json' } },
     ),
   );
-  await expect(
-    reviewPullRequestHeadAgain('http://station.test', 'chat-a', identity),
-  ).rejects.toThrow('10 reviews');
+  const refused = await reviewPullRequestHeadAgain(
+    'http://station.test',
+    'chat-a',
+    identity,
+  ).catch((error: unknown) => error);
+  // Station's own sentence, shown as it comes.
+  expect(pullRequestHeadReviewRefusal(refused)).toBe(
+    'Station already ran 10 reviews in this Project today.',
+  );
+  // Any other failure is described as usual.
+  expect(pullRequestHeadReviewRefusal(new Error('boom'))).toBeUndefined();
 });
