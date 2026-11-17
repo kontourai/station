@@ -190,11 +190,15 @@ function makeMutation(
           installedByTab[tab].delete(variables.id);
         }
       }
-      callbacks?.onSuccess?.({
-        success: true,
-        action: variables.action,
-        permissions: installedPermissions,
-      });
+      callbacks?.onSuccess?.(
+        tab === 'plugins' && pluginInstallResult
+          ? (pluginInstallResult as never)
+          : {
+              success: true,
+              action: variables.action,
+              permissions: installedPermissions,
+            },
+      );
     },
     variables: null,
   };
@@ -207,6 +211,8 @@ const installedErrorTabs = new Set<string>();
 const reconciledRefetchTabs = new Set<string>();
 const refetchInstalled = vi.fn();
 const reloadPlugins = vi.fn(async () => undefined);
+/** What the plugin install resolves with instead of an applied install. */
+let pluginInstallResult: unknown;
 const pluginRegistryListeners = new Set<() => void>();
 let pluginRegistryStatus: {
   state: 'ready' | 'degraded';
@@ -381,6 +387,9 @@ afterEach(() => {
   mutationCalls.length = 0;
   previewResults.clear();
   installedPermissions = undefined;
+  pluginInstallResult = undefined;
+  reloadPlugins.mockClear();
+  requestConsent.mockClear();
   previewMutationCalls.length = 0;
   previewMutationResets = 0;
   pluginRegistryReload.mockClear();
@@ -1309,6 +1318,51 @@ describe('RegistryView', () => {
     );
     expect(refetchInstalled).toHaveBeenCalledTimes(1);
     expect(mutationCalls).toEqual([]);
+  });
+
+  test('an install accepted with activation pending says so and points at the plugin, without a host review it cannot finish', async () => {
+    previewResults.set('demo-layout', validDemoPreview());
+    pluginInstallResult = {
+      success: false,
+      plugin: { name: 'demo-layout', version: '1.0.0' },
+      permissions: {
+        pendingConsent: [],
+        dependencies: [
+          {
+            id: 'shared-providers',
+            pendingConsent: [
+              { permission: 'providers.register', tier: 'trusted' },
+            ],
+          },
+        ],
+      },
+      configurationActivation: { status: 'pending', reason: 'saved' },
+    };
+    render(<RegistryView initialTab="plugins" />);
+    fireEvent.click(
+      within(screen.getByTestId('registry-detail')).getByRole('button', {
+        name: 'Install',
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
+
+    await waitFor(() => expect(showToastMock).toHaveBeenCalled());
+    const [text, , , actions, tone] = showToastMock.mock.calls.at(-1) as [
+      string,
+      unknown,
+      unknown,
+      Array<{ label: string; onClick: () => void }> | undefined,
+      string,
+    ];
+    expect(text).toBe(
+      'Demo Layout was installed, but it did not finish activating in time. It stays Activation pending until you choose Review recovery, then Recover plugin. Trusted permissions are approved after that.',
+    );
+    expect(tone).toBe('warning');
+    actions?.[0]?.onClick();
+    expect(navigateMock).toHaveBeenCalledWith('/plugins/demo-layout');
+    expect(mutationCalls).toHaveLength(1);
+    expect(requestConsent).not.toHaveBeenCalled();
+    expect(reloadPlugins).not.toHaveBeenCalled();
   });
 
   test('a plugin that contributes no layout is confirmed with nothing to place (#1536 G7)', () => {

@@ -1,6 +1,10 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { PluginManifest } from '@kontourai/station-contracts/plugin';
+import {
+  type PluginLifecyclePending,
+  type PluginManifest,
+  readPluginLifecycleResponse,
+} from '@kontourai/station-contracts/plugin';
 import type { AuthenticatedFetchInit } from '@kontourai/station-sdk/client';
 import {
   authenticatedFetch,
@@ -69,11 +73,46 @@ function resolvePluginTarget(parsed: ParsedCoreArgs): ResolvedApiBase {
   return target;
 }
 
+/**
+ * A plugin lifecycle request whose designed `202` (saved, activation not
+ * finished) is an accepted outcome rather than a failure.
+ */
+async function pluginLifecycleRequest<T>(
+  parsed: ParsedCoreArgs,
+  path: string,
+  init: AuthenticatedFetchInit,
+  target: ResolvedApiBase,
+): Promise<{ payload: T; pending?: PluginLifecyclePending }> {
+  let pending: PluginLifecyclePending | undefined;
+  const payload = await pluginRequest<T>(parsed, path, init, target, (o) => {
+    if (o.state === 'pending') pending = o.pending;
+    return o.state !== 'refused';
+  });
+  return { payload, ...(pending ? { pending } : {}) };
+}
+
+function pendingInstallLines(
+  name: string,
+  pending: PluginLifecyclePending,
+): string[] {
+  return pending.kind === 'projection'
+    ? [
+        `⏳ Installed ${name}, but Station has not finished listing it.`,
+        '  Reload plugins on the Station host to pick it up; its code and data are kept.',
+      ]
+    : [
+        `⏳ Installed ${name}, but it did not finish activating in time.`,
+        '  It stays Activation pending until you open Plugins on the Station host, select it, and choose Review recovery.',
+        '  Do not install it again; trusted permissions are approved after recovery.',
+      ];
+}
+
 async function pluginRequest<T>(
   parsed: ParsedCoreArgs,
   path: string,
   init?: AuthenticatedFetchInit,
   target: ResolvedApiBase = resolvePluginTarget(parsed),
+  accept?: (outcome: ReturnType<typeof readPluginLifecycleResponse>) => boolean,
 ): Promise<T> {
   const apiBase = target.apiBase;
   let response: Response;
@@ -93,7 +132,11 @@ async function pluginRequest<T>(
     success?: boolean;
     error?: string;
   };
-  if (!response.ok || payload.success === false) {
+  if (
+    accept
+      ? !accept(readPluginLifecycleResponse(response.status, payload))
+      : !response.ok || payload.success === false
+  ) {
     throw new Error(
       payload.error || `Plugin request failed with HTTP ${response.status}`,
     );
@@ -291,9 +334,9 @@ export async function install(
     }
   }
 
-  const result = await pluginRequest<{
+  const { payload: result, pending } = await pluginLifecycleRequest<{
     success: boolean;
-    plugin: { name: string; version: string };
+    plugin?: { name: string; version: string };
     permissions?: {
       pendingConsent?: Array<{ permission: string; tier: string }>;
       dependencies?: Array<{
@@ -347,9 +390,24 @@ export async function install(
     },
     target,
   );
+  if (pending) {
+    // A designed `202`: installed, not active. Host approvals cannot be
+    // reviewed until it is, so none are listed here.
+    const name = result.plugin?.name ?? previewed.manifest?.name ?? source;
+    const version = result.plugin?.version ?? previewed.manifest?.version;
+    for (const line of pendingInstallLines(
+      version ? `${name}@${version}` : name,
+      pending,
+    ))
+      console.log(line);
+    return { pluginName: name, version: version ?? '' };
+  }
+  const installed = result.plugin;
+  if (!installed)
+    throw new Error('Station did not return the installed plugin details.');
   const pendingHostApprovals = [
     ...(result.permissions?.pendingConsent ?? []).map((entry) => ({
-      plugin: result.plugin.name,
+      plugin: installed.name,
       ...entry,
     })),
     ...(result.permissions?.dependencies ?? []).flatMap((dependency) =>
@@ -360,7 +418,7 @@ export async function install(
   ];
   if (pendingHostApprovals.length > 0) {
     console.log(
-      `⚠️ Installed ${result.plugin.name}@${result.plugin.version}, but activation is incomplete.`,
+      `⚠️ Installed ${installed.name}@${installed.version}, but activation is incomplete.`,
     );
     for (const pending of pendingHostApprovals) {
       console.log(
@@ -379,16 +437,16 @@ export async function install(
     )
   ) {
     console.log(
-      `Installed ${result.plugin.name}@${result.plugin.version}, but Station did not report current dependency approval status. Check the Plugins page on the Station host.`,
+      `Installed ${installed.name}@${installed.version}, but Station did not report current dependency approval status. Check the Plugins page on the Station host.`,
     );
   } else {
     console.log(
-      `✅ Installed ${result.plugin.name}@${result.plugin.version} through Station`,
+      `✅ Installed ${installed.name}@${installed.version} through Station`,
     );
   }
   return {
-    pluginName: result.plugin.name,
-    version: result.plugin.version,
+    pluginName: installed.name,
+    version: installed.version,
   };
 }
 
@@ -543,12 +601,21 @@ export async function installRegistryPlugin(
     error?: string;
     message?: string;
   };
-  if (!response.ok || result.success === false) {
+  const outcome = readPluginLifecycleResponse(response.status, result);
+  if (outcome.state === 'refused') {
     throw new Error(
       result.error ||
         result.message ||
         `Registry install failed with HTTP ${response.status}`,
     );
+  }
+  if (outcome.state === 'pending') {
+    for (const line of pendingInstallLines(
+      `registry plugin ${id}`,
+      outcome.pending,
+    ))
+      console.log(line);
+    return;
   }
   console.log(`✅ Installed registry plugin ${id} through Station`);
 }

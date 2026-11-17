@@ -3620,6 +3620,23 @@ host-owned approval are separate checks; an arbitrary Station credential is
 not sufficient for every lifecycle operation. A recorded trusted grant also
 does not prove runtime activation: inspect reconciliation and current status.
 
+An install whose runtime activation outruns the server's deadline is saved but
+not active. The server answers HTTP `202` with `success: false` and
+`configurationActivation.status: "pending"` (or, rarely, `lifecycle.status:
+"pending"` when the selection is recorded but not yet listed). The mutation
+resolves with that result rather than rejecting, and refreshes the plugin
+queries. Read it with `pluginLifecyclePending(result)` from
+`@kontourai/station-contracts/plugin`, which returns `{ kind: 'activation' }`
+or `{ kind: 'projection' }`, or `undefined` for an applied install. The plugin's row then
+reads `installationReadiness.state: "pending"` until a person completes
+[retained plugin recovery](#retained-plugin-recovery). An abandoned activation
+does not make it ready on its own. Do not replay the install. Its trusted
+permissions stay in `pendingConsent`, but their host approval refuses a plugin
+that is not ready, so ask for them after recovery.
+`requestPluginRegistryInstallAction(id, 'install')` reads the registry install
+the same way. `readPluginLifecycleResponse(status, body)` is the HTTP-level
+reading these clients share: `applied`, `pending`, or `refused`.
+
 ```tsx
 const { mutate } = usePluginInstallMutation();
 mutate({
@@ -3713,8 +3730,8 @@ const result = await recoverPlugin(apiBase, name, {
 Recovery continues retained bytes and their data scope; it does not fetch missing
 dependencies or adopt unrelated installations. A changed selection/decision yields
 HTTP 409; unavailable grant evidence can yield 503. Surface the error and require
-a fresh preview and decision. `PluginRecoveryResult` preserves the existing
-`PluginInstallResult` plus the acceptance-time `configurationActivation` receipt.
+a fresh preview and decision. `PluginRecoveryResult` is `PluginInstallResult`,
+whose optional `configurationActivation` is the acceptance-time receipt.
 The mutation disables retries and refreshes plugin, recovery, layout, Agent, and
 Project queries after an accepted response, including pending activation. A network
 failure does not prove that the server had no effect; inspect current state before

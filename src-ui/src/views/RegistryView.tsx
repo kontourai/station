@@ -1,3 +1,4 @@
+import { pluginLifecyclePending } from '@kontourai/station-contracts/plugin';
 import {
   type RegistryCatalogTab,
   useInstalledRegistryItemsQuery,
@@ -42,6 +43,7 @@ import {
   installedDependencyPermissions,
   type PreviewData,
 } from './plugin-management/types';
+import { installPendingMessage } from './plugin-management/view-utils';
 import './PluginManagementView.css';
 import './RegistryView.css';
 import './page-layout.css';
@@ -448,6 +450,36 @@ export function RegistryView({
     const callbacks = {
       onError: baseCallbacks.onError,
       onSuccess: async (result: unknown) => {
+        const pending = pluginLifecyclePending(result);
+        if (pending) {
+          // Accepted, not active: the same outcome the Plugins view reports.
+          // No dependency host review now; it refuses a plugin that is not
+          // active, and the plugin's own row finishes the activation.
+          actionCallbacks(tab, item, itemId, false, () => {
+            setMessage(null);
+            showToast(
+              installPendingMessage(displayName, pending),
+              undefined,
+              undefined,
+              installedPluginName
+                ? [
+                    {
+                      label: 'Open plugin',
+                      variant: 'primary' as const,
+                      onClick: () =>
+                        navigate(
+                          `/plugins/${encodeURIComponent(installedPluginName)}`,
+                        ),
+                    },
+                  ]
+                : undefined,
+              'warning',
+            );
+          }).onSuccess();
+          if (pending.kind === 'projection')
+            await reloadPluginsMutation.mutateAsync().catch(() => {});
+          return;
+        }
         baseCallbacks.onSuccess();
         void pluginRegistry.reload();
         const dependencyStatus = installedDependencyPermissions(result);

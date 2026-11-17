@@ -432,6 +432,63 @@ describe('plugin CLI API authority', () => {
     expect(authenticatedFetch).toHaveBeenCalledTimes(2);
   });
 
+  test('reports an install accepted with activation pending as pending, not as a failed request', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    authenticatedFetch
+      .mockResolvedValueOnce(
+        Response.json({
+          valid: true,
+          manifest: { name: 'demo', version: '1.0.0' },
+          components: [],
+          conflicts: [],
+          contentDigest: 'sha256:reviewed',
+          grantRevision: 'parent-reviewed-revision',
+          permissions: {
+            required: ['plugin.server'],
+            autoGranted: [],
+            pendingConsent: [{ permission: 'plugin.server', tier: 'trusted' }],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json(
+          {
+            success: false,
+            plugin: { name: 'demo', version: '1.0.0' },
+            permissions: {
+              pendingConsent: [
+                { permission: 'plugin.server', tier: 'trusted' },
+              ],
+            },
+            configurationActivation: { status: 'pending', reason: 'saved' },
+          },
+          { status: 202 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        Response.json({ success: false }, { status: 202 }),
+      );
+    const { install, installRegistryPlugin } = await import(
+      '../commands/install.js'
+    );
+
+    await expect(
+      install(PLUGIN_SOURCE, [], { ...parsed, flags: { yes: true } }, null),
+    ).resolves.toEqual({ pluginName: 'demo', version: '1.0.0' });
+    const printed = log.mock.calls.map((call) => String(call[0]));
+    expect(printed).toContain(
+      '⏳ Installed demo@1.0.0, but it did not finish activating in time.',
+    );
+    // Not the host-approval list: that review refuses an inactive plugin.
+    expect(printed.join('\n')).not.toContain('requires host approval');
+    expect(authenticatedFetch).toHaveBeenCalledTimes(2);
+
+    // A 202 that does not say pending is still a refusal.
+    await expect(installRegistryPlugin('curated-demo', parsed)).rejects.toThrow(
+      'Registry install failed with HTTP 202',
+    );
+  });
+
   test('refuses when the server reports no basis to approve', async () => {
     authenticatedFetch.mockResolvedValueOnce(
       Response.json({

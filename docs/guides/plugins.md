@@ -677,6 +677,14 @@ permission, or removal controls until the manifest validates again.
 
 ### Recover interrupted activation
 
+On a slow or busy host, an install can be saved before its runtime activation
+finishes. Station then says the plugin was installed but did not finish
+activating in time, and selects its row, which reads **Activation pending**. It
+did not fail, and installing it again would install a second copy. Station
+does not ask for its trusted permissions yet, because their host approval
+needs an active plugin. Finish it with recovery below; trusted permissions are
+approved after that. The CLI prints the same outcome.
+
 An **Activation pending** plugin retains its code and data while its runtime
 contributions remain unavailable. Open **Plugins**, select it, and choose
 **Review recovery**. Review the permissions and retained dependencies, then

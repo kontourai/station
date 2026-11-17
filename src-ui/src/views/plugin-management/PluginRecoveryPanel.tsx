@@ -11,13 +11,16 @@ import { ResponsiveSurfaceActions } from '../../components/ResponsiveDialogSurfa
 import { usePermissions } from '../../core/PermissionManager';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import { PluginRegistryTrustSection } from './PluginRegistryTrustSection';
-import type { ReadyPlugin } from './types';
+import type { PluginMessage, ReadyPlugin } from './types';
 
 export function PluginRecoveryPanel({
   plugin,
+  message,
   onRemove,
 }: {
   plugin: ReadyPlugin;
+  /** The view's latest outcome, e.g. the install that left this row pending. */
+  message?: PluginMessage | null;
   onRemove(name: string): void;
 }) {
   const preview = usePluginRecoveryPreviewQuery(plugin.name, {
@@ -93,6 +96,14 @@ export function PluginRecoveryPanel({
   }
   return (
     <div className="detail-panel">
+      {message && (
+        <div
+          className={`plugins__message plugins__message--${message.type}`}
+          role="status"
+        >
+          {message.text}
+        </div>
+      )}
       <DetailHeader
         title={plugin.displayName || plugin.name}
         subtitle={`Version ${plugin.version}`}

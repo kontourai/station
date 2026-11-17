@@ -134,7 +134,7 @@ export interface PluginUpdateSummary {
 }
 
 export interface PluginMessage {
-  type: 'success' | 'error';
+  type: 'success' | 'warning' | 'error';
   text: string;
   action?: {
     label: string;

@@ -1,3 +1,4 @@
+import type { PluginLifecyclePending } from '@kontourai/station-contracts/plugin';
 import {
   isRejectedPlugin,
   type Plugin,
@@ -243,4 +244,20 @@ export function reinstallDelta(
     },
     code,
   };
+}
+
+/**
+ * An install the server accepted but has not activated (its designed `202`).
+ * Not a failure, so no retry is offered: a second install would install the
+ * plugin again. Not ready either: an activation that outran the deadline
+ * cannot make the plugin ready on its own, so the person finishes it from
+ * the plugin's Activation pending row, which is what the message points at.
+ */
+export function installPendingMessage(
+  pluginName: string,
+  pending: PluginLifecyclePending,
+) {
+  return pending.kind === 'projection'
+    ? `${pluginName} was installed, but Station had not finished listing it, so plugins are being reloaded to pick it up. Its code and data are kept.`
+    : `${pluginName} was installed, but it did not finish activating in time. It stays Activation pending until you choose Review recovery, then Recover plugin. Trusted permissions are approved after that.`;
 }

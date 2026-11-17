@@ -1,6 +1,7 @@
-import type {
-  PluginInstallationRevision,
-  PluginInstallResult,
+import {
+  type PluginInstallationRevision,
+  type PluginInstallResult,
+  readPluginLifecycleResponse,
 } from '@kontourai/station-contracts/plugin';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { _getApiBase, addProjectLayoutFromPlugin } from '../api';
@@ -97,11 +98,17 @@ export function usePluginInstallMutation() {
           }),
         },
       );
-      const result = await response.json();
-      if (!result.success)
+      const result = (await response.json()) as PluginInstallResult;
+      // A `202` whose activation is pending was accepted: the plugin is
+      // installed and not active yet. Callers read it with
+      // `pluginLifecyclePending(result)`; it is not a failure.
+      if (
+        readPluginLifecycleResponse(response.status, result).state === 'refused'
+      )
         throw new Error(apiErrorMessage(result, 'Install failed'));
       return result;
     },
+    // Invalidated for a pending install too: the plugin's row now exists.
     onSuccess: (_result, variables) => {
       invalidatePluginQueries(queryClient);
       invalidatePluginGraphQueries(queryClient);
@@ -479,7 +486,12 @@ export async function requestPluginRegistryInstallAction(
           },
         );
   const result = await response.json();
-  if (!result.success) {
+  // Only an install has a designed pending outcome (see the direct install).
+  const accepted =
+    action === 'install'
+      ? readPluginLifecycleResponse(response.status, result).state !== 'refused'
+      : result.success;
+  if (!accepted) {
     throw new Error(
       apiErrorMessage(result, result.message || `${action} failed`),
     );

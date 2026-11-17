@@ -1295,6 +1295,102 @@ describe('usePluginManagementViewModel', () => {
       [{ permission: 'plugin.server', tier: 'trusted' }],
     );
   });
+
+  /**
+   * The designed `202` from a slow host: saved, activation not finished in
+   * time. The SDK resolves it (plugin-install-pending.test.tsx); this is what
+   * the person is shown, and what they can do next.
+   */
+  const PENDING_INSTALL = {
+    success: false,
+    plugin: { name: 'network-kit', displayName: 'Network Kit', agents: [] },
+    permissions: {
+      pendingConsent: [{ permission: 'plugin.server', tier: 'trusted' }],
+    },
+    configurationActivation: {
+      status: 'pending',
+      reason:
+        'Configuration was saved, but runtime activation did not finish within its deadline and is continuing in the background.',
+    },
+  };
+
+  async function installPending(
+    result: { current: ReturnType<typeof usePluginManagementViewModel> },
+    data: Record<string, unknown> = PENDING_INSTALL,
+  ) {
+    mocks.requestInstallConsent.mockResolvedValue(true);
+    await primePreview(result, {
+      ...PREVIEW,
+      permissions: {
+        required: ['plugin.server'],
+        autoGranted: [],
+        pendingConsent: [{ permission: 'plugin.server', tier: 'trusted' }],
+      },
+    });
+    await act(async () => {
+      await result.current.install([]);
+    });
+    await act(async () => {
+      await mocks.installOnSuccess?.(data as never);
+    });
+  }
+
+  test('an install pending activation is reported as pending on its own row, not as failed and not as ready', async () => {
+    const { result } = renderHook(() => usePluginManagementViewModel());
+    await installPending(result);
+
+    expect(result.current.message).toEqual({
+      type: 'warning',
+      text: 'Network Kit was installed, but it did not finish activating in time. It stays Activation pending until you choose Review recovery, then Recover plugin. Trusted permissions are approved after that.',
+    });
+    expect(result.current.showInstallModal).toBe(false);
+    expect(result.current.installMessage).toBeNull();
+    // The row that finishes it: Activation pending, with Review recovery.
+    expect(mocks.selectPlugin).toHaveBeenCalledWith('network-kit');
+    // Not the ready path: no "Setting up tools", no reload that would claim it.
+    expect(mocks.reloadPlugins).not.toHaveBeenCalled();
+  });
+
+  test('the trusted approval owed by a pending install is not asked while its host review cannot record it', async () => {
+    const { result } = renderHook(() => usePluginManagementViewModel());
+    await installPending(result);
+
+    // Asked once, before the install, as the decision...
+    expect(mocks.requestInstallConsent).toHaveBeenCalledTimes(1);
+    // ...and not again now: the host review refuses a plugin that is not
+    // active (plugin-install-activation-pending.test.ts), so a yes here
+    // would be lost and reported as a refusal.
+    expect(mocks.requestConsent).not.toHaveBeenCalled();
+  });
+
+  test('pressing Install again after a pending install does not send a second install', async () => {
+    const { result } = renderHook(() => usePluginManagementViewModel());
+    await installPending(result);
+
+    await act(async () => {
+      await result.current.install([]);
+      await result.current.install();
+    });
+    expect(mocks.installMutate).toHaveBeenCalledTimes(1);
+    expect(mocks.previewMutate).toHaveBeenCalledTimes(1);
+  });
+
+  test('a recorded selection whose listing is pending reloads plugins rather than reporting a failure', async () => {
+    const { result } = renderHook(() => usePluginManagementViewModel());
+    await installPending(result, {
+      success: false,
+      error:
+        'Plugin selection is recorded but its catalog projection is pending. Reload plugins to reconcile it; stored code and data are retained.',
+      lifecycle: { status: 'pending', code: 'plugin-projection-pending' },
+    });
+
+    expect(result.current.message?.type).toBe('warning');
+    expect(result.current.message?.text).toContain(
+      'plugins are being reloaded to pick it up',
+    );
+    expect(mocks.reloadPlugins).toHaveBeenCalledOnce();
+    expect(mocks.requestConsent).not.toHaveBeenCalled();
+  });
 });
 
 describe('#2323 S4 reinstall from source', () => {

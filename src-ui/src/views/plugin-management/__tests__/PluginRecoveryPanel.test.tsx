@@ -192,3 +192,20 @@ test('#1521: the recovery review shows the recovery preview’s receipt, not the
   expect(region.textContent).not.toContain(digest('8'));
   expect(region.textContent).not.toContain('listed-key');
 });
+
+test('an install that left this row pending explains itself above the recovery review', () => {
+  const text =
+    'Fixture was installed, but it did not finish activating in time. It stays Activation pending until you choose Review recovery, then Recover plugin. Trusted permissions are approved after that.';
+  render(
+    <PluginRecoveryPanel
+      plugin={plugin}
+      message={{ type: 'warning', text }}
+      onRemove={vi.fn()}
+    />,
+  );
+  const status = screen.getByRole('status');
+  expect(status.textContent).toBe(text);
+  expect(status.className).toContain('plugins__message--warning');
+  expect(screen.getByText('Activation pending')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Review recovery' })).toBeTruthy();
+});

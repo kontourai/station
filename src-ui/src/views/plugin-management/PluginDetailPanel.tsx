@@ -182,6 +182,7 @@ export function PluginDetailPanel({
       <PluginRecoveryPanel
         key={selected.name}
         plugin={selected}
+        message={message}
         onRemove={onRemove}
       />
     );

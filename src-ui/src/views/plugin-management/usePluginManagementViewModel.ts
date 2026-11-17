@@ -3,6 +3,7 @@ import {
   PLUGIN_PROPOSAL_QUERY_KEY,
   type PluginLifecycleProposal,
   type PluginLocalSourceStatus,
+  pluginLifecyclePending,
 } from '@kontourai/station-contracts/plugin';
 import {
   type PluginProviderDetail,
@@ -53,6 +54,7 @@ import {
 import {
   buildPluginListItems,
   filterPlugins,
+  installPendingMessage,
   pluginSelectionId,
   slugifyProjectName,
   soleLayoutTargetProject,
@@ -533,6 +535,27 @@ export function usePluginManagementViewModel() {
           setShowInstallModal(false);
           if (reinstalling) setReinstall(null);
           if (proposalId) setActiveProposal(null);
+          const pendingActivation = pluginLifecyclePending(data);
+          if (pendingActivation) {
+            // Trusted permissions stay owed, but their host review refuses a
+            // plugin that is not active, so asking now would take a yes that
+            // cannot be recorded. They are asked once it is active.
+            setInstallSource('');
+            const pendingName =
+              data.plugin?.displayName || data.plugin?.name || displayName;
+            setMessage({
+              type: 'warning',
+              text: installPendingMessage(pendingName, pendingActivation),
+            });
+            if (data.plugin?.name) selectPlugin(data.plugin.name);
+            // The server's own instruction for an unlisted selection; a
+            // reload replays nothing the person approved.
+            if (pendingActivation.kind === 'projection') {
+              await reloadPluginsMutation.mutateAsync().catch(() => {});
+              await reloadClientPluginRegistry();
+            }
+            return;
+          }
           const installedPlugin = data.plugin;
           if (!installedPlugin) {
             setMessage({

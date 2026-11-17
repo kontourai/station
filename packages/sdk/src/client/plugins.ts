@@ -1,10 +1,11 @@
-import type {
-  PluginInstallationReadiness,
-  PluginInstallationRevision,
-  PluginInstallResult,
-  PluginManifest,
-  PluginPermissionPrompt,
-  RejectedInstalledPluginRecord,
+import {
+  type PluginInstallationReadiness,
+  type PluginInstallationRevision,
+  type PluginInstallResult,
+  type PluginManifest,
+  type PluginPermissionPrompt,
+  type RejectedInstalledPluginRecord,
+  readPluginLifecycleResponse,
 } from '@kontourai/station-contracts/plugin';
 import {
   isPluginRegistryTrust,
@@ -305,10 +306,8 @@ export interface PluginRecoveryPreview {
   }>;
   skip: string[];
 }
-export type PluginRecoveryResult = PluginInstallResult & {
-  /** Acceptance-time receipt, not a live activation subscription. */
-  configurationActivation?: { status: 'applied' | 'pending'; reason?: string };
-};
+/** `configurationActivation` is an acceptance-time receipt, not a live activation subscription. */
+export type PluginRecoveryResult = PluginInstallResult;
 
 export async function previewPluginRecovery(
   apiBase: string,
@@ -368,12 +367,7 @@ export async function recoverPlugin(
   }
   // The server uses 202 + success:false for persisted work awaiting activation.
   if (
-    !response.ok ||
-    (!result.success &&
-      !(
-        response.status === 202 &&
-        result.configurationActivation?.status === 'pending'
-      ))
+    readPluginLifecycleResponse(response.status, result).state === 'refused'
   ) {
     throw envelopeError(response, result, refused);
   }

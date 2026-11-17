@@ -21,7 +21,7 @@ export function InstallPluginModal({
   /** #2323 S5: the proposal this install came from, when it did. */
   proposal?: PluginLifecycleProposal | null;
   installSource: string;
-  installMessage: { type: 'success' | 'error'; text: string } | null;
+  installMessage: { type: 'success' | 'warning' | 'error'; text: string } | null;
   installPending: boolean;
   previewPending: boolean;
   onChangeSource: (value: string) => void;

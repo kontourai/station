@@ -37,7 +37,7 @@ test('direct and registry SDK mutations expose current dependency permission sta
   } satisfies PluginInstallResult;
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => ({ json: async () => payload })),
+    vi.fn(async () => Response.json(payload)),
   );
   const client = new QueryClient({
     defaultOptions: { mutations: { retry: false } },
@@ -105,9 +105,7 @@ test('direct and registry SDK mutations expose current dependency permission sta
 test('older plugin responses retain unknown status and non-plugin catalogs keep InstallResult', async () => {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => ({
-      json: async () => ({ success: true, message: 'installed' }),
-    })),
+    vi.fn(async () => Response.json({ success: true, message: 'installed' })),
   );
   const plugin = await requestRegistryCatalogAction('plugins', {
     id: 'plugin',

@@ -57,6 +57,80 @@ export interface PluginInstallResult {
   tools?: Array<{ id: string; status: string }>;
   dependencies?: Array<{ id: string; status: string; error?: string }>;
   permissions?: PluginInstallPermissionStatus;
+  /**
+   * Present (as `pending`) only on a `202` whose change was saved but whose
+   * runtime activation did not finish inside the server's deadline.
+   */
+  configurationActivation?: { status: 'applied' | 'pending'; reason?: string };
+}
+
+/**
+ * Why an accepted plugin lifecycle change is not active yet.
+ *
+ * `activation`: the change was saved, but runtime activation did not finish
+ * within the server's deadline (or failed after saving). The installation
+ * reads `installationReadiness.state === 'pending'` until a person recovers
+ * it; the abandoned pass cannot make it ready on its own.
+ * `projection`: the selection was recorded but the catalog projection was
+ * not; reloading plugins reconciles it.
+ */
+export type PluginLifecyclePending =
+  | { kind: 'activation'; reason?: string }
+  | { kind: 'projection'; reason?: string };
+
+/**
+ * The one reading of a plugin lifecycle response body that says "accepted,
+ * but not active yet". The server sends that as `202` with `success: false`,
+ * which a caller that only checks `success` misreads as a failure.
+ */
+export function pluginLifecyclePending(
+  body: unknown,
+): PluginLifecyclePending | undefined {
+  if (!body || typeof body !== 'object' || Array.isArray(body))
+    return undefined;
+  const result = body as Record<string, unknown>;
+  if (result.success !== false) return undefined;
+  const activation = result.configurationActivation as
+    | Record<string, unknown>
+    | undefined;
+  if (activation && activation.status === 'pending')
+    return {
+      kind: 'activation',
+      ...(typeof activation.reason === 'string'
+        ? { reason: activation.reason }
+        : {}),
+    };
+  const lifecycle = result.lifecycle as Record<string, unknown> | undefined;
+  if (lifecycle && lifecycle.status === 'pending')
+    return {
+      kind: 'projection',
+      ...(typeof result.error === 'string' ? { reason: result.error } : {}),
+    };
+  return undefined;
+}
+
+/**
+ * How a caller reads `POST /api/plugins/install`, the registry install and
+ * recovery: `applied` is a 2xx with `success: true`; `pending` is the designed
+ * `202` above; everything else is `refused` and carries its own error.
+ */
+export function readPluginLifecycleResponse(
+  status: number,
+  body: unknown,
+):
+  | { state: 'applied' }
+  | { state: 'pending'; pending: PluginLifecyclePending }
+  | { state: 'refused' } {
+  if (
+    status >= 200 &&
+    status < 300 &&
+    body !== null &&
+    typeof body === 'object' &&
+    (body as { success?: unknown }).success === true
+  )
+    return { state: 'applied' };
+  const pending = status === 202 ? pluginLifecyclePending(body) : undefined;
+  return pending ? { state: 'pending', pending } : { state: 'refused' };
 }
 
 /**
